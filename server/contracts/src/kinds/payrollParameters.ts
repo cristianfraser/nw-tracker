@@ -33,6 +33,7 @@ export const payrollParametersKind = defineIngestKind({
   kind: "payroll.parameters",
   schema_version: 1,
   description: "Payroll months' legal parameters (caps, AFP rates, employer pension share, unemployment rates) from Previred.",
+  ref: "read",
   payload: z
     .object({
       months: z

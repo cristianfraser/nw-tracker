@@ -14,6 +14,7 @@ import type { BankAccountBalancesApplyDetails, BankAccountBalancesPayload } from
 import { checkingMovementBalanceClpAt } from "./checkingCartolaBalances.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { storeOnce } from "./ingestReceiver.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 
@@ -26,20 +27,25 @@ function declaredAccountId(issuer: string, number: string, currency: Currency): 
   return row?.account_id ?? null;
 }
 
-/** Records one observation (idempotent per source: a resend of the same file records nothing). */
-export function applyBankAccountBalances(
-  payload: BankAccountBalancesPayload,
-  sourceRef: string
-): { duplicate: boolean; details: BankAccountBalancesApplyDetails } {
+/**
+ * Records one observation, once per source: a resend of the same file records nothing, and one
+ * stating other balances under the same source is an `IngestConflict`.
+ */
+export function applyBankAccountBalances(payload: BankAccountBalancesPayload, sourceRef: string): BankAccountBalancesApplyDetails {
   const details: BankAccountBalancesApplyDetails = { recorded: 0, known: [], unknown: [] };
-  const seen = db
-    .prepare(`SELECT 1 AS o FROM bank_account_balance_snapshots WHERE source_ref = ? AND issuer = ? LIMIT 1`)
-    .get(sourceRef, payload.issuer);
   const ins = db.prepare(
     `INSERT INTO bank_account_balance_snapshots
        (source_ref, issuer, number, product, currency, balance, label, status, observed_at, account_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const observation = (rows: readonly { number: string; product: string; currency: string; balance: number; label: string | null; status: string | null }[], observedAt: string) => ({
+    observed_at: observedAt,
+    rows: JSON.stringify(
+      rows
+        .map((r) => [r.number, r.product, r.currency, Number(r.balance), r.label ?? null, r.status ?? null])
+        .sort((a, b) => `${a[0]}|${a[2]}`.localeCompare(`${b[0]}|${b[2]}`))
+    ),
+  });
   db.transaction(() => {
     for (const a of payload.accounts) {
       const accountId = declaredAccountId(payload.issuer, a.number, a.currency);
@@ -48,23 +54,29 @@ export function applyBankAccountBalances(
       } else {
         details.unknown.push({ number: a.number, currency: a.currency, label: a.label });
       }
-      if (seen) continue;
-      ins.run(
-        sourceRef,
-        payload.issuer,
-        a.number,
-        a.product,
-        a.currency,
-        a.balance,
-        a.label,
-        a.status,
-        payload.observed_at,
-        accountId
-      );
-      details.recorded += 1;
     }
+    storeOnce([payload], {
+      table: "bank_account_balance_snapshots",
+      key: () => `${payload.issuer}|${sourceRef}`,
+      load: () => {
+        const stored = db
+          .prepare(
+            `SELECT number, product, currency, balance, label, status, observed_at FROM bank_account_balance_snapshots
+             WHERE source_ref = ? AND issuer = ?`
+          )
+          .all(sourceRef, payload.issuer) as { number: string; product: string; currency: string; balance: number; label: string | null; status: string | null; observed_at: string }[];
+        return stored.length > 0 ? observation(stored, stored[0]!.observed_at) : undefined;
+      },
+      row: (p) => observation(p.accounts, p.observed_at),
+      insert: (p) => {
+        for (const a of p.accounts) {
+          ins.run(sourceRef, p.issuer, a.number, a.product, a.currency, a.balance, a.label, a.status, p.observed_at, declaredAccountId(p.issuer, a.number, a.currency));
+          details.recorded += 1;
+        }
+      },
+    });
   })();
-  return { duplicate: seen != null, details };
+  return details;
 }
 
 /** The account's ledger balance in its own currency at `ymd` (pesos whole, dollars to the cent). */

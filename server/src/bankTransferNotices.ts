@@ -16,12 +16,12 @@
  * a transfer to some other account. Rows left tied that differ only by id are twins and pair in
  * order; any other tie is left unpaired and reported.
  */
-import { createHash } from "node:crypto";
 import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 
 const WINDOW_DAYS = 6;
@@ -310,7 +310,6 @@ function rowNotice(r: Record<string, unknown>): TransferNotice {
   };
 }
 
-const hash = (row: Record<string, unknown>) => createHash("sha256").update(JSON.stringify(row)).digest("hex");
 
 /** What a mail writes: one side on a checking account, or a transfer between two accounts. */
 export type MailMovement =
@@ -433,7 +432,7 @@ function writeMovementsFromMails(
 }
 
 /**
- * Stores the notices (a resent notice must state the same; a different one throws), rebuilds every
+ * Stores the notices (a resent notice must state the same; a different one is an `IngestConflict`), rebuilds every
  * pairing from all stored notices of every mailer, so a bank row that lands after its mail pairs on
  * the next apply, and writes the movements fresh mails describe that no bank feed lists yet.
  */
@@ -443,18 +442,16 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
     `INSERT INTO bank_transfer_notices (${COLUMNS.join(", ")}) VALUES (${COLUMNS.map((c) => `@${c}`).join(", ")})`
   );
   return db.transaction((): BankAccountTransferNoticesApplyDetails => {
-    let added = 0;
-    for (const n of payload.notices) {
-      const row = noticeRow(payload.issuer, n);
-      const old = existing.get(n.message_id) as Record<string, unknown> | undefined;
-      if (old) {
-        const stored = Object.fromEntries(COLUMNS.map((c) => [c, old[c] ?? null]));
-        if (hash(stored) !== hash(row)) throw new Error(`transfer notice ${n.message_id} was already stored with other content`);
-        continue;
-      }
-      insert.run(row);
-      added++;
-    }
+    const { added } = storeOnce(payload.notices, {
+      table: "bank_transfer_notices",
+      key: (n) => n.message_id,
+      load: (n) => {
+        const old = existing.get(n.message_id) as Record<string, unknown> | undefined;
+        return old ? Object.fromEntries(COLUMNS.map((c) => [c, old[c] ?? null])) : undefined;
+      },
+      row: (n) => noticeRow(payload.issuer, n),
+      insert: (n) => void insert.run(noticeRow(payload.issuer, n)),
+    });
     // Every mailer's notices pair together: two mails can describe one bank row.
     const tracked = trackedAccounts();
     const stored = (db.prepare(`SELECT * FROM bank_transfer_notices`).all() as Record<string, unknown>[]).map((r) => ({

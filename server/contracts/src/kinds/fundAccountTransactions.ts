@@ -29,12 +29,11 @@ export type FundTransaction = z.infer<typeof fundTransactionSchema>;
 
 export const fundAccountTransactionsKind = defineIngestKind({
   kind: "fund_account.transactions",
-  schema_version: 1,
+  schema_version: 2,
   description: "A fund manager's certificate of transactions: subscriptions and redemptions per investment, in pesos and units.",
+  ref: "read",
   payload: z
     .object({
-      /** False: report the reconcile, write nothing. */
-      apply: z.boolean(),
       provider: z.enum(["fintual"]),
       /** The certificate file: provenance for the report. */
       document: z.string().min(1).max(256),
@@ -49,7 +48,6 @@ export type FundAccountTransactionsPayload = z.infer<typeof fundAccountTransacti
 
 /** `details` of an applied `fund_account.transactions`. */
 export type FundAccountTransactionsApplyDetails = {
-  applied: boolean;
   accounts_ensured: number;
   /** Transactions an existing flow covers (a single-leg row, a transfer leg, an earlier import). */
   matched: number;

@@ -60,7 +60,7 @@ describe("payslip checks", () => {
     expect(applyPayrollParameters(payrollParametersKind.payload.parse({ months: [MONTH] }))).toMatchObject({ added: ["2099-03"], changed: [] });
     // Taxable for tax: 3.300.000 − 334.720 − 224.000 (health capped at 7 % of the base) − 19.800.
     const tax = Math.round(igcTax(3_300_000 - 334_720 - 224_000 - 19_800, 70_000, 2100));
-    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ apply: true, parser_version: "v", payslips: [payslip(tax)] }));
+    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "v", payslips: [payslip(tax)] }));
     const row = buildPayslipChecks().find((c) => c.period_month === "2099-03")!;
     expect(row.checks.map((c) => [c.check, c.expected])).toEqual([
       ["taxable_base", 3_200_000],
@@ -75,7 +75,7 @@ describe("payslip checks", () => {
   it("records a withholding that differs from the table, and sums the year", () => {
     applyPayrollParameters(payrollParametersKind.payload.parse({ months: [MONTH] }));
     const tax = Math.round(igcTax(3_300_000 - 334_720 - 224_000 - 19_800, 70_000, 2100));
-    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ apply: true, parser_version: "v", payslips: [payslip(tax - 500)] }));
+    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "v", payslips: [payslip(tax - 500)] }));
     const row = buildPayslipChecks().find((c) => c.period_month === "2099-03")!;
     expect(row.differences).toEqual([{ check: "income_tax", expected: tax, printed: tax - 500, difference: -500 }]);
     expect(payrollWithholdingYear(2099)).toMatchObject({ payslips: 1, difference: -500, months_with_differences: ["2099-03"] });
@@ -83,7 +83,7 @@ describe("payslip checks", () => {
 
   it("a payslip newer than the newest published parameters waits; an older month without them is an error", () => {
     applyPayrollParameters(payrollParametersKind.payload.parse({ months: [{ ...MONTH, period_month: "2099-02", document: "2099-02.pdf" }] }));
-    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ apply: true, parser_version: "v", payslips: [payslip(1_000)] }));
+    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "v", payslips: [payslip(1_000)] }));
     expect(buildPayslipChecks().find((c) => c.period_month === "2099-03")).toMatchObject({ pending: true, checks: [] });
     applyPayrollParameters(payrollParametersKind.payload.parse({ months: [{ ...MONTH, period_month: "2099-04", document: "2099-04.pdf" }] }));
     expect(() => buildPayslipChecks()).toThrow(/no payroll parameters for 2099-03/);

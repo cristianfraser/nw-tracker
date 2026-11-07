@@ -65,16 +65,16 @@ export type BrokerNotification = z.infer<typeof brokerNotificationSchema>;
  * Every money notification a broker has sent that the feeder still holds — the whole set each
  * time, not only new ones: the server books what is complete and not yet in the ledger, so a
  * notification that could not be booked yet (its bank leg not imported, an unknown fund) is
- * retried simply by being sent again. `apply: false` plans and reports without writing.
+ * retried simply by being sent again. A dry run (the envelope's `dry_run`) plans and reports without writing.
  */
 export const brokerNotificationsKind = defineIngestKind({
   kind: "broker.notifications",
-  schema_version: 1,
+  schema_version: 2,
   description: "A broker's money notifications (every one the feeder holds).",
+  ref: "read",
   payload: z
     .object({
       broker: z.enum(["fintual", "racional"]),
-      apply: z.boolean(),
       notifications: z.array(brokerNotificationSchema),
     })
     .strict()
@@ -102,7 +102,6 @@ export type BrokerNotificationPlanRow = {
 /** `details` of an applied `broker.notifications`. */
 export type BrokerNotificationsApplyDetails = {
   broker: "fintual" | "racional";
-  applied: boolean;
   planned: BrokerNotificationPlanRow[];
   written: number;
   /** Notifications the server cannot book (no amount stated) and no crawl answers. */

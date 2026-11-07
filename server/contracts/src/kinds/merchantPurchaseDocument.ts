@@ -89,6 +89,7 @@ export const merchantPurchaseDocumentKind = defineIngestKind({
   kind: "merchant.purchase_document",
   schema_version: 1,
   description: "A merchant's receipt or subscription notice for card charges (what a charge bought).",
+  ref: "document",
   payload: z
     .object({
       merchant: merchantSchema,

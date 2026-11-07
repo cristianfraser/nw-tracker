@@ -77,7 +77,6 @@ export function renderCartolas(ledger: Ledger): RenderedCartolas {
     if (account === "checking") currentMonth.push(...rows.filter((r) => monthOf(r.date) === current));
     out.push({
       account: { issuer: "santander", product: account === "vista" ? "demand_deposit" : "checking" },
-      apply: true,
       force_reimport: false,
       statements,
       unreadable: [],
@@ -241,7 +240,6 @@ export function renderOpenCycle(ledger: Ledger): { card: CardDef; listing: CcWeb
 export function renderPayslips(ledger: Ledger): EmploymentPayslipsPayload | null {
   if (ledger.payslips.length === 0) return null;
   return {
-    apply: true,
     parser_version: "demo",
     payslips: ledger.payslips.map((p) => {
       const sum = (side: "haber" | "descuento", section?: string) =>

@@ -298,12 +298,12 @@ describe("broker mail event times", () => {
         | { occurred_at: string; source: string }
         | undefined);
 
-    const first = applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [mail("2097-10-05T14:31:00Z")] });
+    const first = applyBrokerNotifications({ broker: "fintual", notifications: [mail("2097-10-05T14:31:00Z")] });
     expect(first.written).toBe(0);
     expect(first.event_times_stamped).toBe(1);
     expect(stampOf()).toEqual({ occurred_at: "2097-10-05T14:31:00.000Z", source: "broker_mail" });
 
-    const again = applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [mail("2097-10-05T15:00:00Z")] });
+    const again = applyBrokerNotifications({ broker: "fintual", notifications: [mail("2097-10-05T15:00:00Z")] });
     expect(again.event_times_stamped).toBe(0);
     expect(stampOf()!.occurred_at).toBe("2097-10-05T14:31:00.000Z");
   });

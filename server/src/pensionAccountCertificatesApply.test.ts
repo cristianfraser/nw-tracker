@@ -14,7 +14,6 @@ function payload(movements: PensionMovement[], balance: number): PensionAccountC
     provider: "afp_uno",
     product: "mandatory",
     fund: "A",
-    apply: true,
     read_at: "2030-07-20T01:00:00Z",
     balance: { cuotas: balance, valor_cuota: 1000, pesos: Math.round(balance * 1000) },
     recent_movements: [],

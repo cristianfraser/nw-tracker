@@ -34,6 +34,11 @@ export const ingestEnvelopeSchema = z
     schema_version: z.number().int().positive(),
     feeder_id: feederIdSchema,
     source: ingestSourceSchema,
+    /**
+     * Run the document through the server and report, writing nothing: the server applies it
+     * inside a transaction it rolls back. The only way to ask for a report-only send.
+     */
+    dry_run: z.boolean().default(false),
     payload: z.unknown(),
   })
   .strict();
@@ -43,16 +48,37 @@ export type IngestEnvelope<P = unknown> = Omit<z.infer<typeof ingestEnvelopeSche
 };
 
 /**
- * What the server did with a document. `duplicate`: already applied, nothing written.
- * `conflict`: the document disagrees with what the server holds and was not applied — the
- * message says why; the feeder keeps the document for a later retry or a human.
+ * One disagreement behind a `conflict`: `at` names what was compared (`<table>:<key>`, or
+ * `ingest_documents:<kind>|<ref>` for a resent document), `fields` the fields that differ.
+ */
+export const ingestConflictEntrySchema = z
+  .object({
+    at: z.string(),
+    fields: z.array(z.string()),
+    message: z.string(),
+  })
+  .strict();
+
+export type IngestConflictEntry = z.infer<typeof ingestConflictEntrySchema>;
+
+/**
+ * What the server did with a document. `applied`: the handler ran (and wrote, unless `dry_run`).
+ * `duplicate`: a `document` kind's ref was already applied with this payload; nothing ran, and
+ * `details` are the first answer's. `conflict`: the document disagrees with what the server holds
+ * and nothing was written — `conflicts` point at each disagreement, `message` sums them up.
+ * `retry`: the outcome may change if the same document is sent again later (a card line not
+ * imported yet, a pairing still ambiguous): the feeder keeps it staged. False: the feeder is done
+ * with it (archive it, or hand a conflict to a human).
  */
 export const ingestResultSchema = z
   .object({
     status: z.enum(["applied", "duplicate", "conflict"]),
     kind: z.string(),
     schema_version: z.number().int().positive(),
+    retry: z.boolean(),
+    dry_run: z.boolean(),
     message: z.string().optional(),
+    conflicts: z.array(ingestConflictEntrySchema).optional(),
     details: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();

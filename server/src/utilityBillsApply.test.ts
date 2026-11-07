@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { UtilityBill } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { IngestConflict } from "./ingestReceiver.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { assignPurchaseToRealEstateExpense, loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
@@ -77,10 +78,7 @@ function entry(id: number) {
   };
 }
 
-const outcomeOf = (r: ReturnType<typeof applyUtilityBills>, b: UtilityBill) => {
-  if (r.status === "conflict") throw new Error(r.message);
-  return r.details.bills.find((x) => x.bill_number === b.bill_number);
-};
+const outcomeOf = (r: ReturnType<typeof applyUtilityBills>, b: UtilityBill) => r.bills.find((x) => x.bill_number === b.bill_number);
 
 let placeId = 0;
 let otherPlaceId = 0;
@@ -156,7 +154,7 @@ describe("applyUtilityBills", () => {
   it("reports an unmapped supply and writes nothing", () => {
     const b = bill({ service_account: "000999999-9" });
     const r = applyUtilityBills({ bills: [b] }, { todayYmd: "2036-10-10" });
-    expect(r.status).toBe("applied");
+    expect(r.new_bills).toBe(1);
     expect(outcomeOf(r, b)).toMatchObject({ outcome: "unmapped", expense_entry_id: null });
   });
 
@@ -165,7 +163,7 @@ describe("applyUtilityBills", () => {
     const b = bill({ issued_on: "2036-03-05", due_on: "2036-03-20", period_to: "2036-03-02", amount: 11111 });
     expect(outcomeOf(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-03-10" }), b)?.outcome).toBe("waiting");
     const again = applyUtilityBills({ bills: [b] }, { todayYmd: "2036-04-20" });
-    expect(again.status).toBe("duplicate");
+    expect(again.new_bills).toBe(0);
     expect(outcomeOf(again, b)?.outcome).toBe("overdue");
   });
 
@@ -188,7 +186,7 @@ describe("applyUtilityBills", () => {
 
     // Settled: a resend changes nothing and follows nothing.
     const again = applyUtilityBills({ bills: [{ ...b, message_id: "<another-copy@example.test>" }] }, { todayYmd: "2036-10-21" });
-    expect(again.status).toBe("duplicate");
+    expect(again.new_bills).toBe(0);
     expect(outcomeOf(again, b)).toBeUndefined();
   });
 
@@ -196,9 +194,10 @@ describe("applyUtilityBills", () => {
     map("enel", "123456-7", placeId);
     const b = bill({ amount: 22222, issued_on: "2036-05-05", due_on: "2036-05-20", period_from: "2036-04-02", period_to: "2036-05-02" });
     applyUtilityBills({ bills: [b] }, { todayYmd: "2036-05-06" });
-    const r = applyUtilityBills({ bills: [{ ...b, kwh: 999 }] }, { todayYmd: "2036-05-07" });
-    expect(r).toMatchObject({ status: "conflict" });
-    expect(applyUtilityBills({ bills: [{ ...b, period_to: "2036-05-03" }] }, { todayYmd: "2036-05-07" }).status).toBe("conflict");
+    expect(() => applyUtilityBills({ bills: [{ ...b, kwh: 999 }] }, { todayYmd: "2036-05-07" })).toThrow(IngestConflict);
+    expect(() => applyUtilityBills({ bills: [{ ...b, period_to: "2036-05-03" }] }, { todayYmd: "2036-05-07" })).toThrow(
+      /utility_bills:enel\|.* was already stored with other period/
+    );
     const stored = () =>
       db.prepare(`SELECT kwh, period_from, period_to FROM utility_bills WHERE provider = 'enel' AND bill_number = ?`).get(b.bill_number);
     expect(stored()).toEqual({ kwh: 175, period_from: "2036-04-02", period_to: "2036-05-02" });
@@ -209,8 +208,8 @@ describe("applyUtilityBills", () => {
     const b = bill({ amount: 22223, issued_on: "2036-05-05", due_on: "2036-05-20", period_from: null, period_to: null });
     applyUtilityBills({ bills: [b] }, { todayYmd: "2036-05-06" });
     const withPeriod = { ...b, period_from: "2036-04-02", period_to: "2036-05-02" };
-    expect(applyUtilityBills({ bills: [withPeriod] }, { todayYmd: "2036-05-07" }).status).toBe("duplicate");
-    expect(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-05-07" }).status).toBe("duplicate");
+    expect(applyUtilityBills({ bills: [withPeriod] }, { todayYmd: "2036-05-07" }).new_bills).toBe(0);
+    expect(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-05-07" }).new_bills).toBe(0);
     expect(db.prepare(`SELECT period_from, period_to FROM utility_bills WHERE provider = 'enel' AND bill_number = ?`).get(b.bill_number)).toEqual({
       period_from: "2036-04-02",
       period_to: "2036-05-02",
@@ -350,9 +349,9 @@ describe("gastos comunes statements", () => {
     // November's payment with no statement: listed once 10 days old, never filed.
     const unbilled = cardLine(`Transf a ${PATTERN}`, "26/11/2036", 61111);
     const early = applyUtilityBills({ bills: [] }, { todayYmd: "2036-12-01" });
-    expect(early.status === "conflict" ? null : early.details.unbilled_hoa_payments).toEqual([]);
+    expect(early.unbilled_hoa_payments).toEqual([]);
     const late = applyUtilityBills({ bills: [] }, { todayYmd: "2036-12-07" });
-    expect(late.status === "conflict" ? null : late.details.unbilled_hoa_payments).toEqual([
+    expect(late.unbilled_hoa_payments).toEqual([
       { place: PLACE_SLUG, purchase_key: unbilled, day: "2036-11-26", amount: 61111, merchant: `Transf a ${PATTERN}` },
     ]);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount_clp = 61111`).get(placeId)).toEqual({ n: 0 });

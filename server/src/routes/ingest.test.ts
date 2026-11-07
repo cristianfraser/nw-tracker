@@ -11,7 +11,9 @@ import {
   ingestJsonSchemas,
   type IngestKindDefinition,
 } from "nw-tracker-contracts";
+import { db } from "../db.js";
 import type { IngestApplyContext, IngestHandler } from "../ingestHandlers.js";
+import { IngestConflict } from "../ingestReceiver.js";
 import { registerIngestRoutes, type IngestRoutesOptions } from "./ingest.js";
 
 /** A synthetic kind: the route and client are tested on their own, not on a real source. */
@@ -19,8 +21,28 @@ const testKind = defineIngestKind({
   kind: "test.note",
   schema_version: 2,
   description: "Synthetic test kind.",
+  ref: "read",
   payload: z.object({ text: z.string().min(1), amount: z.number().int() }).strict(),
 });
+
+/** The same payload as an immutable document: the receiver keeps its ref once applied. */
+const docKind = defineIngestKind({ ...testKind, kind: "test.document", ref: "document" });
+
+db.exec(`CREATE TABLE IF NOT EXISTS vitest_ingest_notes (text TEXT NOT NULL)`);
+const notes = () => (db.prepare(`SELECT text FROM vitest_ingest_notes ORDER BY rowid`).all() as { text: string }[]).map((r) => r.text);
+
+/** Writes the note, so a rollback shows. */
+function writingHandler(retry = false) {
+  let calls = 0;
+  const handler: IngestHandler<{ text: string; amount: number }> = {
+    apply({ payload }) {
+      calls++;
+      db.prepare(`INSERT INTO vitest_ingest_notes (text) VALUES (?)`).run(payload.text);
+      return { details: { wrote: payload.text }, retry };
+    },
+  };
+  return { handler, calls: () => calls };
+}
 
 const LOCAL_AUTH = { token: null, allowRemote: false, demoMode: false };
 const SOURCE = { channel: "file", ref: "sha256:test" } as const;
@@ -28,6 +50,8 @@ const SOURCE = { channel: "file", ref: "sha256:test" } as const;
 let server: Server | null = null;
 
 afterEach(async () => {
+  db.exec(`DELETE FROM vitest_ingest_notes`);
+  db.prepare(`DELETE FROM ingest_documents WHERE kind = ?`).run(docKind.kind);
   const s = server;
   server = null;
   if (s) await new Promise<void>((resolve) => s.close(() => resolve()));
@@ -49,12 +73,13 @@ async function startApp(options: IngestRoutesOptions): Promise<string> {
   return `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
 }
 
-function recordingHandler(outcome: "applied" | "duplicate" | "conflict" = "applied") {
+function recordingHandler(conflict = false) {
   const seen: IngestApplyContext<unknown>[] = [];
   const handler: IngestHandler<unknown> = {
     apply(ctx) {
       seen.push(ctx);
-      return { status: outcome, message: `saw ${JSON.stringify(ctx.payload)}` };
+      if (conflict) throw new IngestConflict("disagrees", [{ at: "vitest:1", fields: ["amount"], message: "amount differs" }], { report: ["x"] });
+      return { message: `saw ${JSON.stringify(ctx.payload)}` };
     },
   };
   return { seen, handler };
@@ -80,6 +105,8 @@ describe("registerIngestRoutes", () => {
       status: "applied",
       kind: "test.note",
       schema_version: 2,
+      retry: false,
+      dry_run: false,
       message: 'saw {"text":"hola","amount":5}',
     });
     expect(seen).toHaveLength(1);
@@ -133,10 +160,19 @@ describe("registerIngestRoutes", () => {
   });
 
   it("reports a conflict as a result, and a server refusal as an IngestRequestError", async () => {
-    const { handler } = recordingHandler("conflict");
+    const { handler } = recordingHandler(true);
     const base = await startApp({ kinds, handlers: { "test.note": handler }, auth: LOCAL_AUTH });
     const client = createIngestClient({ baseUrl: base, feederId: "vitest" });
-    expect((await client.send(testKind, { text: "x", amount: 1 }, SOURCE)).status).toBe("conflict");
+    expect(await client.send(testKind, { text: "x", amount: 1 }, SOURCE)).toEqual({
+      status: "conflict",
+      kind: "test.note",
+      schema_version: 2,
+      retry: false,
+      dry_run: false,
+      message: "disagrees",
+      conflicts: [{ at: "vitest:1", fields: ["amount"], message: "amount differs" }],
+      details: { report: ["x"] },
+    });
 
     const newer = defineIngestKind({ ...testKind, schema_version: 3 });
     const err = await client.send(newer, { text: "x", amount: 1 }, SOURCE).catch((e: unknown) => e);
@@ -203,8 +239,54 @@ describe("registerIngestRoutes", () => {
     const { handler } = recordingHandler();
     const base = await startApp({ kinds, handlers: { "test.note": handler }, auth: LOCAL_AUTH });
     expect(await (await fetch(`${base}/api/ingest/kinds`)).json()).toEqual({
-      kinds: [{ kind: "test.note", schema_version: 2, description: "Synthetic test kind." }],
+      kinds: [{ kind: "test.note", schema_version: 2, ref: "read", description: "Synthetic test kind." }],
     });
+  });
+
+  it("rolls a dry run back and reports what the handler did", async () => {
+    const { handler } = writingHandler();
+    const base = await startApp({ kinds, handlers: { "test.note": handler }, auth: LOCAL_AUTH });
+    const client = createIngestClient({ baseUrl: base, feederId: "vitest" });
+    const dry = await client.send(testKind, { text: "dry", amount: 1 }, SOURCE, { dryRun: true });
+    expect(dry).toMatchObject({ status: "applied", dry_run: true, details: { wrote: "dry" } });
+    expect(notes()).toEqual([]);
+    await client.send(testKind, { text: "real", amount: 1 }, SOURCE);
+    expect(notes()).toEqual(["real"]);
+  });
+
+  it("applies a read kind on every send", async () => {
+    const { handler, calls } = writingHandler();
+    const base = await startApp({ kinds, handlers: { "test.note": handler }, auth: LOCAL_AUTH });
+    const client = createIngestClient({ baseUrl: base, feederId: "vitest" });
+    await client.send(testKind, { text: "a", amount: 1 }, SOURCE);
+    await client.send(testKind, { text: "b", amount: 2 }, SOURCE);
+    expect(calls()).toBe(2);
+    expect(notes()).toEqual(["a", "b"]);
+  });
+
+  it("keeps a document's ref once applied: the same payload is a duplicate, another a conflict", async () => {
+    const { handler, calls } = writingHandler();
+    const base = await startApp({ kinds: [docKind], handlers: { "test.document": handler }, auth: LOCAL_AUTH });
+    const client = createIngestClient({ baseUrl: base, feederId: "vitest" });
+    await client.send(docKind, { text: "a", amount: 1 }, SOURCE, { dryRun: true });
+    expect((await client.send(docKind, { text: "a", amount: 1 }, SOURCE)).status).toBe("applied");
+    const again = await client.send(docKind, { text: "a", amount: 1 }, SOURCE);
+    expect(again).toMatchObject({ status: "duplicate", retry: false, details: { wrote: "a" } });
+    const other = await client.send(docKind, { text: "b", amount: 1 }, SOURCE);
+    expect(other.status).toBe("conflict");
+    expect(other.conflicts?.[0]).toMatchObject({ at: `ingest_documents:test.document|${SOURCE.ref}`, fields: ["payload_sha256"] });
+    // The dry run, the first send; never the duplicate or the conflict.
+    expect(calls()).toBe(2);
+    expect(notes()).toEqual(["a"]);
+  });
+
+  it("does not keep a document whose outcome may change, so a resend runs again", async () => {
+    const { handler, calls } = writingHandler(true);
+    const base = await startApp({ kinds: [docKind], handlers: { "test.document": handler }, auth: LOCAL_AUTH });
+    const client = createIngestClient({ baseUrl: base, feederId: "vitest" });
+    expect((await client.send(docKind, { text: "a", amount: 1 }, SOURCE)).retry).toBe(true);
+    expect((await client.send(docKind, { text: "a", amount: 1 }, SOURCE)).status).toBe("applied");
+    expect(calls()).toBe(2);
   });
 
   it("fails at registration when a kind and the handlers disagree", () => {

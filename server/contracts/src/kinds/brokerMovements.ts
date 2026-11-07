@@ -88,12 +88,12 @@ export type BrokerMovement = z.infer<typeof brokerMovementSchema>;
  */
 export const brokerMovementsKind = defineIngestKind({
   kind: "broker.movements",
-  schema_version: 1,
+  schema_version: 2,
   description: "One read of a broker's movement list and dividends record.",
+  ref: "read",
   payload: z
     .object({
       broker: z.enum(["racional", "fintual"]),
-      apply: z.boolean(),
       read_at: z.iso.datetime({ offset: true }),
       movements: z.array(brokerMovementSchema).nullable(),
       dividends: z.array(brokerDividendSchema).nullable(),
@@ -110,7 +110,6 @@ export type BrokerMovementsPayload = z.infer<typeof brokerMovementsKind.payload>
 
 /** `details` of an applied `broker.movements`. */
 export type BrokerMovementsApplyDetails = {
-  applied: boolean;
   movements: {
     occurred_on: string;
     kind: BrokerMovement["kind"];

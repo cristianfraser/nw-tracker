@@ -41,6 +41,7 @@ import type {
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { storeOnce } from "./ingestReceiver.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import {
   assignPurchaseToRealEstateExpense,
@@ -231,58 +232,51 @@ function loadServicePlaces(): Map<string, Place> {
   return out;
 }
 
-export type UtilityBillApplyOutcome =
-  | { status: "applied" | "duplicate"; details: UtilityBillApplyDetails }
-  | { status: "conflict"; message: string };
-
-class ConflictError extends Error {}
 
 const COLUMNS = [
   "provider", "bill_number", "service", "service_account", "issued_on", "amount", "due_on",
   "period_from", "period_to", "kwh", "m3", "estimated_reading", "message_id",
 ] as const;
 
-/** Stores the new bills; a bill already stored with other content refuses the whole payload (`ConflictError`). */
+/**
+ * Stores the new bills; a bill already stored with other content refuses the whole payload
+ * (`IngestConflict`). A period one send lacked is filled from one that has it.
+ */
 function storeBills(bills: readonly UtilityBill[]): { new_bills: number } {
   const existing = db.prepare(`SELECT * FROM utility_bills WHERE provider = ? AND bill_number = ?`);
   const insert = db.prepare(
     `INSERT INTO utility_bills (${COLUMNS.join(", ")}) VALUES (${COLUMNS.map((c) => `@${c}`).join(", ")})`
   );
   const setPeriod = db.prepare(`UPDATE utility_bills SET period_from = ?, period_to = ? WHERE provider = ? AND bill_number = ?`);
-  return db.transaction(() => {
-    const conflicts: string[] = [];
-    let added = 0;
-    for (const b of bills) {
+  const comparable = (b: UtilityBill) => ({
+    content: contentHash(b),
+    period: b.period_from == null ? null : `${b.period_from}|${b.period_to}`,
+  });
+  const { added } = storeOnce(bills, {
+    table: "utility_bills",
+    key: (b) => `${b.provider}|${b.bill_number}`,
+    load(b) {
       const old = existing.get(b.provider, b.bill_number) as StoredBillRow | undefined;
-      if (old) {
-        const oldPeriod = old.period_from == null ? null : `${old.period_from}|${old.period_to}`;
-        const newPeriod = b.period_from == null ? null : `${b.period_from}|${b.period_to}`;
-        if (contentHash(storedAsBill(old)) !== contentHash(b) || (oldPeriod && newPeriod && oldPeriod !== newPeriod)) {
-          conflicts.push(`${b.provider} bill ${b.bill_number} was already stored with other content`);
-        } else if (!oldPeriod && newPeriod) {
-          setPeriod.run(b.period_from, b.period_to, b.provider, b.bill_number);
-        }
-        continue;
-      }
-      insert.run({ ...b, estimated_reading: b.estimated_reading == null ? null : b.estimated_reading ? 1 : 0 });
-      added++;
-    }
-    if (conflicts.length > 0) throw new ConflictError(conflicts.join("; "));
-    return { new_bills: added };
-  }).immediate();
+      return old ? comparable(storedAsBill(old)) : undefined;
+    },
+    row: comparable,
+    insert: (b) => void insert.run({ ...b, estimated_reading: b.estimated_reading == null ? null : b.estimated_reading ? 1 : 0 }),
+    fill(stored, b) {
+      // A send that lacks the period says nothing about it; one that has it fills a stored row without.
+      if (b.period_from == null) return ["period"];
+      if (stored.period != null) return [];
+      setPeriod.run(b.period_from, b.period_to, b.provider, b.bill_number);
+      return ["period"];
+    },
+  });
+  return { new_bills: added };
 }
 
 export function applyUtilityBills(
   payload: UtilityBillPayload,
   opts: { todayYmd?: string } = {}
-): UtilityBillApplyOutcome {
-  let stored: { new_bills: number };
-  try {
-    stored = storeBills(payload.bills);
-  } catch (err) {
-    if (err instanceof ConflictError) return { status: "conflict", message: err.message };
-    throw err;
-  }
+): UtilityBillApplyDetails {
+  const stored = storeBills(payload.bills);
   const todayYmd = opts.todayYmd ?? chileCalendarTodayYmd();
   const pending = db
     .prepare(`SELECT * FROM utility_bills WHERE settled_at IS NULL ORDER BY issued_on, provider, bill_number`)
@@ -295,7 +289,7 @@ export function applyUtilityBills(
   };
   const places = loadServicePlaces();
   const hoaPlaces = firstHoaStatementByPlace(places);
-  if (pending.length === 0 && hoaPlaces.size === 0) return { status: stored.new_bills > 0 ? "applied" : "duplicate", details };
+  if (pending.length === 0 && hoaPlaces.size === 0) return details;
 
   let lines = loadGastosLinesForRealEstateMatching();
   const linkOfKey = () =>
@@ -315,7 +309,6 @@ export function applyUtilityBills(
   const settle = db.prepare(
     `UPDATE utility_bills SET expense_entry_id = ?, settled_at = datetime('now') WHERE provider = ? AND bill_number = ?`
   );
-  let wrote = false;
   // Charges a waiting statement could still take: not reported as unbilled.
   const followedKeys = new Set<string>();
 
@@ -386,7 +379,6 @@ export function applyUtilityBills(
       if (monthsCovered > 1) updateRealEstateExpenseMonthsCovered(expense_entry_id, monthsCovered);
       settle.run(expense_entry_id, bill.provider, bill.bill_number);
       claimedEntries.add(expense_entry_id);
-      wrote = true;
       report("created", { expense_entry_id, purchase_key: key });
       // The created row links the charge: the next bill must see it.
       lines = loadGastosLinesForRealEstateMatching();
@@ -422,14 +414,13 @@ export function applyUtilityBills(
     }
     if (have == null) {
       updateRealEstateExpenseConsumption(linkedEntry, { kwh: entry.kwh, m3: entry.m3, [field]: want });
-      wrote = true;
     }
     settle.run(linkedEntry, bill.provider, bill.bill_number);
     claimedEntries.add(linkedEntry);
     report(have == null ? "filled" : "already_filed", { expense_entry_id: linkedEntry, purchase_key: key });
   }
   details.unbilled_hoa_payments = unbilledHoaPayments(hoaPlaces, lines, new Set([...links.keys(), ...followedKeys]), todayYmd);
-  return { status: stored.new_bills > 0 || wrote ? "applied" : "duplicate", details };
+  return details;
 }
 
 /** Each place that receives gastos comunes statements → the issue day of its first one. */

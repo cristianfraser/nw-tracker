@@ -1,16 +1,14 @@
 /**
  * `merchant.purchase_document`: stores a merchant's receipt or subscription notices (migration
  * 204) and reports which card charge each receipt names (`merchantExpenseNotes.ts`, which the
- * expense lines read to name every App Store charge). One source (a mail) is stored once: a resend with the same
- * payload is a duplicate, one with a different payload a conflict — nothing is overwritten.
+ * expense lines read to name every App Store charge). One source (a mail) is stored once: the
+ * ingest receiver answers a resend of the same payload `duplicate`, and a source stored with
+ * another payload is an `IngestConflict` — nothing is overwritten.
  */
 import type { MerchantPurchaseDocumentApplyDetails, MerchantPurchaseDocumentPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { storeOnce } from "./ingestReceiver.js";
 import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
-
-export type MerchantPurchaseDocumentOutcome =
-  | { status: "applied" | "duplicate"; details: MerchantPurchaseDocumentApplyDetails }
-  | { status: "conflict"; message: string };
 
 function storeDocuments(payload: MerchantPurchaseDocumentPayload, sourceRef: string, payloadJson: string): void {
   const source = db
@@ -64,25 +62,25 @@ export function applyMerchantPurchaseDocument(
   payload: MerchantPurchaseDocumentPayload,
   sourceRef: string,
   opts?: { today?: string }
-): MerchantPurchaseDocumentOutcome {
+): MerchantPurchaseDocumentApplyDetails {
   const payloadJson = JSON.stringify(payload);
-  return db.transaction((): MerchantPurchaseDocumentOutcome => {
-    const stored = db
-      .prepare(`SELECT payload_json FROM merchant_document_sources WHERE source_ref = ?`)
-      .get(sourceRef) as { payload_json: string } | undefined;
-    if (stored && stored.payload_json !== payloadJson) {
-      return { status: "conflict", message: `${sourceRef} is already stored with different contents` };
-    }
-    if (!stored) storeDocuments(payload, sourceRef, payloadJson);
+  return db.transaction((): MerchantPurchaseDocumentApplyDetails => {
+    storeOnce([payloadJson], {
+      table: "merchant_document_sources",
+      key: () => sourceRef,
+      load: () =>
+        db.prepare(`SELECT payload_json FROM merchant_document_sources WHERE source_ref = ?`).get(sourceRef) as
+          | { payload_json: string }
+          | undefined,
+      row: (json) => ({ payload_json: json }),
+      insert: (json) => storeDocuments(payload, sourceRef, json),
+    });
     const matched = deriveMerchantChargeLinks({ merchant: payload.merchant, today: opts?.today });
     const receiptCharges = matched.receipt_charges.get(sourceRef) ?? [];
     const receipts = payload.documents.filter((d) => d.type === "receipt").length;
     return {
-      status: stored ? "duplicate" : "applied",
-      details: {
-        receipt_lines: Array.from({ length: receipts }, (_, i) => receiptCharges[i] ?? null),
-        unresolved: matched.unresolved.map((u) => ({ issued_on: u.issued_on, products: u.products })),
-      },
+      receipt_lines: Array.from({ length: receipts }, (_, i) => receiptCharges[i] ?? null),
+      unresolved: matched.unresolved.map((u) => ({ issued_on: u.issued_on, products: u.products })),
     };
   })();
 }

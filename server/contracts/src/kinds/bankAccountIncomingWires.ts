@@ -54,11 +54,11 @@ export type IncomingWireNotice = z.infer<typeof incomingWireNoticeSchema>;
 
 export const bankAccountIncomingWiresKind = defineIngestKind({
   kind: "bank_account.incoming_wires",
-  schema_version: 1,
+  schema_version: 2,
   description: "Wires into the client's accounts, as the sending and receiving banks mailed them.",
+  ref: "read",
   payload: z
     .object({
-      apply: z.boolean(),
       notices: z.array(incomingWireNoticeSchema),
     })
     .strict()
@@ -75,7 +75,7 @@ export type BankAccountIncomingWiresPayload = z.infer<typeof bankAccountIncoming
 
 /** What the server did (or would do) with the stored withdrawal requests and wire notices. */
 export type IncomingWireBookingReport = {
-  /** Withdrawals booked by this call (or that would be, without `apply`). */
+  /** Withdrawals booked by this call (rolled back again on a dry run). */
   booked: {
     request_message_id: string;
     value_date: string;
@@ -100,7 +100,6 @@ export type IncomingWireBookingReport = {
 
 /** `details` of an applied `bank_account.incoming_wires`. */
 export type BankAccountIncomingWiresApplyDetails = {
-  applied: boolean;
   received: number;
   new_notices: number;
   bookings: IncomingWireBookingReport;

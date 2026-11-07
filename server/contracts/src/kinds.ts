@@ -26,7 +26,7 @@ import { unemploymentFundDocumentsKind } from "./kinds/unemploymentFundDocuments
 import { mortgageSheetPaymentsKind } from "./kinds/mortgageSheetPayments.js";
 import { utilityBillKind } from "./kinds/utilityBill.js";
 
-export { defineIngestKind, type IngestKindDefinition } from "./defineKind.js";
+export { defineIngestKind, type IngestKindDefinition, type IngestRefMode } from "./defineKind.js";
 
 /** Every kind the server accepts. */
 export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, pensionAccountCertificatesKind, pensionAccountBalanceKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, unemploymentFundBalanceKind, bankAccountBalancesKind, bankProductSummaryKind, bankAccountTransferNoticesKind, bankAccountIncomingWiresKind, paymentProcessorReceiptsKind, payrollParametersKind, mortgageSheetPaymentsKind, utilityBillKind] as const satisfies readonly IngestKindDefinition[];

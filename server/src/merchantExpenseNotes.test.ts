@@ -6,6 +6,7 @@ import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import { APP_STORE_MERCHANT, deriveMerchantChargeLinks, onBillingCycle, shortAppLabel } from "./merchantExpenseNotes.js";
 import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
+import { IngestConflict } from "./ingestReceiver.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import {
@@ -142,8 +143,7 @@ describe("merchantExpenseNotes", () => {
     const pesos = line("2037-02-11", { pesos: 12990 });
     const dollars = line("2037-02-13", { usd: 5.1 }); // 5.100 pesos vs a 4.990 receipt: 2,2%
     const unrelated = line("2037-02-12", { pesos: 3300 });
-    const result = send(receipt("2037-02-10", [{ app: "Example Chat - Meet People", product: "Boost", amount: 12990 }]));
-    expect(result.status).toBe("applied");
+    send(receipt("2037-02-10", [{ app: "Example Chat - Meet People", product: "Boost", amount: 12990 }]));
     send(receipt("2037-02-12", [{ app: "Example Game: Towers", product: "Gems", amount: 4990 }]));
     expect(named(pesos)).toBe("example chat");
     expect(named(dollars)).toBe("example game");
@@ -192,7 +192,7 @@ describe("merchantExpenseNotes", () => {
     expect(named(withApp)).toBe("example chat");
     expect(named(productOnly)).toBe("example chat");
     expect(named(unknown)).toBeNull();
-    expect(last.status === "applied" && last.details.unresolved).toEqual([{ issued_on: "2037-05-19", products: ["Gold Pass"] }]);
+    expect(last.unresolved).toEqual([{ issued_on: "2037-05-19", products: ["Gold Pass"] }]);
   });
 
   it("names a renewal with no receipt from the subscription's cycle; two apps on it make a guess", () => {
@@ -282,12 +282,14 @@ describe("merchantExpenseNotes", () => {
     expect(named(resolveCcExpensePurchaseKey(lineId), TODAY, master)).toBe("example chat");
   });
 
-  it("stores a source once: a resend is a duplicate, a different payload a conflict", () => {
+  it("stores a source once: a resend stores nothing again, a different payload is a conflict", () => {
     const doc = receipt("2037-11-01", [{ app: "Example Chat", amount: 1000 }]);
     const payload = { merchant: MERCHANT, documents: [doc] };
-    expect(applyMerchantPurchaseDocument(payload, "<vitest-same@appstore>").status).toBe("applied");
-    expect(applyMerchantPurchaseDocument(payload, "<vitest-same@appstore>").status).toBe("duplicate");
+    const sources = () => db.prepare(`SELECT COUNT(*) AS n FROM merchant_document_sources WHERE source_ref = '<vitest-same@appstore>'`).get();
+    applyMerchantPurchaseDocument(payload, "<vitest-same@appstore>");
+    applyMerchantPurchaseDocument(payload, "<vitest-same@appstore>");
+    expect(sources()).toEqual({ n: 1 });
     const changed = { merchant: MERCHANT, documents: [receipt("2037-11-01", [{ app: "Example Chat", amount: 2000 }])] };
-    expect(applyMerchantPurchaseDocument(changed, "<vitest-same@appstore>")).toMatchObject({ status: "conflict" });
+    expect(() => applyMerchantPurchaseDocument(changed, "<vitest-same@appstore>")).toThrow(IngestConflict);
   });
 });

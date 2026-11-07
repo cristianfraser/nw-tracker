@@ -79,15 +79,15 @@ export const pensionRecentMovementSchema = z
  */
 export const pensionAccountCertificatesKind = defineIngestKind({
   kind: "pension_account.certificates",
-  schema_version: 1,
+  schema_version: 2,
   description: "A pension account's stated balance, recent movements and its two certificates.",
+  ref: "document",
   payload: z
     .object({
       provider: z.enum(["afp_uno"]),
       /** The mandatory account (cuenta obligatoria). */
       product: z.enum(["mandatory"]),
       fund: z.string().regex(/^[A-E]$/),
-      apply: z.boolean(),
       read_at: z.iso.datetime({ offset: true }),
       balance: z
         .object({ cuotas: z.number().nonnegative(), valor_cuota: z.number().positive(), pesos: z.number().int().nonnegative() })

@@ -66,6 +66,7 @@ export const utilityBillKind = defineIngestKind({
   kind: "utility.bill",
   schema_version: 1,
   description: "Utility bills (electricity, gas, water, internet) with their consumption.",
+  ref: "read",
   payload: z
     .object({ bills: z.array(utilityBillSchema) })
     .strict()

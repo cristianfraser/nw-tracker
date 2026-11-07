@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { IngestConflict } from "./ingestReceiver.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { applyBankAccountBalances, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
@@ -59,11 +60,11 @@ describe("bank account balances", () => {
 
   it("records each observation once and maps the declared number", () => {
     const first = applyBankAccountBalances(payload(100, "2020-01-05T02:00:00.000Z"), REF_A);
-    expect(first.duplicate).toBe(false);
-    expect(first.details.recorded).toBe(2);
-    expect(first.details.known).toEqual([{ account_id: accountId, number: NUMBER, currency: "usd", balance: 100 }]);
-    expect(first.details.unknown.map((u) => u.number)).toEqual(["007099990078"]);
-    expect(applyBankAccountBalances(payload(100, "2020-01-05T02:00:00.000Z"), REF_A).duplicate).toBe(true);
+    expect(first.recorded).toBe(2);
+    expect(first.known).toEqual([{ account_id: accountId, number: NUMBER, currency: "usd", balance: 100 }]);
+    expect(first.unknown.map((u) => u.number)).toEqual(["007099990078"]);
+    expect(applyBankAccountBalances(payload(100, "2020-01-05T02:00:00.000Z"), REF_A).recorded).toBe(0);
+    expect(() => applyBankAccountBalances(payload(101, "2020-01-05T02:00:00.000Z"), REF_A)).toThrow(IngestConflict);
   });
 
   it("agrees with the ledger to the cent, and flags the first mismatch once", () => {

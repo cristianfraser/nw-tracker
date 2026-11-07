@@ -274,7 +274,8 @@ export function applyPensionAccountCertificates(
     return mark + freshCuotas * px;
   });
   plan.problems.push(...value.problems);
-  const write = payload.apply && plan.problems.length === 0;
+  // Rows are written only when nothing disagrees (a dry run is the ingest receiver's rollback).
+  const write = plan.problems.length === 0;
   let inserted = 0;
   db.transaction(() => {
     if (write) {
@@ -299,7 +300,7 @@ export function applyPensionAccountCertificates(
       sourceRef,
       payload.read_at,
       new Date().toISOString(),
-      payload.apply ? 1 : 0,
+      1,
       fresh.length,
       inserted,
       plan.rows.filter((r) => r.state === "pending").length,

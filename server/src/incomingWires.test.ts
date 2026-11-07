@@ -1,8 +1,9 @@
 import type { IncomingWireNotice } from "nw-tracker-contracts";
+import { rolledBack } from "./ingestReceiver.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { db } from "./db.js";
-import { applyIncomingWires, bookIncomingWires } from "./incomingWires.js";
+import { applyIncomingWires } from "./incomingWires.js";
 import { brokerNotification } from "./test/brokerNotificationFixtures.js";
 
 const PREFIX = "<vitest-wire-";
@@ -123,7 +124,7 @@ describe("incoming dollar wires", () => {
 
   it("keeps a confirmed request until a wire pays it, then books the transfer and the fee once", () => {
     const req = request({ at: "2097-10-05T22:22:33Z", net: 1138.53, gross: 1148.53, due: "2097-10-08" });
-    const first = applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [req] });
+    const first = applyBrokerNotifications({ broker: "fintual", notifications: [req] });
     expect(first.planned).toEqual([]);
     expect(first.usd_withdrawals?.waiting).toEqual([
       { request_message_id: req.message_id, due_on: "2097-10-08", net_amount: 1138.53, overdue: false },
@@ -131,7 +132,7 @@ describe("incoming dollar wires", () => {
 
     const sec = securityNotice({ date: "2097-10-08", amount: 1138.53 });
     const san = santanderNotice({ date: "2097-10-08", amount: 1138.53 });
-    const res = applyIncomingWires({ apply: true, notices: [sec, san] });
+    const res = applyIncomingWires({ notices: [sec, san] });
     expect(res.new_notices).toBe(2);
     expect(res.bookings.booked).toHaveLength(1);
     const b = res.bookings.booked[0]!;
@@ -150,53 +151,39 @@ describe("incoming dollar wires", () => {
     expect(fee).toMatchObject({ account_id: fintualUsd, amount: 10, currency: "usd", flow_kind: "cash_fee", occurred_on: "2097-10-08" });
 
     // Resending everything books nothing more.
-    const again = applyIncomingWires({ apply: true, notices: [sec, san] });
+    const again = applyIncomingWires({ notices: [sec, san] });
     expect(again.new_notices).toBe(0);
     expect(again.bookings.booked).toEqual([]);
-    expect(applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [req] }).usd_withdrawals?.waiting).toEqual([]);
+    expect(applyBrokerNotifications({ broker: "fintual", notifications: [req] }).usd_withdrawals?.waiting).toEqual([]);
   });
 
   it("books from the receiving bank's notice alone, and from a request that arrives after the wire", () => {
     const san = santanderNotice({ date: "2097-11-09", amount: 500 });
-    expect(applyIncomingWires({ apply: true, notices: [san] }).bookings.unmatched).toEqual([
+    expect(applyIncomingWires({ notices: [san] }).bookings.unmatched).toEqual([
       { value_date: "2097-11-09", amount: 500, account_id: santanderUsd, notices: [san.message_id] },
     ]);
     const req = request({ at: "2097-11-06T15:00:00Z", net: 500, gross: 510, due: "2097-11-09" });
-    const res = applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [req] });
+    const res = applyBrokerNotifications({ broker: "fintual", notifications: [req] });
     expect(res.usd_withdrawals?.booked).toMatchObject([{ value_date: "2097-11-09", net_amount: 500, fee_amount: 10 }]);
   });
 
-  it("writes nothing without apply", () => {
+  it("a rolled-back run (the receiver's dry run) books in its report and writes nothing", () => {
     const req = request({ at: "2097-12-01T15:00:00Z", net: 200, gross: 210, due: "2097-12-03" });
-    const plan = applyBrokerNotifications({ broker: "fintual", apply: false, notifications: [req] });
+    const plan = rolledBack(() => applyBrokerNotifications({ broker: "fintual", notifications: [req] }));
     expect(plan.usd_withdrawals?.waiting).toHaveLength(1);
     expect(db.prepare(`SELECT 1 FROM broker_withdrawal_requests WHERE message_id = ?`).get(req.message_id)).toBeUndefined();
-    const dry = bookIncomingWires({
-      apply: false,
-      extraRequests: [
-        {
-          message_id: req.message_id,
-          broker: "fintual",
-          requested_at: req.occurred_at,
-          subject: req.subject,
-          currency: "usd",
-          gross_amount: 210,
-          net_amount: 200,
-          destination_account: DEST_NUMBER,
-          due_on: "2097-12-03",
-        },
-      ],
-      extraNotices: [securityNotice({ date: "2097-12-03", amount: 200 })],
+    const dry = rolledBack(() => {
+      applyBrokerNotifications({ broker: "fintual", notifications: [req] });
+      return applyIncomingWires({ notices: [securityNotice({ date: "2097-12-03", amount: 200 })] });
     });
-    expect(dry.booked).toMatchObject([{ net_amount: 200, transfer_movement_id: null, fee_movement_id: null }]);
+    expect(dry.bookings.booked).toMatchObject([{ net_amount: 200 }]);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM incoming_wire_bookings WHERE request_message_id = ?`).get(req.message_id)).toEqual({ n: 0 });
   });
 
   it("leaves a wire from another sender, or for another amount, unpaired", () => {
     const req = request({ at: "2098-01-05T15:00:00Z", net: 300, gross: 310, due: "2098-01-08" });
-    applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [req] });
+    applyBrokerNotifications({ broker: "fintual", notifications: [req] });
     const res = applyIncomingWires({
-      apply: true,
       notices: [
         securityNotice({ date: "2098-01-08", amount: 300, ordering: "SOMEONE ELSE S.A." }),
         securityNotice({ date: "2098-01-08", amount: 299.99 }),
@@ -209,7 +196,7 @@ describe("incoming dollar wires", () => {
 
   it("reports a request past its pay day as overdue", () => {
     const req = request({ at: "2001-03-01T15:00:00Z", net: 100, gross: 110, due: "2001-03-05" });
-    const res = applyBrokerNotifications({ broker: "fintual", apply: true, notifications: [req] });
+    const res = applyBrokerNotifications({ broker: "fintual", notifications: [req] });
     expect(res.usd_withdrawals?.waiting.find((w) => w.request_message_id === req.message_id)?.overdue).toBe(true);
   });
 
@@ -220,17 +207,16 @@ describe("incoming dollar wires", () => {
     const handId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     applyBrokerNotifications({
       broker: "fintual",
-      apply: true,
       notifications: [request({ at: "2098-02-06T15:00:00Z", net: 700, gross: 710, due: "2098-02-10" })],
     });
-    const res = applyIncomingWires({ apply: true, notices: [securityNotice({ date: "2098-02-10", amount: 700 })] });
+    const res = applyIncomingWires({ notices: [securityNotice({ date: "2098-02-10", amount: 700 })] });
     expect(res.bookings.booked).toMatchObject([{ transfer_movement_id: handId, already_in_ledger: true, fee_amount: 10 }]);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM movements WHERE from_account_id = ? AND occurred_on = '2098-02-10'`).get(fintualUsd)).toEqual({ n: 1 });
   });
 
   it("refuses a resent notice that states something else", () => {
     const sec = securityNotice({ date: "2098-03-10", amount: 50 });
-    applyIncomingWires({ apply: true, notices: [sec] });
-    expect(() => applyIncomingWires({ apply: true, notices: [{ ...sec, amount: 51 }] })).toThrow(/other content/);
+    applyIncomingWires({ notices: [sec] });
+    expect(() => applyIncomingWires({ notices: [{ ...sec, amount: 51 }] })).toThrow(/already stored with other/);
   });
 });

@@ -12,6 +12,7 @@ export const cardPaymentReceiptKind = defineIngestKind({
   kind: "card.payment_receipt",
   schema_version: 1,
   description: "A bank's receipt for one credit-card payment from a bank account.",
+  ref: "document",
   payload: z
     .object({
       /** Issuer slug of the bank account the pesos left (and of the card). */

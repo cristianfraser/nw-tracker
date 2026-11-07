@@ -84,8 +84,9 @@ export type CardStatementCurrency = z.infer<typeof cardStatementCurrencySchema>;
  */
 export const cardStatementKind = defineIngestKind({
   kind: "card.statement",
-  schema_version: 1,
+  schema_version: 2,
   description: "One facturación of a card account: close, dates and each currency's statement.",
+  ref: "read",
   payload: z
     .object({
       account: issuerCardAccountSchema,
@@ -97,7 +98,6 @@ export const cardStatementKind = defineIngestKind({
       next_close: isoDate.nullable(),
       /** The titular plastic the statement is issued for. */
       titular_last4: z.string().regex(/^\d{4}$/).nullable(),
-      apply: z.boolean(),
       statements: z.array(cardStatementCurrencySchema).min(1).max(2),
     })
     .strict()

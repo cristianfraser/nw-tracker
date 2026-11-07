@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { rolledBack } from "./ingestReceiver.js";
 import { employmentPayslipsKind, type Payslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
@@ -42,8 +43,9 @@ function payslip(over: Partial<Payslip> = {}): Payslip {
   };
 }
 
-function apply(p: Payslip, applyIt = true) {
-  return applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ apply: applyIt, parser_version: "vitest", payslips: [p] }));
+function apply(p: Payslip, write = true) {
+  const send = () => applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "vitest", payslips: [p] }));
+  return write ? send() : rolledBack(send);
 }
 
 function stored() {
@@ -57,7 +59,7 @@ describe("employment.payslips apply", () => {
 
   it("stores a payslip under its document, and reports one no deposit pays", () => {
     const d = apply(payslip());
-    expect(d).toMatchObject({ applied: true, payslips: 1, linked: 0, links: [], ambiguous: [] });
+    expect(d).toMatchObject({ payslips: 1, linked: 0, links: [], ambiguous: [] });
     expect(d.unmatched).toEqual([{ document: DOC, net_pay: 893_917, period_month: "2099-01" }]);
     expect(stored()).toMatchObject({
       employer_name: "VITEST EMPLEADOR SPA",
@@ -121,7 +123,7 @@ describe("employment.payslips apply", () => {
 
   it("the payload refuses a document sent twice", () => {
     expect(() =>
-      employmentPayslipsKind.payload.parse({ apply: true, parser_version: "v", payslips: [payslip(), payslip()] })
+      employmentPayslipsKind.payload.parse({ parser_version: "v", payslips: [payslip(), payslip()] })
     ).toThrow(/appears twice/);
   });
 });

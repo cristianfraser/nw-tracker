@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { rolledBack } from "./ingestReceiver.js";
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { wholeSplitRatio } from "./brokerSplitNotifications.js";
@@ -75,11 +76,13 @@ describe("Racional split notices", () => {
     usd.cleanup();
   });
 
-  const apply = (n: BrokerNotification, write = true) =>
-    applyBrokerNotifications({ broker: "racional", apply: write, notifications: [n] }).planned;
+  const apply = (n: BrokerNotification, write = true) => {
+    const send = () => applyBrokerNotifications({ broker: "racional", notifications: [n] }).planned;
+    return write ? send() : rolledBack(send);
+  };
 
   it("records the split the notice states, on the day it was mailed, and is a duplicate after", () => {
-    expect(apply(notice("2", "6"), false)).toMatchObject([{ kind: "stock_split", state: "new" }]);
+    expect(apply(notice("2", "6"), false)).toMatchObject([{ kind: "stock_split", state: "split_recorded" }]);
     expect(listEquitySplits(TICKER)).toEqual([]);
     expect(apply(notice("2", "6"))).toMatchObject([{ state: "split_recorded" }]);
     expect(listEquitySplits(TICKER)).toMatchObject([{ ex_date: "2025-04-08", numerator: 3, denominator: 1, source: "broker" }]);

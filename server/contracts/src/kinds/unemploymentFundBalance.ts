@@ -12,6 +12,7 @@ export const unemploymentFundBalanceKind = defineIngestKind({
   kind: "unemployment_fund.balance",
   schema_version: 1,
   description: "The unemployment fund's (AFC) stated balance and last credited month, from its home page.",
+  ref: "read",
   payload: z
     .object({
       provider: z.enum(["afc"]),

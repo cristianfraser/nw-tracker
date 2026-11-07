@@ -103,14 +103,16 @@ export function connectionFailureCode(err: unknown): string | null {
 export interface IngestClient {
   /**
    * Validates `payload` against the kind's schema here (a malformed document fails in the
-   * feeder, before any request), sends it, and returns what the server did. Throws
+   * feeder, before any request), sends it, and returns what the server did. `dryRun`: the
+   * server applies it inside a transaction it rolls back, and reports. Throws
    * `IngestRequestError` on a refusal and on a server error, `IngestConnectionError` when the
    * server never answered (after the connection retries).
    */
   send<S extends z.ZodType>(
     kind: IngestKindDefinition<string, S>,
     payload: z.input<S>,
-    source: IngestSource
+    source: IngestSource,
+    options?: { dryRun?: boolean }
   ): Promise<IngestResult>;
   /** Report a run the server asked for as finished. */
   completeRun(runId: number, completion: IngestRunCompletion): Promise<void>;
@@ -166,12 +168,13 @@ export function createIngestClient(options: IngestClientOptions): IngestClient {
     return json;
   }
   return {
-    async send(kind, payload, source) {
+    async send(kind, payload, source, sendOptions) {
       const checked = kind.payload.parse(payload);
       const json = await post(`${INGEST_API_PATH}/${kind.kind}`, {
         schema_version: kind.schema_version,
         feeder_id: options.feederId,
         source,
+        dry_run: sendOptions?.dryRun ?? false,
         payload: checked,
       });
       return ingestResultSchema.parse(json);

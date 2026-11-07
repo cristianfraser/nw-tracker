@@ -25,7 +25,7 @@ import { applyBrokerSplitNotifications } from "./brokerSplitNotifications.js";
 
 /**
  * `broker.notifications`: every money notification a broker sent, planned against the ledger
- * and (with `apply`) written — the same plan and write the mail importers ran on the staged
+ * and written (a dry run is the ingest receiver's rollback) — the same plan and write the mail importers ran on the staged
  * scans. Re-sending the whole set is idempotent: what is already in the ledger plans as a
  * duplicate.
  */
@@ -111,37 +111,33 @@ function invalidateWritten(rows: readonly { from_account_id: number | null; to_a
 }
 
 export function applyBrokerNotifications(payload: BrokerNotificationsPayload): BrokerNotificationsApplyDetails {
-  const { broker, apply, notifications } = payload;
+  const { broker, notifications } = payload;
   if (broker === "fintual") {
     // A requested withdrawal is not a movement: it is kept until the wire's own mail arrives.
     const planned = planFintualEmailBatch(
       notifications.filter((n) => n.kind !== "withdrawal_requested" && n.kind !== "stock_split")
     );
     const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
-    let written = 0;
     let eventTimesStamped = 0;
-    if (apply) {
-      const applied = applyFintualEmailMovementsWithIds(planned);
-      written = applied.written;
-      // The mail's send time orders the movement within its day (`movement_event_times`): a
-      // re-sent mail stamps the movement it matched too, and an existing stamp is kept.
-      for (const [index, movementId] of applied.movement_ids.entries()) {
-        if (movementId == null) continue;
-        const source = planned[index]!.source;
-        if (recordMovementEventTime(movementId, source.occurred_at, "broker_mail", source.message_id)) {
-          eventTimesStamped += 1;
-        }
+    const applied = applyFintualEmailMovementsWithIds(planned);
+    const written = applied.written;
+    // The mail's send time orders the movement within its day (`movement_event_times`): a
+    // re-sent mail stamps the movement it matched too, and an existing stamp is kept.
+    for (const [index, movementId] of applied.movement_ids.entries()) {
+      if (movementId == null) continue;
+      const source = planned[index]!.source;
+      if (recordMovementEventTime(movementId, source.occurred_at, "broker_mail", source.message_id)) {
+        eventTimesStamped += 1;
       }
-      invalidateWritten(writable);
     }
+    invalidateWritten(writable);
     const requests = notifications
       .filter((n) => n.kind === "withdrawal_requested" && brokerNotificationIsBookable(n))
       .map((n) => withdrawalRequestFromNotification(n, "fintual"));
-    if (apply) storeWithdrawalRequests(requests);
-    const usdWithdrawals = bookIncomingWires({ apply, extraRequests: apply ? [] : requests });
+    storeWithdrawalRequests(requests);
+    const usdWithdrawals = bookIncomingWires();
     return {
       broker,
-      applied: apply,
       planned: planned.map(fintualRow),
       written,
       // Fintual sends no browser to fetch: an incomplete notification is for a human.
@@ -161,13 +157,12 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
   }
   const planned = planRacionalEmailMovements(notifications);
   const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
-  const written = apply ? applyRacionalEmailMovements(planned).inserted : 0;
-  if (apply) invalidateWritten(writable);
+  const written = applyRacionalEmailMovements(planned).inserted;
+  invalidateWritten(writable);
   // A split notice records the split itself (`brokerSplitNotifications.ts`), not a movement.
-  const splits = applyBrokerSplitNotifications(broker, notifications, apply);
+  const splits = applyBrokerSplitNotifications(broker, notifications, true);
   return {
     broker,
-    applied: apply,
     planned: [...planned.map(racionalRow), ...splits.rows],
     written,
     // A Racional notification the server cannot book is the crawl's to describe, not a human's.

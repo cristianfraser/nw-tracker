@@ -34,7 +34,7 @@ describe("payroll breakdown", () => {
   });
 
   it("splits gross into net and each deduction, the AFP line into the 10 % and the commission", () => {
-    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ apply: true, parser_version: "vitest", payslips: [PAYSLIP] }));
+    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "vitest", payslips: [PAYSLIP] }));
     const b = buildPayrollBreakdown();
     const month = b.months.find((m) => m.period === "2099-01")!;
     const clp = Object.fromEntries(Object.entries(month.values).map(([k, v]) => [k, v.clp]));

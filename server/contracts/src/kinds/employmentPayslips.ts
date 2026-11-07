@@ -104,12 +104,11 @@ export type Payslip = z.infer<typeof payslipSchema>;
 
 export const employmentPayslipsKind = defineIngestKind({
   kind: "employment.payslips",
-  schema_version: 2,
+  schema_version: 3,
   description: "Payslips (liquidaciones de sueldo): every printed line, earnings, deductions and net pay per month and employer.",
+  ref: "read",
   payload: z
     .object({
-      /** False: report what the import would change, write nothing. */
-      apply: z.boolean(),
       /** The feeder's parser version, kept on each stored payslip. */
       parser_version: z.string().min(1).max(64),
       payslips: z
@@ -124,7 +123,6 @@ export type EmploymentPayslipsPayload = z.infer<typeof employmentPayslipsKind.pa
 
 /** `details` of an applied `employment.payslips`. */
 export type EmploymentPayslipsApplyDetails = {
-  applied: boolean;
   payslips: number;
   /** Paired with their deposit (now, or by hand earlier). */
   linked: number;

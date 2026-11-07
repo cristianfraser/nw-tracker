@@ -75,12 +75,11 @@ export type StoreReceipt = z.infer<typeof storeReceiptSchema>;
 
 export const storeReceiptKind = defineIngestKind({
   kind: "store.receipt",
-  schema_version: 1,
+  schema_version: 2,
   description: "A store's receipt for one purchase: items, discounts and payment legs, with the document it was read from.",
+  ref: "read",
   payload: z
     .object({
-      /** False: report what the import would do, write nothing. */
-      apply: z.boolean(),
       document: z
         .object({
           kind: z.enum(STORE_RECEIPT_DOCUMENT_KINDS),

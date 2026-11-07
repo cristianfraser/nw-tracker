@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cardStatementKind, type CardStatementLine, type CardStatementPayload } from "nw-tracker-contracts";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { applyCardStatement } from "./cardStatementApply.js";
+import { rolledBack } from "./ingestReceiver.js";
 import { db } from "./db.js";
 
 const BANK_ACCOUNT = "800000007311";
@@ -28,7 +29,7 @@ function line(partial: Partial<CardStatementLine>): CardStatementLine {
   };
 }
 
-function payload(apply: boolean, over: Partial<CardStatementPayload> = {}): CardStatementPayload {
+function payload(over: Partial<CardStatementPayload> = {}): CardStatementPayload {
   return cardStatementKind.payload.parse({
     account: { issuer: "santander", number: BANK_ACCOUNT },
     statement_number: "023",
@@ -36,7 +37,6 @@ function payload(apply: boolean, over: Partial<CardStatementPayload> = {}): Card
     pay_by: "2026-10-10",
     next_close: "2026-10-24",
     titular_last4: LAST4,
-    apply,
     statements: [
       {
         currency: "clp",
@@ -69,12 +69,12 @@ describe("card.statement line signs", () => {
       ],
     });
     // A dollar MONTO CANCELADO read as a positive purchase must not parse either way.
-    expect(() => payload(false, usdSide(line({ kind: "payment", merchant: "MONTO CANCELADO", amount: 777.77 })))).toThrow(
+    expect(() => payload(usdSide(line({ kind: "payment", merchant: "MONTO CANCELADO", amount: 777.77 })))).toThrow(
       /a payment or credit line is negative/
     );
-    expect(() => payload(false, usdSide(line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: 84.77 })))).toThrow();
-    expect(() => payload(false, usdSide(line({ kind: "purchase", amount: -12.5 })))).toThrow();
-    expect(payload(false, usdSide(line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77 })))).toBeTruthy();
+    expect(() => payload(usdSide(line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: 84.77 })))).toThrow();
+    expect(() => payload(usdSide(line({ kind: "purchase", amount: -12.5 })))).toThrow();
+    expect(payload(usdSide(line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77 })))).toBeTruthy();
   });
 });
 
@@ -139,16 +139,15 @@ describe("applyCardStatement", () => {
       .all(accountId, currency) as { merchant: string; amount_clp: number | null; amount_usd: number | null }[];
   }
 
-  it("reports a write without writing, then writes both currencies and verifies them", () => {
-    const report = applyCardStatement(payload(false));
-    expect(report.statements.map((s) => [s.currency, s.outcome, s.owner])).toEqual([
-      ["clp", "pending", null],
-      ["usd", "pending", null],
+  it("reports a write in a rolled-back run, then writes both currencies and verifies them", () => {
+    const report = rolledBack(() => applyCardStatement(payload()));
+    expect(report.statements.map((s) => [s.currency, s.outcome])).toEqual([
+      ["clp", "written"],
+      ["usd", "written"],
     ]);
-    expect(report.written).toBeNull();
     expect(linesOf("clp")).toEqual([]);
 
-    const written = applyCardStatement(payload(true));
+    const written = applyCardStatement(payload());
     expect(written.statements.map((s) => s.outcome)).toEqual(["written", "written"]);
     expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 3 });
     // The payment folds into the header; the cuota line carries its purchase's total.
@@ -167,7 +166,7 @@ describe("applyCardStatement", () => {
     const lineIds = () =>
       db.prepare(`SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`).all(accountId);
     const before = lineIds();
-    const again = applyCardStatement(payload(true));
+    const again = applyCardStatement(payload());
     expect(again.statements.map((s) => [s.outcome, s.owner])).toEqual([
       ["clean", "json"],
       ["clean", "json"],
@@ -177,8 +176,8 @@ describe("applyCardStatement", () => {
   });
 
   it("rewrites a JSON-owned close when its lines changed, both currencies together", () => {
-    applyCardStatement(payload(true));
-    const changed = payload(true);
+    applyCardStatement(payload());
+    const changed = payload();
     changed.statements[1]!.lines[0]!.amount = 13.5;
     const rewritten = applyCardStatement(changed);
     expect(rewritten.statements.map((s) => [s.currency, s.outcome, s.owner])).toEqual([
@@ -195,7 +194,7 @@ describe("applyCardStatement", () => {
     );
     insertLine.run(clp, "VITEST MERCADO", 12_000, 0, "vitest-pdf-1");
     insertLine.run(clp, "VITEST MUEBLES", 30_000, 1, "vitest-pdf-2");
-    const usdOnly = payload(true);
+    const usdOnly = payload();
     const clpOnly = { ...usdOnly, statements: [usdOnly.statements[0]!] };
     const clean = applyCardStatement(clpOnly);
     expect(clean.statements[0]).toMatchObject({ outcome: "clean", owner: "pdf" });

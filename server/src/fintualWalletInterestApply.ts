@@ -30,7 +30,6 @@ export function applyFintualWalletRead(payload: BrokerMovementsPayload): BrokerM
   if (payload.broker !== "fintual") throw new Error(`applyFintualWalletRead: broker ${payload.broker}`);
   const problems: string[] = [];
   const out: BrokerMovementsApplyDetails = {
-    applied: payload.apply,
     movements: [],
     movements_blocked: false,
     inserted: 0,
@@ -73,7 +72,7 @@ export function applyFintualWalletRead(payload: BrokerMovementsPayload): BrokerM
     }
   }
 
-  if (payload.apply && toWrite.length > 0) {
+  if (toWrite.length > 0) {
     db.transaction(() => {
       for (const w of toWrite) insert.run(accountId, w.amount, w.occurred_on, w.note, SAVINGS_EARNINGS_FLOW_KIND);
     })();

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { rolledBack } from "./ingestReceiver.js";
 import type { FundTransaction } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { importFintualCertificado } from "./fintualCertImport.js";
@@ -48,12 +49,11 @@ describe("importFintualCertificado", () => {
     current = lines.map(tx);
   }
 
-  it("report-only never writes: no accounts or movements created", () => {
+  it("a rolled-back run (the receiver's dry run) never writes: no accounts or movements created", () => {
     cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
 
-    const res = importFintualCertificado(current, { maxMonth: "2099-12" });
-    expect(res.applied).toBe(false);
+    const res = rolledBack(() => importFintualCertificado(current, { maxMonth: "2099-12" }));
     expect(res.missing).toHaveLength(1);
     // Nothing was persisted — the report rolls back its account-ensure.
     expect(certAccountId("import:fintual|cert|key=reserva2")).toBeUndefined();
@@ -66,8 +66,7 @@ describe("importFintualCertificado", () => {
       "15/03/2025,16749,mega caca APV-A,400000,0,10,0,Deposito CL,40000",
     ]);
 
-    const res = importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
-    expect(res.applied).toBe(true);
+    const res = importFintualCertificado(current, { maxMonth: "2099-12" });
     expect(res.missing).toHaveLength(2);
     expect(res.dbOnly).toHaveLength(0);
 
@@ -89,14 +88,14 @@ describe("importFintualCertificado", () => {
     cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
 
-    const first = importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
+    const first = importFintualCertificado(current, { maxMonth: "2099-12" });
     expect(first.missing).toHaveLength(1);
     expect(first.matched).toBe(0);
 
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     const firstId = (db.prepare("SELECT id FROM movements WHERE account_id = ?").get(reservaId) as { id: number }).id;
 
-    const second = importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
+    const second = importFintualCertificado(current, { maxMonth: "2099-12" });
     expect(second.matched).toBe(1);
     expect(second.missing).toHaveLength(0);
 
@@ -115,7 +114,7 @@ describe("importFintualCertificado", () => {
       "20/02/2025,1164983,Reserva,0,2000000,0,40,Transferencia electronica,50000",
     ]);
     // Ensure the account exists, then curate the two flows as transfer legs.
-    importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
+    importFintualCertificado(current, { maxMonth: "2099-12" });
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     db.prepare("DELETE FROM movements WHERE account_id = ?").run(reservaId);
     const counterpartId = (
@@ -140,7 +139,7 @@ describe("importFintualCertificado", () => {
   it("never touches curated rows: an edited amount is reported, not overwritten", () => {
     cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
-    importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
+    importFintualCertificado(current, { maxMonth: "2099-12" });
 
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     const curatedId = (db.prepare("SELECT id FROM movements WHERE account_id = ?").get(reservaId) as { id: number }).id;

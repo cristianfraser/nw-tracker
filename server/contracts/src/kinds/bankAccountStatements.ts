@@ -76,13 +76,12 @@ export const unreadableBankStatementSchema = z
  */
 export const bankAccountStatementsKind = defineIngestKind({
   kind: "bank_account.statements",
-  schema_version: 1,
+  schema_version: 2,
   description: "A bank account's statements (cartolas): periods, printed balances and movements.",
+  ref: "read",
   payload: z
     .object({
       account: bankStatementAccountSchema,
-      /** False: report what an import would do, write nothing. */
-      apply: z.boolean(),
       /** Re-import periods already imported (their movements are replaced). */
       force_reimport: z.boolean(),
       statements: z.array(bankAccountStatementSchema),
@@ -96,7 +95,6 @@ export type BankAccountStatementsPayload = z.infer<typeof bankAccountStatementsK
 /** `details` of an applied `bank_account.statements`. */
 export type BankAccountStatementsApplyDetails = {
   account_id: number;
-  applied: boolean;
   files: {
     file: string;
     period_month: string;

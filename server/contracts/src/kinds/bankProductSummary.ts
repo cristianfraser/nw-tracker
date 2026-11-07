@@ -17,6 +17,7 @@ export const bankProductSummaryKind = defineIngestKind({
   kind: "bank.product_summary",
   schema_version: 1,
   description: "The card cupos and deposit-account balances a bank states at one moment.",
+  ref: "document",
   payload: z
     .object({
       issuer: z.string().regex(/^[a-z][a-z0-9_]*$/),

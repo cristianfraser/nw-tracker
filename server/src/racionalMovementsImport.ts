@@ -684,7 +684,7 @@ function movementState(p: RacionalPlannedMovement): { state: string; detail: str
 }
 
 /**
- * Plan — and with `apply`, write — one read: its movements (all or nothing: one that must be
+ * Plan and write one read (a dry run is the ingest receiver's rollback): its movements (all or nothing: one that must be
  * written and cannot be blocks the list), then its dividends record (each API dividend paired
  * with its ledger row; the gross / withholding breakdown written). A read applied with nothing
  * to fix, the list included, moves the coverage forward to its `read_at`.
@@ -692,7 +692,6 @@ function movementState(p: RacionalPlannedMovement): { state: string; detail: str
 export function applyRacionalRead(payload: BrokerMovementsPayload, sourceRef: string): BrokerMovementsApplyDetails {
   const problems: string[] = [];
   const out: BrokerMovementsApplyDetails = {
-    applied: payload.apply,
     movements: [],
     movements_blocked: false,
     inserted: 0,
@@ -730,7 +729,7 @@ export function applyRacionalRead(payload: BrokerMovementsPayload, sourceRef: st
       }
       out.movements_blocked = planned.planned.some((p) => p.blocked != null);
       out.duplicates = planned.duplicates;
-      if (payload.apply && !out.movements_blocked) {
+      if (!out.movements_blocked) {
         const result = applyRacionalMovements(planned, sourceRef);
         out.inserted = result.inserted;
         out.breakdowns_written += result.details.filter((d) => d.outcome !== "unchanged").length;
@@ -754,15 +753,13 @@ export function applyRacionalRead(payload: BrokerMovementsPayload, sourceRef: st
       });
       if (plan.conflict) problems.push(`dividend ${plan.chile_ymd} ${d.asset_id} net ${d.net.toFixed(2)} usd — ${plan.conflict}`);
     }
-    if (payload.apply) {
-      out.breakdowns_written += applyRacionalDividendDetails(plans, sourceRef).filter((w) => w.outcome !== "unchanged").length;
-    }
+    out.breakdowns_written += applyRacionalDividendDetails(plans, sourceRef).filter((w) => w.outcome !== "unchanged").length;
   }
 
   // Coverage comes from a read of the list only: the dividends record alone says nothing about
   // movements the notifications announced.
   out.clean = problems.length === 0 && payload.movements != null;
-  if (payload.apply && out.clean) recordBrokerCleanRead("racional", payload.read_at);
+  if (out.clean) recordBrokerCleanRead("racional", payload.read_at);
   out.clean_through = brokerCleanThrough("racional");
   return out;
 }

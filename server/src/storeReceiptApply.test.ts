@@ -1,4 +1,5 @@
 import { describe, expect, afterEach, it } from "vitest";
+import { rolledBack } from "./ingestReceiver.js";
 import { storeReceiptKind, type StoreReceiptPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
@@ -38,14 +39,12 @@ type ReceiptOpts = {
   document?: "email" | "pdf" | "photo";
   docKey?: string;
   photoTakenOn?: string;
-  apply?: boolean;
 };
 
 /** A `store.receipt` as ingest sends it; `key` names the synthetic document. */
 function receiptPayload(key: string, opts: ReceiptOpts = {}): StoreReceiptPayload {
   const document = opts.document ?? "email";
   return storeReceiptKind.payload.parse({
-    apply: opts.apply ?? true,
     document: {
       kind: document,
       key: opts.docKey ?? (document === "email" ? `<${key}@vitest>` : `vitest-photo-${key}`),
@@ -123,8 +122,8 @@ describe("store.receipt apply", () => {
   });
 
   it("a dry run reports and writes nothing", () => {
-    const res = applyStoreReceipt(receiptPayload("vitest-dry", { apply: false }));
-    expect(res).toMatchObject({ receipt_status: "inserted", receipt_id: -1 });
+    const res = rolledBack(() => applyStoreReceipt(receiptPayload("vitest-dry")));
+    expect(res).toMatchObject({ receipt_status: "inserted" });
     expect(db.prepare(`SELECT 1 FROM grocery_receipts WHERE source_key = '<vitest-dry@vitest>'`).get()).toBeUndefined();
   });
 

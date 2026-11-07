@@ -29,6 +29,7 @@ export const bankAccountBalancesKind = defineIngestKind({
   kind: "bank_account.balances",
   schema_version: 1,
   description: "The balances a bank states for its client's deposit accounts at one moment.",
+  ref: "document",
   payload: z
     .object({
       issuer: z.string().regex(/^[a-z][a-z0-9_]*$/),

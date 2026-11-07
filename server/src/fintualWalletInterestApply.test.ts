@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { brokerMovementsKind, type BrokerMovement } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { applyFintualWalletRead } from "./fintualWalletInterestApply.js";
+import { rolledBack } from "./ingestReceiver.js";
 
 function interest(id: string, day: string, amount: number): BrokerMovement {
   return {
@@ -22,8 +23,8 @@ function interest(id: string, day: string, amount: number): BrokerMovement {
   };
 }
 
-function read(apply: boolean, movements: BrokerMovement[]) {
-  return brokerMovementsKind.payload.parse({ broker: "fintual", apply, read_at: "2097-10-31T00:00:00Z", movements, dividends: null });
+function read(movements: BrokerMovement[]) {
+  return brokerMovementsKind.payload.parse({ broker: "fintual", read_at: "2097-10-31T00:00:00Z", movements, dividends: null });
 }
 
 describe("applyFintualWalletRead", () => {
@@ -57,18 +58,18 @@ describe("applyFintualWalletRead", () => {
   it("books a credit the ledger lacks as interest on Fintual USD, once", () => {
     fintualUsd();
     const movements = [interest("2", "2097-10-30", 0.4), interest("1", "2097-06-30", 0.02)];
-    const report = applyFintualWalletRead(read(false, movements));
+    const report = rolledBack(() => applyFintualWalletRead(read(movements)));
     expect(report.movements.map((m) => m.state)).toEqual(["new", "new"]);
     expect(ledger()).toEqual([]);
 
-    const first = applyFintualWalletRead(read(true, movements));
+    const first = applyFintualWalletRead(read(movements));
     expect(first).toMatchObject({ inserted: 2, duplicates: 0, problems: [], clean: true });
     expect(ledger()).toEqual([
       { occurred_on: "2097-06-30", amount: 0.02, currency: "usd", flow_kind: "savings_earnings" },
       { occurred_on: "2097-10-30", amount: 0.4, currency: "usd", flow_kind: "savings_earnings" },
     ]);
 
-    const again = applyFintualWalletRead(read(true, movements));
+    const again = applyFintualWalletRead(read(movements));
     expect(again).toMatchObject({ inserted: 0, duplicates: 2, problems: [] });
   });
 
@@ -77,7 +78,7 @@ describe("applyFintualWalletRead", () => {
     db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 0.39, 'usd', '2097-10-30', 'by hand', 'savings_earnings')`
     ).run(id);
-    const result = applyFintualWalletRead(read(true, [interest("2", "2097-10-30", 0.4)]));
+    const result = applyFintualWalletRead(read([interest("2", "2097-10-30", 0.4)]));
     expect(result.movements[0]!.state).toBe("conflict");
     expect(result.problems).toHaveLength(1);
     expect(result.inserted).toBe(0);
@@ -87,7 +88,6 @@ describe("applyFintualWalletRead", () => {
     expect(() =>
       brokerMovementsKind.payload.parse({
         broker: "fintual",
-        apply: false,
         read_at: "2097-10-31T00:00:00Z",
         movements: [{ ...interest("3", "2097-10-30", 1), kind: "dividend" }],
         dividends: null,

@@ -36,7 +36,7 @@ describe("payslip deductions as expense lines", () => {
   });
 
   it("health, the AFP commission and the tax are gastos in the payslip's month; savings and advances are not", () => {
-    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ apply: true, parser_version: "vitest", payslips: [PAYSLIP] }));
+    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "vitest", payslips: [PAYSLIP] }));
     const lines = loadPayslipExpenseLineDrafts().filter((l) => l.expense_month === "2099-02");
     expect(lines.map((l) => [l.category_slug, l.amount_clp, (l.merchant ?? "").split(" · ")[0]])).toEqual([
       ["pension_fees", 4_600, "Comisión AFP"],

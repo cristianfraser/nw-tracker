@@ -28,6 +28,7 @@ import type {
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { storeOnce } from "./ingestReceiver.js";
 import { fintualUsdAccountId } from "./fintualEmailImport.js";
 
 /** How long after its pay day a request waits for its wire before it is reported overdue. */
@@ -159,15 +160,7 @@ function rowNotice(r: Record<string, unknown>): IncomingWireNotice {
   };
 }
 
-function sameRow(stored: Record<string, unknown>, row: Record<string, unknown>, columns: readonly string[]): boolean {
-  return columns.every((c) => {
-    const a = stored[c] ?? null;
-    const b = row[c] ?? null;
-    return typeof a === "number" || typeof b === "number" ? Number(a) === Number(b) : a === b;
-  });
-}
-
-/** Stores what is new; a resent mail must state the same. Returns how many were new. */
+/** Stores what is new; a resent mail must state the same (`IngestConflict`). Returns how many were new. */
 function storeRows(
   table: string,
   columns: readonly string[],
@@ -175,17 +168,13 @@ function storeRows(
 ): number {
   const existing = db.prepare(`SELECT * FROM ${table} WHERE message_id = ?`);
   const insert = db.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map((c) => `@${c}`).join(", ")})`);
-  let added = 0;
-  for (const row of rows) {
-    const old = existing.get(row.message_id) as Record<string, unknown> | undefined;
-    if (old) {
-      if (!sameRow(old, row, columns)) throw new Error(`${table}: ${String(row.message_id)} was already stored with other content`);
-      continue;
-    }
-    insert.run(row);
-    added++;
-  }
-  return added;
+  return storeOnce(rows, {
+    table,
+    key: (row) => String(row.message_id),
+    load: (row) => existing.get(row.message_id) as Record<string, unknown> | undefined,
+    row: (row) => Object.fromEntries(columns.map((c) => [c, row[c] ?? null])),
+    insert: (row) => void insert.run(row),
+  }).added;
 }
 
 export function storeWithdrawalRequests(requests: readonly WithdrawalRequest[]): number {
@@ -275,26 +264,14 @@ const findExistingTransfer = db.prepare(
 );
 
 /**
- * Pairs every stored request without a booking with the wire that paid it, and (with `apply`)
- * writes the transfer and the fee. `extra*` are a dry run's unsaved inputs, paired as if stored.
+ * Pairs every stored request without a booking with the wire that paid it, and writes the
+ * transfer and the fee (a dry run is the ingest receiver's rollback).
  */
-export function bookIncomingWires(opts: {
-  apply: boolean;
-  extraRequests?: readonly WithdrawalRequest[];
-  extraNotices?: readonly IncomingWireNotice[];
-}): IncomingWireBookingReport {
-  const merge = <T extends { message_id: string }>(stored: T[], extra: readonly T[] = []): T[] => {
-    const ids = new Set(stored.map((s) => s.message_id));
-    return [...stored, ...extra.filter((e) => !ids.has(e.message_id))];
-  };
-  const requests = merge(
-    db.prepare(`SELECT ${REQUEST_COLUMNS.join(", ")} FROM broker_withdrawal_requests`).all() as WithdrawalRequest[],
-    opts.extraRequests
-  ).sort((a, b) => a.requested_at.localeCompare(b.requested_at));
-  const notices = merge(
-    (db.prepare(`SELECT * FROM incoming_wire_notices`).all() as Record<string, unknown>[]).map(rowNotice),
-    opts.extraNotices
+export function bookIncomingWires(): IncomingWireBookingReport {
+  const requests = (db.prepare(`SELECT ${REQUEST_COLUMNS.join(", ")} FROM broker_withdrawal_requests`).all() as WithdrawalRequest[]).sort(
+    (a, b) => a.requested_at.localeCompare(b.requested_at)
   );
+  const notices = (db.prepare(`SELECT * FROM incoming_wire_notices`).all() as Record<string, unknown>[]).map(rowNotice);
   const bookedRequests = new Set(
     (db.prepare(`SELECT request_message_id FROM incoming_wire_bookings`).all() as { request_message_id: string }[]).map(
       (r) => r.request_message_id
@@ -389,7 +366,7 @@ export function bookIncomingWires(opts: {
     });
   }
 
-  if (opts.apply && report.booked.length > 0) {
+  if (report.booked.length > 0) {
     db.transaction(() => {
       for (const b of report.booked) writeBooking(b, requests.find((r) => r.message_id === b.request_message_id)!);
     }).immediate();
@@ -434,12 +411,8 @@ function writeBooking(b: Booking, r: WithdrawalRequest): void {
   for (const id of b.notices) link.run(id, b.request_message_id);
 }
 
-/** `bank_account.incoming_wires`: stores the notices (with `apply`) and books what they pay. */
+/** `bank_account.incoming_wires`: stores the notices and books what they pay. */
 export function applyIncomingWires(payload: BankAccountIncomingWiresPayload): BankAccountIncomingWiresApplyDetails {
-  const new_notices = payload.apply
-    ? db.transaction(() => storeIncomingWireNotices(payload.notices)).immediate()
-    : payload.notices.filter((n) => db.prepare(`SELECT 1 FROM incoming_wire_notices WHERE message_id = ?`).get(n.message_id) == null)
-        .length;
-  const bookings = bookIncomingWires({ apply: payload.apply, extraNotices: payload.apply ? [] : payload.notices });
-  return { applied: payload.apply, received: payload.notices.length, new_notices, bookings };
+  const new_notices = storeIncomingWireNotices(payload.notices);
+  return { received: payload.notices.length, new_notices, bookings: bookIncomingWires() };
 }

@@ -6,8 +6,9 @@ import { defineIngestKind } from "../defineKind.js";
  * of paid contributions and any number of four-monthly statements, as printed. The server
  * rebuilds the account's cuota ledger from them — each contribution at the unit value of its pay
  * date, each withdrawal at the unit value of its date (or closing the position), and one true-up
- * per printed balance for the commission the fund deducts in units. Report-first: without
- * `apply` every change is rolled back after the report.
+ * per printed balance for the commission the fund deducts in units. The account is the one on
+ * the fund's unit-value series; a dry run (the envelope's `dry_run`) rolls every change back after
+ * the report.
  */
 
 const isoDate = z.iso.date();
@@ -66,24 +67,14 @@ export type UnemploymentFundStatement = z.infer<typeof unemploymentFundStatement
 
 export const unemploymentFundDocumentsKind = defineIngestKind({
   kind: "unemployment_fund.documents",
-  schema_version: 1,
+  schema_version: 2,
   description: "Unemployment fund (AFC) documents: the certificate of paid contributions and four-monthly statements.",
+  ref: "read",
   payload: z
     .object({
-      /** False: report the rebuild and roll every change back. */
-      apply: z.boolean(),
       provider: z.enum(["afc"]),
-      /** The fund account; null: the one account on the fund's unit-value series. */
-      account_id: z.number().int().positive().nullable(),
       certificate: unemploymentFundCertificateSchema,
       statements: z.array(unemploymentFundStatementSchema),
-      /**
-       * One-off rebuild choices on rows already in the ledger: delete the excel-era contribution
-       * rows the certificate supersedes, and these excel-era movement ids.
-       */
-      options: z
-        .object({ replace_excel_rows: z.boolean(), drop_movement_ids: z.array(z.number().int().positive()) })
-        .strict(),
     })
     .strict(),
 });
@@ -92,7 +83,6 @@ export type UnemploymentFundDocumentsPayload = z.infer<typeof unemploymentFundDo
 
 /** `details` of an applied `unemployment_fund.documents`: the rebuild's report, line by line. */
 export type UnemploymentFundDocumentsApplyDetails = {
-  applied: boolean;
   account_id: number;
   report: string[];
 };

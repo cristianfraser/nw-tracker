@@ -54,6 +54,7 @@ export const bankAccountTransferNoticesKind = defineIngestKind({
   kind: "bank_account.transfer_notices",
   schema_version: 1,
   description: "Transfers a bank mailed its client about, each with its counterparty.",
+  ref: "read",
   payload: z
     .object({
       issuer: z.string().regex(/^[a-z][a-z0-9_]*$/),

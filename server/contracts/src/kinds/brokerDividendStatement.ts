@@ -36,12 +36,11 @@ export type StatementDividend = z.infer<typeof statementDividendSchema>;
 
 export const brokerDividendStatementKind = defineIngestKind({
   kind: "broker.dividend_statement",
-  schema_version: 1,
+  schema_version: 2,
   description: "A broker document itemizing dividends (gross, withholding, net) and sweep interest.",
+  ref: "read",
   payload: z
     .object({
-      /** False: report the pairing, write nothing. */
-      apply: z.boolean(),
       broker: z.enum(["fintual"]),
       document: z
         .object({
@@ -64,7 +63,6 @@ export type BrokerDividendStatementPayload = z.infer<typeof brokerDividendStatem
 
 /** `details` of an applied `broker.dividend_statement`. */
 export type BrokerDividendStatementApplyDetails = {
-  applied: boolean;
   dividends: {
     dividend: StatementDividend;
     /** The ledger's `dividend_payout` row, when exactly one matches. */

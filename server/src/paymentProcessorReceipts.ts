@@ -6,10 +6,10 @@
  * expense lines are built, because a card line's id changes on every statement re-import. Pairing
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
-import { createHash } from "node:crypto";
 import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip, ReceiptVehiclePermit } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
+import { storeOnce } from "./ingestReceiver.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
 
@@ -89,18 +89,12 @@ function receiptRow(r: ProcessorReceipt): ReceiptRow {
   };
 }
 
-function hash(row: ReceiptRow): string {
-  return createHash("sha256")
-    .update(JSON.stringify(COLUMNS.map((c) => row[c])))
-    .digest("hex");
-}
-
 type StoredCharge = { amount: number; installments: number | null };
 
 const loadCharges = () =>
   db.prepare(`SELECT amount, installments FROM payment_receipt_charges WHERE message_id = ? ORDER BY position`);
 
-/** Stores the receipts; a receipt already stored must state the same, its charges included. */
+/** Stores the receipts; a receipt already stored must state the same, its charges included (`IngestConflict`). */
 export function storePaymentProcessorReceipts(payload: PaymentProcessorReceiptsPayload): { received: number; new_receipts: number } {
   const existing = db.prepare(`SELECT ${COLUMNS.join(", ")} FROM payment_processor_receipts WHERE message_id = ?`);
   const insert = db.prepare(
@@ -110,25 +104,21 @@ export function storePaymentProcessorReceipts(payload: PaymentProcessorReceiptsP
     `INSERT INTO payment_receipt_charges (message_id, position, amount, installments) VALUES (?, ?, ?, ?)`
   );
   const charges = loadCharges();
-  return db.transaction(() => {
-    let added = 0;
-    for (const r of payload.receipts) {
-      const row = receiptRow(r);
+  const comparable = (row: ReceiptRow, rowCharges: readonly StoredCharge[]) => ({ ...row, charges: JSON.stringify(rowCharges) });
+  const { received, added } = storeOnce(payload.receipts, {
+    table: "payment_processor_receipts",
+    key: (r) => r.message_id,
+    load: (r) => {
       const old = existing.get(r.message_id) as ReceiptRow | undefined;
-      if (old) {
-        const oldCharges = JSON.stringify(charges.all(r.message_id) as StoredCharge[]);
-        const newCharges = JSON.stringify((r.charges ?? []).map((c) => ({ amount: c.amount, installments: c.installments })));
-        if (hash(old) !== hash(row) || oldCharges !== newCharges) {
-          throw new Error(`payment receipt ${r.message_id} was already stored with other content`);
-        }
-        continue;
-      }
-      insert.run(row);
+      return old ? comparable(old, charges.all(r.message_id) as StoredCharge[]) : undefined;
+    },
+    row: (r) => comparable(receiptRow(r), (r.charges ?? []).map((c) => ({ amount: c.amount, installments: c.installments }))),
+    insert: (r) => {
+      insert.run(receiptRow(r));
       (r.charges ?? []).forEach((c, i) => insertCharge.run(r.message_id, i + 1, c.amount, c.installments));
-      added++;
-    }
-    return { received: payload.receipts.length, new_receipts: added };
-  }).immediate();
+    },
+  });
+  return { received, new_receipts: added };
 }
 
 /** What an expense line shows of the receipt that paid it. */

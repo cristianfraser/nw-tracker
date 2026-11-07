@@ -142,7 +142,6 @@ function lineKey(l: StoredLine): string {
 }
 
 export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): EmploymentPayslipsApplyDetails {
-  const dryRun = !payload.apply;
   const selectStored = db.prepare(`SELECT * FROM payroll_work_earnings WHERE source_pdf = ?`);
   const upsert = db.prepare(UPSERT_SQL);
   const selectLines = db.prepare(
@@ -156,24 +155,23 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
   const kinds = new Map(payload.payslips.map((p) => [p.document, p.lines.map((l) => payslipLineKind(l.side, l.label))]));
   const setLink = db.prepare(`UPDATE payroll_work_earnings SET movement_id = ?, link_source = 'auto' WHERE source_pdf = ?`);
 
+  // What a re-import changes, field by field (a dry run prints it; the writes follow).
   const changes: string[] = [];
-  if (dryRun) {
-    for (const p of payload.payslips) {
-      const stored = selectStored.get(p.document) as Record<string, unknown> | undefined;
-      if (!stored) {
-        changes.push(`new ${p.document}`);
-        continue;
-      }
-      const next = payslipRow(p, payload.parser_version);
-      const diff = COMPARED.filter((f) => stored[f] !== (next[f] ?? null)).map(
-        (f) => `${f} ${String(stored[f])} → ${String(next[f] ?? null)}`
-      );
-      if (diff.length > 0) changes.push(`change ${p.document}: ${diff.join("; ")}`);
-      const storedLines = (selectLines.all(stored.id) as StoredLine[]).map(lineKey).join("\n");
-      const nextKinds = kinds.get(p.document)!;
-      if (storedLines !== p.lines.map((l, i) => lineKey({ ...l, kind: nextKinds[i]! })).join("\n")) {
-        changes.push(`lines ${p.document}: ${storedLines === "" ? "none stored" : "differ"} → ${p.lines.length} line(s)`);
-      }
+  for (const p of payload.payslips) {
+    const stored = selectStored.get(p.document) as Record<string, unknown> | undefined;
+    if (!stored) {
+      changes.push(`new ${p.document}`);
+      continue;
+    }
+    const next = payslipRow(p, payload.parser_version);
+    const diff = COMPARED.filter((f) => stored[f] !== (next[f] ?? null)).map(
+      (f) => `${f} ${String(stored[f])} → ${String(next[f] ?? null)}`
+    );
+    if (diff.length > 0) changes.push(`change ${p.document}: ${diff.join("; ")}`);
+    const storedLines = (selectLines.all(stored.id) as StoredLine[]).map(lineKey).join("\n");
+    const nextKinds = kinds.get(p.document)!;
+    if (storedLines !== p.lines.map((l, i) => lineKey({ ...l, kind: nextKinds[i]! })).join("\n")) {
+      changes.push(`lines ${p.document}: ${storedLines === "" ? "none stored" : "differ"} → ${p.lines.length} line(s)`);
     }
   }
 
@@ -186,7 +184,6 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
     ).map((r) => r.movement_id)
   );
   const details: EmploymentPayslipsApplyDetails = {
-    applied: !dryRun,
     payslips: payload.payslips.length,
     linked: 0,
     links: [],
@@ -197,16 +194,14 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
 
   db.transaction(() => {
     for (const p of payload.payslips) {
-      if (!dryRun) upsert.run(payslipRow(p, payload.parser_version));
+      upsert.run(payslipRow(p, payload.parser_version));
       const stored = selectStored.get(p.document) as
         | { id: number; movement_id: number | null; link_source: string | null }
         | undefined;
-      if (!dryRun) {
-        if (!stored) throw new Error(`payslips: ${p.document} not stored after the upsert`);
-        deleteLines.run(stored.id);
-        const lineKinds = kinds.get(p.document)!;
-        p.lines.forEach((l, i) => insertLine.run(stored.id, l.position, l.side, l.section, l.label, l.amount, lineKinds[i]));
-      }
+      if (!stored) throw new Error(`payslips: ${p.document} not stored after the upsert`);
+      deleteLines.run(stored.id);
+      const lineKinds = kinds.get(p.document)!;
+      p.lines.forEach((l, i) => insertLine.run(stored.id, l.position, l.side, l.section, l.label, l.amount, lineKinds[i]));
       if (stored?.link_source === "manual" && stored.movement_id != null) {
         taken.add(stored.movement_id);
         details.linked += 1;
@@ -214,7 +209,7 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
       }
       const link = findPayrollAutoLinkMovement(p.net_pay, p.period_month, p.employer.name, candidates, taken);
       if (link.kind === "linked") {
-        if (!dryRun) setLink.run(link.movement_id, p.document);
+        setLink.run(link.movement_id, p.document);
         taken.add(link.movement_id);
         details.linked += 1;
         details.links.push({ document: p.document, movement_id: link.movement_id });

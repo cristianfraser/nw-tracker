@@ -12,6 +12,7 @@ export const pensionAccountBalanceKind = defineIngestKind({
   kind: "pension_account.balance",
   schema_version: 1,
   description: "A pension account's stated balance and recent movements, from its home page.",
+  ref: "document",
   payload: z
     .object({
       provider: z.enum(["afp_uno"]),

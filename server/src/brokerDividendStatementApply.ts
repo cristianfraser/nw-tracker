@@ -187,9 +187,8 @@ export function applyBrokerDividendStatement(payload: BrokerDividendStatementPay
   const source = payload.document.kind === "monthly_statement" ? "fintual_cartola" : "fintual_certificado";
   const plans = planFintualDividendDetails(payload.dividends, source, payload.document.name);
   const outcomes = new Map<number, string>();
-  if (payload.apply) for (const o of applyFintualDividendDetails(plans)) outcomes.set(o.movement_id, o.outcome);
+  for (const o of applyFintualDividendDetails(plans)) outcomes.set(o.movement_id, o.outcome);
   return {
-    applied: payload.apply,
     dividends: plans.map((plan, i) => ({
       dividend: payload.dividends[i]!,
       movement_id: plan.movement_id,

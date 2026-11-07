@@ -72,8 +72,8 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
       nextCloseDisagrees = true;
       report.push(`  ✗ next close: the PDF prints ${stored}, the JSON's FechaProxFact is ${nextClose}`);
     } else if (!stored) {
-      report.push(`  next close ${nextClose} (FechaProxFact) — ${payload.apply ? "stored on the PDF statement" : "would be stored (--apply)"}`);
-      if (payload.apply) fillStatementNextPeriodTo(accountId, statementDate, statement.currency, nextClose);
+      report.push(`  next close ${nextClose} (FechaProxFact) — stored on the PDF statement`);
+      fillStatementNextPeriodTo(accountId, statementDate, statement.currency, nextClose);
     }
   }
 
@@ -153,7 +153,7 @@ export function applyCardStatement(payload: CardStatementPayload): CardStatement
     }
   }
   const toWrite = pending.filter((r) => r.write != null);
-  if (payload.apply && toWrite.length > 0) {
+  if (toWrite.length > 0) {
     const result = writeSantanderStatements(accountId, toWrite.flatMap((r) => r.write!));
     written = { currencies: result.currencies, lines_inserted: result.lineCount };
     for (const review of toWrite) {

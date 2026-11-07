@@ -1,11 +1,13 @@
-import type {
-  CardUnbilledMovementsApplyDetails,
-  IngestEnvelope,
-  IngestKindDefinition,
-  IngestKindName,
-  IngestPayloadOf,
-  IngestResult,
+import {
+  findIngestKind,
+  INGEST_KINDS,
+  type CardUnbilledMovementsApplyDetails,
+  type IngestKindName,
+  type IngestPayloadOf,
+  type IngestResult,
+  type IngestSource,
 } from "nw-tracker-contracts";
+import { receiveIngestDocument, type IngestApplyContext, type IngestHandlerResult } from "./ingestReceiver.js";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBankAccountBalances } from "./bankAccountBalances.js";
 import { applyBankProductSummary } from "./bankProductSummaryApply.js";
@@ -36,22 +38,15 @@ import {
   type CardUnbilledMovementsImportResult,
 } from "./cardUnbilledMovementsApply.js";
 
-/** What a handler reports; the route adds the kind and version to make the IngestResult. */
-export type IngestApplyOutcome = Omit<IngestResult, "kind" | "schema_version">;
-
-export interface IngestApplyContext<P> {
-  kind: IngestKindDefinition;
-  /** The validated payload (the kind's schema output). */
-  payload: P;
-  envelope: IngestEnvelope<P>;
-}
+export type { IngestApplyContext, IngestHandlerResult } from "./ingestReceiver.js";
 
 /**
- * Applies one validated document to the ledger. Throws on a server fault (→ 500); returns
- * `conflict` when the document disagrees with what the server holds.
+ * Applies one validated document to the ledger and reports what it did (`ingestReceiver.ts`
+ * decides the status). Throws `IngestConflict` when the document disagrees with what the server
+ * holds, anything else on a server fault (→ 500). Runs inside the receiver's transaction.
  */
 export interface IngestHandler<P = unknown> {
-  apply(ctx: IngestApplyContext<P>): Promise<IngestApplyOutcome> | IngestApplyOutcome;
+  apply(ctx: IngestApplyContext<P>): IngestHandlerResult;
 }
 
 /** One handler per contract kind — the type makes a kind without a handler a compile error. */
@@ -107,74 +102,33 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
-  "unemployment_fund.documents": {
-    apply({ payload }) {
-      return { status: "applied", details: applyUnemploymentFundDocuments(payload) };
-    },
-  },
-  "fund_account.transactions": {
-    apply({ payload }) {
-      return { status: "applied", details: applyFundAccountTransactions(payload) };
-    },
-  },
-  "broker.dividend_statement": {
-    apply({ payload }) {
-      return { status: "applied", details: applyBrokerDividendStatement(payload) };
-    },
-  },
-  "employment.payslips": {
-    apply({ payload }) {
-      return { status: "applied", details: applyEmploymentPayslips(payload) };
-    },
-  },
+  "unemployment_fund.documents": { apply: ({ payload }) => ({ details: applyUnemploymentFundDocuments(payload) }) },
+  "fund_account.transactions": { apply: ({ payload }) => ({ details: applyFundAccountTransactions(payload) }) },
+  "broker.dividend_statement": { apply: ({ payload }) => ({ details: applyBrokerDividendStatement(payload) }) },
+  "employment.payslips": { apply: ({ payload }) => ({ details: applyEmploymentPayslips(payload) }) },
   "store.receipt": {
     apply({ payload }) {
-      return { status: "applied", details: applyStoreReceipt(payload) };
+      const details = applyStoreReceipt(payload);
+      // Waiting for its card line: the feeder sends it again.
+      return { details, retry: !details.final };
     },
   },
-  "bank_account.statements": {
-    apply({ payload }) {
-      return { status: "applied", details: applyBankAccountStatements(payload) };
-    },
-  },
+  "bank_account.statements": { apply: ({ payload }) => ({ details: applyBankAccountStatements(payload) }) },
   "card.parsed_statements": {
     apply({ payload }) {
       const records = payload.rows.map((values) => Object.fromEntries(payload.columns.map((c, i) => [c, values[i]!])));
-      return { status: "applied", details: applyParsedCcStatements(records, { dryRun: !payload.apply, full: payload.full }) };
+      return { details: applyParsedCcStatements(records, { dryRun: false, full: payload.full }) };
     },
   },
   "merchant.purchase_document": {
-    apply({ payload, envelope }) {
-      const outcome = applyMerchantPurchaseDocument(payload, envelope.source.ref);
-      return outcome.status === "conflict"
-        ? { status: "conflict", message: outcome.message }
-        : { status: outcome.status, details: outcome.details };
-    },
+    apply: ({ payload, envelope }) => ({ details: applyMerchantPurchaseDocument(payload, envelope.source.ref) }),
   },
-  "card.statement": {
-    apply({ payload }) {
-      return { status: "applied", details: applyCardStatement(payload) };
-    },
-  },
-  "payroll.parameters": {
-    apply({ payload }) {
-      return { status: "applied", details: applyPayrollParameters(payload) };
-    },
-  },
-  "pension_account.balance": {
-    apply({ payload }) {
-      return { status: "applied", details: applyPensionAccountBalance(payload) };
-    },
-  },
-  "unemployment_fund.balance": {
-    apply({ payload }) {
-      return { status: "applied", details: applyUnemploymentFundBalance(payload) };
-    },
-  },
+  "card.statement": { apply: ({ payload }) => ({ details: applyCardStatement(payload) }) },
+  "payroll.parameters": { apply: ({ payload }) => ({ details: applyPayrollParameters(payload) }) },
+  "pension_account.balance": { apply: ({ payload }) => ({ details: applyPensionAccountBalance(payload) }) },
+  "unemployment_fund.balance": { apply: ({ payload }) => ({ details: applyUnemploymentFundBalance(payload) }) },
   "pension_account.certificates": {
-    apply({ payload, envelope }) {
-      return { status: "applied", details: applyPensionAccountCertificates(payload, envelope.source.ref) };
-    },
+    apply: ({ payload, envelope }) => ({ details: applyPensionAccountCertificates(payload, envelope.source.ref) }),
   },
   "broker.movements": {
     apply({ payload, envelope }) {
@@ -182,73 +136,58 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
         payload.broker === "fintual"
           ? applyFintualWalletRead(payload)
           : applyRacionalRead(payload, envelope.source.ref);
-      return { status: "applied", details };
+      return { details };
     },
   },
-  "broker.notifications": {
-    apply({ payload }) {
-      return { status: "applied", details: applyBrokerNotifications(payload) };
-    },
-  },
+  "broker.notifications": { apply: ({ payload }) => ({ details: applyBrokerNotifications(payload) }) },
   "card.payment_receipt": {
     apply({ payload, envelope }) {
-      return { status: "applied", details: applyCardPaymentReceipt(payload, envelope.source.ref) };
+      const details = applyCardPaymentReceipt(payload, envelope.source.ref);
+      // Two debits fit: the next run may find one of them taken.
+      return { details, retry: details.status === "ambiguous" };
     },
   },
   "bank_account.balances": {
-    apply({ payload, envelope }) {
-      const { duplicate, details } = applyBankAccountBalances(payload, envelope.source.ref);
-      return { status: duplicate ? "duplicate" : "applied", details };
-    },
+    apply: ({ payload, envelope }) => ({ details: applyBankAccountBalances(payload, envelope.source.ref) }),
   },
   "bank.product_summary": {
-    apply({ payload, envelope }) {
-      const { duplicate, details } = applyBankProductSummary(payload, envelope.source.ref);
-      return { status: duplicate ? "duplicate" : "applied", details };
-    },
+    apply: ({ payload, envelope }) => ({ details: applyBankProductSummary(payload, envelope.source.ref) }),
   },
-  "bank_account.transfer_notices": {
-    apply({ payload }) {
-      const details = applyBankTransferNotices(payload);
-      return { status: details.new_notices === 0 ? "duplicate" : "applied", details };
-    },
-  },
-  "bank_account.incoming_wires": {
-    apply({ payload }) {
-      const details = applyIncomingWires(payload);
-      return { status: details.new_notices === 0 && details.bookings.booked.length === 0 ? "duplicate" : "applied", details };
-    },
-  },
+  "bank_account.transfer_notices": { apply: ({ payload }) => ({ details: applyBankTransferNotices(payload) }) },
+  "bank_account.incoming_wires": { apply: ({ payload }) => ({ details: applyIncomingWires(payload) }) },
   "payment.processor_receipts": {
     apply({ payload }) {
       const stored = storePaymentProcessorReceipts(payload);
       // The pairing is derived when the expense lines are built; report what the page will show.
       const match = matchPaymentReceiptsToExpenseLines(buildFlowsExpensesPayload().lines);
-      return {
-        status: stored.new_receipts === 0 ? "duplicate" : "applied",
-        details: { ...stored, paired: match.paired, unpaired: match.unpaired, ambiguous: match.ambiguous },
-      };
+      return { details: { ...stored, paired: match.paired, unpaired: match.unpaired, ambiguous: match.ambiguous } };
     },
   },
   "bank_account.movements": {
-    apply({ payload, envelope }) {
-      return { status: "applied", details: applyBankAccountMovements(payload, envelope.source.ref) };
-    },
+    apply: ({ payload, envelope }) => ({ details: applyBankAccountMovements(payload, envelope.source.ref) }),
   },
-  "mortgage.sheet_payments": {
-    apply({ payload }) {
-      return applyMortgageSheetPayments(payload);
-    },
-  },
-  "utility.bill": {
-    apply({ payload }) {
-      return applyUtilityBills(payload);
-    },
-  },
+  "mortgage.sheet_payments": { apply: ({ payload }) => ({ details: applyMortgageSheetPayments(payload) }) },
+  "utility.bill": { apply: ({ payload }) => ({ details: applyUtilityBills(payload) }) },
   "card.unbilled_movements": {
-    apply({ payload, envelope }) {
-      const result = applyCardUnbilledMovements(payload, envelope.source.ref);
-      return { status: "applied", details: cardUnbilledDetails(result) };
-    },
+    apply: ({ payload, envelope }) => ({ details: cardUnbilledDetails(applyCardUnbilledMovements(payload, envelope.source.ref)) }),
   },
 };
+
+/**
+ * Receives one document the way `POST /api/ingest/<kind>` does, without HTTP (tests, and a
+ * server-side caller that holds a validated payload).
+ */
+export function receiveIngest<K extends IngestKindName>(
+  name: K,
+  payload: IngestPayloadOf<K>,
+  options: { source: IngestSource; dryRun?: boolean }
+): IngestResult {
+  const kind = findIngestKind(INGEST_KINDS, name);
+  if (!kind) throw new Error(`Unknown ingest kind: ${name}`);
+  const handler = INGEST_HANDLERS[name] as IngestHandler<IngestPayloadOf<K>>;
+  return receiveIngestDocument(
+    kind,
+    { schema_version: kind.schema_version, feeder_id: "server", source: options.source, dry_run: options.dryRun ?? false, payload },
+    (ctx) => handler.apply(ctx)
+  );
+}

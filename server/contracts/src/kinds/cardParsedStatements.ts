@@ -73,12 +73,11 @@ export type CardParsedStatementColumn = (typeof CARD_PARSED_STATEMENT_COLUMNS)[n
  */
 export const cardParsedStatementsKind = defineIngestKind({
   kind: "card.parsed_statements",
-  schema_version: 1,
+  schema_version: 2,
   description: "Every card statement a statement parser read, line by line, as the parser printed it.",
+  ref: "read",
   payload: z
     .object({
-      /** False: report what an import would do, write nothing. */
-      apply: z.boolean(),
       /** Re-import and re-reconcile every statement, not only the changed ones. */
       full: z.boolean(),
       columns: z.array(z.enum(CARD_PARSED_STATEMENT_COLUMNS)),

@@ -522,118 +522,105 @@ function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-US"); // convention-ok: import report text
 }
 
-class Rollback extends Error {}
-
-function resolveAfcAccountId(explicit: number | null): number {
-  if (explicit != null) return explicit;
+function resolveAfcAccountId(): number {
   const rows = db.prepare(`SELECT id FROM accounts WHERE fund_series_key = ? ORDER BY id`).all(AFC_CIC_SERIES_KEY) as { id: number }[];
-  if (rows.length !== 1) throw new Error(`expected one account on ${AFC_CIC_SERIES_KEY}, found ${rows.length}; send the account id`);
+  if (rows.length !== 1) throw new Error(`expected one account on ${AFC_CIC_SERIES_KEY}, found ${rows.length}`);
   return rows[0]!.id;
 }
 
 /**
  * Rebuild / reconcile the AFC cuota ledger from the documents, in one transaction: (1) the
- * certificate's contributions (insert / update units / mismatch), optionally deleting the
- * excel-era contribution rows the certificate supersedes and the ids listed; (2) units on every
+ * certificate's contributions (insert / update units / mismatch); (2) units on every
  * withdrawal (pay-date valor cuota, or the closing −Σ when the account's stored valuation reads
  * 0 right after); (3) one true-up per cartola boundary; (4) closing withdrawals re-measured after
- * them; (5) checks on the resulting ledger. Without `apply` the transaction is ROLLED BACK after
- * the report, so the report shows the exact post-import ledger and nothing is written.
+ * them; (5) checks on the resulting ledger. A dry run is the ingest receiver's (rolled back), so
+ * the report shows the exact post-import ledger and nothing is written.
  */
 export function applyUnemploymentFundDocuments(payload: UnemploymentFundDocumentsPayload): UnemploymentFundDocumentsApplyDetails {
   const report: string[] = [];
   const log = (line: string) => report.push(line);
-  const accountId = resolveAfcAccountId(payload.account_id);
+  const accountId = resolveAfcAccountId();
   const cert = afcCertificateFromPayload(payload.certificate);
-  const replaceExcel = payload.options.replace_excel_rows;
-  const dropIds = payload.options.drop_movement_ids;
   log(`Certificado de cotizaciones: ${cert.legs.length} legs, total ${fmt(cert.total_clp)} CLP`);
-  try {
-    db.transaction(() => {
-      const plan = planAfcCertImport(accountId, cert);
-      const counts = { insert: 0, unchanged: 0, update_units: 0, mismatch: 0 };
-      log(`\n[1] Contributions — account ${accountId}, series ${plan.series_key}`);
-      log("status         período  pago         pesos       px       cuotas  employer");
-      for (const it of plan.items) {
-        counts[it.status] += 1;
-        const c = it.contribution;
-        log(
-          `${it.status.padEnd(14)} ${c.period_ym}  ${c.pay_ymd}  ${fmt(c.amount_clp).padStart(9)}  ${it.px.toFixed(2).padStart(8)}  ${it.units.toFixed(4).padStart(9)}  ${c.employer}${it.detail ? `  (${it.detail})` : ""}`
-        );
+  db.transaction(() => {
+    const plan = planAfcCertImport(accountId, cert);
+    const counts = { insert: 0, unchanged: 0, update_units: 0, mismatch: 0 };
+    log(`\n[1] Contributions — account ${accountId}, series ${plan.series_key}`);
+    log("status         período  pago         pesos       px       cuotas  employer");
+    for (const it of plan.items) {
+      counts[it.status] += 1;
+      const c = it.contribution;
+      log(
+        `${it.status.padEnd(14)} ${c.period_ym}  ${c.pay_ymd}  ${fmt(c.amount_clp).padStart(9)}  ${it.px.toFixed(2).padStart(8)}  ${it.units.toFixed(4).padStart(9)}  ${c.employer}${it.detail ? `  (${it.detail})` : ""}`
+      );
+    }
+    log(`→ insert ${counts.insert}, unchanged ${counts.unchanged}, update units ${counts.update_units}, mismatch ${counts.mismatch}`);
+    if (plan.excel_contribution_rows.length > 0) {
+      log(
+        `\nExcel-era contribution rows (import:excel|afc-flow, amount > 0): ${plan.excel_contribution_rows.length}, ` +
+          `${fmt(plan.excel_contribution_rows.reduce((a, m) => a + m.amount, 0))} CLP — kept`
+      );
+    }
+    if (plan.excel_other_rows.length > 0) {
+      log(`\nExcel-era non-contribution rows (kept):`);
+      for (const m of plan.excel_other_rows) {
+        log(`  id ${m.id}  ${m.occurred_on}  ${fmt(m.amount).padStart(12)}  ${m.note ?? ""}`);
       }
-      log(`→ insert ${counts.insert}, unchanged ${counts.unchanged}, update units ${counts.update_units}, mismatch ${counts.mismatch}`);
-      if (plan.excel_contribution_rows.length > 0) {
-        log(
-          `\nExcel-era contribution rows (import:excel|afc-flow, amount > 0): ${plan.excel_contribution_rows.length}, ` +
-            `${fmt(plan.excel_contribution_rows.reduce((a, m) => a + m.amount, 0))} CLP — ${replaceExcel ? "DELETED (superseded by the certificate)" : "kept (pass --replace-excel-rows to delete)"}`
-        );
-      }
-      if (plan.excel_other_rows.length > 0) {
-        log(`\nExcel-era non-contribution rows (kept unless listed in --drop-ids):`);
-        for (const m of plan.excel_other_rows) {
-          log(`  id ${m.id}  ${m.occurred_on}  ${fmt(m.amount).padStart(12)}  ${dropIds.includes(m.id) ? "DROP" : "keep"}  ${m.note ?? ""}`);
-        }
-      }
-      const r1 = applyAfcCertImport(plan, { replaceExcelContributions: replaceExcel, dropIds });
-      log(`→ wrote: inserted ${r1.inserted}, units updated ${r1.units_updated}, deleted ${r1.deleted}, mismatches skipped ${r1.mismatches}`);
+    }
+    const r1 = applyAfcCertImport(plan, { replaceExcelContributions: false });
+    log(`→ wrote: inserted ${r1.inserted}, units updated ${r1.units_updated}, deleted ${r1.deleted}, mismatches skipped ${r1.mismatches}`);
 
-      const withdrawals = (label: string, quiet: boolean) => {
-        const wplan = planAfcWithdrawalUnits(accountId);
-        log(`\n${label} — ${wplan.length}`);
-        for (const w of wplan) {
-          if (quiet && w.status === "unchanged") continue;
-          log(
-            `${w.status.padEnd(10)} id ${w.movement.id}  ${w.movement.occurred_on}  ${fmt(Math.abs(w.movement.amount)).padStart(12)}  px ${w.px.toFixed(2)}  cuotas ${w.units_abs.toFixed(4)}${w.closes_position ? "  (closes the position)" : ""}`
-          );
-        }
-        log(`→ units set on ${applyAfcWithdrawalUnits(wplan)} withdrawal(s)`);
-      };
-      withdrawals("[2] Withdrawals", false);
-
-      for (const statement of payload.statements) {
-        const cartola = afcCartolaFromPayload(statement);
+    const withdrawals = (label: string, quiet: boolean) => {
+      const wplan = planAfcWithdrawalUnits(accountId);
+      log(`\n${label} — ${wplan.length}`);
+      for (const w of wplan) {
+        if (quiet && w.status === "unchanged") continue;
         log(
-          `\n[3] Cartola ${cartola.period_from_ymd}..${cartola.period_to_ymd}: saldo ${cartola.saldo_inicial_ymd} ${fmt(cartola.saldo_inicial_clp)} → ${cartola.saldo_final_ymd} ${fmt(cartola.saldo_final_clp)}; ` +
-            `cotizaciones ${fmt(cartola.cotizaciones_clp)}, ganancia ${fmt(cartola.ganancia_clp)}, comisiones ${fmt(cartola.comisiones_clp)}`
-        );
-        const cplan = planAfcCartolaTrueUps(accountId, cartola);
-        for (const t of cplan.trueups) {
-          log(
-            `${t.status.padEnd(10)} saldo ${t.which.padEnd(7)} ${t.day_ymd}  target ${t.target_units.toFixed(4)} cuotas, ledger ${t.ledger_units.toFixed(4)} → true-up ${t.units.toFixed(4)} cuotas = ${fmt(t.amount_clp)} CLP (${t.flow_kind ?? "—"})`
-          );
-        }
-        const r3 = applyAfcCartolaTrueUps(cplan);
-        log(`→ true-ups: inserted ${r3.inserted}, updated ${r3.updated}, deleted ${r3.deleted}`);
-      }
-      if (payload.statements.length > 0) withdrawals("[4] Withdrawals after the true-ups (changed rows only)", true);
-
-      log(`\n[5] Resulting ledger checks`);
-      const stored = db
-        .prepare(`SELECT as_of_date, value FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
-        .all(accountId) as { as_of_date: string; value: number }[];
-      const diffs: number[] = [];
-      for (const v of stored) {
-        const px = fundUnitClpOnOrBefore(AFC_CIC_SERIES_KEY, v.as_of_date);
-        if (px == null) continue;
-        const derived = Math.round(afpCuotasCumulativeThroughDate(accountId, v.as_of_date) * px);
-        if (v.value > 0) diffs.push((derived - v.value) / v.value);
-      }
-      if (diffs.length > 0) {
-        const abs = diffs.map(Math.abs).sort((a, b) => a - b);
-        log(
-          `stored excel month-ends vs ledger × valor cuota: n=${diffs.length}, median |diff| ${(abs[Math.floor(abs.length / 2)]! * 100).toFixed(2)}%, max |diff| ${(abs[abs.length - 1]! * 100).toFixed(2)}%`
+          `${w.status.padEnd(10)} id ${w.movement.id}  ${w.movement.occurred_on}  ${fmt(Math.abs(w.movement.amount)).padStart(12)}  px ${w.px.toFixed(2)}  cuotas ${w.units_abs.toFixed(4)}${w.closes_position ? "  (closes the position)" : ""}`
         );
       }
-      const last = db
-        .prepare(`SELECT occurred_on FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ? ORDER BY date(occurred_on) DESC, id DESC LIMIT 1`)
-        .get(accountId, accountId, accountId) as { occurred_on: string } | undefined;
-      if (last) log(`cuotas after the last movement (${last.occurred_on}): ${afpCuotasCumulativeThroughDate(accountId, last.occurred_on).toFixed(4)}`);
-      if (!payload.apply) throw new Rollback("report only");
-    })();
-    log(`\nAPPLIED.`);
-  } catch (e) {
-    if (!(e instanceof Rollback)) throw e;
-    log(`\nREPORT ONLY — every change above was rolled back. Re-run with --apply to write.`);
-  }
-  return { applied: payload.apply, account_id: accountId, report };
+      log(`→ units set on ${applyAfcWithdrawalUnits(wplan)} withdrawal(s)`);
+    };
+    withdrawals("[2] Withdrawals", false);
+
+    for (const statement of payload.statements) {
+      const cartola = afcCartolaFromPayload(statement);
+      log(
+        `\n[3] Cartola ${cartola.period_from_ymd}..${cartola.period_to_ymd}: saldo ${cartola.saldo_inicial_ymd} ${fmt(cartola.saldo_inicial_clp)} → ${cartola.saldo_final_ymd} ${fmt(cartola.saldo_final_clp)}; ` +
+          `cotizaciones ${fmt(cartola.cotizaciones_clp)}, ganancia ${fmt(cartola.ganancia_clp)}, comisiones ${fmt(cartola.comisiones_clp)}`
+      );
+      const cplan = planAfcCartolaTrueUps(accountId, cartola);
+      for (const t of cplan.trueups) {
+        log(
+          `${t.status.padEnd(10)} saldo ${t.which.padEnd(7)} ${t.day_ymd}  target ${t.target_units.toFixed(4)} cuotas, ledger ${t.ledger_units.toFixed(4)} → true-up ${t.units.toFixed(4)} cuotas = ${fmt(t.amount_clp)} CLP (${t.flow_kind ?? "—"})`
+        );
+      }
+      const r3 = applyAfcCartolaTrueUps(cplan);
+      log(`→ true-ups: inserted ${r3.inserted}, updated ${r3.updated}, deleted ${r3.deleted}`);
+    }
+    if (payload.statements.length > 0) withdrawals("[4] Withdrawals after the true-ups (changed rows only)", true);
+
+    log(`\n[5] Resulting ledger checks`);
+    const stored = db
+      .prepare(`SELECT as_of_date, value FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
+      .all(accountId) as { as_of_date: string; value: number }[];
+    const diffs: number[] = [];
+    for (const v of stored) {
+      const px = fundUnitClpOnOrBefore(AFC_CIC_SERIES_KEY, v.as_of_date);
+      if (px == null) continue;
+      const derived = Math.round(afpCuotasCumulativeThroughDate(accountId, v.as_of_date) * px);
+      if (v.value > 0) diffs.push((derived - v.value) / v.value);
+    }
+    if (diffs.length > 0) {
+      const abs = diffs.map(Math.abs).sort((a, b) => a - b);
+      log(
+        `stored excel month-ends vs ledger × valor cuota: n=${diffs.length}, median |diff| ${(abs[Math.floor(abs.length / 2)]! * 100).toFixed(2)}%, max |diff| ${(abs[abs.length - 1]! * 100).toFixed(2)}%`
+      );
+    }
+    const last = db
+      .prepare(`SELECT occurred_on FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ? ORDER BY date(occurred_on) DESC, id DESC LIMIT 1`)
+      .get(accountId, accountId, accountId) as { occurred_on: string } | undefined;
+    if (last) log(`cuotas after the last movement (${last.occurred_on}): ${afpCuotasCumulativeThroughDate(accountId, last.occurred_on).toFixed(4)}`);
+  })();
+  return { account_id: accountId, report };
 }

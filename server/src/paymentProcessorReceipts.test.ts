@@ -376,6 +376,6 @@ describe("storePaymentProcessorReceipts", () => {
     expect(loadPaymentProcessorReceipts().find((r) => r.message_id === ID)?.charges).toEqual(charges);
     expect(() =>
       storePaymentProcessorReceipts(payload([{ amount: 8865, installments: null }, { amount: 6860, installments: null }]))
-    ).toThrow(/other content/);
+    ).toThrow(/already stored with other charges/);
   });
 });

@@ -528,7 +528,6 @@ export function lastClosedPeriodEndIso(accountId: number): string | null {
 // ---------------------------------------------------------------------------------------------
 
 export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApplyDetails {
-  const dryRun = !payload.apply;
   const facts = resolveReceiptFacts(incomingReceiptFromPayload(payload));
   const receipt = facts.staged;
   const { receiptKey, resolution } = resolveReceiptOwnership(receipt);
@@ -537,7 +536,7 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
   const purchaseIso = receipt.parsed.purchased_at.slice(0, 10);
   let receiptId = resolution.action === "insert" ? -1 : resolution.id;
   let classified = 0;
-  if (resolution.action !== "skip" && !dryRun) {
+  if (resolution.action !== "skip") {
     ({ receiptId, classified } = writeReceipt(receipt, receiptKey, resolution, rule));
   }
 
@@ -550,7 +549,7 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
       movement = { status: "chain_items_only" };
     } else if (line.status === "matched") {
       movement = { status: "matched", branch: receipt.parsed.sucursal, merchant: line.merchant };
-      if (!dryRun) markReceiptCardLine(receiptId, "matched", line.account_id);
+      markReceiptCardLine(receiptId, "matched", line.account_id);
     } else if (line.status === "no_card_line") {
       // A dated purchase the feed or statement has not listed yet keeps checking; an old one
       // (or an undated photo, whose date is now the photo's) stops.
@@ -568,7 +567,7 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
     const accountId = rule.master_account_id();
     const closedThrough = lastClosedPeriodEndIso(accountId);
     const branch = receipt.parsed.sucursal;
-    const stored = dryRun || receiptId < 0 ? null : receiptCardLineStatus(receiptId);
+    const stored = receiptId < 0 ? null : receiptCardLineStatus(receiptId);
     const pending: PendingBranchReceipt = {
       receipt_id: receiptId,
       store_chain: receipt.chain,
@@ -592,18 +591,12 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
     } else {
       const merchant = resolveBranchMerchant(receipt.chain, branch, rule.branch_merchants());
       if (!merchant) {
-        if (dryRun) {
-          movement = { status: "pending_branch", branch };
-        } else {
-          // Flag, don't fail: the bank's own line for this day and amount — whichever source
-          // writes it — pairs the receipt and teaches the branch's merchant string. The line
-          // may already be there (a paste that beat the receipt), so try at once.
-          markReceiptCardLine(receiptId, "pending_branch", accountId);
-          const learned = learnBranchForPendingReceipt(pending);
-          movement = learned.status === "learned" ? { status: "matched", branch, merchant: learned.merchant } : { status: "pending_branch", branch };
-        }
-      } else if (dryRun) {
-        movement = { status: "created" };
+        // Flag, don't fail: the bank's own line for this day and amount — whichever source
+        // writes it — pairs the receipt and teaches the branch's merchant string. The line
+        // may already be there (a paste that beat the receipt), so try at once.
+        markReceiptCardLine(receiptId, "pending_branch", accountId);
+        const learned = learnBranchForPendingReceipt(pending);
+        movement = learned.status === "learned" ? { status: "matched", branch, merchant: learned.merchant } : { status: "pending_branch", branch };
       } else {
         const line: CcWebPasteLine = {
           transaction_date: purchaseIso,

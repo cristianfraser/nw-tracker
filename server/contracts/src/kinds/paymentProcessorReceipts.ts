@@ -159,6 +159,7 @@ export const paymentProcessorReceiptsKind = defineIngestKind({
   // may state no amount (`amount: null`).
   schema_version: 3,
   description: "Payment processors' receipts and shops' order confirmations: who each charge paid, for what.",
+  ref: "read",
   payload: z
     .object({ receipts: z.array(processorReceiptSchema) })
     .strict()

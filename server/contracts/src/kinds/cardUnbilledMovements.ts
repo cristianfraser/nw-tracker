@@ -134,6 +134,7 @@ export const cardUnbilledMovementsKind = defineIngestKind({
   kind: "card.unbilled_movements",
   schema_version: 1,
   description: "A card issuer's unbilled movements since its latest close, with that close and its credit-line balances.",
+  ref: "document",
   payload: z
     .object({
       observed_at: z.iso.datetime({ offset: true }),

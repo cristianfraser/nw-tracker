@@ -18,7 +18,7 @@ import { bankCupoCaptureFromListing, recordBankCupoCapture } from "./santanderBa
 export function applyBankProductSummary(
   payload: BankProductSummaryPayload,
   sourceRef: string
-): { duplicate: boolean; details: BankProductSummaryApplyDetails } {
+): BankProductSummaryApplyDetails {
   const fetch = new Set<BankProductSummaryFetchStep>();
   const mismatches: string[] = [];
 
@@ -35,14 +35,12 @@ export function applyBankProductSummary(
     }
   }
 
-  let duplicate = cupo.status === "seen";
   if (payload.accounts.length > 0) {
     const balances = applyBankAccountBalances(
       { issuer: payload.issuer, observed_at: payload.observed_at, accounts: payload.accounts },
       sourceRef
     );
-    duplicate = duplicate && balances.duplicate;
-    const numberOf = new Map(balances.details.known.map((k) => [`${k.account_id}|${k.currency}`, k.number]));
+    const numberOf = new Map(balances.known.map((k) => [`${k.account_id}|${k.currency}`, k.number]));
     for (const v of judgeLatestBankAccountBalances()) {
       if (v.status === "ok") continue;
       const number = numberOf.get(`${v.account_id}|${v.currency}`);
@@ -58,5 +56,5 @@ export function applyBankProductSummary(
       );
     }
   }
-  return { duplicate, details: { fetch: [...fetch], mismatches } };
+  return { fetch: [...fetch], mismatches };
 }

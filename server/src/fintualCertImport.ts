@@ -170,11 +170,10 @@ function loadExistingFlows(accountIds: number[]): ExistingFlow[] {
 }
 
 export type FintualCertImportResult = {
-  applied: boolean;
   accountsEnsured: number;
   /** Certificado rows covered by an existing flow (single-leg, transfer leg, or cert row). */
   matched: number;
-  /** Certificado rows with no matching flow in the DB — added when applied, listed otherwise. */
+  /** Certificado rows with no matching flow in the DB — added. */
   missing: { importNote: string; ymd: string; amountClp: number }[];
   /** DB flows on the cert accounts that no certificado row matches (manual edits, older certs) — never modified. */
   dbOnly: { importNote: string; ymd: string; amountClp: number; kind: string }[];
@@ -190,14 +189,13 @@ export type FintualCertImportResult = {
  * entry; signed by direction) — with the exact amount within a ±CERT_MATCH_WINDOW_DAYS window
  * (transfer legs are dated the checking-outflow day, the cert the settlement day). Multiplicity
  * aware: each existing flow covers at most one cert row, nearest date first. Only cert rows no
- * flow covers are reported and — when `apply` is set — added. DB flows the certificado does not
- * cover are reported for manual review.
+ * flow covers are reported and added. DB flows the certificado does not cover are reported for
+ * manual review. A report-only run is the ingest receiver's dry run (rolled back).
  */
 export function importFintualCertificado(
   transactions: FundAccountTransactionsPayload["transactions"],
-  opts?: { maxMonth?: string; apply?: boolean }
+  opts?: { maxMonth?: string }
 ): FintualCertImportResult {
-  const apply = opts?.apply ?? false;
   const maxMonth = opts?.maxMonth ?? chileCalendarTodayYmd().slice(0, 7);
   const scan = aggregateFintualCertificado(transactions, maxMonth, matchFintualCertGoalV2);
   const plan = certPlanRows(scan);
@@ -249,10 +247,7 @@ export function importFintualCertificado(
         continue;
       }
       missing.push({ importNote: p.importNote, ymd: p.ymd, amountClp: p.amountClp });
-      if (apply) {
-        const ud = p.cuotasNet !== 0 ? p.cuotasNet : null;
-        insMov.run(accountId, p.amountClp, p.ymd, p.note, ud, p.flowKind);
-      }
+      insMov.run(accountId, p.amountClp, p.ymd, p.note, p.cuotasNet !== 0 ? p.cuotasNet : null, p.flowKind);
     }
 
     const dbOnly: FintualCertImportResult["dbOnly"] = [];
@@ -267,13 +262,10 @@ export function importFintualCertificado(
       });
     }
 
-    // Valor-cuota hints and nav/sync reseed are additive/idempotent — only on apply.
-    let fundUnitRows = 0;
-    if (apply) {
-      fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertGoalV2, false);
-      seedNavTree();
-      reseedAllAccountSyncSources();
-    }
+    // Valor-cuota hints and nav/sync reseed are additive/idempotent.
+    const fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertGoalV2, false);
+    seedNavTree();
+    reseedAllAccountSyncSources();
 
     return {
       accountsEnsured: ids.length,
@@ -284,35 +276,12 @@ export function importFintualCertificado(
     };
   });
 
-  if (!apply) {
-    // Report-only: roll back the ensureAccounts side effect so a report never writes.
-    let preview: Omit<FintualCertImportResult, "applied"> = {
-      accountsEnsured: 0,
-      matched: 0,
-      missing: [],
-      dbOnly: [],
-      fundUnitRows: 0,
-    };
-    const rollback = db.transaction(() => {
-      preview = reconcile();
-      throw new ROLLBACK_SENTINEL();
-    });
-    try {
-      rollback();
-    } catch (e) {
-      if (!(e instanceof ROLLBACK_SENTINEL)) throw e;
-    }
-    return { applied: false, ...preview };
-  }
-
-  const res = reconcile();
-  return { applied: true, ...res };
+  return reconcile();
 }
 
 export function applyFundAccountTransactions(payload: FundAccountTransactionsPayload): FundAccountTransactionsApplyDetails {
-  const res = importFintualCertificado(payload.transactions, { apply: payload.apply, maxMonth: payload.max_month ?? undefined });
+  const res = importFintualCertificado(payload.transactions, { maxMonth: payload.max_month ?? undefined });
   return {
-    applied: res.applied,
     accounts_ensured: res.accountsEnsured,
     matched: res.matched,
     missing: res.missing.map((m) => ({ account: m.importNote, date: m.ymd, amount_clp: m.amountClp })),
@@ -321,5 +290,3 @@ export function applyFundAccountTransactions(payload: FundAccountTransactionsPay
   };
 }
 
-/** Internal marker to roll back the dry-run transaction without surfacing an error. */
-class ROLLBACK_SENTINEL extends Error {}

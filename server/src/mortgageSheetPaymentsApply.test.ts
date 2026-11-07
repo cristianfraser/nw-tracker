@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { MortgageSheetPaymentRow, MortgageSheetPaymentsPayload } from "nw-tracker-contracts";
+import type { MortgageSheetPaymentRow, MortgageSheetPaymentsApplyDetails, MortgageSheetPaymentsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import {
   deptoPaymentHumanNote,
@@ -9,7 +9,7 @@ import {
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import { DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { applyMortgageSheetPayments } from "./mortgageSheetPaymentsApply.js";
+import { receiveIngest } from "./ingestHandlers.js";
 
 /**
  * Synthetic depto: a property + mortgage master under the lean test DB's own asset groups, a pie
@@ -110,9 +110,8 @@ const CUOTA_1 = sheetRow({
 const CUOTA_2 = sheetRow({});
 const CUOTA_3_FUTURE = sheetRow({ label: "3", paid_on: "2099-04-11", credito_restante_uf: 2977.2 });
 
-function payload(rows: MortgageSheetPaymentRow[], apply: boolean, sha = "1".repeat(64)): MortgageSheetPaymentsPayload {
+function payload(rows: MortgageSheetPaymentRow[], sha = "1".repeat(64)): MortgageSheetPaymentsPayload {
   return {
-    apply,
     document: { name: "fixture.numbers", sha256: sha, size: 1, modified_at: "1990-03-11T12:00:00Z" },
     sheet: "depto",
     table: "dividendos",
@@ -120,6 +119,12 @@ function payload(rows: MortgageSheetPaymentRow[], apply: boolean, sha = "1".repe
     projected: ["4"],
     accepted: [],
   };
+}
+
+/** Through the ingest receiver, as the feeder sends it: the ref is the document's sha256. */
+function send(p: MortgageSheetPaymentsPayload, write: boolean) {
+  const r = receiveIngest("mortgage.sheet_payments", p, { source: { channel: "file", ref: p.document.sha256 }, dryRun: !write });
+  return { status: r.status, details: r.details as unknown as MortgageSheetPaymentsApplyDetails };
 }
 
 describe("applyMortgageSheetPayments (synthetic depto)", () => {
@@ -132,6 +137,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
     // A DB that tracks a real depto keeps its own data; the fixture only runs on the lean test DB.
     skip = db.prepare(`SELECT 1 FROM accounts WHERE import_key IN (?, ?)`).get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, MORTGAGE_IMPORT_KEY) != null;
     if (skip) return;
+    db.prepare(`DELETE FROM ingest_documents WHERE kind = 'mortgage.sheet_payments' AND source_ref IN (?, ?)`).run("1".repeat(64), "2".repeat(64));
     for (const [date, clp] of FIXTURE_UF) {
       if (!db.prepare(`SELECT 1 FROM uf_daily WHERE date = ?`).get(date)) {
         db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`).run(date, clp);
@@ -186,6 +192,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
     }
     db.prepare(`DELETE FROM mortgage_sheet_imports WHERE document_name = 'fixture.numbers'`).run();
+    db.prepare(`DELETE FROM ingest_documents WHERE kind = 'mortgage.sheet_payments' AND source_ref IN (?, ?)`).run("1".repeat(64), "2".repeat(64));
     for (const date of insertedUf) db.prepare(`DELETE FROM uf_daily WHERE date = ?`).run(date);
   });
 
@@ -194,9 +201,8 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
   it("reports without writing: stored rows checked, a posted cuota written, a future one not due", () => {
     if (skip) return;
     const before = movementCount();
-    const r = applyMortgageSheetPayments(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE], false));
+    const r = send(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE]), false);
     expect(r.status).toBe("applied");
-    expect(r.details.applied).toBe(false);
     expect(r.details.drift).toEqual([]);
     expect(r.details.rows.map((x) => [x.label, x.status, x.filled])).toEqual([
       ["pie", "checked", []],
@@ -215,7 +221,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
   it("refuses a sheet row that disagrees with the ledger and writes nothing", () => {
     if (skip) return;
     const before = movementCount();
-    const r = applyMortgageSheetPayments(payload([PIE, { ...CUOTA_1, interes_clp: 601_510, amortizacion_clp: 558_390 }, CUOTA_2], true));
+    const r = send(payload([PIE, { ...CUOTA_1, interes_clp: 601_510, amortizacion_clp: 558_390 }, CUOTA_2]), true);
     expect(r.status).toBe("conflict");
     expect(r.details.drift.map((d) => [d.label, d.field, d.sheet, d.ledger])).toEqual([
       ["1", "interes_clp", 601_510, 601_500],
@@ -227,9 +233,9 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
 
   it("reports a declared difference instead of refusing", () => {
     if (skip) return;
-    const p = payload([PIE, { ...CUOTA_1, min_uf: 30.5 }, CUOTA_2], false);
+    const p = payload([PIE, { ...CUOTA_1, min_uf: 30.5 }, CUOTA_2]);
     p.accepted = [{ label: "1", field: "min_uf", reason: "the bank's own figure was rounded" }];
-    const r = applyMortgageSheetPayments(p);
+    const r = send(p, false);
     expect(r.status).toBe("applied");
     expect(r.details.drift).toEqual([]);
     expect(r.details.accepted).toEqual([{ label: "1", field: "min_uf", sheet: 30.5, ledger: 30, reason: "the bank's own figure was rounded" }]);
@@ -238,7 +244,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
 
   it("refuses a posted cuota whose split the app cannot reproduce", () => {
     if (skip) return;
-    const r = applyMortgageSheetPayments(payload([PIE, CUOTA_1, { ...CUOTA_2, amortizacion_clp: 97_000, amortizacion_ext_clp: 359_000 }], true));
+    const r = send(payload([PIE, CUOTA_1, { ...CUOTA_2, amortizacion_clp: 97_000, amortizacion_ext_clp: 359_000 }]), true);
     expect(r.status).toBe("conflict");
     expect(r.details.drift.map((d) => d.field).sort()).toEqual(["amortizacion_clp", "amortizacion_ext_clp"]);
   });
@@ -246,9 +252,8 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
   it("writes the posted cuota as the form would, fills max_uf, records the document, then answers duplicate", () => {
     if (skip) return;
     const before = movementCount();
-    const r = applyMortgageSheetPayments(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE], true));
+    const r = send(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE]), true);
     expect(r.status).toBe("applied");
-    expect(r.details.applied).toBe(true);
     expect(movementCount()).toBe(before + 2);
     const ledger = loadDeptoLedgerFromMovements();
     const c2 = ledger.find((x) => x.cuota === "2")!;
@@ -267,12 +272,12 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
     expect((db.prepare(`SELECT origin FROM loan_payments WHERE movement_id = ?`).get(written.mortgage_movement_id) as { origin: string }).origin).toBe("import");
     expect(ledger.find((x) => x.cuota === "1")!.max_uf).toBe(80.5);
 
-    const again = applyMortgageSheetPayments(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE], true));
+    const again = send(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE]), true);
     expect(again.status).toBe("duplicate");
     expect(movementCount()).toBe(before + 2);
 
     // A changed file with the same rows: everything checked, nothing written.
-    const edited = applyMortgageSheetPayments(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE], true, "2".repeat(64)));
+    const edited = send(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE], "2".repeat(64)), true);
     expect(edited.status).toBe("applied");
     expect(edited.details.rows.map((x) => x.status)).toEqual(["checked", "checked", "checked", "not_due"]);
     expect(movementCount()).toBe(before + 2);

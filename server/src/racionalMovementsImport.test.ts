@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { rolledBack } from "./ingestReceiver.js";
 import type { BrokerMovementsPayload } from "nw-tracker-contracts";
 import { brokerCleanThrough } from "./brokerReadCoverage.js";
 import { db } from "./db.js";
@@ -433,8 +434,10 @@ describe("racional reads — incomplete rows, read isolation, coverage", () => {
     execution_date: "2097-07-03T12:00:00.000Z",
     is_interest: false,
   };
-  const read = (readAt: string, movements: BrokerMovementsPayload["movements"], dividends: BrokerMovementsPayload["dividends"] = null, apply = true) =>
-    applyRacionalRead({ broker: "racional", apply, read_at: readAt, movements, dividends }, `movements-${readAt}.json`);
+  const read = (readAt: string, movements: BrokerMovementsPayload["movements"], dividends: BrokerMovementsPayload["dividends"] = null, write = true) => {
+    const send = () => applyRacionalRead({ broker: "racional", read_at: readAt, movements, dividends }, `movements-${readAt}.json`);
+    return write ? send() : rolledBack(send);
+  };
 
   function seedBuy(): number {
     return Number(
@@ -501,7 +504,7 @@ describe("racional reads — incomplete rows, read isolation, coverage", () => {
     // The dividends record alone says nothing about the movements a mail announced.
     expect(read("2097-07-09T01:00:00.000Z", null, [])).toMatchObject({ clean: false });
     // Report only covers nothing either.
-    expect(read("2097-07-10T01:00:00.000Z", [], null, false)).toMatchObject({ applied: false, clean: true });
+    expect(read("2097-07-10T01:00:00.000Z", [], null, false)).toMatchObject({ clean: true });
     expect(brokerCleanThrough("racional")).toBe("2097-07-05T01:00:00.000Z");
   });
 

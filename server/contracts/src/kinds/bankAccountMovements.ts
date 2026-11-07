@@ -64,6 +64,7 @@ export const bankAccountMovementsKind = defineIngestKind({
   kind: "bank_account.movements",
   schema_version: 2,
   description: "A bank account's recent movements (a partial listing, not a statement).",
+  ref: "read",
   payload: z
     .object({
       account: issuerBankAccountSchema,

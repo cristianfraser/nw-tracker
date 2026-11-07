@@ -566,7 +566,6 @@ describe("fintualEmailImport", () => {
     const copy = retiroMail("dup", 100000, "69.1041", "2026-08-31T15:08:35Z", id);
     const parsed = brokerNotificationsKind.payload.safeParse({
       broker: "fintual",
-      apply: true,
       notifications: [copy, { ...copy }],
     });
     expect(parsed.success).toBe(false);

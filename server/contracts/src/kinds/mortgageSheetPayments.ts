@@ -75,12 +75,11 @@ export type MortgageSheetPaymentRow = z.infer<typeof mortgageSheetPaymentRowSche
  */
 export const mortgageSheetPaymentsKind = defineIngestKind({
   kind: "mortgage.sheet_payments",
-  schema_version: 1,
+  schema_version: 2,
   description: "The user's mortgage payment sheet: pie, prepagos and the posted cuotas, as typed.",
+  ref: "document",
   payload: z
     .object({
-      /** False: report what the import would do, write nothing. */
-      apply: z.boolean(),
       document: z
         .object({
           name: z.string().trim().min(1),
@@ -122,7 +121,7 @@ export type MortgageSheetPaymentsPayload = z.infer<typeof mortgageSheetPaymentsK
 export type MortgageSheetRowOutcome = {
   label: string;
   paid_on: string;
-  /** `written`: the ledger rows were written (or would be, without `apply`); `checked`: already in
+  /** `written`: the ledger rows were written (rolled back again on a dry run); `checked`: already in
    *  the ledger and agreeing; `not_due`: posted with a future date, written once that day comes. */
   status: "written" | "checked" | "not_due";
   /** Columns the import filled on a stored row (`max_uf` the ledger lacked). */
@@ -133,7 +132,6 @@ export type MortgageSheetRowOutcome = {
 /** `details` of a `mortgage.sheet_payments` result (a conflict carries `drift`). */
 export type MortgageSheetPaymentsApplyDetails = {
   document: string;
-  applied: boolean;
   rows: MortgageSheetRowOutcome[];
   projected: string[];
   /** Stored rows whose figures differ from the sheet's: nothing was written. */

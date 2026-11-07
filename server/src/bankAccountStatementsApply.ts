@@ -58,9 +58,8 @@ export function bankStatementAccountId(account: BankAccountStatementsPayload["ac
 export function applyBankAccountStatements(payload: BankAccountStatementsPayload): BankAccountStatementsApplyDetails {
   const accountId = bankStatementAccountId(payload.account);
   const vista = payload.account.product === "demand_deposit";
-  const dryRun = !payload.apply;
   const fileLogs: CheckingCartolaFileImportLog[] = [];
-  if (!dryRun) prunePhantomBoundaryMonthCartolaImports(accountId);
+  prunePhantomBoundaryMonthCartolaImports(accountId);
 
   for (const u of payload.unreadable) {
     fileLogs.push({
@@ -84,8 +83,8 @@ export function applyBankAccountStatements(payload: BankAccountStatementsPayload
       list.push({ cartola, label });
       continue;
     }
-    if (!dryRun) pruneStaleCartolaMonthImportsForSourceFile(accountId, cartola.source_file, cartolaCalendarMonths(cartola));
-    if (payload.force_reimport && !dryRun) {
+    pruneStaleCartolaMonthImportsForSourceFile(accountId, cartola.source_file, cartolaCalendarMonths(cartola));
+    if (payload.force_reimport) {
       const cleared = deleteCheckingCartolaImportsForSourceFile(accountId, cartola.source_file);
       if (cleared.imports > 0 || cleared.movements > 0) {
         console.log(`  cleared prior import for ${cartola.source_file}: ${cleared.movements} movement(s), ${cleared.imports} registry row(s)`);
@@ -96,8 +95,9 @@ export function applyBankAccountStatements(payload: BankAccountStatementsPayload
     }
   }
   // The cuenta vista already cleared a re-imported document's months above.
-  importCartolaList(accountId, list, { dryRun, forceReimport: vista ? false : payload.force_reimport }, fileLogs);
-  const result = finishCartolaImportRun(accountId, { dryRun }, fileLogs, vista ? "cuenta vista" : undefined);
+  // A dry run is the ingest receiver's rollback.
+  importCartolaList(accountId, list, { dryRun: false, forceReimport: vista ? false : payload.force_reimport }, fileLogs);
+  const result = finishCartolaImportRun(accountId, { dryRun: false }, fileLogs, vista ? "cuenta vista" : undefined);
 
   const report = [
     `${vista ? "cuenta vista" : "checking"}: ${result.filesImported.length} file(s) imported, ` +
@@ -106,7 +106,6 @@ export function applyBankAccountStatements(payload: BankAccountStatementsPayload
   ];
   return {
     account_id: accountId,
-    applied: !dryRun,
     files: fileLogs.map((f) => ({
       file: f.file,
       period_month: f.period_month,

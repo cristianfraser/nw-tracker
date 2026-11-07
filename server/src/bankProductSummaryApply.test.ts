@@ -74,12 +74,12 @@ describe("bank product summary (hourly balance poll)", () => {
   it("reads only the listings of the products that disagree", () => {
     const agrees = applyBankProductSummary(summary(100, "2020-01-05T02:00:00.000Z"), REFS[0]!);
     // No card rows stated: the card feed is read to find out.
-    expect(agrees.details.fetch).toEqual(["card-movements"]);
-    expect(agrees.details.mismatches.some((m) => m.includes("Vitest Summary USD"))).toBe(false);
+    expect(agrees.fetch).toEqual(["card-movements"]);
+    expect(agrees.mismatches.some((m) => m.includes("Vitest Summary USD"))).toBe(false);
 
     const differs = applyBankProductSummary(summary(110, "2020-01-06T02:00:00.000Z"), REFS[1]!);
-    expect(differs.details.fetch).toEqual(["card-movements", "checking-usd-movements"]);
-    expect(differs.details.mismatches.find((m) => m.includes("Vitest Summary USD"))).toContain("app − bank -10");
+    expect(differs.fetch).toEqual(["card-movements", "checking-usd-movements"]);
+    expect(differs.mismatches.find((m) => m.includes("Vitest Summary USD"))).toContain("app − bank -10");
   });
 
   it("notifies a difference that stays after the listing was read, once per difference", () => {

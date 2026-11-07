@@ -18,9 +18,10 @@
  * A difference the user has declared (`accepted` in the payload, from the config) is reported
  * under `accepted` instead and does not block the import.
  *
- * Everything runs in one transaction that is rolled back without `apply` or on any drift, so the
- * report is the exact outcome and a refused import writes nothing. An applied document is
- * recorded in `mortgage_sheet_imports`; the same sha256 sent again answers `duplicate`.
+ * Everything runs in one transaction: drift throws `IngestConflict` (the receiver answers
+ * `conflict` with the report, nothing written), and a dry run is the receiver's rollback, so the
+ * report is the exact outcome. An applied document is recorded in `mortgage_sheet_imports`; the
+ * receiver answers `duplicate` to the same sha256 (the envelope's ref) sent again.
  */
 import type {
   MortgageSheetPaymentRow,
@@ -34,6 +35,7 @@ import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import { IngestConflict } from "./ingestReceiver.js";
 import { commitMortgagePayment, deptoMortgageAccountId, deptoPropertyAccountId } from "./mortgagePaymentCreate.js";
 import { computeMortgagePaymentRow } from "./mortgagePaymentCompute.js";
 import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
@@ -46,13 +48,6 @@ const UF_DAY_TOLERANCE = 0.011;
 
 type Drift = MortgageSheetPaymentsApplyDetails["drift"][number];
 
-export type MortgageSheetApplyOutcome = {
-  status: "applied" | "duplicate" | "conflict";
-  message?: string;
-  details: MortgageSheetPaymentsApplyDetails;
-};
-
-class RollbackAfterReport extends Error {}
 
 function near(a: number | null | undefined, b: number | null | undefined, tol: number): boolean {
   if (a == null && b == null) return true;
@@ -150,23 +145,15 @@ export function latestRegularMortgageCuotaPaidOn(): string | null {
   return row.d ?? null;
 }
 
-export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload): MortgageSheetApplyOutcome {
+export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload): MortgageSheetPaymentsApplyDetails {
   const details: MortgageSheetPaymentsApplyDetails = {
     document: payload.document.name,
-    applied: false,
     rows: [],
     projected: payload.projected,
     drift: [],
     accepted: [],
   };
   const acceptedReason = new Map(payload.accepted.map((a) => [`${a.label}|${a.field}`, a.reason]));
-  const already = db.prepare(`SELECT id, applied_at FROM mortgage_sheet_imports WHERE sha256 = ? ORDER BY id DESC LIMIT 1`).get(payload.document.sha256) as
-    | { id: number; applied_at: string }
-    | undefined;
-  if (already && payload.apply) {
-    return { status: "duplicate", message: `${payload.document.name} (sha256 ${payload.document.sha256.slice(0, 12)}) was applied ${already.applied_at}`, details };
-  }
-
   const mortgageId = deptoMortgageAccountId();
   const today = chileCalendarTodayYmd();
   const written: MortgageSheetRowOutcome[] = [];
@@ -210,7 +197,18 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
       written.push(outcome);
       ledger = loadDeptoLedgerFromMovements();
     }
-    if (details.drift.length > 0 || !payload.apply) throw new RollbackAfterReport();
+    if (details.drift.length > 0) {
+      const first = details.drift[0]!;
+      throw new IngestConflict(
+        `${details.drift.length} difference(s) between the sheet and the ledger — nothing written (first: row ${first.label} ${first.field}: sheet ${first.sheet}, ledger ${first.ledger})`,
+        details.drift.map((d) => ({
+          at: `loan_payments:${d.label}`,
+          fields: [d.field],
+          message: `row ${d.label} ${d.field}: sheet ${d.sheet}, ledger ${d.ledger}`,
+        })),
+        details
+      );
+    }
     db.prepare(
       `INSERT INTO mortgage_sheet_imports (document_name, sha256, document_size, document_modified_at, rows_written, rows_checked)
        VALUES (?, ?, ?, ?, ?, ?)`
@@ -226,8 +224,8 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
   try {
     run();
   } catch (e) {
-    if (!(e instanceof RollbackAfterReport)) throw e;
     for (const w of written) w.mortgage_movement_id = null;
+    throw e;
   } finally {
     // The ledger was re-read inside the transaction after each write (the next row's compute
     // needs it), so the memo holds rows a rollback took back — and max_uf fills the DB no
@@ -239,14 +237,5 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
       invalidateAggregationForAccountDate(deptoPropertyAccountId(), earliest);
     }
   }
-  if (details.drift.length > 0) {
-    const first = details.drift[0]!;
-    return {
-      status: "conflict",
-      message: `${details.drift.length} difference(s) between the sheet and the ledger — nothing written (first: row ${first.label} ${first.field}: sheet ${first.sheet}, ledger ${first.ledger})`,
-      details,
-    };
-  }
-  details.applied = payload.apply;
-  return { status: "applied", details };
+  return details;
 }
