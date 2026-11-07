@@ -1,45 +1,48 @@
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { nwBucketSlugs } from "./navTreeModel.js";
 import {
   buildDashboardBucketValueTotals,
   dashboardBucketDayPriorCloses,
+  type DashboardBucketValueTotals,
 } from "./portfolioGroupValueAtDate.js";
 
 /** Prior bucket closes for the day window — every account marked at yesterday. */
-function dailyPriorCloseTotals(priorDayYmd: string, includeUsd: boolean) {
+function dailyPriorCloseTotals(priorDayYmd: string, includeUsd: boolean): DashboardBucketValueTotals {
   const { clp, usd } = dashboardBucketDayPriorCloses(priorDayYmd);
-  const base = {
-    net_worth_clp: clp.net_worth,
-    real_estate_clp: clp.real_estate,
-    retirement_clp: clp.retirement,
-    brokerage_clp: clp.brokerage,
-    cash_eqs_clp: clp.cash_eqs,
-  };
-  if (!includeUsd) return base;
-  return {
-    ...base,
-    net_worth_usd: usd.net_worth,
-    real_estate_usd: usd.real_estate,
-    retirement_usd: usd.retirement,
-    brokerage_usd: usd.brokerage,
-    cash_eqs_usd: usd.cash_eqs,
-  };
+  const out: DashboardBucketValueTotals = { net_worth_clp: clp.net_worth };
+  for (const slug of nwBucketSlugs()) out[`${slug}_clp`] = clp[slug]!;
+  if (!includeUsd) return out;
+  out.net_worth_usd = usd.net_worth;
+  for (const slug of nwBucketSlugs()) out[`${slug}_usd`] = usd[slug];
+  return out;
 }
 
+export type DashboardNwBucketTotals = DashboardBucketValueTotals & {
+  prior_closes: {
+    month_end: string;
+    year_end: string;
+    day_end: string;
+    month: DashboardBucketValueTotals;
+    year: DashboardBucketValueTotals;
+    day: DashboardBucketValueTotals;
+  };
+};
+
 /** Live NW bucket totals + prior period closes (consolidated valuation — overview chart). */
-export function buildDashboardNwBucketTotals(includeUsd: boolean) {
+export function buildDashboardNwBucketTotals(includeUsd: boolean): DashboardNwBucketTotals {
   const asOfToday = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", asOfToday);
   const priorYearEnd = priorPeriodEndYmd("ytd", asOfToday);
   const priorDayYmd = chileCalendarAddDays(asOfToday, -1);
   const live = buildDashboardBucketValueTotals(asOfToday, includeUsd);
+  const clp: DashboardBucketValueTotals = { net_worth_clp: live.net_worth_clp };
+  for (const slug of nwBucketSlugs()) clp[`${slug}_clp`] = live[`${slug}_clp`];
+  const usd: Record<`${string}_usd`, number | null | undefined> = { net_worth_usd: live.net_worth_usd };
+  for (const slug of nwBucketSlugs()) usd[`${slug}_usd`] = live[`${slug}_usd`];
 
   return {
-    net_worth_clp: live.net_worth_clp,
-    real_estate_clp: live.real_estate_clp,
-    retirement_clp: live.retirement_clp,
-    brokerage_clp: live.brokerage_clp,
-    cash_eqs_clp: live.cash_eqs_clp,
+    ...clp,
     prior_closes: {
       month_end: priorMonthEnd,
       year_end: priorYearEnd,
@@ -51,14 +54,6 @@ export function buildDashboardNwBucketTotals(includeUsd: boolean) {
       // prior close equal today's live value (day deltas ≈ 0).
       day: dailyPriorCloseTotals(priorDayYmd, includeUsd),
     },
-    ...(includeUsd
-      ? {
-          net_worth_usd: live.net_worth_usd,
-          real_estate_usd: live.real_estate_usd,
-          retirement_usd: live.retirement_usd,
-          brokerage_usd: live.brokerage_usd,
-          cash_eqs_usd: live.cash_eqs_usd,
-        }
-      : {}),
+    ...(includeUsd ? usd : {}),
   };
 }

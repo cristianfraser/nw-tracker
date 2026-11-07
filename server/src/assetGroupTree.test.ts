@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  accountBelongsToDashboardBucket,
   assetGroupBySlug,
   dashboardBucketForAssetGroupSlug,
   isLeafAssetGroupSlug,
@@ -32,20 +31,6 @@ describe("assetGroupTree", () => {
     expect(dashboardBucketForAssetGroupSlug("cash_eqs__checking_accounts")).toBe("cash_eqs");
     expect(dashboardBucketForAssetGroupSlug("cash_eqs__fondo_reserva")).toBe("cash_eqs");
     expect(dashboardBucketForAssetGroupSlug("cash_eqs__cuenta_corriente")).toBe("cash_eqs");
-    expect(
-      accountBelongsToDashboardBucket({
-        group_slug: "brokerage_acciones",
-        bucket_slug: "brokerage_acciones",
-        dashboard_bucket_slug: "brokerage",
-      }, "brokerage")
-    ).toBe(true);
-    expect(
-      accountBelongsToDashboardBucket({
-        group_slug: "brokerage_acciones",
-        bucket_slug: "brokerage_acciones",
-        dashboard_bucket_slug: "brokerage",
-      }, "retirement")
-    ).toBe(false);
   });
 
   it("lists acciones tab accounts from portfolio brokerage_acciones group", () => {

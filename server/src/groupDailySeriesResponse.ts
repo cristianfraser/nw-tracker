@@ -1,3 +1,4 @@
+import { groupHasPropertyOverlay } from "./navTreeModel.js";
 import { accountIsDebt } from "./accountProfile.js";
 import { cacheKeyAccountDailySeriesResponse, cacheKeyGroupDailySeriesResponse } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
@@ -7,11 +8,8 @@ import { dailyPerfLevelsForAccount, dailyPerfLevelsForGroup } from "./dailyPerfL
 import { dailyReferenceLinesForChartHost, deptoPropertyChartOverlayDailyLines } from "./dailyReferenceLines.js";
 import { groupDailySeriesAccounts } from "./dailySeries.js";
 import {
-  buildLiabilitiesChartBucketPlan,
-  buildNavChartBucketPlan,
-  shouldAggregateLiabilitiesCharts,
-  shouldAggregateNavCharts,
   type ChartBucketPlan,
+  pageChartPlan,
 } from "./groupChartBuckets.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
 import { HeavyWork, timeHeavy } from "./heavyWork.js";
@@ -48,18 +46,9 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
   // so hub pages (e.g. Inversiones) show second-level buckets with Agrupado off instead
   // of the raw per-leaf lines.
   const navNode = getNavChartGroupNodeBySlug(portfolioGroup);
-  const isLiabilities = navNode ? shouldAggregateLiabilitiesCharts(navNode) : false;
-  const plan = navNode
-    ? isLiabilities
-      ? buildLiabilitiesChartBucketPlan(navNode)
-      : shouldAggregateNavCharts(navNode, true)
-        ? buildNavChartBucketPlan(navNode, true)
-        : null
-    : null;
-  const ungroupedCandidate =
-    navNode && !isLiabilities && shouldAggregateNavCharts(navNode, false)
-      ? buildNavChartBucketPlan(navNode, false)
-      : null;
+  const chartPlan = navNode ? pageChartPlan(navNode) : null;
+  const plan = chartPlan?.kind === "liabilities" ? chartPlan.plan : chartPlan?.grouped ?? null;
+  const ungroupedCandidate = chartPlan?.kind === "nav" ? chartPlan.ungrouped : null;
   // Leaf pages resolve both modes to the same buckets — skip the redundant twin payload
   // (the client reuses `grouped_accounts` for the ungrouped view; same plan, same ids).
   const ungroupedPlan: ChartBucketPlan | null =
@@ -149,7 +138,7 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
   // not enter composition shares or bucket sums (the monthly path excludes them the same
   // way, via the `valueSeriesType === "data"` filter).
   const groupOverlays =
-    portfolioGroup === "real_estate" && withRefs.accounts?.length
+    groupHasPropertyOverlay(portfolioGroup) && withRefs.accounts?.length
       ? deptoPropertyChartOverlayDailyLines(dailyDates, unit)
       : [];
   // Pasivos root / credit-card group / issuer pages: the day-period CC historial lines

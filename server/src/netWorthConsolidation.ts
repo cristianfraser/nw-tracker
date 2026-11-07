@@ -1,5 +1,5 @@
 /**
- * Canonical Patrimonio neto consolidated monthly series: Σ four dashboard buckets
+ * Canonical Patrimonio neto consolidated monthly series: Σ of the net-worth buckets
  * (cash_eqs CC-adjusted via per-bucket consolidation).
  */
 
@@ -12,15 +12,8 @@ import {
   type ConsolidatedMonthlyPerfRow,
   type TsUnit,
 } from "./groupMonthlyPerfConsolidation.js";
-import {
-  NW_DASHBOARD_BUCKET_SLUGS,
-  portfolioGroupSlugForDashboardBucket,
-  type NwDashboardBucketSlug,
-} from "./portfolioGroupValueAtDate.js";
+import { investmentRootSlugs, nwBucketSlugs } from "./navTreeModel.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
-
-/** Dashboard buckets rolled into the inversiones nav hub (brokerage + retirement). */
-export const INVERSIONES_DASHBOARD_BUCKET_SLUGS = ["brokerage", "retirement"] as const;
 
 function sumBucketConsolidatedRows(
   bucketRows: readonly ConsolidatedMonthlyPerfRow[][],
@@ -88,29 +81,25 @@ function sumBucketConsolidatedRows(
   return withRunningPlTotals(asc).reverse();
 }
 
-function loadBucketConsolidatedMonthly(
-  bucket: NwDashboardBucketSlug,
-  unit: TsUnit
-): ConsolidatedMonthlyPerfRow[] {
-  const pgSlug = portfolioGroupSlugForDashboardBucket(bucket);
-  const tabRows = listAccountsForGroupTab(pgSlug);
+function loadBucketConsolidatedMonthly(bucket: string, unit: TsUnit): ConsolidatedMonthlyPerfRow[] {
+  const tabRows = listAccountsForGroupTab(bucket);
   if (!tabRows.length) return [];
-  return getGroupConsolidatedMonthlyPerfForRows(tabRows, pgSlug, unit);
+  return getGroupConsolidatedMonthlyPerfForRows(tabRows, bucket, unit);
 }
 
 /** Patrimonio neto consolidated monthly (newest first). Single source for card, chart, detalle. */
 export function buildNetWorthConsolidatedMonthly(unit: TsUnit = "clp"): ConsolidatedMonthlyPerfRow[] {
-  const bucketRows = NW_DASHBOARD_BUCKET_SLUGS.map((slug) =>
+  const bucketRows = nwBucketSlugs().map((slug) =>
     loadBucketConsolidatedMonthly(slug, unit)
   );
   return sumBucketConsolidatedRows(bucketRows, unit);
 }
 
-/** Inversiones nav hub: Σ brokerage + retirement bucket consolidations (same path as child group pages). */
+/** Inversiones nav hub: Σ of the investment roots' consolidations (same path as child group pages). */
 export function buildInversionesConsolidatedMonthly(
   unit: TsUnit = "clp"
 ): ConsolidatedMonthlyPerfRow[] {
-  const bucketRows = INVERSIONES_DASHBOARD_BUCKET_SLUGS.map((slug) =>
+  const bucketRows = investmentRootSlugs().map((slug) =>
     loadBucketConsolidatedMonthly(slug, unit)
   );
   return sumBucketConsolidatedRows(bucketRows, unit);

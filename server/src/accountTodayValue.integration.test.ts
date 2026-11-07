@@ -8,7 +8,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { accountIsDebt as isLiabilityAccountId } from "./accountProfile.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
-import { NW_DASHBOARD_BUCKET_SLUGS } from "./portfolioGroupValueAtDate.js";
+import { nwBucketSlugs } from "./navTreeModel.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { getDashboardOverviewBlock } from "./valuationTimeseries.js";
@@ -102,7 +102,7 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
     };
     let sumCards = 0;
     const mismatches: string[] = [];
-    for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+    for (const slug of nwBucketSlugs()) {
       const card = cardUsd[slug];
       expect(card, `${slug} card USD`).not.toBeNull();
       sumCards += card!;

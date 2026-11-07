@@ -1,23 +1,21 @@
+import { accountProfile } from "./accountProfile.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug, type CcIssuerSlug } from "./ccIssuers.js";
 import { db } from "./db.js";
 
-/** Operational CC masters in asset group `credit_cards` (Gastos, category PATCH allowlist). */
+/**
+ * The operational card masters (Gastos, the category PATCH allowlist, the Pasivos seed): every
+ * `credit_card_master|…` account whose profile is a card, superseded masters left out. The one
+ * card-master list: Pasivos and the cash netting read its stored copy (the Pasivos group items).
+ */
 export function listCreditCardMasterAccountIds(): number[] {
   const rows = db
-    .prepare(
-      `SELECT a.id
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (g.slug = 'credit_card' OR g.slug LIKE '%__credit_card')
-         AND a.import_key LIKE 'credit_card_master|%'
-       ORDER BY a.import_key`
-    )
+    .prepare(`SELECT id FROM accounts WHERE import_key LIKE 'credit_card_master|%' ORDER BY import_key`)
     .all() as { id: number }[];
   return rows
     .map((r) => r.id)
-    .filter((id) => !isSupersededSantanderCcMaster(id));
+    .filter((id) => accountProfile(id).kind === "credit_card" && !isSupersededSantanderCcMaster(id));
 }
 
 /**

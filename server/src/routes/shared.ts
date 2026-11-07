@@ -12,7 +12,6 @@ export function accountIdFromReq(req: { params: { id?: string } }): number {
 }
 
 export function isKnownClassTabGroup(group: string): boolean {
-  if (group === "inversiones") return true;
   if (isResolvablePortfolioGroupSlug(group)) return true;
   const ag = db.prepare(`SELECT 1 AS o FROM asset_groups WHERE slug = ?`).get(group) as
     | { o: number }

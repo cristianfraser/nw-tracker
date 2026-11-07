@@ -2,7 +2,7 @@
  * Chart reference lines built from `portfolio_groups` with `group_kind = 'reference'`
  * and `portfolio_group_items` with `item_kind = 'linked_group'` (weighted child groups).
  */
-import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
+import { chartHostOfGroup } from "./navTreeModel.js";
 import { db } from "./db.js";
 
 /**
@@ -14,9 +14,8 @@ export function chartHostSlugForValuationGroup(
   groupSlug: string,
   tabSubgroup?: string
 ): string | null {
-  if (groupSlug === "liabilities" && !tabSubgroup) return "liabilities";
-  if (isCashEqsNwValuationGroupSlug(groupSlug)) return "cash_eqs";
-  return null;
+  if (tabSubgroup) return null;
+  return chartHostOfGroup(groupSlug);
 }
 
 export type ReferenceGroupDef = {

@@ -1,11 +1,6 @@
 /** Home dashboard bundles, valuation timeseries, group tables/flows/performance. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
-import {
-  isResolvablePortfolioGroupSlug,
-  normalizeLegacyTabSubgroup,
-  portfolioGroupBySlug,
-  resolvePortfolioGroupSlugForLegacyTab,
-} from "../portfolioGroupTree.js";
+import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
 import { attachColorsToValuationPayload } from "../chartColorRgb.js";
 import {
   groupConsolidatedTablesResponse,
@@ -154,7 +149,7 @@ app.get("/api/dashboard/inversiones-perf-daily", asyncHandler(async (req, res) =
 }));
 
 /**
- * Valuation time series: main dashboard (no `group`) or per-class tab (`group=retirement|brokerage|…`).
+ * Valuation time series: main dashboard (no `portfolio_group`) or a group page (`portfolio_group=<slug>`).
  * Query: include_usd / include_uf → unit (main dashboard UI only uses CLP+USD; UF kept for other consumers).
  */
 app.get("/api/dashboard/valuation-timeseries", (req, res) => {
@@ -164,22 +159,12 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
 
   const portfolioGroup =
     typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
-  const group = typeof req.query.group === "string" ? req.query.group.trim() : "";
-  if (portfolioGroup || group) {
-    const subRaw = group ? normalizeLegacyTabSubgroup(req.query.subgroup) : undefined;
-    if (subRaw === null) {
-      res.status(400).json({ error: "invalid subgroup" });
-      return;
-    }
-    const tabSlug = portfolioGroup
-      ? portfolioGroup
-      : resolvePortfolioGroupSlugForLegacyTab(group, subRaw) ??
-        (portfolioGroupBySlug(group) ? group : null);
-    if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
+  if (portfolioGroup) {
+    if (!isKnownClassTabGroup(portfolioGroup)) {
       res.status(400).json({ error: "unknown group slug" });
       return;
     }
-    res.json(groupValuationTsResponse(tabSlug, unit));
+    res.json(groupValuationTsResponse(portfolioGroup, unit));
     return;
   }
 
@@ -189,22 +174,11 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
 /** Group consolidated tables: per-account monthly perf + movements in one response. */
 app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
   const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
-  if (!isKnownClassTabGroup(slug)) {
+  if (!isResolvablePortfolioGroupSlug(slug)) {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
-  if (subRaw === null) {
-    res.status(400).json({ error: "invalid subgroup" });
-    return;
-  }
-  const tabSlug =
-    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
-    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
-  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
-    res.status(400).json({ error: "unknown group slug" });
-    return;
-  }
+  const tabSlug = slug;
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(groupConsolidatedTablesResponse(tabSlug, unit));
@@ -268,22 +242,11 @@ app.get("/api/dashboard/latest-expenses", (req, res) => {
 /** Server-paginated consolidated detalle-por-mes rows (dashboard net_worth table). */
 app.get("/api/groups/:slug/consolidated-monthly", (req, res) => {
   const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
-  if (!isKnownClassTabGroup(slug)) {
+  if (!isResolvablePortfolioGroupSlug(slug)) {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
-  if (subRaw === null) {
-    res.status(400).json({ error: "invalid subgroup" });
-    return;
-  }
-  const tabSlug =
-    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
-    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
-  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
-    res.status(400).json({ error: "unknown group slug" });
-    return;
-  }
+  const tabSlug = slug;
   const periodRaw = typeof req.query.period === "string" ? req.query.period : "month";
   if (periodRaw !== "month" && periodRaw !== "year") {
     res.status(400).json({ error: "invalid period" });
@@ -303,22 +266,11 @@ app.get("/api/groups/:slug/consolidated-monthly", (req, res) => {
 /** Paginated + filtered flows for a group (server-side). */
 app.get("/api/groups/:slug/flows", (req, res) => {
   const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
-  if (!isKnownClassTabGroup(slug)) {
+  if (!isResolvablePortfolioGroupSlug(slug)) {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
-  if (subRaw === null) {
-    res.status(400).json({ error: "invalid subgroup" });
-    return;
-  }
-  const tabSlug =
-    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
-    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
-  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
-    res.status(400).json({ error: "unknown group slug" });
-    return;
-  }
+  const tabSlug = slug;
   const { page, pageSize } = parsePageParams(req.query as Record<string, unknown>, 20);
   const filters: FlowsFilters = {};
   if (typeof req.query.year === "string" && req.query.year.trim()) filters.year = req.query.year.trim();
@@ -369,22 +321,11 @@ app.get("/api/accounts/:id/flows", (req, res) => {
 /** Per-class tab: month P/L bars per account + combined YTD area + ΣΔ line (derived, not stored). */
 app.get("/api/groups/:slug/performance-monthly", (req, res) => {
   const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
-  if (!isKnownClassTabGroup(slug)) {
+  if (!isResolvablePortfolioGroupSlug(slug)) {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
-  if (subRaw === null) {
-    res.status(400).json({ error: "invalid subgroup" });
-    return;
-  }
-  const tabSlug =
-    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
-    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
-  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
-    res.status(400).json({ error: "unknown group slug" });
-    return;
-  }
+  const tabSlug = slug;
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(groupMonthlyPlSeriesResponse(tabSlug, unit));

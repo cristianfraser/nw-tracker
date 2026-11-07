@@ -380,14 +380,15 @@ describe("buildNavCardMetricsBySlug", () => {
       slug: "net_worth",
       children: [
         navNode({
-          slug: "cash_savings",
+          slug: "cash_eqs",
+          group_kind: "nav_bucket",
           dashboard_bucket_slug: "cash_eqs",
           children: [accountLeaf("acc-21", 21)],
         }),
       ],
     });
     const out = buildNavCardMetricsBySlug({ ...input, navRoots: [cashTree], rows: cashRows });
-    const cash = out.cash_savings!;
+    const cash = out.cash_eqs!;
     expect(cash.child.month.deposits_clp).toBe(150);
     expect(cash.child.month.delta_period_clp).toBe(34);
   });
@@ -453,11 +454,10 @@ describe("nav card value", () => {
   };
   const out = buildNavCardMetricsBySlug({ navRoots: [root], rows: cashRows, bucketTotals });
 
-  it("a cash child's card shows the netted bucket total; its breakdown line the raw members", () => {
-    const v = out.cash_savings!.value;
-    expect(v.child).toEqual({ clp: -5_800, usd: 3.2 - 9 });
-    // the hub is the bucket too
+  it("the netting bucket's card shows the netted bucket total; a cash child its raw members", () => {
     expect(out.cash_eqs!.value.child).toEqual({ clp: -5_800, usd: 3.2 - 9 });
+    const v = out.cash_savings!.value;
+    expect(v.child).toEqual({ clp: 3_000, usd: 3 });
     expect(v.members).toEqual({ clp: 3_000, usd: 3 });
   });
 

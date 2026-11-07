@@ -41,6 +41,8 @@ export type NavGroup = Readonly<{
   linkedGroups: readonly { groupId: number; weight: number }[];
   /** True when the accounts come from the attached liability group. */
   liabilityBacked: boolean;
+  /** The attached liability group's kind (`credit_card`, `mortgage`), or null. */
+  liabilityKind: string | null;
 }>;
 
 export type NavTreeModel = Readonly<{
@@ -103,8 +105,18 @@ function loadNavTreeModel(): NavTreeModel {
        WHERE i.item_kind = 'account'
        ORDER BY lg.id, i.sort_order, i.id`
     )
-    .all() as { slug: string; account_id: number; exclude_from_group_totals: number; import_key: string | null }[];
+    .all() as {
+    slug: string;
+    account_id: number;
+    exclude_from_group_totals: number;
+    import_key: string | null;
+  }[];
   const liabilityAccountsBySlug = new Map<string, number[]>();
+  const liabilityKindBySlug = new Map<string, string | null>(
+    (db.prepare(`SELECT slug, liability_kind FROM liability_groups`).all() as { slug: string; liability_kind: string | null }[]).map(
+      (r) => [r.slug, r.liability_kind]
+    )
+  );
   for (const r of liabilityItems) {
     const isCard = (r.import_key ?? "").startsWith("credit_card_master|");
     if (!isCard && r.exclude_from_group_totals === 1) continue;
@@ -133,7 +145,7 @@ function loadNavTreeModel(): NavTreeModel {
       }
       groupOfAccount.set(id, g.id);
     }
-    const liability = liabilityAccountsBySlug.get(g.slug);
+    const liability = liabilityKindBySlug.has(g.slug) ? (liabilityAccountsBySlug.get(g.slug) ?? []) : undefined;
     const node: NavGroup = {
       id: g.id,
       slug: g.slug,
@@ -157,6 +169,7 @@ function loadNavTreeModel(): NavTreeModel {
         .filter((i) => i.item_kind === "linked_group" && i.child_group_id != null)
         .map((i) => ({ groupId: i.child_group_id!, weight: Number(i.link_weight) })),
       liabilityBacked: liability != null && portfolioAccounts.length === 0,
+      liabilityKind: liability != null && portfolioAccounts.length === 0 ? (liabilityKindBySlug.get(g.slug) ?? null) : null,
     };
     byId.set(g.id, node);
     bySlug.set(g.slug, node);
@@ -311,4 +324,28 @@ export function chartHostOfGroup(slug: string): string | null {
 /** True when a group's chart carries the property's «hipoteca»/«valor» overlay lines. */
 export function groupHasPropertyOverlay(slug: string): boolean {
   return navGroup(slug)?.propertyOverlay === true;
+}
+
+/**
+ * The one group other groups net (the linked credit cards): every `nets_linked_group_id` points at
+ * it. Throws when none or several are declared — the linked total is one sum.
+ */
+export function nettedGroup(): NavGroup {
+  const ids = new Set([...navTreeModel().byId.values()].map((g) => g.netsLinkedGroupId).filter((id): id is number => id != null));
+  if (ids.size !== 1) throw new Error(`nav tree: expected one netted group, found ${ids.size}`);
+  const g = navGroupById([...ids][0]!);
+  if (!g) throw new Error("nav tree: the netted group does not exist");
+  return g;
+}
+
+/** The Pasivos groups (portfolio nodes backed by a liability group), in tree order. */
+export function liabilityGroups(): NavGroup[] {
+  return [...navTreeModel().byId.values()].filter((g) => g.liabilityBacked);
+}
+
+/** True for a hub whose child groups are all investment roots («Inversiones»): its total is Σ of them. */
+export function isInvestmentRootsHub(slug: string): boolean {
+  const g = navGroup(slug);
+  if (!g || g.childGroupIds.length === 0) return false;
+  return g.childGroupIds.every((id) => navGroupById(id)?.investmentRoot === true);
 }

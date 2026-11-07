@@ -55,17 +55,15 @@ import {
   syntheticGroupColorRgbMapForValuationGroup,
 } from "./chartColorRgb.js";
 import {
-  buildLiabilitiesChartBucketPlan,
-  buildNavChartBucketPlan,
-  isLiabilitiesChartNavNode,
-  shouldAggregateLiabilitiesCharts,
-  shouldAggregateNavCharts,
   type ChartBucketPlan,
+  pageChartPlan,
 } from "./groupChartBuckets.js";
 import { orderGroupTabRowsBucketMajor } from "./groupTabOrdering.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { db } from "./db.js";
+import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { groupHasPropertyOverlay, investmentRootSlugs, navGroup } from "./navTreeModel.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { accountValueClpToUnitAt, clpToUnitAt, convertTs } from "./clpToUnitAt.js";
@@ -1659,7 +1657,7 @@ function buildDashboardPortfolioGroupTotalsClp(): {
           ? listAccountsForGroupTab("liabilities").filter((r) => r.account_id > 0)
           : accountsBySlug.get(slug);
       if (!rows) continue;
-      const netLinkedCreditCard = slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG;
+      const netLinkedCreditCard = groupNetsLinkedCards(slug);
       totalsBySlug.set(slug, slugMarkTotalsAtDatesClp(rows, datesAsc, { netLinkedCreditCard }));
       rowsBySlug.set(slug, rows);
       continue;
@@ -1704,7 +1702,7 @@ function convertDashboardPortfolioGroupTotals(
       const rows = clp.rowsBySlug.get(slug);
       if (!rows) throw new Error(`dashboard totals: no account rows for ${slug}`);
       const u = slugValueInUnitAt(rows, d, unit, {
-        netLinkedCreditCard: slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
+        netLinkedCreditCard: groupNetsLinkedCards(slug),
         now,
       });
       if (u != null && Number.isFinite(u)) converted.set(d, u);
@@ -1939,9 +1937,7 @@ const minValuationDateStmt = db.prepare(
  */
 export function getDashboardChartShape(): DashboardChartShape {
   const first_month = (minValuationDateStmt.get() as { d: string | null }).d;
-  const has_perf_sections =
-    accountIdsInPortfolioGroup("retirement").length > 0 ||
-    accountIdsInPortfolioGroup("brokerage").length > 0;
+  const has_perf_sections = investmentRootSlugs().some((slug) => accountIdsInPortfolioGroup(slug).length > 0);
   return {
     first_month,
     // The home chart's own lines, milestones included, so the loading legend is the loaded one.
@@ -1953,25 +1949,10 @@ export function getDashboardChartShape(): DashboardChartShape {
 import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
 export type { GroupTabAccountRow };
 
-import {
-  CASH_SAVINGS_BUCKET,
-  CHECKING_ACCOUNTS_BUCKET,
-  isCashSavingsValuationGroupSlug,
-  leafAssetGroupIdsUnder,
-  listAccountsForBucketIds,
-  listAccountsForBucketSlug,
-} from "./assetGroupTree.js";
+import { listAccountsForBucketIds, listAccountsForBucketSlug } from "./assetGroupTree.js";
 
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 export { listLiabilitiesTabAccountRows };
-
-/** Dashboard home + `GET …/consolidated-tables?group=net_worth` (same scope as dashboard bucket cards). */
-const NET_WORTH_DASHBOARD_BUCKET_SLUGS = [
-  "real_estate",
-  "retirement",
-  "brokerage",
-  DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
-] as const;
 
 function toGroupTabAccountRows(rows: ReturnType<typeof listAccountsForBucketIds>): GroupTabAccountRow[] {
   return rows.map((r) => ({
@@ -1988,12 +1969,8 @@ function finishGroupTabRows(rows: GroupTabAccountRow[]): GroupTabAccountRow[] {
 }
 
 function listAccountsForPortfolioGroupSlug(portfolioGroupSlug: string): GroupTabAccountRow[] {
-  if (portfolioGroupSlug === "liabilities_credit_card") {
-    return listLiabilitiesTabAccountRows("credit_card");
-  }
-  if (portfolioGroupSlug === "liabilities_mortgage") {
-    return listLiabilitiesTabAccountRows("mortgage");
-  }
+  const group = navGroup(portfolioGroupSlug);
+  if (group?.liabilityBacked) return listLiabilitiesTabAccountRows(group.liabilityKind ?? undefined);
 
   const ids = accountIdsInPortfolioGroup(portfolioGroupSlug);
   if (!ids.length) return [];
@@ -2034,49 +2011,17 @@ function resolveGroupTabChildSlug(groupSlug: string, tabSubgroup: string): strin
 }
 
 function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
-  if (groupSlug === "liabilities") {
+  // The Pasivos root lists its subtree's accounts (its portfolio node holds no items).
+  if (navGroup(groupSlug)?.groupKind === "liability_group") {
     return listLiabilitiesTabAccountRows(tabSubgroup);
   }
-  const pgRow = db.prepare(`SELECT slug FROM portfolio_groups WHERE slug = ?`).get(groupSlug) as
-    | { slug: string }
-    | undefined;
+  const pgRow = navGroup(groupSlug);
   if (pgRow && tabSubgroup == null) {
     return listAccountsForPortfolioGroupSlug(groupSlug);
   }
   if (pgRow && tabSubgroup != null && tabSubgroup !== "") {
     const childSlug = resolveGroupTabChildSlug(groupSlug, tabSubgroup);
     if (childSlug) return listAccountsForPortfolioGroupSlug(childSlug);
-  }
-  if (groupSlug === "net_worth") {
-    const bucketIds = new Set<number>();
-    for (const slug of NET_WORTH_DASHBOARD_BUCKET_SLUGS) {
-      if (slug === "cash_eqs") {
-        for (const id of leafAssetGroupIdsUnder(CASH_SAVINGS_BUCKET)) bucketIds.add(id);
-        for (const id of leafAssetGroupIdsUnder(CHECKING_ACCOUNTS_BUCKET)) bucketIds.add(id);
-      } else {
-        for (const id of leafAssetGroupIdsUnder(slug)) bucketIds.add(id);
-      }
-    }
-    return toGroupTabAccountRows(listAccountsForBucketIds([...bucketIds], NOTE_STOCKS_LEGACY));
-  }
-  if (groupSlug === "cash_eqs") {
-    const savings = listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, NOTE_STOCKS_LEGACY);
-    const checking = listAccountsForBucketSlug(
-      CHECKING_ACCOUNTS_BUCKET,
-      undefined,
-      NOTE_STOCKS_LEGACY
-    );
-    return toGroupTabAccountRows([...savings, ...checking]);
-  }
-  if (isCashSavingsValuationGroupSlug(groupSlug)) {
-    return toGroupTabAccountRows(
-      listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, NOTE_STOCKS_LEGACY)
-    );
-  }
-  if (groupSlug === "checking_accounts") {
-    return toGroupTabAccountRows(
-      listAccountsForBucketSlug(CHECKING_ACCOUNTS_BUCKET, undefined, NOTE_STOCKS_LEGACY)
-    );
   }
   return toGroupTabAccountRows(
     listAccountsForBucketSlug(groupSlug, tabSubgroup, NOTE_STOCKS_LEGACY)
@@ -2213,12 +2158,11 @@ function buildGroupedChartPayload(
   unit: TsUnit
 ): GroupedChartPayload {
   const navNode = getNavChartGroupNodeBySlug(groupSlug);
-  if (!navNode) return {};
+  const chartPlan = navNode ? pageChartPlan(navNode) : null;
+  if (!chartPlan) return {};
 
-  if (isLiabilitiesChartNavNode(navNode)) {
-    if (!shouldAggregateLiabilitiesCharts(navNode)) return {};
-    const plan = buildLiabilitiesChartBucketPlan(navNode);
-    const aggregated = aggregateBlockByBuckets(preClipBase, plan);
+  if (chartPlan.kind === "liabilities") {
+    const aggregated = aggregateBlockByBuckets(preClipBase, chartPlan.plan);
     return {
       liab_grouped_block: applyTrailingZeroTailClipToBlock(aggregated),
       liab_grouped_proportional: buildProportionalFromBlock(aggregated),
@@ -2227,8 +2171,8 @@ function buildGroupedChartPayload(
 
   const out: GroupedChartPayload = {};
   for (const grouped of [true, false] as const) {
-    if (!shouldAggregateNavCharts(navNode, grouped)) continue;
-    const plan = buildNavChartBucketPlan(navNode, grouped);
+    const plan = grouped ? chartPlan.grouped : chartPlan.ungrouped;
+    if (!plan) continue;
     const aggregated = aggregateBlockByBuckets(preClipBase, plan);
     const block = applyTrailingZeroTailClipToBlock(aggregated);
     const mode = grouped ? "grouped" : "ungrouped";
@@ -2305,7 +2249,7 @@ function getGroupValuationTimeseriesInnerUncached(
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, chartHostSlug, unit);
     reference_coverage = liabilitiesCoverageFromBlock(accounts_in_group, rows, groupSlug, chartHostSlug);
   }
-  if (groupSlug === "real_estate") {
+  if (groupHasPropertyOverlay(groupSlug)) {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");
     if (propertyRows.length === 1 && accounts_in_group.points.length > 0) {
       const ledger = loadDeptoLedgerFromMovements();

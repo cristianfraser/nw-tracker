@@ -21,6 +21,8 @@ import {
   resolveDashboardBucketFromNavNode as resolveDashboardBucketSlugFromNavNode,
 } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
+import { isNwBucketSlug, nwBucketSlugs } from "./navTreeModel.js";
+import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -138,12 +140,8 @@ export type CardMetricsAccountRow = Pick<
 > &
   Partial<Pick<DashboardAccountStats, "fx_missing" | "sync_stale">>;
 
-const DASHBOARD_NW_BUCKET_SLUGS = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
-type DashboardNwBucketSlug = (typeof DASHBOARD_NW_BUCKET_SLUGS)[number];
-
-function isDashboardNwBucketSlug(slug: string): slug is DashboardNwBucketSlug {
-  return (DASHBOARD_NW_BUCKET_SLUGS as readonly string[]).includes(slug);
-}
+/** A net-worth bucket slug (`nwBucketSlugs()`). */
+type DashboardNwBucketSlug = string;
 
 /* ------------------------------- row predicates ---------------------------------- */
 
@@ -423,25 +421,22 @@ function isNetWorthPortfolioRoot(node: NavTreeNodeDto): boolean {
 
 /** Shared walk's resolver, narrowed to the typed bucket slugs this module works with. */
 function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): DashboardNwBucketSlug | null {
-  const slug = resolveDashboardBucketSlugFromNavNode(node);
-  return slug != null && isDashboardNwBucketSlug(slug) ? slug : null;
+  return resolveDashboardBucketSlugFromNavNode(node);
 }
 
 /** The dashboard bucket whose total a node's detail card shows (a cash child, a bucket's own node). */
 function usesFullDashboardBucketTotals(node: NavTreeNodeDto): DashboardNwBucketSlug | null {
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (!bucket) return null;
-  if (bucket === "cash_eqs") return "cash_eqs";
+  // A netting bucket's card is its netted total, which no row sum gives: every node in it shows it.
+  if (groupNetsLinkedCards(bucket)) return bucket;
   if (node.slug === bucket) return bucket;
   return null;
 }
 
 /** A cash child: its card nets the linked credit cards, its metrics read its raw leaves. */
 export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
-  if (node.slug === "cash_savings") return true;
-  const dash = node.dashboard_bucket_slug?.trim();
-  if (dash === "cash_eqs" && node.slug !== "cash_eqs") return true;
-  return node.asset_group_slug === "cash_eqs__cash_savings";
+  return node.account_id == null && groupNetsLinkedCards(node.slug) && !isNwBucketSlug(node.slug);
 }
 
 /** The dashboard buckets a nav hub spreads into (inversiones → retirement + brokerage). */
@@ -487,7 +482,7 @@ type ParentTitleDeltaMode =
 /** How a node's own summary card composes: one bucket, Σ of buckets, or its subtree rows. */
 function parentTitleModeForNavNode(node: NavTreeNodeDto): ParentTitleDeltaMode {
   if (isNetWorthPortfolioRoot(node)) {
-    return { kind: "sum_dashboard_groups", groups: DASHBOARD_NW_BUCKET_SLUGS };
+    return { kind: "sum_dashboard_groups", groups: nwBucketSlugs() };
   }
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (bucket) {
@@ -612,9 +607,8 @@ function parentScopeRows(
 
 /** Dashboard bucket totals (`buildDashboardNwBucketTotals`): the CC-netted cash bucket included. */
 export type NavCardBucketTotals = {
-  [K in `${DashboardNwBucketSlug}_clp`]: number;
-} & {
-  [K in `${DashboardNwBucketSlug}_usd`]?: number | null;
+  [bucketClp: `${string}_clp`]: number;
+  [bucketUsd: `${string}_usd`]: number | null | undefined;
 };
 
 function finiteOrNull(v: number | null | undefined): number | null {
@@ -639,7 +633,9 @@ export function sumRowValues(rows: readonly CardMetricsAccountRow[]): NavCardAmo
 }
 
 function bucketAmount(totals: NavCardBucketTotals, bucket: DashboardNwBucketSlug): NavCardAmountDto {
-  return { clp: totals[`${bucket}_clp`], usd: finiteOrNull(totals[`${bucket}_usd`]) };
+  const clp = totals[`${bucket}_clp`];
+  if (clp == null) throw new Error(`nav card metrics: no total for bucket ${bucket}`);
+  return { clp, usd: finiteOrNull(totals[`${bucket}_usd`]) };
 }
 
 function sumAmounts(parts: readonly NavCardAmountDto[]): NavCardAmountDto {

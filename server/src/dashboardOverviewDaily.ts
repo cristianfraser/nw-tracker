@@ -16,6 +16,7 @@ import {
   totalRangeDays,
 } from "./dailySeries.js";
 import { getNetWorthAllTimeHigh, type NetWorthAthDto } from "./netWorthAllTimeHigh.js";
+import { investmentRootSlugs } from "./navTreeModel.js";
 import {
   buildDashboardBucketDailySeriesClp,
   buildDashboardBucketDailySeriesInUnit,
@@ -116,8 +117,11 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     const row = byDate.get(ymd)!;
     const isToday = ymd === endYmd && usdToday != null;
     const rowUnit = byDateUnit.get(ymd)!;
-    const bucket = (slug: "real_estate" | "retirement" | "brokerage" | "cash_eqs" | "net_worth"): number | null =>
-      isToday ? usdToday![slug] : rowUnit[slug];
+    const bucket = (slug: string): number => {
+      const v = isToday ? usdToday![slug] : rowUnit[slug];
+      if (v == null) throw new Error(`overview-daily: no value for ${slug} on ${ymd}`);
+      return v;
+    };
     if (!reStarted && Math.abs(row.real_estate) >= 0.5) reStarted = true;
     const liabClp = liabByDate.get(ymd)!;
     if (!liabStarted && Math.abs(liabClp) >= 0.5) liabStarted = true;
@@ -128,7 +132,7 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
       retirement: bucket("retirement"),
       brokerage: bucket("brokerage"),
       cash_eqs: bucket("cash_eqs"),
-      invested: isToday ? usdToday!.retirement + usdToday!.brokerage : rowUnit.retirement + rowUnit.brokerage,
+      invested: investmentRootSlugs().reduce((sum, slug) => sum + bucket(slug), 0),
       liabilities: liabStarted ? liabByDateUnit.get(ymd)! : null,
       ...milestoneFieldsForDate(ymd, unit),
     };

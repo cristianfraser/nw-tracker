@@ -29,11 +29,7 @@ import {
   getGroupConsolidatedMonthlyPerfForRows,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupMonthlyPerfConsolidation.js";
-import {
-  buildInversionesConsolidatedMonthly,
-  INVERSIONES_DASHBOARD_BUCKET_SLUGS,
-} from "./netWorthConsolidation.js";
-import { portfolioGroupSlugForDashboardBucket } from "./portfolioGroupValueAtDate.js";
+import { buildInversionesConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 export type InversionesPerfPoint = {
@@ -84,8 +80,8 @@ function classDailyPoints(unit: TsUnit): {
 } {
   const pointsOf = (slug: string) => resolveGroupDailySeries(slug, unit, 0)?.points ?? [];
   return {
-    retirement: pointsOf(portfolioGroupSlugForDashboardBucket("retirement")),
-    brokerage: pointsOf(portfolioGroupSlugForDashboardBucket("brokerage")),
+    retirement: pointsOf("retirement"),
+    brokerage: pointsOf("brokerage"),
     combined: pointsOf("inversiones"),
   };
 }
@@ -100,10 +96,10 @@ const finiteOr0 = (v: number | null | undefined): number =>
 
 /** A bucket's consolidated rows by the path `buildInversionesConsolidatedMonthly` sums (cached). */
 function bucketConsolidatedByMonth(
-  bucket: (typeof INVERSIONES_DASHBOARD_BUCKET_SLUGS)[number],
+  bucket: "retirement" | "brokerage",
   unit: TsUnit
 ): Map<string, ConsolidatedMonthlyPerfRow> {
-  const pgSlug = portfolioGroupSlugForDashboardBucket(bucket);
+  const pgSlug = bucket;
   const rows = listAccountsForGroupTab(pgSlug);
   const out = new Map<string, ConsolidatedMonthlyPerfRow>();
   if (!rows.length) return out;
@@ -190,8 +186,8 @@ function depositsPerDay(series: BucketDailySeries | null, length: number): numbe
 
 /** @heavy Two bucket daily series (shared with the group pages' day view) + the monthly anchor. */
 export function buildInversionesPerfDaily(unit: TsUnit, days: number): InversionesPerfDaily {
-  const ret = resolveGroupDailySeries(portfolioGroupSlugForDashboardBucket("retirement"), unit, days);
-  const brk = resolveGroupDailySeries(portfolioGroupSlugForDashboardBucket("brokerage"), unit, days);
+  const ret = resolveGroupDailySeries("retirement", unit, days);
+  const brk = resolveGroupDailySeries("brokerage", unit, days);
   const grid = (ret ?? brk)?.points.map((p) => p.as_of_date) ?? [];
   for (const s of [ret, brk]) {
     if (!s) continue;

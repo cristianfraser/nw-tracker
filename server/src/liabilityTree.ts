@@ -3,6 +3,7 @@ import { accountChartInactive } from "./accountChartInactive.js";
 import { colorRgbOfLargestBalanceAccount, getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { db } from "./db.js";
+import { groupAccountIds, nettedGroup } from "./navTreeModel.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { historyTierMemo } from "./cacheRegistry.js";
@@ -200,18 +201,20 @@ type LinkedCreditCardMasterRow = {
   name: string;
 };
 
-/** CC masters under Pasivos → tarjeta de crédito. */
+/**
+ * The cards the cash bucket nets: the members of the group the tree's netting roles point at
+ * (`nets_linked_group_id`, one group — the linked total below is one sum), those counted in totals.
+ */
 function linkedCreditCardMasters(): LinkedCreditCardMasterRow[] {
+  const ids = groupAccountIds(nettedGroup().id);
+  if (!ids.length) return [];
   return db
     .prepare(
-      `SELECT m.id AS account_id, m.name
-       FROM accounts m
-       JOIN liability_group_items lgi ON lgi.account_id = m.id AND lgi.item_kind = 'account'
-       JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
-       WHERE m.exclude_from_group_totals = 0
-       ORDER BY m.name, m.id`
+      `SELECT id AS account_id, name FROM accounts
+       WHERE id IN (${ids.map(() => "?").join(",")}) AND exclude_from_group_totals = 0
+       ORDER BY name, id`
     )
-    .all() as LinkedCreditCardMasterRow[];
+    .all(...ids) as LinkedCreditCardMasterRow[];
 }
 
 /**

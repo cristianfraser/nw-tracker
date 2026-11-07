@@ -1,6 +1,7 @@
 import { accountIdsInPortfolioGroup, portfolioGroupBySlug } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
+import { navTreeModel, nwBucketOfGroup } from "./navTreeModel.js";
 
 export type AssetGroupRow = {
   id: number;
@@ -95,104 +96,55 @@ export function leafAssetGroupSlugsUnder(rootSlug: string): string[] {
 
 /** Cash & equivalents sub-buckets (migration 078). */
 export const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
-export const CASH_SAVINGS_BUCKET = "cash_eqs__cash_savings";
 export const CHECKING_ACCOUNTS_KIND = "checking_accounts";
-export const CASH_SAVINGS_KIND = "cash_savings";
 
-/** NW dashboard charts / consolidation: cash_eqs hub or ahorros leaf (linked CC netting). */
-export function isCashSavingsValuationGroupSlug(groupSlug: string): boolean {
-  return groupSlug === CASH_SAVINGS_KIND || groupSlug === CASH_SAVINGS_BUCKET;
-}
-
-export function isCashEqsNwValuationGroupSlug(groupSlug: string): boolean {
-  return groupSlug === "cash_eqs" || isCashSavingsValuationGroupSlug(groupSlug);
-}
-
-function assetGroupKindSlug(slug: string): string {
-  const sep = slug.lastIndexOf("__");
-  return sep >= 0 ? slug.slice(sep + 2) : slug;
-}
-
-/** Top-level net-worth dashboard card buckets (asset_groups roots for NW cards). */
-export const DASHBOARD_NW_BUCKET_SLUGS = new Set([
-  "real_estate",
-  "retirement",
-  "brokerage",
-  "cash_eqs",
-]);
-
-type AssetGroupParentRow = { id: number; slug: string; parent_id: number | null };
-
+/**
+ * The net-worth bucket an asset group's accounts roll into: the nearest asset ancestor (itself
+ * included) that backs a nav group (`portfolio_groups.asset_group_slug`, else the same slug), then that group's
+ * `nw_bucket` ancestor. Null outside the net-worth buckets (liabilities, unplaced groups).
+ */
 function buildDashboardBucketBySlugCache(): Map<string, string | null> {
-  const rows = db
-    .prepare(`SELECT id, slug, parent_id FROM asset_groups`)
-    .all() as AssetGroupParentRow[];
+  const rows = db.prepare(`SELECT id, slug, parent_id FROM asset_groups`).all() as {
+    id: number;
+    slug: string;
+    parent_id: number | null;
+  }[];
   const byId = new Map(rows.map((r) => [r.id, r]));
+  const navGroupByAssetSlug = new Map<string, number>();
+  // A nav group stands for the asset group it is backed by, and for the one sharing its slug.
+  for (const g of navTreeModel().byId.values()) {
+    if (g.assetGroupSlug && !navGroupByAssetSlug.has(g.assetGroupSlug)) navGroupByAssetSlug.set(g.assetGroupSlug, g.id);
+  }
+  for (const g of navTreeModel().byId.values()) {
+    if (!navGroupByAssetSlug.has(g.slug)) navGroupByAssetSlug.set(g.slug, g.id);
+  }
   const cache = new Map<string, string | null>();
-
   for (const row of rows) {
-    let cur: AssetGroupParentRow | undefined = row;
-    let underCashEqs = false;
+    let bucket: string | null = null;
+    let cur: (typeof rows)[number] | undefined = row;
     const seen = new Set<number>();
     while (cur && !seen.has(cur.id)) {
       seen.add(cur.id);
-      const kind = assetGroupKindSlug(cur.slug);
-      if (
-        cur.slug === "cash_eqs" ||
-        kind === "cash_eqs" ||
-        kind === CHECKING_ACCOUNTS_KIND ||
-        kind === CASH_SAVINGS_KIND
-      ) {
-        underCashEqs = true;
+      const groupId = navGroupByAssetSlug.get(cur.slug);
+      if (groupId != null) {
+        bucket = nwBucketOfGroup(groupId);
         break;
       }
       cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
     }
-    let dashboard: string | null = null;
-    if (underCashEqs) {
-      dashboard = "cash_eqs";
-    } else if (row.slug === "cash_eqs" || assetGroupKindSlug(row.slug) === "cash_eqs") {
-      dashboard = null;
-    } else {
-      cur = row;
-      seen.clear();
-      while (cur && !seen.has(cur.id)) {
-        seen.add(cur.id);
-        if (DASHBOARD_NW_BUCKET_SLUGS.has(cur.slug) && cur.slug !== "cash_eqs") {
-          dashboard = cur.slug;
-          break;
-        }
-        cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
-      }
-    }
-    cache.set(row.slug, dashboard);
+    cache.set(row.slug, bucket);
   }
   return cache;
 }
 
-/** Memoized as database state (`dbStateMemo.ts`): an asset-group write drops it. */
+/** Memoized as database state (`dbStateMemo.ts`): an asset-group or nav write drops it. */
 function dashboardBucketBySlugMap(): Map<string, string | null> {
   return dbStateMemo("dashboard_bucket_by_asset_group_slug", null, buildDashboardBucketBySlugCache);
 }
 
-/** Walk `asset_groups.parent_id` to the NW dashboard bucket slug, if any. */
+/** The net-worth bucket an asset group's accounts roll into, if any. */
 export function dashboardBucketForAssetGroupSlug(slug: string): string | null {
   return dashboardBucketBySlugMap().get(slug) ?? null;
-}
-
-export function accountBelongsToDashboardBucket(
-  row: {
-    bucket_slug?: string | null;
-    group_slug: string;
-    dashboard_bucket_slug?: string | null;
-  },
-  dashboardBucket: string
-): boolean {
-  if (row.dashboard_bucket_slug != null && row.dashboard_bucket_slug !== "") {
-    return row.dashboard_bucket_slug === dashboardBucket;
-  }
-  const placement = row.bucket_slug ?? row.group_slug;
-  return dashboardBucketForAssetGroupSlug(placement) === dashboardBucket;
 }
 
 export type BucketAccountRow = {

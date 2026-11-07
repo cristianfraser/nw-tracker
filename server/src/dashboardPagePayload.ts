@@ -5,14 +5,15 @@ import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
-import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
+import { buildDashboardNwBucketTotals, type DashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { buildFlowsDepositsPayload, inversionesBrokerageDepositsSeries } from "./flowsDeposits.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
-import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
-import { isNwDashboardBucketSlug, portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
+import { cashSavingsLinkedBalances, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
+import { isNwBucketSlug, nwBucketSlugs } from "./navTreeModel.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import {
@@ -21,7 +22,21 @@ import {
   HeavyWork,
 } from "./heavyWork.js";
 
-const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
+/**
+ * The payload's `totals`: the headline, deposits and liabilities, and `<bucket>_clp` / `_usd` for
+ * every net-worth bucket (`nwBucketSlugs()`).
+ */
+export type DashboardPayloadTotals = {
+  net_worth_clp: number;
+  deposits_clp: number;
+  liabilities_clp: number;
+  prior_closes: DashboardNwBucketTotals["prior_closes"];
+  net_worth_usd?: number | null;
+  deposits_usd?: number | null;
+  liabilities_usd?: number | null;
+  [bucketClp: `${string}_clp`]: number;
+  [bucketUsd: `${string}_usd`]: number | null | undefined;
+};
 
 /** @heavy Account rows, flows deposits payload, liabilities breakdown, Depto snapshot. */
 export async function buildDashboardPagePayload(includeUsd: boolean) {
@@ -35,12 +50,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     return timeHeavy(HeavyWork.dashboardPayload, () => {
     const asOfToday = chileCalendarTodayYmd();
     const bucketTotals = buildDashboardNwBucketTotals(includeUsd);
-    const re = { clp: bucketTotals.real_estate_clp, usd: bucketTotals.real_estate_usd ?? 0 };
-    const ret = { clp: bucketTotals.retirement_clp, usd: bucketTotals.retirement_usd ?? 0 };
-    const bro = { clp: bucketTotals.brokerage_clp, usd: bucketTotals.brokerage_usd ?? 0 };
-    const cash = { clp: bucketTotals.cash_eqs_clp, usd: bucketTotals.cash_eqs_usd ?? 0 };
-    const lia = { clp: 0, usd: 0 };
-
     const netWorthClp = bucketTotals.net_worth_clp;
     const netWorthUsd = includeUsd ? bucketTotals.net_worth_usd : null;
 
@@ -50,25 +59,20 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const bucketLabelBySlug = new Map(
       getDashboardLayoutCards().map((c) => [c.bucket_slug, c.label])
     );
+    // A netting bucket's card explains its netting with the linked balances footer.
     const layoutCards = getDashboardLayoutCards().map((card) =>
-      card.slug === "cash_eqs"
+      groupNetsLinkedCards(card.slug)
         ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd) }
         : card
     );
-    const bucketUsdBySlug: Record<string, number | null | undefined> = {
-      real_estate: bucketTotals.real_estate_usd,
-      retirement: bucketTotals.retirement_usd,
-      brokerage: bucketTotals.brokerage_usd,
-      cash_eqs: bucketTotals.cash_eqs_usd,
-    };
     const byGroup = new Map<string, { label: string; value_clp: number; value_usd: number }>();
     for (const card of layoutCards) {
       const bucketSlug = card.bucket_slug;
-      const sum = isNwDashboardBucketSlug(bucketSlug)
+      const sum = isNwBucketSlug(bucketSlug)
         ? {
             clp: portfolioGroupValueClpAt(bucketSlug, asOfToday),
             // The bucket card's own dollars (Σ of its members' USD values), not its pesos ÷ one rate.
-            usd: includeUsd ? bucketUsdBySlug[bucketSlug] ?? 0 : 0,
+            usd: includeUsd ? bucketTotals[`${bucketSlug}_usd`] ?? 0 : 0,
           }
         : { clp: 0, usd: 0 };
       byGroup.set(card.bucket_slug, {
@@ -102,34 +106,39 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd", { side: "debt" }),
       credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd", { side: "debt" }),
     };
+    // The liabilities in dollars: the Pasivos page's own total (its root card, Σ of each liability
+    // account's own dollars at the debt side), so the headline and the page agree.
+    const liabilitiesNode = card_metrics_by_slug[liabilitiesRoot.slug];
+    if (!liabilitiesNode) throw new Error("dashboard payload: no card metrics for the liabilities root");
+    const liabilitiesUsd = liabilitiesNode.value.parent.usd;
+    const bucketsIn = (suffix: "clp" | "usd") => {
+      const out: Record<string, number> = {};
+      for (const slug of nwBucketSlugs()) out[`${slug}_${suffix}`] = bucketTotals[`${slug}_${suffix}`] ?? 0;
+      return out;
+    };
+    const totals: DashboardPayloadTotals = {
+      net_worth_clp: netWorthClp,
+      deposits_clp: totalDeposits,
+      ...bucketsIn("clp"),
+      liabilities_clp: liabilities_clp_aligned,
+      prior_closes: bucketTotals.prior_closes,
+      ...(includeUsd
+        ? {
+            net_worth_usd: netWorthUsd,
+            deposits_usd: depositsFlow.net_total_usd,
+            ...bucketsIn("usd"),
+            liabilities_usd: liabilitiesUsd,
+          }
+        : {}),
+    };
     return {
       schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
-      totals: {
-        net_worth_clp: netWorthClp,
-        deposits_clp: totalDeposits,
-        real_estate_clp: re.clp,
-        retirement_clp: ret.clp,
-        brokerage_clp: bro.clp,
-        cash_eqs_clp: cash.clp,
-        liabilities_clp: liabilities_clp_aligned,
-        prior_closes: bucketTotals.prior_closes,
-        ...(includeUsd
-          ? {
-              net_worth_usd: netWorthUsd,
-              deposits_usd: depositsFlow.net_total_usd,
-              real_estate_usd: re.usd,
-              retirement_usd: ret.usd,
-              brokerage_usd: bro.usd,
-              cash_eqs_usd: cash.usd,
-              liabilities_usd: lia.usd,
-            }
-          : {}),
-      },
+      totals,
       dashboard_layout: layoutCards,
       card_metrics_by_slug,
       ...buildNavValueMapPayload(rowsBuilt, includeUsd, chainedGroupPct),
       allocation: [...byGroup.entries()]
-        .filter(([slug]) => DASHBOARD_ASSET_METRIC_GROUPS.has(slug))
+        .filter(([slug]) => isNwBucketSlug(slug))
         .map(([slug, v]) => ({
           group_slug: slug,
           group_label: v.label,

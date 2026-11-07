@@ -1,4 +1,4 @@
-import { db } from "./db.js";
+import { netsLinkedGroup, nettedGroup } from "./navTreeModel.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -26,6 +26,22 @@ import type { TsUnit } from "./groupMonthlyPerfConsolidation.js";
  */
 export function cashNetOfLinkedCreditCards(rawCash: number, linkedCreditCardsOwed: number): number {
   return rawCash - linkedCreditCardsOwed;
+}
+
+/** True when the group's value nets the linked cards (its `nets_linked_group_id`, migration 272). */
+export function groupNetsLinkedCards(slug: string): boolean {
+  return netsLinkedGroup(slug) != null;
+}
+
+/**
+ * The linked cards' owed at `ymd` in `unit`, at the debt side (today: the live rate): what a
+ * netting group subtracts. Null when the rate is missing — each caller says what that means.
+ */
+export function linkedCardsOwedInUnit(ymd: string, unit: TsUnit, opts: { now?: Date } = {}): number | null {
+  const clp = linkedCreditCardClpForCashCardAsOf(ymd);
+  if (clp === 0) return 0;
+  const v = clpToUnitAt(clp, ymd, unit, { side: "debt", ...(opts.now ? { now: opts.now } : {}) });
+  return v != null && Number.isFinite(v) ? v : null;
 }
 
 /** The linked cards' owed in the unit at that day, at the debt side (today: the live rate). NaN without a rate. */
@@ -60,11 +76,9 @@ export function cashSavingsLinkedBalances(
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc === 0) return [];
   const usd = includeUsd ? clpToUnitAt(cc, asOfYmd, "usd", { side: "debt" }) : null;
-  const node = db
-    .prepare(`SELECT route_path FROM portfolio_groups WHERE slug = 'liabilities_credit_card'`)
-    .get() as { route_path: string | null } | undefined;
-  const routePath = node?.route_path?.trim();
-  if (!routePath) throw new Error("nav node liabilities_credit_card has no route_path (run the nav seed)");
+  const linked = nettedGroup();
+  const routePath = linked.routePath?.trim();
+  if (!routePath) throw new Error(`nav node ${linked.slug} has no route_path (run the nav seed)`);
   return [
     {
       slug: "credit_card",

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { buildInversionesPerfDaily, buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
-import { portfolioGroupSlugForDashboardBucket } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -22,8 +21,8 @@ describe("inversiones % view vs detalle and Rentabilidad", () => {
   for (const unit of ["clp", "usd"] as const satisfies readonly TsUnit[]) {
     it(`monthly, yearly and daily points match their tables (${unit})`, () => {
       const inv = getGroupConsolidatedTables("inversiones", unit);
-      const ret = getGroupConsolidatedTables(portfolioGroupSlugForDashboardBucket("retirement"), unit);
-      const brk = getGroupConsolidatedTables(portfolioGroupSlugForDashboardBucket("brokerage"), unit);
+      const ret = getGroupConsolidatedTables("retirement", unit);
+      const brk = getGroupConsolidatedTables("brokerage", unit);
       const byMonth = (rows: { as_of_date: string; pct_month: number | null }[]) =>
         new Map(rows.map((r) => [monthKeyFromYmd(r.as_of_date), r.pct_month]));
       const invM = byMonth(inv.consolidated_monthly);

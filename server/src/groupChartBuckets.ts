@@ -1,6 +1,7 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import type { NavTreeNodeDto } from "./navTree.js";
+import { isNwBucketSlug } from "./navTreeModel.js";
 
 /**
  * Server-side chart bucketing for portfolio-group / Pasivos pages — the single source of the
@@ -29,12 +30,6 @@ export type ChartBucketPlan = {
   idToBucket: (accountId: number) => string | null;
 };
 
-const DASHBOARD_NW_BUCKET_SLUGS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
-
-function isDashboardNwBucketSlug(slug: string): boolean {
-  return DASHBOARD_NW_BUCKET_SLUGS.has(slug);
-}
-
 export function isNavBucketNode(n: NavTreeNodeDto): boolean {
   return n.group_kind === "nav_bucket";
 }
@@ -43,19 +38,16 @@ export function isLiabilityGroupNavNode(n: NavTreeNodeDto): boolean {
   return n.group_kind === "liability_group";
 }
 
+/** The net-worth bucket a nav node IS (its `nw_bucket` role), or null. */
 export function resolveDashboardBucketFromNavNode(n: NavTreeNodeDto): string | null {
-  const dash = n.dashboard_bucket_slug?.trim();
-  if (dash && isDashboardNwBucketSlug(dash)) return dash;
-  const asset = n.asset_group_slug?.trim();
-  if (asset && isDashboardNwBucketSlug(asset)) return asset;
-  if (isDashboardNwBucketSlug(n.slug)) return n.slug;
-  return null;
+  return n.account_id == null && isNwBucketSlug(n.slug) ? n.slug : null;
 }
 
 /** Group node that becomes one chart series / strip card (single source; client picks emitted structure). */
 export function isChartBucketCardNode(n: NavTreeNodeDto): boolean {
   if (!n.route_path?.trim() || isLiabilityGroupNavNode(n)) return false;
-  if (isNavBucketNode(n) && n.slug !== "cash_eqs") return false;
+  // A hub that is not itself a net-worth bucket (Inversiones) is spread into its children.
+  if (isNavBucketNode(n) && !isNwBucketSlug(n.slug)) return false;
   if (n.account_id != null || n.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(n) != null) return true;
   if (n.asset_group_slug === "liabilities") return true;
@@ -68,11 +60,11 @@ function isChartBucketAccountNode(n: NavTreeNodeDto): boolean {
   return n.account_id != null && n.account_id > 0 && Boolean(n.route_path?.trim());
 }
 
-/** Group children for a chart bucket row; flattens `nav_bucket` hubs (except cash_eqs). */
+/** Group children for a chart bucket row; flattens `nav_bucket` hubs that are not net-worth buckets. */
 export function chartBucketGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   const out: NavTreeNodeDto[] = [];
   for (const child of root.children ?? []) {
-    if (isNavBucketNode(child) && child.slug !== "cash_eqs") {
+    if (isNavBucketNode(child) && !isNwBucketSlug(child.slug)) {
       out.push(...chartBucketGroupChildren(child));
       continue;
     }
@@ -273,6 +265,27 @@ export function buildLiabilitiesChartBucketPlan(navNode: NavTreeNodeDto): ChartB
   });
 }
 
+/**
+ * A page's grouped chart structure — the ONE decision every grouped payload reads (the valuation
+ * blocks, the monthly P/L bars, the daily series, the sidebar's chart skeleton): a Pasivos page has
+ * one liabilities plan; any other page a plan per Agrupado mode with ≥2 buckets. Null when the page
+ * draws no grouped chart.
+ */
+export type PageChartPlan =
+  | { kind: "liabilities"; plan: ChartBucketPlan }
+  | { kind: "nav"; grouped: ChartBucketPlan | null; ungrouped: ChartBucketPlan | null };
+
+export function pageChartPlan(navNode: NavTreeNodeDto): PageChartPlan | null {
+  if (isLiabilitiesChartNavNode(navNode)) {
+    return shouldAggregateLiabilitiesCharts(navNode)
+      ? { kind: "liabilities", plan: buildLiabilitiesChartBucketPlan(navNode) }
+      : null;
+  }
+  const grouped = shouldAggregateNavCharts(navNode, true) ? buildNavChartBucketPlan(navNode, true) : null;
+  const ungrouped = shouldAggregateNavCharts(navNode, false) ? buildNavChartBucketPlan(navNode, false) : null;
+  return grouped || ungrouped ? { kind: "nav", grouped, ungrouped } : null;
+}
+
 /** Client projection of {@link ChartBucketMeta} — one grouped chart line, emitted on the nav tree. */
 export type ChartBucketLineMetaDto = {
   data_key: string;
@@ -314,14 +327,11 @@ function planLineMetaDtos(plan: ChartBucketPlan): ChartBucketLineMetaDto[] {
  * the real payload emits that grouped block, so payload-presence toggles agree skeleton↔real.
  */
 export function chartBucketsDtoForNavNode(navNode: NavTreeNodeDto): NavNodeChartBucketsDto | null {
-  if (isLiabilitiesChartNavNode(navNode)) {
-    if (!shouldAggregateLiabilitiesCharts(navNode)) return null;
-    return { liab: planLineMetaDtos(buildLiabilitiesChartBucketPlan(navNode)) };
-  }
-  const out: NavNodeChartBucketsDto = {};
-  for (const grouped of [true, false] as const) {
-    if (!shouldAggregateNavCharts(navNode, grouped)) continue;
-    out[grouped ? "grouped" : "ungrouped"] = planLineMetaDtos(buildNavChartBucketPlan(navNode, grouped));
-  }
-  return out.grouped || out.ungrouped ? out : null;
+  const plan = pageChartPlan(navNode);
+  if (!plan) return null;
+  if (plan.kind === "liabilities") return { liab: planLineMetaDtos(plan.plan) };
+  return {
+    ...(plan.grouped ? { grouped: planLineMetaDtos(plan.grouped) } : {}),
+    ...(plan.ungrouped ? { ungrouped: planLineMetaDtos(plan.ungrouped) } : {}),
+  };
 }

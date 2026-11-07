@@ -4,17 +4,15 @@ import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries } from "./valuationTimeseries.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
-import {
-  NW_DASHBOARD_BUCKET_SLUGS,
-  portfolioGroupValueClpAt,
-} from "./portfolioGroupValueAtDate.js";
+import { nwBucketSlugs } from "./navTreeModel.js";
+import { portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
 
 describe("portfolioGroupValueClpAt", () => {
   it("page-bundle bucket totals match consolidated valuation marks", async () => {
     await withPortfolioGroupIndex(async () => {
       const payload = await buildDashboardPagePayload(false);
       const asOf = chileCalendarTodayYmd();
-      for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+      for (const slug of nwBucketSlugs()) {
         expect(payload.totals[`${slug}_clp`]).toBe(portfolioGroupValueClpAt(slug, asOf));
       }
       // Headline total = round of the raw bucket sum (must equal the overview chart /

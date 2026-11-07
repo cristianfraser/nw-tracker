@@ -2,12 +2,7 @@ import { CACHE_KEY_SIDEBAR_NAV } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { chartBucketsDtoForNavNode } from "./groupChartBuckets.js";
-import {
-  getLiabilitiesNavRootNode,
-  getNetWorthNavGroupNode,
-  getSidebarNavPayload,
-  type NavTreeNodeDto,
-} from "./navTree.js";
+import { getNavChartGroupNodeBySlug, getSidebarNavPayload, type NavTreeNodeDto } from "./navTree.js";
 import { groupHostsLiabilitiesCoverage } from "./valuationTimeseries.js";
 
 /**
@@ -20,21 +15,11 @@ import { groupHostsLiabilitiesCoverage } from "./valuationTimeseries.js";
  * a plan whose buckets are account nodes.
  */
 export function annotateSidebarNavChartBuckets(main: NavTreeNodeDto[]): NavTreeNodeDto[] {
-  const nwFull = getNetWorthNavGroupNode({ includeChartInactiveAccounts: true });
-  const liabRoot = getLiabilitiesNavRootNode();
-
-  const resolveFullNode = (slug: string): NavTreeNodeDto | null => {
-    const inNw = nwFull ? findBySlugDeep(nwFull, slug) : null;
-    if (inNw && (inNw.children?.length ?? 0) > 0) return inNw;
-    const inLiab = liabRoot ? findBySlugDeep(liabRoot, slug) : null;
-    return inLiab ?? inNw;
-  };
-
   const annotate = (node: NavTreeNodeDto): NavTreeNodeDto => {
     const children = node.children.map(annotate);
     const isGroupPageNode =
       node.account_id == null && node.expense_account_id == null && Boolean(node.route_path?.trim());
-    const full = isGroupPageNode ? resolveFullNode(node.slug) : null;
+    const full = isGroupPageNode ? getNavChartGroupNodeBySlug(node.slug) : null;
     const chartBuckets = full ? chartBucketsDtoForNavNode(full) : null;
     const chartCoverage = isGroupPageNode && groupHostsLiabilitiesCoverage(node.slug);
     return {
@@ -46,15 +31,6 @@ export function annotateSidebarNavChartBuckets(main: NavTreeNodeDto[]): NavTreeN
   };
 
   return main.map(annotate);
-}
-
-function findBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeDto | null {
-  if (node.slug === slug) return node;
-  for (const c of node.children ?? []) {
-    const hit = findBySlugDeep(c, slug);
-    if (hit) return hit;
-  }
-  return null;
 }
 
 /**

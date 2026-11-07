@@ -1,3 +1,4 @@
+import { isInvestmentRootsHub } from "./navTreeModel.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import {
   getGroupConsolidationAccountMonthly,
@@ -44,7 +45,7 @@ export function getGroupConsolidatedMonthlyRows(
   tabSubgroup?: string
 ): ConsolidatedMonthlyPerfRow[] {
   if (groupSlug === "net_worth") return buildNetWorthConsolidatedMonthly(unit);
-  if (groupSlug === "inversiones" && tabSubgroup == null) {
+  if (isInvestmentRootsHub(groupSlug) && tabSubgroup == null) {
     return buildInversionesConsolidatedMonthly(unit);
   }
   return groupConsolidatedMonthlyRaw(listAccountsForGroupTab(groupSlug, tabSubgroup), groupSlug, unit);
@@ -62,7 +63,7 @@ export function getGroupConsolidatedTables(
     unit,
     groupSlug === "net_worth"
       ? buildNetWorthConsolidatedMonthly(unit)
-      : groupSlug === "inversiones" && tabSubgroup == null
+      : isInvestmentRootsHub(groupSlug) && tabSubgroup == null
         ? buildInversionesConsolidatedMonthly(unit)
         : groupConsolidatedMonthlyRaw(rows, groupSlug, unit),
     tabSubgroup

@@ -17,10 +17,10 @@
 import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { cacheKeyDailyReferenceSource } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
-import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
-import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
+import { accountProfile } from "./accountProfile.js";
+import { deptoPropertyAccountId, loanAccountIdOfProperty } from "./accountRoles.js";
+import { cashNetOfLinkedCreditCards, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
-import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import {
@@ -35,7 +35,6 @@ import {
   listAccountsForGroupTab,
   type TsUnit,
 } from "./valuationTimeseries.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
 
 /** One overlay line, aligned index-for-index with the daily series' `points`. */
 export type DailyReferenceLine = {
@@ -71,7 +70,7 @@ function sourceGroupDailyValues(
     // feeds the monthly chart Total via `applyConsolidatedTotalToGroupTabBlock`), so the
     // overlay has to net too or the daily line sits a whole card balance above the monthly
     // one. Per-date, on the daily owed convention, through the one cash netting rule.
-    const ccByDate = isCashEqsNwValuationGroupSlug(sourceSlug)
+    const ccByDate = groupNetsLinkedCards(sourceSlug)
       ? linkedCreditCardClpForCashCardByDates(series.points.map((p) => p.as_of_date))
       : null;
     const now = new Date();
@@ -101,61 +100,47 @@ function sourceGroupDailyValues(
  * the equity the payload's own property line plots, so valor = equity + hipoteca holds
  * point-for-point.
  *
- * Empty when there is not exactly one mortgage tab account (the depto ledger models one
- * mortgage — the monthly overlays rest on the same assumption); «valor» additionally needs
- * exactly one property account.
+ * Empty without the depto property and its loan (`property` / `loan_of` roles; the depto ledger
+ * models one property with one loan — the monthly overlays rest on the same assumption).
  */
 export function deptoPropertyChartOverlayDailyLines(
   datesAsc: readonly string[],
   unit: TsUnit
 ): DailySeriesAccountLine[] {
   if (!datesAsc.length) return [];
-  const mortgageRows = listLiabilitiesTabAccountRows("mortgage");
-  if (mortgageRows.length !== 1) return [];
+  // The property and its loan, read through their roles (`accountRoles.ts`).
+  const propertyId = deptoPropertyAccountId();
+  const loanId = propertyId != null ? loanAccountIdOfProperty(propertyId) : null;
+  if (propertyId == null || loanId == null) return [];
   // Each account's own value in the unit per day (converted once at its side: the mortgage
   // as a debt), the same figures its line plots.
-  const markValues = (r: {
-    account_id: number;
-    bucket_slug: string;
-    import_key?: string | null;
-    name?: string | null;
-  }): (number | null)[] =>
-    accountValueSeriesOnGrid(
-      {
-        account_id: r.account_id,
-        bucket_slug: r.bucket_slug,
-        import_key: r.import_key ?? null,
-        name: r.name ?? null,
-      },
+  const markValues = (accountId: number): (number | null)[] => {
+    const p = accountProfile(accountId);
+    return accountValueSeriesOnGrid(
+      { account_id: accountId, bucket_slug: p.leafSlug, import_key: p.importKey, name: p.name },
       datesAsc,
       unit
     );
+  };
 
-  const hipoteca = markValues(mortgageRows[0]!);
+  const hipoteca = markValues(loanId);
   if (!hipoteca.some((v) => v != null)) return [];
-  const lines: DailySeriesAccountLine[] = [
+  const equity = markValues(propertyId);
+  return [
     {
       account_id: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
       name: DEPTO_HIPOTECA_CHART_LINE_NAME,
       values: hipoteca,
     },
-  ];
-
-  const propertyRows = listAccountsForGroupTab("real_estate").filter(
-    (r) => r.account_id > 0 && accountBucketKindSlug(r.bucket_slug) === "property"
-  );
-  if (propertyRows.length === 1) {
-    const equity = markValues(propertyRows[0]!);
-    lines.push({
+    {
       account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
       name: DEPTO_VALOR_CHART_LINE_NAME,
       values: equity.map((eq, i) => {
         const hip = hipoteca[i];
         return eq != null && hip != null ? eq + hip : null;
       }),
-    });
-  }
-  return lines;
+    },
+  ];
 }
 
 /**

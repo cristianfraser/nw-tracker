@@ -20,12 +20,8 @@ import {
   getAccountColorRgb,
 } from "./chartColorRgb.js";
 import {
-  buildLiabilitiesChartBucketPlan,
-  buildNavChartBucketPlan,
-  isLiabilitiesChartNavNode,
-  shouldAggregateLiabilitiesCharts,
-  shouldAggregateNavCharts,
   type ChartBucketPlan,
+  pageChartPlan,
 } from "./groupChartBuckets.js";
 import {
   getGroupConsolidationAccountMonthly,
@@ -191,15 +187,14 @@ function buildGroupMonthlyPlSeries(
   let liabGrouped: GroupMonthlyPlBars | undefined;
   if (opts?.groupedBlocks) {
     const navNode = getNavChartGroupNodeBySlug(groupSlug);
-    if (navNode && isLiabilitiesChartNavNode(navNode)) {
-      if (shouldAggregateLiabilitiesCharts(navNode)) {
-        liabGrouped = aggregatePerfByBuckets(bar_accounts, points, buildLiabilitiesChartBucketPlan(navNode));
-      }
-    } else if (navNode) {
+    const chartPlan = navNode ? pageChartPlan(navNode) : null;
+    if (chartPlan?.kind === "liabilities") {
+      liabGrouped = aggregatePerfByBuckets(bar_accounts, points, chartPlan.plan);
+    } else if (chartPlan) {
       for (const grouped of [true, false] as const) {
-        if (!shouldAggregateNavCharts(navNode, grouped)) continue;
-        const agg = aggregatePerfByBuckets(bar_accounts, points, buildNavChartBucketPlan(navNode, grouped));
-        (navGrouped ??= {})[grouped ? "grouped" : "ungrouped"] = agg;
+        const plan = grouped ? chartPlan.grouped : chartPlan.ungrouped;
+        if (!plan) continue;
+        (navGrouped ??= {})[grouped ? "grouped" : "ungrouped"] = aggregatePerfByBuckets(bar_accounts, points, plan);
       }
     }
   }

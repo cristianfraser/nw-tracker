@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
-import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
+import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { cashNetOfLinkedCreditCards, cashSavingsLinkedBalances, netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { dailyReferenceLinesForChartHost } from "./dailyReferenceLines.js";
@@ -264,7 +264,7 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
       listReferenceGroupsForChartHost("liabilities").map((def) => [
         def.dataKey,
         def.links
-          .filter((l) => isCashEqsNwValuationGroupSlug(l.source_slug))
+          .filter((l) => groupNetsLinkedCards(l.source_slug))
           .reduce((s, l) => s + l.weight, 0),
       ])
     );

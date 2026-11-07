@@ -36,7 +36,7 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
+import { cashSavingsLinkedBalances, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
@@ -580,8 +580,9 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
     mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd", { side: "debt" }),
     credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd", { side: "debt" }),
   };
+  // A netting bucket's card explains its netting with the linked balances footer.
   const dashboard_layout = getDashboardLayoutCards().map((card) =>
-    card.slug === "cash_eqs"
+    groupNetsLinkedCards(card.slug)
       ? {
           ...card,
           linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd),

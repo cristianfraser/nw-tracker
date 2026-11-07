@@ -1,4 +1,3 @@
-import { accountProfileOptional } from "./accountProfile.js";
 import { assetGroupBySlug, CHECKING_ACCOUNTS_KIND, leafAssetGroupIdForKindSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import {
@@ -90,7 +89,20 @@ export function leafPortfolioGroupSlugForAccount(accountId: number): string | nu
 export function kindSlugForAccount(accountId: number): string | null {
   const k = leafGroupOfAccount(accountId)?.kindSlug;
   if (k && k !== CHECKING_ACCOUNTS_KIND) return k;
-  return accountProfileOptional(accountId)?.kind ?? null;
+  const row = db
+    .prepare(
+      `SELECT pg.kind_slug, g.slug AS asset_slug
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       LEFT JOIN portfolio_groups pg ON pg.asset_group_slug = g.slug
+       WHERE a.id = ?`
+    )
+    .get(accountId) as { kind_slug: string | null; asset_slug: string } | undefined;
+  if (!row) return null;
+  if (row.kind_slug) return row.kind_slug;
+  // The asset leaf's own kind (no profile here: callers ask for accounts a profile may refuse).
+  const sep = row.asset_slug.lastIndexOf("__");
+  return sep >= 0 ? row.asset_slug.slice(sep + 2) : row.asset_slug;
 }
 
 /** `accounts.asset_group_id` for import/create from portfolio `kind_slug`. */

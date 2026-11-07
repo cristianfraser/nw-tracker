@@ -398,7 +398,7 @@ export function getSidebarNavPayload(): {
 } {
   const linkRoots = buildNavForest("link");
   const mainRoots = buildNavForest("main").map((node) =>
-    node.slug === "liabilities" ? withLiabilitiesChildren(node) : node
+    node.group_kind === "liability_group" ? withLiabilitiesChildren(node) : node
   );
   const flowRoots = buildNavForest("flows");
 
@@ -447,14 +447,14 @@ export function getNetWorthNavGroupNodeWithLiabilities(options: NavTreeBuildOpti
   const nw = getNetWorthNavGroupNode(options);
   if (!nw) return null;
   const visit = (node: NavTreeNodeDto): NavTreeNodeDto =>
-    node.slug === "liabilities" && node.account_id == null
+    node.group_kind === "liability_group" && node.account_id == null
       ? withLiabilitiesChildren(node)
       : { ...node, children: node.children.map(visit) };
   return visit(nw);
 }
 
 function buildLiabilitiesNavRootNode(): NavTreeNodeDto | null {
-  const liab = buildNavForest("main").find((n) => n.slug === "liabilities");
+  const liab = buildNavForest("main").find((n) => n.group_kind === "liability_group");
   if (!liab) return null;
   return withLiabilitiesChildren(liab);
 }
