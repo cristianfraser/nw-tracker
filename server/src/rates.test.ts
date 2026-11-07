@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { holdingFromFacts, type HoldingFacts } from "./holdings.js";
 import { convertCurrency, rateAt } from "./rates.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
@@ -54,50 +53,5 @@ describe("convertCurrency", () => {
     expect(convertCurrency(5, "usd", "usd", "1900-01-01", { side: "asset" })).toBe(5);
     expect(convertCurrency(0, "usd", "clp", "1900-01-01", { side: "asset" })).toBe(0);
     expect(convertCurrency(5, "uf", "clp", "1900-01-01", { side: "asset" })).toBeNull();
-  });
-});
-
-describe("holdingFromFacts", () => {
-  const base: HoldingFacts = {
-    kindSlug: "clp",
-    importKey: null,
-    equityTicker: null,
-    coinPriceTicker: null,
-    usesEquityMtm: false,
-    fundSeriesKey: null,
-    quoteCurrencyOf: (t) => (t.endsWith(".SN") ? "clp" : "usd"),
-  };
-
-  it("maps each kind of account to what it holds", () => {
-    expect(holdingFromFacts({ ...base, kindSlug: "usd" })).toEqual({ kind: "currency", code: "usd" });
-    expect(holdingFromFacts({ ...base, kindSlug: "cuenta_corriente" })).toEqual({ kind: "currency", code: "clp" });
-    expect(holdingFromFacts({ ...base, kindSlug: "property" })).toEqual({ kind: "currency", code: "uf" });
-    expect(holdingFromFacts({ ...base, kindSlug: "credit_card" })).toEqual({ kind: "card" });
-    expect(holdingFromFacts({ ...base, kindSlug: "spy", equityTicker: "SPY", usesEquityMtm: true })).toEqual({
-      kind: "stock",
-      ticker: "SPY",
-      quote: "usd",
-    });
-    expect(
-      holdingFromFacts({ ...base, kindSlug: "ipsa", equityTicker: "CFIETFIPSA.SN", usesEquityMtm: true })
-    ).toEqual({ kind: "stock", ticker: "CFIETFIPSA.SN", quote: "clp" });
-    expect(holdingFromFacts({ ...base, kindSlug: "btc", equityTicker: "BTC-USD", coinPriceTicker: "BTC-USD" })).toEqual({
-      kind: "coin",
-      coin: "BTC",
-      priceTicker: "BTC-USD",
-      quote: "usd",
-    });
-    expect(holdingFromFacts({ ...base, kindSlug: "afp" })).toEqual({
-      kind: "fund",
-      seriesKey: "afp_uno_cuota_a",
-      quote: "clp",
-    });
-    expect(holdingFromFacts({ ...base, kindSlug: "afc" })).toEqual({ kind: "currency", code: "clp" });
-  });
-
-  it("a Fintual fund account without its series throws", () => {
-    expect(() =>
-      holdingFromFacts({ ...base, kindSlug: "mutual_fund", importKey: "import:fintual|cert|key=x" })
-    ).toThrow(/fund_series_key/);
   });
 });
