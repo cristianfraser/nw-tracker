@@ -1254,7 +1254,7 @@ series). Tests use synthetic fixtures only (`cd server && npm run test`).
 ### Where the work runs
 
 - **Integration branch `untangle`**, cut from `main` at the commit that adds this file. Each
-  stream works in its own git worktree on `untangle/<stream>`, branched from `untangle`, and
+  stream works in its own git worktree on `ut-<stream>`, branched from `untangle`, and
   is merged back into `untangle` once its checks pass. `main` only moves at wave boundaries:
   a wave is merged to `main` when `untangle` is green and a real-DB rehearsal (where the wave
   needs one) shows only the changes the wave intended. Pushing `main` deploys to the home
