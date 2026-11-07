@@ -20,22 +20,27 @@
  * stored — the FCS is the solidarity fund, nobody's account.
  */
 import { db } from "./db.js";
-import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
+import type { ChileWallClock } from "./chileDate.js";
 import { fetchOut } from "./httpOut.js";
-import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
+import { EVENING_PUBLISH_HOUR_CHILE, expectedPublishedDay, type PublisherSchedule } from "./publisherSchedule.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 
 export const AFC_CIC_SERIES_KEY = "afc_cic";
 
 /**
- * Chile hour from which the previous business day's valor cuota is expected in DB: 18:00, the
- * same hour as Fintual's cuota (`FINTUAL_PUBLISH_HOUR_CHILE`) and the AFP official value
- * (`AFP_UNO_PUBLISH_HOUR_CHILE`), so the three funds turn stale and dim together. The SP
- * publishes day D on D+1 at an hour not documented anywhere; it was noon until 2026-10-22,
- * which dimmed the AFC every afternoon the SP printed late (10-21's row still missing at
- * 15:45 on 10-22). The stale rule, the publisher-lag dim and the schedule wake all key on it.
+ * The SP prints business day D's valor cuota on the next business day, from the evening publish
+ * hour (18:00, the same hour as Fintual's cuota and the AFP official value, so the three funds
+ * turn stale and dim together); the hour is not documented anywhere. Until 2026-10-22 it was
+ * noon, which dimmed the AFC every afternoon the SP printed late. The stale rule, the
+ * publisher-lag dim and the schedule wake all read this schedule. Until 2026-11-01 the expected
+ * day was the business day before TODAY, so every weekend waited on Friday's row from Saturday
+ * and dimmed the AFC until Monday evening (on Monday 2026-10-05 the CSV still ended at Thursday).
  */
-export const AFC_CIC_PUBLISH_HOUR_CHILE = 18;
+export const AFC_CIC_PUBLISHER: PublisherSchedule = {
+  label: "afc_cic",
+  publishHour: EVENING_PUBLISH_HOUR_CHILE,
+  lagBusinessDays: 1,
+};
 
 const SP_CESANTIA_CSV_BASE = "https://www.spensiones.cl/apps/valoresCuotaFondo/vcfAFCxls.php";
 const EXPECTED_HEADER_FUNDS = ["", "Fondo de la Cuenta Individual de Cesantia", "", "Fondo de Cesantia Solidario"];
@@ -210,33 +215,6 @@ export function afcCicAccountIds(): number[] {
   return (stmtAccountIds.all(AFC_CIC_SERIES_KEY) as { id: number }[]).map((r) => r.id);
 }
 
-/**
- * The latest day the SP has published by `cl`: today once its publish hour has passed on a Chile
- * business day, else the previous Chile business day. The SP prints on business days only, the
- * AFP's rule (`afpUnoExpectedOfficialDay`): Friday's valor cuota appears on Monday ~18:30, never
- * on the weekend (on Monday 2026-10-05 the CSV still ended at Thursday 10-01).
- */
-function afcCicLatestPublishDay(cl: ChileWallClock): string {
-  if (isChileBusinessDay(cl.ymd) && cl.hour >= AFC_CIC_PUBLISH_HOUR_CHILE) return cl.ymd;
-  const prior = priorChileBusinessDayYmd(cl.ymd);
-  if (!prior) throw new Error(`afc_cic: no Chile business day before ${cl.ymd}`);
-  return prior;
-}
-
-/**
- * The day whose valor cuota must be in DB at `cl`: the Chile business day before the latest
- * publish day — the one that day printed. Weekend and holiday rows are flat carries of that
- * close, so they are never waited for (the mark reads on-or-before) — they land with the next
- * publication. Until 2026-11-01 it was the business day before TODAY, so every weekend waited on
- * Friday's row from Saturday and dimmed the AFC until Monday evening.
- */
-export function afcCicExpectedYmd(cl: ChileWallClock): string {
-  const publishDay = afcCicLatestPublishDay(cl);
-  const prior = priorChileBusinessDayYmd(publishDay);
-  if (!prior) throw new Error(`afc_cic: no Chile business day before ${publishDay}`);
-  return prior;
-}
-
 /** Stale = the expected day's row is missing. Never stale without an account on the series. */
 export function isAfcCicStale(
   cl: ChileWallClock,
@@ -246,24 +224,7 @@ export function isAfcCicStale(
   if (afcCicAccountIds().length === 0) return false;
   if (opts?.force) return true;
   const latest = latestAfcCicRow()?.day ?? null;
-  return latest == null || latest < afcCicExpectedYmd(cl);
-}
-
-/**
- * Pure schedule helper: the first Chile business day (today when its publish hour is still ahead,
- * else from tomorrow) whose publication at {@link AFC_CIC_PUBLISH_HOUR_CHILE} expects a row
- * beyond `latestDay` — that is when the source next becomes stale.
- */
-export function afcCicNextDueYmd(cl: ChileWallClock, latestDay: string | null): string | null {
-  let d = cl.hour < AFC_CIC_PUBLISH_HOUR_CHILE ? cl.ymd : chileCalendarAddDays(cl.ymd, 1);
-  for (let i = 0; i < 21; i++) {
-    if (isChileBusinessDay(d)) {
-      const expected = afcCicExpectedYmd({ ...cl, ymd: d, hour: AFC_CIC_PUBLISH_HOUR_CHILE });
-      if (latestDay == null || expected > latestDay) return d;
-    }
-    d = chileCalendarAddDays(d, 1);
-  }
-  return null;
+  return latest == null || latest < expectedPublishedDay(cl, AFC_CIC_PUBLISHER);
 }
 
 export type AfcCicSyncResult = AfcCicUpsertResult & {

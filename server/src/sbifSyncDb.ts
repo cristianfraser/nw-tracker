@@ -180,20 +180,3 @@ export function maxIpcMonthParts(): { y: number; m: number } | null {
   if (!Number.isFinite(y) || !Number.isFinite(mo)) return null;
   return { y, m: mo };
 }
-
-/** Table may not exist before migration — treat as empty. */
-export function safeMaxUtmMonthParts(): { y: number; m: number } | null {
-  try {
-    return maxUtmMonthParts();
-  } catch {
-    return null;
-  }
-}
-
-export function safeMaxIpcMonthParts(): { y: number; m: number } | null {
-  try {
-    return maxIpcMonthParts();
-  } catch {
-    return null;
-  }
-}

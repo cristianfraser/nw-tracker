@@ -1,0 +1,31 @@
+{
+  "_doc": "Publisher schedules (server/src/publisherSchedule.ts). 2026-09-21..25 and 2026-10-05..09 are Monday..Friday, 2026-09-18 (Friday) a holiday; 2026-10-31 is a Chile holiday (Saturday). sp_t1 = SP, value of D due on the next business day (the AFC valor cuota, the AFP official value read from the SP); sp_t2 = UNO's own API, one business day later still.",
+  "schedules": {
+    "sp_t1": { "label": "sp_t1", "publishHour": 18, "lagBusinessDays": 1 },
+    "sp_t2": { "label": "sp_t2", "publishHour": 18, "lagBusinessDays": 2 }
+  },
+  "expected": [
+    { "schedule": "sp_t1", "at": ["2026-09-22", 19], "day": "2026-09-21", "why": "Tuesday after 18:00 → Monday" },
+    { "schedule": "sp_t1", "at": ["2026-09-22", 9], "day": "2026-09-17", "why": "Tuesday morning → Monday's publication (Thu 17; Fri 18 is a holiday)" },
+    { "schedule": "sp_t1", "at": ["2026-09-26", 14], "day": "2026-09-24", "why": "Saturday → Friday printed Thursday" },
+    { "schedule": "sp_t1", "at": ["2026-09-27", 20], "day": "2026-09-24", "why": "Sunday → still Thursday" },
+    { "schedule": "sp_t1", "at": ["2026-09-28", 17], "day": "2026-09-24", "why": "Monday before 18:00 → Thursday" },
+    { "schedule": "sp_t1", "at": ["2026-09-28", 18], "day": "2026-09-25", "why": "Monday 18:00 → Friday" },
+    { "schedule": "sp_t1", "at": ["2026-11-01", 12], "day": "2026-10-29", "why": "Sunday after a Saturday holiday → Thursday" },
+    { "schedule": "sp_t1", "at": ["2026-10-05", 17], "day": "2026-10-01", "why": "Monday before 18:00 → Thursday" },
+    { "schedule": "sp_t1", "at": ["2026-10-05", 18], "day": "2026-10-02", "why": "Monday 18:00 → Friday" },
+    { "schedule": "sp_t1", "at": ["2026-10-03", 12], "day": "2026-10-01", "why": "Saturday → Thursday" },
+    { "schedule": "sp_t1", "at": ["2026-10-06", 23], "day": "2026-10-05", "why": "Tuesday night → Monday" },
+    { "schedule": "sp_t2", "at": ["2026-10-06", 18], "day": "2026-10-02", "why": "UNO's API carries Friday on Tuesday" }
+  ],
+  "next_due": [
+    { "schedule": "sp_t1", "at": ["2026-09-26", 14], "latest": "2026-09-24", "due": ["2026-09-28", 18], "why": "Saturday with Thursday stored: Monday prints Friday" },
+    { "schedule": "sp_t1", "at": ["2026-09-26", 14], "latest": "2026-09-25", "due": ["2026-09-29", 18], "why": "Friday stored: Monday prints Friday too, so Tuesday" },
+    { "schedule": "sp_t1", "at": ["2026-09-22", 9], "latest": "2026-09-17", "due": ["2026-09-22", 18], "why": "today's publication prints Monday" },
+    { "schedule": "sp_t1", "at": ["2026-09-22", 19], "latest": "2026-09-21", "due": ["2026-09-23", 18], "why": "Wednesday prints Tuesday" },
+    { "schedule": "sp_t1", "at": ["2026-09-22", 9], "latest": null, "due": ["2026-09-22", 18], "why": "nothing stored: the next publication" },
+    { "schedule": "sp_t1", "at": ["2026-10-05", 10], "latest": "2026-10-01", "due": ["2026-10-05", 18], "why": "Monday morning, Thursday stored" },
+    { "schedule": "sp_t1", "at": ["2026-10-05", 20], "latest": "2026-10-02", "due": ["2026-10-06", 18], "why": "Monday night, Friday stored" },
+    { "schedule": "sp_t1", "at": ["2026-10-03", 12], "latest": "2026-10-04", "due": ["2026-10-06", 18], "why": "the weekend carry stored: Tuesday" }
+  ]
+}

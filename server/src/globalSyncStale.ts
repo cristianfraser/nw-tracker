@@ -1,13 +1,13 @@
 /**
- * Stale checks for external sync sources (no Fintual script imports — safe for `tsc` / in-server use).
+ * The global sync's sources as one table (`SYNC_SOURCES`, 2026-11-07, docs/untangle-plan.md F14):
+ * for each source, whether it is configured, its stale rule, its publisher's lag, when it is due
+ * next and how a forced run is cleared. The status rows, the scheduler's stale list, the dimming
+ * list and the schedule are all read from it. The ids live in `syncSourceIds.ts`, the per-source
+ * stale predicates below and in each source's module, the wake times in `syncSourceSchedule.ts`.
+ * No Fintual script imports — safe for `tsc` / in-server use.
  */
-import { demoModeEnabled } from "./demoModeFlag.js";
-import {
-  AFP_UNO_PUBLISH_HOUR_CHILE,
-  afpUnoExpectedOfficialDay,
-  isAfpUnoOfficialStale,
-  latestOfficialUnoDay,
-} from "./afpUnoOfficialSync.js";
+import { deploymentProfile } from "./config.js";
+import { afpUnoPublisher, isAfpUnoOfficialStale, latestOfficialUnoDay } from "./afpUnoOfficialSync.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockNow } from "./chileDate.js";
 import { afpUnoAccountIds, liveAfpUnoAccountId } from "./afpAccounts.js";
 import { isCmfRnPortfolioStale } from "./cmfRnPortfolioSync.js";
@@ -18,14 +18,7 @@ import {
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
-import {
-  AFC_CIC_PUBLISH_HOUR_CHILE,
-  afcCicAccountIds,
-  afcCicExpectedYmd,
-  isAfcCicStale,
-  latestAfcCicRow,
-} from "./afcCicSeries.js";
-
+import { AFC_CIC_PUBLISHER, afcCicAccountIds, isAfcCicStale, latestAfcCicRow } from "./afcCicSeries.js";
 import {
   cryptoEodDueUtcYmd,
   equityCryptoEodCaughtUp,
@@ -35,15 +28,28 @@ import {
   equitySantiagoEodCaughtUp,
 } from "./equityEodSync.js";
 import {
-  attachSyncSourceSchedule,
   FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE,
   FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE,
+  chileDayKind,
+  cmfNextSync,
+  cryptoNextSync,
+  fintualNextSync,
+  forexDayKind,
   isFintualRnCompositionDueDay,
+  nyseDayKindAt,
+  officialSerieNextSync,
+  publisherNextSync,
+  rnCompositionNextSync,
+  sbifMonthlyNextSync,
+  sbifObservedNextSync,
+  stocksNyseNextSync,
+  stocksSantiagoNextSync,
+  yahooFxNextSync,
   type SyncSourceDayKind,
+  type SyncSourceScheduleMeta,
   type SyncWallTime,
 } from "./syncSourceSchedule.js";
 import {
-  FINTUAL_PUBLISH_HOUR_CHILE,
   fintualPriorEveningUnresolved,
   fintualPublishLagsPollCalendarDay,
   isFintualFundPublishDay,
@@ -62,9 +68,25 @@ import {
   maxEurDateOnOrBefore,
   maxFxBcentralDateOnOrBefore,
   maxUfDate,
-  safeMaxUtmMonthParts,
+  maxUtmMonthParts,
 } from "./sbifSyncDb.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
+import {
+  EVENING_PUBLISH_HOUR_CHILE,
+  expectedPublishedDay,
+  publisherLagFromPoll,
+  recentPollLag,
+  type SyncPublisherLag,
+} from "./publisherSchedule.js";
+import { GLOBAL_SYNC_SOURCES, isGlobalSyncSource, type GlobalSyncSource } from "./syncSourceIds.js";
+
+export {
+  GLOBAL_SYNC_SOURCES,
+  isGlobalSyncSource,
+  isLegacyEquityEodSyncSource,
+  type GlobalSyncSource,
+} from "./syncSourceIds.js";
+export { PUBLISHER_LAG_MAX_POLL_AGE_MS, type SyncPublisherLag } from "./publisherSchedule.js";
 
 /**
  * Due once per due day (`isFintualRnCompositionDueDay`: a Chile business day or the day after one)
@@ -77,52 +99,6 @@ export function isFintualRnCompositionStale(cl: ChileWallClock, state: GlobalSyn
   const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60 + FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE;
   if (cl.hour * 60 + cl.minute < dueMins) return false;
   return state.fintualRnCompositionLastSyncYmd?.trim() !== cl.ymd;
-}
-
-export type GlobalSyncSource =
-  | "afp_uno"
-  | "afc_cic"
-  | "fintual"
-  | "fintual_official_serie"
-  | "fintual_rn_composition"
-  | "cmf_rn_portfolio"
-  | "sbif_usd"
-  | "sbif_eur"
-  | "sbif_uf"
-  | "sbif_utm"
-  | "sbif_ipc"
-  | "stocks_nyse"
-  | "stocks_santiago"
-  | "yahoo_fx_usd"
-  | "crypto_eod";
-
-export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
-  "afp_uno",
-  "afc_cic",
-  "fintual",
-  "fintual_official_serie",
-  "fintual_rn_composition",
-  "cmf_rn_portfolio",
-  "sbif_usd",
-  "sbif_eur",
-  "sbif_uf",
-  "sbif_utm",
-  "sbif_ipc",
-  "stocks_nyse",
-  "stocks_santiago",
-  "yahoo_fx_usd",
-  "crypto_eod",
-] as const;
-
-const LEGACY_EQUITY_EOD_SOURCE = "equity_eod";
-
-export function isGlobalSyncSource(value: string): value is GlobalSyncSource {
-  return (GLOBAL_SYNC_SOURCES as readonly string[]).includes(value);
-}
-
-/** @deprecated UI/API used `equity_eod` before stocks/crypto split. */
-export function isLegacyEquityEodSyncSource(value: string): boolean {
-  return value === LEGACY_EQUITY_EOD_SOURCE;
 }
 
 function userForcedStaleSet(state: GlobalSyncStateFile): Set<GlobalSyncSource> {
@@ -161,63 +137,6 @@ export function forceSyncSourceStale(source: GlobalSyncSource): GlobalSyncStateF
   return state;
 }
 
-function applyUserForcedStaleToRows(
-  rows: SyncSourceStatusRow[],
-  state: GlobalSyncStateFile
-): SyncSourceStatusRow[] {
-  const forced = userForcedStaleSet(state);
-  if (forced.size === 0) return rows;
-  return rows.map((row) => {
-    if (!forced.has(row.source) || row.status === "disabled") return row;
-    return { ...row, status: "stale", stale: true };
-  });
-}
-
-/**
- * Sources the hosted demo never runs: they read the author's own Fintual goals, or only serve
- * the Risky Norris proxy of funds the demo does not hold. The demo syncs only the public market
- * sources its holdings need (stocks, crypto, USD/CLP, Banco Central, AFP UNO — from UNO's own API,
- * `afpUnoOfficialSource`; its AFC is a book account, so `afc_cic` reads «Not configured» too).
- */
-export const DEMO_SYNC_DISABLED_SOURCES: ReadonlySet<GlobalSyncSource> = new Set([
-  "fintual",
-  "fintual_official_serie",
-  "fintual_rn_composition",
-  "cmf_rn_portfolio",
-]);
-
-function disabledSyncSources(
-  cl: ChileWallClock,
-  opts?: { bcentralConfigured?: boolean }
-): Set<GlobalSyncSource> {
-  const disabled = new Set<GlobalSyncSource>(demoModeEnabled() ? DEMO_SYNC_DISABLED_SOURCES : []);
-  if (afpUnoAccountId() == null) disabled.add("afp_uno");
-  if (afcCicAccountIds().length === 0) disabled.add("afc_cic");
-  const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
-  if (!bde) {
-    disabled.add("sbif_usd");
-    disabled.add("sbif_eur");
-    disabled.add("sbif_uf");
-    disabled.add("sbif_utm");
-    disabled.add("sbif_ipc");
-  }
-  return disabled;
-}
-
-function mergeUserForcedIntoStaleList(
-  stale: GlobalSyncSource[],
-  state: GlobalSyncStateFile,
-  disabled: Set<GlobalSyncSource>
-): GlobalSyncSource[] {
-  const forced = userForcedStaleSet(state);
-  if (forced.size === 0) return stale;
-  const out = new Set(stale);
-  for (const s of forced) {
-    if (!disabled.has(s)) out.add(s);
-  }
-  return [...out];
-}
-
 /** The afp account on the live UNO series, or null when none declares it (the source is then disabled). */
 function afpUnoAccountId(): number | null {
   const ids = afpUnoAccountIds();
@@ -238,26 +157,20 @@ export function isAfpUnoSpotStale(
   return isAfpUnoOfficialStale(cl, latestOfficialUnoDay());
 }
 
-/**
- * Classify a stale AFP UNO source as the Superintendencia's lag — or null when we are the ones
- * behind. Same rule as {@link afcCicPublisherLag}: nobody forced a run, the last fetch is recent,
- * the DB holds the latest UNO day the SP printed, and that day is still before the expected one.
- */
+/** A stale AFP UNO source as the Superintendencia's lag, or null when we are behind (`publisherLagFromPoll`). */
 export function afpUnoPublisherLag(
   cl: ChileWallClock,
   state: GlobalSyncStateFile,
   opts: { latestDbDay: string | null; nowMs: number }
 ): SyncPublisherLag | null {
-  if (isUserForcedSyncSourceStale(state, "afp_uno")) return null;
-  const published = state.afpUnoLastPublishedYmd?.trim();
-  if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
-  if (opts.latestDbDay == null || opts.latestDbDay < published) return null;
-  const expected = afpUnoExpectedOfficialDay(cl);
-  if (published >= expected) return null;
-  const checkedAt = state.afpUnoLastCheckedAt ?? null;
-  const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
-  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > PUBLISHER_LAG_MAX_POLL_AGE_MS) return null;
-  return { expected_ymd: expected, published_ymd: published, last_checked_at: checkedAt as string };
+  return publisherLagFromPoll({
+    forced: isUserForcedSyncSourceStale(state, "afp_uno"),
+    publishedYmd: state.afpUnoLastPublishedYmd,
+    latestDbDay: opts.latestDbDay,
+    expectedYmd: expectedPublishedDay(cl, afpUnoPublisher()),
+    lastCheckedAt: state.afpUnoLastCheckedAt,
+    nowMs: opts.nowMs,
+  });
 }
 
 /**
@@ -270,7 +183,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   // max across funds): a held v2 fund whose publish-day bar is still missing keeps the source
   // stale so the morning carry lands the value the fund published overnight.
   if (fintualMorningCarryPerFundUnresolved(cl, state)) return true;
-  if (cl.hour < FINTUAL_PUBLISH_HOUR_CHILE) return false;
+  if (cl.hour < EVENING_PUBLISH_HOUR_CHILE) return false;
   if (!isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) return false;
   if (
     state.fintualLastPublishYmd != null &&
@@ -317,7 +230,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   }
   const publishYmd = state.fintualLastAppliedPublishYmd ?? state.fintualLastPublishYmd ?? cl.ymd;
   if (
-    cl.hour >= FINTUAL_PUBLISH_HOUR_CHILE &&
+    cl.hour >= EVENING_PUBLISH_HOUR_CHILE &&
     state.fintualLastCheckYmd === cl.ymd &&
     state.fintualLastCheckSig != null &&
     state.fintualLastCheckSig === state.fintualLastAppliedSig &&
@@ -403,116 +316,6 @@ export function isSbifObservedFxStale(
   return maxOnOrBeforeToday < expected;
 }
 
-/** Whether `runGlobalSyncAll` should run the sync step for this source (matches log `Stale:` list). */
-export function shouldRunSyncSource(
-  source: GlobalSyncSource,
-  stale: readonly GlobalSyncSource[]
-): boolean {
-  return stale.includes(source);
-}
-
-function naturalStaleSyncSources(
-  cl: ChileWallClock,
-  state: GlobalSyncStateFile,
-  opts?: { force?: boolean; forceSbif?: boolean; bcentralConfigured?: boolean }
-): GlobalSyncSource[] {
-  const out: GlobalSyncSource[] = [];
-  if (isAfpUnoSpotStale(cl, state, opts)) out.push("afp_uno");
-  if (isAfcCicStale(cl, state, opts)) out.push("afc_cic");
-  if (isFintualSyncStale(cl, state)) out.push("fintual");
-  if (isFintualOfficialSerieStale(cl, state)) out.push("fintual_official_serie");
-  if (isFintualRnCompositionStale(cl, state)) out.push("fintual_rn_composition");
-  if (isCmfRnPortfolioStale(cl, state)) out.push("cmf_rn_portfolio");
-  const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
-  if (bde) {
-    if (isSbifObservedFxStale(maxFxBcentralDateOnOrBefore(cl.ymd), cl, state.sbifUsdLastErrorAt)) out.push("sbif_usd");
-    if (isSbifObservedFxStale(maxEurDateOnOrBefore(cl.ymd), cl, state.sbifEurLastErrorAt)) out.push("sbif_eur");
-    if (cl.day >= 9 || opts?.forceSbif) {
-      if (isSbifUfStale(cl, {
-        forceSbif: opts?.forceSbif,
-        maxUfDate: maxUfDate(),
-        lastSyncYmd: state.sbifUfLastSyncYmd,
-      })) out.push("sbif_uf");
-      if (isSbifUtmStale(cl, { forceSbif: opts?.forceSbif, maxUtm: safeMaxUtmMonthParts() })) {
-        out.push("sbif_utm");
-      }
-      if (isSbifMonthlyStale(cl, state.sbifIpcMonth, opts)) out.push("sbif_ipc");
-    }
-  }
-  if (isStocksNyseStale(state, opts)) out.push("stocks_nyse");
-  if (isStocksSantiagoStale(state, opts)) out.push("stocks_santiago");
-  if (isYahooFxUsdStale(opts)) out.push("yahoo_fx_usd");
-  if (isCryptoEodStale(cl, state, opts)) out.push("crypto_eod");
-  return out;
-}
-
-export function staleSyncSources(
-  cl: ChileWallClock,
-  state: GlobalSyncStateFile,
-  opts?: { force?: boolean; forceSbif?: boolean; bcentralConfigured?: boolean }
-): GlobalSyncSource[] {
-  loadRootDotenv();
-  const disabled = disabledSyncSources(cl, opts);
-  const natural = naturalStaleSyncSources(cl, state, opts).filter((s) => !disabled.has(s));
-  return mergeUserForcedIntoStaleList(natural, state, disabled);
-}
-
-export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
-
-/**
- * A stale source whose only missing piece is the PUBLISHER's next day: our poll ran recently and
- * holds everything the API offers, the API just has not published the expected cuota yet.
- */
-export type SyncPublisherLag = {
-  /** The first publish day the source is waiting for. */
-  expected_ymd: string;
-  /** The publisher's latest cuota day as of the last poll. */
-  published_ymd: string;
-  /** When the last poll ran (ISO). */
-  last_checked_at: string;
-};
-
-export type SyncSourceStatusRow = {
-  source: GlobalSyncSource;
-  status: SyncSourceDisplayStatus;
-  stale: boolean;
-  /** Set when `stale` is the publisher's lag, not ours (see `fintualPublisherLag`). */
-  publisher_lag: SyncPublisherLag | null;
-  next_sync: SyncWallTime | null;
-  next_sync_imminent: boolean;
-  today_day_kind: SyncSourceDayKind;
-};
-
-function syncSourceRow(
-  source: GlobalSyncSource,
-  cl: ChileWallClock,
-  status: SyncSourceDisplayStatus,
-  stale: boolean,
-  state: GlobalSyncStateFile
-): SyncSourceStatusRow {
-  const sched = attachSyncSourceSchedule(source, cl, stale, status === "disabled", {
-    fintualAppliedPublishYmd: state.fintualLastAppliedPublishYmd ?? null,
-    afcCicLatestDay: source === "afc_cic" ? (latestAfcCicRow()?.day ?? null) : null,
-    afpUnoLatestOfficialDay: source === "afp_uno" ? latestOfficialUnoDay() : null,
-  });
-  return {
-    source,
-    status,
-    stale,
-    publisher_lag: null,
-    next_sync: sched.next_sync,
-    next_sync_imminent: sched.next_sync_imminent,
-    today_day_kind: sched.today_day_kind,
-  };
-}
-
-/**
- * How old a source's last poll may be for its staleness to still count as the publisher's lag.
- * The scheduler polls every 15 minutes while any source is stale; two intervals is one missed
- * tick of slack. Older than that, the poll itself is what is missing and we are the ones behind.
- */
-export const PUBLISHER_LAG_MAX_POLL_AGE_MS = 30 * 60 * 1000;
-
 /** `fetchedAt` of the goals snapshot `runFintual` writes on every poll — null when none exists. */
 export function readFintualLastCheckedAt(): string | null {
   const file = fintualGoalsSnapshotPath();
@@ -552,7 +355,7 @@ export function fintualPublisherLag(
   if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
   // The first publish day after the published one, capped at the day the source is waiting on
   // (the carried poll day before 18:00, today after).
-  const cap = cl.hour < FINTUAL_PUBLISH_HOUR_CHILE ? state.fintualLastCheckYmd : cl.ymd;
+  const cap = cl.hour < EVENING_PUBLISH_HOUR_CHILE ? state.fintualLastCheckYmd : cl.ymd;
   if (!cap) return null;
   let expected = chileCalendarAddDays(published, 1);
   for (let i = 0; i < 14 && expected <= cap && !isFintualFundPublishDay(expected); i++) {
@@ -560,214 +363,337 @@ export function fintualPublisherLag(
   }
   if (expected > cap) return null;
   if (fintualCertV2AnyHeldFundMissingDayRow(published, state)) return null;
-  const checkedMs = opts.lastCheckedAt ? Date.parse(opts.lastCheckedAt) : NaN;
-  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > PUBLISHER_LAG_MAX_POLL_AGE_MS) {
-    return null;
-  }
-  return { expected_ymd: expected, published_ymd: published, last_checked_at: opts.lastCheckedAt as string };
+  return recentPollLag(expected, published, opts.lastCheckedAt, opts.nowMs);
 }
 
 /**
- * Classify a stale AFC CIC source as the PUBLISHER's lag — or null when we are the ones behind.
- *
- * `isAfcCicStale` waits on the valor cuota the latest SP publication day should have printed, and
- * the Superintendencia de Pensiones is sometimes late printing it: on 2026-10-05 its CSV still
- * ended at Thursday 10-01 while every 15-minute poll since Saturday noon read the whole year
- * unchanged, and the sync panel called that «stale» like a failed fetch. This is lag on the
- * publisher's side when: nobody forced a run, the last fetch is recent
- * (`PUBLISHER_LAG_MAX_POLL_AGE_MS`), the DB holds the last day the CSV printed (else our write is
- * what failed), and that day is still before the expected one.
+ * A stale AFC CIC source as the PUBLISHER's lag, or null when we are behind
+ * (`publisherLagFromPoll`). The SP is sometimes late printing: on 2026-10-05 its CSV still ended
+ * at Thursday 10-01 while every 15-minute poll since Saturday noon read the whole year unchanged,
+ * and the sync panel called that «stale» like a failed fetch.
  */
 export function afcCicPublisherLag(
   cl: ChileWallClock,
   state: GlobalSyncStateFile,
   opts: { latestDbDay: string | null; nowMs: number }
 ): SyncPublisherLag | null {
-  if (isUserForcedSyncSourceStale(state, "afc_cic")) return null;
-  const published = state.afcCicLastPublishedYmd?.trim();
-  if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
-  if (opts.latestDbDay == null || opts.latestDbDay < published) return null;
-  const expected = afcCicExpectedYmd(cl);
-  if (published >= expected) return null;
-  const checkedAt = state.afcCicLastCheckedAt ?? null;
-  const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
-  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > PUBLISHER_LAG_MAX_POLL_AGE_MS) return null;
-  return { expected_ymd: expected, published_ymd: published, last_checked_at: checkedAt as string };
+  return publisherLagFromPoll({
+    forced: isUserForcedSyncSourceStale(state, "afc_cic"),
+    publishedYmd: state.afcCicLastPublishedYmd,
+    latestDbDay: opts.latestDbDay,
+    expectedYmd: expectedPublishedDay(cl, AFC_CIC_PUBLISHER),
+    lastCheckedAt: state.afcCicLastCheckedAt,
+    nowMs: opts.nowMs,
+  });
 }
 
-/** The Chile hour from which a source's publisher lag counts as overdue (see `staleDimmingSources`). */
-function publisherLagOverdueHourChile(source: GlobalSyncSource): number {
-  if (source === "afc_cic") return AFC_CIC_PUBLISH_HOUR_CHILE;
-  if (source === "afp_uno") return AFP_UNO_PUBLISH_HOUR_CHILE;
-  return FINTUAL_PUBLISH_HOUR_CHILE;
+/** What a source's rules read: the clock, the sync state and how the run was asked for. */
+export type SyncSourceContext = {
+  cl: ChileWallClock;
+  state: GlobalSyncStateFile;
+  nowMs: number;
+  /** `--force`: every configured source is stale. */
+  force: boolean;
+  /** `--force-sbif`: the monthly Banco Central sources are stale from day 1. */
+  forceSbif: boolean;
+  bcentralConfigured: boolean;
+  /** Last Fintual poll (ISO); undefined reads the goals snapshot, null means "never". */
+  fintualLastCheckedAt?: string | null;
+};
+
+export type SyncSourceDefinition = {
+  /** The step's name in the sync log. */
+  label: string;
+  /** Configured on this instance (an account on the series, credentials); the deployment profile is applied apart. */
+  configured: (ctx: SyncSourceContext) => boolean;
+  stale: (ctx: SyncSourceContext) => boolean;
+  /** A stale source waiting on its publisher (`publisherSchedule.ts`), and the Chile hour from which that lag dims. */
+  publisherLag?: { overdueHourChile: number; classify: (ctx: SyncSourceContext) => SyncPublisherLag | null };
+  /**
+   * A run asked for by hand (`userForcedStale`) stays asked for while the source is still stale
+   * after a successful step — the NYSE close not published yet — instead of being cleared.
+   */
+  keepsForcedWhileStale: boolean;
+  /** The calendar today's day kind is read on (a stale source reads the Chile one, `stocks_nyse` the NYSE one). */
+  dayKind: (cl: ChileWallClock) => SyncSourceDayKind;
+  nextSync: (ctx: SyncSourceContext) => SyncWallTime | null;
+};
+
+const bcentral = (ctx: SyncSourceContext) => ctx.bcentralConfigured;
+const always = () => true;
+/** The monthly Banco Central series are published on the 9th. */
+const monthlyPublished = (ctx: SyncSourceContext) => ctx.cl.day >= 9 || ctx.forceSbif;
+
+/** The sources, in the order the status rows list them. */
+export const SYNC_SOURCES: { readonly [S in GlobalSyncSource]: SyncSourceDefinition } = {
+  afp_uno: {
+    label: "AFP UNO",
+    configured: () => afpUnoAccountId() != null,
+    stale: (c) => isAfpUnoSpotStale(c.cl, c.state, { force: c.force }),
+    publisherLag: {
+      overdueHourChile: EVENING_PUBLISH_HOUR_CHILE,
+      classify: (c) => (c.force ? null : afpUnoPublisherLag(c.cl, c.state, { latestDbDay: latestOfficialUnoDay(), nowMs: c.nowMs })),
+    },
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => publisherNextSync(c.cl, latestOfficialUnoDay(), afpUnoPublisher()),
+  },
+  afc_cic: {
+    label: "AFC CIC",
+    configured: () => afcCicAccountIds().length > 0,
+    stale: (c) => isAfcCicStale(c.cl, c.state, { force: c.force }),
+    publisherLag: {
+      overdueHourChile: AFC_CIC_PUBLISHER.publishHour,
+      classify: (c) =>
+        c.force ? null : afcCicPublisherLag(c.cl, c.state, { latestDbDay: latestAfcCicRow()?.day ?? null, nowMs: c.nowMs }),
+    },
+    keepsForcedWhileStale: true,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => publisherNextSync(c.cl, latestAfcCicRow()?.day ?? null, AFC_CIC_PUBLISHER),
+  },
+  fintual: {
+    label: "Fintual",
+    configured: always,
+    stale: (c) => isFintualSyncStale(c.cl, c.state),
+    publisherLag: {
+      overdueHourChile: EVENING_PUBLISH_HOUR_CHILE,
+      classify: (c) =>
+        fintualPublisherLag(c.cl, c.state, {
+          lastCheckedAt: c.fintualLastCheckedAt === undefined ? readFintualLastCheckedAt() : c.fintualLastCheckedAt,
+          nowMs: c.nowMs,
+        }),
+    },
+    keepsForcedWhileStale: true,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => fintualNextSync(c.cl, c.state.fintualLastAppliedPublishYmd),
+  },
+  fintual_official_serie: {
+    label: "Fintual official serie",
+    configured: always,
+    stale: (c) => isFintualOfficialSerieStale(c.cl, c.state, { nowMs: c.nowMs }),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => officialSerieNextSync(c.cl, c.state),
+  },
+  fintual_rn_composition: {
+    label: "Risky Norris composition",
+    configured: always,
+    stale: (c) => isFintualRnCompositionStale(c.cl, c.state),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => rnCompositionNextSync(c.cl, c.state),
+  },
+  cmf_rn_portfolio: {
+    label: "CMF Risky Norris filing",
+    configured: always,
+    stale: (c) => isCmfRnPortfolioStale(c.cl, c.state),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => cmfNextSync(c.cl, c.state),
+  },
+  sbif_usd: {
+    label: "BCentral USD",
+    configured: bcentral,
+    stale: (c) => isSbifObservedFxStale(maxFxBcentralDateOnOrBefore(c.cl.ymd), c.cl, c.state.sbifUsdLastErrorAt),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => sbifObservedNextSync(c.cl),
+  },
+  sbif_eur: {
+    label: "BCentral EUR",
+    configured: bcentral,
+    stale: (c) => isSbifObservedFxStale(maxEurDateOnOrBefore(c.cl.ymd), c.cl, c.state.sbifEurLastErrorAt),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => sbifObservedNextSync(c.cl),
+  },
+  sbif_uf: {
+    label: "BCentral UF",
+    configured: bcentral,
+    stale: (c) => monthlyPublished(c) && isSbifUfStale(c.cl, { forceSbif: c.forceSbif, maxUfDate: maxUfDate() }),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => sbifMonthlyNextSync(c.cl),
+  },
+  sbif_utm: {
+    label: "BCentral UTM",
+    configured: bcentral,
+    stale: (c) => monthlyPublished(c) && isSbifUtmStale(c.cl, { forceSbif: c.forceSbif, maxUtm: maxUtmMonthParts() }),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => sbifMonthlyNextSync(c.cl),
+  },
+  sbif_ipc: {
+    label: "BCentral IPC",
+    configured: bcentral,
+    stale: (c) => monthlyPublished(c) && isSbifMonthlyStale(c.cl, c.state.sbifIpcMonth, { forceSbif: c.forceSbif }),
+    keepsForcedWhileStale: false,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => sbifMonthlyNextSync(c.cl),
+  },
+  stocks_nyse: {
+    label: "NYSE stocks",
+    configured: always,
+    stale: (c) => isStocksNyseStale(c.state, { force: c.force }),
+    keepsForcedWhileStale: true,
+    dayKind: nyseDayKindAt,
+    nextSync: (c) => stocksNyseNextSync(c.cl),
+  },
+  stocks_santiago: {
+    label: "Santiago stocks",
+    configured: always,
+    stale: (c) => isStocksSantiagoStale(c.state, { force: c.force }),
+    keepsForcedWhileStale: true,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => stocksSantiagoNextSync(c.cl),
+  },
+  yahoo_fx_usd: {
+    label: "Yahoo USD/CLP",
+    configured: always,
+    stale: (c) => isYahooFxUsdStale({ force: c.force }),
+    keepsForcedWhileStale: true,
+    dayKind: (cl) => forexDayKind(cl.ymd),
+    nextSync: (c) => yahooFxNextSync(c.cl),
+  },
+  crypto_eod: {
+    label: "Crypto EOD",
+    configured: always,
+    stale: (c) => isCryptoEodStale(c.cl, c.state, { force: c.force }),
+    keepsForcedWhileStale: true,
+    dayKind: (cl) => chileDayKind(cl.ymd),
+    nextSync: (c) => cryptoNextSync(c.cl),
+  },
+};
+
+export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
+
+export type SyncSourceStatusRow = {
+  source: GlobalSyncSource;
+  status: SyncSourceDisplayStatus;
+  stale: boolean;
+  /** Set when `stale` is the publisher's lag, not ours (see `publisherSchedule.ts`). */
+  publisher_lag: SyncPublisherLag | null;
+  next_sync: SyncWallTime | null;
+  next_sync_imminent: boolean;
+  today_day_kind: SyncSourceDayKind;
+};
+
+/** When a source is due next: imminent while stale, nothing while disabled. */
+function scheduleMeta(source: GlobalSyncSource, ctx: SyncSourceContext, stale: boolean, disabled: boolean): SyncSourceScheduleMeta {
+  if (disabled) return { next_sync: null, next_sync_imminent: false, today_day_kind: "open" };
+  const def = SYNC_SOURCES[source];
+  if (stale) {
+    return {
+      next_sync: null,
+      next_sync_imminent: true,
+      today_day_kind: source === "stocks_nyse" ? def.dayKind(ctx.cl) : chileDayKind(ctx.cl.ymd),
+    };
+  }
+  return { next_sync: def.nextSync(ctx), next_sync_imminent: false, today_day_kind: def.dayKind(ctx.cl) };
+}
+
+/** One source's schedule meta at `cl` (status rows; tests). */
+export function attachSyncSourceSchedule(
+  source: GlobalSyncSource,
+  cl: ChileWallClock,
+  stale: boolean,
+  disabled: boolean,
+  state: GlobalSyncStateFile = loadGlobalSyncState()
+): SyncSourceScheduleMeta {
+  const ctx: SyncSourceContext = { cl, state, nowMs: Date.now(), force: false, forceSbif: false, bcentralConfigured: true };
+  return scheduleMeta(source, ctx, stale, disabled);
+}
+
+type StatusOpts = {
+  force?: boolean;
+  forceSbif?: boolean;
+  bcentralConfigured?: boolean;
+  /** Last Fintual poll (ISO); undefined reads the goals snapshot, null means "never". */
+  fintualLastCheckedAt?: string | null;
+  nowMs?: number;
+};
+
+function sourceContext(cl: ChileWallClock, state: GlobalSyncStateFile, opts?: StatusOpts): SyncSourceContext {
+  loadRootDotenv();
+  return {
+    cl,
+    state,
+    nowMs: opts?.nowMs ?? Date.now(),
+    force: opts?.force ?? false,
+    forceSbif: opts?.forceSbif ?? false,
+    bcentralConfigured: opts?.bcentralConfigured ?? isBcentralConfigured(),
+    fintualLastCheckedAt: opts?.fintualLastCheckedAt,
+  };
 }
 
 /**
- * Sources whose accounts dim at `cl`. Our own staleness (a missed or failed poll, a due sync not
- * yet run, a signature mismatch, a forced run) always dims. A publisher's lag dims only once the
- * cuota is OVERDUE — from the source's publish hour (Fintual, AFC and AFP 18:00) until it lands;
- * before that the display holds everything the publisher has (pre-open, the live proxy, the
- * post-close hold), so nothing is behind (2026-09-21). The window is wall-clock: a cuota still
- * missing at midnight reads normal again from 00:00 and dims from the publish hour the next day,
- * until it is applied.
+ * Each source's stale verdict: disabled when the deployment profile leaves it out or it is not
+ * configured; else its own rule, or a run asked for by hand. `withPublisherLag` also classifies
+ * the stale ones (reads the goals snapshot; the status rows need it, the scheduler does not).
  */
-export function staleDimmingSources(rows: SyncSourceStatusRow[], cl: ChileWallClock): GlobalSyncSource[] {
-  return rows
-    .filter((r) => r.stale && (r.publisher_lag == null || cl.hour >= publisherLagOverdueHourChile(r.source)))
-    .map((r) => r.source);
+function evaluateSources(ctx: SyncSourceContext, withPublisherLag: boolean): SyncSourceStatusRow[] {
+  const profileDisabled = deploymentProfile().disabledSyncSources;
+  const forced = userForcedStaleSet(ctx.state);
+  return GLOBAL_SYNC_SOURCES.map((source) => {
+    const def = SYNC_SOURCES[source];
+    if (profileDisabled.has(source) || !def.configured(ctx)) {
+      return { source, status: "disabled" as const, stale: false, publisher_lag: null, ...scheduleMeta(source, ctx, false, true) };
+    }
+    const natural = def.stale(ctx);
+    const publisher_lag = natural && withPublisherLag && def.publisherLag ? def.publisherLag.classify(ctx) : null;
+    const stale = natural || forced.has(source);
+    // The schedule follows the source's own rule; a forced run only marks the row stale.
+    const meta = scheduleMeta(source, ctx, natural, false);
+    return { source, status: stale ? ("stale" as const) : ("ok" as const), stale, publisher_lag, ...meta };
+  });
 }
 
 export function allSyncSourceStatuses(
   cl: ChileWallClock,
   state: GlobalSyncStateFile,
-  opts?: {
-    force?: boolean;
-    forceSbif?: boolean;
-    bcentralConfigured?: boolean;
-    /** Last Fintual poll (ISO); undefined reads the goals snapshot, null means "never". */
-    fintualLastCheckedAt?: string | null;
-    nowMs?: number;
-  }
+  opts?: StatusOpts
 ): SyncSourceStatusRow[] {
-  loadRootDotenv();
-  const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
-  const force = opts?.force;
-  const forceSbif = opts?.forceSbif;
+  return evaluateSources(sourceContext(cl, state, opts), true);
+}
 
-  const rows: SyncSourceStatusRow[] = [];
+/** The sources the scheduler runs now, in table order. */
+export function staleSyncSources(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  opts?: StatusOpts
+): GlobalSyncSource[] {
+  return evaluateSources(sourceContext(cl, state, opts), false)
+    .filter((r) => r.stale)
+    .map((r) => r.source);
+}
 
-  const afpId = afpUnoAccountId();
-  if (afpId == null) {
-    rows.push(syncSourceRow("afp_uno", cl, "disabled", false, state));
-  } else {
-    const stale = isAfpUnoSpotStale(cl, state, { force });
-    const row = syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale, state);
-    if (stale && !force) {
-      row.publisher_lag = afpUnoPublisherLag(cl, state, {
-        latestDbDay: latestOfficialUnoDay(),
-        nowMs: opts?.nowMs ?? Date.now(),
-      });
-    }
-    rows.push(row);
-  }
+/**
+ * After a successful step: whether a run asked for by hand stays asked for (the source is still
+ * naturally stale and keeps the flag, `keepsForcedWhileStale`).
+ */
+export function keepUserForcedStaleAfterSuccess(source: GlobalSyncSource, cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
+  const def = SYNC_SOURCES[source];
+  return def.keepsForcedWhileStale && def.stale(sourceContext(cl, state));
+}
 
-  if (afcCicAccountIds().length === 0) {
-    rows.push(syncSourceRow("afc_cic", cl, "disabled", false, state));
-  } else {
-    const stale = isAfcCicStale(cl, state, { force });
-    const row = syncSourceRow("afc_cic", cl, stale ? "stale" : "ok", stale, state);
-    if (stale && !force) {
-      row.publisher_lag = afcCicPublisherLag(cl, state, {
-        latestDbDay: latestAfcCicRow()?.day ?? null,
-        nowMs: opts?.nowMs ?? Date.now(),
-      });
-    }
-    rows.push(row);
-  }
-
-  {
-    const stale = isFintualSyncStale(cl, state);
-    const row = syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale, state);
-    if (stale) {
-      row.publisher_lag = fintualPublisherLag(cl, state, {
-        lastCheckedAt:
-          opts?.fintualLastCheckedAt === undefined ? readFintualLastCheckedAt() : opts.fintualLastCheckedAt,
-        nowMs: opts?.nowMs ?? Date.now(),
-      });
-    }
-    rows.push(row);
-  }
-
-  {
-    const stale = isFintualOfficialSerieStale(cl, state, { nowMs: opts?.nowMs });
-    rows.push(syncSourceRow("fintual_official_serie", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  {
-    const stale = isFintualRnCompositionStale(cl, state);
-    rows.push(syncSourceRow("fintual_rn_composition", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  {
-    const stale = isCmfRnPortfolioStale(cl, state);
-    rows.push(syncSourceRow("cmf_rn_portfolio", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  const sbifFx = (source: "sbif_usd" | "sbif_eur", maxYmd: string | null, lastErrorAt?: string) => {
-    if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false, state));
-      return;
-    }
-    const stale = isSbifObservedFxStale(maxYmd, cl, lastErrorAt);
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
-  };
-  sbifFx("sbif_usd", maxFxBcentralDateOnOrBefore(cl.ymd), state.sbifUsdLastErrorAt);
-  sbifFx("sbif_eur", maxEurDateOnOrBefore(cl.ymd), state.sbifEurLastErrorAt);
-
-  const sbifUfRow = (source: "sbif_uf") => {
-    if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false, state));
-      return;
-    }
-    const stale =
-      cl.day >= 9 || forceSbif
-        ? isSbifUfStale(cl, {
-            forceSbif,
-            maxUfDate: maxUfDate(),
-            lastSyncYmd: state.sbifUfLastSyncYmd,
-          })
-        : false;
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
-  };
-  sbifUfRow("sbif_uf");
-
-  const sbifUtmRow = (source: "sbif_utm") => {
-    if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false, state));
-      return;
-    }
-    const stale =
-      cl.day >= 9 || forceSbif
-        ? isSbifUtmStale(cl, { forceSbif, maxUtm: safeMaxUtmMonthParts() })
-        : false;
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
-  };
-  sbifUtmRow("sbif_utm");
-
-  const sbifMonthly = (source: "sbif_ipc", syncedMonth: string | undefined) => {
-    if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false, state));
-      return;
-    }
-    const stale = cl.day >= 9 || forceSbif ? isSbifMonthlyStale(cl, syncedMonth, { forceSbif }) : false;
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
-  };
-  sbifMonthly("sbif_ipc", state.sbifIpcMonth);
-
-  {
-    const stale = isStocksNyseStale(state, { force });
-    rows.push(syncSourceRow("stocks_nyse", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  {
-    const stale = isStocksSantiagoStale(state, { force });
-    rows.push(syncSourceRow("stocks_santiago", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  {
-    const stale = isYahooFxUsdStale({ force });
-    rows.push(syncSourceRow("yahoo_fx_usd", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  {
-    const stale = isCryptoEodStale(cl, state, { force });
-    rows.push(syncSourceRow("crypto_eod", cl, stale ? "stale" : "ok", stale, state));
-  }
-
-  const demoRows = demoModeEnabled()
-    ? rows.map((r) => (DEMO_SYNC_DISABLED_SOURCES.has(r.source) ? syncSourceRow(r.source, cl, "disabled", false, state) : r))
-    : rows;
-  return applyUserForcedStaleToRows(demoRows, state);
+/**
+ * Sources whose accounts dim at `cl`. Our own staleness (a missed or failed poll, a due sync not
+ * yet run, a signature mismatch, a forced run) always dims. A publisher's lag dims only once the
+ * value is OVERDUE — from the source's publish hour until it lands; before that the display holds
+ * everything the publisher has (pre-open, the live proxy, the post-close hold), so nothing is
+ * behind (2026-09-21). The window is wall-clock: a value still missing at midnight reads normal
+ * again from 00:00 and dims from the publish hour the next day, until it is applied.
+ */
+export function staleDimmingSources(rows: SyncSourceStatusRow[], cl: ChileWallClock): GlobalSyncSource[] {
+  return rows
+    .filter((r) => {
+      if (!r.stale) return false;
+      if (r.publisher_lag == null) return true;
+      const lag = SYNC_SOURCES[r.source].publisherLag;
+      if (!lag) throw new Error(`sync: ${r.source} carries a publisher lag but declares no publish hour`);
+      return cl.hour >= lag.overdueHourChile;
+    })
+    .map((r) => r.source);
 }
 
 export function syncStatusPayload(): {
@@ -777,9 +703,9 @@ export function syncStatusPayload(): {
   stale: GlobalSyncSource[];
   /**
    * The sources whose accounts the dashboard dims right now (`staleDimmingSources`): every stale
-   * source whose staleness is ours, plus a source waiting on its publisher once the cuota is
-   * overdue (from its publish hour: Fintual, AFC and AFP 18:00). Before that hour a publisher-lag source holds
-   * everything the publisher has, so its accounts are not behind anything.
+   * source whose staleness is ours, plus a source waiting on its publisher once the value is
+   * overdue (from its publish hour). Before that hour a publisher-lag source holds everything the
+   * publisher has, so its accounts are not behind anything.
    */
   stale_dimming: GlobalSyncSource[];
   sources: SyncSourceStatusRow[];

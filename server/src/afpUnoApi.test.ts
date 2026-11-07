@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { parseUnoValorCuotaHistorico } from "./afpUnoApi.js";
 import {
-  afpUnoExpectedOfficialDay,
+  afpUnoPublisher,
   afpUnoOfficialSource,
   afpUnoOfficialSyncRunner,
   isAfpUnoOfficialStale,
@@ -9,6 +9,7 @@ import {
   syncAfpUnoFromUnoApi,
 } from "./afpUnoOfficialSync.js";
 import type { ChileWallClock } from "./chileDate.js";
+import { expectedPublishedDay } from "./publisherSchedule.js";
 
 function row(fecha: string, fondoA: unknown) {
   return { FECHA: fecha, FONDO_A: fondoA, FONDO_B: "1,00", FONDO_E: "2,00" };
@@ -81,8 +82,8 @@ describe("afp_uno source on the hosted demo", () => {
   // 2026-10-02 is a Friday; 10-05 → 10-09 Monday → Friday.
   it("expects UNO's API one business day behind the SP, so the demo is not stale every evening", () => {
     process.env.DEMO_MODE = "1";
-    expect(afpUnoExpectedOfficialDay(at("2026-10-06", 18))).toBe("2026-10-02");
-    expect(afpUnoExpectedOfficialDay(at("2026-10-06", 18), "sp")).toBe("2026-10-05");
+    expect(expectedPublishedDay(at("2026-10-06", 18), afpUnoPublisher())).toBe("2026-10-02");
+    expect(expectedPublishedDay(at("2026-10-06", 18), afpUnoPublisher("sp"))).toBe("2026-10-05");
     expect(isAfpUnoOfficialStale(at("2026-10-06", 18), "2026-10-02")).toBe(false);
     expect(isAfpUnoOfficialStale(at("2026-10-07", 18), "2026-10-02")).toBe(true);
     delete process.env.DEMO_MODE;
