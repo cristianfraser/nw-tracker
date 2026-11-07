@@ -224,6 +224,46 @@ Proof: step-1's dump plus the flows overview (clp, usd, uf), the deposits page, 
 payloads of every group and account in clp/usd/uf, the card ledgers. Report every UF difference
 from item 1 with its cause (window-end → per-event conversion) and the bug-1 corrections.
 
+### As built (step 2, 2026-11-07)
+
+- **Done:** `rates.ts` owns `TsUnit` and `convertFlow` (clp→usd at the buy rate, clp→uf at the
+  day's UF; another pair throws until a flow needs it); `flowEventInUnit` is a thin caller;
+  `convertTs` is gone. Every flow converts per event in UF too: `netDepositFlowWindows` /
+  `…Between` / `…CurrentMonthThroughToday` take `TsUnit`; the daily series' flow legs, aportes
+  cumulatives and per-account P/L, the 1D/1W cells, the live month row and the ledger months read
+  them (a card's daily flow in UF is its peso flow converted at that day's UF). Bug 1: the ledger
+  cash closes (checking, CLP cash, USD cash, cuenta de ahorro) are `accountValueAt` in the unit.
+  The chart's plain account lines are `accountValueAt(id, d, unit)` forward-filled in the unit
+  (`valuationRawClpForAccount`, the raw-CLP chart memo and `accountChartValueInUnit` for those
+  lines go; a stock line still starts at its first shares — `equityHeldByYmd`);
+  `monthEndCloseForPerformance` is the chart cell, else `accountValueAt`. The fx fall-forward and
+  the dead month-end branch go from `fxMonthEndForBalanceUsd` (= `fxRowOnOrBefore`), and
+  `monthEndOnly`; `latestValuationRowOnOrBeforeChileToday` returns `undefined` with no row on or
+  before today (its callers already treat that as no stored value). The CLP-leg CASE copies read
+  `MOVEMENT_CLP_LEG_SQL` (unqualified: none of those queries joins a table with an amount column).
+  Benchmark levels convert through `convertCurrency` at the mid; a card payment in the flows
+  overview is a flow (`convertFlow`). The card group ledger merges facturaciones from an explicit
+  field list (an unknown field throws); `facturadoFromStatement` runs once per slot.
+- **Moved, not deleted:** `clpToUnitAt` lives in `valueConvert.ts`; `clpToUnitAt.ts` is a
+  re-export for the nav-tree files until they import from there (then delete it).
+- **Left:** the `afp_override_*` producers in `accountPosition.ts` and its two instrument-price
+  ladders (their fallbacks differ from `holdingPriceAt`'s: the position's equity close is the bar
+  on or before the day asked, the cuota ledger's falls back to the raw fund series — moving them
+  changes today's marks; F12/F8 rename the DTO fields with them); `usdCashClpRateOnOrBefore` (its
+  sell row on or before also prices legless USD deposit events and cash interest, which
+  `convertValue`'s bid — the day's observed row, else mid − half spread — would reprice);
+  `ccOwedTerms.ts` and the uniform-rate global of `ccExpenseAmountClp.ts` (no term of the five
+  owed computations can be shared without threading the statement-frame rate through
+  `ccBillingViews`, which is cards-rules' facturación module — wave 3).
+- **Measured on the real-DB copy** (`dump-valuation-branches.ts --payloads` and
+  `dump-valuation-perf.ts`, before vs after): (a) UF only — every UF flow, aportes line and P/L
+  that converted a window sum at the window end, and the checking / cash / cuenta de ahorro UF
+  closes that were pesos (bug 1: an account's UF lifetime P/L read in the millions); (c) the USD
+  card payments of the flows overview at the buy rate instead of the mid (≤ US$22 a month,
+  Σ|unexplained| slightly lower), and the home chart's USD milestone anchors on a date before the
+  fx series starts (null instead of a rate dated after it). Every clp/usd value, chart and P/L
+  else byte-identical.
+
 ## Step 3 — F6: one P/L kernel with days as atoms (`server/src/perfKernel.ts`)
 
 1. The kernel: `dayPl({ valueStart, valueEnd, flow, side })` (asset: Δ − flow; debt: prior − owed − flow),
