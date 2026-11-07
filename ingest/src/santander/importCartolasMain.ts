@@ -44,14 +44,13 @@ async function main(): Promise<number> {
       : readCuentaVistaCartolas({ skipPdfParse: flag("skip-pdf-parse"), onlyPdf: list("only-pdf") });
   const payload = bankAccountStatementsKind.payload.parse({
     account: { issuer: "santander", product: account === "checking" ? "checking" : "demand_deposit" },
-    apply: !flag("dry-run"),
     force_reimport: flag("force-reimport"),
     statements: read.statements,
     unreadable: read.unreadable,
   });
   let details: BankAccountStatementsApplyDetails;
   try {
-    const result = await ingestClient().send(bankAccountStatementsKind, payload, { channel: "file", ref: `${account}-cartolas` });
+    const result = await ingestClient().send(bankAccountStatementsKind, payload, { channel: "file", ref: `${account}-cartolas` }, { dryRun: flag("dry-run") });
     details = result.details as BankAccountStatementsApplyDetails;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);

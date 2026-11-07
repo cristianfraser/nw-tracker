@@ -310,13 +310,10 @@ export function parseAfcCartola(text: string): AfcCartola {
 
 export function unemploymentFundDocumentsPayload(
   cert: AfcCotizacionesCertificate,
-  cartolas: readonly AfcCartola[],
-  opts: { apply: boolean; accountId: number | null; replaceExcelRows: boolean; dropMovementIds: number[] }
+  cartolas: readonly AfcCartola[]
 ): UnemploymentFundDocumentsPayload {
   return {
-    apply: opts.apply,
     provider: "afc",
-    account_id: opts.accountId,
     certificate: {
       legs: cert.legs.map((l) => ({
         period_month: l.period_ym,
@@ -343,6 +340,5 @@ export function unemploymentFundDocumentsPayload(
       total_outflows: c.total_egresos_clp,
       detail: c.detalle.map((d) => ({ employer: d.employer, pay_month: d.pay_month_ym, amount: d.amount_clp })),
     })),
-    options: { replace_excel_rows: opts.replaceExcelRows, drop_movement_ids: opts.dropMovementIds },
   };
 }

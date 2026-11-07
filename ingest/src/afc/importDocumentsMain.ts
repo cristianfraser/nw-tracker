@@ -2,10 +2,9 @@
  * Rebuild / reconcile the AFC cuota ledger from the AFC documents: read the certificate and the
  * cartolas and send them to the server as one `unemployment_fund.documents`.
  *
- *   npm run import:afc-cert -- --cert=<certificado de cotizaciones.pdf> \
- *       [--cartola=<estado cuatrimestral.pdf> …] [--replace-excel-rows] [--drop-ids=1,2] [--account-id=NN] [--apply]
+ *   npm run import:afc-cert -- --cert=<certificado de cotizaciones.pdf> [--cartola=<estado cuatrimestral.pdf> …] [--apply]
  *
- * Without --apply the server rolls the whole rebuild back after its report, so the report shows
+ * Without --apply the send is a dry run: the server rolls the whole rebuild back after its report, so the report shows
  * the exact post-import ledger and writes nothing. Exit status: non-zero when a document does not
  * parse, or the server refuses it or is down.
  */
@@ -27,21 +26,18 @@ async function main(): Promise<number> {
   }
   const payload = unemploymentFundDocumentsPayload(
     parseAfcCotizacionesCertificate(pdfTextLayout(fromCaller(certPath))),
-    args("cartola").map((p) => parseAfcCartola(pdfTextLayout(fromCaller(p)))),
-    {
-      apply: process.argv.includes("--apply"),
-      accountId: arg("account-id") != null ? Number(arg("account-id")) : null,
-      replaceExcelRows: process.argv.includes("--replace-excel-rows"),
-      dropMovementIds: (arg("drop-ids") ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map(Number),
-    }
+    args("cartola").map((p) => parseAfcCartola(pdfTextLayout(fromCaller(p))))
   );
+  const apply = process.argv.includes("--apply");
   try {
-    const result = await ingestClient().send(unemploymentFundDocumentsKind, payload, { channel: "file", ref: certPath.split("/").pop()! });
+    const result = await ingestClient().send(
+      unemploymentFundDocumentsKind,
+      payload,
+      { channel: "file", ref: certPath.split("/").pop()! },
+      { dryRun: !apply }
+    );
     for (const line of (result.details as UnemploymentFundDocumentsApplyDetails).report) console.log(line);
+    console.log(apply ? "\nAPPLIED." : "\nREPORT ONLY — every change above was rolled back. Re-run with --apply to write.");
     return 0;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);

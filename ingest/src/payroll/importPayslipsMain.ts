@@ -22,16 +22,16 @@ async function main(): Promise<number> {
   const index = readPayrollParseIndex(file);
   let d: EmploymentPayslipsApplyDetails;
   try {
-    const result = await ingestClient().send(employmentPayslipsKind, payslipsPayload(index, !dryRun), {
+    const result = await ingestClient().send(employmentPayslipsKind, payslipsPayload(index), {
       channel: "file",
       ref: path.basename(file),
-    });
+    }, { dryRun });
     d = result.details as EmploymentPayslipsApplyDetails;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);
     return 1;
   }
-  for (const c of d.changes) console.log(`  ${c}`);
+  if (dryRun) for (const c of d.changes) console.log(`  ${c}`);
   if (dryRun) console.log(`# dry-run: ${d.changes.length} of ${d.payslips} payslip(s) would change`);
   for (const l of d.links) console.log(`  linked ${l.document} → movement ${l.movement_id}`);
   for (const a of d.ambiguous) console.error(`  AMBIGUOUS ${a.document}: movement ids ${a.movement_ids.join(", ")}`);

@@ -35,10 +35,10 @@ async function main(): Promise<number> {
     ["certificado", files.certificados],
   ] as const) {
     for (const file of list) {
-      const payload = dividendStatementPayloadForFile(file, kind, apply);
+      const payload = dividendStatementPayloadForFile(file, kind);
       let d: BrokerDividendStatementApplyDetails;
       try {
-        const result = await ingestClient().send(brokerDividendStatementKind, payload, { channel: "file", ref: path.basename(file) });
+        const result = await ingestClient().send(brokerDividendStatementKind, payload, { channel: "file", ref: path.basename(file) }, { dryRun: !apply });
         d = result.details as BrokerDividendStatementApplyDetails;
       } catch (err) {
         console.error(`FAILED ${path.basename(file)} — ${describeIngestFailure(err)}`);

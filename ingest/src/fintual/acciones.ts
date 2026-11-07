@@ -29,13 +29,11 @@ export function listFintualAccionesFiles(root = resolveFintualAccionesDir()): { 
 export function dividendStatementPayload(
   text: string,
   name: string,
-  kind: "cartola" | "certificado",
-  apply: boolean
+  kind: "cartola" | "certificado"
 ): BrokerDividendStatementPayload {
   if (kind === "cartola") {
     const s = parseAlpacaMonthlyStatementText(text);
     return {
-      apply,
       broker: "fintual",
       document: { kind: "monthly_statement", name, label: s.period_ym },
       dividends: s.dividends.map((d) => ({
@@ -57,7 +55,6 @@ export function dividendStatementPayload(
   }
   const c = parseFintualAccionesCertificadoText(text);
   return {
-    apply,
     broker: "fintual",
     document: { kind: "certificate", name, label: c.issued_on },
     // The certificado only says «impuestos»: who withheld is not printed.
@@ -78,6 +75,6 @@ export function dividendStatementPayload(
   };
 }
 
-export function dividendStatementPayloadForFile(file: string, kind: "cartola" | "certificado", apply: boolean): BrokerDividendStatementPayload {
-  return dividendStatementPayload(pdfLayoutText(file), path.basename(file), kind, apply);
+export function dividendStatementPayloadForFile(file: string, kind: "cartola" | "certificado"): BrokerDividendStatementPayload {
+  return dividendStatementPayload(pdfLayoutText(file), path.basename(file), kind);
 }

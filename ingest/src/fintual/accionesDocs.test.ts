@@ -140,7 +140,7 @@ describe("fintualAccionesDocs — certificado de eventos de capital", () => {
 
 describe("broker.dividend_statement payloads", () => {
   it("a cartola names the US as the withholding jurisdiction only where the NRA line shows tax", () => {
-    const payload = brokerDividendStatementKind.payload.parse(dividendStatementPayload(ALPACA_STATEMENT, "julio.pdf", "cartola", true));
+    const payload = brokerDividendStatementKind.payload.parse(dividendStatementPayload(ALPACA_STATEMENT, "julio.pdf", "cartola"));
     expect(payload.document).toEqual({ kind: "monthly_statement", name: "julio.pdf", label: "2026-07" });
     expect(payload.dividends.map((d) => [d.symbol, d.net, d.withholding_jurisdiction])).toEqual([
       ["VTAAA", 1.67, "US"],
@@ -150,7 +150,7 @@ describe("broker.dividend_statement payloads", () => {
   });
 
   it("a certificado carries bruto / impuestos / neto and nothing it does not print", () => {
-    const payload = brokerDividendStatementKind.payload.parse(dividendStatementPayload(CERTIFICADO, "cert.pdf", "certificado", false));
+    const payload = brokerDividendStatementKind.payload.parse(dividendStatementPayload(CERTIFICADO, "cert.pdf", "certificado"));
     expect(payload.document.kind).toBe("certificate");
     expect(payload.dividends.length).toBeGreaterThan(0);
     for (const d of payload.dividends) expect(d).toMatchObject({ withholding_jurisdiction: null, per_share: null, tax_country: null });

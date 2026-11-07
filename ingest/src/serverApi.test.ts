@@ -14,7 +14,7 @@ function connectionFailure(code: string, message = `connect ${code}`): TypeError
   return new TypeError("fetch failed", { cause: Object.assign(new Error(message), { code }) });
 }
 
-const APPLIED = { status: "applied", kind: "pension_account.balance", schema_version: 1 };
+const APPLIED = { status: "applied", kind: "pension_account.balance", schema_version: 1, retry: false, dry_run: false };
 const PAYLOAD: PensionAccountBalancePayload = {
   provider: "afp_uno",
   product: "mandatory",

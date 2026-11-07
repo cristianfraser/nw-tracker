@@ -38,7 +38,7 @@ function decisionPath(): string {
 async function main(): Promise<number> {
   const { files, scan } = readStagedBrokerEmails();
   const notifications = brokerNotificationsFromScan(scan, broker);
-  const payload = brokerNotificationsKind.payload.parse({ broker, apply, notifications });
+  const payload = brokerNotificationsKind.payload.parse({ broker, notifications });
   // A stale decision must never open the browser: it is rewritten from this run's answer only.
   if (broker === "racional") fs.rmSync(decisionPath(), { force: true });
 
@@ -49,7 +49,7 @@ async function main(): Promise<number> {
       channel: "email",
       ref: `${broker}-notifications|${crypto.createHash("sha256").update(ids).digest("hex")}`,
       label: `${notifications.length} ${broker} notification(s) from ${files.length} scan file(s)`,
-    });
+    }, { dryRun: !apply });
     details = result.details as BrokerNotificationsApplyDetails;
   } catch (err) {
     console.error(`FAILED: ${describeIngestFailure(err)}`);
@@ -103,7 +103,7 @@ async function main(): Promise<number> {
     );
   }
   // Dollar withdrawals Fintual confirmed, and the wires that paid them (`bank_account.incoming_wires`).
-  const overdueWithdrawal = details.usd_withdrawals ? logWireBookings(details.usd_withdrawals, details.applied) : false;
+  const overdueWithdrawal = details.usd_withdrawals ? logWireBookings(details.usd_withdrawals, apply) : false;
   // A notice that disagrees with the ledger (a split's share counts) wrote nothing: a human looks.
   const conflicts = details.planned.filter((r) => r.state === "conflict").length;
   return details.overdue_synthetic_retiros.length > 0 || overdueWithdrawal || conflicts > 0 ? 1 : 0;

@@ -94,21 +94,24 @@ async function main(): Promise<number> {
       if (sent.has(receipt.path) || (!full && stampIsCurrent(receipt))) continue;
       sent.add(receipt.path);
       let details: StoreReceiptApplyDetails;
+      let retry: boolean;
       try {
-        const result = await ingestClient().send(storeReceiptKind, storeReceiptPayload(receipt, !dryRun), {
+        const result = await ingestClient().send(storeReceiptKind, storeReceiptPayload(receipt), {
           channel: receipt.document === "email" ? "email" : "file",
           ref: receipt.key,
           label: receipt.dir,
-        });
+        }, { dryRun });
         details = result.details as StoreReceiptApplyDetails;
+        retry = result.retry;
       } catch (err) {
         console.error(`FAILED ${receipt.dir} — ${describeIngestFailure(err)}`);
         return 1;
       }
       for (const line of describe(details, receipt.dir, receipt.document)) console.log(line);
       bump(details.receipt_status);
-      if (!details.final) bump(`waiting (${details.movement.status})`);
-      if (dryRun || !details.final) continue;
+      // `retry`: the receipt waits for its card line; it is sent again next run.
+      if (retry) bump(`waiting (${details.movement.status})`);
+      if (dryRun || retry) continue;
       writeStamp(receipt, details);
       if (details.receipt_status === "replaced") {
         for (const dir of clearDisplacedStamps(staged, receipt, details.receipt_key)) {

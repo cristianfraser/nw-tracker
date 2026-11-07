@@ -57,9 +57,9 @@ function index(body: unknown): string {
 describe("payroll parse index → employment.payslips", () => {
   it("maps each parsed payslip onto the contract", () => {
     const payload = employmentPayslipsKind.payload.parse(
-      payslipsPayload(readPayrollParseIndex(index({ parser_version: "abc", rows: [ROW], failures: [] })), false)
+      payslipsPayload(readPayrollParseIndex(index({ parser_version: "abc", rows: [ROW], failures: [] })))
     );
-    expect(payload).toMatchObject({ apply: false, parser_version: "abc" });
+    expect(payload).toMatchObject({ parser_version: "abc" });
     expect(payload.payslips[0]).toMatchObject({
       document: "liquidaciones/2099/2099-01.pdf",
       kind: "salary",
@@ -73,7 +73,7 @@ describe("payroll parse index → employment.payslips", () => {
 
   it("the contract refuses lines that do not add up to the payslip's totals", () => {
     const parse = (row: ParsedPayrollRow) =>
-      employmentPayslipsKind.payload.safeParse(payslipsPayload({ parser_version: "abc", rows: [row] }, false));
+      employmentPayslipsKind.payload.safeParse(payslipsPayload({ parser_version: "abc", rows: [row] }));
     expect(parse(ROW).success).toBe(true);
     const short = { ...ROW, lines: ROW.lines!.slice(0, -1) };
     expect(JSON.stringify(parse(short).error?.issues)).toMatch(/descuentos lines add up to 180, total 186/);
@@ -82,7 +82,7 @@ describe("payroll parse index → employment.payslips", () => {
   });
 
   it("refuses a parse without lines", () => {
-    expect(() => payslipsPayload({ parser_version: "abc", rows: [{ ...ROW, lines: [] }] }, false)).toThrow(/no lines/);
+    expect(() => payslipsPayload({ parser_version: "abc", rows: [{ ...ROW, lines: [] }] })).toThrow(/no lines/);
   });
 
   it("refuses an index with failures or without payslips", () => {

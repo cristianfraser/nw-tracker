@@ -45,7 +45,7 @@ export async function parseCardStatementPdf(content: Buffer, filename: string): 
     return {
       kind: cardParsedStatementsKind.kind,
       schema_version: cardParsedStatementsKind.schema_version,
-      payload: parsedStatementsPayload(csv, { apply: true, full: false }),
+      payload: parsedStatementsPayload(csv, { full: false }),
     };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

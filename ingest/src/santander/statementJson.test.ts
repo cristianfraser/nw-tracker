@@ -491,8 +491,8 @@ describe("statementGroupPayload", () => {
       staged(ACCOUNT, "022", "estadoCuentaNacional", nationalBody(ACCOUNT, "2026-08-25")),
       staged(ACCOUNT, "022", "estadoCuentaInternacional", internationalBody(ACCOUNT)),
     ]);
-    const payload = statementGroupPayload(groups[0]!, true)!;
-    expect(payload).toMatchObject({ account: { issuer: "santander", number: ACCOUNT }, statement_number: "022", close: "2026-08-25", apply: true });
+    const payload = statementGroupPayload(groups[0]!)!;
+    expect(payload).toMatchObject({ account: { issuer: "santander", number: ACCOUNT }, statement_number: "022", close: "2026-08-25" });
     expect(payload.statements.map((s) => [s.currency, s.document, s.lines.length])).toEqual([
       ["clp", `${ACCOUNT}-extracto-022-estadoCuentaNacional.json`, 1],
       ["usd", `${ACCOUNT}-extracto-022-estadoCuentaInternacional.json`, 1],
@@ -502,6 +502,6 @@ describe("statementGroupPayload", () => {
 
   it("sends nothing for an international with no national twin", () => {
     const { groups } = assembleSantanderStatementBatch([staged(ACCOUNT, "100", "estadoCuentaInternacional", internationalBody(ACCOUNT))]);
-    expect(statementGroupPayload(groups[0]!, false)).toBeNull();
+    expect(statementGroupPayload(groups[0]!)).toBeNull();
   });
 });

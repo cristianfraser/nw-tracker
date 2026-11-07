@@ -67,7 +67,7 @@ async function main(): Promise<number> {
   const outcomes = new Map<string, SantanderStatementGroupOutcomes>();
   const tally = { clean: 0, dirty: 0, pdfOwned: 0, written: 0, unpaired: 0 };
   for (const group of groups) {
-    const payload = statementGroupPayload(group, apply);
+    const payload = statementGroupPayload(group);
     if (!payload) {
       tally.unpaired += 1;
       console.log(`\n${group.international!.file}  [usd]  (no statement date)`);
@@ -82,7 +82,7 @@ async function main(): Promise<number> {
       const result = await client.send(cardStatementKind, payload, {
         channel: "web_session",
         ref: `${group.account}-extracto-${group.extracto}`,
-      });
+      }, { dryRun: !apply });
       details = result.details as CardStatementApplyDetails;
     } catch (err) {
       console.log(`\naccount ${group.account} extracto ${group.extracto}: FAILED — ${describeIngestFailure(err)}`);

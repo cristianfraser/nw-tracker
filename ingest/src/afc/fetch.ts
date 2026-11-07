@@ -222,13 +222,14 @@ export async function runAfcFetch(opts: AfcFetchOptions): Promise<number> {
   try {
     const result = await ingestClient().send(
       unemploymentFundDocumentsKind,
-      unemploymentFundDocumentsPayload(cert, cartolas, { apply: opts.apply, accountId: null, replaceExcelRows: false, dropMovementIds: [] }),
-      { channel: "web_session", ref: "personas.afc.cl", label: "AFC sucursal virtual", fetched_at: now.toISOString() }
+      unemploymentFundDocumentsPayload(cert, cartolas),
+      { channel: "web_session", ref: "personas.afc.cl", label: "AFC sucursal virtual", fetched_at: now.toISOString() },
+      { dryRun: !opts.apply }
     );
     const d = result.details as UnemploymentFundDocumentsApplyDetails;
     for (const line of d.report) log(`  ${line}`);
     const wrote = /inserted (\d+)/.exec(d.report.join("\n"));
-    if (d.applied && wrote && Number(wrote[1]) > 0) {
+    if (!result.dry_run && wrote && Number(wrote[1]) > 0) {
       const dated = path.join(certsDir, `${now.toISOString().slice(0, 10)}-cotizaciones.pdf`);
       fs.copyFileSync(latest, dated);
       log(`AFC: rows written — certificate kept as ${path.basename(dated)}`);

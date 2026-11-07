@@ -71,6 +71,6 @@ export function readParsedStatementsCsv(file: string): { columns: string[]; rows
   return rows.length > 0 ? { columns, rows } : null;
 }
 
-export function parsedStatementsPayload(csv: { columns: string[]; rows: string[][] }, opts: { apply: boolean; full: boolean }): CardParsedStatementsPayload {
-  return cardParsedStatementsKind.payload.parse({ apply: opts.apply, full: opts.full, columns: csv.columns, rows: csv.rows });
+export function parsedStatementsPayload(csv: { columns: string[]; rows: string[][] }, opts: { full: boolean }): CardParsedStatementsPayload {
+  return cardParsedStatementsKind.payload.parse({ full: opts.full, columns: csv.columns, rows: csv.rows });
 }

@@ -71,10 +71,9 @@ export function readFintualCertificadoTransactions(csvPath: string): FundTransac
 
 export function fundAccountTransactionsPayload(
   csvPath: string,
-  opts: { apply: boolean; maxMonth: string | null }
+  opts: { maxMonth: string | null }
 ): FundAccountTransactionsPayload {
   return {
-    apply: opts.apply,
     provider: "fintual",
     document: path.basename(csvPath),
     max_month: opts.maxMonth,

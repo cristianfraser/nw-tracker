@@ -433,7 +433,7 @@ export function assembleSantanderStatementBatch(statements: readonly ParsedSanta
 }
 
 /** One facturación as the payload the server takes; null for an international with no national twin. */
-export function statementGroupPayload(group: SantanderStatementGroup, apply: boolean): CardStatementPayload | null {
+export function statementGroupPayload(group: SantanderStatementGroup): CardStatementPayload | null {
   const national = group.national;
   if (!national || !national.header.close) return null;
   const statements = [national, group.international]
@@ -453,7 +453,6 @@ export function statementGroupPayload(group: SantanderStatementGroup, apply: boo
     pay_by: national.header.pay_by,
     next_close: national.header.next_close,
     titular_last4: national.header.card_last4,
-    apply,
     statements,
   });
 }

@@ -28,13 +28,13 @@ async function main(): Promise<number> {
     console.error(`No parsed statement lines in ${file} — run parse:cc-pdfs first.`);
     return 1;
   }
-  const payload = parsedStatementsPayload(csv, { apply: !dryRun, full });
+  const payload = parsedStatementsPayload(csv, { full });
   let details: CardParsedStatementsApplyDetails;
   try {
     const result = await ingestClient().send(cardParsedStatementsKind, payload, {
       channel: "file",
       ref: path.basename(file),
-    });
+    }, { dryRun });
     details = result.details as CardParsedStatementsApplyDetails;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);

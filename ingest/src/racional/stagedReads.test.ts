@@ -62,7 +62,6 @@ describe("staged Racional reads", () => {
     // The decoded read is exactly what the contract accepts.
     const parsed = brokerMovementsKind.payload.safeParse({
       broker: "racional",
-      apply: true,
       read_at: reads[1]!.read_at,
       movements: decoded.movements,
       dividends: decoded.dividends,
@@ -104,7 +103,6 @@ describe("staged Racional reads", () => {
     ]);
     const parsed = brokerMovementsKind.payload.safeParse({
       broker: "racional",
-      apply: true,
       read_at: read!.read_at,
       movements: decoded.movements,
       dividends: null,

@@ -88,6 +88,6 @@ export function payslipFromParsedRow(r: ParsedPayrollRow): Payslip {
   };
 }
 
-export function payslipsPayload(index: { parser_version: string; rows: ParsedPayrollRow[] }, apply: boolean): EmploymentPayslipsPayload {
-  return { apply, parser_version: index.parser_version, payslips: index.rows.map(payslipFromParsedRow) };
+export function payslipsPayload(index: { parser_version: string; rows: ParsedPayrollRow[] }): EmploymentPayslipsPayload {
+  return { parser_version: index.parser_version, payslips: index.rows.map(payslipFromParsedRow) };
 }

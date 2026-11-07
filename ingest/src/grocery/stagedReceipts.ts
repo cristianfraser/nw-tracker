@@ -196,10 +196,9 @@ export function listStagedReceipts(roots = defaultStagingRoots()): StagedReceipt
 }
 
 /** The `store.receipt` payload for one staged receipt. */
-export function storeReceiptPayload(staged: StagedReceipt, apply: boolean): StoreReceiptPayload {
+export function storeReceiptPayload(staged: StagedReceipt): StoreReceiptPayload {
   const p = staged.parsed;
   return {
-    apply,
     document: { kind: staged.document, key: staged.key, photo_taken_on: staged.photo_taken_on },
     receipt: {
       chain: staged.chain,

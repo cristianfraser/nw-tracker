@@ -84,12 +84,10 @@ export function readMortgageSheet(cfg: MortgageSheetConfig): MortgageSheetRead {
 /** The contract-checked payload; a row the reader got wrong fails here, before anything is sent. */
 export function mortgageSheetPayload(
   read: MortgageSheetRead,
-  apply: boolean,
   accepted: MortgageSheetAcceptedDifference[] = []
 ): MortgageSheetPaymentsPayload {
   const { path: _path, ...document } = read.document;
   return mortgageSheetPaymentsKind.payload.parse({
-    apply,
     document,
     sheet: read.sheet,
     table: read.table,

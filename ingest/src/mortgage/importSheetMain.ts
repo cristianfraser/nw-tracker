@@ -6,7 +6,7 @@
  * Reads the table named in `cfraser/mortgage-sheet.json` straight out of the Numbers file and
  * sends every pie / prepago row and every posted cuota. The server cross-checks what it already
  * holds (a difference is a conflict: nothing written, exit 1), writes the posted cuotas it lacks,
- * and answers `duplicate` for a file it applied before. `--dry-run` sends with `apply: false`
+ * and answers `duplicate` for a file it applied before. `--dry-run` sends a dry run
  * (the server reports and rolls back); `--offline` only reads and prints the rows.
  */
 import { mortgageSheetPaymentsKind, type MortgageSheetPaymentsApplyDetails } from "nw-tracker-contracts";
@@ -35,14 +35,14 @@ async function main(): Promise<number> {
   }
   console.log(`=== Mortgage sheet${dryRun ? " (dry run)" : offline ? " (offline)" : ""} ===`);
   const read = readMortgageSheet(cfg);
-  const payload = mortgageSheetPayload(read, !dryRun, cfg.accepted_differences);
+  const payload = mortgageSheetPayload(read, cfg.accepted_differences);
   console.log(`${read.document.name}: ${payload.rows.length} row(s), ${payload.projected.length} projected; sha256 ${payload.document.sha256.slice(0, 12)}`);
   if (offline) {
     for (const r of payload.rows) console.log(`  ${r.kind.padEnd(7)} ${r.label.padEnd(10)} ${r.paid_on} $${r.pago_clp} ${r.pago_uf} UF`);
     return 0;
   }
   try {
-    const result = await ingestClient().send(mortgageSheetPaymentsKind, payload, { channel: "file", ref: payload.document.sha256 });
+    const result = await ingestClient().send(mortgageSheetPaymentsKind, payload, { channel: "file", ref: payload.document.sha256 }, { dryRun });
     const d = result.details as MortgageSheetPaymentsApplyDetails;
     if (result.status === "duplicate") {
       console.log(`unchanged — ${result.message ?? "already applied"}`);
@@ -54,7 +54,7 @@ async function main(): Promise<number> {
       console.error(`CONFLICT — ${result.message ?? "the sheet and the ledger disagree"}`);
       return 1;
     }
-    console.log(`mortgage sheet: ${written} row(s) written${d.applied ? "" : " (reported only)"}, ${d.rows.filter((r) => r.status === "checked").length} checked`);
+    console.log(`mortgage sheet: ${written} row(s) written${result.dry_run ? " (reported only)" : ""}, ${d.rows.filter((r) => r.status === "checked").length} checked`);
     return 0;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);

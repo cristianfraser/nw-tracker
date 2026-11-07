@@ -26,7 +26,6 @@ export const PARSE_FORMATS: Readonly<
   "santander.checking_cartola_xlsx": (content, filename) => {
     const payload = bankAccountStatementsKind.payload.parse({
       account: { issuer: "santander", product: "checking" },
-      apply: true,
       force_reimport: false,
       statements: [statementFromParsedCartola(parseCheckingCartolaBuffer(content, filename))],
       unreadable: [],

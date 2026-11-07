@@ -45,10 +45,10 @@ async function main(): Promise<number> {
   }
   let res: FundAccountTransactionsApplyDetails;
   try {
-    const result = await ingestClient().send(fundAccountTransactionsKind, fundAccountTransactionsPayload(csvPath, { apply, maxMonth }), {
+    const result = await ingestClient().send(fundAccountTransactionsKind, fundAccountTransactionsPayload(csvPath, { maxMonth }), {
       channel: "file",
       ref: csvPath.split("/").pop()!,
-    });
+    }, { dryRun: !apply });
     res = result.details as FundAccountTransactionsApplyDetails;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);

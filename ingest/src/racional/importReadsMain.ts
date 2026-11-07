@@ -47,12 +47,11 @@ async function main(): Promise<number> {
     try {
       const payload = brokerMovementsKind.payload.parse({
         broker: "racional",
-        apply,
         read_at: read.read_at,
         movements: decoded.movements,
         dividends: decoded.dividends,
       });
-      const result = await client.send(brokerMovementsKind, payload, { channel: "web_session", ref: name, fetched_at: read.read_at });
+      const result = await client.send(brokerMovementsKind, payload, { channel: "web_session", ref: name, fetched_at: read.read_at }, { dryRun: !apply });
       details = result.details as BrokerMovementsApplyDetails;
     } catch (err) {
       console.log(`\n${read.stamp}: FAILED — ${describeIngestFailure(err)}`);

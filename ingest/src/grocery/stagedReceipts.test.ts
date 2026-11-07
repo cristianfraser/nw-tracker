@@ -98,7 +98,7 @@ describe("staged grocery receipts", () => {
     expect(a).toMatchObject({ document: "email", key: "<vitest-a@vitest>", chain: "lider", photo_taken_on: null });
     expect(p).toMatchObject({ document: "photo", key: "sha-vitest-p", chain: "lider", photo_taken_on: "2037-01-05" });
 
-    const payload = storeReceiptKind.payload.parse(storeReceiptPayload(a!, true));
+    const payload = storeReceiptKind.payload.parse(storeReceiptPayload(a!));
     expect(payload.receipt).toMatchObject({
       chain: "lider",
       number: "901",
@@ -108,8 +108,8 @@ describe("staged grocery receipts", () => {
       loyalty_points: 24,
     });
     expect(payload.receipt.items[0]).toMatchObject({ unit_price: 1500, total: 3000, discount: 500 });
-    const undated = storeReceiptKind.payload.parse(storeReceiptPayload(p!, false));
-    expect(undated).toMatchObject({ apply: false, receipt: { number: null, purchased_at: null, purchase_date_source: null } });
+    const undated = storeReceiptKind.payload.parse(storeReceiptPayload(p!));
+    expect(undated).toMatchObject({ receipt: { number: null, purchased_at: null, purchase_date_source: null } });
   });
 
   it("fails fast on an unknown source or a chain-less parse in the generic root", () => {

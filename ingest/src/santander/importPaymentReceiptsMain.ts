@@ -40,6 +40,7 @@ async function main(): Promise<number> {
       continue;
     }
     let details: CardPaymentReceiptApplyDetails;
+    let retry: boolean;
     try {
       const result = await client.send(cardPaymentReceiptKind, payload, {
         channel: "email",
@@ -48,12 +49,14 @@ async function main(): Promise<number> {
         ...(Number.isNaN(Date.parse(staged.date)) ? {} : { fetched_at: staged.date }),
       });
       details = result.details as CardPaymentReceiptApplyDetails;
+      retry = result.retry;
     } catch (err) {
       log(`FAILED ${path.basename(file)}: ${describeIngestFailure(err)}`);
       return 1;
     }
     console.log(line(payload, details.status, details.detail));
-    if (details.status !== "ambiguous") {
+    // `retry` (an ambiguous match): kept staged and sent again next run.
+    if (!retry) {
       const processed = path.join(path.dirname(file), "processed");
       fs.mkdirSync(processed, { recursive: true });
       fs.renameSync(file, path.join(processed, path.basename(file)));

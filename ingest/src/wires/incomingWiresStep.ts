@@ -83,16 +83,16 @@ export async function runIncomingWires(fromYmd: string, toYmd: string, dryRun: b
       }
     }
   }
-  const payload = bankAccountIncomingWiresKind.payload.parse({ apply: !dryRun, notices });
+  const payload = bankAccountIncomingWiresKind.payload.parse({ notices });
   log(`wires: ${payload.notices.length} notice(s)`);
   try {
     const result = await ingestClient().send(bankAccountIncomingWiresKind, payload, {
       channel: "email",
       ref: `incoming-wires|${fromYmd}_${toYmd}`,
-    });
+    }, { dryRun });
     const d = result.details as BankAccountIncomingWiresApplyDetails;
-    log(`server: ${d.new_notices} new wire notice(s)${d.applied ? "" : " (report only)"}`);
-    if (logWireBookings(d.bookings, d.applied)) failed++;
+    log(`server: ${d.new_notices} new wire notice(s)${result.dry_run ? " (report only)" : ""}`);
+    if (logWireBookings(d.bookings, !result.dry_run)) failed++;
   } catch (err) {
     log(`FAILED: ${describeIngestFailure(err)}`);
     failed++;

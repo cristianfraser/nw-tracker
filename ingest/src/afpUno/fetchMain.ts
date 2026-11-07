@@ -204,7 +204,7 @@ function printDetails(d: PensionAccountCertificatesApplyDetails): void {
   }
   console.log(`  balance: stated ${d.balance.stated_cuotas.toFixed(4)} cuotas, ledger after this read ${d.balance.ledger_cuotas_after.toFixed(4)}`);
   printValueCheck(d.value_check);
-  if (d.applied) console.log(`  → ${d.inserted} row(s) written`);
+  if (d.applied && apply) console.log(`  → ${d.inserted} row(s) written`);
   for (const p of d.problems) console.log(`  PROBLEM: ${p}`);
 }
 
@@ -318,7 +318,6 @@ async function main(): Promise<number> {
     provider: "afp_uno",
     product: "mandatory",
     fund: home.fund.tipo,
-    apply,
     read_at: readAt.toISOString(),
     balance: { cuotas: home.fund.saldoCuota, valor_cuota: home.fund.valorCuota, pesos: home.fund.saldo },
     recent_movements: recentMovements(home),
@@ -332,7 +331,7 @@ async function main(): Promise<number> {
       channel: "web_session",
       ref: `afp-uno-${stamp}`,
       fetched_at: readAt.toISOString(),
-    });
+    }, { dryRun: !apply });
     details = result.details as PensionAccountCertificatesApplyDetails;
   } catch (err) {
     console.log(`AFP UNO: FAILED — ${describeIngestFailure(err)}`);
@@ -342,7 +341,7 @@ async function main(): Promise<number> {
   console.log(`\nAFP UNO ${apply ? "" : "(report only) "}— folios ${contributions.folio} / ${movements.folio}`);
   printDetails(details);
 
-  if (details.inserted > 0) {
+  if (apply && details.inserted > 0) {
     for (const [kind, file] of Object.entries(files)) {
       const name = kind === "contributions" ? "cotizaciones" : "movimientos";
       const kept = path.join(certsDir(), `${contributions.issued_on}-${name}.pdf`);

@@ -59,8 +59,7 @@ const READ: MortgageSheetRead = {
 
 describe("mortgageSheetPayload", () => {
   it("passes the reader's rows through the contract, without the local path", () => {
-    const p = mortgageSheetPayload(READ, true);
-    expect(p.apply).toBe(true);
+    const p = mortgageSheetPayload(READ);
     expect(p.document).toEqual({ name: "cfraser.numbers", sha256: "a".repeat(64), size: 10, modified_at: "2099-10-11T15:00:00Z" });
     expect(p.rows.map((r) => r.label)).toEqual(["pie", "32"]);
     expect(p.projected).toEqual(["33"]);
@@ -69,11 +68,11 @@ describe("mortgageSheetPayload", () => {
   it("refuses a pago that is not pago UF × uf día, or one below the mínima", () => {
     const bad = structuredClone(READ);
     bad.rows[1]!.pago_clp = 900_000;
-    expect(() => mortgageSheetPayload(bad, true)).toThrow(/is not pago UF × uf día/);
+    expect(() => mortgageSheetPayload(bad)).toThrow(/is not pago UF × uf día/);
     const low = structuredClone(READ);
     low.rows[1]!.pago_uf = 10;
     low.rows[1]!.pago_clp = Math.round(10 * 40000);
-    expect(() => mortgageSheetPayload(low, true)).toThrow(/below the cuota mínima/);
+    expect(() => mortgageSheetPayload(low)).toThrow(/below the cuota mínima/);
   });
 });
 

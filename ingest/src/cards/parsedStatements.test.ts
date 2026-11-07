@@ -22,14 +22,14 @@ describe("readParsedStatementsCsv", () => {
     expect(csv.columns).toEqual([...CARD_PARSED_STATEMENT_COLUMNS]);
     const merchant = csv.columns.indexOf("merchant");
     expect(csv.rows.map((r) => r[merchant])).toEqual(['TIENDA, "UNO"', "DOS"]);
-    expect(parsedStatementsPayload(csv, { apply: true, full: false }).rows).toHaveLength(2);
+    expect(parsedStatementsPayload(csv, { full: false }).rows).toHaveLength(2);
   });
 
   it("pads a short row and refuses a file whose columns are not the parser's", () => {
     const short = csvFile(`${header}\n0001,x\n`);
     expect(readParsedStatementsCsv(short)!.rows[0]).toHaveLength(CARD_PARSED_STATEMENT_COLUMNS.length);
     const missing = csvFile(`${CARD_PARSED_STATEMENT_COLUMNS.slice(1).join(",")}\n${line("X").split(",").slice(1).join(",")}\n`);
-    expect(() => parsedStatementsPayload(readParsedStatementsCsv(missing)!, { apply: true, full: false })).toThrow(/missing: card_group/);
+    expect(() => parsedStatementsPayload(readParsedStatementsCsv(missing)!, { full: false })).toThrow(/missing: card_group/);
   });
 
   it("is null for a missing or empty file", () => {

@@ -28,7 +28,7 @@ describe("fintual certificado → fund_account.transactions", () => {
       '14/05/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,"1.955,9173",0,"1.431,5534","19.107,7578",$2.800.000,0,Transferencia electronica,$27.353.776',
       '15/05/2026,12:00:00,2000001,APV A,Risky Norris,APV,0,"10,5",,"1,0",0,$40.000,,$1',
     ]);
-    const payload = fundAccountTransactionsKind.payload.parse(fundAccountTransactionsPayload(file, { apply: false, maxMonth: null }));
+    const payload = fundAccountTransactionsKind.payload.parse(fundAccountTransactionsPayload(file, { maxMonth: null }));
     expect(payload).toMatchObject({ provider: "fintual", document: "fintual-certificado-de-transacciones.csv", max_month: null });
     expect(payload.transactions).toEqual([
       {

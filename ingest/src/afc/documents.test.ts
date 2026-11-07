@@ -114,14 +114,9 @@ describe("AFC estado cuatrimestral — parser", () => {
 
 
 describe("unemployment_fund.documents payload", () => {
-  it("carries both documents as printed and the rebuild options", () => {
+  it("carries both documents as printed", () => {
     const payload = unemploymentFundDocumentsKind.payload.parse(
-      unemploymentFundDocumentsPayload(parseAfcCotizacionesCertificate(CERT_TEXT), [parseAfcCartola(CARTOLA_TEXT)], {
-        apply: false,
-        accountId: null,
-        replaceExcelRows: true,
-        dropMovementIds: [7],
-      })
+      unemploymentFundDocumentsPayload(parseAfcCotizacionesCertificate(CERT_TEXT), [parseAfcCartola(CARTOLA_TEXT)])
     );
     expect(payload.certificate.total).toBe(70000);
     expect(payload.certificate.legs[0]).toEqual({
@@ -133,6 +128,5 @@ describe("unemployment_fund.documents payload", () => {
       paid_on: "2099-02-10",
     });
     expect(payload.statements[0]).toMatchObject({ opening: { date: "2099-08-31", balance: 100000 }, closing: { date: "2099-12-31", balance: 87500 }, account_use: 60000 });
-    expect(payload.options).toEqual({ replace_excel_rows: true, drop_movement_ids: [7] });
   });
 });
