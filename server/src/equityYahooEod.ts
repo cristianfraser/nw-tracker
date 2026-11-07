@@ -5,7 +5,7 @@
 
 import { chileWallClockAt } from "./chileDate.js";
 import { equityMarketKind } from "./equityQuote.js";
-import { fetchOut } from "./httpOut.js";
+import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 import { isWeekendYmd } from "./marketHolidays.js";
 import { nyseYmdFromUnix } from "./nyseSession.js";
 
@@ -21,8 +21,6 @@ export type YahooLiveQuote = {
   session_ymd: string;
 };
 
-const CHART_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export type YahooChartMeta = {
   regularMarketPrice?: number;
@@ -82,13 +80,11 @@ type YahooChartJson = {
 async function fetchYahooChart(symbol: string, query: string): Promise<YahooChartResult> {
   const sym = encodeURIComponent(symbol);
   const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?${query}`;
-  const res = await fetchOut(`yahoo:${symbol}`, url, {
-    headers: { "User-Agent": CHART_UA, Accept: "application/json" },
-  });
+  const res = await fetchOutboundText({ label: `yahoo:${symbol}`, url, userAgent: BROWSER_USER_AGENT, accept: "application/json" });
   if (!res.ok) {
     throw new Error(`Yahoo chart HTTP ${res.status} for ${symbol}`);
   }
-  const j = (await res.json()) as YahooChartJson;
+  const j = JSON.parse(res.text) as YahooChartJson;
   const err = j.chart?.error?.description;
   if (err) throw new Error(`Yahoo chart error (${symbol}): ${err}`);
   const result = j.chart?.result?.[0];

@@ -12,7 +12,8 @@
  */
 import { db } from "./db.js";
 import { parseChileanNumber } from "./chileanNumber.js";
-import { fetchOut } from "./httpOut.js";
+import { fetchOutboundText } from "./outboundFetch.js";
+import { SII_USER_AGENT } from "./ufSiiSync.js";
 
 export type OfficialIpcMonth = { month: string; variationPct: number; indexPoints: number };
 
@@ -74,9 +75,9 @@ export function parseSiiUtmIpcPage(year: number, htmlText: string): OfficialIpcM
 
 export async function fetchSiiOfficialIpcYear(year: number): Promise<OfficialIpcMonth[]> {
   const url = `https://www.sii.cl/valores_y_fechas/utm/utm${year}.htm`;
-  const res = await fetchOut("sii", url, { headers: { "User-Agent": "nw-tracker-sii/1.0" } });
+  const res = await fetchOutboundText({ label: "sii", url, userAgent: SII_USER_AGENT });
   if (!res.ok) throw new Error(`SII IPC ${year}: HTTP ${res.status}`);
-  return parseSiiUtmIpcPage(year, await res.text());
+  return parseSiiUtmIpcPage(year, res.text);
 }
 
 /** First day (YYYY-MM-DD) of the month `offset` months after `month` (a first-of-month date). */

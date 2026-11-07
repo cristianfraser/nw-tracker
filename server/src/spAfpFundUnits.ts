@@ -20,7 +20,11 @@
  */
 import { db } from "./db.js";
 import { parseChileanNumber } from "./chileanNumber.js";
-import { fetchOut } from "./httpOut.js";
+import { fetchOutboundText } from "./outboundFetch.js";
+
+
+/** How the app names itself to the Superintendencia de Pensiones (its AFP and AFC valor cuota files). */
+export const SP_USER_AGENT = "nw-tracker (personal finance tracker; SP valor cuota)";
 
 export type PensionFund = "A" | "B" | "C" | "D" | "E";
 
@@ -140,13 +144,15 @@ export async function fetchSpAfpFundUnits(
   opts?: { signal?: AbortSignal }
 ): Promise<SpAfpFundUnitRow[]> {
   const url = spAfpCsvUrl(fund, fromYear, toYear, confirmedThrough);
-  const res = await fetchOut(`sp_afp:${fund}:${fromYear}-${toYear}`, url, {
+  const res = await fetchOutboundText({
+    label: `sp_afp:${fund}:${fromYear}-${toYear}`,
+    url,
+    userAgent: SP_USER_AGENT,
     signal: opts?.signal,
-    headers: { "user-agent": "nw-tracker (personal finance tracker; AFP valor cuota)" },
+    decode: "latin1",
   });
   if (!res.ok) throw new Error(`sp_afp: HTTP ${res.status} fetching ${url}`);
-  const text = new TextDecoder("latin1").decode(new Uint8Array(await res.arrayBuffer()));
-  const rows = parseSpAfpCsv(text, fund);
+  const rows = parseSpAfpCsv(res.text, fund);
   const bad = rows.find((r) => r.day < `${fromYear}-01-01` || r.day > `${toYear}-12-31`);
   if (bad) throw new Error(`sp_afp: ${fromYear}–${toYear} file carries a row dated ${bad.day}`);
   return rows;

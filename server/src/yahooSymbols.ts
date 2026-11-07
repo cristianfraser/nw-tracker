@@ -5,11 +5,8 @@
  * (typing in the watchlist's add box, pressing add) — display reads stay DB-only.
  */
 import { fetchYahooChartMeta, type YahooChartMeta } from "./equityYahooEod.js";
-import { fetchOut } from "./httpOut.js";
+import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 import type { MarketQuoteCurrency, MarketSymbolKind, MarketSymbolRow } from "./marketSymbols.js";
-
-const SEARCH_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export type YahooSymbolSearchResult = {
   symbol: string;
@@ -35,11 +32,9 @@ export async function searchYahooSymbols(query: string): Promise<YahooSymbolSear
   const q = query.trim();
   if (!q) return [];
   const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0&listsCount=0`;
-  const res = await fetchOut("yahoo:search", url, {
-    headers: { "User-Agent": SEARCH_UA, Accept: "application/json" },
-  });
+  const res = await fetchOutboundText({ label: "yahoo:search", url, userAgent: BROWSER_USER_AGENT, accept: "application/json" });
   if (!res.ok) throw new Error(`Yahoo search HTTP ${res.status}`);
-  const json = (await res.json()) as YahooSearchJson;
+  const json = JSON.parse(res.text) as YahooSearchJson;
   return (json.quotes ?? [])
     // Option contracts expire and are not something to watch over years.
     .filter((r) => r.isYahooFinance !== false && r.quoteType !== "OPTION" && typeof r.symbol === "string" && r.symbol.trim())

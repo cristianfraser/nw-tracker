@@ -11,10 +11,7 @@
 
 import { equityQuoteCurrency } from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
-import { fetchOut } from "./httpOut.js";
-
-const CHART_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 
 type BolsaPointHistRow = {
   DATE?: string;
@@ -42,13 +39,16 @@ export function bolsaSantiagoNemoForTicker(ticker: string): string {
 export async function fetchBolsaSantiagoDailyCloses(ticker: string): Promise<EodCloseSeries> {
   const nemo = bolsaSantiagoNemoForTicker(ticker);
   const url = `https://www.bolsadesantiago.com/api/RV_Instrumentos/getPointHistGAT?nemo=${encodeURIComponent(nemo)}`;
-  const res = await fetchOut(`bolsa-santiago:${nemo}`, url, {
-    headers: { "User-Agent": CHART_UA, Accept: "application/json" },
+  const res = await fetchOutboundText({
+    label: `bolsa-santiago:${nemo}`,
+    url,
+    userAgent: BROWSER_USER_AGENT,
+    accept: "application/json",
   });
   if (!res.ok) {
     throw new Error(`Bolsa de Santiago point history HTTP ${res.status} for ${nemo}`);
   }
-  const j = (await res.json()) as BolsaPointHistJson;
+  const j = JSON.parse(res.text) as BolsaPointHistJson;
   const rows = j.listaResult;
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error(`Bolsa de Santiago point history empty for ${nemo}`);

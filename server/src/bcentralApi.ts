@@ -7,7 +7,7 @@
 import { BCENTRAL_IPC_SERIES, BCENTRAL_SERIES } from "./bcentralSeries.js";
 import { parseUsNumber } from "./chileanNumber.js";
 import { nextIpcMonth, verifyIpcIndexAgainstVariation, type IpcIndexRow, type IpcObservation } from "./ipcSeries.js";
-import { fetchOut } from "./httpOut.js";
+import { fetchOutboundText, type OutboundGate } from "./outboundFetch.js";
 import {
   acquireSbifRequestSlot,
   recordSbifRequestFailure,
@@ -99,22 +99,26 @@ function buildUrl(creds: BcentralCredentials, params: Record<string, string>): s
   return u.toString();
 }
 
+/** Banco Central's rate gate (`sbifApiGate.ts`): its spacing, and its backoff on quota or block answers. */
+const BCENTRAL_GATE: OutboundGate = {
+  acquire: () => acquireSbifRequestSlot(),
+  success: () => recordSbifRequestSuccess(),
+  failure: (e) => recordSbifRequestFailure(e),
+};
+
 export async function fetchBcentralJson(url: string): Promise<unknown> {
-  await acquireSbifRequestSlot();
+  const res = await fetchOutboundText({
+    label: "bcentral",
+    url,
+    userAgent: "nw-tracker-bcentral/1.0",
+    accept: "application/json",
+    gate: BCENTRAL_GATE,
+  });
+  if (!res.ok) throw new Error(`BCentral HTTP ${res.status}: ${res.text.slice(0, 500)}`);
   try {
-    const res = await fetchOut("bcentral", url, {
-      headers: { Accept: "application/json", "User-Agent": "nw-tracker-bcentral/1.0" },
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`BCentral HTTP ${res.status}: ${text.slice(0, 500)}`);
-    try {
-      const body = JSON.parse(text) as unknown;
-      recordSbifRequestSuccess();
-      return body;
-    } catch {
-      throw new Error(`BCentral JSON parse error: ${text.slice(0, 200)}`);
-    }
-  } catch (e) {
+    return JSON.parse(res.text) as unknown;
+  } catch {
+    const e = new Error(`BCentral JSON parse error: ${res.text.slice(0, 200)}`);
     recordSbifRequestFailure(e);
     throw e;
   }

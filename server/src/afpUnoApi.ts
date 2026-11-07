@@ -15,7 +15,7 @@
  * (≤ 0,27 % apart), and published one business day after the SP.
  */
 import { parseChileanNumber } from "./chileanNumber.js";
-import { fetchOut } from "./httpOut.js";
+import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 import type { SpAfpFundUnitRow } from "./spAfpFundUnits.js";
 
 export const UNO_API_HISTORY_URL = "https://www.uno.cl/api/valor-cuota-buscar/historico";
@@ -63,14 +63,17 @@ export async function fetchUnoFundAHistory(
     if (!ISO_DAY.test(d)) throw new Error(`uno_api: invalid date ${d}`);
   }
   if (fromDay > toDay) throw new Error(`uno_api: ${fromDay} is after ${toDay}`);
-  const res = await fetchOut(`uno_api:A:${fromDay}..${toDay}`, UNO_API_HISTORY_URL, {
+  const res = await fetchOutboundText({
+    label: `uno_api:A:${fromDay}..${toDay}`,
+    url: UNO_API_HISTORY_URL,
+    userAgent: BROWSER_USER_AGENT,
     method: "POST",
     signal: opts?.signal,
-    headers: { "content-type": "application/json", "user-agent": "Mozilla/5.0" },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ fechaInicio: fromDay, fechaFin: toDay }),
   });
   if (!res.ok) throw new Error(`uno_api: HTTP ${res.status}`);
-  const rows = parseUnoValorCuotaHistorico(await res.json());
+  const rows = parseUnoValorCuotaHistorico(JSON.parse(res.text) as unknown);
   const bad = rows.find((r) => r.day < fromDay || r.day > toDay);
   if (bad) throw new Error(`uno_api: ${fromDay}..${toDay} answer carries a row dated ${bad.day}`);
   return rows;

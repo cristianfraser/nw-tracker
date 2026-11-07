@@ -21,7 +21,8 @@
  */
 import { db } from "./db.js";
 import type { ChileWallClock } from "./chileDate.js";
-import { fetchOut } from "./httpOut.js";
+import { fetchOutboundText } from "./outboundFetch.js";
+import { SP_USER_AGENT } from "./spAfpFundUnits.js";
 import { EVENING_PUBLISH_HOUR_CHILE, expectedPublishedDay, type PublisherSchedule } from "./publisherSchedule.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 
@@ -141,14 +142,15 @@ export async function fetchSpCesantiaYear(
   opts?: { signal?: AbortSignal }
 ): Promise<SpCesantiaRow[]> {
   const url = spCesantiaCsvUrl(year);
-  const res = await fetchOut(`afc_cic:${year}`, url, {
+  const res = await fetchOutboundText({
+    label: `afc_cic:${year}`,
+    url,
+    userAgent: SP_USER_AGENT,
     signal: opts?.signal,
-    headers: { "user-agent": "nw-tracker (personal finance tracker; afc_cic sync)" },
+    decode: "latin1",
   });
   if (!res.ok) throw new Error(`afc_cic: HTTP ${res.status} fetching ${url}`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const text = new TextDecoder("latin1").decode(bytes);
-  const rows = parseSpCesantiaCsv(text);
+  const rows = parseSpCesantiaCsv(res.text);
   const bad = rows.find((r) => !r.day.startsWith(`${year}-`));
   if (bad) throw new Error(`afc_cic: ${year} CSV carries a row dated ${bad.day}`);
   return rows;

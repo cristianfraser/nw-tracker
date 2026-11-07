@@ -1,5 +1,6 @@
 /** Official daily UF from SII HTML tables (valores y fechas). */
 
+import { fetchOutboundText } from "./outboundFetch.js";
 import { isChileanNumber, parseChileanNumber } from "./chileanNumber.js";
 
 const SII_UF_BASE = "https://www.sii.cl/valores_y_fechas/uf";
@@ -27,6 +28,10 @@ function parseChileanUfCell(raw: string): number | null {
   if (n < 1000 || n > 1e6) return null;
   return n;
 }
+
+
+/** How the app names itself to the SII (its UF and IPC pages). */
+export const SII_USER_AGENT = "nw-tracker-sii/1.0";
 
 export function parseSiiUfYearHtml(html: string, year: number): Map<string, number> {
   const out = new Map<string, number>();
@@ -60,11 +65,9 @@ export function parseSiiUfYearHtml(html: string, year: number): Map<string, numb
 /** One year's SII table (`uf{year}.htm`) → YYYY-MM-DD → CLP per UF. */
 export async function fetchSiiUfYear(year: number): Promise<Map<string, number>> {
   const url = `${SII_UF_BASE}/uf${year}.htm`;
-  const res = await fetch(url, { headers: { "User-Agent": "nw-tracker-uf-fetch/1.0" } });
+  const res = await fetchOutboundText({ label: `sii_uf:${year}`, url, userAgent: SII_USER_AGENT, decode: "latin1" });
   if (!res.ok) throw new Error(`SII UF ${year}: HTTP ${res.status} ${url}`);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  const html = new TextDecoder("iso-8859-1").decode(buf);
-  return parseSiiUfYearHtml(html, year);
+  return parseSiiUfYearHtml(res.text, year);
 }
 
 /** SII rows with `date` strictly after `lastYmd` and on/before `endYmd`. */
