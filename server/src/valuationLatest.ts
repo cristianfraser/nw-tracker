@@ -1,5 +1,5 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
-import { holdingIsDebt } from "./holdings.js";
+import { kindIsDebt } from "./accountProfile.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
@@ -49,7 +49,7 @@ function storedValueClp(
   const value_clp = storedValuationInUnit(
     { value: row.value_clp, currency: row.currency, as_of_date: row.as_of_date },
     "clp",
-    holdingIsDebt(kind) ? "debt" : "asset",
+    kindIsDebt(kind) ? "debt" : "asset",
     ctx
   );
   return { value_clp, as_of_date: row.as_of_date };

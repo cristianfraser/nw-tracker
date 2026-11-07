@@ -1,5 +1,5 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
-import { accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
+import { accountIsDebt, accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import {
@@ -41,7 +41,7 @@ import {
   deptoPropertyCloseClpBySnapshotDates,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "./accountBucket.js";
+import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { ccLedgerStatementClosingPointsClpForAccounts } from "./ccCreditCardValuations.js";
 import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
@@ -1803,7 +1803,7 @@ function liabilitiesCoverageFromBlock(
   chartHostSlug: string
 ): ProportionalSeriesBlock | null {
   const liabilityKeys = rows
-    .filter((r) => isLiabilityKindSlug(accountBucketKindSlug(r.bucket_slug)))
+    .filter((r) => accountIsDebt(r.account_id))
     .map((r) => String(seriesAccountIdForGroupTab(r, groupSlug)));
   if (!liabilityKeys.length) return null;
   const defs = listReferenceGroupsForChartHost(chartHostSlug);
@@ -1835,7 +1835,7 @@ export function groupHostsLiabilitiesCoverage(groupSlug: string, tabSubgroup?: s
   const chartHostSlug = chartHostSlugForValuationGroup(groupSlug, tabSubgroup);
   if (!chartHostSlug || !listReferenceGroupsForChartHost(chartHostSlug).length) return false;
   return listAccountsForGroupTab(groupSlug, tabSubgroup).some((r) =>
-    isLiabilityKindSlug(accountBucketKindSlug(r.bucket_slug))
+    accountIsDebt(r.account_id)
   );
 }
 

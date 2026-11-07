@@ -14,18 +14,13 @@
  * Resolved with the rest of the account's profile (`accountProfile.ts`), the one place that
  * decides how an account is valued.
  */
-import { accountProfile, accountProfileOptional, kindIsDebt, type Holding } from "./accountProfile.js";
+import { accountProfile, accountProfileOptional, type Holding } from "./accountProfile.js";
 
 export type { Holding };
 
 /** What `accountId` holds. Memoized until the next database write. */
 export function accountHolding(accountId: number): Holding {
   return accountProfile(accountId).holding;
-}
-
-/** True when the behaviour kind's balance is a liability (its value converts at the debt side). */
-export function holdingIsDebt(kindSlug: string): boolean {
-  return kindIsDebt(kindSlug);
 }
 
 /** True when the account is a credit card (no lookup that throws for a bare id). */

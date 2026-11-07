@@ -339,10 +339,9 @@ export function liveFintualCertDisplayValueClp(
   now?: Date
 ): { value_clp: number; as_of_date: string } | null {
   const profile = accountProfile(accountId);
-  if (profile.quantity.kind !== "fintual_goal") throw new Error(`account ${accountId} is not a Fintual goal`);
   const asOf =
     asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
-  const meta = fintualCertPositionMeta(accountId, profile.importKey!, profile.name.trim() || "Fintual", asOf, now ?? new Date());
+  const meta = fintualCertPositionMeta(accountId, profile.importKey ?? "", profile.name.trim() || "Fintual", asOf, now ?? new Date());
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;
   if (clp != null && Number.isFinite(clp) && date) {

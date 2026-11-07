@@ -1,5 +1,5 @@
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { holdingIsDebt } from "./holdings.js";
+import { kindIsDebt } from "./accountProfile.js";
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
 import { db } from "./db.js";
 
@@ -13,7 +13,7 @@ export function loadBookValuationsAsc(
 ): { as_of_date: string; value_clp: number }[] {
   const kind = accountKindSlugForAccountId(accountId) ?? "";
   if (valuationsAreAppraisals(kind)) return [];
-  const side = holdingIsDebt(kind) ? "debt" : "asset";
+  const side = kindIsDebt(kind) ? "debt" : "asset";
   const rows = db
     .prepare(`SELECT as_of_date, value, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
     .all(accountId) as { as_of_date: string; value: number; currency: string }[];

@@ -1,6 +1,7 @@
+import { accountIsDebt } from "./accountProfile.js";
 import { cacheKeyAccountDailySeriesResponse, cacheKeyGroupDailySeriesResponse } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
-import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "./accountBucket.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "./ccDailyHistorialBlock.js";
 import { dailyPerfLevelsForAccount, dailyPerfLevelsForGroup } from "./dailyPerfLevels.js";
 import { dailyReferenceLinesForChartHost, deptoPropertyChartOverlayDailyLines } from "./dailyReferenceLines.js";
@@ -104,7 +105,7 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
   // Liabilities coverage by the same overlays (Pasivos), the daily twin of the monthly
   // `reference_coverage` block: the total owed (mortgage + cards) on each day.
   const liabilityLines = (series.accounts ?? []).filter(
-    (l) => l.account_id > 0 && isLiabilityKindSlug(accountBucketKindSlug(bucketSlugForAccountId(l.account_id) ?? ""))
+    (l) => l.account_id > 0 && accountIsDebt(l.account_id)
   );
   const referenceCoverage =
     chartHost && referenceLines?.length && liabilityLines.length

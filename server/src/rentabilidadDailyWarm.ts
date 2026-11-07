@@ -1,7 +1,7 @@
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { db } from "./db.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
-import { isLiabilityAccountId } from "./accountBucket.js";
+import { accountIsDebt } from "./accountProfile.js";
 
 /**
  * The full-history daily series every Rentabilidad table chains (`periodReturnsDaily.ts`), the
@@ -28,7 +28,7 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
          FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id ORDER BY a.id`
       )
       .all() as { account_id: number; name: string | null; bucket_slug: string; import_key: string | null }[]
-  ).filter((a) => !isLiabilityAccountId(a.account_id));
+  ).filter((a) => !accountIsDebt(a.account_id));
 
   let scopes = 0;
   const yieldToRequests = () => whenNoApiRequestsInFlight();

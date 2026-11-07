@@ -1,5 +1,5 @@
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
-import { isLiabilityAccountId } from "./accountBucket.js";
+import { accountIsDebt } from "./accountProfile.js";
 import { cacheKeyDailySeries } from "./cacheFamilies.js";
 import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./cacheRegistry.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
@@ -213,7 +213,7 @@ function gridFlows(
     // (mortgage) carry ledger-truth payment events. USD-cash accounts are regular since
     // 2026-08-04 — their merged events come from loadUsdCashCapitalSortFlows.
     if (isCreditCardAccountId(a.account_id)) continue;
-    if (isLiabilityAccountId(a.account_id)) mortgageIds.push(a.account_id);
+    if (accountIsDebt(a.account_id)) mortgageIds.push(a.account_id);
     else regularIds.push(a.account_id);
   }
 
@@ -419,7 +419,7 @@ export function getBucketDailySeries(
     : null;
   // Debt marks are positive amounts owed: they sum into `value` as displayed, and into
   // `wealth` with the opposite sign so P/L and % read as gains and losses either way.
-  const isLiability = included.map((a) => isLiabilityAccountId(a.account_id));
+  const isLiability = included.map((a) => accountIsDebt(a.account_id));
   // Cards derive their flows from their own owed marks (see `ccDerivedFlows`).
   const ccMarksClp = new Map<number, (number | null)[]>(
     included.filter((a) => isCreditCardAccountId(a.account_id)).map((a) => [a.account_id, []])

@@ -30,6 +30,9 @@ function perfRow(
   };
 }
 
+/** An id with no account row: the close falls back to the rows, as a book mark with none on file. */
+const NO_ACCOUNT = 990_201;
+
 describe("patchOrInsertLiveCurrentMonthPerfRows", () => {
   it("inserts a June row when today is June 1 and perf ends in May", () => {
     chileToday.ymd = "2026-06-01";
@@ -44,7 +47,7 @@ describe("patchOrInsertLiveCurrentMonthPerfRows", () => {
       }),
     ];
 
-    const out = patchOrInsertLiveCurrentMonthPerfRows(1, "apv", mayOnly, "clp", () => 1_000_500);
+    const out = patchOrInsertLiveCurrentMonthPerfRows(NO_ACCOUNT, "apv", mayOnly, "clp", () => 1_000_500);
 
     const june = out.find((r) => r.as_of_date.startsWith("2026-06"));
     expect(june).toBeDefined();
@@ -68,7 +71,7 @@ describe("patchOrInsertLiveCurrentMonthPerfRows", () => {
       }),
     ];
 
-    const out = patchOrInsertLiveCurrentMonthPerfRows(1, "apv", mayWithOpenAndClose, "clp", () => 1_000_100);
+    const out = patchOrInsertLiveCurrentMonthPerfRows(NO_ACCOUNT, "apv", mayWithOpenAndClose, "clp", () => 1_000_100);
 
     const june = out.find((r) => r.as_of_date.startsWith("2026-06"));
     expect(june!.prior_closing).toBe(1_000_000);

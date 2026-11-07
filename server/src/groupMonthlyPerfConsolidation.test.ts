@@ -28,7 +28,7 @@ describe("groupMonthlyPerfConsolidation", () => {
 
     const rows = consolidateGroupMonthlyPerf([
       {
-        account_id: 1,
+        account_id: 990_101,
         bucket_slug: "brokerage_mutual_funds",
         monthly: [
           {
@@ -70,7 +70,7 @@ describe("groupMonthlyPerfConsolidation", () => {
         ],
       },
       {
-        account_id: 2,
+        account_id: 990_102,
         bucket_slug: "brokerage_mutual_funds",
         monthly: [
           {

@@ -39,18 +39,5 @@ export function accountIsMonthPrecisionDated(accountId: number): boolean {
   return kind != null && MONTH_PRECISION_ACCOUNT_KIND_SLUGS.has(kind);
 }
 
-/**
- * Debt account: its mark is a positive amount OWED, so value moves and P/L run opposite to an
- * asset's (`pl = prior − owed − flow`, flows positive when capital goes into the debt).
- */
-export function isLiabilityAccountId(accountId: number): boolean {
-  return isLiabilityKindSlug(accountKindSlugForAccountId(accountId));
-}
-
-/** The behavior kinds whose mark is debt owed (see `isLiabilityAccountId`). */
-export function isLiabilityKindSlug(kind: string | null | undefined): boolean {
-  return kind === "credit_card" || kind === "mortgage";
-}
-
 /** Top-level NW bucket for an account (portfolio group, then asset placement). */
 export { dashboardBucketSlugForAccountId } from "./portfolioGroupTree.js";

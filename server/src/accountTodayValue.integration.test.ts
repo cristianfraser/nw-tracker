@@ -6,7 +6,7 @@ import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { isLiabilityAccountId } from "./accountBucket.js";
+import { accountIsDebt as isLiabilityAccountId } from "./accountProfile.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { NW_DASHBOARD_BUCKET_SLUGS } from "./portfolioGroupValueAtDate.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";

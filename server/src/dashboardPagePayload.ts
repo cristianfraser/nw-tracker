@@ -1,6 +1,6 @@
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { chainedGroupPctResolver } from "./periodPctDailyChain.js";
-import { isLiabilityAccountId } from "./accountBucket.js";
+import { accountIsDebt } from "./accountProfile.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
@@ -87,7 +87,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     if (!navRoot) throw new Error("dashboard payload: net_worth nav tree missing");
     const liabilitiesRoot = getLiabilitiesNavRootNode();
     if (!liabilitiesRoot) throw new Error("dashboard payload: liabilities nav tree missing");
-    const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId);
+    const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, accountIsDebt);
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
       navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,

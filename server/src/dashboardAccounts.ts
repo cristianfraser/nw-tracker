@@ -5,7 +5,8 @@ import { getAggregationCached } from "./cacheRegistry.js";
 import { chainedGroupPctResolver, withDailyChainedAccountRowPcts } from "./periodPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
-import { accountBucketKindSlug, isLiabilityAccountId } from "./accountBucket.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { accountIsDebt } from "./accountProfile.js";
 import {
   accountPeriodMetricsFromMonthlyRows,
   type AccountPeriodMetrics,
@@ -365,8 +366,7 @@ function buildDashboardAccountRowFor(
   // its cost of financing per calendar month, `creditCardMonthPerf`, the account page's
   // «Detalle por mes»); their deposits are not the rows' flows — the mortgage's are the
   // depto ledger's payments, and a card's flows are not personal capital.
-  const hasPerfRows =
-    trackAssetMetrics || kindSlug === "mortgage" || kindSlug === "credit_card";
+  const hasPerfRows = trackAssetMetrics || accountIsDebt(a.id);
   const rowsClp: AccountMonthlyPerformanceRow[] = hasPerfRows
     ? monthlyPerfRowsForAccount(a.id, leafSlug, "clp")
     : [];
@@ -400,8 +400,7 @@ function buildDashboardAccountRowFor(
   const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd);
   // Mortgage and CC track day marks too (daily UF cost; per-day owed) — their title
   // deltas move daily, P/L stays their own convention.
-  const rowTracksDayMetrics =
-    trackAssetMetrics || kindSlug === "mortgage" || kindSlug === "credit_card";
+  const rowTracksDayMetrics = trackAssetMetrics || accountIsDebt(a.id);
   const priorDayMark = rowTracksDayMetrics
     ? accountMarkClpAtYmd(a.id, priorDayYmd)
     : null;
@@ -547,7 +546,7 @@ function buildDashboardAccountRowFor(
   // Every period % is the account's daily returns compounded (periodPctDailyChain.ts); the
   // one-step Total stays as `pct_total_on_deposits_*`. Row by row: each reads only its own
   // account's daily series.
-  return withDailyChainedAccountRowPcts([withPcts], includeUsd, isLiabilityAccountId)[0]!;
+  return withDailyChainedAccountRowPcts([withPcts], includeUsd, accountIsDebt)[0]!;
 }
 
 /**
@@ -599,7 +598,7 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
   if (!navRoot) throw new Error("nav snapshot: net_worth nav tree missing");
   const liabilitiesRoot = getLiabilitiesNavRootNode();
   if (!liabilitiesRoot) throw new Error("nav snapshot: liabilities nav tree missing");
-  const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId);
+  const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, accountIsDebt);
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
