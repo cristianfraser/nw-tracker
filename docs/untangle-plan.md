@@ -1287,6 +1287,15 @@ series). Tests use synthetic fixtures only (`cd server && npm run test`).
 | `domain-legal-demo` | F15 (legal parameters module, reajuste service, F22 identities once, demo calls the real writers), F16 (broker adapter) | `f22*`, `art107*`, `*TaxGains`, `taxLots`, `payroll*`, `payslip*`, `siiOfficialIpc`, `demoData/**`, `broker*`, `fintual{Email,Cert,Wallet,Withdrawal}*`, `racional*Import`, `incomingWires` | opus |
 | `scripts-cleanup` | F18, plus the part of F19 that is dead today (no caller anywhere, verified by grep over `server/`, `client/`, `ingest/`, tests and `package.json`) | `server/scripts/**`, `server/package.json` scripts, `client/src/chartMovingAverage.ts`, `server/src/{backfillAdditionalCardNoCuenta,rentasEsporadicas}.ts`, the script-only `src` modules named in F18 (move, don't delete) | sonnet |
 
+**Wave 1 status (2026-11-07): merged into `untangle`.** All five streams landed (scripts-cleanup,
+domain-legal-demo, core-formats, infra-schedulers, ingest-boundary, in that order), each merged
+with the previous ones and re-checked: typecheck + conventions + check-deps ok (baseline
+rewritten once for the four files the wave moved or created inside the existing cycle),
+contracts 108, client 503, ingest 481, Python ok, server 3017 passing with only the two fragile
+tests failing (see «Notes between streams»). Not merged to `main`; `main` holds only the plan
+docs. Before the wave-1 merge to `main`: the deploy notes under «Notes between streams» (strict
+env parsing, migration 269, retired shell runners and plists, ingest + server deploy together).
+
 **Wave 2 — the core, mostly serial.** Starts when wave 1 has merged into `untangle`.
 
 | Stream | Fixes | Notes | Model |
