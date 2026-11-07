@@ -8,7 +8,7 @@ import {
 import { rollupMonthlyPerfYearly as rollupConsolidatedMonthlyYearly } from "./monthlyPerfRollup.js";
 import { PERIOD_RETURN_ORDER } from "./periodReturns.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
-import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
+import { isInvestmentGroup } from "./navTreeModel.js";
 
 function monthRow(overrides: Partial<ConsolidatedMonthlyPerfRow> & { as_of_date: string }): ConsolidatedMonthlyPerfRow {
   return {
@@ -178,7 +178,7 @@ describe("getGroupConsolidatedMonthlyPage", () => {
   });
 });
 
-describe("isInvestmentPerformanceGroupSlug", () => {
+describe("isInvestmentGroup", () => {
   it("is true for the inversiones hub, brokerage/retirement, and their descendants", () => {
     for (const slug of [
       "inversiones",
@@ -189,13 +189,13 @@ describe("isInvestmentPerformanceGroupSlug", () => {
       "retirement_afp_afc",
       "retirement_apv_b",
     ]) {
-      expect(isInvestmentPerformanceGroupSlug(slug)).toBe(true);
+      expect(isInvestmentGroup(slug)).toBe(true);
     }
   });
 
   it("is false for cash/liability/net-worth groups", () => {
     for (const slug of ["net_worth", "cash_eqs", "real_estate", "liabilities"]) {
-      expect(isInvestmentPerformanceGroupSlug(slug)).toBe(false);
+      expect(isInvestmentGroup(slug)).toBe(false);
     }
   });
 });

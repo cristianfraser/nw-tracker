@@ -5,10 +5,10 @@ import {
   accountIdsInPortfolioGroup,
   assetGroupIdForImportKind,
   accountIdsInPortfolioGroupForTotals,
-  nwDashboardMetricGroupForAccount,
   portfolioGroupBySlug,
   resolvePortfolioGroupSlugForLegacyTab,
 } from "./portfolioGroupTree.js";
+import { bucketOfAccount } from "./navTreeModel.js";
 
 describe("portfolioGroupTree", () => {
   it("lists AFP and AFC under retirement_afp_afc portfolio group", () => {
@@ -44,7 +44,7 @@ describe("portfolioGroupTree", () => {
       )
       .get() as { id: number } | undefined;
     if (!mfAccount) return;
-    expect(nwDashboardMetricGroupForAccount(mfAccount.id)).toBe("brokerage");
+    expect(bucketOfAccount(mfAccount.id)).toBe("brokerage");
     const broIds = new Set(accountIdsInPortfolioGroupForTotals("brokerage"));
     expect(broIds.has(mfAccount.id)).toBe(true);
   });

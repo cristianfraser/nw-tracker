@@ -84,16 +84,52 @@ describe("seedNavTree cash_eqs hub", () => {
   });
 });
 
-describe("seedNavTree operational credit cards entry", () => {
-  it("removes the legacy /credit-cards main-section row (page retired; cards live under Pasivos)", () => {
+describe("seedNavTree on a seeded database", () => {
+  it("is idempotent: a second run creates, changes and deletes nothing", () => {
     seedNavTree();
+    const snapshot = () => ({
+      groups: db.prepare(`SELECT * FROM portfolio_groups ORDER BY id`).all(),
+      items: db.prepare(`SELECT * FROM portfolio_group_items ORDER BY id`).all(),
+      liabilityGroups: db.prepare(`SELECT * FROM liability_groups ORDER BY id`).all(),
+      liabilityItems: db.prepare(`SELECT * FROM liability_group_items ORDER BY id`).all(),
+    });
+    const before = snapshot();
     seedNavTree();
-    const rows = db
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("leaves an existing node's attributes alone (they are data once created)", () => {
+    seedNavTree();
+    const row = () => db.prepare(`SELECT label, color_rgb FROM portfolio_groups WHERE slug = 'brokerage_crypto'`).get();
+    const original = row() as { label: string; color_rgb: string | null };
+    db.prepare(`UPDATE portfolio_groups SET label = 'Vitest crypto', color_rgb = '1,2,3' WHERE slug = 'brokerage_crypto'`).run();
+    try {
+      seedNavTree();
+      expect(row()).toEqual({ label: "Vitest crypto", color_rgb: "1,2,3" });
+    } finally {
+      db.prepare(`UPDATE portfolio_groups SET label = ?, color_rgb = ? WHERE slug = 'brokerage_crypto'`).run(
+        original.label,
+        original.color_rgb
+      );
+    }
+  });
+
+  it("gives the created nodes their roles", () => {
+    seedNavTree();
+    const roles = db
       .prepare(
-        `SELECT id FROM portfolio_groups WHERE slug = 'credit_cards' AND sidebar_section = 'main'`
+        `SELECT g.slug, g.nw_bucket, g.investment_root, g.property_overlay, n.slug AS nets
+         FROM portfolio_groups g LEFT JOIN portfolio_groups n ON n.id = g.nets_linked_group_id
+         WHERE g.nw_bucket = 1 OR g.nets_linked_group_id IS NOT NULL ORDER BY g.dashboard_sort_order, g.slug`
       )
       .all();
-    expect(rows).toHaveLength(0);
+    expect(roles).toEqual([
+      { slug: "cash_savings", nw_bucket: 0, investment_root: 0, property_overlay: 0, nets: "liabilities_credit_card" },
+      { slug: "real_estate", nw_bucket: 1, investment_root: 0, property_overlay: 1, nets: null },
+      { slug: "retirement", nw_bucket: 1, investment_root: 1, property_overlay: 0, nets: null },
+      { slug: "brokerage", nw_bucket: 1, investment_root: 1, property_overlay: 0, nets: null },
+      { slug: "cash_eqs", nw_bucket: 1, investment_root: 0, property_overlay: 0, nets: "liabilities_credit_card" },
+    ]);
   });
 });
 

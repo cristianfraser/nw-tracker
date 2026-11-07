@@ -1,6 +1,14 @@
+import { accountProfileOptional } from "./accountProfile.js";
 import { assetGroupBySlug, CHECKING_ACCOUNTS_KIND, leafAssetGroupIdForKindSlug } from "./assetGroupTree.js";
-import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
+import {
+  bucketOfAccount,
+  groupAccountIds,
+  isInvestmentAccount,
+  isInvestmentGroup,
+  leafGroupOfAccount,
+  navGroupById,
+} from "./navTreeModel.js";
 import { getPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 
 export type PortfolioGroupRow = {
@@ -15,14 +23,6 @@ export type PortfolioGroupRow = {
   exclude_from_parent_total: number;
   api_group: string | null;
   api_subgroup: string | null;
-};
-
-type ItemRow = {
-  group_id: number;
-  item_kind: "group" | "account" | "expense_account";
-  child_group_id: number | null;
-  account_id: number | null;
-  sort_order: number;
 };
 
 const groupBySlugStmt = db.prepare(
@@ -54,61 +54,11 @@ export function portfolioGroupById(id: number): PortfolioGroupRow | null {
   return (groupByIdStmt.get(id) as PortfolioGroupRow | undefined) ?? null;
 }
 
-function loadAllItems(): ItemRow[] {
-  const idx = getPortfolioGroupIndex();
-  if (idx) return idx.items as ItemRow[];
-  return db
-    .prepare(
-      `SELECT group_id, item_kind, child_group_id, account_id, sort_order
-       FROM portfolio_group_items
-       WHERE item_kind IN ('group', 'account')
-       ORDER BY sort_order, id`
-    )
-    .all() as ItemRow[];
-}
-
-function itemsByGroupId(items: ItemRow[]): Map<number, ItemRow[]> {
-  const idx = getPortfolioGroupIndex();
-  if (idx) return idx.byGroupId as Map<number, ItemRow[]>;
-  const map = new Map<number, ItemRow[]>();
-  for (const item of items) {
-    const arr = map.get(item.group_id) ?? [];
-    arr.push(item);
-    map.set(item.group_id, arr);
-  }
-  return map;
-}
-
 export { withPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 
-/** Account ids in this portfolio group subtree (direct + nested groups). */
+/** Account ids in this portfolio group subtree (direct + nested groups; the Pasivos subtree attached). */
 export function accountIdsInPortfolioGroup(slugOrId: string | number): number[] {
-  if (slugOrId === "liabilities_credit_card") {
-    return listLiabilitiesTabAccountRows("credit_card").map((r) => r.account_id);
-  }
-  if (slugOrId === "liabilities_mortgage") {
-    return listLiabilitiesTabAccountRows("mortgage").map((r) => r.account_id);
-  }
-  const root =
-    typeof slugOrId === "number" ? portfolioGroupById(slugOrId) : portfolioGroupBySlug(slugOrId);
-  if (!root) return [];
-
-  const items = loadAllItems();
-  const byGroup = itemsByGroupId(items);
-  const out = new Set<number>();
-
-  const visitGroup = (groupId: number) => {
-    for (const item of byGroup.get(groupId) ?? []) {
-      if (item.item_kind === "account" && item.account_id != null) {
-        out.add(item.account_id);
-      } else if (item.item_kind === "group" && item.child_group_id != null) {
-        visitGroup(item.child_group_id);
-      }
-    }
-  };
-
-  visitGroup(root.id);
-  return [...out].sort((a, b) => a - b);
+  return groupAccountIds(slugOrId);
 }
 
 /**
@@ -116,78 +66,31 @@ export function accountIdsInPortfolioGroup(slugOrId: string | number): number[] 
  * Skips child groups with `exclude_from_parent_total`.
  */
 export function accountIdsInPortfolioGroupForTotals(slugOrId: string | number): number[] {
-  const root =
-    typeof slugOrId === "number" ? portfolioGroupById(slugOrId) : portfolioGroupBySlug(slugOrId);
-  if (!root) return [];
-
-  const items = loadAllItems();
-  const byGroup = itemsByGroupId(items);
-  const out = new Set<number>();
-
-  const visitGroup = (groupId: number) => {
-    for (const item of byGroup.get(groupId) ?? []) {
-      if (item.item_kind === "account" && item.account_id != null) {
-        out.add(item.account_id);
-      } else if (item.item_kind === "group" && item.child_group_id != null) {
-        const child = portfolioGroupById(item.child_group_id);
-        if (!child || child.exclude_from_parent_total === 1) continue;
-        visitGroup(item.child_group_id);
-      }
-    }
-  };
-
-  visitGroup(root.id);
-  return [...out].sort((a, b) => a - b);
+  return groupAccountIds(slugOrId, { forTotals: true });
 }
 
-/** Deepest portfolio group slug per account (one query for dashboard batching). */
+/** The portfolio group slug each account is an item of (its nav leaf bucket). */
 export function leafPortfolioGroupSlugByAccountIds(
   accountIds: readonly number[]
 ): Map<number, string> {
   const out = new Map<number, string>();
-  if (!accountIds.length) return out;
-  const unique = [...new Set(accountIds)];
-  const ph = unique.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT i.account_id, pg.slug, LENGTH(pg.slug) AS slug_len, pg.id AS pg_id
-       FROM portfolio_group_items i
-       JOIN portfolio_groups pg ON pg.id = i.group_id
-       WHERE i.item_kind = 'account' AND i.account_id IN (${ph})
-       ORDER BY i.account_id, slug_len DESC, pg_id DESC`
-    )
-    .all(...unique) as { account_id: number; slug: string }[];
-  for (const r of rows) {
-    if (!out.has(r.account_id)) out.set(r.account_id, r.slug);
+  for (const id of new Set(accountIds)) {
+    const leaf = leafGroupOfAccount(id);
+    if (leaf) out.set(id, leaf.slug);
   }
   return out;
 }
 
-/** Deepest portfolio group slug that lists this account (nav leaf bucket). */
+/** The portfolio group slug that lists this account (nav leaf bucket). */
 export function leafPortfolioGroupSlugForAccount(accountId: number): string | null {
-  return leafPortfolioGroupSlugByAccountIds([accountId]).get(accountId) ?? null;
+  return leafGroupOfAccount(accountId)?.slug ?? null;
 }
 
+/** The nav leaf's kind (`acciones`, `afp_afc`, …), else the account's own behaviour kind. */
 export function kindSlugForAccount(accountId: number): string | null {
-  const leafSlug = leafPortfolioGroupSlugForAccount(accountId);
-  if (leafSlug) {
-    const pg = portfolioGroupBySlug(leafSlug);
-    const k = pg?.kind_slug;
-    if (k && k !== CHECKING_ACCOUNTS_KIND) return k;
-  }
-  const row = db
-    .prepare(
-      `SELECT pg.kind_slug, g.slug AS asset_slug
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       LEFT JOIN portfolio_groups pg ON pg.asset_group_slug = g.slug
-       WHERE a.id = ?`
-    )
-    .get(accountId) as { kind_slug: string | null; asset_slug: string } | undefined;
-  if (!row) return null;
-  if (row.kind_slug) return row.kind_slug;
-  const sep = row.asset_slug.lastIndexOf("__");
-  return sep >= 0 ? row.asset_slug.slice(sep + 2) : row.asset_slug;
+  const k = leafGroupOfAccount(accountId)?.kindSlug;
+  if (k && k !== CHECKING_ACCOUNTS_KIND) return k;
+  return accountProfileOptional(accountId)?.kind ?? null;
 }
 
 /** `accounts.asset_group_id` for import/create from portfolio `kind_slug`. */
@@ -207,93 +110,22 @@ export function assetGroupIdForImportKind(kindSlug: string): number {
   return leafAssetGroupIdForKindSlug(kindSlug);
 }
 
-const NW_METRIC_GROUP_SLUGS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
-
-/**
- * Top-level NW bucket used for dashboard performance marks (`brokerage`, `retirement`, …).
- * Walks `primary_portfolio_group_id` ancestors — no per-account slug tags.
- */
-export function nwDashboardMetricGroupForAccount(accountId: number): string | null {
-  let groupId = db
-    .prepare(`SELECT primary_portfolio_group_id FROM accounts WHERE id = ?`)
-    .get(accountId) as { primary_portfolio_group_id: number | null } | undefined;
-  let currentId = groupId?.primary_portfolio_group_id ?? portfolioGroupIdForAccount(accountId);
-  while (currentId != null) {
-    const pg = portfolioGroupById(currentId);
-    if (!pg) break;
-    if (NW_METRIC_GROUP_SLUGS.has(pg.slug)) return pg.slug;
-    currentId = pg.parent_id;
-  }
-  return null;
-}
-
-/** Root NW buckets whose descendants get the Rentabilidad (period-returns) section. */
-export const INVESTMENT_PERF_ROOT_GROUP_SLUGS = ["brokerage", "retirement"] as const;
-
-/**
- * True for the `inversiones` hub and every group under `brokerage`/`retirement`
- * (the node itself counts) — covers brokerage_{acciones,mutual_funds,long_term,crypto,cash},
- * retirement_afp_afc, retirement_apv{,_a,_b} and the routable parents. Walks `parent_id`; no slug parsing.
- */
-export function isInvestmentPerformanceGroupSlug(slug: string): boolean {
-  if (slug === "inversiones") return true;
-  let pg = portfolioGroupBySlug(slug);
-  while (pg != null) {
-    if ((INVESTMENT_PERF_ROOT_GROUP_SLUGS as readonly string[]).includes(pg.slug)) return true;
-    pg = pg.parent_id != null ? portfolioGroupById(pg.parent_id) : null;
-  }
-  return false;
-}
-
 /**
  * Groups whose page shows a Rentabilidad table (period returns + benchmark row): the investment
  * groups and net worth itself (the home dashboard).
  */
 export function groupHasPeriodReturns(slug: string): boolean {
-  return slug === "net_worth" || isInvestmentPerformanceGroupSlug(slug);
+  return slug === "net_worth" || isInvestmentGroup(slug);
 }
 
-/** True when the account lives under the `brokerage` or `retirement` NW bucket. */
+/** True when the account lives under an investment root (brokerage, retirement). */
 export function isInvestmentPerformanceAccount(accountId: number): boolean {
-  const metricGroup = nwDashboardMetricGroupForAccount(accountId);
-  return metricGroup != null && (INVESTMENT_PERF_ROOT_GROUP_SLUGS as readonly string[]).includes(metricGroup);
+  return isInvestmentAccount(accountId);
 }
 
-/** Nearest `dashboard_bucket_slug` on this portfolio group or an ancestor (legacy / display). */
-export function dashboardBucketSlugForPortfolioGroupId(groupId: number): string | null {
-  let currentId: number | null = groupId;
-  while (currentId != null) {
-    const pg = portfolioGroupById(currentId);
-    if (!pg) return null;
-    const dash = pg.dashboard_bucket_slug?.trim();
-    if (dash) return dash;
-    currentId = pg.parent_id;
-  }
-  return null;
-}
-
+/** The net-worth bucket an account sits in (nearest `nw_bucket` ancestor of its nav leaf). */
 export function dashboardBucketSlugForAccountId(accountId: number): string | null {
-  const row = db
-    .prepare(
-      `SELECT a.primary_portfolio_group_id, g.slug AS asset_slug
-       FROM accounts a
-       LEFT JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id = ?`
-    )
-    .get(accountId) as { primary_portfolio_group_id: number | null; asset_slug: string } | undefined;
-  if (!row) return null;
-
-  const leafGroupId = row.primary_portfolio_group_id ?? portfolioGroupIdForAccount(accountId);
-  if (leafGroupId != null) {
-    const fromTree = dashboardBucketSlugForPortfolioGroupId(leafGroupId);
-    if (fromTree) return fromTree;
-  }
-
-  const pg = db
-    .prepare(`SELECT dashboard_bucket_slug FROM portfolio_groups WHERE asset_group_slug = ? LIMIT 1`)
-    .get(row.asset_slug) as { dashboard_bucket_slug: string | null } | undefined;
-  if (pg?.dashboard_bucket_slug?.trim()) return pg.dashboard_bucket_slug.trim();
-  return null;
+  return bucketOfAccount(accountId);
 }
 
 const LEGACY_SUBGROUP_ALIASES: Record<string, string> = {
@@ -344,39 +176,19 @@ export function resolvePortfolioGroupSlugForLegacyTab(
 }
 
 export function portfolioGroupIdForAccount(accountId: number): number | null {
-  const row = db
-    .prepare(
-      `SELECT pg.id
-       FROM portfolio_group_items i
-       JOIN portfolio_groups pg ON pg.id = i.group_id
-       WHERE i.item_kind = 'account' AND i.account_id = ?
-       ORDER BY LENGTH(pg.slug) DESC, pg.id DESC
-       LIMIT 1`
-    )
-    .get(accountId) as { id: number } | undefined;
-  return row?.id ?? null;
+  return leafGroupOfAccount(accountId)?.id ?? null;
 }
 
 /** True when the portfolio group holds any group-like item (sub-buckets / linked groups). */
 export function portfolioGroupHasChildGroupItems(groupId: number): boolean {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS c FROM portfolio_group_items
-       WHERE group_id = ? AND item_kind IN ('group', 'linked_group')`
-    )
-    .get(groupId) as { c: number };
-  return row.c > 0;
+  const g = navGroupById(groupId);
+  return g != null && (g.childGroupIds.length > 0 || g.linkedGroups.length > 0);
 }
 
 /** True when the portfolio group holds any account item directly. */
 export function portfolioGroupHasAccountItems(groupId: number): boolean {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS c FROM portfolio_group_items
-       WHERE group_id = ? AND item_kind = 'account'`
-    )
-    .get(groupId) as { c: number };
-  return row.c > 0;
+  const g = navGroupById(groupId);
+  return g != null && !g.liabilityBacked && g.accountIds.length > 0;
 }
 
 const HOMOGENEITY_CHECKS = [

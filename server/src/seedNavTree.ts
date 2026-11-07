@@ -23,61 +23,56 @@ type GroupUpsert = {
   kind_slug?: string;
   exclude_from_parent_total?: boolean;
   chart_host_slug?: string | null;
+  /** The dashboard card this node draws (NW buckets only). */
+  dashboard?: {
+    sort_order: number;
+    bucket_slug: string;
+    card_css?: string;
+    card_label_i18n_key?: string;
+  };
+  /** Roles (migration 272): set when the node is created, data afterwards. */
+  nw_bucket?: boolean;
+  investment_root?: boolean;
+  property_overlay?: boolean;
+  /** The group whose owed total this group's value nets. */
+  nets_linked_slug?: string;
 };
 
-const upsertGroup = db.prepare(`
+/**
+ * A node is created when missing and never rewritten: once it exists its attributes are data
+ * (labels, colours, routes, roles), changed by migrations or the panel, not by every boot.
+ */
+const insertGroup = db.prepare(`
   INSERT INTO portfolio_groups (
     parent_id, slug, label, sort_order, color_rgb, route_path, active_prefix,
     nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
-    group_kind, chart_host_slug, kind_slug, exclude_from_parent_total
+    group_kind, chart_host_slug, kind_slug, exclude_from_parent_total,
+    dashboard_sort_order, dashboard_card_kind, dashboard_bucket_slug, dashboard_card_css,
+    dashboard_card_label_i18n_key, nw_bucket, investment_root, property_overlay
   )
   VALUES (
     @parent_id, @slug, @label, @sort_order, @color_rgb, @route_path, @active_prefix,
     @nav_end, @show_leaf_hyphen, @label_i18n_key, @api_group, @api_subgroup, @asset_group_slug, @sidebar_section,
-    @group_kind, @chart_host_slug, @kind_slug, @exclude_from_parent_total
+    @group_kind, @chart_host_slug, @kind_slug, @exclude_from_parent_total,
+    @dashboard_sort_order, @dashboard_card_kind, @dashboard_bucket_slug, @dashboard_card_css,
+    @dashboard_card_label_i18n_key, @nw_bucket, @investment_root, @property_overlay
   )
-  ON CONFLICT(slug) DO UPDATE SET
-    parent_id = excluded.parent_id,
-    label = excluded.label,
-    sort_order = excluded.sort_order,
-    route_path = COALESCE(excluded.route_path, portfolio_groups.route_path),
-    active_prefix = COALESCE(excluded.active_prefix, portfolio_groups.active_prefix),
-    nav_end = excluded.nav_end,
-    show_leaf_hyphen = excluded.show_leaf_hyphen,
-    label_i18n_key = COALESCE(excluded.label_i18n_key, portfolio_groups.label_i18n_key),
-    api_group = COALESCE(excluded.api_group, portfolio_groups.api_group),
-    api_subgroup = COALESCE(excluded.api_subgroup, portfolio_groups.api_subgroup),
-    asset_group_slug = COALESCE(excluded.asset_group_slug, portfolio_groups.asset_group_slug),
-    sidebar_section = excluded.sidebar_section,
-    color_rgb = COALESCE(excluded.color_rgb, portfolio_groups.color_rgb),
-    group_kind = excluded.group_kind,
-    chart_host_slug = excluded.chart_host_slug,
-    kind_slug = COALESCE(excluded.kind_slug, portfolio_groups.kind_slug),
-    exclude_from_parent_total = excluded.exclude_from_parent_total
+  ON CONFLICT(slug) DO NOTHING
 `);
 
 const groupIdBySlug = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`);
 
-const deleteGroupItems = db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ?`);
-
-const deleteRetiredPortfolioGroups = db.prepare(`
-  DELETE FROM portfolio_groups
-  WHERE slug IN ('retirement_afp', 'retirement_afc', 'retirement_afp_afc__afp', 'retirement_afp_afc__afc')
-`);
 
 const insertGroupChild = db.prepare(`
   INSERT INTO portfolio_group_items (group_id, item_kind, child_group_id, sort_order)
   VALUES (?, 'group', ?, ?)
-  ON CONFLICT(group_id, child_group_id) DO UPDATE SET sort_order = excluded.sort_order
+  ON CONFLICT(group_id, child_group_id) DO NOTHING
 `);
 
 const insertLinkedGroupChild = db.prepare(`
   INSERT INTO portfolio_group_items (group_id, item_kind, child_group_id, sort_order, link_weight)
   VALUES (?, 'linked_group', ?, ?, ?)
-  ON CONFLICT(group_id, child_group_id) DO UPDATE SET
-    item_kind = 'linked_group',
-    sort_order = excluded.sort_order,
-    link_weight = excluded.link_weight
+  ON CONFLICT(group_id, child_group_id) DO NOTHING
 `);
 
 const insertAccountChild = db.prepare(`
@@ -92,14 +87,88 @@ const insertExpenseChild = db.prepare(`
   ON CONFLICT(group_id, expense_account_id) DO UPDATE SET sort_order = excluded.sort_order
 `);
 
+/**
+ * Account placement: the groups whose items this run derives from the accounts' asset groups (the
+ * panel's bucket choice). Their desired items are collected, then synced against the stored ones —
+ * a membership that agrees is left as it is (same row), one that moved is removed and re-added.
+ */
+type PlacedItem = { kind: "group" | "account"; id: number; sort: number };
+const placed = new Map<number, PlacedItem[]>();
+
+/** Starts deriving `groupId`'s items this run (replacing them at {@link syncPlacedItems}). */
+function placeItemsOf(groupId: number): void {
+  placed.set(groupId, []);
+}
+
+function addGroupChild(parentId: number, childId: number, sort: number): void {
+  const p = placed.get(parentId);
+  if (p) p.push({ kind: "group", id: childId, sort });
+  else insertGroupChild.run(parentId, childId, sort);
+}
+
+function addAccountChild(groupId: number, accountId: number, sort: number): void {
+  const p = placed.get(groupId);
+  if (!p) throw new Error(`seedNavTree: account ${accountId} placed in group ${groupId} outside placement`);
+  p.push({ kind: "account", id: accountId, sort });
+}
+
+function syncPlacedItems(): void {
+  const stored = db.prepare(
+    `SELECT id, item_kind, child_group_id, account_id, sort_order FROM portfolio_group_items
+     WHERE group_id = ? AND item_kind IN ('group', 'account')`
+  );
+  const del = db.prepare(`DELETE FROM portfolio_group_items WHERE id = ?`);
+  const setSort = db.prepare(`UPDATE portfolio_group_items SET sort_order = ? WHERE id = ?`);
+  const setPrimary = db.prepare(
+    `UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ? AND primary_portfolio_group_id IS NOT ?`
+  );
+  const inserts: (() => void)[] = [];
+  for (const [groupId, desired] of placed) {
+    const key = (kind: string, id: number) => `${kind}:${id}`;
+    const want = new Map(desired.map((d) => [key(d.kind, d.id), d]));
+    const rows = stored.all(groupId) as {
+      id: number;
+      item_kind: "group" | "account";
+      child_group_id: number | null;
+      account_id: number | null;
+      sort_order: number;
+    }[];
+    const have = new Set<string>();
+    for (const r of rows) {
+      const k = key(r.item_kind, (r.item_kind === "group" ? r.child_group_id : r.account_id)!);
+      const d = want.get(k);
+      if (!d) {
+        del.run(r.id);
+        continue;
+      }
+      have.add(k);
+      if (r.sort_order !== d.sort) setSort.run(d.sort, r.id);
+    }
+    for (const d of desired) {
+      if (d.kind === "account") setPrimary.run(groupId, d.id, groupId);
+      if (have.has(key(d.kind, d.id))) continue;
+      inserts.push(() =>
+        d.kind === "group" ? insertGroupChild.run(groupId, d.id, d.sort) : insertAccountChild.run(groupId, d.id, d.sort)
+      );
+    }
+  }
+  for (const run of inserts) run();
+  placed.clear();
+}
+
 function parentId(slug: string | undefined): number | null {
   if (!slug) return null;
   const row = groupIdBySlug.get(slug) as { id: number } | undefined;
-  return row?.id ?? null;
+  if (!row) throw new Error(`seedNavTree: parent ${slug} does not exist`);
+  return row.id;
 }
 
+/** Nodes this seed created (their roles that name another node are set once all exist). */
+const createdNets = new Map<string, string>();
+
+/** Creates the node when missing; an existing node is left as it is. Returns its id. */
 function upsert(g: GroupUpsert): number {
-  upsertGroup.run({
+  const created = insertGroup.run({
     parent_id: parentId(g.parent_slug),
     slug: g.slug,
     label: g.label,
@@ -118,20 +187,34 @@ function upsert(g: GroupUpsert): number {
     chart_host_slug: g.chart_host_slug ?? null,
     kind_slug: g.kind_slug ?? null,
     exclude_from_parent_total: g.exclude_from_parent_total ? 1 : 0,
-  });
+    dashboard_sort_order: g.dashboard?.sort_order ?? null,
+    dashboard_card_kind: g.dashboard ? "bucket" : null,
+    dashboard_bucket_slug: g.dashboard?.bucket_slug ?? null,
+    dashboard_card_css: g.dashboard?.card_css ?? null,
+    dashboard_card_label_i18n_key: g.dashboard?.card_label_i18n_key ?? null,
+    nw_bucket: g.nw_bucket ? 1 : 0,
+    investment_root: g.investment_root ? 1 : 0,
+    property_overlay: g.property_overlay ? 1 : 0,
+  }).changes > 0;
+  if (created && g.nets_linked_slug) createdNets.set(g.slug, g.nets_linked_slug);
   return (groupIdBySlug.get(g.slug) as { id: number }).id;
+}
+
+/** The netting roles of the nodes created this run (their targets exist by now). */
+function setCreatedNettingRoles(): void {
+  for (const [slug, linked] of createdNets) {
+    const target = groupIdBySlug.get(linked) as { id: number } | undefined;
+    if (!target) throw new Error(`seedNavTree: ${slug} nets ${linked}, which does not exist`);
+    db.prepare(`UPDATE portfolio_groups SET nets_linked_group_id = ? WHERE slug = ?`).run(target.id, slug);
+  }
+  createdNets.clear();
 }
 
 function linkLinkedGroup(parentSlug: string, childSlug: string, sort: number, weight: number) {
   const parent = groupIdBySlug.get(parentSlug) as { id: number } | undefined;
   const child = groupIdBySlug.get(childSlug) as { id: number } | undefined;
   if (!parent || !child) {
-    // Empty/bootstrap DB: reference chart groups point at asset groups that only exist
-    // once accounts are seeded. Re-running `nav:reseed` after an import creates the link.
-    console.warn(
-      `seedNavTree: skipping linked group ${parentSlug} -> ${childSlug} (missing ${!parent ? parentSlug : childSlug})`
-    );
-    return;
+    throw new Error(`seedNavTree: linked group ${parentSlug} -> ${childSlug}: ${!parent ? parentSlug : childSlug} does not exist`);
   }
   insertLinkedGroupChild.run(parent.id, child.id, sort, weight);
 }
@@ -139,7 +222,7 @@ function linkLinkedGroup(parentSlug: string, childSlug: string, sort: number, we
 function linkGroup(parentSlug: string, childSlug: string, sort: number) {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
   const cid = (groupIdBySlug.get(childSlug) as { id: number }).id;
-  insertGroupChild.run(pid, cid, sort);
+  addGroupChild(pid, cid, sort);
 }
 
 /**
@@ -147,18 +230,14 @@ function linkGroup(parentSlug: string, childSlug: string, sort: number) {
  * `portfolio_group_items` edge. The nav payload renders children from group ITEMS —
  * `parent_id` alone is not walked — so an upsert without the link is an invisible orphan
  * that still looks correct in `portfolio_groups`. This helper exists so that half-added
- * state cannot be expressed: gate true seeds row + edge together, gate false deletes the
- * node (items cascade).
+ * state cannot be expressed: gate true seeds row + edge together; gate false creates nothing
+ * (a page once created stays).
  */
 function seedSidebarChildPage(
   gate: boolean,
   g: GroupUpsert & { parent_slug: string; route_path: string }
 ): void {
-  if (!gate) {
-    const stale = groupIdBySlug.get(g.slug) as { id: number } | undefined;
-    if (stale) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(stale.id);
-    return;
-  }
+  if (!gate) return;
   upsert({ active_prefix: g.route_path, ...g });
   linkGroup(g.parent_slug, g.slug, g.sort_order);
 }
@@ -178,10 +257,7 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
        ORDER BY a.name COLLATE NOCASE`
     )
     .all(...leafIds, NOTE_STOCKS_LEGACY) as { id: number }[];
-  rows.forEach((r, i) => {
-    insertAccountChild.run(pid, r.id, sortStart + i * 10);
-    db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(pid, r.id);
-  });
+  rows.forEach((r, i) => addAccountChild(pid, r.id, sortStart + i * 10));
 }
 
 /** Links every tracked place (`expense_accounts`) under the real-estate expenses node. */
@@ -199,7 +275,7 @@ function linkExpenseAccounts(parentSlug: string) {
 
 function rebuildRetirementNav() {
   const retId = (groupIdBySlug.get("retirement") as { id: number }).id;
-  deleteGroupItems.run(retId);
+  placeItemsOf(retId);
 
   const groups = [
     "retirement_afp_afc",
@@ -209,7 +285,7 @@ function rebuildRetirementNav() {
   ] as const;
   for (const slug of groups) {
     const gid = (groupIdBySlug.get(slug) as { id: number } | undefined)?.id;
-    if (gid != null) deleteGroupItems.run(gid);
+    if (gid != null) placeItemsOf(gid);
   }
 
   linkGroup("retirement", "retirement_afp_afc", 0);
@@ -221,7 +297,6 @@ function rebuildRetirementNav() {
   linkAccountsByAssetGroup("retirement_apv_a", "retirement_apv_a", 0);
   linkAccountsByAssetGroup("retirement_apv_b", "retirement_apv_b", 0);
 
-  deleteRetiredPortfolioGroups.run();
 }
 
 /**
@@ -235,7 +310,7 @@ function rebuildRetirementNav() {
  */
 function linkBucketSubtree(bucketSlug: string, assetSlug: string): boolean {
   const gid = (groupIdBySlug.get(bucketSlug) as { id: number }).id;
-  deleteGroupItems.run(gid);
+  placeItemsOf(gid);
   const ownSubtree = new Set(assetGroupIdsInSubtree(assetSlug));
   const nested = db
     .prepare(
@@ -258,7 +333,7 @@ function linkBucketSubtree(bucketSlug: string, assetSlug: string): boolean {
     }
     for (const id of leafAssetGroupIdsUnder(n.asset_group_slug)) nestedLeafIds.add(id);
     if (!linkBucketSubtree(n.slug, n.asset_group_slug)) continue;
-    children.push({ name: n.label, link: (sort) => insertGroupChild.run(gid, n.id, sort) });
+    children.push({ name: n.label, link: (sort) => addGroupChild(gid, n.id, sort) });
   }
 
   const ownLeafIds = leafAssetGroupIdsUnder(assetSlug).filter((id) => !nestedLeafIds.has(id));
@@ -276,8 +351,7 @@ function linkBucketSubtree(bucketSlug: string, assetSlug: string): boolean {
       children.push({
         name: r.name,
         link: (sort) => {
-          insertAccountChild.run(gid, r.id, sort);
-          db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(gid, r.id);
+          addAccountChild(gid, r.id, sort);
         },
       });
     }
@@ -291,7 +365,7 @@ function linkBucketSubtree(bucketSlug: string, assetSlug: string): boolean {
 
 function rebuildBrokerageNav() {
   const brkId = (groupIdBySlug.get("brokerage") as { id: number }).id;
-  deleteGroupItems.run(brkId);
+  placeItemsOf(brkId);
   // Data-driven: a sub-bucket links only when it holds accounts — the real DB has no
   // long_term asset group, generated DBs have no mutual funds; neither should render an
   // empty bucket.
@@ -362,6 +436,14 @@ export function seedNavTree(): void {
       active_prefix: "/cash_eqs",
       group_kind: "nav_bucket",
       sidebar_section: "main",
+      dashboard: {
+        sort_order: 40,
+        bucket_slug: "cash_eqs",
+        card_css: "cash",
+        card_label_i18n_key: "dashboard.buckets.cash_savings",
+      },
+      nw_bucket: true,
+      nets_linked_slug: "liabilities_credit_card",
     });
     upsert({
       slug: "cash_savings",
@@ -375,6 +457,7 @@ export function seedNavTree(): void {
       kind_slug: "cash_savings",
       group_kind: "bucket",
       sidebar_section: "main",
+      nets_linked_slug: "liabilities_credit_card",
     });
     upsert({
       slug: "checking_accounts",
@@ -389,18 +472,14 @@ export function seedNavTree(): void {
       group_kind: "bucket",
       sidebar_section: "main",
     });
-    const cashId = (groupIdBySlug.get("cash_eqs") as { id: number }).id;
-    deleteGroupItems.run(cashId);
     linkGroup("cash_eqs", "cash_savings", 10);
     linkGroup("cash_eqs", "checking_accounts", 20);
     const savingsNavId = (groupIdBySlug.get("cash_savings") as { id: number }).id;
-    deleteGroupItems.run(savingsNavId);
+    placeItemsOf(savingsNavId);
     linkAccountsByAssetGroup("cash_savings", "cash_eqs__cash_savings");
     const checkingNavId = (groupIdBySlug.get("checking_accounts") as { id: number }).id;
-    deleteGroupItems.run(checkingNavId);
+    placeItemsOf(checkingNavId);
     linkAccountsByAssetGroup("checking_accounts", "cash_eqs__checking_accounts");
-
-    db.prepare(`UPDATE portfolio_groups SET asset_group_slug = NULL WHERE slug = 'cash_eqs'`).run();
 
     upsert({
       slug: "liabilities",
@@ -430,22 +509,6 @@ export function seedNavTree(): void {
       active_prefix: "/liabilities/mortgage",
       label_i18n_key: "liabilities.mortgage",
     });
-    const liabId = (groupIdBySlug.get("liabilities") as { id: number }).id;
-    deleteGroupItems.run(liabId);
-
-    // The operational Tarjetas de crédito top-level page was removed (2026-07): cards are
-    // managed from their account pages under Pasivos. Drop the legacy sidebar row.
-    const legacyCreditCards = db
-      .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'credit_cards' AND sidebar_section = 'main'`)
-      .get() as { id: number } | undefined;
-    if (legacyCreditCards) {
-      deleteGroupItems.run(legacyCreditCards.id);
-      db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(legacyCreditCards.id);
-    }
-
-    seedLiabilitiesReferenceChartGroups();
-    seedCashReferenceChartGroups();
-
     upsert({
       slug: "real_estate",
       label: "Real estate",
@@ -454,9 +517,12 @@ export function seedNavTree(): void {
       route_path: "/real_estate",
       asset_group_slug: "real_estate",
       sidebar_section: "main",
+      dashboard: { sort_order: 10, bucket_slug: "real_estate" },
+      nw_bucket: true,
+      property_overlay: true,
     });
     const reId = (groupIdBySlug.get("real_estate") as { id: number }).id;
-    deleteGroupItems.run(reId);
+    placeItemsOf(reId);
     linkAccountsByAssetGroup("real_estate", "real_estate");
 
     upsert({
@@ -481,6 +547,9 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/brokerage",
       api_group: "brokerage",
       asset_group_slug: "brokerage",
+      dashboard: { sort_order: 30, bucket_slug: "brokerage", card_label_i18n_key: "dashboard.cards.inversiones" },
+      nw_bucket: true,
+      investment_root: true,
     });
     upsert({
       slug: "brokerage_mutual_funds",
@@ -541,6 +610,9 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro",
       api_group: "retirement",
       asset_group_slug: "retirement",
+      dashboard: { sort_order: 20, bucket_slug: "retirement" },
+      nw_bucket: true,
+      investment_root: true,
     });
     upsert({
       slug: "retirement_afp_afc",
@@ -593,8 +665,6 @@ export function seedNavTree(): void {
       group_kind: "bucket",
     });
 
-    const invId = (groupIdBySlug.get("inversiones") as { id: number }).id;
-    deleteGroupItems.run(invId);
     linkGroup("inversiones", "brokerage", 10);
     linkGroup("inversiones", "retirement", 20);
     rebuildBrokerageNav();
@@ -677,24 +747,12 @@ export function seedNavTree(): void {
       nav_end: true,
     });
 
-    const flowsId = (groupIdBySlug.get("flows") as { id: number }).id;
-    deleteGroupItems.run(flowsId);
     linkGroup("flows", "flows_income", 0);
     linkGroup("flows", "flows_expenses", 10);
     linkGroup("flows", "flows_deposits", 20);
     linkGroup("flows", "flows_pl", 30);
     if (hasRealEstateExpenseAccounts) {
       linkExpenseAccounts("flows_expenses_real_estate");
-    }
-
-    // The global /search page was folded into the flows tables (dashboard = master view);
-    // drop its legacy sidebar link row.
-    const legacySearch = db
-      .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'search' AND sidebar_section = 'link'`)
-      .get() as { id: number } | undefined;
-    if (legacySearch) {
-      deleteGroupItems.run(legacySearch.id);
-      db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(legacySearch.id);
     }
 
     upsert({
@@ -757,12 +815,17 @@ export function seedNavTree(): void {
       sidebar_section: "link",
     });
 
-    const ratesId = (groupIdBySlug.get("rates") as { id: number }).id;
-    deleteGroupItems.run(ratesId);
     linkGroup("rates", "rates_watchlist", 10);
 
-    rebuildNetWorthDashboardLinks();
-    applyDashboardBucketLayout();
+    linkGroup("net_worth", "real_estate", 10);
+    linkGroup("net_worth", "inversiones", 20);
+    linkGroup("net_worth", "cash_eqs", 30);
+    linkGroup("net_worth", "liabilities", 40);
+    // Chart overlays last: their sources are the buckets created above.
+    seedLiabilitiesReferenceChartGroups();
+    seedCashReferenceChartGroups();
+    syncPlacedItems();
+    setCreatedNettingRoles();
   });
   // One transaction (the inner ones become savepoints): a shape violation rolls the whole
   // seed back instead of leaving it committed behind a failed boot.
@@ -786,8 +849,6 @@ function seedCashReferenceChartGroups() {
     sidebar_section: "nested",
     nav_end: true,
   });
-  const refId = (groupIdBySlug.get("cash_eqs_ref_credit_card") as { id: number }).id;
-  deleteGroupItems.run(refId);
   linkLinkedGroup("cash_eqs_ref_credit_card", "liabilities_credit_card", 0, 1);
 }
 
@@ -815,73 +876,9 @@ function seedLiabilitiesReferenceChartGroups() {
     sidebar_section: "nested",
     nav_end: true,
   });
-  const dispId = (groupIdBySlug.get("liabilities_ref_disponible") as { id: number }).id;
-  const dispTotId = (groupIdBySlug.get("liabilities_ref_disponible_total") as { id: number }).id;
-  deleteGroupItems.run(dispId);
-  deleteGroupItems.run(dispTotId);
   linkLinkedGroup("liabilities_ref_disponible", "brokerage", 0, 1);
   linkLinkedGroup("liabilities_ref_disponible", "cash_eqs", 10, 1);
   linkLinkedGroup("liabilities_ref_disponible_total", "brokerage", 0, 1);
   linkLinkedGroup("liabilities_ref_disponible_total", "cash_eqs", 10, 1);
   linkLinkedGroup("liabilities_ref_disponible_total", "retirement_apv", 20, 0.85);
-}
-
-/** First-level dashboard buckets under logical `net_worth` root (see migration 036). */
-function rebuildNetWorthDashboardLinks() {
-  try {
-    const nw = groupIdBySlug.get("net_worth") as { id: number } | undefined;
-    if (!nw) return;
-    deleteGroupItems.run(nw.id);
-    linkGroup("net_worth", "real_estate", 10);
-    linkGroup("net_worth", "inversiones", 20);
-    linkGroup("net_worth", "cash_eqs", 30);
-    linkGroup("net_worth", "liabilities", 40);
-  } catch (e) {
-    console.warn("rebuildNetWorthDashboardLinks:", e instanceof Error ? e.message : e);
-  }
-}
-
-/** Keep dashboard card order / bucket mapping in sync with migration `035_dashboard_layout_portfolio_groups.sql`. */
-function applyDashboardBucketLayout() {
-  try {
-    db.exec(`
-      UPDATE portfolio_groups SET
-        dashboard_sort_order = 10,
-        dashboard_card_kind = 'bucket',
-        dashboard_bucket_slug = 'real_estate',
-        dashboard_card_css = NULL
-      WHERE slug = 'real_estate';
-      UPDATE portfolio_groups SET
-        dashboard_sort_order = 20,
-        dashboard_card_kind = 'bucket',
-        dashboard_bucket_slug = 'retirement',
-        dashboard_card_css = NULL
-      WHERE slug = 'retirement';
-      UPDATE portfolio_groups SET
-        dashboard_sort_order = 30,
-        dashboard_card_kind = 'bucket',
-        dashboard_bucket_slug = 'brokerage',
-        dashboard_card_css = NULL
-      WHERE slug = 'brokerage';
-      UPDATE portfolio_groups SET
-        dashboard_sort_order = 40,
-        dashboard_card_kind = 'bucket',
-        dashboard_bucket_slug = 'cash_eqs',
-        dashboard_card_css = 'cash',
-        dashboard_card_label_i18n_key = COALESCE(dashboard_card_label_i18n_key, 'dashboard.buckets.cash_savings')
-      WHERE slug = 'cash_eqs';
-      UPDATE portfolio_groups SET
-        dashboard_sort_order = NULL,
-        dashboard_card_kind = NULL,
-        dashboard_bucket_slug = NULL,
-        dashboard_card_css = NULL,
-        dashboard_card_label_i18n_key = NULL
-      WHERE slug = 'cash_savings';
-      UPDATE portfolio_groups
-      SET dashboard_card_label_i18n_key = 'dashboard.cards.inversiones'
-      WHERE slug = 'brokerage';
-    `);
-  } catch (e) {
-    console.warn("applyDashboardBucketLayout skipped (run migrations):", e instanceof Error ? e.message : e);
-  }
 }

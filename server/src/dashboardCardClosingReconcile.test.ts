@@ -3,7 +3,7 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
-import { nwDashboardMetricGroupForAccount } from "./portfolioGroupTree.js";
+import { bucketOfAccount } from "./navTreeModel.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 describe("dashboard card closing reconcile", () => {
@@ -43,7 +43,7 @@ describe("dashboard card closing reconcile", () => {
       for (const slug of ["retirement", "brokerage"] as const) {
         const rows = payload.accounts.filter(
           (a) =>
-            nwDashboardMetricGroupForAccount(a.account_id) === slug &&
+            bucketOfAccount(a.account_id) === slug &&
             a.exclude_from_group_totals !== 1
         );
         const sumCurrent = rows.reduce((s, a) => s + (a.current_value_clp ?? 0), 0);

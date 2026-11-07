@@ -46,14 +46,12 @@ import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   leafPortfolioGroupSlugByAccountIds,
-  nwDashboardMetricGroupForAccount,
   withPortfolioGroupIndex,
 } from "./portfolioGroupTree.js";
+import { bucketOfAccount, isNwBucketSlug } from "./navTreeModel.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { db, dbInTransaction } from "./db.js";
-
-const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
 /**
  * A prior close in USD is the same anchor-date mark the CLP figure reads, at that date's stored
@@ -355,9 +353,9 @@ function buildDashboardAccountRowFor(
   const kindSlug = accountBucketKindSlug(leafSlug);
   const mortgagePayments = kindSlug === "mortgage" ? mortgageCardDeposits() : null;
   const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
-  const metricGroup = nwDashboardMetricGroupForAccount(a.id) ?? leafSlug;
-  const dashboard_bucket_slug = nwDashboardMetricGroupForAccount(a.id);
-  const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(metricGroup);
+  const dashboard_bucket_slug = bucketOfAccount(a.id);
+  const metricGroup = dashboard_bucket_slug ?? leafSlug;
+  const trackAssetMetrics = isNwBucketSlug(metricGroup);
   // The card's deposits and P/L (month, year, lifetime) are read from the same monthly
   // rows the group tables consolidate — one series, one picker, one sum — so the card and
   // the «Detalle por mes / año» table of the same scope agree by construction, in both
