@@ -10,7 +10,7 @@ import { billingMonthContainingPurchase } from "../src/ccManualBillingMonth.js";
 import { ccSection3FinancingClpByDate } from "../src/ccFinancingCostDaily.js";
 import { ccInstallmentInterestForAccount } from "../src/ccInstallmentInterest.js";
 import { listCreditCardMasterAccountIds } from "../src/creditCardTree.js";
-import { statementSection3ChargesClpForBillingMonth } from "../src/creditCardPerformancePl.js";
+import { statementSection3ChargesClpForBillingMonth } from "./lib/creditCardPerformancePl.js";
 
 const argIds = process.argv.slice(2).map(Number).filter((n) => Number.isFinite(n) && n > 0);
 const accountIds = argIds.length ? argIds : listCreditCardMasterAccountIds();

@@ -11,7 +11,7 @@ import "../src/db.js";
 import { listDistinctEquityTickersForSync } from "../src/accountEquityTicker.js";
 import { equityMarketKind } from "../src/equityQuote.js";
 import { syncCryptoEodFromCoinGecko, syncEquityEodFromYahoo } from "../src/equityEodSync.js";
-import { loadRootDotenv } from "./fintualApiLib.js";
+import { loadRootDotenv } from "../src/fintualApiLib.js";
 
 const force = process.argv.includes("--force");
 const dryRun = process.argv.includes("--dry-run");

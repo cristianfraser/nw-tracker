@@ -11,7 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { resolveBundledUfSiiDailyCsvPath } from "../src/ufSiiDailyPath.js";
+import { resolveBundledUfSiiDailyCsvPath } from "./lib/ufSiiDailyPath.js";
 import { fetchSiiUfYear } from "../src/ufSiiSync.js";
 
 function parseYearsArg(): number[] {

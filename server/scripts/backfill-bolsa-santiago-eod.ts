@@ -10,8 +10,8 @@
  */
 import "../src/db.js";
 import { upsertEquityDailySeries } from "../src/brokerageEquityMtm.js";
-import { fetchBolsaSantiagoDailyCloses } from "../src/equityBolsaSantiagoEod.js";
-import { loadRootDotenv } from "./fintualApiLib.js";
+import { fetchBolsaSantiagoDailyCloses } from "./lib/equityBolsaSantiagoEod.js";
+import { loadRootDotenv } from "../src/fintualApiLib.js";
 
 const DRY = process.argv.includes("--dry-run");
 const argTickers = process.argv.slice(2).filter((a) => !a.startsWith("--"));
