@@ -35,8 +35,8 @@ import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcP
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
 
-export function checkingAccountId(dbHandle: Database = db): number {
-  return cartolaCashAccountId("cuenta_corriente", dbHandle);
+export function checkingAccountId(): number {
+  return cartolaCashAccountId("cuenta_corriente");
 }
 
 export function isCheckingCartolaMonthImported(

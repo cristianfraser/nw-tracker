@@ -1,6 +1,5 @@
 import type { Database } from "better-sqlite3";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { kindSlugForAccount } from "./portfolioGroupTree.js";
 import {
   CHECKING_ACCOUNTS_BUCKET,
@@ -8,64 +7,16 @@ import {
 } from "./assetGroupTree.js";
 import { db } from "./db.js";
 
+import { accountsWithRole, CARTOLA_CHECKING_KIND_SLUGS } from "./accountRoles.js";
+
 /**
  * Behavior kinds for cartola checking (corriente + vista), not the `checking_accounts` nav bucket.
  * `listMovementBalanceCashAccountIds` also takes peso (`clp`) accounts filed under Checking accounts.
  */
-export const MOVEMENT_BALANCE_CASH_CATEGORY_SLUGS = new Set([
-  "cuenta_corriente",
-  "cuenta_vista",
-]);
-
-const CHECKING_ACCOUNTS_NAV_SLUG = "checking_accounts";
+export const MOVEMENT_BALANCE_CASH_CATEGORY_SLUGS = CARTOLA_CHECKING_KIND_SLUGS;
 
 export function isMovementBalanceCashCategory(slug: string): boolean {
   return MOVEMENT_BALANCE_CASH_CATEGORY_SLUGS.has(accountBucketKindSlug(slug));
-}
-
-function isMovementBalanceCashKindSlug(kindSlug: string): boolean {
-  return MOVEMENT_BALANCE_CASH_CATEGORY_SLUGS.has(kindSlug);
-}
-
-function checkingLeafAssetGroupIds(dbHandle: Database): number[] {
-  const leafIds = leafAssetGroupIdsUnder(CHECKING_ACCOUNTS_BUCKET);
-  if (leafIds.length === 0) return [];
-  const ph = leafIds.map(() => "?").join(",");
-  const rows = dbHandle
-    .prepare(`SELECT id, slug FROM asset_groups WHERE id IN (${ph})`)
-    .all(...leafIds) as { id: number; slug: string }[];
-  return rows
-    .filter((r) => isMovementBalanceCashCategory(r.slug))
-    .map((r) => r.id);
-}
-
-function accountIdsOnCheckingAssetLeaves(dbHandle: Database): number[] {
-  const groupIds = checkingLeafAssetGroupIds(dbHandle);
-  if (groupIds.length === 0) return [];
-  const ph = groupIds.map(() => "?").join(",");
-  return (
-    dbHandle
-      .prepare(
-        `SELECT a.id FROM accounts a
-         WHERE a.asset_group_id IN (${ph})
-           AND (a.import_key IS NULL OR a.import_key != ?)
-         ORDER BY a.id`
-      )
-      .all(...groupIds, NOTE_STOCKS_LEGACY) as { id: number }[]
-  ).map((r) => r.id);
-}
-
-function accountIdsLinkedToCheckingNav(dbHandle: Database): number[] {
-  return (
-    dbHandle
-      .prepare(
-        `SELECT DISTINCT a.id FROM accounts a
-         INNER JOIN portfolio_group_items i ON i.account_id = a.id AND i.item_kind = 'account'
-         INNER JOIN portfolio_groups pg ON pg.id = i.group_id AND pg.slug = ?
-         ORDER BY a.id`
-      )
-      .all(CHECKING_ACCOUNTS_NAV_SLUG) as { id: number }[]
-  ).map((r) => r.id);
 }
 
 /**
@@ -85,90 +36,29 @@ export function accountIdsUnderCheckingAccounts(dbHandle: Database = db): number
   ).map((r) => r.id);
 }
 
-export function cartolaCashAccountIdOptional(
-  kindSlug: "cuenta_corriente" | "cuenta_vista",
-  dbHandle: Database = db
-): number | null {
-  for (const accountId of listMovementBalanceCashAccountIds(dbHandle)) {
-    const k = kindSlugForAccount(accountId);
-    if (k === kindSlug) return accountId;
+/** The cartola checking account of `kindSlug` (the first checking member of that kind), or null. */
+export function cartolaCashAccountIdOptional(kindSlug: "cuenta_corriente" | "cuenta_vista"): number | null {
+  for (const accountId of listMovementBalanceCashAccountIds()) {
+    if (kindSlugForAccount(accountId) === kindSlug) return accountId;
   }
-  const legacyPortfolio = dbHandle
-    .prepare(
-      `SELECT a.id FROM accounts a
-       JOIN portfolio_groups pg ON pg.id = a.primary_portfolio_group_id
-       WHERE pg.kind_slug = ?
-       ORDER BY a.id
-       LIMIT 1`
-    )
-    .get(kindSlug) as { id: number } | undefined;
-  if (legacyPortfolio) return legacyPortfolio.id;
-  const legacyAsset = dbHandle
-    .prepare(
-      `SELECT a.id FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE g.slug = ? OR g.slug = ?
-       ORDER BY a.id
-       LIMIT 1`
-    )
-    .get(kindSlug, `${CHECKING_ACCOUNTS_BUCKET}__${kindSlug}`) as { id: number } | undefined;
-  return legacyAsset?.id ?? null;
+  return null;
 }
 
-export function cartolaCashAccountId(
-  bucketSlug: "cuenta_corriente" | "cuenta_vista",
-  dbHandle: Database = db
-): number {
-  const id = cartolaCashAccountIdOptional(bucketSlug, dbHandle);
+export function cartolaCashAccountId(bucketSlug: "cuenta_corriente" | "cuenta_vista"): number {
+  const id = cartolaCashAccountIdOptional(bucketSlug);
   if (id == null) throw new Error(`${bucketSlug} account not found`);
   return id;
 }
 
-export function cuentaVistaAccountId(dbHandle: Database = db): number {
-  return cartolaCashAccountId("cuenta_vista", dbHandle);
+export function cuentaVistaAccountId(): number {
+  return cartolaCashAccountId("cuenta_vista");
 }
 
-export function listMovementBalanceCashAccountIds(dbHandle: Database = db): number[] {
-  const ids = new Set<number>();
-  for (const id of accountIdsLinkedToCheckingNav(dbHandle)) ids.add(id);
-  for (const id of accountIdsOnCheckingAssetLeaves(dbHandle)) ids.add(id);
-
-  const slugs = [...MOVEMENT_BALANCE_CASH_CATEGORY_SLUGS];
-  const ph = slugs.map(() => "?").join(",");
-  const legacyKinds = (
-    dbHandle
-      .prepare(
-        `SELECT DISTINCT a.id FROM accounts a
-         JOIN portfolio_groups pg ON pg.id = a.primary_portfolio_group_id
-         WHERE pg.kind_slug IN (${ph})
-         ORDER BY a.id`
-      )
-      .all(...slugs) as { id: number }[]
-  ).map((r) => r.id);
-  for (const id of legacyKinds) ids.add(id);
-
-  const legacyTopLevel = (
-    dbHandle
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug IN (${ph})
-         ORDER BY a.id`
-      )
-      .all(...slugs) as { id: number }[]
-  ).map((r) => r.id);
-  for (const id of legacyTopLevel) ids.add(id);
-
-  // A peso account filed under Checking accounts with no cartola (MACH, rebuilt from its mails):
-  // its movements are bank movements too, read by the same gastos / income / deposit readers.
-  const underChecking = new Set(accountIdsUnderCheckingAccounts(dbHandle));
-  for (const id of underChecking) ids.add(id);
-
-  return [...ids]
-    .filter((id) => {
-      const k = kindSlugForAccount(id);
-      return k != null && (isMovementBalanceCashKindSlug(k) || (k === "clp" && underChecking.has(id)));
-    })
-    .sort((a, b) => a - b);
+/**
+ * The checking members (`accountRoles.ts` `checking_member`): the cartola checking accounts and the
+ * peso accounts filed under Checking accounts — whose movements the gastos / income / deposit
+ * readers read as bank movements.
+ */
+export function listMovementBalanceCashAccountIds(): number[] {
+  return accountsWithRole("checking_member");
 }
-

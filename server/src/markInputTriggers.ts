@@ -458,13 +458,16 @@ export const WRITE_LOGGED_TABLES_270: readonly string[] = [
   "watchlist_composite_position_holdings", "watchlist_composite_positions",
 ];
 
+/** Tables with write triggers now: 270's plus the tables later migrations added with their own. */
+export const WRITE_LOGGED_TABLES: readonly string[] = [...WRITE_LOGGED_TABLES_270, "account_roles"];
+
 /**
  * A table's write triggers: one row naming the table on every insert, delete and update that
  * changes a column (an upsert writing the same values logs nothing). On a table with mark triggers
  * only the updates those leave out (no watched column changed) — the mark rows already name the
  * table for the rest. `columns`: the table's columns when the migration ran.
  */
-function writeLogTriggerSql(table: string, columns: readonly string[], markWatch: readonly string[] | null): string[] {
+export function writeLogTriggerSql(table: string, columns: readonly string[], markWatch: readonly string[] | null): string[] {
   const insert = `INSERT INTO mark_input_changes (source, account_id, raw_date, kind) VALUES ('${table}', NULL, NULL, 'write');`;
   const watched = new Set(markWatch ?? []);
   const changed = columns
@@ -489,7 +492,7 @@ export function markInputTriggerNames(): string[] {
 
 export function writeLogTriggerNames(): string[] {
   const marked = new Set(CURRENT_MARK_INPUT_SPECS.map((s) => s.table));
-  return WRITE_LOGGED_TABLES_270.flatMap((t) =>
+  return WRITE_LOGGED_TABLES.flatMap((t) =>
     marked.has(t) ? [`write_log_${t}_au`] : ["ai", "ad", "au"].map((k) => `write_log_${t}_${k}`)
   );
 }

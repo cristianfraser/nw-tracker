@@ -26,7 +26,7 @@ import { withoutChurn } from "./rederivation.js";
 import {
   CURRENT_MARK_INPUT_SPECS,
   UNLOGGED_TABLES_270,
-  WRITE_LOGGED_TABLES_270,
+  WRITE_LOGGED_TABLES,
   markInputTriggerNames,
   writeLogTriggerNames,
 } from "./markInputTriggers.js";
@@ -107,7 +107,7 @@ describe("cache registry", () => {
   });
 
   it("every table is either write-logged or declared unlogged, and every logged table has its triggers", () => {
-    const logged = new Set(WRITE_LOGGED_TABLES_270);
+    const logged = new Set(WRITE_LOGGED_TABLES);
     const unlogged = new Set(UNLOGGED_TABLES_270);
     for (const t of tableNames()) {
       expect(logged.has(t) || unlogged.has(t), `table ${t} is in neither list (markInputTriggers.ts)`).toBe(true);
