@@ -6,9 +6,8 @@
 
       ingest/switch-schedule.sh to-server
 
-  which also retires the two timed LaunchAgents it replaces. It MUST be a LaunchAgent in the GUI
-  session: Santander's edge blocks headless Chrome, so the fetcher parks a real window off-screen
-  and needs a window server. The apply flags below are the ones the timed agents carried.
+  which also removes the retired timed LaunchAgents. It MUST be a LaunchAgent in the GUI
+  session: Santander's edge blocks headless Chrome, so the fetcher needs a window server.
 -->
 <plist version="1.0">
 <dict>

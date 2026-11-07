@@ -15,10 +15,11 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { ImapFlow } from "imapflow";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { withImapSession } from "./imapSession.js";
+import { searchMailSince, withAllMail } from "./mailFetcher.js";
+import { mimeBodyToText } from "./mime.js";
 
 export const BROKER_EMAIL_KEYCHAIN_SERVICE = "nw-tracker-gmail";
 
@@ -106,89 +107,6 @@ export type FetchedEmail = {
 };
 
 /**
- * Raw MIME body → the visible text the classifier reads.
- *
- * IMAP hands back the part verbatim, which for these senders is quoted-printable HTML
- * (`=3D` for `=`, soft line breaks as a trailing `=`), not the tidy preview Gmail's web API
- * shows. Without decoding, every body-derived field — Racional's «Acciones compradas …» line,
- * Fintual's withdrawal amount — silently fails to match.
- *
- * `<style>`/`<head>` are dropped before tags are stripped: these templates carry ~20KB of CSS
- * that would otherwise become the entire "preview".
- */
-export function mimeBodyToText(raw: string, maxChars = 2400): string {
-  let text = String(raw ?? "");
-
-  // Quoted-printable: soft line breaks first, then escapes.
-  if (/=[0-9A-F]{2}/i.test(text) || /=\r?\n/.test(text)) {
-    text = text
-      .replace(/=\r?\n/g, "")
-      .replace(/=([0-9A-F]{2})/gi, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-  }
-
-  text = text
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<head[\s\S]*?<\/head>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ");
-
-  const entities: Record<string, string> = {
-    "&nbsp;": " ",
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#39;": "'",
-    "&oacute;": "ó",
-    "&aacute;": "á",
-    "&eacute;": "é",
-    "&iacute;": "í",
-    "&uacute;": "ú",
-    "&ntilde;": "ñ",
-  };
-  for (const [entity, char] of Object.entries(entities)) {
-    text = text.replaceAll(entity, char);
-  }
-  // Whatever is left is preheader padding: these templates pad the preview with hundreds of
-  // `&#847;&zwnj;` pairs (invisible spacers), which would otherwise BE the preview.
-  text = text.replace(/&#\d+;/g, " ").replace(/&[a-zA-Z]+;/g, " ");
-  // UTF-8 arriving as latin-1 after QP decoding (Ã³ → ó and friends).
-  try {
-    if (/Ã[-¿]/.test(text)) {
-      text = Buffer.from(text, "latin1").toString("utf8");
-    }
-  } catch {
-    /* leave as-is */
-  }
-
-  return text.replace(/\s+/g, " ").trim().slice(0, maxChars);
-}
-
-/**
- * Gmail evaluates `SINCE` in the account's zone and answers NOTHING for the calendar day a DST
- * transition removes an hour from: `SINCE 06-Sep-2026` (Chile's 2026 spring-forward day) came
- * back empty while `05-Sep` and `07-Sep` returned the mails — verified against the raw SEARCH
- * replies on 2026-09-08, after the watermark had sat on that day since a Saturday-night mail and
- * every poll for two days had been blind to a «Pagamos tu retiro». The broken day is unknowable
- * in general, so the search starts a day before the watermark's and, when that returns nothing,
- * is repeated from two days before: two consecutive days cannot both be transition days, and the
- * timestamp filter downstream already drops everything the watermark has seen, so the wider
- * window costs a few envelopes and never a message.
- */
-export function searchSinceCandidates(since: Date): Date[] {
-  return [1, 2].map((daysBack) => new Date(since.getTime() - daysBack * 86_400_000));
-}
-
-async function searchSenderSince(client: ImapFlow, sender: string, since: Date): Promise<number[]> {
-  for (const candidate of searchSinceCandidates(since)) {
-    const found = await client.search({ from: sender, since: candidate });
-    if (Array.isArray(found) && found.length > 0) return found;
-  }
-  return [];
-}
-
-/**
  * Fetch broker mail newer than the watermark.
  *
  * `sinceDays` is a floor for the very first run (no watermark yet) so it does not walk years of
@@ -212,14 +130,13 @@ export async function fetchBrokerEmails(opts?: {
   await withImapSession("broker mail", async (client) => {
     // A rerun after a dropped connection reads the whole window again.
     emails.length = 0;
-    const lock = await client.getMailboxLock("INBOX");
-    try {
+    await withAllMail(client, async () => {
       // One search per sender: Gmail's IMAP OR syntax is awkward and this is a handful of
       // round trips on a mailbox we have already narrowed by date.
       for (const sender of BROKER_EMAIL_SENDERS) {
-        const uids = await searchSenderSince(client, sender, since);
+        const uids = await searchMailSince(client, { from: sender }, since);
         if (uids.length === 0) continue;
-        for await (const msg of client.fetch(uids, { envelope: true, bodyParts: ["text"] })) {
+        for await (const msg of client.fetch(uids, { envelope: true, bodyParts: ["text"] }, { uid: true })) {
           const envelope = msg.envelope;
           if (!envelope) continue;
           const from = envelope.from?.[0];
@@ -233,9 +150,7 @@ export async function fetchBrokerEmails(opts?: {
           });
         }
       }
-    } finally {
-      lock.release();
-    }
+    });
   });
 
   // IMAP `SINCE` is day-granular: the search returns the watermark message's entire day, so

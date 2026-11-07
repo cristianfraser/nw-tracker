@@ -9,7 +9,7 @@
  * subscription sign-up) decodes to null, and a receipt this decoder cannot read throws.
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import { LATAM_PROCESSORS } from "./latamMails.js";
 import { UBER_PROCESSORS } from "./uberMails.js";
 import { DESPEGAR_PROCESSORS } from "./despegarMails.js";

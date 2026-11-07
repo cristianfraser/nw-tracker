@@ -1,15 +1,14 @@
 #!/bin/bash
-# Move the nightly bank run and the hourly e-mail poll between the two schedulers.
+# Put the nightly bank run and the hourly e-mail poll on the server's scheduler.
 #
 #   ingest/switch-schedule.sh to-server   # the server decides when; the ingest service runs them
-#   ingest/switch-schedule.sh to-launchd  # back to the two timed LaunchAgents
 #   ingest/switch-schedule.sh status
 #
-# to-server retires com.user.nw-tracker-daily and com.user.nw-tracker-email-hourly, installs the
-# ingest service (com.user.nw-tracker-ingest) and sets INGEST_SCHEDULER_ENABLED=1 in the
-# INSTALLED server plist (never the root .env, which every dev server loads), then restarts the
-# server. Both ways are all-or-nothing about which scheduler runs: running both would start every
-# bank run twice.
+# to-server removes the retired timed LaunchAgents (com.user.nw-tracker-daily,
+# com.user.nw-tracker-email-hourly) if a machine still has them, installs the ingest service
+# (com.user.nw-tracker-ingest) and sets INGEST_SCHEDULER_ENABLED=1 in the INSTALLED server plist
+# (never the root .env, which every dev server loads), then restarts the server. The shell runners
+# those agents ran are gone (F13): the service's TypeScript runners are the only runners.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -57,15 +56,7 @@ case "${1:-}" in
     unload "$SERVER"
     launchctl bootstrap "$DOMAIN" "$AGENTS/$SERVER.plist"
     ;;
-  to-launchd)
-    plutil -remove EnvironmentVariables.INGEST_SCHEDULER_ENABLED "$AGENTS/$SERVER.plist" 2>/dev/null || true
-    unload "$SERVER"
-    launchctl bootstrap "$DOMAIN" "$AGENTS/$SERVER.plist"
-    unload "$INGEST"
-    rm -f "$AGENTS/$INGEST.plist"
-    for label in "${TIMED[@]}"; do load "$label" "$REPO_ROOT/ingest/$label.plist"; done
-    ;;
   status) ;;
-  *) echo "usage: $0 to-server | to-launchd | status" >&2; exit 2 ;;
+  *) echo "usage: $0 to-server | status" >&2; exit 2 ;;
 esac
 status

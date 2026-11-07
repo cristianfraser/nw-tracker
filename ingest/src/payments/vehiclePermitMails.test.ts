@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import { decodeMaipuVehiclePermit } from "./vehiclePermitMails.js";
 
 /**

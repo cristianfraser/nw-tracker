@@ -28,8 +28,6 @@ export type FeederDeps = {
   heartbeat?: (jobId: number) => Promise<void>;
   /** How often to heartbeat (default `JOB_HEARTBEAT_INTERVAL_MS`). */
   heartbeatMs?: number;
-  /** A runner this service did not start (by hand, or a LaunchAgent still installed). */
-  runningOutside: () => boolean;
   /** The bank facts every report carries, also when the run could not start. */
   santanderState: () => SantanderState;
   log: (message: string) => void;
@@ -153,9 +151,6 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
       if (current?.run_id === request.run_id) return send(res, 202, { accepted: true, run_id: request.run_id });
       if (ran.has(request.run_id)) return send(res, 409, { error: "already_ran", run_id: request.run_id });
       if (current) return send(res, 409, { error: "busy", running: current });
-      if (deps.runningOutside()) {
-        return send(res, 409, { error: "busy", running: { run_id: null, kind: "outside", started_at: new Date().toISOString() } });
-      }
       current = { run_id: request.run_id, kind: request.kind, started_at: new Date().toISOString() };
       ran.add(request.run_id);
       deps.log(`run ${request.run_id} (${request.kind}) accepted — ${request.reason}`);

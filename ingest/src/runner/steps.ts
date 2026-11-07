@@ -1,56 +1,66 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { IngestRunStep } from "nw-tracker-contracts";
+import { readStepResult, STEP_RESULT_ENV, type StepResult } from "../stepResult.js";
 
 /**
- * Steps of a run, as `run-lib.sh` ran them: each is one command; a failure is recorded and the
- * run goes on (one bank being down still lets the rest import); every step's label, outcome and
- * duration end up in the run report.
+ * Steps of a run: each is one ingest command; a failure is recorded and the run goes on (one bank
+ * being down still lets the rest import); every step's label, outcome and duration end up in the
+ * run report. What a step found — documents staged, rows written, listings to read — comes back
+ * as its `StepResult`, never from its printed output.
  */
 
-export type StepOptions = {
-  /** Keep the step's output (a fetch's «Summary: N saved» decides whether the imports run). */
-  capture?: boolean;
-};
+/** One ingest command: its `npm run` script and arguments, run in `ingest/`. */
+export type IngestCommand = { script: string; args: readonly string[] };
 
-export type StepOutcome = { ok: boolean; output: string };
+export function ingest(script: string, ...args: string[]): IngestCommand {
+  return { script, args };
+}
+
+/** A server task (`contracts/tasks.ts`), through the ingest command that asks for it. */
+export function serverTask(task: string, ...args: string[]): IngestCommand {
+  return ingest("server-task", task, ...args);
+}
+
+export type StepOutcome = { ok: boolean; result: StepResult };
 
 export interface StepRunner {
-  /** Run one command, record it as a step, and return whether it passed. */
-  step(label: string, argv: readonly string[], opts?: StepOptions): Promise<StepOutcome>;
+  /** Run one command, record it as a step, and return whether it passed and what it reported. */
+  step(label: string, command: IngestCommand): Promise<StepOutcome>;
   /** A line in the run log that is not a step (a skip and its reason). */
   note(message: string): void;
   readonly steps: IngestRunStep[];
 }
 
-/** `[YYYY-MM-DD HH:MM:SS] message` in local time, the shell runners' log format. */
+/** `[YYYY-MM-DD HH:MM:SS] message` in local time, the run logs' format. */
 export function logStamp(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `[${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}]`;
 }
 
-/**
- * Commands run from the repo root with their output appended to `logFd`. `npm run <script>` is
- * what the shell runners called, so the same root scripts run with the same arguments.
- */
+/** Commands run in the ingest package (`cwd`) with their output appended to `logFd`. */
 export function processStepRunner(opts: { cwd: string; logFd: number; env?: NodeJS.ProcessEnv }): StepRunner {
   const steps: IngestRunStep[] = [];
   const write = (text: string) => fs.writeSync(opts.logFd, text);
   const note = (message: string) => write(`${logStamp()} ${message}\n`);
+  const resultDir = fs.mkdtempSync(path.join(os.tmpdir(), "nw-ingest-steps-"));
   return {
     steps,
     note,
-    async step(label, argv, stepOpts = {}) {
+    async step(label, command) {
       const started = Date.now();
       note(`=== ${label}`);
-      const chunks: string[] = [];
+      const resultFile = path.join(resultDir, `${steps.length + 1}.json`);
+      const argv = ["run", command.script, ...(command.args.length > 0 ? ["--", ...command.args] : [])];
       const code = await new Promise<number>((resolve) => {
-        const [cmd, ...args] = argv;
-        const child = spawn(cmd!, args, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
-        const onData = (buf: Buffer) => {
-          write(buf.toString("utf8"));
-          if (stepOpts.capture) chunks.push(buf.toString("utf8"));
-        };
+        const child = spawn("npm", argv, {
+          cwd: opts.cwd,
+          env: { ...(opts.env ?? process.env), [STEP_RESULT_ENV]: resultFile },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        const onData = (buf: Buffer) => write(buf.toString("utf8"));
         child.stdout.on("data", onData);
         child.stderr.on("data", onData);
         child.on("error", (err) => {
@@ -63,18 +73,9 @@ export function processStepRunner(opts: { cwd: string; logFd: number; env?: Node
       const ok = code === 0;
       note(ok ? `--- ok: ${label}` : `*** FAILED (${code}): ${label}`);
       steps.push({ label, ok, seconds });
-      return { ok, output: chunks.join("") };
+      const result = readStepResult(resultFile);
+      fs.rmSync(resultFile, { force: true });
+      return { ok, result };
     },
   };
-}
-
-/** `npm run <script> [-- args]` from the repo root. */
-/** Last «Summary: N saved» of a fetch (santanderDocsMain / liderBoletasMain / afcCartolasMain / …). */
-export function savedCount(output: string): number {
-  const all = [...output.matchAll(/Summary: (\d+) saved/g)];
-  return all.length > 0 ? Number(all.at(-1)![1]) : 0;
-}
-
-export function npmRun(script: string, ...args: string[]): string[] {
-  return args.length > 0 ? ["npm", "run", script, "--", ...args] : ["npm", "run", script];
 }

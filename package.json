@@ -71,7 +71,6 @@
     "import:fintual-cert": "npm run import:fintual-cert -w nw-tracker-ingest --",
     "import:afc-cert": "npm run import:afc-cert -w nw-tracker-ingest --",
     "import:mortgage-sheet": "npm run import:mortgage-sheet -w nw-tracker-ingest --",
-    "daily-run": "ingest/daily-run.sh",
     "fetch:lider-boletas": "npm run fetch:lider-boletas -w nw-tracker-ingest --",
     "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-ingest --",
     "fetch:lider-statements": "npm run fetch:lider-statements -w nw-tracker-ingest --",

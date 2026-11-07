@@ -13,142 +13,49 @@
  *
  * Ledger: one entry per message id (`lider` / `email-boleta`), so each boleta is fetched once
  * and a widened window (`--days`, or `--all` for the full-history backfill) never re-downloads.
+ * A mail without exactly one `Boleta.pdf` is skipped and not recorded.
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { FetchMessageObject } from "imapflow";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
-import { log, logStep } from "../log.js";
-import { hasDocument, recordDocument } from "../documentLedger.js";
-import { mimeBodyToText } from "./fetch.js";
-import { normalizeMailSubject, pdfAttachmentsFromStructure, htmlBodyPartFromStructure } from "./santanderDocs.js";
-import { withImapSession } from "./imapSession.js";
+import type { MailSource } from "./mailFetcher.js";
+import { normalizeMailSubject } from "./mime.js";
 
 export const LIDER_BOLETA_SENDER = "contacto@info.lider.cl";
-
-const DEFAULT_WINDOW_DAYS = 45;
-/** Full-history backfill bound; the mailbox is younger than this. */
-const ALL_HISTORY_DAYS = 3650;
-
-export function isLiderBoletaSubject(subject: string): boolean {
-  return normalizeMailSubject(subject).includes("boleta");
-}
 
 export function liderBoletasStagingDir(): string {
   return path.join(resolveCfraserDir(), "lider-boletas", "staged");
 }
 
-/** `2026-08-06-19fd99993152afdd` — mail's UTC date + a filesystem-safe message-id slug. */
-export function boletaStagingKey(date: Date, messageId: string): string {
-  const idSlug = String(messageId ?? "")
-    .replace(/[^A-Za-z0-9@._-]/g, "_")
-    .slice(0, 80);
-  return `${date.toISOString().slice(0, 10)}-${idSlug}`;
-}
-
-export type LiderBoletaFetchResult = {
-  saved: { key: string; file: string }[];
-  skipped: { key: string; reason: string }[];
-};
-
-export async function fetchLiderBoletaEmails(opts?: {
-  windowDays?: number;
-  allHistory?: boolean;
-  dryRun?: boolean;
-}): Promise<LiderBoletaFetchResult> {
-  const windowDays = opts?.allHistory ? ALL_HISTORY_DAYS : (opts?.windowDays ?? DEFAULT_WINDOW_DAYS);
-  const since = new Date(Date.now() - windowDays * 86_400_000);
-  const dryRun = opts?.dryRun === true;
-
-  logStep(`e-mail — Lider boletas since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
-
-  const result: LiderBoletaFetchResult = { saved: [], skipped: [] };
-  await withImapSession("Lider boletas", async (client) => {
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const uids = await client.search({ from: LIDER_BOLETA_SENDER, since });
-      if (!uids || uids.length === 0) {
-        log("e-mail: no Lider mail in window");
-        return result;
-      }
-
-      const candidates: { uid: number; msg: FetchMessageObject }[] = [];
-      for await (const msg of client.fetch(uids, { envelope: true, bodyStructure: true, uid: true })) {
-        if (!isLiderBoletaSubject(String(msg.envelope?.subject ?? ""))) continue;
-        candidates.push({ uid: msg.uid, msg });
-      }
-
-      for (const candidate of candidates) {
-        const messageId = String(candidate.msg.envelope?.messageId ?? `uid-${candidate.uid}`);
-        const mailDate = candidate.msg.envelope?.date ?? new Date();
-        const key = boletaStagingKey(mailDate, messageId);
-        if (hasDocument("lider", "email-boleta", key)) {
-          result.skipped.push({ key, reason: "already fetched" });
-          continue;
-        }
-
-        // The receipt is the attachment named Boleta.pdf; «Ticket de promoción.pdf» is noise.
-        const attachments = pdfAttachmentsFromStructure(candidate.msg.bodyStructure).filter((a) =>
-          /^boleta/i.test(a.filename.trim())
-        );
-        if (attachments.length !== 1) {
-          result.skipped.push({
-            key,
-            reason: `expected exactly one Boleta.pdf attachment, found ${attachments.length}`,
-          });
-          continue;
-        }
-        if (dryRun) {
-          result.saved.push({ key, file: "Boleta.pdf" });
-          continue;
-        }
-
-        const bodyPartId = htmlBodyPartFromStructure(candidate.msg.bodyStructure);
-        let bodyText = "";
-        if (bodyPartId) {
-          const bodyDownload = await client.download(
-            String(candidate.uid),
-            bodyPartId === "TEXT" ? undefined : bodyPartId,
-            { uid: true }
-          );
-          const chunks: Buffer[] = [];
-          for await (const chunk of bodyDownload.content) chunks.push(Buffer.from(chunk));
-          bodyText = mimeBodyToText(Buffer.concat(chunks).toString("utf8"), 1500);
-        }
-
-        const pdfDownload = await client.download(String(candidate.uid), attachments[0]!.part, { uid: true });
-        const pdfChunks: Buffer[] = [];
-        for await (const chunk of pdfDownload.content) pdfChunks.push(Buffer.from(chunk));
-
-        const dir = ensureDir(path.join(liderBoletasStagingDir(), key));
-        fs.writeFileSync(path.join(dir, "Boleta.pdf"), Buffer.concat(pdfChunks));
-        fs.writeFileSync(
-          path.join(dir, "meta.json"),
-          JSON.stringify(
-            {
-              message_id: messageId,
-              subject: String(candidate.msg.envelope?.subject ?? ""),
-              date: mailDate.toISOString(),
-              body_text: bodyText,
-            },
-            null,
-            2
-          )
-        );
-        recordDocument("lider", "email-boleta", key);
-        result.saved.push({ key, file: "Boleta.pdf" });
-      }
-    } finally {
-      lock.release();
+export const LIDER_BOLETAS_SOURCE: MailSource = {
+  label: "Lider boletas",
+  ledger: "lider",
+  query: { from: LIDER_BOLETA_SENDER },
+  kindOf: (subject) => (normalizeMailSubject(subject).includes("boleta") ? "email-boleta" : null),
+  // Full-history backfill bound; the mailbox is younger than this.
+  allHistoryDays: 3650,
+  documents(mail) {
+    // The receipt is the attachment named Boleta.pdf; «Ticket de promoción.pdf» is noise.
+    const boletas = mail.pdfs.filter((a) => /^boleta/i.test(a.filename.trim()));
+    if (boletas.length !== 1) {
+      return [{ key: mail.mailKey, skip: `expected exactly one Boleta.pdf attachment, found ${boletas.length}` }];
     }
-  });
-
-  for (const s of result.saved) log(`e-mail: boleta ${s.key}`);
-  const alreadyCount = result.skipped.filter((s) => s.reason === "already fetched").length;
-  for (const s of result.skipped) {
-    if (s.reason !== "already fetched") log(`e-mail: boleta ${s.key} skipped (${s.reason})`);
-  }
-  if (alreadyCount > 0) log(`e-mail: ${alreadyCount} boleta(s) already fetched`);
-  if (result.saved.length === 0) log("e-mail: no new boleta");
-  return result;
-}
+    return [
+      {
+        key: mail.mailKey,
+        file: "Boleta.pdf",
+        async write(read) {
+          const bodyText = await read.bodyText(1500);
+          const pdf = (await read.part(boletas[0]!.part)).bytes;
+          const dir = ensureDir(path.join(liderBoletasStagingDir(), mail.mailKey));
+          fs.writeFileSync(path.join(dir, "Boleta.pdf"), pdf);
+          fs.writeFileSync(
+            path.join(dir, "meta.json"),
+            JSON.stringify({ message_id: mail.messageId, subject: mail.subject, date: mail.date.toISOString(), body_text: bodyText }, null, 2)
+          );
+          return { written: true };
+        },
+      },
+    ];
+  },
+};

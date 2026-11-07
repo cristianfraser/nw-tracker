@@ -1,22 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { brokerMessageCount, runHourly, savedCount, type HourlyOptions } from "./hourly.js";
+import type { StepResult } from "../stepResult.js";
+import { runHourly, type HourlyOptions } from "./hourly.js";
 import { runNightly, type NightlyOptions } from "./nightly.js";
 import { santanderVeto } from "./runRequest.js";
 import type { StepRunner } from "./steps.js";
 
-/** A runner that executes nothing: records each command, plays the given outputs and failures. */
-function fakeRunner(outputs: Record<string, string> = {}, failing: string[] = []) {
+/**
+ * A runner that executes nothing: records each ingest command («script args»), plays the given
+ * step results (keyed by script, or by «server-task <task>») and failures.
+ */
+function fakeRunner(results: Record<string, StepResult> = {}, failing: string[] = []) {
   const calls: string[] = [];
   const notes: string[] = [];
   const x: StepRunner = {
     steps: [],
     note: (m) => void notes.push(m),
-    async step(label, argv) {
-      calls.push(argv.slice(1).join(" "));
-      const script = argv[2]!;
-      const ok = !failing.includes(script);
+    async step(label, command) {
+      calls.push([command.script, ...command.args].join(" "));
+      const key = command.script === "server-task" ? `server-task ${command.args[0]}` : command.script;
+      const ok = !failing.includes(key);
       x.steps.push({ label, ok, seconds: 0 });
-      return { ok, output: outputs[script] ?? "" };
+      return { ok, result: results[key] ?? {} };
     },
   };
   return { x, calls, notes };
@@ -28,7 +32,6 @@ const NIGHTLY: NightlyOptions = {
   fullReimport: false,
   fintualApply: true,
   racionalApply: true,
-  racionalNeeded: () => false,
   afpUnoFetch: null,
   afpUnoApply: true,
   afcFetch: null,
@@ -38,46 +41,46 @@ const NIGHTLY: NightlyOptions = {
 };
 
 describe("runNightly", () => {
-  it("runs daily-run.sh's sequence with the production flags", async () => {
+  it("runs the nightly sequence with the production flags", async () => {
     const { x, calls } = fakeRunner();
     const result = await runNightly(x, NIGHTLY);
     expect(calls).toEqual([
-      "run fetch:santander",
-      "run fetch:santander-docs",
-      "run fetch:lider-boletas",
-      "run fetch:lider-statements",
-      "run fetch:fintual-docs",
-      "run fetch:apple-mail",
-      "run fetch:afc-cartolas",
-      "run import:cfraser-inbox",
-      "run import:santander-movements",
-      "run import:checking-usd-movements",
-      "run convert:cc-payment-mirrors",
-      "run check:cc-bank-cupo",
-      "run check:mortgage-card-match",
-      "run import:transfer-mails",
-      "run import:payment-receipt-mails",
-      "run import:utility-bills",
-      "run import:apple-mail",
-      "run fetch:emails",
-      "run check:broker-emails",
-      "run import:fintual-emails -- --apply",
-      "run import:fintual-acciones -- --apply",
-      "run import:fintual-wallet -- --apply",
-      "run import:racional-emails -- --apply",
-      "run import:santander-statements -- --apply",
+      "fetch:santander",
+      "fetch:santander-docs",
+      "fetch:lider-boletas",
+      "fetch:lider-statements",
+      "fetch:fintual-docs",
+      "fetch:apple-mail",
+      "fetch:afc-cartolas",
+      "import:cfraser-inbox",
+      "import:santander-movements",
+      "import:checking-usd-movements",
+      "server-task cc_payment_mirrors",
+      "server-task cc_bank_cupo_check",
+      "server-task mortgage_card_match_check",
+      "import:transfer-mails",
+      "import:payment-receipt-mails",
+      "import:utility-bills",
+      "import:apple-mail",
+      "fetch:emails",
+      "check:broker-emails",
+      "import:fintual-emails --apply",
+      "import:fintual-acciones --apply",
+      "import:fintual-wallet --apply",
+      "import:racional-emails --apply",
+      "import:santander-statements --apply",
     ]);
     expect(result.santander).toEqual({ mode: "nightly", outcome: "ok", note: null });
   });
 
   it("fetches Racional only when the e-mail check named it, and keeps going after a failure", async () => {
-    const { x, calls } = fakeRunner({}, ["fetch:santander"]);
-    const result = await runNightly(x, { ...NIGHTLY, racionalApply: false, racionalNeeded: () => true });
+    const { x, calls } = fakeRunner({ "import:racional-emails": { read_brokers: ["racional"] } }, ["fetch:santander"]);
+    const result = await runNightly(x, { ...NIGHTLY, racionalApply: false });
     expect(calls.slice(-4)).toEqual([
-      "run import:racional-emails",
-      "run fetch:racional",
-      "run import:racional-movements",
-      "run import:santander-statements -- --apply",
+      "import:racional-emails",
+      "fetch:racional",
+      "import:racional-movements",
+      "import:santander-statements --apply",
     ]);
     expect(x.steps.map((s) => s.label)).toContain("Racional movements (report only)");
     expect(result.santander).toEqual({ mode: "nightly", outcome: "failed", note: null });
@@ -88,11 +91,11 @@ describe("runNightly", () => {
     const asked = { reason: "no clean import since 2030-10-10" };
     const { x, calls } = fakeRunner();
     await runNightly(x, { ...NIGHTLY, afpUnoFetch: asked });
-    expect(calls).toContain("run fetch:afp-uno -- --apply");
+    expect(calls).toContain("fetch:afp-uno --apply");
     const report = fakeRunner();
     await runNightly(report.x, { ...NIGHTLY, afpUnoFetch: asked, afpUnoApply: false });
     expect(report.x.steps.map((s) => s.label)).toContain("AFP UNO (report only)");
-    expect(report.calls).toContain("run fetch:afp-uno");
+    expect(report.calls).toContain("fetch:afp-uno");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
     expect(quiet.calls.some((c) => c.includes("fetch:afp-uno"))).toBe(false);
@@ -102,35 +105,35 @@ describe("runNightly", () => {
     const asked = { reason: "no AFC contribution for 2026-09 in the ledger yet", expected_period: "2026-09", overdue: false };
     const { x, calls } = fakeRunner();
     await runNightly(x, { ...NIGHTLY, afcFetch: asked });
-    expect(calls).toContain("run fetch:afc -- --apply --expect=2026-09");
+    expect(calls).toContain("fetch:afc --apply --expect=2026-09");
     const overdue = fakeRunner();
     await runNightly(overdue.x, { ...NIGHTLY, afcFetch: { ...asked, overdue: true } });
-    expect(overdue.calls).toContain("run fetch:afc -- --apply --expect=2026-09 --overdue");
-    const cartola = fakeRunner({ "fetch:afc-cartolas": "Summary: 1 saved, 0 skipped" });
+    expect(overdue.calls).toContain("fetch:afc --apply --expect=2026-09 --overdue");
+    const cartola = fakeRunner({ "fetch:afc-cartolas": { staged: 1 } });
     await runNightly(cartola.x, NIGHTLY);
-    expect(cartola.calls).toContain("run fetch:afc -- --apply");
+    expect(cartola.calls).toContain("fetch:afc --apply");
     const report = fakeRunner();
     await runNightly(report.x, { ...NIGHTLY, afcFetch: asked, afcApply: false });
     expect(report.x.steps.map((s) => s.label)).toContain("AFC (report only)");
-    expect(report.calls).toContain("run fetch:afc -- --expect=2026-09");
+    expect(report.calls).toContain("fetch:afc --expect=2026-09");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
-    expect(quiet.calls.some((c) => c === "run fetch:afc" || c.includes("fetch:afc --"))).toBe(false);
+    expect(quiet.calls.some((c) => c === "fetch:afc" || c.includes("fetch:afc --"))).toBe(false);
   });
 
   it("imports payslips when the server asks, reading the portal only when told to fetch", async () => {
     const fetched = fakeRunner();
     await runNightly(fetched.x, { ...NIGHTLY, payslips: { fetch: true, reason: "no payslip for 2030-09 yet" } });
     expect(fetched.calls.filter((c) => /buk|payroll|previred/.test(c))).toEqual([
-      "run fetch:buk-payslips",
-      "run parse:payroll-liquidaciones",
-      "run import:previred-indicators",
-      "run import:payroll-liquidaciones -- --no-strict",
+      "fetch:buk-payslips",
+      "parse:payroll-liquidaciones",
+      "import:previred-indicators",
+      "import:payroll-liquidaciones --no-strict",
     ]);
     const importOnly = fakeRunner();
     await runNightly(importOnly.x, { ...NIGHTLY, payslips: { fetch: false, reason: "payslip 2030-09 has no deposit paired yet" } });
     expect(importOnly.calls.some((c) => c.includes("fetch:buk-payslips"))).toBe(false);
-    expect(importOnly.calls).toContain("run import:payroll-liquidaciones -- --no-strict");
+    expect(importOnly.calls).toContain("import:payroll-liquidaciones --no-strict");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
     expect(quiet.calls.some((c) => /buk|payroll/.test(c))).toBe(false);
@@ -139,10 +142,10 @@ describe("runNightly", () => {
   it("reads the mortgage sheet after the inbox pipeline when the server says it is stale", async () => {
     const { x, calls, notes } = fakeRunner();
     await runNightly(x, { ...NIGHTLY, mortgageSheet: { reason: "no mortgage cuota in the ledger since 2030-10-11" } });
-    expect(calls.indexOf("run import:mortgage-sheet")).toBe(calls.indexOf("run import:cfraser-inbox") + 1);
+    expect(calls.indexOf("import:mortgage-sheet")).toBe(calls.indexOf("import:cfraser-inbox") + 1);
     const without = fakeRunner();
     await runNightly(without.x, NIGHTLY);
-    expect(without.calls).not.toContain("run import:mortgage-sheet");
+    expect(without.calls).not.toContain("import:mortgage-sheet");
     expect(without.notes).toContain("=== Mortgage sheet (not stale)");
     expect(notes).not.toContain("=== Mortgage sheet (not stale)");
   });
@@ -150,7 +153,7 @@ describe("runNightly", () => {
   it("opens no bank session in a dry run", async () => {
     const { x, calls } = fakeRunner();
     expect((await runNightly(x, { ...NIGHTLY, dryRun: true })).santander).toBeNull();
-    expect(calls.some((c) => c.startsWith("run fetch:santander --") || c.includes("check:cc-bank-cupo"))).toBe(false);
+    expect(calls.some((c) => c.split(" ")[0] === "fetch:santander" || c.includes("cc_bank_cupo_check"))).toBe(false);
   });
 });
 
@@ -166,17 +169,17 @@ const HOURLY: HourlyOptions = {
 
 describe("runHourly", () => {
   it("fetches mail only, and imports nothing in a quiet hour", async () => {
-    const { x, calls, notes } = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)" });
+    const { x, calls, notes } = fakeRunner({ "fetch:emails": { staged: 0 } });
     expect(await runHourly(x, HOURLY)).toEqual({ santander: null, activity: false });
     expect(calls).toEqual([
-      "run fetch:santander-docs",
-      "run fetch:lider-statements",
-      "run fetch:lider-boletas",
-      "run fetch:fintual-docs",
-      "run fetch:apple-mail",
-      "run fetch:emails",
-      "run import:transfer-mails -- --days=2",
-      "run import:fintual-wallet -- --apply",
+      "fetch:santander-docs",
+      "fetch:lider-statements",
+      "fetch:lider-boletas",
+      "fetch:fintual-docs",
+      "fetch:apple-mail",
+      "fetch:emails",
+      "import:transfer-mails --days=2",
+      "import:fintual-wallet --apply",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
     expect(notes).toContain("=== Mortgage sheet (not stale)");
@@ -184,66 +187,66 @@ describe("runHourly", () => {
 
   it("imports what the hour staged", async () => {
     const { x, calls } = fakeRunner({
-      "fetch:santander-docs": "Summary: 2 saved, 3 skipped",
-      "fetch:emails": "e-mail: 1 broker message(s)",
+      "fetch:santander-docs": { staged: 2 },
+      "fetch:emails": { staged: 1 },
     });
     expect((await runHourly(x, HOURLY)).activity).toBe(true);
     expect(calls.slice(6)).toEqual([
-      "run import:cfraser-inbox",
-      "run import:fintual-emails -- --apply",
-      "run import:racional-emails -- --apply",
-      "run import:transfer-mails -- --days=2",
-      "run import:fintual-wallet -- --apply",
+      "import:cfraser-inbox",
+      "import:fintual-emails --apply",
+      "import:racional-emails --apply",
+      "import:transfer-mails --days=2",
+      "import:fintual-wallet --apply",
     ]);
   });
 
   it("reads the mortgage sheet when the server says it is stale, and counts a written cuota as activity", async () => {
     const stale = { reason: "no mortgage cuota in the ledger since 2030-10-11" };
-    const quiet = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:mortgage-sheet": "mortgage sheet: 0 row(s) written, 25 checked" });
+    const quiet = fakeRunner({ "fetch:emails": { staged: 0 }, "import:mortgage-sheet": { inserted: 0 } });
     expect((await runHourly(quiet.x, { ...HOURLY, mortgageSheet: stale })).activity).toBe(false);
-    expect(quiet.calls).toContain("run import:mortgage-sheet");
-    const written = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:mortgage-sheet": "mortgage sheet: 1 row(s) written, 24 checked" });
+    expect(quiet.calls).toContain("import:mortgage-sheet");
+    const written = fakeRunner({ "fetch:emails": { staged: 0 }, "import:mortgage-sheet": { inserted: 1 } });
     expect((await runHourly(written.x, { ...HOURLY, mortgageSheet: stale })).activity).toBe(true);
   });
 
   it("counts a movement written from a transfer mail as activity", async () => {
     const { x } = fakeRunner({
-      "fetch:emails": "e-mail: 0 broker message(s)",
-      "import:transfer-mails": "  movement written from the mail: 9, 2030-10-07 $29597 on account 22",
+      "fetch:emails": { staged: 0 },
+      "import:transfer-mails": { inserted: 1 },
     });
     expect((await runHourly(x, HOURLY)).activity).toBe(true);
   });
 
   it("reads the Fintual wallet every hour and counts a booked interest credit as activity", async () => {
-    const quiet = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:fintual-wallet": "  → 0 inserted, 2 already present" });
+    const quiet = fakeRunner({ "fetch:emails": { staged: 0 }, "import:fintual-wallet": { inserted: 0 } });
     expect((await runHourly(quiet.x, HOURLY)).activity).toBe(false);
-    const booked = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:fintual-wallet": "  → 1 inserted, 1 already present" });
+    const booked = fakeRunner({ "fetch:emails": { staged: 0 }, "import:fintual-wallet": { inserted: 1 } });
     expect((await runHourly(booked.x, HOURLY)).activity).toBe(true);
     const report = fakeRunner();
     await runHourly(report.x, { ...HOURLY, fintualApply: false });
-    expect(report.calls).toContain("run import:fintual-wallet");
+    expect(report.calls).toContain("import:fintual-wallet");
   });
 
   it("runs a photo waiting in the grocery inbox through the pipeline", async () => {
     const { x, calls } = fakeRunner();
     await runHourly(x, { ...HOURLY, groceryInboxCount: () => 1 });
-    expect(calls).toContain("run import:cfraser-inbox");
+    expect(calls).toContain("import:cfraser-inbox");
   });
 
   it("reads nothing more when every balance agrees", async () => {
-    const { x, calls } = fakeRunner({ "fetch:santander": "[15:30:12] balance poll fetch: none" });
+    const { x, calls } = fakeRunner({ "fetch:santander": { fetch: [], differs: false } });
     const result = await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
     expect(result.santander).toEqual({ mode: "balance-poll", outcome: "ok", note: "every product agrees" });
     expect(calls.slice(6)).toEqual([
-      "run fetch:santander -- --balance-poll",
-      "run import:transfer-mails -- --days=2",
-      "run import:fintual-wallet -- --apply",
+      "fetch:santander --balance-poll",
+      "import:transfer-mails --days=2",
+      "import:fintual-wallet --apply",
     ]);
   });
 
   it("imports the listings the poll read, then judges again", async () => {
     const { x, calls } = fakeRunner({
-      "fetch:santander": "  differs: card 32 CLP: app − bank -5000 — reading the card feed\nbalance poll fetch: card-movements,checking-movements,checking-usd-movements",
+      "fetch:santander": { fetch: ["card-movements", "checking-movements", "checking-usd-movements"], differs: true },
     });
     const result = await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
     expect(result).toEqual({
@@ -251,24 +254,24 @@ describe("runHourly", () => {
       activity: true,
     });
     expect(calls.slice(6)).toEqual([
-      "run fetch:santander -- --balance-poll",
-      "run import:santander-movements",
-      "run convert:cc-payment-mirrors",
-      "run import:checking-usd-movements",
-      "run import:cfraser-inbox",
-      "run check:cc-bank-cupo -- --recheck",
-      "run import:transfer-mails -- --days=2",
-      "run import:fintual-wallet -- --apply",
+      "fetch:santander --balance-poll",
+      "import:santander-movements",
+      "server-task cc_payment_mirrors",
+      "import:checking-usd-movements",
+      "import:cfraser-inbox",
+      "server-task cc_bank_cupo_check --recheck",
+      "import:transfer-mails --days=2",
+      "import:fintual-wallet --apply",
     ]);
   });
 
   it("judges again a difference no listing can explain (the cuenta vista)", async () => {
     const { x, calls } = fakeRunner({
-      "fetch:santander": "  differs: Cuenta vista CLP: app − bank 100 — no movement listing to read\nbalance poll fetch: none",
+      "fetch:santander": { fetch: [], differs: true },
     });
     await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
-    expect(calls).toContain("run check:cc-bank-cupo -- --recheck");
-    expect(calls).not.toContain("run import:cfraser-inbox");
+    expect(calls).toContain("server-task cc_bank_cupo_check --recheck");
+    expect(calls).not.toContain("import:cfraser-inbox");
   });
 
   it("declines a requested poll it cannot safely make", async () => {
@@ -283,17 +286,16 @@ describe("runHourly", () => {
       outcome: "vetoed",
       note: "login latched off after a credentials rejection",
     });
-    expect(calls).not.toContain("run fetch:santander -- --balance-poll");
+    expect(calls).not.toContain("fetch:santander --balance-poll");
     expect(notes).toContain("=== Santander balance-poll (declined — login latched off after a credentials rejection)");
   });
 });
 
-describe("output counts", () => {
-  it("reads the last summary line of a fetch", () => {
-    expect(savedCount("Summary: 1 saved, 2 skipped\n…\nSummary: 3 saved, 0 skipped")).toBe(3);
-    expect(savedCount("no summary")).toBe(0);
-    expect(brokerMessageCount("[10:30:00] e-mail: 4 broker message(s)")).toBe(4);
-  });
+it("a poll the server never answered reads nothing", async () => {
+  const { x, calls } = fakeRunner({ "fetch:santander": {} }, ["fetch:santander"]);
+  const result = await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
+  expect(result.santander).toEqual({ mode: "balance-poll", outcome: "failed", note: "the server never answered" });
+  expect(calls).not.toContain("import:santander-movements");
 });
 
 describe("santanderVeto", () => {

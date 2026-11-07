@@ -22,7 +22,7 @@
  * check-in, itinerary changes, marketing) decodes to null; a confirmation this cannot read throws.
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentReceiptMails.js";
 
 /** Every Despegar sender that has mailed a purchase confirmation. */

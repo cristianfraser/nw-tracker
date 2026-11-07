@@ -13,15 +13,13 @@
  * never appeared — the wire never arrived, and a phantom credit would be absorbed silently into
  * the next checking-anchor derivation. The failed step is what badges a notification.
  *
- * Racional: writes the server's crawl decision to `cfraser/.broker-email-decision.json`
- * (`needs_fetch`), which the runner reads before opening the Racional browser.
+ * Racional: reports the server's crawl decision to the runner (`read_brokers`, `stepResult.ts`),
+ * which opens the Racional browser only when it names Racional.
  */
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { brokerNotificationsKind, type BrokerNotificationsApplyDetails } from "nw-tracker-contracts";
-import { resolveCfraserDir } from "../paths.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { reportStepResult } from "../stepResult.js";
 import { brokerNotificationsFromScan } from "./brokerEmail.js";
 import { readStagedBrokerEmails } from "./stagedScans.js";
 import { logWireBookings } from "../wires/incomingWiresStep.js";
@@ -31,16 +29,10 @@ if (!brokerArg) throw new Error("usage: importBrokerEmailsMain.ts --broker=fintu
 const broker = brokerArg[1] as "fintual" | "racional";
 const apply = process.argv.includes("--apply");
 
-function decisionPath(): string {
-  return path.join(resolveCfraserDir(), ".broker-email-decision.json");
-}
-
 async function main(): Promise<number> {
   const { files, scan } = readStagedBrokerEmails();
   const notifications = brokerNotificationsFromScan(scan, broker);
   const payload = brokerNotificationsKind.payload.parse({ broker, notifications });
-  // A stale decision must never open the browser: it is rewritten from this run's answer only.
-  if (broker === "racional") fs.rmSync(decisionPath(), { force: true });
 
   let details: BrokerNotificationsApplyDetails;
   try {
@@ -78,21 +70,7 @@ async function main(): Promise<number> {
       `\n${f.nudges} notification(s) the crawl describes (${f.answered} already answered). ` +
         (f.needed ? `Needs a browser fetch:\n${f.reasons.map((r) => `  ${r}`).join("\n")}` : "Nothing needs a browser fetch.")
     );
-    fs.writeFileSync(
-      decisionPath(),
-      `${JSON.stringify(
-        {
-          needs_fetch: f.needed ? ["racional"] : [],
-          reasons: f.reasons,
-          nudges: f.nudges,
-          answered_nudges: f.answered,
-          scanned_files: files.map((file) => path.basename(file)),
-          decided_at: new Date().toISOString(),
-        },
-        null,
-        2
-      )}\n`
-    );
+    reportStepResult({ read_brokers: f.needed ? ["racional"] : [] });
   }
 
   for (const o of details.overdue_synthetic_retiros) {

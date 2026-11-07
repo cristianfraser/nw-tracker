@@ -19,7 +19,7 @@
  */
 import fs from "node:fs";
 import { utilityBillKind, type UtilityBillApplyDetails } from "nw-tracker-contracts";
-import { archiveMails, type ArchivedMail } from "../email/santanderMailArchive.js";
+import { archiveMails, type ArchivedMail } from "../email/mailFetcher.js";
 import { log } from "../log.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { decodeHoaStatement, HOA_STATEMENT_SUBJECT, HOA_UNIT_PDF, loadHoaSenders } from "./hoaStatementMails.js";

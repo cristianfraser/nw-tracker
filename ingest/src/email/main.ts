@@ -10,6 +10,7 @@
  */
 import { fetchBrokerEmails } from "./fetch.js";
 import { log } from "../log.js";
+import { reportStepResult } from "../stepResult.js";
 
 const argv = process.argv.slice(2);
 const sinceRaw = argv.find((a) => a.startsWith("--since="))?.split("=")[1];
@@ -21,6 +22,7 @@ fetchBrokerEmails({
 })
   .then((r) => {
     if (r.emails.length === 0) log("no new broker e-mail");
+    reportStepResult({ staged: r.emails.length });
     process.exitCode = 0;
   })
   .catch((err: unknown) => {

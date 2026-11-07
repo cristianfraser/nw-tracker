@@ -16,7 +16,7 @@
  * decoder cannot read throws. A building's gastos comunes statements are `hoaStatementMails.ts`.
  */
 import type { UtilityBill } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import { parseChileanNumber } from "../formats/chileanNumber.js";
 
 /** What a provider's decoder reads from one mail. */

@@ -19,7 +19,7 @@ import {
   type PaymentProcessorReceiptsApplyDetails,
   type ProcessorReceipt,
 } from "nw-tracker-contracts";
-import { archiveMails, type ArchivedMail } from "../email/santanderMailArchive.js";
+import { archiveMails, type ArchivedMail } from "../email/mailFetcher.js";
 import { log } from "../log.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { PAYMENT_PROCESSORS, type PaymentProcessor } from "./paymentReceiptMails.js";

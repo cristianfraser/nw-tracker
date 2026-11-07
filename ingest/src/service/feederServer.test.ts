@@ -35,7 +35,6 @@ async function start(over: Partial<FeederDeps> = {}) {
       return new Promise((resolve) => (release = resolve));
     },
     report: async (runId, completion) => void reports.push({ runId, completion }),
-    runningOutside: () => false,
     santanderState: () => DONE.santander_state,
     log: () => {},
     ...over,
@@ -94,14 +93,6 @@ describe("feeder server", () => {
     expect(await again.json()).toEqual({ error: "already_ran", run_id: 50 });
     expect(s.runs).toHaveLength(1);
     expect(s.reports).toHaveLength(1);
-  });
-
-  it("is busy while a runner it did not start is running", async () => {
-    const s = await start({ runningOutside: () => true });
-    const res = await s.post({ run_id: 7, kind: "nightly", reason: "x", santander_fetch: null });
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ running: { run_id: null, kind: "outside" } });
-    expect(s.runs).toEqual([]);
   });
 
   it("refuses a malformed request and a wrong token", async () => {

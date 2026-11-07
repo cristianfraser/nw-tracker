@@ -11,6 +11,7 @@
  */
 import { mortgageSheetPaymentsKind, type MortgageSheetPaymentsApplyDetails } from "nw-tracker-contracts";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { reportStepResult } from "../stepResult.js";
 import { loadMortgageSheetConfig, mortgageSheetPayload, readMortgageSheet } from "./sheet.js";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -54,6 +55,7 @@ async function main(): Promise<number> {
       console.error(`CONFLICT — ${result.message ?? "the sheet and the ledger disagree"}`);
       return 1;
     }
+    if (!result.dry_run) reportStepResult({ inserted: written });
     console.log(`mortgage sheet: ${written} row(s) written${result.dry_run ? " (reported only)" : ""}, ${d.rows.filter((r) => r.status === "checked").length} checked`);
     return 0;
   } catch (err) {

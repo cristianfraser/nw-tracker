@@ -1,5 +1,4 @@
 import {
-  BANK_PRODUCT_SUMMARY_FETCH_STEPS,
   bankProductSummaryKind,
   type BankProductSummaryApplyDetails,
   type BankProductSummaryFetchStep,
@@ -8,6 +7,7 @@ import {
 import type { Recorder } from "../capture.js";
 import { log } from "../log.js";
 import { ingestClient } from "../serverApi.js";
+import { reportStepResult } from "../stepResult.js";
 import { santanderAccountBalances, santanderIssuerBalances } from "./cardFeed.js";
 import { collectCardCupos, collectDepositBalances, type CardMovementsResult } from "./cards.js";
 
@@ -18,25 +18,9 @@ import { collectCardCupos, collectDepositBalances, type CardMovementsResult } fr
  * The session then reads only those — on most hours, none.
  */
 
-/** The line the hourly runner reads back from the step's output to know what to import. */
-export const BALANCE_POLL_RESULT_PREFIX = "balance poll fetch:";
-
+/** The run log's line for what the poll asked to read. */
 export function formatBalancePollResult(steps: readonly BankProductSummaryFetchStep[]): string {
-  return `${BALANCE_POLL_RESULT_PREFIX} ${steps.length > 0 ? steps.join(",") : "none"}`;
-}
-
-/** The listings the last result line of `output` names; null when the poll never answered. */
-export function parseBalancePollResult(output: string): BankProductSummaryFetchStep[] | null {
-  const lines = output.split("\n").filter((l) => l.includes(BALANCE_POLL_RESULT_PREFIX));
-  const last = lines.at(-1);
-  if (last == null) return null;
-  const list = last.slice(last.indexOf(BALANCE_POLL_RESULT_PREFIX) + BALANCE_POLL_RESULT_PREFIX.length).trim();
-  if (list === "none") return [];
-  return list.split(",").map((s) => {
-    const step = s.trim() as BankProductSummaryFetchStep;
-    if (!BANK_PRODUCT_SUMMARY_FETCH_STEPS.includes(step)) throw new Error(`unknown balance poll step "${s}"`);
-    return step;
-  });
+  return `balance poll fetch: ${steps.length > 0 ? steps.join(",") : "none"}`;
 }
 
 /** The summary as the server's kind states it. Throws when the session got no summary at all. */
@@ -71,5 +55,7 @@ export async function requestBalancePoll(recorder: Recorder, stamp: string): Pro
   });
   const details = result.details as BankProductSummaryApplyDetails;
   for (const m of details.mismatches) log(`  differs: ${m}`);
+  // The hourly runner imports what the poll read, and re-judges when a product differed.
+  reportStepResult({ fetch: details.fetch, differs: details.mismatches.length > 0 });
   return details.fetch;
 }

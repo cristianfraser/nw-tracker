@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { utilityBillKind } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import { decodeHoaStatement, subjectMonth } from "./hoaStatementMails.js";
 import { utilityBillsFromDecoded } from "./utilityBillMails.js";
 

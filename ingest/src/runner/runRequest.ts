@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { IngestRunCompletion, IngestRunRequest, SantanderState } from "nw-tracker-contracts";
+import { SANTANDER_MIN_GAP_MINUTES, type IngestRunCompletion, type IngestRunRequest, type SantanderState } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
 import { lastRunAt } from "../runGuard.js";
 import { lastSuccessfulSantanderFetchAt } from "../santander/fetchHistory.js";
@@ -11,15 +11,12 @@ import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
 
 /**
  * One run the server asked for, end to end: the log file, the runner, the facts the report
- * carries. Replaces spawning `daily-run.sh` / `email-run.sh`, which stay only as the timed
- * LaunchAgents' fallback (`ingest/switch-schedule.sh to-launchd`).
+ * carries. The service's runners are the only runners (the shell runners and their timed
+ * LaunchAgents were retired with F13).
  */
 
-/** The bank was tried this recently: a fetch now would hit the scraper's own 30-minute guard. */
-export const SANTANDER_MIN_GAP_MINUTES = 35;
-
 const LOG_BY_KIND = { nightly: "daily-run.log", hourly: "email-run.log" } as const;
-/** The hourly log rotates at 5 MB (24 runs a day), one generation kept — as email-run.sh did. */
+/** The hourly log rotates at 5 MB (24 runs a day), one generation kept. */
 const HOURLY_LOG_ROTATE_BYTES = 5 * 1024 * 1024;
 
 function envFlag(name: string): boolean {
@@ -51,11 +48,6 @@ export function santanderVeto(state: SantanderState, now: Date = new Date()): st
   return null;
 }
 
-function racionalNeeded(): boolean {
-  const decision = path.join(resolveCfraserDir(), ".broker-email-decision.json");
-  return fs.existsSync(decision) && fs.readFileSync(decision, "utf8").includes('"racional"');
-}
-
 function groceryInboxCount(): number {
   const dir = path.join(resolveCfraserDir(), "grocery-receipts", "inbox");
   if (!fs.existsSync(dir)) return 0;
@@ -71,7 +63,7 @@ function openRunLog(kind: IngestRunRequest["kind"]): number {
 }
 
 function notifyNightlyFailure(failed: number): void {
-  // A desktop alert, as daily-run.sh raised; harmless where osascript is missing.
+  // A desktop alert; harmless where osascript is missing.
   spawnSync("osascript", [
     "-e",
     `display notification "${failed} step(s) failed — see the app or cfraser/daily-run.log" with title "nw-tracker daily run failed"`,
@@ -84,7 +76,7 @@ export async function runRequestedRun(
 ): Promise<IngestRunCompletion> {
   const dryRun = envFlag("INGEST_RUN_DRY");
   const logFd = openRunLog(request.kind);
-  const x = deps.makeRunner?.(logFd) ?? processStepRunner({ cwd: resolveRepoRoot(), logFd });
+  const x = deps.makeRunner?.(logFd) ?? processStepRunner({ cwd: path.join(resolveRepoRoot(), "ingest"), logFd });
   const startedAt = new Date().toISOString();
   try {
     x.note(`${request.kind} run ${request.run_id} starting (${request.reason}; dry-run=${dryRun ? 1 : 0})`);
@@ -96,7 +88,6 @@ export async function runRequestedRun(
               ...shared,
               statementJsonApply: envFlag("NW_TRACKER_STATEMENT_JSON_APPLY"),
               fullReimport: envFlag("NW_TRACKER_FULL_REIMPORT"),
-              racionalNeeded,
               afpUnoFetch: request.afp_uno_fetch,
               afpUnoApply: envFlag("NW_TRACKER_AFP_UNO_APPLY"),
               afcFetch: request.afc_fetch,

@@ -16,18 +16,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { FetchMessageObject } from "imapflow";
 import { execFileSync } from "node:child_process";
 import { loadBankConfig } from "../config.js";
-import { ensureDir, resolveCfraserDir } from "../paths.js";
-import { log, logStep } from "../log.js";
-import { hasDocument, recordDocument } from "../documentLedger.js";
-import { mailDocumentLedgerKey, normalizeMailSubject, pdfAttachmentsFromStructure, safeAttachmentName } from "./santanderDocs.js";
-import { withImapSession } from "./imapSession.js";
+import { resolveCfraserDir } from "../paths.js";
+import { singlePdfDocument, type MailSource } from "./mailFetcher.js";
+import { normalizeMailSubject } from "./mime.js";
 
 export const AFC_CARTOLA_SENDER = "cartolasafc@afc.cl";
-/** Three a year; 45 days covers one missed cartola plus mail lag. */
-const DEFAULT_WINDOW_DAYS = 45;
 
 export function isAfcCartolaSubject(subject: string): boolean {
   const s = normalizeMailSubject(subject);
@@ -57,80 +52,18 @@ export function resolveAfcCartolasDir(): string {
   return path.join(resolveCfraserDir(), "afc-certs", "cartolas");
 }
 
-export type AfcCartolaFetchResult = {
-  saved: { key: string; file: string }[];
-  skipped: { key: string; reason: string }[];
-  errors: { key: string; reason: string }[];
+/** The AFC cartola mails; the password is read when the first document is written. */
+export const AFC_CARTOLAS_SOURCE: MailSource = {
+  label: "AFC cartolas",
+  ledger: "afc",
+  query: { from: AFC_CARTOLA_SENDER },
+  kindOf: (subject) => (isAfcCartolaSubject(subject) ? "email-cartola" : null),
+  documents: (mail) => [
+    singlePdfDocument(mail, {
+      dir: resolveAfcCartolasDir,
+      fallbackName: "afc-cartola.pdf",
+      shape: "pdf attachment",
+      afterWrite: (file) => decryptAfcCartola(file, afcCartolaPassword(loadBankConfig("afc").rut)),
+    }),
+  ],
 };
-
-export async function fetchAfcCartolaEmails(opts?: { windowDays?: number; dryRun?: boolean }): Promise<AfcCartolaFetchResult> {
-  const pdfPassword = afcCartolaPassword(loadBankConfig("afc").rut);
-  const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
-  const since = new Date(Date.now() - windowDays * 86_400_000);
-  const dryRun = opts?.dryRun === true;
-  logStep(`e-mail — AFC cartolas since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
-
-  const result: AfcCartolaFetchResult = { saved: [], skipped: [], errors: [] };
-  const dir = dryRun ? null : ensureDir(resolveAfcCartolasDir());
-  await withImapSession("AFC cartolas", async (client) => {
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const uids = await client.search({ from: AFC_CARTOLA_SENDER, since });
-      if (!uids || uids.length === 0) {
-        log("e-mail: no AFC cartola mail in window");
-        return result;
-      }
-      const candidates: { uid: number; msg: FetchMessageObject }[] = [];
-      for await (const msg of client.fetch(uids, { envelope: true, bodyStructure: true, uid: true })) {
-        if (!isAfcCartolaSubject(String(msg.envelope?.subject ?? ""))) continue;
-        candidates.push({ uid: msg.uid, msg });
-      }
-      for (const candidate of candidates) {
-        const messageId = String(candidate.msg.envelope?.messageId ?? `uid-${candidate.uid}`);
-        const mailDate = candidate.msg.envelope?.date ?? new Date();
-        const key = mailDocumentLedgerKey(mailDate, messageId);
-        if (hasDocument("afc", "email-cartola", key)) {
-          result.skipped.push({ key, reason: "already fetched" });
-          continue;
-        }
-        const attachments = pdfAttachmentsFromStructure(candidate.msg.bodyStructure);
-        if (attachments.length !== 1) {
-          result.errors.push({ key, reason: `expected exactly one pdf attachment, got [${attachments.map((a) => a.filename).join(", ") || "none"}]` });
-          continue;
-        }
-        const ymd = mailDate.toISOString().slice(0, 10);
-        const name = `${ymd} ${safeAttachmentName(attachments[0]!.filename, "afc-cartola.pdf")}`;
-        if (dryRun) {
-          result.saved.push({ key, file: name });
-          continue;
-        }
-        const download = await client.download(String(candidate.uid), attachments[0]!.part, { uid: true });
-        const chunks: Buffer[] = [];
-        for await (const chunk of download.content) chunks.push(Buffer.from(chunk));
-        const target = path.join(dir!, name);
-        if (fs.existsSync(target)) result.skipped.push({ key, reason: `${name} already staged` });
-        else {
-          fs.writeFileSync(target, Buffer.concat(chunks));
-          try {
-            decryptAfcCartola(target, pdfPassword);
-          } catch (err) {
-            fs.rmSync(target, { force: true });
-            result.errors.push({ key, reason: err instanceof Error ? err.message : String(err) });
-            continue;
-          }
-          result.saved.push({ key, file: name });
-        }
-        recordDocument("afc", "email-cartola", key);
-      }
-    } finally {
-      lock.release();
-    }
-  });
-  for (const s of result.saved) log(`e-mail: AFC cartola ${s.key} → ${s.file}`);
-  const already = result.skipped.filter((s) => s.reason === "already fetched").length;
-  for (const s of result.skipped) if (s.reason !== "already fetched") log(`e-mail: AFC cartola ${s.key} skipped (${s.reason})`);
-  if (already > 0) log(`e-mail: ${already} cartola mail(s) already fetched`);
-  for (const e of result.errors) log(`e-mail: AFC cartola ${e.key} ERROR (${e.reason})`);
-  if (result.saved.length === 0 && result.errors.length === 0) log("e-mail: no new AFC cartola");
-  return result;
-}

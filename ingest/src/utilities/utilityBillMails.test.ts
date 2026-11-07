@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { utilityBillKind } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import { decodeEnelBill, decodeMetrogasBill, utilityBillsFromDecoded, type DecodedUtilityBill } from "./utilityBillMails.js";
 
 const mail = (from: string, subject: string, sent: string, text: string, id = sent): ArchivedMail => ({

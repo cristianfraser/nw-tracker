@@ -14,7 +14,7 @@ import { log } from "./log.js";
  * Playwright keeps the event loop alive for as long as a browser is connected, so a context that
  * escaped its close — a login that threw before the session's try/finally (2026-09-11) — turns a
  * reported failure into a process that never exits. In the unattended pipeline that is worse than any
- * failure: `daily-run.sh` waits on the step forever and the hourly poll skips itself behind it. A
+ * failure: the run waits on the step forever and every later run queues behind it. A
  * clean run exits on its own the moment the loop is empty (the timer is unref'd); only a leak reaches
  * the forced exit, and it is logged so the leak stays visible.
  */

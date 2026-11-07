@@ -5,7 +5,7 @@ import {
   type IncomingWireBookingReport,
   type IncomingWireNotice,
 } from "nw-tracker-contracts";
-import { archiveMails } from "../email/santanderMailArchive.js";
+import { archiveMails } from "../email/mailFetcher.js";
 import { log } from "../log.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import {
@@ -59,9 +59,10 @@ export function logWireBookings(r: IncomingWireBookingReport, applied: boolean):
   return r.waiting.some((w) => w.overdue);
 }
 
-/** Fetch, decode and send the window's wire mails. Returns the number of failures. */
-export async function runIncomingWires(fromYmd: string, toYmd: string, dryRun: boolean): Promise<number> {
+/** Fetch, decode and send the window's wire mails: the failures, and the movements written from them. */
+export async function runIncomingWires(fromYmd: string, toYmd: string, dryRun: boolean): Promise<{ failed: number; written: number }> {
   let failed = 0;
+  let written = 0;
   const notices: IncomingWireNotice[] = [];
   for (const source of SOURCES) {
     const { file } = await archiveMails({
@@ -93,9 +94,10 @@ export async function runIncomingWires(fromYmd: string, toYmd: string, dryRun: b
     const d = result.details as BankAccountIncomingWiresApplyDetails;
     log(`server: ${d.new_notices} new wire notice(s)${result.dry_run ? " (report only)" : ""}`);
     if (logWireBookings(d.bookings, !result.dry_run)) failed++;
+    if (!result.dry_run) written += d.bookings.booked.filter((b) => !b.already_in_ledger).length;
   } catch (err) {
     log(`FAILED: ${describeIngestFailure(err)}`);
     failed++;
   }
-  return failed;
+  return { failed, written };
 }

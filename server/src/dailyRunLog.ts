@@ -1,6 +1,6 @@
 /**
- * Outcome log for the unattended daily bank run (`ingest/daily-run.sh`, LaunchAgent
- * `com.user.nw-tracker-daily`).
+ * Outcome log for the unattended nightly bank run (the ingest service's runner, reported through
+ * `completeIngestRun`).
  *
  * The run is deliberately fail-soft — one bank being down must not stop the others — which is
  * exactly what makes a silent failure possible: the log file grows, nothing surfaces, and a
@@ -20,9 +20,8 @@ import { db } from "./db.js";
 export const DAILY_RUN_MESSAGE_TITLE = "Daily bank run";
 export const DAILY_RUN_FAILED_TITLE = "Daily bank run failed";
 
-// The hourly e-mail poll (`ingest/email-run.sh`) records under its OWN titles: the daily
-// titles drive `dailyRunFinishedWithin` (the 22:00 run's repeat skip) and
-// `staleDailyRunDays`, so an hourly row under them would silently disable the nightly bank
+// The hourly e-mail poll records under its OWN titles: the daily titles drive `lastDailyRunAt`
+// (the 22:00 run's repeat skip) and `staleDailyRunDays`, so an hourly row under them would silently disable the nightly bank
 // run for the day and mask a dead one.
 export const HOURLY_EMAIL_RUN_MESSAGE_TITLE = "Hourly e-mail poll";
 export const HOURLY_EMAIL_RUN_FAILED_TITLE = "Hourly e-mail poll failed";
@@ -52,29 +51,6 @@ export function lastDailyRunAt(opts?: { successOnly?: boolean }): string | null 
 
 /** How close to the previous run the scheduled run counts as a repeat and skips itself. */
 export const DAILY_RUN_REPEAT_WINDOW_MINUTES = 60;
-
-/**
- * Did a run finish less than `windowMinutes` ago?
- *
- * The read side of the scheduled run's repeat skip: a 22:00 LaunchAgent run right behind a manual
- * one (or a second launchd fire after a wake) would only log in to the banks again for the same
- * movements. Anything older is not a repeat — until 2026-09-26 the rule was «any run earlier
- * the same Chile day», which let a 12:55 manual run, or even the 04:21 catch-up run launchd fires
- * when the Mac wakes from a night asleep, cancel that evening's run and leave the afternoon's
- * card movements for the next night (2026-09-25). Counts failed runs too — a failure seconds
- * ago was a real attempt.
- */
-export function dailyRunFinishedWithin(
-  windowMinutes: number = DAILY_RUN_REPEAT_WINDOW_MINUTES,
-  now: Date = new Date()
-): boolean {
-  const last = lastDailyRunAt();
-  if (last == null) return false;
-  const finished = new Date(`${String(last).trim().replace(" ", "T")}Z`);
-  if (Number.isNaN(finished.getTime())) return false;
-  const ageMs = now.getTime() - finished.getTime();
-  return ageMs >= 0 && ageMs < windowMinutes * 60_000;
-}
 
 /**
  * `app_messages.created_at` is UTC (`DEFAULT (datetime('now'))`), stored without a zone marker.
@@ -108,7 +84,7 @@ function chileStampFromStoredUtc(stored: string): string {
  * only — so a resolved outage read as unresolved forever (2026-09-11: the 22:37 «fetch Santander»
  * failure sat on top while the 22:46 retry that fixed it was a log row nobody sees there). The
  * recovery is therefore recorded as a notification too, under the SAME title as any clean run:
- * the titles drive `lastDailyRunAt`, `dailyRunFinishedWithin` and `staleDailyRunDays`, and the
+ * the titles drive `lastDailyRunAt` and `staleDailyRunDays`, and the
  * kind is part of none of those reads. Only the first success after a failure qualifies — the
  * next clean run finds a success on top and is a log again — and only when the outage was badged
  * (2026-10-26): the hourly poll badges one failure per Chile day, so a second outage of the day is
@@ -255,7 +231,7 @@ function lastHourlyEmailFailureAt(): string | null {
 }
 
 /**
- * Record one hourly e-mail poll (`ingest/email-run.sh`).
+ * Record one hourly e-mail poll.
  *
  * Quiet successes are not recorded — 24 no-op rows a day is noise, and the runner's log
  * file keeps the trace. A run with activity records a `log`. Failures always record, but

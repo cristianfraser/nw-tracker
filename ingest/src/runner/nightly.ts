@@ -1,10 +1,10 @@
 import type { SantanderFetchOutcome } from "nw-tracker-contracts";
-import { npmRun, savedCount, type StepRunner } from "./steps.js";
+import { ingest, serverTask, type StepOutcome, type StepRunner } from "./steps.js";
 
 /**
- * The nightly bank run — `daily-run.sh`'s sequence, step for step (same labels, same commands,
- * same gates). The server decided that it runs now (22:00, or the first moment after a wake);
- * nothing here second-guesses that.
+ * The nightly bank run. The server decided that it runs now (22:00, or the first moment after a
+ * wake); nothing here second-guesses that. Gates read the steps' results (`StepResult`): the AFC
+ * cartola mails staged, the broker mail naming Racional.
  */
 
 export type NightlyOptions = {
@@ -17,8 +17,6 @@ export type NightlyOptions = {
   fintualApply: boolean;
   /** NW_TRACKER_RACIONAL_APPLY=1: Racional mail movements and the crawl import write. */
   racionalApply: boolean;
-  /** The broker e-mail check named Racional (`cfraser/.broker-email-decision.json`). */
-  racionalNeeded: () => boolean;
   /** The server's request to read AFP UNO's certificates tonight, and why; null = not tonight. */
   afpUnoFetch: { reason: string } | null;
   /** NW_TRACKER_AFP_UNO_APPLY=1: the certificates' missing rows are written. */
@@ -50,7 +48,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   if (o.dryRun) {
     x.note("=== (dry run) skipping fetch:santander");
   } else {
-    const fetched = await x.step("fetch Santander", npmRun("fetch:santander"));
+    const fetched = await x.step("fetch Santander", ingest("fetch:santander"));
     santander = { mode: "nightly", outcome: fetched.ok ? "ok" : "failed", note: null };
   }
 
@@ -65,79 +63,81 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     ["Apple receipts e-mail", "fetch:apple-mail"],
     ["AFC cartolas e-mail", "fetch:afc-cartolas"],
   ] as const) {
-    if (o.dryRun) await x.step(dry(label), npmRun(script, "--dry-run"));
+    if (o.dryRun) await x.step(dry(label), ingest(script, "--dry-run"));
     else {
-      const r = await x.step(label, npmRun(script));
-      if (script === "fetch:afc-cartolas") afcCartolasSaved = savedCount(r.output);
+      const r = await x.step(label, ingest(script));
+      if (script === "fetch:afc-cartolas") afcCartolasSaved = r.result.staged ?? 0;
     }
   }
 
   // 2. Inbox pipeline.
-  if (o.dryRun) await x.step(dry("inbox pipeline"), npmRun("import:cfraser-inbox", "--dry-run"));
-  else if (o.fullReimport) await x.step("inbox pipeline (full re-reconcile)", npmRun("import:cfraser-inbox", "--full"));
-  else await x.step("inbox pipeline", npmRun("import:cfraser-inbox"));
+  if (o.dryRun) await x.step(dry("inbox pipeline"), ingest("import:cfraser-inbox", "--dry-run"));
+  else if (o.fullReimport) await x.step("inbox pipeline (full re-reconcile)", ingest("import:cfraser-inbox", "--full"));
+  else await x.step("inbox pipeline", ingest("import:cfraser-inbox"));
 
   // 2b. The user's mortgage sheet, while the server says the cycle's cuota is not in the ledger.
   if (o.mortgageSheet == null) x.note("=== Mortgage sheet (not stale)");
-  else if (o.dryRun) await x.step(dry("Mortgage sheet"), npmRun("import:mortgage-sheet", "--dry-run"));
-  else await x.step("Mortgage sheet", npmRun("import:mortgage-sheet"));
+  else if (o.dryRun) await x.step(dry("Mortgage sheet"), ingest("import:mortgage-sheet", "--dry-run"));
+  else await x.step("Mortgage sheet", ingest("import:mortgage-sheet"));
 
   // 3. The card movements step 1 staged; 3b the second payment-mirror pass (a same-day payment's
   // card evidence only lands with the feed); 3c the bank's own cupo against the app's.
   if (o.dryRun) {
-    await x.step(dry("Santander movements"), npmRun("import:santander-movements", "--dry-run"));
-    await x.step(dry("Santander USD movements"), npmRun("import:checking-usd-movements", "--dry-run"));
-    await x.step(dry("Convert CC payment mirrors after card feed"), npmRun("convert:cc-payment-mirrors", "--dry-run"));
+    await x.step(dry("Santander movements"), ingest("import:santander-movements", "--dry-run"));
+    await x.step(dry("Santander USD movements"), ingest("import:checking-usd-movements", "--dry-run"));
+    await x.step(dry("Convert CC payment mirrors after card feed"), serverTask("cc_payment_mirrors", "--dry-run"));
   } else {
-    await x.step("Santander movements", npmRun("import:santander-movements"));
+    await x.step("Santander movements", ingest("import:santander-movements"));
     // The dollar account's capture from the same session: confirms its ledger rows, inserts nothing.
-    await x.step("Santander USD movements", npmRun("import:checking-usd-movements"));
-    await x.step("Convert CC payment mirrors after card feed", npmRun("convert:cc-payment-mirrors"));
-    await x.step("CC bank cupo check", npmRun("check:cc-bank-cupo"));
+    await x.step("Santander USD movements", ingest("import:checking-usd-movements"));
+    await x.step("Convert CC payment mirrors after card feed", serverTask("cc_payment_mirrors"));
+    await x.step("CC bank cupo check", serverTask("cc_bank_cupo_check"));
     // The mortgage cuota (the sheet, imported by the inbox pipeline) against the card line that
     // paid it (the feed just imported): either side waiting past its deadline fails.
-    await x.step("Mortgage card match check", npmRun("check:mortgage-card-match"));
+    await x.step("Mortgage card match check", serverTask("mortgage_card_match_check"));
   }
 
   // 3c'. Santander's transfer mails of the last weeks: who each checking transfer went to or came
   // from (the checking rows of the day are in by now; a later row pairs on a later night).
-  if (o.dryRun) await x.step(dry("Transfer mails"), npmRun("import:transfer-mails", "--dry-run"));
-  else await x.step("Transfer mails", npmRun("import:transfer-mails"));
+  if (o.dryRun) await x.step(dry("Transfer mails"), ingest("import:transfer-mails", "--dry-run"));
+  else await x.step("Transfer mails", ingest("import:transfer-mails"));
 
   // 3c''. Payment processors' receipts (Flow, Pago Fácil): who a «PAGOS.FLOW.CL» / «PAGO FACIL»
   // charge actually paid. The card lines they pair with are in by now.
-  if (o.dryRun) await x.step(dry("Payment receipt mails"), npmRun("import:payment-receipt-mails", "--dry-run"));
-  else await x.step("Payment receipt mails", npmRun("import:payment-receipt-mails"));
+  if (o.dryRun) await x.step(dry("Payment receipt mails"), ingest("import:payment-receipt-mails", "--dry-run"));
+  else await x.step("Payment receipt mails", ingest("import:payment-receipt-mails"));
 
   // 3c'''. Utility bills (ENEL, Metrogas): each becomes its place's bill row once the card or
   // checking charge that paid it is in (imported above), with the consumption it states.
-  if (o.dryRun) await x.step(dry("Utility bill mails"), npmRun("import:utility-bills", "--dry-run"));
-  else await x.step("Utility bill mails", npmRun("import:utility-bills"));
+  if (o.dryRun) await x.step(dry("Utility bill mails"), ingest("import:utility-bills", "--dry-run"));
+  else await x.step("Utility bill mails", ingest("import:utility-bills"));
 
   // 3d. Apple's mails, once the card lines they explain are in: which app each charge paid for.
-  if (o.dryRun) await x.step(dry("Apple receipts"), npmRun("import:apple-mail", "--dry-run"));
-  else await x.step("Apple receipts", npmRun("import:apple-mail"));
+  if (o.dryRun) await x.step(dry("Apple receipts"), ingest("import:apple-mail", "--dry-run"));
+  else await x.step("Apple receipts", ingest("import:apple-mail"));
 
   // 4. Broker e-mail: the change detector, and the Fintual / Racional mail imports.
+  let racionalNeeded = false;
   if (o.dryRun) {
-    await x.step(dry("broker e-mail check"), npmRun("check:broker-emails"));
-    await x.step(dry("Fintual e-mail movements"), npmRun("import:fintual-emails"));
-    await x.step(dry("Racional e-mail movements"), npmRun("import:racional-emails"));
+    await x.step(dry("broker e-mail check"), ingest("check:broker-emails"));
+    await x.step(dry("Fintual e-mail movements"), ingest("import:fintual-emails"));
+    await x.step(dry("Racional e-mail movements"), ingest("import:racional-emails"));
   } else {
-    await x.step("fetch broker e-mail", npmRun("fetch:emails"));
-    await x.step("broker e-mail check", npmRun("check:broker-emails"));
+    await x.step("fetch broker e-mail", ingest("fetch:emails"));
+    await x.step("broker e-mail check", ingest("check:broker-emails"));
     await applyOrReport(x, "Fintual e-mail movements", "import:fintual-emails", o.fintualApply);
     await applyOrReport(x, "Fintual Acciones dividend breakdowns", "import:fintual-acciones", o.fintualApply);
     await applyOrReport(x, "Fintual wallet interest", "import:fintual-wallet", o.fintualApply);
-    await applyOrReport(x, "Racional e-mail movements", "import:racional-emails", o.racionalApply);
+    const racionalMail = await applyOrReport(x, "Racional e-mail movements", "import:racional-emails", o.racionalApply);
+    racionalNeeded = racionalMail.result.read_brokers?.includes("racional") ?? false;
   }
 
-  // 5. Racional, only when the e-mail check asked for it.
+  // 5. Racional, only when the broker mail asked for it.
   if (o.dryRun) {
-    await x.step(dry("Racional movements"), npmRun("import:racional-movements"));
-  } else if (o.racionalNeeded()) {
+    await x.step(dry("Racional movements"), ingest("import:racional-movements"));
+  } else if (racionalNeeded) {
     x.note("e-mail reported new Racional activity — fetching");
-    await x.step("fetch Racional", npmRun("fetch:racional"));
+    await x.step("fetch Racional", ingest("fetch:racional"));
     await applyOrReport(x, "Racional movements", "import:racional-movements", o.racionalApply);
   } else {
     x.note("=== Racional (skipped — no e-mail said anything moved)");
@@ -150,8 +150,8 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`=== (dry run) skipping fetch:afp-uno (${o.afpUnoFetch.reason})`);
   } else {
     x.note(`AFP UNO: ${o.afpUnoFetch.reason}`);
-    if (o.afpUnoApply) await x.step("AFP UNO (apply)", npmRun("fetch:afp-uno", "--apply"));
-    else await x.step("AFP UNO (report only)", npmRun("fetch:afp-uno"));
+    if (o.afpUnoApply) await x.step("AFP UNO (apply)", ingest("fetch:afp-uno", "--apply"));
+    else await x.step("AFP UNO (report only)", ingest("fetch:afp-uno"));
   }
 
   // 5b′. The AFC, when the server expects a contribution (from the 14th after a payroll month
@@ -168,7 +168,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     const args = [...(o.afcApply ? ["--apply"] : [])];
     if (afcFetch.expected_period) args.push(`--expect=${afcFetch.expected_period}`);
     if (afcFetch.overdue) args.push("--overdue");
-    await x.step(o.afcApply ? "AFC (apply)" : "AFC (report only)", npmRun("fetch:afc", ...args));
+    await x.step(o.afcApply ? "AFC (apply)" : "AFC (report only)", ingest("fetch:afc", ...args));
   }
 
   // 5c. Payslips, when the server asks: the portal from the 1st until last month's payslip is in,
@@ -179,26 +179,25 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`=== (dry run) skipping payslips (${o.payslips.reason})`);
   } else {
     x.note(`payslips: ${o.payslips.reason}`);
-    if (o.payslips.fetch) await x.step("fetch Buk payslips", npmRun("fetch:buk-payslips"));
-    await x.step("parse payslips", npmRun("parse:payroll-liquidaciones"));
+    if (o.payslips.fetch) await x.step("fetch Buk payslips", ingest("fetch:buk-payslips"));
+    await x.step("parse payslips", ingest("parse:payroll-liquidaciones"));
     // The months' legal parameters the payslip checks read (Previred; only new months are fetched).
-    await x.step("payroll parameters", npmRun("import:previred-indicators"));
+    await x.step("payroll parameters", ingest("import:previred-indicators"));
     // Not strict: an unpaired payslip is the normal state until the month's cartola arrives.
-    await x.step("import payslips", npmRun("import:payroll-liquidaciones", "--no-strict"));
+    await x.step("import payslips", ingest("import:payroll-liquidaciones", "--no-strict"));
   }
 
   // 6. Statement JSON: cross-check, and (when enabled) write the facturaciones no PDF owns.
   if (o.dryRun || !o.statementJsonApply) {
-    await x.step("Santander statements (report only)", npmRun("import:santander-statements"));
+    await x.step("Santander statements (report only)", ingest("import:santander-statements"));
   } else {
-    await x.step("Santander statements (apply)", npmRun("import:santander-statements", "--apply"));
+    await x.step("Santander statements (apply)", ingest("import:santander-statements", "--apply"));
   }
 
   return { santander };
 }
 
-/** `<label> (apply)` with `--apply`, or `<label> (report only)` — the shell runners' naming. */
-export async function applyOrReport(x: StepRunner, label: string, script: string, apply: boolean): Promise<void> {
-  if (apply) await x.step(`${label} (apply)`, npmRun(script, "--apply"));
-  else await x.step(`${label} (report only)`, npmRun(script));
+/** `<label> (apply)` with `--apply`, or `<label> (report only)`. */
+export function applyOrReport(x: StepRunner, label: string, script: string, apply: boolean): Promise<StepOutcome> {
+  return apply ? x.step(`${label} (apply)`, ingest(script, "--apply")) : x.step(`${label} (report only)`, ingest(script));
 }

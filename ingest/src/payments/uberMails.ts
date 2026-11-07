@@ -31,7 +31,7 @@
  * request time the header prints for the 2025-on layout), which a summary and its receipt share.
  */
 import type { ProcessorReceipt, ReceiptCharge, ReceiptTrip } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentReceiptMails.js";
 
 function fail(mail: ArchivedMail, why: string): never {

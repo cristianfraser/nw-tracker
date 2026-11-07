@@ -29,10 +29,12 @@ import {
   type TransferNotice,
 } from "nw-tracker-contracts";
 import { decodeBancoChileTransferMail } from "../bancochile/transferMails.js";
-import { archiveMails, archiveSantanderMails } from "../email/santanderMailArchive.js";
+import { archiveMails } from "../email/mailFetcher.js";
+import { archiveSantanderMails } from "../email/santanderMailArchive.js";
 import { log } from "../log.js";
 import { decodeTransferMail } from "../santander/transferMails.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { reportStepResult } from "../stepResult.js";
 import { runIncomingWires } from "../wires/incomingWiresStep.js";
 
 type ArchivedMail = { message_id: string; sent_at_chile: string; subject: string; text: string };
@@ -73,6 +75,9 @@ function chileToday(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
 }
 
+/** Movements written from a mail this run (a transfer the bank feed has not listed, a booked wire). */
+let writtenFromMail = 0;
+
 /** One mailer's window: decode, send, report. Returns the number of failures. */
 async function runSource(source: Source, file: string): Promise<number> {
   const mails = JSON.parse(fs.readFileSync(file, "utf8")) as ArchivedMail[];
@@ -104,6 +109,7 @@ async function runSource(source: Source, file: string): Promise<number> {
     const d = result.details as BankAccountTransferNoticesApplyDetails;
     log(`server: ${d.new_notices} new, ${d.paired} notice(s) paired with a bank row; unpaired ${JSON.stringify(d.unpaired)}`);
     for (const a of d.ambiguous.slice(0, 20)) log(`  ambiguous: ${a}`);
+    writtenFromMail += d.synthesized.length;
     for (const s of d.synthesized) log(`  movement written from the mail: ${s.movement_id}, ${s.date} $${s.amount} on account ${s.account_id}`);
     for (const o of d.overdue) {
       log(`OVERDUE: movement ${o.movement_id} ($${o.amount}, mailed ${o.date}) — no bank feed has listed it by ${o.deadline}`);
@@ -133,7 +139,12 @@ async function main(): Promise<number> {
     const file = archive ?? (await source.fetch(from.toISOString().slice(0, 10), to)).file;
     failed += await runSource(source, file);
   }
-  if (!issuer || issuer === "wires") failed += await runIncomingWires(from.toISOString().slice(0, 10), to, dryRun);
+  if (!issuer || issuer === "wires") {
+    const wires = await runIncomingWires(from.toISOString().slice(0, 10), to, dryRun);
+    failed += wires.failed;
+    writtenFromMail += wires.written;
+  }
+  if (!dryRun) reportStepResult({ inserted: writtenFromMail });
   return failed > 0 ? 1 : 0;
 }
 

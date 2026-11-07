@@ -25,7 +25,7 @@
  * Any other mail from these senders decodes to null; a purchase this decoder cannot read throws.
  */
 import type { ProcessorReceipt, ReceiptEvent } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentReceiptMails.js";
 
 function fail(mail: ArchivedMail, why: string): never {

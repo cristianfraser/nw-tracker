@@ -22,7 +22,7 @@
  * PDF decodes to null; a permit mail whose PDF does not read as described throws.
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentReceiptMails.js";
 
 export const MAIPU_PERMIT_SENDER = "permisocirculacion@maipu.cl";

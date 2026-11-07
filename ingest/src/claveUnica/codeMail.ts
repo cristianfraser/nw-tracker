@@ -7,7 +7,9 @@
  * The mailbox is the same Gmail the broker-mail poll reads (`cfraser/email-fetch.json`, Keychain
  * `nw-tracker-gmail`); nothing is written, marked or moved.
  */
-import { loadBrokerEmailConfig, mimeBodyToText, searchSinceCandidates } from "../email/fetch.js";
+import { loadBrokerEmailConfig } from "../email/fetch.js";
+import { searchSinceCandidates } from "../email/mailFetcher.js";
+import { mimeBodyToText } from "../email/mime.js";
 import { log } from "../log.js";
 import { withImapSession } from "../email/imapSession.js";
 

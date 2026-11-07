@@ -10,6 +10,7 @@
  * the server is unreachable, or the ledger disagrees with a credit.
  */
 import { brokerMovementsKind, type BrokerMovementsApplyDetails } from "nw-tracker-contracts";
+import { reportStepResult } from "../stepResult.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { fetchFintualCashInterests } from "./walletInterest.js";
 
@@ -26,8 +27,13 @@ async function main(): Promise<number> {
   }
   let details: BrokerMovementsApplyDetails;
   try {
-    const payload = brokerMovementsKind.payload.parse({ broker: "fintual", apply, read_at: readAt, movements, dividends: null });
-    const result = await ingestClient().send(brokerMovementsKind, payload, { channel: "web_session", ref: `fintual-wallet-${readAt}`, fetched_at: readAt });
+    const payload = brokerMovementsKind.payload.parse({ broker: "fintual", read_at: readAt, movements, dividends: null });
+    const result = await ingestClient().send(
+      brokerMovementsKind,
+      payload,
+      { channel: "web_session", ref: `fintual-wallet-${readAt}`, fetched_at: readAt },
+      { dryRun: !apply }
+    );
     details = result.details as BrokerMovementsApplyDetails;
   } catch (err) {
     console.log(`FAILED — ${describeIngestFailure(err)}`);
@@ -37,6 +43,7 @@ async function main(): Promise<number> {
   for (const m of details.movements) {
     console.log(`  ${m.occurred_on}  interest ${m.amount.toFixed(2).padStart(8)} usd  [${m.state}]${m.detail ? ` ${m.detail}` : ""}`);
   }
+  if (apply) reportStepResult({ inserted: details.inserted });
   console.log(apply ? `  → ${details.inserted} inserted, ${details.duplicates} already present` : "Report only — nothing written.");
   for (const p of details.problems) console.log(`  PROBLEM: ${p}`);
   return details.problems.length > 0 ? 1 : 0;

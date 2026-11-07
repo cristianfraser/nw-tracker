@@ -21,154 +21,53 @@
  * land — the importer (`import:fintual-acciones`) reads these folders directly and is
  * idempotent, so there is no inbox hand-off to archive.
  */
-import fs from "node:fs";
 import path from "node:path";
-import type { FetchMessageObject } from "imapflow";
-import { ensureDir, resolveCfraserDir } from "../paths.js";
-import { log, logStep } from "../log.js";
-import { hasDocument, recordDocument } from "../documentLedger.js";
-import {
-  mailDocumentLedgerKey,
-  normalizeMailSubject,
-  pdfAttachmentsFromStructure,
-  safeAttachmentName,
-} from "./santanderDocs.js";
-import { withImapSession } from "./imapSession.js";
+import { resolveCfraserDir } from "../paths.js";
+import { singlePdfDocument, type MailSource } from "./mailFetcher.js";
+import { normalizeMailSubject } from "./mime.js";
 
 export const FINTUAL_MAIL_SENDER = "hola@fintual.com";
 
-/** Covers one missed month plus mail lag; `--days` widens it for the history backfill. */
-const DEFAULT_WINDOW_DAYS = 45;
+type FintualAccionesDoc = { kind: string; subdir: string; fallbackName: string; matchesSubject: (normalizedSubject: string) => boolean };
 
-export type FintualAccionesDoc = {
-  /** Document-ledger kind; also what the run summary calls it. */
-  kind: string;
-  label: string;
-  /** Folder under `cfraser/fintual-acciones/`. */
-  subdir: string;
-  fallbackName: string;
-  matchesSubject: (normalizedSubject: string) => boolean;
-};
-
-export const FINTUAL_ACCIONES_DOCS: readonly FintualAccionesDoc[] = [
+const FINTUAL_ACCIONES_DOCS: readonly FintualAccionesDoc[] = [
   {
     kind: "email-acciones-cartola",
-    label: "cartola mensual de acciones",
     subdir: "cartolas",
     fallbackName: "cartola_mensual.pdf",
     matchesSubject: (s) => s.includes("cartola mensual de acciones"),
   },
   {
     kind: "email-acciones-certificado",
-    label: "certificado de eventos de capital en acciones",
     subdir: "certificados",
     fallbackName: "certificado.pdf",
     matchesSubject: (s) => s.includes("certificado de transacciones y eventos de capital"),
   },
-] as const;
+];
 
-export function classifyFintualAccionesSubject(subject: string): FintualAccionesDoc | null {
-  const normalized = normalizeMailSubject(subject);
-  return FINTUAL_ACCIONES_DOCS.find((doc) => doc.matchesSubject(normalized)) ?? null;
-}
+const docOfKind = (kind: string) => FINTUAL_ACCIONES_DOCS.find((d) => d.kind === kind)!;
 
 export function resolveFintualAccionesDir(): string {
   return path.join(resolveCfraserDir(), "fintual-acciones");
 }
 
-export type FintualAccionesFetchResult = {
-  saved: { kind: string; key: string; file: string }[];
-  skipped: { kind: string; key: string; reason: string }[];
-  /** A wanted mail whose attachment shape is unmapped — the run must fail loudly. */
-  errors: { kind: string; key: string; reason: string }[];
+export const FINTUAL_ACCIONES_SOURCE: MailSource = {
+  label: "Fintual Acciones documents",
+  ledger: "fintual",
+  // `subject` narrows server-side to the Acciones mails; the notification mails share the sender.
+  query: { from: FINTUAL_MAIL_SENDER, subject: "Acciones" },
+  kindOf(subject) {
+    const normalized = normalizeMailSubject(subject);
+    return FINTUAL_ACCIONES_DOCS.find((d) => d.matchesSubject(normalized))?.kind ?? null;
+  },
+  documents(mail) {
+    const doc = docOfKind(mail.kind);
+    return [
+      singlePdfDocument(mail, {
+        dir: () => path.join(resolveFintualAccionesDir(), doc.subdir),
+        fallbackName: doc.fallbackName,
+        shape: "pdf attachment",
+      }),
+    ];
+  },
 };
-
-export async function fetchFintualAccionesDocuments(opts?: {
-  windowDays?: number;
-  /** List what would be downloaded without writing anything or touching the ledger. */
-  dryRun?: boolean;
-}): Promise<FintualAccionesFetchResult> {
-  const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
-  const since = new Date(Date.now() - windowDays * 86_400_000);
-  const dryRun = opts?.dryRun === true;
-
-  logStep(`e-mail — Fintual Acciones documents since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
-
-  const result: FintualAccionesFetchResult = { saved: [], skipped: [], errors: [] };
-  const root = dryRun ? null : ensureDir(resolveFintualAccionesDir());
-
-  await withImapSession("Fintual Acciones documents", async (client) => {
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      // `subject` narrows server-side to the Acciones mails; the notification mails share the
-      // sender and would otherwise all be fetched with their body structures.
-      const uids = await client.search({ from: FINTUAL_MAIL_SENDER, since, subject: "Acciones" });
-      if (!uids || uids.length === 0) {
-        log("e-mail: no Fintual Acciones mail in window");
-        return result;
-      }
-
-      // Collect first, download after: imapflow cannot serve a download while a fetch stream
-      // is still being iterated.
-      const candidates: { uid: number; doc: FintualAccionesDoc; msg: FetchMessageObject }[] = [];
-      for await (const msg of client.fetch(uids, { envelope: true, bodyStructure: true, uid: true })) {
-        const doc = classifyFintualAccionesSubject(String(msg.envelope?.subject ?? ""));
-        if (!doc) continue;
-        candidates.push({ uid: msg.uid, doc, msg });
-      }
-
-      for (const { uid, doc, msg } of candidates) {
-        const messageId = String(msg.envelope?.messageId ?? `uid-${uid}`);
-        const mailDate = msg.envelope?.date ?? new Date();
-        const key = mailDocumentLedgerKey(mailDate, messageId);
-        if (hasDocument("fintual", doc.kind, key)) {
-          result.skipped.push({ kind: doc.kind, key, reason: "already fetched" });
-          continue;
-        }
-
-        const attachments = pdfAttachmentsFromStructure(msg.bodyStructure);
-        if (attachments.length !== 1) {
-          result.errors.push({
-            kind: doc.kind,
-            key,
-            reason: `expected exactly one pdf attachment, got [${attachments.map((a) => a.filename).join(", ") || "none"}]`,
-          });
-          continue;
-        }
-
-        const ymd = mailDate.toISOString().slice(0, 10);
-        const name = `${ymd} ${safeAttachmentName(attachments[0]!.filename, doc.fallbackName)}`;
-        const relative = path.join(doc.subdir, name);
-        if (dryRun) {
-          result.saved.push({ kind: doc.kind, key, file: relative });
-          continue;
-        }
-
-        const download = await client.download(String(uid), attachments[0]!.part, { uid: true });
-        const chunks: Buffer[] = [];
-        for await (const chunk of download.content) chunks.push(Buffer.from(chunk));
-        const target = path.join(ensureDir(path.join(root!, doc.subdir)), name);
-        if (fs.existsSync(target)) {
-          result.skipped.push({ kind: doc.kind, key, reason: `${relative} already on disk` });
-        } else {
-          fs.writeFileSync(target, Buffer.concat(chunks));
-          result.saved.push({ kind: doc.kind, key, file: relative });
-        }
-        // Recorded whether it was written or already on disk: either way we have it.
-        recordDocument("fintual", doc.kind, key);
-      }
-    } finally {
-      lock.release();
-    }
-  });
-
-  for (const s of result.saved) log(`e-mail: fintual ${s.kind} ${s.key} → ${s.file}`);
-  const alreadyCount = result.skipped.filter((s) => s.reason === "already fetched").length;
-  for (const s of result.skipped) {
-    if (s.reason !== "already fetched") log(`e-mail: fintual ${s.kind} ${s.key} skipped (${s.reason})`);
-  }
-  if (alreadyCount > 0) log(`e-mail: ${alreadyCount} Fintual Acciones mail(s) already fetched`);
-  for (const e of result.errors) log(`e-mail: fintual ${e.kind} ${e.key} ERROR (${e.reason})`);
-  if (result.saved.length === 0 && result.errors.length === 0) log("e-mail: no new Fintual Acciones document");
-  return result;
-}

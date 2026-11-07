@@ -25,7 +25,7 @@
  * check-in, boarding pass, marketing) decodes to null; a purchase mail this cannot read throws.
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
-import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentReceiptMails.js";
 
 /** Every LATAM sender that has mailed a purchase or a change. */

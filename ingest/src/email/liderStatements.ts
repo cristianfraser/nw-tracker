@@ -23,24 +23,11 @@
  * copies under other filenames, and a second copy of a close makes the incremental import
  * ping-pong the statement row between source names (see PARSERS.md, 2026-08-10).
  */
-import fs from "node:fs";
-import path from "node:path";
-import type { FetchMessageObject } from "imapflow";
-import { ensureDir, resolveInboxDir } from "../paths.js";
-import { log, logStep } from "../log.js";
-import { hasDocument, recordDocument } from "../documentLedger.js";
-import {
-  mailDocumentLedgerKey,
-  normalizeMailSubject,
-  pdfAttachmentsFromStructure,
-  safeAttachmentName,
-} from "./santanderDocs.js";
-import { withImapSession } from "./imapSession.js";
+import { resolveInboxDir } from "../paths.js";
+import { singlePdfDocument, type MailSource } from "./mailFetcher.js";
+import { normalizeMailSubject } from "./mime.js";
 
 export const LIDER_STATEMENT_SENDER = "estadodecuenta@correo.tarjetaliderbci.cl";
-
-/** How far back to look; the ledger bounds the rest. Covers one missed month plus mail lag. */
-const DEFAULT_WINDOW_DAYS = 45;
 
 export function isLiderStatementSubject(subject: string): boolean {
   const s = normalizeMailSubject(subject);
@@ -52,102 +39,17 @@ export function isLiderStatementAttachmentName(filename: string): boolean {
   return /^\d+\.pdf$/i.test(String(filename ?? "").trim());
 }
 
-/** `2026-08-28-<msgid slug>` — same shape as the boleta staging key, and for the same reason. */
-export function liderStatementLedgerKey(date: Date, messageId: string): string {
-  return mailDocumentLedgerKey(date, messageId);
-}
-
-export type LiderStatementFetchResult = {
-  saved: { key: string; file: string }[];
-  skipped: { key: string; reason: string }[];
-  /** Non-empty means the mail's attachment shape is unmapped — the run must fail loudly. */
-  errors: { key: string; reason: string }[];
+export const LIDER_STATEMENT_SOURCE: MailSource = {
+  label: "Lider statement",
+  ledger: "lider",
+  query: { from: LIDER_STATEMENT_SENDER },
+  kindOf: (subject) => (isLiderStatementSubject(subject) ? "email-cc-statement" : null),
+  documents: (mail) => [
+    singlePdfDocument(mail, {
+      dir: resolveInboxDir,
+      accept: isLiderStatementAttachmentName,
+      fallbackName: "lider-estado-de-cuenta.pdf",
+      shape: "bare-number statement pdf",
+    }),
+  ],
 };
-
-export async function fetchLiderStatementEmails(opts?: {
-  windowDays?: number;
-  /** List what would be downloaded without writing anything or touching the ledger. */
-  dryRun?: boolean;
-}): Promise<LiderStatementFetchResult> {
-  const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
-  const since = new Date(Date.now() - windowDays * 86_400_000);
-  const dryRun = opts?.dryRun === true;
-
-  logStep(`e-mail — Lider statement since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
-
-  const result: LiderStatementFetchResult = { saved: [], skipped: [], errors: [] };
-  const inbox = dryRun ? null : ensureDir(resolveInboxDir());
-
-  await withImapSession("Lider statement", async (client) => {
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const uids = await client.search({ from: LIDER_STATEMENT_SENDER, since });
-      if (!uids || uids.length === 0) {
-        log("e-mail: no Lider statement mail in window");
-        return result;
-      }
-
-      const candidates: { uid: number; msg: FetchMessageObject }[] = [];
-      for await (const msg of client.fetch(uids, { envelope: true, bodyStructure: true, uid: true })) {
-        if (!isLiderStatementSubject(String(msg.envelope?.subject ?? ""))) continue;
-        candidates.push({ uid: msg.uid, msg });
-      }
-
-      for (const candidate of candidates) {
-        const messageId = String(candidate.msg.envelope?.messageId ?? `uid-${candidate.uid}`);
-        const mailDate = candidate.msg.envelope?.date ?? new Date();
-        const key = liderStatementLedgerKey(mailDate, messageId);
-        if (hasDocument("lider", "email-cc-statement", key)) {
-          result.skipped.push({ key, reason: "already fetched" });
-          continue;
-        }
-
-        const attachments = pdfAttachmentsFromStructure(candidate.msg.bodyStructure);
-        const statements = attachments.filter((a) => isLiderStatementAttachmentName(a.filename));
-        if (statements.length !== 1) {
-          result.errors.push({
-            key,
-            reason: `expected exactly one bare-number statement pdf, got [${
-              attachments.map((a) => a.filename).join(", ") || "no pdf attachments"
-            }]`,
-          });
-          continue;
-        }
-
-        const ymd = mailDate.toISOString().slice(0, 10);
-        const name = `${ymd} ${safeAttachmentName(statements[0]!.filename, "lider-estado-de-cuenta.pdf")}`;
-        if (dryRun) {
-          result.saved.push({ key, file: name });
-          continue;
-        }
-
-        const download = await client.download(String(candidate.uid), statements[0]!.part, { uid: true });
-        const chunks: Buffer[] = [];
-        for await (const chunk of download.content) chunks.push(Buffer.from(chunk));
-        const target = path.join(inbox!, name);
-        // Same rule as santanderDocs: a file still sitting in the inbox has not been imported
-        // yet — same bytes, and overwriting would only race the importer that may be reading it.
-        if (fs.existsSync(target)) {
-          result.skipped.push({ key, reason: `${name} already in inbox` });
-        } else {
-          fs.writeFileSync(target, Buffer.concat(chunks));
-          result.saved.push({ key, file: name });
-        }
-        // Recorded whether it was written or already in the inbox: either way we have it.
-        recordDocument("lider", "email-cc-statement", key);
-      }
-    } finally {
-      lock.release();
-    }
-  });
-
-  for (const s of result.saved) log(`e-mail: lider statement ${s.key} → ${s.file}`);
-  const alreadyCount = result.skipped.filter((s) => s.reason === "already fetched").length;
-  for (const s of result.skipped) {
-    if (s.reason !== "already fetched") log(`e-mail: lider statement ${s.key} skipped (${s.reason})`);
-  }
-  if (alreadyCount > 0) log(`e-mail: ${alreadyCount} statement mail(s) already fetched`);
-  for (const e of result.errors) log(`e-mail: lider statement ${e.key} ERROR (${e.reason})`);
-  if (result.saved.length === 0 && result.errors.length === 0) log("e-mail: no new Lider statement");
-  return result;
-}
