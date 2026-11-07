@@ -2,6 +2,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { serverConfig } from "./config.js";
 import { requestCacheOutcome, runWithRequestCacheStats, type RequestCacheStats } from "./requestCacheStats.js";
 import { requestContext } from "./requestContext.js";
+import { ScheduledJob, nextAlignedMs } from "./schedulerKernel.js";
 import { usageDb } from "./usageDb.js";
 
 /**
@@ -275,17 +276,23 @@ export function usageLogMiddleware(): RequestHandler {
   };
 }
 
-let flushTimer: ReturnType<typeof setInterval> | null = null;
-
-export function startUsageLogFlusher(): void {
-  if (flushTimer) return;
-  flushTimer = setInterval(() => {
+const flushJob = new ScheduledJob({
+  name: "usage-log",
+  enabled: usageLogEnabled,
+  next: (nowMs) => nextAlignedMs(nowMs, FLUSH_INTERVAL_MS),
+  run: async () => {
     try {
       flushUsageLog();
+      return "ok";
     } catch (err) {
       // Telemetry must never take the server down; the next minute retries with new data.
       console.error("[usage-log] flush failed:", err);
+      return "failed";
     }
-  }, FLUSH_INTERVAL_MS);
-  flushTimer.unref();
+  },
+});
+
+/** Writes the buffer once a minute (on the wall clock). */
+export function startUsageLogFlusher(): void {
+  if (!flushJob.isEnabled) flushJob.start();
 }

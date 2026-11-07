@@ -30,8 +30,19 @@ import {
   markIngestRunRequested,
   markIngestRunSkipped,
 } from "./ingestRuns.js";
-import { claimJob, enqueueJob, jobPayload, releaseJob, supersedeJob, type JobRow } from "./jobQueue.js";
+import {
+  INGEST_SERVICE_RESOURCE,
+  claimJob,
+  enqueueJob,
+  ingestRunKindOfJob,
+  jobKindForIngestRun,
+  jobPayload,
+  releaseJob,
+  supersedeJob,
+  type JobRow,
+} from "./jobQueue.js";
 import { notifyJobQueue } from "./jobQueueSignal.js";
+import { ScheduledJob, atStartThen, nextAlignedMs } from "./schedulerKernel.js";
 
 /**
  * The server's side of the run protocol (docs/ingest-split-plan.md, Phase 2; through the job
@@ -46,8 +57,8 @@ import { notifyJobQueue } from "./jobQueueSignal.js";
 const TICK_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 export const INGEST_UNREACHABLE_TITLE = "Ingest service unreachable";
-/** The worker name of jobs the ingest service runs. */
-export const INGEST_SERVICE_WORKER = "ingest-service";
+/** The worker name of jobs the ingest service runs (the resource it holds, as a worker). */
+export const INGEST_SERVICE_WORKER = INGEST_SERVICE_RESOURCE;
 
 /**
  * On only with `INGEST_SCHEDULER_ENABLED=1`, and never on an instance with
@@ -156,14 +167,10 @@ export const INGEST_DISPATCH_RETRY_MS = TICK_MS;
 /** What an ingest job carries: the slot it answers (a manual run's is the request instant). */
 export type IngestJobPayload = { slot: string };
 
-function jobKindFor(kind: IngestRunKind): "ingest.nightly" | "ingest.hourly" {
-  return kind === "nightly" ? "ingest.nightly" : "ingest.hourly";
-}
-
 function ingestKindOfJob(job: JobRow): IngestRunKind {
-  if (job.kind === "ingest.nightly") return "nightly";
-  if (job.kind === "ingest.hourly") return "hourly";
-  throw new Error(`Job ${job.id} (${job.kind}) is not an ingest run`);
+  const kind = ingestRunKindOfJob(job.kind);
+  if (!kind) throw new Error(`Job ${job.id} (${job.kind}) is not an ingest run`);
+  return kind;
 }
 
 export function ingestJobSlot(job: JobRow): Date {
@@ -181,8 +188,8 @@ export function ingestJobSlot(job: JobRow): Date {
 export function enqueueIngestRun(kind: IngestRunKind, slot: Date, reason: string, enqueuedBy: string, now: Date): { job: JobRow; coalesced: boolean } {
   const out = enqueueJob(
     {
-      kind: jobKindFor(kind),
-      dedupe_key: jobKindFor(kind),
+      kind: jobKindForIngestRun(kind),
+      dedupe_key: jobKindForIngestRun(kind),
       payload: { slot: slot.toISOString() } satisfies IngestJobPayload,
       enqueued_by: enqueuedBy,
       reason,
@@ -341,20 +348,23 @@ export function startManualIngestRun(kind: IngestRunKind, now: Date, schedulerOn
   return { status: "queued", job_id: job.id, coalesced };
 }
 
-let started = false;
-
-/** The producer: every tick, queue the slot that is due. The executor starts the jobs. */
-export function startIngestRunScheduler(): void {
-  if (started || !ingestSchedulerEnabled()) return;
-  started = true;
-  const tick = () => {
+/** The producer: every 30 s on the wall clock (and at start), queue the slot that is due. The executor starts the jobs. */
+const schedulerJob = new ScheduledJob({
+  name: "ingest-runs",
+  enabled: ingestSchedulerEnabled,
+  next: atStartThen((nowMs) => nextAlignedMs(nowMs, TICK_MS)),
+  run: async () => {
     try {
       ingestSchedulerTick(new Date());
+      return "ok";
     } catch (err) {
       console.log(`ingest-runs: tick failed — ${err instanceof Error ? err.message : String(err)}`);
+      return "failed";
     }
-  };
+  },
+});
+
+export function startIngestRunScheduler(): void {
+  if (schedulerJob.isEnabled || !schedulerJob.start()) return;
   console.log(`ingest-runs: scheduler on (tick ${TICK_MS / 1000} s; runs go through the job queue)`);
-  tick();
-  setInterval(tick, TICK_MS).unref();
 }

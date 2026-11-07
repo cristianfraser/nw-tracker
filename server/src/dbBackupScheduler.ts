@@ -3,6 +3,7 @@ import path from "node:path";
 import { createDbSnapshot, listDbSnapshots } from "./dbSnapshot.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { serverConfig } from "./config.js";
+import { ScheduledJob, atStartThen } from "./schedulerKernel.js";
 
 /**
  * Daily automatic DB snapshot while the server runs. The SQLite file is the only
@@ -21,9 +22,7 @@ import { serverConfig } from "./config.js";
 const CHECK_INTERVAL_MS = 60 * 60_000;
 const AUTO_LABEL = "auto-daily";
 
-let timerHandle: ReturnType<typeof setInterval> | null = null;
 let lastBackupChileYmd: string | null = null;
-let runInFlight = false;
 
 function retentionCount(): number {
   return serverConfig().dbBackup.keep;
@@ -68,10 +67,8 @@ function lastAutoSnapshotYmd(): string | null {
 }
 
 async function backupTick(): Promise<void> {
-  if (runInFlight) return;
   const today = chileCalendarTodayYmd();
   if (lastBackupChileYmd === today) return;
-  runInFlight = true;
   try {
     const r = await createDbSnapshot({ label: AUTO_LABEL });
     lastBackupChileYmd = today;
@@ -80,22 +77,29 @@ async function backupTick(): Promise<void> {
     pruneAutoSnapshots();
   } catch (e) {
     console.error(`db-backup: failed — ${e instanceof Error ? e.message : e}`);
-  } finally {
-    runInFlight = false;
   }
 }
 
+/** Checked at start and every hour after the last check (the kernel's in-flight guard keeps one at a time). */
+let lastCheckAtMs = 0;
+const backupJob = new ScheduledJob({
+  name: "db-backup",
+  enabled: () => serverConfig().dbBackup.enabled,
+  next: atStartThen(() => lastCheckAtMs + CHECK_INTERVAL_MS),
+  run: async () => {
+    lastCheckAtMs = Date.now();
+    await backupTick();
+    return "ok";
+  },
+});
+
 export function startDbBackupScheduler(): void {
+  if (backupJob.isEnabled) return;
   if (!serverConfig().dbBackup.enabled) {
     console.log("db-backup: disabled (DB_BACKUP_ENABLED=0)");
     return;
   }
-  if (timerHandle != null) return;
   lastBackupChileYmd = lastAutoSnapshotYmd();
-  timerHandle = setInterval(() => {
-    void backupTick();
-  }, CHECK_INTERVAL_MS);
-  timerHandle.unref?.();
-  void backupTick();
+  backupJob.start();
 }
 

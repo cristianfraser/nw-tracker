@@ -1,58 +1,42 @@
 /**
- * In-process scheduler for external syncs.
+ * In-process scheduler for external syncs, on the scheduler kernel (`schedulerKernel.ts`).
  *
  * - While any source is stale: poll on an interval (default 15 min), sync immediately on start.
  * - When `stocks_nyse` is stale after the NYSE close window, or `stocks_santiago` on the evening of
  *   its Chile close: poll every 3 min until caught up.
- * - After a suspend (sleep/wake, detected by a late timer or wall-vs-monotonic clock divergence):
- *   wait 10 s for the network, then sync; a sync that still fails is retried after 60 s and 180 s
- *   (`globalSyncSchedulerPolicy.ts`). Covers the poll loop and the fresh-source wake timer alike.
- * - When all sources are fresh: stop polling; wake at the earliest source `next_sync` wall time.
+ * - While polling, a fresh source falling due before the next poll gets its own run: a stock EOD
+ *   due at 16:05 New York does not wait for the next 15-minute poll (2026-10-06: AFP/AFC stale all
+ *   afternoon, the NYSE bars landed at the 17:11 Chile tick instead of 17:05).
+ * - After a suspend the kernel waits 10 s for the network; a sync that still fails is retried
+ *   after 60 s and 180 s — only while recovering from a wake: outside one the next poll comes
+ *   anyway, and retrying a genuinely failing source would only hammer it. (The 2026-10-16 evening,
+ *   twelve Fintual polls in a row failing with "fetch failed", was NOT a wake: the Mac was awake on
+ *   a dead network for three hours; the public-serie placeholder fill covers that case.)
+ * - When all sources are fresh: no polling; the next run is the earliest source `next_sync`.
  *
- * Env:
- * - `GLOBAL_SYNC_ENABLED` — default on; set `0` to disable.
- * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval while stale (default 15 minutes).
- * - `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` — faster poll when a stock EOD bar is due but missing (default 3 minutes).
- * - `GLOBAL_SYNC_WAKE_GAP_MS` — suspended time that counts as a wake (default 5 minutes).
+ * Env (`config.ts`): `GLOBAL_SYNC_ENABLED`, `GLOBAL_SYNC_INTERVAL_MS` (poll while stale, default
+ * 15 min), `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` (default 3 min), `GLOBAL_SYNC_WAKE_GAP_MS`
+ * (suspended time that counts as a wake, default 5 min).
  */
 import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
 import { chileWallClockAt, chileWallClockNow } from "./chileDate.js";
+import { serverConfig } from "./config.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
 import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
 import { equityEodNyseSyncDue, equityEodSantiagoSyncDue } from "./equityEodSync.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
-import {
-  GLOBAL_SYNC_RETRY_DELAYS_MS,
-  planAfterGlobalSync,
-  planGlobalSyncTick,
-  suspendedGapMs,
-} from "./globalSyncSchedulerPolicy.js";
 import { loadRootDotenv } from "./rootDotenv.js";
+import { ScheduledJob, type KernelRunResult } from "./schedulerKernel.js";
 import { syncWallTimeToMs } from "./syncSourceSchedule.js";
 
-let inFlight = false;
-let pollIntervalHandle: ReturnType<typeof setInterval> | null = null;
-let wakeTimerHandle: ReturnType<typeof setTimeout> | null = null;
-let schedulerEnabled = false;
-let schedulerIntervalMs = 15 * 60 * 1000;
-let nyseStalePollIntervalMs = 3 * 60 * 1000;
-let wakeGapMs = 5 * 60 * 1000;
-let pollLoopActive = false;
-let activePollIntervalMs: number | null = null;
-/** Wall-clock ms for next poll (while stale) or idle wake (when fresh). */
-let nextCheckAtMs: number | null = null;
-/** Wall and monotonic clock at the last activity; their divergence measures time spent suspended. */
-let lastActivityWallMs = Date.now();
-let lastActivityMonotonicMs = performance.now();
-/** Suspended time seen by timer callbacks since the last tick consumed it. */
-let observedSuspendedMs = 0;
-/** Wall time the poll interval is next expected to fire. */
-let pollExpectedAtMs: number | null = null;
-/** Post-wake retries spent; refilled by a tick that finishes with exit code 0. */
-let retriesUsed = 0;
-let retryTimerHandle: ReturnType<typeof setTimeout> | null = null;
-/** The network grace period before a post-wake sync; cancellable so a stop never strands `inFlight`. */
-let resumeWait: { handle: ReturnType<typeof setTimeout>; resolve: (cancelled: boolean) => void } | null = null;
+/** After a resume, how long to give the network before the first sync. */
+export const GLOBAL_SYNC_RESUME_NETWORK_WAIT_MS = 10_000;
+
+/** Retry delays after a failed post-wake sync — the budget refills only when a run succeeds. */
+export const GLOBAL_SYNC_RETRY_DELAYS_MS: readonly number[] = [60_000, 180_000];
+
+/** Polling: the sources are stale; the next poll's wall time and its cadence. */
+let polling: { nextPollAtMs: number; intervalMs: number } | null = null;
 
 export type GlobalSyncSchedulerSnapshot = {
   enabled: boolean;
@@ -61,142 +45,34 @@ export type GlobalSyncSchedulerSnapshot = {
   next_check_at: string | null;
 };
 
-export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
-  return {
-    enabled: schedulerEnabled,
-    interval_ms: activePollIntervalMs ?? schedulerIntervalMs,
-    in_flight: inFlight,
-    next_check_at:
-      nextCheckAtMs != null && Number.isFinite(nextCheckAtMs)
-        ? new Date(nextCheckAtMs).toISOString()
-        : null,
-  };
-}
-
 /** Poll interval while sources remain stale (a stock EOD bar due this session uses a shorter interval). */
 export function pollIntervalMsForStaleSources(stale: readonly GlobalSyncSource[]): number {
+  const { intervalMs, nyseStaleIntervalMs } = serverConfig().globalSync;
   const now = new Date();
-  if (stale.includes("stocks_nyse") && equityEodNyseSyncDue(now) != null) {
-    return nyseStalePollIntervalMs;
-  }
+  if (stale.includes("stocks_nyse") && equityEodNyseSyncDue(now) != null) return nyseStaleIntervalMs;
   // Santiago: fast only on the evening of the close. Its due carries over to the last closed
   // session, so an unlisted Chilean holiday would otherwise hit Yahoo every 3 minutes all day.
   if (stale.includes("stocks_santiago") && equityEodSantiagoSyncDue(now) === chileWallClockAt(now).ymd) {
-    return nyseStalePollIntervalMs;
+    return nyseStaleIntervalMs;
   }
-  return schedulerIntervalMs;
+  return intervalMs;
 }
 
-function scheduleNextCheckAt(atMs: number): void {
-  nextCheckAtMs = atMs;
-}
-
-function envFlag(name: string, defaultOn: boolean): boolean {
-  const v = process.env[name]?.trim().toLowerCase();
-  if (v === "0" || v === "false" || v === "no") return false;
-  if (v === "1" || v === "true" || v === "yes") return true;
-  return defaultOn;
-}
-
-function envMs(name: string, fallback: number): number {
-  const n = Number(process.env[name]);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-function clearWakeTimer(): void {
-  if (wakeTimerHandle != null) {
-    clearTimeout(wakeTimerHandle);
-    wakeTimerHandle = null;
-  }
-}
-
-function stopPollLoop(): void {
-  if (pollIntervalHandle != null) {
-    clearInterval(pollIntervalHandle);
-    pollIntervalHandle = null;
-  }
-  pollLoopActive = false;
-  activePollIntervalMs = null;
-  pollExpectedAtMs = null;
-}
-
-function restartPollInterval(intervalMs: number): void {
-  if (pollIntervalHandle != null) {
-    clearInterval(pollIntervalHandle);
-    pollIntervalHandle = null;
-  }
-  activePollIntervalMs = intervalMs;
-  pollExpectedAtMs = Date.now() + intervalMs;
-  pollIntervalHandle = setInterval(() => {
-    observeTimerFire(pollExpectedAtMs);
-    pollExpectedAtMs = Date.now() + intervalMs;
-    scheduleNextCheckAt(Date.now() + intervalMs);
-    void schedulerTick();
-  }, intervalMs);
-}
-
-function ensurePollInterval(intervalMs: number): void {
-  if (pollIntervalHandle != null && activePollIntervalMs === intervalMs) return;
-  restartPollInterval(intervalMs);
-}
-
-function noteSchedulerActivity(): void {
-  lastActivityWallMs = Date.now();
-  lastActivityMonotonicMs = performance.now();
-}
-
-/**
- * Call first thing in every timer callback. Records how long the process was suspended before the
- * timer fired, so the tick it triggers (directly, or through `rescheduleGlobalSyncScheduler` for
- * the fresh-source wake timer) knows it follows a wake. Two signals, see `suspendedGapMs`.
- */
-function observeTimerFire(expectedAtMs: number | null): void {
-  const lateByMs = expectedAtMs == null ? 0 : Date.now() - expectedAtMs;
-  const divergenceMs =
-    Date.now() - lastActivityWallMs - (performance.now() - lastActivityMonotonicMs);
-  observedSuspendedMs = Math.max(observedSuspendedMs, suspendedGapMs({ lateByMs, divergenceMs }));
-}
-
-function clearRetryTimer(): void {
-  if (retryTimerHandle != null) {
-    clearTimeout(retryTimerHandle);
-    retryTimerHandle = null;
-  }
-}
-
-function cancelResumeWait(): void {
-  if (resumeWait != null) {
-    clearTimeout(resumeWait.handle);
-    resumeWait.resolve(true);
-    resumeWait = null;
-  }
-}
-
-/** Resolves true when cancelled by a scheduler stop, false when the wait elapsed. */
-function waitForNetwork(ms: number): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const handle = setTimeout(() => {
-      resumeWait = null;
-      resolve(false);
-    }, ms);
-    resumeWait = { handle, resolve };
-  });
+function staleNow(): GlobalSyncSource[] {
+  loadRootDotenv();
+  return staleSyncSources(chileWallClockNow(), loadGlobalSyncState());
 }
 
 /**
  * Earliest wall time a source becomes due. `skip` leaves out sources already stale: while the
- * poll loop runs for them, the fresh sources' due times still need their own wake, or a stock
- * EOD due at 16:05 New York waits for the next 15-minute poll (2026-10-06: AFP/AFC stale all
- * afternoon, the NYSE bars landed at the 17:11 Chile tick instead of 17:05).
+ * poll runs for them, the fresh sources' due times still need their own run.
  */
 function earliestNextWakeMs(skip: ReadonlySet<string> = new Set()): number | null {
   loadRootDotenv();
-  const cl = chileWallClockNow();
-  const state = loadGlobalSyncState();
-  const rows = allSyncSourceStatuses(cl, state);
+  const rows = allSyncSourceStatuses(chileWallClockNow(), loadGlobalSyncState());
   let min: number | null = null;
   for (const row of rows) {
-    if (row.status === "disabled" || skip.has(row.source)) continue;
+    if (row.status === "disabled" || (row.source != null && skip.has(row.source))) continue;
     if (row.next_sync_imminent) return Date.now();
     if (row.next_sync) {
       const ms = syncWallTimeToMs(row.next_sync);
@@ -206,188 +82,100 @@ function earliestNextWakeMs(skip: ReadonlySet<string> = new Set()): number | nul
   return min;
 }
 
-function scheduleWakeTimer(atMs: number | null): void {
-  clearWakeTimer();
-  if (!schedulerEnabled || atMs == null) {
-    if (!pollLoopActive) nextCheckAtMs = null;
-    return;
-  }
-  const delay = Math.max(0, atMs - Date.now());
-  scheduleNextCheckAt(atMs);
-  wakeTimerHandle = setTimeout(() => {
-    wakeTimerHandle = null;
-    observeTimerFire(atMs);
-    void rescheduleGlobalSyncScheduler();
-  }, delay);
+function startPolling(stale: readonly GlobalSyncSource[], firstPollAtMs: number): void {
+  const intervalMs = pollIntervalMsForStaleSources(stale);
+  polling = { nextPollAtMs: firstPollAtMs, intervalMs };
+  console.log(`sync:scheduler — stale [${stale.join(", ")}]; polling every ${Math.round(intervalMs / 1000)}s`);
 }
 
-/** While polling for stale sources: tick when a fresh source falls due before the next poll. */
-function scheduleFreshSourceWake(atMs: number): void {
-  clearWakeTimer();
-  scheduleNextCheckAt(atMs);
-  wakeTimerHandle = setTimeout(() => {
-    wakeTimerHandle = null;
-    observeTimerFire(atMs);
-    void schedulerTick();
-  }, Math.max(0, atMs - Date.now()));
-}
-
-function runGlobalSyncInProcess(): Promise<number> {
-  return runGlobalSyncAll({ dryRun: false });
-}
-
-async function schedulerTick(): Promise<void> {
-  if (inFlight) {
-    console.log("sync:scheduler — skip (previous run still in progress).");
-    return;
-  }
-  // The hosted demo syncs only while someone browses it; its first request wakes this
-  // scheduler again (`onDemoMarketWake` below).
-  if (!demoMarketAwake()) return;
-  const suspendedMs = observedSuspendedMs;
-  observedSuspendedMs = 0;
-  noteSchedulerActivity();
-  const tickPlan = planGlobalSyncTick({ suspendedGapMs: suspendedMs, wakeGapMs });
-  inFlight = true;
-  /** 0 = ok (or nothing stale), n = failed steps, null = threw. */
-  let exitCode: number | null = 0;
-  let cancelled = false;
-  try {
-    if (tickPlan.resumed) {
-      console.log(
-        `sync:scheduler — resumed after ~${Math.round(suspendedMs / 1000)}s suspended; ` +
-          `waiting ${Math.round(tickPlan.waitBeforeSyncMs / 1000)}s for the network`
-      );
-      if (await waitForNetwork(tickPlan.waitBeforeSyncMs)) {
-        cancelled = true;
-        return;
-      }
-    }
-    loadRootDotenv();
-    const cl = chileWallClockNow();
-    const state = loadGlobalSyncState();
-    const stale = staleSyncSources(cl, state);
-    if (stale.length === 0) return;
+/** When the sync runs next: now when polling starts, the next poll, or the earliest source due. */
+function nextGlobalSyncAtMs(nowMs: number): number | null {
+  const stale = staleNow();
+  if (stale.length === 0) {
+    if (polling) console.log("sync:scheduler — all fresh; polling stops.");
+    polling = null;
+    const wakeAt = earliestNextWakeMs();
     console.log(
-      `sync:scheduler — stale [${stale.join(", ")}] at Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")}`
+      wakeAt != null ? `sync:scheduler — all fresh; next wake ${new Date(wakeAt).toISOString()}` : "sync:scheduler — all fresh; no scheduled wake."
     );
-    const code = await runGlobalSyncInProcess();
-    exitCode = code;
-    if (code !== 0) {
-      console.warn(`sync:scheduler — global-sync exited with code ${code}`);
-    } else {
-      console.log("sync:scheduler — global-sync finished ok.");
-    }
-  } catch (e) {
-    exitCode = null;
-    console.error(`sync:scheduler — error: ${e instanceof Error ? e.message : e}`);
-  } finally {
-    inFlight = false;
-    if (schedulerEnabled && !cancelled) {
-      scheduleRetryAfterTick(tickPlan.resumed, exitCode);
-      await rescheduleGlobalSyncScheduler();
-    }
+    return wakeAt;
   }
+  if (!polling) {
+    startPolling(stale, nowMs);
+    return nowMs;
+  }
+  const intervalMs = pollIntervalMsForStaleSources(stale);
+  // A changed cadence restarts the poll from now; a poll whose time came (it ran, or fired while a
+  // run was in progress) is next one interval from now.
+  if (intervalMs !== polling.intervalMs || polling.nextPollAtMs <= nowMs) {
+    polling = { nextPollAtMs: nowMs + intervalMs, intervalMs };
+  }
+  const freshWakeMs = earliestNextWakeMs(new Set(stale));
+  return freshWakeMs != null && freshWakeMs > nowMs && freshWakeMs < polling.nextPollAtMs ? freshWakeMs : polling.nextPollAtMs;
 }
 
-/** A sync that failed right after a wake is retried soon, not a full poll interval later. */
-function scheduleRetryAfterTick(resumed: boolean, exitCode: number | null): void {
-  const plan = planAfterGlobalSync({ resumedAfterSuspend: resumed, exitCode, retriesUsed });
-  retriesUsed = plan.retriesUsed;
-  if (exitCode === 0) clearRetryTimer();
-  if (plan.retryAfterMs == null) return;
-  clearRetryTimer();
-  const attempt = plan.retriesUsed;
-  console.log(
-    `sync:scheduler — retrying in ${Math.round(plan.retryAfterMs / 1000)}s after a failed post-wake sync ` +
-      `(attempt ${attempt}/${GLOBAL_SYNC_RETRY_DELAYS_MS.length})`
-  );
-  const expectedAtMs = Date.now() + plan.retryAfterMs;
-  retryTimerHandle = setTimeout(() => {
-    retryTimerHandle = null;
-    observeTimerFire(expectedAtMs);
-    void schedulerTick();
-  }, plan.retryAfterMs);
-}
-
-/** Re-evaluate stale sources: start/stop poll loop or schedule next wake. */
-export async function rescheduleGlobalSyncScheduler(): Promise<void> {
-  if (!schedulerEnabled) return;
-  noteSchedulerActivity();
-  loadRootDotenv();
+async function runGlobalSyncTick(): Promise<KernelRunResult> {
   const cl = chileWallClockNow();
-  const state = loadGlobalSyncState();
-  const stale = staleSyncSources(cl, state);
-  if (stale.length > 0) {
-    const intervalMs = pollIntervalMsForStaleSources(stale);
-    if (!pollLoopActive) {
-      pollLoopActive = true;
-      clearWakeTimer();
-      console.log(
-        `sync:scheduler — stale [${stale.join(", ")}]; polling every ${Math.round(intervalMs / 1000)}s`
-      );
-      void schedulerTick();
-    } else {
-      ensurePollInterval(intervalMs);
-    }
-    const nextPollMs = Date.now() + intervalMs;
-    const freshWakeMs = earliestNextWakeMs(new Set(stale));
-    if (freshWakeMs != null && freshWakeMs > Date.now() && freshWakeMs < nextPollMs) {
-      scheduleFreshSourceWake(freshWakeMs);
-    } else {
-      clearWakeTimer();
-      scheduleNextCheckAt(nextPollMs);
-    }
-    return;
+  const stale = staleNow();
+  if (stale.length === 0) return "ok";
+  // A run that finds stale sources while not polling (a source falling due) starts the poll.
+  if (!polling) startPolling(stale, Date.now() + pollIntervalMsForStaleSources(stale));
+  console.log(
+    `sync:scheduler — stale [${stale.join(", ")}] at Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")}`
+  );
+  const code = await runGlobalSyncAll({ dryRun: false });
+  if (code !== 0) {
+    console.warn(`sync:scheduler — global-sync exited with code ${code}`);
+    return "failed";
   }
-  stopPollLoop();
-  const wakeAt = earliestNextWakeMs();
-  if (wakeAt != null) {
-    console.log(`sync:scheduler — all fresh; next wake ${new Date(wakeAt).toISOString()}`);
-  } else {
-    console.log("sync:scheduler — all fresh; no scheduled wake.");
-  }
-  scheduleWakeTimer(wakeAt);
+  console.log("sync:scheduler — global-sync finished ok.");
+  return "ok";
+}
+
+const job = new ScheduledJob({
+  name: "sync:scheduler",
+  enabled: () => serverConfig().globalSync.enabled,
+  // The hosted demo syncs only while someone browses it; its first request runs the sync.
+  awake: () => demoMarketAwake(),
+  onWake: (listener) => onDemoMarketWake(listener),
+  next: nextGlobalSyncAtMs,
+  run: runGlobalSyncTick,
+  wake: () => ({ wakeGapMs: serverConfig().globalSync.wakeGapMs, networkGraceMs: GLOBAL_SYNC_RESUME_NETWORK_WAIT_MS }),
+  retry: { delaysMs: GLOBAL_SYNC_RETRY_DELAYS_MS, when: "after_wake", retryThrown: true },
+  logSkips: true,
+});
+
+export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
+  const s = job.snapshot();
+  return {
+    enabled: s.enabled,
+    interval_ms: polling?.intervalMs ?? serverConfig().globalSync.intervalMs,
+    in_flight: s.in_flight,
+    next_check_at: s.next_at_ms != null && Number.isFinite(s.next_at_ms) ? new Date(s.next_at_ms).toISOString() : null,
+  };
 }
 
 /** Call after force-stale or other events that may require immediate polling. */
 export function notifyGlobalSyncScheduler(): void {
-  if (!schedulerEnabled) return;
-  if (pollLoopActive) {
-    scheduleNextCheckAt(Date.now());
-    void schedulerTick();
-    return;
-  }
-  void rescheduleGlobalSyncScheduler();
+  if (!job.isEnabled) return;
+  if (polling) job.trigger();
+  else job.reschedule();
 }
 
 export function startGlobalSyncScheduler(): void {
-  schedulerEnabled = envFlag("GLOBAL_SYNC_ENABLED", true);
-  if (!schedulerEnabled) {
+  polling = null;
+  if (!job.start()) {
     console.log("sync:scheduler — disabled (GLOBAL_SYNC_ENABLED=0).");
-    nextCheckAtMs = null;
     return;
   }
-  schedulerIntervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
-  nyseStalePollIntervalMs = envMs("GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS", 3 * 60 * 1000);
-  wakeGapMs = envMs("GLOBAL_SYNC_WAKE_GAP_MS", 5 * 60 * 1000);
-  noteSchedulerActivity();
-  retriesUsed = 0;
-  onDemoMarketWake(() => notifyGlobalSyncScheduler());
+  const c = serverConfig().globalSync;
   console.log(
-    `sync:scheduler — enabled; polls every ${Math.round(schedulerIntervalMs / 1000)}s while stale` +
-      ` (${Math.round(nyseStalePollIntervalMs / 1000)}s when NYSE EOD due)`
+    `sync:scheduler — enabled; polls every ${Math.round(c.intervalMs / 1000)}s while stale` +
+      ` (${Math.round(c.nyseStaleIntervalMs / 1000)}s when NYSE EOD due)`
   );
-  void rescheduleGlobalSyncScheduler();
 }
 
 export function stopGlobalSyncScheduler(): void {
-  stopPollLoop();
-  clearWakeTimer();
-  clearRetryTimer();
-  cancelResumeWait();
-  retriesUsed = 0;
-  observedSuspendedMs = 0;
-  schedulerEnabled = false;
-  nextCheckAtMs = null;
+  job.stop();
+  polling = null;
 }
