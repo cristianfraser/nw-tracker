@@ -871,16 +871,9 @@
       "facturacionDeleteLine": "Eliminar",
       "facturacionDeleteLineAria": "Eliminar movimiento",
       "makeInstallmentAction": "En cuotas",
-      "makeInstallmentDialogTitle": "Convertir en cuotas",
       "makeInstallmentDialogCuotasLabel": "Número de cuotas",
-      "makeInstallmentDialogBody": "{{merchant}} · {{amount}}",
       "makeInstallmentDialogConfirm": "Confirmar",
-      "makeInstallmentDialogCancel": "Cancelar",
       "makeInstallmentActionPending": "¿Cuántas cuotas?",
-      "makeInstallmentDialogPendingBody": {
-        "cuota_comercio": "El banco la lista como compra en «cuota comercio» por su monto total, sin decir en cuántas cuotas. La primera se factura en el cierre siguiente al suyo; el estado de cuenta confirma el número de todas formas.",
-        "precio_contado": "El banco la lista como compra en cuotas «precio contado» por su monto total, sin decir en cuántas cuotas. La primera se factura en su propio cierre; el estado de cuenta confirma el número de todas formas."
-      },
       "pendingCuotaPurchasesTitle": "Compras en cuotas sin número de cuotas",
       "pendingCuotaPurchasesHint": "El feed de la tarjeta las lista por su monto total sin el número de cuotas. Cuentan como deuda en cuotas por ese monto hasta que ingreses el número o llegue el estado de cuenta.",
       "pendingCuotaPurchasesAction": "Ingresar cuotas",

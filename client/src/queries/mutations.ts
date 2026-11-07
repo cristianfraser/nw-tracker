@@ -463,6 +463,7 @@ export function useMakeStatementLineInstallmentMutation(opts: {
       api.makeStatementLineInstallment(opts.accountId, lineId, cuotas_totales),
     onSettled: () => {
       invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
     },
   });
 }

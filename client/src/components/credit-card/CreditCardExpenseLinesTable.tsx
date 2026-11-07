@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
-import { formatCcExpenseLineAmount, formatClp } from "../../format";
+import { formatCcExpenseLineAmount, formatClp, parseNumberInput } from "../../format";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { loadableClass } from "../ui/Loadable";
 import { Pill } from "../ui/Pill";
@@ -21,7 +22,11 @@ import {
   Joined,
   useExpenseVendorLinkLabel,
 } from "./ExpenseVendorLabel";
-import { useAssignCcExpenseLineCategory, usePostVendorBranchChoiceMutation } from "../../queries/hooks";
+import {
+  useAssignCcExpenseLineCategory,
+  useMakeStatementLineInstallmentMutation,
+  usePostVendorBranchChoiceMutation,
+} from "../../queries/hooks";
 import styles from "./CreditCardExpenseLinesTable.module.css";
 
 function lineCategorySlug(line: FlowCcExpenseLineRow): string {
@@ -233,12 +238,50 @@ type RowActions = {
   onDeleteLine?: (line: FlowCcExpenseLineRow) => void;
   deletePendingLineId?: number;
   makeInstallmentLineIds?: ReadonlySet<number>;
-  onMakeInstallmentLine?: (line: FlowCcExpenseLineRow) => void;
-  makeInstallmentBusyLineId?: number;
   onEditPieces?: (line: FlowCcExpenseLineRow) => void;
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
   enableCheckingNotes: boolean;
 };
+
+/** The installment count, entered right where the row asks for it. */
+function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const make = useMakeStatementLineInstallmentMutation({ accountId: line.account_id, displayUnit });
+  const [value, setValue] = useState("");
+  const parsed = parseNumberInput(value);
+  const count = parsed.ok ? parsed.value : null;
+  const valid = count != null && Number.isInteger(count) && count >= 2;
+  const submit = () => {
+    if (!valid || count == null) return;
+    make.mutate(
+      { lineId: line.statement_line_id, cuotas_totales: count },
+      { onError: (err) => window.alert(err instanceof Error ? err.message : String(err)) }
+    );
+  };
+  return (
+    <div className={styles.panelBigGroup}>
+      <Input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        placeholder={t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
+        aria-label={t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
+        aria-invalid={!parsed.ok || undefined}
+        disabled={make.isPending}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        style={{ width: "7rem" }}
+      />
+      <Button size="sm" disabled={!valid || make.isPending} onClick={submit}>
+        {t("accountDetail.creditCard.makeInstallmentDialogConfirm")}
+      </Button>
+      {!parsed.ok ? <span className="error">{parsed.message}</span> : null}
+    </div>
+  );
+}
 
 function ExpenseLineRow({
   line: ln,
@@ -274,12 +317,15 @@ function ExpenseLineRow({
     actions.deletableLineIds?.has(ln.statement_line_id) === true &&
     ln.statement_line_id > 0;
   const deleteBusy = actions.deletePendingLineId === ln.statement_line_id;
+  // A line the bank lists in cuotas without the count asks for it wherever it shows; any other
+  // convertible line (facturación modal) offers the same input.
   const canMakeInstallment =
-    actions.showDeleteAction &&
-    actions.makeInstallmentLineIds?.has(ln.statement_line_id) === true &&
+    ln.source === "cc" &&
     ln.statement_line_id > 0 &&
-    !ln.installment_flag;
-  const makeInstallmentBusy = actions.makeInstallmentBusyLineId === ln.statement_line_id;
+    !ln.installment_flag &&
+    (ln.cuota_purchase_kind != null ||
+      (actions.showDeleteAction &&
+        actions.makeInstallmentLineIds?.has(ln.statement_line_id) === true));
   const canEditPieces =
     actions.onEditPieces != null &&
     (ln.source === "cc" || ln.source === "checking") &&
@@ -383,10 +429,12 @@ function ExpenseLineRow({
                   <span className="muted">
                     {t(`expenses.creditCard.cuotaPurchasePendingHint.${ln.cuota_purchase_kind}`)}
                   </span>
+                  {canMakeInstallment ? <CuotasInline line={ln} /> : null}
                 </>
               ) : null}
             </div>
           ) : null}
+          {canMakeInstallment && !ln.cuota_purchase_kind ? <CuotasInline line={ln} /> : null}
           {ln.branch_choices ? <BranchChoice choices={ln.branch_choices} /> : null}
           {bigGroupInPanel ? (
             <div className={styles.panelBigGroup}>
@@ -404,7 +452,7 @@ function ExpenseLineRow({
               />
             </div>
           ) : null}
-          {canEditPieces || canEditManual || canMakeInstallment || canDelete ? (
+          {canEditPieces || canEditManual || canDelete ? (
             <div className={styles.panelActions}>
               {canEditPieces ? (
                 <Button variant="ghost" size="sm" onClick={() => actions.onEditPieces?.(ln)}>
@@ -418,23 +466,11 @@ function ExpenseLineRow({
                   {t("expenses.creditCard.manualExpense.edit")}
                 </Button>
               ) : null}
-              {canMakeInstallment ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={makeInstallmentBusy || deleteBusy}
-                  onClick={() => actions.onMakeInstallmentLine?.(ln)}
-                >
-                  {ln.cuota_purchase_kind
-                    ? t("accountDetail.creditCard.makeInstallmentActionPending")
-                    : t("accountDetail.creditCard.makeInstallmentAction")}
-                </Button>
-              ) : null}
               {canDelete ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={deleteBusy || makeInstallmentBusy}
+                  disabled={deleteBusy}
                   aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
                   onClick={() => actions.onDeleteLine?.(ln)}
                 >
@@ -523,8 +559,6 @@ export function CreditCardExpenseLinesTable({
   onDeleteLine,
   deletePendingLineId,
   makeInstallmentLineIds,
-  onMakeInstallmentLine,
-  makeInstallmentBusyLineId,
   onEditPieces,
   onEditManual,
   enableCheckingNotes = false,
@@ -545,8 +579,6 @@ export function CreditCardExpenseLinesTable({
   onDeleteLine?: (line: FlowCcExpenseLineRow) => void;
   deletePendingLineId?: number;
   makeInstallmentLineIds?: ReadonlySet<number>;
-  onMakeInstallmentLine?: (line: FlowCcExpenseLineRow) => void;
-  makeInstallmentBusyLineId?: number;
   /** Break a card / checking purchase line into dated pieces (row extras). */
   onEditPieces?: (line: FlowCcExpenseLineRow) => void;
   /** Edit or delete a manual expense line (row extras). */
@@ -604,8 +636,6 @@ export function CreditCardExpenseLinesTable({
     onDeleteLine,
     deletePendingLineId,
     makeInstallmentLineIds,
-    onMakeInstallmentLine,
-    makeInstallmentBusyLineId,
     onEditPieces,
     onEditManual,
     enableCheckingNotes,
