@@ -22,6 +22,7 @@ import {
   setAggregationInvalidationListener,
 } from "./cacheRegistry.js";
 import { db } from "./db.js";
+import { withoutChurn } from "./rederivation.js";
 import {
   CURRENT_MARK_INPUT_SPECS,
   UNLOGGED_TABLES_270,
@@ -164,8 +165,13 @@ describe("cache registry", () => {
   it("a write to a valuation table outside the mark inputs drops the valuation and any families", () => {
     seedEveryFamily();
     // An unwatched column of a mark table logs a write row (not a mark row).
-    db.prepare(`UPDATE accounts SET notes = COALESCE(notes, '') || '' WHERE id = 1`).run();
-    expect(droppedFamilies()).toEqual([...VALUATION, ...ANY].sort());
+    const notes = (db.prepare(`SELECT notes FROM accounts WHERE id = 1`).get() as { notes: string | null }).notes;
+    db.prepare(`UPDATE accounts SET notes = ? WHERE id = 1`).run(`${notes ?? ""} vitest-registry`);
+    try {
+      expect(droppedFamilies()).toEqual([...VALUATION, ...ANY].sort());
+    } finally {
+      db.prepare(`UPDATE accounts SET notes = ? WHERE id = 1`).run(notes);
+    }
   });
 
   it("machine bookkeeping (jobs, run log, messages) drops nothing", () => {
@@ -287,6 +293,24 @@ describe("cache registry", () => {
       other.prepare(`DELETE FROM app_messages WHERE title = 'vitest-other-connection'`).run();
       other.prepare(`DELETE FROM cc_expense_categories WHERE slug = 'vitest-other-connection'`).run();
       other.close();
+    }
+  });
+
+  it("an update writing the same values, and a re-derivation that changes nothing, log nothing", () => {
+    const maxId = () => (db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM mark_input_changes`).get() as { id: number }).id;
+    db.prepare(`INSERT INTO cc_expense_categories (slug, label) VALUES ('vitest-churn', 'Vitest')`).run();
+    seedEveryFamily();
+    const before = maxId();
+    try {
+      db.prepare(`UPDATE cc_expense_categories SET label = label`).run();
+      withoutChurn(["cc_expense_categories"], [], () => {
+        db.prepare(`DELETE FROM cc_expense_categories WHERE slug = 'vitest-churn'`).run();
+        db.prepare(`INSERT INTO cc_expense_categories (slug, label) VALUES ('vitest-churn', 'Vitest')`).run();
+      });
+      expect(maxId()).toBe(before);
+      expect(droppedFamilies()).toEqual([]);
+    } finally {
+      db.prepare(`DELETE FROM cc_expense_categories WHERE slug = 'vitest-churn'`).run();
     }
   });
 
