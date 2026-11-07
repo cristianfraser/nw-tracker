@@ -15,7 +15,10 @@ import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNoti
 import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { listEquitySplits, recordEquitySplit, splitRatio } from "./equitySplits.js";
-import { racionalCashAccountId, racionalEquityAccountId } from "./racionalMovementsImport.js";
+import type { BrokerAdapter } from "./brokerAdapter.js";
+
+/** A split within this many days of one on record is the same split (`recordEquitySplit`'s rule). */
+const SAME_SPLIT_WINDOW_DAYS = 7;
 
 /** Share counts print 8 decimals: they agree to this. */
 const UNITS_EPS = 1e-6;
@@ -49,12 +52,12 @@ function row(n: BrokerNotification, state: string, detail: string, legs: string 
 }
 
 /**
- * Plan (and with `apply`, record) every split notice of `broker`. States: `new` (would record),
+ * Plan (and with `apply`, record) every split notice of the adapter's broker. States: `new` (would record),
  * `split_recorded`, `duplicate`, `conflict` (the counts disagree with the ledger — nothing
  * recorded), `manual` (a notice the server cannot read as a whole split).
  */
 export function applyBrokerSplitNotifications(
-  broker: "racional",
+  adapter: BrokerAdapter,
   notifications: readonly BrokerNotification[],
   apply: boolean
 ): { rows: BrokerNotificationPlanRow[]; conflicts: string[] } {
@@ -75,18 +78,18 @@ export function applyBrokerSplitNotifications(
       continue;
     }
     const exDate = notificationChileYmd(n);
-    const stock = racionalEquityAccountId(n.ticker!);
+    const stock = adapter.equityAccountId(n.ticker!);
     const ticker = equityTickerForAccount(stock)!;
-    const cash = racionalCashAccountId(equityQuoteCurrency(ticker));
+    const cash = adapter.cashAccountId(equityQuoteCurrency(ticker));
     const legs = `${stock}`;
     const near = listEquitySplits(ticker).find(
-      (s) => Math.abs(Date.parse(s.ex_date) - Date.parse(exDate)) <= 7 * 86_400_000
+      (s) => Math.abs(Date.parse(s.ex_date) - Date.parse(exDate)) <= SAME_SPLIT_WINDOW_DAYS * 86_400_000
     );
     // Once recorded, the ledger's day-before count is the split's own check; held at the broker:
     const dayBefore = addDays(near?.ex_date ?? exDate, -1);
     const held = equityBrokerHoldings(stock, dayBefore, null).find((h) => h.cash_account_id === cash)?.units ?? 0;
     if (Math.abs(held - before) > UNITS_EPS) {
-      const msg = `${ticker} split on ${exDate}: the ledger holds ${held} shares at ${broker} on ${dayBefore}, the notice says ${n.units}`;
+      const msg = `${ticker} split on ${exDate}: the ledger holds ${held} shares at ${adapter.label} on ${dayBefore}, the notice says ${n.units}`;
       conflicts.push(msg);
       rows.push(row(n, "conflict", msg, legs));
       continue;

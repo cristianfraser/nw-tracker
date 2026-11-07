@@ -11,18 +11,10 @@
  */
 import type { BrokerMovementsApplyDetails, BrokerMovementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { fintualUsdAccountId } from "./brokerAdapter.js";
 import { SAVINGS_EARNINGS_FLOW_KIND } from "./cashAccountInterest.js";
 import { MOVEMENT_USD_LEG_SQL } from "./movementAmounts.js";
 
-const FINTUAL_USD_IMPORT_KEY = "import:panel|kind=usd|key=fintual_usd";
-
-function fintualUsdAccountId(): number {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(FINTUAL_USD_IMPORT_KEY) as
-    | { id: number }
-    | undefined;
-  if (!row) throw new Error(`No account with import_key "${FINTUAL_USD_IMPORT_KEY}"`);
-  return row.id;
-}
 
 const cents = (usd: number): number => Math.round(usd * 100);
 
