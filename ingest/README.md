@@ -53,62 +53,35 @@ documents the ledger has already recorded.
 `cfraser/santander-captures/<timestamp>/`, and keeps downloads **out** of the inbox — use it after
 any bank UI change to see what actually happened.
 
-## Daily schedule (LaunchAgent)
+## Runs (the ingest service)
 
-`daily-run.sh` is the unattended sequence: fetch Santander → `import:cfraser-inbox` →
-`import:santander-movements` → `import:santander-statements`. Each step reports pass/fail and the
-exit status is the number of failures, so one bank being down does not block the rest.
+The server's scheduler decides when a run happens (22:00 Chile for the nightly, :30 past every
+hour for the e-mail poll) and asks the ingest service (`com.user.nw-tracker-ingest`, installed by
+`ingest/switch-schedule.sh to-server`) to run it; the service runs `src/runner/nightly.ts` /
+`src/runner/hourly.ts` and reports the steps back. The shell runners (`daily-run.sh`,
+`email-run.sh`) and their timed LaunchAgents were retired on 2026-11-07. The service **must** be a
+LaunchAgent in the logged-in GUI session (a LaunchDaemon has no window server, and headless Chrome
+is blocked). Logs: `cfraser/daily-run.log`, `cfraser/email-run.log` (rotates at 5 MB). A run can
+be started by hand from the import sync page («Run now»). Rehearse without touching anything:
+`INGEST_RUN_DRY=1` in the service's environment.
 
-```bash
-cp ingest/com.user.nw-tracker-daily.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-daily.plist
-launchctl kickstart -p gui/$(id -u)/com.user.nw-tracker-daily   # run once, now
-launchctl bootout gui/$(id -u)/com.user.nw-tracker-daily        # remove
-```
+Each step runs one command of this package (`npm run <script>` in `ingest/`, server tasks through
+`server-task`). What a step found — documents staged, rows written, the listings the bank's
+product summary asked for — comes back as its step result (`src/stepResult.ts`), which the runner
+reads to decide what runs next; the step's output only goes to the log.
 
-Runs at **22:00** — late enough for the day's movements to post, early enough to miss the bank's
-nightly maintenance window. It **must** be a LaunchAgent in the logged-in GUI session (a
-LaunchDaemon has no window server, and headless Chrome is blocked). Log: `cfraser/daily-run.log`.
-Rehearse without touching the banks: `ingest/daily-run.sh --dry-run`.
+The hourly poll fetches the mail (`fetch:santander-docs`, `fetch:lider-statements`,
+`fetch:lider-boletas`, `fetch:fintual-docs`, `fetch:apple-mail`, `fetch:emails`) and, when a
+fetch staged something new or a receipt photo waits in `cfraser/grocery-receipts/inbox/`, runs the
+inbox pipeline and the broker e-mail imports. Everything else stays nightly; the nightly run is the
+retry backstop for anything staged here but not imported.
 
-The Lider BCI «últimos movimientos» CSV is gone: the scrape that dropped it retired on 2026-08-07 (the
-Boleta Digital and statement e-mails replaced it), the Lider web fetcher was removed from this package
-on 2026-09-05, and the CSV importer on 2026-10-03.
+## Mail
 
-Every run writes an app message: a plain `log` when all steps passed, a **`notification`** (badged
-unread in the app) plus a macOS alert when any step failed. The message body names each step, its
-duration, and — this is the part a per-run status cannot tell you — how long it has been since the
-last *successful* run, so a night the agent never fired is visible too.
-
-## Hourly e-mail poll (LaunchAgent)
-
-`email-run.sh` polls Gmail at **:30 past every hour** — `fetch:santander-docs`,
-`fetch:lider-statements` (the BCI Lider «Estado de Cuenta»), `fetch:lider-boletas`,
-`fetch:fintual-docs` (Fintual's Alpaca «Cartola mensual de Acciones» and capital-events
-certificado, into `cfraser/fintual-acciones/` — the source of dividend gross / withholding,
-imported by `import:fintual-acciones`), `fetch:emails` — and, when a fetch staged something
-new that hour, runs the inbox pipeline
-(`import:cfraser-inbox`, the same one the nightly runs — every stage is incremental, the
-grocery-receipt stage since 2026-09-06 via per-receipt import stamps; a receipt photo waiting in
-`cfraser/grocery-receipts/inbox/` also counts as "something new") plus the
-broker e-mail imports (`import:fintual-emails`, `import:racional-emails`). A monthly facturación
-therefore imports the hour its mail lands. Everything else stays nightly: the bank web session,
-Racional, statement JSONs. The nightly run is also the retry backstop for anything staged here
-but not imported.
-
-```bash
-cp ingest/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-email-hourly.plist
-launchctl kickstart -p gui/$(id -u)/com.user.nw-tracker-email-hourly   # run once, now
-launchctl bootout gui/$(id -u)/com.user.nw-tracker-email-hourly        # remove
-```
-
-Log: `cfraser/email-run.log` (self-rotates at 5 MB). A quiet hour records nothing; a run with
-activity or a failure writes an «Hourly e-mail poll» app message via `record:email-run` — never
-the daily titles, whose presence would make the 22:00 scheduled run skip itself for the day. Only
-the first failure of the Chile day badges as a notification; there is no macOS alert (the nightly
-run executes the same e-mail steps and remains the alerting authority). The script skips the hour
-outright while `daily-run.sh` is running (shared document ledger / watermark / DB, no locks).
+Every mail source is a declaration over one fetcher (`src/email/mailFetcher.ts`): the sender,
+which subjects it takes and what each mail's documents are. The fetcher searches All Mail with a
+`SINCE` that survives Gmail's DST blind day, skips what the document ledger holds, writes and
+records. `npm run fetch:<source> -- [--days=N] [--all] [--dry-run] [--force]`.
 
 ## Broker e-mail (the change detector)
 
@@ -132,9 +105,8 @@ share count (`Invertiste US $1,67 dólares en 0,002152366 acciones de …`), so 
 fetching. Racional's purchase mails are complete too, and its `Agregaste USD $5.344,04 a tu
 Billetera` is the CLP→USD conversion its own movements list never shows. But its dividend mail
 only says money arrived — instrument, no amount. That is a **nudge**: proof something happened,
-and the only reason to open the browser. `check:broker-emails` writes
-`cfraser/.broker-email-decision.json`, and the daily run fetches Racional only when that names
-it. Newsletters, login alerts and monthly summaries never count.
+and the only reason to open the browser. `import:racional-emails` reports the server's crawl
+decision as its step result, and the nightly run fetches Racional only when that names it. Newsletters, login alerts and monthly summaries never count.
 
 ## Racional
 
