@@ -8,7 +8,6 @@ import {
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
-import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import {
   monthEndsBetweenInclusive,
   monthKeyFromYmd,
@@ -21,12 +20,10 @@ import {
   monthEndCloseFromPerfRows,
   priorCalendarMonthKey,
 } from "./accountPeriodMarks.js";
-import { accountValueClpToUnitAt, convertTs } from "./clpToUnitAt.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { accountProfileOptional } from "./accountProfile.js";
 import { netDepositFlowWindows } from "./flowsDeposits.js";
 import { accountValueAt } from "./accountValue.js";
-import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
@@ -36,7 +33,8 @@ import { cacheKeyGroupConsolidatedMonthly } from "./cacheFamilies.js";
 import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./cacheRegistry.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 
-export type TsUnit = "clp" | "usd" | "uf";
+export type { TsUnit } from "./rates.js";
+import type { TsUnit } from "./rates.js";
 
 export type GroupTabAccountRow = {
   account_id: number;
@@ -50,11 +48,12 @@ export type GroupTabAccountRow = {
 };
 
 /**
- * A ledger balance close in USD at `asOf` (the current month evaluates at Chile today, framed
- * live like the dashboard row; earlier months at the stored fx on or before). NaN without a rate.
+ * A ledger account's close in `unit` at `asOf`: its value there (`accountValueAt`), what it held
+ * converted once at its side — the current month evaluates at Chile today, framed live like the
+ * dashboard row. NaN without a value or a rate.
  */
-function balanceCloseUsdAt(accountId: number, clp: number, asOf: string): number {
-  return accountValueClpToUnitAt(accountId, clp, asOf, "usd") ?? Number.NaN;
+function ledgerCloseInUnit(accountId: number, unit: TsUnit): (asOf: string) => number {
+  return (asOf) => accountValueAt(accountId, asOf, unit)?.value ?? Number.NaN;
 }
 
 export type ConsolidatedMonthlyPerfRow = {
@@ -187,19 +186,16 @@ function balanceOnlyMonthlyRowsAsc(
 /**
  * Month flow of a ledger cash account (USD cash since 2026-08-04; CLP cash and checking since
  * 2026-09-27): its merged deposit events in `(prevEvalYmd, evalYmd]`, each at its own date's
- * rate (`flowEventInUnit`) — the events the dashboard card's deposits, the daily series and
- * the aportes line read. A month with no events reads 0; fx moves on the balance held are
- * P/L. UF converts the window's CLP sum at the window end.
+ * rate (`flowEventInUnit`, UF included) — the events the dashboard card's deposits, the daily
+ * series and the aportes line read. A month with no events reads 0; fx moves on the balance held
+ * are P/L.
  */
 function ledgerCashNetFlowBetween(
   accountId: number,
   unit: TsUnit
 ): (prevEvalYmd: string | null, evalYmd: string) => number {
-  const windowFlow = netDepositFlowWindows(accountId, unit === "usd" ? "usd" : "clp");
-  return (prevEvalYmd, evalYmd) => {
-    const raw = windowFlow(prevEvalYmd ?? "0000-01-01", evalYmd);
-    return unit === "uf" ? convertTs(raw, evalYmd, "uf") : raw;
-  };
+  const windowFlow = netDepositFlowWindows(accountId, unit);
+  return (prevEvalYmd, evalYmd) => windowFlow(prevEvalYmd ?? "0000-01-01", evalYmd);
 }
 
 function usdCashMonthlyPerfRows(
@@ -219,8 +215,8 @@ function usdCashMonthlyPerfRows(
     unit,
     monthEndsAsc,
     "usd_cash",
-    // Its value in the unit (`accountValueAt`): its ledger dollars, converted once from them.
-    (asOf) => accountValueAt(accountId, asOf, unit)?.value ?? Number.NaN,
+    // Its value in the unit: its ledger dollars, converted once from them.
+    ledgerCloseInUnit(accountId, unit),
     ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();
@@ -243,10 +239,7 @@ function clpCashMonthlyPerfRows(
     unit,
     monthEndsAsc,
     "clp_cash",
-    (asOf) => {
-      const clp = clpCashBalanceClpAt(accountId, asOf);
-      return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
-    },
+    ledgerCloseInUnit(accountId, unit),
     ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();
@@ -269,10 +262,7 @@ function movementBalanceMonthlyPerfRows(
     unit,
     monthEndsAsc,
     "checking",
-    (asOf) => {
-      const clp = checkingMovementBalanceClpAtCached(accountId, asOf);
-      return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
-    },
+    ledgerCloseInUnit(accountId, unit),
     ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();
@@ -287,7 +277,6 @@ function bookValuationMonthlyPerfRows(
   if (!bookAsc.length) return [];
 
   const monthEndsAsc = bookAsc.map((r) => r.as_of_date);
-  const clpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));
   // Month-precision dated (`monthPrecisionAccountKinds.ts`): movements sit on conventional
   // month-ends, the same days as the book rows, so each `(prev month-end, month-end]` window
   // takes its month's deposit exactly once.
@@ -297,10 +286,8 @@ function bookValuationMonthlyPerfRows(
     unit,
     monthEndsAsc,
     "book",
-    (asOf) => {
-      const clp = clpByDate.get(asOf) ?? 0;
-      return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
-    },
+    // Each book row's own date: the stored mark itself, no flow carry.
+    ledgerCloseInUnit(accountId, unit),
     ledgerCashNetFlowBetween(accountId, unit)
   );
 

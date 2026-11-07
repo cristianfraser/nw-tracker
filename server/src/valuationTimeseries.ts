@@ -67,9 +67,9 @@ import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { accountValueClpToUnitAt, clpToUnitAt, convertTs } from "./clpToUnitAt.js";
-import type { ValueSide } from "./valueConvert.js";
+import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
+import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
+import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
@@ -98,16 +98,16 @@ import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { buildReferenceCoverage, sumKeysPerRow } from "./referenceCoverage.js";
 import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 
-export type TsUnit = "clp" | "usd" | "uf";
+/** Re-exported for one release: `rates.ts` owns it (F8/F12 drop this re-export). */
+export type { TsUnit } from "./rates.js";
+import type { TsUnit } from "./rates.js";
 
 export type TimeseriesGranularity = "monthly" | "daily";
-
-export { convertTs };
 
 /**
  * A chart VALUE in pesos at `d`, in `unit` (`clpToUnitAt`): converted once at its side — an
  * asset (default) at what selling it would get, a debt (`side: "debt"`) at what buying it back
- * would cost; today's rate today and on a later date. NaN without a rate, as `convertTs` plots it.
+ * would cost; today's rate today and on a later date. NaN without a rate.
  * Only for an amount that is not one account's value (a legacy total, the depto lines); an
  * account's line goes through {@link accountChartValueInUnit}.
  */
@@ -1293,10 +1293,13 @@ function usdMilestoneDataKey(usd: number): string {
  */
 function usdMilestoneLevelInUnit(usd: number, asOfYmd: string, unit: TsUnit): number | null {
   if (unit === "usd") return usd;
+  // A reference level at the stored rates on or before the day (the mid): pesos, then UF.
   const fx = fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
-  const v = convertTs(usd * fx.clp_per_usd, asOfYmd, unit);
-  return Number.isFinite(v) ? v : null;
+  const clp = usd * fx.clp_per_usd;
+  if (unit === "clp") return clp;
+  const uf = ufRowOnOrBefore(asOfYmd);
+  return uf && uf.clp_per_uf > 0 ? clp / uf.clp_per_uf : null;
 }
 
 function appendUsdMilestoneFields(

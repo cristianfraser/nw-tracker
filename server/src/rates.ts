@@ -22,9 +22,12 @@ import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { FX_BID_ASK_SPREAD_CLP, fxBidAskRowOnOrBefore } from "./fxBidAsk.js";
 import { fxForLiveMtm } from "./fxLive.js";
-import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
+import { clpToUsdAtPayment, fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 
 export type CurrencyCode = "clp" | "usd" | "uf" | "eur";
+
+/** The units a series (chart, table, P/L) is shown in. */
+export type TsUnit = Exclude<CurrencyCode, "eur">;
 export type ConvertSide = "asset" | "debt" | "mid";
 
 export const CURRENCY_CODES: readonly CurrencyCode[] = ["clp", "usd", "uf", "eur"];
@@ -184,4 +187,28 @@ export function rateAt(
   opts: RateOpts
 ): number | null {
   return convertCurrency(1, base, quote, ymd, opts);
+}
+
+/**
+ * A FLOW of `amount` `from` expressed in `to` on its own day `ymd` — never a value: pesos to
+ * dollars at the buy rate on or before the day (what buying those dollars cost; the mid with a
+ * warning when no buy rate is stored), pesos to UF at the day's UF. Unrounded: callers sum the
+ * converted events and round once. A missing rate throws — a flow is never dropped from a total
+ * nor left in pesos inside another unit. A flow that carries its own leg in `to` (a dollar
+ * transfer's dollars) is not converted at all: the caller uses that leg (`flowEventInUnit`).
+ */
+export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode, ymd: string): number {
+  if (!Number.isFinite(amount)) throw new Error(`convertFlow ${ymd}: non-finite amount ${amount}`);
+  if (from === to || amount === 0) return amount;
+  if (from === "clp" && to === "usd") {
+    const usd = clpToUsdAtPayment(amount, ymd);
+    if (usd == null) throw new Error(`flow ${ymd}: no USD rate on or before the date (${amount} CLP)`);
+    return usd;
+  }
+  if (from === "clp" && to === "uf") {
+    const uf = ufRowOnOrBefore(ymd);
+    if (!uf || !(uf.clp_per_uf > 0)) throw new Error(`flow ${ymd}: no UF on or before the date (${amount} CLP)`);
+    return amount / uf.clp_per_uf;
+  }
+  throw new Error(`convertFlow: no flow rule from ${from} to ${to}`);
 }

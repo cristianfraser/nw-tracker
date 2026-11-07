@@ -8,8 +8,7 @@ import {
   type PeriodReturnCell,
   type PeriodReturnsPayload,
 } from "./periodReturns.js";
-import { convertTs } from "./clpToUnitAt.js";
-import type { TsUnit } from "./valuationTimeseries.js";
+import type { TsUnit } from "./rates.js";
 
 /**
  * Short-horizon (1D / 1W) returns for the Rentabilidad strip. Unlike the monthly windows
@@ -138,23 +137,21 @@ function shortHorizonCell(
   const vStart = bucketValueInUnitAt(accounts, startYmd, unit, now);
   if (vEnd == null || vStart == null) return emptyCell(period, startYmd);
 
-  const flowUnit = unit === "usd" ? "usd" : "clp";
-  const toUnit = (raw: number): number => (unit === "uf" ? convertTs(raw, endYmd, "uf") : raw);
-  let flowRaw = 0;
+  let flow = 0;
   // A member that ends the window at zero on a withdrawal charges it at the window end, as the
   // daily series does (`endChargedFlow`).
   let endCharged = 0;
   for (const a of accounts) {
     if (!includeShortHorizonAccount(a)) continue;
-    const accFlow = netDepositFlowBetween(a.account_id, startYmd, endYmd, flowUnit);
-    flowRaw += accFlow;
+    const accFlow = netDepositFlowBetween(a.account_id, startYmd, endYmd, unit);
+    flow += accFlow;
     if (!(accFlow < 0)) continue;
     const close = accountValueInUnitAt(a, endYmd, unit, now);
     if (close == null || !Number.isFinite(close)) continue;
-    endCharged += endChargedFlow(toUnit(accFlow), close, unit);
+    endCharged += endChargedFlow(accFlow, close, unit);
   }
 
-  return shortHorizonCellFromLegs(period, vEnd, vStart, toUnit(flowRaw), startYmd, unit, endCharged);
+  return shortHorizonCellFromLegs(period, vEnd, vStart, flow, startYmd, unit, endCharged);
 }
 
 /** The 1D and 1W cells: today (live) vs yesterday / vs 7 calendar days ago. */

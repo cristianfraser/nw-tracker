@@ -19,7 +19,7 @@ import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodRe
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { dbInTransaction } from "./db.js";
-import { convertTs, type TsUnit } from "./valuationTimeseries.js";
+import { convertFlow, type TsUnit } from "./rates.js";
 
 /**
  * Daily bucket series on the **calendar-day** grid: one point per Chile calendar day ending
@@ -188,7 +188,7 @@ export function unvaluedMemberDays(
 function gridFlows(
   accounts: readonly ShortHorizonAccountRef[],
   sessions: readonly string[],
-  flowUnit: "clp" | "usd"
+  flowUnit: TsUnit
 ): { flows: number[]; liabilityFlows: number[]; byAccount: Map<number, number[]> } {
   const flows = new Array<number>(sessions.length - 1).fill(0);
   const liabilityFlows = new Array<number>(sessions.length - 1).fill(0);
@@ -289,13 +289,13 @@ function ccDerivedFlows(
  * Full-history cumulative personal deposits through each grid date, per account — the
  * "aportes acum." chart companion. Same event source as {@link sessionFlows} (merged display
  * deposit events — USD-cash included since 2026-08-04), so the line's step on a deposit day
- * equals that day's flow leg. CLP for clp/uf units, USD for usd — each event at its own date's
- * rate, `flowEventInUnit` (uf conversion happens at emit time, per session date).
+ * equals that day's flow leg. Each event in the unit at its own date's rate (`flowEventInUnit`),
+ * UF included — never the cumulative pesos at a later day's UF.
  */
 function accountDepositCumsOnGrid(
   accounts: readonly ShortHorizonAccountRef[],
   grid: readonly string[],
-  flowUnit: "clp" | "usd"
+  flowUnit: TsUnit
 ): Map<number, number[]> {
   const out = new Map<number, number[]>();
   const eventsById = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
@@ -371,7 +371,7 @@ function buildDailySeriesPast(
   accounts: readonly ShortHorizonAccountRef[],
   included: readonly ShortHorizonAccountRef[],
   grid: readonly string[],
-  flowUnit: "clp" | "usd",
+  flowUnit: TsUnit,
   marksByAccount: readonly (readonly (number | null)[])[],
   valueInUnit: (ai: number, clp: number, gi: number) => number | null,
   withAccounts: boolean
@@ -477,7 +477,7 @@ export function getBucketDailySeries(
   // ledger): the per-account values in the unit on past days, the flow legs and the deposit
   // cumulatives. On the real clock it is kept in the history tier, so the rebuild after a live
   // tick recomputes only today's values and the arithmetic on top.
-  const flowUnit = unit === "usd" ? "usd" : "clp";
+  const flowUnit = unit;
   const buildPast = (): DailySeriesPast =>
     buildDailySeriesPast(accounts, included, grid, flowUnit, marksByAccount, accountValueInUnit, !!perAccount);
   const pastKey =
@@ -528,13 +528,13 @@ export function getBucketDailySeries(
   const liabilityFlows = past.flows.liabilityFlows.slice();
   const flowsByAccount = new Map([...past.flows.byAccount].map(([id, arr]) => [id, arr.slice()]));
   for (const [accountId, marksClp] of ccMarksClp) {
-    // In dollars the card's own dollar values; in pesos (and UF, converted per row below) its
-    // peso marks.
+    // In dollars the card's own dollar values; in pesos (and UF, each day's peso flow converted
+    // at that day's UF) its peso marks.
     const ai = included.findIndex((a) => a.account_id === accountId);
-    const marks = flowUnit === "usd" ? unitByAccount[ai]! : marksClp;
-    const derived = ccDerivedFlows(accountId, grid, marks, flowUnit);
+    const marks = unit === "usd" ? unitByAccount[ai]! : marksClp;
+    const derived = ccDerivedFlows(accountId, grid, marks, unit === "usd" ? "usd" : "clp");
     for (let i = 1; i < grid.length; i++) {
-      const amt = derived[i - 1]!;
+      const amt = unit === "uf" ? convertFlow(derived[i - 1]!, "clp", "uf", grid[i]!) : derived[i - 1]!;
       if (amt === 0) continue;
       liabilityFlows[i - 1] += amt;
       const arr = flowsByAccount.get(accountId) ?? new Array<number>(grid.length - 1).fill(0);
@@ -549,8 +549,6 @@ export function getBucketDailySeries(
   let depositCumsRaw: Map<number, number[]> | null = null;
   if (perAccount) {
     const cumsById = past.depositCums!;
-    const emit = (cumRaw: number, ymd: string): number =>
-      unit === "uf" ? convertTs(cumRaw, ymd, "uf") : cumRaw;
     depsAcumTotal = new Array<number>(grid.length - 1).fill(0);
     depositCumsRaw = new Map();
     included.forEach((a, ai) => {
@@ -558,7 +556,7 @@ export function getBucketDailySeries(
       if (!cums) return;
       const raw: number[] = [];
       for (let i = 1; i < grid.length; i++) {
-        const v = emit(cums[i]!, grid[i]!);
+        const v = cums[i]!;
         raw.push(v);
         depsAcumTotal![i - 1]! += v;
       }
@@ -582,9 +580,7 @@ export function getBucketDailySeries(
         const cur = w[i];
         const prev = w[i - 1];
         if (cur == null || prev == null) continue;
-        const rawFlow = accFlows?.[i - 1] ?? 0;
-        const flowInUnit = unit === "uf" ? convertTs(rawFlow, grid[i]!, "uf") : rawFlow;
-        pl[i - 1] = cur - prev - flowInUnit;
+        pl[i - 1] = cur - prev - (accFlows?.[i - 1] ?? 0);
       }
       line.pl = pl;
     });
@@ -639,8 +635,7 @@ export function getBucketDailySeries(
   const points: DailySeriesPoint[] = [];
   for (let i = 1; i < grid.length; i++) {
     const ymd = grid[i]!;
-    const toUnit = (raw: number): number => (unit === "uf" ? convertTs(raw, ymd, "uf") : raw);
-    const flow = toUnit(flows[i - 1]! + liabilityFlows[i - 1]!);
+    const flow = flows[i - 1]! + liabilityFlows[i - 1]!;
     const value = values[i]!;
     const prev = values[i - 1]!;
     const delta = value != null && prev != null ? value - prev : null;
@@ -665,12 +660,12 @@ export function getBucketDailySeries(
       if (!(baseFlow < 0)) continue;
       const close = unitByAccount[ai]![i];
       if (close == null || !Number.isFinite(close)) continue;
-      endCharged += endChargedFlow(toUnit(baseFlow), close, unit);
+      endCharged += endChargedFlow(baseFlow, close, unit);
     }
     const pct = flowAdjustedPct(
       pl,
       prev,
-      groupStartFrameFlow(toUnit(flows[i - 1]! - liabilityFlows[i - 1]!), endCharged),
+      groupStartFrameFlow(flows[i - 1]! - liabilityFlows[i - 1]!, endCharged),
       value,
       unit
     );

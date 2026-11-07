@@ -12,10 +12,9 @@ import {
   takeFxConversionWarnings,
   type FxConversionWarning,
 } from "./fxConversionWarnings.js";
-import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import type { MortgageCarryingEvent } from "./flowsMortgageCarrying.js";
-import type { TsUnit } from "./valuationTimeseries.js";
+import { convertFlow, type TsUnit } from "./rates.js";
 
 /**
  * A deposit/flow event: every one carries its CLP leg (`amt`); USD-cash and equity capital
@@ -36,20 +35,10 @@ export function flowEventInUnit(e: FlowEvent, unit: TsUnit): number {
     throw new Error(`flow event ${e.occurred_on}: non-finite CLP amount ${e.amt}`);
   }
   if (e.amt === 0) return 0;
-  if (unit === "clp") return e.amt;
-  if (unit === "usd") {
-    if (e.amt_usd != null && Number.isFinite(e.amt_usd)) return Math.sign(e.amt) * Math.abs(e.amt_usd);
-    const usd = clpToUsdAtPayment(e.amt, e.occurred_on);
-    if (usd == null) {
-      throw new Error(`flow event ${e.occurred_on}: no USD rate on or before the date (${e.amt} CLP)`);
-    }
-    return usd;
+  if (unit === "usd" && e.amt_usd != null && Number.isFinite(e.amt_usd)) {
+    return Math.sign(e.amt) * Math.abs(e.amt_usd);
   }
-  const uf = ufRowOnOrBefore(e.occurred_on);
-  if (!uf || !(uf.clp_per_uf > 0)) {
-    throw new Error(`flow event ${e.occurred_on}: no UF on or before the date (${e.amt} CLP)`);
-  }
-  return e.amt / uf.clp_per_uf;
+  return convertFlow(e.amt, "clp", unit, e.occurred_on);
 }
 
 /** Big-category buckets for the flows → deposits page (matches sidebar groupings). */
@@ -254,18 +243,19 @@ export function netDepositFlowBetween(
   accountId: number,
   startYmd: string,
   endYmd: string,
-  unit: "clp" | "usd"
+  unit: TsUnit
 ): number {
   return netDepositFlowWindows(accountId, unit)(startYmd, endYmd);
 }
 
 /**
  * {@link netDepositFlowBetween} over many windows of one account: the merged events load once,
- * then each call sums the events in its window `(startYmd, endYmd]`.
+ * then each call sums the events in its window `(startYmd, endYmd]`, each converted at its own
+ * day's rate (`flowEventInUnit`) — in UF too, never the window's peso sum at the window end.
  */
 export function netDepositFlowWindows(
   accountId: number,
-  unit: "clp" | "usd"
+  unit: TsUnit
 ): (startYmd: string, endYmd: string) => number {
   const events = loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
   return (startYmd, endYmd) => {
@@ -288,7 +278,7 @@ export function netDepositFlowWindows(
  */
 export function netDepositFlowCurrentMonthThroughToday(
   accountId: number,
-  unit: "clp" | "usd"
+  unit: TsUnit
 ): number {
   const today = chileCalendarTodayYmd();
   return netDepositFlowBetween(accountId, priorPeriodEndYmd("mtd", today), today, unit);

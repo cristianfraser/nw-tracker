@@ -3,11 +3,8 @@ import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import {
-  getAccountValuationTimeseries,
-  convertTs,
-} from "./valuationTimeseries.js";
-import type { TsUnit } from "./valuationTimeseries.js";
+import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
+import type { TsUnit } from "./rates.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { flowAdjustedPct } from "./periodReturns.js";
 import { withRunningPlTotals } from "./monthlyPerfRollup.js";
@@ -28,7 +25,8 @@ import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
+import { clpToUnitAt } from "./valueConvert.js";
 import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import {
@@ -80,18 +78,6 @@ export type AccountMonthlyPerformanceRow = {
 function numCell(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   return null;
-}
-
-/** A CLP amount in the performance series unit at `asOf` (a UF window flow). */
-function perfSheetClpFlowInUnit(clpFlow: number, asOf: string, unit: TsUnit): number {
-  if (unit === "clp") return clpFlow;
-  const converted = convertTs(clpFlow, asOf, unit);
-  if (!Number.isFinite(converted)) {
-    throw new Error(
-      `perfSheetClpFlowInUnit: missing FX for ${asOf} (${clpFlow} CLP → ${unit})`
-    );
-  }
-  return converted;
 }
 
 /**
@@ -405,15 +391,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     // Live close is as-of-today, so the flow must be too: the base row sums the whole
     // calendar month. Both legs read forward-posted rows as today (`displayLedgerCutoffYmd`
     // for the balance, the display-dated events for the flow), so such a row never reads
-    // as phantom P/L in either direction.
-    if (unit === "uf") {
-      // UF window flows convert at the window end, as the closed months' do.
-      return perfSheetClpFlowInUnit(
-        netDepositFlowCurrentMonthThroughToday(accountId, "clp"),
-        today,
-        "uf"
-      );
-    }
+    // as phantom P/L in either direction. Each event at its own day's rate, UF included.
     return netDepositFlowCurrentMonthThroughToday(accountId, unit);
   })();
   const nominal = ccPerf
