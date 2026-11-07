@@ -14,7 +14,7 @@
  *
  * A document decoder: it belongs with the ingest parsers (F15); kept here until it moves.
  */
-import { f22IdentityViolations } from "./f22Identities.js";
+import { f22IdentityViolations } from "../../src/f22Identities.js";
 
 type Column = { codeStart: [number, number]; valueEnd: [number, number] };
 
