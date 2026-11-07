@@ -1,4 +1,5 @@
 import {
+  DEFAULT_INGEST_SERVICE_URL,
   FEEDER_PARSE_PATH,
   feederParseErrorSchema,
   feederParseRequestSchema,
@@ -9,7 +10,7 @@ import {
 
 /** The ingest service's base URL (`INGEST_URL`). */
 export function resolveIngestServiceUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.INGEST_URL?.trim() || "http://127.0.0.1:3002").replace(/\/+$/, "");
+  return (env.INGEST_URL?.trim() || DEFAULT_INGEST_SERVICE_URL).replace(/\/+$/, "");
 }
 
 export function ingestFeederHeaders(env: NodeJS.ProcessEnv = process.env): Record<string, string> {

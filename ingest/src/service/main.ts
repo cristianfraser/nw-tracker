@@ -5,8 +5,9 @@
  *
  *   npm run service -w nw-tracker-ingest
  *
- * `INGEST_SERVICE_PORT` (default 3002); `SERVER_URL` / `INGEST_TOKEN` as for every ingest command.
+ * `INGEST_SERVICE_PORT` (default `DEFAULT_INGEST_SERVICE_PORT`); `SERVER_URL` / `INGEST_TOKEN` as for every ingest command.
  */
+import { DEFAULT_INGEST_SERVICE_PORT } from "nw-tracker-contracts";
 import { log } from "../log.js";
 import { envValue, ingestClient } from "../serverApi.js";
 import { createFeederServer, reportWithRetry } from "./feederServer.js";
@@ -14,7 +15,7 @@ import { readSantanderState, runRequestedRun } from "../runner/runRequest.js";
 import { runnerScriptRunningOutside } from "./runnerScripts.js";
 import { PARSE_FORMATS } from "../parse/formats.js";
 
-const port = Number(process.env.INGEST_SERVICE_PORT ?? 3002);
+const port = Number(process.env.INGEST_SERVICE_PORT ?? DEFAULT_INGEST_SERVICE_PORT);
 const client = ingestClient();
 
 const { server } = createFeederServer({

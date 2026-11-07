@@ -1,6 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
-import type { IngestErrorBody } from "nw-tracker-contracts";
+import { ingestAccessRefusal, type IngestErrorBody } from "nw-tracker-contracts";
+
+export { isLoopbackAddress } from "nw-tracker-contracts";
 
 /**
  * Who may write through `/api/ingest/*`. Today: only this machine (the server binds
@@ -24,23 +25,6 @@ export function ingestAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): I
   return { token, allowRemote, demoMode: env.DEMO_MODE === "1" };
 }
 
-const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-
-export function isLoopbackAddress(address: string | undefined): boolean {
-  return address != null && LOOPBACK_ADDRESSES.has(address);
-}
-
-function bearerToken(header: string | undefined): string | null {
-  const m = /^Bearer\s+(.+)$/i.exec(header ?? "");
-  return m?.[1]?.trim() || null;
-}
-
-function tokensEqual(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-}
-
 export function ingestAuthMiddleware(
   config: IngestAuthConfig = ingestAuthConfigFromEnv()
 ): RequestHandler {
@@ -51,16 +35,18 @@ export function ingestAuthMiddleware(
       return;
     }
     // The socket's own address, never req.ip: a proxy header must not pass as local.
-    if (!config.allowRemote && !isLoopbackAddress(req.socket.remoteAddress)) {
-      refuse(403, { error: "ingest_forbidden", message: "Ingest accepts local connections only." });
+    const refusal = ingestAccessRefusal({
+      remoteAddress: req.socket.remoteAddress,
+      authorization: req.headers.authorization,
+      token: config.token,
+      allowRemote: config.allowRemote,
+    });
+    if (refusal) {
+      refuse(refusal.status, {
+        error: "ingest_forbidden",
+        message: refusal.reason === "remote" ? "Ingest accepts local connections only." : "Missing or wrong ingest token.",
+      });
       return;
-    }
-    if (config.token) {
-      const given = bearerToken(req.headers.authorization);
-      if (!given || !tokensEqual(given, config.token)) {
-        refuse(401, { error: "ingest_forbidden", message: "Missing or wrong ingest token." });
-        return;
-      }
     }
     next();
   };

@@ -1,6 +1,6 @@
-import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import {
+  ingestAccessRefusal,
   FEEDER_PARSE_FORMATS,
   FEEDER_PARSE_PATH,
   FEEDER_RUNS_PATH,
@@ -40,18 +40,9 @@ export type FeederDeps = {
 
 type Running = { run_id: number | null; kind: string; started_at: string };
 
-const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-
 function send(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
-}
-
-function tokenOk(header: string | undefined, token: string): boolean {
-  const given = /^Bearer\s+(.+)$/i.exec(header ?? "")?.[1]?.trim() ?? "";
-  const a = Buffer.from(given);
-  const b = Buffer.from(token);
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 async function readJson(req: http.IncomingMessage, maxBytes = 64 * 1024): Promise<unknown> {
@@ -119,8 +110,13 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
 
   const server = http.createServer((req, res) => {
     void (async () => {
-      if (!LOOPBACK.has(req.socket.remoteAddress ?? "")) return send(res, 403, { error: "local connections only" });
-      if (deps.token && !tokenOk(req.headers.authorization, deps.token)) return send(res, 401, { error: "token" });
+      const refusal = ingestAccessRefusal({
+        remoteAddress: req.socket.remoteAddress,
+        authorization: req.headers.authorization,
+        token: deps.token ?? null,
+        allowRemote: false,
+      });
+      if (refusal) return send(res, refusal.status, { error: refusal.reason === "remote" ? "local connections only" : "token" });
       const url = new URL(req.url ?? "/", "http://localhost");
       if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, running: current });
       if (req.method === "POST" && url.pathname.startsWith(`${FEEDER_PARSE_PATH}/`)) {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  DEFAULT_SERVER_URL,
   connectionFailureCode,
   createIngestClient,
   IngestConnectionError,
@@ -12,8 +13,6 @@ import { resolveRepoRoot } from "./paths.js";
 
 /** How this package names itself to the server (`feeder_id` on every payload). */
 export const INGEST_FEEDER_ID = "nw-tracker-ingest";
-
-const DEFAULT_SERVER_URL = "http://127.0.0.1:3001";
 
 /**
  * `SERVER_URL` and `INGEST_TOKEN` from the environment, else from the repo-root `.env` the
