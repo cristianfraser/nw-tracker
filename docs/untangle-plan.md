@@ -1305,6 +1305,31 @@ env parsing, migration 269, retired shell runners and plists, ingest + server de
 | `nav-tree` | F4 | Overlaps `valuation-core` on `valuationTimeseries.ts`, `dashboard*`: run after F3 merges, in parallel with F5/F6, owning the tree, nav, dashboard and group payload files. Bug 6. | opus |
 | `contracts-dtos` | F8 | Shared DTOs with `schema_version`, one client cache helper, JSON Schema for the Python outputs. Parallel with the above (owns `server/contracts/src/dto/**`, `client/src/types/**`, `client/src/queries/*Cache.ts`, `ingest/python` schema checks). | opus |
 
+**Wave 2 status (2026-11-07): merged into `untangle`.** Order landed: `contracts-dtos` (73fdcf25), `cache-registry`
+(f42ff786), `valuation-core` step 1 / F3 (b025f118), steps 2+3 / F5+F6 (d93f611b), `nav-tree` (844694fb). Final
+checks on the merged branch: typecheck + conventions + check-deps ok (largest cycle 169 → 99 files, 205 → 144 files
+in cycles; baseline rewritten at each shrink), contracts 113, client 509, ingest 481, Python ok, server **3028 passing,
+0 failing** (F6 made the two fragile tests deterministic). Every stream proved itself on a copy of the real DB
+(dumps of 100–490 payloads before/after). Not merged to `main`.
+
+Behaviour changes accepted in wave 2 (each measured on the real copy; the user has not reviewed them yet):
+- F2 `9dc088b5`: reads no longer write. The cuenta-de-ahorro split mirrors and the expense deposit links were
+  deleted and re-inserted on every read (ids moved, the lines just built missed their synthetic deposit links,
+  every read dropped every cache). Keeping the rows moves `pct_total` / `pct_year` on 3 accounts and the
+  Inversiones card, one flows month's P/L and the liabilities daily overlay. Revert = old figures + a cache
+  that drops on every read.
+- F5 bug 1 and its sibling: UF series convert every flow per event (the five window-end copies are gone) and
+  the ledger-cash UF closes are values in UF, not pesos. UF figures only.
+- F5 (c): card payments in the dollar flows overview convert at the buy rate like every other flow (they used
+  the mid): up to US$22 a month, Σ|cash_unexplained| slightly down.
+- F6 item 5: `stock_units_inflow` now reads transfer legs too (one stock's split shares, the two AFP fund-switch
+  credits); no value or P/L moved.
+- F4 bug 6: `totals.liabilities_usd` is the Pasivos root's own dollar total (was always 0).
+- F8: the App Store receipt processor slug is `apple_app_store` on the wire (`app_store` was a runtime rename).
+- F2/F3/F4 added migrations 270 (`mark_input_changes.kind`, write-log triggers on every cached table), 271
+  (`account_roles`, seeded from today's import keys and tree placement), 272 (role columns on `portfolio_groups`,
+  filled from today's slugs). The seed is a no-op on the real copy.
+
 **Wave 3 — flows and cards, serial with one parallel audit.** Starts after wave 2.
 
 1. `audit` (read-only, sonnet): every reader of lines and plans, what each needs. **Done
@@ -1430,6 +1455,47 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
   every time; `ccGroupTotalMatchesCardsInvariant.test.ts` flakes (2026-11-30 total vs Σ cards).
   Both read today's date and the live fx frame. Owner: the Tests extra (wave 5), or F6 if the
   P/L kernel makes them deterministic first.
+
+### Notes from wave 2 (for waves 3–5)
+
+- **AGENTS.md is stale on:** the cache funnels («A tick drops only…», «Mark-cache waterfall», «Cache
+  invalidation», «Response caches» — `docs/cache-registry.md` is current), `panelCache.ts` and the nav-snapshot
+  v16 key (now `persistedPayloadCache.ts`, `nw:cache:<name>:v<n>`), `verify-cc-financing-identity.ts` (now
+  `ccFinancingIdentity.test.ts`), «One parser per format» case-file paths. Rewrite in wave 5 with the Comments extra.
+- **F4 left for a later pass** (needs F5's single value path, now merged): `nodeValue` + its series form (the six
+  Σ-marks loops still read different value sources and missing-rate rules), the two node values (card vs value
+  map), coverage built once, the dead colour tables (`chartColorRgb.ts`), the pass-throughs, `wealthPercentile` /
+  `projections` hard-codes, `navContextScope`'s lookup on inactive-filtered trees, `pageChartPlan` still ordering by
+  yesterday's marks. `accountBucketKindSlug` still parses `__` (needs a kind column on `asset_groups`).
+  `createPanelAccount.ts` / `fintualCertImport.ts` place accounts through `seedNavTree()` instead of writing membership.
+  `routes/accounts.ts`, `routes/benchmarks.ts`: drop `group=`/`subgroup=`, then delete `resolvePortfolioGroupSlugForLegacyTab`
+  and `normalizeLegacyTabSubgroup`.
+- **F5 left:** `ccOwedTerms.ts` and the uniform-rate global in `ccExpenseAmountClp.ts` (the statement rate must be
+  threaded through the facturación module — wave 3 `cards-rules`); the `afp_override_*` producers in
+  `accountPosition.ts` (their price fallbacks differ from `holdingPriceAt`'s — moving them changes today's marks;
+  decide in F12/F8 whether to rename the DTO fields); the sell-rate rule in `usdCashAccounts.ts` (it also prices
+  dollar deposit events and interest); `equityTaxLotEvents` derives the split ratio from shares held.
+- **F6:** Σ(day P/L) equals the monthly row to the peso on 39 of 40 accounts in every month; the mortgage differs in
+  its first month (552.289 max). Folding months from days is a documented change for wave 4 (`flow-model`) once the
+  mortgage's first-month flow is understood. The three liability blocks in `accountPerformance.ts` still exist.
+- **F3:** `afpUnoOfficialSync.ts` still hard-wires UNO/A (the live account is defined by that very series);
+  `ingestRunPolicy.ts` should import `MORTGAGE_CUOTA_DAY`; `dailySeries.ts:252` should read the property/loan pair
+  through `accountsWithRole`. `checking_member` and `portfolio_caja` are derived from placement, not stored (a
+  stored copy goes stale on create/move).
+- **F8:** the parser's `CSV_COLUMNS` and `cc_statement_line_rules.py` `_KEYS` stay literals pinned by tests
+  (reading the JSON changes the parse-cache hash — do it with the next parser change); ingest's `ParsedPayrollRow`,
+  `ParsedReceipt`, `MortgageSheetRead`, `CartolaPdfEntry` should import the contracts types; the ×3 cartola saldo
+  identity and `commaCsv.ts` are untouched; `expenseDisplayNames` `FOOD_DELIVERY_RECEIPTS` lists `rappi`, not a
+  known slug; the account DTO should carry `units_kind`, label and ticker from the profile (then the client's
+  `navAccountLabels` / `shared.ts` derivations go — F12); `dto/dashboard.ts` `totals.liabilities_usd` should be
+  `number | null`, bucket totals a per-slug record.
+- **Client (wave 4):** `fetchers.ts:95-141` should read `totals.liabilities_usd`; `portfolioDashboardBuckets.ts`
+  hard-codes the buckets; `dashboard.cards.inversiones` (a label stored on the real DB) is missing from `master.json`.
+- **F2:** `jobQueueSignal.ts` and `demoMarketActivity.ts` register from start functions (left); the Fintual state
+  fingerprint and the flows live-dollar input stay explicit (no table holds that state);
+  `fx_coverage.conversion_warnings` in the USD bundle depends on what was cached (predates the stream).
+- **Deploy note (wave 2):** migrations 270–272 run on the first boot; the client caches are empty once after the
+  deploy (new key scheme); `docs/cache-registry.md` is the operator's reference for what drops what.
 
 ## Open decisions
 
