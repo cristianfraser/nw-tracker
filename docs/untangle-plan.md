@@ -1350,6 +1350,32 @@ what changed, what was left as a note for another stream, the check results verb
 - Wave 2 and the rehearsals need a real-DB snapshot on this machine; fetch one from the
   server before wave 2 starts.
 
+## Notes between streams (wave 1 → later waves)
+
+Left by wave-1 streams for the owner of the file; pick them up in the wave that owns it.
+
+- `ingestRunPolicy.ts`: import `MORTGAGE_CUOTA_DAY` from `mortgageCuotaDay.ts` instead of its
+  own constant (F14 / infra).
+- `budaWallet.ts`: export `BUDA_ACCOUNT_IMPORT_KEY`; the demo keeps a copy until then (F3 roles).
+- `equitySplits.ts`: export `SAME_SPLIT_WINDOW_DAYS`; `brokerSplitNotifications` keeps a copy (F20 events).
+- `ccIssuers.ts` (F10): each issuer's close-day rule as data; until then the demo's
+  `closeForPurchase` and its rendered `next_period_from` use the Santander rule for both cards.
+- `expenseDepositLinks.ts` (F3): the lender list becomes loan data; the demo now asserts
+  against it.
+- `seedLiabilitiesTree.ts`, `loanPayments258.ts`: still hard-code the mortgage import key (F3).
+- `siiF22Compacto` / `siiInformedDj`: document decoders that belong in ingest (F13 wave 3);
+  `f22Draft` imports `observadoOnOrBefore` from `usdCashTaxLotEvents` for a helper (F7/F5);
+  `cryptoTaxGains` taxes only Buda-funded coins (F3 roles).
+- The AFP import-key builder (`import:afp|afp=…`) lives in the demo; `kind=fund` has no builder (F3).
+- `generate.ts` hard-coded cupos and colours, and the AFC note writer, are untouched (F9 provenance).
+- The legal tables end in 2026: from December 2027 the demo throws until 2027's caps and
+  minimum wage are added (`legalParameters.ts`).
+- **Fragile tests** (fail or flake on a freshly generated test DB on unmodified `main`, so not
+  caused by any stream): `dashboardCcCardVsDetalle.test.ts` «the day P/L in dollars …» fails
+  every time; `ccGroupTotalMatchesCardsInvariant.test.ts` flakes (2026-11-30 total vs Σ cards).
+  Both read today's date and the live fx frame. Owner: the Tests extra (wave 5), or F6 if the
+  P/L kernel makes them deterministic first.
+
 ## Open decisions
 
 - The name and API of the purchases module (the audit decides).
