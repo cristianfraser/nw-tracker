@@ -1,0 +1,72 @@
+{
+  "rut": [
+    {
+      "raw": "11.111.111-1",
+      "expect": "111111111"
+    },
+    {
+      "raw": "22.222.222-k",
+      "expect": "22222222K"
+    },
+    {
+      "raw": "022222222K",
+      "expect": "22222222K",
+      "note": "a leading zero some documents print"
+    },
+    {
+      "raw": " 9.999.999-9 ",
+      "expect": "99999999"
+    },
+    {
+      "raw": "",
+      "expect": ""
+    }
+  ],
+  "rutDigits": [
+    {
+      "raw": "11.111.111-1",
+      "expect": "11111111"
+    },
+    {
+      "raw": "22.222.222-K",
+      "expect": "22222222"
+    },
+    {
+      "raw": "K",
+      "expect": null
+    },
+    {
+      "raw": "",
+      "expect": null
+    }
+  ],
+  "accountNumber": [
+    {
+      "raw": "001234567890",
+      "expect": "1234567890"
+    },
+    {
+      "raw": "1234567890",
+      "expect": "1234567890"
+    },
+    {
+      "raw": "0-070-08-12345-6",
+      "expect": "7008123456",
+      "note": "dashes and leading zeros never decide a match"
+    },
+    {
+      "raw": "",
+      "expect": ""
+    }
+  ],
+  "checkDigitId": [
+    {
+      "raw": "000123456-7",
+      "expect": "1234567"
+    },
+    {
+      "raw": "123456-k",
+      "expect": "123456K"
+    }
+  ]
+}

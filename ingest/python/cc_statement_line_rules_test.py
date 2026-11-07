@@ -24,7 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import cc_statement_line_rules as rules  # noqa: E402
 
-CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "src" / "test" / "ccStatementLineSectionCases.json"
+CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "contracts" / "data" / "ccStatementLineSectionCases.json"
 
 
 class SharedSectionCasesTest(unittest.TestCase):

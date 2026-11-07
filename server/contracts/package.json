@@ -12,7 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "schema": "tsx scripts/write-json-schema.ts"
+    "schema": "tsx scripts/write-json-schema.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "4.4.3"
