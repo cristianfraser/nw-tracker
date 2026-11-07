@@ -6,7 +6,7 @@ import {
   locateCertificateRows,
   pairFundSwitches,
   type OfficialSeriesByAfp,
-} from "./pensionCertificateChain.js";
+} from "../scripts/lib/pensionCertificateChain.js";
 
 // March 2030: the 4th is a Monday; every date below is a weekday. Display lag 1.
 const alpha = [

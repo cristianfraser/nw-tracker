@@ -34,7 +34,7 @@ import fs from "node:fs";
 
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { ccLineOriginCurrency, parseCcOriginAmount } from "../src/ccOriginCurrency.js";
-import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { db } from "../src/db.js";
 
 const APPLY = process.argv.includes("--apply");

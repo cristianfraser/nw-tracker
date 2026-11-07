@@ -17,14 +17,14 @@
 import path from "node:path";
 
 import { invalidateCcBillingDetail } from "../src/aggregationCache.js";
-import { ccBilledCuotasIdentity } from "../src/ccBilledCuotasIdentity.js";
+import { ccBilledCuotasIdentity } from "./lib/ccBilledCuotasIdentity.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import {
   groupInstallmentLoanChains,
   mergeInstallmentLedgerFromParsedRows,
 } from "../src/ccInstallmentLedgerMerge.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
-import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { cardLast4FromParsedRow } from "../src/ccParsedImportAccounts.js";
 import type { CcStatementCsvRecord } from "../src/ccStatementsImport.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
