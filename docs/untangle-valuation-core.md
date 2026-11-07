@@ -134,6 +134,41 @@ Memoized per account with the F2 registry — `cacheRegistry.ts` / `cacheFamilie
 `portfolio_groups`, `portfolio_group_items`, `account_roles`, `market_symbols`, `movements` for
 the "has units events" facts).
 
+### As built (step 1, 2026-11-07)
+
+Deviations from the design above, forced by the code:
+
+- **Roles live in two places.** `account_roles` (migration 271) stores the identity roles —
+  `broker_cash`, `buda_wallet`, `fintual_goal`, `property`, `loan_of`, `lender_pattern` — with
+  `UNIQUE(account_id, role, param)` (a loan has several lender patterns). Triggers on `accounts`
+  (`accountRoles271.ts`) grant and revoke them from the frozen identity table whenever an account is
+  created or re-keyed, so the demo, test fixtures and panel accounts get their role without writing
+  it; the hook seeds existing accounts and adds the table's write-log triggers
+  (`WRITE_LOGGED_TABLES` in `markInputTriggers.ts`). The two roles of **tree placement**
+  (`checking_member`, `portfolio_caja`) are NOT stored — a stored copy goes stale when an account
+  is created or moved — and stay where the tree is: `listMovementBalanceCashAccountIds` (now one
+  rule: a cartola checking kind wherever filed, or a `clp` account under Checking accounts; the
+  legacy fallbacks are gone) and `portfolioCajaClpAccountId`. `cuota_day` is not seeded: the one
+  constant `MORTGAGE_CUOTA_DAY` (`mortgageCuotaDay.ts`) already serves every reader but
+  `ingestRunPolicy.ts` (infra's file).
+- **`checking_ledger` is the cartola kinds only.** A `clp` account filed under Checking accounts
+  (MACH) keeps `clp_ledger`, as every ladder valued it; its membership is the role, not the quantity.
+- **The profile and the roles reader are leaves of the import graph** (database reads and leaf
+  modules only), so they joined no cycle: the profile computes its facts by SQL (leaf kind from
+  `portfolio_groups.kind_slug`, share units, coin units) and `accountUsesEquityMtm` /
+  `accountUsesCryptoMtm` now read the profile. New leaves: `shareUnitsFlowKinds.ts`,
+  `fintualGoals.ts` (the one Fintual goal table; the old maps and the Risky Norris series sets
+  derive from it), `accountIdentityKeys.ts` (the keys the demo and fixtures create accounts with).
+- **Memo**: `dbStateMemo` (any write of this connection or the registry's epoch drops it), the same
+  lifetime `holdings.ts` had; no cache family.
+- **Coin and stock together throw**; a stock without a ticker, an AFP without a series outside the
+  demo and tests, and a Fintual goal without a series throw at profile resolution.
+- **Kept for steps 2–3**: the three liability blocks of `accountPerformance.ts` (F6's card / mortgage
+  legs), `afp_override_*` (DTO-facing; F5 removes the producers), `afpUnoOfficialSync.ts`'s
+  hard-wired UNO/A (the "live AFP account" is defined by that series today — following it needs
+  another definition of liveness), the per-account `units_kind` / label / ticker on the account DTO
+  (F8/F12).
+
 ### Proof for step 1
 Real-DB copy, before/after: for every account × {ten month-ends, yesterday, today} the value in
 clp and usd from `accountValueAt`, `accountTodayValue`, the position snapshot; the home bundle in
