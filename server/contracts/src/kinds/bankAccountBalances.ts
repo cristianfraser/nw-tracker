@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasAtMostCents } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 export const bankAccountBalanceSchema = z
@@ -9,7 +10,7 @@ export const bankAccountBalanceSchema = z
     product: z.enum(["checking", "demand_deposit"]),
     currency: z.enum(["clp", "usd"]),
     /** The balance as the bank states it: pesos whole, dollars to the cent. */
-    balance: z.number().refine((n) => Number.isFinite(n) && Math.round(n * 100) === n * 100, {
+    balance: z.number().refine(hasAtMostCents, {
       message: "balance has at most two decimals",
     }),
     /** The bank's own label and state, as printed (provenance). */

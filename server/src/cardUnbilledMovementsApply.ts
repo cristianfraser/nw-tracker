@@ -12,7 +12,6 @@ import {
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
 import { creditCardMasterMetaForAccount, webPasteListingDedupeKeys } from "./ccWebPasteParse.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { ymCompare } from "./calendarMonth.js";
 import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -33,6 +32,7 @@ import {
   recordBankCupoCapture,
   type BankCupoCaptureResult,
 } from "./santanderBankCupo.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /** A card's latest close as a listing states it: date + billed total per currency (debt-positive). */
 export type CardListingClose = {

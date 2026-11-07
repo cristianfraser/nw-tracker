@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -9,11 +10,10 @@ import { defineIngestKind } from "../defineKind.js";
  * unemployment-insurance rates. Rates are percents (10.46 = 10,46 %).
  */
 const percent = z.number().nonnegative().max(100);
-const periodMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 export const payrollParametersMonthSchema = z
   .object({
-    period_month: periodMonth,
+    period_month: yearMonthSchema,
     /** The document it was read from (its file name). */
     document: z.string().min(1).max(200),
     uf: z.number().positive(),

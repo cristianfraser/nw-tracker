@@ -1,0 +1,14 @@
+[
+  { "raw": "enero", "expect": 1 },
+  { "raw": "Septiembre", "expect": 9 },
+  { "raw": "setiembre", "expect": 9 },
+  { "raw": "sep.", "expect": 9 },
+  { "raw": "SEPT", "expect": 9 },
+  { "raw": "dic", "expect": 12 },
+  { "raw": "Diciembre", "expect": 12 },
+  { "raw": "mayo", "expect": 5 },
+  { "raw": "Febrero", "expect": 2 },
+  { "raw": "febr", "expect": null },
+  { "raw": "", "expect": null },
+  { "raw": "monday", "expect": null }
+]

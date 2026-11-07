@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../src/db.js";
-import { assertF22Identities, parseF22CompactoText } from "../src/siiF22Compacto.js";
+import { assertF22Identities, parseF22CompactoText } from "./lib/siiF22Compacto.js";
 import {
   informedDjFileKey,
   parseInformedDjHtml,

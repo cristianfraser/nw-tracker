@@ -2,6 +2,8 @@ import { performance } from "node:perf_hooks";
 import { setAggregationInvalidationListener } from "./aggregationCache.js";
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
+import { serverConfig } from "./config.js";
+import { ScheduledJob, nextAlignedMs } from "./schedulerKernel.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
@@ -34,7 +36,7 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
  * Requests go first: each step starts only once no API request is in flight
  * (`apiRequestsInFlight.ts`).
  *
- * Env: `CACHE_WARM_ENABLED=0` disables (default on).
+ * Env: `CACHE_WARM_ENABLED=0` disables (default on; `config.ts`).
  */
 
 const BOOT_DELAY_MS = 2_000;
@@ -49,8 +51,6 @@ let rewarmQueued = false;
 /** Delay for the queued rewarm: the shortest asked for while the warm ran. */
 let rewarmQueuedDelayMs = INVALIDATION_DEBOUNCE_MS;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let midnightTimer: ReturnType<typeof setTimeout> | null = null;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
 let lastWarmedDataVersion: number | null = null;
 
 function currentDataVersion(): number {
@@ -114,18 +114,39 @@ function scheduleWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): void 
   debounceTimer.unref?.();
 }
 
-function scheduleMidnightWarm(): void {
+/** The next 00:05 Chile, at least a minute ahead. */
+function nextMidnightWarmAtMs(nowMs: number): number {
   const tomorrow = chileCalendarAddDays(chileCalendarTodayYmd(), 1);
   const at = dateAtTimeZoneWallClock(tomorrow, 0, MIDNIGHT_WARM_MINUTE, "America/Santiago");
-  const delayMs = Math.max(60_000, at.getTime() - Date.now());
-  midnightTimer = setTimeout(() => {
-    void runWarm("chile-day-rollover").finally(() => scheduleMidnightWarm());
-  }, delayMs);
-  midnightTimer.unref?.();
+  return Math.max(nowMs + 60_000, at.getTime());
 }
 
+const midnightJob = new ScheduledJob({
+  name: "cache-warm:midnight",
+  enabled: () => serverConfig().cacheWarm,
+  next: nextMidnightWarmAtMs,
+  run: async () => {
+    await runWarm("chile-day-rollover");
+    return "ok";
+  },
+});
+
+/** Another process wrote the DB (a CLI import): its writes reach the caches only through `data_version`. */
+const dataVersionJob = new ScheduledJob({
+  name: "cache-warm:data-version",
+  enabled: () => serverConfig().cacheWarm,
+  next: (nowMs) => nextAlignedMs(nowMs, DATA_VERSION_POLL_MS),
+  run: async () => {
+    if (warming || debounceTimer != null) return "ok";
+    if (lastWarmedDataVersion != null && currentDataVersion() !== lastWarmedDataVersion) {
+      scheduleWarm("external-write", 5_000);
+    }
+    return "ok";
+  },
+});
+
 export function startDashboardCacheWarmer(): void {
-  if (process.env.CACHE_WARM_ENABLED === "0") {
+  if (!serverConfig().cacheWarm) {
     console.log("cache-warm: disabled (CACHE_WARM_ENABLED=0)");
     return;
   }
@@ -140,14 +161,8 @@ export function startDashboardCacheWarmer(): void {
     if (scope === "live_tail") return;
     scheduleWarm("invalidation");
   });
-  scheduleMidnightWarm();
-  pollTimer = setInterval(() => {
-    if (warming || debounceTimer != null) return;
-    if (lastWarmedDataVersion != null && currentDataVersion() !== lastWarmedDataVersion) {
-      scheduleWarm("external-write", 5_000);
-    }
-  }, DATA_VERSION_POLL_MS);
-  pollTimer.unref?.();
+  midnightJob.start();
+  dataVersionJob.start();
 
   scheduleWarm("boot", BOOT_DELAY_MS);
 }

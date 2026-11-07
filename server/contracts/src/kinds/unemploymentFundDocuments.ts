@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDateSchema, yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -11,8 +12,6 @@ import { defineIngestKind } from "../defineKind.js";
  * the report.
  */
 
-const isoDate = z.iso.date();
-const periodMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const pesos = z.number().int();
 
 export const unemploymentFundCertificateSchema = z
@@ -22,14 +21,14 @@ export const unemploymentFundCertificateSchema = z
       .array(
         z
           .object({
-            period_month: periodMonth,
+            period_month: yearMonthSchema,
             employer_rut: z.string().min(1).max(20),
             /** Empty when the layout wrapped the name onto lines of its own. */
             employer: z.string().max(200),
             taxable_income: pesos.nonnegative(),
             amount: pesos.positive(),
             /** Fecha de pago: the day the fund credits the units. */
-            paid_on: isoDate,
+            paid_on: isoDateSchema,
           })
           .strict()
       )
@@ -42,10 +41,10 @@ export const unemploymentFundCertificateSchema = z
 
 export const unemploymentFundStatementSchema = z
   .object({
-    period_from: isoDate,
-    period_to: isoDate,
-    opening: z.object({ date: isoDate, balance: pesos }).strict(),
-    closing: z.object({ date: isoDate, balance: pesos }).strict(),
+    period_from: isoDateSchema,
+    period_to: isoDateSchema,
+    opening: z.object({ date: isoDateSchema, balance: pesos }).strict(),
+    closing: z.object({ date: isoDateSchema, balance: pesos }).strict(),
     contributions: pesos,
     other_income: pesos,
     gain: pesos,
@@ -55,7 +54,7 @@ export const unemploymentFundStatementSchema = z
     account_use: pesos,
     total_outflows: pesos,
     /** Contributions by month of payment. */
-    detail: z.array(z.object({ employer: z.string().min(1).max(200), pay_month: periodMonth, amount: pesos }).strict()),
+    detail: z.array(z.object({ employer: z.string().min(1).max(200), pay_month: yearMonthSchema, amount: pesos }).strict()),
   })
   .strict()
   .refine((s) => s.opening.balance + s.total_income - s.total_outflows === s.closing.balance, {

@@ -36,6 +36,8 @@
 #   request (server/src/demoMode.ts, demoData/demoRealMarket.ts, demoMarketActivity.ts).
 #   DB backups default off; the dashboard cache warmer stays on for first paint.
 # - Single-service same-origin (SERVE_CLIENT_DIST=1) — no CORS_ALLOWED_ORIGINS needed.
+# - Every flag below is parsed once at boot by server/src/config.ts (1/true/yes on, 0/false/no off;
+#   anything else fails the boot); DEMO_MODE=1 selects the demo deployment profile there.
 services:
   - type: web
     name: nw-tracker-demo

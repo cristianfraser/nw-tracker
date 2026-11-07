@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { createDbSnapshot, listDbSnapshots } from "./dbSnapshot.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { serverConfig } from "./config.js";
+import { ScheduledJob, atStartThen } from "./schedulerKernel.js";
 
 /**
  * Daily automatic DB snapshot while the server runs. The SQLite file is the only
@@ -9,8 +11,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
  * Excel is no longer authoritative), so it must not depend on remembering
  * `npm run db:snapshot`.
  *
- * Env:
- * - `DB_BACKUP_ENABLED`   — `0` disables (default on; set 0 on hosted demos with synthetic data).
+ * Env (`config.ts`):
+ * - `DB_BACKUP_ENABLED`   — off disables (default on; the demo profile defaults it off).
  * - `DB_BACKUP_KEEP`      — retention count for `auto-*` snapshots (default 14). Manual
  *                           `db:snapshot` files have other labels and are never pruned.
  * - `DB_BACKUP_DIR`       — optional second copy (ideally another volume / synced folder).
@@ -20,17 +22,10 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 const CHECK_INTERVAL_MS = 60 * 60_000;
 const AUTO_LABEL = "auto-daily";
 
-let timerHandle: ReturnType<typeof setInterval> | null = null;
 let lastBackupChileYmd: string | null = null;
-let runInFlight = false;
-
-function backupEnabled(): boolean {
-  return process.env.DB_BACKUP_ENABLED !== "0";
-}
 
 function retentionCount(): number {
-  const n = Number(process.env.DB_BACKUP_KEEP);
-  return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 14;
+  return serverConfig().dbBackup.keep;
 }
 
 function pruneAutoSnapshots(): void {
@@ -42,12 +37,11 @@ function pruneAutoSnapshots(): void {
 }
 
 function secondaryRetentionCount(): number {
-  const n = Number(process.env.DB_BACKUP_DIR_KEEP);
-  return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 60;
+  return serverConfig().dbBackup.dirKeep;
 }
 
 function copyToSecondaryDir(snapshotPath: string): void {
-  const dir = process.env.DB_BACKUP_DIR?.trim();
+  const dir = serverConfig().dbBackup.dir;
   if (!dir) return;
   fs.mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, path.basename(snapshotPath));
@@ -73,10 +67,8 @@ function lastAutoSnapshotYmd(): string | null {
 }
 
 async function backupTick(): Promise<void> {
-  if (runInFlight) return;
   const today = chileCalendarTodayYmd();
   if (lastBackupChileYmd === today) return;
-  runInFlight = true;
   try {
     const r = await createDbSnapshot({ label: AUTO_LABEL });
     lastBackupChileYmd = today;
@@ -85,22 +77,29 @@ async function backupTick(): Promise<void> {
     pruneAutoSnapshots();
   } catch (e) {
     console.error(`db-backup: failed — ${e instanceof Error ? e.message : e}`);
-  } finally {
-    runInFlight = false;
   }
 }
 
+/** Checked at start and every hour after the last check (the kernel's in-flight guard keeps one at a time). */
+let lastCheckAtMs = 0;
+const backupJob = new ScheduledJob({
+  name: "db-backup",
+  enabled: () => serverConfig().dbBackup.enabled,
+  next: atStartThen(() => lastCheckAtMs + CHECK_INTERVAL_MS),
+  run: async () => {
+    lastCheckAtMs = Date.now();
+    await backupTick();
+    return "ok";
+  },
+});
+
 export function startDbBackupScheduler(): void {
-  if (!backupEnabled()) {
+  if (backupJob.isEnabled) return;
+  if (!serverConfig().dbBackup.enabled) {
     console.log("db-backup: disabled (DB_BACKUP_ENABLED=0)");
     return;
   }
-  if (timerHandle != null) return;
   lastBackupChileYmd = lastAutoSnapshotYmd();
-  timerHandle = setInterval(() => {
-    void backupTick();
-  }, CHECK_INTERVAL_MS);
-  timerHandle.unref?.();
-  void backupTick();
+  backupJob.start();
 }
 

@@ -35,7 +35,7 @@ describe("runSyncStepIfStale", () => {
     const errors: SyncStepError[] = [];
     let ran = false;
     const state: GlobalSyncStateFile = {};
-    await runSyncStepIfStale("afp_uno", ["fintual"], "AFP UNO", errors, state, cl, async () => {
+    await runSyncStepIfStale("afp_uno", ["fintual"], errors, state, cl, async () => {
       ran = true;
     });
     expect(ran).toBe(false);
@@ -48,11 +48,11 @@ describe("runSyncStepIfStale", () => {
     const stale = ["afp_uno", "sbif_uf"] as const;
     const ran: string[] = [];
 
-    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", errors, state, cl, async () => {
+    await runSyncStepIfStale("afp_uno", stale, errors, state, cl, async () => {
       ran.push("afp_uno");
       throw new Error("uno.cl timeout");
     });
-    await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", errors, state, cl, async () => {
+    await runSyncStepIfStale("sbif_uf", stale, errors, state, cl, async () => {
       ran.push("sbif_uf");
     });
 
@@ -63,7 +63,7 @@ describe("runSyncStepIfStale", () => {
   it("keeps the user-forced-stale flag when the step fails", async () => {
     const errors: SyncStepError[] = [];
     const state: GlobalSyncStateFile = { userForcedStale: ["afp_uno"] };
-    await runSyncStepIfStale("afp_uno", ["afp_uno"], "AFP UNO", errors, state, cl, async () => {
+    await runSyncStepIfStale("afp_uno", ["afp_uno"], errors, state, cl, async () => {
       throw new Error("down");
     });
     expect(state.userForcedStale).toEqual(["afp_uno"]);
@@ -73,7 +73,7 @@ describe("runSyncStepIfStale", () => {
   it("clears only the succeeding source's user-forced-stale flag", async () => {
     const errors: SyncStepError[] = [];
     const state: GlobalSyncStateFile = { userForcedStale: ["afp_uno", "sbif_uf"] };
-    await runSyncStepIfStale("afp_uno", ["afp_uno"], "AFP UNO", errors, state, cl, async () => {});
+    await runSyncStepIfStale("afp_uno", ["afp_uno"], errors, state, cl, async () => {});
     expect(errors).toEqual([]);
     expect(state.userForcedStale).toEqual(["sbif_uf"]);
   });
@@ -81,7 +81,7 @@ describe("runSyncStepIfStale", () => {
   it("drops the userForcedStale key entirely when the last flag clears", async () => {
     const errors: SyncStepError[] = [];
     const state: GlobalSyncStateFile = { userForcedStale: ["sbif_uf"] };
-    await runSyncStepIfStale("sbif_uf", ["sbif_uf"], "BCentral UF", errors, state, cl, async () => {});
+    await runSyncStepIfStale("sbif_uf", ["sbif_uf"], errors, state, cl, async () => {});
     expect(state.userForcedStale).toBeUndefined();
   });
 });

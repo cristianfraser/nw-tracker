@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { UNCLASSIFIED_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { addDays } from "./recurringPaymentMatch.js";
 import { withRecurringPaymentNames } from "./recurringLineNames.js";
 import { ufProjector } from "./ufProjection.js";
+import { addDaysIso } from "nw-tracker-contracts";
 
 const NAME = "vitest-recurring-line-names";
 
@@ -27,7 +27,7 @@ describe("withRecurringPaymentNames", () => {
 
   it("names a pending listing by the entry and gives it the category of the entry's last charge", () => {
     const uf = ufProjector();
-    const month = addDays(uf.knownThrough, -60).slice(0, 7);
+    const month = addDaysIso(uf.knownThrough, -60).slice(0, 7);
     const settledOn = `${month}-06`;
     const pendingOn = `${month}-03`;
     const pesos = Math.round(0.5 * uf.ufOn(settledOn));
@@ -52,7 +52,7 @@ describe("withRecurringPaymentNames", () => {
       category_slug: "transportation",
     });
     // Listed before its due date (today the 4th, due the 6th), before the posted line exists.
-    const early = withRecurringPaymentNames([line(4, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true)], addDays(pendingOn, 1));
+    const early = withRecurringPaymentNames([line(4, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true)], addDaysIso(pendingOn, 1));
     expect(early[0]).toMatchObject({ recurring_payment: { id: entryId, name: NAME } });
     // Same name, another amount: some other charge.
     expect(out[2]!.recurring_payment).toBeUndefined();

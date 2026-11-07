@@ -1,0 +1,6 @@
+[
+  { "raw": "  farmacia   central ", "normalized": "FARMACIA CENTRAL", "bci": "  farmacia   central " },
+  { "raw": "FARMACIA CENTRAL (T)", "normalized": "FARMACIA CENTRAL (T)", "bci": "FARMACIA CENTRAL" },
+  { "raw": "FARMACIA CENTRAL (t)  ", "normalized": "FARMACIA CENTRAL (T)", "bci": "FARMACIA CENTRAL" },
+  { "raw": "ABC (T) STORE", "normalized": "ABC (T) STORE", "bci": "ABC (T) STORE", "note": "only a trailing (T)" }
+]

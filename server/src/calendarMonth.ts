@@ -1,16 +1,25 @@
-import { addCalendarMonths } from "./ccYearMonth.js";
+import {
+  addCalendarMonths,
+  expandYearMonthsInclusive,
+  isLastCalendarDayOfMonth,
+  monthEndUtcYmd,
+  monthKeyFromYmd,
+  ymCompare,
+} from "nw-tracker-contracts";
 
-/** `YYYY-MM` from `YYYY-MM-DD`. */
-export function monthKeyFromYmd(ymd: string): string {
-  return ymd.slice(0, 7);
-}
-
-/** True when `ymd` is the last UTC calendar day of its month. */
-export function isLastCalendarDayOfMonth(ymd: string): boolean {
-  const t = String(ymd ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
-  return t === monthEndUtcYmd(monthKeyFromYmd(t));
-}
+/**
+ * The generic month helpers live in `nw-tracker-contracts` (formats/months.ts); they are
+ * re-exported here because about 85 server modules import them from this file. New code imports
+ * them from `nw-tracker-contracts`; this file keeps the cartola period rules.
+ */
+export {
+  expandYearMonthsInclusive,
+  isLastCalendarDayOfMonth,
+  monthEndUtcYmd,
+  monthEndsBetweenInclusive,
+  monthKeyFromYmd,
+  ymCompare,
+} from "nw-tracker-contracts";
 
 /**
  * Effective first statement month for Santander cartola DESDE/HASTA.
@@ -114,48 +123,6 @@ export function cartolaCalendarMonthsFromPeriod(
   return /^\d{4}-\d{2}$/.test(fb) ? [fb] : [];
 }
 
-/** Last UTC calendar day of month for `YYYY-MM`. Throws on malformed input (fail fast). */
-const monthEndByMonthKey = new Map<string, string>();
-
-export function monthEndUtcYmd(monthKey: string): string {
-  const hit = monthEndByMonthKey.get(monthKey);
-  if (hit !== undefined) return hit;
-  const end = monthEndUtcYmdUncached(monthKey);
-  if (monthEndByMonthKey.size > 10_000) monthEndByMonthKey.clear();
-  monthEndByMonthKey.set(monthKey, end);
-  return end;
-}
-
-function monthEndUtcYmdUncached(monthKey: string): string {
-  const [ys, ms] = monthKey.split("-");
-  const y = Number(ys);
-  const mo = Number(ms);
-  if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) {
-    throw new Error(`monthEndUtcYmd: invalid month key ${JSON.stringify(monthKey)}`);
-  }
-  return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
-}
-
-/** Every month-end from first month containing `minYmd` through month of `maxYmd`, inclusive. */
-export function monthEndsBetweenInclusive(minYmd: string, maxYmd: string): string[] {
-  const out: string[] = [];
-  let y = Number(minYmd.slice(0, 4));
-  let m = Number(minYmd.slice(5, 7));
-  const yEnd = Number(maxYmd.slice(0, 4));
-  const mEnd = Number(maxYmd.slice(5, 7));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(yEnd) || !Number.isFinite(mEnd)) return out;
-  while (y < yEnd || (y === yEnd && m <= mEnd)) {
-    const mk = `${y}-${String(m).padStart(2, "0")}`;
-    out.push(monthEndUtcYmd(mk));
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  return out;
-}
-
 /**
  * Fill every month between the first and last point in `points` (interior gaps only).
  * Missing months are inserted using `makeEmpty(lastDayOfMonth)`.
@@ -178,29 +145,4 @@ export function densifyMonthlyPoints<T extends { as_of_date: string }>(
   const maxYm = yms[yms.length - 1]!;
   const allYms = expandYearMonthsInclusive(minYm, maxYm);
   return allYms.map((ym) => byYm.get(ym) ?? makeEmpty(monthEndUtcYmd(ym)));
-}
-
-/** Every `YYYY-MM` from `minYm` through `maxYm` inclusive. */
-export function expandYearMonthsInclusive(minYm: string, maxYm: string): string[] {
-  const out: string[] = [];
-  let y = Number(minYm.slice(0, 4));
-  let m = Number(minYm.slice(5, 7));
-  const yEnd = Number(maxYm.slice(0, 4));
-  const mEnd = Number(maxYm.slice(5, 7));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(yEnd) || !Number.isFinite(mEnd)) {
-    return out;
-  }
-  while (y < yEnd || (y === yEnd && m <= mEnd)) {
-    out.push(`${y}-${String(m).padStart(2, "0")}`);
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  return out;
-}
-
-export function ymCompare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }

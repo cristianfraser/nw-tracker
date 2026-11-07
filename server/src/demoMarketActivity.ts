@@ -1,4 +1,4 @@
-import { demoModeEnabled } from "./demoModeFlag.js";
+import { deploymentProfile } from "./config.js";
 
 /**
  * The hosted demo's market syncs run only while someone is browsing it (2026-10-31): the global
@@ -15,7 +15,7 @@ let lastActivityAtMs: number | null = null;
 const wakeListeners: (() => void)[] = [];
 
 export function demoMarketAwake(nowMs: number = Date.now()): boolean {
-  if (!demoModeEnabled()) return true;
+  if (!deploymentProfile().marketAwakeGate) return true;
   return lastActivityAtMs != null && nowMs - lastActivityAtMs < DEMO_MARKET_IDLE_MS;
 }
 

@@ -9,7 +9,7 @@ import type { TsUnit } from "./valuationTimeseries.js";
 import { convertValue } from "./valueConvert.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
  * A credit card's dashboard row reads its month / year / lifetime P/L (the cost of financing,

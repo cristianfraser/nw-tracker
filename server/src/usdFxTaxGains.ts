@@ -30,8 +30,8 @@
  * the gain added to code 1032, a loss a 169 candidate. `codes` states the pesos each route puts in
  * each code so the F22 draft only picks.
  */
-import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn, type OfficialIpcLookup } from "./siiOfficialIpc.js";
+import { IDPC_RATE } from "./legalParameters.js";
+import { ipcReajuste, monthBeforeYmd, type OfficialIpcLookup } from "./siiOfficialIpc.js";
 import type { TaxLotDisposal, TaxLotSlice } from "./taxLots.js";
 import {
   usdCashTaxDisposals,
@@ -44,14 +44,6 @@ import {
 export type { UsdFxDisposal, UsdFxDisposalTag };
 
 export type UsdFxRoute = "idpc_1901" | "igc_1032";
-
-/**
- * The first-category rate the F22 draft applies (`IDPC_RATE` in `f22Draft.ts`, 25%, the one the
- * foreign shares' 1914 path uses). Duplicated here, not imported: `f22Draft` imports this module,
- * and a leaf tax module must not pull the whole draft graph in. `usdFxTaxGains.test.ts` asserts
- * the two are equal.
- */
-export const USD_FX_IDPC_RATE = 0.25;
 
 /** What the loader gives this module: every disposal of every USD cash account, tagged, and the lots still open. */
 export type UsdFxDisposalLoader = (opts: { posture: UsdFxPosture; purchaseCost: UsdPurchaseCost }) => {
@@ -101,7 +93,7 @@ export type UsdFxF22Codes = {
   1032?: number;
   /** Route `igc_1032`: the magnitude of a negative result, a code 169 candidate. */
   loss169?: number;
-  /** Route `idpc_1901`: IDPC on 1901 at {@link USD_FX_IDPC_RATE}; the same pesos are the line-5 credit. */
+  /** Route `idpc_1901`: IDPC on 1901 at {@link IDPC_RATE}; the same pesos are the line-5 credit. */
   idpcClp?: number;
 };
 
@@ -135,8 +127,6 @@ export type UsdFxTaxGainsOptions = {
   ipc?: { latestMonth: string; lookup: OfficialIpcLookup };
 };
 
-const round1 = (x: number) => Math.round(x * 10) / 10;
-
 /**
  * `load` is the lot walk — `usdCashTaxDisposals` from `usdCashTaxLotEvents` over every USD cash
  * account of the DB by default; the F22 draft takes the same default (or an injected loader), tests
@@ -149,15 +139,8 @@ export function usdFxTaxGainsForYear(
 ): UsdFxYearTaxResult {
   const { posture, purchaseCost, route } = opts;
   const roundPct = opts.roundPct ?? true;
-  const latest = opts.ipc?.latestMonth ?? latestOfficialIpcMonth();
-  const lookup = opts.ipc?.lookup ?? loadOfficialIpcLookup();
-  const ipcBetween = officialIpcVariationPctWithStandIn(lookup, latest);
-  const pct = (from: string, to: string) => {
-    const p = ipcBetween(from, to);
-    return roundPct ? round1(p) : p;
-  };
-  const reajusteIsEstimate = latest < `${incomeYear}-11-01`;
-  const november = reajusteIsEstimate ? latest : `${incomeYear}-11-01`;
+  const ipc = ipcReajuste({ round: roundPct, lookup: opts.ipc?.lookup, latestMonth: opts.ipc?.latestMonth });
+  const { toMonth: november, provisional: reajusteIsEstimate } = ipc.december(incomeYear);
 
   const inYear = (d: UsdFxDisposal) => d.date.startsWith(`${incomeYear}-`);
   const byDate = <T extends { date: string; movementId: number }>(a: T, b: T) =>
@@ -179,7 +162,7 @@ export function usdFxTaxGainsForYear(
     }
     if (d.tag !== "realized") throw new Error(`USD fx tax: disposal ${d.movementId} carries tag ${String(d.tag)}`);
     const disposalMonthBefore = monthBeforeYmd(d.date);
-    const decemberPct = Math.max(0, disposalMonthBefore > november ? 0 : pct(disposalMonthBefore, november));
+    const decemberPct = ipc.yearEndPct(disposalMonthBefore, november);
     disposals.push({
       accountId: d.accountId,
       date: d.date,
@@ -223,7 +206,7 @@ export function usdFxF22Codes(route: UsdFxRoute, resultDecemberClp: number): Usd
   const result = Math.round(resultDecemberClp);
   if (route === "idpc_1901") {
     if (result <= 0) return {};
-    return { 1901: result, idpcClp: Math.round(result * USD_FX_IDPC_RATE) };
+    return { 1901: result, idpcClp: Math.round(result * IDPC_RATE) };
   }
   if (result > 0) return { 1032: result };
   if (result < 0) return { loss169: -result };

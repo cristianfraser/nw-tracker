@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { brokerNotification } from "./test/brokerNotificationFixtures.js";
 import { chileCalendarAddDays } from "./chileDate.js";
+import { checkingAccountId } from "./checkingCartolaImport.js";
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { planRacionalEmailMovements } from "./racionalEmailImport.js";
@@ -52,7 +53,8 @@ describe("planRacionalEmailMovements", () => {
   let racionalUsd: { id: number; cleanup: () => void };
 
   beforeEach(() => {
-    checking = ensureAccount("import:excel|key=cuenta_corriente", "vitest checking");
+    // The deposit pairs with the cuenta corriente the checking importers use.
+    checking = { id: checkingAccountId(), cleanup: () => {} };
     racionalClp = ensureAccount("import:panel|kind=clp|key=clp", "vitest racional clp");
     racionalUsd = ensureAccount("import:panel|kind=usd|key=usd", "vitest racional usd");
   });

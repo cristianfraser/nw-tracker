@@ -23,7 +23,7 @@
 import path from "node:path";
 
 import { db } from "../src/db.js";
-import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { cardLast4FromParsedRow } from "../src/ccParsedImportAccounts.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import {

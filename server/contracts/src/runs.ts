@@ -28,11 +28,6 @@ export const FEEDER_RUNS_PATH = "/runs";
  */
 export const SANTANDER_FETCH_MODES = ["balance-poll"] as const;
 
-/**
- * The bank was tried this recently: a fetch now would hit the scraper's own 30-minute guard
- * (`ingest/src/runGuard.ts`), so neither the server asks for one nor the feeder opens one.
- */
-export const SANTANDER_MIN_GAP_MINUTES = 35;
 export type SantanderFetchMode = (typeof SANTANDER_FETCH_MODES)[number];
 
 export const ingestRunRequestSchema = z

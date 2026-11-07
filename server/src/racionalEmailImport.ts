@@ -32,9 +32,7 @@
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
-import { chileCalendarAddDays } from "./chileDate.js";
-import { nextChileBusinessDayYmd } from "./marketHolidays.js";
-import { racionalCashAccountId } from "./racionalMovementsImport.js";
+import { brokerAdapter, planDepositFromMail, racionalCashAccountId } from "./brokerAdapter.js";
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { notificationChileYmd } from "./brokerNotifications.js";
 
@@ -43,8 +41,6 @@ const FX_SANITY_MIN_CLP_PER_USD = 300;
 const FX_SANITY_MAX_CLP_PER_USD = 2000;
 
 const AMOUNT_TOLERANCE = 0.005;
-
-const CHECKING_IMPORT_KEY = "import:excel|key=cuenta_corriente";
 
 export type RacionalEmailPlannedMovement = {
   source: BrokerNotification;
@@ -65,13 +61,6 @@ export type RacionalEmailPlannedMovement = {
   requires_manual: string | null;
 };
 
-function checkingAccountId(): number | null {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(CHECKING_IMPORT_KEY) as
-    | { id: number }
-    | undefined;
-  return row?.id ?? null;
-}
-
 function tryRacionalCashAccountId(currency: "clp" | "usd"): number | null {
   try {
     return racionalCashAccountId(currency);
@@ -85,24 +74,6 @@ const mailChileYmd = notificationChileYmd;
 const stmtSameDayTransfers = db.prepare(
   `SELECT id, amount, counter_amount FROM movements
    WHERE occurred_on = ? AND from_account_id = ? AND to_account_id = ? AND currency = ?`
-);
-
-const stmtRecentTransfers = db.prepare(
-  `SELECT id, amount FROM movements
-   WHERE occurred_on BETWEEN ? AND ? AND from_account_id = ? AND to_account_id = ? AND currency = ?`
-);
-
-/**
- * Days before the deposit mail the wire may have been written from Santander's own receipt
- * (`transfer_notice_movements`): the bank mails the receipt the moment the wire leaves, Racional
- * its mail once the money is credited, which can be the next business day.
- */
-const DEPOSIT_WIRE_LEAD_DAYS = 5;
-
-const stmtSingleLegChecking = db.prepare(
-  `SELECT id FROM movements
-   WHERE account_id = ? AND currency = 'clp' AND ABS(amount + ?) <= 0.5
-     AND occurred_on BETWEEN ? AND ?`
 );
 
 /** Existing transfer with the same legs/amount on the same day (re-read scans, re-runs). */
@@ -164,48 +135,7 @@ function planDeposit(event: BrokerNotification): RacionalEmailPlannedMovement {
   if (event.amount == null || !(event.amount > 0)) {
     return { ...base, requires_manual: "deposit mail carries no amount" };
   }
-  const checking = checkingAccountId();
-  const racionalClp = tryRacionalCashAccountId("clp");
-  if (checking == null || racionalClp == null) {
-    return { ...base, requires_manual: "checking or Racional CLP account not found" };
-  }
-  base.from_account_id = checking;
-  base.to_account_id = racionalClp;
-
-  // A deposit on a month's last business day may be listed by the bank in the next cartola
-  // period; the transfer keeps the mail's day and the bank row brings its posting day when it
-  // lands (`movement_bank_postings`), which is what the cartola checks read.
-  const nextBiz = nextChileBusinessDayYmd(occurredOn);
-
-  // Already written: a re-sent mail, or the wire written from Santander's receipt before this mail.
-  const amount = event.amount;
-  const dup = (
-    stmtRecentTransfers.all(
-      chileCalendarAddDays(occurredOn, -DEPOSIT_WIRE_LEAD_DAYS),
-      occurredOn,
-      checking,
-      racionalClp,
-      "clp"
-    ) as { id: number; amount: number }[]
-  ).find((r) => Math.abs(Number(r.amount) - amount) <= AMOUNT_TOLERANCE);
-  if (dup) return { ...base, duplicate_of: dup.id };
-
-  // The bank feed may already have listed the debit as a plain single-leg row (mail lagging a
-  // day). Writing the transfer would then double-count — the existing row must be converted.
-  const windowFrom = occurredOn;
-  const windowTo = nextChileBusinessDayYmd(nextBiz ?? occurredOn) ?? occurredOn;
-  const existingDebit = stmtSingleLegChecking.get(checking, event.amount, windowFrom, windowTo) as
-    | { id: number }
-    | undefined;
-  if (existingDebit) {
-    return {
-      ...base,
-      requires_manual:
-        `checking already lists this debit as movement ${existingDebit.id} — convert it to a ` +
-        `transfer instead of synthesizing a second row`,
-    };
-  }
-  return base;
+  return { ...base, ...planDepositFromMail(brokerAdapter("racional"), occurredOn, event.amount) };
 }
 
 function planConversion(event: BrokerNotification): RacionalEmailPlannedMovement {

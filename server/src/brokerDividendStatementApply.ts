@@ -19,7 +19,7 @@
  */
 import type { BrokerDividendStatementApplyDetails, BrokerDividendStatementPayload } from "nw-tracker-contracts";
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
-import { chileCalendarAddDays } from "./chileDate.js";
+import { brokerAdapter, fintualUsdAccountId, pairDividendPayout } from "./brokerAdapter.js";
 import { db } from "./db.js";
 import {
   DIVIDEND_DETAIL_SOURCE_RANK,
@@ -29,21 +29,8 @@ import {
   type MovementDividendDetailInput,
 } from "./movementDividendDetails.js";
 
-export const FINTUAL_USD_IMPORT_KEY = "import:panel|kind=usd|key=fintual_usd";
-
-/** Payment date ↔ DRIP-day skew, the window every Fintual dividend source shares. */
-export const FINTUAL_DIVIDEND_MATCH_WINDOW_DAYS = 5;
-
 /** Each printed amount is rounded to the cent; gross − tax and the ledger's net can differ by one. */
 const AMOUNT_TOLERANCE = 0.015;
-
-export function fintualUsdAccountId(): number {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(FINTUAL_USD_IMPORT_KEY) as
-    | { id: number }
-    | undefined;
-  if (!row) throw new Error(`No account with import_key "${FINTUAL_USD_IMPORT_KEY}"`);
-  return row.id;
-}
 
 /** One dividend as a document prints it, whichever document. */
 export type PrintedDividend = {
@@ -70,14 +57,6 @@ export type FintualDividendDetailPlan = {
   already_recorded: boolean;
   conflict: string | null;
 };
-
-const findDividendPayouts = db.prepare(
-  `SELECT id, amount, occurred_on FROM movements
-   WHERE from_account_id = ? AND to_account_id = ? AND currency = 'usd'
-     AND flow_kind = 'dividend_payout'
-     AND occurred_on BETWEEN ? AND ?
-   ORDER BY occurred_on, id`
-);
 
 function detailInput(movementId: number, plan: FintualDividendDetailPlan): MovementDividendDetailInput {
   const p = plan.printed;
@@ -126,36 +105,17 @@ export function planFintualDividendDetails(
             : `several accounts hold ${p.symbol}`,
       };
     }
-    const from = chileCalendarAddDays(p.date, -FINTUAL_DIVIDEND_MATCH_WINDOW_DAYS);
-    const to = chileCalendarAddDays(p.date, FINTUAL_DIVIDEND_MATCH_WINDOW_DAYS);
-    const rows = findDividendPayouts.all(holders[0]!, fintualUsd, from, to) as {
-      id: number;
-      amount: number;
-      occurred_on: string;
-    }[];
-    const byAmount = rows.filter((r) => Math.abs(Number(r.amount) - p.net) <= AMOUNT_TOLERANCE);
-    const sameDay = byAmount.filter((r) => r.occurred_on === p.date);
-    const candidates = sameDay.length > 0 ? sameDay : byAmount;
-    if (candidates.length === 0) {
-      return {
-        ...base,
-        conflict:
-          rows.length === 0
-            ? `no dividend_payout of ${p.symbol} → Fintual USD in the ledger within ±${FINTUAL_DIVIDEND_MATCH_WINDOW_DAYS} days of ${p.date}`
-            : `ledger dividend(s) of ${p.symbol} near ${p.date} read ${rows
-                .map((r) => `${r.amount} (movement ${r.id}, ${r.occurred_on})`)
-                .join(", ")} but the document prints net ${p.net} — reconcile before importing`,
-      };
-    }
-    if (candidates.length > 1) {
-      return {
-        ...base,
-        conflict: `several ledger dividends of ${p.symbol} match ${p.net} near ${p.date} (movements ${candidates
-          .map((r) => r.id)
-          .join(", ")})`,
-      };
-    }
-    const movementId = candidates[0]!.id;
+    const paired = pairDividendPayout(brokerAdapter("fintual"), {
+      symbol: p.symbol,
+      ymd: p.date,
+      net: p.net,
+      holderId: holders[0]!,
+      brokerUsdId: fintualUsd,
+      amountTolerance: AMOUNT_TOLERANCE,
+      printedAs: "the document prints net",
+    });
+    if (paired.conflict != null) return { ...base, conflict: paired.conflict };
+    const movementId = paired.movement_id;
     // Recorded already when the same amounts stand from this document class or a better one —
     // the writer would leave such a row alone (a second certificado is provenance only), so
     // the report says so instead of promising a write.

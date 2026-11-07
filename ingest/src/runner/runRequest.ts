@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { SANTANDER_MIN_GAP_MINUTES, type IngestRunCompletion, type IngestRunRequest, type SantanderState } from "nw-tracker-contracts";
+import { SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES, type IngestRunCompletion, type IngestRunRequest, type SantanderState } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
 import { lastRunAt } from "../runGuard.js";
 import { lastSuccessfulSantanderFetchAt } from "../santander/fetchHistory.js";
@@ -41,8 +41,8 @@ export function santanderVeto(state: SantanderState, now: Date = new Date()): st
   if (state.login_latched) return "login latched off after a credentials rejection";
   if (state.last_attempt_at) {
     const minutes = (now.getTime() - Date.parse(state.last_attempt_at)) / 60_000;
-    if (minutes < SANTANDER_MIN_GAP_MINUTES) {
-      return `last attempt ${Math.floor(minutes)} min ago — waiting ${SANTANDER_MIN_GAP_MINUTES} min`;
+    if (minutes < SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES) {
+      return `last attempt ${Math.floor(minutes)} min ago — waiting ${SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES} min`;
     }
   }
   return null;

@@ -14,17 +14,14 @@
  * included (interest effectively paid). 2025: 4.892.161 vs 4.799.108 reported by the lender (+1,9%).
  */
 import { db } from "./db.js";
-import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn } from "./siiOfficialIpc.js";
+import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotEvent } from "./taxLots.js";
 
 type Pct = (fromMonth: string, toMonth: string) => number;
 
 function yearEndPct(): { pct: Pct; toMonth: (incomeYear: number) => string } {
-  const latest = latestOfficialIpcMonth();
-  const ipcBetween = officialIpcVariationPctWithStandIn(loadOfficialIpcLookup(), latest);
-  const pct: Pct = (a, b) => (a >= b ? 0 : Math.max(0, Math.round(ipcBetween(a, b) * 10) / 10));
-  return { pct, toMonth: (y) => (latest < `${y}-11-01` ? latest : `${y}-11-01`) };
+  const ipc = ipcReajuste({ round: true, floorAtZero: true });
+  return { pct: ipc.pct, toMonth: (y) => ipc.december(y).toMonth };
 }
 
 /** A fund account's deposits and redemptions as lot events (units = cuotas, amounts in pesos). */

@@ -1,152 +1,41 @@
 /**
  * Polls Yahoo equities/crypto + CLP=X (while the fx day is open, `forexDay.ts`) or mirrors the
- * stored `fx_daily` close after it ends. HTTP reads DB only.
+ * stored `fx_daily` close after it ends. HTTP reads DB only. Three jobs on the scheduler kernel
+ * (`schedulerKernel.ts`):
  *
- * Since 2026-11-04 Yahoo's price stream (`yahooPriceStream.ts`, started here) carries the live
- * prices while it is connected: a tick fetches only the symbols the stream does not cover now
- * (a closed market, a quiet symbol, a dead socket), and keeps the base cadence in session.
+ * - **The poll.** Since 2026-11-04 Yahoo's price stream (`yahooPriceStream.ts`, started here)
+ *   carries the live prices while it is connected: a poll fetches only the symbols the stream does
+ *   not cover now (a closed market, a quiet symbol, a dead socket), and keeps the base cadence in
+ *   session. Polls are on the wall clock, with one right after each market open (2026-10-27,
+ *   `nextLiveQuotesTickAtMs`): a fixed `setInterval` from boot left up to five minutes of each
+ *   session's start on yesterday's close. The first poll after a wake waits for the network, and
+ *   a poll where no Yahoo request succeeded retries after 15 s then 45 s (2026-09-15; the budget
+ *   refills on a success, a thrown sync — a bug, not the network — never retries).
+ * - **The watchlist history depth** (~400 days of Yahoo history for new or shallow tickers), so
+ *   `GET /api/watchlist` stays DB-only; on the poll's base cadence.
+ * - **The sync dimming check** (`syncDimmingWatch.ts`): the dashboard's dimming turns with the
+ *   clock (a publish hour), so it is looked at on the session cadence.
  *
- * Env: `LIVE_QUOTES_SYNC_ENABLED`, `LIVE_QUOTES_INTERVAL_MS` (default 5 min),
+ * Env (`config.ts`): `LIVE_QUOTES_SYNC_ENABLED`, `LIVE_QUOTES_INTERVAL_MS` (default 5 min),
  * `LIVE_QUOTES_SESSION_INTERVAL_MS` (default 2 min, while a priced market is open).
- *
- * Ticks are on the wall clock, with one right after each market open (2026-10-27,
- * `nextLiveQuotesTickAtMs`): a fixed `setInterval` from boot left up to five minutes of each
- * session's start on yesterday's close.
- *
- * Wake and failure handling (2026-09-15): the first tick after the machine resumes waits for the
- * network, and a tick where no Yahoo request succeeded retries on a short, bounded schedule
- * instead of leaving yesterday's closes on screen for a whole interval — see
- * `liveMarketQuotesSchedulerPolicy.ts` for the decisions and the incident.
  */
 import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
 import { checkSyncDimmingChanged } from "./syncDimmingWatch.js";
 import { loadRootDotenv } from "./rootDotenv.js";
-import {
-  liveQuotesIntervalMs,
-  liveQuotesSessionIntervalMs,
-  liveQuotesSyncEnabled,
-} from "./liveMarketQuotesConfig.js";
-import { syncAllLiveMarketQuotes, type LiveMarketQuotesSyncResult } from "./liveMarketQuotesSync.js";
+import { liveQuotesIntervalMs, liveQuotesSessionIntervalMs, liveQuotesSyncEnabled } from "./liveMarketQuotesConfig.js";
+import { syncAllLiveMarketQuotes } from "./liveMarketQuotesSync.js";
 import { equityMarketKind, isSantiagoRegularSessionOpen } from "./equityQuote.js";
 import { isNyseRegularSessionOpen } from "./nyseSession.js";
-import {
-  nextLiveQuotesTickAtMs,
-  RESUME_NETWORK_WAIT_MS,
-  RETRY_DELAYS_MS,
-  planAfterTick,
-  resumedAfterSuspend,
-  tickFailedWholesale,
-} from "./liveMarketQuotesSchedulerPolicy.js";
+import { nextLiveQuotesTickAtMs, tickFailedWholesale } from "./liveMarketQuotesSchedulerPolicy.js";
+import { ScheduledJob, atStartThen, nextAlignedMs, type ScheduledJobSpec } from "./schedulerKernel.js";
 import { ensureWatchlistEquityHistoryDepth, listWatchlistEquitySeriesKeys } from "./watchlist.js";
 import { liveStreamConnected, liveStreamCoverage, startYahooPriceStream } from "./yahooPriceStream.js";
 
-let inFlight = false;
-let schedulerEnabled = false;
-let intervalMs = 5 * 60 * 1000;
-let sessionIntervalMs = 2 * 60 * 1000;
-let lastTickStartedAtMs: number | null = null;
-let retryBudget = RETRY_DELAYS_MS.length;
-let retryTimer: NodeJS.Timeout | null = null;
+/** After a resume, how long to give the network before the first fetch. */
+export const LIVE_QUOTES_RESUME_NETWORK_WAIT_MS = 10_000;
 
-type TickTrigger = "boot" | "interval" | "retry" | "wake";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function cancelPendingRetry(): void {
-  if (retryTimer) {
-    clearTimeout(retryTimer);
-    retryTimer = null;
-  }
-}
-
-async function schedulerTick(trigger: TickTrigger): Promise<void> {
-  if (inFlight) {
-    console.log("live-quotes:scheduler — skip (previous run still in progress).");
-    return;
-  }
-  // The hosted demo polls only while someone browses it; a visitor's first request runs a
-  // "wake" tick at once (`onDemoMarketWake` below).
-  if (!demoMarketAwake()) return;
-  inFlight = true;
-  if (trigger === "retry") retryTimer = null;
-  let result: LiveMarketQuotesSyncResult | null = null;
-  try {
-    const now = Date.now();
-    if (trigger === "interval" && resumedAfterSuspend(lastTickStartedAtMs, now, intervalMs)) {
-      const lateMin = Math.round((now - (lastTickStartedAtMs ?? now)) / 60_000);
-      console.log(
-        `live-quotes:scheduler — resumed ${lateMin} min after the last tick (sleep?); waiting ${RESUME_NETWORK_WAIT_MS / 1000}s for the network`
-      );
-      await sleep(RESUME_NETWORK_WAIT_MS);
-    }
-    lastTickStartedAtMs = Date.now();
-    loadRootDotenv();
-    // Symbols the price stream carries now are its own; the poll fetches the rest.
-    const coverage = liveStreamCoverage();
-    result = await syncAllLiveMarketQuotes(new Date(), { skipTickers: coverage.tickers, skipLiveFx: coverage.fx });
-  } catch (e) {
-    console.error(`live-quotes:scheduler — error: ${e instanceof Error ? e.message : e}`);
-  }
-  try {
-    // Watchlist YTD/YoY history depth (~400d Yahoo backfill for new/shallow tickers).
-    // Lives on the scheduler so GET /api/watchlist stays DB-only; separate catch so a
-    // history failure never masks a quotes failure (or vice versa).
-    const backfilled = await ensureWatchlistEquityHistoryDepth();
-    if (backfilled > 0) {
-      console.log(`live-quotes:scheduler — watchlist history backfilled for ${backfilled} ticker(s)`);
-    }
-  } catch (e) {
-    console.error(
-      `live-quotes:scheduler — watchlist history backfill error: ${e instanceof Error ? e.message : e}`
-    );
-  } finally {
-    inFlight = false;
-  }
-  try {
-    // The dashboard's sync dimming turns with the clock (a publish hour); every tick sits on the
-    // wall clock, so a change is seen within one interval (`syncDimmingWatch.ts`).
-    checkSyncDimmingChanged();
-  } catch (e) {
-    console.error(`live-quotes:scheduler — sync dimming check error: ${e instanceof Error ? e.message : e}`);
-  }
-  if (result == null) return; // a thrown sync is a bug, not the network — no retry storm on it
-  const plan = planAfterTick(retryBudget, tickFailedWholesale(result));
-  retryBudget = plan.budgetRemaining;
-  if (plan.delayMs != null) {
-    cancelPendingRetry();
-    console.warn(
-      `live-quotes:scheduler — no Yahoo request succeeded; retrying in ${plan.delayMs / 1000}s (${retryBudget} retry(ies) left until a tick succeeds)`
-    );
-    retryTimer = setTimeout(() => {
-      void schedulerTick("retry");
-    }, plan.delayMs);
-    retryTimer.unref();
-  } else if (!tickFailedWholesale(result)) {
-    cancelPendingRetry();
-  } else {
-    console.warn("live-quotes:scheduler — no Yahoo request succeeded and the retry budget is spent; next attempt at the regular interval");
-  }
-}
-
-export function startLiveMarketQuotesScheduler(): void {
-  schedulerEnabled = liveQuotesSyncEnabled();
-  if (!schedulerEnabled) {
-    console.log("live-quotes:scheduler — disabled (LIVE_QUOTES_SYNC_ENABLED=0).");
-    return;
-  }
-  intervalMs = liveQuotesIntervalMs();
-  sessionIntervalMs = liveQuotesSessionIntervalMs();
-  console.log(
-    `live-quotes:scheduler — enabled; polling every ${Math.round(intervalMs / 1000)}s, ` +
-      `${Math.round(sessionIntervalMs / 1000)}s while a priced market is open`
-  );
-  onDemoMarketWake(() => void schedulerTick("wake"));
-  void schedulerTick("boot");
-  scheduleNextTick();
-  startYahooPriceStream();
-}
+/** Retry delays after a wholesale failure — the budget refills only when a poll succeeds. */
+export const LIVE_QUOTES_RETRY_DELAYS_MS: readonly number[] = [15_000, 45_000];
 
 /**
  * Whether a market the poll prices is in its regular session at an instant. The markets are
@@ -160,18 +49,74 @@ function pricedSessionOpenPredicate(): (at: Date) => boolean {
     (kinds.has("santiago") && isSantiagoRegularSessionOpen(at));
 }
 
-function scheduleNextTick(): void {
-  const now = Date.now();
-  let at: number;
-  try {
-    // With the stream up, the poll is only the backstop: no faster cadence in session.
-    const sessionStep = liveStreamConnected() ? intervalMs : sessionIntervalMs;
-    at = nextLiveQuotesTickAtMs(now, intervalMs, sessionStep, pricedSessionOpenPredicate());
-  } catch (e) {
-    console.error(`live-quotes:scheduler — next tick error: ${e instanceof Error ? e.message : e}`);
-    at = now + intervalMs;
+/** The common gates of the three jobs: on with the live quotes, asleep with the demo. */
+const gates: Pick<ScheduledJobSpec, "enabled" | "awake" | "onWake"> = {
+  enabled: liveQuotesSyncEnabled,
+  awake: () => demoMarketAwake(),
+  onWake: (listener) => onDemoMarketWake(listener),
+};
+
+const pollJob = new ScheduledJob({
+  ...gates,
+  name: "live-quotes:scheduler",
+  logSkips: true,
+  next: atStartThen((nowMs) => {
+    const intervalMs = liveQuotesIntervalMs();
+    try {
+      // With the stream up, the poll is only the backstop: no faster cadence in session.
+      const sessionStep = liveStreamConnected() ? intervalMs : liveQuotesSessionIntervalMs();
+      return nextLiveQuotesTickAtMs(nowMs, intervalMs, sessionStep, pricedSessionOpenPredicate());
+    } catch (e) {
+      // The watchlist read failing must not stop the poll: one interval later, the base cadence.
+      console.error(`live-quotes:scheduler — next tick error: ${e instanceof Error ? e.message : e}`);
+      return nowMs + intervalMs;
+    }
+  }),
+  run: async () => {
+    loadRootDotenv();
+    // Symbols the price stream carries now are its own; the poll fetches the rest.
+    const coverage = liveStreamCoverage();
+    const result = await syncAllLiveMarketQuotes(new Date(), { skipTickers: coverage.tickers, skipLiveFx: coverage.fx });
+    if (!tickFailedWholesale(result)) return "ok";
+    console.warn("live-quotes:scheduler — no Yahoo request succeeded");
+    return "failed";
+  },
+  // A poll an interval late or more followed a sleep.
+  wake: () => ({ wakeGapMs: liveQuotesIntervalMs(), networkGraceMs: LIVE_QUOTES_RESUME_NETWORK_WAIT_MS }),
+  retry: { delaysMs: LIVE_QUOTES_RETRY_DELAYS_MS, when: "always", retryThrown: false },
+});
+
+const watchlistHistoryJob = new ScheduledJob({
+  ...gates,
+  name: "live-quotes:watchlist-history",
+  next: atStartThen((nowMs) => nextAlignedMs(nowMs, liveQuotesIntervalMs())),
+  run: async () => {
+    const backfilled = await ensureWatchlistEquityHistoryDepth();
+    if (backfilled > 0) console.log(`live-quotes:scheduler — watchlist history backfilled for ${backfilled} ticker(s)`);
+    return "ok";
+  },
+});
+
+const syncDimmingJob = new ScheduledJob({
+  ...gates,
+  name: "live-quotes:sync-dimming",
+  next: atStartThen((nowMs) => nextAlignedMs(nowMs, liveQuotesSessionIntervalMs())),
+  run: async () => {
+    checkSyncDimmingChanged();
+    return "ok";
+  },
+});
+
+export function startLiveMarketQuotesScheduler(): void {
+  if (!pollJob.start()) {
+    console.log("live-quotes:scheduler — disabled (LIVE_QUOTES_SYNC_ENABLED=0).");
+    return;
   }
-  setTimeout(() => {
-    void schedulerTick("interval").finally(scheduleNextTick);
-  }, Math.max(0, at - now));
+  console.log(
+    `live-quotes:scheduler — enabled; polling every ${Math.round(liveQuotesIntervalMs() / 1000)}s, ` +
+      `${Math.round(liveQuotesSessionIntervalMs() / 1000)}s while a priced market is open`
+  );
+  watchlistHistoryJob.start();
+  syncDimmingJob.start();
+  startYahooPriceStream();
 }

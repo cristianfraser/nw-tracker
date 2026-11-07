@@ -24,8 +24,8 @@
  * Leaf module by design (db + the date parser only): the funnel imports it, so it must import
  * nothing that leads back to the funnel.
  */
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
+import { parseDdMmYyToIso, stripBciTerminalSuffix } from "nw-tracker-contracts";
 
 export type GroceryCardLineStatus = "created" | "covered" | "pending_branch" | "matched";
 
@@ -36,7 +36,7 @@ export function receiptCardLineRawLinePrefix(chain: string): string {
 
 /** The bank's merchant string as the map stores it: the statement's « (T)» suffix stripped. */
 export function bankMerchantForBranchMap(merchant: string): string {
-  return merchant.replace(/\s*\(T\)\s*$/i, "").trim();
+  return stripBciTerminalSuffix(merchant).trim();
 }
 
 const selectLearned = db.prepare(

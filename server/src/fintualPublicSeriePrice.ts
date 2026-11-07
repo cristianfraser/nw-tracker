@@ -5,7 +5,7 @@
  * each serie's inception, weekend/holiday days included).
  *
  * The endpoint publishes day D on D+1 — never on the evening of D — so it cannot serve the
- * evening write (`scripts/fintualRealAssetNav.ts` prices that from Fintual's own share count).
+ * evening write (`src/fintualRealAssetNav.ts` prices that from Fintual's own share count).
  * It is the next-day verifier and healer: every poll re-reads the last
  * `FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS`, fills days no poll wrote, replaces carry-forward / stand-in
  * placeholders, and CORRECTS a stored bar that disagrees beyond `FINTUAL_PUBLIC_SERIE_TOLERANCE_REL`
@@ -17,6 +17,7 @@
  * verified value-for-value against 20 months of stored bars on 2026-09-17: max deviation 6,4e-5
  * (weekend restatements), everything else exact to the 4th decimal.
  */
+import { fetchOutboundText } from "./outboundFetch.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { FINTUAL_CERT_V2_ACCOUNT_NAMES, fintualCertV2SeriesKeyFromImportNotes } from "./fintualCertV2.js";
@@ -96,12 +97,15 @@ export async function fetchFintualPublicSeriePrices(
   const url =
     `${FINTUAL_PUBLIC_SERIE_PRICE_URL}?fund_serie=${encodeURIComponent(String(serieId))}` +
     `&start_date=${fromYmd}&end_date=${toYmd}`;
-  const fetchImpl = opts?.fetchImpl ?? fetch;
-  const res = await fetchImpl(url, {
-    headers: { Accept: "application/json", "User-Agent": "nw-tracker/1.0 (+fintual official serie price)" },
-    signal: AbortSignal.timeout(opts?.timeoutMs ?? 20_000),
+  const res = await fetchOutboundText({
+    label: `fintual_serie:${serieId}`,
+    url,
+    userAgent: "nw-tracker/1.0 (+fintual official serie price)",
+    accept: "application/json",
+    timeoutMs: opts?.timeoutMs ?? 20_000,
+    fetchImpl: opts?.fetchImpl,
   });
-  const text = await res.text();
+  const text = res.text;
   if (!res.ok) {
     throw new Error(`Fintual public serie ${serieId}: HTTP ${res.status} ${text.slice(0, 200)}`);
   }

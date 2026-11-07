@@ -14,10 +14,10 @@
  * derived flow (−Δowed + financing) at the principal.
  */
 import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
-import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { closeDateForBillingMonth } from "./ccManualBillingMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
+import { parseDdMmYyToIso, addCalendarMonths } from "nw-tracker-contracts";
 
 export type CcInstallmentInterest = {
   purchase_id: number;

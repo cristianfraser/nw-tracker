@@ -11,7 +11,7 @@
  */
 import { db } from "./db.js";
 import { clpToUsdAtPayment } from "./fxRates.js";
-import { splitPensionLine, type PayslipLineKind } from "./payslipLineKinds.js";
+import { payslipHaberIsTaxable, splitPensionLine, type PayslipLineKind } from "./payslipLineKinds.js";
 
 export const PAYROLL_BREAKDOWN_FIELDS = [
   "gross",
@@ -117,11 +117,7 @@ function nativeBreakdown(p: PayslipRow, lines: readonly LineRow[]): Record<Payro
     if (l.side === "haber") {
       let g = GROSS_GROUP[l.kind];
       if (!g) throw new Error(`payslip ${p.id}: the haber kind ${l.kind} has no gross group`);
-      // Taxable or not as the payslip prints it (Talana's teletrabajo allowance is taxable).
-      if (g === "gross_taxable" || g === "gross_non_taxable") {
-        if (l.section === "imponible") g = "gross_taxable";
-        else if (l.section === "no_imponible") g = "gross_non_taxable";
-      }
+      if (g === "gross_taxable" || g === "gross_non_taxable") g = payslipHaberIsTaxable(l) ? "gross_taxable" : "gross_non_taxable";
       v[g] += l.amount;
       v.gross += l.amount;
     } else {

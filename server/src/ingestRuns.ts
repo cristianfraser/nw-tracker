@@ -40,16 +40,6 @@ export type IngestRunRow = {
   job_id: number | null;
 };
 
-/**
- * A run from before the queue (no `job_id`) that has not reported back after this long is written
- * off as `lost`. Runs of the queue are written off when their job's lease runs out
- * (`jobQueueExecutor.ts`).
- */
-export const INGEST_RUN_TIMEOUT_MS: Readonly<Record<IngestRunKind, number>> = {
-  nightly: 3 * 3_600_000,
-  hourly: 90 * 60_000,
-};
-
 function parseInstant(value: string | null | undefined): Date | null {
   if (!value) return null;
   const d = new Date(value);
@@ -82,22 +72,6 @@ export function inFlightIngestRun(): IngestRunRow | null {
       | IngestRunRow
       | undefined) ?? null
   );
-}
-
-/** Write off requested runs from before the queue older than their kind's timeout. Returns the rows written off. */
-export function sweepLostIngestRuns(now: Date): IngestRunRow[] {
-  const lost: IngestRunRow[] = [];
-  for (const row of db.prepare(`SELECT * FROM ingest_runs WHERE status = 'requested' AND job_id IS NULL`).all() as IngestRunRow[]) {
-    const requested = parseInstant(row.requested_at);
-    if (requested && now.getTime() - requested.getTime() > INGEST_RUN_TIMEOUT_MS[row.kind]) {
-      const error = `no report within ${INGEST_RUN_TIMEOUT_MS[row.kind] / 60_000} min`;
-      db.prepare(`UPDATE ingest_runs SET status = 'lost', error = ? WHERE id = ?`).run(error, row.id);
-      // The run never said how it went: that is a failed run, badged like any other.
-      recordRunMessage(row.kind, [{ label: `${row.kind} run — ${error} from the ingest service`, ok: false, seconds: null }], false);
-      lost.push({ ...row, status: "lost" });
-    }
-  }
-  return lost;
 }
 
 /**

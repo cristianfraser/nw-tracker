@@ -3,17 +3,18 @@ import type { Request, Response } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   apiInFlightMiddleware,
-  apiRequestCountsAsInFlight,
   inFlightApiRequests,
+  kindCountsAsInFlight,
   resetApiRequestsInFlightForTest,
   whenNoApiRequestsInFlight,
 } from "./apiRequestsInFlight.js";
+import { requestKind } from "./requestContext.js";
 
 /** Runs the middleware on a fake request; the returned response emits `finish` / `close`. */
 function fakeRequest(path: string): EventEmitter {
   const res = new EventEmitter();
   let nextCalled = false;
-  apiInFlightMiddleware()({ path } as Request, res as unknown as Response, () => {
+  apiInFlightMiddleware()({ path, method: "GET" } as Request, res as unknown as Response, () => {
     nextCalled = true;
   });
   expect(nextCalled).toBe(true);
@@ -57,12 +58,12 @@ describe("api requests in flight", () => {
       "/assets/x.js",
       "/",
     ]) {
-      expect(apiRequestCountsAsInFlight(path)).toBe(false);
+      expect(kindCountsAsInFlight(requestKind("GET", path))).toBe(false);
       fakeRequest(path);
     }
     expect(inFlightApiRequests()).toBe(0);
-    expect(apiRequestCountsAsInFlight("/api/live-quotes/stamp")).toBe(true);
-    expect(apiRequestCountsAsInFlight("/api/usage/report")).toBe(true);
+    expect(kindCountsAsInFlight(requestKind("GET", "/api/live-quotes/stamp"))).toBe(true);
+    expect(kindCountsAsInFlight(requestKind("GET", "/api/usage/report"))).toBe(true);
   });
 
   it("resolves at once when nothing was requested", async () => {

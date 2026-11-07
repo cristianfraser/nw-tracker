@@ -1,7 +1,9 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { serverConfig } from "./config.js";
 import { requestCacheOutcome, runWithRequestCacheStats, type RequestCacheStats } from "./requestCacheStats.js";
+import { requestContext } from "./requestContext.js";
+import { ScheduledJob, nextAlignedMs } from "./schedulerKernel.js";
 import { usageDb } from "./usageDb.js";
-import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
 
 /**
  * Usage and performance log (migration 247): every `/api` request's duration, status, size and
@@ -50,9 +52,8 @@ export const USAGE_KEY_QUERY_PARAMS = [
 
 const MAX_PARAM_VALUE = 40;
 
-export function usageLogEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const v = env.USAGE_LOG_ENABLED?.trim().toLowerCase();
-  return !(v === "0" || v === "false" || v === "no");
+export function usageLogEnabled(): boolean {
+  return serverConfig().usageLog;
 }
 
 /** Canonical `a=1&b=2` of the kept parameters (sorted by name; '' when none is present). */
@@ -240,16 +241,15 @@ export function resetUsageLogBufferForTest(): void {
   lastPrunedDay = null;
 }
 
-/** The beacon is the client's own record, not a request worth timing. */
-const USAGE_SKIPPED_PATHS = new Set([USAGE_PAGE_VIEW_PATH]);
-
 /**
  * Times every `/api` request (except the page-view beacon) from arrival to the last byte sent.
  * A request no route matched is recorded under `(unmatched)` so a stray 404 storm still shows.
  */
 export function usageLogMiddleware(): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.path.startsWith("/api/") || USAGE_SKIPPED_PATHS.has(req.path)) {
+    // The beacon is the client's own record, not a request worth timing.
+    const ctx = requestContext(req);
+    if (ctx.kind === "other" || ctx.kind === "beacon" || req.path === "/api") {
       next();
       return;
     }
@@ -259,10 +259,8 @@ export function usageLogMiddleware(): RequestHandler {
       // The payload size before compression (`jsonResponse.ts` notes it; any other response is
       // sent uncompressed, so its Content-Length is that size): what the report's «mean size»
       // compares, whatever encoding the client accepted.
-      const bodyBytes: unknown = res.locals.usageBodyBytes;
       const lengthHeader = res.getHeader("content-length");
-      const bytes =
-        typeof bodyBytes === "number" ? bodyBytes : lengthHeader === undefined ? null : Number(lengthHeader);
+      const bytes = ctx.jsonBodyBytes ?? (lengthHeader === undefined ? null : Number(lengthHeader));
       recordUsageRequest({
         at: new Date(),
         method: req.method,
@@ -278,17 +276,23 @@ export function usageLogMiddleware(): RequestHandler {
   };
 }
 
-let flushTimer: ReturnType<typeof setInterval> | null = null;
-
-export function startUsageLogFlusher(): void {
-  if (flushTimer) return;
-  flushTimer = setInterval(() => {
+const flushJob = new ScheduledJob({
+  name: "usage-log",
+  enabled: usageLogEnabled,
+  next: (nowMs) => nextAlignedMs(nowMs, FLUSH_INTERVAL_MS),
+  run: async () => {
     try {
       flushUsageLog();
+      return "ok";
     } catch (err) {
       // Telemetry must never take the server down; the next minute retries with new data.
       console.error("[usage-log] flush failed:", err);
+      return "failed";
     }
-  }, FLUSH_INTERVAL_MS);
-  flushTimer.unref();
+  },
+});
+
+/** Writes the buffer once a minute (on the wall clock). */
+export function startUsageLogFlusher(): void {
+  if (!flushJob.isEnabled) flushJob.start();
 }

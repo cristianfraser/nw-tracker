@@ -52,9 +52,8 @@ export function sbifUfDay9PublicationHorizonYmd(cl: ChileWallClock): string {
 
 export function isSbifUfStale(
   cl: ChileWallClock,
-  opts?: { forceSbif?: boolean; maxUfDate?: string | null; lastSyncYmd?: string }
+  opts?: { forceSbif?: boolean; maxUfDate?: string | null }
 ): boolean {
-  void opts?.lastSyncYmd;
   if (opts?.forceSbif) return true;
   if (cl.day < 9) return false;
   const max = opts?.maxUfDate ?? null;

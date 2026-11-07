@@ -12,8 +12,8 @@ import {
   planRacionalMovement,
   planRacionalMovements,
   racionalComisionCrawlDue,
-  racionalEquityAccountId,
 } from "./racionalMovementsImport.js";
+import { racionalEquityAccountId } from "./brokerAdapter.js";
 import { getMovementDividendDetail } from "./movementDividendDetails.js";
 import type { RacionalPlannedMovement } from "./racionalMovementsImport.js";
 import { brokerMovement } from "./test/brokerMovementFixtures.js";

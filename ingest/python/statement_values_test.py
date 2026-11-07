@@ -22,12 +22,12 @@ from statement_values import (  # noqa: E402
     repair_jammed_year,
 )
 
-DATE_CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "src" / "test" / "ddMmYyToIsoCases.json"
-DECIMAL_CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "src" / "test" / "chileanDecimalCases.json"
+DATE_CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "contracts" / "data" / "ddMmYyToIsoCases.json"
+DECIMAL_CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "contracts" / "data" / "chileanDecimalCases.json"
 
 
 class SharedDateCasesTest(unittest.TestCase):
-    """The table `server/src/ddMmYyToIsoCases.test.ts` asserts against `parseDdMmYyToIso`."""
+    """The table `server/contracts/src/formats/dates.test.ts` asserts against `parseDdMmYyToIso`."""
 
     def test_every_case(self) -> None:
         cases = json.loads(DATE_CASES_PATH.read_text(encoding="utf-8"))
@@ -83,7 +83,7 @@ class ParseClpAmountTest(unittest.TestCase):
 
 
 class SharedChileanDecimalCasesTest(unittest.TestCase):
-    """The table `server/src/chileanDecimalCases.test.ts` asserts against `parseChileanNumber`."""
+    """The table `server/contracts/src/formats/numbers.test.ts` asserts against `parseChileanNumber`."""
 
     def test_every_case(self) -> None:
         cases = json.loads(DECIMAL_CASES_PATH.read_text(encoding="utf-8"))

@@ -9,6 +9,7 @@
  * Deposit classification (personal vs APV-A state bonus) is resolved here at import time and
  * written to the `movements.flow_kind` column — never parsed from the note at runtime.
  */
+import { BROKER_SETTLEMENT_WINDOW_DAYS } from "./brokerAdapter.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import type { FundAccountTransactionsApplyDetails, FundAccountTransactionsPayload } from "nw-tracker-contracts";
@@ -111,7 +112,7 @@ function certPlanRows(scan: FintualCertificadoAggregateScan): CertPlanRow[] {
 /** Days of skew tolerated between a DB flow date and the cert settlement date. Manual entries and
  * mirror-merge transfers are dated the checking-outflow day (or when the user recorded them), while
  * the certificado uses the fund settlement day — typically 0–3 business days apart, either way. */
-const CERT_MATCH_WINDOW_DAYS = 5;
+const CERT_MATCH_WINDOW_DAYS = BROKER_SETTLEMENT_WINDOW_DAYS;
 
 type ExistingFlow = {
   movementId: number;

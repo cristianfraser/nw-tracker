@@ -1,35 +1,17 @@
-import { loadRootDotenv } from "./rootDotenv.js";
+import { serverConfig } from "./config.js";
 
 export const LIVE_FX_SYMBOL = "USD_CLP";
 
 export type LiveMarketQuoteKind = "equity" | "fx_clp_per_usd";
 
-function envFlag(name: string, defaultOn: boolean): boolean {
-  loadRootDotenv();
-  const v = process.env[name]?.trim().toLowerCase();
-  if (v === "0" || v === "false" || v === "no") return false;
-  if (v === "1" || v === "true" || v === "yes") return true;
-  return defaultOn;
-}
-
-function envMs(name: string, fallback: number): number {
-  loadRootDotenv();
-  const n = Number(process.env[name]);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-function envHours(name: string, fallback: number): number {
-  loadRootDotenv();
-  const n = Number(process.env[name]);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
+/** The live-quote settings, read from the server config (`config.ts`: `LIVE_QUOTES_*`). */
 
 export function liveQuotesSyncEnabled(): boolean {
-  return envFlag("LIVE_QUOTES_SYNC_ENABLED", true);
+  return serverConfig().liveQuotes.enabled;
 }
 
 export function liveQuotesIntervalMs(): number {
-  return envMs("LIVE_QUOTES_INTERVAL_MS", 5 * 60 * 1000);
+  return serverConfig().liveQuotes.intervalMs;
 }
 
 /**
@@ -39,18 +21,16 @@ export function liveQuotesIntervalMs(): number {
  * a one-minute cadence would keep the server busy for a third of every minute.
  */
 export function liveQuotesSessionIntervalMs(): number {
-  return envMs("LIVE_QUOTES_SESSION_INTERVAL_MS", 2 * 60 * 1000);
+  return serverConfig().liveQuotes.sessionIntervalMs;
 }
 
 export function liveQuotesRetentionHours(): number {
-  return envHours("LIVE_QUOTES_RETENTION_HOURS", 48);
+  return serverConfig().liveQuotes.retentionHours;
 }
 
 /** Max age for HTTP paths to treat a stored quote as live (default 2× poll interval). */
 export function liveQuotesMaxAgeMs(): number {
-  const explicit = envMs("LIVE_QUOTES_MAX_AGE_MS", 0);
-  if (explicit > 0) return explicit;
-  return liveQuotesIntervalMs() * 2;
+  return serverConfig().liveQuotes.maxAgeMs;
 }
 
 /**
@@ -58,12 +38,11 @@ export function liveQuotesMaxAgeMs(): number {
  * the backstop. `LIVE_QUOTES_STREAM_ENABLED=0` falls back to polling alone.
  */
 export function liveQuotesStreamEnabled(): boolean {
-  return envFlag("LIVE_QUOTES_STREAM_ENABLED", true);
+  return serverConfig().liveQuotes.streamEnabled;
 }
 
 export function liveQuotesStreamUrl(): string {
-  loadRootDotenv();
-  return process.env.LIVE_QUOTES_STREAM_URL?.trim() || "wss://streamer.finance.yahoo.com/?version=2";
+  return serverConfig().liveQuotes.streamUrl;
 }
 
 /**
@@ -71,5 +50,5 @@ export function liveQuotesStreamUrl(): string {
  * dashboard caches. The hosted demo's small instance sets more (`render.yaml`).
  */
 export function liveQuotesFlushGapMs(): number {
-  return envMs("LIVE_QUOTES_FLUSH_GAP_MS", 5_000);
+  return serverConfig().liveQuotes.flushGapMs;
 }

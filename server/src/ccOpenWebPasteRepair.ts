@@ -1,6 +1,5 @@
 import { ymCompare } from "./calendarMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   statementCloseDdMmYyyyForBillingMonth,
   targetBillingMonthForManualImports,
@@ -9,6 +8,7 @@ import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export const OPEN_WEB_PASTE_SOURCE_PREFIX = "import:web-paste|open|";
 

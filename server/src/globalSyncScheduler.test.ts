@@ -123,6 +123,8 @@ describe("globalSyncScheduler", () => {
     );
     startGlobalSyncScheduler();
     await vi.waitFor(() => expect(runGlobalSyncAll).toHaveBeenCalledTimes(1));
+    // Let the run finish (and find every source fresh) before forgetting its call.
+    await vi.advanceTimersByTimeAsync(0);
     runGlobalSyncAll.mockClear();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(runGlobalSyncAll).not.toHaveBeenCalled();
@@ -169,6 +171,8 @@ describe("globalSyncScheduler", () => {
     staleSyncSources.mockReturnValue(["stocks_nyse"]);
     startGlobalSyncScheduler();
     await vi.waitFor(() => expect(runGlobalSyncAll).toHaveBeenCalledTimes(1));
+    // Let the run finish (and find every source fresh) before forgetting its call.
+    await vi.advanceTimersByTimeAsync(0);
     runGlobalSyncAll.mockClear();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(runGlobalSyncAll).not.toHaveBeenCalled();

@@ -14,6 +14,10 @@
   bank run too — a closed terminal must not stop them. `tsx` without watch, exactly like
   `npm run dev`: code changes need a restart. The busy port stops a second copy started by
   hand, which also keeps a second scheduler off the database.
+
+  Flags are parsed once at boot by server/src/config.ts (1/true/yes on, 0/false/no off). The
+  installed copy carries INGEST_SCHEDULER_ENABLED=1 (set by ingest/switch-schedule.sh); the job
+  queue's executor follows it unless JOB_QUEUE_EXECUTOR_ENABLED says otherwise.
 -->
 <plist version="1.0">
 <dict>

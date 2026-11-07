@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { amountFitsCurrency } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 export const bankAccountCurrencySchema = z.enum(["clp", "usd"]);
@@ -44,7 +45,7 @@ export const bankAccountMovementSchema = z
     wire_reference: z.string().trim().min(1).max(64).nullable(),
   })
   .strict()
-  .refine((m) => (m.currency === "clp" ? Number.isInteger(m.amount) : Math.round(m.amount * 100) === m.amount * 100), {
+  .refine((m) => amountFitsCurrency(m.amount, m.currency), {
     message: "a peso amount is whole pesos; a dollar amount has at most two decimals",
     path: ["amount"],
   });

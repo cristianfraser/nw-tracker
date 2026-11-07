@@ -13,6 +13,7 @@
  * State: `cmfRnPortfolioLastMonth` (latest YYYYMM on record — stored or compared) and
  * `cmfRnPortfolioLastCheckYmd` (the Chile day of the last attempt, one attempt per day).
  */
+import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 import fs from "node:fs";
 import path from "node:path";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
@@ -94,7 +95,7 @@ export function cmfRnNextDueYmd(cl: ChileWallClock, state: GlobalSyncStateFile):
 /** Downloads one month's file; null when the CMF has not published it (its answer is not a file). */
 export async function fetchCmfForeignPortfolioText(
   period: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl?: typeof fetch
 ): Promise<string | null> {
   const body = new URLSearchParams({
     mm: period.slice(4, 6),
@@ -102,13 +103,17 @@ export async function fetchCmfForeignPortfolioText(
     cartera: "EXTR",
     btnConsulta: "GENERAR ARCHIVO",
   });
-  const res = await fetchImpl(CMF_DOWNLOAD_URL, {
+  const res = await fetchOutboundText({
+    label: `cmf:${period}`,
+    url: CMF_DOWNLOAD_URL,
+    userAgent: BROWSER_USER_AGENT,
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Mozilla/5.0" },
+    headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
+    fetchImpl,
   });
   if (!res.ok) throw new Error(`CMF ${period}: HTTP ${res.status}`);
-  const text = await res.text();
+  const text = res.text;
   return text.startsWith("Run Fondo;") ? text : null;
 }
 

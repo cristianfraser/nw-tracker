@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -20,7 +21,7 @@ export const unemploymentFundBalanceKind = defineIngestKind({
       /** Null when the page said the balance is not available right now. */
       balance_pesos: z.number().int().nonnegative().nullable(),
       /** The last contribution month the fund has credited (`fechaUltimaCotizacion`'s month). */
-      last_contribution_month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).nullable(),
+      last_contribution_month: yearMonthSchema.nullable(),
       /** Why the balance is null, in the page's words. */
       unavailable_reason: z.string().max(300).nullable(),
     })

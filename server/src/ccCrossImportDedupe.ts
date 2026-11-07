@@ -6,9 +6,10 @@ import {
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { parseDdMmYyToIso, stripBciTerminalSuffix } from "nw-tracker-contracts";
 
 export const selLineCategory = db.prepare<[number]>(
   `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
@@ -50,9 +51,7 @@ export function purchaseAmountsMatch(a: number, b: number): boolean {
  * - Web-paste merchants append ",CITY" (e.g. "ENTEL HOGAR,SANTIAGO")
  */
 function normalizeBciMerchantForDedupe(merchant: string | null | undefined): string {
-  const s = normalizeCcExpenseMerchantKey(merchant);
-  return s
-    .replace(/\s*\(T\)\s*$/i, "")   // strip trailing " (T)" from PDF lines
+  return stripBciTerminalSuffix(normalizeCcExpenseMerchantKey(merchant))
     .replace(/,\s*[A-ZÁÉÍÓÚÑ ]+$/i, "") // strip trailing ",CITY" from web-paste lines
     .trim();
 }

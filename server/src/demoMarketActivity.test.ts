@@ -6,7 +6,8 @@ import {
   onDemoMarketWake,
   resetDemoMarketActivityForTest,
 } from "./demoMarketActivity.js";
-import { allSyncSourceStatuses, DEMO_SYNC_DISABLED_SOURCES } from "./globalSyncStale.js";
+import { allSyncSourceStatuses } from "./globalSyncStale.js";
+import { DEMO_SYNC_DISABLED_SOURCES } from "./syncSourceIds.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { closesThrough, withDemoMarketRetries } from "./demoData/demoRealMarket.js";

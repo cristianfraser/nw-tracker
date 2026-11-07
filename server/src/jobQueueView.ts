@@ -1,7 +1,7 @@
 import { ingestJobSlot, ingestSchedulerEnabled, MANUAL_ENQUEUED_BY, enqueueIngestRun } from "./ingestRunScheduler.js";
 import { markIngestRunSkipped } from "./ingestRuns.js";
 import { currentJobQueueDecision } from "./jobQueueExecutor.js";
-import { cancelJob, jobById, listJobsByStatus, listRecentFinishedJobs, type JobRow } from "./jobQueue.js";
+import { cancelJob, ingestRunKindOfJob, jobById, listJobsByStatus, listRecentFinishedJobs, type JobRow } from "./jobQueue.js";
 import { leaseExpiresAt, type JobWaitReason } from "./jobQueuePolicy.js";
 import { db } from "./db.js";
 import { notifyJobQueue } from "./jobQueueSignal.js";
@@ -65,10 +65,6 @@ function waitView(r: JobWaitReason): JobWaitView {
   }
 }
 
-function isIngestKind(kind: string): boolean {
-  return kind === "ingest.nightly" || kind === "ingest.hourly";
-}
-
 function ingestRunsByJob(ids: number[]): Map<number, { id: number; status: string; failed_steps: number | null }> {
   if (!ids.length) return new Map();
   const rows = db
@@ -106,7 +102,7 @@ export function buildJobQueuePayload(now: Date, recentLimit = 20): JobQueuePaylo
     waiting: j.status === "queued" && waiting.has(j.id) ? waitView(waiting.get(j.id)!) : null,
     ingest_run: runs.get(j.id) ?? null,
     can_cancel: j.status === "queued",
-    can_retry: schedulerOn && isIngestKind(j.kind) && (j.status === "failed" || j.status === "lost"),
+    can_retry: schedulerOn && ingestRunKindOfJob(j.kind) != null && (j.status === "failed" || j.status === "lost"),
   });
   return { scheduler_enabled: schedulerOn, running: running.map(view), queued: queued.map(view), recent: recent.map(view) };
 }
@@ -118,7 +114,8 @@ export function cancelQueuedJob(id: number, now: Date): JobActionOutcome {
   const job = jobById(id);
   if (!job) return { ok: false, status: 404, message: `No job ${id}` };
   if (!cancelJob(id, now)) return { ok: false, status: 409, message: `Job ${id} is ${job.status}; only a queued job can be cancelled` };
-  if (isIngestKind(job.kind)) markIngestRunSkipped(job.kind === "ingest.nightly" ? "nightly" : "hourly", ingestJobSlot(job), "cancelled by hand", id);
+  const ingestKind = ingestRunKindOfJob(job.kind);
+  if (ingestKind) markIngestRunSkipped(ingestKind, ingestJobSlot(job), "cancelled by hand", id);
   console.log(`job-queue: ${job.kind} job ${id} cancelled by hand`);
   notifyJobQueue();
   return { ok: true };
@@ -128,11 +125,12 @@ export function cancelQueuedJob(id: number, now: Date): JobActionOutcome {
 export function retryJob(id: number, now: Date): JobActionOutcome {
   const job = jobById(id);
   if (!job) return { ok: false, status: 404, message: `No job ${id}` };
-  if (!isIngestKind(job.kind) || (job.status !== "failed" && job.status !== "lost")) {
+  const ingestKind = ingestRunKindOfJob(job.kind);
+  if (!ingestKind || (job.status !== "failed" && job.status !== "lost")) {
     return { ok: false, status: 409, message: `Job ${id} (${job.kind}, ${job.status}) cannot be retried; only a failed or lost ingest run can` };
   }
   if (!ingestSchedulerEnabled()) return { ok: false, status: 409, message: "The ingest scheduler is off on this server instance." };
-  const { job: queued } = enqueueIngestRun(job.kind === "ingest.nightly" ? "nightly" : "hourly", now, `manual: retry of job ${id}`, MANUAL_ENQUEUED_BY, now);
+  const { job: queued } = enqueueIngestRun(ingestKind, now, `manual: retry of job ${id}`, MANUAL_ENQUEUED_BY, now);
   console.log(`job-queue: ${job.kind} job ${id} retried as job ${queued.id}`);
   return { ok: true };
 }

@@ -19,9 +19,10 @@ import { CARD_PARSED_STATEMENT_COLUMNS } from "nw-tracker-contracts";
 import type { CcStatementCsvRecord } from "../ccStatementsImport.js";
 import type { CcWebPasteParseResult } from "../ccWebPasteParse.js";
 import { webPasteAmountFromDebtPositive } from "../ccPaymentLines.js";
+import { AFC_RATES_PCT, afpEmployerRatePct, AFP_NAMES, afpWorkerRatePct, pensionCapUf, unemploymentCapUf } from "../legalParameters.js";
 import type { MarketReader } from "./market.js";
 import { addMonths, daysInMonth, MONTH_NAMES_ES, monthOf, type CardDef, type Month, type Ymd, ymd } from "./person.js";
-import { afpWorkerRate, BRANCH, type BankRow, type CardStatement, type Ledger } from "./simulate.js";
+import { BRANCH, type BankRow, type CardStatement, type Ledger } from "./simulate.js";
 
 function ddmmyyyy(day: Ymd): string {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
@@ -288,27 +289,17 @@ export function renderPayrollParameters(ledger: Ledger, market: MarketReader): P
   return {
     months: months.map((m: Month) => {
       const year = Number(m.slice(0, 4));
-      const caps: Record<number, number> = { 2018: 78.3, 2019: 79.2, 2020: 80.2, 2021: 81.6, 2022: 81.6 };
-      const cap = caps[year] ?? 81.6;
       return {
         period_month: m,
         document: `previred-indicadores/${m}.pdf`,
         uf: market.uf(ymd(m, daysInMonth(m))),
         utm: market.utm(m),
-        pension_cap_uf: cap,
-        unemployment_cap_uf: Math.round(cap * 1.5 * 10) / 10,
-        afp_worker_rates: {
-          modelo: afpWorkerRate("modelo", m),
-          uno: afpWorkerRate("uno", m),
-          habitat: 11.27,
-          capital: 11.44,
-          cuprum: 11.44,
-          planvital: 11.16,
-          provida: 11.45,
-        },
-        afp_employer_rate: m >= "2025-08" ? 0.1 : 0,
-        afc_worker_rate: 0.6,
-        afc_employer_rate: 2.4,
+        pension_cap_uf: pensionCapUf(year),
+        unemployment_cap_uf: unemploymentCapUf(year),
+        afp_worker_rates: Object.fromEntries(AFP_NAMES.map((afp) => [afp, afpWorkerRatePct(afp, m)])),
+        afp_employer_rate: afpEmployerRatePct(m),
+        afc_worker_rate: AFC_RATES_PCT.worker,
+        afc_employer_rate: AFC_RATES_PCT.employer,
       };
     }),
   };

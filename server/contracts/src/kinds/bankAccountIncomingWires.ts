@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chileMinuteSchema, hasAtMostCents } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 const text = z.string().trim().min(1);
@@ -15,7 +16,7 @@ export const incomingWireNoticeSchema = z
     /** The mail's Message-ID: the notice's identity. */
     message_id: text,
     /** When the bank sent it, on the Chile clock: `YYYY-MM-DD HH:MM`. */
-    sent_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
+    sent_at_chile: chileMinuteSchema,
     subject: z.string(),
     /** The bank that mailed it. */
     bank: bankSlug,
@@ -27,7 +28,7 @@ export const incomingWireNoticeSchema = z
     amount: z
       .number()
       .positive()
-      .refine((n) => Math.abs(Math.round(n * 100) - n * 100) < 1e-6, { message: "amount must be in cents" }),
+      .refine(hasAtMostCents, { message: "amount must be in cents" }),
     beneficiary: z
       .object({
         bank: bankSlug.nullable(),

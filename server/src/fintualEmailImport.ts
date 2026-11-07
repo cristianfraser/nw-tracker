@@ -16,10 +16,18 @@
  * detection therefore matches within the same ±5-day window `fintualCertImport` uses, so an
  * e-mail-dated row and a certificado-dated one for the same event recognise each other.
  */
+import { addDaysIso } from "nw-tracker-contracts";
 import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import {
+  BROKER_SETTLEMENT_WINDOW_DAYS,
+  brokerAdapter,
+  fintualClpBalanceAccountId,
+  fintualUsdAccountId,
+  planDepositFromMail,
+} from "./brokerAdapter.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { recordSyntheticRetiroTransfer } from "./fintualSyntheticRetiros.js";
 import {
@@ -31,28 +39,8 @@ import type { BrokerNotification } from "nw-tracker-contracts";
 import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNotifications.js";
 import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros.js";
 
-/** Same tolerance as `fintualCertImport.CERT_MATCH_WINDOW_DAYS`, for the same reason. */
-export const EMAIL_MATCH_WINDOW_DAYS = 5;
-
-const FINTUAL_USD_IMPORT_KEY = "import:panel|kind=usd|key=fintual_usd";
-/** «Fintual CLP», the Efectivo account holding Fintual's peso balance (a retiro left in Fintual). */
-const FINTUAL_CLP_BALANCE_IMPORT_KEY = "import:panel|kind=clp|key=fintual_clp";
-
-export function fintualClpBalanceAccountId(): number {
-  const row = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
-    .get(FINTUAL_CLP_BALANCE_IMPORT_KEY) as { id: number } | undefined;
-  if (!row) throw new Error(`No account with import_key "${FINTUAL_CLP_BALANCE_IMPORT_KEY}"`);
-  return row.id;
-}
-
-export function fintualUsdAccountId(): number {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(FINTUAL_USD_IMPORT_KEY) as
-    | { id: number }
-    | undefined;
-  if (!row) throw new Error(`No account with import_key "${FINTUAL_USD_IMPORT_KEY}"`);
-  return row.id;
-}
+/** The window `fintualCertImport` uses too, for the same reason (`BROKER_SETTLEMENT_WINDOW_DAYS`). */
+const EMAIL_MATCH_WINDOW_DAYS = BROKER_SETTLEMENT_WINDOW_DAYS;
 
 /**
  * Fund name → ticker, for the buy e-mails.
@@ -85,12 +73,6 @@ export function tickerFromFundName(fundName: string): string | null {
  * Same rule as the Racional importer.
  */
 const eventChileYmd = notificationChileYmd;
-
-function isoAddDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 export type FintualPlannedMovement = {
   /**
@@ -130,13 +112,6 @@ export type FintualPlannedMovement = {
 /** Same band as the Racional conversion: a rate outside it is a misread mail, not a trade. */
 const FX_SANITY_MIN_CLP_PER_USD = 300;
 const FX_SANITY_MAX_CLP_PER_USD = 2000;
-
-const findSingleLegCheckingDebit = db.prepare(
-  `SELECT id FROM movements
-   WHERE account_id = ? AND from_account_id IS NULL AND to_account_id IS NULL
-     AND currency = 'clp' AND ABS(amount + ?) <= 0.5
-     AND occurred_on BETWEEN ? AND ?`
-);
 
 /** The bucket every stock Fintual USD has bought sits in, when there is exactly one. */
 function fintualEquityBucketSlug(): string | null {
@@ -279,29 +254,10 @@ export function planFintualEmailMovement(
       // invested from there (or returned after 7 days). Written from the mail, like Racional's
       // deposit; the bank's listing of the debit dedupes against this transfer's checking leg
       // (`superseded_by_transfer`) and brings its posting day.
-      const checking = checkingAccountId();
-      const balance = fintualClpBalanceAccountId();
-      const depositBase = { ...base, currency: "clp" as const, from_account_id: checking, to_account_id: balance };
       if (event.currency !== "clp") {
-        return { ...depositBase, requires_manual: `deposit in ${event.currency ?? "no currency"} — only peso deposits are mapped` };
+        return { ...base, currency: "clp" as const, requires_manual: `deposit in ${event.currency ?? "no currency"} — only peso deposits are mapped` };
       }
-      // The bank feed may already list the debit as a plain row (mail read after the nightly
-      // import): a second row would count the money twice, so that one is for a human to convert.
-      const existingDebit = findSingleLegCheckingDebit.get(
-        checking,
-        base.amount,
-        occurred_on,
-        isoAddDays(occurred_on, EMAIL_MATCH_WINDOW_DAYS)
-      ) as { id: number } | undefined;
-      if (existingDebit) {
-        return {
-          ...depositBase,
-          requires_manual:
-            `checking already lists this debit as movement ${existingDebit.id} — convert it to a ` +
-            "transfer instead of writing a second row",
-        };
-      }
-      return depositBase;
+      return { ...base, currency: "clp" as const, ...planDepositFromMail(brokerAdapter("fintual"), occurred_on, base.amount) };
     }
     case "wallet_funded": {
       // «Compraste dólares»: pesos of the Fintual balance → dollars, the shape of the hand-entered
@@ -371,8 +327,8 @@ export function planFintualEmailMovement(
         goalAccountId,
         checkingAccountId(),
         base.currency,
-        isoAddDays(base.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
-        isoAddDays(base.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
+        addDaysIso(base.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
+        addDaysIso(base.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
       ) as { id: number; amount: number }[];
       const already = existing.find((r) => Math.round(r.amount) === Math.round(base.amount));
       if (already) return { ...base, duplicate_of: already.id };
@@ -450,8 +406,8 @@ export function markFintualDuplicates(
       p.from_account_id,
       p.to_account_id,
       p.currency,
-      isoAddDays(p.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
-      isoAddDays(p.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
+      addDaysIso(p.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
+      addDaysIso(p.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
     ) as { id: number; occurred_on: string; amount: number }[];
     const hit = rows.find((r) => Math.abs(Number(r.amount) - p.amount) < 0.005);
     return hit ? { ...p, duplicate_of: hit.id } : p;

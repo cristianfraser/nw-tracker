@@ -17,6 +17,7 @@
  * Pure: no database access, so the migration hooks can match names while `db.ts` is loading;
  * `vendorCatalog.ts` adds the loaders.
  */
+import { normalizeRut } from "nw-tracker-contracts";
 import { foldVendorName, stripLegalSuffix, titleCaseName } from "./expenseNameText.js";
 import { placeBranch } from "./chilePlaces.js";
 
@@ -38,10 +39,8 @@ export type VendorCatalogEntry = {
 const STATEMENT_MERCHANT_WIDTH = 22;
 const MAY_BE_CUT_FROM = STATEMENT_MERCHANT_WIDTH - 4;
 
-/** «11.111.111-1» → «111111111»; «22.222.222-k» → «22222222K». */
-export function normalizeRut(rut: string): string {
-  return rut.replace(/[^0-9kK]/g, "").toUpperCase();
-}
+/** The shared RUT rule (`nw-tracker-contracts`), re-exported for server/scripts/load-vendor-catalog.ts. */
+export { normalizeRut };
 
 /**
  * A branch as the bank prints it, readable: store codes dropped («L272 LOS LEONES» → «Los Leones»),
@@ -91,7 +90,8 @@ export function vendorCatalogFromEntries(entries: readonly VendorCatalogEntry[])
     if (e.kind === "exact") {
       if (!exact.has(e.pattern)) exact.set(e.pattern, e.display);
     } else if (e.kind === "rut") {
-      if (!rut.has(e.pattern)) rut.set(e.pattern, e.display);
+      const key = normalizeRut(e.pattern);
+      if (!rut.has(key)) rut.set(key, e.display);
     } else prefixes.push({ pattern: e.pattern, display: e.display, branch: e.kind === "branch" });
   }
   // Longest pattern first; a stable sort keeps user entries ahead of seed ones of the same length.

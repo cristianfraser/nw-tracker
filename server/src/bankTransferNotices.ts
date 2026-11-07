@@ -16,6 +16,7 @@
  * a transfer to some other account. Rows left tied that differ only by id are twins and pair in
  * order; any other tie is left unpaired and reported.
  */
+import { normalizeAccountNumber, normalizeRut } from "nw-tracker-contracts";
 import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
@@ -43,8 +44,6 @@ export type TransferNoticePair = { message_id: string; movement_id: number; acco
 /** Which app accounts a counterparty is: by RUT (digits + check digit) or by account number (digits). */
 export type CounterpartyAccounts = { byRut: ReadonlyMap<string, ReadonlySet<number>>; byNumber: ReadonlyMap<string, ReadonlySet<number>> };
 
-export const normalizeRut = (rut: string | null) => (rut ?? "").replace(/[^0-9kK]/g, "").toUpperCase().replace(/^0+/, "");
-
 /** Why a notice paired with nothing (the keys of `unpaired`). */
 export const NO_BANK_ROW_YET = "no bank row (yet)";
 
@@ -56,8 +55,6 @@ export type TransferNoticeMatch = {
   ambiguous: string[];
 };
 
-const digits = (s: string | null) => (s ?? "").replace(/\D/g, "").replace(/^0+/, "");
-
 function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
@@ -68,7 +65,7 @@ function addDays(ymd: string, n: number): string {
 export function counterpartyAccountsOf(counterparties: CounterpartyAccounts, p: TransferNotice["to"]): ReadonlySet<number> {
   const out = new Set<number>();
   for (const a of counterparties.byRut.get(normalizeRut(p.rut)) ?? []) out.add(a);
-  for (const a of counterparties.byNumber.get(digits(p.account_number)) ?? []) out.add(a);
+  for (const a of counterparties.byNumber.get(normalizeAccountNumber(p.account_number)) ?? []) out.add(a);
   return out;
 }
 
@@ -134,8 +131,8 @@ export function matchTransferNotices(
       skip("scheduled-transfer notice (no money moved)");
       continue;
     }
-    const fromAcct = trackedAccounts.get(digits(n.from.account_number)) ?? null;
-    const toAcct = trackedAccounts.get(digits(n.to.account_number)) ?? null;
+    const fromAcct = trackedAccounts.get(normalizeAccountNumber(n.from.account_number)) ?? null;
+    const toAcct = trackedAccounts.get(normalizeAccountNumber(n.to.account_number)) ?? null;
     const sides: { account: number; amount: number; other: number | null }[] = [];
     if (n.kind === "incoming") {
       if (toAcct == null) {
@@ -223,7 +220,7 @@ function loadCounterpartyAccounts(): CounterpartyAccounts {
     account_number: string | null;
     account_id: number;
   }[]) {
-    const [map, key] = r.rut != null ? [byRut, normalizeRut(r.rut)] : [byNumber, digits(r.account_number)];
+    const [map, key] = r.rut != null ? [byRut, normalizeRut(r.rut)] : [byNumber, normalizeAccountNumber(r.account_number)];
     (map.get(key) ?? map.set(key, new Set()).get(key)!).add(r.account_id);
   }
   return { byRut, byNumber };
@@ -240,7 +237,7 @@ function trackedAccounts(): Map<string, number> {
     .all() as { account_id: number; number: string }[];
   const out = new Map<string, number>();
   for (const r of rows) {
-    const key = digits(r.number);
+    const key = normalizeAccountNumber(r.number);
     if (out.has(key) && out.get(key) !== r.account_id) throw new Error(`bank account number ${r.number} names two accounts`);
     out.set(key, r.account_id);
   }
@@ -353,8 +350,8 @@ export function mailMovementForNotice(
   counterparties: CounterpartyAccounts,
   landing: (accounts: ReadonlySet<number>) => number | null
 ): MailMovement | null {
-  const fromAcct = tracked.get(digits(n.from.account_number)) ?? null;
-  const toAcct = tracked.get(digits(n.to.account_number)) ?? null;
+  const fromAcct = tracked.get(normalizeAccountNumber(n.from.account_number)) ?? null;
+  const toAcct = tracked.get(normalizeAccountNumber(n.to.account_number)) ?? null;
   if (n.kind === "schedule_created") return null;
   if (n.kind === "incoming") return toAcct == null ? null : { kind: "single", account_id: toAcct, amount: n.amount };
   if (fromAcct == null) return null;

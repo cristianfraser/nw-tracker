@@ -1,10 +1,8 @@
-import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   cacheKeyCcBillingDetail,
   getAggregationCached,
   invalidateCcBillingDetail,
 } from "./aggregationCache.js";
-import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import {
   debtCcExpenseLineAmountClp,
   debtFrameClpPerUsd,
@@ -18,12 +16,7 @@ import {
   redundantInstallmentSummaryLineIds,
   type CcStatementLineForInstallmentTotals,
 } from "./ccInstallmentLineDedupe.js";
-import {
-  normalizeTransactionDateIso,
-  parseDdMmYyToIso,
-  resolveInstallmentPayByIso,
-  statementLineDateIso,
-} from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso, resolveInstallmentPayByIso, statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { db } from "./db.js";
@@ -49,6 +42,7 @@ import {
   isUsdSection3FinancingChargeMerchant,
 } from "./ccStatementSection3.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
+import { ddMmYyyyFromIso, parseDdMmYyToIso, addCalendarMonths } from "nw-tracker-contracts";
 
 export type CcBillingMonthBalanceRow = {
   id: number;

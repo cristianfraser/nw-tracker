@@ -1,5 +1,6 @@
+import type { IngestRunKind } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { coalesceQueued, type JobStatus, type QueuedJob, type RunningJob } from "./jobQueuePolicy.js";
+import { EXCLUSIVE_RESOURCE, coalesceQueued, type JobStatus, type QueuedJob, type RunningJob } from "./jobQueuePolicy.js";
 
 /**
  * The `jobs` table (migration 246, docs/job-queue-plan.md): enqueue (coalescing by dedupe key),
@@ -8,27 +9,63 @@ import { coalesceQueued, type JobStatus, type QueuedJob, type RunningJob } from 
  * is `pickNextJobs`' call, never this module's.
  */
 
-/** How each kind of job behaves in the queue. */
+/** The one ingest service runs one run at a time: held by every ingest job. */
+export const INGEST_SERVICE_RESOURCE = "ingest-service";
+
+/**
+ * How each kind of job behaves in the queue — the one table the queue, the executor, the import
+ * sync page and the ingest scheduler read (2026-11-07). `dispatch`: `executor` — the server
+ * dispatches it (`jobQueueExecutor.ts`), `claim` — an outside worker claims it (the deploy
+ * agent). `ingest`: the ingest run kind it is, or null.
+ */
 export type JobKindDefinition = {
   priority: number;
   resources: readonly string[];
   /** A running job silent for this long is `lost`. */
   lease_ms: number;
-  max_attempts: number;
-  /** `executor`: the server dispatches it. `claim`: an outside worker claims it (the deploy agent). */
   dispatch: "executor" | "claim";
+  ingest: IngestRunKind | null;
 };
 
 export const JOB_KINDS = {
-  "ingest.nightly": { priority: 50, resources: ["ingest-service"], lease_ms: 5 * 60_000, max_attempts: 1, dispatch: "executor" },
-  "ingest.hourly": { priority: 40, resources: ["ingest-service"], lease_ms: 5 * 60_000, max_attempts: 1, dispatch: "executor" },
-  deploy: { priority: 100, resources: ["server-restart"], lease_ms: 20 * 60_000, max_attempts: 1, dispatch: "claim" },
+  "ingest.nightly": {
+    priority: 50,
+    resources: [INGEST_SERVICE_RESOURCE],
+    lease_ms: 5 * 60_000,
+    dispatch: "executor",
+    ingest: "nightly",
+  },
+  "ingest.hourly": {
+    priority: 40,
+    resources: [INGEST_SERVICE_RESOURCE],
+    lease_ms: 5 * 60_000,
+    dispatch: "executor",
+    ingest: "hourly",
+  },
+  deploy: { priority: 100, resources: [EXCLUSIVE_RESOURCE], lease_ms: 20 * 60_000, dispatch: "claim", ingest: null },
 } as const satisfies Record<string, JobKindDefinition>;
 
 export type JobKind = keyof typeof JOB_KINDS;
 
 export function isJobKind(kind: string): kind is JobKind {
   return Object.hasOwn(JOB_KINDS, kind);
+}
+
+export function jobKindDefinition(kind: string): JobKindDefinition {
+  if (!isJobKind(kind)) throw new Error(`Unknown job kind: ${kind}`);
+  return JOB_KINDS[kind];
+}
+
+/** The ingest run kind a job is, or null for a job that is not an ingest run. */
+export function ingestRunKindOfJob(kind: string): IngestRunKind | null {
+  return isJobKind(kind) ? JOB_KINDS[kind].ingest : null;
+}
+
+/** The job kind of an ingest run kind. */
+export function jobKindForIngestRun(kind: IngestRunKind): JobKind {
+  const found = (Object.keys(JOB_KINDS) as JobKind[]).find((k) => JOB_KINDS[k].ingest === kind);
+  if (!found) throw new Error(`No job kind runs ingest ${kind}`);
+  return found;
 }
 
 export type JobRow = {
@@ -46,7 +83,6 @@ export type JobRow = {
   heartbeat_at: string | null;
   lease_ms: number;
   attempt: number;
-  max_attempts: number;
   enqueued_by: string;
   reason: string;
   result_json: string | null;
@@ -113,8 +149,8 @@ export function enqueueJob(input: EnqueueJob, now: Date): { job: JobRow; coalesc
     const row = db
       .prepare(
         `INSERT INTO jobs (kind, dedupe_key, payload_json, status, priority, not_before, stale_after, resources_json,
-           lease_ms, max_attempts, enqueued_by, reason, created_at)
-         VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
+           lease_ms, enqueued_by, reason, created_at)
+         VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
       )
       .get(
         input.kind,
@@ -125,7 +161,6 @@ export function enqueueJob(input: EnqueueJob, now: Date): { job: JobRow; coalesc
         incoming.stale_after,
         JSON.stringify(def.resources),
         def.lease_ms,
-        def.max_attempts,
         incoming.enqueued_by,
         incoming.reason,
         now.toISOString()

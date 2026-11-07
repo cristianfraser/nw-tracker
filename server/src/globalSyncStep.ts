@@ -6,19 +6,9 @@
  * cleared only after a successful step, unless the source is still naturally stale
  * (e.g. NYSE close not yet published).
  */
-import { chileWallClockNow } from "./chileDate.js";
-import {
-  clearUserForcedStale,
-  isCryptoEodStale,
-  isFintualSyncStale,
-  isStocksNyseStale,
-  isStocksSantiagoStale,
-  shouldRunSyncSource,
-  type GlobalSyncSource,
-} from "./globalSyncStale.js";
+import type { ChileWallClock } from "./chileDate.js";
+import { clearUserForcedStale, keepUserForcedStaleAfterSuccess, SYNC_SOURCES, type GlobalSyncSource } from "./globalSyncStale.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
-import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
-import { isAfcCicStale } from "./afcCicSeries.js";
 import type { SyncStepError } from "./syncRunLog.js";
 
 export function syncErrorMessage(e: unknown): string {
@@ -39,30 +29,23 @@ export async function runSyncStep(
   }
 }
 
+/** Run `source`'s step when it is in the run's stale list; its label is the source table's (`SYNC_SOURCES`). */
 export async function runSyncStepIfStale(
   source: GlobalSyncSource,
   stale: readonly GlobalSyncSource[],
-  step: string,
   errors: SyncStepError[],
   state: GlobalSyncStateFile,
-  cl: ReturnType<typeof chileWallClockNow>,
+  cl: ChileWallClock,
   fn: () => Promise<void>
 ): Promise<void> {
-  if (!shouldRunSyncSource(source, stale)) {
+  const step = SYNC_SOURCES[source].label;
+  if (!stale.includes(source)) {
     console.log(`sync: ${step} — skip (not stale).`);
     return;
   }
   const errorsBefore = errors.length;
   await runSyncStep(step, errors, fn);
-  if (errors.length === errorsBefore) {
-    const now = new Date();
-    const keepForcedStale =
-      (source === "fintual" && isFintualSyncStale(cl, state)) ||
-      (source === "afc_cic" && isAfcCicStale(cl, state)) ||
-      (source === "stocks_nyse" && isStocksNyseStale(state, { now })) ||
-      (source === "stocks_santiago" && isStocksSantiagoStale(state, { now })) ||
-      (source === "yahoo_fx_usd" && isYahooFxUsdStale({ now })) ||
-      (source === "crypto_eod" && isCryptoEodStale(cl, state, { now }));
-    if (!keepForcedStale) clearUserForcedStale(state, source);
+  if (errors.length === errorsBefore && !keepUserForcedStaleAfterSuccess(source, cl, state)) {
+    clearUserForcedStale(state, source);
   }
 }

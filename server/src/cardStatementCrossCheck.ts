@@ -1,3 +1,4 @@
+import { normalizeMerchantText } from "nw-tracker-contracts";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { padCcStatementDate } from "./ccStatementJsonSource.js";
 import { db } from "./db.js";
@@ -26,13 +27,9 @@ function loadImportedLines(accountId: number, statementDate: string, currency: "
     )
     .all(statement.id) as { merchant: string | null; amount_clp: number | null; amount_usd: number | null }[];
   return rows.map((r) => ({
-    merchant: normalizeMerchant(r.merchant),
+    merchant: normalizeMerchantText(r.merchant),
     amount: Number(currency === "usd" ? r.amount_usd ?? 0 : r.amount_clp ?? 0),
   }));
-}
-
-function normalizeMerchant(value: string | null): string {
-  return String(value ?? "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -41,7 +38,7 @@ function normalizeMerchant(value: string | null): string {
  * («ABC] 12 CENTRO» / «ABC! 12 CENTRO»).
  */
 function merchantRenderingKey(value: string): string {
-  return normalizeMerchant(value)
+  return normalizeMerchantText(value)
     .replace(/ \d{4}$/, "")
     .replace(/[^A-Z0-9 ]/g, "")
     .replace(/\s+/g, " ")
@@ -99,7 +96,7 @@ export function pairStatementLines(
 
   const leftover: StatementJsonLine[] = [];
   for (const line of jsonLines) {
-    const key = `${normalizeMerchant(line.merchant)}|${Math.abs(line.amount)}`;
+    const key = `${normalizeMerchantText(line.merchant)}|${Math.abs(line.amount)}`;
     const left = remaining.get(key) ?? 0;
     if (left > 0) remaining.set(key, left - 1);
     else leftover.push(line);
@@ -108,7 +105,7 @@ export function pairStatementLines(
   let matchedByPrefix = 0;
   const unprefixed: StatementJsonLine[] = [];
   for (const line of leftover) {
-    const merchant = normalizeMerchant(line.merchant);
+    const merchant = normalizeMerchantText(line.merchant);
     const amount = Math.abs(line.amount);
     const candidate = [...remaining.entries()].find(([key, count]) => {
       if (count <= 0) return false;

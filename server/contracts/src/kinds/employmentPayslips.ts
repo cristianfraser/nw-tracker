@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -9,7 +10,6 @@ import { defineIngestKind } from "../defineKind.js";
  */
 
 const pesos = z.number().int();
-const periodMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 /**
  * One line of the payslip as printed: a haber (earning) or a descuento (deduction), in the section
@@ -32,7 +32,7 @@ export const payslipSchema = z
   .object({
     /** The document it came from (its path under the feeder's archive): the payslip's identity. */
     document: z.string().min(1).max(512),
-    period_month: periodMonth,
+    period_month: yearMonthSchema,
     employer: z.object({ name: z.string().min(1).max(200), rut: z.string().min(1).max(20).nullable() }).strict(),
     /** The period as printed («Septiembre 2025»), when it is. */
     pay_period_label: z.string().min(1).max(200).nullable(),

@@ -1,3 +1,4 @@
+import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
 import { db } from "./db.js";
 
@@ -130,9 +131,8 @@ function parseSyncFormattedNumber(raw: string): number | null {
   const neg = s.startsWith("-") || s.startsWith("−");
   const body = s.replace(/^[-−+]/, "").trim();
   if (!body) return null;
-  const normalized = body.replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
-  if (!Number.isFinite(n)) return null;
+  if (!isChileanNumber(body)) return null;
+  const n = parseChileanNumber(body);
   return neg ? -n : n;
 }
 

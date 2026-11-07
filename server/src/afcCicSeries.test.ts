@@ -3,10 +3,7 @@ import type { ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   AFC_CIC_SERIES_KEY,
-  afcCicExpectedYmd,
-  afcCicNextDueYmd,
   isAfcCicStale,
-  parseChileanDecimal,
   parseSpCesantiaCsv,
   spCesantiaCsvUrl,
   upsertAfcCicRows,
@@ -36,14 +33,6 @@ const SAMPLE_CSV = [
 ].join("\r\n");
 
 describe("afc_cic — Superintendencia de Pensiones CSV", () => {
-  it("parses Chilean numbers", () => {
-    expect(parseChileanDecimal("4.221,76")).toBe(4221.76);
-    expect(parseChileanDecimal("10811508015009")).toBe(10811508015009);
-    expect(parseChileanDecimal("352977228622")).toBe(352977228622);
-    expect(() => parseChileanDecimal("4,221.76")).toThrow(/unparsable/);
-    expect(() => parseChileanDecimal("")).toThrow(/unparsable/);
-  });
-
   it("parses the yearly CSV into dated CIC/FCS rows (weekend carries included)", () => {
     const rows = parseSpCesantiaCsv(SAMPLE_CSV);
     expect(rows.map((r) => r.day)).toEqual(["2026-01-01", "2026-01-02", "2026-01-03"]);
@@ -68,7 +57,7 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
     const gap = SAMPLE_CSV.replace("2026-01-02;4.051,04;10811508015009;4.940,42;3506064659931", "2026-01-02;;;;");
     expect(() => parseSpCesantiaCsv(gap)).toThrow(/before a published one/);
     const partial = SAMPLE_CSV.replace("2026-01-03;4.051,04;10811508015009", "2026-01-03;;");
-    expect(() => parseSpCesantiaCsv(partial)).toThrow(/unparsable/);
+    expect(() => parseSpCesantiaCsv(partial)).toThrow(/Unparseable/);
   });
 
   it("fails fast on a changed header, a short row, or non-ascending dates", () => {
@@ -89,28 +78,6 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
     expect(() => spCesantiaCsvUrl(1999)).toThrow(/invalid year/);
   });
 
-  it("expects the business day the latest SP publication printed", () => {
-    expect(afcCicExpectedYmd(cl("2026-09-22", 19))).toBe("2026-09-21"); // Tuesday after 18:00 → Monday
-    expect(afcCicExpectedYmd(cl("2026-09-22", 9))).toBe("2026-09-17"); // Tuesday morning → Monday's publication (Thu 17)
-    expect(afcCicExpectedYmd(cl("2026-09-26", 14))).toBe("2026-09-24"); // Saturday → Friday printed Thursday
-    expect(afcCicExpectedYmd(cl("2026-09-27", 20))).toBe("2026-09-24"); // Sunday → still Thursday
-    expect(afcCicExpectedYmd(cl("2026-09-28", 17))).toBe("2026-09-24"); // Monday before 18:00 → Thursday
-    expect(afcCicExpectedYmd(cl("2026-09-28", 18))).toBe("2026-09-25"); // Monday 18:00 → Friday
-    expect(afcCicExpectedYmd(cl("2026-11-01", 12))).toBe("2026-10-29"); // Sunday (Sat 10-31 holiday) → Thursday
-  });
-
-  it("next due day is the first business day whose publication expects a newer row", () => {
-    // Saturday 14:00 with Thursday in DB: Monday 18:00 publishes Friday.
-    expect(afcCicNextDueYmd(cl("2026-09-26", 14), "2026-09-24")).toBe("2026-09-28");
-    // Saturday with Friday already in DB: Monday publishes Friday too, so Tuesday.
-    expect(afcCicNextDueYmd(cl("2026-09-26", 14), "2026-09-25")).toBe("2026-09-29");
-    // Tuesday 09:00 with Thursday 17 in DB: today's publication prints Monday.
-    expect(afcCicNextDueYmd(cl("2026-09-22", 9), "2026-09-17")).toBe("2026-09-22");
-    // Tuesday 19:00 with Monday in DB: Wednesday prints Tuesday.
-    expect(afcCicNextDueYmd(cl("2026-09-22", 19), "2026-09-21")).toBe("2026-09-23");
-    // Nothing in DB: due at the next publication.
-    expect(afcCicNextDueYmd(cl("2026-09-22", 9), null)).toBe("2026-09-22");
-  });
 });
 
 describe("afc_cic — upsert + stale rule (test DB)", () => {

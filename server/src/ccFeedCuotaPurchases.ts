@@ -24,9 +24,9 @@ import {
 import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { creditCardMasterMetaForAccount, type CcWebPasteLine } from "./ccWebPasteParse.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { parseDdMmYyToIso, daysBetweenIso, isWebPasteCutOf, normalizeMerchantText } from "nw-tracker-contracts";
 
 /** An open web-paste bucket line, as the feed matchers see it. */
 export type CcOpenBucketLine = {
@@ -57,23 +57,14 @@ export function bucketLinePurchaseIso(line: Pick<CcOpenBucketLine, "transaction_
   return parseDdMmYyToIso(String(line.transaction_date ?? "")) ?? parseDdMmYyToIso(String(line.posting_date ?? ""));
 }
 
-function normMerchant(m: string | null | undefined): string {
-  return String(m ?? "").trim().toUpperCase().replace(/\s+/g, " ");
-}
-
 /** A manual paste cuts merchants at exactly 15 characters; the feed prints them whole. */
 function merchantsSame(a: string | null | undefined, b: string | null | undefined): boolean {
-  const na = normMerchant(a);
-  const nb = normMerchant(b);
+  const na = normalizeMerchantText(a);
+  const nb = normalizeMerchantText(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
-  const [short, long] = na.length <= nb.length ? [na, nb] : [nb, na];
-  if (short.length === 15 && long.startsWith(short)) return true;
+  if (isWebPasteCutOf(na, nb) || isWebPasteCutOf(nb, na)) return true;
   return merchantsMatchForCrossDedupe(a, b);
-}
-
-function dayGap(a: string, b: string): number {
-  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 }
 
 /**
@@ -94,7 +85,7 @@ export function bucketLineMatchesFeedLine(
     return false;
   }
   const lineIso = bucketLinePurchaseIso(line);
-  if (!lineIso || dayGap(lineIso, feed.transaction_date) > maxDayGap) return false;
+  if (!lineIso || Math.abs(daysBetweenIso(lineIso, feed.transaction_date)) > maxDayGap) return false;
   return merchantsSame(line.merchant, feed.merchant);
 }
 

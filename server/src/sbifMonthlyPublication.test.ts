@@ -63,9 +63,8 @@ describe("isSbifUfStale / isSbifUtmStale", () => {
     expect(isSbifUfStale(june9, { maxUfDate: "2026-06-30" })).toBe(true);
     expect(isSbifUfStale(cl("2026-06-10"), { maxUfDate: "2026-06-30" })).toBe(false);
     expect(isSbifUfStale(june11, { maxUfDate: "2026-06-09" })).toBe(true);
-    expect(isSbifUfStale(june11, { maxUfDate: "2026-06-30", lastSyncYmd: "2026-06-10" })).toBe(false);
-    expect(isSbifUfStale(june11, { maxUfDate: "2026-06-30", lastSyncYmd: "2026-06-11" })).toBe(false);
-    expect(isSbifUfStale(june22, { maxUfDate: "2026-07-09", lastSyncYmd: "2026-06-21" })).toBe(false);
+    expect(isSbifUfStale(june11, { maxUfDate: "2026-06-30" })).toBe(false);
+    expect(isSbifUfStale(june22, { maxUfDate: "2026-07-09" })).toBe(false);
     expect(isSbifUfStale(june11, { maxUfDate: "2026-07-31" })).toBe(false);
     // UTM: stale only while the current month's value is missing — next-month UTM
     // is not queryable on day 9, and a completed grab goes fresh immediately.

@@ -1,4 +1,4 @@
-import type { IngestRunKind, SantanderFetchMode, SantanderState } from "nw-tracker-contracts";
+import { SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES, type IngestRunKind, type SantanderFetchMode, type SantanderState } from "nw-tracker-contracts";
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { DAILY_RUN_REPEAT_WINDOW_MINUTES } from "./dailyRunLog.js";
 
@@ -92,7 +92,6 @@ export function decideIngestRun(inputs: IngestSchedulerInputs): IngestSchedulerD
   return { action: "idle" };
 }
 
-export const SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES = 35;
 /**
  * No balance poll this close to the 22:00 slot: the nightly logs in anyway, and a poll at :30 would
  * leave the nightly's own fetch inside the scraper's 30-minute run guard.

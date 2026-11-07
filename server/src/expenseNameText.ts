@@ -2,15 +2,11 @@
  * Text rules for the names an expense row shows (`expenseDisplayNames.ts`), pure and shared with
  * the vendor catalog: title case, legal suffixes, person names, emoji, the bank's own clutter.
  */
+import { foldAccents, foldUpper } from "nw-tracker-contracts";
 
 /** «Jumbo  Peñalolén» → «JUMBO PENALOLEN»: upper case, accents dropped, single spaces. */
 export function foldVendorName(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return foldUpper(text);
 }
 
 const LOWERCASE_PARTICLES =new Set(["de", "del", "la", "las", "los", "y", "e", "da", "do", "das", "dos", "van", "von", "di"]);
@@ -105,10 +101,6 @@ const PLACEHOLDER_PAYEES = new Set(["servicio creado automaticamente"]);
 
 export function isPlaceholderPayee(text: string): boolean {
   return PLACEHOLDER_PAYEES.has(
-    text
-      .normalize("NFD")
-      .replace(/\p{M}/gu, "")
-      .toLowerCase()
-      .trim()
+    foldAccents(text).toLowerCase().trim()
   );
 }

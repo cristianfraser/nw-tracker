@@ -1,5 +1,4 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import { lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
 import { purchaseCountsAfterNotaPairing } from "./ccNotaDeCreditoPairing.js";
@@ -11,6 +10,7 @@ import {
   REAL_ESTATE_LINKABLE_KINDS,
 } from "./realEstateExpenseMerchants.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
  * Bills pair with FULL payments: an installment-paid bill (TGR contribuciones in 3/6

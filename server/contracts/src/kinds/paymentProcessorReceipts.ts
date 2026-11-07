@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chileMinuteSchema, hasAtMostCents, isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 const text = z.string().trim().min(1);
@@ -14,7 +15,6 @@ export const receiptChargeSchema = z
 
 export type ReceiptCharge = z.infer<typeof receiptChargeSchema>;
 
-const chileStamp = z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
 
 /** A ride the receipt is for: where it started and ended, as the receipt prints them. */
 export const receiptTripSchema = z
@@ -22,21 +22,20 @@ export const receiptTripSchema = z
     from: text,
     to: text,
     /** Chile clock, `YYYY-MM-DD HH:MM`, when printed. */
-    started_at_chile: chileStamp.nullable(),
-    ended_at_chile: chileStamp.nullable(),
+    started_at_chile: chileMinuteSchema.nullable(),
+    ended_at_chile: chileMinuteSchema.nullable(),
     distance_km: z.number().nonnegative().nullable(),
   })
   .strict();
 
 export type ReceiptTrip = z.infer<typeof receiptTripSchema>;
 
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** A stay the receipt is for (Booking, Airbnb, a hotel's own mail): when, and where. */
 export const receiptStaySchema = z
   .object({
-    check_in: isoDay,
-    check_out: isoDay,
+    check_in: isoDateSchema,
+    check_out: isoDateSchema,
     city: text.nullable(),
   })
   .strict()
@@ -48,11 +47,11 @@ export type ReceiptStay = z.infer<typeof receiptStaySchema>;
 export const receiptEventSchema = z
   .object({
     name: text,
-    starts_on: isoDay,
+    starts_on: isoDateSchema,
     /** `HH:MM` on the event's own clock, when printed. */
     starts_at: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
     /** The last day of an event of several days (a festival); null for one of one day. */
-    ends_on: isoDay.nullable(),
+    ends_on: isoDateSchema.nullable(),
     /** The venue or its address, as printed. */
     venue: text.nullable(),
   })
@@ -72,7 +71,7 @@ export const receiptVehiclePermitSchema = z
     cuota: z.number().int().min(1).max(2),
     /** 1 = this payment is the whole year. */
     cuotas: z.number().int().min(1).max(2),
-    expires_on: isoDay,
+    expires_on: isoDateSchema,
   })
   .strict()
   .refine((p) => p.cuota <= p.cuotas, { message: "the cuota is not past the cuotas" });
@@ -84,7 +83,7 @@ export const processorReceiptSchema = z
     /** The mail's Message-ID: the receipt's identity. */
     message_id: text,
     /** When the processor sent it, on the Chile clock: `YYYY-MM-DD HH:MM`. */
-    sent_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
+    sent_at_chile: chileMinuteSchema,
     /** Who mailed it: a payment processor (`flow`, `pago_facil`) or a shop platform's order confirmation (`shopify`). */
     processor: z.string().regex(/^[a-z][a-z0-9_]*$/),
     /** Who was paid, as the receipt names them. */
@@ -106,7 +105,7 @@ export const processorReceiptSchema = z
      */
     currency: z.string().regex(/^[a-z]{3}$/),
     /** When the payment went through, on the Chile clock: `YYYY-MM-DD HH:MM`. */
-    paid_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
+    paid_at_chile: chileMinuteSchema,
     order_ref: text.nullable(),
     /** What the payment was for, as the merchant described it. */
     concept: text.nullable(),
@@ -137,7 +136,7 @@ export const processorReceiptSchema = z
   })
   .strict()
   .refine((r) => r.amount == null || r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" })
-  .refine((r) => r.amount == null || r.currency === "clp" || Math.abs(r.amount * 100 - Math.round(r.amount * 100)) < 1e-6, {
+  .refine((r) => r.amount == null || r.currency === "clp" || hasAtMostCents(r.amount), {
     message: "amounts other than pesos are to the cent",
   })
   .refine((r) => r.charges == null || (r.amount != null && Math.abs(r.charges.reduce((s, c) => s + c.amount, 0) - r.amount) < 0.005), {

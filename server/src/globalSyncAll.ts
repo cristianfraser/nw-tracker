@@ -86,7 +86,7 @@ import {
   matchGoalToImportNotes,
   parseGoalsFromResponse,
   writeGoalsSnapshot,
-} from "../scripts/fintualApiLib.js";
+} from "./fintualApiLib.js";
 import {
   applyFintualGoalsSnapshotToDb,
   cleanupUnreconciledFintualCertFundUnitsForPoll,
@@ -101,7 +101,7 @@ import {
   pickFintualApplySnapshot,
   priorAccountValuation,
   syncFintualFundUnitsFromResolutions,
-} from "../scripts/fintualApplyShared.js";
+} from "./fintualApplyShared.js";
 import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
 import {
   fintualCertV2AnyHeldFundMissingDayRow,
@@ -112,7 +112,7 @@ import {
   clearFintualRealAssetNavCaches,
   describeFintualGoalResolution,
   resolveFintualGoalNavs,
-} from "../scripts/fintualRealAssetNav.js";
+} from "./fintualRealAssetNav.js";
 import {
   FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS,
   fintualOfficialSerieCorrectionErrors,
@@ -139,8 +139,8 @@ import {
   maxFxBcentralDateOnOrBefore,
   maxFxDateOnOrBefore,
   maxUfDate,
-  safeMaxIpcMonthParts,
-  safeMaxUtmMonthParts,
+  maxIpcMonthParts,
+  maxUtmMonthParts,
   upsertEurRows,
   upsertFxBcentralRows,
   upsertUfRows,
@@ -961,7 +961,6 @@ async function runSbifUf(
   if (!isSbifUfStale(cl, {
     forceSbif: FORCE_SBIF,
     maxUfDate: maxBefore,
-    lastSyncYmd: state.sbifUfLastSyncYmd,
   })) {
     console.log("sync: BCentral UF — skip (forward publication already in DB).");
     return;
@@ -1027,13 +1026,13 @@ async function runSbifUtm(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
-  const maxUtmBefore = safeMaxUtmMonthParts();
+  const maxUtmBefore = maxUtmMonthParts();
   if (!isSbifUtmStale(cl, { forceSbif: FORCE_SBIF, maxUtm: maxUtmBefore })) {
     console.log("sync: BCentral UTM — skip (forward publication already in DB).");
     return;
   }
   const fetchEnd = sbifMonthlyPublicationEndYmd(cl);
-  const lastParts = safeMaxUtmMonthParts();
+  const lastParts = maxUtmMonthParts();
   const start = portfolioStartYmd();
   const anchor = lastParts ?? monthBeforeCalendar(parseYmdParts(start).y, parseYmdParts(start).m);
   let rows: { date: string; utmClp: number }[] = [];
@@ -1067,7 +1066,7 @@ async function runSbifUtm(
       newDate: newest.date.slice(0, 10),
     });
   }
-  if (!syncDryRun && isSbifUtmCoverageComplete(safeMaxUtmMonthParts(), cl)) {
+  if (!syncDryRun && isSbifUtmCoverageComplete(maxUtmMonthParts(), cl)) {
     state.sbifUtmMonth = cl.monthKey;
   }
   console.log(
@@ -1085,7 +1084,7 @@ async function runSbifIpc(
     console.log("sync: BCentral IPC — skip (monthly window or already synced this month).");
     return;
   }
-  const lastParts = safeMaxIpcMonthParts();
+  const lastParts = maxIpcMonthParts();
   const start = portfolioStartYmd();
   const sp = parseYmdParts(start);
   const anchor = lastParts ?? monthBeforeCalendar(sp.y, sp.m);
@@ -1297,15 +1296,15 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
         (stale.length ? ` stale=[${stale.join(", ")}]` : " nothing stale")
     );
 
-    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("afp_uno", stale, stepErrors, state!, cl, async () => {
       await runAfpUno(cl, state!, syncChanges, stepNotes);
     });
 
-    await runSyncStepIfStale("afc_cic", stale, "AFC CIC", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("afc_cic", stale, stepErrors, state!, cl, async () => {
       await runAfcCic(cl, state!, syncChanges, stepNotes);
     });
 
-    await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("fintual", stale, stepErrors, state!, cl, async () => {
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
       if (fintualResult.polled) {
@@ -1314,7 +1313,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       }
     });
 
-    await runSyncStepIfStale("fintual_official_serie", stale, "Fintual official serie", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("fintual_official_serie", stale, stepErrors, state!, cl, async () => {
       if (officialSerieCheckedThisRun) {
         console.log("sync: Fintual official serie — already checked by the goals poll this run.");
         return;
@@ -1322,11 +1321,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       await runFintualOfficialSeriesCheck(cl, state!, syncChanges, stepErrors);
     });
 
-    await runSyncStepIfStale(
-      "fintual_rn_composition",
-      stale,
-      "Risky Norris composition",
-      stepErrors,
+    await runSyncStepIfStale("fintual_rn_composition", stale, stepErrors,
       state!,
       cl,
       async () => {
@@ -1334,20 +1329,20 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       }
     );
 
-    await runSyncStepIfStale("cmf_rn_portfolio", stale, "CMF Risky Norris filing", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("cmf_rn_portfolio", stale, stepErrors, state!, cl, async () => {
       await runCmfRnPortfolio(cl, state!, syncChanges, stepNotes, stepErrors);
     });
 
-    await runSyncStepIfStale("yahoo_fx_usd", stale, "Yahoo USD/CLP", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("yahoo_fx_usd", stale, stepErrors, state!, cl, async () => {
       await runYahooFxUsd(state!, syncChanges, stepNotes);
     });
-    await runSyncStepIfStale("stocks_nyse", stale, "NYSE stocks", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("stocks_nyse", stale, stepErrors, state!, cl, async () => {
       await runStocksNyse(state!, syncChanges, stepNotes);
     });
-    await runSyncStepIfStale("stocks_santiago", stale, "Santiago stocks", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("stocks_santiago", stale, stepErrors, state!, cl, async () => {
       await runStocksSantiago(state!, syncChanges, stepNotes);
     });
-    await runSyncStepIfStale("crypto_eod", stale, "Crypto EOD", stepErrors, state!, cl, async () => {
+    await runSyncStepIfStale("crypto_eod", stale, stepErrors, state!, cl, async () => {
       await runCryptoEod(cl, state!, syncChanges);
     });
 
@@ -1355,10 +1350,10 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     if (!bcentral) {
       console.warn("sync: BCentral — skip (set BCENTRAL_EMAIL and BCENTRAL_PASSWORD in .env).");
     } else {
-      await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, state!, cl, async () => {
+      await runSyncStepIfStale("sbif_usd", stale, stepErrors, state!, cl, async () => {
         await runSbifUsd(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
-      await runSyncStepIfStale("sbif_eur", stale, "BCentral EUR", stepErrors, state!, cl, async () => {
+      await runSyncStepIfStale("sbif_eur", stale, stepErrors, state!, cl, async () => {
         await runSbifEur(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
       if (cl.day < 9 && !FORCE_SBIF) {
@@ -1366,13 +1361,13 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
           "sync: BCentral — skip UF/UTM/IPC (before day 9; series often incomplete earlier — use --force-sbif to override)."
         );
       } else {
-        await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", stepErrors, state!, cl, async () => {
+        await runSyncStepIfStale("sbif_uf", stale, stepErrors, state!, cl, async () => {
           await runSbifUf(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStepIfStale("sbif_utm", stale, "BCentral UTM", stepErrors, state!, cl, async () => {
+        await runSyncStepIfStale("sbif_utm", stale, stepErrors, state!, cl, async () => {
           await runSbifUtm(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStepIfStale("sbif_ipc", stale, "BCentral IPC", stepErrors, state!, cl, async () => {
+        await runSyncStepIfStale("sbif_ipc", stale, stepErrors, state!, cl, async () => {
           await runSbifIpc(cl, bcentral, state!, syncChanges);
         });
       }

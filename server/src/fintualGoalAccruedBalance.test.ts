@@ -6,7 +6,7 @@ import {
   goalAccruedBalanceQuery,
   parseFintualGoalAccruedBalance,
   type FintualGoalRowWithMatch,
-} from "../scripts/fintualRealAssetNav.js";
+} from "./fintualRealAssetNav.js";
 
 function row(partial: Partial<FintualGoalRowWithMatch>): FintualGoalRowWithMatch {
   return { id: "1", name: "g", navClp: 0, matchedNotes: null, ...partial };

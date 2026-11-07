@@ -1,13 +1,7 @@
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isChileBusinessDay, isChileHoliday } from "./marketHolidays.js";
-
-/**
- * Chile hour from which the evening cuota is expected on a publish day. The stale rule
- * (`isFintualSyncStale`), the scheduler wake (`syncSourceSchedule.ts` «fintual») and the
- * dashboard dim rule (`staleDimmingSources`) all key on this instant.
- */
-export const FINTUAL_PUBLISH_HOUR_CHILE = 18;
+import { EVENING_PUBLISH_HOUR_CHILE } from "./publisherSchedule.js";
 
 /** Last calendar day of a consecutive Chile holiday run (Fintual may still publish that day). */
 export function isLastDayOfChileHolidayStreak(ymd: string): boolean {
@@ -44,7 +38,7 @@ export function fintualExpectsCuotaOnPollDay(ymd: string): boolean {
  * A no-change poll must not clear stale or evening-settled in this case.
  */
 export function fintualPublishLagsPollCalendarDay(cl: ChileWallClock, publishYmd: string): boolean {
-  if (cl.hour < FINTUAL_PUBLISH_HOUR_CHILE) return false;
+  if (cl.hour < EVENING_PUBLISH_HOUR_CHILE) return false;
   if (!fintualExpectsCuotaOnPollDay(cl.ymd)) return false;
   return publishYmd < cl.ymd;
 }
@@ -111,7 +105,7 @@ export function fintualPriorEveningUnresolved(
   cl: ChileWallClock,
   state: GlobalSyncStateFile
 ): boolean {
-  if (cl.hour >= FINTUAL_PUBLISH_HOUR_CHILE) return false;
+  if (cl.hour >= EVENING_PUBLISH_HOUR_CHILE) return false;
   const pollYmd = state.fintualLastCheckYmd;
   if (!pollYmd || pollYmd >= cl.ymd) return false;
   if (!fintualExpectsCuotaOnPollDay(pollYmd)) return false;
@@ -158,7 +152,7 @@ export function resolveFintualPublishYmd(
   cl: ChileWallClock,
   hints: FintualPublishDateHints
 ): string {
-  if (cl.hour < FINTUAL_PUBLISH_HOUR_CHILE) return cl.ymd;
+  if (cl.hour < EVENING_PUBLISH_HOUR_CHILE) return cl.ymd;
 
   const last = hints.lastDayDate?.trim();
   if (last && /^\d{4}-\d{2}-\d{2}$/.test(last)) {

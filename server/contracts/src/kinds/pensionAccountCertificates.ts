@@ -1,29 +1,29 @@
 import { z } from "zod";
+import { hasAtMostCents, yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /** `YYYY-MM`: the month a contribution is FOR (período de cotización), not when it was paid. */
-const periodSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const rutSchema = z.string().regex(/^\d{1,3}(?:\.\d{3})*-[\dK]$/);
 /** Cuotas print with two decimals. */
 const cuotasSchema = z
   .number()
   .nonnegative()
-  .refine((n) => Math.abs(Math.round(n * 100) - n * 100) < 1e-6, { message: "cuotas print with two decimals" });
+  .refine(hasAtMostCents, { message: "cuotas print with two decimals" });
 
 /** The certificate's own header: who issued it, when, and the períodos it covers. */
 const certificateHeaderSchema = z
   .object({
     folio: z.string().min(1).max(64),
     issued_on: z.iso.date(),
-    from_period: periodSchema,
-    to_period: periodSchema,
+    from_period: yearMonthSchema,
+    to_period: yearMonthSchema,
   })
   .strict();
 
 /** One contribution as the contributions certificate prints it, with the day the fund received it. */
 export const pensionContributionSchema = z
   .object({
-    period: periodSchema,
+    period: yearMonthSchema,
     description: z.string().min(1).max(120),
     /** Fecha caja: the day the payment reached the fund. */
     paid_on: z.iso.date(),
@@ -44,7 +44,7 @@ export type PensionContribution = z.infer<typeof pensionContributionSchema>;
  */
 export const pensionMovementSchema = z
   .object({
-    period: periodSchema,
+    period: yearMonthSchema,
     direction: z.enum(["credit", "debit"]),
     code: z.string().regex(/^\d{6}$/),
     description: z.string().min(1).max(120),
@@ -63,7 +63,7 @@ export type PensionMovement = z.infer<typeof pensionMovementSchema>;
 export const pensionRecentMovementSchema = z
   .object({
     credited_on: z.iso.date(),
-    period: periodSchema,
+    period: yearMonthSchema,
     code: z.string().regex(/^\d{6}$/),
     description: z.string().min(1).max(120),
     pesos: z.number().int().nonnegative(),

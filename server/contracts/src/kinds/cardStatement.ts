@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 import { issuerCardAccountSchema } from "./cardUnbilledMovements.js";
 
-const isoDate = z.iso.date();
 const currency = z.enum(["clp", "usd"]);
 
 /**
@@ -21,8 +21,8 @@ const CREDIT_LINE_KINDS: ReadonlySet<string> = new Set(["payment", "credit_note"
 export const cardStatementLineSchema = z
   .object({
     kind: z.enum(CARD_STATEMENT_LINE_KINDS),
-    transaction_date: isoDate,
-    posting_date: isoDate.nullable(),
+    transaction_date: isoDateSchema,
+    posting_date: isoDateSchema.nullable(),
     merchant: z.string(),
     /** Debt-positive in the statement's currency: a charge positive, a payment or credit negative. An installment line bills its cuota. */
     amount: z.number(),
@@ -92,10 +92,10 @@ export const cardStatementKind = defineIngestKind({
       account: issuerCardAccountSchema,
       /** The issuer's number for the statement (provenance). */
       statement_number: z.string().regex(/^\d+$/),
-      close: isoDate,
-      pay_by: isoDate.nullable(),
+      close: isoDateSchema,
+      pay_by: isoDateSchema.nullable(),
       /** The next close the issuer announces. */
-      next_close: isoDate.nullable(),
+      next_close: isoDateSchema.nullable(),
       /** The titular plastic the statement is issued for. */
       titular_last4: z.string().regex(/^\d{4}$/).nullable(),
       statements: z.array(cardStatementCurrencySchema).min(1).max(2),

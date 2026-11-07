@@ -12,7 +12,7 @@
  */
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
+import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
@@ -23,7 +23,7 @@ import {
 import { buildMortgageUfReminder } from "./mortgageUfReminder.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { deptoMortgageAccountId, deptoPropertyAccountId } from "./mortgagePaymentCreate.js";
-import { normalizeServiceAccount, utilityBillMonth } from "./utilityBillsApply.js";
+import { utilityBillMonth } from "./utilityBillsApply.js";
 import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { projectedUfClp, ufProjector, type UfLookup } from "./ufProjection.js";
@@ -37,6 +37,7 @@ import {
   type RecurringOccurrence,
   type RecurringStatus,
 } from "./recurringPaymentMatch.js";
+import { addCalendarMonths, normalizeCheckDigitId } from "nw-tracker-contracts";
 
 export { automaticRecurringMatchForLine, dayInMonth, listRecurringPayments, matchRecurringPayments, projectedUfClp };
 export type { UfLookup };
@@ -45,8 +46,6 @@ export type { RecurringEntry, RecurringLine, RecurringOccurrence } from "./recur
 /** Months the block covers, the current one included («Show more» shows them all). */
 export const UPCOMING_PAYMENTS_HORIZON_MONTHS = 6;
 
-/** Day-of-month window of a mortgage cuota: payable from the 11th through the 10th of the next month. */
-const MORTGAGE_WINDOW_END_DAY = 10;
 
 /** Contribuciones cuotas: due on the last day of April, June, September and November (Tesorería). */
 export const CONTRIBUCIONES_DUE_MONTHS = [4, 6, 9, 11] as const;
@@ -409,7 +408,7 @@ function hoaPlaces(): { place: UpcomingPlace; statements: HoaStatement[]; paid: 
     )
     .all() as { provider: string; service_account: string; id: number; label: string; slug: string }[];
   const placeFor = new Map(
-    mapping.map((m) => [`${m.provider}|${normalizeServiceAccount(m.service_account)}`, upcomingPlace(m)])
+    mapping.map((m) => [`${m.provider}|${normalizeCheckDigitId(m.service_account)}`, upcomingPlace(m)])
   );
   const bills = db
     .prepare(
@@ -419,7 +418,7 @@ function hoaPlaces(): { place: UpcomingPlace; statements: HoaStatement[]; paid: 
     .all() as { provider: string; service_account: string; issued_on: string; due_on: string; amount: number; period_to: string | null; settled_at: string | null }[];
   const byPlace = new Map<number, { place: UpcomingPlace; statements: HoaStatement[]; paid: Set<string> }>();
   for (const b of bills) {
-    const place = placeFor.get(`${b.provider}|${normalizeServiceAccount(b.service_account)}`);
+    const place = placeFor.get(`${b.provider}|${normalizeCheckDigitId(b.service_account)}`);
     if (!place) continue;
     const entry = byPlace.get(place.id) ?? { place, statements: [], paid: new Set<string>() };
     entry.statements.push({

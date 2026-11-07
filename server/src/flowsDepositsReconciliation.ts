@@ -1,3 +1,4 @@
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { CASH_FEE_FLOW_KIND, SAVINGS_EARNINGS_FLOW_KIND } from "./accountDeposits.js";
@@ -204,10 +205,6 @@ function loadPositiveInflowMovements(
 /** Max day gap between the two legs of an internal net-worth transfer (settlement/booking lag). */
 const INTERNAL_TRANSFER_MAX_DAY_GAP = 7;
 
-function daysBetweenYmd(a: string, b: string): number {
-  return Math.abs((Date.parse(a) - Date.parse(b)) / 86_400_000);
-}
-
 /**
  * Reclassify direct net-worth ↔ net-worth transfers that bypass checking. A still-unlinked deposit in
  * one account and a still-unlinked redemption of the same amount in a *different* account, within a few
@@ -233,7 +230,7 @@ export function resolveInternalNetWorthTransfers(
       const red = redemptions[ri]!;
       if (red.account_id === dep.account_id) continue;
       if (Math.round(red.amount_clp) !== Math.round(dep.amount_clp)) continue;
-      const gap = daysBetweenYmd(dep.occurred_on, red.occurred_on);
+      const gap = Math.abs(daysBetweenIso(dep.occurred_on, red.occurred_on));
       if (gap > INTERNAL_TRANSFER_MAX_DAY_GAP) continue;
       pairs.push({ di, ri, gap });
     }

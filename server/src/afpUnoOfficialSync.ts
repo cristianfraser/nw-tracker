@@ -6,7 +6,7 @@
  *
  * Measured 2026-10-03 → 06: the SP printed Friday 10-02's value on Monday 10-05 at ~18:48
  * (the row existed blank from ~16:07); uno.cl's homepage showed it at ~21:59. So the value of D
- * is due from {@link AFP_UNO_PUBLISH_HOUR_CHILE} on the business day after D, and the sync polls
+ * is due from the evening publish hour (`publisherSchedule.ts`) on the business day after D, and the sync polls
  * the SP from then until it lands. Every run re-reads the whole current year: the SP's trailing
  * days are «provisorios» and a restated value replaces the stored one (reported as a step note).
  */
@@ -14,9 +14,10 @@ import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { afpDisplayDayForOfficialDay, buildAfpDisplaySeries, type DisplayFundUnit, type OfficialFundUnit } from "./afpDisplayFrame.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
 import { fetchUnoFundAHistory, UNO_API_FIRST_DAY } from "./afpUnoApi.js";
+import { deploymentProfile } from "./config.js";
 import { db } from "./db.js";
-import { demoModeEnabled } from "./demoModeFlag.js";
-import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "./marketHolidays.js";
+import { isChileBusinessDay } from "./marketHolidays.js";
+import { EVENING_PUBLISH_HOUR_CHILE, expectedPublishedDay, type PublisherSchedule } from "./publisherSchedule.js";
 import {
   fetchSpAfpFundUnits,
   officialPensionFundUnits,
@@ -30,51 +31,37 @@ import {
 export const AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS = 1;
 
 /**
- * Chile hour from which the previous business day's official value is expected: 18:00, the same
- * hour as Fintual's cuota (`FINTUAL_PUBLISH_HOUR_CHILE`), so both funds turn stale and dim
- * together. The SP prints the value ~18:30–18:50, so the source waits as publisher lag until it lands.
- */
-export const AFP_UNO_PUBLISH_HOUR_CHILE = 18;
-
-/**
  * Where UNO's official values come from: the Superintendencia (`sp`) on the personal instance,
  * AFP UNO's own API (`uno_api`, `afpUnoApi.ts`) on the hosted demo, whose host the SP refuses.
- * The one place the choice is made; the sync runner and the stale rules both read it.
+ * The deployment profile makes the choice (`config.ts`); the sync runner and the stale rules both read it.
  */
 export type AfpUnoOfficialSource = "sp" | "uno_api";
 
 export function afpUnoOfficialSource(): AfpUnoOfficialSource {
-  return demoModeEnabled() ? "uno_api" : "sp";
+  return deploymentProfile().afpUnoOfficialSource;
 }
 
 /** Business days a source publishes after the SP: UNO's API carries day D one business day later. */
 export const AFP_UNO_SOURCE_EXTRA_LAG_BUSINESS_DAYS: Record<AfpUnoOfficialSource, number> = { sp: 0, uno_api: 1 };
 
+/**
+ * The official value of business day D is expected from the evening publish hour (18:00, as
+ * Fintual's cuota, so both funds turn stale and dim together) of the business day it shows —
+ * {@link AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS} after D, plus the source's own extra lag. The SP prints
+ * ~18:30–18:50, so the source waits as publisher lag until it lands.
+ */
+export function afpUnoPublisher(source: AfpUnoOfficialSource = afpUnoOfficialSource()): PublisherSchedule {
+  return {
+    label: "afp_uno",
+    publishHour: EVENING_PUBLISH_HOUR_CHILE,
+    lagBusinessDays: AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS + AFP_UNO_SOURCE_EXTRA_LAG_BUSINESS_DAYS[source],
+  };
+}
+
 const UNO = "uno";
 const FUND = "A" as const;
 /** Display days re-derived on every run (covers the SP's provisional tail and any restatement). */
 const DISPLAY_REWRITE_DAYS = 60;
-
-/**
- * The business day whose official value must be in DB at `cl`: the business day before the
- * latest business day whose publish hour has passed (today from 18:00, else the business day
- * before today).
- */
-export function afpUnoExpectedOfficialDay(
-  cl: ChileWallClock,
-  source: AfpUnoOfficialSource = afpUnoOfficialSource()
-): string {
-  const latestPublishDay =
-    isChileBusinessDay(cl.ymd) && cl.hour >= AFP_UNO_PUBLISH_HOUR_CHILE ? cl.ymd : priorChileBusinessDayYmd(cl.ymd);
-  if (!latestPublishDay) throw new Error(`afp_uno: no Chile business day before ${cl.ymd}`);
-  let d = latestPublishDay;
-  for (let i = 0; i < AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS + AFP_UNO_SOURCE_EXTRA_LAG_BUSINESS_DAYS[source]; i++) {
-    const prior = priorChileBusinessDayYmd(d);
-    if (!prior) throw new Error(`afp_uno: no Chile business day before ${d}`);
-    d = prior;
-  }
-  return d;
-}
 
 export function latestOfficialUnoDay(): string | null {
   const row = db
@@ -89,27 +76,8 @@ export function isAfpUnoOfficialStale(
   latestOfficialDay: string | null,
   source: AfpUnoOfficialSource = afpUnoOfficialSource()
 ): boolean {
-  const expected = afpUnoExpectedOfficialDay(cl, source);
+  const expected = expectedPublishedDay(cl, afpUnoPublisher(source));
   return latestOfficialDay == null || latestOfficialDay < expected;
-}
-
-/**
- * When the source next becomes stale: the publish hour of the next business day whose expected
- * official day is beyond `latestOfficialDay` — today when today is a business day before its
- * publish hour, else the following business days.
- */
-export function afpUnoNextDue(
-  cl: ChileWallClock,
-  latestOfficialDay: string | null,
-  source: AfpUnoOfficialSource = afpUnoOfficialSource()
-): { ymd: string; hour: number } | null {
-  let d = isChileBusinessDay(cl.ymd) && cl.hour < AFP_UNO_PUBLISH_HOUR_CHILE ? cl.ymd : nextChileBusinessDayYmd(cl.ymd);
-  for (let i = 0; d != null && i < 21; i++) {
-    const expected = afpUnoExpectedOfficialDay({ ...cl, ymd: d, hour: AFP_UNO_PUBLISH_HOUR_CHILE, minute: 0 }, source);
-    if (latestOfficialDay == null || expected > latestOfficialDay) return { ymd: d, hour: AFP_UNO_PUBLISH_HOUR_CHILE };
-    d = nextChileBusinessDayYmd(d);
-  }
-  return null;
 }
 
 export type AfpUnoOfficialSyncResult = {

@@ -1,4 +1,5 @@
 /** Personal wire / transferencia (your money). */
+import { foldAccents } from "nw-tracker-contracts";
 export const DEPOSIT_FLOW_KIND_PERSONAL = "deposit_clp" as const;
 /** Chile APV-A state bonus (~15% of prior-year deposits, capped). */
 export const DEPOSIT_FLOW_KIND_STATE = "aporte_estatal_clp" as const;
@@ -37,20 +38,13 @@ export function depositFlowKindLabel(kind: DepositFlowKind): string {
 
 /** Normalize Fintual `Medio` for matching (lowercase, no accents, spaces → `_`). */
 export function normalizeFintualMedio(medio: string): string {
-  return medio
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
+  return foldAccents(medio.trim().toLowerCase())
     .replace(/\s+/g, "_");
 }
 
 /** Fintual: transfer of state bonus balance from another AFP (personal capital, distinct tipo). */
 export function isFintualTraspasoBonificacionOtraInstitucion(text: string): boolean {
-  const n = text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
+  const n = foldAccents(text.toLowerCase())
     .replace(/\s+/g, " ");
   if (!n.includes("traspaso")) return false;
   if (!n.includes("bonificacion") && !n.includes("bono")) return false;

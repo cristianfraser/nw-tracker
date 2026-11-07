@@ -1,15 +1,8 @@
 import { z } from "zod";
+import { amountFitsCurrency, isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
-const isoDate = z.iso.date();
 const currency = z.enum(["clp", "usd"]);
-
-/** Pesos are whole; dollars carry at most cents. */
-function amountFitsCurrency(amount: number, cur: "clp" | "usd"): boolean {
-  if (!Number.isFinite(amount)) return false;
-  if (cur === "clp") return Number.isInteger(amount);
-  return Math.abs(Math.round(amount * 100) - amount * 100) < 1e-6;
-}
 
 /** A card account as the issuer numbers it; the server maps it to its own card account. */
 export const issuerCardAccountSchema = z
@@ -43,7 +36,7 @@ export const cuotaPurchaseSchema = z
 
 export const cardListingLineSchema = z
   .object({
-    date: isoDate,
+    date: isoDateSchema,
     merchant: z.string().trim().min(1),
     currency,
     /** Debt-positive: a charge is positive, a payment or credit negative. Never zero. */
@@ -81,7 +74,7 @@ export type CardListingLine = z.infer<typeof cardListingLineSchema>;
  */
 export const observedCloseSchema = z
   .object({
-    date: isoDate,
+    date: isoDateSchema,
     billed: z
       .object({ clp: z.number().int().nullable(), usd: z.number().nullable() })
       .strict()

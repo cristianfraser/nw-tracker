@@ -39,7 +39,6 @@ import {
   type ProxyFacturacionAggregate,
 } from "./ccInvestmentProxy.js";
 
-export { parseYearMonth, addCalendarMonths } from "./ccYearMonth.js";
 
 
 export type CcInstallmentPurchaseRow = {

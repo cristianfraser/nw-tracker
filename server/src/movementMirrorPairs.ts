@@ -26,6 +26,7 @@
  * and checking debits the user categorized as spending (structured evidence the row is not one
  * leg of a move between own accounts).
  */
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
@@ -203,10 +204,6 @@ function loadRejectedPairKeys(): Set<string> {
     .prepare(`SELECT out_movement_id, in_movement_id FROM movement_mirror_pair_rejections`)
     .all() as { out_movement_id: number; in_movement_id: number }[];
   return new Set(rows.map((r) => `${r.out_movement_id}|${r.in_movement_id}`));
-}
-
-function daysBetweenYmd(a: string, b: string): number {
-  return Math.abs((Date.parse(a) - Date.parse(b)) / 86_400_000);
 }
 
 function monthKey(ymd: string): string {
@@ -413,10 +410,10 @@ function pairingWindow(
     if (!monthPrecisionPairAllowed(out, inn, outMonthPrecision, inMonthPrecision)) return null;
   } else {
     if (inn.occurred_on < out.occurred_on) return null;
-    if (daysBetweenYmd(out.occurred_on, inn.occurred_on) > MIRROR_PAIR_MAX_DAY_GAP) return null;
+    if (Math.abs(daysBetweenIso(out.occurred_on, inn.occurred_on)) > MIRROR_PAIR_MAX_DAY_GAP) return null;
   }
   if (ctx.rejected.has(`${out.id}|${inn.id}`)) return null;
-  return { gap: daysBetweenYmd(out.occurred_on, inn.occurred_on), monthPrecision };
+  return { gap: Math.abs(daysBetweenIso(out.occurred_on, inn.occurred_on)), monthPrecision };
 }
 
 /** Window flags of a pair: the cartola re-import window, and whether it crosses a month. */
@@ -437,7 +434,7 @@ function alternative(
   const leg = side === "out" ? out : inn;
   return {
     leg: toLegDto(leg, ctx.kindSlugFor(leg.account_id)),
-    gap_days: daysBetweenYmd(out.occurred_on, inn.occurred_on),
+    gap_days: Math.abs(daysBetweenIso(out.occurred_on, inn.occurred_on)),
     within_business_day_window: flags.withinWindow,
     month_straddle: flags.monthStraddle,
   };
@@ -500,7 +497,7 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
     result.push({
       out: toLegDto(lp.out, outKind),
       in: toLegDto(lp.in, inKind),
-      gap_days: daysBetweenYmd(lp.out.occurred_on, lp.in.occurred_on),
+      gap_days: Math.abs(daysBetweenIso(lp.out.occurred_on, lp.in.occurred_on)),
       within_business_day_window: bankDateMatchesTransferDate(lp.in.occurred_on, lp.out.occurred_on),
       month_precision: mirrorLegIsMonthPrecision(outKind) || mirrorLegIsMonthPrecision(inKind),
       // Straddling linked pairs stay per-pair review: the transfer takes the checking (out)

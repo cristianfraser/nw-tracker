@@ -1,0 +1,7 @@
+[
+  { "raw": "Peñalolén", "fold": "Penalolen", "upper": "PENALOLEN" },
+  { "raw": "  Jumbo   Peñalolén ", "fold": "  Jumbo   Penalolen ", "upper": "JUMBO PENALOLEN" },
+  { "raw": "Impuesto Único", "fold": "Impuesto Unico", "upper": "IMPUESTO UNICO" },
+  { "raw": "ÁÉÍÓÚÜ áéíóúü", "fold": "AEIOUU aeiouu", "upper": "AEIOUU AEIOUU" },
+  { "raw": "SANTIAGO", "fold": "SANTIAGO", "upper": "SANTIAGO" }
+]

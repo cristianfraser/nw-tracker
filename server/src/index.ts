@@ -12,9 +12,10 @@ import {
   resolveBindHost,
   resolveCorsOrigins,
 } from "./httpSecurity.js";
-import { bootstrapDemoModeIfEnabled, demoModeEnabled } from "./demoMode.js";
+import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
+import { describeServerConfig, initServerConfig } from "./config.js";
+import { requestContext } from "./requestContext.js";
 import { demoOwnerCookieMiddleware, demoVisitLogMiddleware } from "./demoAnalytics.js";
-import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import {
@@ -55,12 +56,14 @@ import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js"
 seedNavTree();
 
 loadRootDotenv();
+// Every flag is parsed once here, with the demo and background-jobs defaults in one declared order.
+const config = initServerConfig();
+console.log(describeServerConfig(config));
 await bootstrapDemoModeIfEnabled();
-applyBackgroundJobsEnvDefaults();
 ensureAccountSyncSourcesSeeded();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = config.port;
 const HOST = resolveBindHost();
 
 
@@ -80,7 +83,7 @@ if (usageLogEnabled()) app.use(usageLogMiddleware());
 // `res.json` on /api: serialized once per cached payload, gzip/brotli above 1 KB (jsonResponse.ts).
 app.use(jsonResponseMiddleware());
 app.use(liveInputsMiddleware());
-if (demoModeEnabled()) {
+if (config.profile.readOnlyApi) {
   // Render terminates TLS: without this every visitor's req.ip is the proxy's, so the
   // analytics visitor hash would collapse to a single id.
   app.set("trust proxy", 1);
@@ -98,12 +101,10 @@ app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBod
 // and many of its writers (category / income / place edits) touch no aggregation funnel: any
 // write through the API drops it once the write has answered. The card ledgers and the account and
 // group page payloads too (labels, notes, card config and plan edits sit beside the billing funnel).
+// Not the beacon, nor the queue's and the run log's machine traffic (heartbeats every minute, claims,
+// run reports): `requestDropsResponseCaches` in `requestContext.ts`.
 app.use((req, res, next) => {
-  if (
-    req.path.startsWith("/api/") &&
-    !req.path.startsWith("/api/usage/") &&
-    req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"
-  ) {
+  if (requestContext(req).dropsResponseCaches) {
     res.on("finish", () => {
       invalidateFlowsOverview({ inputs: true });
       invalidateCcLedgerResponses();

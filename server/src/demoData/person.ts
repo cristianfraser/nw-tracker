@@ -399,13 +399,6 @@ export function testPerson(today: Ymd): Person {
   };
 }
 
-/** Boleta retention per year (law 21.133 schedule). */
-export function boletaRetentionRate(year: number): number {
-  if (year <= 2019) return 0.1;
-  const table: Record<number, number> = { 2020: 0.1075, 2021: 0.115, 2022: 0.1225, 2023: 0.13, 2024: 0.1375, 2025: 0.145, 2026: 0.1525, 2027: 0.16 };
-  return table[year] ?? 0.17;
-}
-
 /* ------------------------------ calendar helpers ------------------------------ */
 
 export function ymd(month: Month, day: number): Ymd {
