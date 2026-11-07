@@ -25,32 +25,7 @@ import {
   type DecimalSeparator,
 } from "../numberFormatPreference";
 import type { DisplayUnit } from "../queries/keys";
-
-/** Retired global-pref keys (Período/Rango went per-surface); cleared once at boot. */
-const RETIRED_PREF_LS_KEYS = [
-  "nw-tracker.metricsPeriod",
-  "nw-tracker.timeRange",
-  "nw-tracker.chartGranularity",
-  "nw:fx-latest-v1",
-];
-
-/**
- * Retired key prefixes: the credit card's per-purchase schedule offsets, and the number-flow
- * mount seeds (a random number each card spun from on mount, removed 2026-10-26).
- */
-const RETIRED_PREF_LS_PREFIXES = ["nw-credit-card-extra-offsets:", "nw:numberFlowMount:"];
-
-function clearRetiredPrefKeys(): void {
-  try {
-    for (const k of RETIRED_PREF_LS_KEYS) localStorage.removeItem(k);
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (k && RETIRED_PREF_LS_PREFIXES.some((p) => k.startsWith(p))) localStorage.removeItem(k);
-    }
-  } catch {
-    /* ignore */
-  }
-}
+import { sweepPersistedPayloads } from "../queries/persistedPayloadCache";
 
 function readStoredUnit(): DisplayUnit {
   try {
@@ -140,7 +115,7 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   // Cross-tab sync: another tab's preference write lands here as a `storage`
   // event (other tabs only, value actually changed) — apply without persisting.
   useEffect(() => {
-    clearRetiredPrefKeys();
+    sweepPersistedPayloads();
   }, []);
 
   useEffect(() => {

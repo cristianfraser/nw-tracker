@@ -6,7 +6,7 @@ import { formatClp } from "../../format";
 import { dayOfMonthLabelParts, formatYearMonthLabel } from "../../formatDateLabel";
 import type { CcUpcomingPaymentRowDto, UpcomingPaymentDetailDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
-import { usePanelCache } from "../../queries/panelCache";
+import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { dashboardTileOrder, dashboardTileSmallSpan } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./DashboardFlowsSummary.module.css";
@@ -27,6 +27,11 @@ function isUpcomingPayments(v: unknown): v is UpcomingPaymentsDto {
     )
   );
 }
+
+const UPCOMING_PAYMENTS = persistedPayload(
+  "upcoming_payments",
+  (v): v is UpcomingPaymentsDto => hasSchemaVersion(v, "upcoming_payments") && isUpcomingPayments(v)
+);
 
 /** Pay months shown before «Show more» (the server sends its whole horizon). */
 const COLLAPSED_MONTHS = 2;
@@ -159,7 +164,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   // Pesos in both units, so one stored entry; until the bundle answers, the last stored one.
-  const { value: data, cached } = usePanelCache("upcoming-v4", live, isUpcomingPayments);
+  const { value: data, cached } = usePersistedPayload(UPCOMING_PAYMENTS, [], live);
   const loading = liveLoading && !cached;
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);

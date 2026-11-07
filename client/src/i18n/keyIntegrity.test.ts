@@ -16,6 +16,8 @@ import es from "./locales/es.json";
  */
 
 const SRC_ROOT = fileURLToPath(new URL("..", import.meta.url));
+/** The shared DTOs (`nw-tracker-contracts/dto`) name keys the client renders. */
+const DTO_ROOT = fileURLToPath(new URL("../../../server/contracts/src/dto", import.meta.url));
 
 function listSourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -48,7 +50,7 @@ describe("es.json key integrity", () => {
   const literals = new Set<string>();
   const dynamicPrefixes = new Set<string>();
   const referenced = new Set<string>();
-  for (const file of listSourceFiles(SRC_ROOT)) {
+  for (const file of [...listSourceFiles(SRC_ROOT), ...listSourceFiles(DTO_ROOT)]) {
     const text = fs.readFileSync(file, "utf8");
     for (const m of text.matchAll(KEY_LITERAL_RE)) {
       literals.add((m[1] ?? m[2] ?? m[3])!);

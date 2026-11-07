@@ -28,6 +28,7 @@
  * - investments_change = deposits + deposits_pre_tax + pl;
  * - net_worth_change = savings + deposits_pre_tax + pl.
  */
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
@@ -100,6 +101,7 @@ export type FlowsOverviewRow = {
 export type FlowsOverviewTotals = Omit<FlowsOverviewRow, "period_month" | "as_of_date">;
 
 export type FlowsOverviewPayload = {
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["flows_overview"];
   unit: GastosUnit;
   installment_mode: CcInstallmentGastosMode;
   /** Month rows, oldest first, contiguous from the first month with data through Chile today. */
@@ -912,6 +914,7 @@ export function buildFlowsOverviewPayload(
       dayRows = windowStart ? all.filter((r) => r.as_of_date >= windowStart) : all;
     }
     return {
+      schema_version: DTO_SCHEMA_VERSIONS.flows_overview,
       unit,
       installment_mode: installmentMode,
       months,

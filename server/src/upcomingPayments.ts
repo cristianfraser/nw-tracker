@@ -10,6 +10,7 @@
  * the first two and the rest on «Show more». Amounts a document does not state yet are estimates
  * (`estimated`, «≈»), future UF at the last twelve months' growth (`projectedUfClp`).
  */
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
@@ -116,6 +117,7 @@ export type AutomaticRecurringOccurrence = {
 };
 
 export type UpcomingPaymentsBlock = {
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["upcoming_payments"];
   /** Pay months with something due, oldest first, within the horizon; empty = nothing to show. */
   months: UpcomingPaymentsMonth[];
   /** Automatic declared payments in their window, every occurrence with its status (not listed in `months`). */
@@ -580,6 +582,7 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
   items.push(...recurring.items);
 
   return {
+    schema_version: DTO_SCHEMA_VERSIONS.upcoming_payments,
     months: groupUpcomingByMonth(items, todayYmd),
     automatic_recurring: recurring.automatic,
   };

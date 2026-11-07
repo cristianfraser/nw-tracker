@@ -1,3 +1,4 @@
+import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { FxConversionWarning } from "./core.js";
 
 /** How the card feed typed a purchase in cuotas (server `ccCuotaPurchaseKinds.ts`). */
@@ -125,6 +126,8 @@ export type FlowsOverviewTotals = Omit<FlowsOverviewRow, "period_month" | "as_of
  * after the Rango cut.
  */
 export interface FlowsOverviewResponse {
+  /** `DTO_SCHEMA_VERSIONS.flows_overview`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["flows_overview"];
   unit: "clp" | "usd";
   installment_mode: "split" | "total";
   /** Oldest first, contiguous through Chile today. */
@@ -914,6 +917,8 @@ export interface RealEstateLinkCandidateDto {
 
 /** `GET /api/dashboard/latest-expenses` (home «Últimos gastos»): the newest gastos lines, whole. */
 export interface LatestExpensesResponse {
+  /** `DTO_SCHEMA_VERSIONS.latest_expenses`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["latest_expenses"];
   /** Newest first. */
   lines: FlowCcExpenseLineRow[];
   categories: CcExpenseCategoryDto[];

@@ -2,7 +2,7 @@ import { HeadingLink } from "../ui/HeadingLink";
 import { useTranslation } from "../../i18n";
 import { useLatestExpenses } from "../../queries/hooks";
 import type { LatestExpensesResponse } from "../../types";
-import { usePanelCache } from "../../queries/panelCache";
+import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { CreditCardExpenseLinesTable } from "../credit-card/CreditCardExpenseLinesTable";
@@ -22,6 +22,11 @@ function isLatestExpenses(v: unknown): v is LatestExpensesResponse {
   );
 }
 
+const LATEST_EXPENSES = persistedPayload(
+  "latest_expenses",
+  (v): v is LatestExpensesResponse => hasSchemaVersion(v, "latest_expenses") && isLatestExpenses(v)
+);
+
 /**
  * Home «Últimos gastos»: the newest expense lines across every source (card, checking, manual,
  * payroll), as the server lists them (`GET /api/dashboard/latest-expenses`), drawn with the
@@ -32,7 +37,7 @@ export function LatestExpensesTable() {
   const { t } = useTranslation();
   const query = useLatestExpenses(LATEST_EXPENSES_LIMIT);
   // Until live data is here, the last stored one.
-  const { value: data } = usePanelCache("latest-expenses-v2", query.data, isLatestExpenses);
+  const { value: data } = usePersistedPayload(LATEST_EXPENSES, [], query.data);
   const loadError = queryLoadError(query);
 
   return (

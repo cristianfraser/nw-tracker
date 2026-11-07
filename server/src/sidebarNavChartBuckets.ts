@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "./aggregationCache.js";
 import { chartBucketsDtoForNavNode } from "./groupChartBuckets.js";
 import {
@@ -63,6 +64,6 @@ function findBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeDto | nu
 export function cachedSidebarNavPayload() {
   return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}sidebar_nav`, () => {
     const built = getSidebarNavPayload();
-    return { ...built, main: annotateSidebarNavChartBuckets(built.main) };
+    return { ...built, schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav, main: annotateSidebarNavChartBuckets(built.main) };
   });
 }

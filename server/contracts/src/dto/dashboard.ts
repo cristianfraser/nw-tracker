@@ -1,3 +1,4 @@
+import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountPositionSnapshot, FxConversionWarning } from "./core.js";
 import type { CcFacturadoBarSegments } from "./creditCard.js";
 
@@ -227,6 +228,8 @@ export interface NavValueMapNodeDto {
 export type NavValueMapColorBounds = Record<"day" | "month" | "year", number>;
 
 export interface DashboardResponse {
+  /** `DTO_SCHEMA_VERSIONS.nav_strip`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["nav_strip"];
   totals: {
     net_worth_clp: number;
     deposits_clp: number;

@@ -1,3 +1,4 @@
+import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountMonthlyPerformanceRow } from "./accounts.js";
 import type { PeriodReturnsPayload } from "./performance.js";
 import type { FxCoverage } from "./core.js";
@@ -55,6 +56,8 @@ export interface DashboardChartShape {
 
 /** `GET /api/dashboard/nav-snapshot` — card strip shape (no valuation TS). */
 export interface DashboardNavSnapshotResponse {
+  /** `DTO_SCHEMA_VERSIONS.nav_strip`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["nav_strip"];
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
@@ -77,6 +80,8 @@ export type CachedDashboardNavSnapshot = Omit<
 
 /** `GET /api/dashboard/nav-context` — nav strip + overview in one response. */
 export interface DashboardNavContextResponse {
+  /** `DTO_SCHEMA_VERSIONS.nav_strip`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["nav_strip"];
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
@@ -345,6 +350,8 @@ export interface NavTreeNodeDto {
 }
 
 export interface SidebarNavResponse {
+  /** `DTO_SCHEMA_VERSIONS.sidebar_nav`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["sidebar_nav"];
   dashboard: NavTreeNodeDto | null;
   /** `portfolio_groups.slug = net_worth` — label for home route and page title. */
   net_worth: NavTreeNodeDto | null;

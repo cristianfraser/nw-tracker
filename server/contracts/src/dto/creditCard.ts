@@ -1,3 +1,4 @@
+import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountMortgageLedgerResponse } from "./mortgage.js";
 
 import type { DataOrigin } from "./core.js";
@@ -100,6 +101,8 @@ export type AutomaticRecurringDto = {
 
 /** `upcoming_payments` on the dashboard page bundle — pesos in both display units. */
 export type UpcomingPaymentsDto = {
+  /** `DTO_SCHEMA_VERSIONS.upcoming_payments`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["upcoming_payments"];
   /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
   months: { pay_month: string; total_clp: number; items: UpcomingPaymentItemDto[] }[];
   /** Automatic declared payments and their occurrences in the window (never in `months`). */

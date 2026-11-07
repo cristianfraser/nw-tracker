@@ -1,22 +1,21 @@
 import type { SidebarNavResponse } from "../types";
+import {
+  hasSchemaVersion,
+  persistedPayload,
+  readPersistedPayload,
+  writePersistedPayload,
+} from "./persistedPayloadCache";
 
-/** v5: nodes carry `chart_coverage`; v6: group nodes carry `member_account_ids`. */
-const SIDEBAR_NAV_STORAGE_KEY = "nw:sidebar-nav-v6";
+const SIDEBAR_NAV = persistedPayload(
+  "sidebar_nav",
+  (v): v is SidebarNavResponse =>
+    hasSchemaVersion(v, "sidebar_nav") && Array.isArray((v as SidebarNavResponse).main)
+);
 
 export function readSidebarNavCache(): SidebarNavResponse | undefined {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_NAV_STORAGE_KEY);
-    if (!raw) return undefined;
-    return JSON.parse(raw) as SidebarNavResponse;
-  } catch {
-    return undefined;
-  }
+  return readPersistedPayload(SIDEBAR_NAV);
 }
 
 export function writeSidebarNavCache(data: SidebarNavResponse): void {
-  try {
-    localStorage.setItem(SIDEBAR_NAV_STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    // quota / private mode
-  }
+  writePersistedPayload(SIDEBAR_NAV, [], data);
 }
