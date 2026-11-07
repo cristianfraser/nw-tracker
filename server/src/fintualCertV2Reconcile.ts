@@ -4,6 +4,7 @@ import { historyTierMemo } from "./cacheRegistry.js";
  * before we treat v2 accounts as settled (a v2 bar is only ever written from a Fintual publish price).
  */
 import { db } from "./db.js";
+import { accountWithRoleOptional } from "./accountRoles.js";
 import {
   FINTUAL_CERT_V2_ACCOUNT_NAMES,
   FINTUAL_CERT_V2_GOAL_IDS,
@@ -270,11 +271,11 @@ export function fintualCertV2AnyHeldFundMissingDayRow(
     state.fintualLastCheckSig ?? state.fintualLastAppliedSig
   );
   if (goalsById.size === 0) return false;
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     if (goalsById.get(goalId) == null) continue;
-    const acc = accStmt.get(importNotes) as { id: number } | undefined;
-    if (!acc) continue;
+    const accId = accountWithRoleOptional("fintual_goal", goalId);
+    if (accId == null) continue;
+    const acc = { id: accId };
     if (fintualCertV2HeldFundMissingDayRow(acc.id, importNotes, publishYmd)) return true;
   }
   return false;
@@ -290,13 +291,13 @@ export function fintualCertV2PollReconciled(
   );
   if (goalsById.size === 0) return true;
 
-  const accStmt = db.prepare(`SELECT id, notes FROM accounts WHERE import_key = ?`);
   let checked = 0;
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     const goalsNav = goalsById.get(goalId);
     if (goalsNav == null) continue;
-    const acc = accStmt.get(importNotes) as { id: number; notes: string } | undefined;
-    if (!acc) continue;
+    const accId = accountWithRoleOptional("fintual_goal", goalId);
+    if (accId == null) continue;
+    const acc = { id: accId };
     if (!fintualCertV2AccountReconciledOnDay(acc.id, importNotes, publishYmd, goalsNav)) {
       return false;
     }
@@ -323,13 +324,13 @@ export function listFintualCertV2ReconcileRows(
   const goalsById = parseFintualMappedNavSignature(
     state.fintualLastCheckSig ?? state.fintualLastAppliedSig
   );
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
   const out: FintualCertV2ReconcileRow[] = [];
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     const goalsNav = goalsById.get(goalId);
     if (goalsNav == null) continue;
-    const acc = accStmt.get(importNotes) as { id: number } | undefined;
-    if (!acc) continue;
+    const accId = accountWithRoleOptional("fintual_goal", goalId);
+    if (accId == null) continue;
+    const acc = { id: accId };
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
     const unitRow =
       seriesKey != null
@@ -358,13 +359,13 @@ export function cleanupUnreconciledFintualCertFundUnits(
   goalsNavByGoalId: Map<string, number>,
   dryRun: boolean
 ): number {
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
   let removed = 0;
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     const goalsNav = goalsNavByGoalId.get(goalId);
     if (goalsNav == null) continue;
-    const acc = accStmt.get(importNotes) as { id: number } | undefined;
-    if (!acc) continue;
+    const accId = accountWithRoleOptional("fintual_goal", goalId);
+    if (accId == null) continue;
+    const acc = { id: accId };
     if (fintualCertV2AccountReconciledOnDay(acc.id, importNotes, publishYmd, goalsNav)) continue;
 
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);

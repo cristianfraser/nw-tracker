@@ -1,4 +1,5 @@
 import { daysBetweenIso } from "nw-tracker-contracts";
+import { lenderMerchantPatterns } from "./accountRoles.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import {
@@ -119,14 +120,25 @@ export function hasSplittableMortgageExpenseDepositLink(
   );
 }
 
-/** Known credit-card merchants for Depto mortgage cuota payments. */
+/**
+ * A card merchant that pays the depto mortgage: one of the loan's lender patterns
+ * (`lender_pattern` role, `accountRoles.ts`) — every word of a pattern in the merchant.
+ */
 export function isMortgageCcExpenseMerchant(merchant: string | null | undefined): boolean {
   const key = normalizeCcExpenseMerchantKey(merchant ?? "");
   if (!key) return false;
-  if (/METLIFE/.test(key)) return true;
-  if (/MUTUARIA/.test(key)) return true;
-  if (/TOKU/.test(key) && /METLIFE|HIPOTE/.test(key)) return true;
-  return false;
+  return lenderMerchantPatterns().some((words) => words.every((w) => key.includes(w)));
+}
+
+/**
+ * A SQL prefilter (`UPPER(<column>) LIKE …` alternatives) that is a superset of
+ * {@link isMortgageCcExpenseMerchant}: each pattern's first word. Never matches when no loan has a
+ * lender pattern.
+ */
+export function mortgageLenderMerchantSqlPrefilter(column: string): { sql: string; params: string[] } {
+  const firsts = [...new Set(lenderMerchantPatterns().map((w) => w[0]!).filter(Boolean))];
+  if (firsts.length === 0) return { sql: "0", params: [] };
+  return { sql: `(${firsts.map(() => `UPPER(${column}) LIKE ?`).join(" OR ")})`, params: firsts.map((w) => `%${w}%`) };
 }
 
 export function isRegularMortgageCuotaSheetRow(row: DeptoMortgageSheetRow): boolean {

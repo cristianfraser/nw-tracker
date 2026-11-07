@@ -20,7 +20,7 @@ import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { isMortgageCcExpenseMerchant } from "./expenseDepositLinks.js";
+import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 
@@ -55,6 +55,7 @@ export type MortgageCardMatchResult = {
 
 /** Every card line that pays the mortgage, oldest first (every card, every statement incl. the open bucket). */
 export function loadMortgageCardLines(): MortgageCardLine[] {
+  const lender = mortgageLenderMerchantSqlPrefilter("l.merchant");
   const rows = db
     .prepare(
       `SELECT l.id AS line_id, s.account_id AS account_id, a.name AS account_name, l.merchant AS merchant,
@@ -63,9 +64,9 @@ export function loadMortgageCardLines(): MortgageCardLine[] {
        JOIN cc_statements s ON s.id = l.statement_id
        JOIN accounts a ON a.id = s.account_id
        WHERE l.merchant IS NOT NULL AND l.amount_clp IS NOT NULL AND l.amount_clp > 0
-         AND (UPPER(l.merchant) LIKE '%METLIFE%' OR UPPER(l.merchant) LIKE '%MUTUARIA%' OR UPPER(l.merchant) LIKE '%TOKU%')`
+         AND ${lender.sql}`
     )
-    .all() as {
+    .all(...lender.params) as {
     line_id: number;
     account_id: number;
     account_name: string;

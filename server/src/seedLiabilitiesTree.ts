@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 
+import { accountsWithRole } from "./accountRoles.js";
 import { listCreditCardMasterAccountIdsInNavOrder } from "./creditCardTree.js";
 
 const upsertGroup = db.prepare(`
@@ -60,11 +61,10 @@ export function seedLiabilitiesTree(): void {
       insertAccountChild.run(ccGroupId, id, ccSort++);
     }
 
-    const mtgMaster = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (mtgMaster) {
-      insertAccountChild.run(mtgGroupId, mtgMaster.id, 0);
+    // Every loan of a property (`loan_of` role) sits under Pasivos › hipoteca.
+    let mtgSort = 0;
+    for (const id of accountsWithRole("loan_of")) {
+      insertAccountChild.run(mtgGroupId, id, mtgSort++);
     }
   });
   tx();

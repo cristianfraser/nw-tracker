@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 
+import { accountHasRole, accountWithRole } from "./accountRoles.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountRowForId } from "./accountRowForMovement.js";
@@ -29,8 +30,6 @@ export type MortgagePaymentPreviewResponse = MortgagePaymentComputeResult & {
   mortgage_balance_clp: number;
 };
 
-export const PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
-export const MORTGAGE_ACCOUNT_IMPORT_KEY = "import:excel|key=mortgage";
 
 export function mortgagePaymentCreateSchemaForAccount(
   accountId: number
@@ -39,7 +38,7 @@ export function mortgagePaymentCreateSchemaForAccount(
   const account = accountRowForId(accountId);
   if (!account) return null;
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") return null;
-  if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) return null;
+  if (!accountHasRole(accountId, "loan_of")) return null;
   const ledger = loadDeptoLedgerFromMovements();
   if (ledger.length === 0) return null;
   return {
@@ -54,25 +53,19 @@ function requireDeptoMortgageAccount(accountId: number): void {
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") {
     throw new Error("Mortgage payments can only be logged on the depto mortgage account");
   }
-  if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) {
+  if (!accountHasRole(accountId, "loan_of")) {
     throw new Error("Mortgage payment entry is only enabled for the depto mortgage master account");
   }
 }
 
+/** The depto property (its `property` role). */
 export function deptoPropertyAccountId(): number {
-  const row = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`)
-    .get(PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
-  if (!row) throw new Error(`Property account not found (${PROPERTY_ACCOUNT_IMPORT_KEY})`);
-  return row.id;
+  return accountWithRole("property");
 }
 
+/** The loan of the depto property (its `loan_of` role). */
 export function deptoMortgageAccountId(): number {
-  const row = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`)
-    .get(MORTGAGE_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
-  if (!row) throw new Error(`Mortgage account not found (${MORTGAGE_ACCOUNT_IMPORT_KEY})`);
-  return row.id;
+  return accountWithRole("loan_of", String(deptoPropertyAccountId()));
 }
 
 function deptoPaymentExists(cuota: string, occurredOn: string): boolean {

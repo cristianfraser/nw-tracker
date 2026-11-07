@@ -12,6 +12,7 @@ import {
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
+import { accountWithRoleOptional } from "./accountRoles.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
@@ -19,16 +20,12 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 
-const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 /** Human provenance on the mirror row (never read back). */
 const BUDA_ABONO_MIRROR_NOTE = "buda-abono|self_funded";
 
 /** The Buda CLP buffer account (crypto bucket cash hub), or null if the Buda ledger isn't imported. */
 export function loadBudaBufferAccountId(): number | null {
-  const r = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(BUDA_ACCOUNT_IMPORT_KEY) as
-    | { id: number }
-    | undefined;
-  return r?.id ?? null;
+  return accountWithRoleOptional("buda_wallet");
 }
 
 /**

@@ -25,6 +25,7 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { CACHE_KEY_DEPTO_LEDGER } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { db } from "./db.js";
+import { accountWithRoleOptional } from "./accountRoles.js";
 import { declareAccountsTrimmedTogether } from "./markSeriesStore.js";
 import {
   assertDeptoLoanPaymentCurrencies,
@@ -48,7 +49,8 @@ import {
 } from "./mortgagePaymentAnalytics.js";
 import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 
-export const DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
+/** The depto property's identity (`accountIdentityKeys.ts`): what seeds its `property` role. */
+export { PROPERTY_ACCOUNT_IMPORT_KEY as DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY } from "./accountIdentityKeys.js";
 
 const accountBucketsStmt = db.prepare(
   `SELECT a.id, g.slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id`
@@ -76,14 +78,6 @@ type PropertyPaymentJoinRow = LoanPaymentRow & MovementAmountFields & {
   occurred_on: string;
 };
 
-function deptoPropertyAccountId(): number | null {
-  const row = db
-    .prepare(
-      `SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`
-    )
-    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
-  return row?.id ?? null;
-}
 
 /** Pesos ÷ UF día at 4 decimals; null when either is missing. */
 function clpToUf4(clp: number | null, ufDay: number | null): number | null {
@@ -106,14 +100,15 @@ export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
 }
 
 function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
-  const propertyId = deptoPropertyAccountId();
+  // The depto ledger is one ledger: exactly one property (its `property` role) for now.
+  const propertyId = accountWithRoleOptional("property");
   if (propertyId == null) {
     const stray = db
       .prepare(`SELECT COUNT(*) AS c FROM loan_payments WHERE leg = 'property'`)
       .get() as { c: number };
     if (stray.c > 0) {
       throw new Error(
-        `depto ledger: ${stray.c} loan_payments rows exist but no property master with import_key '${DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY}'`
+        `depto ledger: ${stray.c} loan_payments rows exist but no account holds the property role`
       );
     }
     return [];

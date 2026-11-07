@@ -43,7 +43,13 @@ import {
   upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "../deptoDividendosLedger.js";
-import { commitMortgagePayment, MORTGAGE_ACCOUNT_IMPORT_KEY, PROPERTY_ACCOUNT_IMPORT_KEY } from "../mortgagePaymentCreate.js";
+import { commitMortgagePayment } from "../mortgagePaymentCreate.js";
+import {
+  afpAccountImportKey,
+  BUDA_ACCOUNT_IMPORT_KEY,
+  MORTGAGE_ACCOUNT_IMPORT_KEY,
+  PROPERTY_ACCOUNT_IMPORT_KEY,
+} from "../accountIdentityKeys.js";
 import { isChileBusinessDay } from "../marketHolidays.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
 import { isMortgageCcExpenseMerchant } from "../expenseDepositLinks.js";
@@ -74,9 +80,6 @@ function ensureAssetGroup(slug: string, label: string, parentSlug: string): numb
   if (!parent) throw new Error(`demo: asset group ${parentSlug} missing (schema seed incomplete?)`);
   return Number(db.prepare(`INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, 90, ?)`).run(slug, label, parent.id).lastInsertRowid);
 }
-
-/** The crypto exchange's peso wallet, under the key `budaWallet.ts` finds it by. */
-const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 
 function createAccount(groupId: number, name: string, opts: { key?: string; ticker?: string; series?: string } = {}): number {
   return Number(
@@ -112,7 +115,7 @@ function createAccounts(person: Person): Map<Acct, number> {
   ids.set("apvA", createAccount(g("retirement_apv_a__apv"), "APV A", { series: APV_FUND_SERIES_KEY }));
   ids.set("apvB", createAccount(g("retirement_apv_b__apv"), "APV B", { series: APV_FUND_SERIES_KEY }));
   const afp = (slug: string, name: string) => {
-    const key = `import:afp|afp=${slug}|fund=A`;
+    const key = afpAccountImportKey(slug, "A");
     return createAccount(g("retirement_afp_afc__afp"), name, { key, series: afpDisplaySeriesKey(slug, "A") });
   };
   // Modelo only for a life that starts before the switch into UNO.

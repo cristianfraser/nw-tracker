@@ -11,6 +11,7 @@ import type { BrokerNotificationPlanRow } from "nw-tracker-contracts";
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import { accountWithRole } from "./accountRoles.js";
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 
@@ -28,35 +29,26 @@ const AMOUNT_TOLERANCE = 0.005;
 export type BrokerSlug = "fintual" | "racional";
 export type BrokerCurrency = "clp" | "usd";
 
-function accountIdByImportKey(importKey: string): number {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as { id: number } | undefined;
-  if (!row) throw new Error(`No account with import_key "${importKey}"`);
-  return row.id;
+/** A broker's cash account in a currency: the account holding `broker_cash` `<broker>|<currency>`. */
+function brokerCashAccountId(broker: BrokerSlug, currency: BrokerCurrency): number {
+  return accountWithRole("broker_cash", `${broker}|${currency}`);
 }
 
 /* ------------------------------------- Fintual ------------------------------------- */
 
-export const FINTUAL_USD_IMPORT_KEY = "import:panel|kind=usd|key=fintual_usd";
-/** «Fintual CLP», the Efectivo account holding Fintual's peso balance (a retiro left in Fintual). */
-export const FINTUAL_CLP_BALANCE_IMPORT_KEY = "import:panel|kind=clp|key=fintual_clp";
-
 export function fintualUsdAccountId(): number {
-  return accountIdByImportKey(FINTUAL_USD_IMPORT_KEY);
+  return brokerCashAccountId("fintual", "usd");
 }
 
+/** «Fintual CLP», the Efectivo account holding Fintual's peso balance (a retiro left in Fintual). */
 export function fintualClpBalanceAccountId(): number {
-  return accountIdByImportKey(FINTUAL_CLP_BALANCE_IMPORT_KEY);
+  return brokerCashAccountId("fintual", "clp");
 }
 
 /* ------------------------------------- Racional ------------------------------------ */
 
-const RACIONAL_CASH_IMPORT_KEYS = {
-  clp: "import:panel|kind=clp|key=clp",
-  usd: "import:panel|kind=usd|key=usd",
-} as const;
-
 export function racionalCashAccountId(currency: BrokerCurrency): number {
-  return accountIdByImportKey(RACIONAL_CASH_IMPORT_KEYS[currency]);
+  return brokerCashAccountId("racional", currency);
 }
 
 /**

@@ -17,7 +17,7 @@
  * once the post-cierre UF is known (~days 9–10), i.e. just before the 11th.
  */
 import { db } from "./db.js";
-import { isMortgageCcExpenseMerchant } from "./expenseDepositLinks.js";
+import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
 import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./ccManualBillingMonth.js";
 import { MORTGAGE_CUOTA_DAY, mortgageCuotaWindow } from "./mortgageCuotaDay.js";
@@ -176,19 +176,18 @@ function resolveMortgageCcMasterId(): number | null {
   // SQL prefilter is a safe superset of `isMortgageCcExpenseMerchant` (its patterns are all
   // ASCII substrings; the normalizer only trims/collapses/uppercases). Newest statement first
   // (id order tracks import recency; statement_date is DD/MM/YYYY, unsafe to sort as text).
+  const lender = mortgageLenderMerchantSqlPrefilter("l.merchant");
   const rows = db
     .prepare(
       `SELECT l.merchant AS merchant, s.account_id AS account_id
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE l.merchant IS NOT NULL
-         AND (UPPER(l.merchant) LIKE '%METLIFE%'
-           OR UPPER(l.merchant) LIKE '%MUTUARIA%'
-           OR UPPER(l.merchant) LIKE '%TOKU%')
+         AND ${lender.sql}
        ORDER BY s.id DESC, l.id DESC
        LIMIT 25`
     )
-    .all() as MortgageCcLineRow[];
+    .all(...lender.params) as MortgageCcLineRow[];
 
   let masterId: number | null = null;
   for (const r of rows) {
