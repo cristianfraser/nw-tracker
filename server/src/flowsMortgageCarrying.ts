@@ -10,18 +10,17 @@
  * (`split_only`) re-presents a card-financed dividendo over later months and is skipped, so the
  * carrying lands on the depto payment day in both installment modes.
  */
-import { getAggregationCached, invalidateFlowsOverview } from "./aggregationCache.js";
+import { cacheKeyFlowsInputs } from "./cacheFamilies.js";
+import { dropFamiliesWhenInputChanged, getAggregationCached } from "./cacheRegistry.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import {
   buildFlowsExpenseLines,
-  buildFlowsExpensesPayload,
   flowsExpensesPayloadFromLines,
   listCreditCardMasterAccountIds,
   type FlowCcExpenseLineRow,
   type FlowsExpensesPayload,
 } from "./flowsExpenses.js";
-import { dbInTransaction } from "./db.js";
 import {
   buildFlowsExpensesGastosPayload,
   expenseLineGastosAmount,
@@ -103,37 +102,28 @@ function liveUsdRatesFingerprint(): string {
 
 /**
  * The flows-overview inputs survive a live-quote tick (they read no quote) except through the
- * live dollar rate: when the rate the cached lines used is no longer the cards' current one, they
- * are dropped and rebuild. A tick that leaves the rate alone (a stock or coin quote, the fx day
- * closed) keeps them.
+ * live dollar rate, a declared input of the family: when the rate the cached lines used is no
+ * longer the cards' current one, they (and the overview payloads built on them) are dropped and
+ * rebuild. A tick that leaves the rate alone (a stock or coin quote, the fx day closed) keeps them.
  */
 export function syncFlowsInputsWithLiveUsdRates(): void {
-  const current = liveUsdRatesFingerprint();
-  const key = "flows.overview.inputs|live_usd_rates";
-  if (getAggregationCached(key, () => current) === current) return;
-  invalidateFlowsOverview({ inputs: true });
-  getAggregationCached(key, () => current);
+  dropFamiliesWhenInputChanged(["flows_inputs", "flows_overview"], "live_usd_rates", liveUsdRatesFingerprint());
 }
 
-/**
- * The finalized expense lines (the Expenses page's), cached under the flows overview's inputs
- * prefix (`flows.overview.inputs|`) so the same invalidations drop them (`invalidateFlowsOverview`).
- */
+/** The finalized expense lines (the Expenses page's), in the flows overview's inputs family. */
 export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
   syncFlowsInputsWithLiveUsdRates();
-  return getAggregationCached("flows.overview.inputs|lines", () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
+  return getAggregationCached(cacheKeyFlowsInputs("lines"), () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
 }
 
 /**
  * The Expenses page payload (`GET /api/flows/expenses/credit-card`) over the cached lines, cached
  * beside them: its other parts (categories, big groups, the cards' pay-by dates) change only
- * through writes, which drop the `flows.overview.inputs|` prefix (see `invalidateFlowsOverview`
- * and the API's write middleware). Inside a transaction it is built afresh.
+ * through writes, which drop the `flows_inputs` family (`cacheFamilies.ts`).
  */
 export function cachedFlowsExpensesPayload(): FlowsExpensesPayload {
-  if (dbInTransaction()) return buildFlowsExpensesPayload();
   syncFlowsInputsWithLiveUsdRates();
-  return getAggregationCached("flows.overview.inputs|expenses_payload", () =>
+  return getAggregationCached(cacheKeyFlowsInputs("expenses_payload"), () =>
     flowsExpensesPayloadFromLines(listCreditCardMasterAccountIds(), cachedFlowsExpenseLines())
   );
 }
@@ -144,11 +134,10 @@ export function cachedFlowsExpensesGastosPayload(
   excludedBigGroupSlugs: ReadonlySet<string>,
   includePreTax: boolean
 ): ReturnType<typeof buildFlowsExpensesGastosPayload> {
-  if (dbInTransaction()) return buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, includePreTax);
   syncFlowsInputsWithLiveUsdRates();
   const excludedKey = [...excludedBigGroupSlugs].sort().join(",");
   const preTaxKey = includePreTax ? "pre_tax" : "net";
-  return getAggregationCached(`flows.overview.inputs|gastos|${unit}|${preTaxKey}|${excludedKey}`, () =>
+  return getAggregationCached(cacheKeyFlowsInputs(`gastos|${unit}|${preTaxKey}|${excludedKey}`), () =>
     buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, includePreTax, cachedFlowsExpenseLines())
   );
 }
@@ -156,7 +145,7 @@ export function cachedFlowsExpensesGastosPayload(
 /** {@link mortgageCarryingEvents} over the cached expense lines, per unit. */
 export function cachedMortgageCarryingEvents(unit: GastosUnit): MortgageCarryingEvent[] {
   syncFlowsInputsWithLiveUsdRates();
-  return getAggregationCached(`flows.overview.inputs|carrying|${unit}`, () =>
+  return getAggregationCached(cacheKeyFlowsInputs(`carrying|${unit}`), () =>
     mortgageCarryingEvents(cachedFlowsExpenseLines(), unit)
   );
 }

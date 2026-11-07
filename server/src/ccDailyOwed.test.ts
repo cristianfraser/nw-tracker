@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { clearAggregationCache, invalidateCcBillingDetail } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 
 /**
@@ -94,7 +94,6 @@ describe("CC per-day owed-on-date", () => {
       `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
        VALUES (?, '18/04/2026', 'VITEST STORE 2', 50000, 0, 'vitest-daily-owed-3')`
     ).run(statementId);
-    invalidateCcBillingDetail(accountId);
     expect(markAt("2026-04-18")).toBe(170000);
   });
 
@@ -113,13 +112,11 @@ describe("CC per-day owed-on-date", () => {
         .run(accountId).lastInsertRowid
     );
     try {
-      invalidateCcBillingDetail(accountId);
       expect(markAt("2026-05-07")).toBe(170000); // pre-payment: prior balance carried
       expect(markAt("2026-05-08")).toBe(0); // header PAGO lands on its printed date
       expect(markAt("2026-05-15")).toBe(0);
     } finally {
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(nextStatementId);
-      invalidateCcBillingDetail(accountId);
     }
   });
 
@@ -134,13 +131,11 @@ describe("CC per-day owed-on-date", () => {
         .run(accountId).lastInsertRowid
     );
     try {
-      invalidateCcBillingDetail(accountId);
       expect(markAt("2026-04-21")).toBe(170000); // pre-purchase (balance after earlier events)
       expect(markAt("2026-04-22")).toBe(470000); // + full contract on purchase day, not at the next anchor
       expect(markAt("2026-04-25")).toBe(470000);
     } finally {
       db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(purchaseId);
-      invalidateCcBillingDetail(accountId);
     }
   });
 
@@ -163,14 +158,12 @@ describe("CC per-day owed-on-date", () => {
        VALUES (?, '09/06/2026', 'MONTO CANCELADO', -60000, 0, 'vitest-daily-owed-4')`
     ).run(legacyStatementId);
     try {
-      invalidateCcBillingDetail(accountId);
       // 170000 balance − 60000 paid once (not twice) = 110000.
       expect(markAt("2026-06-09")).toBe(110000);
       expect(markAt("2026-06-15")).toBe(110000);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(legacyStatementId);
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(legacyStatementId);
-      invalidateCcBillingDetail(accountId);
     }
   });
 });

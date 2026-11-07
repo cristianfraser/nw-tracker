@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { postCloseLiveBalanceAdjustmentClp, unbilledAtMonthEndAdjustmentsClp } from "./ccBillingBalances.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
 /**
@@ -116,7 +115,6 @@ describe("unbilledAtMonthEndAdjustmentsClp", () => {
     line(aug, "2036-07-18", "POSTED LATE", 15_000);
     line(aug, "2036-08-02", "AFTER MONTH END", 7_000);
     line(oct, "2036-07-05", "NOTA DE CREDITO", -50_000);
-    invalidateCcBillingDetail(id);
     const months = new Map([
       ["20/07/2036", "2036-07"],
       ["20/08/2036", "2036-08"],

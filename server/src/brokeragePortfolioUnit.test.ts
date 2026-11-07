@@ -1,12 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import {
-  getGroupConsolidatedMonthlyPerfForRows,
-  type ConsolidatedMonthlyPerfRow,
-} from "./groupMonthlyPerfConsolidation.js";
+import { getGroupConsolidatedMonthlyPerfForRows, type ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { getSidebarNavPayload } from "./navTree.js";
 import { accountIdsInPortfolioGroup } from "./portfolioGroupTree.js";

@@ -38,10 +38,10 @@ import type {
 } from "nw-tracker-contracts";
 
 import { importCcWebPasteLines } from "./accountImports.js";
-import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
@@ -184,10 +184,6 @@ function synthesizeTransferFromReceipt(
   });
   const out = write();
 
-  clearCheckingBalanceCache(checkingId);
-  invalidateAggregationForAccountDate(checkingId, receipt.paid_on);
-  invalidateAggregationForAccountDate(cardAccountId, receipt.paid_on);
-  invalidateCcBillingDetail(cardAccountId);
   return out;
 }
 
@@ -269,8 +265,6 @@ export function applyPaymentReceipt(receipt: ParsedPaymentReceipt, messageId: st
     db.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(receipt.paid_on, match.id);
     recordBankPosting(match.id, checkingId, match.occurred_on);
   })();
-  clearCheckingBalanceCache(checkingId);
-  invalidateAggregationForAccountDate(checkingId, receipt.paid_on);
   return {
     receipt,
     status: "redated",

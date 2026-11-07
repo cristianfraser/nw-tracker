@@ -19,7 +19,7 @@
  *   npx tsx scripts/repair-mortgage-payment-stated-balance.ts --cuota=31 --credito-restante-uf=1769.9999 --apply
  */
 import { db } from "../../src/db.js";
-import { invalidateAggregationForAccountDate } from "../../src/aggregationCache.js";
+
 import {
   assertDeptoLoanPaymentCurrencies,
   deptoLedgerChronoCompare,
@@ -172,7 +172,6 @@ function main(): void {
       if (res.changes !== 1) throw new Error(`UPDATE touched ${res.changes} rows for movement ${row.movement_id}`);
     }
   })();
-  for (const row of stored) invalidateAggregationForAccountDate(row.account_id, occurredOn);
   console.log(`\nApplied: ${stored.length} loan_payments rows rewritten (movements ${stored.map((r) => r.movement_id).join(", ")}).`);
 }
 

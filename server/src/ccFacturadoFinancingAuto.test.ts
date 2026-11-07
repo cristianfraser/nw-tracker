@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { applyFacturadoFinancingLinks, planFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
 import { listCcFacturadoFinancingLinks, deleteCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 
@@ -37,8 +36,6 @@ function cleanup(): void {
   db.prepare(
     `DELETE FROM cc_statements WHERE account_id = ? AND (source_pdf LIKE ? OR (source_pdf LIKE 'import:web-paste%' AND statement_date LIKE '%/2036'))`
   ).run(financed, `${TAG}|%`);
-  if (financed) invalidateCcBillingDetail(financed);
-  if (financing) invalidateCcBillingDetail(financing);
 }
 
 describe("facturado paid with another card's cuotas", () => {

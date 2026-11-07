@@ -6,7 +6,7 @@ import {
   type AccountMonthlyPerformanceRow,
 } from "./accountPerformance.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
-import { db, dbInTransaction } from "./db.js";
+import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import {
@@ -33,7 +33,8 @@ import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./aggregationCache.js";
+import { cacheKeyGroupConsolidatedMonthly } from "./cacheFamilies.js";
+import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./cacheRegistry.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
@@ -92,7 +93,7 @@ function balanceOnlyMonthlyRowsAsc(
   monthEndsAsc: string[],
   /**
    * Names `closeAt`'s ledger (e.g. `checking`): a close before Chile today reads no quote, so
-   * it is kept in the history tier (`aggregationCache.ts`) under this name across live ticks.
+   * it is kept in the history tier (`cacheRegistry.ts`) under this name across live ticks.
    */
   closeSource: string,
   closeAt: (asOf: string) => number,
@@ -553,7 +554,7 @@ function getGroupConsolidatedMonthlyPerfForRowsInner(
   // Cache key must include a stable fingerprint of inputs to avoid cross-tab collisions
   // (e.g. brokerage_mutual_funds vs brokerage_acciones).
   const rowsKey = rows.map((r) => `${r.account_id}:${r.bucket_slug}`).join("|");
-  const key = `group.consolidated_monthly|${groupSlug}|${unit}|${rowsKey}`;
+  const key = `${cacheKeyGroupConsolidatedMonthly(groupSlug, unit)}|${rowsKey}`;
   return getAggregationCached(key, () => buildGroupConsolidatedMonthlyPerfUncached(rows, groupSlug, unit));
 }
 
@@ -584,9 +585,8 @@ export function groupConsolidatedMonthlyRaw(
   // certificate account has no mark without it, and its prior close fell back to perf rows
   // already in `unit`, which the USD path then divided by fx a second time).
   const build = () => consolidateGroupMonthlyPerf(buildConsolidationPayloads(rows, groupSlug, unit), unit);
-  if (dbInTransaction()) return build();
   const rowsKey = rows.map((r) => `${r.account_id}:${r.bucket_slug}`).join("|");
-  return getAggregationCached(`group.consolidated_monthly|${groupSlug}|${unit}|raw|${rowsKey}`, () =>
+  return getAggregationCached(`${cacheKeyGroupConsolidatedMonthly(groupSlug, unit)}|raw|${rowsKey}`, () =>
     withAccountValuationTsCache(build)
   );
 }

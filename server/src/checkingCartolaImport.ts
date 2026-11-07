@@ -1,4 +1,3 @@
-import { clearAggregationCache } from "./aggregationCache.js";
 import { isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
@@ -18,7 +17,6 @@ import {
 } from "./checkingCartolaParseLog.js";
 import {
   clearCheckingAccountValuations,
-  clearCheckingBalanceCache,
   ensureCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
 import { preserveCheckingGastosCategoriesForCartolaNotes } from "./checkingGastosCategoryPersist.js";
@@ -91,7 +89,6 @@ export function rewriteCartolaMovementNotesPeriodMonth(
     upd.run(toPrefix + r.note.slice(fromPrefix.length), r.id);
     changed += 1;
   }
-  if (changed > 0) clearCheckingBalanceCache(accountId);
   return changed;
 }
 
@@ -152,7 +149,6 @@ export function deleteCheckingCartolaMonthImport(
   } catch {
     /* migration 052 not applied yet */
   }
-  clearCheckingBalanceCache(accountId);
   return { movements: delMov.changes, imports: delImp.changes };
 }
 
@@ -445,7 +441,6 @@ export function importCheckingCartola(
     );
   });
   tx();
-  clearCheckingBalanceCache(accountId);
   return { movementsInserted, movementsSkipped, partialsRemoved, inserted_flows, skipped_flows };
 }
 
@@ -683,8 +678,7 @@ export function finishCartolaImportRun(
     } else if (anchor.cleared) {
       console.log(`Cleared ledger anchor (no cartola saldo final).`);
     }
-    clearAggregationCache();
-  }
+    }
 
   const runLog: CheckingCartolaImportRunLog = {
     account_id: accountId,

@@ -21,8 +21,11 @@
  * Lives in its own module (not deptoDividendosLedger.ts) to avoid an import cycle:
  * this loader needs mortgagePaymentAnalytics, which imports types from deptoDividendosLedger.
  */
-import { getAggregationCached } from "./aggregationCache.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { CACHE_KEY_DEPTO_LEDGER } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { db } from "./db.js";
+import { declareAccountsTrimmedTogether } from "./markSeriesStore.js";
 import {
   assertDeptoLoanPaymentCurrencies,
   assertDeptoPrepagoSequencing,
@@ -46,6 +49,24 @@ import {
 import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 
 export const DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
+
+const accountBucketsStmt = db.prepare(
+  `SELECT a.id, g.slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id`
+);
+
+/**
+ * The property and the mortgage read one ledger (the property's net equity is its appraisal less
+ * the mortgage's balance): a change to either moves both, so the change log trims and drops them
+ * together (`markInputChanges.ts`).
+ */
+declareAccountsTrimmedTogether("depto_ledger", () =>
+  (accountBucketsStmt.all() as { id: number; slug: string }[])
+    .filter((r) => {
+      const kind = accountBucketKindSlug(r.slug);
+      return kind === "property" || kind === "mortgage";
+    })
+    .map((r) => r.id)
+);
 
 function roundUf5(v: number): number {
   return Math.round(v * 1e5) / 1e5;
@@ -76,12 +97,12 @@ function clpToUf4(clp: number | null, ufDay: number | null): number | null {
  * Returns [] when no depto property is tracked; throws when depto payment rows exist
  * without a resolvable property master (data problem — fix data, not the loader).
  *
- * Memoized in the aggregation cache (`depto.ledger|`) — daily views price the property and
- * mortgage marks once per grid date, and the ledger rebuild dominated that cost. Dropped by
- * the account-write funnel (`invalidateCcBillingDetail`) and day/data_version freshness.
+ * Memoized in the `depto_ledger` cache family — daily views price the property and mortgage
+ * marks once per grid date, and the ledger rebuild dominated that cost. Dropped by every
+ * valuation write the change log reports and at day rollover.
  */
 export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
-  return getAggregationCached("depto.ledger|rows", () => loadDeptoLedgerFromMovementsUncached());
+  return getAggregationCached(CACHE_KEY_DEPTO_LEDGER, () => loadDeptoLedgerFromMovementsUncached());
 }
 
 function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {

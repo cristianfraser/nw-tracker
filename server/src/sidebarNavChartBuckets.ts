@@ -1,4 +1,5 @@
-import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "./aggregationCache.js";
+import { CACHE_KEY_SIDEBAR_NAV } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { chartBucketsDtoForNavNode } from "./groupChartBuckets.js";
 import {
   getLiabilitiesNavRootNode,
@@ -61,7 +62,7 @@ function findBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeDto | nu
  * (`seedNavTree`). Shared with the visited-pages warm.
  */
 export function cachedSidebarNavPayload() {
-  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}sidebar_nav`, () => {
+  return getAggregationCached(CACHE_KEY_SIDEBAR_NAV, () => {
     const built = getSidebarNavPayload();
     return { ...built, main: annotateSidebarNavChartBuckets(built.main) };
   });

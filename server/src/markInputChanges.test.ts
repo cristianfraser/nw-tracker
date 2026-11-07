@@ -4,9 +4,9 @@ import {
   accountMarkClpSeriesOnGridUncached,
   type MarkSeriesAccountRef,
 } from "./accountMarkDailyCache.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache, ensureCacheFresh } from "./cacheRegistry.js";
 import { db } from "./db.js";
-import { applyPendingMarkInputChanges, markChangeIso } from "./markInputChanges.js";
+import { markChangeIso } from "./markInputChanges.js";
 import { getMarkSeries, markSeriesKey } from "./markSeriesStore.js";
 
 /**
@@ -62,7 +62,7 @@ beforeAll(() => {
   a1 = makeAccount(T1, "Vitest · waterfall A");
   a2 = makeAccount(T2, "Vitest · waterfall B");
   clearAggregationCache();
-  applyPendingMarkInputChanges();
+  ensureCacheFresh();
 });
 
 afterAll(() => {
@@ -92,7 +92,7 @@ describe("mark input triggers", () => {
         .prepare(`SELECT source, account_id, raw_date FROM mark_input_changes ORDER BY id DESC LIMIT ?`)
         .all(n) as { source: string; account_id: number | null; raw_date: string | null }[]
     ).reverse();
-  const maxId = () => (db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM mark_input_changes`).get() as { id: number }).id;
+  const maxId = () => (db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM mark_input_changes WHERE kind = 'mark'`).get() as { id: number }).id;
 
   it("log a movement's account and date, both endpoints of a transfer, and a close for its ticker's holders", () => {
     if (!a1 || !a2) return;
@@ -152,7 +152,7 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
   it("a new price bar moves its day on, for that ticker's account; the other keeps its cache", () => {
     if (!a1 || !a2) return;
     clearAggregationCache();
-    applyPendingMarkInputChanges();
+    ensureCacheFresh();
     expect(cached(a1)).toEqual([10000, 10000, 10000, 11000, 11000]);
     cached(a2);
     const b2 = getMarkSeries(markSeriesKey(a2.account_id, a2.bucket_slug));
@@ -170,7 +170,7 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
   it("a movement trims only its own account, from its date", () => {
     if (!a1 || !a2) return;
     clearAggregationCache();
-    applyPendingMarkInputChanges();
+    ensureCacheFresh();
     cached(a1);
     cached(a2);
     const b2 = getMarkSeries(markSeriesKey(a2.account_id, a2.bucket_slug));
@@ -192,7 +192,7 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-02-12T15:00:00Z")); // Chile 2026-02-12
     clearAggregationCache();
-    applyPendingMarkInputChanges();
+    ensureCacheFresh();
     const grid = GRID.slice(0, 4); // through 02-12: 02-12 is today, never cached
     accountMarkClpSeriesOnGrid(a1, grid);
     const before = getMarkSeries(markSeriesKey(a1.account_id, a1.bucket_slug))!;

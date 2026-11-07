@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  clearAggregationCache,
-  invalidateMarketDataAggregations,
-} from "./aggregationCache.js";
+import { clearAggregationCache, invalidateMarketDataAggregations } from "./cacheRegistry.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 
 describe("dashboard page-bundle response cache", () => {

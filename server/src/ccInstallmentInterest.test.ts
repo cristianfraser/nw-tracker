@@ -1,11 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
-import {
-  ccInstallmentInterestBillingEvents,
-  ccInstallmentInterestForAccount,
-  printedInstallmentRatePct,
-} from "./ccInstallmentInterest.js";
+import { ccInstallmentInterestBillingEvents, ccInstallmentInterestForAccount, printedInstallmentRatePct } from "./ccInstallmentInterest.js";
 import { listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
 import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
@@ -52,7 +47,6 @@ function cleanup(): void {
   db.prepare(`DELETE FROM cc_installment_payments WHERE parser_row_id LIKE ?`).run(`${TAG}|%`);
   db.prepare(`DELETE FROM cc_installment_purchases WHERE canonical_row_id LIKE ?`).run(`${TAG}|%`);
   db.prepare(`DELETE FROM cc_statements WHERE source_pdf LIKE ?`).run(`${TAG}|%`);
-  if (accountId) invalidateCcBillingDetail(accountId);
 }
 
 describe("installment interest", () => {
@@ -69,7 +63,6 @@ describe("installment interest", () => {
     insertCuotaLine(free, "free", "22/12/2036", 1, 101_387, 33_798, "0,00% (T)");
     // No statement yet (hand-entered or from the feed): no interest known.
     insertPlan("unprinted", "2036-11-10", 500_000, 3);
-    invalidateCcBillingDetail(accountId);
   });
 
   afterAll(cleanup);

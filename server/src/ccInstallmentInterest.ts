@@ -13,7 +13,8 @@
  * (`normalizedInstallmentPurchaseEvents`), so booking the interest the same day keeps the
  * derived flow (−Δowed + financing) at the principal.
  */
-import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { closeDateForBillingMonth } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
@@ -46,7 +47,7 @@ type LineRow = {
 
 /** Plans of the account whose statement prints a rate above zero, with their interest. */
 export function ccInstallmentInterestForAccount(accountId: number): CcInstallmentInterest[] {
-  return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|inst_interest`, () => {
+  return getAggregationCached(cacheKeyCcBillingPart(accountId, `inst_interest`), () => {
     const rows = db
       .prepare(
         `SELECT ip.id AS purchase_id, ip.purchase_date, ip.total_amount_clp,

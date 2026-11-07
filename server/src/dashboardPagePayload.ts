@@ -25,8 +25,8 @@ const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "bro
 /** @heavy Account rows, flows deposits payload, liabilities breakdown, Depto snapshot. */
 export async function buildDashboardPagePayload(includeUsd: boolean) {
   return withPortfolioGroupIndex(async () => {
-    // CC billing detail is served from the aggregation cache (day/data_version fresh,
-    // invalidated on CC writes) — no longer rebuilt per request.
+    // CC billing detail is served from the cache registry (dropped by the card writes the change
+    // log reports and at day rollover) — no longer rebuilt per request.
     const rowsBuilt = await timeHeavyAsync(HeavyWork.dashboardAccountRows, () =>
       buildDashboardAccountRows(includeUsd)
     );

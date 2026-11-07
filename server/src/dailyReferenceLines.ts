@@ -15,7 +15,8 @@
  * cost of a daily series; the flow legs this would skip are the cheap part).
  */
 import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
-import { getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyDailyReferenceSource } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
@@ -43,9 +44,8 @@ export type DailyReferenceLine = {
 };
 
 /**
- * Per-date totals of one source group, keyed under the `daily.` namespace so
- * `invalidateDailySeries()` (both write funnels + day rollover) drops it with the rest of the
- * daily aggregations. Real clock only, like `getBucketDailySeriesCached`.
+ * Per-date totals of one source group, in the `daily_reference_sources` cache family (dropped
+ * with the other daily aggregations). Real clock only, like `getBucketDailySeriesCached`.
  *
  * The heavy part — the per-day marks — comes from that group's own daily series under the very
  * scope key its page uses (`pg:<slug>` + the same rows and options as the `/api/daily-series`
@@ -57,7 +57,7 @@ function sourceGroupDailyValues(
   unit: TsUnit,
   days: number
 ): Map<string, number> {
-  const key = `daily.refsrc|${sourceSlug}|${unit}|${days}`;
+  const key = cacheKeyDailyReferenceSource(sourceSlug, unit, days);
   return getAggregationCached(key, () => {
     const out = new Map<string, number>();
     const rows = listAccountsForGroupTab(sourceSlug).filter((r) => r.account_id > 0);

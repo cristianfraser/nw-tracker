@@ -6,7 +6,7 @@
  * (`cupo: [{ currency, value }]`).
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import { patchCreditCardBillingConfig } from "./ccBillingBalances.js";
 import { db } from "./db.js";
 
@@ -182,7 +182,6 @@ export function applyCreditCardConfigPatch(
       cupo_clp: next.get("clp"),
       cupo_usd: next.get("usd"),
     });
-    invalidateCcBillingDetail(accountId);
   }
 
   return { config: getCreditCardAccountConfig(accountId), billingCycleChanged };

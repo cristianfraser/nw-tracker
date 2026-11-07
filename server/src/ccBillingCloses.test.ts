@@ -4,36 +4,18 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { db } from "./db.js";
 import { closeDayOffsetDays, closeEvidenceForBillingMonth, feedCloseStatementMismatches, nextPeriodStartIsoForBillingMonth, recordFeedBillingClose } from "./ccBillingCloses.js";
-import {
-  billingMonthContainingPurchase,
-  billingMonthForManualLedgerPurchase,
-  isProvisionallyClosedBillingMonth,
-  lastClosedBillingMonthForAccount,
-  lastPdfBillingMonthForAccount,
-  pdfClosedBillingMonthsForAccount,
-  statementCloseDdMmYyyyForBillingMonth,
-  targetBillingMonthForManualImports,
-} from "./ccManualBillingMonth.js";
+import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase, isProvisionallyClosedBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount, pdfClosedBillingMonthsForAccount, statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./ccManualBillingMonth.js";
 import { feedLineBillingMonths } from "./cardUnbilledMovementsApply.js";
 import { importCcWebPasteLines } from "./accountImports.js";
-import {
-  ccInstallmentsDbApiPayload,
-  ccLedgerMonthEndIso,
-  liveCreditCardOutstandingClp,
-} from "./ccInstallmentLedgerDb.js";
+import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
 import { ccInstallmentDebtDailyClp } from "./ccInstallmentDebtDaily.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { ccLedgerStatementClosingPointsClp } from "./ccCreditCardValuations.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
 import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
-import {
-  facturacionMonthByStatementDate,
-  reconcileOpenWebPasteAfterPdfClose,
-  statementDatesForFacturacion,
-} from "./ccOpenWebPastePdfReconcile.js";
+import { facturacionMonthByStatementDate, reconcileOpenWebPasteAfterPdfClose, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { listCcBillingMonthBalances, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
@@ -712,7 +694,6 @@ describe("credit-card close evidence", () => {
     expect(detail.find((d) => d.billing_month === "2026-10")?.cupo_statement_clp).toBe(60_000);
     // A card with no plan ledger has no figure to show.
     db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
-    invalidateCcBillingDetail(accountId);
     expect(buildFacturaciones(accountId, []).map((f) => f.deuda_en_cuotas_clp)).toEqual([null, null, null]);
   });
 
@@ -744,7 +725,6 @@ describe("credit-card close evidence", () => {
       "2026-09 manual",
     ]);
     vi.setSystemTime(new Date("2026-09-24T15:00:00Z")); // 12:00 Chile on the announced close day
-    invalidateCcBillingDetail(accountId);
     expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-10");
     expect(bucketId("2026-10")).toBeNull();
   }
@@ -820,7 +800,6 @@ describe("credit-card close evidence", () => {
     const before = creditCardInstallmentsResponse(accountId);
     const october = insertStatement({ source: "import:web-paste|open|2026-10", date: "20/10/2026", currency: "clp" });
     insertBucketLine(october, "2026-09-24", "CLOSE DAY VITEST", 15_500);
-    invalidateCcBillingDetail(accountId);
     const after = creditCardInstallmentsResponse(accountId);
 
     const openRows = after.facturaciones!.filter((f) => f.billing_month === "2026-10");
@@ -867,7 +846,6 @@ describe("credit-card close evidence", () => {
       currency: "usd",
       monto: 0,
     });
-    invalidateCcBillingDetail(accountId);
     let facturaciones = buildFacturaciones(accountId, ccInstallmentsDbApiPayload(accountId).months);
     expect(facturaciones.filter((f) => f.is_open_month)).toEqual([
       expect.objectContaining({
@@ -881,7 +859,6 @@ describe("credit-card close evidence", () => {
 
     // The announced close day: October is closed at the bank, November is the open facturación.
     vi.setSystemTime(new Date("2026-10-26T15:00:00Z"));
-    invalidateCcBillingDetail(accountId);
     expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-11");
     const ledger = ccInstallmentsDbApiPayload(accountId);
     facturaciones = buildFacturaciones(accountId, ledger.months);
@@ -1071,7 +1048,6 @@ describe("credit-card close evidence", () => {
 
     expect(usdBilledFromStatementLines(usd)).toBeCloseTo(30.52, 2);
     expect(feedCloseStatementMismatches(accountId)).toEqual([]);
-    invalidateCcBillingDetail(accountId);
     const ledger = ccInstallmentsDbApiPayload(accountId);
     const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
     expect(september.facturado_usd).toBeCloseTo(30.52, 2);

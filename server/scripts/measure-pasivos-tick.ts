@@ -66,7 +66,7 @@ db.prepare(`DELETE FROM live_market_quotes`).run();
 const { insertLiveMarketQuote } = await import("../src/liveMarketQuotesDb.js");
 const { LIVE_FX_SYMBOL } = await import("../src/liveMarketQuotesConfig.js");
 const { equityMarketKind, marketQuoteCurrency } = await import("../src/equityQuote.js");
-const { invalidateMarketDataAggregations, clearAggregationCache } = await import("../src/aggregationCache.js");
+const { invalidateMarketDataAggregations, clearAggregationCache } = await import("../src/cacheRegistry.js");
 
 let step = 0;
 /** A poll: every ticker `factor(ticker)` × its last close, the dollar × `fxFactor`. */

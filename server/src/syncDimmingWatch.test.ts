@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  aggregationCacheHasForTest,
-  clearAggregationCache,
-  getAggregationCached,
-  invalidateMarketDataAggregations,
-} from "./aggregationCache.js";
+import { aggregationCacheHasForTest, clearAggregationCache, getAggregationCached, invalidateMarketDataAggregations } from "./cacheRegistry.js";
 import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import * as globalSyncStale from "./globalSyncStale.js";
 import { checkSyncDimmingChanged, resetSyncDimmingWatchForTest } from "./syncDimmingWatch.js";

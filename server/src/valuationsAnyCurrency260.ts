@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
-import { runMarkInputChangeTriggers260 } from "./markInputChangeTriggers211.js";
+import { runMarkInputChangeTriggers260 } from "./markInputTriggers.js";
 
 /**
  * Migration 260 hook (pure: no `db` import — the module graph is still initializing). After the

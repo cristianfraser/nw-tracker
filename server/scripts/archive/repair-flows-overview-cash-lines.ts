@@ -23,7 +23,7 @@ import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../../sr
 import { db } from "../../src/db.js";
 import { buildFlowsExpenseLines, listCreditCardMasterAccountIds } from "../../src/flowsExpenses.js";
 import { countsTowardGastosMes } from "../../src/flowsExpensesGastos.js";
-import { clearAggregationCache } from "../../src/aggregationCache.js";
+import { clearAggregationCache } from "../../src/cacheRegistry.js";
 
 const apply = process.argv.includes("--apply");
 

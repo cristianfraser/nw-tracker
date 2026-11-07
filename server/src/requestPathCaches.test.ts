@@ -4,12 +4,8 @@ import type { AddressInfo } from "node:net";
 import zlib from "node:zlib";
 import express from "express";
 import { afterAll, describe, expect, it } from "vitest";
-import {
-  aggregationCacheHasForTest,
-  cachedGroupResponse,
-  clearAggregationCache,
-  invalidateAggregationForAccountDate,
-} from "./aggregationCache.js";
+import { cacheKeyGroupResponse } from "./cacheFamilies.js";
+import { aggregationCacheHasForTest, clearAggregationCache, getAggregationCached } from "./cacheRegistry.js";
 import { getGroupConsolidatedMonthlyRows, getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
 import {
@@ -229,8 +225,7 @@ describe("request-path caches", () => {
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:request-caches')`)
         .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
     );
-    // What every writer does after a movement write (the consolidations are dropped there).
-    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
+    // No invalidation call: the change log reports the write.
     try {
       const afterWrite = await requestPathPayloads();
       clearAggregationCache();
@@ -348,7 +343,6 @@ describe("dashboard account rows (one cache entry per account)", () => {
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:account-rows')`)
         .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
     );
-    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
     try {
       const afterWrite = await rowsPayloads();
       expect(afterWrite.get("false")).not.toBe(cached.get("false"));
@@ -386,7 +380,6 @@ describe("account detail bundle cache", () => {
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:detail-bundle')`)
         .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
     );
-    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
     try {
       const afterWrite = await snap(cachedAccountDetailBundle);
       expect(afterWrite.get(`${accountId}|clp`)).not.toBe(cached.get(`${accountId}|clp`));
@@ -405,7 +398,7 @@ describe("group responses share one consolidation", () => {
     const slugs = (db.prepare(`SELECT slug FROM portfolio_groups ORDER BY id`).all() as { slug: string }[]).map((r) => r.slug);
     for (const slug of slugs) {
       for (const unit of ["clp", "usd"] as const) {
-        const resp = <T,>(kind: string, build: () => T) => out.set(`${kind}|${slug}|${unit}`, JSON.stringify(cachedGroupResponse(kind, slug, unit, build)));
+        const resp = <T,>(kind: string, build: () => T) => out.set(`${kind}|${slug}|${unit}`, JSON.stringify(getAggregationCached(cacheKeyGroupResponse(kind, slug, unit), build)));
         resp("consolidated_tables", () => getGroupConsolidatedTables(slug, unit));
         resp("monthly_pl_series", () => getGroupMonthlyPlSeries(slug, unit, { groupedBlocks: true }));
         resp("valuation_ts", () => getGroupValuationTimeseries(slug, unit, undefined, { groupedBlocks: true }));
@@ -447,7 +440,6 @@ describe("group responses share one consolidation", () => {
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:group-responses')`)
         .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
     );
-    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
     try {
       const afterWrite = groupPayloads();
       expect([...afterWrite.keys()].some((k) => afterWrite.get(k) !== cached.get(k))).toBe(true);
@@ -591,7 +583,6 @@ describe("served JSON of the cached responses", () => {
           .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:served-json')`)
           .run(writeAccountId, chileCalendarTodayYmd()).lastInsertRowid
       );
-      invalidateAggregationForAccountDate(writeAccountId, chileCalendarTodayYmd());
 
       const servedSyncAfter = await served(sync.keys());
       expect(mismatches(syncUncached(), servedSyncAfter)).toEqual([]);

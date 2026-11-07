@@ -6,10 +6,9 @@ import { fetchYahooLiveQuote, yahooBarYmdFromUnix } from "./equityYahooEod.js";
 import { fetchYahooLiveUsdClpPerUsd, LIVE_FX_YAHOO_SYMBOL, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
-import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { publishLiveInputChange } from "./cacheRegistry.js";
 import { recordYahooSplits } from "./equitySplitsSync.js";
 import { listEquitySplits, splitLikeMoveError } from "./equitySplits.js";
-import { noteLiveQuotesChanged } from "./liveQuotesStamp.js";
 import {
   getLatestLiveEquityQuoteRow,
   getLatestLiveFxQuoteRow,
@@ -258,9 +257,9 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string, skipLiveFetch: bool
 
 /**
  * A write moved a price: publish the change for the client's stamp and drop the aggregates that
- * read it. Same-connection quote writes don't bump `data_version`, so cached aggregations that
- * baked today's live marks (bucket totals, overview live point, current-month perf rows) would
- * keep serving the old price.
+ * read it (`publishLiveInputChange`): `live_market_quotes` is not in the change log, so cached
+ * aggregations that baked today's live marks (bucket totals, overview live point, current-month
+ * perf rows) would keep serving the old price.
  * `live_tail`: only `live_market_quotes` was written, which no historical mark reads, so the
  * cached per-account daily mark series survive — a rebuilt daily view re-prices just today.
  * Only the aggregates that read a moved price go (`cacheDependencies.ts`): a crypto move at
@@ -273,16 +272,7 @@ function publishLiveQuoteChanges(
   fxChanged: boolean,
   wroteFxDaily: boolean
 ): void {
-  noteLiveQuotesChanged(
-    fetchedAt,
-    wroteFxDaily ? { all: true } : { tickers: changedTickers.map((t) => t.toUpperCase()), fx: fxChanged }
-  );
-  invalidateMarketDataAggregations(
-    "live_tail",
-    wroteFxDaily
-      ? undefined
-      : { tickers: new Set(changedTickers.map((t) => t.toUpperCase())), fx: fxChanged }
-  );
+  publishLiveInputChange(fetchedAt, wroteFxDaily ? { all: true } : { tickers: changedTickers, fx: fxChanged });
 }
 
 /** One price from the stream (`yahooPriceStream.ts`), already in its session. */

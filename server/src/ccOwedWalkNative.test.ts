@@ -1,12 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
-import {
-  ccOwedByCurrencyAtYmd,
-  ccOwedClpAtYmd,
-  ccRevaluationCostByDate,
-  ccUsdOwedRateClp,
-  ccUsdRevaluationCostClpByDate,
-} from "./ccOwedWalk.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
+import { ccOwedByCurrencyAtYmd, ccOwedClpAtYmd, ccRevaluationCostByDate, ccUsdOwedRateClp, ccUsdRevaluationCostClpByDate } from "./ccOwedWalk.js";
 import { convertValue } from "./valueConvert.js";
 import { writeCcOwedAnchor } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";

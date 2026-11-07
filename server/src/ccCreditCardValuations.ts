@@ -1,7 +1,4 @@
-import {
-  invalidateAggregationForAccountDate,
-  invalidateCcBillingDetail,
-} from "./aggregationCache.js";
+
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { ccOwedByCurrencyAtYmd, ccOwedNativeValueClp } from "./ccOwedWalk.js";
 import type { CcOwedNative } from "./ccBillingBalances.js";
@@ -249,7 +246,6 @@ function purgeContradictedDailyStamps(
     del.run(accountId, d);
     deleteNativeAnchor.run(accountId, d);
   }
-  invalidateAggregationForAccountDate(accountId, stale[0]!);
   return stale;
 }
 
@@ -268,7 +264,6 @@ export function upsertCreditCardValuationsFromLedger(
 ): number {
   // This runs after CC writes — drop the cached detail first so the points below (and every
   // later read) reflect the new ledger/statement state instead of a pre-write cache entry.
-  invalidateCcBillingDetail(accountId);
   const row = db
     .prepare(
       `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
@@ -314,13 +309,11 @@ export function upsertCreditCardValuationsFromLedger(
       value_clp: ccOwedValueClpOrThrow(accountId, today, owedToday),
     });
     n += 1;
-    invalidateAggregationForAccountDate(accountId, today);
   }
   // The pesos of every other anchor (earlier daily stamps) at its own date's rate: a stamp written
   // during a live day carries that moment's rate until the day's close is on file.
   revalueCcOwedAnchorValuations(accountId);
   if (pts.length > 0) {
-    invalidateAggregationForAccountDate(accountId, pts[0]!.as_of_date);
   }
   return n;
 }

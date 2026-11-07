@@ -13,7 +13,7 @@
  */
 import fs from "node:fs";
 import { db } from "../src/db.js";
-import { invalidateAggregationForAccountDate } from "../src/aggregationCache.js";
+
 
 type PlanItem = { cuota: string; min_uf: number; amortizacion_clp?: number; amortizacion_ext_clp?: number };
 
@@ -84,5 +84,4 @@ const tx = db.transaction(() => {
   }
 });
 tx.immediate();
-for (const { row } of updates) invalidateAggregationForAccountDate(row.account_id, row.occurred_on);
 console.log(`\n${updates.length} row(s) updated.`);

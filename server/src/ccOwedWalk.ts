@@ -27,7 +27,8 @@ import {
   type CcOwedNative,
 } from "./ccBillingBalances.js";
 import { usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
-import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { convertCurrency, type CurrencyCode } from "./rates.js";
@@ -178,7 +179,7 @@ function isoAddDays(iso: string, days: number): string {
  */
 export function ccRevaluationCostByDate(accountId: number, unit: CurrencyCode): Map<string, number> {
   const today = chileCalendarTodayYmd();
-  const past = getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|reval|${unit}|${today}`, () =>
+  const past = getAggregationCached(cacheKeyCcBillingPart(accountId, `reval|${unit}|${today}`), () =>
     buildRevaluation(accountId, unit, today)
   );
   const out = new Map(past.byDate);

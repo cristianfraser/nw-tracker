@@ -26,7 +26,7 @@ import type {
   IncomingWireBookingReport,
   IncomingWireNotice,
 } from "nw-tracker-contracts";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { storeOnce } from "./ingestReceiver.js";
@@ -358,10 +358,6 @@ export function bookIncomingWires(): IncomingWireBookingReport {
     db.transaction(() => {
       for (const b of report.booked) writeBooking(b, requests.find((r) => r.message_id === b.request_message_id)!);
     }).immediate();
-    for (const b of report.booked) {
-      invalidateAggregationForAccountDate(b.from_account_id, b.value_date);
-      invalidateAggregationForAccountDate(b.to_account_id, b.value_date);
-    }
   }
   return report;
 }

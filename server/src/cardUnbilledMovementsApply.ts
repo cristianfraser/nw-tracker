@@ -11,7 +11,7 @@ import {
 } from "./ccBillingCloses.js";
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
 import { creditCardMasterMetaForAccount, webPasteListingDedupeKeys } from "./ccWebPasteParse.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import { ymCompare } from "./calendarMonth.js";
 import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -267,8 +267,6 @@ export function applyCardUnbilledMovements(
       windowStartIso && Object.keys(proof).length > 0
         ? mirrorOpenBucketsToFeed(accountId, { windowStartIso, proof, feedLines: lines })
         : null;
-    // In-process writes do not bump data_version: drop this card's derived caches explicitly.
-    invalidateCcBillingDetail(accountId);
     accounts.push({
       account: card.account.number,
       account_id: accountId,

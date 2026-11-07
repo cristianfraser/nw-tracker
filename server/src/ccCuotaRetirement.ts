@@ -25,7 +25,8 @@
  *   A payment dated after the pay-by retires late (frame-consistent with the owed walk);
  *   leftover pesos with no closed facturación to pay are discarded.
  */
-import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { db } from "./db.js";
@@ -63,7 +64,7 @@ export type CuotaRetirementResult = {
  * not payments here: cuotas are CLP and a divisas payment never pays the CLP facturado.
  */
 export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentEvent[] {
-  return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|clp_pago_events`, () => {
+  return getAggregationCached(cacheKeyCcBillingPart(accountId, `clp_pago_events`), () => {
     const lineRows = db
       .prepare(
         `SELECT l.transaction_date, l.amount_clp, l.merchant
@@ -124,7 +125,7 @@ export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentE
  */
 export function clpFacturadoByCloseIso(accountId: number): Map<string, number> {
   return getAggregationCached(
-    `${cacheKeyCcBillingDetail(accountId)}|clp_facturado_by_close`,
+    cacheKeyCcBillingPart(accountId, `clp_facturado_by_close`),
     () => {
       const rows = db
         .prepare(

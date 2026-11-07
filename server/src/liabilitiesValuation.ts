@@ -9,6 +9,7 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
 type LiabilityValuationRow = { account_id: number; category_slug: string };
@@ -18,14 +19,12 @@ type AccountCategoryMeta = Map<
   { category_slug: string; group_slug: string; exclude_from_group_totals: boolean }
 >;
 
-let accountCategoryMetaCache: AccountCategoryMeta | null = null;
-
-export function clearAccountCategoryMetaCache(): void {
-  accountCategoryMetaCache = null;
+/** Memoized as database state (`dbStateMemo.ts`): any write drops it. */
+function accountCategoryMetaById(): AccountCategoryMeta {
+  return dbStateMemo("liabilities_account_category_meta", null, buildAccountCategoryMeta);
 }
 
-function accountCategoryMetaById(): AccountCategoryMeta {
-  if (accountCategoryMetaCache) return accountCategoryMetaCache;
+function buildAccountCategoryMeta(): AccountCategoryMeta {
   const rows = db
     .prepare(
       `SELECT a.id, g.slug AS bucket_slug,
@@ -38,7 +37,7 @@ function accountCategoryMetaById(): AccountCategoryMeta {
     bucket_slug: string;
     exclude_from_group_totals: number;
   }[];
-  accountCategoryMetaCache = new Map(
+  return new Map(
     rows.map((r) => [
       r.id,
       {
@@ -48,7 +47,6 @@ function accountCategoryMetaById(): AccountCategoryMeta {
       },
     ])
   );
-  return accountCategoryMetaCache;
 }
 
 // No module-level cache: the movement ledger is ~30 rows and a stale cache leaks

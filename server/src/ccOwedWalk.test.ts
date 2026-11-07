@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";

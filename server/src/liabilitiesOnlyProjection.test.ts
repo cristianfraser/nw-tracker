@@ -1,12 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { liabilitiesOnlyBalanceClpByDates } from "./liabilitiesValuation.js";
 import { db } from "./db.js";
-import {
-  ensureVitestCreditCardFixtures,
-  getVitestSantanderCcMasterAccountId,
-  wipeVitestCcFixtureData,
-} from "./test/vitestDbSeed.js";
+import { ensureVitestCreditCardFixtures, getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 const D1 = "2024-01-31";
 const D2 = "2024-02-29";

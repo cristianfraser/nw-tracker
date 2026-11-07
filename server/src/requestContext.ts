@@ -34,21 +34,6 @@ function isUnder(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-/**
- * Whether a request's answer drops the API response caches (`index.ts`): a person's write, and a
- * machine request that applies data — an ingest kind or server task, whose writers do not all reach
- * an aggregation funnel yet (utility bills, receipts, declared payments: the cache registry, F2,
- * will make each writer say what it drops). Heartbeats, claims, job completions and run reports
- * write only the queue and the run log: until 2026-11-07 every one of them emptied the response
- * caches and set off a full warm, once a minute while a run lasted (bug 16).
- */
-export function requestDropsResponseCaches(method: string | undefined, path: string): boolean {
-  const kind = requestKind(method, path);
-  if (kind === "api-write") return true;
-  if (kind !== "machine" || method !== "POST" || !path.startsWith("/api/ingest/")) return false;
-  return !path.startsWith("/api/ingest/runs/");
-}
-
 /** True for a method that changes nothing (the demo's read-only guard lets it through). */
 export function isReadMethod(method: string): boolean {
   return READ_METHODS.has(method);
@@ -56,8 +41,6 @@ export function isReadMethod(method: string): boolean {
 
 export type RequestContext = {
   readonly kind: RequestKind;
-  /** {@link requestDropsResponseCaches}. */
-  readonly dropsResponseCaches: boolean;
   /**
    * Headers the JSON serializer adds as the response goes out (`jsonResponse.ts`): the live
    * inputs a GET read (`liveInputsHeader.ts`) are only known once the route has run.
@@ -75,7 +58,6 @@ export function requestContext(req: Request): RequestContext {
   if (!ctx) {
     ctx = {
       kind: requestKind(req.method, req.path),
-      dropsResponseCaches: requestDropsResponseCaches(req.method, req.path),
       lateHeaders: [],
       jsonBodyBytes: null,
     };

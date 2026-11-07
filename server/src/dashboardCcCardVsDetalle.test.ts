@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { accountPeriodMetricsFromMonthlyRows } from "./accountPeriodMetrics.js";

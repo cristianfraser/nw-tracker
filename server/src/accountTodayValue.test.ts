@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 

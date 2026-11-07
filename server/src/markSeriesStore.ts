@@ -1,5 +1,3 @@
-import type { QtyMark } from "./accountMarkClpAtYmd.js";
-
 /**
  * The per-account daily QUANTITY series (`accountMarkDailyCache.ts`), kept apart from the
  * aggregation cache so they survive what does not move a past day's mark: the Chile day
@@ -13,19 +11,23 @@ import type { QtyMark } from "./accountMarkClpAtYmd.js";
  */
 
 /**
- * One day of a series: what the account held (a quantity and its asset — `QtyMark` without the
- * evidence date). Values in a display unit are built from it at read, with the day's price and
- * rate (`docs/holdings-currency-plan.md`), so a rate or price row never invalidates it.
+ * `Cell`: one day of a series, what the account held (`accountMarkDailyCache.ts` stores a quantity
+ * and its asset). The store never looks inside a cell, so it imports no valuation module.
  */
-export type MarkSeriesCell = Pick<QtyMark, "qty" | "asset">;
-
-export type CachedMarkSeries = {
+export type CachedMarkSeries<Cell = unknown> = {
   /** First cached day (inclusive). */
   start_ymd: string;
   /** Last cached day (inclusive). */
   end_ymd: string;
   /** Quantities indexed from `start_ymd`; null where the account has no valid mark. */
-  values: (MarkSeriesCell | null)[];
+  values: (Cell | null)[];
+  /**
+   * No rate row can move the stored quantities: shares, coins, cuotas, a ledger in a currency
+   * other than pesos. Every other quantity is a peso figure (a ledger, a book mark, and until
+   * their own phases the card and the depto ledger), some of which read rates to build. Set by
+   * whoever stores the series; a rate row trims only the series without it.
+   */
+  rate_independent: boolean;
 };
 
 const store = new Map<string, CachedMarkSeries>();
@@ -34,11 +36,11 @@ export function markSeriesKey(accountId: number, bucketSlug: string): string {
   return `${accountId}|${bucketSlug}`;
 }
 
-export function getMarkSeries(key: string): CachedMarkSeries | undefined {
-  return store.get(key);
+export function getMarkSeries<Cell>(key: string): CachedMarkSeries<Cell> | undefined {
+  return store.get(key) as CachedMarkSeries<Cell> | undefined;
 }
 
-export function setMarkSeries(key: string, series: CachedMarkSeries): void {
+export function setMarkSeries<Cell>(key: string, series: CachedMarkSeries<Cell>): void {
   store.set(key, series);
 }
 
@@ -59,7 +61,7 @@ function trimKey(key: string, fromYmd: string): void {
     return;
   }
   const keep = dayIndex(s.start_ymd, fromYmd);
-  store.set(key, { start_ymd: s.start_ymd, end_ymd: dayBefore(fromYmd), values: s.values.slice(0, keep) });
+  store.set(key, { ...s, end_ymd: dayBefore(fromYmd), values: s.values.slice(0, keep) });
 }
 
 /** One account's series (every bucket it is cached under) from `fromYmd` on. */
@@ -73,8 +75,29 @@ export function trimAllMarkSeries(fromYmd: string): void {
   for (const key of [...store.keys()]) trimKey(key, fromYmd);
 }
 
+/** The series a rate row can move (not `rate_independent`) from `fromYmd` on. */
+export function trimRateDependentMarkSeries(fromYmd: string): void {
+  for (const [key, s] of [...store]) if (!s.rate_independent) trimKey(key, fromYmd);
+}
+
 export function clearMarkSeries(): void {
   store.clear();
+}
+
+/**
+ * Accounts that read each other's rows, declared by the module that knows it (the depto ledger:
+ * the property's net equity reads the mortgage's balance). A change to one trims every account of
+ * its group from the same date — the cached series and every account-scoped cache family.
+ */
+const trimmedTogether = new Map<string, () => readonly number[]>();
+
+export function declareAccountsTrimmedTogether(name: string, members: () => readonly number[]): void {
+  trimmedTogether.set(name, members);
+}
+
+/** The declared groups' current members (resolved when a change is applied). */
+export function accountGroupsTrimmedTogether(): (readonly number[])[] {
+  return [...trimmedTogether.values()].map((members) => members());
 }
 
 /** @internal Test hook. */

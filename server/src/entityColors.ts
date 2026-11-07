@@ -1,24 +1,11 @@
 import {
-  clearPortfolioGroupColorCache,
   colorRgbOfLargestBalanceAccount,
   getAccountColorRgb,
   normalizeColorRgbInput,
   resolvePortfolioGroupColorRgb,
   rgbTripletToCss,
 } from "./chartColorRgb.js";
-import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
-
-/**
- * After a colour write: the page payloads carry colours baked in (chart lines, card pills, the nav
- * tree), and a group without a colour of its own takes its largest child's, so an account's colour
- * can change a group's. Colour writes are rare: drop the resolved group colours and every cached
- * payload, and let the warmer rebuild them.
- */
-function colorsChanged(): void {
-  clearPortfolioGroupColorCache();
-  clearAggregationCache();
-}
 
 export type EntityColorPatchResult = { color_rgb: string | null; color: string };
 
@@ -30,14 +17,12 @@ export function updateAccountColorRgb(
   if (!exists) return null;
   if (raw === null) {
     db.prepare(`UPDATE accounts SET color_rgb = NULL WHERE id = ?`).run(accountId);
-    colorsChanged();
     const resolved = getAccountColorRgb(accountId);
     return { color_rgb: null, color: rgbTripletToCss(resolved) };
   }
   const color_rgb = normalizeColorRgbInput(raw);
   if (!color_rgb) return null;
   db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(color_rgb, accountId);
-  colorsChanged();
   return { color_rgb, color: rgbTripletToCss(color_rgb) };
 }
 
@@ -47,7 +32,6 @@ export function updateLiabilityGroupColorRgb(slug: string, raw: unknown): Entity
   if (!row) return null;
   if (raw === null) {
     db.prepare(`UPDATE liability_groups SET color_rgb = NULL WHERE slug = ?`).run(slug);
-    colorsChanged();
     const members = db
       .prepare(`SELECT account_id FROM liability_group_items WHERE group_id = ? AND item_kind = 'account'`)
       .all(row.id) as { account_id: number }[];
@@ -56,7 +40,6 @@ export function updateLiabilityGroupColorRgb(slug: string, raw: unknown): Entity
   const color_rgb = normalizeColorRgbInput(raw);
   if (!color_rgb) return null;
   db.prepare(`UPDATE liability_groups SET color_rgb = ? WHERE slug = ?`).run(color_rgb, slug);
-  colorsChanged();
   return { color_rgb, color: rgbTripletToCss(color_rgb) };
 }
 
@@ -68,13 +51,11 @@ export function updatePortfolioGroupColorRgb(
   if (!row) return null;
   if (raw === null) {
     db.prepare(`UPDATE portfolio_groups SET color_rgb = NULL WHERE slug = ?`).run(slug);
-    colorsChanged();
     const resolved = resolvePortfolioGroupColorRgb(row.id);
     return { color_rgb: null, color: rgbTripletToCss(resolved) };
   }
   const color_rgb = normalizeColorRgbInput(raw);
   if (!color_rgb) return null;
   db.prepare(`UPDATE portfolio_groups SET color_rgb = ? WHERE slug = ?`).run(color_rgb, slug);
-  colorsChanged();
   return { color_rgb, color: rgbTripletToCss(color_rgb) };
 }

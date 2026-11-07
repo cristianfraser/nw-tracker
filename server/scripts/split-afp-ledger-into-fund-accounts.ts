@@ -76,7 +76,7 @@ const { FLOW_KIND_AFP_FUND_SWITCH } = await import("../src/movementFlowType.js")
 const { validateTransferCreate } = await import("../src/movementTransfer.js");
 const { seedNavTree } = await import("../src/seedNavTree.js");
 const { reseedAccountSyncSources } = await import("../src/accountSyncSources.js");
-const { clearAggregationCache, invalidateAggregationForAccountDate } = await import("../src/aggregationCache.js");
+const { clearAggregationCache } = await import("../src/cacheRegistry.js");
 const { prettyRgbTripletForAccountId } = await import("../src/chartColorRgb.js");
 type DatedCertificateRow = import("../src/pensionLedgerShape.js").DatedCertificateRow;
 type LocatedCertificateRow = import("./lib/pensionCertificateChain.js").LocatedCertificateRow;
@@ -354,8 +354,6 @@ function write(): void {
   // Nav tree, sync sources, caches.
   seedNavTree();
   for (const id of [unoAccount.id, ...created.map((a) => a.id)]) reseedAccountSyncSources(id);
-  const earliest = [...created.map((a) => a.first_day), unoInDay].sort()[0]!;
-  for (const id of [unoAccount.id, ...created.map((a) => a.id)]) invalidateAggregationForAccountDate(id, earliest);
   clearAggregationCache();
 }
 

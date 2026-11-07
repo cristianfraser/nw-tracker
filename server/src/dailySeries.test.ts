@@ -1,20 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache, invalidateMarketDataAggregations } from "./aggregationCache.js";
-import {
-  DAILY_SERIES_MAX_DAYS,
-  getBucketDailySeries,
-  getBucketDailySeriesCached,
-  groupDailySeriesAccounts,
-  type BucketDailySeries,
-} from "./dailySeries.js";
+import { clearAggregationCache, invalidateMarketDataAggregations } from "./cacheRegistry.js";
+import { DAILY_SERIES_MAX_DAYS, getBucketDailySeries, getBucketDailySeriesCached, groupDailySeriesAccounts, type BucketDailySeries } from "./dailySeries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
-import {
-  computeShortHorizonReturnCells,
-  type ShortHorizonAccountRef,
-} from "./periodReturnsShortHorizon.js";
+import { computeShortHorizonReturnCells, type ShortHorizonAccountRef } from "./periodReturnsShortHorizon.js";
 
 /**
  * Synthetic fixtures only (repo policy): a `.SN` (clp-quoted, no fx dependency) equity MTM

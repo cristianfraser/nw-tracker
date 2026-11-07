@@ -12,7 +12,7 @@
  *   live proxy while it applies. Every gate reports the live input it would read
  *   (`cacheDependencies.ts`).
  */
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { latestAfpUnoFundUnitRowOnOrBeforeForDisplay } from "./afpUnoValuation.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";

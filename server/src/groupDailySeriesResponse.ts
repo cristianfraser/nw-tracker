@@ -1,11 +1,10 @@
-import { getAggregationCached } from "./aggregationCache.js";
-import { markJsonResponseCacheable } from "./jsonResponse.js";
+import { cacheKeyAccountDailySeriesResponse, cacheKeyGroupDailySeriesResponse } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "./accountBucket.js";
 import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "./ccDailyHistorialBlock.js";
 import { dailyPerfLevelsForAccount, dailyPerfLevelsForGroup } from "./dailyPerfLevels.js";
 import { dailyReferenceLinesForChartHost, deptoPropertyChartOverlayDailyLines } from "./dailyReferenceLines.js";
 import { groupDailySeriesAccounts } from "./dailySeries.js";
-import { dbInTransaction } from "./db.js";
 import {
   buildLiabilitiesChartBucketPlan,
   buildNavChartBucketPlan,
@@ -21,13 +20,6 @@ import { buildProportionalFromValueArrays } from "./proportionalSeries.js";
 import { buildReferenceCoverage, sumAlignedValues } from "./referenceCoverage.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
-/** Prefix of every cached daily-series response, group and account (dropped by API writes too). */
-export const DAILY_SERIES_RESPONSE_PREFIX = "daily.series|response|";
-/** Prefix of the cached group daily-series responses. */
-export const GROUP_DAILY_RESPONSE_PREFIX = `${DAILY_SERIES_RESPONSE_PREFIX}group|`;
-/** Prefix of the cached account daily-series responses. */
-export const ACCOUNT_DAILY_RESPONSE_PREFIX = `${DAILY_SERIES_RESPONSE_PREFIX}account|`;
-
 /**
  * `GET /api/daily-series?portfolio_group=` for one group: the bucket series with its chart lines,
  * the reference overlays, composition shares, coverage, bucket lines, the card historial block
@@ -37,10 +29,9 @@ export const ACCOUNT_DAILY_RESPONSE_PREFIX = `${DAILY_SERIES_RESPONSE_PREFIX}acc
  */
 export function groupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, days: number, wantPerfLevels: boolean) {
   const build = () => buildGroupDailySeriesResponse(portfolioGroup, unit, days, wantPerfLevels);
-  if (dbInTransaction()) return build();
   return getAggregationCached(
-    `${GROUP_DAILY_RESPONSE_PREFIX}${portfolioGroup}|${unit}|${days}|${wantPerfLevels ? "perf" : "plain"}`,
-    () => markJsonResponseCacheable(build())
+    cacheKeyGroupDailySeriesResponse(`${portfolioGroup}|${unit}|${days}|${wantPerfLevels ? "perf" : "plain"}`),
+    build
   );
 }
 
@@ -204,10 +195,9 @@ export function accountDailySeriesResponse(
   wantPerfLevels: boolean
 ) {
   const build = () => buildAccountDailySeriesResponse(row, unit, days, wantPerfLevels);
-  if (dbInTransaction()) return build();
   return getAggregationCached(
-    `${ACCOUNT_DAILY_RESPONSE_PREFIX}${row.account_id}|${row.bucket_slug}|${unit}|${days}|${wantPerfLevels ? "perf" : "plain"}`,
-    () => markJsonResponseCacheable(build())
+    cacheKeyAccountDailySeriesResponse(`${row.account_id}|${row.bucket_slug}|${unit}|${days}|${wantPerfLevels ? "perf" : "plain"}`),
+    build
   );
 }
 

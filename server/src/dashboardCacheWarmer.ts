@@ -1,13 +1,11 @@
 import { performance } from "node:perf_hooks";
-import { setAggregationInvalidationListener } from "./aggregationCache.js";
+import { ensureCacheFresh, setAggregationInvalidationListener } from "./cacheRegistry.js";
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { serverConfig } from "./config.js";
 import { ScheduledJob, nextAlignedMs } from "./schedulerKernel.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
-import { db } from "./db.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
-import { pruneMarkInputChanges } from "./markInputChanges.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { warmVisitedPages } from "./visitedPagesWarm.js";
 
@@ -22,10 +20,9 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
  * - just after Chile midnight (the aggregation cache clears on day rollover because entries
  *   bake in "today" — the warm build performs that clear + rebuild instead of the first
  *   morning request);
- * - `PRAGMA data_version` change (another process wrote the DB, e.g. a CLI import — the
- *   aggregation cache would clear on next read; polled every minute);
- * - debounced in-process invalidations (panel edits / HTTP imports), so caches are warm
- *   again shortly after a write burst finishes.
+ * - debounced invalidations (panel edits, HTTP imports, market syncs, and another process's
+ *   writes, which the change log reports — polled every minute so a CLI import is noticed without
+ *   a request), so caches are warm again shortly after a write burst finishes.
  *
  * Not a live price change (2026-11-04): with Yahoo's stream a price moves every few seconds, and
  * rebuilding every page in both currencies each time built mostly what nobody was looking at.
@@ -41,7 +38,7 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
 
 const BOOT_DELAY_MS = 2_000;
 const INVALIDATION_DEBOUNCE_MS = 30_000;
-const DATA_VERSION_POLL_MS = 60_000;
+const CHANGE_LOG_POLL_MS = 60_000;
 /** Warm at 00:05 Chile — clear of midnight and of the 23:55 crypto-EOD sync window. */
 const MIDNIGHT_WARM_MINUTE = 5;
 
@@ -51,11 +48,6 @@ let rewarmQueued = false;
 /** Delay for the queued rewarm: the shortest asked for while the warm ran. */
 let rewarmQueuedDelayMs = INVALIDATION_DEBOUNCE_MS;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let lastWarmedDataVersion: number | null = null;
-
-function currentDataVersion(): number {
-  return db.pragma("data_version", { simple: true }) as number;
-}
 
 async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Promise<void> {
   if (warming) {
@@ -85,7 +77,6 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     const visited = await warmVisitedPages();
     const tRentabilidad = performance.now();
     const scopes = await warmRentabilidadDailySeries();
-    lastWarmedDataVersion = currentDataVersion();
     console.log(
       `cache-warm: dashboard caches warmed (${reason}) in ${(tBundles - t0).toFixed(0)}ms; ` +
         `${visited} visited page(s) in ${(tRentabilidad - tVisited).toFixed(0)}ms; ` +
@@ -131,16 +122,16 @@ const midnightJob = new ScheduledJob({
   },
 });
 
-/** Another process wrote the DB (a CLI import): its writes reach the caches only through `data_version`. */
-const dataVersionJob = new ScheduledJob({
-  name: "cache-warm:data-version",
+/**
+ * Another process wrote the DB (a CLI import): applying the change log drops what its writes
+ * reached and notifies the listener below, which schedules the rebuild.
+ */
+const changeLogJob = new ScheduledJob({
+  name: "cache-warm:change-log",
   enabled: () => serverConfig().cacheWarm,
-  next: (nowMs) => nextAlignedMs(nowMs, DATA_VERSION_POLL_MS),
+  next: (nowMs) => nextAlignedMs(nowMs, CHANGE_LOG_POLL_MS),
   run: async () => {
-    if (warming || debounceTimer != null) return "ok";
-    if (lastWarmedDataVersion != null && currentDataVersion() !== lastWarmedDataVersion) {
-      scheduleWarm("external-write", 5_000);
-    }
+    ensureCacheFresh();
     return "ok";
   },
 });
@@ -153,16 +144,13 @@ export function startDashboardCacheWarmer(): void {
   if (started) return;
   started = true;
 
-  // The mark-change log only needs to outlive the slowest reader's gap; older rows go.
-  const pruned = pruneMarkInputChanges();
-  if (pruned > 0) console.log(`cache-warm: pruned ${pruned} mark-input change rows older than 7 days`);
   setAggregationInvalidationListener((scope) => {
     // A live price change is rebuilt on demand (see the header).
     if (scope === "live_tail") return;
     scheduleWarm("invalidation");
   });
   midnightJob.start();
-  dataVersionJob.start();
+  changeLogJob.start();
 
   scheduleWarm("boot", BOOT_DELAY_MS);
 }

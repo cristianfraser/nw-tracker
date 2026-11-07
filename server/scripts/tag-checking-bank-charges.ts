@@ -20,7 +20,6 @@ import { db } from "../src/db.js";
 import { checkingMovementFlowKind } from "../src/checkingBankCharges.js";
 import {
   checkingMovementBalanceAtMonthEnd,
-  clearCheckingBalanceCache,
   getCheckingLedgerAnchor,
 } from "../src/checkingCartolaBalances.js";
 import { listMovementBalanceCashAccountIds } from "../src/movementBalanceCashAccounts.js";
@@ -41,7 +40,6 @@ type Row = MovementAmountFields & { id: number; account_id: number; occurred_on:
 function snapshot(accountIds: number[]): string {
   const out: Record<string, unknown> = {};
   for (const accountId of accountIds) {
-    clearCheckingBalanceCache(accountId);
     const months = (
       db
         .prepare(`SELECT period_month FROM checking_cartola_imports WHERE account_id = ? ORDER BY period_month`)

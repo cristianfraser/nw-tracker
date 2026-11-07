@@ -2,7 +2,7 @@ import type {
   BrokerNotificationsApplyDetails,
   BrokerNotificationsPayload,
 } from "nw-tracker-contracts";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { brokerNotificationIsBookable, racionalFetchDecision } from "./brokerNotifications.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { applyFintualEmailMovementsWithIds, planFintualEmailBatch } from "./fintualEmailImport.js";
@@ -22,13 +22,6 @@ import { applyBrokerSplitNotifications } from "./brokerSplitNotifications.js";
  * duplicate.
  */
 
-function invalidateWritten(rows: readonly { from_account_id: number | null; to_account_id: number | null; occurred_on: string }[]): void {
-  for (const p of rows) {
-    for (const accountId of [p.from_account_id, p.to_account_id]) {
-      if (accountId != null) invalidateAggregationForAccountDate(accountId, p.occurred_on);
-    }
-  }
-}
 
 /** Fintual: movements from mail, its dollar withdrawal requests and the wires that pay them. */
 function applyFintualNotifications(payload: BrokerNotificationsPayload): BrokerNotificationsApplyDetails {
@@ -37,7 +30,6 @@ function applyFintualNotifications(payload: BrokerNotificationsPayload): BrokerN
   const planned = planFintualEmailBatch(
     notifications.filter((n) => n.kind !== "withdrawal_requested" && n.kind !== "stock_split")
   );
-  const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
   let eventTimesStamped = 0;
   const applied = applyFintualEmailMovementsWithIds(planned);
   const written = applied.written;
@@ -50,7 +42,6 @@ function applyFintualNotifications(payload: BrokerNotificationsPayload): BrokerN
       eventTimesStamped += 1;
     }
   }
-  invalidateWritten(writable);
   const requests = notifications
     .filter((n) => n.kind === "withdrawal_requested" && brokerNotificationIsBookable(n))
     .map((n) => withdrawalRequestFromNotification(n, "fintual"));
@@ -80,9 +71,7 @@ function applyFintualNotifications(payload: BrokerNotificationsPayload): BrokerN
 function applyRacionalNotifications(payload: BrokerNotificationsPayload): BrokerNotificationsApplyDetails {
   const { broker, notifications } = payload;
   const planned = planRacionalEmailMovements(notifications);
-  const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
   const written = applyRacionalEmailMovements(planned).inserted;
-  invalidateWritten(writable);
   // A split notice records the split itself (`brokerSplitNotifications.ts`), not a movement.
   const splits = applyBrokerSplitNotifications(brokerAdapter(broker), notifications, true);
   return {

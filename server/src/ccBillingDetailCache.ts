@@ -1,7 +1,5 @@
-import {
-  cacheKeyCcBillingDetail,
-  getAggregationCached,
-} from "./aggregationCache.js";
+import { cacheKeyCcBillingDetail, cacheKeyCcBillingDetailBase } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import {
   buildBillingDetailByMonth,
   buildFacturacionesWithoutUsdRates,
@@ -59,11 +57,6 @@ export function billingDetailCacheForAccount(accountId: number): CcLedgerBilling
       facturaciones: withFacturacionUsdRates(accountId, base.facturaciones),
     } satisfies CcLedgerBillingBundle;
   });
-}
-
-/** Key of {@link billingDetailCacheForAccount}'s base part (a `<key>|` satellite: card writes drop it). */
-export function cacheKeyCcBillingDetailBase(accountId: number): string {
-  return `${cacheKeyCcBillingDetail(accountId)}|base`;
 }
 
 function billingDetailBaseForAccount(accountId: number): CcLedgerBillingBundle {

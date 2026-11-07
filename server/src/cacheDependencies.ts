@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
  * Which live inputs a cached aggregate read, so a live-quote tick drops only the aggregates that
- * read a price it moved (`invalidateMarketDataAggregations` in `aggregationCache.ts`).
+ * read a price it moved (`invalidateMarketDataAggregations` in `cacheRegistry.ts`).
  *
  * A live tick writes `live_market_quotes` only. Every reader of that table, and every gate that
  * decides whether to read it, reports here: an equity / crypto ticker

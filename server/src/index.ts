@@ -18,15 +18,7 @@ import { requestContext } from "./requestContext.js";
 import { demoOwnerCookieMiddleware, demoVisitLogMiddleware } from "./demoAnalytics.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
-import {
-  invalidateAccountDetailBundles,
-  invalidateCcLedgerResponses,
-  invalidateFlowsOverview,
-  invalidateGroupResponses,
-  invalidateKeysWithPrefix,
-  DASHBOARD_PAGE_BUNDLE_PREFIX,
-} from "./aggregationCache.js";
-import { DAILY_SERIES_RESPONSE_PREFIX } from "./groupDailySeriesResponse.js";
+import { ensureCacheFresh } from "./cacheRegistry.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
@@ -97,26 +89,13 @@ const jsonBody = express.json({ limit: "2mb" });
 // columns); the ingest routes take local connections only (`ingestAuth.ts`).
 const ingestJsonBody = express.json({ limit: "32mb" });
 app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBody : jsonBody)(req, res, next));
-// The flows overview reads nearly every table (income, expense lines and their categories, deposits),
-// and many of its writers (category / income / place edits) touch no aggregation funnel: any
-// write through the API drops it once the write has answered. The card ledgers and the account and
-// group page payloads too (labels, notes, card config and plan edits sit beside the billing funnel).
-// Not the beacon, nor the queue's and the run log's machine traffic (heartbeats every minute, claims,
-// run reports): `requestDropsResponseCaches` in `requestContext.ts`.
+// Once a request that can write has answered (a person's write, or the ingest service and the
+// deploy agent), apply the change log: the cache registry drops the families that read what the
+// request wrote and the warmer schedules a rebuild. A heartbeat, a claim or a run report writes
+// only the queue and the run log, which the log does not cover, so it drops nothing.
 app.use((req, res, next) => {
-  if (requestContext(req).dropsResponseCaches) {
-    res.on("finish", () => {
-      invalidateFlowsOverview({ inputs: true });
-      invalidateCcLedgerResponses();
-      invalidateAccountDetailBundles();
-      invalidateGroupResponses();
-      invalidateKeysWithPrefix(DAILY_SERIES_RESPONSE_PREFIX);
-      // The home bundle itself (not its account rows): «Próximos pagos» reads bill rows, declared
-      // payments and expense lines, which no aggregation funnel covers.
-      invalidateKeysWithPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}clp`);
-      invalidateKeysWithPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}usd`);
-    });
-  }
+  const { kind } = requestContext(req);
+  if (kind === "api-write" || kind === "machine") res.on("finish", ensureCacheFresh);
   next();
 });
 

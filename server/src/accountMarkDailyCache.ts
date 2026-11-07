@@ -5,16 +5,14 @@ import {
   type QtyMark,
 } from "./accountMarkClpAtYmd.js";
 import { accountValueAt } from "./accountValue.js";
-import { applyPendingMarkInputChanges, setRateIndependentAccountsResolver } from "./markInputChanges.js";
 import { accountHolding, isCardAccount } from "./holdings.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
-import { db } from "./db.js";
+import { ensureCacheFresh } from "./cacheRegistry.js";
 import {
   getMarkSeries,
   markSeriesKey,
   setMarkSeries,
-  type CachedMarkSeries,
-  type MarkSeriesCell,
+  type CachedMarkSeries as StoredMarkSeries,
 } from "./markSeriesStore.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { instrumentPriceKey, pastHoldingPriceLookup, type HoldingPrice } from "./holdingPrices.js";
@@ -22,7 +20,7 @@ import type { CurrencyCode } from "./rates.js";
 import { pastValueRateLookup } from "./valueConvert.js";
 
 /**
- * Per-account CLP mark series on the Chile calendar-day grid, cached so the daily views stop
+ * Per-account quantity series on the Chile calendar-day grid, cached so the daily views stop
  * re-walking evidence for every account × every day. Marks dominate a daily build (full
  * history ≈ 3.7k days × ~31 accounts), and the three daily consumers — the bucket series
  * (`dailySeries.ts`), the dashboard bucket totals (`portfolioGroupValueAtDate.ts`) and the
@@ -32,7 +30,7 @@ import { pastValueRateLookup } from "./valueConvert.js";
  * **Only days strictly before Chile today are cached.** Today's mark comes from the live
  * stack (fresh quotes, intraday fx) and would go stale within the 5-minute poll, so it is
  * always computed. That split is what lets a live-quote tick keep the whole cache: no
- * historical mark reads `live_market_quotes` (see `invalidateDailyAggregates`).
+ * historical mark reads `live_market_quotes` (`invalidateMarketDataAggregations` in `cacheRegistry.ts`).
  *
  * Entries live in their own store (`markSeriesStore.ts`), not the aggregation cache: a past
  * day's mark does not change when the calendar day does, so they survive the Chile day
@@ -49,22 +47,16 @@ import { pastValueRateLookup } from "./valueConvert.js";
  * that need `as_of_date` keep calling the mark function directly.
  */
 
-const stmtAllAccountIds = db.prepare(`SELECT id FROM accounts WHERE asset_group_id IS NOT NULL`);
-
 /**
- * Accounts whose stored quantity no rate row can move: shares, coins, cuotas, a ledger in a
+ * Whether no rate row can move the account's stored quantity: shares, coins, cuotas, a ledger in a
  * currency other than pesos. Every other quantity is a peso figure (a ledger, a book mark, and
  * until their own phases the card and the depto ledger), some of which read rates to build.
  */
-setRateIndependentAccountsResolver(() => {
-  const out = new Set<number>();
-  for (const { id } of stmtAllAccountIds.all() as { id: number }[]) {
-    const h = accountHolding(id);
-    if (h.kind === "stock" || h.kind === "coin" || h.kind === "fund") out.add(id);
-    else if (h.kind === "currency" && h.code !== "clp" && h.code !== "uf") out.add(id);
-  }
-  return out;
-});
+function rateIndependent(accountId: number): boolean {
+  const h = accountHolding(accountId);
+  if (h.kind === "stock" || h.kind === "coin" || h.kind === "fund") return true;
+  return h.kind === "currency" && h.code !== "clp" && h.code !== "uf";
+}
 
 export type MarkSeriesAccountRef = {
   account_id: number;
@@ -73,6 +65,14 @@ export type MarkSeriesAccountRef = {
   name?: string | null;
 };
 
+
+/**
+ * One day of a series: what the account held (a quantity and its asset — `QtyMark` without the
+ * evidence date). Values in a display unit are built from it at read, with the day's price and
+ * rate (`docs/holdings-currency-plan.md`), so a rate or price row never invalidates it.
+ */
+type MarkSeriesCell = Pick<QtyMark, "qty" | "asset">;
+type CachedMarkSeries = StoredMarkSeries<MarkSeriesCell>;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -259,10 +259,15 @@ function cachedSeriesCovering(
   endYmd: string
 ): CachedMarkSeries {
   const key = cacheKey(account);
-  let cached = getMarkSeries(key);
+  let cached = getMarkSeries<MarkSeriesCell>(key);
   const intern = internFor(cached);
   if (!cached) {
-    cached = { start_ymd: startYmd, end_ymd: endYmd, values: buildRange(account, startYmd, endYmd, intern) };
+    cached = {
+      start_ymd: startYmd,
+      end_ymd: endYmd,
+      values: buildRange(account, startYmd, endYmd, intern),
+      rate_independent: rateIndependent(account.account_id),
+    };
     setMarkSeries(key, cached);
   }
   assertSeriesAligned(cached, account);
@@ -280,6 +285,7 @@ function cachedSeriesCovering(
     start_ymd: needsPrefix ? startYmd : cached.start_ymd,
     end_ymd: needsSuffix ? endYmd : cached.end_ymd,
     values: [...prefix, ...cached.values, ...suffix],
+    rate_independent: cached.rate_independent,
   };
   assertSeriesAligned(extended, account);
   setMarkSeries(key, extended);
@@ -309,7 +315,7 @@ export function accountValueSeriesOnGrid(
   }
 
   // Trim whatever the database says changed since the last read before serving any of it.
-  applyPendingMarkInputChanges();
+  ensureCacheFresh();
   const today = chileCalendarTodayYmd();
   const out = new Array<number | null>(grid.length);
   const cacheableEnd = last < today ? last : chileCalendarAddDays(today, -1);

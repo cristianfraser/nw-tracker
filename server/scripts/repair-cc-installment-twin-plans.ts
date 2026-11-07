@@ -16,7 +16,7 @@
  */
 import path from "node:path";
 
-import { invalidateCcBillingDetail } from "../src/aggregationCache.js";
+
 import { ccBilledCuotasIdentity } from "./lib/ccBilledCuotasIdentity.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import {
@@ -95,7 +95,6 @@ function snapshot(accountId: number): Snapshot {
     .all(accountId) as { as_of_date: string; value: number }[]) {
     valuations.set(v.as_of_date, v.value);
   }
-  invalidateCcBillingDetail(accountId);
   const unexplainedByMonth = new Map(
     ccBilledCuotasIdentity(accountId).map((m) => [m.billing_month, m.unexplained_clp] as const)
   );

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { expandSnapshotDatesForCryptoMtm, requireCryptoMtmClp } from "./cryptoValuation.js";
 import { db } from "./db.js";
 

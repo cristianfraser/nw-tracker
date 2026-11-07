@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { getBucketDailySeries } from "./dailySeries.js";
 import { db } from "./db.js";
 import type { ShortHorizonAccountRef } from "./periodReturnsShortHorizon.js";

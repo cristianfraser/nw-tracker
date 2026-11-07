@@ -23,7 +23,7 @@
  */
 import { db } from "../src/db.js";
 import { checkingAccountId } from "../src/checkingCartolaImport.js";
-import { invalidateAggregationForAccountDate } from "../src/aggregationCache.js";
+
 
 function arg(name: string): string | undefined {
   const p = `--${name}=`;
@@ -109,8 +109,6 @@ const changed = db
   .run(checkingId, note, movementId, row.from_account_id, checkingId).changes;
 if (changed !== 1) throw new Error(`expected to rewrite exactly one row, changed ${changed}`);
 
-invalidateAggregationForAccountDate(checkingId, row.occurred_on);
-invalidateAggregationForAccountDate(goal.id, row.occurred_on);
 
 const after = db.prepare(`SELECT * FROM movements WHERE id = ?`).get(movementId) as Row;
 console.log(

@@ -1,9 +1,5 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import {
-  aggregationCacheKeysForTest,
-  clearAggregationCache,
-  invalidateMarketDataAggregations,
-} from "./aggregationCache.js";
+import { aggregationCacheKeysForTest, clearAggregationCache, invalidateMarketDataAggregations } from "./cacheRegistry.js";
 import type { LiveQuoteMoves } from "./cacheDependencies.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";

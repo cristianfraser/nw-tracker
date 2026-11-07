@@ -15,8 +15,8 @@
  * month finds the transfer by it, and the cartola month-end check reads it.
  */
 import { recordBankPosting } from "./movementBankPostings.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
+
 import { db } from "./db.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairRef } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
@@ -154,16 +154,7 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
     return converted;
   });
 
-  const converted = run(pairs);
-  for (const c of converted) {
-    // Invalidation clears forward months from the earliest touched date, covering both legs'
-    // original months and the transfer date.
-    clearCheckingBalanceCache(c.from_account_id);
-    clearCheckingBalanceCache(c.to_account_id);
-    invalidateAggregationForAccountDate(c.from_account_id, c.earliest_affected_on);
-    invalidateAggregationForAccountDate(c.to_account_id, c.earliest_affected_on);
-  }
-  return { converted };
+  return { converted: run(pairs) };
 }
 
 /**
@@ -225,9 +216,6 @@ export function undoMirrorConversion(transferMovementId: number): {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
       return { restored_out_id: outId, restored_in_id: outId };
     })();
-    clearCheckingBalanceCache(row.from_account_id!);
-    invalidateAggregationForAccountDate(row.from_account_id!, merge.out_occurred_on);
-    invalidateAggregationForAccountDate(row.to_account_id!, merge.out_occurred_on);
     return restored;
   }
   const data = {
@@ -264,14 +252,7 @@ export function undoMirrorConversion(transferMovementId: number): {
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
     return { restored_out_id: outId, restored_in_id: inId };
   });
-  const restored = run();
-  const earliest =
-    data.out.occurred_on < data.in.occurred_on ? data.out.occurred_on : data.in.occurred_on;
-  clearCheckingBalanceCache(fromId);
-  clearCheckingBalanceCache(toId);
-  invalidateAggregationForAccountDate(fromId, earliest);
-  invalidateAggregationForAccountDate(toId, earliest);
-  return restored;
+  return run();
 }
 
 /** Persists rejections; both ids must be existing single-leg rows (fail fast on anything else). */

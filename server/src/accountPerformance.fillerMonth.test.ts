@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 
 const IMPORT_KEY = "vitest-perf-filler-month";

@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import { db } from "../src/db.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../src/ccPaymentMirrors.js";
-import { clearAggregationCache } from "../src/aggregationCache.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
 
 type Payment = { date: string; usd: number; debit_id: number | null };
 type Header = { saldo_anterior: number; abono: number; compras_cargos: number; deuda_total: number };

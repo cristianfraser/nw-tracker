@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { mergeCcAccountFromParsedRows, replaceStatementKeysFromRecords } from "./ccInstallmentLedgerMerge.js";
 import { ccPaymentPairingsWithoutEvidence, listCcPaymentPairings } from "./ccPaymentMirrorEvidence.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";

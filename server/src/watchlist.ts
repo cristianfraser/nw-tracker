@@ -1,5 +1,5 @@
 import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
-import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { invalidateMarketDataAggregations } from "./cacheRegistry.js";
 import { listBenchmarkEquityTickers } from "./benchmarkLevels.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";

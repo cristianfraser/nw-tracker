@@ -36,7 +36,7 @@ import {
   ccPaymentPairingIdsWithEvidence,
 } from "../src/ccPaymentMirrorEvidence.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import { clearAggregationCache } from "../src/aggregationCache.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
 
 const apply = process.argv.includes("--apply");
 const csvArg = process.argv.find((a) => a.startsWith("--csv="))?.slice("--csv=".length);

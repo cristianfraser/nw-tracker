@@ -14,7 +14,7 @@
  *   npx tsx scripts/repair-racional-dividend-net-amounts.ts [--apply]
  */
 import { db } from "../../src/db.js";
-import { invalidateAggregationForAccountDate } from "../../src/aggregationCache.js";
+
 
 const FIXES = [
   { id: 12230, from: 2.75, to: 2.34 },
@@ -61,7 +61,6 @@ db.transaction(() => {
 for (const fix of FIXES) {
   const row = stmt.get(fix.id) as Row;
   for (const accountId of [row.from_account_id, row.to_account_id]) {
-    if (accountId != null) invalidateAggregationForAccountDate(accountId, row.occurred_on);
   }
 }
 console.log(`\nUpdated ${changed} movement(s).`);

@@ -34,9 +34,9 @@ import { db } from "./db.js";
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { IngestConflict } from "./ingestReceiver.js";
-import { commitMortgagePayment, deptoMortgageAccountId, deptoPropertyAccountId } from "./mortgagePaymentCreate.js";
+import { commitMortgagePayment, deptoMortgageAccountId } from "./mortgagePaymentCreate.js";
 import { computeMortgagePaymentRow } from "./mortgagePaymentCompute.js";
 import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 
@@ -221,21 +221,15 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
       details.rows.filter((x) => x.status === "checked").length
     );
   });
+  // The ledger is re-read inside the transaction after each write (the next row's compute needs
+  // it); what was cached inside it, rows a rollback takes back included, is dropped when the
+  // transaction ends (`cacheRegistry.ts`; 2026-10-11: a report-mode run followed by the live apply
+  // read cuota 32 as stored and wrote nothing).
   try {
     run();
   } catch (e) {
     for (const w of written) w.mortgage_movement_id = null;
     throw e;
-  } finally {
-    // The ledger was re-read inside the transaction after each write (the next row's compute
-    // needs it), so the memo holds rows a rollback took back — and max_uf fills the DB no
-    // longer has. Drop everything built on it, whatever the outcome (2026-10-11: a report-mode
-    // run followed by the live apply read cuota 32 as stored and wrote nothing).
-    if (written.length > 0 || details.rows.some((r) => r.filled.length > 0)) {
-      const earliest = details.rows.reduce((d, r) => (d == null || r.paid_on < d ? r.paid_on : d), null as string | null)!;
-      invalidateAggregationForAccountDate(mortgageId, earliest);
-      invalidateAggregationForAccountDate(deptoPropertyAccountId(), earliest);
-    }
   }
   return details;
 }

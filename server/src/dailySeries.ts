@@ -1,6 +1,7 @@
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
-import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./aggregationCache.js";
+import { cacheKeyDailySeries } from "./cacheFamilies.js";
+import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./cacheRegistry.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { ccFinancingCostByDateInUnit } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
@@ -807,8 +808,8 @@ export function groupDailySeriesAccounts(
 /**
  * Aggregation-cached build (always the real clock — an explicit `now` would poison entries).
  * `scopeKey` names the bucket (portfolio group slug, `account:<id>`, …); the account-id
- * fingerprint guards membership changes within a scope. Entries drop on any account/CC write
- * or market-data tick (`invalidateDailySeries` in `aggregationCache.ts`) and at day rollover.
+ * fingerprint guards membership changes within a scope. The `daily_series` cache family
+ * (`cacheFamilies.ts`): dropped on any valuation write, market-data notice and at day rollover.
  */
 export function getBucketDailySeriesCached(
   scopeKey: string,
@@ -816,6 +817,6 @@ export function getBucketDailySeriesCached(
   opts: { unit: TsUnit; days: number; includeAccounts?: boolean }
 ): BucketDailySeries {
   const rowsKey = accounts.map((a) => a.account_id).join(",");
-  const key = `daily.series|${scopeKey}|${opts.unit}|${opts.days}|${opts.includeAccounts ? "acc" : "sum"}|${rowsKey}`;
+  const key = cacheKeyDailySeries(`${scopeKey}|${opts.unit}|${opts.days}|${opts.includeAccounts ? "acc" : "sum"}|${rowsKey}`);
   return getAggregationCached(key, () => getBucketDailySeries(accounts, opts));
 }

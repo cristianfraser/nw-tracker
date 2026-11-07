@@ -1,13 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
-import {
-  getGroupConsolidatedMonthlyPerfForRows,
-  getGroupConsolidationAccountMonthly,
-  monthlyPerfForAccountId,
-  type GroupTabAccountRow,
-} from "./groupMonthlyPerfConsolidation.js";
+import { getGroupConsolidatedMonthlyPerfForRows, getGroupConsolidationAccountMonthly, monthlyPerfForAccountId, type GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
 
 /**
  * Synthetic fixtures only: a Fintual-certificate-like account (identified by its `import_key`,

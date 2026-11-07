@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import * as todayValue from "./accountTodayValue.js";

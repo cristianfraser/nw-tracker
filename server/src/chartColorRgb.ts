@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 
 export function parseRgbTriplet(raw: string | null | undefined): [number, number, number] | null {
@@ -80,8 +81,6 @@ const groupItemsStmt = db.prepare(
    ORDER BY sort_order, id`
 );
 
-const resolvedGroupColorCache = new Map<number, string>();
-
 const FALLBACK_GROUP_COLOR = "148,163,184";
 
 function accountBalanceClp(accountId: number): number {
@@ -152,10 +151,7 @@ function resolvePortfolioGroupColorRgbInner(groupId: number, visiting: Set<numbe
     .get(groupId) as PortfolioGroupRow | undefined;
   if (!group) return FALLBACK_GROUP_COLOR;
 
-  if (group.color_rgb) {
-    resolvedGroupColorCache.set(groupId, group.color_rgb);
-    return group.color_rgb;
-  }
+  if (group.color_rgb) return group.color_rgb;
 
   return groupColorFromLargestBalanceChild(groupId, visiting);
 }
@@ -178,14 +174,12 @@ export function colorRgbOfLargestBalanceAccount(accountIds: readonly number[]): 
   return bestColor;
 }
 
-/** Explicit group color, else color of the child group/account with the largest total balance (recursive). */
+/**
+ * Explicit group color, else color of the child group/account with the largest total balance
+ * (recursive). Memoized as database state (`dbStateMemo.ts`): a balance or colour write drops it.
+ */
 export function resolvePortfolioGroupColorRgb(groupId: number): string {
-  const cached = resolvedGroupColorCache.get(groupId);
-  if (cached) return cached;
-
-  const resolved = resolvePortfolioGroupColorRgbInner(groupId, new Set());
-  resolvedGroupColorCache.set(groupId, resolved);
-  return resolved;
+  return dbStateMemo("portfolio_group_color", groupId, () => resolvePortfolioGroupColorRgbInner(groupId, new Set()));
 }
 
 export function resolvePortfolioGroupColorRgbBySlug(slug: string): string | null {
@@ -220,10 +214,6 @@ export function syntheticGroupColorRgbMapForValuationGroup(groupSlug: string): R
   }
 
   return out;
-}
-
-export function clearPortfolioGroupColorCache(): void {
-  resolvedGroupColorCache.clear();
 }
 
 /** Attach `color_rgb` to valuation / timeseries account lines (positive account ids only). */

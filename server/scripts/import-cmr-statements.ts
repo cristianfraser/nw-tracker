@@ -42,8 +42,8 @@ import { assignFlowExpenseLineCategory } from "../src/assignFlowExpenseLineCateg
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";
 import { FLOW_KIND_CARGA_TARJETA } from "../src/movementFlowType.js";
 import { seedLiabilitiesTree } from "../src/seedLiabilitiesTree.js";
-import { clearAggregationCache } from "../src/aggregationCache.js";
-import { clearCheckingBalanceCache } from "../src/checkingCartolaBalances.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
+
 import { ccMasterImportKeyPrefix } from "../src/ccIssuers.js";
 
 type Plan = {
@@ -291,7 +291,6 @@ const tx = db.transaction(() => {
 
   // 7. Derived state.
   seedLiabilitiesTree();
-  clearCheckingBalanceCache();
   // The card's balance on a day is the running sum of its lines: the statements chain from 0 with
   // nothing missing, and CMR's payments settle the same period's purchases, which the billing
   // detail (built for cards whose payments settle the previous facturación, and for plans) does not

@@ -1,4 +1,4 @@
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import {
   ensureBidAskForPaymentDate,

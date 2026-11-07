@@ -1,4 +1,5 @@
-import { getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyNetWorthAth } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { chileCalendarDaysListEndingAt, totalRangeDays } from "./dailySeries.js";
 import { ufClpByDateRange, ufRowOnOrBefore } from "./fxRates.js";
@@ -110,13 +111,13 @@ function netWorthInUnitByDay(
 }
 
 /**
- * Cached under the `daily.overview|` prefix on purpose: it is a daily aggregation over the
- * per-account mark series, so it must drop whenever those aggregations drop — the live-quote
- * tick's `live_tail` scope (today's live point can set a new high) and every historical
- * invalidation — while riding the cached marks (a warm rebuild is a Σ over cached rows).
+ * The `net_worth_ath` cache family: a daily aggregation over the per-account mark series, dropped
+ * with them — the live-quote tick's `live_tail` scope (today's live point can set a new high) and
+ * every historical invalidation — while riding the cached marks (a warm rebuild is a Σ over
+ * cached rows).
  */
 export function getNetWorthAllTimeHigh(unit: TsUnit): NetWorthAthDto | null {
-  return getAggregationCached(`daily.overview|ath|${unit}`, () => {
+  return getAggregationCached(cacheKeyNetWorthAth(unit), () => {
     const endYmd = chileCalendarTodayYmd();
     const grid = chileCalendarDaysListEndingAt(endYmd, totalRangeDays(endYmd));
     return pickAllTimeHigh(netWorthInUnitByDay(grid, unit));

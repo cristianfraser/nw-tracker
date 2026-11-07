@@ -30,8 +30,8 @@ import { listCreditCardMasterAccountIds } from "../../src/creditCardTree.js";
 import { accountIdsUnderCheckingAccounts } from "../../src/movementBalanceCashAccounts.js";
 import { CC_PAYMENT_DESC_RE } from "../../src/checkingDescriptionPredicates.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../../src/ccPaymentMirrors.js";
-import { checkingMovementBalanceAtMonthEnd, clearCheckingBalanceCache } from "../../src/checkingCartolaBalances.js";
-import { clearAggregationCache } from "../../src/aggregationCache.js";
+import { checkingMovementBalanceAtMonthEnd } from "../../src/checkingCartolaBalances.js";
+import { clearAggregationCache } from "../../src/cacheRegistry.js";
 
 const apply = process.argv.includes("--apply");
 const LINEA_RE = /A\s+L[IÍ]NEA\s+CR[EÉ]DITO/i;
@@ -65,7 +65,6 @@ function exactSubset<T extends { clp: number }>(items: T[], target: number): T[]
 function checkingMonthsOff(): string[] {
   const off: string[] = [];
   for (const acc of accountIdsUnderCheckingAccounts()) {
-    clearCheckingBalanceCache(acc);
     const rows = db
       .prepare(`SELECT period_month, saldo_final_clp FROM checking_cartola_imports WHERE account_id = ?`)
       .all(acc) as { period_month: string; saldo_final_clp: number }[];

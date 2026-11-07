@@ -3,7 +3,6 @@ import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { accountUsesUsdCashFlowKinds } from "./accountUsdCashFlows.js";
 import { assetGroupBySlug, ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { isClpCashKindSlug } from "./clpCashAccounts.js";
-import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "./panelAccountNotes.js";
@@ -196,7 +195,6 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
   });
   tx();
 
-  clearAggregationCache();
   seedNavTree();
   reseedAccountSyncSources(accountId);
 
@@ -324,7 +322,6 @@ export function updatePanelAccount(
     accountId
   );
 
-  clearAggregationCache();
   if (movedBucket) seedNavTree();
 
   return {

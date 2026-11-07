@@ -6,7 +6,7 @@ import { accountRowForId } from "../accountRowForMovement.js";
 import { validateMovementCreate } from "../movementUnitsPolicy.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
 import { db } from "../db.js";
-import { clearAggregationCache, invalidateAggregationForAccountDate } from "../aggregationCache.js";
+import { clearAggregationCache } from "../cacheRegistry.js";
 import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLegReconcile.js";
 import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { isFiniteNumber, isYmdString } from "../requestValidation.js";
@@ -48,8 +48,6 @@ app.post("/api/accounts/:id/movements", (req, res) => {
         validated.flow_kind
       );
     const id = Number(r.lastInsertRowid);
-    invalidateAggregationForAccountDate(validated.from_account_id, validated.occurred_on);
-    invalidateAggregationForAccountDate(validated.to_account_id, validated.occurred_on);
     // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
     // Checking rows are CLP; a non-CLP transfer has no CLP leg to supersede.
     const superseded =
@@ -88,7 +86,6 @@ app.post("/api/accounts/:id/movements", (req, res) => {
         validated.units_delta,
         validated.flow_kind
       );
-    invalidateAggregationForAccountDate(accountId, validated.occurred_on);
     res.status(201).json({
       id: Number(r.lastInsertRowid),
       units_delta: validated.units_delta,
@@ -106,7 +103,6 @@ app.post("/api/accounts/:id/movements", (req, res) => {
   if (!isCheckingLedgerAnchorNote(note)) {
     maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
   }
-  invalidateAggregationForAccountDate(accountId, occurred_on);
   res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
 });
 
@@ -148,7 +144,6 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
     `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')
      ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value, currency = excluded.currency`
   ).run(accountId, as_of_date, value_clp);
-  invalidateAggregationForAccountDate(accountId, as_of_date);
   res.json({ ok: true });
 });
 

@@ -2,12 +2,12 @@
  * VALUES converted between currencies (`docs/holdings-currency-plan.md`): a quantity of what an
  * account holds turned into a display unit once, at the side of the spread that closes it
  * (`rates.ts`). A day before Chile today reads the stored rate, which is kept per (pair, side,
- * day) in the history tier (`aggregationCache.ts`; every rate table is a mark input, so a write
+ * day) in the history tier (`cacheRegistry.ts`; every rate table is a mark input, so a write
  * drops the tier); today and later read `convertCurrency` directly (the live rate).
  *
  * Flows never come here: they keep their own per-event rule (`flowEventInUnit`, `convertTs`).
  */
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { convertCurrency, type ConvertSide, type CurrencyCode } from "./rates.js";
 

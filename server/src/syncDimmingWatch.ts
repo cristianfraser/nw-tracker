@@ -1,6 +1,5 @@
-import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { publishLiveInputChange } from "./cacheRegistry.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
-import { noteLiveQuotesChanged } from "./liveQuotesStamp.js";
 
 /**
  * Drops the cached figures that read the dashboard's sync dimming (`noteSyncDimmingRead`) when the
@@ -16,11 +15,8 @@ export function checkSyncDimmingChanged(): boolean {
   const dimmed = [...syncStatusPayload().stale_dimming].sort().join(",");
   const changed = lastDimmed != null && dimmed !== lastDimmed;
   lastDimmed = dimmed;
-  if (changed) {
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(), fx: false, syncDimming: true });
-    // The stamp tells the browser the dimming changed; it refetches what read it.
-    noteLiveQuotesChanged(new Date().toISOString(), { dimming: true });
-  }
+  // Drops what read the dimming; the stamp tells the browser, which refetches what read it.
+  if (changed) publishLiveInputChange(new Date().toISOString(), { dimming: true });
   return changed;
 }
 

@@ -1,4 +1,4 @@
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
@@ -70,11 +70,11 @@ export function ccStatementRowCount(accountId: number): number {
 }
 
 /**
- * A card's statements, newest first. Memoized in the history tier (`aggregationCache.ts`): the
+ * A card's statements, newest first. Memoized in the history tier (`cacheRegistry.ts`): the
  * billing views ask for the same card's list thousands of times per build, and a live-quote tick
  * that drops a card's billing detail (its unpaid dollars price at the live rate) must not re-read
- * them. Every write to `cc_statements` drops the tier (the mark-input log, the card write funnel,
- * `data_version`). Frozen: callers share the rows.
+ * them. Every write to `cc_statements` drops the tier (the change log). Frozen: callers share the
+ * rows.
  */
 export function listCcStatementsForAccount(accountId: number): readonly CcStatementRow[] {
   const memo = historyTierMemo<number, readonly CcStatementRow[]>("cc_statements_by_account");

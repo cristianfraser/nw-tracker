@@ -1,6 +1,6 @@
 import type { BankAccountMovement, UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
+
 import { claimTransferLegForBankRow, findMatchingUsdTransferLegId } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { createImportBatch } from "./importBatches.js";
@@ -51,8 +51,6 @@ export function confirmUsdAccountMovements(
       unexplained_flows.push({ occurred_on: mv.date, description: mv.description, amount: mv.amount });
     }
   })();
-  clearCheckingBalanceCache(accountId);
-  if (earliestConfirmed !== null) invalidateAggregationForAccountDate(accountId, earliestConfirmed);
   const batch_id = createImportBatch("usd_account_feed", sourceRef, {
     format: "current_account_transactions",
     confirmed: confirmed_flows.length,

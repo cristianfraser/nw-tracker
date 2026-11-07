@@ -21,7 +21,7 @@
  * that later prints the real PAGO settles the planted bucket line like any pasted one.
  */
 import { importCcWebPasteLines } from "./accountImports.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
@@ -300,7 +300,6 @@ export function applyFacturadoFinancingLinks(): FacturadoFinancingApplyResult | 
           raw_text: `${ddMmYyyyFromIso(m.paid_on)} PAGO (cuotas en otra tarjeta) ${m.facturado_clp}`,
         });
         importCcWebPasteLines(m.financed_account_id, { lines: [line], errors: [] }, "cc_financing_payment");
-        invalidateCcBillingDetail(m.financed_account_id);
         result.payments_planted.push({
           financed_account_id: m.financed_account_id,
           paid_on: m.paid_on,

@@ -20,7 +20,7 @@ import { db } from "../src/db.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../src/ccPaymentMirrors.js";
 import { accountIdsUnderCheckingAccounts } from "../src/movementBalanceCashAccounts.js";
-import { clearAggregationCache } from "../src/aggregationCache.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
 
 const apply = process.argv.includes("--apply");
 const FX_MIN = 300;

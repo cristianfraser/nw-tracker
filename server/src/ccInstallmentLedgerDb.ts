@@ -1,4 +1,4 @@
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { sortActivePurchases, sortCuotaLinesInActiveOrder } from "./ccActivePurchaseOrder.js";
 import {
@@ -907,7 +907,7 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
 
 /**
  * Ledger-backed cancelled purchases (NOTA DE CREDITO match with month window). Asked once per
- * expense line, and read from card tables only, so kept in the history tier (`aggregationCache.ts`).
+ * expense line, and read from card tables only, so kept in the history tier (`cacheRegistry.ts`).
  */
 export function cancelledInstallmentPurchaseIdsForAccount(accountId: number): Set<number> {
   const memo = historyTierMemo<number, Set<number>>("cancelled_installment_purchase_ids");

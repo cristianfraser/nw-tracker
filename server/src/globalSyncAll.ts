@@ -1,5 +1,5 @@
 import { assertValuationCurrency } from "./valuationValue.js";
-import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { invalidateMarketDataAggregations } from "./cacheRegistry.js";
 /**
  * Orchestrates external syncs with Chile-time rules:
  * - AFP UNO (Fondo A): the Superintendencia's official valor cuota, day D's value due from 19:00 Chile
@@ -1377,8 +1377,8 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     console.error(`sync:all — fatal: ${message}`);
     stepErrors.push({ step: "sync:all", message });
   } finally {
-    // Same-connection sync writes (fund units, EOD closes, fx/UF rows) bypass `data_version`,
-    // so cached aggregations would keep serving pre-sync marks until day rollover.
+    // The rows the sync wrote are in the change log; the notice drops the market families in the
+    // same step (and covers what no table holds).
     if (!syncDryRun && syncChanges.length > 0) invalidateMarketDataAggregations();
     insertSyncRunLog(staleAtStart, syncChanges, syncDryRun, {
       ...logOpts,

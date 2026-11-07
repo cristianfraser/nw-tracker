@@ -4,7 +4,7 @@
  * each holder's `stock_split` row, so the first post-split price is never valued against the old
  * share count. A split dated after Chile today waits for its ex-date.
  */
-import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { invalidateMarketDataAggregations } from "./cacheRegistry.js";
 import { chileWallClockAt } from "./chileDate.js";
 import type { YahooSplit } from "./equityYahooEod.js";
 import { recordEquitySplit } from "./equitySplits.js";

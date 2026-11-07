@@ -19,7 +19,7 @@
 import { normalizeAccountNumber, normalizeRut } from "nw-tracker-contracts";
 import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { storeOnce } from "./ingestReceiver.js";
@@ -422,7 +422,6 @@ function writeMovementsFromMails(
             Number(insTransfer.run(mv.from_account_id, mv.to_account_id, mv.amount, day, note).lastInsertRowid),
           ];
     insRecord.run(n.message_id, movementId, account, signed, day);
-    for (const a of mv.kind === "single" ? [mv.account_id] : [mv.from_account_id, mv.to_account_id]) clearCheckingBalanceCache(a);
     out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: signed });
   }
   return out;

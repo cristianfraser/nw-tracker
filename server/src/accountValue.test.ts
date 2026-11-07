@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { accountHoldingQtyAt, accountValueAt } from "./accountValue.js";
 import { holdingPriceAt } from "./holdingPrices.js";

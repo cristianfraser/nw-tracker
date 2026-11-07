@@ -1,12 +1,13 @@
 import { cacheDepNodeReadsLiveInput, newCacheDepNode, runInCacheDepNode } from "./cacheDependencies.js";
+import { cacheEpoch, ensureCacheFresh } from "./cacheRegistry.js";
 import { dbInTransaction } from "./db.js";
 import { dbWriteCount } from "./dbWriteCounter.js";
 
 /**
  * Memos of results that are a function of the database alone — an account's kind or ticker, the
  * nav tree — asked thousands of times per rebuild. An entry lives until this connection writes
- * anything (`dbWriteCount`), another connection commits or the Chile day turns (the aggregation
- * cache's freshness check, which clears these with its own entries). Inside a transaction
+ * anything (`dbWriteCount`), the change log reports another connection's write or the Chile day
+ * turns (the cache registry's freshness check bumps its epoch, `cacheEpoch`). Inside a transaction
  * nothing is memoized: a rollback undoes writes without a new write to notice.
  *
  * A build may read no live input (a quote, the live dollar, or a gate deciding whether to read
@@ -15,16 +16,7 @@ import { dbWriteCount } from "./dbWriteCounter.js";
  */
 const memos = new Map<string, Map<unknown, unknown>>();
 let memoWriteCount = -1;
-let freshnessCheck: (() => void) | null = null;
-
-/** Set once by aggregationCache.ts: runs its freshness check (which clears these on a change). */
-export function setDbStateMemoFreshnessCheck(check: () => void): void {
-  freshnessCheck = check;
-}
-
-export function clearDbStateMemos(): void {
-  memos.clear();
-}
+let memoEpoch = -1;
 
 function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
@@ -38,12 +30,13 @@ function deepFreeze<T>(value: T): T {
 }
 
 export function dbStateMemo<K, V>(name: string, key: K, build: () => V): V {
-  if (freshnessCheck == null || dbInTransaction()) return build();
-  freshnessCheck();
+  if (dbInTransaction()) return build();
+  ensureCacheFresh();
   const writes = dbWriteCount();
-  if (writes !== memoWriteCount) {
+  if (writes !== memoWriteCount || cacheEpoch() !== memoEpoch) {
     memos.clear();
     memoWriteCount = writes;
+    memoEpoch = cacheEpoch();
   }
   let map = memos.get(name);
   if (!map) {

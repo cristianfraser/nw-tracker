@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requestDropsResponseCaches, requestKind } from "./requestContext.js";
+import { requestKind } from "./requestContext.js";
 
 describe("requestKind", () => {
   it.each([
@@ -23,24 +23,5 @@ describe("requestKind", () => {
     ["GET", "/apix", "other"],
   ] as const)("%s %s → %s", (method, path, kind) => {
     expect(requestKind(method, path)).toBe(kind);
-  });
-});
-
-describe("requestDropsResponseCaches", () => {
-  it.each([
-    ["POST", "/api/flows/expenses/manual", true],
-    ["PATCH", "/api/messages/3/read", true],
-    ["POST", "/api/ingest/utility.bill", true],
-    ["POST", "/api/ingest/tasks/cc_payment_mirrors", true],
-    ["POST", "/api/ingest/runs/12/complete", false],
-    ["POST", "/api/jobs/7/heartbeat", false],
-    ["POST", "/api/jobs/claim", false],
-    ["POST", "/api/jobs/7/complete", false],
-    ["POST", "/api/jobs", false],
-    ["POST", "/api/usage/page-view", false],
-    ["GET", "/api/dashboard/page-bundle", false],
-    ["GET", "/api/ingest/kinds", false],
-  ] as const)("%s %s → %s", (method, path, drops) => {
-    expect(requestDropsResponseCaches(method, path)).toBe(drops);
   });
 });

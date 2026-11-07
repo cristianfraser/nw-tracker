@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";

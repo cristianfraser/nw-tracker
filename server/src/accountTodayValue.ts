@@ -32,7 +32,7 @@ import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
-import { liveTierCached } from "./aggregationCache.js";
+import { liveTierCached } from "./cacheRegistry.js";
 import {
   latestCreditCardDisplayedBalance,
   latestDisplayedBalanceForAccount,
@@ -217,7 +217,7 @@ export function accountTodayValue(
   const importKey = opts?.import_key !== undefined ? opts.import_key : row?.import_key ?? null;
   const name = opts?.name !== undefined ? opts.name : row?.name ?? null;
   // Asked by every reader of today (rows, perf rows, daily points, bucket totals): computed once
-  // per live tier (`aggregationCache.ts`) on the real clock, unless the caller hands its own
+  // per live tier (`cacheRegistry.ts`) on the real clock, unless the caller hands its own
   // position (then the figure is built from it).
   if (now === undefined && opts?.positionMeta === undefined) {
     const key = `${accountId}|${slug}|${importKey ?? ""}|${name ?? ""}`;

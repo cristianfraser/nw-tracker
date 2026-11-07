@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCcWebPasteLines } from "./accountImports.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";

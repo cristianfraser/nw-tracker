@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
-import {
-  ccTraspasoLinkedClpByUsdLineId,
-  computeCcTraspasoDeudaPairsForAccount,
-  relinkCcTraspasoDeudaLinksForAccount,
-} from "./ccTraspasoDeudaLinks.js";
+import { ccTraspasoLinkedClpByUsdLineId, computeCcTraspasoDeudaPairsForAccount, relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { db } from "./db.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -25,7 +20,6 @@ describe("ccTraspasoDeudaLinks", () => {
     }
     if (fixtureAccountId != null) {
       db.prepare(`DELETE FROM cc_traspaso_deuda_links WHERE account_id = ?`).run(fixtureAccountId);
-      invalidateCcBillingDetail(fixtureAccountId);
       fixtureAccountId = null;
     }
   });

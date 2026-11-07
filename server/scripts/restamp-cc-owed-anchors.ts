@@ -25,7 +25,7 @@ import {
   writeCcOwedAnchor,
 } from "../src/ccCreditCardValuations.js";
 import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
-import { invalidateCcBillingDetail } from "../src/aggregationCache.js";
+
 
 const apply = process.argv.includes("--apply");
 
@@ -64,7 +64,6 @@ try {
         console.log(`#${a.id} ${a.name}: no plan ledger — CLP rows stay the walk's anchors`);
         continue;
       }
-      invalidateCcBillingDetail(a.id);
       const before = new Map(
         (
           db.prepare(`SELECT as_of_date, value FROM valuations WHERE account_id = ?`).all(a.id) as {

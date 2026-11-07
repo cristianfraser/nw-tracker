@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountRowForId } from "./accountRowForMovement.js";
@@ -182,8 +182,6 @@ export function commitMortgagePayment(
   });
 
   const result = tx();
-  invalidateAggregationForAccountDate(mortgageId, occurred_on);
-  invalidateAggregationForAccountDate(propertyId, occurred_on);
   return result;
 }
 

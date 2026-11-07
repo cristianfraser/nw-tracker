@@ -40,7 +40,7 @@ import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import { ccOriginAmountCsvCell } from "./ccOriginCurrency.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import crypto from "node:crypto";
 import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
 
@@ -412,5 +412,4 @@ export function fillStatementNextPeriodTo(
      WHERE account_id = ? AND statement_date = ? AND currency = ? AND next_period_to IS NULL
        AND source_pdf NOT LIKE 'import:web-paste%'`
   ).run(padCcStatementDate(nextClose), accountId, padCcStatementDate(statementDate), currency);
-  invalidateCcBillingDetail(accountId);
 }

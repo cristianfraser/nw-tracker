@@ -28,8 +28,8 @@
  */
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { recordBankPosting } from "./movementBankPostings.js";
-import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
+
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import { CC_PAYMENT_DESC_RE } from "./checkingDescriptionPredicates.js";
 import {
@@ -373,16 +373,5 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
     return converted;
   });
 
-  const converted = run(refs);
-  for (const c of converted) {
-    const merge = db
-      .prepare(`SELECT out_occurred_on FROM movement_mirror_merges WHERE transfer_movement_id = ?`)
-      .get(c.transfer_movement_id) as { out_occurred_on: string };
-    const earliest = merge.out_occurred_on < c.occurred_on ? merge.out_occurred_on : c.occurred_on;
-    clearCheckingBalanceCache(c.from_account_id);
-    invalidateAggregationForAccountDate(c.from_account_id, earliest);
-    invalidateAggregationForAccountDate(c.to_account_id, earliest);
-    invalidateCcBillingDetail(c.to_account_id);
-  }
-  return { converted };
+  return { converted: run(refs) };
 }

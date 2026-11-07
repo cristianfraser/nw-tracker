@@ -43,7 +43,7 @@
  */
 import { addDaysIso } from "nw-tracker-contracts";
 import type { StoreReceiptApplyDetails, StoreReceiptDocumentKind, StoreReceiptPayload } from "nw-tracker-contracts";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import {
   learnBranchForPendingReceipt,
@@ -607,8 +607,6 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
         } else {
           const res = importCcWebPasteLines(accountId, { lines: importable, errors: [] }, rule.batch_kind);
           movement = { status: res.inserted > 0 ? "created" : "duplicate" };
-          // In-process writes do not bump data_version: drop the card's caches from the purchase on.
-          if (res.inserted > 0) invalidateAggregationForAccountDate(accountId, purchaseIso);
         }
         markReceiptCardLine(receiptId, movement.status === "created" ? "created" : "covered", accountId);
       }

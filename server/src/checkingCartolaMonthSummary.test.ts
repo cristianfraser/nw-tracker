@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  checkingMovementBalanceAtMonthEnd,
-  clearCheckingBalanceCache,
-} from "./checkingCartolaBalances.js";
+import { checkingMovementBalanceAtMonthEnd } from "./checkingCartolaBalances.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
@@ -27,7 +24,6 @@ function destroySyntheticVistaAccount(accountId: number): void {
     `DELETE FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
   ).run(accountId, accountId, accountId);
   db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
-  clearCheckingBalanceCache(accountId);
 }
 
 describe("getCheckingCartolaMonths", () => {
@@ -104,7 +100,6 @@ describe("getCheckingCartolaMonths", () => {
         `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
          VALUES (?, -7000, 'clp', '2099-02-03', 'import:cartola-partial|2099-02-03|-7000|Giro')`
       ).run(accountId);
-      clearCheckingBalanceCache(accountId);
 
       const payload = getCheckingCartolaMonths(accountId);
       expect(payload).not.toBeNull();

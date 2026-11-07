@@ -49,7 +49,8 @@ import {
   type GastosUnit,
 } from "./flowsExpensesGastos.js";
 import { listCcExpenseCategories } from "./ccExpenseCategories.js";
-import { getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyFlowsInputs, cacheKeyFlowsOverview as cacheKeyFlowsOverviewPayload } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import {
   cardPaymentInUnit,
@@ -788,7 +789,7 @@ type OverviewSourceInputs = {
 
 function overviewSourceInputs(): OverviewSourceInputs {
   syncFlowsInputsWithLiveUsdRates();
-  return getAggregationCached("flows.overview.inputs|", () => {
+  return getAggregationCached(cacheKeyFlowsInputs(""), () => {
     const accountIds = listCreditCardMasterAccountIds();
     const lines = cachedFlowsExpenseLines();
     const checkingAccountIds = accountIdsUnderCheckingAccounts();
@@ -854,7 +855,7 @@ function checkingGridStart(
 }
 
 export function cacheKeyFlowsOverview(unit: GastosUnit, mode: CcInstallmentGastosMode, days: number | null): string {
-  return `flows.overview|${unit}|${mode}|${days ?? "m"}`;
+  return cacheKeyFlowsOverviewPayload(`${unit}|${mode}|${days ?? "m"}`);
 }
 
 /** @heavy First build reads every expense line, income line, deposit event and checking mark; cached after. */

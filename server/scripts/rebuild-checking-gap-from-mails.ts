@@ -45,8 +45,8 @@ import { convertMirrorPairs } from "../src/movementMirrorConvert.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../src/ccPaymentMirrors.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
-import { checkingMovementBalanceClpAt, clearCheckingBalanceCache } from "../src/checkingCartolaBalances.js";
-import { clearAggregationCache } from "../src/aggregationCache.js";
+import { checkingMovementBalanceClpAt } from "../src/checkingCartolaBalances.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
 
 const apply = process.argv.includes("--apply");
 const planArg = process.argv.find((a) => a.startsWith("--plan="))?.slice("--plan=".length);
@@ -573,7 +573,6 @@ const tx = db.transaction(() => {
   say(`bills: ${plan.bills.length} on mailed payments; ${excelGone} excel-gap rows replaced`);
 
   // 7. Derived state.
-  clearCheckingBalanceCache();
   upsertCreditCardValuationsFromLedger(CARD, { affectedEvidenceFromYmd: plan.card_statements.previous.close });
   recomputeCcBillingMonthBalances(CARD);
   clearAggregationCache();

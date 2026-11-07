@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cardStatementKind, type CardStatementLine, type CardStatementPayload } from "nw-tracker-contracts";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { applyCardStatement } from "./cardStatementApply.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { db } from "./db.js";
@@ -124,7 +123,6 @@ describe("applyCardStatement", () => {
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
-    invalidateCcBillingDetail(accountId);
     fs.rmSync(tmpDir, { recursive: true, force: true });
     if (prevIdentifiers == null) delete process.env.NW_TRACKER_ORGANIZE_IDENTIFIERS;
     else process.env.NW_TRACKER_ORGANIZE_IDENTIFIERS = prevIdentifiers;

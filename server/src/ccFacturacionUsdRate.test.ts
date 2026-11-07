@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
 import { facturacionUsdRates, usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";

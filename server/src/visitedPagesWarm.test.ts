@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { aggregationCacheKeysForTest, clearAggregationCache } from "./aggregationCache.js";
+import { aggregationCacheKeysForTest, clearAggregationCache } from "./cacheRegistry.js";
 import { planVisitedWarm, warmVisitedPages } from "./visitedPagesWarm.js";
 
 afterAll(() => clearAggregationCache());

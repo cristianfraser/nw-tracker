@@ -6,7 +6,8 @@ import {
   compositionLineSpecsFromNavTree,
   compositionValuesOnGridClp,
 } from "./dashboardComposition.js";
-import { getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyDailyOverview } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -162,7 +163,7 @@ export function getDashboardOverviewDaily(
   if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
     throw new Error(`overview-daily: days must be 0..${DAILY_SERIES_MAX_DAYS}, got ${days}`);
   }
-  return getAggregationCached(`daily.overview|${unit}|${days}`, () =>
+  return getAggregationCached(cacheKeyDailyOverview(unit, days), () =>
     buildOverviewDaily(unit, days)
   );
 }

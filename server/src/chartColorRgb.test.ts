@@ -1,10 +1,6 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  clearPortfolioGroupColorCache,
-  resolvePortfolioGroupColorRgb,
-  resolvePortfolioGroupColorRgbBySlug,
-} from "./chartColorRgb.js";
+import { resolvePortfolioGroupColorRgb, resolvePortfolioGroupColorRgbBySlug } from "./chartColorRgb.js";
 
 const createdGroupIds: number[] = [];
 const createdAccountIds: number[] = [];
@@ -52,7 +48,6 @@ function insertAccount(color_rgb: string | null, balance: number): number {
 
 describe("resolvePortfolioGroupColorRgb", () => {
   afterEach(() => {
-    clearPortfolioGroupColorCache();
   });
 
   afterAll(() => {
@@ -65,7 +60,6 @@ describe("resolvePortfolioGroupColorRgb", () => {
       db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
     }
-    clearPortfolioGroupColorCache();
   });
 
   it("uses explicit color when set", () => {
@@ -89,7 +83,6 @@ describe("resolvePortfolioGroupColorRgb", () => {
     linkAccount(smallChildId, green, 1);
     linkAccount(largeChildId, blue);
 
-    clearPortfolioGroupColorCache();
     expect(resolvePortfolioGroupColorRgb(parentId)).toBe("0,0,255");
   });
 
@@ -105,7 +98,6 @@ describe("resolvePortfolioGroupColorRgb", () => {
     linkAccount(childId, small);
     linkAccount(childId, large, 1);
 
-    clearPortfolioGroupColorCache();
     expect(resolvePortfolioGroupColorRgb(parentId)).toBe("0,128,0");
   });
 
@@ -116,7 +108,6 @@ describe("resolvePortfolioGroupColorRgb", () => {
     const acc = insertAccount("200,100,50", 1000);
     linkAccount(parentId, acc);
 
-    clearPortfolioGroupColorCache();
     expect(resolvePortfolioGroupColorRgbBySlug(slug)).toBe("200,100,50");
   });
 });

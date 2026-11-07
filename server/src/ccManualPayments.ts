@@ -11,11 +11,11 @@
  * nightly `synthetic_cc_payments_check`.
  */
 import { importCcWebPasteLines } from "./accountImports.js";
-import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import { confirmManualPaymentForPlanted, recordPlantedPaymentLine } from "./ccPlantedPayments.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
@@ -209,10 +209,6 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
   });
   const out = write();
 
-  clearCheckingBalanceCache(fromId);
-  invalidateAggregationForAccountDate(fromId, paidOn);
-  invalidateAggregationForAccountDate(cardId, paidOn);
-  invalidateCcBillingDetail(cardId);
   return out;
 }
 

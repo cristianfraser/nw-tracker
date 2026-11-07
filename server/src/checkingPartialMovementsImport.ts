@@ -1,6 +1,6 @@
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { db } from "./db.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
@@ -135,13 +135,11 @@ export function importCheckingPartialMovements(
     }
   });
   tx();
-  clearCheckingBalanceCache(accountId);
   if (inserted > 0 && movements.length > 0) {
     let minOn = movements[0]!.occurred_on;
     for (const mv of movements) {
       if (mv.occurred_on < minOn) minOn = mv.occurred_on;
     }
-    invalidateAggregationForAccountDate(accountId, minOn);
   }
   return {
     inserted,

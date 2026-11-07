@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { getLatestLiveFxQuoteRow } from "./liveMarketQuotesDb.js";

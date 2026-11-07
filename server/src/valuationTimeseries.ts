@@ -47,13 +47,8 @@ import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { ccLedgerStatementClosingPointsClpForAccounts } from "./ccCreditCardValuations.js";
 import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import {
-  cachedGroupResponse,
-  cacheKeyGroupClosingByDate,
-  historyTierMemo,
-  DASHBOARD_PAGE_BUNDLE_PREFIX,
-  getAggregationCached,
-} from "./aggregationCache.js";
+import { cacheKeyDashboardOverview, cacheKeyGroupClosingByDate, cacheKeyGroupResponse } from "./cacheFamilies.js";
+import { historyTierMemo, getAggregationCached } from "./cacheRegistry.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   averageRgbTriplets,
@@ -1489,7 +1484,7 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
  * the page bundle's lifetime (it reads the same inputs).
  */
 export function getDashboardOverviewBlock(unit: TsUnit): ReturnType<typeof buildDashboardOverviewSlice>["overview"] {
-  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}overview|${unit}`, () =>
+  return getAggregationCached(cacheKeyDashboardOverview(unit), () =>
     buildDashboardOverviewSlice(unit).overview
   );
 }
@@ -1828,7 +1823,7 @@ function groupTabValuationTotalByDate(
   portfolioGroupSlug: string,
   unit: TsUnit
 ): Map<string, number> {
-  return cachedGroupResponse("reference_source_totals", portfolioGroupSlug, unit, () => {
+  return getAggregationCached(cacheKeyGroupResponse("reference_source_totals", portfolioGroupSlug, unit), () => {
     const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioGroupSlug);
     return groupTabValuationTotalFromBuilt(getGroupValuationTimeseries(groupSlug, unit, tabSubgroup));
   });

@@ -1,21 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
-import {
-  jsonOwnedClosesForAccount,
-  santanderJsonSourcePdf,
-  statementSourceOwnerForClose,
-} from "./ccStatementJsonSource.js";
+import { jsonOwnedClosesForAccount, santanderJsonSourcePdf, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
 import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
-import {
-  assertNoCardRoutingConflict,
-  buildSantanderStatementRecords,
-  inheritedStatementCtx,
-  resolveJsonCuotaCanonicalRowId,
-  usdStatementIsStaleEcho,
-  writeSantanderStatements,
-} from "./santanderStatementImport.js";
+import { assertNoCardRoutingConflict, buildSantanderStatementRecords, inheritedStatementCtx, resolveJsonCuotaCanonicalRowId, usdStatementIsStaleEcho, writeSantanderStatements } from "./santanderStatementImport.js";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -57,7 +45,6 @@ describe("santanderStatementImport", () => {
       `DELETE FROM cc_installment_purchases WHERE account_id = ?
          AND (canonical_row_id LIKE 'json-loan|%' OR canonical_row_id LIKE 'VITEST-JSON-%')`
     ).run(id);
-    invalidateCcBillingDetail(id);
     fixtureAccountId = null;
   });
 

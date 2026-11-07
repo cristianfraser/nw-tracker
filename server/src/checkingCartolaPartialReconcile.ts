@@ -1,6 +1,6 @@
 import type { Database } from "better-sqlite3";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+
+
 import { db } from "./db.js";
 import {
   cartolaMovementMatchesImportedRow,
@@ -201,11 +201,9 @@ export function reconcileCartolaPartialImports(
 ): { removed: number } {
   const { removed } = prunePartialMovementsSupersededByCartola(accountId, movements, dbHandle);
   if (removed === 0) return { removed: 0 };
-  clearCheckingBalanceCache(accountId);
   let minOn = movements[0]!.occurred_on;
   for (const mv of movements) {
     if (mv.occurred_on < minOn) minOn = mv.occurred_on;
   }
-  invalidateAggregationForAccountDate(accountId, minOn);
   return { removed };
 }

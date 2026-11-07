@@ -1,4 +1,4 @@
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
@@ -120,7 +120,7 @@ export function computeEquityMtmClp(
   now?: Date
 ): number | null {
   // A day before Chile today reads the EOD bar and the stored fx: kept in the history tier
-  // (`aggregationCache.ts`) across live-quote ticks.
+  // (`cacheRegistry.ts`) across live-quote ticks.
   if (price == null && now === undefined && asOfYmd < chileCalendarTodayYmd()) {
     const memo = historyTierMemo<string, number | null>("equity_mtm_clp");
     const key = `${accountId}|${asOfYmd}`;

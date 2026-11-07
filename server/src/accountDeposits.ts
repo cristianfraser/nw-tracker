@@ -8,7 +8,7 @@ import {
   loadUsdCashCapitalSortFlows,
 } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import {
   isUsdCashAccount,
   signedClpDeltaForAccountMovement,
@@ -244,7 +244,7 @@ export type DepositInflowEventWithCounter = DepositInflowEvent & {
 
 /**
  * The merged deposit timeline reads movements only (no quote), so it is kept in the history
- * tier (`aggregationCache.ts`) across live-quote ticks; callers get their own arrays and events.
+ * tier (`cacheRegistry.ts`) across live-quote ticks; callers get their own arrays and events.
  */
 function buildMergedDepositMap(
   accountIds: number[],

@@ -1,6 +1,6 @@
-import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { noteSyncDimmingRead } from "./cacheDependencies.js";
-import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached, invalidateDashboardPageBundle } from "./aggregationCache.js";
+import { cacheKeyDashboardAccountRows, cacheKeyDashboardNav } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { chainedGroupPctResolver, withDailyChainedAccountRowPcts } from "./periodPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
@@ -218,8 +218,7 @@ function dashboardRowPeriodPcts(
  * inputs, goes with any of them, and is reassembled from the rows still cached.
  */
 export function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
-  if (dbInTransaction()) return buildDashboardAccountRowsUncached(includeUsd);
-  return cachedWithPageBundleLifetime(`account_rows|${unitKey(includeUsd)}`, () =>
+  return getAggregationCached(cacheKeyDashboardAccountRows(`account_rows|${unitKey(includeUsd)}`), () =>
     buildDashboardAccountRowsUncached(includeUsd)
   );
 }
@@ -251,13 +250,11 @@ function unitKey(includeUsd: boolean): "usd" | "clp" {
 }
 
 /**
- * `build()` cached for the page bundle's lifetime under `name`, or built afresh inside a
- * transaction (a report-only import reads rows it then rolls back). Synchronous builds only: a
- * build that throws caches nothing.
+ * `build()` cached with the account rows (`dashboard_account_rows` family: built afresh inside a
+ * transaction, where a report-only import reads rows it then rolls back).
  */
-function pageBundleCachedSync<T>(name: string, build: () => T): T {
-  if (dbInTransaction()) return build();
-  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}${name}`, build);
+function pageBundleCachedSync<T>(name: `account_row${string}`, build: () => T): T {
+  return getAggregationCached(cacheKeyDashboardAccountRows(name), build);
 }
 
 function buildDashboardAccountRowsUncached(includeUsd: boolean): Promise<DashboardAccountStats[]> {
@@ -572,12 +569,8 @@ export function buildDashboardNavSnapshot(includeUsd: boolean): ReturnType<typeo
   );
 }
 
-function cachedWithPageBundleLifetime<T>(name: string, build: () => Promise<T>): Promise<T> {
-  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}${name}`, () => {
-    const built = build().then(markJsonResponseCacheable);
-    built.catch(() => invalidateDashboardPageBundle());
-    return built;
-  });
+function cachedWithPageBundleLifetime<T>(name: `nav_${string}`, build: () => Promise<T>): Promise<T> {
+  return getAggregationCached(cacheKeyDashboardNav(name), build);
 }
 
 /** @heavy One {@link monthlyPerfRowsForAccount} per unit per tracked account (via {@link buildDashboardAccountRows}). */

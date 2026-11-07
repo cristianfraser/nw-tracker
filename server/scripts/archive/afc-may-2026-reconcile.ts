@@ -2,7 +2,7 @@
  * One-off: AFC account May 2026 balance + movement reconcile (see plan afc-may-fix).
  * Run: npx tsx scripts/afc-may-2026-reconcile.ts
  */
-import { invalidateAggregationForAccountDate } from "../../src/aggregationCache.js";
+
 import { db } from "../../src/db.js";
 
 const AFC_ACCOUNT_ID = 79;
@@ -26,7 +26,6 @@ const updMov = db.prepare(`
 
 for (const d of ["2026-05-31", "2026-06-01"]) {
   upsertVal.run(AFC_ACCOUNT_ID, d, VALUATION_CLP);
-  invalidateAggregationForAccountDate(AFC_ACCOUNT_ID, d);
 }
 
 const mov = updMov.run(NEW_WITHDRAWAL_CLP, AFC_ACCOUNT_ID, MAY_WITHDRAWAL_ON);
@@ -35,7 +34,6 @@ if (mov.changes !== 1) {
     `Expected 1 movement update on ${MAY_WITHDRAWAL_ON}, got ${mov.changes}`
   );
 }
-invalidateAggregationForAccountDate(AFC_ACCOUNT_ID, MAY_WITHDRAWAL_ON);
 
 console.log("AFC reconcile OK:", {
   valuations: ["2026-05-31", "2026-06-01"],

@@ -1,4 +1,3 @@
-import { markJsonResponseCacheable } from "./jsonResponse.js";
 import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
@@ -37,12 +36,9 @@ import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { db, dbInTransaction } from "./db.js";
-import {
-  cacheKeyAccountDetailBundle,
-  getAggregationCached,
-  invalidateAccountDetailBundles,
-} from "./aggregationCache.js";
+import { db } from "./db.js";
+import { cacheKeyAccountDetailBundle } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import {
   getAccountValuationTimeseries,
   type TsUnit,
@@ -61,12 +57,9 @@ export function cachedAccountDetailBundle(
   unit: TsUnit,
   granularity: "monthly" | "daily"
 ): ReturnType<typeof buildAccountDetailBundle> {
-  if (dbInTransaction()) return buildAccountDetailBundle(accountId, unit, granularity);
-  return getAggregationCached(cacheKeyAccountDetailBundle(accountId, unit, granularity), () => {
-    const built = buildAccountDetailBundle(accountId, unit, granularity).then(markJsonResponseCacheable);
-    built.catch(() => invalidateAccountDetailBundles());
-    return built;
-  });
+  return getAggregationCached(cacheKeyAccountDetailBundle(accountId, unit, granularity), () =>
+    buildAccountDetailBundle(accountId, unit, granularity)
+  );
 }
 
 

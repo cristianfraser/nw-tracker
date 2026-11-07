@@ -2,14 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCcWebPasteLines } from "./accountImports.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import {
-  listOverdueUnconfirmedManualCardPayments,
-  recordManualCardPayment,
-} from "./ccManualPayments.js";
+import { listOverdueUnconfirmedManualCardPayments, recordManualCardPayment } from "./ccManualPayments.js";
 import { plantedPaymentMatchesStatementLine, type PlantedPaymentRow } from "./ccPlantedPayments.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";

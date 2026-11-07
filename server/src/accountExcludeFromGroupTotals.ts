@@ -1,5 +1,4 @@
-import { invalidateLinkedCreditCardAggregationCache } from "./aggregationCache.js";
-import { clearAccountCategoryMetaCache } from "./liabilitiesValuation.js";
+
 import { db } from "./db.js";
 
 export function updateAccountExcludeFromGroupTotals(
@@ -14,8 +13,6 @@ export function updateAccountExcludeFromGroupTotals(
 
   const value = raw ? 1 : 0;
   db.prepare(`UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?`).run(value, accountId);
-  clearAccountCategoryMetaCache();
-  invalidateLinkedCreditCardAggregationCache();
 
   return { exclude_from_group_totals: value };
 }

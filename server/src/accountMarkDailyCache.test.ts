@@ -1,10 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  accountMarkClpSeriesOnGrid,
-  accountMarkClpSeriesOnGridUncached,
-  type MarkSeriesAccountRef,
-} from "./accountMarkDailyCache.js";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { accountMarkClpSeriesOnGrid, accountMarkClpSeriesOnGridUncached, type MarkSeriesAccountRef } from "./accountMarkDailyCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 
 /**

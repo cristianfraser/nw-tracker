@@ -7,7 +7,7 @@ import {
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import {
   equityCloseEod,
   equitySessionYmdForTicker,
@@ -92,7 +92,7 @@ export function computeCryptoMtmClp(
   now?: Date
 ): number | null {
   // A day before Chile today reads the EOD bar and the stored fx: kept in the history tier
-  // (`aggregationCache.ts`) across live-quote ticks.
+  // (`cacheRegistry.ts`) across live-quote ticks.
   if (priceUsd == null && now === undefined && asOfYmd < chileCalendarTodayYmd()) {
     const memo = historyTierMemo<string, number | null>("crypto_mtm_clp");
     const key = `${accountId}|${asOfYmd}`;

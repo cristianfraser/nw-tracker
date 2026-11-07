@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  aggregationCacheHasForTest,
-  buildHistoryTierValue,
-  clearAggregationCache,
-  getAggregationCached,
-  invalidateMarketDataAggregations,
-  liveTierCached,
-} from "./aggregationCache.js";
+import { aggregationCacheHasForTest, buildHistoryTierValue, clearAggregationCache, getAggregationCached, invalidateMarketDataAggregations, liveTierCached } from "./cacheRegistry.js";
 import {
   cacheDepNodeAffected,
   newCacheDepNode,

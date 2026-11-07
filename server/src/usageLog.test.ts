@@ -2,7 +2,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { getAggregationCached } from "./aggregationCache.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { usageDb } from "./usageDb.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import {
@@ -57,7 +57,7 @@ describe("usage log over HTTP", () => {
     app.use(express.json());
     const router = express.Router();
     router.get("/:slug/thing", (req, res) => {
-      res.json({ value: getAggregationCached(`usage-test|${req.params.slug}`, () => req.params.slug) });
+      res.json({ value: getAggregationCached(`daily.series|vitest-usage|${req.params.slug}`, () => req.params.slug) });
     });
     app.use("/api/test-groups", router);
     app.get("/api/boom", (_req, res) => void res.status(500).json({ error: "boom" }));

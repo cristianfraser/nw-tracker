@@ -3,7 +3,7 @@
  * `NW_TRACKER_TEST_DB` must be set before any import of `db` (see `vitest.config.ts` + `npm run test`).
  */
 import { beforeEach } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { ensureVitestCreditCardFixtures } from "./test/vitestDbSeed.js";
 
 ensureVitestCreditCardFixtures();

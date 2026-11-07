@@ -9,7 +9,7 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { liveAfpUnoAccountId } from "./afpAccounts.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
 import { db } from "./db.js";
 import { recordContributionPeriods } from "./pensionContributionPeriods.js";
 import {
@@ -308,7 +308,6 @@ export function applyPensionAccountCertificates(
     );
   })();
   if (inserted > 0) {
-    invalidateAggregationForAccountDate(accountId, fresh.map((r) => r.occurred_on!).sort()[0]!);
   }
   return {
     applied: write,

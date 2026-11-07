@@ -28,9 +28,9 @@ import { assignFlowExpenseLineCategory } from "../src/assignFlowExpenseLineCateg
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
 import { setCcExpensePurchaseBigGroup } from "../src/ccExpenseBigGroups.js";
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";
-import { clearAggregationCache } from "../src/aggregationCache.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
 import { recordBankPosting } from "../src/movementBankPostings.js";
-import { clearCheckingBalanceCache } from "../src/checkingCartolaBalances.js";
+
 
 type Row = {
   date: string;
@@ -121,7 +121,6 @@ const tx = db.transaction(() => {
   const final = walk.at(-1)!.bal;
   if (low < 0 || final !== 0) throw new Error(`MACH walk: lowest ${low}, final ${final}`);
   say(`MACH: never below zero, ${fmt(final)} at the end (${walk.at(-1)!.occurred_on})`);
-  clearCheckingBalanceCache();
   clearAggregationCache();
   for (const s of report) console.log(s);
   if (!apply) throw new Rollback();

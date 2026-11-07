@@ -9,8 +9,8 @@
  *   npm run reconcile:cartola-partials -w nw-tracker-server              # apply
  *   npm run reconcile:cartola-partials -w nw-tracker-server -- --dry-run
  */
-import { clearAggregationCache } from "../src/aggregationCache.js";
-import { clearCheckingBalanceCache } from "../src/checkingCartolaBalances.js";
+import { clearAggregationCache } from "../src/cacheRegistry.js";
+
 import { cartolaNoteContent } from "../src/checkingCartolaParse.js";
 import {
   PARTIAL_NOTE_PREFIX,
@@ -70,7 +70,6 @@ function main() {
       }
       removed += 1;
     }
-    if (!dryRun) clearCheckingBalanceCache(accountId);
   }
 
   if (!dryRun && removed > 0) clearAggregationCache();

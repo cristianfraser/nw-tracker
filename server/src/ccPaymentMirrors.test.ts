@@ -1,12 +1,9 @@
 import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { clearAggregationCache } from "./aggregationCache.js";
+import { clearAggregationCache } from "./cacheRegistry.js";
 import { listClpCcPaymentEventsForAccount } from "./ccCuotaRetirement.js";
 import { ccPaymentPairingsWithoutEvidence } from "./ccPaymentMirrorEvidence.js";
-import {
-  convertCcPaymentMirrors,
-  listCcPaymentMirrorCandidates,
-} from "./ccPaymentMirrors.js";
+import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { db } from "./db.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { undoMirrorConversion } from "./movementMirrorConvert.js";

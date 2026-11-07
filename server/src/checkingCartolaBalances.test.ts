@@ -4,21 +4,7 @@ import { db } from "./db.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
-import {
-  checkingLedgerAnchorNote,
-  checkingMovementBalanceAtMonthEnd,
-  checkingMovementBalanceClpAt,
-  checkingMovementBalanceClpAtCached,
-  clearCheckingAccountValuations,
-  clearCheckingBalanceCache,
-  clearCheckingLedgerAnchor,
-  defaultCheckingLedgerAnchorDate,
-  ensureCheckingLedgerAnchor,
-  getCartolaDerivedAnchor,
-  getCheckingLedgerAnchor,
-  nonAnchorClpFlowTotals,
-  upsertCheckingLedgerAnchor,
-} from "./checkingCartolaBalances.js";
+import { checkingLedgerAnchorNote, checkingMovementBalanceAtMonthEnd, checkingMovementBalanceClpAt, checkingMovementBalanceClpAtCached, clearCheckingAccountValuations, clearCheckingLedgerAnchor, defaultCheckingLedgerAnchorDate, ensureCheckingLedgerAnchor, getCartolaDerivedAnchor, getCheckingLedgerAnchor, nonAnchorClpFlowTotals, upsertCheckingLedgerAnchor } from "./checkingCartolaBalances.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
@@ -43,7 +29,6 @@ function cleanupAnchorFixture(accountId: number): void {
     "import:cartola|opening|%"
   );
   db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(accountId, "manual gap-fill");
-  clearCheckingBalanceCache(accountId);
 }
 
 function seedCartolaImport(
@@ -141,7 +126,6 @@ describe("checkingCartolaBalances", () => {
       .get(row.id) as { occurred_on: string } | undefined;
     if (!last) return;
 
-    clearCheckingBalanceCache(row.id);
     const a = checkingMovementBalanceClpAtCached(row.id, last.occurred_on);
     const b = checkingMovementBalanceClpAtCached(row.id, last.occurred_on);
     expect(a).toBe(b);
@@ -316,7 +300,6 @@ describe("cartola-derived anchor with transfer legs", () => {
         amount_clp: derived!.amount_clp,
         occurred_on: derived!.occurred_on,
       });
-      clearCheckingBalanceCache(accountId);
       expect(checkingMovementBalanceClpAt(accountId, monthEndUtcYmd(TEST_MONTH_EARLY))).toBe(75000);
     } finally {
       destroySyntheticAnchorAccount(accountId);
@@ -364,7 +347,6 @@ describe("bank posting day: a transfer the bank posted in the next month", () =>
         amount_clp: derived!.amount_clp,
         occurred_on: derived!.occurred_on,
       });
-      clearCheckingBalanceCache(accountId);
 
       // Cartola frame: January still holds the money, February pays it.
       expect(checkingMovementBalanceAtMonthEnd(accountId, TEST_MONTH_EARLY)).toBe(500000);
@@ -462,7 +444,6 @@ describe("forward-posted rows: display balance vs strict reconciliation", () => 
         amount_clp: derived!.amount_clp,
         occurred_on: derived!.occurred_on,
       });
-      clearCheckingBalanceCache(accountId);
 
       expect(checkingMovementBalanceAtMonthEnd(accountId, month)).toBe(50000);
       expect(checkingMovementBalanceClpAt(accountId, yesterday)).toBe(50000);

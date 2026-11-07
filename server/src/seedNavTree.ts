@@ -1,7 +1,6 @@
 import { db } from "./db.js";
 import { assetGroupBySlug, assetGroupIdsInSubtree, leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { clearAggregationCache } from "./aggregationCache.js";
 import { assertNavGroupItemsShape } from "./portfolioGroupTree.js";
 import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
@@ -772,7 +771,6 @@ export function seedNavTree(): void {
     seedLiabilitiesTree();
     assertNavGroupItemsShape();
   })();
-  clearAggregationCache();
   console.log("nav tree: seeded sidebar portfolio_groups + liability_groups");
 }
 

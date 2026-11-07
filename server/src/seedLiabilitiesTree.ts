@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { invalidateLinkedCreditCardAggregationCache } from "./aggregationCache.js";
+
 import { listCreditCardMasterAccountIdsInNavOrder } from "./creditCardTree.js";
 
 const upsertGroup = db.prepare(`
@@ -68,5 +68,4 @@ export function seedLiabilitiesTree(): void {
     }
   });
   tx();
-  invalidateLinkedCreditCardAggregationCache();
 }

@@ -6,7 +6,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import type { Database } from "better-sqlite3";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { signedAmountClpForBrokerageFlow } from "./brokerageFlowMovement.js";
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { db, dbInTransaction } from "./db.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,

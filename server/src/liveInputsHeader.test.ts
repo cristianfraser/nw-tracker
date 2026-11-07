@@ -1,7 +1,7 @@
 import express from "express";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getAggregationCached } from "./aggregationCache.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { cacheDepNodeLiveInputs, linkCacheDepNode, newCacheDepNode, noteLiveFxRead, noteLiveTickerRead, runInCacheDepNode } from "./cacheDependencies.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
 import { formatLiveInputs, liveInputsMiddleware } from "./liveInputsHeader.js";
@@ -23,7 +23,7 @@ beforeAll(async () => {
     res.json({ ok: true });
   });
   app.get("/api/cached", (_req, res) => {
-    const value = getAggregationCached("test.live_inputs_header|cached", () => {
+    const value = getAggregationCached("daily.series|vitest-live-inputs-header", () => {
       builds += 1;
       noteLiveTickerRead("BTC-USD");
       noteLiveFxRead();

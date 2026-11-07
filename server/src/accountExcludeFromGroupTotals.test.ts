@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { updateAccountExcludeFromGroupTotals } from "./accountExcludeFromGroupTotals.js";
-import { clearAccountCategoryMetaCache } from "./liabilitiesValuation.js";
 
 describe("updateAccountExcludeFromGroupTotals", () => {
   it("toggles the flag on a CC master and restores it", () => {
@@ -26,7 +25,6 @@ describe("updateAccountExcludeFromGroupTotals", () => {
         prev.exclude_from_group_totals,
         master.id
       );
-      clearAccountCategoryMetaCache();
     }
   });
 

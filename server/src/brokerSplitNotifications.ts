@@ -11,7 +11,7 @@
 import { addDaysIso } from "nw-tracker-contracts";
 import type { BrokerNotification, BrokerNotificationPlanRow } from "nw-tracker-contracts";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { invalidateMarketDataAggregations } from "./cacheRegistry.js";
 import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNotifications.js";
 import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
 import { equityQuoteCurrency } from "./equityQuote.js";

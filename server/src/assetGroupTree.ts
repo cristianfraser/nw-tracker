@@ -1,5 +1,6 @@
 import { accountIdsInPortfolioGroup, portfolioGroupBySlug } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 
 export type AssetGroupRow = {
   id: number;
@@ -122,8 +123,6 @@ export const DASHBOARD_NW_BUCKET_SLUGS = new Set([
 
 type AssetGroupParentRow = { id: number; slug: string; parent_id: number | null };
 
-let dashboardBucketBySlugCache: Map<string, string | null> | null = null;
-
 function buildDashboardBucketBySlugCache(): Map<string, string | null> {
   const rows = db
     .prepare(`SELECT id, slug, parent_id FROM asset_groups`)
@@ -171,11 +170,9 @@ function buildDashboardBucketBySlugCache(): Map<string, string | null> {
   return cache;
 }
 
+/** Memoized as database state (`dbStateMemo.ts`): an asset-group write drops it. */
 function dashboardBucketBySlugMap(): Map<string, string | null> {
-  if (!dashboardBucketBySlugCache) {
-    dashboardBucketBySlugCache = buildDashboardBucketBySlugCache();
-  }
-  return dashboardBucketBySlugCache;
+  return dbStateMemo("dashboard_bucket_by_asset_group_slug", null, buildDashboardBucketBySlugCache);
 }
 
 /** Walk `asset_groups.parent_id` to the NW dashboard bucket slug, if any. */
@@ -241,7 +238,6 @@ export function ensureChildAssetGroupId(
       `INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, ?, ?)`
     )
     .run(leafSlug, childLabel, maxSort.m + 1, parent.id);
-  dashboardBucketBySlugCache = null;
   return { id: Number(r.lastInsertRowid), created: true };
 }
 export function listAccountsForBucketIds(

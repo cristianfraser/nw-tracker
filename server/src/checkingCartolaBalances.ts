@@ -1,5 +1,7 @@
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
+import { cacheKeyCheckingBalance } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -16,20 +18,6 @@ import {
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import type { MovementTransferRow } from "./movementTransfer.js";
 
-const BALANCE_CACHE_TTL_MS = 30_000;
-const balanceCache = new Map<string, { balance: number; expiresAt: number }>();
-
-export function clearCheckingBalanceCache(accountId?: number): void {
-  if (accountId == null) {
-    balanceCache.clear();
-    return;
-  }
-  const prefix = `${accountId}|`;
-  for (const key of balanceCache.keys()) {
-    if (key.startsWith(prefix)) balanceCache.delete(key);
-  }
-}
-
 /**
  * Running CLP balance for DISPLAY at `asOfYmd`: movements on or before that date, or every
  * known movement when the date is Chile today or later — a row the bank dates after today
@@ -45,26 +33,19 @@ export function checkingMovementBalanceClpAt(
   return sumClpThroughDisplayDate(accountId, asOfYmd, dbHandle);
 }
 
-function cachedBalance(key: string, compute: () => number): number {
-  const now = Date.now();
-  const hit = balanceCache.get(key);
-  if (hit && hit.expiresAt > now) return hit.balance;
-  const balance = compute();
-  balanceCache.set(key, { balance, expiresAt: now + BALANCE_CACHE_TTL_MS });
-  return balance;
-}
-
 /**
- * Cached wrapper for hot paths (API/charts); invalidated on movement writes via TTL. The key
- * carries the cutoff actually applied, so a value computed for "today" (no upper bound) is
- * never served as that date's strict history after the day rolls over.
+ * Cached wrapper for hot paths (API/charts), in the cache registry's `checking.balance|` family:
+ * dropped for the account when the change log reports a write to its movements. The key carries
+ * the cutoff actually applied, so a value computed for "today" (no upper bound) is never served
+ * as that date's strict history after the day rolls over. Another database handle is never cached.
  */
 export function checkingMovementBalanceClpAtCached(
   accountId: number,
   asOfYmd: string,
   dbHandle: Database = db
 ): number {
-  return cachedBalance(`${accountId}|${asOfYmd}|${displayLedgerCutoffYmd(asOfYmd)}`, () =>
+  if (dbHandle !== db) return checkingMovementBalanceClpAt(accountId, asOfYmd, dbHandle);
+  return getAggregationCached(cacheKeyCheckingBalance(accountId, asOfYmd, displayLedgerCutoffYmd(asOfYmd)), () =>
     checkingMovementBalanceClpAt(accountId, asOfYmd, dbHandle)
   );
 }
@@ -80,7 +61,8 @@ export function checkingMovementBalanceAtMonthEnd(
   dbHandle: Database = db
 ): number {
   const asOf = monthEndUtcYmd(periodMonth);
-  return cachedBalance(`${accountId}|${asOf}|bank`, () =>
+  if (dbHandle !== db) return sumClpThroughBankPostedDate(accountId, asOf, dbHandle);
+  return getAggregationCached(cacheKeyCheckingBalance(accountId, asOf, "bank"), () =>
     sumClpThroughBankPostedDate(accountId, asOf, dbHandle)
   );
 }
@@ -126,7 +108,6 @@ export function checkingMovementBalanceLive(
  */
 export function clearCheckingAccountValuations(accountId: number, dbHandle: Database = db): number {
   const r = dbHandle.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
-  clearCheckingBalanceCache(accountId);
   return r.changes;
 }
 
@@ -263,7 +244,6 @@ function deleteLegacyOpeningMovements(accountId: number, dbHandle: Database = db
   const r = dbHandle
     .prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`)
     .run(accountId, `${OPENING_NOTE_PREFIX}%`);
-  if (r.changes > 0) clearCheckingBalanceCache(accountId);
   return r.changes;
 }
 
@@ -422,7 +402,6 @@ export function clearCheckingLedgerAnchor(accountId: number, dbHandle: Database 
   const r = dbHandle
     .prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`)
     .run(accountId, `${ANCHOR_NOTE_PREFIX}%`);
-  if (r.changes > 0) clearCheckingBalanceCache(accountId);
   return r.changes > 0;
 }
 
@@ -457,8 +436,6 @@ export function upsertCheckingLedgerAnchor(
       )
       .run(accountId, amount, occurredOn, note);
   }
-
-  clearCheckingBalanceCache(accountId);
   return getCheckingLedgerAnchor(accountId, dbHandle);
 }
 
@@ -535,7 +512,6 @@ export function ensureCheckingLedgerAnchor(
     dbHandle
       .prepare(`UPDATE movements SET amount = ?, currency = 'clp', occurred_on = ?, note = ? WHERE id = ?`)
       .run(amount, occurredOn, note, existing.id);
-    clearCheckingBalanceCache(accountId);
     return {
       inserted: false,
       updated: true,
@@ -552,8 +528,6 @@ export function ensureCheckingLedgerAnchor(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amount, occurredOn, note);
-
-  clearCheckingBalanceCache(accountId);
   return {
     inserted: true,
     updated: false,

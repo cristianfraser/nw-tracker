@@ -1,8 +1,5 @@
-import {
-  cacheKeyCcBillingDetail,
-  getAggregationCached,
-  invalidateCcBillingDetail,
-} from "./aggregationCache.js";
+import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import {
   debtCcExpenseLineAmountClp,
   debtFrameClpPerUsd,
@@ -248,9 +245,8 @@ export function postCloseLiveBalanceAdjustmentClp(
 
 /**
  * Normalized non-installment line stream for post-close windows (the line's date — transaction,
- * else posting — dedupe key, signed CLP), memoized in the aggregation cache under the account's
- * `cc.billing_detail|<id>|…` satellite key — dropped by `invalidateCcBillingDetail` with the
- * detalle cache. Daily owed-on-date evaluates one window per session, so the scan must not
+ * else posting — dedupe key, signed CLP), memoized in the account's `cc_billing_parts` cache
+ * family — dropped with the card's billing detail by the change log. Daily owed-on-date evaluates one window per session, so the scan must not
  * re-run per date.
  *
  * `financing` marks section-3 bank charges (intereses, comisiones, impuestos) using the same
@@ -287,7 +283,7 @@ function backdatedPostingCutoffIso(closeIso: string): string {
 }
 
 export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntry[] {
-  return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|postclose_lines`, () => {
+  return getAggregationCached(cacheKeyCcBillingPart(accountId, `postclose_lines`), () => {
     const rows = db
       .prepare(
         `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
@@ -460,7 +456,7 @@ export function normalizedInstallmentPurchaseEvents(
   accountId: number
 ): { iso: string; key: string; clp: number; currency: "clp"; amount: number; statement_date: null }[] {
   return getAggregationCached(
-    `${cacheKeyCcBillingDetail(accountId)}|instpurchase_events`,
+    cacheKeyCcBillingPart(accountId, `instpurchase_events`),
     () => {
       const purchases = db
         .prepare(
@@ -838,7 +834,6 @@ const updateBalanceFromDetalle = db.prepare(`
  * any line lands in it), hence the order: rows first, then the detalle built from them.
  */
 export function recomputeCcBillingMonthBalances(accountId: number): number {
-  invalidateCcBillingDetail(accountId);
   const statements = listCcStatementsForAccount(accountId);
   const months = new Set<string>();
   let n = 0;
@@ -936,5 +931,4 @@ export function patchCreditCardBillingConfig(
        billing_cycle_start_day = excluded.billing_cycle_start_day,
        billing_cycle_end_day = excluded.billing_cycle_end_day`
   ).run(accountId, start, end ?? null);
-  invalidateCcBillingDetail(accountId);
 }

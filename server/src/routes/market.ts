@@ -16,7 +16,7 @@ import {
   watchlistDisplayUnitParam,
 } from "../watchlist.js";
 import { asyncHandler } from "./shared.js";
-import { invalidateMarketDataAggregations } from "../aggregationCache.js";
+import { invalidateMarketDataAggregations } from "../cacheRegistry.js";
 import { listEquitySplits, recordEquitySplit } from "../equitySplits.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
 

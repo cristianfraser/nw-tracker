@@ -5,7 +5,7 @@ import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
@@ -287,7 +287,7 @@ function latestValuationRowFromAscRows(
 /**
  * Sum linked CC balances for many chart dates (one view list + one valuation read per card).
  * A day before Chile today reads no quote, so its sum is kept in the history tier
- * (`aggregationCache.ts`) across live-quote ticks.
+ * (`cacheRegistry.ts`) across live-quote ticks.
  */
 export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<string, number> {
   const out = new Map<string, number>();

@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import {
-  creditCardLiabilityLinkRowsForCashCard,
-  linkedCreditCardClpForCashCardAsOf,
-} from "./liabilityTree.js";
-import { liabilitiesBreakdownClpAsOf, clearAccountCategoryMetaCache } from "./liabilitiesValuation.js";
+import { creditCardLiabilityLinkRowsForCashCard, linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
+import { liabilitiesBreakdownClpAsOf } from "./liabilitiesValuation.js";
 
 const restoredExcludeFlags = new Map<number, number>();
 
@@ -14,7 +11,6 @@ afterEach(() => {
     db.prepare(`UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?`).run(prev, id);
   }
   restoredExcludeFlags.clear();
-  clearAccountCategoryMetaCache();
 });
 
 function ymdMinusDays(ymd: string, days: number): string {

@@ -15,7 +15,7 @@
  * traspaso leg can legitimately arrive without its twin (per-currency pastes), stays
  * fx-converted like today, and is superseded by the PDF import that then links the real pair.
  */
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
+
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { db } from "./db.js";
 
@@ -131,7 +131,6 @@ export function relinkCcTraspasoDeudaLinksForAccount(accountId: number): { links
     }
   })();
   // The memoized post-close line stream bakes linked CLP values in.
-  invalidateCcBillingDetail(accountId);
   return { links: pairs.length };
 }
 

@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
  * Per-request count of aggregation-cache lookups, so the usage log can say whether a response
- * came from warm caches. A leaf module: `aggregationCache.ts` reports into it, the usage
+ * came from warm caches. A leaf module: `cacheRegistry.ts` reports into it, the usage
  * middleware (`usageLog.ts`) opens one store per request. Lookups outside a request (the
  * cache warmer, schedulers) have no store and are not counted.
  */

@@ -1,10 +1,6 @@
-import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
-import {
-  cacheKeyDashboardPageBundle,
-  getAggregationCached,
-  invalidateDashboardPageBundle,
-} from "./aggregationCache.js";
+import { cacheKeyDashboardPageBundle } from "./cacheFamilies.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
@@ -35,14 +31,12 @@ export type DashboardPageBundle = Awaited<ReturnType<typeof buildDashboardPageBu
  * both units after every invalidation, so interactive requests normally return the prebuilt
  * object. The cached value is the in-flight promise — concurrent cold requests share one
  * build; a rejected build evicts itself so the next request retries instead of replaying the
- * cached error.
+ * cached error (`cacheRegistry.ts`).
  * @heavy Cold build runs account rows, full valuation TS, group perf charts, and flows deposits.
  */
 export function buildDashboardPageBundle(unit: TsUnit): Promise<DashboardPageBundle> {
   return getAggregationCached(cacheKeyDashboardPageBundle(unit), () => {
-    const built = withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit)).then(markJsonResponseCacheable);
-    built.catch(() => invalidateDashboardPageBundle());
-    return built;
+    return withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit));
   });
 }
 

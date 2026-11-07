@@ -1,4 +1,4 @@
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 /**
  * Evening Fintual poll: goals API balance vs certificado cuotas × fund_unit_daily must agree
  * before we treat v2 accounts as settled (a v2 bar is only ever written from a Fintual publish price).

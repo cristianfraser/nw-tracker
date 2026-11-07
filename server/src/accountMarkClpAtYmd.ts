@@ -23,7 +23,7 @@ import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
-import { historyTierMemo } from "./aggregationCache.js";
+import { historyTierMemo } from "./cacheRegistry.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { requireEquityTicker } from "./accountEquityTicker.js";
 import { holdingPriceAt, type InstrumentHolding } from "./holdingPrices.js";
@@ -277,7 +277,7 @@ export function qtyMarkNativeValue(
 
 /**
  * {@link historicalQtyMarkUncached} for a day other than Chile today. A past day reads no live
- * input, so it is kept in the history tier (`aggregationCache.ts`).
+ * input, so it is kept in the history tier (`cacheRegistry.ts`).
  */
 export function accountHistoricalQtyMark(
   accountId: number,

@@ -24,8 +24,8 @@ import {
 } from "./movementAmounts.js";
 import { bucketSlugForAccountId } from "./accountBucket.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+
+
 import { BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
 import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
@@ -132,7 +132,6 @@ export function claimTransferLegForBankRow(
   dbHandle: Database = db
 ): void {
   recordBankPosting(transferMovementId, accountId, bankDateYmd, dbHandle);
-  clearCheckingBalanceCache(accountId);
 }
 
 type ImportedCheckingRow = { id: number; occurred_on: string };
@@ -193,8 +192,6 @@ export function supersedeImportedCheckingRowsForTransfer(
     removed_ids.push(match.id);
     // The deleted row was the bank's listing: its date is the transfer's posting day here.
     recordBankPosting(transferMovementId, endpoint, match.occurred_on, dbHandle);
-    clearCheckingBalanceCache(endpoint);
-    invalidateAggregationForAccountDate(endpoint, match.occurred_on);
   }
   return { removed_ids };
 }
