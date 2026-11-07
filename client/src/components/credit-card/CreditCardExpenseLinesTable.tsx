@@ -6,6 +6,7 @@ import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditC
 import { formatCcExpenseLineAmount, formatClp, parseNumberInput } from "../../format";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { loadableClass } from "../ui/Loadable";
 import { Pill } from "../ui/Pill";
 import { PillPicker } from "../ui/PillPicker";
@@ -24,6 +25,7 @@ import {
 } from "./ExpenseVendorLabel";
 import {
   useAssignCcExpenseLineCategory,
+  useDeleteCcStatementLineMutation,
   useMakeStatementLineInstallmentMutation,
   usePostVendorBranchChoiceMutation,
 } from "../../queries/hooks";
@@ -233,15 +235,49 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
 }
 
 type RowActions = {
-  showDeleteAction: boolean;
-  deletableLineIds?: ReadonlySet<number>;
-  onDeleteLine?: (line: FlowCcExpenseLineRow) => void;
-  deletePendingLineId?: number;
-  makeInstallmentLineIds?: ReadonlySet<number>;
   onEditPieces?: (line: FlowCcExpenseLineRow) => void;
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
   enableCheckingNotes: boolean;
 };
+
+/** Delete for a card-feed / pasted line: confirm, then the server removes it. */
+function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const del = useDeleteCcStatementLineMutation({ accountId: line.account_id, displayUnit });
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={del.isPending}
+        aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
+        onClick={() => setConfirming(true)}
+      >
+        {t("accountDetail.creditCard.facturacionDeleteLine")}
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title={t("accountDetail.creditCard.facturacionDeleteConfirmTitle")}
+        message={t("accountDetail.creditCard.facturacionDeleteConfirmBody", {
+          merchant: line.merchant ?? "—",
+          amount: formatCcExpenseLineAmount(line.amount_clp, line.amount_usd),
+        })}
+        confirmLabel={t("accountDetail.creditCard.facturacionDeleteConfirmAction")}
+        cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
+        confirmDisabled={del.isPending}
+        onConfirm={() =>
+          del.mutate(line.statement_line_id, {
+            onSuccess: () => setConfirming(false),
+            onError: (err) => window.alert(err instanceof Error ? err.message : String(err)),
+          })
+        }
+        onCancel={() => setConfirming(false)}
+      />
+    </>
+  );
+}
 
 /** The installment count, entered right where the row asks for it. */
 function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
@@ -312,20 +348,15 @@ function ExpenseLineRow({
   const canSelect = selectable && selection != null && !fixedCategory;
   const selected = canSelect && selection.isSelected(ln);
 
-  const canDelete =
-    actions.showDeleteAction &&
-    actions.deletableLineIds?.has(ln.statement_line_id) === true &&
-    ln.statement_line_id > 0;
-  const deleteBusy = actions.deletePendingLineId === ln.statement_line_id;
+  // Card-feed / pasted lines are the only ones the server lets you delete or convert by hand.
+  const canDelete = ln.source === "cc" && ln.web_paste === true && ln.statement_line_id > 0;
   // A line the bank lists in cuotas without the count asks for it wherever it shows; any other
   // convertible line (facturación modal) offers the same input.
   const canMakeInstallment =
     ln.source === "cc" &&
     ln.statement_line_id > 0 &&
     !ln.installment_flag &&
-    (ln.cuota_purchase_kind != null ||
-      (actions.showDeleteAction &&
-        actions.makeInstallmentLineIds?.has(ln.statement_line_id) === true));
+    (ln.cuota_purchase_kind != null || ln.web_paste === true);
   const canEditPieces =
     actions.onEditPieces != null &&
     (ln.source === "cc" || ln.source === "checking") &&
@@ -466,17 +497,7 @@ function ExpenseLineRow({
                   {t("expenses.creditCard.manualExpense.edit")}
                 </Button>
               ) : null}
-              {canDelete ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={deleteBusy}
-                  aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
-                  onClick={() => actions.onDeleteLine?.(ln)}
-                >
-                  {t("accountDetail.creditCard.facturacionDeleteLine")}
-                </Button>
-              ) : null}
+              {canDelete ? <DeleteLineButton line={ln} /> : null}
             </div>
           ) : null}
         </div>
@@ -554,11 +575,6 @@ export function CreditCardExpenseLinesTable({
   collapsedVisibleRows,
   showMoreLabel,
   showLessLabel,
-  showDeleteAction = false,
-  deletableLineIds,
-  onDeleteLine,
-  deletePendingLineId,
-  makeInstallmentLineIds,
   onEditPieces,
   onEditManual,
   enableCheckingNotes = false,
@@ -574,11 +590,6 @@ export function CreditCardExpenseLinesTable({
   collapsedVisibleRows?: number;
   showMoreLabel?: string;
   showLessLabel?: string;
-  showDeleteAction?: boolean;
-  deletableLineIds?: ReadonlySet<number>;
-  onDeleteLine?: (line: FlowCcExpenseLineRow) => void;
-  deletePendingLineId?: number;
-  makeInstallmentLineIds?: ReadonlySet<number>;
   /** Break a card / checking purchase line into dated pieces (row extras). */
   onEditPieces?: (line: FlowCcExpenseLineRow) => void;
   /** Edit or delete a manual expense line (row extras). */
@@ -631,11 +642,6 @@ export function CreditCardExpenseLinesTable({
   const hidden = limit != null ? Math.max(0, sorted.length - limit) : 0;
   const visible = hidden > 0 && !showAll ? sorted.slice(0, limit ?? undefined) : sorted;
   const actions: RowActions = {
-    showDeleteAction,
-    deletableLineIds,
-    onDeleteLine,
-    deletePendingLineId,
-    makeInstallmentLineIds,
     onEditPieces,
     onEditManual,
     enableCheckingNotes,

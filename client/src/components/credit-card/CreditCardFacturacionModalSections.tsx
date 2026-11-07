@@ -1,11 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatCcExpenseLineAmount } from "../../format";
-import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
-import type { DisplayUnit } from "../../queries/keys";
+import type { CcExpenseCategoryDto } from "../../types";
 import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { useDeleteCcStatementLineMutation } from "../../queries/hooks";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import type { FacturacionModalBucket } from "./buildFacturacionModalBucket";
 import { isFacturacionModalBucketEmpty } from "./buildFacturacionModalBucket";
@@ -14,53 +10,17 @@ import { formatClp } from "../../format";
 export function CreditCardFacturacionModalSections({
   bucket,
   categories,
-  accountId,
-  displayUnit,
-  deletableLineIds,
 }: {
   bucket: FacturacionModalBucket;
   categories: readonly CcExpenseCategoryDto[];
-  accountId: number;
-  displayUnit: DisplayUnit;
-  deletableLineIds: ReadonlySet<number>;
 }) {
   const { t } = useTranslation();
-  const [pendingDelete, setPendingDelete] = useState<FlowCcExpenseLineRow | null>(null);
-
-  const deleteLine = useDeleteCcStatementLineMutation({ accountId, displayUnit });
-
   const gastosSum = useMemo(() => sumLineAmountsClp(bucket.gastos), [bucket.gastos]);
   const costeFinancieroSum = useMemo(
     () => sumLineAmountsClp(bucket.costeFinanciero),
     [bucket.costeFinanciero]
   );
   const abonosSum = useMemo(() => sumLineAmountsClp(bucket.abonos), [bucket.abonos]);
-
-  const showDelete = deletableLineIds.size > 0;
-  const tableDeleteProps = showDelete
-    ? {
-        showDeleteAction: true as const,
-        deletableLineIds,
-        onDeleteLine: setPendingDelete,
-        deletePendingLineId: deleteLine.isPending ? deleteLine.variables : undefined,
-        makeInstallmentLineIds: deletableLineIds,
-      }
-    : {};
-
-  const confirmAmount = pendingDelete
-    ? formatCcExpenseLineAmount(pendingDelete.amount_clp, pendingDelete.amount_usd)
-    : "";
-
-  const handleConfirmDelete = () => {
-    if (!pendingDelete) return;
-    deleteLine.mutate(pendingDelete.statement_line_id, {
-      onSuccess: () => setPendingDelete(null),
-      onError: (err) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        window.alert(msg);
-      },
-    });
-  };
 
   if (isFacturacionModalBucketEmpty(bucket)) {
     return <p className="muted">{t("expenses.creditCard.monthModalEmpty")}</p>;
@@ -81,7 +41,6 @@ export function CreditCardFacturacionModalSections({
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        {...tableDeleteProps}
       />
 
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
@@ -97,7 +56,6 @@ export function CreditCardFacturacionModalSections({
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        {...tableDeleteProps}
       />
 
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
@@ -113,25 +71,6 @@ export function CreditCardFacturacionModalSections({
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        {...tableDeleteProps}
-      />
-
-      <ConfirmDialog
-        open={pendingDelete != null}
-        title={t("accountDetail.creditCard.facturacionDeleteConfirmTitle")}
-        message={
-          pendingDelete
-            ? t("accountDetail.creditCard.facturacionDeleteConfirmBody", {
-                merchant: pendingDelete.merchant ?? "—",
-                amount: confirmAmount,
-              })
-            : ""
-        }
-        confirmLabel={t("accountDetail.creditCard.facturacionDeleteConfirmAction")}
-        cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
-        confirmDisabled={deleteLine.isPending}
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setPendingDelete(null)}
       />
     </>
   );

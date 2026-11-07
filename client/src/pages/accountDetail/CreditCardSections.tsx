@@ -278,7 +278,6 @@ function CreditCardInstallmentsSection({
               <CreditCardFacturacionesTable
                 rows={facturaciones}
                 accountId={accountId}
-                displayUnit={displayUnit}
                 facturacionProxy={ledger.facturacion_proxy}
                 proxyTickers={ledger.proxy_tickers}
                 pendingCuotaPurchases={ledger.pending_cuota_purchases}
