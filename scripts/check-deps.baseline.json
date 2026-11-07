@@ -1,7 +1,7 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 5510,
-  "largest_cycle": 142,
+  "edge_count": 5525,
+  "largest_cycle": 140,
   "cycle_members": [
     "client/src/dashboardCardBreakdown.ts",
     "client/src/navCardBreakdown.ts",
@@ -109,7 +109,6 @@
     "server/src/creditCardTree.ts",
     "server/src/cryptoValuation.ts",
     "server/src/cuentaAhorroDepositSplits.ts",
-    "server/src/cuotaLedgerAccounts.ts",
     "server/src/dailySeries.ts",
     "server/src/dashboardChartMarkTotals.ts",
     "server/src/dashboardComposition.ts",
@@ -149,7 +148,6 @@
     "server/src/groupMonthlyPerfConsolidation.ts",
     "server/src/groupTabOrdering.ts",
     "server/src/holdingPrices.ts",
-    "server/src/holdings.ts",
     "server/src/importSyncCartolaSinMovimientos.ts",
     "server/src/importSyncDocumentCoverage.ts",
     "server/src/importSyncDocumentFilePath.ts",
