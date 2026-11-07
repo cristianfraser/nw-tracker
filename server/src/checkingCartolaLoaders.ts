@@ -3,6 +3,7 @@
  * (`flowsCheckingGastos.ts`). This layer only SELECTs and shapes rows — classification
  * lives in `checkingDescriptionPredicates.ts`, pairing policy in the engine.
  */
+import { TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import {
   loadMergedDepositInflowEventsBankDatedWithTransferCounter,
@@ -204,7 +205,7 @@ export function loadAllCheckingWithdrawals(): CheckingWithdrawalWithAccount[] {
  * DAP abono must not be claimable by an unrelated same-amount checking wire, and a DAP retiro must
  * not be consumable as a capital return.
  */
-const MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS = new Set(["dap"]);
+const MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS: ReadonlySet<string> = new Set([TERM_DEPOSIT_KIND]);
 // Coin accounts funded by the Buda buffer (`loadCryptoCoinAccountIdsFundedByBuda`) are left out of
 // both pools as well: a coin buy is paid from the buffer and a coin sell pays into it, so neither
 // crosses the checking boundary. The buffer's abono (money from checking) and retiro (money back)

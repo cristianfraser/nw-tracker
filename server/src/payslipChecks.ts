@@ -16,8 +16,8 @@
  *
  * Peso payslips of kind salary only (a finiquito and the USD contract have none of these).
  */
+import { accountProfileOptional } from "./accountProfile.js";
 import { db } from "./db.js";
-import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { iuscTax, MANDATORY_PENSION_RATE } from "./legalParameters.js";
 import { loadPayrollParameters } from "./payrollParametersApply.js";
 import { iuscTaxableClp, legalHealthClp, payslipHaberIsTaxable, type PayslipLineKind } from "./payslipLineKinds.js";
@@ -73,7 +73,7 @@ export function buildPayslipChecks(): PayslipChecksRow[] {
         WHERE (SELECT COUNT(*) FROM pension_contribution_periods x WHERE x.movement_id = p.movement_id) = 1 AND m.account_id IS NOT NULL`
     )
     .all() as { period_month: string; account_id: number; amount: number }[]) {
-    if (accountKindSlugForAccountId(r.account_id) !== "afp") continue;
+    if (accountProfileOptional(r.account_id)?.kind !== "afp") continue;
     creditedByMonth.set(r.period_month, (creditedByMonth.get(r.period_month) ?? 0) + r.amount);
   }
 

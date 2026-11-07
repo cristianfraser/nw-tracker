@@ -1,4 +1,5 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { PAYROLL_FUNDED_KINDS } from "./accountProfile.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
@@ -99,8 +100,6 @@ export type FlowDepositRow = {
   pension_switch?: true;
 };
 
-/** Payroll-deducted pre-tax deposit kinds — money that never passes through checking. */
-const PRE_TAX_DEPOSIT_KIND_SLUGS = new Set(["afp", "afc"]);
 
 /**
  * An AFP/AFC cotización (a positive pension event): payroll-deducted, shown apart from the
@@ -109,7 +108,7 @@ const PRE_TAX_DEPOSIT_KIND_SLUGS = new Set(["afp", "afc"]);
  */
 export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amount_clp" | "pension_switch">): boolean {
   if (row.pension_switch) return true;
-  return PRE_TAX_DEPOSIT_KIND_SLUGS.has(row.kind_slug) && row.amount_clp > 0;
+  return PAYROLL_FUNDED_KINDS.has(row.kind_slug) && row.amount_clp > 0;
 }
 
 /**
@@ -117,7 +116,7 @@ export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amou
  * day and the same pesos on two different accounts (the transfer's legs; one-to-one).
  */
 export function markPensionSwitchRows(rows: FlowDepositRow[]): void {
-  const pension = rows.filter((r) => PRE_TAX_DEPOSIT_KIND_SLUGS.has(r.kind_slug) && !r.pension_switch);
+  const pension = rows.filter((r) => PAYROLL_FUNDED_KINDS.has(r.kind_slug) && !r.pension_switch);
   const used = new Set<FlowDepositRow>();
   for (const out of pension) {
     if (out.amount_clp >= 0 || used.has(out)) continue;

@@ -126,6 +126,15 @@ export function kindIsDebt(kind: string | null | undefined): boolean {
 /** Kinds valued from a cuota ledger (with a series). */
 export const CUOTA_LEDGER_KINDS: ReadonlySet<string> = new Set(["afp", "afc"]);
 
+/**
+ * Pension kinds funded from payroll (pre-tax cotizaciones): their inflows come from the employer,
+ * never through checking — no outflow to pair, shown apart from the post-tax deposits.
+ */
+export const PAYROLL_FUNDED_KINDS: ReadonlySet<string> = CUOTA_LEDGER_KINDS;
+
+/** The term-deposit kind: its round-trips are netted on the checking side, never paired. */
+export const TERM_DEPOSIT_KIND = "dap";
+
 function rolesFromRows(rows: readonly { role: StoredAccountRole; param: string }[]): AccountRoles {
   const params = (role: StoredAccountRole) => rows.filter((r) => r.role === role).map((r) => r.param);
   const loanOf = params("loan_of");

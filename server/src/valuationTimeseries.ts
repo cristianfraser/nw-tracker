@@ -171,8 +171,6 @@ type GroupTabValuationBlock = {
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
 const GROUP_TAB_DEP_TOTAL = "__group_dep_total";
 
-/** Liability categories: balance is debt, not equity — no cumulative “aportes” line on charts. */
-const CATEGORY_NO_CHART_DEPOSIT_LINE = new Set(["credit_card", "mortgage", "other_debt"]);
 
 /**
  * Synthetic account ids of the «hipoteca» (mortgage balance) and «valor» (gross property
@@ -376,7 +374,8 @@ function attachDepositSeriesKeys(
       const slug = slugById.get(t.account_id);
       const kind = slug ? accountBucketKindSlug(slug) : "";
       if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
-      if (kind && CATEGORY_NO_CHART_DEPOSIT_LINE.has(kind)) return { ...t };
+      // Liabilities: the balance is debt, not equity — no cumulative «aportes» line.
+      if (accountProfileOptional(t.account_id)?.chartDeposits === false) return { ...t };
       // Ledger cash: always draw the deposited line so interest shows as P/L — both kinds from
       // their merged deposit events (see the dep-map builder).
       if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {

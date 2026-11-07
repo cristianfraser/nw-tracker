@@ -1,4 +1,5 @@
 import { daysBetweenIso } from "nw-tracker-contracts";
+import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { db } from "./db.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { CASH_FEE_FLOW_KIND, SAVINGS_EARNINGS_FLOW_KIND } from "./accountDeposits.js";
@@ -140,15 +141,13 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 
 // AFP and AFC inflows come from payroll (pre-tax payslip deductions), not from a checking/CC
 // expense — they never have a matching outflow to link against, so accounts of these kinds are
-// excluded from reconciliation entirely (filtered by account, see PAYROLL_ACCOUNT_KIND_SLUGS
-// below) rather than showing up as perpetually "unlinked".
-const PAYROLL_ACCOUNT_KIND_SLUGS = new Set(["afp", "afc"]);
+// excluded from reconciliation entirely (filtered by account, `PAYROLL_FUNDED_KINDS`) rather than
+// showing up as perpetually "unlinked".
 
 // The DAP ledger account (import:dap) holds term-deposit principal between checking round-trips.
 // Its checking counterparts (Cargo Mercado Capitales out, DAP ... ABONADO back) are already netted
 // as internal on the checking side, so DAP inflows/outflows are excluded from reconciliation on
 // both sides — including them would demand links for flows the matcher intentionally ignores.
-const DAP_ACCOUNT_KIND_SLUG = "dap";
 
 // The checking bucket (cuenta_corriente + cuenta_vista) is the *funding source* for this feature,
 // never a reconciliation target. Its own inflows are income (salary) and internal corriente↔vista
@@ -313,7 +312,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
       const kindSlug = accountKindSlugForAccountId(id);
       return (
         kindSlug == null ||
-        (!PAYROLL_ACCOUNT_KIND_SLUGS.has(kindSlug) && kindSlug !== DAP_ACCOUNT_KIND_SLUG)
+        (!PAYROLL_FUNDED_KINDS.has(kindSlug) && kindSlug !== TERM_DEPOSIT_KIND)
       );
     });
 

@@ -26,6 +26,7 @@
  * and checking debits the user categorized as spending (structured evidence the row is not one
  * leg of a move between own accounts).
  */
+import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
@@ -97,11 +98,6 @@ export type RejectedMirrorPair = {
 /** Inflow on or after the outflow (causal order), at most this many calendar days later. */
 export const MIRROR_PAIR_MAX_DAY_GAP = 5;
 
-/** Payroll-funded kinds: inflows there come from employers/AFP flows, not personal transfers. */
-const MIRROR_INFLOW_EXCLUDED_KIND_SLUGS = new Set(["afp", "afc"]);
-
-/** DAP round-trips are netted on the checking side; never pair either leg (see AGENTS.md). */
-const MIRROR_EXCLUDED_KIND_SLUGS = new Set(["dap"]);
 
 /** A credit the user classified as income (salary, parent gift, force-include) is not a transfer leg. */
 const USER_CLASSIFIED_INCOME_SQL = `SELECT 1 FROM checking_income_movement_overrides o
@@ -285,11 +281,11 @@ export function mirrorLegDirectionAllowed(
   _note: string | null,
   direction: "out" | "in"
 ): boolean {
-  if (kindSlug != null && MIRROR_EXCLUDED_KIND_SLUGS.has(kindSlug)) return false;
+  if (kindSlug != null && kindSlug === TERM_DEPOSIT_KIND) return false;
   // State-bonus rows carry a non-null flow_kind and so are already excluded by loadEligibleLegs
   // (`flow_kind IS NULL`); no note check is needed here.
   if (direction === "in") {
-    if (kindSlug != null && MIRROR_INFLOW_EXCLUDED_KIND_SLUGS.has(kindSlug)) return false;
+    if (kindSlug != null && PAYROLL_FUNDED_KINDS.has(kindSlug)) return false;
   }
   return true;
 }
