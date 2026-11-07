@@ -25,20 +25,6 @@ describe("fxRowOnOrBefore", () => {
     expect(fxRowOnOrBefore("1700-02-10")).toEqual({ date: "1700-02-10", clp_per_usd: 720 });
   });
 
-  it("monthEndOnly skips non-month-end rows", () => {
-    expect(fxRowOnOrBefore("1700-02-12", { monthEndOnly: true })).toEqual({
-      date: "1700-01-31",
-      clp_per_usd: 710,
-    });
-  });
-
-  it("monthEndOnly falls back to any row when no month-end exists on or before", () => {
-    expect(fxRowOnOrBefore("1700-01-20", { monthEndOnly: true })).toEqual({
-      date: "1700-01-15",
-      clp_per_usd: 700,
-    });
-  });
-
   it("returns null before the series starts and for null dates", () => {
     expect(fxRowOnOrBefore("1699-12-31")).toBeNull();
     expect(fxRowOnOrBefore(null)).toBeNull();
@@ -53,13 +39,9 @@ describe("fxMonthEndForBalanceUsd", () => {
     });
   });
 
-  it("falls forward to the earliest month-end when the series starts after the date", () => {
-    // No row on or before 1699-06-01 anywhere in fx_daily; the earliest month-end row in the
-    // table is the 1700-01-31 fixture.
-    expect(fxMonthEndForBalanceUsd("1699-06-01")).toEqual({
-      date: "1700-01-31",
-      clp_per_usd: 710,
-    });
+  it("never reads a rate dated after the date: null before the series starts", () => {
+    // No row on or before 1699-06-01 anywhere in fx_daily.
+    expect(fxMonthEndForBalanceUsd("1699-06-01")).toBeNull();
   });
 
   it("returns null for null dates", () => {

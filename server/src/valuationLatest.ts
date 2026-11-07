@@ -21,12 +21,6 @@ const stmtOnOrBefore = db.prepare(
    ORDER BY as_of_date DESC LIMIT 1`
 );
 
-const stmtFallback = db.prepare(
-  `SELECT value AS value_clp, currency, as_of_date FROM valuations
-   WHERE account_id = ?
-   ORDER BY as_of_date DESC LIMIT 1`
-);
-
 const stmtCategorySlug = db.prepare(
   `SELECT g.slug AS bucket_slug FROM accounts a
    JOIN asset_groups g ON g.id = a.asset_group_id
@@ -69,22 +63,16 @@ export function latestValuationRowOnOrBefore(
 }
 
 /**
- * Latest valuation on or before Chile today. Falls back to the absolute latest row only for the
- * current snapshot (e.g. account with only a future month-end placeholder).
+ * Latest valuation on or before Chile today; `undefined` when the account has none yet (a row
+ * dated after today is never read: callers show no stored value).
  */
 export function latestValuationRowOnOrBeforeChileToday(accountId: number): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const today = chileCalendarTodayYmd();
-  const row = storedValueClp(
+  return storedValueClp(
     accountId,
     stmtOnOrBefore.get(accountId, today) as (LatestValuationRow & { currency: string }) | undefined,
     "valuationLatest today"
-  );
-  if (row) return row;
-  return storedValueClp(
-    accountId,
-    stmtFallback.get(accountId) as (LatestValuationRow & { currency: string }) | undefined,
-    "valuationLatest fallback"
   );
 }
 

@@ -23,6 +23,7 @@ import {
 } from "./accountMovementsApi.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
+import { movementClpLegOrZero, movementUsdLeg } from "./movementAmounts.js";
 import { transferToLegUnits } from "./movementTransfer.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
@@ -121,10 +122,8 @@ function aportesRows(accounts: readonly MemberAccount[], opts: ExportOptions, wi
 
 function movementRow(m: AccountMovementApiRow, accountName: string | null): SheetRow {
   // Sheet keeps split CLP/USD columns (SUM-friendly), derived from the native amount+currency.
-  const montoClp =
-    m.currency === "clp" ? m.amount : m.counter_currency === "clp" ? m.counter_amount : 0;
-  const montoUsd =
-    m.currency === "usd" ? m.amount : m.counter_currency === "usd" ? m.counter_amount : null;
+  const montoClp = movementClpLegOrZero(m);
+  const montoUsd = movementUsdLeg(m);
   return {
     ...(accountName != null ? { cuenta: accountName } : {}),
     fecha: m.occurred_on,
