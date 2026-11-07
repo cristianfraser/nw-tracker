@@ -16,6 +16,7 @@
  * detection therefore matches within the same ±5-day window `fintualCertImport` uses, so an
  * e-mail-dated row and a certificado-dated one for the same event recognise each other.
  */
+import { addDaysIso } from "nw-tracker-contracts";
 import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
@@ -85,12 +86,6 @@ export function tickerFromFundName(fundName: string): string | null {
  * Same rule as the Racional importer.
  */
 const eventChileYmd = notificationChileYmd;
-
-function isoAddDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 export type FintualPlannedMovement = {
   /**
@@ -291,7 +286,7 @@ export function planFintualEmailMovement(
         checking,
         base.amount,
         occurred_on,
-        isoAddDays(occurred_on, EMAIL_MATCH_WINDOW_DAYS)
+        addDaysIso(occurred_on, EMAIL_MATCH_WINDOW_DAYS)
       ) as { id: number } | undefined;
       if (existingDebit) {
         return {
@@ -371,8 +366,8 @@ export function planFintualEmailMovement(
         goalAccountId,
         checkingAccountId(),
         base.currency,
-        isoAddDays(base.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
-        isoAddDays(base.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
+        addDaysIso(base.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
+        addDaysIso(base.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
       ) as { id: number; amount: number }[];
       const already = existing.find((r) => Math.round(r.amount) === Math.round(base.amount));
       if (already) return { ...base, duplicate_of: already.id };
@@ -450,8 +445,8 @@ export function markFintualDuplicates(
       p.from_account_id,
       p.to_account_id,
       p.currency,
-      isoAddDays(p.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
-      isoAddDays(p.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
+      addDaysIso(p.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
+      addDaysIso(p.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
     ) as { id: number; occurred_on: string; amount: number }[];
     const hit = rows.find((r) => Math.abs(Number(r.amount) - p.amount) < 0.005);
     return hit ? { ...p, duplicate_of: hit.id } : p;

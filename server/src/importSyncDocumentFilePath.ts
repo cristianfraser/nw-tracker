@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import {
   cartolaPeriodRangeCoversMonth,
@@ -21,6 +20,7 @@ import { cartolaPdfPreferenceScore } from "./cartolaSinMovimientos.js";
 import { normalizeCcImportCardLast4 } from "./ccConsolidatedCards.js";
 import { db } from "./db.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { buildFlowsDepositsPayload } from "./flowsDeposits.js";
 import { cachedMortgageCarryingEvents } from "./flowsMortgageCarrying.js";
@@ -16,6 +15,7 @@ import {
   type FlowsOverviewIncome,
   type FlowsOverviewMonthInputs,
 } from "./flowsOverview.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 const TODAY = "2024-04-15";
 const CHECKING_ID = 20;

@@ -18,8 +18,8 @@ import {
   billingMonthForManualLedgerPurchase,
 } from "./ccManualBillingMonth.js";
 import { billingPeriodIsoRange, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 // Manual-purchase creation + the nudge upsert valuations; restore exact rows afterwards.
 const restoreValuations = snapshotTables(["valuations"]);

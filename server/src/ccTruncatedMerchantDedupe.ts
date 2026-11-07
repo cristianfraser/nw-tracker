@@ -49,10 +49,10 @@
  */
 import { db } from "./db.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 
 import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH };
 

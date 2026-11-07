@@ -19,6 +19,7 @@
  * restatement is reported as a sync change, never silently kept). Only the CIC column is
  * stored — the FCS is the solidarity fund, nobody's account.
  */
+import { foldAccents, parseChileanNumber } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
 import { fetchOut } from "./httpOut.js";
@@ -63,21 +64,6 @@ export function spCesantiaCsvUrl(year: number): string {
   return `${SP_CESANTIA_CSV_BASE}?aaaa=${year}`;
 }
 
-/** `4.221,76` → 4221.76, `10811508015009` → 10811508015009. Throws on anything else. */
-export function parseChileanDecimal(raw: string): number {
-  const s = raw.trim();
-  if (!/^-?\d{1,3}(\.\d{3})*(,\d+)?$|^-?\d+(,\d+)?$/.test(s)) {
-    throw new Error(`afc_cic: unparsable Chilean number «${raw}»`);
-  }
-  const n = Number(s.replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(n)) throw new Error(`afc_cic: unparsable Chilean number «${raw}»`);
-  return n;
-}
-
-function stripAccents(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
 /**
  * Parse one yearly CSV. Fail-fast: the two header lines must match the known layout (a
  * template change must surface, never a silently mis-mapped column), every data row must
@@ -93,7 +79,7 @@ export function parseSpCesantiaCsv(text: string): SpCesantiaRow[] {
     .map((l) => l.trimEnd())
     .filter((l) => l.trim().length > 0);
   if (lines.length < 2) throw new Error("afc_cic: CSV has no header lines");
-  const funds = lines[0]!.split(";").map((c) => stripAccents(c.trim()));
+  const funds = lines[0]!.split(";").map((c) => foldAccents(c.trim()));
   if (funds.length !== EXPECTED_HEADER_FUNDS.length || funds.some((c, i) => c !== EXPECTED_HEADER_FUNDS[i])) {
     throw new Error(`afc_cic: unexpected fund header «${lines[0]}»`);
   }
@@ -118,10 +104,10 @@ export function parseSpCesantiaCsv(text: string): SpCesantiaRow[] {
     if (unpublishedLine != null) throw new Error(`afc_cic: empty row «${unpublishedLine}» before a published one`);
     const row: SpCesantiaRow = {
       day,
-      cic_valor_cuota: parseChileanDecimal(cells[1]!),
-      cic_patrimonio: parseChileanDecimal(cells[2]!),
-      fcs_valor_cuota: parseChileanDecimal(cells[3]!),
-      fcs_patrimonio: parseChileanDecimal(cells[4]!),
+      cic_valor_cuota: parseChileanNumber(cells[1]!),
+      cic_patrimonio: parseChileanNumber(cells[2]!),
+      fcs_valor_cuota: parseChileanNumber(cells[3]!),
+      fcs_patrimonio: parseChileanNumber(cells[4]!),
     };
     if (row.cic_valor_cuota <= 0 || row.fcs_valor_cuota <= 0) {
       throw new Error(`afc_cic: non-positive valor cuota at «${line}»`);

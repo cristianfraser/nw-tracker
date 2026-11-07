@@ -12,11 +12,11 @@ import {
   purchaseAmountsMatch,
 } from "./ccCrossImportDedupe.js";
 import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { statementKeyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 const findStmtId = db.prepare(
   `SELECT id FROM cc_statements

@@ -10,12 +10,12 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
 import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from "./ccBillingViews.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   ccInstallmentLedgerRowCount,
   ccLedgerMonthEndIso,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 const deleteNativeAnchor = db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ? AND as_of_date = ?`);
 const insertNativeAnchor = db.prepare(

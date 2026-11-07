@@ -1,27 +1,11 @@
 /** Official daily UF from SII HTML tables (valores y fechas). */
-
-import { isChileanNumber, parseChileanNumber } from "./chileanNumber.js";
+import { decodeHtmlEntities, isChileanNumber, monthFromSpanishName, parseChileanNumber } from "nw-tracker-contracts";
 
 const SII_UF_BASE = "https://www.sii.cl/valores_y_fechas/uf";
 
-const MES_ID_TO_MONTH: Record<string, number> = {
-  mes_enero: 1,
-  mes_febrero: 2,
-  mes_marzo: 3,
-  mes_abril: 4,
-  mes_mayo: 5,
-  mes_junio: 6,
-  mes_julio: 7,
-  mes_agosto: 8,
-  mes_septiembre: 9,
-  mes_octubre: 10,
-  mes_noviembre: 11,
-  mes_diciembre: 12,
-};
-
 /** A day cell, Chilean-format ("4x.xxx,xx"); null when it holds no number (a future day is blank). */
 function parseChileanUfCell(raw: string): number | null {
-  const t = raw.replace(/&nbsp;/gi, " ").trim();
+  const t = decodeHtmlEntities(raw).trim();
   if (!isChileanNumber(t)) return null;
   const n = parseChileanNumber(t);
   if (n < 1000 || n > 1e6) return null;
@@ -36,8 +20,7 @@ export function parseSiiUfYearHtml(html: string, year: number): Map<string, numb
     const idEnd = chunk.indexOf("'>");
     if (idEnd < 0) continue;
     const id = chunk.slice(0, idEnd);
-    if (id === "mes_all") continue;
-    const month = MES_ID_TO_MONTH[id];
+    const month = id.startsWith("mes_") ? monthFromSpanishName(id.slice(4)) : null;
     if (!month) continue;
     const body = chunk.slice(idEnd + 2);
     const cellRe = /<strong>(\d+)<\/strong><\/th>\s*<td[^>]*>([^<]*)<\/td>/gi;

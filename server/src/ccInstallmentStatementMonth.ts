@@ -1,5 +1,5 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /** YYYY-MM from period_to (preferred) or statement_date on a parsed CSV row. */
 export function statementPeriodMonthFromParsedRow(row: {

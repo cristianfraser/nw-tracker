@@ -9,11 +9,11 @@
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
-import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import { facturacionPayByIsoResolver, type CcFacturacionRow } from "./ccBillingViews.js";
+import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
 // ─── Ticker config ───────────────────────────────────────────────────────────
 

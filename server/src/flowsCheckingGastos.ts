@@ -1,3 +1,4 @@
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -44,7 +45,6 @@ import {
   checkingWithdrawalMayAutoMatchDeposit,
   dapAbonoAmountMatchesCargo,
   dapReferenceFromDescription,
-  daysBetweenYmd,
   isCheckingCorrienteVistaTraspasoOutflow,
   isCheckingOwnTraspasoOutflow,
   isCheckingGastosWithdrawalNote,
@@ -54,7 +54,6 @@ import {
   LONG_NUMERIC_CARGO_REF_RE,
   isMercadoCapitalesCargoDescription,
   isPayrollRemuneracionCartolaCredit,
-  signedDaysFromTo,
   stripCheckingBranchPrefix,
   withdrawalMayUseSplittableReservaPool,
 } from "./checkingDescriptionPredicates.js";
@@ -356,7 +355,7 @@ export function depositMatchesInternalTransferTiming(
     const depositMonth = monthKeyFromYmd(deposit.occurred_on);
     return withdrawalMonth != null && withdrawalMonth === depositMonth;
   }
-  return daysBetweenYmd(deposit.occurred_on, withdrawal.occurred_on) <= maxDayGap;
+  return Math.abs(daysBetweenIso(deposit.occurred_on, withdrawal.occurred_on)) <= maxDayGap;
 }
 
 /** Day-gap for exact-date ledger retiros; month-bucket accounts use calendar month only. */
@@ -371,7 +370,7 @@ export function ledgerCapitalReturnMatchesTiming(
     const outflowMonth = monthKeyFromYmd(outflowOccurredOn);
     return creditMonth != null && creditMonth === outflowMonth;
   }
-  const dayGap = signedDaysFromTo(outflowOccurredOn, creditOccurredOn);
+  const dayGap = daysBetweenIso(outflowOccurredOn, creditOccurredOn);
   return dayGap >= 0 && dayGap <= maxDayGap;
 }
 
@@ -437,7 +436,7 @@ export function withdrawalIsReversedByDapAbono(
     const creditDoc = cartolaDocumentFromNote(credit.note);
     const dapRef = dapReferenceFromDescription(creditDesc);
     if (!cartolaDocsMatchForDapAbono(doc, creditDoc, dapRef)) continue;
-    const dayGap = signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on);
+    const dayGap = daysBetweenIso(withdrawal.occurred_on, credit.occurred_on);
     if (dayGap < 0 || dayGap > maxDayGap) continue;
     if (!dapAbonoAmountMatchesCargo(withdrawal.amount_clp, credit.amount_clp, dayGap)) continue;
     return true;
@@ -463,7 +462,7 @@ export function creditIsReversingMercadoCapitalesCargo(
     const doc = cartolaDocumentFromNote(withdrawal.note);
     if (!doc) continue;
     if (!cartolaDocsMatchForDapAbono(doc, creditDoc, dapRef)) continue;
-    const dayGap = signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on);
+    const dayGap = daysBetweenIso(withdrawal.occurred_on, credit.occurred_on);
     if (dayGap < 0 || dayGap > maxDayGap) continue;
     if (!dapAbonoAmountMatchesCargo(withdrawal.amount_clp, credit.amount_clp, dayGap)) continue;
     return true;
@@ -485,7 +484,7 @@ export function checkingCreditMatchesInternalWithdrawal(
   if (isPayrollRemuneracionCartolaCredit(credit)) return false;
   for (const row of checkingWithdrawals) {
     if (Math.round(Math.abs(row.amount_clp)) !== want) continue;
-    if (daysBetweenYmd(credit.occurred_on, row.occurred_on) > maxDayGap) continue;
+    if (Math.abs(daysBetweenIso(credit.occurred_on, row.occurred_on)) > maxDayGap) continue;
     const wDesc = cartolaDescriptionFromNote(row.note);
     const withdrawal = {
       occurred_on: row.occurred_on,
@@ -553,7 +552,7 @@ function checkingCreditMatchesCheckingOutflowCapitalReturn(
   for (const withdrawal of checkingWithdrawals) {
     if (Math.round(Math.abs(withdrawal.amount_clp)) !== want) continue;
     if (!checkingWithdrawalFundsInvestmentCapital(withdrawal.note)) continue;
-    const dayGap = signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on);
+    const dayGap = daysBetweenIso(withdrawal.occurred_on, credit.occurred_on);
     if (dayGap < 0 || dayGap > opts.maxDayGap) continue;
     const key = checkingWithdrawalPairKey(withdrawal);
     if (opts.consumedWithdrawalKeys?.has(key)) continue;
@@ -786,7 +785,7 @@ export function checkingCreditMatchesAfpRetiroReturn(
   if (want <= 0) return false;
   for (const o of afpOutflows) {
     if (Math.round(o.amount_clp) !== want) continue;
-    if (daysBetweenYmd(o.occurred_on, credit.occurred_on) > maxDayGap) continue;
+    if (Math.abs(daysBetweenIso(o.occurred_on, credit.occurred_on)) > maxDayGap) continue;
     return true;
   }
   return false;
@@ -836,7 +835,7 @@ function depositMatchesSplittableInternalTransferTiming(
   deposit: Pick<DepositMatchCandidate, "occurred_on">
 ): boolean {
   return (
-    daysBetweenYmd(deposit.occurred_on, withdrawal.occurred_on) <=
+    Math.abs(daysBetweenIso(deposit.occurred_on, withdrawal.occurred_on)) <=
     SPLITTABLE_INTERNAL_TRANSFER_MAX_DAY_GAP
   );
 }
@@ -896,7 +895,7 @@ function findExactInternalCashTransferDeposit(
     if (Math.round(d.amount_clp) !== want) continue;
     if (usedDepositKeys?.has(d.claim_key)) continue;
     if (!depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) continue;
-    const gap = daysBetweenYmd(d.occurred_on, withdrawal.occurred_on);
+    const gap = Math.abs(daysBetweenIso(d.occurred_on, withdrawal.occurred_on));
     if (gap < bestGap) {
       best = d;
       bestGap = gap;

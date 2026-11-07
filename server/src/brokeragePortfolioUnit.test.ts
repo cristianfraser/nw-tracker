@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -13,6 +12,7 @@ import { getSidebarNavPayload } from "./navTree.js";
 import { accountIdsInPortfolioGroup } from "./portfolioGroupTree.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
  * A managed portfolio unit (migration 190's shape, as data): a brokerage bucket backed by its

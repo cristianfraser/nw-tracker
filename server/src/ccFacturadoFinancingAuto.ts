@@ -27,15 +27,15 @@ import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategori
 import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
-import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
-import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
+import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /** Days past the pay-by a payment still counts toward the facturado (late payments happen). */
 const PAY_BY_GRACE_DAYS = 10;

@@ -38,7 +38,6 @@ import type {
   UtilityBillPayload,
   UtilityService,
 } from "nw-tracker-contracts";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
@@ -50,6 +49,7 @@ import {
   updateRealEstateExpenseMonthsCovered,
 } from "./realEstateExpenseMatching.js";
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /** How long after its due day a bill's charge may still be dated. */
 export const UTILITY_BILL_CHARGE_GRACE_DAYS = 20;

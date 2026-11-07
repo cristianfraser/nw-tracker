@@ -1,5 +1,4 @@
 import { payByFxDateIso } from "./ccBillingBalances.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   listCcPaymentEvidenceRows,
   listCcPaymentPairings,
@@ -12,6 +11,7 @@ import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { fxForLiveMtm } from "./fxLive.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
  * `paid` = the rate the facturación's dollar debt was actually paid at; `live` = still unpaid and

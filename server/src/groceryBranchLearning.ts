@@ -24,8 +24,8 @@
  * Leaf module by design (db + the date parser only): the funnel imports it, so it must import
  * nothing that leads back to the funnel.
  */
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type GroceryCardLineStatus = "created" | "covered" | "pending_branch" | "matched";
 

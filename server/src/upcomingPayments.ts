@@ -12,7 +12,6 @@
  */
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
@@ -37,6 +36,7 @@ import {
   type RecurringOccurrence,
   type RecurringStatus,
 } from "./recurringPaymentMatch.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 export { automaticRecurringMatchForLine, dayInMonth, listRecurringPayments, matchRecurringPayments, projectedUfClp };
 export type { UfLookup };

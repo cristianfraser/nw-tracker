@@ -24,9 +24,9 @@ import {
 import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { creditCardMasterMetaForAccount, type CcWebPasteLine } from "./ccWebPasteParse.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { parseDdMmYyToIso, daysBetweenIso } from "nw-tracker-contracts";
 
 /** An open web-paste bucket line, as the feed matchers see it. */
 export type CcOpenBucketLine = {
@@ -72,10 +72,6 @@ function merchantsSame(a: string | null | undefined, b: string | null | undefine
   return merchantsMatchForCrossDedupe(a, b);
 }
 
-function dayGap(a: string, b: string): number {
-  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
-}
-
 /**
  * The same purchase on a bucket line and a feed row: same currency, same amount (peso / cent),
  * a matching merchant (exact, the paste's 15-character cut, or the cross-import stem rule) and
@@ -94,7 +90,7 @@ export function bucketLineMatchesFeedLine(
     return false;
   }
   const lineIso = bucketLinePurchaseIso(line);
-  if (!lineIso || dayGap(lineIso, feed.transaction_date) > maxDayGap) return false;
+  if (!lineIso || Math.abs(daysBetweenIso(lineIso, feed.transaction_date)) > maxDayGap) return false;
   return merchantsSame(line.merchant, feed.merchant);
 }
 

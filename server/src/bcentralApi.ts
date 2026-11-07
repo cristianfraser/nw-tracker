@@ -5,7 +5,6 @@
  * Env: `BCENTRAL_EMAIL`, `BCENTRAL_PASSWORD` (repo-root `.env`).
  */
 import { BCENTRAL_IPC_SERIES, BCENTRAL_SERIES } from "./bcentralSeries.js";
-import { parseUsNumber } from "./chileanNumber.js";
 import { nextIpcMonth, verifyIpcIndexAgainstVariation, type IpcIndexRow, type IpcObservation } from "./ipcSeries.js";
 import { fetchOut } from "./httpOut.js";
 import {
@@ -13,6 +12,7 @@ import {
   recordSbifRequestFailure,
   recordSbifRequestSuccess,
 } from "./sbifApiGate.js";
+import { parseUsNumber } from "nw-tracker-contracts";
 
 export const BCENTRAL_WS_BASE = "https://si3.bcentral.cl/SieteRestWS/SieteRestWS.ashx";
 

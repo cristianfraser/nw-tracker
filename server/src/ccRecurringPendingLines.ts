@@ -11,10 +11,10 @@
 import { db } from "./db.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { daysBetween, type RecurringEntry } from "./recurringPaymentMatch.js";
+import { type RecurringEntry } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
+import { parseDdMmYyToIso, daysBetweenIso } from "nw-tracker-contracts";
 
 /** How many days after the pending listing the posted line may be dated. */
 export const PENDING_RESTATEMENT_DAYS = 7;
@@ -74,7 +74,7 @@ export function replaceRecurringPendingLines(accountId: number): RecurringPendin
       if (p.l.bucket !== 1) continue;
       const later = named.filter((s) => {
         if (s.l.id === p.l.id || s.k === p.k || Math.round(s.l.amount_clp!) !== Math.round(p.l.amount_clp!)) return false;
-        const gap = daysBetween(p.l.iso, s.l.iso);
+        const gap = daysBetweenIso(p.l.iso, s.l.iso);
         return gap >= 0 && gap <= PENDING_RESTATEMENT_DAYS && amountFitsEntry(entry, Math.round(s.l.amount_clp!), s.l.iso, uf.ufOn);
       });
       if (later.length === 0) continue;

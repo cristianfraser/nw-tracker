@@ -23,9 +23,9 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /** Import batch kinds that plant a payment line (never matched against themselves). */
 export const PLANTING_BATCH_KINDS = ["cc_santander_receipt", "cc_manual_payment"] as const;

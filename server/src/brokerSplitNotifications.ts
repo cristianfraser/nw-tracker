@@ -8,6 +8,7 @@
  * The ex-date is the Chile day the notice was sent. A notice already recorded (from any source,
  * within a week) is a duplicate.
  */
+import { addDaysIso } from "nw-tracker-contracts";
 import type { BrokerNotification, BrokerNotificationPlanRow } from "nw-tracker-contracts";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
@@ -19,10 +20,6 @@ import { racionalCashAccountId, racionalEquityAccountId } from "./racionalMoveme
 
 /** Share counts print 8 decimals: they agree to this. */
 const UNITS_EPS = 1e-6;
-
-function addDays(ymd: string, days: number): string {
-  return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
 
 /** A whole N:1 (or 1:N) ratio that turns `before` shares into `after`, else null. */
 export function wholeSplitRatio(before: number, after: number): { numerator: number; denominator: number } | null {
@@ -83,7 +80,7 @@ export function applyBrokerSplitNotifications(
       (s) => Math.abs(Date.parse(s.ex_date) - Date.parse(exDate)) <= 7 * 86_400_000
     );
     // Once recorded, the ledger's day-before count is the split's own check; held at the broker:
-    const dayBefore = addDays(near?.ex_date ?? exDate, -1);
+    const dayBefore = addDaysIso(near?.ex_date ?? exDate, -1);
     const held = equityBrokerHoldings(stock, dayBefore, null).find((h) => h.cash_account_id === cash)?.units ?? 0;
     if (Math.abs(held - before) > UNITS_EPS) {
       const msg = `${ticker} split on ${exDate}: the ledger holds ${held} shares at ${broker} on ${dayBefore}, the notice says ${n.units}`;

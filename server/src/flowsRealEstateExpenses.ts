@@ -1,5 +1,4 @@
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import type {
@@ -25,6 +24,7 @@ import {
   type ExpenseExpectationRow,
   type RealEstateLinkRow,
 } from "./realEstateExpenseMatching.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 export type RealEstateExpenseLinkDto = {
   purchase_key: string;

@@ -20,13 +20,13 @@ import { db } from "./db.js";
 import { isMortgageCcExpenseMerchant } from "./expenseDepositLinks.js";
 import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
 import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./ccManualBillingMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { ufClpByDateRange } from "./fxRates.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { supersededCcTargetLast4 } from "./ccConsolidatedCards.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /** Day-of-month the mortgage cuota becomes payable (personal product behavior). */
 const MORTGAGE_WINDOW_START_DAY = 11;

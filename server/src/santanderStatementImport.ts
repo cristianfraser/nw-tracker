@@ -37,12 +37,12 @@ import {
   replaceStatementKeysFromRecords,
 } from "./ccInstallmentLedgerMerge.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { ccOriginAmountCsvCell } from "./ccOriginCurrency.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import crypto from "node:crypto";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function sha1Hex16(payload: string): string {
   return crypto.createHash("sha1").update(payload).digest("hex").slice(0, 16);

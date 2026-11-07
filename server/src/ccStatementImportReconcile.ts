@@ -17,7 +17,7 @@ import {
   statementKeyFromRow,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
-import { parseOptionalChileanInteger } from "./chileanNumber.js";
+import { parseOptionalChileanInteger } from "nw-tracker-contracts";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;

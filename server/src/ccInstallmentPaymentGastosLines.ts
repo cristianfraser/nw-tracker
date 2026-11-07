@@ -1,6 +1,5 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
@@ -16,6 +15,7 @@ import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { CcExpenseLineRole } from "./ccExpensePeriodMonth.js";
 import { db } from "./db.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 const PAYMENT_LINE_ID_OFFSET = 2_000_000_000;
 

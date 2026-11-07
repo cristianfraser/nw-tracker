@@ -12,7 +12,6 @@
  */
 import { importCcWebPasteLines } from "./accountImports.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
-import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import { confirmManualPaymentForPlanted, recordPlantedPaymentLine } from "./ccPlantedPayments.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
@@ -21,6 +20,7 @@ import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
+import { ddMmYyyyFromIso } from "nw-tracker-contracts";
 
 export const MANUAL_PAYMENT_CONFIRM_BUSINESS_DAYS = 5;
 

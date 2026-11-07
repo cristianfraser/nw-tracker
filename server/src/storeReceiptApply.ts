@@ -41,6 +41,7 @@
  * `details.final` tells the feeder whether the outcome can still change (`pending_branch`,
  * `awaiting_card_line`): it stamps only final outcomes and sends the others again next run.
  */
+import { addDaysIso } from "nw-tracker-contracts";
 import type { StoreReceiptApplyDetails, StoreReceiptDocumentKind, StoreReceiptPayload } from "nw-tracker-contracts";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
@@ -263,12 +264,6 @@ const selectCardLinesByAmount = db.prepare(
    WHERE l.amount_clp = ?`
 );
 
-function ymdAddDays(ymd: string, days: number): string {
-  const d = new Date(`${ymd}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 /** The card line that is this purchase, in `[fromYmd, toYmd]`. */
 export function findReceiptCardLine(rule: ChainMatchRule, paidClp: number, fromYmd: string, toYmd: string): CardLineMatch {
   if (paidClp <= 0) return { status: "not_card_paid" };
@@ -327,7 +322,7 @@ export function resolveReceiptFacts(staged: IncomingReceipt): {
       );
     }
     const photo = staged.photo_taken_on;
-    cardLine = rule ? findReceiptCardLine(rule, paid, ymdAddDays(photo, -UNDATED_RECEIPT_LOOKBACK_DAYS), photo) : null;
+    cardLine = rule ? findReceiptCardLine(rule, paid, addDaysIso(photo, -UNDATED_RECEIPT_LOOKBACK_DAYS), photo) : null;
     if (cardLine?.status === "matched") {
       purchasedAt = `${cardLine.line_date} 00:00:00`;
       dateSource = "card_line";
@@ -554,7 +549,7 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
     } else if (line.status === "no_card_line") {
       // A dated purchase the feed or statement has not listed yet keeps checking; an old one
       // (or an undated photo, whose date is now the photo's) stops.
-      const waitFrom = ymdAddDays(chileCalendarTodayYmd(), -CARD_LINE_WAIT_DAYS);
+      const waitFrom = addDaysIso(chileCalendarTodayYmd(), -CARD_LINE_WAIT_DAYS);
       movement =
         facts.date_source !== "photo" && purchaseIso >= waitFrom ? { status: "awaiting_card_line" } : { status: "no_card_line" };
     } else if (line.status === "ambiguous_card_line") {

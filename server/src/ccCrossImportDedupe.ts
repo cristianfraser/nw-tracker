@@ -6,9 +6,10 @@ import {
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export const selLineCategory = db.prepare<[number]>(
   `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`

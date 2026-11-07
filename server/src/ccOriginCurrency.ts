@@ -19,8 +19,8 @@
  *
  * Nothing computes with the label or the origin amount; they are provenance.
  */
-import { parseChileanNumber } from "./chileanNumber.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
+import { parseChileanNumber } from "nw-tracker-contracts";
 
 export type CcOriginCurrency = "usd" | "clp";
 

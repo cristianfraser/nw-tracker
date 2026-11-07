@@ -7,13 +7,13 @@ import {
   type FlowsApiRow,
 } from "./flowsApi.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpendingMovements.js";
 import { moneyDirectionForAccount } from "./accountMovementsApi.js";
 import { internalTransferFlowType } from "./movementFlowType.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import type { MovementTransferRow } from "./movementTransfer.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
   return {

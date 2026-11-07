@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function isoFromStatementField(raw: string | null | undefined): string | null {
   const t = String(raw ?? "").trim();

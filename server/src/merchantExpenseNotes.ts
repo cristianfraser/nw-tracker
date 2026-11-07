@@ -34,6 +34,7 @@
  * « (» and lowercased («Grindr - Gay Dating & Chat» → «grindr»), shortened to an App Store note
  * that name starts with («Tinder Dating App» → «tinder»).
  */
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
@@ -123,10 +124,6 @@ export type MerchantChargeLinksResult = {
 
 // ---------------------------------------------------------------------------------------------
 
-function days(a: string, b: string): number {
-  return Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
-}
-
 function addMonths(iso: string, n: number): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
   const total = m - 1 + n;
@@ -138,7 +135,7 @@ function addMonths(iso: string, n: number): string {
 
 /** Whether `date` falls on the billing cycle `anchor` sets: anchor ± whole periods. */
 export function onBillingCycle(date: string, anchor: string, period: Period): boolean {
-  const gap = days(anchor, date);
+  const gap = daysBetweenIso(anchor, date);
   if (period === "day") return true;
   if (period === "week") {
     const r = ((gap % 7) + 7) % 7;
@@ -148,7 +145,7 @@ export function onBillingCycle(date: string, anchor: string, period: Period): bo
   const [ay, am] = anchor.split("-").map(Number) as [number, number];
   const [dy, dm] = date.split("-").map(Number) as [number, number];
   const k0 = Math.floor(((dy - ay) * 12 + (dm - am)) / step);
-  return [k0 - 1, k0, k0 + 1].some((k) => Math.abs(days(addMonths(anchor, k * step), date)) <= CADENCE_DAYS);
+  return [k0 - 1, k0, k0 + 1].some((k) => Math.abs(daysBetweenIso(addMonths(anchor, k * step), date)) <= CADENCE_DAYS);
 }
 
 /** «Grindr - Gay Dating & Chat» → «grindr»: the name before its tagline, lowercased. */
@@ -339,7 +336,7 @@ export function deriveMerchantChargeLinks(opts?: {
   receipts.forEach((r, ri) => {
     charges.forEach((c, ci) => {
       if (r.accountId != null && c.accountId !== r.accountId) return;
-      const dd = days(r.issuedOn, c.date);
+      const dd = daysBetweenIso(r.issuedOn, c.date);
       if (dd < -RECEIPT_DAYS_BEFORE || dd > RECEIPT_DAYS_AFTER) return;
       const err = amountsAgree(c, r.total, r.currency, RECEIPT_FX_TOLERANCE);
       if (err == null) return;
@@ -458,7 +455,7 @@ export function deriveMerchantChargeLinks(opts?: {
 
   charges.forEach((c, ci) => {
     if (receiptOfCharge.has(ci) || c.clp == null) return;
-    if (days(c.date, today) <= RECEIPT_DAYS_AFTER) return;
+    if (daysBetweenIso(c.date, today) <= RECEIPT_DAYS_AFTER) return;
     const found = new Map<string, { app: string; distance: number; basis: string }>();
     const offer = (lbl: string, app: string, distance: number, basis: string): void => {
       const seen = found.get(lbl);
@@ -466,9 +463,9 @@ export function deriveMerchantChargeLinks(opts?: {
     };
     for (const e of evidence) {
       if (e.accountId != null && e.accountId !== c.accountId) continue;
-      if (e.validFrom && days(e.validFrom, c.date) < -CADENCE_DAYS) continue;
+      if (e.validFrom && daysBetweenIso(e.validFrom, c.date) < -CADENCE_DAYS) continue;
       if (e.validBefore && c.date >= e.validBefore) continue;
-      const distance = Math.abs(days(e.anchor, c.date));
+      const distance = Math.abs(daysBetweenIso(e.anchor, c.date));
       if (distance > CADENCE_WINDOW_DAYS) continue;
       if (amountsAgree(c, e.price, e.currency, CADENCE_FX_TOLERANCE) == null) continue;
       if (!onBillingCycle(c.date, e.anchor, e.period)) continue;
@@ -477,7 +474,7 @@ export function deriveMerchantChargeLinks(opts?: {
     // 4. The same charge a month earlier, already noted.
     for (let pi = ci - 1; pi >= 0; pi--) {
       const p = charges[pi]!;
-      const gap = days(p.date, c.date);
+      const gap = daysBetweenIso(p.date, c.date);
       if (gap > 35) break;
       // The earlier charge's name: its link, else a note the user wrote.
       const prevLabel = p.link?.label ?? (p.note && !p.note.startsWith(GUESS_PREFIX) ? p.note : null);

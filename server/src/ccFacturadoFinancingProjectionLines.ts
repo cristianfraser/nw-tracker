@@ -8,10 +8,10 @@ import {
   hasSplittableMortgageExpenseDepositLink,
   type ExpenseDepositLinkDto,
 } from "./expenseDepositLinks.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
  * Facturado-financing projection.

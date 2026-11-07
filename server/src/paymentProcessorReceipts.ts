@@ -6,6 +6,7 @@
  * expense lines are built, because a card line's id changes on every statement re-import. Pairing
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
+import { foldAccents, isoDayNumber } from "nw-tracker-contracts";
 import { createHash } from "node:crypto";
 import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip, ReceiptVehiclePermit } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
@@ -425,7 +426,7 @@ const LODGING_NAME_STOPWORDS = new Set([
 
 /** A name's words of four or more letters, accents folded, minus the lodging stopwords, in order. */
 function distinctiveWords(name: string): Set<string> {
-  const folded = name.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase();
+  const folded = foldAccents(name).toUpperCase();
   return new Set(folded.split(/[^A-Z0-9]+/).filter((w) => w.length >= 4 && !LODGING_NAME_STOPWORDS.has(w)));
 }
 
@@ -438,7 +439,7 @@ const dayNumberByYmd = new Map<string, number>();
 function dayNumber(ymd: string): number {
   let n = dayNumberByYmd.get(ymd);
   if (n === undefined) {
-    n = Math.round(Date.parse(`${ymd}T00:00:00Z`) / 86_400_000);
+    n = isoDayNumber(ymd);
     dayNumberByYmd.set(ymd, n);
   }
   return n;

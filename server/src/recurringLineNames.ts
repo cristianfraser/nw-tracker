@@ -10,9 +10,10 @@
  */
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { UNCLASSIFIED_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { addDays, automaticRecurringMatchForLine, matchRecurringPayments, type RecurringLine } from "./recurringPaymentMatch.js";
+import { automaticRecurringMatchForLine, matchRecurringPayments, type RecurringLine } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
+import { addDaysIso } from "nw-tracker-contracts";
 
 type NamedLine = {
   source: string;
@@ -49,7 +50,7 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
     lines: recurringLines,
     todayYmd: today,
     // A pending listing lands days before its due date: occurrences due after today must exist too.
-    horizonEndYmd: addDays(today, Math.max(...entries.map((e) => e.match_days_before))),
+    horizonEndYmd: addDaysIso(today, Math.max(...entries.map((e) => e.match_days_before))),
     ufOn: uf.ufOn,
     ufKnownThrough: uf.knownThrough,
   });

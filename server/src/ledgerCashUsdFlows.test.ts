@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getMergedDisplayDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -12,6 +11,7 @@ import { flowEventInUnit, flowsDepositsNetTotalUsdByAccount } from "./flowsDepos
 import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
  * CLP ledger cash and checking accounts take their USD deposits event by event, like USD cash

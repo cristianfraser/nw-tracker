@@ -2,12 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getMergedDisplayDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
  * The cuenta de ahorro (month-precision dated: deposits on conventional month-ends, one book

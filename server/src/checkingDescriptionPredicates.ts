@@ -5,6 +5,7 @@
  * the predicate layer separate makes the classification rules independently testable and
  * keeps regex knowledge out of the matcher.
  */
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import {
   isCheckingPartialWithdrawalNote,
@@ -193,18 +194,9 @@ export function checkingCreditLooksLikeMonthBucketCashReturn(description: string
   return CHECKING_CASH_DEPOSIT_INFLOW_RE.test(d);
 }
 
+/** Absolute day gap; kept for server/scripts/link-buda-abonos-behind-stale-categories.ts. */
 export function daysBetweenYmd(a: string, b: string): number {
-  const ta = Date.parse(`${a}T12:00:00Z`);
-  const tb = Date.parse(`${b}T12:00:00Z`);
-  if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 999;
-  return Math.round(Math.abs(ta - tb) / 86_400_000);
-}
-
-export function signedDaysFromTo(fromYmd: string, toYmd: string): number {
-  const from = Date.parse(`${fromYmd}T12:00:00Z`);
-  const to = Date.parse(`${toYmd}T12:00:00Z`);
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return 999;
-  return Math.round((to - from) / 86_400_000);
+  return Math.abs(daysBetweenIso(a, b));
 }
 
 export function dapReferenceFromDescription(description: string): string | null {
