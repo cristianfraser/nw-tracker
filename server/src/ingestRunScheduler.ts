@@ -7,7 +7,7 @@ import {
   type IngestRunRequest,
 } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
-import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
+import { serverConfig } from "./config.js";
 import { ingestFeederHeaders, resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { DAILY_RUN_REPEAT_WINDOW_MINUTES, lastDailyRunAt } from "./dailyRunLog.js";
 import {
@@ -52,10 +52,10 @@ export const INGEST_SERVICE_WORKER = "ingest-service";
 /**
  * On only with `INGEST_SCHEDULER_ENABLED=1`, and never on an instance with
  * `BACKGROUND_JOBS_ENABLED=0` whatever else says so: a second scheduler would start every
- * bank run twice.
+ * bank run twice (`config.ts`).
  */
-export function ingestSchedulerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.INGEST_SCHEDULER_ENABLED === "1" && !backgroundJobsDisabled(env);
+export function ingestSchedulerEnabled(): boolean {
+  return serverConfig().ingestScheduler;
 }
 
 
@@ -328,8 +328,8 @@ export type ManualIngestRunOutcome =
  * server. A slot a manual run overlaps is answered by it: an hourly at 14:40 answers the 14:30
  * slot, and a nightly that just finished makes the 22:00 slot skip (the one-hour repeat window).
  */
-export function startManualIngestRun(kind: IngestRunKind, now: Date, env: NodeJS.ProcessEnv = process.env): ManualIngestRunOutcome {
-  if (!ingestSchedulerEnabled(env)) {
+export function startManualIngestRun(kind: IngestRunKind, now: Date, schedulerOn: boolean = ingestSchedulerEnabled()): ManualIngestRunOutcome {
+  if (!schedulerOn) {
     return {
       status: "refused",
       reason: "scheduler_off",

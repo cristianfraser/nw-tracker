@@ -12,7 +12,6 @@ import { db } from "./db.js";
 import {
   INGEST_UNREACHABLE_TITLE,
   MANUAL_RUN_REASON,
-  ingestSchedulerEnabled,
   ingestSchedulerTick,
   requestFeederRun,
   startManualIngestRun,
@@ -230,7 +229,6 @@ describe("scheduler + executor", () => {
 });
 
 describe("startManualIngestRun", () => {
-  const ON = { INGEST_SCHEDULER_ENABLED: "1" } as NodeJS.ProcessEnv;
   const AT = new Date("2099-06-10T18:40:00Z");
 
   beforeEach(() => {
@@ -240,7 +238,7 @@ describe("startManualIngestRun", () => {
   afterEach(clear);
 
   it("refuses on an instance whose scheduler is off, queuing nothing", () => {
-    expect(startManualIngestRun("hourly", AT, {})).toMatchObject({ status: "refused", reason: "scheduler_off" });
+    expect(startManualIngestRun("hourly", AT, false)).toMatchObject({ status: "refused", reason: "scheduler_off" });
     expect(listJobsByStatus("queued")).toEqual([]);
   });
 
@@ -248,7 +246,7 @@ describe("startManualIngestRun", () => {
     db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('nightly', ?, 'done', 'test')`).run("2099-06-10T02:00:00.000Z");
     db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('hourly', ?, 'done', 'test')`).run("2099-06-10T17:30:00.000Z");
     const feeder = fakeFeeder({ status: "accepted" });
-    const out = startManualIngestRun("hourly", AT, ON);
+    const out = startManualIngestRun("hourly", AT, true);
     expect(out).toMatchObject({ status: "queued", coalesced: false });
     await jobQueueTick(AT, { request: feeder.request, notified: new Set() });
     expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: (out as { job_id: number }).job_id, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: { mode: "balance-poll", reason: expect.any(String) } }]);
@@ -256,7 +254,7 @@ describe("startManualIngestRun", () => {
     expect(ingestRunById(runId)).toMatchObject({ kind: "hourly", status: "requested", slot_at: AT.toISOString() });
 
     // A second click while it runs queues behind it; the 18:30 slot it ran in is answered.
-    expect(startManualIngestRun("nightly", AT, ON)).toMatchObject({ status: "queued" });
+    expect(startManualIngestRun("nightly", AT, true)).toMatchObject({ status: "queued" });
     expect(ingestSchedulerTick(new Date("2099-06-10T18:41:00Z")).decision).toEqual({ action: "idle" });
     completeIngestRun(runId, report({ santander: null, santander_state: STATE }));
     await jobQueueTick(new Date("2099-06-10T18:45:00Z"), { request: feeder.request, notified: new Set() });
@@ -265,7 +263,7 @@ describe("startManualIngestRun", () => {
 
   it("moves up a run of the same kind already queued instead of adding one", () => {
     const scheduled = ingestSchedulerTick(new Date("2099-06-10T18:30:05Z"));
-    const out = startManualIngestRun(scheduled.decision.action === "request" ? scheduled.decision.kind : "hourly", AT, ON);
+    const out = startManualIngestRun(scheduled.decision.action === "request" ? scheduled.decision.kind : "hourly", AT, true);
     expect(out).toMatchObject({ status: "queued", coalesced: true, job_id: scheduled.job_id });
     expect(jobById(scheduled.job_id!)).toMatchObject({ enqueued_by: "manual", reason: MANUAL_RUN_REASON, stale_after: null });
   });
@@ -394,10 +392,3 @@ describe("requestFeederRun", () => {
   });
 });
 
-describe("ingestSchedulerEnabled", () => {
-  it("needs the flag and is never on with background jobs off", () => {
-    expect(ingestSchedulerEnabled({})).toBe(false);
-    expect(ingestSchedulerEnabled({ INGEST_SCHEDULER_ENABLED: "1" })).toBe(true);
-    expect(ingestSchedulerEnabled({ INGEST_SCHEDULER_ENABLED: "1", BACKGROUND_JOBS_ENABLED: "0" })).toBe(false);
-  });
-});

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { cacheDepNodeLiveInputs, newCacheDepNode, runInCacheDepNode, type CacheDepNode } from "./cacheDependencies.js";
+import { cacheDepNodeLiveInputs, newCacheDepNode, runInCacheDepNode } from "./cacheDependencies.js";
+import { requestContext } from "./requestContext.js";
 
 /**
  * Each GET API response names the live inputs it read (2026-11-04): `X-Live-Inputs` is `none`, or
@@ -20,12 +21,14 @@ const SKIPPED_PATHS = new Set(["/api/live-quotes/stamp"]);
 
 export function liveInputsMiddleware(): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (req.method !== "GET" || !req.path.startsWith("/api/") || SKIPPED_PATHS.has(req.path)) {
+    const ctx = requestContext(req);
+    if (req.method !== "GET" || ctx.kind === "other" || SKIPPED_PATHS.has(req.path)) {
       next();
       return;
     }
     const node = newCacheDepNode();
-    res.locals.liveInputsNode = node;
+    // Named as the JSON response goes out (`jsonResponse.ts`), once the route has read what it reads.
+    ctx.lateHeaders.push(() => [LIVE_INPUTS_HEADER, formatLiveInputs(cacheDepNodeLiveInputs(node))]);
     runInCacheDepNode(node, next);
   };
 }
@@ -35,11 +38,4 @@ export function formatLiveInputs(inputs: { tickers: Iterable<string>; fx: boolea
   if (inputs.fx) tokens.unshift("$fx");
   if (inputs.syncDimming) tokens.unshift("$dimming");
   return tokens.length > 0 ? tokens.join(",") : "none";
-}
-
-/** Sets the header from the request's node (called as the JSON response goes out). */
-export function setLiveInputsHeader(res: Response): void {
-  const node = res.locals.liveInputsNode as CacheDepNode | undefined;
-  if (!node || res.headersSent) return;
-  res.setHeader(LIVE_INPUTS_HEADER, formatLiveInputs(cacheDepNodeLiveInputs(node)));
 }

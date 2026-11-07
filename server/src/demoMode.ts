@@ -9,26 +9,12 @@ import { DEMO_PERSON } from "./demoData/person.js";
  * SQLite file. On Render the build generates it (`npm run demo:generate`, render.yaml), so a
  * deploy's boot only opens it; the boot generates only when it finds the DB empty (a local
  * rehearsal). Either way every deploy rebuilds the demo from current source — the demo always
- * matches the deployed code. Local personal mode never sets this flag.
+ * matches the deployed code. Local personal mode never sets this flag. The demo's flag defaults
+ * (market syncs on while someone browses, backups off, the usage log in its own file) and the
+ * sources it never runs are the deployment profile's (`config.ts`).
  */
 export { demoModeEnabled } from "./demoModeFlag.js";
 import { demoModeEnabled } from "./demoModeFlag.js";
-
-/**
- * Demo-mode env defaults, applied only when the variable is not set explicitly.
- * The demo runs on real market data (2026-10-31): the global sync and the live quotes are on,
- * but only while someone is browsing (`demoMarketActivity.ts`) and only for the public market
- * sources (`demoSyncDisabledSources`). DB backups are pointless against a regenerated DB; the
- * dashboard cache warmer (`CACHE_WARM_ENABLED`) stays default-on so first paint is warm. The usage log
- * is set on before `applyBackgroundJobsEnvDefaults` can default it off: the demo writes it to
- * its own analytics file (usageDb.ts), so a demo rehearsal cannot collide with the primary.
- */
-const DEMO_MODE_DEFAULT_ENV: ReadonlyArray<readonly [name: string, value: string]> = [
-  ["GLOBAL_SYNC_ENABLED", "1"],
-  ["LIVE_QUOTES_SYNC_ENABLED", "1"],
-  ["DB_BACKUP_ENABLED", "0"],
-  ["USAGE_LOG_ENABLED", "1"],
-];
 
 /**
  * Call once at boot, after `loadRootDotenv()` and before the schedulers start.
@@ -44,9 +30,6 @@ export async function bootstrapDemoModeIfEnabled(): Promise<void> {
       "DEMO_MODE=1 requires NW_TRACKER_TEST_DB to point at a dedicated demo DB file " +
         "(refusing to run demo mode against the real nw-tracker.db)."
     );
-  }
-  for (const [name, value] of DEMO_MODE_DEFAULT_ENV) {
-    if (process.env[name] === undefined) process.env[name] = value;
   }
   const accounts = (db.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number }).c;
   if (accounts > 0) {

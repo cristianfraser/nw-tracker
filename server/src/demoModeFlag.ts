@@ -1,7 +1,10 @@
+import { deploymentProfile } from "./config.js";
+
 /**
- * Hosted recruiter-demo mode (`DEMO_MODE=1`). A leaf module (no imports) so low-level modules —
- * the sync status, the schedulers — can ask without importing the demo bootstrap (`demoMode.ts`).
+ * Hosted recruiter-demo mode (`DEMO_MODE=1`), read from the deployment profile (`config.ts`).
+ * Prefer the profile's own fields (`disabledSyncSources`, `afpUnoOfficialSource`,
+ * `marketAwakeGate`, …) where a module only needs one of them.
  */
 export function demoModeEnabled(): boolean {
-  return process.env.DEMO_MODE === "1";
+  return deploymentProfile().demo;
 }

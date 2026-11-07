@@ -67,9 +67,11 @@ export type ServerConfig = {
     db: boolean;
     dbAll: boolean;
     perf: boolean;
-    /** Raw `DEBUG_DB_SLOW_MS` (null when unset); `serverLog.ts` derives the threshold. */
+    /** `DEBUG_DB_SLOW_MS` (null when unset); `serverLog.ts` derives the threshold. */
     dbSlowMs: number | null;
     timeZone: string;
+    /** `SERVER_LOG_TIMESTAMPS`: prefix console lines with the Chile time (default on). */
+    timestamps: boolean;
   };
 };
 
@@ -117,6 +119,12 @@ function positiveNumber(env: NodeJS.ProcessEnv, name: string, fallback: number):
   if (!raw) return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) throw new Error(`${name}=${JSON.stringify(env[name])}: expected a positive number`);
+  return n;
+}
+
+function nonNegativeNumber(name: string, raw: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${name}=${JSON.stringify(raw)}: expected a number ≥ 0`);
   return n;
 }
 
@@ -202,8 +210,9 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
       db: verbose || (parseEnvFlag("DEBUG_DB", env.DEBUG_DB) ?? false),
       dbAll: (parseEnvFlag("DEBUG_DB_ALL", env.DEBUG_DB_ALL) ?? false) || (verbose && dbSlowRaw === "0"),
       perf: verbose || (parseEnvFlag("DEBUG_PERF", env.DEBUG_PERF) ?? false),
-      dbSlowMs: dbSlowRaw == null ? null : Number(dbSlowRaw),
+      dbSlowMs: dbSlowRaw == null ? null : nonNegativeNumber("DEBUG_DB_SLOW_MS", dbSlowRaw),
       timeZone: text(env, "SERVER_LOG_TIMEZONE") ?? "America/Santiago",
+      timestamps: parseEnvFlag("SERVER_LOG_TIMESTAMPS", env.SERVER_LOG_TIMESTAMPS) ?? true,
     },
   };
 }

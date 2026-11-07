@@ -7,23 +7,12 @@
  * `DEBUG_DB=1` — SQLite statements slower than `DEBUG_DB_SLOW_MS` (default 20).
  * `DEBUG_DB_ALL=1` — every SQLite statement (very noisy; also on with `DEBUG_VERBOSE` if slow ms is 0).
  * `DEBUG_PERF=1` — labeled expensive work (`timeHeavy` / `timeHeavyAsync`).
+ * Parsed with every other flag in `config.ts`.
  */
-
-function envTruthy(name: string): boolean {
-  const v = process.env[name]?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
-function envFalsy(name: string): boolean {
-  const v = process.env[name]?.trim().toLowerCase();
-  return v === "0" || v === "false" || v === "no";
-}
-
-const DEFAULT_LOG_TIME_ZONE = "America/Santiago";
+import { serverConfig } from "./config.js";
 
 function logTimeZone(): string {
-  const tz = process.env.SERVER_LOG_TIMEZONE?.trim();
-  return tz && tz.length > 0 ? tz : DEFAULT_LOG_TIME_ZONE;
+  return serverConfig().log.timeZone;
 }
 
 function pad2(n: number): string {
@@ -88,7 +77,7 @@ const rawConsole = {
 };
 
 function installServerConsoleTimestamps(): void {
-  if (envFalsy("SERVER_LOG_TIMESTAMPS")) return;
+  if (!serverConfig().log.timestamps) return;
   const prefix = () => serverLogTimestamp();
   console.log = (...args: unknown[]) => rawConsole.log(prefix(), ...args);
   console.warn = (...args: unknown[]) => rawConsole.warn(prefix(), ...args);
@@ -96,37 +85,34 @@ function installServerConsoleTimestamps(): void {
 }
 
 export function verboseAllEnabled(): boolean {
-  return envTruthy("DEBUG_VERBOSE");
+  return serverConfig().log.verbose;
 }
 
 export function logHttpInEnabled(): boolean {
-  return verboseAllEnabled() || envTruthy("DEBUG_HTTP");
+  return serverConfig().log.http;
 }
 
 export function logHttpOutEnabled(): boolean {
-  return verboseAllEnabled() || envTruthy("DEBUG_HTTP_OUT");
+  return serverConfig().log.httpOut;
 }
 
 export function logDbEnabled(): boolean {
-  return verboseAllEnabled() || envTruthy("DEBUG_DB");
+  return serverConfig().log.db;
 }
 
 export function logDbAllStatements(): boolean {
-  return envTruthy("DEBUG_DB_ALL") || (verboseAllEnabled() && process.env.DEBUG_DB_SLOW_MS?.trim() === "0");
+  return serverConfig().log.dbAll;
 }
 
 export function logHeavyEnabled(): boolean {
-  return verboseAllEnabled() || envTruthy("DEBUG_PERF");
+  return serverConfig().log.perf;
 }
 
 export function dbSlowThresholdMs(): number {
-  if (logDbAllStatements()) return 0;
-  const raw = process.env.DEBUG_DB_SLOW_MS?.trim();
-  if (raw != null && raw !== "") {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n >= 0) return n;
-  }
-  return verboseAllEnabled() || envTruthy("DEBUG_DB") ? 20 : Infinity;
+  const log = serverConfig().log;
+  if (log.dbAll) return 0;
+  if (log.dbSlowMs != null) return log.dbSlowMs;
+  return log.db ? 20 : Infinity;
 }
 
 export function formatLogServerLine(channel: string, message: string, d = new Date()): string {

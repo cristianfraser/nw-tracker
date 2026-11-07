@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Database as BetterSqliteDb } from "better-sqlite3";
 import { db } from "./db.js";
 import { demoAnalyticsDb } from "./demoAnalytics.js";
-import { demoModeEnabled } from "./demoMode.js";
+import { deploymentProfile } from "./config.js";
 import { usagePageRoute } from "./usagePagePath.js";
 
 /**
@@ -21,7 +21,7 @@ const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), ".
 let demoReady = false;
 
 export function usageDb(): BetterSqliteDb {
-  if (!demoModeEnabled()) return db;
+  if (!deploymentProfile().usageInAnalyticsDb) return db;
   const analytics = demoAnalyticsDb();
   if (!demoReady) {
     prepareDemoUsageDb(analytics);

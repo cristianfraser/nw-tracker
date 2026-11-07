@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
-import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
+import { serverConfig } from "./config.js";
+import { isReadMethod, requestContext } from "./requestContext.js";
 
 /**
  * Deployment modes share one binary and differ only by env:
@@ -11,25 +12,14 @@ import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
  * below is what keeps its shared synthetic DB intact.
  */
 
-const DEFAULT_DEV_ORIGINS = [
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "http://localhost:4173",
-  "http://127.0.0.1:4173",
-];
-
-/** Bind host. Default keeps the unauthenticated local API off the LAN. */
+/** Bind host (`HOST`, `config.ts`). The default, 127.0.0.1, keeps the unauthenticated local API off the LAN. */
 export function resolveBindHost(): string {
-  return process.env.HOST?.trim() || "127.0.0.1";
+  return serverConfig().bindHost;
 }
 
 /** CORS allowlist from `CORS_ALLOWED_ORIGINS` (comma-separated); Vite dev/preview origins by default. */
 export function resolveCorsOrigins(): string[] {
-  const fromEnv = (process.env.CORS_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return fromEnv.length > 0 ? fromEnv : DEFAULT_DEV_ORIGINS;
+  return serverConfig().corsOrigins;
 }
 
 // --- Demo read-only guard -----------------------------------------------------------
@@ -39,8 +29,6 @@ export function resolveCorsOrigins(): string[] {
 // the next visitor sees. Demo mode therefore serves reads only.
 
 
-const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-
 /**
  * Rejects `/api` mutations with `403 { error: "demo_read_only" }` (the client turns that
  * sentinel into a localized message). Non-`/api` paths and the usage page-view beacon pass through.
@@ -48,8 +36,8 @@ const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  */
 export function demoReadOnlyMiddleware(): RequestHandler {
   return (req, res, next) => {
-    const isApi = req.path === "/api" || req.path.startsWith("/api/");
-    if (!isApi || READ_ONLY_METHODS.has(req.method) || req.path === USAGE_PAGE_VIEW_PATH) {
+    const kind = requestContext(req).kind;
+    if (kind === "other" || kind === "beacon" || isReadMethod(req.method)) {
       next();
       return;
     }

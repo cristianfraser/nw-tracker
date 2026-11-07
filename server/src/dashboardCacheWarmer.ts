@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import { setAggregationInvalidationListener } from "./aggregationCache.js";
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
+import { serverConfig } from "./config.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
@@ -34,7 +35,7 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
  * Requests go first: each step starts only once no API request is in flight
  * (`apiRequestsInFlight.ts`).
  *
- * Env: `CACHE_WARM_ENABLED=0` disables (default on).
+ * Env: `CACHE_WARM_ENABLED=0` disables (default on; `config.ts`).
  */
 
 const BOOT_DELAY_MS = 2_000;
@@ -125,7 +126,7 @@ function scheduleMidnightWarm(): void {
 }
 
 export function startDashboardCacheWarmer(): void {
-  if (process.env.CACHE_WARM_ENABLED === "0") {
+  if (!serverConfig().cacheWarm) {
     console.log("cache-warm: disabled (CACHE_WARM_ENABLED=0)");
     return;
   }

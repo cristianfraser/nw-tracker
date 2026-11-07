@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createDbSnapshot, listDbSnapshots } from "./dbSnapshot.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { serverConfig } from "./config.js";
 
 /**
  * Daily automatic DB snapshot while the server runs. The SQLite file is the only
@@ -9,8 +10,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
  * Excel is no longer authoritative), so it must not depend on remembering
  * `npm run db:snapshot`.
  *
- * Env:
- * - `DB_BACKUP_ENABLED`   — `0` disables (default on; set 0 on hosted demos with synthetic data).
+ * Env (`config.ts`):
+ * - `DB_BACKUP_ENABLED`   — off disables (default on; the demo profile defaults it off).
  * - `DB_BACKUP_KEEP`      — retention count for `auto-*` snapshots (default 14). Manual
  *                           `db:snapshot` files have other labels and are never pruned.
  * - `DB_BACKUP_DIR`       — optional second copy (ideally another volume / synced folder).
@@ -24,13 +25,8 @@ let timerHandle: ReturnType<typeof setInterval> | null = null;
 let lastBackupChileYmd: string | null = null;
 let runInFlight = false;
 
-function backupEnabled(): boolean {
-  return process.env.DB_BACKUP_ENABLED !== "0";
-}
-
 function retentionCount(): number {
-  const n = Number(process.env.DB_BACKUP_KEEP);
-  return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 14;
+  return serverConfig().dbBackup.keep;
 }
 
 function pruneAutoSnapshots(): void {
@@ -42,12 +38,11 @@ function pruneAutoSnapshots(): void {
 }
 
 function secondaryRetentionCount(): number {
-  const n = Number(process.env.DB_BACKUP_DIR_KEEP);
-  return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 60;
+  return serverConfig().dbBackup.dirKeep;
 }
 
 function copyToSecondaryDir(snapshotPath: string): void {
-  const dir = process.env.DB_BACKUP_DIR?.trim();
+  const dir = serverConfig().dbBackup.dir;
   if (!dir) return;
   fs.mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, path.basename(snapshotPath));
@@ -91,7 +86,7 @@ async function backupTick(): Promise<void> {
 }
 
 export function startDbBackupScheduler(): void {
-  if (!backupEnabled()) {
+  if (!serverConfig().dbBackup.enabled) {
     console.log("db-backup: disabled (DB_BACKUP_ENABLED=0)");
     return;
   }

@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { serverConfig } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,17 +42,9 @@ function saveGate(g: SbifApiGateFile): void {
   fs.writeFileSync(p, JSON.stringify(g, null, 2) + "\n", "utf8");
 }
 
-function envMs(name: string, fallback: number): number {
-  const n = Number(process.env[name]);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-const MIN_INTERVAL_MS = () =>
-  envMs("BCENTRAL_MIN_REQUEST_INTERVAL_MS", envMs("SBIF_MIN_REQUEST_INTERVAL_MS", 3_000));
-const BACKOFF_BASE_MS = () =>
-  envMs("BCENTRAL_BACKOFF_BASE_MS", envMs("SBIF_BACKOFF_BASE_MS", 15 * 60 * 1000));
-const BACKOFF_MAX_MS = () =>
-  envMs("BCENTRAL_BACKOFF_MAX_MS", envMs("SBIF_BACKOFF_MAX_MS", 6 * 60 * 60 * 1000));
+const MIN_INTERVAL_MS = () => serverConfig().bcentralGate.minIntervalMs;
+const BACKOFF_BASE_MS = () => serverConfig().bcentralGate.backoffBaseMs;
+const BACKOFF_MAX_MS = () => serverConfig().bcentralGate.backoffMaxMs;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

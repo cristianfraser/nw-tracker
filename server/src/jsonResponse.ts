@@ -1,6 +1,6 @@
 import zlib from "node:zlib";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { setLiveInputsHeader } from "./liveInputsHeader.js";
+import { isApiPath, requestContext } from "./requestContext.js";
 
 /**
  * JSON responses: serialized once per cached payload, and compressed on the wire.
@@ -26,7 +26,7 @@ import { setLiveInputsHeader } from "./liveInputsHeader.js";
  * Levels: a cached payload is compressed once per build and served many times, so it pays for
  * a better ratio (gzip 6, brotli 5); a payload built per request is compressed per request at
  * gzip 1 / brotli 1, a few ms for the largest uncached payloads instead of ~4x that.
- * The usage log records the uncompressed size (`res.locals.usageBodyBytes`), so its «mean size»
+ * The usage log records the uncompressed size (the request context's `jsonBodyBytes`), so its «mean size»
  * stays the payload size whatever the client accepted.
  */
 
@@ -107,7 +107,13 @@ export function preferredEncoding(header: string | undefined): Encoding | null {
 
 /** `res.json(payload)` with the cached serialization and compression described above. */
 export function sendJson(req: Request, res: Response, payload: unknown, originalJson: Response["json"]): Response {
-  setLiveInputsHeader(res);
+  const ctx = requestContext(req);
+  if (!res.headersSent) {
+    for (const header of ctx.lateHeaders) {
+      const h = header();
+      if (h) res.setHeader(h[0], h[1]);
+    }
+  }
   if (payload === null || typeof payload !== "object" || res.getHeader("Content-Type") !== undefined) {
     // Scalars and a preset Content-Type: Express's own path (rare, small).
     return originalJson.call(res, payload);
@@ -123,7 +129,7 @@ export function sendJson(req: Request, res: Response, payload: unknown, original
   if (s.etag !== undefined && res.getHeader("ETag") === undefined) res.setHeader("ETag", s.etag);
   // A fresh conditional request: `send` answers 304 without a body (and strips the length).
   if (req.fresh) return res.send(s.body);
-  res.locals.usageBodyBytes = s.body.length;
+  ctx.jsonBodyBytes = s.body.length;
   const encoding = negotiateEncoding(req, res, s.body.length);
   if (!encoding) return res.send(s.body);
   let encoded = s.encoded[encoding];
@@ -138,7 +144,7 @@ export function sendJson(req: Request, res: Response, payload: unknown, original
 /** Install {@link sendJson} as `res.json` for `/api` requests. */
 export function jsonResponseMiddleware(): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (req.path === "/api" || req.path.startsWith("/api/")) {
+    if (isApiPath(req.path)) {
       const originalJson = res.json;
       res.json = ((payload: unknown) => sendJson(req, res, payload, originalJson)) as Response["json"];
     }

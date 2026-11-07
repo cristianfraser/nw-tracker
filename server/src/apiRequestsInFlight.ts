@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
+import { requestContext, type RequestKind } from "./requestContext.js";
 
 /**
  * Counts the `/api` requests in flight, so background work (the cache warmer) can step aside:
@@ -43,11 +43,8 @@ export const API_IN_FLIGHT_MAX_WAIT_MS = 60_000;
  * a changed stamp makes the client refetch every query one round trip later, and the settle window
  * after the stamp's answer is what keeps the warmer from starting a step under that burst.
  */
-export function apiRequestCountsAsInFlight(path: string): boolean {
-  if (!path.startsWith("/api/")) return false;
-  if (path === "/api/health" || path === USAGE_PAGE_VIEW_PATH) return false;
-  if (path.startsWith("/api/ingest/") || path.startsWith("/api/jobs/")) return false;
-  return true;
+export function kindCountsAsInFlight(kind: RequestKind): boolean {
+  return kind === "api-read" || kind === "api-write";
 }
 
 const startedAt = new Map<number, number>();
@@ -74,7 +71,7 @@ function requestStarted(): () => void {
 /** Counts each `/api` request from arrival until its response finishes or its connection closes. */
 export function apiInFlightMiddleware(): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (apiRequestCountsAsInFlight(req.path)) {
+    if (kindCountsAsInFlight(requestContext(req).kind)) {
       const done = requestStarted();
       res.on("finish", done);
       res.on("close", done);
