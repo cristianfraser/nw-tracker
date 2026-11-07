@@ -2946,10 +2946,6 @@
         "en": "Delete movement",
         "es": "Eliminar movimiento"
       },
-      "makeInstallmentAction": {
-        "en": "To installments",
-        "es": "En cuotas"
-      },
       "makeInstallmentDialogCuotasLabel": {
         "en": "Number of installments",
         "es": "Número de cuotas"
@@ -2957,10 +2953,6 @@
       "makeInstallmentDialogConfirm": {
         "en": "Confirm",
         "es": "Confirmar"
-      },
-      "makeInstallmentActionPending": {
-        "en": "How many installments?",
-        "es": "¿Cuántas cuotas?"
       },
       "pendingCuotaPurchasesTitle": {
         "en": "Installment purchases without a count",
