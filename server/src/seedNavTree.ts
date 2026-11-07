@@ -547,7 +547,7 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/brokerage",
       api_group: "brokerage",
       asset_group_slug: "brokerage",
-      dashboard: { sort_order: 30, bucket_slug: "brokerage", card_label_i18n_key: "dashboard.cards.inversiones" },
+      dashboard: { sort_order: 30, bucket_slug: "brokerage" },
       nw_bucket: true,
       investment_root: true,
     });
