@@ -427,7 +427,7 @@ export interface ExpenseDepositLinkDto {
   carrying_clp: number;
   depto_cuota: string | null;
   depto_occurred_on: string | null;
-  link_source: "auto" | "manual";
+  link_source: "auto" | "manual" | "synthetic";
 }
 
 export type FlowCcExpenseCategoryChartPoint = {

@@ -38,7 +38,7 @@ export type UsageEndpointRow = {
 export type UsageReport = {
   enabled: boolean;
   window_days: UsageReportWindow;
-  windows: UsageReportWindow[];
+  windows: readonly UsageReportWindow[];
   from: string;
   to: string;
   totals: { page_views: number; requests: number; request_ms: number };
