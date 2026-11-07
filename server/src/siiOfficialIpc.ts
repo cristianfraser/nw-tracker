@@ -13,6 +13,7 @@
 import { db } from "./db.js";
 import { parseChileanNumber } from "./chileanNumber.js";
 import { fetchOut } from "./httpOut.js";
+import { roundReajustePct } from "./legalParameters.js";
 
 export type OfficialIpcMonth = { month: string; variationPct: number; indexPoints: number };
 
@@ -224,4 +225,75 @@ export function writeOfficialIpcMonths(
     }
     return { added, ufUnchecked };
   })();
+}
+
+/* -------------------------------- the reajuste -------------------------------- */
+
+/**
+ * The first-of-month date of the month before `ymd`'s: a reajuste runs from the end of the month
+ * before the event (the IPC of a month is published in the next). Kept here until the shared
+ * formats module offers it.
+ */
+export function monthBeforeYmd(ymd: string): string {
+  const y = Number(ymd.slice(0, 4));
+  const m = Number(ymd.slice(5, 7)) - 1;
+  return m === 0 ? `${y - 1}-12-01` : `${y}-${String(m).padStart(2, "0")}-01`;
+}
+
+/**
+ * The month a year-end reajuste runs to: November of the income year (the SII's factors for
+ * December use November's IPC), or the latest published month while November is not published —
+ * then the result is provisional.
+ */
+export function decemberReajuste(incomeYear: number, latestMonth: string): { toMonth: string; provisional: boolean } {
+  const november = `${incomeYear}-11-01`;
+  const provisional = latestMonth < november;
+  return { toMonth: provisional ? latestMonth : november, provisional };
+}
+
+export type IpcReajusteOptions = {
+  /** Round each percentage to the SII's one decimal (`roundReajustePct`). */
+  round: boolean;
+  /** Every percentage as {@link IpcReajuste.yearEndPct} gives it (the SII's year-end factors). */
+  floorAtZero?: boolean;
+  /** Injected for tests; the stored official IPC by default. */
+  lookup?: OfficialIpcLookup;
+  latestMonth?: string;
+};
+
+export type IpcReajuste = {
+  /** The latest published month (the stand-in for any later month). */
+  latestMonth(): string;
+  /** The reajuste percentage from the end of `fromMonth` to the end of `toMonth` (first-of-month dates). */
+  pct(fromMonth: string, toMonth: string): number;
+  /**
+   * As the SII's year-end factors: 0 when the event is in or after the target month, never
+   * negative (a deflation leaves the amount as it is).
+   */
+  yearEndPct(fromMonth: string, toMonth: string): number;
+  /** {@link decemberReajuste} against the latest published month. */
+  december(incomeYear: number): { toMonth: string; provisional: boolean };
+};
+
+/**
+ * The one IPC reajuste every tax computation uses: the official variation with the open year's
+ * stand-in, rounded and floored as the caller's rule says. Loads the IPC on first use, so a year
+ * with nothing to reajust never needs it stored.
+ */
+export function ipcReajuste(opts: IpcReajusteOptions): IpcReajuste {
+  let latest = opts.latestMonth ?? null;
+  let between: ((a: string, b: string) => number) | null = null;
+  const latestMonth = () => (latest ??= latestOfficialIpcMonth());
+  const raw = (fromMonth: string, toMonth: string): number => {
+    between ??= officialIpcVariationPctWithStandIn(opts.lookup ?? loadOfficialIpcLookup(), latestMonth());
+    const p = between(fromMonth, toMonth);
+    return opts.round ? roundReajustePct(p) : p;
+  };
+  const yearEndPct = (fromMonth: string, toMonth: string): number => (fromMonth >= toMonth ? 0 : Math.max(0, raw(fromMonth, toMonth)));
+  return {
+    latestMonth,
+    pct: opts.floorAtZero ? yearEndPct : raw,
+    yearEndPct,
+    december: (incomeYear) => decemberReajuste(incomeYear, latestMonth()),
+  };
 }

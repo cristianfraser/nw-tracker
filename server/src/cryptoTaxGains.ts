@@ -16,8 +16,7 @@
 import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "./cryptoTaxLotEvents.js";
 import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { db } from "./db.js";
-import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn } from "./siiOfficialIpc.js";
+import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotMethod } from "./taxLots.js";
 
 export type CryptoSaleTaxResult = {
@@ -50,8 +49,6 @@ export type CryptoYearTaxResult = {
   reajusteToMonth: string;
 };
 
-const round1 = (x: number) => Math.round(x * 10) / 10;
-
 export function cryptoTaxGainsForYear(
   incomeYear: number,
   opts: { method?: TaxLotMethod; feePolicy?: CryptoFeePolicy; roundPct?: boolean } = {}
@@ -59,14 +56,8 @@ export function cryptoTaxGainsForYear(
   const method = opts.method ?? "average";
   const feePolicy = opts.feePolicy ?? "excluded";
   const roundPct = opts.roundPct ?? true;
-  const latest = latestOfficialIpcMonth();
-  const ipcBetween = officialIpcVariationPctWithStandIn(loadOfficialIpcLookup(), latest);
-  const pct = (from: string, to: string) => {
-    const p = ipcBetween(from, to);
-    return roundPct ? round1(p) : p;
-  };
-  const provisional = latest < `${incomeYear}-11-01`;
-  const november = provisional ? latest : `${incomeYear}-11-01`;
+  const ipc = ipcReajuste({ round: roundPct });
+  const { toMonth: november, provisional } = ipc.december(incomeYear);
   const sales: CryptoSaleTaxResult[] = [];
   for (const accountId of [...loadCryptoCoinAccountIdsFundedByBuda()].sort((a, b) => a - b)) {
     const coin = (db.prepare(`SELECT equity_ticker FROM accounts WHERE id = ?`).get(accountId) as { equity_ticker: string })
@@ -75,11 +66,11 @@ export function cryptoTaxGainsForYear(
       if (!d.date.startsWith(`${incomeYear}-`)) continue;
       const saleMonthBefore = monthBeforeYmd(d.date);
       const costReajustado = d.slices.reduce(
-        (s, x) => s + x.cost * (1 + pct(monthBeforeYmd(x.acquiredOn), saleMonthBefore) / 100),
+        (s, x) => s + x.cost * (1 + ipc.pct(monthBeforeYmd(x.acquiredOn), saleMonthBefore) / 100),
         0
       );
       const gain = d.proceeds - costReajustado;
-      const decemberPct = Math.max(0, saleMonthBefore > november ? 0 : pct(saleMonthBefore, november));
+      const decemberPct = ipc.yearEndPct(saleMonthBefore, november);
       sales.push({
         accountId,
         coin,

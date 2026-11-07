@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { foreignShareDisposalClp, monthBeforeYmd, pickForeignShareDefaultMode } from "./foreignShareTaxGains.js";
+import { foreignShareDisposalClp, pickForeignShareDefaultMode } from "./foreignShareTaxGains.js";
+import { monthBeforeYmd } from "./siiOfficialIpc.js";
 import { rentasEsporadicasByMonth } from "./rentasEsporadicas.js";
 
 describe("foreignShareDisposalClp", () => {

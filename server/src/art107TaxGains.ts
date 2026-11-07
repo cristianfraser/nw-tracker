@@ -34,8 +34,7 @@ import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityCloseEod, equityQuoteCurrency } from "./equityQuote.js";
 import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
-import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn } from "./siiOfficialIpc.js";
+import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
 
 export type Art107CostOption = "cost_paid" | "close_dec31";
@@ -60,14 +59,8 @@ type IpcBetween = (fromMonth: string, toMonth: string) => number;
 
 const novemberOf = (year: number) => `${year}-11-01`;
 
-/** The official IPC with the open year's stand-in, loaded on first use (a year without sales never needs it). */
-function lazyIpcBetween(): IpcBetween {
-  let ipc: IpcBetween | null = null;
-  return (fromMonth, toMonth) => {
-    ipc ??= officialIpcVariationPctWithStandIn(loadOfficialIpcLookup(), latestOfficialIpcMonth());
-    return ipc(fromMonth, toMonth);
-  };
-}
+/** The official IPC with the open year's stand-in, unrounded, loaded on first use (a year without sales never needs it). */
+const lazyIpcBetween = (): IpcBetween => ipcReajuste({ round: false }).pct;
 
 export type Art107DisposalClp = {
   /** Result under each option; a loss under the tax regime is reajustado to November of the sale year. */

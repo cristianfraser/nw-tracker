@@ -4,13 +4,30 @@
  * documents are rendered from (`render.ts`) and the writers apply (`apply.ts`). It keeps every
  * balance itself and fails when one would go negative — a demo that overdraws is a story bug.
  */
-import { igcTax } from "../f22Draft.js";
+import {
+  AFC_ACCOUNT_RATE_PCT,
+  AFC_RATES_PCT,
+  afpWorkerRatePct,
+  boletaRetentionRate,
+  igcMarginalRate,
+  igcTax,
+  INDEPENDENT_OTHER_RATES,
+  INDEPENDENT_TAXABLE_SHARE,
+  iuscTax,
+  LEGAL_HEALTH_RATE,
+  MANDATORY_PENSION_RATE,
+  monthlyGratificationClp,
+  pensionCapUf,
+  PRESUMED_EXPENSES_CAP_UTA,
+  PRESUMED_EXPENSES_RATE,
+  unemploymentCapUf,
+} from "../legalParameters.js";
+import { legalHealthClp } from "../payslipLineKinds.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
   addDays,
   addMonths,
-  boletaRetentionRate,
   daysInMonth,
   monthOf,
   monthsBetween,
@@ -306,24 +323,6 @@ export function cardPayBy(card: CardDef, close: Ymd): Ymd {
   return card.issuer === "bci" ? tenth : businessDayOnOrBefore(tenth);
 }
 
-/** IUSC on a month's taxable amount (the monthly brackets: the annual table's factors in UTM). */
-function iusc(taxable: number, utm: number, year: number): number {
-  return Math.round(igcTax(taxable, utm, Math.max(2018, year + 1)));
-}
-
-function capUf(year: number): { pension: number; afc: number } {
-  const t: Record<number, number> = { 2016: 74.3, 2017: 75.7, 2018: 78.3, 2019: 79.2, 2020: 80.2, 2021: 81.6, 2022: 81.6, 2023: 81.6, 2024: 84.3, 2025: 87.8, 2026: 89.9 };
-  const p = t[year] ?? 89.9;
-  return { pension: p, afc: Math.round(p * 1.5 * 10) / 10 };
-}
-
-/** AFP worker rate (10 % + commission) per AFP and month. */
-export function afpWorkerRate(afp: "modelo" | "uno", month: Month): number {
-  if (afp === "modelo") return month >= "2021-10" ? 10.58 : 10.77;
-  if (month >= "2025-10") return 10.46;
-  if (month >= "2023-10") return 10.49;
-  return 10.69;
-}
 
 /** When the AFP switch credits UNO (Modelo until then). */
 export const AFP_SWITCH_MONTH: Month = "2020-02";
@@ -575,25 +574,24 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
   const independentContributions = (y: number) => {
     const t = yearTax(y);
     if (!t.independent || t.honorariosGross <= 0) return { base: 0, total: 0, pension: 0, healthAndAfp: 0 };
-    const capClp = capUf(y).pension * 12 * market.uf(`${y}-12-31`);
-    const base = Math.min(0.8 * t.honorariosGross, capClp);
-    const pension = round(base * 0.1);
-    const afpTotal = round((base * afpWorkerRate("uno", `${y}-12`)) / 100);
-    const health = round(base * 0.07);
-    const other = round(base * (0.0149 + 0.0093 + 0.0003));
+    const capClp = pensionCapUf(y) * 12 * market.uf(`${y}-12-31`);
+    const base = Math.min(INDEPENDENT_TAXABLE_SHARE * t.honorariosGross, capClp);
+    const pension = round(base * MANDATORY_PENSION_RATE);
+    const afpTotal = round((base * afpWorkerRatePct("uno", `${y}-12`)) / 100);
+    const health = round(base * LEGAL_HEALTH_RATE);
+    const other = round(base * (INDEPENDENT_OTHER_RATES.sis + INDEPENDENT_OTHER_RATES.workAccidents + INDEPENDENT_OTHER_RATES.sanna));
     return { base, total: afpTotal + health + other, pension, healthAndAfp: afpTotal + health };
   };
   const annualTax = (y: number) => {
     const t = yearTax(y);
     const uta = 12 * market.utm(`${y}-12`);
-    const presumed = Math.min(0.3 * t.honorariosGross, 15 * uta);
+    const presumed = Math.min(PRESUMED_EXPENSES_RATE * t.honorariosGross, PRESUMED_EXPENSES_CAP_UTA * uta);
     const contrib = independentContributions(y);
     const base = t.contractTaxable + t.honorariosGross - presumed - contrib.healthAndAfp - t.apvB;
     const igc = igcTax(base, uta, y + 1);
     const credits = t.iuscWithheld + Math.max(0, t.honorariosRetention - contrib.total);
-    return { base, igc, uta, result: round(igc - credits), marginal: marginalRate(base / uta) };
+    return { base, igc, uta, result: round(igc - credits), marginal: igcMarginalRate(base, uta, y + 1) };
   };
-  const marginalRate = (utas: number) => (utas <= 13.5 ? 0 : utas <= 30 ? 0.04 : utas <= 50 ? 0.08 : utas <= 70 ? 0.135 : utas <= 90 ? 0.23 : 0.304);
 
   /* ---------------------------------- AFP ----------------------------------- */
   const afpModeloSeries = "afp_modelo_cuota_a";
@@ -729,8 +727,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
         t.iuscWithheld += ps.tax;
         // AFP and AFC are credited when the employer pays Previred (~10th of next month).
         const credit = firstBusinessDayOnOrAfter(ymd(addMonths(month, 1), 10));
-        afpCredit(credit, round(ps.taxableBase * 0.1), [month], `Cotización obligatoria ${month}`);
-        if (credit <= today) afcContributions.push({ date: credit, clp: round(ps.taxableBase * 0.022), month });
+        afpCredit(credit, round(ps.taxableBase * MANDATORY_PENSION_RATE), [month], `Cotización obligatoria ${month}`);
+        if (credit <= today) afcContributions.push({ date: credit, clp: round((ps.taxableBase * AFC_ACCOUNT_RATE_PCT) / 100), month });
       }
       incomeNominal += ps.net;
       if (month === contract.to) {
@@ -1273,30 +1271,23 @@ function baseFor(job: ContractJob, month: Month): number {
   return Math.round((job.baseClp * Math.pow(1 + job.yearlyRaise, raises)) / 1000) * 1000;
 }
 
-/** Ingreso mínimo mensual by year (for the gratificación cap: 4,75 IMM / 12). */
-function imm(year: number): number {
-  const t: Record<number, number> = { 2018: 276_000, 2019: 301_000, 2020: 320_500, 2021: 337_000, 2022: 400_000, 2023: 460_000, 2024: 500_000, 2025: 529_000, 2026: 539_000 };
-  return t[year] ?? 539_000;
-}
-
 export function contractPayslip(job: ContractJob, month: Month, market: MarketReader): ContractPayslip {
   const year = Number(month.slice(0, 4));
   const mo = Number(month.slice(5, 7));
   const base = baseFor(job, month);
-  const grat = Math.min(Math.round(base * 0.25), Math.round((4.75 * imm(year)) / 12));
+  const grat = monthlyGratificationClp(base, year);
   const aguinaldo = mo === 9 || mo === 12 ? job.aguinaldoClp : 0;
   const bonus = job.bonusMonth != null && mo === job.bonusMonth && monthsBetween(job.from, month) >= 6 ? base : 0;
   const taxablePay = base + grat + aguinaldo + bonus;
   const ufDay = market.uf(ymd(month, daysInMonth(month)));
   const utm = market.utm(month);
-  const caps = capUf(year);
-  const taxableBase = Math.min(taxablePay, Math.round(caps.pension * ufDay));
-  const afcBase = Math.min(taxablePay, Math.round(caps.afc * ufDay));
+  const taxableBase = Math.min(taxablePay, Math.round(pensionCapUf(year) * ufDay));
+  const afcBase = Math.min(taxablePay, Math.round(unemploymentCapUf(year) * ufDay));
   const fund: "modelo" | "uno" = month >= AFP_SWITCH_MONTH ? "uno" : "modelo";
-  const pension = Math.round((taxableBase * afpWorkerRate(fund, month)) / 100);
-  const health = Math.round(taxableBase * 0.07);
-  const afc = Math.round(afcBase * 0.006);
-  const tax = iusc(taxablePay - pension - health - afc, utm, year);
+  const pension = Math.round((taxableBase * afpWorkerRatePct(fund, month)) / 100);
+  const health = legalHealthClp(taxableBase);
+  const afc = Math.round((afcBase * AFC_RATES_PCT.worker) / 100);
+  const tax = Math.round(iuscTax(taxablePay - pension - health - afc, utm, year));
   const lines: ContractPayslip["lines"] = [
     { side: "haber", section: "imponible", label: "Sueldo base", amount: base },
     { side: "haber", section: "imponible", label: "Gratificación legal", amount: grat },

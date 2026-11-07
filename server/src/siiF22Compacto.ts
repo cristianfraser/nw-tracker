@@ -11,7 +11,10 @@
  *
  * The windows cover the layouts of AT2019–AT2026 (the columns drift a few characters between
  * years); a layout outside them fails {@link assertF22Identities}.
+ *
+ * A document decoder: it belongs with the ingest parsers (F15); kept here until it moves.
  */
+import { f22IdentityViolations } from "./f22Identities.js";
 
 type Column = { codeStart: [number, number]; valueEnd: [number, number] };
 
@@ -68,25 +71,8 @@ export function parseF22CompactoText(text: string): Map<number, number> {
   return codes;
 }
 
-/** Throws unless the parsed amounts satisfy the identities the form prints. */
+/** Throws unless the parsed amounts satisfy the identities the form prints (`f22Identities`). */
 export function assertF22Identities(codes: ReadonlyMap<number, number>): void {
-  const need = (c: number) => {
-    const v = codes.get(c);
-    if (v == null) throw new Error(`F22 compacto: code ${c} missing`);
-    return v;
-  };
-  const checks: [string, number, number][] = [
-    // Retentions on fees (198) are credited and the pension contributions charged on them (900)
-    // are taken from them before the result; art. 107's 10% impuesto único (línea 66, 1830) adds
-    // to it beside the IGC.
-    [
-      "305 = 304 + 1830 − 198 + 900",
-      need(305),
-      need(304) + (codes.get(1830) ?? 0) - (codes.get(198) ?? 0) + (codes.get(900) ?? 0),
-    ],
-    ["170 = 158 − 750 − 765", need(170), need(158) - (codes.get(750) ?? 0) - (codes.get(765) ?? 0)],
-  ];
-  if (codes.has(91)) checks.push(["91 = 90 + 39", need(91), need(90) + (codes.get(39) ?? 0)]);
-  const bad = checks.filter(([, a, b]) => a !== b);
-  if (bad.length > 0) throw new Error(`F22 compacto: ${bad.map(([n, a, b]) => `${n} (${a} vs ${b})`).join("; ")}`);
+  const bad = f22IdentityViolations(codes, "F22 compacto");
+  if (bad.length > 0) throw new Error(`F22 compacto: ${bad.join("; ")}`);
 }
