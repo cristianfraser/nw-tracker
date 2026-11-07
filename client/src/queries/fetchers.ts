@@ -43,6 +43,8 @@ export type PortfolioGroupBundle = {
 };
 
 export type DashboardNavContext = {
+  /** Set on a fetched context (the strip helpers also take shapes built from the bundle). */
+  schema_version?: DashboardNavContextResponse["schema_version"];
   accounts: DashboardResponse["accounts"];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
@@ -61,6 +63,7 @@ export async function fetchDashboardNavSnapshot(
 export async function fetchDashboardNavContext(unit: DisplayUnit, root: string): Promise<DashboardNavContext> {
   const nav = await api.dashboardNavContext(unit, root);
   return {
+    schema_version: nav.schema_version,
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,

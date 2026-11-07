@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { chainedGroupPctResolver } from "./periodPctDailyChain.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
@@ -102,6 +103,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd", { side: "debt" }),
     };
     return {
+      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
       totals: {
         net_worth_clp: netWorthClp,
         deposits_clp: totalDeposits,

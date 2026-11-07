@@ -6,6 +6,13 @@ import type {
   SidebarNavResponse,
 } from "../types";
 import type { DisplayUnit } from "./keys";
+import {
+  hasSchemaVersion,
+  persistedPayload,
+  readPersistedPayload,
+  removePersistedPayload,
+  writePersistedPayload,
+} from "./persistedPayloadCache";
 import { readSidebarNavCache } from "./sidebarNavCache";
 
 /**
@@ -49,35 +56,14 @@ export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
   return readDashboardNavSnapshotCache(unit) != null;
 }
 
-/**
- * Bump when cached snapshot shape changes (v5 adds `card_metrics_by_slug`; v6 extends it
- * with the liabilities nav-tree entries — v5 caches lack them and crash the Pasivos strip;
- * v7 adds the `day` period variant + day title deltas; v8 drops `title_delta` — cards
- * render all three period rows and no title Δ chip; v9 adds `row_pct` — a bucket listed in
- * its parent's accounts table reads its % from it; v10 adds the `value_map` treemap tree;
- * v11: group metrics cover the members the nav tree lists, not slug-prefix matches; v12: the
- * value map breaks a proxied fund down into `holding` tiles; v13 adds `parent_pct` and the
- * `liquidated` table rows; v14 drops v13 snapshots saved from a server still on v12's
- * payload, with no `parent_pct`; v15 adds each node's server balance `value` and the
- * liquidated row's `value` — the client no longer sums a nav node's rows); v16: the % cells are
- * compounded daily returns and the total cell carries `on_deposits_*`, the old figure on net deposits).
- */
-const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v16";
-const LEGACY_STORAGE_PREFIXES = [
-  "nw:dashboard-nav-snapshot-v3",
-  "nw:dashboard-nav-snapshot-v4",
-  "nw:dashboard-nav-snapshot-v5",
-  "nw:dashboard-nav-snapshot-v6",
-  "nw:dashboard-nav-snapshot-v7",
-  "nw:dashboard-nav-snapshot-v8",
-  "nw:dashboard-nav-snapshot-v9",
-  "nw:dashboard-nav-snapshot-v10",
-  "nw:dashboard-nav-snapshot-v11",
-  "nw:dashboard-nav-snapshot-v12",
-  "nw:dashboard-nav-snapshot-v13",
-  "nw:dashboard-nav-snapshot-v14",
-  "nw:dashboard-nav-snapshot-v15",
-];
+/** The stored card strip, per unit (`DTO_SCHEMA_VERSIONS.nav_strip`). */
+const NAV_STRIP = persistedPayload(
+  "nav_strip",
+  (v): v is DashboardNavSnapshotResponse =>
+    hasSchemaVersion(v, "nav_strip") &&
+    Array.isArray((v as DashboardNavSnapshotResponse).accounts) &&
+    (v as DashboardNavSnapshotResponse).card_metrics_by_slug != null
+);
 
 /** Strip full dashboard totals to nav-snapshot bucket fields (server canonical card headers). */
 export function nwBucketTotalsFromDashTotals(
@@ -98,42 +84,26 @@ export function nwBucketTotalsFromDashTotals(
   };
 }
 
-function storageKey(unit: DisplayUnit): string {
-  return `${STORAGE_PREFIX}:${unit}`;
-}
-
 export function readDashboardNavSnapshotCache(
   unit: DisplayUnit
 ): DashboardNavSnapshotResponse | undefined {
-  try {
-    const raw = localStorage.getItem(storageKey(unit));
-    if (!raw) return undefined;
-    const snapshot = JSON.parse(raw) as DashboardNavSnapshotResponse;
-    // Checked against the latest known nav tree (the sidebar-nav cache is written before a
-    // fresh tree reaches any component): a snapshot that no longer covers it is discarded, so
-    // every `hasDashboardNavSnapshotCache` gate flips and the live snapshot / nav context load.
-    if (!navSnapshotCoversNavTree(snapshot.card_metrics_by_slug, readSidebarNavCache())) {
-      localStorage.removeItem(storageKey(unit));
-      return undefined;
-    }
-    return snapshot;
-  } catch {
+  const snapshot = readPersistedPayload(NAV_STRIP, [unit]);
+  if (!snapshot) return undefined;
+  // Checked against the latest known nav tree (the sidebar-nav cache is written before a
+  // fresh tree reaches any component): a snapshot that no longer covers it is discarded, so
+  // every `hasDashboardNavSnapshotCache` gate flips and the live snapshot / nav context load.
+  if (!navSnapshotCoversNavTree(snapshot.card_metrics_by_slug, readSidebarNavCache())) {
+    removePersistedPayload(NAV_STRIP, [unit]);
     return undefined;
   }
+  return snapshot;
 }
 
 export function writeDashboardNavSnapshotCache(
   unit: DisplayUnit,
   snapshot: DashboardNavSnapshotResponse
 ): void {
-  try {
-    localStorage.setItem(storageKey(unit), JSON.stringify(snapshot));
-    for (const prefix of LEGACY_STORAGE_PREFIXES) {
-      localStorage.removeItem(`${prefix}:${unit}`);
-    }
-  } catch {
-    // quota / private mode
-  }
+  writePersistedPayload(NAV_STRIP, [unit], snapshot);
 }
 
 /**
@@ -147,7 +117,7 @@ export function mergeNavContextIntoSnapshotCache(
   ctx: Pick<
     DashboardNavSnapshotResponse,
     "accounts" | "liabilities_breakdown" | "dashboard_layout" | "nw_bucket_totals" | "card_metrics_by_slug"
-  >
+  > & { schema_version?: number }
 ): void {
   const stored = readDashboardNavSnapshotCache(unit);
   if (!stored) return;
@@ -157,6 +127,8 @@ export function mergeNavContextIntoSnapshotCache(
   for (const a of ctx.accounts) if (!storedIds.has(a.account_id)) accounts.push(a);
   writeDashboardNavSnapshotCache(unit, {
     ...stored,
+    // A context from a server on another version must not be merged in under the stored one's.
+    schema_version: ctx.schema_version as DashboardNavSnapshotResponse["schema_version"],
     accounts,
     liabilities_breakdown: ctx.liabilities_breakdown,
     dashboard_layout: ctx.dashboard_layout,

@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { prefetchPageShapeForPath } from "./prefetchPageShape";
@@ -5,6 +6,7 @@ import * as displayUnitQueries from "./displayUnitQueries";
 import type { SidebarNavResponse } from "../types";
 
 const minimalPayload: SidebarNavResponse = {
+  schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
   dashboard: null,
   net_worth: null,
   flows: null,

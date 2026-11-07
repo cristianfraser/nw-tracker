@@ -1,37 +1,19 @@
 import { replaceEqualDeep } from "@tanstack/react-query";
+import type { LiveInputs, LiveQuoteMoves } from "nw-tracker-contracts/liveInputs";
+
+export { LIVE_INPUTS_HEADER, parseLiveInputs } from "nw-tracker-contracts/liveInputs";
+export type { LiveInputs, LiveQuoteMoves };
 
 /**
  * Which live prices a server response read (2026-11-04). The server names them in
- * `X-Live-Inputs` (`server/src/liveInputsHeader.ts`): `none`, or tickers plus `$fx` (the live
- * dollar) and `$dimming` (the dashboard's sync dimming). The payload carries them under a
+ * `X-Live-Inputs` (grammar in `nw-tracker-contracts/liveInputs`, shared with
+ * `server/src/liveInputsHeader.ts`). The payload carries them under a
  * non-enumerable symbol, so on a live-price change the client refetches only the queries whose
  * response read something that moved (`useLiveQuotesStampInvalidation`). A payload without
  * them (no header, a scalar) is refetched on every change, as before.
  */
 
-export type LiveInputs = { tickers: ReadonlySet<string>; fx: boolean; dimming: boolean };
-
-/** What moved since the stamp the client saw (`GET /api/live-quotes/stamp?since=`). */
-export type LiveQuoteMoves = { all: boolean; tickers: string[]; fx: boolean; dimming: boolean };
-
-export const LIVE_INPUTS_HEADER = "X-Live-Inputs";
-
 const LIVE_INPUTS = Symbol("liveInputs");
-
-export function parseLiveInputs(header: string | null): LiveInputs | null {
-  if (header == null) return null;
-  const tickers = new Set<string>();
-  let fx = false;
-  let dimming = false;
-  for (const raw of header.split(",")) {
-    const token = raw.trim();
-    if (token === "" || token === "none") continue;
-    if (token === "$fx") fx = true;
-    else if (token === "$dimming") dimming = true;
-    else tickers.add(token.toUpperCase());
-  }
-  return { tickers, fx, dimming };
-}
 
 function canCarry(data: unknown): data is object {
   return data !== null && typeof data === "object";

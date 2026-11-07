@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { describe, expect, it } from "vitest";
 import {
   buildPlaceholderDashboardBundle,
@@ -67,6 +68,7 @@ describe("buildPlaceholderNavStripDash", () => {
     ],
   });
   const nav: SidebarNavResponse = {
+    schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
     dashboard: null,
     net_worth: navNodeFixture({ slug: "tst_net_worth", label: "NW", children: [brokerage, cash] }),
     main: [brokerage, cash, liabilities],

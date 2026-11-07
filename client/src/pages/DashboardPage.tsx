@@ -163,6 +163,7 @@ export function DashboardPage() {
   useEffect(() => {
     if (!useRealBundle || !data) return;
     writeDashboardNavSnapshotCache(displayUnit, {
+      schema_version: data.dash.schema_version,
       accounts: data.dash.accounts,
       liabilities_breakdown: data.dash.liabilities_breakdown,
       dashboard_layout: data.dash.dashboard_layout,

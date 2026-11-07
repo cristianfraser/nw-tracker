@@ -1,3 +1,4 @@
+import { LIVE_QUOTES_DEFAULT_INTERVAL_MS } from "nw-tracker-contracts/dto/apiConstants";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   fetchAccountsByPortfolioGroup,
@@ -12,8 +13,8 @@ import { queryKeys, type DisplayUnit } from "./keys";
 /** Cached CLP/USD bundles stay warm while toggling display unit. */
 export const DISPLAY_UNIT_STALE_MS = 5 * 60_000;
 
-/** Align with server `LIVE_QUOTES_INTERVAL_MS` (default 5 min) so account marks refresh after scheduler ticks. */
-const LIVE_DASHBOARD_REFETCH_MS = 5 * 60_000;
+/** The server's live-quotes interval default, so account marks refresh after scheduler ticks. */
+const LIVE_DASHBOARD_REFETCH_MS = LIVE_QUOTES_DEFAULT_INTERVAL_MS;
 
 /**
  * keepPreviousData scoped to one entity. The held payload is offered only while the first

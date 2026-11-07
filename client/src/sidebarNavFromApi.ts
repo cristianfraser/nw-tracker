@@ -7,8 +7,8 @@ import { sortNavTreeLeavesFirst, type SidebarNavMarker, type SidebarNavNode } fr
 /**
  * Label keys the SERVER emits via `label_i18n_key` (seedNavTree.ts and friends),
  * resolved dynamically by resolveNavTreeLabel below. Listed as literals so the
- * key-integrity test (i18n/keyIntegrity.test.ts) sees the locale keys reachable.
- * Keep in sync with `grep -rh 'label_i18n_key: "' server/src`.
+ * key-integrity test (i18n/keyIntegrity.test.ts) sees the locale keys reachable;
+ * `sidebarNavLabelKeys.test.ts` checks it against the server's sources and master.json.
  */
 export const SERVER_NAV_LABEL_I18N_KEYS = [
   "dashboard.buckets.cash_eqs",

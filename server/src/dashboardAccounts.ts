@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import { cacheKeyDashboardAccountRows, cacheKeyDashboardNav } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
@@ -614,6 +615,7 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
     chainedGroupPct,
   });
   return {
+    schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
     accounts: clientAccounts,
     liabilities_breakdown,
     dashboard_layout,
@@ -648,6 +650,7 @@ async function buildDashboardNavContextInner(includeUsd: boolean, rootSlug: stri
   if (!liabilitiesRoot) throw new Error("nav-context: liabilities nav tree missing");
   const scope = navContextScope(rootSlug, [liabilitiesRoot, navRoot], liabilitiesRoot);
   return {
+    schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
     accounts: nav.accounts.filter((a) => scope.accountIds.has(a.account_id)),
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,

@@ -1,7 +1,7 @@
 /** Page paths as the usage log stores them (`usage_page_views`); a leaf so the DB setup can use it. */
 
-/** The page-view beacon — a POST, and the one mutation the read-only demo accepts. */
-export const USAGE_PAGE_VIEW_PATH = "/api/usage/page-view";
+/** The page-view beacon — a POST, and the one mutation the read-only demo accepts (shared with the client). */
+export { USAGE_PAGE_VIEW_PATH } from "nw-tracker-contracts/dto/apiConstants";
 
 const MAX_PATH = 200;
 

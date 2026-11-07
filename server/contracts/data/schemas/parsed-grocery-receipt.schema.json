@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "chain": {
+      "type": "string"
+    },
+    "boleta_number": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "caja": {
+      "type": "string"
+    },
+    "sucursal": {
+      "type": "string"
+    },
+    "city": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "purchased_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "purchase_date_source": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "printed",
+            "declared"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "template": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "string"
+          },
+          "qty_unit": {
+            "type": "string",
+            "enum": [
+              "un",
+              "kg"
+            ]
+          },
+          "unit_price_clp": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total_clp": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "discount_clp": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "discount_labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "position",
+          "barcode",
+          "description",
+          "qty",
+          "qty_unit",
+          "unit_price_clp",
+          "total_clp",
+          "discount_clp",
+          "discount_labels"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "receipt_discounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "amount_clp": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "label",
+          "amount_clp"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "payments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "amount_clp": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "method",
+          "amount_clp"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "total_printed_clp": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "articles_declared": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mi_club_points": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "parser_version": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "boleta_number",
+    "caja",
+    "sucursal",
+    "city",
+    "purchased_at",
+    "template",
+    "items",
+    "payments",
+    "total_printed_clp",
+    "articles_declared",
+    "mi_club_points",
+    "parser_version"
+  ],
+  "additionalProperties": {}
+}

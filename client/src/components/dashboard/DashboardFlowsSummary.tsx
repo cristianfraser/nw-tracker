@@ -15,7 +15,7 @@ import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeToDays } from "../../timeRange";
 import type { FlowsOverviewRow } from "../../types";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
-import { usePanelCache } from "../../queries/panelCache";
+import { persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
 import styles from "./DashboardFlowsSummary.module.css";
 import type { ComponentType } from "react";
@@ -38,6 +38,9 @@ function isFlowsClosed(v: unknown): v is { last_month: FlowsOverviewRow; last_12
     row != null && typeof row === "object" && SUMMARY_LINES.every((l) => Number.isFinite(l.value(row as FlowsOverviewRow)));
   return v != null && typeof v === "object" && ok((v as Record<string, unknown>).last_month) && ok((v as Record<string, unknown>).last_12_months);
 }
+
+/** The overview's `closed` block, stored per unit and expense mode (`DTO_SCHEMA_VERSIONS.flows_overview`). */
+const FLOWS_CLOSED = persistedPayload("flows_overview", isFlowsClosed);
 
 type SummaryLine = {
   id: string;
@@ -95,10 +98,12 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   const { installmentMode } = useCcInstallmentGastosMode();
   const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
   // A held payload of the other unit is never stored; until live data is here, the last stored one.
-  const { value: closed } = usePanelCache(
-    `flows-closed-v1|${displayUnit}|${installmentMode}`,
-    overview.isPlaceholderData ? null : overview.data?.closed,
-    isFlowsClosed
+  const live = overview.isPlaceholderData ? null : overview.data;
+  const { value: closed } = usePersistedPayload(
+    FLOWS_CLOSED,
+    [displayUnit, installmentMode],
+    live?.closed,
+    live?.schema_version
   );
   const loading = closed == null;
 

@@ -11,6 +11,7 @@
  * never after Chile today. Like the Expenses page, it lists spending from net pay: the deductions
  * taken from a payslip (`isPreTaxExpenseLine`) are left out.
  */
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
 import { listCcExpenseCategories, type CcExpenseCategoryRow } from "./ccExpenseCategories.js";
@@ -22,6 +23,7 @@ export const LATEST_EXPENSES_DEFAULT_LIMIT = 15;
 export const LATEST_EXPENSES_MAX_LIMIT = 100;
 
 export type LatestExpensesResponse = {
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["latest_expenses"];
   /** Newest first. */
   lines: FlowCcExpenseLineRow[];
   categories: CcExpenseCategoryRow[];
@@ -58,6 +60,7 @@ export function latestExpenseLines(
 export function buildLatestExpenses(limit: number): LatestExpensesResponse {
   const categories = listCcExpenseCategories();
   return {
+    schema_version: DTO_SCHEMA_VERSIONS.latest_expenses,
     lines: latestExpenseLines(
       cachedFlowsExpenseLines(),
       new Set(categories.map((c) => c.slug)),

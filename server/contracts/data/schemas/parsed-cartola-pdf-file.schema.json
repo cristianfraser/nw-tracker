@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "generated_at": {
+      "type": "string"
+    },
+    "pdfs_dir": {
+      "type": "string"
+    },
+    "cartolas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_file": {
+            "type": "string"
+          },
+          "period_month": {
+            "type": "string"
+          },
+          "period_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "period_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "saldo_inicial_clp": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "saldo_final_clp": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "month_saldo_final_clp": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "movements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "occurred_on": {
+                  "type": "string"
+                },
+                "amount_clp": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "document_no": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "occurred_on",
+                "amount_clp",
+                "branch",
+                "description",
+                "document_no"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "parse_status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "unreadable",
+              "error",
+              "skipped"
+            ]
+          },
+          "parse_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source_file",
+          "period_month",
+          "period_from",
+          "period_to",
+          "saldo_inicial_clp",
+          "saldo_final_clp",
+          "movements",
+          "parse_status"
+        ],
+        "additionalProperties": {}
+      }
+    }
+  },
+  "required": [
+    "generated_at",
+    "pdfs_dir",
+    "cartolas"
+  ],
+  "additionalProperties": {}
+}

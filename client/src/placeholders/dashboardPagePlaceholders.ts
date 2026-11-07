@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import type { DashboardBundle } from "../queries/fetchers";
 import type { DisplayUnit } from "../queries/keys";
 import { DASHBOARD_NET_WORTH_BUCKET_SLUGS } from "../portfolioDashboardBuckets";
@@ -107,6 +108,7 @@ export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardRespo
       : {}),
   };
   return {
+    schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
     // Empty map: the strip never mounts from this dash (a cold strip mounts from
     // `buildPlaceholderNavStripDash`); charts/allocation ignore it.
     card_metrics_by_slug: {},

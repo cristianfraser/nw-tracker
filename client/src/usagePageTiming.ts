@@ -1,3 +1,4 @@
+import { USAGE_PAGE_VIEW_PATH } from "nw-tracker-contracts/dto/apiConstants";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
@@ -17,7 +18,7 @@ import { useLocation } from "react-router-dom";
  * (linkedin / cv / homepage), kept for the whole visit.
  */
 
-const BEACON_PATH = "/api/usage/page-view";
+const BEACON_PATH = USAGE_PAGE_VIEW_PATH;
 const SRC_STORAGE_KEY = "nw:demo-src";
 /** Long enough for a lazy chunk to load and its queries to start before calling a page settled. */
 const QUIET_MS = 400;

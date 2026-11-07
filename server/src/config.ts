@@ -1,3 +1,4 @@
+import { LIVE_QUOTES_DEFAULT_INTERVAL_MS } from "nw-tracker-contracts/dto/apiConstants";
 import { DEMO_SYNC_DISABLED_SOURCES, type GlobalSyncSource } from "./syncSourceIds.js";
 
 /**
@@ -152,7 +153,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
   // turns it off whatever its own flag says.
   const ingestScheduler = backgroundJobs && (parseEnvFlag("INGEST_SCHEDULER_ENABLED", env.INGEST_SCHEDULER_ENABLED) ?? false);
   const jobQueueExecutor = backgroundJobs && (parseEnvFlag("JOB_QUEUE_EXECUTOR_ENABLED", env.JOB_QUEUE_EXECUTOR_ENABLED) ?? ingestScheduler);
-  const liveIntervalMs = positiveNumber(env, "LIVE_QUOTES_INTERVAL_MS", 5 * 60 * 1000);
+  const liveIntervalMs = positiveNumber(env, "LIVE_QUOTES_INTERVAL_MS", LIVE_QUOTES_DEFAULT_INTERVAL_MS);
   const corsFromEnv = (env.CORS_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((s) => s.trim())

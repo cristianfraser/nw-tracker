@@ -145,7 +145,7 @@ export function receiptLabel(
   if (r.vehicle_permit && r.concept) return { text: r.concept, nights: null };
   // A ticket vendor's receipt for something that is no event (parking bought apart): what it was.
   if (TICKET_PROCESSORS.has(r.processor) && r.concept) return { text: r.concept, nights: null };
-  if (r.processor === "app_store") return { text: appStoreLabel(r.payee, catalog), nights: null };
+  if (r.processor === "apple_app_store") return { text: appStoreLabel(r.payee, catalog), nights: null };
   const payee = repairMojibake(r.payee).trim();
   if (!payee || isEmailAddress(payee) || isPlaceholderPayee(payee)) return null;
   const host = hostOfUrl(payee);
@@ -262,7 +262,7 @@ export function loadDisplayNameContext(
   lines: readonly Pick<FlowCcExpenseLineRow, "payment_receipt" | "source" | "merchant" | "account_id">[]
 ): DisplayNameContext {
   const payees = lines.flatMap((l) =>
-    l.payment_receipt && l.payment_receipt.processor !== "app_store" ? [l.payment_receipt.payee] : []
+    l.payment_receipt && l.payment_receipt.processor !== "apple_app_store" ? [l.payment_receipt.payee] : []
   );
   return {
     catalog: loadVendorCatalog(),
@@ -389,7 +389,7 @@ export function expenseLineDisplayNames(
       };
       // A stay's label is its city, a ticket's its event: no rule per city or per event.
       if (label.nights == null && !LODGING_PROCESSORS.has(r.processor) && !TICKET_PROCESSORS.has(r.processor) && !r.vehicle_permit) {
-        const app = r.processor === "app_store";
+        const app = r.processor === "apple_app_store";
         const key = linkKeyForName(label.text);
         if (key) {
           out.category_link = {

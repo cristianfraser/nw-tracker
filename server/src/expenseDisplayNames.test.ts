@@ -360,7 +360,7 @@ describe("expenseLineDisplayNames", () => {
     );
     expect(seller.category_link).toMatchObject({ kind: "receipt", key: "TIENDA UNO", specific_default: true });
     const app = expenseLineDisplayNames(
-      { source: "cc", merchant: "APPLE.COM/BILL", account_id: 1, payment_receipt: receipt("app_store", "Grindr - Gay Dating & Chat") },
+      { source: "cc", merchant: "APPLE.COM/BILL", account_id: 1, payment_receipt: receipt("apple_app_store", "Grindr - Gay Dating & Chat") },
       ctx
     );
     expect(app.category_link).toMatchObject({ kind: "app", key: "GRINDR", specific_default: true });

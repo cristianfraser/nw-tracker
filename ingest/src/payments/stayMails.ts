@@ -180,7 +180,7 @@ function cityOfAddress(address: string): string | null {
   return null;
 }
 
-function receipt(mail: ArchivedMail, processor: string, r: Omit<ProcessorReceipt, "message_id" | "sent_at_chile" | "processor">): ProcessorReceipt {
+function receipt(mail: ArchivedMail, processor: ProcessorReceipt["processor"], r: Omit<ProcessorReceipt, "message_id" | "sent_at_chile" | "processor">): ProcessorReceipt {
   return { message_id: mail.message_id, sent_at_chile: mail.sent_at_chile, processor, ...r };
 }
 

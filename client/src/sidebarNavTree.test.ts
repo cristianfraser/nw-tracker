@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { describe, expect, it } from "vitest";
 import { buildSidebarNavFromApi } from "./sidebarNavFromApi";
 import {
@@ -72,6 +73,7 @@ describe("sortNavTreeLeavesFirst", () => {
 describe("buildSidebarNavFromApi", () => {
   it("sorts flows children with leaves before expandable gastos", () => {
     const payload: SidebarNavResponse = {
+      schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
       dashboard: navNode("dash", "dashboard"),
       main: [],
       flows: navNode("flows", "flows", [
@@ -97,6 +99,7 @@ describe("buildSidebarNavFromApi", () => {
     const soxx = group("soxx", [leaf(3)]);
     const acciones = group("acciones", [leaf(1), soxx]);
     const payload: SidebarNavResponse = {
+      schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
       dashboard: null,
       main: [group("inversiones", [group("brokerage", [acciones])])],
       flows: group("flows", [navNode("ingresos", "ingresos"), { ...navNode("gastos", "flows_expenses"), route_path: "/flows/expenses" }]),
@@ -129,6 +132,7 @@ describe("buildSidebarNavFromApi", () => {
     const acciones = navNode("acciones", "brokerage_acciones", [navNode("acc.1", "account_1")]);
     const inactiveRoot = { ...navNode("dead_root", "dead_root"), chart_inactive: true };
     const payload: SidebarNavResponse = {
+      schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
       dashboard: null,
       main: [
         navNode("inversiones", "inversiones", [

@@ -8,13 +8,14 @@ import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
  * PDF filenames may still contain the old last4; imports route to the target account.
  * Real card last4s live in gitignored `cfraser/cc-cards.json` (see ccCardRegistry).
  */
-export const SANTANDER_CC_IMPORT_REDIRECT_LAST4: Readonly<Record<string, string>> =
-  ccCardRegistry().import_redirect_last4;
+function importRedirectLast4(): Readonly<Record<string, string>> {
+  return ccCardRegistry().import_redirect_last4;
+}
 
 export function normalizeCcImportCardLast4(last4: string): string {
   const l4 = String(last4 ?? "").trim();
   if (!l4) return l4;
-  return SANTANDER_CC_IMPORT_REDIRECT_LAST4[l4] ?? l4;
+  return importRedirectLast4()[l4] ?? l4;
 }
 
 /** Resolve master account for PDF/CSV import (applies consolidation redirects). */
@@ -30,7 +31,6 @@ export function supersededCcTargetLast4(accountId: number): string | null {
   return target || null;
 }
 
-const SUPERSEDED_SANTANDER_MASTER_NOTES = new Set(ccCardRegistry().superseded_master_notes);
 
 export function isSupersededSantanderCcMaster(accountId: number): boolean {
   if (supersededCcTargetLast4(accountId) != null) return true;
@@ -40,10 +40,10 @@ export function isSupersededSantanderCcMaster(accountId: number): boolean {
     .get(accountId) as { import_key: string | null; exclude_from_group_totals: number } | undefined;
   if (!row) return false;
   const importKey = String(row.import_key ?? "").trim();
-  if (!SUPERSEDED_SANTANDER_MASTER_NOTES.has(importKey)) return false;
+  if (!ccCardRegistry().superseded_master_notes.includes(importKey)) return false;
   if (row.exclude_from_group_totals !== 1) return false;
   const last4 = importKey.slice(importKey.lastIndexOf("|") + 1);
-  const targetLast4 = SANTANDER_CC_IMPORT_REDIRECT_LAST4[last4];
+  const targetLast4 = importRedirectLast4()[last4];
   return targetLast4 != null && resolveMasterAccountIdForCardLast4(targetLast4) != null;
 }
 

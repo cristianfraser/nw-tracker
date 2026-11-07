@@ -1,3 +1,4 @@
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import {
@@ -33,6 +34,7 @@ describe("hasDashboardNavSnapshotCache", () => {
 
   it("is true when unit cache exists", () => {
     writeDashboardNavSnapshotCache("clp", {
+      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
       accounts: [],
       card_metrics_by_slug: {},
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
@@ -67,6 +69,7 @@ describe("hasDashboardNavSnapshotCache", () => {
 
   it("a CLP cache does not stand in for USD", () => {
     writeDashboardNavSnapshotCache("clp", {
+      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
       accounts: [],
       card_metrics_by_slug: {},
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
@@ -103,6 +106,7 @@ describe("hasDashboardNavSnapshotCache", () => {
 describe("prefetchDashboardNavSnapshot", () => {
   it("skips prefetch when cache exists", async () => {
     writeDashboardNavSnapshotCache("clp", {
+      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
       accounts: [],
       card_metrics_by_slug: {},
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
@@ -147,6 +151,7 @@ describe("stale nav snapshot vs a grown nav tree", () => {
 
   function snapshotWithSlugs(slugs: string[]): DashboardNavSnapshotResponse {
     return {
+      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
       accounts: [],
       card_metrics_by_slug: Object.fromEntries(slugs.map((s) => [s, metrics])),
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
@@ -167,6 +172,7 @@ describe("stale nav snapshot vs a grown nav tree", () => {
       ],
     });
     return {
+      schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
       dashboard: null,
       net_worth: navNodeFixture({ slug: "tst_net_worth", label: "NW", children: [brokerage] }),
       main: [

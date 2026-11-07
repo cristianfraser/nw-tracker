@@ -1,59 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ccCardRegistrySchema, type CcCardRegistry } from "nw-tracker-contracts";
+
+export type { CcCardRegistry };
 
 /**
  * Personal per-card configuration (real card last4s: consolidation redirects, superseded
  * masters, statement-classification tokens) lives OUTSIDE git in `cfraser/cc-cards.json` —
  * the repo must stay free of real card numbers. A missing file is a valid empty registry
- * (no personal cards configured: demo mode, CI, fresh clones). A present-but-malformed
- * file throws. Tests inject synthetic cards via `NW_TRACKER_CC_CARDS` (path to a JSON
- * file; set in `vitest.setup.ts` before src modules load).
+ * (no personal cards configured: demo mode, CI, fresh clones). A present file must satisfy the
+ * shared schema (`ccCardRegistrySchema` in contracts, which the parser's `cc_cards.py` validates
+ * against too); a malformed one throws. Read once, at first use — never at module load. Tests
+ * inject synthetic cards via `NW_TRACKER_CC_CARDS` (path to a JSON file; set in
+ * `vitest.setup.ts` before src modules load).
  */
-export type CcCardRegistry = {
-  /** Predecessor/consolidated card last4 → successor master last4 (import routing). */
-  import_redirect_last4: Readonly<Record<string, string>>;
-  /** `accounts.notes` of superseded CC masters kept out of group totals. */
-  superseded_master_notes: readonly string[];
-  /** Statement-text tokens marking multi-card Santander layouts (e.g. `XXXX-<last4>`). */
-  multicard_marker_tokens: readonly string[];
-  /** Filename tokens for the legacy "group B" Santander parser body. */
-  legacy_group_b_tokens: readonly string[];
-  /** Card last4s appearing in BCI Lider statement filenames. */
-  lider_filename_last4s: readonly string[];
-  /** Cards whose statements skip reconcile (superseded). */
-  reconcile_skip_last4s: readonly string[];
-  /** Primary-import cards whose statements require reconcile. */
-  reconcile_primary_last4s: readonly string[];
-  /**
-   * Additional-cardholder card last4s (someone else's plastic on the user's account):
-   * only these origins auto-tag purchases Único + no_cuenta. The user's own
-   * predecessor/successor plastics appear as foreign origins on transition-month
-   * statements and must NOT trip the tag.
-   */
-  additional_card_last4s: readonly string[];
-  /**
-   * Boleta «SUC:» header → the bank's merchant string for that store (statement convention,
-   * without the `(T)` suffix). Lets a boleta-derived open-month line carry the exact dedupe
-   * key the card feed/statement will print. Hand-declared seed only: a sucursal neither this
-   * map nor the learned `grocery_branch_merchants` table names is flagged on the receipt and
-   * LEARNED from the bank's own line for the same day and amount (`groceryBranchLearning.ts`),
-   * never guessed. A declared entry that disagrees with a learned one throws at import.
-   */
-  boleta_sucursal_merchants: Readonly<Record<string, string>>;
-};
-
-const EMPTY_REGISTRY: CcCardRegistry = {
-  import_redirect_last4: {},
-  superseded_master_notes: [],
-  multicard_marker_tokens: [],
-  legacy_group_b_tokens: [],
-  lider_filename_last4s: [],
-  reconcile_skip_last4s: [],
-  reconcile_primary_last4s: [],
-  additional_card_last4s: [],
-  boleta_sucursal_merchants: {},
-};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -68,15 +29,11 @@ let cached: CcCardRegistry | null = null;
 export function ccCardRegistry(): CcCardRegistry {
   if (cached) return cached;
   const file = registryFilePath();
-  if (!fs.existsSync(file)) {
-    cached = EMPTY_REGISTRY;
-    return cached;
+  const data: unknown = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf-8")) : {};
+  const parsed = ccCardRegistrySchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(`${file}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
   }
-  const data = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>;
-  const unknown = Object.keys(data).filter((k) => !(k in EMPTY_REGISTRY));
-  if (unknown.length > 0) {
-    throw new Error(`${file}: unknown keys: ${unknown.join(", ")}`);
-  }
-  cached = { ...EMPTY_REGISTRY, ...(data as Partial<CcCardRegistry>) };
+  cached = parsed.data;
   return cached;
 }

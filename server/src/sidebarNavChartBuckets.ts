@@ -1,5 +1,6 @@
 import { CACHE_KEY_SIDEBAR_NAV } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
+import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { chartBucketsDtoForNavNode } from "./groupChartBuckets.js";
 import {
   getLiabilitiesNavRootNode,
@@ -64,6 +65,6 @@ function findBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeDto | nu
 export function cachedSidebarNavPayload() {
   return getAggregationCached(CACHE_KEY_SIDEBAR_NAV, () => {
     const built = getSidebarNavPayload();
-    return { ...built, main: annotateSidebarNavChartBuckets(built.main) };
+    return { ...built, schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav, main: annotateSidebarNavChartBuckets(built.main) };
   });
 }

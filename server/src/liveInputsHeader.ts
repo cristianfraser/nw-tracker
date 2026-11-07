@@ -1,11 +1,11 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { LIVE_INPUTS_HEADER, formatLiveInputs as formatLiveInputsHeader } from "nw-tracker-contracts";
 import { cacheDepNodeLiveInputs, newCacheDepNode, runInCacheDepNode } from "./cacheDependencies.js";
 import { requestContext } from "./requestContext.js";
 
 /**
- * Each GET API response names the live inputs it read (2026-11-04): `X-Live-Inputs` is `none`, or
- * the tickers whose live quote it read and `$fx` (the live dollar) / `$dimming` (the dashboard's
- * sync dimming), comma-separated. The client refetches a query on a price change only when one of
+ * Each GET API response names the live inputs it read (2026-11-04) in `X-Live-Inputs`, whose
+ * grammar lives in contracts (`liveInputs.ts`, shared with the client). The client refetches a query on a price change only when one of
  * them moved (`client/src/liveInputs.ts`), instead of refetching every query on every move.
  *
  * The request runs inside its own dependency node (`cacheDependencies.ts`): what it reads live is
@@ -14,8 +14,7 @@ import { requestContext } from "./requestContext.js";
  * reporting it would be stale here as it already is in the cache.
  */
 
-/** The response header; the client reads it by this name too. */
-export const LIVE_INPUTS_HEADER = "X-Live-Inputs";
+export { LIVE_INPUTS_HEADER };
 
 const SKIPPED_PATHS = new Set(["/api/live-quotes/stamp"]);
 
@@ -34,8 +33,5 @@ export function liveInputsMiddleware(): RequestHandler {
 }
 
 export function formatLiveInputs(inputs: { tickers: Iterable<string>; fx: boolean; syncDimming: boolean }): string {
-  const tokens = [...inputs.tickers].sort();
-  if (inputs.fx) tokens.unshift("$fx");
-  if (inputs.syncDimming) tokens.unshift("$dimming");
-  return tokens.length > 0 ? tokens.join(",") : "none";
+  return formatLiveInputsHeader({ tickers: inputs.tickers, fx: inputs.fx, dimming: inputs.syncDimming });
 }

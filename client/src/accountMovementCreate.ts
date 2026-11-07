@@ -1,11 +1,6 @@
-/** Mirrors server `movementCreateSchemaForAccount` on account summary / detail bundle. */
-export type MovementCreateSchema = {
-  ledger: "movements";
-  units_delta: "required" | "optional";
-  unit_label: string;
-  brokerage_flow_kinds?: readonly string[];
-  units_required_for_flow_kinds?: readonly string[];
-};
+import type { MovementCreateSchema } from "nw-tracker-contracts/dto/ledgerSchemas";
+
+export type { MovementCreateSchema };
 
 export function supportsBrokerageMovements(
   schema: unknown
