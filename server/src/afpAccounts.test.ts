@@ -68,10 +68,10 @@ describe("cuotaLedgerSeriesKeyForAccount (afp)", () => {
   it("prices with the series the account declares, UNO Fondo A when the column is empty", () => {
     const planvital = insertAfpAccount("planvital", "afp_planvital_cuota_a");
     const bare = insertAfpAccount("bare", null);
-    expect(cuotaLedgerSeriesKeyForAccount(planvital, "afp", "2018-01-31")).toBe("afp_planvital_cuota_a");
+    expect(cuotaLedgerSeriesKeyForAccount(planvital)).toBe("afp_planvital_cuota_a");
     // The date no longer picks the series: the same account, any day.
-    expect(cuotaLedgerSeriesKeyForAccount(planvital, "afp", "2026-10-22")).toBe("afp_planvital_cuota_a");
-    expect(cuotaLedgerSeriesKeyForAccount(bare, "afp", "2026-10-22")).toBe(AFP_UNO_CUOTA_SERIES_KEY);
+    expect(cuotaLedgerSeriesKeyForAccount(planvital)).toBe("afp_planvital_cuota_a");
+    expect(cuotaLedgerSeriesKeyForAccount(bare)).toBe(AFP_UNO_CUOTA_SERIES_KEY);
   });
 
   it("names the position ticker after the series", () => {

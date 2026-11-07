@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   commitMortgagePayment,
+  deptoPropertyAccountId,
   previewMortgagePayment,
 } from "./mortgagePaymentCreate.js";
 import {
@@ -45,7 +46,7 @@ describe("mortgage payment create API layer", () => {
       (preview.sheet.amortizacion_clp ?? 0) + (preview.sheet.amortizacion_ext_clp ?? 0)
     ).toBe(1_000_000 - 250_000 - 41_651 - 3000);
 
-    const propertyBefore = deptoAccountMarkClpAtYmd("property", occurredOn);
+    const propertyBefore = deptoAccountMarkClpAtYmd(deptoPropertyAccountId(), occurredOn);
 
     const committed = commitMortgagePayment(mortgage.id, input);
     expect(committed.mortgage_movement_id).toBeGreaterThan(0);
@@ -66,7 +67,7 @@ describe("mortgage payment create API layer", () => {
     const ledgerAfter = loadDeptoLedgerFromMovements();
     expect(ledgerAfter.some((r) => r.cuota === testCuota && r.occurred_on === occurredOn)).toBe(true);
 
-    const propertyAfter = deptoAccountMarkClpAtYmd("property", occurredOn);
+    const propertyAfter = deptoAccountMarkClpAtYmd(deptoPropertyAccountId(), occurredOn);
     if (propertyBefore != null && propertyAfter != null) {
       expect(propertyAfter.value_clp).not.toBe(propertyBefore.value_clp);
     }

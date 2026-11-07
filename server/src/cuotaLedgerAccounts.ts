@@ -11,27 +11,23 @@
  * P/L couplet (docs/afp-fund-accounts-plan.md, decision 2).
  */
 import { AFP_UNO_CUOTA_SERIES_KEY, parseAfpDisplaySeriesKey } from "./afpUnoSeries.js";
-import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
+import { accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
 
-export const CUOTA_LEDGER_KIND_SLUGS: ReadonlySet<string> = new Set(["afp", "afc"]);
+export const CUOTA_LEDGER_KIND_SLUGS: ReadonlySet<string> = CUOTA_LEDGER_KINDS;
 
 export function isCuotaLedgerKindSlug(kindSlug: string | null | undefined): boolean {
   return kindSlug != null && CUOTA_LEDGER_KIND_SLUGS.has(kindSlug);
 }
 
 /**
- * Series a cuota-ledger account prices with, or null when the account is not modeled in
- * cuotas: an `afc` account with no `fund_series_key` (demo / CI DBs, or a ledger not yet
- * derived) keeps the plain stored-mark path. An `afp` account with no `fund_series_key` (test
- * fixtures and demo DBs have no column value) prices with the kind's live series, UNO Fondo A.
- *
- * `asOfYmd` is kept for signature stability; since 2026-10-22 the AFP series no longer depends
- * on the date (one series per account, declared on the column).
+ * Series a cuota-ledger account prices with (its profile's quantity source), or null when the
+ * account is not modeled in cuotas — an `afc` account with no `fund_series_key` keeps the plain
+ * stored-mark path. An `afp` account with no `fund_series_key` prices with UNO Fondo A only on a
+ * demo or test database (`accountProfile.ts`); on the personal database it throws.
  */
-export function cuotaLedgerSeriesKeyForAccount(accountId: number, kindSlug: string, _asOfYmd: string): string | null {
-  if (kindSlug === "afp") return fundSeriesKeyForAccount(accountId) ?? AFP_UNO_CUOTA_SERIES_KEY;
-  if (kindSlug === "afc") return fundSeriesKeyForAccount(accountId);
-  return null;
+export function cuotaLedgerSeriesKeyForAccount(accountId: number): string | null {
+  const q = accountProfileOptional(accountId)?.quantity;
+  return q?.kind === "cuota_ledger" ? q.seriesKey : null;
 }
 
 /**

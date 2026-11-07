@@ -593,7 +593,7 @@ function augmentChartDatesForCuotaLedgerAccounts(
   for (const id of allIds) {
     const kind = bucketKindFromSlugMap(slugById, id);
     if (!isCuotaLedgerKindSlug(kind)) continue;
-    if (cuotaLedgerSeriesKeyForAccount(id, kind, today) == null) continue;
+    if (cuotaLedgerSeriesKeyForAccount(id) == null) continue;
     const events = db
       .prepare(
         `SELECT occurred_on, (account_id IS NULL) AS is_leg FROM movements

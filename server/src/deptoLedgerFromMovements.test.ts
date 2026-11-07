@@ -12,6 +12,10 @@ import {
   deptoAccountMarkClpAtYmd,
   loadDeptoLedgerFromMovements,
 } from "./deptoLedgerFromMovements.js";
+import { accountWithRoleOptional } from "./accountRoles.js";
+/** The depto property and its loan (their roles). */
+const deptoPropertyId = (): number => accountWithRoleOptional("property") ?? -1;
+
 
 /**
  * Synthetic fixture: a property master + movements + loan_payments rows written with the
@@ -66,9 +70,11 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
       }
     }
 
-    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
-      id: number;
-    };
+    // The property and its loan on their own leaves: the profile reads the kind from there.
+    const leaf = (slug: string) =>
+      (db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number } | undefined)?.id ??
+      (db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number }).id;
+    const group = { id: leaf("real_estate__property") };
     accountId = Number(
       db
         .prepare(
@@ -123,7 +129,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     loanAccountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'Depto loan fixture', 'vitest')`)
-        .run(group.id).lastInsertRowid
+        .run(leaf("liabilities__mortgage")).lastInsertRowid
     );
     // The appraisal is stated once (at the pie); the ledger carries it to later rows.
     upsertPropertyAppraisalUf(accountId, "2099-01-10", 5400);
@@ -199,14 +205,14 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
   it("marks property and mortgage from the movement ledger (UF × uf_daily)", () => {
     if (preexistingProperty) return;
     // 2099-03-15: last row is cuota 2 (3921.8 UF / 1478.2 UF); UF on-or-before = 40,200.
-    const property = deptoAccountMarkClpAtYmd("property", "2099-03-15");
-    const mortgage = deptoAccountMarkClpAtYmd("mortgage", "2099-03-15");
+    const property = deptoAccountMarkClpAtYmd(deptoPropertyId(), "2099-03-15");
+    const mortgage = deptoAccountMarkClpAtYmd(loanAccountId!, "2099-03-15");
     expect(property?.value_clp).toBe(Math.round(1478.2 * 40_200));
     expect(mortgage?.value_clp).toBe(Math.round(3921.8 * 40_200));
     // After the prepago (2099-03-20) its balance drop applies on its own date: 3821.8 UF.
-    const after = deptoAccountMarkClpAtYmd("mortgage", "2099-03-25");
+    const after = deptoAccountMarkClpAtYmd(loanAccountId!, "2099-03-25");
     expect(after?.value_clp).toBe(Math.round(3821.8 * 40_250));
-    const propertyAfter = deptoAccountMarkClpAtYmd("property", "2099-03-25");
+    const propertyAfter = deptoAccountMarkClpAtYmd(deptoPropertyId(), "2099-03-25");
     expect(propertyAfter?.value_clp).toBe(Math.round((5400 - 3821.8) * 40_250));
   });
 

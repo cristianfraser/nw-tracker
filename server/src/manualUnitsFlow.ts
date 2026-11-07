@@ -27,7 +27,7 @@ export function valorCuotaClpOnDate(accountId: number, ymd: string): number | nu
     return closeUsd * fx.clp_per_usd;
   }
   const kind = accountKindSlugForAccountId(accountId);
-  const seriesKey = kind === "afp" ? cuotaLedgerSeriesKeyForAccount(accountId, kind, ymd) : fundSeriesKeyForAccount(accountId);
+  const seriesKey = kind === "afp" ? cuotaLedgerSeriesKeyForAccount(accountId) : fundSeriesKeyForAccount(accountId);
   if (!seriesKey) return null;
   return fundUnitClpOnOrBefore(seriesKey, ymd);
 }

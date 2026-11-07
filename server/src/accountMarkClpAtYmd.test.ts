@@ -22,6 +22,10 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { accountWithRoleOptional } from "./accountRoles.js";
+/** The depto property and its loan (their roles). */
+const deptoPropertyId = (): number => accountWithRoleOptional("property") ?? -1;
+
 
 /**
  * Synthetic depto fixture (movements-only, per repo fixture policy): a property master +
@@ -210,8 +214,8 @@ describe("deptoAccountMarkClpAtYmd", () => {
 
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
-    const may = deptoAccountMarkClpAtYmd("property", priorEnd);
-    const now = deptoAccountMarkClpAtYmd("property", today);
+    const may = deptoAccountMarkClpAtYmd(deptoPropertyId(), priorEnd);
+    const now = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
     if (!may || !now) return;
 
     const ufMap = ufClpBySnapshotDatesAsc([priorEnd, today]);
@@ -235,8 +239,8 @@ describe("deptoAccountMarkClpAtYmd", () => {
 describe("deptoKindForBucketSlug via accountMarkClpAtYmd", () => {
   it("resolves real_estate__property leaf slug to depto UF mark", () => {
     const today = chileCalendarTodayYmd();
-    const depto = deptoAccountMarkClpAtYmd("property", today);
-    const viaLeaf = accountMarkClpAtYmd(0, today);
+    const depto = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
+    const viaLeaf = accountMarkClpAtYmd(deptoPropertyId(), today);
     if (!depto || !viaLeaf) return;
     expect(viaLeaf.value_clp).toBe(depto.value_clp);
   });
@@ -249,7 +253,7 @@ describe("accountMarkClpAtYmd property", () => {
 
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
-    const deptoToday = deptoAccountMarkClpAtYmd("property", today);
+    const deptoToday = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
     if (!deptoToday) return;
 
     const markToday = accountMarkClpAtYmd(row.id, today);
@@ -276,8 +280,8 @@ describe("accountMarkClpAtYmd property", () => {
 
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
-    const may = deptoAccountMarkClpAtYmd("property", priorEnd);
-    const now = deptoAccountMarkClpAtYmd("property", today);
+    const may = deptoAccountMarkClpAtYmd(deptoPropertyId(), priorEnd);
+    const now = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
     if (!may || !now || may.value_clp === now.value_clp) return;
 
     expect(Math.abs(cur.nominal_pl ?? 0)).toBeGreaterThan(0);

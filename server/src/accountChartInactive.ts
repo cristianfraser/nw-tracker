@@ -69,7 +69,7 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
   const kindSlug = slug != null ? accountBucketKindSlug(slug) : "";
   const importKey = (stmtImportKey.get(accountId) as { import_key: string | null } | undefined)?.import_key ?? null;
   const cuotaLedger =
-    isCuotaLedgerKindSlug(kindSlug) && cuotaLedgerSeriesKeyForAccount(accountId, kindSlug, today) != null;
+    isCuotaLedgerKindSlug(kindSlug) && cuotaLedgerSeriesKeyForAccount(accountId) != null;
   if ((cuotaLedger || isFintualCertV2ValuationNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
     return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
   }

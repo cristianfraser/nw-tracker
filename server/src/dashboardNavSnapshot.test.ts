@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { deptoAccountMarkClpAtYmd, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { accountsWithRole, accountWithRoleOptional } from "./accountRoles.js";
+/** The depto property and its loan (their roles). */
+const deptoPropertyId = (): number => accountWithRoleOptional("property") ?? -1;
+const deptoLoanId = (): number => accountsWithRole("loan_of")[0] ?? -1;
+
 
 describe("buildDashboardNavSnapshot", () => {
   it("carries the RE card inputs: property/mortgage rows marked from the movement ledger", async () => {
@@ -9,8 +14,8 @@ describe("buildDashboardNavSnapshot", () => {
     if (loadDeptoLedgerFromMovements().length === 0) return; // no depto tracked on this DB
 
     const today = chileCalendarTodayYmd();
-    const propertyMark = deptoAccountMarkClpAtYmd("property", today);
-    const mortgageMark = deptoAccountMarkClpAtYmd("mortgage", today);
+    const propertyMark = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
+    const mortgageMark = deptoAccountMarkClpAtYmd(deptoLoanId(), today);
     expect(propertyMark).not.toBeNull();
     expect(mortgageMark).not.toBeNull();
 

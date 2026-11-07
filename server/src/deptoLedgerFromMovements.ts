@@ -26,6 +26,7 @@ import { CACHE_KEY_DEPTO_LEDGER } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { accountWithRoleOptional } from "./accountRoles.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { declareAccountsTrimmedTogether } from "./markSeriesStore.js";
 import {
   assertDeptoLoanPaymentCurrencies,
@@ -265,14 +266,14 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
 }
 
 /**
- * Depto-style property or mortgage CLP mark at a calendar date: movement-ledger UF
- * balance × `uf_daily` on or before `asOfYmd` (same math the sheet-based mark used).
+ * The depto property's or its loan's CLP mark at a calendar date: movement-ledger UF balance ×
+ * `uf_daily` on or before `asOfYmd` (same math the sheet-based mark used). The account's profile
+ * says which side of the ledger it is; any other account has no depto mark.
  */
-export function deptoAccountMarkClpAtYmd(
-  categorySlug: string,
-  asOfYmd: string
-): DeptoAccountMarkAtYmd | null {
-  if (categorySlug !== "property" && categorySlug !== "mortgage") return null;
+export function deptoAccountMarkClpAtYmd(accountId: number, asOfYmd: string): DeptoAccountMarkAtYmd | null {
+  const q = accountProfileOptional(accountId)?.quantity.kind;
+  if (q !== "depto_property" && q !== "depto_loan") return null;
+  const categorySlug = q === "depto_property" ? "property" : "mortgage";
   const ledger = loadDeptoLedgerFromMovements();
   if (!ledger.length) return null;
 

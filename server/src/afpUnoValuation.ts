@@ -116,7 +116,7 @@ export function revalueAfpAccountFromCuotas(opts: {
     throw new Error(`Account ${opts.accountId} is not a cuota-ledger kind (afp/afc; got ${kind ?? "missing"})`);
   }
   const seriesKeyAt = (ymd: string): string => {
-    const key = opts.seriesKey ?? cuotaLedgerSeriesKeyForAccount(opts.accountId, kind!, ymd);
+    const key = opts.seriesKey ?? cuotaLedgerSeriesKeyForAccount(opts.accountId);
     if (!key) {
       throw new Error(`Account ${opts.accountId} (${kind}) has no fund_series_key — declare the series first`);
     }

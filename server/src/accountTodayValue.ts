@@ -91,11 +91,11 @@ function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined):
   switch (p.quantity.kind) {
     case "depto_property": {
       // The depto ledger first: a stale property valuation must not shadow the live ledger mark.
-      const depto = deptoAccountMarkClpAtYmd("property", today);
+      const depto = deptoAccountMarkClpAtYmd(accountId, today);
       return depto ? clpRaw(depto, false) : storedTodayTail(p, today);
     }
     case "depto_loan": {
-      const depto = deptoAccountMarkClpAtYmd("mortgage", today);
+      const depto = deptoAccountMarkClpAtYmd(accountId, today);
       if (depto) return clpRaw(depto, false);
       const v = latestMortgageDisplayedBalance(accountId);
       if (v?.value_clp != null && v.as_of_date) {

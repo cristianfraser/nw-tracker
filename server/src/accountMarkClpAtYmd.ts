@@ -132,12 +132,12 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       return { qty: units, asset, as_of_date: asOfYmd };
     }
     case "depto_property": {
-      const depto = deptoAccountMarkClpAtYmd("property", asOfYmd);
+      const depto = deptoAccountMarkClpAtYmd(accountId, asOfYmd);
       // A property's valuations are its appraisals, not its value: nothing to fall back to.
       return depto ? currency("clp", depto.value_clp, depto.as_of_date) : null;
     }
     case "depto_loan": {
-      const depto = deptoAccountMarkClpAtYmd("mortgage", asOfYmd);
+      const depto = deptoAccountMarkClpAtYmd(accountId, asOfYmd);
       if (depto) return currency("clp", depto.value_clp, depto.as_of_date);
       const v = latestMortgageDisplayedBalance(accountId, asOfYmd);
       if (v?.value_clp != null && v.as_of_date && v.as_of_date <= asOfYmd) {

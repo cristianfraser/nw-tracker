@@ -8,6 +8,10 @@ import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
+import { accountWithRoleOptional } from "./accountRoles.js";
+/** The depto property and its loan (their roles). */
+const deptoPropertyId = (): number => accountWithRoleOptional("property") ?? -1;
+
 
 describe("buildDashboardAccountRows prior closes", () => {
   afterEach(() => {
@@ -50,7 +54,7 @@ describe("buildDashboardAccountRows prior closes", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const depto = deptoAccountMarkClpAtYmd("property", chileCalendarTodayYmd());
+    const depto = deptoAccountMarkClpAtYmd(deptoPropertyId(), chileCalendarTodayYmd());
     if (!depto) return;
 
     const perf = monthlyPerfForAccountId(row.id, "clp");
