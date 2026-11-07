@@ -1370,6 +1370,32 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
 - `generate.ts` hard-coded cupos and colours, and the AFC note writer, are untouched (F9 provenance).
 - The legal tables end in 2026: from December 2027 the demo throws until 2027's caps and
   minimum wage are added (`legalParameters.ts`).
+- `ingest/src/runner/runRequest.ts`: import `SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES` from
+  `nw-tracker-contracts` and drop the local 35 (F13).
+- `demoAnalytics.ts` `isCountableRequest` should read `requestContext(req).kind`; `ingestAuth.ts`
+  still reads `env.DEMO_MODE` directly instead of `deploymentProfile().demo` (F13).
+- `requestDropsResponseCaches` still drops the response caches on ingest kind/task applies because
+  some writers (utility bills, receipts) reach no cache funnel; once F2 registers their
+  invalidation, machine requests drop nothing.
+- Left by F14 for later: `globalSyncAll.ts`'s SII fallback for UF (swallows errors);
+  `sbifApiGate`'s file state and in-process sleep; `usageDb.ts` applying a migration outside the
+  runner; the warmers re-listing client queries; `yahooPriceStream` reconnect timers off the kernel.
+- **Deploy note (F14):** env parsing is strict now — `1/true/yes` on, `0/false/no` off, unset =
+  default, any other value stops the boot; `CACHE_WARM_ENABLED=false` now disables (it used not
+  to). Check the installed plists and `render.yaml` before the wave-1 merge to `main`.
+- ingest: `ingest/src/formats/*` still name the old case-file paths in comments;
+  `statement_values.py` / `cc_statement_line_rules.py` docstrings too (editing them re-parses
+  the corpus — do it with the next parser change). AGENTS.md «One parser per format» still
+  names `server/src/test/*.json`. `ccStatementsImport.parseUsdAmount` takes both «13,77» (Python
+  CSV) and «13.77» (`santanderStatementImport` `toFixed`); declaring one style changes the
+  import fingerprints (F13 canonical card lines). `bcentralApi.parseBcentralNumber`: raw format
+  unconfirmed. `chileCalendarAddDays`, the `statementLineDateIso` / `isoFromField` copies, the
+  Mercado Pago prefix and the `payslipLineKinds` / `fintualCertV2` folds are still local (F10/F3).
+- Account numbers now compare on digits everywhere (`bankAccountBalances` used an exact match);
+  RUTs drop leading zeros on both sides; the contract cents checks tolerate float noise (they
+  rejected 1.17 before). Verify on the first server deploy that the balance checks still pair.
+- A Fintual deposit mail whose account cannot be resolved is a reported `requires_manual` row
+  (Racional's convention), no longer a throw.
 - **Fragile tests** (fail or flake on a freshly generated test DB on unmodified `main`, so not
   caused by any stream): `dashboardCcCardVsDetalle.test.ts` «the day P/L in dollars …» fails
   every time; `ccGroupTotalMatchesCardsInvariant.test.ts` flakes (2026-11-30 total vs Σ cards).
