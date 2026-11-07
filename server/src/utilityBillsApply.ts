@@ -49,7 +49,7 @@ import {
   updateRealEstateExpenseMonthsCovered,
 } from "./realEstateExpenseMatching.js";
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
-import { addCalendarMonths, normalizeCheckDigitId } from "nw-tracker-contracts";
+import { addCalendarMonths, normalizeCheckDigitId, daysBetweenIso } from "nw-tracker-contracts";
 
 /** How long after its due day a bill's charge may still be dated. */
 export const UTILITY_BILL_CHARGE_GRACE_DAYS = 20;
@@ -92,8 +92,8 @@ const DAYS_PER_MONTH = 365.25 / 12;
  */
 export function utilityBillMonthsCovered(b: Pick<UtilityBill, "period_from" | "period_to">): number {
   if (b.period_from == null || b.period_to == null) return 1;
-  const days = (Date.parse(`${b.period_to}T00:00:00Z`) - Date.parse(`${b.period_from}T00:00:00Z`)) / 86_400_000 + 1;
-  if (!Number.isFinite(days) || days < 1) {
+  const days = daysBetweenIso(b.period_from, b.period_to) + 1;
+  if (days < 1) {
     throw new Error(`utility bill period ${b.period_from}..${b.period_to} is not a period`);
   }
   return Math.max(1, Math.round(days / DAYS_PER_MONTH));

@@ -28,7 +28,7 @@
  *     first surname, title-cased
  *   - `inline`: false when the shown merchant already contains the label (no repeating it on the row)
  */
-import { normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
+import { normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { TransferCounterpartyDto } from "./bankTransferNotices.js";
@@ -127,10 +127,8 @@ const LODGING_PROCESSORS = new Set(["booking", "airbnb", "stripe", "accor"]);
 const TICKET_PROCESSORS = new Set(["puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"]);
 
 function nightsBetween(checkIn: string, checkOut: string): number | null {
-  const a = Date.parse(`${checkIn}T00:00:00Z`);
-  const b = Date.parse(`${checkOut}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return null;
-  return Math.round((b - a) / 86_400_000);
+  const nights = daysBetweenIso(checkIn, checkOut);
+  return nights > 0 ? nights : null;
 }
 
 /** The short label of a receipt's payee; null when it names nobody. */
