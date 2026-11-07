@@ -11,8 +11,9 @@ import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
+import { accountProfile, type QuantityKind } from "./accountProfile.js";
 
-type LiabilityValuationRow = { account_id: number; category_slug: string };
+type LiabilityValuationRow = { account_id: number; category_slug: string; quantity: QuantityKind };
 
 type AccountCategoryMeta = Map<
   number,
@@ -57,10 +58,10 @@ function mortgageLedgerForLiabilitiesOverview(): DeptoMortgageSheetRow[] {
 
 /** Same membership as {@link listLiabilitiesTabAccountRows}. */
 function liabilityAccountsForValuation(): LiabilityValuationRow[] {
-  return listLiabilitiesTabAccountRows().map((r) => ({
-    account_id: r.account_id,
-    category_slug: accountBucketKindSlug(r.bucket_slug),
-  }));
+  return listLiabilitiesTabAccountRows().map((r) => {
+    const p = accountProfile(r.account_id);
+    return { account_id: r.account_id, category_slug: p.kind, quantity: p.quantity.kind };
+  });
 }
 
 function liabilityValuationClpAt(
@@ -78,7 +79,7 @@ function liabilityValuationClpAt(
   let clp: number | null = null;
   if (
     ctx.useSheet &&
-    row.category_slug === "mortgage" &&
+    row.quantity === "depto_loan" &&
     ctx.firstMortgageYmd != null &&
     asOfYmd >= ctx.firstMortgageYmd
   ) {
@@ -123,9 +124,9 @@ function liabilityBreakdownForDate(
   for (const r of accounts) {
     const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
     if (clp == null) continue;
-    if (r.category_slug === "mortgage") {
+    if (r.quantity === "depto_loan") {
       if (clp > 0) out.mortgage_clp += clp;
-    } else if (r.category_slug === "credit_card") {
+    } else if (r.quantity === "card") {
       // Negative = a-favor credit balance — real negative debt; must sum so the Saldo
       // pasivos line equals Σ per-card chart lines at every date.
       if (clp !== 0) out.credit_card_clp += clp;

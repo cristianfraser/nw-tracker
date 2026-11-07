@@ -23,11 +23,10 @@ import {
 } from "./accountPeriodMarks.js";
 import { accountValueClpToUnitAt, convertTs } from "./clpToUnitAt.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { netDepositFlowWindows } from "./flowsDeposits.js";
-import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { accountValueAt } from "./accountValue.js";
-import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
+import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
@@ -325,21 +324,15 @@ export function monthlyPerfRowsForAccount(
   bucketSlug: string,
   unit: TsUnit = "clp"
 ): AccountMonthlyPerformanceRow[] {
-  if (isMovementBalanceCashCategory(bucketSlug)) {
-    return movementBalanceMonthlyPerfRows(accountId, bucketSlug, unit);
-  }
-  const kindSlug = accountBucketKindSlug(bucketSlug);
-  if (isUsdCashKindSlug(kindSlug)) {
-    return usdCashMonthlyPerfRows(accountId, bucketSlug, unit);
-  }
-  if (isClpCashKindSlug(kindSlug)) {
+  // The builder is the profile's (`perf`): the ledger walks per ledger, the cuenta de ahorro's book
+  // valuations, the valuation series for everything else.
+  const profile = accountProfileOptional(accountId);
+  if (profile?.perf === "ledger_cash") {
+    if (profile.quantity.kind === "checking_ledger") return movementBalanceMonthlyPerfRows(accountId, bucketSlug, unit);
+    if (profile.quantity.kind === "usd_ledger") return usdCashMonthlyPerfRows(accountId, bucketSlug, unit);
     return clpCashMonthlyPerfRows(accountId, bucketSlug, unit);
   }
-  // By kind, like the other branches: the account's leaf slug is `cash_eqs__cuenta_ahorro_vivienda`,
-  // so a bare-slug match never fired and the account fell to the valuation series.
-  if (kindSlug === "cuenta_ahorro_vivienda") {
-    return bookValuationMonthlyPerfRows(accountId, bucketSlug, unit);
-  }
+  if (profile?.perf === "book_valuation") return bookValuationMonthlyPerfRows(accountId, bucketSlug, unit);
   const perf = valuationSeriesMonthlyPerformance(accountId, unit);
   return perf?.monthly ?? [];
 }

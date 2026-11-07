@@ -1,5 +1,5 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
-import { holdingIsDebt } from "./holdings.js";
+import { accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import {
@@ -18,7 +18,6 @@ import {
   expandSnapshotDatesForEquityMtm,
 } from "./brokerageEquityMtm.js";
 import {
-  accountUsesCryptoMtm,
   requireCryptoMtmClp,
   expandSnapshotDatesForCryptoMtm,
 } from "./cryptoValuation.js";
@@ -397,30 +396,36 @@ function attachDepositSeriesKeys(
 function valuationRawClpForAccount(
   accountId: number,
   asOf: string,
-  byDate: Map<string, Map<number, number>>,
-  slugById?: Map<number, string>
+  byDate: Map<string, Map<number, number>>
 ): number | null {
-  if (isMovementBalanceCashCategory(slugById?.get(accountId) ?? "")) {
-    return checkingMovementBalanceClpAtCached(accountId, asOf);
+  switch (accountProfileOptional(accountId)?.quantity.kind) {
+    case "checking_ledger":
+      return checkingMovementBalanceClpAtCached(accountId, asOf);
+    case "usd_ledger":
+      return usdCashBalanceClpAt(accountId, asOf);
+    case "clp_ledger":
+      return clpCashBalanceClpAt(accountId, asOf);
+    case "stock": {
+      const clp = computeEquityMtmClp(accountId, asOf);
+      if (clp != null) return clp;
+      if (equityChartZeroClpAtYmd(accountId, asOf)) return 0;
+      return null;
+    }
+    case "coin":
+      return requireCryptoMtmClp(accountId, asOf);
+    default:
+      return byDate.get(asOf)?.get(accountId) ?? null;
   }
-  const slug = slugById?.get(accountId) ?? "";
-  const kind = accountBucketKindSlug(slug);
-  if (isUsdCashKindSlug(kind)) {
-    return usdCashBalanceClpAt(accountId, asOf);
-  }
-  if (isClpCashKindSlug(kind)) {
-    return clpCashBalanceClpAt(accountId, asOf);
-  }
-  if (accountUsesEquityMtm(accountId)) {
-    const clp = computeEquityMtmClp(accountId, asOf);
-    if (clp != null) return clp;
-    if (equityChartZeroClpAtYmd(accountId, asOf)) return 0;
-    return null;
-  }
-  if (accountUsesCryptoMtm(accountId)) {
-    return requireCryptoMtmClp(accountId, asOf);
-  }
-  return byDate.get(asOf)?.get(accountId) ?? null;
+}
+
+/**
+ * Accounts whose chart value is their mark (`accountMarkClpAtYmd`): the cuota ledgers, the
+ * Fintual goals and the book marks. The ledgers, positions, card and depto lines keep the raw
+ * their own branches compute (see the note in {@link buildPointsForAccounts}).
+ */
+function chartValueIsMark(accountId: number): boolean {
+  const q = accountProfileOptional(accountId)?.quantity.kind;
+  return q === "cuota_ledger" || q === "fintual_goal" || q === "book_mark";
 }
 
 function augmentChartDatesForCheckingAccounts(
@@ -763,8 +768,6 @@ function patchLiveLastPointOnOrBeforeToday(
  * keeps its 0), crypto and the credit card (its owed walk, never past today). Other accounts
  * keep their point. The value is framed on the day its pesos were priced (`priced_on`).
  */
-const stmtAccountImportKey = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`);
-
 function patchAccountLiveLastPoint(
   row: {
     account_id: number;
@@ -775,23 +778,15 @@ function patchAccountLiveLastPoint(
   unit: TsUnit,
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
-  const kind = row.bucket_slug ? accountBucketKindSlug(row.bucket_slug) : "";
-  const isCreditCard = kind === "credit_card";
-  const importKey =
-    row.import_key !== undefined
-      ? row.import_key
-      : ((stmtAccountImportKey.get(row.account_id) as { import_key: string | null } | undefined)
-          ?.import_key ?? null);
+  const profile = accountProfileOptional(row.account_id);
+  if (!profile) return points;
+  const q = profile.quantity.kind;
+  const isCreditCard = q === "card";
   // Fintual cert funds are priced on their valor cuota's day: patched so today's point frames
-  // the pesos on that day (`priced_on`), as the dashboard row does.
-  const patched =
-    isCreditCard ||
-    isCuotaLedgerKindSlug(kind) ||
-    isFintualCertV2ValuationNotes(importKey) ||
-    kind === "property" ||
-    kind === "mortgage" ||
-    accountUsesEquityMtm(row.account_id) ||
-    accountUsesCryptoMtm(row.account_id);
+  // the pesos on that day (`priced_on`), as the dashboard row does. An AFC kept on its book
+  // marks (no cuota series) is patched like its cuota-ledger twin.
+  const patched = !(q === "checking_ledger" || q === "usd_ledger" || q === "clp_ledger" || q === "book_mark") ||
+    CUOTA_LEDGER_KINDS.has(profile.kind);
   if (!patched) return points;
   const live = accountTodayValue(row.account_id);
   if (live == null || !Number.isFinite(live.value_clp)) return points;
@@ -821,23 +816,9 @@ function patchLiveAfpMarksOnPoints(
  * the stored / MTM raw, replaced by `accountMarkClpAtYmd` for the mark-valued accounts (see the
  * long note in {@link buildPointsForAccounts}). Null when the account has no value that day.
  */
-function plainAccountChartRawClp(
-  aid: number,
-  aidKind: string,
-  aidSlug: string,
-  d: string,
-  byDate: Map<string, Map<number, number>>,
-  slugById: Map<number, string>,
-  chartMeta: { import_key: string | null; name: string | null } | undefined
-): number | null {
-  const raw = valuationRawClpForAccount(aid, d, byDate, slugById);
-  const isMarkValued =
-    !accountUsesEquityMtm(aid) &&
-    !accountUsesCryptoMtm(aid) &&
-    !isMovementBalanceCashCategory(aidSlug) &&
-    !isUsdCashKindSlug(aidKind) &&
-    !isClpCashKindSlug(aidKind);
-  if (!isMarkValued) return raw;
+function plainAccountChartRawClp(aid: number, d: string, byDate: Map<string, Map<number, number>>): number | null {
+  const raw = valuationRawClpForAccount(aid, d, byDate);
+  if (!chartValueIsMark(aid)) return raw;
   const mark = accountMarkClpAtYmd(aid, d);
   return mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
 }
@@ -961,7 +942,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   for (const v of vals) {
     // The chart's raw is pesos: a row in another currency converted once, on its own date, at
     // the account's side.
-    const side = holdingIsDebt(bucketKindFromSlugMap(slugById, v.account_id)) ? "debt" : "asset";
+    const side = accountProfileOptional(v.account_id)?.side ?? "asset";
     const clp = storedValuationInUnit(v, "clp", side, "valuationTimeseries snapshots");
     let m = byDate.get(v.as_of_date);
     if (!m) {
@@ -1019,16 +1000,14 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         continue;
       const aid = t.account_id;
       const aidKind = bucketKindFromSlugMap(slugById, aid);
-      const chartMeta = chartMetaById.get(aid);
-      const aidSlug = slugById.get(aid) ?? "";
       const pastKey =
         !useLiveAfpOnDate && d < todayYmd && aidKind !== "credit_card" && aidKind !== "mortgage" && aidKind !== "property"
-          ? `${aid}|${aidSlug}|${chartMeta?.import_key ?? ""}|${chartMeta?.name ?? ""}|${d}`
+          ? `${aid}|${d}`
           : null;
       if (pastKey != null) {
         let raw = pastRawMemo.get(pastKey);
         if (raw === undefined) {
-          raw = plainAccountChartRawClp(aid, aidKind, aidSlug, d, byDate, slugById, chartMeta);
+          raw = plainAccountChartRawClp(aid, d, byDate);
           pastRawMemo.set(pastKey, raw);
         }
         if (raw != null) last.set(aid, raw);
@@ -1036,7 +1015,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, aidKind, v, d, unit);
         continue;
       }
-      let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
+      let raw = valuationRawClpForAccount(aid, d, byDate);
       if (aidKind === "credit_card") {
         // Owed on that date (`latestCreditCardValuationRowAsOf`: the owed walk for a past date,
         // the displayed balance from today) — what the group Total and the daily series sum, so
@@ -1077,16 +1056,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       //    month-ends are the sole source for 2017-06…2019-09 (verified: mark == stored there).
       // The remaining special-branch kinds (equity/crypto/cash MTM, CC, mortgage, property)
       // keep the raw they computed above — those framings are intentional.
-      const isMarkValued =
-        !accountUsesEquityMtm(aid) &&
-        !accountUsesCryptoMtm(aid) &&
-        !isMovementBalanceCashCategory(aidSlug) &&
-        !isUsdCashKindSlug(aidKind) &&
-        !isClpCashKindSlug(aidKind) &&
-        aidKind !== "credit_card" &&
-        aidKind !== "mortgage" &&
-        aidKind !== "property";
-      if (isMarkValued) {
+      if (chartValueIsMark(aid)) {
         const mark = accountMarkClpAtYmd(aid, d);
         raw = mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
       }
