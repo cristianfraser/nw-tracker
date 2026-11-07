@@ -21,6 +21,7 @@ import { isMortgageCcExpenseMerchant } from "./expenseDepositLinks.js";
 import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
 import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./ccManualBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
+import { MORTGAGE_CUOTA_DAY, mortgageCuotaWindow } from "./mortgageCuotaDay.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { ufClpByDateRange } from "./fxRates.js";
@@ -28,8 +29,6 @@ import { numericCuota } from "./mortgagePaymentCompute.js";
 import { supersededCcTargetLast4 } from "./ccConsolidatedCards.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
 
-/** Day-of-month the mortgage cuota becomes payable (personal product behavior). */
-const MORTGAGE_WINDOW_START_DAY = 11;
 
 export type MortgageUfReminderMode = "wait" | "pay_today";
 
@@ -255,15 +254,14 @@ export function buildMortgageUfReminder(
   const card_last4 = cardLast4ForAccount(masterId);
 
   const windowFor = (cycleMonth: string) => {
-    const window_start = `${cycleMonth}-${String(MORTGAGE_WINDOW_START_DAY).padStart(2, "0")}`;
-    const window_end = `${addCalendarMonths(cycleMonth, 1)}-10`;
-    return { window_start, window_end };
+    const w = mortgageCuotaWindow(cycleMonth);
+    return { window_start: w.start, window_end: w.end };
   };
 
   // Active cycle = this month if today is on/after the 11th, else last month. If it's already
   // paid, look ahead one cycle so the day-9/10 heads-up for next month's cuota can show.
   const day = Number(todayYmd.slice(8, 10));
-  const baseCycle = day >= MORTGAGE_WINDOW_START_DAY ? monthKeyFromYmd(todayYmd) : addCalendarMonths(monthKeyFromYmd(todayYmd), -1);
+  const baseCycle = day >= MORTGAGE_CUOTA_DAY ? monthKeyFromYmd(todayYmd) : addCalendarMonths(monthKeyFromYmd(todayYmd), -1);
   const baseWindow = windowFor(baseCycle);
   const basePaid = mortgagePaidInWindow(baseWindow.window_start, baseWindow.window_end);
 

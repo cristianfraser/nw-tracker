@@ -93,6 +93,19 @@ export function ufWindowForIpcMonth(month: string): { from: string; to: string }
 }
 
 /**
+ * The month's variation as the UF applies it: the UF's growth over the month's window, rounded
+ * to one decimal (`ufOn(ymd)` → CLP per UF, or null when not stored). Null while the window is
+ * not fully published.
+ */
+export function ufImpliedIpcVariationPct(month: string, ufOn: (ymd: string) => number | null): number | null {
+  const w = ufWindowForIpcMonth(month);
+  const a = ufOn(w.from);
+  const b = ufOn(w.to);
+  if (a == null || b == null) return null;
+  return roundReajustePct((b / a - 1) * 100);
+}
+
+/**
  * Checks each month against the UF (`ufOn(ymd)` → CLP per UF, or null when not stored). Throws on
  * a month whose UF growth, rounded to one decimal, differs; returns the months the UF cannot check
  * yet (its window not fully published) — only the two latest months may be among them.
@@ -103,15 +116,13 @@ export function verifyOfficialIpcAgainstUf(
 ): string[] {
   const unchecked: string[] = [];
   for (const m of months) {
-    const w = ufWindowForIpcMonth(m.month);
-    const a = ufOn(w.from);
-    const b = ufOn(w.to);
-    if (a == null || b == null) {
+    const growth = ufImpliedIpcVariationPct(m.month, ufOn);
+    if (growth == null) {
       unchecked.push(m.month);
       continue;
     }
-    const growth = Math.round(((b / a - 1) * 100) * 10) / 10;
     if (Math.abs(growth - m.variationPct) > 1e-9) {
+      const w = ufWindowForIpcMonth(m.month);
       throw new Error(
         `SII IPC ${m.month}: published variation ${m.variationPct}% but the UF grew ${growth}% from ${w.from} to ${w.to}`
       );
@@ -188,7 +199,7 @@ export function loadOfficialIpcLookup(): OfficialIpcLookup {
   return (month) => map.get(month) ?? null;
 }
 
-function loadUfLookup(): (ymd: string) => number | null {
+export function loadUfLookup(): (ymd: string) => number | null {
   const get = db.prepare(`SELECT clp_per_uf FROM uf_daily WHERE date = ?`);
   return (ymd) => (get.get(ymd) as { clp_per_uf: number } | undefined)?.clp_per_uf ?? null;
 }

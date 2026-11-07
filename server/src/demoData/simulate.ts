@@ -23,6 +23,10 @@ import {
   unemploymentCapUf,
 } from "../legalParameters.js";
 import { legalHealthClp } from "../payslipLineKinds.js";
+import { MORTGAGE_CUOTA_DAY } from "../mortgageCuotaDay.js";
+import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
+import { ccIssuerBySlug } from "../ccIssuers.js";
+import { derivedPayByIso } from "../ccInstallmentPayBy.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
@@ -314,13 +318,13 @@ function lastBusinessDay(month: Month): Ymd {
 export function cardClose(card: CardDef, month: Month): Ymd {
   return ymd(month, card.closeDay);
 }
-/**
- * The issuer's pay-by for a close: Santander the 10th of the next month moved back to a business
- * day, BCI the 10th as it falls (`CC_ISSUERS`' derived rule, which the statements print).
- */
+/** The issuer's pay-by for a close: the app's derived rule (`CC_ISSUERS`), which the statements print. */
 export function cardPayBy(card: CardDef, close: Ymd): Ymd {
-  const tenth = ymd(addMonths(monthOf(close), 1), 10);
-  return card.issuer === "bci" ? tenth : businessDayOnOrBefore(tenth);
+  const issuer = ccIssuerBySlug(card.issuer);
+  if (!issuer) throw new Error(`demo: unknown card issuer ${card.issuer}`);
+  const payBy = derivedPayByIso(close, issuer.derived_pay_by);
+  if (!payBy) throw new Error(`demo: no pay-by for the close ${close}`);
+  return payBy;
 }
 
 
@@ -594,8 +598,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
   };
 
   /* ---------------------------------- AFP ----------------------------------- */
-  const afpModeloSeries = "afp_modelo_cuota_a";
-  const afpUnoSeries = "afp_uno_cuota_a";
+  const afpModeloSeries = afpDisplaySeriesKey("modelo", "A");
+  const afpUnoSeries = afpDisplaySeriesKey("uno", "A");
   let afpSwitched = false;
   const afpSwitchDays = () => {
     const third = ymd(AFP_SWITCH_MONTH, 3);
@@ -840,7 +844,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
       mortgage = { cuotas: [], pieClp, principalUf: HOUSE.valueUf - HOUSE.pieUf, pieDate: HOUSE.pieDate };
     }
     if (mortgage && HOUSE && month > HOUSE.month) {
-      const day = ymd(month, 10);
+      const day = ymd(month, MORTGAGE_CUOTA_DAY);
       if (day <= today) {
         const n = mortgage.cuotas.filter((c) => c.n != null).length + 1;
         const balanceUf = mortgageBalanceUf(mortgage);
