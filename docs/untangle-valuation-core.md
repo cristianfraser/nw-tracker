@@ -293,3 +293,39 @@ from item 1 with its cause (window-end → per-event conversion) and the bug-1 c
    — make them deterministic (inject the clock and the fx frame) now that the kernel owns the legs.
 
 Proof: step-2's dump; expected identical except the measured items in 2 and 5, each listed.
+
+### As built (step 3, 2026-11-07)
+
+- **Done:** `perfKernel.ts` holds `periodPl` (asset `end − start − flow`, debt `start − end − flow`),
+  `cardPeriodLegs` (`flow = −Δowed + cost`, `pl = −cost`), the return rules moved from
+  `periodReturns.ts` (`flowAdjustedPct`, `endChargedFlow`, `groupStartFrameFlow`, `zeroCloseEps`;
+  `periodReturns.ts` re-exports them for the nav-tree readers), `windowIndexOf` and the compounding
+  (`growthFactor`, `compound`, `runningGrowth`). Every P/L leg — the daily series (bucket and
+  per-account), the valuation-series month rows, the reanchor and live month row, the ledger walks,
+  the 1D/1W cells — computes its legs and calls `periodPl`; the card month and the card day call
+  `cardPeriodLegs`. The four compoundings (`chainDailyPct`, `chainWindow`, the benchmark's
+  `chainDailyReturns`, the inversiones running YTD / all-time) use the kernel. The daily series'
+  flow bucketing and `netDepositFlowWindows` use `windowIndexOf`. Depto payment flows are built once
+  (`deptoPaymentFlowsInUnit`, `flowsDeposits.ts`) for the daily series and the month rows. One month
+  picker (`pickMonthlyPerfRowsByMonth`). One share count (`equityShareUnitsThroughYmd` =
+  the profile gate + `brokerageShareUnitsThroughDate`). The card financing identity is a test
+  (`ccFinancingIdentity.test.ts`, with a synthetic interest charge so it is not 0 = 0); the script
+  and its second section-3 sum (`scripts/lib/creditCardPerformancePl.ts`) are gone. The two fragile
+  tests read the card's cost map (whatever the fx did that month) and the points up to today.
+- **Behaviour fix (b), measured:** `stock_units_inflow` reads every leg's own units
+  (`unitsDeltaForAccountMovement`, kinds `BROKERAGE_SHARE_UNITS_FLOW_KINDS`): on the real DB one
+  stock gains its split shares in the split month, and the two AFP fund accounts that received a
+  fund switch gain the switch's cuotas in that month. Units columns only; no value or P/L moved.
+- **Σ(day P/L over a month) vs the month row, per account (real-DB copy, CLP, full history):** 39 of
+  the 40 accounts match to the peso in every month compared (2 to 122 months each: checking, cards,
+  Fintual goals, stocks, coins, cuota ledgers, book marks, ledgers, the property). The mortgage
+  differs in 1 of its 32 months (its first: the month row reads the opening balance after the pie as
+  no P/L; the daily series does not), mean 17.259 and max 552.289 pesos over its months. So months
+  stay their own builders' legs (with the kernel's formulas) and `dailyPerfLevels.ts` keeps
+  re-anchoring; folding months from days is the next wave's documented change, after the mortgage's
+  first month is settled. Script: `server/scripts/measure-day-vs-month-pl.ts`.
+- **Left:** the split ratio in `equityTaxLotEvents.ts` is still derived from the shares held (the
+  recorded `equity_splits` ratio would change the tax lots' floats; the tax pages are outside this
+  proof); `bucketFlowsIntoWindows` is `windowIndexOf` (a per-event index keeps each sum's order, so
+  the floats stay identical); the cumulative deposit lines (`cumulativeDepInUnitByDate`) stay a
+  running sum.
