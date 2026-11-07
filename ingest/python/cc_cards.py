@@ -3,10 +3,10 @@
 Consolidation redirects, statement-classification tokens, and BCI Lider last4s live in
 `cfraser/cc-cards.json` (cfraser/ is gitignored) so the repo stays free of real card
 numbers. A missing file is a valid empty registry (no personal cards configured: CI,
-fresh clones). A present-but-malformed file raises. Tests inject synthetic cards via
+fresh clones). A present file must satisfy the shared schema
+(`server/contracts/data/schemas/cc-cards.schema.json`, the one `server/src/ccCardRegistry.ts`
+parses with too); a malformed or unknown key raises. Tests inject synthetic cards via
 `NW_TRACKER_CC_CARDS` (path to a JSON file, set before importing these modules).
-
-Mirrors `server/src/ccCardRegistry.ts` — keep the key set in sync.
 """
 from __future__ import annotations
 
@@ -14,36 +14,27 @@ import json
 import os
 from pathlib import Path
 
+import shared_schema
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 CC_CARDS_PATH = Path(
     os.environ.get("NW_TRACKER_CC_CARDS", str(_REPO_ROOT / "cfraser" / "cc-cards.json"))
 )
 
-_DEFAULTS: dict = {
-    "import_redirect_last4": {},
-    "superseded_master_notes": [],
-    "multicard_marker_tokens": [],
-    "legacy_group_b_tokens": [],
-    "lider_filename_last4s": [],
-    "reconcile_skip_last4s": [],
-    "reconcile_primary_last4s": [],
-    # Additional-cardholder plastics (read by the TS expense auto-tagger; listed
-    # here only so the shared JSON passes the unknown-key check).
-    "additional_card_last4s": [],
-    # Lider boleta sucursal → bank merchant strings (read by the TS boleta importer;
-    # listed here only so the shared JSON passes the unknown-key check).
-    "boleta_sucursal_merchants": {},
-}
+_SCHEMA = shared_schema.load_schema("cc-cards")
+# Every key is optional; a missing one takes the schema's default (empty).
+_DEFAULTS: dict = {key: prop["default"] for key, prop in _SCHEMA["properties"].items()}
 
 
 def _load() -> dict:
     if not CC_CARDS_PATH.is_file():
-        return dict(_DEFAULTS)
+        return {k: (dict(v) if isinstance(v, dict) else list(v)) for k, v in _DEFAULTS.items()}
     data = json.loads(CC_CARDS_PATH.read_text(encoding="utf-8"))
-    unknown = sorted(set(data) - set(_DEFAULTS))
-    if unknown:
-        raise SystemExit(f"{CC_CARDS_PATH}: unknown keys: {', '.join(unknown)}")
+    try:
+        shared_schema.validate(data, _SCHEMA, str(CC_CARDS_PATH))
+    except shared_schema.SchemaError as e:
+        raise SystemExit(str(e))
     return {**_DEFAULTS, **data}
 
 

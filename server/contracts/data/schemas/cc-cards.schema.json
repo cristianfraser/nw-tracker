@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "import_redirect_last4": {
+      "default": {},
+      "description": "Predecessor/consolidated card last4 → successor master last4 (import routing). Server and parser.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "superseded_master_notes": {
+      "default": [],
+      "description": "`accounts.import_key` of superseded card masters kept out of group totals. Server.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "multicard_marker_tokens": {
+      "default": [],
+      "description": "Statement-text tokens marking multi-card Santander layouts (`XXXX-<last4>`). Server and parser.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "legacy_group_b_tokens": {
+      "default": [],
+      "description": "Filename tokens for the legacy \"group B\" Santander parser body. Parser.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lider_filename_last4s": {
+      "default": [],
+      "description": "Card last4s in BCI Lider statement filenames. Server and parser.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reconcile_skip_last4s": {
+      "default": [],
+      "description": "Cards whose statements skip the parse reconcile (superseded). Parser.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reconcile_primary_last4s": {
+      "default": [],
+      "description": "Primary cards whose statements require the parse reconcile. Parser.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additional_card_last4s": {
+      "default": [],
+      "description": "Additional-cardholder plastics: only these origins auto-tag a purchase Único + no_cuenta (the user's own predecessor/successor plastics must not). Server.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "boleta_sucursal_merchants": {
+      "default": {},
+      "description": "Boleta «SUC:» header → the bank's merchant string for that store (statement convention, no `(T)`); a hand-declared seed beside the learned `grocery_branch_merchants`. Server.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}
