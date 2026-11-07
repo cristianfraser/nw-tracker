@@ -7,6 +7,9 @@ import {
 } from "./mortgageUfReminder.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import { insertLoanPaymentRow } from "./deptoDividendosLedger.js";
+import { useLenderPatternsFixture } from "./test/lenderPatternsFixture.js";
+
+useLenderPatternsFixture();
 
 /**
  * Cycle month 2099-06, default 21→20 config: payable window 2099-06-11 … 2099-07-10,

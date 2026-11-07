@@ -15,6 +15,9 @@ import {
   isMortgageCcExpenseMerchant,
   type ExpenseDepositLinkRow,
 } from "./expenseDepositLinks.js";
+import { useLenderPatternsFixture } from "./test/lenderPatternsFixture.js";
+
+useLenderPatternsFixture();
 
 describe("isMortgageCcExpenseMerchant", () => {
   it("matches MetLife, Mutuaria, and Toku hipoteca merchants", () => {
