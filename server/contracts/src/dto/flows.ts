@@ -1,3 +1,4 @@
+import type { PaymentProcessorSlug } from "./paymentProcessors.js";
 import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { FxConversionWarning } from "./core.js";
 
@@ -249,7 +250,7 @@ export interface TransferCounterparty {
 
 /** Who a charge actually paid, from the payment processor's receipt (server: paymentProcessorReceipts.ts). */
 export interface PaymentReceipt {
-  processor: string;
+  processor: PaymentProcessorSlug;
   processor_name: string;
   payee: string;
   payee_rut: string | null;

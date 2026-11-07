@@ -313,7 +313,7 @@ function kmLabel(km: number | null): string | null {
 
 function receipt(
   mail: ArchivedMail,
-  processor: string,
+  processor: ProcessorReceipt["processor"],
   fields: Pick<ProcessorReceipt, "payee" | "amount" | "currency" | "paid_at_chile" | "order_ref" | "concept" | "payment_method"> & {
     trip?: ReceiptTrip | null;
     subscription?: boolean;

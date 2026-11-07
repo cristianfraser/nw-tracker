@@ -7,6 +7,7 @@
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
 import { foldAccents, isoDayNumber } from "nw-tracker-contracts";
+import { paymentProcessorSlug, type PaymentProcessorSlug } from "nw-tracker-contracts/dto/paymentProcessors";
 import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip, ReceiptVehiclePermit } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
@@ -124,7 +125,7 @@ export function storePaymentProcessorReceipts(payload: PaymentProcessorReceiptsP
 
 /** What an expense line shows of the receipt that paid it. */
 export type PaymentReceiptDto = {
-  processor: string;
+  processor: PaymentProcessorSlug;
   /** The processor's brand, as it signs its mails. */
   processor_name: string;
   payee: string;
@@ -156,7 +157,9 @@ export type PaymentReceiptDto = {
   vehicle_permit: ReceiptVehiclePermit | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay" | "event" | "vehicle_permit"> & {
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor" | "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay" | "event" | "vehicle_permit"> & {
+  /** As stored; the line's DTO names it as a slug (`paymentProcessorSlug`). */
+  processor: string;
   trip?: ReceiptTrip | null;
   event?: ReceiptEvent | null;
   vehicle_permit?: ReceiptVehiclePermit | null;
@@ -293,7 +296,7 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   aitickets: /AI\s*TICKETS/i,
   ticketplus: /TICKETP/i,
   municipalidad_maipu: /MUNICIPALIDAD\s*(?:DE\s*)?MAIPU/i,
-};
+} satisfies Partial<Record<PaymentProcessorSlug, RegExp>>;
 
 /**
  * How a shop's own charges read on a statement, for a document that states no amount: the line
@@ -305,7 +308,7 @@ const STATEMENT_NAME_FOR_AMOUNTLESS: Record<string, RegExp> = {
   mercadolibre: /MERCADO\s*LIBRE|\*\s*\d+\s*PRODUCTOS\b/i,
   // Ticketplus's purchase mail prints the event and not what was paid.
   ticketplus: /TICKETPLUS|TICKETP\b/i,
-};
+} satisfies Partial<Record<PaymentProcessorSlug, RegExp>>;
 
 /**
  * A MercadoPago charge named after the seller («MERCADOPAGO *JIOR», «MERPAGO*NUEVOGENESISSPA»,
@@ -314,7 +317,7 @@ const STATEMENT_NAME_FOR_AMOUNTLESS: Record<string, RegExp> = {
  */
 const SELLER_NAMED_CHARGE: Record<string, RegExp> = {
   mercadolibre: /^(?:MERCADO\s*PAGO|MERPAGO|MP)\s*\*\s*(.+)$/i,
-};
+} satisfies Partial<Record<PaymentProcessorSlug, RegExp>>;
 
 const lettersAndDigits = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -342,7 +345,7 @@ const PESO_RECEIPT_CHARGED_IN_DOLLARS: Record<string, RegExp> = {
   uber_eats: /UBER/i,
   uber_eats_summary: /UBER/i,
   uber_one: /UBER/i,
-};
+} satisfies Partial<Record<PaymentProcessorSlug, RegExp>>;
 const PESO_RECEIPT_IN_DOLLARS_TOLERANCE = 0.04;
 
 /**
@@ -382,7 +385,7 @@ const ORDER_SUMMARY_OF: Record<string, { of: string; daysAfter: number }> = {
   amazon_order: { of: "amazon", daysAfter: 30 },
   uber_trip_summary: { of: "uber", daysAfter: 5 },
   uber_eats_summary: { of: "uber_eats", daysAfter: 5 },
-};
+} satisfies Partial<Record<PaymentProcessorSlug, { of: string; daysAfter: number }>>;
 
 /**
  * Senders that mail the same order more than once, and which of its mails is paired (the others
@@ -390,7 +393,7 @@ const ORDER_SUMMARY_OF: Record<string, { of: string; daysAfter: number }> = {
  * whole, so the latest; Paylogic mails the confirmation again whenever the tickets change state
  * (personalized, downloadable), months after the payment, so the first — the one sent when it paid.
  */
-const ONE_MAIL_PER_ORDER: Record<string, "latest" | "first"> = { booking: "latest", paylogic: "first" };
+const ONE_MAIL_PER_ORDER: Record<string, "latest" | "first"> = { booking: "latest", paylogic: "first" } satisfies Partial<Record<PaymentProcessorSlug, "latest" | "first">>;
 
 function withoutSupersededReceipts(receipts: readonly StoredPaymentReceipt[]): StoredPaymentReceipt[] {
   const kept = new Map<string, StoredPaymentReceipt>();
@@ -406,7 +409,7 @@ function withoutSupersededReceipts(receipts: readonly StoredPaymentReceipt[]): S
 }
 
 /** Lodging sources whose unmatched stays may link by the property's name within the stay. */
-const STAY_NAME_GUESS_SOURCES = new Set(["booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"]);
+const STAY_NAME_GUESS_SOURCES = new Set<string>(["booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"] satisfies PaymentProcessorSlug[]);
 
 /** Words too common in lodging names to tell two properties apart. */
 const LODGING_NAME_STOPWORDS = new Set([
@@ -716,16 +719,16 @@ const PROCESSOR_NAMES: Record<string, string> = {
   aitickets: "AI Tickets",
   ticketplus: "Ticketplus",
   municipalidad_maipu: "Municipalidad de Maipú",
-};
+} satisfies Partial<Record<PaymentProcessorSlug, string>>;
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"]);
+const ORDER_CONFIRMATION_SOURCES = new Set<string>(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"] satisfies PaymentProcessorSlug[]);
 
 function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];
   if (!name) throw new Error(`payment receipt ${r.message_id}: unknown processor ${r.processor}`);
   return {
-    processor: r.processor,
+    processor: paymentProcessorSlug(r.processor),
     processor_name: name,
     payee: r.payee,
     payee_rut: r.payee_rut,
@@ -787,7 +790,7 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
   const appStore = new Map<string, PaymentReceiptDto>();
   for (const link of deriveMerchantChargeLinks().links) {
     appStore.set(`${link.account_id}|${link.key}`, {
-      processor: "app_store",
+      processor: "apple_app_store",
       processor_name: "App Store",
       payee: link.name,
       payee_rut: null,

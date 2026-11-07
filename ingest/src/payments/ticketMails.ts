@@ -104,7 +104,7 @@ function dateAfterMail(day: number, month: number, weekday: string | null, mail:
 
 function receipt(
   mail: ArchivedMail,
-  processor: string,
+  processor: ProcessorReceipt["processor"],
   vendor: string,
   fields: Pick<ProcessorReceipt, "amount" | "currency" | "paid_at_chile" | "order_ref" | "concept" | "payment_method"> & {
     event: ReceiptEvent | null;

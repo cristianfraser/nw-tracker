@@ -87,7 +87,7 @@ function concept(parts: (string | null | undefined)[]): string | null {
 
 function receipt(
   mail: ArchivedMail,
-  processor: string,
+  processor: ProcessorReceipt["processor"],
   fields: { amount: number; currency: "clp" | "usd"; order_ref: string | null; concept: string | null }
 ): ProcessorReceipt {
   return {

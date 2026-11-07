@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PAYMENT_PROCESSOR_SLUGS } from "../dto/paymentProcessors.js";
 import { chileMinuteSchema, hasAtMostCents, isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
@@ -85,7 +86,7 @@ export const processorReceiptSchema = z
     /** When the processor sent it, on the Chile clock: `YYYY-MM-DD HH:MM`. */
     sent_at_chile: chileMinuteSchema,
     /** Who mailed it: a payment processor (`flow`, `pago_facil`) or a shop platform's order confirmation (`shopify`). */
-    processor: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    processor: z.enum(PAYMENT_PROCESSOR_SLUGS),
     /** Who was paid, as the receipt names them. */
     payee: z
       .object({
