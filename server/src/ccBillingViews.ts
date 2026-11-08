@@ -16,23 +16,22 @@ import {
   facturacionUsdRatesForAccount,
   type FacturacionUsdRateSource,
 } from "./ccFacturacionUsdRate.js";
-import { withCcOneShotScanCache } from "./cards/purchases.js";
+import { withCcOneShotScanCache, planCount } from "./cards/purchases.js";
 import {
   statementSlotsByBillingMonth,
   type CcStatementSlotByCurrency,
 } from "./ccBillingStatementSlots.js";
-import { ccInstallmentLedgerRowCount, ccLedgerMonthEndIso, creditCardInstallmentPaymentsByBillingMonth, installmentRemainingClpByCalendarMonth, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
+import { ccLedgerMonthEndIso, creditCardInstallmentPaymentsByBillingMonth, installmentRemainingClpByCalendarMonth, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase, closeDateForBillingMonth, pdfClosedBillingMonthsForAccount, provisionallyClosedBillingMonthsForAccount } from "./cards/facturacion.js";
 import { feedBillingCloseForMonth, type CcCloseSource } from "./cards/facturacion.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
-import { supersededOneShotLineIds } from "./cards/purchases.js";
+import { linesOfStatement, openCycleCuotaPurchaseLines } from "./cards/purchases.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { db } from "./db.js";
 import { derivedPayByIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
@@ -307,9 +306,6 @@ export function facturadoTotalClpForStatementSlot(
   return (facturadoClp ?? 0) + (facturadoUsdClp ?? 0);
 }
 
-const stmtPaymentLinesForStatement = db.prepare(`
-  SELECT merchant, amount_clp, amount_usd FROM cc_statement_lines WHERE statement_id = ?
-`);
 
 /**
  * Sum PAGO / ABONO / ABONO DE DIVISAS lines in a billing month, in CLP (DB stores payments as
@@ -327,11 +323,7 @@ export function paymentAbonosClpForBillingMonth(
   for (const st of listCcStatementsForAccount(accountId)) {
     if (!dates.has(st.statement_date)) continue;
     const fxDateIso = balanceUsdFxDateIso(accountId, st.statement_date);
-    const rows = stmtPaymentLinesForStatement.all(st.id) as {
-      merchant: string | null;
-      amount_clp: number | null;
-      amount_usd: number | null;
-    }[];
+    const rows = linesOfStatement(st.id);
     for (const r of rows) {
       if (!isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
       const clp = debtCcExpenseLineAmountClp(
@@ -373,15 +365,6 @@ export function facturadoClpFromOpenMonthStatementLines(
   return charges > 0 ? Math.round(charges) : 0;
 }
 
-const selCuotaPurchaseLines = db.prepare<[number]>(
-  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp, l.cuota_purchase_kind,
-          s.source_pdf
-   FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND s.source_kind = 'listing_open'
-     AND l.cuota_purchase_kind IS NOT NULL
-   ORDER BY l.id`
-);
-
 /** A feed-typed cuota purchase still waiting for its plan: the count is not known yet. */
 export type CcPendingCuotaPurchase = {
   statement_line_id: number;
@@ -402,20 +385,8 @@ export type CcPendingCuotaPurchase = {
  * rows and the card page's «¿cuántas cuotas?» notice.
  */
 export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurchase[] {
-  const rows = selCuotaPurchaseLines.all(accountId) as {
-    id: number;
-    merchant: string | null;
-    transaction_date: string | null;
-    posting_date: string | null;
-    amount_clp: number | null;
-    cuota_purchase_kind: CcCuotaPurchaseKind;
-    source_pdf: string;
-  }[];
-  if (rows.length === 0) return [];
-  const superseded = supersededOneShotLineIds(accountId);
   const out: CcPendingCuotaPurchase[] = [];
-  for (const r of rows) {
-    if (superseded.has(r.id)) continue;
+  for (const r of openCycleCuotaPurchaseLines(accountId)) {
     const bm = parseOpenWebPasteBillingMonth(r.source_pdf);
     if (!bm) continue;
     const purchaseDate =
@@ -791,7 +762,7 @@ function appendProjectedBillingDetailRows(
   slots: Map<string, CcStatementSlotByCurrency>,
   existing: CcBillingDetailStatementRow[]
 ): CcBillingDetailStatementRow[] {
-  if (ccInstallmentLedgerRowCount(accountId) === 0 || existing.length === 0) {
+  if (planCount(accountId) === 0 || existing.length === 0) {
     return existing;
   }
 
@@ -1013,7 +984,7 @@ function buildFacturacionesInner(
   // each facturación's «deuda en cuotas» is the frame's post-close rule.
   const frame = ccCupoFrame(accountId, ledgerMonths);
   const { provisionalMonths } = frame;
-  const hasPlanLedger = ccInstallmentLedgerRowCount(accountId) > 0;
+  const hasPlanLedger = planCount(accountId) > 0;
   const deudaEnCuotasClp = (billingMonth: string): number | null =>
     hasPlanLedger ? frame.cupoAfterCloseClp(billingMonth) : null;
 

@@ -28,7 +28,8 @@
 import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
+import { requireHeaderPagoIso } from "./ccPaymentLines.js";
+import { clpPaymentLines } from "./cards/purchases.js";
 import { db } from "./db.js";
 
 export type ClpPaymentEvent = { iso: string; clp: number };
@@ -65,19 +66,7 @@ export type CuotaRetirementResult = {
  */
 export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentEvent[] {
   return getAggregationCached(cacheKeyCcBillingPart(accountId, `clp_pago_events`), () => {
-    const lineRows = db
-      .prepare(
-        `SELECT l.transaction_date, l.amount_clp, l.merchant
-         FROM cc_statement_lines l
-         JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND s.currency = 'clp'
-           AND l.installment_flag = 0 AND l.amount_clp < 0`
-      )
-      .all(accountId) as {
-      transaction_date: string | null;
-      amount_clp: number;
-      merchant: string | null;
-    }[];
+    const lineRows = clpPaymentLines(accountId);
     const headerRows = db
       .prepare(
         `SELECT statement_date, monto_pagado_anterior AS amt, monto_pagado_anterior_date AS pago_iso
@@ -94,10 +83,9 @@ export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentE
 
     const byKey = new Map<string, ClpPaymentEvent>();
     for (const r of lineRows) {
-      if (!isCcPaymentMerchant(r.merchant)) continue;
       const iso = normalizeTransactionDateIso(r.transaction_date);
       if (!iso) continue;
-      const clp = Math.round(Math.abs(r.amount_clp));
+      const clp = Math.round(Math.abs(r.amount));
       if (clp === 0) continue;
       const key = `${iso}|${clp}`;
       if (!byKey.has(key)) byKey.set(key, { iso, clp });

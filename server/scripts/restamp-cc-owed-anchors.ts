@@ -24,7 +24,7 @@ import {
   upsertCreditCardValuationsFromLedger,
   writeCcOwedAnchor,
 } from "../src/ccCreditCardValuations.js";
-import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
+import { planCount } from "../src/cards/purchases.js";
 
 
 const apply = process.argv.includes("--apply");
@@ -60,7 +60,7 @@ let grandChanged = 0;
 try {
   db.transaction(() => {
     for (const a of accounts) {
-      if (ccInstallmentLedgerRowCount(a.id) === 0) {
+      if (planCount(a.id) === 0) {
         console.log(`#${a.id} ${a.name}: no plan ledger — CLP rows stay the walk's anchors`);
         continue;
       }

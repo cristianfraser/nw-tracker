@@ -15,7 +15,7 @@ import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { CcExpenseLineRole } from "./ccExpensePeriodMonth.js";
-import { db } from "./db.js";
+import { planCuotas } from "./cards/purchases.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
@@ -126,19 +126,7 @@ export function buildInstallmentPaymentGastosLines(
   const { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
     loadCcExpenseCategoryMaps(accountIds);
 
-  const ph = accountIds.map(() => "?").join(",");
-  const payments = db
-    .prepare(
-      `SELECT p.id AS payment_id, pr.account_id, p.pay_by_date, p.statement_date,
-              p.amount_clp, p.cuota_current, p.cuota_total,
-              pr.purchase_date, pr.merchant, pr.total_amount_clp
-       FROM cc_installment_payments p
-       JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
-       WHERE pr.account_id IN (${ph})
-         AND p.amount_clp > 0
-       ORDER BY p.pay_by_date, p.id`
-    )
-    .all(...accountIds) as PaymentRow[];
+  const payments: PaymentRow[] = planCuotas(accountIds);
 
   const lines: FlowCcExpenseLineRowDraft[] = [];
   const seenPayment = new Set<number>();

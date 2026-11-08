@@ -6,7 +6,7 @@
  */
 import { db } from "../../src/db.js";
 import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
-import { ccInstallmentLedgerRowCount } from "../../src/ccInstallmentLedgerDb.js";
+import { planCount } from "../../src/cards/purchases.js";
 import { upsertCreditCardValuationsFromLedger } from "../../src/ccCreditCardValuations.js";
 import { ccStatementRowCount } from "../../src/ccStatementsDb.js";
 
@@ -179,7 +179,7 @@ function main() {
   };
 
   const clearStaleValuations = (accountId: number) => {
-    if (ccInstallmentLedgerRowCount(accountId) > 0 || ccStatementRowCount(accountId) > 0) return 0;
+    if (planCount(accountId) > 0 || ccStatementRowCount(accountId) > 0) return 0;
     const r = db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     return r.changes;
   };

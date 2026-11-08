@@ -7,7 +7,8 @@ import {
   type CcBillingDetailStatementRow,
   type CcFacturacionRow,
 } from "./ccBillingViews.js";
-import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
+import { planCount } from "./cards/purchases.js";
+import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
 
 type CcInstallmentsDbPayload = ReturnType<typeof ccInstallmentsDbApiPayload>;
@@ -61,7 +62,7 @@ export function billingDetailCacheForAccount(accountId: number): CcLedgerBilling
 
 function billingDetailBaseForAccount(accountId: number): CcLedgerBillingBundle {
   return getAggregationCached(cacheKeyCcBillingDetailBase(accountId), () => {
-    if (ccInstallmentLedgerRowCount(accountId) === 0) {
+    if (planCount(accountId) === 0) {
       // Statements-only master (or empty account): billing detail from statements alone.
       return {
         payload: null,

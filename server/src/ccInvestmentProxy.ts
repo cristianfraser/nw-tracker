@@ -11,7 +11,7 @@ import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
-import { supersededOneShotLineIds } from "./cards/purchases.js";
+import { findLines, supersededOneShotLineIds } from "./cards/purchases.js";
 import { facturacionPayByIsoResolver, type CcFacturacionRow } from "./ccBillingViews.js";
 import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
@@ -457,22 +457,6 @@ export function aggregateProxyByFacturacion(
 
 // ─── Per-account normal purchase proxy ────────────────────────────────────────
 
-const stmtNormalPurchasesForAccount = db.prepare(`
-  SELECT l.id AS statement_line_id,
-         l.merchant,
-         l.amount_clp,
-         l.transaction_date,
-         l.posting_date,
-         l.cuota_purchase_kind,
-         s.statement_date
-  FROM cc_statement_lines l
-  JOIN cc_statements s ON s.id = l.statement_id
-  WHERE s.account_id = ?
-    AND l.installment_flag = 0
-    AND l.amount_clp > 0
-  ORDER BY l.id
-`);
-
 type NormalPurchaseRow = {
   statement_line_id: number;
   merchant: string | null;
@@ -506,7 +490,20 @@ export function buildNormalPurchaseProxyForAccount(
   const lotResults: ProxyLotResult[] = [];
   const activeTickers = tickersWithData(tickers);
   if (activeTickers.length === 0) return lotResults;
-  const rows = stmtNormalPurchasesForAccount.all(accountId) as NormalPurchaseRow[];
+  const rows: NormalPurchaseRow[] = findLines({
+    accountId,
+    installmentFlag: 0,
+    amountClpSign: "positive",
+    order: "line",
+  }).map((l) => ({
+    statement_line_id: l.line_id,
+    merchant: l.merchant,
+    amount_clp: l.amount_clp!,
+    transaction_date: l.transaction_date,
+    posting_date: l.posting_date,
+    cuota_purchase_kind: l.cuota_purchase_kind,
+    statement_date: l.statement_date,
+  }));
   if (rows.length === 0) return lotResults;
 
   const facturacionByStatementDate = facturacionMonthByStatementDate(accountId);

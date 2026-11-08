@@ -7,6 +7,7 @@ import {
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { traspasoUsdLegs } from "./cards/purchases.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { fxForLiveMtm } from "./fxLive.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
@@ -116,13 +117,6 @@ const stmtDollarPayments = db.prepare(
      AND currency = 'usd' AND counter_currency IS NULL`
 );
 
-const stmtTraspasoPayments = db.prepare(
-  `SELECT t.id, l.transaction_date, t.amount_clp AS clp, t.amount_usd AS usd
-   FROM cc_traspaso_deuda_links t
-   INNER JOIN cc_statement_lines l ON l.id = t.usd_line_id
-   WHERE t.account_id = ?`
-);
-
 /**
  * A card's dollar debt payments: the divisas purchases paired with its ABONO DE DIVISAS lines
  * (`pago_tarjeta` transfers with a USD counter leg — the pesos that left checking and the
@@ -164,15 +158,10 @@ export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
       out.push({ date_iso: r.date_iso, clp: cost.clp, usd: r.usd });
     }
   }
-  for (const r of stmtTraspasoPayments.all(accountId) as {
-    id: number;
-    transaction_date: string | null;
-    clp: number;
-    usd: number;
-  }[]) {
+  for (const r of traspasoUsdLegs(accountId)) {
     const date_iso = parseDdMmYyToIso(String(r.transaction_date ?? ""));
     if (!date_iso) {
-      throw new Error(`traspaso link ${r.id}: unparsable USD line date ${JSON.stringify(r.transaction_date)}`);
+      throw new Error(`traspaso link ${r.link_id}: unparsable USD line date ${JSON.stringify(r.transaction_date)}`);
     }
     out.push({ date_iso, clp: r.clp, usd: r.usd });
   }

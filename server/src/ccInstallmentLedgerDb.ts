@@ -1,8 +1,16 @@
 import { historyTierMemo } from "./cacheRegistry.js";
-import { installmentPurchaseLedgerDedupeKey, purchaseFirstDueYm } from "./cards/purchases.js";
+import {
+  installmentPurchaseLedgerDedupeKey,
+  ledgerPlanCuotas,
+  ledgerPlans,
+  planCount,
+  oneShotCreditLines,
+  purchaseFirstDueYm,
+  type LedgerPlan,
+  type LedgerPlanCuota,
+} from "./cards/purchases.js";
 // `server/scripts/repair-cc-installment-duplicate-purchases.ts` still imports these from here.
 export { dedupeInstallmentPurchaseLedgerRows, installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
-import { db } from "./db.js";
 import { sortActivePurchases, sortCuotaLinesInActiveOrder } from "./ccActivePurchaseOrder.js";
 import {
   clpFacturadoByCloseIso,
@@ -36,35 +44,9 @@ import {
 import { ccInstallmentInterestBillingEvents, ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
-type PurchaseRow = {
-  id: number;
-  canonical_row_id: string;
-  card_group: string;
-  purchase_date: string;
-  total_amount_clp: number;
-  cuotas_totales: number;
-  merchant: string | null;
-  description_merged: string | null;
-  matched_baseline_purchase_id: string | null;
-  source: string;
-  /** Evidence-backed first-cuota month (YYYY-MM); NULL = derive it (migration 163). */
-  first_due_month: string | null;
-  /** Occurrence among same-identity twin purchases, 0-based (migration 187). */
-  twin_index: number;
-};
+type PurchaseRow = LedgerPlan;
 
-export type PaymentRow = {
-  id: number;
-  purchase_id: number;
-  pay_by_date: string;
-  statement_date: string | null;
-  statement_period_month: string | null;
-  period_to_join: string | null;
-  source_pdf: string | null;
-  amount_clp: number;
-  cuota_current: number | null;
-  cuota_total: number | null;
-};
+export type PaymentRow = LedgerPlanCuota;
 
 export function ccLedgerMonthEndIso(ym: string): string {
   const p = parseYearMonth(ym);
@@ -625,33 +607,12 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   /** `purchasesRaw` minus nota-cancelled plans — the only set schedule math may see. */
   schedulePurchases: PurchaseRow[];
 } {
-  const purchasesDb = db
-    .prepare(
-      `SELECT id, canonical_row_id, card_group, purchase_date, total_amount_clp, cuotas_totales,
-              merchant, description_merged, matched_baseline_purchase_id, source, first_due_month,
-              twin_index
-       FROM cc_installment_purchases
-       WHERE account_id = ?
-       ORDER BY purchase_date, id`
-    )
-    .all(accountId) as PurchaseRow[];
+  const purchasesDb = ledgerPlans(accountId);
 
   assertNoDuplicateInstallmentPurchaseFingerprints(accountId, purchasesDb);
   const purchasesRaw = filterLedgerPurchasesForSchedule(purchasesDb);
 
-  const allPayments = db
-    .prepare(
-      `SELECT p.id, p.purchase_id, p.pay_by_date, p.statement_date, p.statement_period_month,
-              p.source_pdf, p.amount_clp, p.cuota_current, p.cuota_total, s.period_to AS period_to_join
-       FROM cc_installment_payments p
-       JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
-       LEFT JOIN cc_statement_lines l ON l.parser_row_id IS NOT NULL AND l.parser_row_id != ''
-         AND l.parser_row_id = p.parser_row_id
-       LEFT JOIN cc_statements s ON s.id = l.statement_id AND s.account_id = pr.account_id
-       WHERE pr.account_id = ?
-       ORDER BY p.pay_by_date, p.id`
-    )
-    .all(accountId) as PaymentRow[];
+  const allPayments = ledgerPlanCuotas(accountId);
 
   const paymentsByPurchase = new Map<number, PaymentRow[]>();
   for (const row of allPayments) {
@@ -809,23 +770,7 @@ function loadCancelledInstallmentPurchaseIds(
   purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[],
   paymentsByPurchase: ReadonlyMap<number, PaymentRow[]>
 ): Set<number> {
-  const notaRows = db
-    .prepare(
-      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred,
-              s.period_to AS stmt_period_to, s.statement_date AS stmt_statement_date
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ?
-         AND l.installment_flag = 0
-         AND l.amount_clp < 0`
-    )
-    .all(accountId) as {
-    merchant: string | null;
-    amount_clp: number;
-    occurred: string | null;
-    stmt_period_to: string | null;
-    stmt_statement_date: string | null;
-  }[];
+  const notaRows = oneShotCreditLines(accountId);
   const notaCredits: NotaCreditRow[] = [];
   for (const row of notaRows) {
     if (!isNotaDeCreditoMerchant(row.merchant)) continue;
@@ -851,7 +796,7 @@ function loadCancelledInstallmentPurchaseIds(
 
 /** Plan cuotas due in each calendar month (for tarjeta monthly P/L when saldo is flat). */
 export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): Map<string, number> {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
+  if (planCount(accountId) === 0) return new Map();
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   return scheduledPaymentsPlanDueByMonth(schedulePurchases, paymentsByPurchase, accountId);
 }
@@ -861,7 +806,7 @@ export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): 
  * Same series as historial de cuotas and valorización (scheduled plan saldo).
  */
 export function installmentRemainingClpByCalendarMonth(accountId: number): Map<string, number> {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
+  if (planCount(accountId) === 0) return new Map();
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   return scheduledTotalRemainingByMonth(schedulePurchases, paymentsByPurchase, accountId);
 }
@@ -879,7 +824,7 @@ export function installmentRemainderAfterFacturacionClp(
   billingMonth: string | null,
   purchasedThroughIso: string
 ): { amount_clp: number; cuotas: number } {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return { amount_clp: 0, cuotas: 0 };
+  if (planCount(accountId) === 0) return { amount_clp: 0, cuotas: 0 };
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const schedules = buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, undefined, accountId);
   let amount = 0;
@@ -897,7 +842,7 @@ export function installmentRemainderAfterFacturacionClp(
 
 /** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */
 export function liveCreditCardOutstandingClp(accountId: number): number | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  if (planCount(accountId) === 0) return null;
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const nowYm = currentCalendarYm();
   const schedules = buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, nowYm, accountId);
@@ -913,7 +858,7 @@ export function ledgerFacturadoClpForBillingMonth(
   accountId: number,
   billingMonth: string
 ): number {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return 0;
+  if (planCount(accountId) === 0) return 0;
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const schedules = buildSchedulesByPurchaseId(
     purchasesRaw,
@@ -932,13 +877,6 @@ export function ledgerFacturadoClpForBillingMonth(
     sum += sched.cuotaAmounts[idx]!;
   }
   return Math.round(sum);
-}
-
-export function ccInstallmentLedgerRowCount(accountId: number): number {
-  const r = db
-    .prepare(`SELECT COUNT(*) AS c FROM cc_installment_purchases WHERE account_id = ?`)
-    .get(accountId) as { c: number };
-  return Number(r.c);
 }
 
 /**

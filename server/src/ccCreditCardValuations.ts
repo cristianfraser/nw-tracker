@@ -7,8 +7,8 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
 import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from "./ccBillingViews.js";
+import { planCount } from "./cards/purchases.js";
 import {
-  ccInstallmentLedgerRowCount,
   ccLedgerMonthEndIso,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
@@ -90,7 +90,7 @@ function latestBillingDetailRow(
 }
 
 export function latestCreditCardBillingBalanceTotalClp(accountId: number): number | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  if (planCount(accountId) === 0) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
   const row = latestBillingDetailRow(detail);
   if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
@@ -100,7 +100,7 @@ export function latestCreditCardBillingBalanceTotalClp(accountId: number): numbe
 export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
   accountId: number
 ): { value_clp: number; as_of_date: string } | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  if (planCount(accountId) === 0) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
   const row = latestBillingDetailRow(detail);
   if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
@@ -118,7 +118,7 @@ export function creditCardBillingBalanceTotalClpAsOf(
   accountId: number,
   asOfYmd: string
 ): { value_clp: number; as_of_date: string } | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  if (planCount(accountId) === 0) return null;
   const asOfMonth = monthKeyFromYmd(asOfYmd);
   if (!asOfMonth) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
@@ -141,7 +141,7 @@ export function creditCardBillingBalanceTotalClpAsOf(
 export function ccLedgerStatementClosingPointsClp(
   accountId: number
 ): { as_of_date: string; value_clp: number }[] | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  if (planCount(accountId) === 0) return null;
   const { payload, detail } = billingDetailCacheForAccount(accountId);
   if (payload == null) {
     throw new Error(`account ${accountId}: ledger rows exist but cached bundle has no payload`);
@@ -173,7 +173,7 @@ export function ccLedgerStatementClosingPointsClp(
 export function ccLedgerStatementClosingPointsNative(
   accountId: number
 ): { as_of_date: string; owed: CcOwedNative }[] | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  if (planCount(accountId) === 0) return null;
   const { payload, detail } = billingDetailCacheForAccount(accountId);
   if (payload == null) {
     throw new Error(`account ${accountId}: ledger rows exist but cached bundle has no payload`);

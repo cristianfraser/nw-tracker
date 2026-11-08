@@ -1,7 +1,7 @@
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { expenseKeyKind, installmentHKeyWithoutTotal } from "./expenseKeys.js";
 import type { CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
-import { db } from "./db.js";
+import { planRow } from "./cards/purchases.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { cachedFlowsExpenseLines } from "./flowsMortgageCarrying.js";
 
@@ -22,15 +22,9 @@ export function withPurchaseExpenseLinks(
     const prev = byKey.get(l.purchase_key);
     if (!prev || (!prev.payment_receipt && l.payment_receipt)) byKey.set(l.purchase_key, l);
   }
-  const planRow = db.prepare(
-    `SELECT purchase_date, merchant, cuotas_totales, total_amount_clp FROM cc_installment_purchases WHERE id = ?`
-  );
   return purchases.map((p) => {
     if (p.purchase_db_id == null) return p;
-    const row = planRow.get(p.purchase_db_id) as
-      | { purchase_date: string; merchant: string | null; cuotas_totales: number; total_amount_clp: number }
-      | undefined;
-    if (!row) throw new Error(`cc_installment_purchases ${p.purchase_db_id} not found`);
+    const row = planRow(p.purchase_db_id);
     const key = stableInstallmentHPurchaseKeyFromLedgerArgs({
       accountId,
       purchaseDateIso: row.purchase_date,

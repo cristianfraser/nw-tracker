@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
  * The purchases module (`cards/purchases.ts`) is the one reader of card lines and plans. A file
  * outside `server/src/cards/` that selects from `cc_statement_lines` or `cc_installment_purchases`
  * must be listed here with why: the audit's raw-table readers (writers, identity and re-key
- * machinery, the plan ↔ line join) stay; the rest wait for their view of the module and leave the
- * list when they move. An entry that no longer reads the tables fails too, so the list only
+ * machinery, the link tables keyed by line id) stay; every other reader goes through a view, and an
+ * entry that no longer reads the tables fails, so the list only
  * shrinks.
  */
 const RAW_TABLE_READERS: Record<string, string> = {
@@ -37,26 +37,9 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccExpenseCategories.ts": "raw: purchase key → line ids through parser_row_id (key resolvers)",
   "expenseDepositLinks.ts": "raw: mortgage-link category writer by line id",
   "ccExpenseGenericTransferBackfill.ts": "raw: category backfill",
-  // The plan ↔ line join on parser_row_id, and the link tables keyed by line id.
-  "ccInstallmentLedgerDb.ts": "raw: the plan ↔ payment ↔ line join (plans view still built here)",
-  "ccInstallmentInterest.ts": "raw: the parser_row_id join for printed principal and rate",
+  // The link tables keyed by line id.
   "ccTraspasoDeudaLinks.ts": "raw: persists traspaso pairs by line id (statement lines only)",
-  "ccPaymentMirrorEvidence.ts": "raw: payment evidence by statement id (view 5 pending)",
   "ccStatementsDb.ts": "raw: a statement's own lines for the statement payload",
-  // Not migrated yet: each waits for its view of the purchases module.
-  "ccBillingBalances.ts": "pending view 1 (debt events) and view 2 (billed lines)",
-  "ccBillingViews.ts": "pending view 2 (open-cycle lines, pending cuota purchases)",
-  "ccCuotaRetirement.ts": "pending view 5 (payment evidence)",
-  "ccOwedByCurrency.ts": "pending view 1 (owed per currency)",
-  "ccInvestmentProxy.ts": "pending view 6 (proxy inputs)",
-  "ccUsdStatementBilled.ts": "pending view 2 (a statement's billed dollars)",
-  "ccFacturacionUsdRate.ts": "pending view 5 (traspaso legs)",
-  "ccFacturadoFinancingAuto.ts": "pending views 2/5 (tagged lines, payments on file)",
-  "ccInstallmentPaymentGastosLines.ts": "pending view 3 (expense lines, Por cuota)",
-  "ccInstallmentPlanGastosLines.ts": "pending view 3 (expense lines, plan breakdown)",
-  "ccInstallmentPurchaseTotalLines.ts": "pending view 3 (expense lines, Total)",
-  "ccPurchaseExpenseLinks.ts": "pending view 4 (plan ↔ expense line link)",
-  "flowsExpenses.ts": "pending view 3 (buildCcExpenseLines)",
   // Not runtime.
   "markInputTriggers.ts": "trigger DDL names the tables",
   "demoData/invariants.ts": "demo build check",

@@ -1,7 +1,7 @@
 import { accountInactiveByValuationTail } from "./accountValuationTailInactive.js";
 import { billingMonthForStatementDate } from "./cards/statementMonth.js";
+import { planCount } from "./cards/purchases.js";
 import {
-  ccInstallmentLedgerRowCount,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -28,7 +28,7 @@ export function creditCardBillingDetailInactive(accountId: number): boolean {
   // settled (e.g. a superseded card) must fall through to the tail heuristic — otherwise
   // the open-month rollforward resurrects the last pre-settlement statement balance.
   if (
-    ccInstallmentLedgerRowCount(accountId) > 0 &&
+    planCount(accountId) > 0 &&
     (liveCreditCardOutstandingClp(accountId) ?? 0) > 0
   ) {
     return false;

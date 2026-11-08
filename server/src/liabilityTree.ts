@@ -9,7 +9,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
-import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
+import { planCount } from "./cards/purchases.js";
 import { ccHasNativeOwedAnchors, ccOwedClpAtYmd } from "./ccOwedWalk.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
@@ -257,7 +257,7 @@ function linkedCreditCardBalanceTotalClpAsOf(
         )
       : anchor.value_clp;
   }
-  if (ccInstallmentLedgerRowCount(masterId) > 0) {
+  if (planCount(masterId) > 0) {
     const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
     if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
   }

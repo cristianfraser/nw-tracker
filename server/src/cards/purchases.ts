@@ -18,12 +18,15 @@
  * card domain can depend on it without growing the import cycle.
  */
 import type { Database } from "better-sqlite3";
+import type { CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
 import { db } from "../db.js";
 import { effectiveCcExpenseLineAmountClp } from "../ccExpenseAmountClp.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "../ccInstallmentLineDedupe.js";
+import { isCcPaymentMerchant } from "../ccPaymentLines.js";
+import { statementLineDateIso } from "../ccInstallmentPayBy.js";
 import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch } from "../matching/installmentAmount.js";
 import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix } from "nw-tracker-contracts";
 import { paymentStatementMonthYm } from "./statementMonth.js";
@@ -581,4 +584,529 @@ export function latestStatementOriginPlastics(
     )
     .all(accountId, JSON.stringify(last4s)) as { origin: string }[];
   return rows.map((r) => r.origin);
+}
+
+// ---------------------------------------------------------------------------------------------
+// View 5 — payment evidence
+// ---------------------------------------------------------------------------------------------
+
+/** A card line that pays the card, with the statement it sits on (pairing links by `line_id`). */
+export type CardPaymentLine = {
+  line_id: number;
+  statement_id: number;
+  source_pdf: string;
+  account_id: number;
+  account_name: string;
+  transaction_date: string | null;
+  merchant: string | null;
+  /** Signed as stored: negative (a payment lowers what is owed); pesos or dollars per the view. */
+  amount: number;
+};
+
+const stmtClpPaymentLines = db.prepare(
+  `SELECT l.id AS line_id, s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name,
+          l.transaction_date, l.amount_clp AS amount, l.merchant
+   FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   JOIN accounts a ON a.id = s.account_id
+   WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp < 0
+     AND (@account_id IS NULL OR s.account_id = @account_id)`
+);
+
+/**
+ * The peso payment lines of one card or of all of them: one-shot credits on peso statements (the
+ * open bucket included) that name a payment (`isCcPaymentMerchant`: PAGO, MONTO CANCELADO, ABONO).
+ * The cuota retirement and the payment-mirror evidence read the same list.
+ */
+export function clpPaymentLines(accountId?: number): CardPaymentLine[] {
+  return (stmtClpPaymentLines.all({ account_id: accountId ?? null }) as CardPaymentLine[]).filter((r) =>
+    isCcPaymentMerchant(r.merchant)
+  );
+}
+
+// Matched by the LINE's currency (amount_usd set), not the statement's — the open web-paste bucket
+// is a CLP statement that carries the USD lines too, and an abono must be pairable the day the feed
+// delivers it. Traspaso-linked abonos are not payments: they reclassify USD debt onto the CLP side
+// of the same card, no cash moved.
+const stmtUsdAbonoLines = db.prepare(
+  `SELECT l.id AS line_id, s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name,
+          l.transaction_date, l.amount_usd AS amount, l.merchant
+   FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   JOIN accounts a ON a.id = s.account_id
+   WHERE l.installment_flag = 0 AND l.amount_usd < 0
+     AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
+     AND l.id NOT IN (SELECT usd_line_id FROM cc_traspaso_deuda_links)
+     AND (@account_id IS NULL OR s.account_id = @account_id)`
+);
+
+/** The ABONO DE DIVISAS lines (dollar debt paid with bought dollars), traspaso legs left out. */
+export function usdDebtAbonoLines(accountId?: number): CardPaymentLine[] {
+  return stmtUsdAbonoLines.all({ account_id: accountId ?? null }) as CardPaymentLine[];
+}
+
+const stmtTraspasoUsdLegs = db.prepare(
+  `SELECT t.id AS link_id, l.transaction_date, t.amount_clp AS clp, t.amount_usd AS usd
+   FROM cc_traspaso_deuda_links t
+   INNER JOIN cc_statement_lines l ON l.id = t.usd_line_id
+   WHERE t.account_id = ?`
+);
+
+/** Each traspaso de deuda of the card: the dollar leg's date and the pesos the bank moved it at. */
+export function traspasoUsdLegs(
+  accountId: number
+): { link_id: number; transaction_date: string | null; clp: number; usd: number }[] {
+  return stmtTraspasoUsdLegs.all(accountId) as { link_id: number; transaction_date: string | null; clp: number; usd: number }[];
+}
+
+// ---------------------------------------------------------------------------------------------
+// View 4 — plan rows (the schedule itself is `ccInstallmentLedgerDb`'s, on the plan ↔ line join)
+// ---------------------------------------------------------------------------------------------
+
+/** A plan as stored (`cc_installment_purchases`). */
+export type CardPlanRow = {
+  id: number;
+  account_id: number;
+  canonical_row_id: string;
+  purchase_date: string;
+  total_amount_clp: number;
+  cuotas_totales: number;
+  merchant: string | null;
+  twin_index: number;
+  source: string;
+  first_due_month: string | null;
+};
+
+const PLAN_COLUMNS = `id, account_id, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales,
+  merchant, twin_index, source, first_due_month`;
+
+/** The plans of these cards (by card, then id), or of every card (by id). */
+export function planRows(accountIds?: readonly number[]): CardPlanRow[] {
+  if (accountIds == null) {
+    return db.prepare(`SELECT ${PLAN_COLUMNS} FROM cc_installment_purchases ORDER BY id`).all() as CardPlanRow[];
+  }
+  if (accountIds.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT ${PLAN_COLUMNS} FROM cc_installment_purchases
+       WHERE account_id IN (${accountIds.map(() => "?").join(",")}) ORDER BY account_id, id`
+    )
+    .all(...accountIds) as CardPlanRow[];
+}
+
+/** One plan by id; throws when it does not exist. */
+export function planRow(planId: number): CardPlanRow {
+  const row = db.prepare(`SELECT ${PLAN_COLUMNS} FROM cc_installment_purchases WHERE id = ?`).get(planId) as
+    | CardPlanRow
+    | undefined;
+  if (!row) throw new Error(`cc_installment_purchases ${planId} not found`);
+  return row;
+}
+
+/** A plan's stored cuota (`cc_installment_payments`) with the plan it belongs to. */
+export type CardPlanCuota = {
+  payment_id: number;
+  account_id: number;
+  pay_by_date: string;
+  statement_date: string | null;
+  amount_clp: number;
+  cuota_current: number | null;
+  cuota_total: number | null;
+  purchase_date: string;
+  merchant: string | null;
+  total_amount_clp: number;
+};
+
+/** The billed cuotas (positive amount) of these cards' plans, by pay-by then id. */
+export function planCuotas(accountIds: readonly number[]): CardPlanCuota[] {
+  if (accountIds.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT p.id AS payment_id, pr.account_id, p.pay_by_date, p.statement_date,
+              p.amount_clp, p.cuota_current, p.cuota_total,
+              pr.purchase_date, pr.merchant, pr.total_amount_clp
+       FROM cc_installment_payments p
+       JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
+       WHERE pr.account_id IN (${accountIds.map(() => "?").join(",")})
+         AND p.amount_clp > 0
+       ORDER BY p.pay_by_date, p.id`
+    )
+    .all(...accountIds) as CardPlanCuota[];
+}
+
+/**
+ * The statement line behind a stored cuota: the one the parser read it from (`parser_row_id`).
+ * on the plan's card. Copies of one statement share the parser's row id; the lowest line id is returned. Null for a
+ * cuota no line carries (a manual plan's synthetic row, a line re-imported under another id).
+ */
+export function lineForPayment(paymentId: number): CardLine | null {
+  return (
+    (db
+      .prepare(
+        `SELECT ${CARD_LINE_COLUMNS}
+         FROM cc_installment_payments p
+         JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
+         JOIN cc_statement_lines l ON l.parser_row_id IS NOT NULL AND l.parser_row_id != ''
+           AND l.parser_row_id = p.parser_row_id
+         JOIN cc_statements s ON s.id = l.statement_id AND s.account_id = pr.account_id
+         WHERE p.id = ?
+         ORDER BY l.id
+         LIMIT 1`
+      )
+      .get(paymentId) as CardLine | undefined) ?? null
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// View 1 — debt events (the lines and plans the owed walk, the anchors and the financing cost read)
+// ---------------------------------------------------------------------------------------------
+
+/** A one-shot line as a debt event: its stored amounts, statement context and the day it counts. */
+export type DebtEventLine = {
+  id: number;
+  merchant: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  statement_currency: string;
+  installment_flag: number;
+  valor_cuota_mensual_clp: number | null;
+  valor_cuota_mensual_usd: number | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  statement_date: string;
+  dedupe_key: string | null;
+  /** The day the line moves the debt (ISO): its date, or its statement's close when backdated. */
+  iso: string;
+};
+
+/** Two calendar months before a close: a line dated on or before it, billed at that close, is backdated. */
+function backdatedPostingCutoffIso(closeIso: string): string {
+  const ym = addCalendarMonths(closeIso.slice(0, 7), -2);
+  const lastDay = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
+  return `${ym}-${String(Math.min(Number(closeIso.slice(8, 10)), lastDay)).padStart(2, "0")}`;
+}
+
+/**
+ * The card's one-shot lines as debt events, every source (statements and listings): a line its
+ * plan supersedes counts once, through the plan (left out here); a contract-summary row
+ * («03 CUOTAS COMERC») is no purchase; an undated line has no day. A line dated two cycles or
+ * more before the statement that billed it is a backdated posting (a nota de crédito carries the
+ * original purchase's date — ·0161's −4xx.xxx dated 22/02/2018 on the June statement): it entered
+ * the debt in that statement's cycle, so it counts on that close; dated at the purchase, the walk
+ * had counted it months before any anchor did.
+ */
+export function debtEventLines(accountId: number): DebtEventLine[] {
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
+              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
+              l.transaction_date, l.posting_date, s.statement_date, l.dedupe_key
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ? AND l.installment_flag = 0`
+    )
+    .all(accountId) as Omit<DebtEventLine, "iso">[];
+  const superseded = supersededOneShotLineIds(accountId);
+  const out: DebtEventLine[] = [];
+  for (const r of rows) {
+    if (superseded.has(r.id)) continue;
+    if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+    // Transaction date, else posting date: a line printing only its posting date used to drop out here.
+    let iso = statementLineDateIso(r);
+    if (!iso) continue;
+    const closeIso = parseDdMmYyToIso(r.statement_date);
+    if (closeIso && iso <= backdatedPostingCutoffIso(closeIso)) iso = closeIso;
+    out.push({ ...r, iso });
+  }
+  return out;
+}
+
+/** The card's plans as debt events: the whole contract on its purchase day (cupo is consumed then). */
+export function planPurchaseEvents(accountId: number): { id: number; purchase_date: string; total_amount_clp: number }[] {
+  return planRows([accountId])
+    .filter((p) => p.purchase_date != null && p.total_amount_clp != null)
+    .map((p) => ({ id: p.id, purchase_date: p.purchase_date, total_amount_clp: p.total_amount_clp }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// View 2 — billed and open-cycle lines
+// ---------------------------------------------------------------------------------------------
+
+/** A statement line as the facturado sums read it. */
+export type BilledLine = {
+  id: number;
+  merchant: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  statement_currency: string;
+  installment_flag: number;
+  valor_cuota_mensual_clp: number | null;
+  valor_cuota_mensual_usd: number | null;
+};
+
+/**
+ * The one-shot lines a statement (or bucket) of this close bills: every line of that date on the
+ * card, flag 0, without the ones a plan supersedes (the plan bills them) and without contract
+ * summaries.
+ */
+export function billedOneShotLines(accountId: number, statementDate: string): BilledLine[] {
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
+              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ? AND s.statement_date = ? AND l.installment_flag = 0`
+    )
+    .all(accountId, statementDate) as BilledLine[];
+  const superseded = supersededOneShotLineIds(accountId);
+  return rows.filter((r) => !superseded.has(r.id) && !isInstallmentContractSummaryMerchant(r.merchant));
+}
+
+/** Every line (cuotas included) of the card's statements of this close, as stored. */
+export function linesOfClose(accountId: number, statementDate: string): BilledLine[] {
+  return db
+    .prepare(
+      `SELECT l.id, l.merchant, l.installment_flag, l.amount_clp, l.amount_usd,
+              s.currency AS statement_currency,
+              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ? AND s.statement_date = ?`
+    )
+    .all(accountId, statementDate) as BilledLine[];
+}
+
+/** A statement row's own lines, with their stored kind. */
+export function linesOfStatement(
+  statementId: number
+): { id: number; kind: string | null; merchant: string | null; amount_clp: number | null; amount_usd: number | null }[] {
+  return db
+    .prepare(`SELECT id, kind, merchant, amount_clp, amount_usd FROM cc_statement_lines WHERE statement_id = ?`)
+    .all(statementId) as { id: number; kind: string | null; merchant: string | null; amount_clp: number | null; amount_usd: number | null }[];
+}
+
+/** A feed-typed cuota purchase in the open bucket, still waiting for its plan (count unknown). */
+export type OpenCycleCuotaPurchaseLine = {
+  id: number;
+  merchant: string | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  amount_clp: number | null;
+  cuota_purchase_kind: CcCuotaPurchaseKind;
+  source_pdf: string;
+};
+
+/**
+ * The open bucket's lines the feed typed as cuota purchases (`cuota_purchase_kind`), without the
+ * ones a plan already supersedes — the plan carries those.
+ */
+export function openCycleCuotaPurchaseLines(accountId: number): OpenCycleCuotaPurchaseLine[] {
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp, l.cuota_purchase_kind,
+              s.source_pdf
+       FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ? AND s.source_kind = 'listing_open'
+         AND l.cuota_purchase_kind IS NOT NULL
+       ORDER BY l.id`
+    )
+    .all(accountId) as OpenCycleCuotaPurchaseLine[];
+  if (rows.length === 0) return [];
+  const superseded = supersededOneShotLineIds(accountId);
+  return rows.filter((r) => !superseded.has(r.id));
+}
+
+// ---------------------------------------------------------------------------------------------
+// View 3 — expense evidence (the card side of the expense lines)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A card line as the expense-line builder reads it: the evidence of an expense, with the statement
+ * it sits on and its stored kind. The builder (`buildCcExpenseLines`) turns these and the plan
+ * views into `FlowCcExpenseLineRowDraft`s — the one expense shape the checking builder emits too,
+ * with no plan overlay.
+ */
+export type CardExpenseEvidenceLine = {
+  statement_line_id: number;
+  statement_id: number;
+  account_id: number;
+  statement_date: string;
+  source_pdf: string;
+  source_kind: string;
+  statement_currency: string;
+  primary_card_last4: string | null;
+  origin_card_last4: string | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  parser_row_id: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  amount_orig: number | null;
+  orig_currency: string | null;
+  merchant: string | null;
+  installment_flag: number;
+  nro_cuota_current: number | null;
+  nro_cuota_total: number | null;
+  valor_cuota_mensual_clp: number | null;
+  valor_cuota_mensual_usd: number | null;
+  cuota_purchase_kind: CcCuotaPurchaseKind | null;
+  kind: string | null;
+};
+
+/**
+ * The card lines of these accounts that carry an amount (pesos, dollars or a cuota), newest
+ * statement first. Lines a plan supersedes are included: the builder marks them, the Total view
+ * shows the plan's total in their place.
+ */
+export function expenseEvidenceLines(accountIds: readonly number[]): CardExpenseEvidenceLine[] {
+  if (accountIds.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date, s.source_pdf, s.source_kind,
+              s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
+              l.transaction_date, l.posting_date, l.origin_card_last4, l.parser_row_id,
+              l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.merchant, l.installment_flag,
+              l.nro_cuota_current, l.nro_cuota_total,
+              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind, l.kind
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id IN (${accountIds.map(() => "?").join(",")})
+         AND (
+           l.amount_clp IS NOT NULL
+           OR (l.amount_usd IS NOT NULL AND l.amount_usd != 0)
+           OR (l.installment_flag = 1 AND l.valor_cuota_mensual_clp IS NOT NULL AND l.valor_cuota_mensual_clp != 0)
+           OR (l.installment_flag = 1 AND l.valor_cuota_mensual_usd IS NOT NULL AND l.valor_cuota_mensual_usd != 0)
+         )
+       ORDER BY s.statement_date DESC, l.id DESC`
+    )
+    .all(...accountIds) as CardExpenseEvidenceLine[];
+}
+
+// ---------------------------------------------------------------------------------------------
+// View 4 — the plan ledger: plans, their stored cuotas and the line behind each (private join)
+// ---------------------------------------------------------------------------------------------
+
+/** A plan as the schedule reads it. */
+export type LedgerPlan = {
+  id: number;
+  canonical_row_id: string;
+  card_group: string;
+  purchase_date: string;
+  total_amount_clp: number;
+  cuotas_totales: number;
+  merchant: string | null;
+  description_merged: string | null;
+  matched_baseline_purchase_id: string | null;
+  source: string;
+  /** Evidence-backed first-cuota month (YYYY-MM); NULL = derive it (migration 163). */
+  first_due_month: string | null;
+  /** Occurrence among same-identity twin purchases, 0-based (migration 187). */
+  twin_index: number;
+};
+
+/** A plan's stored cuota with the period of the statement whose line it was read from. */
+export type LedgerPlanCuota = {
+  id: number;
+  purchase_id: number;
+  pay_by_date: string;
+  statement_date: string | null;
+  statement_period_month: string | null;
+  /** `period_to` of the statement whose line carries this cuota (joined by `parser_row_id`). */
+  period_to_join: string | null;
+  source_pdf: string | null;
+  amount_clp: number;
+  cuota_current: number | null;
+  cuota_total: number | null;
+};
+
+/** The card's plans in purchase order. */
+export function ledgerPlans(accountId: number): LedgerPlan[] {
+  return db
+    .prepare(
+      `SELECT id, canonical_row_id, card_group, purchase_date, total_amount_clp, cuotas_totales,
+              merchant, description_merged, matched_baseline_purchase_id, source, first_due_month,
+              twin_index
+       FROM cc_installment_purchases
+       WHERE account_id = ?
+       ORDER BY purchase_date, id`
+    )
+    .all(accountId) as LedgerPlan[];
+}
+
+/** How many plans the card has (every source). */
+export function planCount(accountId: number): number {
+  const r = db.prepare(`SELECT COUNT(*) AS c FROM cc_installment_purchases WHERE account_id = ?`).get(accountId) as {
+    c: number;
+  };
+  return Number(r.c);
+}
+
+/**
+ * The card plans' stored cuotas by pay-by, each with the period of the statement its line sits on
+ * (the line found through `parser_row_id`, on the same card).
+ */
+export function ledgerPlanCuotas(accountId: number): LedgerPlanCuota[] {
+  return db
+    .prepare(
+      `SELECT p.id, p.purchase_id, p.pay_by_date, p.statement_date, p.statement_period_month,
+              p.source_pdf, p.amount_clp, p.cuota_current, p.cuota_total, s.period_to AS period_to_join
+       FROM cc_installment_payments p
+       JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
+       LEFT JOIN cc_statement_lines l ON l.parser_row_id IS NOT NULL AND l.parser_row_id != ''
+         AND l.parser_row_id = p.parser_row_id
+       LEFT JOIN cc_statements s ON s.id = l.statement_id AND s.account_id = pr.account_id
+       WHERE pr.account_id = ?
+       ORDER BY p.pay_by_date, p.id`
+    )
+    .all(accountId) as LedgerPlanCuota[];
+}
+
+/**
+ * Each priced plan's printed cuota lines (the lines behind its stored cuotas): the principal the
+ * statement prints for the plan and its printed rate. The interest of a plan reads them.
+ */
+export function planPrintedCuotaLines(
+  accountId: number
+): { purchase_id: number; purchase_date: string; total_amount_clp: number; principal_clp: number | null; rate_text: string | null }[] {
+  return db
+    .prepare(
+      `SELECT ip.id AS purchase_id, ip.purchase_date, ip.total_amount_clp,
+              l.amount_clp AS principal_clp, l.interest_rate_text AS rate_text
+       FROM cc_installment_purchases ip
+       JOIN cc_installment_payments p ON p.purchase_id = ip.id
+       JOIN cc_statement_lines l ON l.parser_row_id = p.parser_row_id
+       WHERE ip.account_id = ? AND ip.total_amount_clp IS NOT NULL
+       ORDER BY ip.id`
+    )
+    .all(accountId) as {
+    purchase_id: number;
+    purchase_date: string;
+    total_amount_clp: number;
+    principal_clp: number | null;
+    rate_text: string | null;
+  }[];
+}
+
+/** The card's one-shot credits (negative pesos) with their statement's period: nota candidates. */
+export function oneShotCreditLines(
+  accountId: number
+): { merchant: string | null; amount_clp: number; occurred: string | null; stmt_period_to: string | null; stmt_statement_date: string | null }[] {
+  return db
+    .prepare(
+      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred,
+              s.period_to AS stmt_period_to, s.statement_date AS stmt_statement_date
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ?
+         AND l.installment_flag = 0
+         AND l.amount_clp < 0`
+    )
+    .all(accountId) as {
+    merchant: string | null;
+    amount_clp: number;
+    occurred: string | null;
+    stmt_period_to: string | null;
+    stmt_statement_date: string | null;
+  }[];
 }

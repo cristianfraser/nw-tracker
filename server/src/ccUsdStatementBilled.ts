@@ -1,4 +1,4 @@
-import { db } from "./db.js";
+import { linesOfStatement } from "./cards/purchases.js";
 import { isCardDebtSettlementKind, requireStoredCardLineKind } from "./cards/lineKinds.js";
 
 /**
@@ -10,10 +10,6 @@ export function isCcUsdPaymentLine(line: { id: number; kind: string | null; usd:
   return isCardDebtSettlementKind(requireStoredCardLineKind(line.kind, line.id));
 }
 
-const usdStatementLinesStmt = db.prepare(
-  `SELECT id, kind, merchant, amount_usd FROM cc_statement_lines WHERE statement_id = ?`
-);
-
 /**
  * What a dollar statement that prints no total billed, read from its lines: every charge and credit
  * of the period, net, with the payments of the previous facturación left out — they settle that
@@ -23,12 +19,7 @@ const usdStatementLinesStmt = db.prepare(
  * no dollar amount on a dollar statement throws.
  */
 export function usdBilledFromStatementLines(statementId: number): number {
-  const rows = usdStatementLinesStmt.all(statementId) as {
-    id: number;
-    kind: string | null;
-    merchant: string | null;
-    amount_usd: number | null;
-  }[];
+  const rows = linesOfStatement(statementId);
   let cents = 0;
   for (const r of rows) {
     const usd = r.amount_usd;

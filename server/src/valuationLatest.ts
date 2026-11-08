@@ -1,6 +1,6 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
 import { kindIsDebt } from "./accountProfile.js";
-import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
+import { planCount } from "./cards/purchases.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { ccOwedClpAtYmd, ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
@@ -86,7 +86,7 @@ export function latestCreditCardDisplayedBalance(
 ): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const today = chileCalendarTodayYmd();
-  if (asOfYmd >= today && ccInstallmentLedgerRowCount(accountId) > 0) {
+  if (asOfYmd >= today && planCount(accountId) > 0) {
     // Today (and beyond) is walked from the last anchor, the same frame every past day uses —
     // `as_of_date` is the walked-through date so callers don't re-apply the window on top.
     // The live billing formula is a DIFFERENT framing of the same debt (facturado + cupo −

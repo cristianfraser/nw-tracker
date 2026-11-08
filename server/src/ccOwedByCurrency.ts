@@ -1,9 +1,9 @@
-import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountUsd } from "./ccExpenseAmountClp.js";
 import { installmentRemainderAfterFacturacionClp } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { findLines } from "./cards/purchases.js";
 import { closeDateForBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
 
@@ -40,14 +40,6 @@ export type CcOwedByCurrency = {
   };
 };
 
-const linesForAccount = db.prepare(
-  `SELECT s.statement_date, s.currency AS statement_currency, l.installment_flag, l.amount_clp,
-          l.amount_usd, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
-   FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ?`
-);
-
 /** Two decimals for dollars, integer pesos: the precision both sides state. */
 function roundUsd(n: number): number {
   return Math.round(n * 100) / 100;
@@ -80,15 +72,7 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
   const monthByDate = facturacionMonthByStatementDate(accountId);
   let linesClp = 0;
   let linesUsd = 0;
-  for (const r of linesForAccount.all(accountId) as {
-    statement_date: string;
-    statement_currency: string | null;
-    installment_flag: number;
-    amount_clp: number | null;
-    amount_usd: number | null;
-    valor_cuota_mensual_clp: number | null;
-    valor_cuota_mensual_usd: number | null;
-  }[]) {
+  for (const r of findLines({ accountId })) {
     const bm = monthByDate.get(r.statement_date);
     if (!bm) throw new Error(`Account ${accountId}: statement ${r.statement_date} belongs to no facturación`);
     if (lastClosed && ymCompare(bm, lastClosed) <= 0) continue;

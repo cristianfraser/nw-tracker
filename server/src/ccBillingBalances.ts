@@ -8,13 +8,18 @@ import {
   effectiveCcExpenseLineAmountUsd,
   uniformDebtUsdRateInEffect,
 } from "./ccExpenseAmountClp.js";
-import { supersededOneShotLineIds } from "./cards/purchases.js";
 import {
-  isInstallmentContractSummaryMerchant,
+  billedOneShotLines,
+  debtEventLines,
+  linesOfClose,
+  planPurchaseEvents,
+  withCcOneShotScanCache,
+} from "./cards/purchases.js";
+import {
   redundantInstallmentSummaryLineIds,
   type CcStatementLineForInstallmentTotals,
 } from "./ccInstallmentLineDedupe.js";
-import { normalizeTransactionDateIso, resolveInstallmentPayByIso, statementLineDateIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { db } from "./db.js";
@@ -41,7 +46,7 @@ import {
   isUsdSection3FinancingChargeMerchant,
 } from "./ccStatementSection3.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
-import { ddMmYyyyFromIso, parseDdMmYyToIso, addCalendarMonths } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type CcBillingMonthBalanceRow = {
   id: number;
@@ -122,33 +127,14 @@ export function balanceUsdFxDateIso(accountId: number, statementDate: string): s
   return payByIso ? payByFxDateIso(payByIso) : parseDdMmYyToIso(statementDate);
 }
 
-function listRevolvingLineRowsForStatementDate(
-  accountId: number,
-  statementDate: string
-): RevolvingLineRow[] {
-  return db
-    .prepare(
-      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
-              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND s.statement_date = ? AND l.installment_flag = 0`
-    )
-    .all(accountId, statementDate) as RevolvingLineRow[];
-}
-
 function sumRevolvingLinesForAccountStatementDateClp(
   accountId: number,
   statementDate: string,
   opts?: { excludePayments?: boolean; excludeUsdDebtPaymentAbonos?: boolean }
 ): number {
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
-  const rows = listRevolvingLineRowsForStatementDate(accountId, statementDate);
-  const superseded = supersededOneShotLineIds(accountId);
   let sum = 0;
-  for (const r of rows) {
-    if (superseded.has(r.id)) continue;
-    if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+  for (const r of billedOneShotLines(accountId, statementDate)) {
     if (opts?.excludePayments && isCcPaymentMerchant(r.merchant)) continue;
     if (
       opts?.excludeUsdDebtPaymentAbonos &&
@@ -277,26 +263,9 @@ export type PostCloseStreamEntry = {
   statement_date: string | null;
 };
 
-/** Two calendar months before a close: a line dated on or before it, billed at that close, is backdated. */
-function backdatedPostingCutoffIso(closeIso: string): string {
-  const ym = addCalendarMonths(closeIso.slice(0, 7), -2);
-  const lastDay = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
-  return `${ym}-${String(Math.min(Number(closeIso.slice(8, 10)), lastDay)).padStart(2, "0")}`;
-}
-
 export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntry[] {
   return getAggregationCached(cacheKeyCcBillingPart(accountId, `postclose_lines`), () => {
-    const rows = db
-      .prepare(
-        `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
-                l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
-                l.transaction_date, l.posting_date, s.statement_date, l.dedupe_key
-         FROM cc_statement_lines l
-         JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND l.installment_flag = 0`
-      )
-      .all(accountId) as PostCloseLineRow[];
-    const superseded = supersededOneShotLineIds(accountId);
+    const rows = debtEventLines(accountId);
 
     const fxDateByStatementDate = new Map<string, string | null>();
     const fxDateFor = (statementDate: string): string | null => {
@@ -338,19 +307,10 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
     // inside a window (same as the single-window loop did).
     const lines: PostCloseStreamEntry[] = [];
+    // The lines come with their debt day (`debtEventLines`: superseded lines and contract summaries
+    // out, a backdated posting at its statement's close).
     for (const r of rows) {
-      if (superseded.has(r.id)) continue;
-      if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
-      // Transaction date, else posting date: a line printing only its posting date used to drop out here.
-      let iso = statementLineDateIso(r);
-      if (!iso) continue;
-      // Dated two cycles or more before the statement that billed it: a backdated posting (a nota de
-      // crédito carries the original purchase's date — ·0161's −4xx.xxx dated 22/02/2018 on the
-      // June statement, −3xx.xxx dated 18/06/2020 on August's). It entered the debt in that
-      // statement's cycle, so the walk and the month-end anchors both take it at that close;
-      // dated at the purchase, the walk had counted it months before any anchor did.
-      const closeIso = parseDdMmYyToIso(r.statement_date);
-      if (closeIso && iso <= backdatedPostingCutoffIso(closeIso)) iso = closeIso;
+      const iso = r.iso;
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
         r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined;
@@ -460,12 +420,7 @@ export function normalizedInstallmentPurchaseEvents(
   return getAggregationCached(
     cacheKeyCcBillingPart(accountId, `instpurchase_events`),
     () => {
-      const purchases = db
-        .prepare(
-          `SELECT id, purchase_date, total_amount_clp FROM cc_installment_purchases
-           WHERE account_id = ? AND purchase_date IS NOT NULL AND total_amount_clp IS NOT NULL`
-        )
-        .all(accountId) as { id: number; purchase_date: string; total_amount_clp: number }[];
+      const purchases = planPurchaseEvents(accountId);
       const events: { iso: string; key: string; clp: number; currency: "clp"; amount: number; statement_date: null }[] = [];
       for (const pu of purchases) {
         const iso = normalizeTransactionDateIso(pu.purchase_date);
@@ -659,14 +614,11 @@ export function openMonthUsdFacturado(
   accountId: number,
   billingMonth: string
 ): { usd: number; clp: number } {
-  const superseded = supersededOneShotLineIds(accountId);
   let usd = 0;
   let clp = 0;
   const addStatement = (statementDate: string) => {
     const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
-    for (const r of listRevolvingLineRowsForStatementDate(accountId, statementDate)) {
-      if (superseded.has(r.id)) continue;
-      if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+    for (const r of billedOneShotLines(accountId, statementDate)) {
       if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
       const oneShot = {
         ...r,
@@ -681,7 +633,9 @@ export function openMonthUsdFacturado(
       if (c != null && Number.isFinite(c)) clp += c;
     }
   };
-  for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) addStatement(stmtDate);
+  withCcOneShotScanCache(() => {
+    for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) addStatement(stmtDate);
+  });
   return { usd, clp };
 }
 
@@ -696,25 +650,24 @@ export function openFacturacionCredits(
   accountId: number,
   billingMonth: string
 ): { clp: number; usd: number } {
-  const superseded = supersededOneShotLineIds(accountId);
   let clp = 0;
   let usd = 0;
-  for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
-    const fxDateIso = balanceUsdFxDateIso(accountId, stmtDate);
-    for (const r of listRevolvingLineRowsForStatementDate(accountId, stmtDate)) {
-      if (superseded.has(r.id)) continue;
-      if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
-      if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant) || isCcTraspasoDeudaMerchant(r.merchant)) continue;
-      const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null };
-      const u = effectiveCcExpenseLineAmountUsd(oneShot);
-      if (u != null) {
-        if (u < 0) usd -= u;
-        continue;
+  withCcOneShotScanCache(() => {
+    for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
+      const fxDateIso = balanceUsdFxDateIso(accountId, stmtDate);
+      for (const r of billedOneShotLines(accountId, stmtDate)) {
+        if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant) || isCcTraspasoDeudaMerchant(r.merchant)) continue;
+        const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null };
+        const u = effectiveCcExpenseLineAmountUsd(oneShot);
+        if (u != null) {
+          if (u < 0) usd -= u;
+          continue;
+        }
+        const c = effectiveCcExpenseLineAmountClp(oneShot, fxDateIso);
+        if (c != null && c < 0) clp -= c;
       }
-      const c = effectiveCcExpenseLineAmountClp(oneShot, fxDateIso);
-      if (c != null && c < 0) clp -= c;
     }
-  }
+  });
   return { clp: Math.round(clp), usd: Math.round(usd * 100) / 100 };
 }
 
@@ -723,25 +676,7 @@ function installmentCuotaDueForAccountStatementDateClp(
   statementDate: string
 ): number {
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
-  const rows = db
-    .prepare(
-      `SELECT l.id, l.merchant, l.installment_flag, l.amount_clp, l.amount_usd,
-              s.currency AS statement_currency,
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND s.statement_date = ?`
-    )
-    .all(accountId, statementDate) as {
-    id: number;
-    merchant: string | null;
-    installment_flag: number;
-    amount_clp: number | null;
-    amount_usd: number | null;
-    statement_currency: string;
-    valor_cuota_mensual_clp: number | null;
-    valor_cuota_mensual_usd: number | null;
-  }[];
+  const rows = linesOfClose(accountId, statementDate);
 
   const forDedupe: CcStatementLineForInstallmentTotals[] = rows.map((r) => ({
     statement_line_id: r.id,

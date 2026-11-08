@@ -14,8 +14,7 @@ import {
   isUnindexedInstallmentResumenLine,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
-import { dedupeInstallmentPurchaseLedgerRows } from "./cards/purchases.js";
-import { db } from "./db.js";
+import { dedupeInstallmentPurchaseLedgerRows, planRows } from "./cards/purchases.js";
 import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
@@ -68,13 +67,7 @@ function installmentTotalDedupeKey(ln: FlowCcExpenseLineBeforeNotes): string | n
 
 function loadInstallmentPurchases(accountIds: number[]): InstallmentPurchaseRow[] {
   if (accountIds.length === 0) return [];
-  const ph = accountIds.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT id, account_id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
-       FROM cc_installment_purchases WHERE account_id IN (${ph})`
-    )
-    .all(...accountIds) as InstallmentPurchaseRow[];
+  const rows: InstallmentPurchaseRow[] = planRows(accountIds);
   return dedupeInstallmentPurchaseLedgerRows(rows);
 }
 

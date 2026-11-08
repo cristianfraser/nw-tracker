@@ -51,7 +51,7 @@ import {
   userDeclinedAutoCategoryForPurchase,
 } from "./ccAdditionalCardExpenseMatch.js";
 
-import { supersededOneShotLineIds } from "./cards/purchases.js";
+import { accountIdForLine, expenseEvidenceLines, supersededOneShotLineIds } from "./cards/purchases.js";
 
 import {
 
@@ -73,7 +73,6 @@ import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 
 
-import { db } from "./db.js";
 
 import { enrichFlowLinesWithOriginLabels, type ExpenseLineOrigin } from "./ccExpenseOriginLabel.js";
 import { withExpenseDisplayNames, type CategoryRuleLinkDto, type ExpenseLinkLabel } from "./expenseDisplayNames.js";
@@ -463,97 +462,7 @@ export function buildCcExpenseLines(
 
   const userClearedUniqueAtLoad = new Set(uniquePurchaseModeKeys);
 
-  const ph = accountIds.map(() => "?").join(",");
-
-  const dbLines = db
-
-    .prepare(
-
-      `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date, s.source_pdf, s.source_kind,
-
-              s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
-
-              l.transaction_date, l.posting_date, l.origin_card_last4, l.parser_row_id,
-
-              l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.merchant, l.installment_flag,
-
-              l.nro_cuota_current, l.nro_cuota_total,
-
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind, l.kind
-
-       FROM cc_statement_lines l
-
-       JOIN cc_statements s ON s.id = l.statement_id
-
-       WHERE s.account_id IN (${ph})
-
-         AND (
-
-           l.amount_clp IS NOT NULL
-
-           OR (l.amount_usd IS NOT NULL AND l.amount_usd != 0)
-
-           OR (l.installment_flag = 1 AND l.valor_cuota_mensual_clp IS NOT NULL AND l.valor_cuota_mensual_clp != 0)
-
-           OR (l.installment_flag = 1 AND l.valor_cuota_mensual_usd IS NOT NULL AND l.valor_cuota_mensual_usd != 0)
-
-         )
-
-       ORDER BY s.statement_date DESC, l.id DESC`
-
-    )
-
-    .all(...accountIds) as {
-
-    statement_line_id: number;
-
-    statement_id: number;
-
-    account_id: number;
-
-    statement_date: string;
-
-    source_pdf: string;
-
-    source_kind: string;
-
-    statement_currency: string;
-
-    primary_card_last4: string | null;
-
-    origin_card_last4: string | null;
-
-    transaction_date: string | null;
-
-    posting_date: string | null;
-
-    parser_row_id: string | null;
-
-    amount_clp: number | null;
-
-    amount_usd: number | null;
-
-    amount_orig: number | null;
-
-    orig_currency: string | null;
-
-    merchant: string | null;
-
-    installment_flag: number;
-
-    nro_cuota_current: number | null;
-
-    nro_cuota_total: number | null;
-
-    valor_cuota_mensual_clp: number | null;
-
-    valor_cuota_mensual_usd: number | null;
-
-    cuota_purchase_kind: CcCuotaPurchaseKind | null;
-
-    kind: string | null;
-
-  }[];
+  const dbLines = expenseEvidenceLines(accountIds);
 
 
 
@@ -1022,13 +931,7 @@ export function expenseLineDraftForPieces(
   if (source === "checking") {
     drafts = loadCheckingGastosLinesForExpenses();
   } else {
-    const row = db
-      .prepare(
-        `SELECT s.account_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ?`
-      )
-      .get(lineId) as { account_id: number } | undefined;
-    if (!row) throw new Error(`card line ${lineId} not found`);
-    drafts = buildCcExpenseLines([row.account_id]);
+    drafts = buildCcExpenseLines([accountIdForLine(lineId)]);
   }
   const matches = drafts.filter(
     (d) => d.statement_line_id === lineId && d.checking_purchase_portion !== "deposit"

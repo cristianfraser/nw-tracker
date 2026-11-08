@@ -15,7 +15,7 @@ import {
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
-import { db } from "./db.js";
+import { planRows } from "./cards/purchases.js";
 
 const PLAN_LINE_ID_OFFSET = 3_000_000_000;
 
@@ -41,14 +41,7 @@ type PurchaseMeta = {
 
 function loadPurchaseMetaByCanonicalId(accountIds: number[]): Map<string, PurchaseMeta> {
   if (accountIds.length === 0) return new Map();
-  const ph = accountIds.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT id, account_id, canonical_row_id, purchase_date, merchant, cuotas_totales, total_amount_clp
-       FROM cc_installment_purchases
-       WHERE account_id IN (${ph})`
-    )
-    .all(...accountIds) as PurchaseMeta[];
+  const rows: PurchaseMeta[] = planRows(accountIds);
   const out = new Map<string, PurchaseMeta>();
   for (const row of rows) {
     out.set(row.canonical_row_id, row);

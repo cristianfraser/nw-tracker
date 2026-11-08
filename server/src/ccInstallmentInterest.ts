@@ -18,6 +18,7 @@ import { getAggregationCached } from "./cacheRegistry.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { closeDateForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
+import { planPrintedCuotaLines } from "./cards/purchases.js";
 import { parseDdMmYyToIso, addCalendarMonths } from "nw-tracker-contracts";
 
 export type CcInstallmentInterest = {
@@ -48,17 +49,7 @@ type LineRow = {
 /** Plans of the account whose statement prints a rate above zero, with their interest. */
 export function ccInstallmentInterestForAccount(accountId: number): CcInstallmentInterest[] {
   return getAggregationCached(cacheKeyCcBillingPart(accountId, `inst_interest`), () => {
-    const rows = db
-      .prepare(
-        `SELECT ip.id AS purchase_id, ip.purchase_date, ip.total_amount_clp,
-                l.amount_clp AS principal_clp, l.interest_rate_text AS rate_text
-         FROM cc_installment_purchases ip
-         JOIN cc_installment_payments p ON p.purchase_id = ip.id
-         JOIN cc_statement_lines l ON l.parser_row_id = p.parser_row_id
-         WHERE ip.account_id = ? AND ip.total_amount_clp IS NOT NULL
-         ORDER BY ip.id`
-      )
-      .all(accountId) as LineRow[];
+    const rows: LineRow[] = planPrintedCuotaLines(accountId);
     const byPlan = new Map<number, LineRow[]>();
     for (const r of rows) byPlan.set(r.purchase_id, [...(byPlan.get(r.purchase_id) ?? []), r]);
 

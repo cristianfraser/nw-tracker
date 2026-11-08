@@ -35,6 +35,7 @@ import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
+import { findLines, planRows } from "./cards/purchases.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
@@ -100,19 +101,7 @@ function financedFacturados(linked: Set<string>): FinancedFacturado[] {
 
 function cuotaPayments(linkedKeys: Set<string>): Payment[] {
   const out: Payment[] = [];
-  const plans = db
-    .prepare(
-      `SELECT id, account_id, purchase_date, total_amount_clp, cuotas_totales, merchant
-       FROM cc_installment_purchases WHERE total_amount_clp > 0`
-    )
-    .all() as {
-    id: number;
-    account_id: number;
-    purchase_date: string;
-    total_amount_clp: number;
-    cuotas_totales: number;
-    merchant: string | null;
-  }[];
+  const plans = planRows().filter((p) => p.total_amount_clp > 0);
   const principalByPlan = new Map<number, number>();
   for (const accountId of new Set(plans.map((p) => p.account_id))) {
     for (const i of ccInstallmentInterestForAccount(accountId)) principalByPlan.set(i.purchase_id, i.principal_clp);
@@ -137,17 +126,10 @@ function cuotaPayments(linkedKeys: Set<string>): Payment[] {
       purchase_key: key,
     });
   }
-  const tagged = db
-    .prepare(
-      `SELECT l.id, s.account_id, l.transaction_date, l.posting_date, l.amount_clp
-       FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-       WHERE l.cuota_purchase_kind IS NOT NULL AND l.amount_clp > 0`
-    )
-    .all() as { id: number; account_id: number; transaction_date: string | null; posting_date: string | null; amount_clp: number }[];
-  for (const t of tagged) {
+  for (const t of findLines({ cuotaPurchaseTagged: true, amountClpSign: "positive" })) {
     const iso = normalizeTransactionDateIso(t.transaction_date ?? t.posting_date);
     if (!iso) continue;
-    out.push({ kind: "tagged_line", account_id: t.account_id, iso, principal_clp: Math.round(t.amount_clp), line_id: t.id });
+    out.push({ kind: "tagged_line", account_id: t.account_id, iso, principal_clp: Math.round(t.amount_clp!), line_id: t.line_id });
   }
   return out;
 }
@@ -173,18 +155,11 @@ function exactSubsets(items: Payment[], target: number): Payment[][] {
 function paymentOnFile(accountId: number, paidOn: string, amount: number): boolean {
   const from = chileCalendarAddDays(paidOn, -MATCH_WINDOWS.financing_payment.daysBefore);
   const to = chileCalendarAddDays(paidOn, MATCH_WINDOWS.financing_payment.daysAfter);
-  const lines = db
-    .prepare(
-      `SELECT l.merchant, l.amount_clp, l.transaction_date, l.posting_date
-       FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND l.amount_clp < 0`
-    )
-    .all(accountId) as { merchant: string | null; amount_clp: number; transaction_date: string | null; posting_date: string | null }[];
   let paid = 0;
-  for (const l of lines) {
+  for (const l of findLines({ accountId, amountClpSign: "negative" })) {
     if (!isCcPaymentMerchant(l.merchant)) continue;
     const iso = normalizeTransactionDateIso(l.transaction_date ?? l.posting_date);
-    if (iso && iso >= from && iso <= to) paid += -Math.round(l.amount_clp);
+    if (iso && iso >= from && iso <= to) paid += -Math.round(l.amount_clp!);
   }
   if (paid >= amount) return true;
   const header = db

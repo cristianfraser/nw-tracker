@@ -16,10 +16,11 @@
  * amount is the USD counter leg of a divisas payment (the ABONO DE DIVISAS dollars) or the pesos of
  * a peso payment.
  *
- * Leaf module (db + two pure helpers), so any card reader or writer can import it without a cycle.
+ * Reads the payment lines through the purchases module (view 5) and the statement headers itself.
  */
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
+import { requireHeaderPagoIso } from "./ccPaymentLines.js";
+import { clpPaymentLines, usdDebtAbonoLines } from "./cards/purchases.js";
 import { db } from "./db.js";
 
 export type CcPaymentEvidenceCurrency = "clp" | "usd";
@@ -64,16 +65,6 @@ export type CcPaymentEvidenceRow = CcPaymentIdentity & {
   key: string;
 };
 
-const stmtClpPaymentLines = db.prepare(
-  `SELECT l.id AS line_id, s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name,
-          l.transaction_date, l.amount_clp, l.merchant
-   FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   JOIN accounts a ON a.id = s.account_id
-   WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp < 0
-     AND (@account_id IS NULL OR s.account_id = @account_id)`
-);
-
 const stmtHeaderPayments = db.prepare(
   `SELECT s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name, s.statement_date,
           s.monto_pagado_anterior AS amt, s.monto_pagado_anterior_date AS pago_iso
@@ -99,22 +90,6 @@ const stmtHeaderLegs = db.prepare(
    WHERE (@account_id IS NULL OR g.account_id = @account_id)`
 );
 
-// Matched by the LINE's currency (amount_usd set), not the statement's — the open web-paste bucket
-// is a CLP statement that carries the USD lines too, and an abono must be pairable the day the feed
-// delivers it. Traspaso-linked abonos are not payments: they reclassify USD debt onto the CLP side
-// of the same card, no cash moved.
-const stmtUsdAbonoLines = db.prepare(
-  `SELECT l.id AS line_id, s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name,
-          l.transaction_date, l.amount_usd, l.merchant
-   FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   JOIN accounts a ON a.id = s.account_id
-   WHERE l.installment_flag = 0 AND l.amount_usd < 0
-     AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
-     AND l.id NOT IN (SELECT usd_line_id FROM cc_traspaso_deuda_links)
-     AND (@account_id IS NULL OR s.account_id = @account_id)`
-);
-
 /**
  * Every row carrying a card payment, on one card or all of them: CLP payment lines, dated header
  * payments and the dated legs of undated ones (`cc_header_payment_legs`) — the same `isCcPaymentMerchant` test and date readers as the cuota retirement's
@@ -125,20 +100,10 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
   const params = { account_id: accountId ?? null };
   const out: CcPaymentEvidenceRow[] = [];
   const push = (row: Omit<CcPaymentEvidenceRow, "key">) => out.push({ ...row, key: ccPaymentEvidenceKey(row) });
-  for (const r of stmtClpPaymentLines.all(params) as {
-    line_id: number;
-    statement_id: number;
-    source_pdf: string;
-    account_id: number;
-    account_name: string;
-    transaction_date: string | null;
-    amount_clp: number;
-    merchant: string | null;
-  }[]) {
-    if (!isCcPaymentMerchant(r.merchant)) continue;
+  for (const r of clpPaymentLines(accountId)) {
     const iso = normalizeTransactionDateIso(r.transaction_date);
     if (!iso) continue;
-    const amount = Math.round(Math.abs(r.amount_clp));
+    const amount = Math.round(Math.abs(r.amount));
     if (amount === 0) continue;
     push({
       kind: "line",
@@ -208,19 +173,10 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       label: r.currency === "usd" ? `ABONO DE DIVISAS US$${r.amount.toFixed(2)} (header leg)` : "MONTO CANCELADO (header leg)",
     });
   }
-  for (const r of stmtUsdAbonoLines.all(params) as {
-    line_id: number;
-    statement_id: number;
-    source_pdf: string;
-    account_id: number;
-    account_name: string;
-    transaction_date: string | null;
-    amount_usd: number;
-    merchant: string | null;
-  }[]) {
+  for (const r of usdDebtAbonoLines(accountId)) {
     const iso = normalizeTransactionDateIso(r.transaction_date);
     if (!iso) continue;
-    const usd = Math.abs(r.amount_usd);
+    const usd = Math.abs(r.amount);
     if (usd === 0) continue;
     push({
       kind: "line",
