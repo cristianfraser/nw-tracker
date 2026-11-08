@@ -1,4 +1,5 @@
 import { isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
+import { insertBankPesoMovement } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { reconcileCartolaPartialImports } from "./checkingCartolaPartialReconcile.js";
@@ -276,10 +277,6 @@ export function importCheckingCartola(
     throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
   }
 
-  const insMov = dbHandle.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-     VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
-  );
   const markImported = dbHandle.prepare(
     `INSERT INTO checking_cartola_imports (
        account_id, period_month, source_file, movement_count,
@@ -388,12 +385,15 @@ export function importCheckingCartola(
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_mail" });
         return;
       }
-      insMov.run(
-        accountId,
-        mv.amount_clp,
-        mv.occurred_on,
-        note,
-        checkingMovementFlowKind(mv.description, mv.amount_clp)
+      insertBankPesoMovement(
+        {
+          accountId,
+          amount: mv.amount_clp,
+          occurredOn: mv.occurred_on,
+          note,
+          flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
+        },
+        dbHandle
       );
       movementsInserted += 1;
       inserted_flows.push(flowOf(mv));
@@ -564,7 +564,9 @@ export function importCartolaList(
   accountId: number,
   cartolas: { cartola: ParsedCheckingCartola; label: string }[],
   opts: { wipe?: boolean; dryRun?: boolean; forceReimport?: boolean },
-  fileLogs: CheckingCartolaFileImportLog[]
+  fileLogs: CheckingCartolaFileImportLog[],
+  /** Collects each imported cartola's rows, for an upload's result view. */
+  flows?: { inserted: ImportFlowItem[]; skipped: SkippedImportFlowItem[] }
 ): void {
   for (const { cartola, label } of cartolas) {
     if (isPhantomBoundaryCartolaSlice(cartola)) {
@@ -636,7 +638,9 @@ export function importCartolaList(
     }
 
     try {
-      const { movementsInserted } = importCheckingCartola(accountId, cartola);
+      const { movementsInserted, inserted_flows, skipped_flows } = importCheckingCartola(accountId, cartola);
+      flows?.inserted.push(...inserted_flows);
+      flows?.skipped.push(...skipped_flows);
       fileLogs.push(
         fileLogFromCartola(label, cartola, {
           status: "imported",

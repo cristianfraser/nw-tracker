@@ -23,10 +23,7 @@
  *  - more than {@link MIRROR_MAX_DELETIONS} lines on one card throws with the list instead of
  *    deleting — a feed that lost half its rows is a scraper failure, not a day of voids.
  */
-import {
-  deleteStatementLinesByIds,
-  earliestTransactionDateForLineIds,
-} from "./ccCrossImportDedupe.js";
+import type { CardLinePlan } from "./cards/lineWriteSession.js";
 import {
   bucketLineMatchesFeedLine,
   bucketLinePurchaseIso,
@@ -34,8 +31,6 @@ import {
   type CcOpenBucketLine,
 } from "./ccFeedCuotaPurchases.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -135,14 +130,15 @@ export function planFeedMirror(
   return unlisted;
 }
 
-export function mirrorOpenBucketsToFeed(
+/** The lines the bank dropped from its listing, as the card-line funnel's plan (nothing carried). */
+export function planOpenBucketMirror(
   accountId: number,
   opts: {
     windowStartIso: string;
     proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>;
     feedLines: readonly CcWebPasteLine[];
   }
-): CcFeedMirrorResult {
+): { result: CcFeedMirrorResult; plan: CardLinePlan } {
   const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null));
   const unlisted = planFeedMirror(accountId, { windowStartIso: opts.windowStartIso, currencies, feedLines: opts.feedLines });
   const removed = unlisted.map((l) => ({
@@ -158,7 +154,7 @@ export function mirrorOpenBucketsToFeed(
     proof: opts.proof,
     removed,
   };
-  if (removed.length === 0) return result;
+  if (removed.length === 0) return { result, plan: { deleteLineIds: [], carry: [] } };
   if (removed.length > MIRROR_MAX_DELETIONS) {
     throw new Error(
       `Account ${accountId}: the card feed no longer lists ${removed.length} open-bucket lines dated from ` +
@@ -169,10 +165,5 @@ export function mirrorOpenBucketsToFeed(
           .join("; ")
     );
   }
-  const ids = removed.map((r) => r.id);
-  const affectedFrom = earliestTransactionDateForLineIds(ids);
-  deleteStatementLinesByIds(ids);
-  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: affectedFrom });
-  recomputeCcBillingMonthBalances(accountId);
-  return result;
+  return { result, plan: { deleteLineIds: removed.map((r) => r.id), carry: [] } };
 }

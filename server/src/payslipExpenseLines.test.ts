@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, type Payslip } from "nw-tracker-contracts";
-import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { db } from "./db.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";

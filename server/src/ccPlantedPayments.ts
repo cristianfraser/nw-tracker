@@ -21,8 +21,8 @@
  */
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
-import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
+import { EMPTY_CARD_LINE_PLAN, type CardLinePlan } from "./cards/lineWriteSession.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
@@ -77,9 +77,12 @@ export type PlantedPaymentMatchResult = {
   replaced: PlantedPaymentReplacement[];
   confirmed_in_place: PlantedPaymentConfirmation[];
   ambiguous: PlantedPaymentAmbiguity[];
-  /** Earliest transaction date of a deleted planted line — the caller's `affectedEvidenceFromYmd`. */
+  /** Earliest transaction date of a deleted planted line (the funnel re-syncs from it). */
   removed_from_date: string | null;
 };
+
+/** The match, and the card-line funnel's plan: each replaced planted line, its assignments carried. */
+export type PlantedPaymentReplacementPlan = { result: PlantedPaymentMatchResult; plan: CardLinePlan };
 
 const EMPTY_MATCH: PlantedPaymentMatchResult = {
   replaced: [],
@@ -212,18 +215,19 @@ function importedPayment(record: CcStatementCsvRecord): ImportedPayment | null {
 /**
  * Pair the credit payment lines a (non-planting) card import brought with the account's planted
  * payment lines, and let the bank's line replace each one-to-one match (see the module comment).
- * Writes inside one transaction; the caller re-syncs valuations from `removed_from_date`.
+ * Records the confirmations; the replaced planted lines are the card-line funnel's plan to apply.
  */
 export function replacePlantedPaymentLinesFromImport(
   accountId: number,
   records: readonly CcStatementCsvRecord[],
   batchKind: string
-): PlantedPaymentMatchResult {
-  if (isPlantingBatchKind(batchKind)) return EMPTY_MATCH;
+): PlantedPaymentReplacementPlan {
+  const none = { result: EMPTY_MATCH, plan: EMPTY_CARD_LINE_PLAN };
+  if (isPlantingBatchKind(batchKind)) return none;
   const planted = listPlantedPaymentLines(accountId);
-  if (planted.length === 0) return EMPTY_MATCH;
+  if (planted.length === 0) return none;
   const payments = records.map(importedPayment).filter((p): p is ImportedPayment => p != null);
-  if (payments.length === 0) return EMPTY_MATCH;
+  if (payments.length === 0) return none;
 
   const fits = (p: ImportedPayment, row: PlantedPaymentRow): boolean => {
     if (p.currency !== row.currency || !sameMoney(p.currency, p.amount, row.amount)) return false;
@@ -270,41 +274,52 @@ export function replacePlantedPaymentLinesFromImport(
     }
     toReplace.push({ planted: row, bankLineId: bankLines[0]!, payment: p });
   });
-  if (toReplace.length === 0 && toConfirm.length === 0) return result;
+  if (toReplace.length === 0 && toConfirm.length === 0) return { result, plan: EMPTY_CARD_LINE_PLAN };
 
-  // Read the evidence date BEFORE deleting — afterwards the rows are gone.
-  result.removed_from_date = earliestTransactionDateForLineIds(toReplace.map((r) => r.planted.line_id));
-  const del = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);
+  // Read the evidence date BEFORE the funnel deletes the planted lines, for the report.
+  result.removed_from_date = earliestPlantedDate(toReplace.map((r) => r.planted.line_id));
   const unregister = db.prepare(`DELETE FROM cc_planted_payment_lines WHERE line_id = ?`);
-  db.transaction(() => {
-    carryCcExpenseAssignments(toReplace.map((r) => ({ fromLineId: r.planted.line_id, toLineId: r.bankLineId })));
-    for (const r of toReplace) {
-      confirmManualPaymentForPlanted(r.planted, r.payment.merchant);
-      del.run(r.planted.line_id);
-      result.replaced.push({
-        planted_line_id: r.planted.line_id,
-        bank_line_id: r.bankLineId,
-        bank_line_merchant: r.payment.merchant,
-        bank_line_date: r.payment.date,
-        amount: r.planted.amount,
-        currency: r.planted.currency,
-        source: r.planted.source,
-      });
-    }
-    for (const c of toConfirm) {
-      confirmManualPaymentForPlanted(c.planted, c.payment.merchant);
-      // The line is the bank's own now: nothing left to replace.
-      unregister.run(c.planted.line_id);
-      result.confirmed_in_place.push({
-        planted_line_id: c.planted.line_id,
-        bank_line_merchant: c.payment.merchant,
-        amount: c.planted.amount,
-        currency: c.planted.currency,
-        source: c.planted.source,
-      });
-    }
-  })();
-  return result;
+  for (const r of toReplace) {
+    confirmManualPaymentForPlanted(r.planted, r.payment.merchant);
+    result.replaced.push({
+      planted_line_id: r.planted.line_id,
+      bank_line_id: r.bankLineId,
+      bank_line_merchant: r.payment.merchant,
+      bank_line_date: r.payment.date,
+      amount: r.planted.amount,
+      currency: r.planted.currency,
+      source: r.planted.source,
+    });
+  }
+  for (const c of toConfirm) {
+    confirmManualPaymentForPlanted(c.planted, c.payment.merchant);
+    // The line is the bank's own now: nothing left to replace.
+    unregister.run(c.planted.line_id);
+    result.confirmed_in_place.push({
+      planted_line_id: c.planted.line_id,
+      bank_line_merchant: c.payment.merchant,
+      amount: c.planted.amount,
+      currency: c.planted.currency,
+      source: c.planted.source,
+    });
+  }
+  return {
+    result,
+    plan: {
+      deleteLineIds: toReplace.map((r) => r.planted.line_id),
+      carry: toReplace.map((r) => ({ fromLineId: r.planted.line_id, toLineId: r.bankLineId })),
+    },
+  };
+}
+
+function earliestPlantedDate(lineIds: readonly number[]): string | null {
+  let out: string | null = null;
+  const sel = db.prepare(`SELECT transaction_date FROM cc_statement_lines WHERE id = ?`);
+  for (const id of lineIds) {
+    const iso = normalizeTransactionDateIso((sel.get(id) as { transaction_date: string | null } | undefined)?.transaction_date ?? null);
+    if (iso && (out == null || iso < out)) out = iso;
+  }
+  return out;
 }
 
 /**

@@ -1,6 +1,8 @@
 import type { CardParsedStatementsApplyDetails } from "nw-tracker-contracts";
 import type { CcIssuerSlug } from "./ccIssuers.js";
-import { groupInstallmentLoanChains, mergeCcAccountFromParsedRows, replaceStatementKeysFromRecords } from "./ccInstallmentLedgerMerge.js";
+import { groupInstallmentLoanChains, replaceStatementKeysFromRecords } from "./ccInstallmentLedgerMerge.js";
+import { replaceStatementLines } from "./cards/lineWrites.js";
+import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardLast4FromParsedRow, resolveImportAccountIds } from "./ccParsedImportAccounts.js";
 import { filterUnchangedStatementRecords, groupRecordsByStatement } from "./ccStatementFingerprint.js";
@@ -14,7 +16,7 @@ import { db } from "./db.js";
  * registry's consolidation redirects), and per account only the statements whose rows changed
  * since their last import are re-imported (`ccStatementFingerprint.ts`) — `full` re-imports
  * every one, which is the periodic from-scratch reconcile. Each account's changed statements go
- * through `mergeCcAccountFromParsedRows` together (one call), as they always have: reconcile
+ * through the card-line funnel's `replaceStatementLines` together (one call), as they always have: reconcile
  * gates, installment ledger, web-paste supersede, traspaso links and valuation re-sync included.
  *
  * Lines no card account takes are a problem and nothing is written. A gate that refuses a
@@ -53,6 +55,14 @@ export function partitionParsedRecordsByAccount(
 }
 
 export function applyParsedCcStatements(
+  records: readonly CcStatementCsvRecord[],
+  opts: ApplyParsedCcStatementsOptions
+): CardParsedStatementsApplyDetails {
+  // Every card's write asks for the expense-link sync: one, when the corpus is in.
+  return withExpenseLinkSyncDeferred(() => applyParsed(records, opts));
+}
+
+function applyParsed(
   records: readonly CcStatementCsvRecord[],
   opts: ApplyParsedCcStatementsOptions
 ): CardParsedStatementsApplyDetails {
@@ -119,8 +129,7 @@ export function applyParsedCcStatements(
 
     let statementsMerged = 0;
     if (write) {
-      const merged = mergeCcAccountFromParsedRows(accountId, filtered.changed, {
-        replaceLedger: false,
+      const merged = replaceStatementLines(accountId, filtered.changed, {
         replaceStatementKeys: replaceStatementKeysFromRecords(filtered.changed),
       });
       statementsMerged = merged.statements.statementCount;
@@ -142,8 +151,7 @@ export function applyParsedCcStatements(
       }
       report.push(
         `Account ${accountId}: ${row.purchase_upserts} purchases, ${row.payment_upserts} payments, statements ${merged.statements.statementCount} ` +
-          `(${row.lines_inserted} lines), categories restored ${merged.statements.categoriesRestored}, gap-fill ${merged.ledger.gapFilled}, ` +
-          `valuations ${merged.ledger.valuationMonthsSynced}, billing ${merged.ledger.billingSnapshots}.`
+          `(${row.lines_inserted} lines), categories restored ${merged.statements.categoriesRestored}, gap-fill ${merged.ledger.gapFilled}.`
       );
     } else {
       const chains = groupInstallmentLoanChains(filtered.changed);

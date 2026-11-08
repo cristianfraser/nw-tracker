@@ -1,4 +1,5 @@
 
+import { insertBankPesoMovement, movementWrite } from "./movementWrites.js";
 import { db } from "./db.js";
 
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
@@ -62,11 +63,11 @@ export function importCheckingPartialMovements(
   accountId: number,
   movements: PartialBankMovement[]
 ): PartialMovementsImportResult {
-  const ins = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-     VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
-  );
+  // One movement write: the expense deposit links re-sync once, when the listing is in.
+  return movementWrite(() => importPartialMovements(accountId, movements));
+}
 
+function importPartialMovements(accountId: number, movements: PartialBankMovement[]): PartialMovementsImportResult {
   let inserted = 0;
   let skipped_duplicate = 0;
   let skipped_superseded_by_cartola = 0;
@@ -123,13 +124,13 @@ export function importCheckingPartialMovements(
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_mail" });
         continue;
       }
-      ins.run(
+      insertBankPesoMovement({
         accountId,
-        mv.amount_clp,
-        mv.occurred_on,
+        amount: mv.amount_clp,
+        occurredOn: mv.occurred_on,
         note,
-        checkingMovementFlowKind(mv.description, mv.amount_clp)
-      );
+        flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
+      });
       inserted += 1;
       inserted_flows.push(flowOf(mv));
     }

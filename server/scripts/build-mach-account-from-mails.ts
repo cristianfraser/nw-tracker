@@ -30,7 +30,7 @@ import { setExpenseCategoryRule } from "../src/expenseCategoryRules.js";
 import { createPanelAccount } from "../src/createPanelAccount.js";
 import { convertMirrorPairs } from "../src/movementMirrorConvert.js";
 import { markCheckingExpenseRefund } from "../src/checkingExpenseRefunds.js";
-import { assignFlowExpenseLineCategory } from "../src/assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "../src/expenseAssignmentWrites.js";
 import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey, resolveCcExpensePurchaseKey } from "../src/ccExpenseCategories.js";
 import { FLOW_KIND_CARGA_TARJETA } from "../src/movementFlowType.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";

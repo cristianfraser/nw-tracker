@@ -1,6 +1,7 @@
 import type { Database } from "better-sqlite3";
 
 
+import { deleteMovements, redateMovementKeepingBankDay } from "./movementWrites.js";
 import { db } from "./db.js";
 import {
   cartolaMovementMatchesImportedRow,
@@ -9,7 +10,7 @@ import {
 } from "./checkingCartolaParse.js";
 import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
-import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
 
 export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
@@ -140,7 +141,6 @@ export function prunePartialMovementsSupersededByCartola(
     )
     .all(accountId, `${PARTIAL_NOTE_PREFIX}%`) as { id: number; note: string; occurred_on: string }[];
 
-  const del = dbHandle.prepare(`DELETE FROM movements WHERE id = ?`);
   const removed_ids: number[] = [];
 
   for (const partial of partialRows) {
@@ -169,13 +169,15 @@ export function prunePartialMovementsSupersededByCartola(
         // inherit the corrected date — with the bank date as its posting day — or the receipt
         // evidence is silently lost every month.
         if (partial.occurred_on !== parsed.occurred_on) {
-          dbHandle.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(partial.occurred_on, official.id);
-          recordBankPosting(official.id, accountId, matchingMv.occurred_on, dbHandle);
+          redateMovementKeepingBankDay(
+            { movementId: official.id, accountId, occurredOn: partial.occurred_on, bankPostedOn: matchingMv.occurred_on },
+            dbHandle
+          );
         }
         carryMovementKeyedIncomeState(partial.id, official.id, dbHandle);
       }
     }
-    del.run(partial.id);
+    deleteMovements([partial.id], dbHandle);
     removed_ids.push(partial.id);
   }
 

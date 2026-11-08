@@ -18,11 +18,9 @@
 import { db } from "../src/db.js";
 import { isCcCuotaBillingReferenceMerchant } from "../src/ccWebPasteParse.js";
 import {
-  deleteStatementLinesByIds,
   earliestTransactionDateForLineIds,
 } from "../src/ccCrossImportDedupe.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { deleteLines } from "../src/cards/lineWrites.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -85,9 +83,7 @@ if (!apply) {
 for (const [accountId, list] of byAccount) {
   const ids = list.map((r) => r.id);
   const removedFrom = earliestTransactionDateForLineIds(ids);
-  const removed = deleteStatementLinesByIds(ids);
-  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: removedFrom });
-  recomputeCcBillingMonthBalances(accountId);
+  const removed = deleteLines(accountId, ids, { what: "removing cuota-billing reference lines" });
   console.log(
     `account ${accountId}: deleted ${removed} lines, revalued from ${removedFrom ?? "(none)"}`
   );

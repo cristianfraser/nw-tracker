@@ -1,3 +1,4 @@
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { randomUUID } from "node:crypto";
 import {
   afterAll,
@@ -8,7 +9,6 @@ import {
 } from "vitest";
 import {
   ADDITIONAL_CARD_CC_EXPENSE_SLUG,
-  assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
   resolveCcExpensePurchaseKey,
@@ -269,8 +269,9 @@ describe("flowsExpenses", () => {
       .get(titularCuota.account_id, purchaseKey) as { category_id: number | null } | undefined;
 
     try {
-      assignCcExpenseLineCategory({
-        statementLineId: titularCuota.statement_line_id,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: titularCuota.statement_line_id,
         unique: true,
         categorySlug: "others",
       });
@@ -337,14 +338,16 @@ describe("flowsExpenses", () => {
     const priorLegacy = snapshotKey(legacyKey);
 
     try {
-      assignCcExpenseLineCategory({
-        statementLineId: titularCuota.statement_line_id,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: titularCuota.statement_line_id,
         unique: true,
         categorySlug: "others",
       });
 
-      assignCcExpenseLineCategory({
-        statementLineId: titularCuota.statement_line_id,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: titularCuota.statement_line_id,
         unique: true,
         clearCategory: true,
       });

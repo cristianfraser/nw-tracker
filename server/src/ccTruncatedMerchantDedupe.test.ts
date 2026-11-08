@@ -5,8 +5,9 @@ import {
   isPendingAuthorizationOf,
   isTruncatedMerchantOf,
   planTruncatedMerchantDuplicateLines,
-  removeTruncatedMerchantDuplicateLines,
+  planTruncatedMerchantDuplicateRemoval,
 } from "./ccTruncatedMerchantDedupe.js";
+import { applyLinePlan } from "./cards/lineWrites.js";
 import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId,
@@ -117,7 +118,7 @@ describe("isPendingAuthorizationOf", () => {
   });
 });
 
-describe("removeTruncatedMerchantDuplicateLines (web-paste bucket)", () => {
+describe("planTruncatedMerchantDuplicateRemoval through the card-line funnel (web-paste bucket)", () => {
   let accountId = 0;
   let statementId = 0;
   const ids: Record<string, number> = {};
@@ -223,21 +224,22 @@ describe("removeTruncatedMerchantDuplicateLines (web-paste bucket)", () => {
     expect(byLine.has(ids.subte_pending_2)).toBe(false);
   });
 
-  it("removes only the shorter rows, reads the evidence date before deleting, and is idempotent", () => {
+  it("plans only the shorter rows, carrying them to the fuller one, and is idempotent", () => {
     const before = db
       .prepare(`SELECT COUNT(*) AS c FROM cc_statement_lines WHERE statement_id = ?`)
       .get(statementId) as { c: number };
     expect(before.c).toBe(14);
 
-    const result = removeTruncatedMerchantDuplicateLines(accountId);
-    expect(result.removed_count).toBe(4);
-    expect(result.removed_line_ids.sort((a, b) => a - b)).toEqual(
+    const result = planTruncatedMerchantDuplicateRemoval(accountId);
+    expect([...result.deleteLineIds].sort((a, b) => a - b)).toEqual(
       [ids.chana_pending, ids.bisonte_pending, ids.farmacity_pending, ids.subte_pending_1].sort(
         (a, b) => a - b
       )
     );
-    // Earliest removed transaction date (ISO) — the caller's affectedEvidenceFromYmd.
-    expect(result.removed_from_date).toBe("2026-08-29");
+    expect(result.carry.map((c) => c.fromLineId).sort((a, b) => a - b)).toEqual(
+      [...result.deleteLineIds].sort((a, b) => a - b)
+    );
+    expect(applyLinePlan(accountId, "test", result)).toBe(4);
     expect(result.removed_pairs).toEqual([
       "VITEST BISONTE → VITEST BISONTE HOTEL 4995 [pending authorization]",
       "VITEST CHANA → VITEST CHANA 7142 [pending authorization]",
@@ -267,8 +269,7 @@ describe("removeTruncatedMerchantDuplicateLines (web-paste bucket)", () => {
 
     // Second pass finds nothing — settled rows never match each other and the surviving
     // short-name row is on another day, so the hook re-running after every write is safe.
-    const again = removeTruncatedMerchantDuplicateLines(accountId);
-    expect(again.removed_count).toBe(0);
-    expect(again.removed_from_date).toBeNull();
+    const again = planTruncatedMerchantDuplicateRemoval(accountId);
+    expect(again.deleteLineIds).toEqual([]);
   });
 });

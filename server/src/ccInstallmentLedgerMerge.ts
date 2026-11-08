@@ -1,16 +1,14 @@
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { removeOneShotLinesSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import { applyCardLinePlan, planOneShotLinesSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
-import { backfillMissingInstallmentPaymentsForAccount } from "./ccInstallmentPaymentBackfill.js";
+import { backfillMissingInstallmentPaymentsForPlans } from "./ccInstallmentPaymentBackfill.js";
 import { resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import {
   currencyFromRow,
   importCcStatementsMerge,
@@ -34,17 +32,19 @@ import {
   padCcStatementDate,
 } from "./ccStatementJsonSource.js";
 import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
-import { applyFacturadoFinancingLinks, type FacturadoFinancingApplyResult } from "./ccFacturadoFinancingAuto.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import {
   captureCcExpenseLines,
   rekeyCcExpenseLinesAfterImport,
   type CcExpenseLineRekeyResult,
 } from "./ccExpenseLineRekey.js";
-import { assertCcPaymentEvidenceKept, ccPaymentPairingIdsWithEvidence } from "./ccPaymentMirrorEvidence.js";
 import { installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
 import { statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { noteCardLineEvidence, noteCardLineFinancingLinks, withCardLineSession } from "./cards/lineWriteSession.js";
+import { planTruncatedMerchantDuplicateRemoval } from "./ccTruncatedMerchantDedupe.js";
+import { planRecurringPendingReplacement, type RecurringPendingResult } from "./ccRecurringPendingLines.js";
+import { replacePlantedPaymentLinesFromImport, type PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 
 function installmentContractAmountClp(row: CcStatementCsvRecord): number {
   const a = parseOptionalChileanInteger(String(row.amount_clp ?? "")) ?? 0;
@@ -203,8 +203,6 @@ export type CcInstallmentLedgerMergeResult = {
   earliestNewPurchaseDate: string | null;
   paymentUpserts: number;
   gapFilled: number;
-  valuationMonthsSynced: number;
-  billingSnapshots: number;
 };
 
 export type CcInstallmentLedgerMergeOpts = {
@@ -213,6 +211,16 @@ export type CcInstallmentLedgerMergeOpts = {
 };
 
 export function mergeInstallmentLedgerFromParsedRows(
+  accountId: number,
+  accountRecords: CcStatementCsvRecord[],
+  opts?: CcInstallmentLedgerMergeOpts
+): CcInstallmentLedgerMergeResult {
+  return withCardLineSession(accountId, "installment ledger merge", () =>
+    mergeInstallmentLedgerInSession(accountId, accountRecords, opts)
+  );
+}
+
+function mergeInstallmentLedgerInSession(
   accountId: number,
   accountRecords: CcStatementCsvRecord[],
   opts?: CcInstallmentLedgerMergeOpts
@@ -271,6 +279,7 @@ export function mergeInstallmentLedgerFromParsedRows(
   let purchaseUpserts = 0;
   let earliestNewPurchaseDate: string | null = null;
   let paymentUpserts = 0;
+  const touchedPlanIds = new Set<number>();
 
   const run = db.transaction(() => {
     if (replaceLedger) {
@@ -393,6 +402,7 @@ export function mergeInstallmentLedgerFromParsedRows(
         });
         purchaseUpserts++;
       }
+      touchedPlanIds.add(pid);
       const planIdByTwin = planIdsByLoan.get(loanKey) ?? new Map<number, number>();
       planIdByTwin.set(agg.twin_index, pid);
       planIdsByLoan.set(loanKey, planIdByTwin);
@@ -454,20 +464,18 @@ export function mergeInstallmentLedgerFromParsedRows(
 
   run();
 
-  const gapFilled = backfillMissingInstallmentPaymentsForAccount(accountId).inserted;
-  removeOneShotLinesSupersededByInstallmentPurchases(accountId, { recompute: false });
-  const valuationMonthsSynced = upsertCreditCardValuationsFromLedger(accountId, {
-    affectedEvidenceFromYmd: earliestNewPurchaseDate,
-  });
-  const billingSnapshots = recomputeCcBillingMonthBalances(accountId);
+  // The gap fill is the plans this merge wrote (created, or their cuotas re-read): a plan no
+  // statement of this import touched keeps the payments it has.
+  const gapFilled = backfillMissingInstallmentPaymentsForPlans([...touchedPlanIds]).inserted;
+  applyCardLinePlan(accountId, planOneShotLinesSupersededByInstallmentPurchases(accountId));
+  // The contract consumes cupo on its purchase date: the stamps written after it are stale.
+  noteCardLineEvidence(accountId, earliestNewPurchaseDate);
 
   return {
     purchaseUpserts,
     paymentUpserts,
     earliestNewPurchaseDate,
     gapFilled,
-    valuationMonthsSynced,
-    billingSnapshots,
   };
 };
 
@@ -486,10 +494,43 @@ export type CcAccountImportMergeResult = {
   grocery_branch_learning: GroceryBranchLearningResult;
   /** Categories, big groups, notes and splits carried from replaced lines onto their new rows. */
   expense_line_rekey: CcExpenseLineRekeyResult;
-  /** Facturados another card's cuota purchases paid, linked and their PAGO planted after this
-   * write (`ccFacturadoFinancingAuto.ts`); null when it ran inside an outer pass. */
-  facturado_financing?: FacturadoFinancingApplyResult | null;
+  /** The bucket passes every import runs once its lines are on file. */
+  bucket: CcBucketPassesResult;
 };
+
+export type CcBucketPassesResult = {
+  /** `shorter → fuller` pairs whose cut / pending re-listing was removed. */
+  truncated_merchant_dedupe: string[];
+  planted_payments: PlantedPaymentMatchResult;
+  recurring_pending: RecurringPendingResult;
+};
+
+/**
+ * The bucket passes, after every import's lines are on file (a statement's too): the shorter
+ * re-listing of a purchase the bucket also holds in full (`ccTruncatedMerchantDedupe.ts`), a planted
+ * payment the bank's own line now lists (`ccPlantedPayments.ts`; only a listing import carries the
+ * bank's line), an automatic payment's pending listing its posted line replaces
+ * (`ccRecurringPendingLines.ts`). Each planner plans; the funnel's step applies.
+ */
+function runBucketPasses(
+  accountId: number,
+  records: readonly CcStatementCsvRecord[],
+  listingBatchKind: string | null
+): CcBucketPassesResult {
+  const truncated = planTruncatedMerchantDuplicateRemoval(accountId);
+  applyCardLinePlan(accountId, truncated);
+  const planted = listingBatchKind
+    ? replacePlantedPaymentLinesFromImport(accountId, records, listingBatchKind)
+    : { result: { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null }, plan: { deleteLineIds: [], carry: [] } };
+  applyCardLinePlan(accountId, planted.plan);
+  const recurring = planRecurringPendingReplacement(accountId);
+  applyCardLinePlan(accountId, recurring.plan);
+  return {
+    truncated_merchant_dedupe: truncated.removed_pairs,
+    planted_payments: planted.result,
+    recurring_pending: recurring.result,
+  };
+}
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
 /** Earliest of the given ISO dates (nulls ignored); null when none is set. */
@@ -509,6 +550,21 @@ export function mergeCcAccountFromParsedRows(
     statements?: CcStatementsMergeOpts;
     replaceLedger?: boolean;
     replaceStatementKeys?: Set<string>;
+    /** A listing import (paste, feed, planted line): its batch kind, for the planted-payment pass. */
+    listingBatchKind?: string;
+  }
+): CcAccountImportMergeResult {
+  return withCardLineSession(accountId, "this statement import", () => mergeInSession(accountId, records, opts));
+}
+
+function mergeInSession(
+  accountId: number,
+  records: CcStatementCsvRecord[],
+  opts?: {
+    statements?: CcStatementsMergeOpts;
+    replaceLedger?: boolean;
+    replaceStatementKeys?: Set<string>;
+    listingBatchKind?: string;
   }
 ): CcAccountImportMergeResult {
   const replaceKeys = opts?.replaceStatementKeys;
@@ -561,91 +617,73 @@ export function mergeCcAccountFromParsedRows(
     replaceStatementKeys: effectiveReplaceKeys,
   });
 
-  // All writes in one transaction so a mid-merge error (e.g. missing import) leaves
-  // no partial state and a retry is a true no-op.
-  const result = db.transaction((): CcAccountImportMergeResult => {
-    // The converted card payments whose evidence is on file now must still find it after the
-    // write — replaced lines, a superseded JSON close and settled bucket lines all get new rows.
-    const pairedWithEvidence = ccPaymentPairingIdsWithEvidence(accountId);
-    // Before any line is replaced: the purchase assignments keyed by the old rows follow them
-    // onto the new ones at the end (`ccExpenseLineRekey.ts`).
-    const expenseLines = captureCcExpenseLines(accountId);
-    // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
-    // lands on a close with no competing statement row (lines cascade via the FK).
-    deleteJsonStatementsByIds(supersededJsonStatementIds);
-    const statements = importCcStatementsMerge(accountId, records, {
-      replaceAll: false,
-      replaceStatementKeys: effectiveReplaceKeys,
-      skipGlobalDedupeKeys: true,
-      ...opts?.statements,
-    });
-    // A statement for a close the card feed already observed must bill exactly the feed's
-    // SALDO INICIAL on the same date — two independent renderings of one number. Throws inside
-    // the transaction, so a disagreeing import writes nothing.
-    assertFeedClosesMatchStatements(accountId);
-    const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
-      replaceLedger: opts?.replaceLedger ?? false,
-    });
-    const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(
-      accountId,
-      records
-    );
-    const overlap = removeOneShotLinesSupersededByInstallmentPurchases(accountId);
-    const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId, {
-      skipRecompute: true,
-    });
-    const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records, {
-      skipRecompute: true,
-    });
-    // Statement replacement above cascaded any existing traspaso links away; rebuild them
-    // from the final line set (throws on an unpairable leg, aborting the whole merge).
-    relinkCcTraspasoDeudaLinksForAccount(accountId);
-    // On the final line set (a traspaso-linked abono is no payment): throws, naming the pairings,
-    // when this import dropped a paired payment, so the whole merge writes nothing.
-    assertCcPaymentEvidenceKept(accountId, pairedWithEvidence, "this statement import");
-    // A grocery receipt paid with this card at a branch no map names waits, flagged, for the
-    // bank's own line for its day and pesos — which this write may have just landed, from
-    // whichever source (paste textarea, nightly feed, statement PDF). Pairing it here teaches
-    // the branch's merchant string, so the next receipt at that store writes its own line.
-    const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
-    const expense_line_rekey = rekeyCcExpenseLinesAfterImport(expenseLines);
-    return {
-      statements,
-      ledger,
-      overlap_removed: overlap.removed_count,
-      manual_installment_reconcile,
-      web_paste_repair,
-      web_paste_pdf_reconcile,
-      json_closes_superseded_by_pdf,
-      grocery_branch_learning,
-      expense_line_rekey,
-    };
-  })();
-
-  // Recompute billing balances once after the transaction commits so it reads
-  // the fully-consistent post-merge state.
-  recomputeCcBillingMonthBalances(accountId);
-  // Re-sync valuation month points too: the ledger merge's internal upsert runs BEFORE the
-  // web-paste repairs/reconciles above delete or move statement lines (skipRecompute: true),
-  // so its points can bake a pre-repair balance — e.g. a post-cierre PAGO pasted for the open
-  // month must land in the closed month's month-end point (owed-on-date), not wait for the
-  // next unrelated CC write.
-  // Whatever this import added for past days also invalidates the frozen daily stamps written
-  // after it — a paste of last week's purchases must show up on those days, not as today's move.
-  upsertCreditCardValuationsFromLedger(accountId, {
-    affectedEvidenceFromYmd: earliestIso(
-      result.statements.earliestInsertedTxDate,
-      result.ledger.earliestNewPurchaseDate,
-      // Bucket lines the statement settled are evidence removed on their own dates.
-      ...result.web_paste_pdf_reconcile.map((r) => r.earliest_deleted_iso)
-    ),
+  // All writes in the card-line write's one transaction, so a mid-merge error (e.g. missing
+  // import) leaves no partial state and a retry is a true no-op. The write's frame checks that the
+  // converted card payments whose evidence was on file still find it — replaced lines, a superseded
+  // JSON close and settled bucket lines all get new rows.
+  // Before any line is replaced: the purchase assignments keyed by the old rows follow them
+  // onto the new ones at the end (`ccExpenseLineRekey.ts`).
+  const expenseLines = captureCcExpenseLines(accountId);
+  // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
+  // lands on a close with no competing statement row (lines cascade via the FK).
+  deleteJsonStatementsByIds(supersededJsonStatementIds);
+  const statements = importCcStatementsMerge(accountId, records, {
+    replaceAll: false,
+    replaceStatementKeys: effectiveReplaceKeys,
+    skipGlobalDedupeKeys: true,
+    ...opts?.statements,
   });
+  // A statement for a close the card feed already observed must bill exactly the feed's
+  // SALDO INICIAL on the same date — two independent renderings of one number. Throws inside
+  // the transaction, so a disagreeing import writes nothing.
+  assertFeedClosesMatchStatements(accountId);
+  const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
+    replaceLedger: opts?.replaceLedger ?? false,
+  });
+  const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(
+    accountId,
+    records
+  );
+  const overlap = planOneShotLinesSupersededByInstallmentPurchases(accountId);
+  applyCardLinePlan(accountId, overlap);
+  const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId);
+  const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records);
+  // Statement replacement above cascaded any existing traspaso links away; rebuild them
+  // from the final line set (throws on an unpairable leg, aborting the whole merge).
+  relinkCcTraspasoDeudaLinksForAccount(accountId);
+  // A grocery receipt paid with this card at a branch no map names waits, flagged, for the
+  // bank's own line for its day and pesos — which this write may have just landed, from
+  // whichever source (paste textarea, nightly feed, statement PDF). Pairing it here teaches
+  // the branch's merchant string, so the next receipt at that store writes its own line.
+  const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
+  const expense_line_rekey = rekeyCcExpenseLinesAfterImport(expenseLines);
+  const bucket = runBucketPasses(accountId, records, opts?.listingBatchKind ?? null);
+  // Whatever this import added for past days invalidates the frozen daily stamps written after
+  // it — a paste of last week's purchases must show up on those days, not as today's move; bucket
+  // lines the statement settled are evidence removed on their own dates.
+  noteCardLineEvidence(
+    accountId,
+    earliestIso(
+      statements.earliestInsertedTxDate,
+      ledger.earliestNewPurchaseDate,
+      ...web_paste_pdf_reconcile.map((r) => r.earliest_deleted_iso)
+    )
+  );
   // This write may have landed the cuota purchase that paid another card's facturado (the feed's
-  // plan, a statement's), or the statement that facturado closed on: link them, and plant the
-  // paid card's PAGO when no feed of its own will show it.
-  result.facturado_financing = applyFacturadoFinancingLinks();
-
-  return result;
+  // plan, a statement's), or the statement that facturado closed on.
+  noteCardLineFinancingLinks(accountId);
+  return {
+    statements,
+    ledger,
+    overlap_removed: overlap.removed_line_ids.length,
+    manual_installment_reconcile,
+    web_paste_repair,
+    web_paste_pdf_reconcile,
+    json_closes_superseded_by_pdf,
+    grocery_branch_learning,
+    expense_line_rekey,
+    bucket,
+  };
 }
 
 export function replaceStatementKeysFromRecords(records: CcStatementCsvRecord[]): Set<string> {

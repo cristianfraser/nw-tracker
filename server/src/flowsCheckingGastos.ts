@@ -18,8 +18,8 @@ import {
   registerGenericUniquePurchaseMode,
   registerUniquePurchaseMode,
   resolveCcExpenseCategory,
-  UNCLASSIFIED_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
+  type ExpenseCategoryTargetFacts,
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
 import {
@@ -29,7 +29,7 @@ import {
 } from "./ccExpenseDepositMatchNotes.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
-import { clearExpenseCategoryRule, setExpenseCategoryRule, type CategoryRuleLink, type ExpenseCategoryRules } from "./expenseCategoryRules.js";
+import type { ExpenseCategoryRules } from "./expenseCategoryRules.js";
 import {
   CHECKING_CORRIENTE_INTERNET_TRANSFER_RE,
   CHECKING_GASTOS_CASH_GROUP,
@@ -166,109 +166,25 @@ export function checkingGastosMovementBelongs(movementId: number): {
   };
 }
 
-export function assignCheckingGastosMovementCategory(opts: {
-  movementId: number;
-  unique: boolean;
-  categorySlug?: string | null;
-  clearCategory?: boolean;
-  /** «Específico»: write (or clear) the rule for the merchant + this link instead of the general one. */
-  ruleLink?: CategoryRuleLink | null;
-}): {
-  category_slug: string;
-  unique: boolean;
-  merchant_key: string;
-  purchase_key: string;
-} {
-  const belong = checkingGastosMovementBelongs(opts.movementId);
-  const ruleLink = opts.ruleLink ?? null;
+/**
+ * Where a category change on a checking movement lands (`expenseAssignmentWrites.ts`): its gastos
+ * purchase key and, when the movement also has a deposit-paired portion, that portion's key too.
+ */
+export function checkingGastosMovementCategoryTarget(movementId: number): ExpenseCategoryTargetFacts {
+  const belong = checkingGastosMovementBelongs(movementId);
   if (!belong.ok || belong.account_id == null) {
     throw new Error("checking gastos movement not found");
   }
-  // Hoist: property narrowing does not survive into the transaction closure below.
-  const accountId = belong.account_id;
-
-  const categorySlug = opts.categorySlug != null ? String(opts.categorySlug).trim() : "";
-  const hasCategory = categorySlug.length > 0;
-
-  if (hasCategory && categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG) {
-    throw new Error("cannot assign unclassified category");
-  }
-
-  const merchantKey = belong.merchant_key ?? "";
-  if (!opts.unique && hasCategory && !merchantKey) {
-    throw new Error("merchant required for comercio-wide category");
-  }
-
-  let catId: number | null = null;
-  let resolvedSlug = UNCLASSIFIED_CC_EXPENSE_SLUG;
-  if (hasCategory) {
-    const cat = getCcExpenseCategoryBySlug(categorySlug);
-    if (!cat) throw new Error("unknown category");
-    catId = cat.id;
-    resolvedSlug = cat.slug;
-  }
-
-  const purchaseKey = checkingGastosMovementPurchaseKey(opts.movementId);
-  const purchaseKeys = [
-    purchaseKey,
-    ...(purchaseKey !== checkingGastosMovementPurchaseKey(opts.movementId, "deposit")
-      ? [checkingGastosMovementPurchaseKey(opts.movementId, "deposit")]
-      : []),
-  ];
-  const delUniquePurchase = db.prepare(
-    `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-  );
-  const upsertUniquePurchase = db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-
-  const tx = db.transaction(() => {
-    if (opts.clearCategory) {
-      if (opts.unique) {
-        for (const key of purchaseKeys) {
-          upsertUniquePurchase.run(accountId, key, null);
-        }
-      } else {
-        for (const key of purchaseKeys) {
-          delUniquePurchase.run(accountId, key);
-        }
-        if (merchantKey) clearExpenseCategoryRule(merchantKey, ruleLink);
-      }
-      return;
-    }
-
-    if (opts.unique) {
-      for (const key of purchaseKeys) {
-        delUniquePurchase.run(accountId, key);
-      }
-      upsertUniquePurchase.run(belong.account_id, purchaseKey, catId);
-    } else {
-      for (const key of purchaseKeys) {
-        delUniquePurchase.run(accountId, key);
-      }
-      if (catId != null && merchantKey) {
-        setExpenseCategoryRule(merchantKey, ruleLink, catId);
-      }
-    }
-  });
-  tx();
-
-  if (opts.clearCategory) {
-    return {
-      category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
-      unique: opts.unique,
-      merchant_key: merchantKey,
-      purchase_key: purchaseKey,
-    };
-  }
-
+  const purchaseKey = checkingGastosMovementPurchaseKey(movementId);
+  const depositKey = checkingGastosMovementPurchaseKey(movementId, "deposit");
   return {
-    category_slug: resolvedSlug,
-    unique: opts.unique,
-    merchant_key: merchantKey,
-    purchase_key: purchaseKey,
+    accountId: belong.account_id,
+    merchantKey: belong.merchant_key ?? "",
+    purchaseKey,
+    siblingPurchaseKeys: depositKey !== purchaseKey ? [depositKey] : [],
+    lineCategoryRowIds: [],
+    marksDeclinedAuto: false,
+    clearsDeclinedAuto: false,
   };
 }
 

@@ -15,9 +15,7 @@ import {
 import { buildFlowsPlPayload } from "../flowsPl.js";
 import { buildFlowsIncomeAggregates, buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
-import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "../ccExpenseCategories.js";
-import { purchaseIdFromPlanGastosLineId } from "../ccInstallmentPlanGastosLines.js";
-import { assignFlowExpenseLineCategory } from "../assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "../expenseAssignmentWrites.js";
 import {
   getExpenseLinePieces,
   replaceExpenseLinePieces,
@@ -789,31 +787,9 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
       ? { kind: String(body.rule_link.kind ?? "") as CategoryRuleLinkKind, key: String(body.rule_link.key ?? "") }
       : null;
   try {
-    if (body.source === "manual") {
-      res.status(400).json({ error: "manual expense entries are not editable" });
-      return;
-    }
-    if (body.source === "payslip") {
-      res.status(400).json({ error: "payslip deductions have a fixed category" });
-      return;
-    }
-    if (lineId < 0) {
-      // Plan gastos lines encode purchaseId as -(3_000_000_000 + purchaseId*1000 + cuotaIndex).
-      // Simple negative statement line ids encode purchaseId as -lineId directly.
-      const purchaseId = purchaseIdFromPlanGastosLineId(lineId) ?? -lineId;
-      const result = assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
-        purchaseId,
-        unique,
-        categorySlug: categorySlug || null,
-        clearCategory,
-        ruleLink,
-      });
-      res.json(result);
-      return;
-    }
     const bodySource = body.source;
     const source =
-      bodySource === "checking" || bodySource === "cc" || bodySource === "manual"
+      bodySource === "checking" || bodySource === "cc" || bodySource === "manual" || bodySource === "payslip"
         ? bodySource
         : undefined;
     const result = assignFlowExpenseLineCategory({

@@ -9,8 +9,7 @@
  * line deleted. Only one-to-one pairs; anything else is reported and left alone.
  */
 import { db } from "./db.js";
-import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
-import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
+import type { CardLinePlan } from "./cards/lineWriteSession.js";
 import { recurringPatternIndex, ufAmountFits, type RecurringEntry } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
@@ -22,17 +21,21 @@ export type RecurringPendingReplacement = { pending_line_id: number; posted_line
 export type RecurringPendingResult = {
   replaced: RecurringPendingReplacement[];
   ambiguous: string[];
-  /** Earliest transaction date removed — the caller's `affectedEvidenceFromYmd`. */
+  /** Earliest transaction date removed (the funnel re-syncs from it). */
   removed_from_date: string | null;
 };
 
+/** The pairs, and the card-line funnel's plan: each pending line, its assignments carried to the posted one. */
+export type RecurringPendingPlan = { result: RecurringPendingResult; plan: CardLinePlan };
+
 type CardLine = { id: number; merchant: string | null; amount_clp: number | null; amount_usd: number | null; transaction_date: string | null; bucket: number };
 
-export function replaceRecurringPendingLines(accountId: number): RecurringPendingResult {
+export function planRecurringPendingReplacement(accountId: number): RecurringPendingPlan {
   const result: RecurringPendingResult = { replaced: [], ambiguous: [], removed_from_date: null };
   // Only automatic UF entries with an amount check and two names can say a line is another's pending listing.
   const entries = listRecurringPayments().filter((e) => !e.manual && e.patterns.length >= 2 && e.currency === "uf" && e.amount_tolerance_pct != null);
-  if (entries.length === 0) return result;
+  const none = (): RecurringPendingPlan => ({ result, plan: { deleteLineIds: [], carry: [] } });
+  if (entries.length === 0) return none();
   const lines = (
     db
       .prepare(
@@ -46,7 +49,7 @@ export function replaceRecurringPendingLines(accountId: number): RecurringPendin
     .filter((l) => !l.amount_usd && (l.amount_clp ?? 0) > 0)
     .map((l) => ({ ...l, iso: parseDdMmYyToIso(String(l.transaction_date ?? "")) }))
     .filter((l): l is typeof l & { iso: string } => l.iso != null);
-  if (lines.length === 0) return result;
+  if (lines.length === 0) return none();
   const uf = ufProjector();
 
   const pairs: { pending: (typeof lines)[number]; posted: (typeof lines)[number]; entry: RecurringEntry }[] = [];
@@ -75,23 +78,23 @@ export function replaceRecurringPendingLines(accountId: number): RecurringPendin
       pairs.push({ pending, posted: posted[0]!, entry });
     }
   }
-  if (pairs.length === 0) return result;
+  if (pairs.length === 0) return none();
 
-  // Read the evidence date BEFORE deleting — afterwards the rows are gone.
-  result.removed_from_date = earliestTransactionDateForLineIds(pairs.map((p) => p.pending.id));
-  const del = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);
-  db.transaction(() => {
-    carryCcExpenseAssignments(pairs.map((p) => ({ fromLineId: p.pending.id, toLineId: p.posted.id })));
-    for (const p of pairs) {
-      del.run(p.pending.id);
-      result.replaced.push({
-        pending_line_id: p.pending.id,
-        posted_line_id: p.posted.id,
-        entry: p.entry.name,
-        amount_clp: Math.round(p.pending.amount_clp!),
-        pending_on: p.pending.iso,
-      });
-    }
-  })();
-  return result;
+  result.removed_from_date = pairs.map((p) => p.pending.iso).sort()[0] ?? null;
+  for (const p of pairs) {
+    result.replaced.push({
+      pending_line_id: p.pending.id,
+      posted_line_id: p.posted.id,
+      entry: p.entry.name,
+      amount_clp: Math.round(p.pending.amount_clp!),
+      pending_on: p.pending.iso,
+    });
+  }
+  return {
+    result,
+    plan: {
+      deleteLineIds: pairs.map((p) => p.pending.id),
+      carry: pairs.map((p) => ({ fromLineId: p.pending.id, toLineId: p.posted.id })),
+    },
+  };
 }

@@ -11,6 +11,8 @@ import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import type { CheckingCartolaFileImportLog } from "./checkingCartolaParseLog.js";
 import { cartolaCalendarMonths, splitCuentaVistaCartolaByCalendarMonth } from "./cuentaVistaCartolaSplit.js";
 import { cuentaVistaAccountId } from "./movementBalanceCashAccounts.js";
+import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
+import { movementWrite } from "./movementWrites.js";
 
 /**
  * A bank account's statements (`bank_account.statements`: cartolas the feeder read from the
@@ -55,7 +57,22 @@ export function bankStatementAccountId(account: BankAccountStatementsPayload["ac
   return account.product === "checking" ? checkingAccountId() : cuentaVistaAccountId();
 }
 
-export function applyBankAccountStatements(payload: BankAccountStatementsPayload): BankAccountStatementsApplyDetails {
+/**
+ * The one apply path of a bank account's cartolas — the ingest kind and both account-page uploads
+ * (`accountImports.ts`) — inside one movement write (the expense deposit links re-sync once).
+ * `flows` collects the rows each imported cartola wrote or skipped, for an upload's result view.
+ */
+export function applyBankAccountStatements(
+  payload: BankAccountStatementsPayload,
+  flows?: { inserted: ImportFlowItem[]; skipped: SkippedImportFlowItem[] }
+): BankAccountStatementsApplyDetails {
+  return movementWrite(() => applyStatements(payload, flows));
+}
+
+function applyStatements(
+  payload: BankAccountStatementsPayload,
+  flows?: { inserted: ImportFlowItem[]; skipped: SkippedImportFlowItem[] }
+): BankAccountStatementsApplyDetails {
   const accountId = bankStatementAccountId(payload.account);
   const vista = payload.account.product === "demand_deposit";
   const fileLogs: CheckingCartolaFileImportLog[] = [];
@@ -96,7 +113,7 @@ export function applyBankAccountStatements(payload: BankAccountStatementsPayload
   }
   // The cuenta vista already cleared a re-imported document's months above.
   // A dry run is the ingest receiver's rollback.
-  importCartolaList(accountId, list, { dryRun: false, forceReimport: vista ? false : payload.force_reimport }, fileLogs);
+  importCartolaList(accountId, list, { dryRun: false, forceReimport: vista ? false : payload.force_reimport }, fileLogs, flows);
   const result = finishCartolaImportRun(accountId, { dryRun: false }, fileLogs, vista ? "cuenta vista" : undefined);
 
   const report = [

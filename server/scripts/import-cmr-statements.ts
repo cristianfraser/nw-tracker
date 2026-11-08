@@ -38,7 +38,7 @@ import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../src/c
 import { accountMarkClpAtYmd } from "../src/accountMarkClpAtYmd.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
-import { assignFlowExpenseLineCategory } from "../src/assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "../src/expenseAssignmentWrites.js";
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";
 import { FLOW_KIND_CARGA_TARJETA } from "../src/movementFlowType.js";
 import { seedLiabilitiesTree } from "../src/seedLiabilitiesTree.js";

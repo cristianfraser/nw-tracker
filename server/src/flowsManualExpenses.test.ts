@@ -5,7 +5,7 @@ import {
   normalizeManualExpenseNote,
   validateManualExpenseCategorySlug,
 } from "./flowsManualExpenses.js";
-import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 
 describe("flowsManualExpenses", () => {
   const insertedIds: number[] = [];

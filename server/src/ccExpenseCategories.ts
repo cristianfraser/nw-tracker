@@ -1,18 +1,11 @@
 import { db } from "./db.js";
 import {
-  clearExpenseCategoryRule,
   generalRuleCategory,
   loadExpenseCategoryRules,
-  setExpenseCategoryRule,
-  type CategoryRuleLink,
   type ExpenseCategoryRules,
 } from "./expenseCategoryRules.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
-import {
-  clearUserDeclinedAutoCategory,
-  isInstallmentContractPurchaseKey,
-  markUserDeclinedAutoCategory,
-} from "./ccAdditionalCardExpenseMatch.js";
+import { isInstallmentContractPurchaseKey } from "./ccAdditionalCardExpenseMatch.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
@@ -998,95 +991,6 @@ export function ccStatementLineBelongsToCreditCardGroup(statementLineId: number)
   return { ok: true, account_id: row.account_id, merchant: row.merchant };
 }
 
-function executeCcExpenseCategoryAssignment(opts: {
-  accountId: number;
-  merchantKey: string;
-  purchaseKey: string;
-  purchaseLineIds: number[];
-  unique: boolean;
-  clearCategory: boolean;
-  hasCategory: boolean;
-  catId: number | null;
-  resolvedSlug: string;
-  /** «Específico»: the change writes the rule for the merchant + this link instead of the general one. */
-  ruleLink: CategoryRuleLink | null;
-}): {
-  category_slug: string;
-  unique: boolean;
-  merchant_key: string;
-  purchase_key: string;
-} {
-  const {
-    accountId,
-    merchantKey,
-    purchaseKey,
-    purchaseLineIds,
-    unique,
-    clearCategory,
-    catId,
-    resolvedSlug,
-    ruleLink,
-  } = opts;
-
-  const delLine = db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`);
-  const delUniquePurchase = db.prepare(
-    `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-  );
-  const upsertUniquePurchase = db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-
-  const tx = db.transaction(() => {
-    for (const lineId of purchaseLineIds) {
-      delLine.run(lineId);
-    }
-
-    if (clearCategory) {
-      if (unique) {
-        upsertUniquePurchase.run(accountId, purchaseKey, null);
-      } else {
-        delUniquePurchase.run(accountId, purchaseKey);
-        if (merchantKey) clearExpenseCategoryRule(merchantKey, ruleLink);
-        if (!isInstallmentContractPurchaseKey(purchaseKey)) {
-          markUserDeclinedAutoCategory(accountId, purchaseKey);
-        }
-      }
-      return;
-    }
-
-    clearUserDeclinedAutoCategory(accountId, purchaseKey);
-
-    if (unique) {
-      delUniquePurchase.run(accountId, purchaseKey);
-      upsertUniquePurchase.run(accountId, purchaseKey, catId);
-    } else {
-      delUniquePurchase.run(accountId, purchaseKey);
-      if (catId != null && merchantKey) {
-        setExpenseCategoryRule(merchantKey, ruleLink, catId);
-      }
-    }
-  });
-  tx();
-
-  if (clearCategory) {
-    return {
-      category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
-      unique,
-      merchant_key: merchantKey,
-      purchase_key: purchaseKey,
-    };
-  }
-
-  return {
-    category_slug: resolvedSlug,
-    unique,
-    merchant_key: merchantKey,
-    purchase_key: purchaseKey,
-  };
-}
-
 function statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey: string): number[] {
   const key = parseExpenseKey(purchaseKey);
   if (key?.kind !== "installment_h") return [];
@@ -1101,26 +1005,16 @@ function statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey: string): 
 }
 
 /**
- * Synthetic consolidated installment rows use `statement_line_id = -cc_installment_purchases.id`.
- * Category PATCH uses that id; resolve the manual ledger purchase and apply the same rules as a real line.
+ * Where a category change on a plan's expense line lands (`expenseAssignmentWrites.ts`). Synthetic
+ * consolidated installment rows use `statement_line_id = -cc_installment_purchases.id`; the change
+ * goes under the plan's purchase key, replacing its printed cuota lines' own rows.
  */
-export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: {
-  purchaseId: number;
-  unique: boolean;
-  categorySlug?: string | null;
-  clearCategory?: boolean;
-  ruleLink?: CategoryRuleLink | null;
-}): {
-  category_slug: string;
-  unique: boolean;
-  merchant_key: string;
-  purchase_key: string;
-} {
+export function ccPlanCategoryTarget(purchaseId: number): ExpenseCategoryTargetFacts {
   const pr = db
     .prepare(
       `SELECT id, account_id, purchase_date, cuotas_totales, total_amount_clp, merchant FROM cc_installment_purchases WHERE id = ?`
     )
-    .get(opts.purchaseId) as
+    .get(purchaseId) as
     | {
         id: number;
         account_id: number;
@@ -1133,34 +1027,10 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
   if (!pr) {
     throw new Error("manual installment purchase not found");
   }
-
-  const categorySlug = opts.categorySlug != null ? String(opts.categorySlug).trim() : "";
-  const hasCategory = categorySlug.length > 0;
-  const clearCategory = opts.clearCategory === true;
-
-  if (hasCategory && categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG) {
-    throw new Error("cannot assign unclassified category");
-  }
-
   const allowed = new Set(listCreditCardMasterAccountIds());
   if (!allowed.has(pr.account_id)) {
     throw new Error("account is not in credit card group");
   }
-
-  const merchantKey = normalizeCcExpenseMerchantKey(pr.merchant);
-  if (!opts.unique && hasCategory && !merchantKey) {
-    throw new Error("merchant required for comercio-wide category");
-  }
-
-  let catId: number | null = null;
-  let resolvedSlug = UNCLASSIFIED_CC_EXPENSE_SLUG;
-  if (hasCategory) {
-    const cat = getCcExpenseCategoryBySlug(categorySlug);
-    if (!cat) throw new Error("unknown category");
-    catId = cat.id;
-    resolvedSlug = cat.slug;
-  }
-
   const purchaseIso = pr.purchase_date.length >= 10 ? pr.purchase_date.slice(0, 10) : pr.purchase_date;
   const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
     accountId: pr.account_id,
@@ -1172,79 +1042,44 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
   if (!purchaseKey) {
     throw new Error("merchant and contract details required to classify manual installment");
   }
-
-  const purchaseLineIds = statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey);
-
-  return executeCcExpenseCategoryAssignment({
+  return {
     accountId: pr.account_id,
-    merchantKey,
+    merchantKey: normalizeCcExpenseMerchantKey(pr.merchant),
     purchaseKey,
-    purchaseLineIds,
-    unique: opts.unique,
-    clearCategory,
-    hasCategory,
-    catId,
-    resolvedSlug,
-    ruleLink: opts.ruleLink ?? null,
-  });
+    siblingPurchaseKeys: [],
+    lineCategoryRowIds: statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey),
+    marksDeclinedAuto: !isInstallmentContractPurchaseKey(purchaseKey),
+    clearsDeclinedAuto: true,
+  };
 }
 
-export function assignCcExpenseLineCategory(opts: {
-  statementLineId: number;
-  unique: boolean;
-  categorySlug?: string | null;
-  /** User chose «Sin clasificar» — clear category; non-unique also removes merchant rule. */
-  clearCategory?: boolean;
-  /** «Específico»: write (or clear) the rule for the merchant + this link instead of the general one. */
-  ruleLink?: CategoryRuleLink | null;
-}): {
-  category_slug: string;
-  unique: boolean;
-  merchant_key: string;
-  purchase_key: string;
-} {
-  const categorySlug = opts.categorySlug != null ? String(opts.categorySlug).trim() : "";
-  const hasCategory = categorySlug.length > 0;
-
-  if (hasCategory && categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG) {
-    throw new Error("cannot assign unclassified category");
-  }
-
-  const belong = ccStatementLineBelongsToCreditCardGroup(opts.statementLineId);
+/** Where a category change on a card line lands: its purchase key, and every line of that purchase. */
+export function ccExpenseLineCategoryTarget(statementLineId: number): ExpenseCategoryTargetFacts {
+  const belong = ccStatementLineBelongsToCreditCardGroup(statementLineId);
   if (!belong.ok || belong.account_id == null) {
     throw new Error("statement line not in credit card group");
   }
-
-  const merchantKey = normalizeCcExpenseMerchantKey(belong.merchant);
-  if (!opts.unique && hasCategory && !merchantKey) {
-    throw new Error("merchant required for comercio-wide category");
-  }
-
-  let catId: number | null = null;
-  let resolvedSlug = UNCLASSIFIED_CC_EXPENSE_SLUG;
-  if (hasCategory) {
-    const cat = getCcExpenseCategoryBySlug(categorySlug);
-    if (!cat) throw new Error("unknown category");
-    catId = cat.id;
-    resolvedSlug = cat.slug;
-  }
-
-  const purchaseKey = resolveCcExpensePurchaseKey(opts.statementLineId);
-  const purchaseLineIds = listStatementLineIdsForPurchaseKey(
-    opts.statementLineId,
-    purchaseKey
-  );
-
-  return executeCcExpenseCategoryAssignment({
+  const purchaseKey = resolveCcExpensePurchaseKey(statementLineId);
+  return {
     accountId: belong.account_id,
-    merchantKey,
+    merchantKey: normalizeCcExpenseMerchantKey(belong.merchant),
     purchaseKey,
-    purchaseLineIds,
-    unique: opts.unique,
-    clearCategory: opts.clearCategory === true,
-    hasCategory,
-    catId,
-    resolvedSlug,
-    ruleLink: opts.ruleLink ?? null,
-  });
+    siblingPurchaseKeys: [],
+    lineCategoryRowIds: listStatementLineIdsForPurchaseKey(statementLineId, purchaseKey),
+    marksDeclinedAuto: !isInstallmentContractPurchaseKey(purchaseKey),
+    clearsDeclinedAuto: true,
+  };
 }
+
+/** What a category change needs to know of its line (`expenseAssignmentWrites.ts` `ExpenseCategoryTarget`). */
+export type ExpenseCategoryTargetFacts = {
+  accountId: number;
+  merchantKey: string;
+  purchaseKey: string;
+  siblingPurchaseKeys: readonly string[];
+  lineCategoryRowIds: readonly number[];
+  /** Clearing the category records that the user declined the automatic one. */
+  marksDeclinedAuto: boolean;
+  /** Setting a category drops that record. */
+  clearsDeclinedAuto: boolean;
+};

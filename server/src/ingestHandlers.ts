@@ -13,7 +13,8 @@ import { applyBankAccountBalances } from "./bankAccountBalances.js";
 import { applyBankProductSummary } from "./bankProductSummaryApply.js";
 import { applyBankTransferNotices } from "./bankTransferNotices.js";
 import { applyIncomingWires } from "./incomingWires.js";
-import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
+import { buildFlowsExpenseLines } from "./flowsExpenses.js";
+import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { matchPaymentReceiptsToExpenseLines, storePaymentProcessorReceipts } from "./paymentProcessorReceipts.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
@@ -101,7 +102,7 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
   };
 }
 
-export const INGEST_HANDLERS: IngestHandlerMap = {
+const HANDLERS: IngestHandlerMap = {
   "unemployment_fund.documents": { apply: ({ payload }) => ({ details: applyUnemploymentFundDocuments(payload) }) },
   "fund_account.transactions": { apply: ({ payload }) => ({ details: applyFundAccountTransactions(payload) }) },
   "broker.dividend_statement": { apply: ({ payload }) => ({ details: applyBrokerDividendStatement(payload) }) },
@@ -159,7 +160,7 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
     apply({ payload }) {
       const stored = storePaymentProcessorReceipts(payload);
       // The pairing is derived when the expense lines are built; report what the page will show.
-      const match = matchPaymentReceiptsToExpenseLines(buildFlowsExpensesPayload().lines);
+      const match = matchPaymentReceiptsToExpenseLines(buildFlowsExpenseLines());
       return { details: { ...stored, paired: match.paired, unpaired: match.unpaired, ambiguous: match.ambiguous } };
     },
   },
@@ -172,6 +173,29 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
     apply: ({ payload, envelope }) => ({ details: cardUnbilledDetails(applyCardUnbilledMovements(payload, envelope.source.ref)) }),
   },
 };
+
+/**
+ * Every applied document can move what an expense line pairs with (a checking movement, a deposit,
+ * a payslip, a card line): the expense deposit links re-sync once, at the end of the handler —
+ * inside the document's transaction, so a dry run rolls the sync back with the rest.
+ */
+function syncingExpenseLinks(handlers: IngestHandlerMap): IngestHandlerMap {
+  const out: Record<string, IngestHandler<unknown>> = {};
+  for (const [name, handler] of Object.entries(handlers) as [string, IngestHandler<unknown>][]) {
+    out[name] = {
+      ...handler,
+      apply: (ctx) =>
+        withExpenseLinkSyncDeferred(() => {
+          const result = handler.apply(ctx);
+          requestExpenseLinkSync();
+          return result;
+        }),
+    };
+  }
+  return out as IngestHandlerMap;
+}
+
+export const INGEST_HANDLERS: IngestHandlerMap = syncingExpenseLinks(HANDLERS);
 
 /**
  * Receives one document the way `POST /api/ingest/<kind>` does, without HTTP (tests, and a

@@ -4,12 +4,10 @@
  *   npx tsx scripts/backfill-cc-duplicate-expense-lines.ts
  *   npx tsx scripts/backfill-cc-duplicate-expense-lines.ts --apply
  */
-import { deleteStatementLinesByIds } from "../src/ccCrossImportDedupe.js";
+import { deleteLines } from "../src/cards/lineWrites.js";
 import { dedupeFlowCcExpenseLines } from "../src/ccExpenseLineDedupe.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
 import { listCreditCardMasterAccountIdsForIssuer } from "../src/creditCardTree.js";
 import { buildCcExpenseLines } from "../src/flowsExpenses.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -34,10 +32,10 @@ function main() {
   console.log(JSON.stringify(plan, null, 2));
 
   if (apply && dropIds.length > 0) {
-    const removed = deleteStatementLinesByIds(dropIds);
+    let removed = 0;
     for (const id of accountIds) {
-      upsertCreditCardValuationsFromLedger(id);
-      recomputeCcBillingMonthBalances(id);
+      const own = new Set(raw.filter((l) => l.account_id === id).map((l) => l.statement_line_id));
+      removed += deleteLines(id, dropIds.filter((lineId) => own.has(lineId)), { what: "removing duplicate expense lines" });
     }
     console.log(`Removed ${removed} duplicate statement line(s).`);
   } else if (!apply && dropIds.length > 0) {

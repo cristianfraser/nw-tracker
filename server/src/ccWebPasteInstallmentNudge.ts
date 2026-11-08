@@ -4,8 +4,7 @@ import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import { findPlanForOneShotLine } from "./cards/purchases.js";
 import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { withCardLineSession } from "./cards/lineWriteSession.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 
 export type CcInstallmentFirstDueNudge = {
@@ -58,6 +57,12 @@ export function applyWebPasteInstallmentFirstDueNudges(
   accountId: number,
   parsedLines: readonly CcWebPasteLine[]
 ): CcInstallmentFirstDueNudge[] {
+  // A card-line write (the listing import's, when it runs inside one): a pinned first cuota moves
+  // the plan's schedule, which the write's finish re-syncs once.
+  return withCardLineSession(accountId, "first-cuota nudge", () => nudgeInSession(accountId, parsedLines));
+}
+
+function nudgeInSession(accountId: number, parsedLines: readonly CcWebPasteLine[]): CcInstallmentFirstDueNudge[] {
   const openBm = billingMonthForManualLedgerPurchase(accountId);
   if (!openBm) return [];
 
@@ -114,11 +119,6 @@ export function applyWebPasteInstallmentFirstDueNudges(
       to: openBm,
       rule: "open_month",
     });
-  }
-
-  if (nudges.length > 0) {
-    upsertCreditCardValuationsFromLedger(accountId);
-    recomputeCcBillingMonthBalances(accountId);
   }
 
   return nudges;

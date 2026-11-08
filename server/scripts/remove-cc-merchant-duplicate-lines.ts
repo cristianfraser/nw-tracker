@@ -1,7 +1,7 @@
 /**
  * One-time cleanup: run the open-bucket merchant-twin dedupe over every credit-card master.
  *
- * `removeTruncatedMerchantDuplicateLines` (`ccTruncatedMerchantDedupe.ts`) runs after every
+ * `planTruncatedMerchantDuplicateRemoval` (`ccTruncatedMerchantDedupe.ts`) runs after every
  * web-paste / feed write, so rows that predate a rule only get swept by the next import that
  * touches that account. This script applies the current rules to the stored buckets directly —
  * first written 2026-09-05 for the six pending-authorization rows (short merchant name → settled
@@ -17,10 +17,10 @@
 import { db } from "../src/db.js";
 import {
   planTruncatedMerchantDuplicateLines,
-  removeTruncatedMerchantDuplicateLines,
+  planTruncatedMerchantDuplicateRemoval,
 } from "../src/ccTruncatedMerchantDedupe.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { applyLinePlan } from "../src/cards/lineWrites.js";
+import { earliestTransactionDateForLineIds } from "../src/ccCrossImportDedupe.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -85,15 +85,13 @@ function main(): void {
 
   for (const accountId of plans.keys()) {
     const before = (bucketCount.get(accountId) as { c: number }).c;
-    const result = removeTruncatedMerchantDuplicateLines(accountId);
-    upsertCreditCardValuationsFromLedger(accountId, {
-      affectedEvidenceFromYmd: result.removed_from_date,
-    });
-    recomputeCcBillingMonthBalances(accountId);
+    const result = planTruncatedMerchantDuplicateRemoval(accountId);
+    const removedFrom = earliestTransactionDateForLineIds([...result.deleteLineIds]);
+    const removed = applyLinePlan(accountId, "removing cut and pending re-listings", result);
     const after = (bucketCount.get(accountId) as { c: number }).c;
     console.log(
-      `account ${accountId}: deleted ${result.removed_count} lines (${before} → ${after}), ` +
-        `revalued from ${result.removed_from_date ?? "(none)"}`
+      `account ${accountId}: deleted ${removed} lines (${before} → ${after}), ` +
+        `revalued from ${removedFrom ?? "(none)"}`
     );
     for (const pair of result.removed_pairs) console.log(`  ${pair}`);
   }

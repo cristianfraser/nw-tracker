@@ -53,6 +53,7 @@ describe("convertStatementLineToInstallmentPurchase", () => {
 
   afterEach(() => {
     if (statementId != null) {
+      db.prepare(`DELETE FROM cc_installment_purchases WHERE source_line_id IN (SELECT id FROM cc_statement_lines WHERE statement_id = ?)`).run(statementId);
       db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
     }
@@ -65,7 +66,7 @@ describe("convertStatementLineToInstallmentPurchase", () => {
     accountId = null;
   });
 
-  it("deletes only the converted line, not a same-merchant/same-day sibling", () => {
+  it("keeps the converted line under its plan, and its same-merchant/same-day sibling", () => {
     ensureVitestCreditCardFixtures();
     accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
@@ -81,20 +82,27 @@ describe("convertStatementLineToInstallmentPurchase", () => {
 
     const aStill = db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(lineA);
     const bStill = db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(lineB);
-    expect(aStill).toBeUndefined(); // converted -> removed as one-shot
+    expect(aStill).toBeDefined(); // converted -> kept, the plan overlays it
     expect(bStill).toBeDefined(); // sibling survives
 
     const purchases = db
       .prepare(
-        `SELECT total_amount_clp FROM cc_installment_purchases
+        `SELECT total_amount_clp, source_line_id FROM cc_installment_purchases
          WHERE account_id = ? AND canonical_row_id LIKE 'manual-%'`
       )
-      .all(accountId) as { total_amount_clp: number }[];
+      .all(accountId) as { total_amount_clp: number; source_line_id: number | null }[];
     expect(purchases).toHaveLength(1);
     expect(purchases[0].total_amount_clp).toBe(1_267_034);
+    expect(purchases[0].source_line_id).toBe(lineA);
+
+    // The expense is the plan's: the converted line no longer lists as a one-shot.
+    const lines = buildCcExpenseLines([accountId]);
+    expect(lines.some((l) => l.statement_line_id === lineA)).toBe(false);
+    expect(lines.some((l) => l.statement_line_id === lineB)).toBe(true);
+    expect(() => convertStatementLineToInstallmentPurchase(accountId!, lineA, 3)).toThrow(/already converted/);
   });
 
-  it("deletes only the converted line when a sibling has an identical amount too", () => {
+  it("keeps both lines when a sibling has an identical amount too", () => {
     ensureVitestCreditCardFixtures();
     accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
@@ -106,7 +114,7 @@ describe("convertStatementLineToInstallmentPurchase", () => {
 
     convertStatementLineToInstallmentPurchase(accountId, lineA, 6);
 
-    expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(lineA)).toBeUndefined();
+    expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(lineA)).toBeDefined();
     expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(lineB)).toBeDefined();
 
     const count = (

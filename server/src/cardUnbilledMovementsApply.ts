@@ -1,6 +1,7 @@
 import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
-import { importCcWebPasteLines } from "./accountImports.js";
-import { applyFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
+import { applyLinePlan, cardLineWrite, insertLines, runFinancingLinks } from "./cards/lineWrites.js";
+import { noteCardLineWritten } from "./cards/lineWriteSession.js";
+import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
@@ -13,15 +14,13 @@ import { ymCompare } from "./calendarMonth.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { db } from "./db.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import {
   createPlansForFeedCuotaPurchases,
   tagFeedCuotaPurchaseLines,
   type CcFeedPlanCreated,
 } from "./ccFeedCuotaPurchases.js";
-import { feedMirrorCurrencies, mirrorOpenBucketsToFeed, type CcFeedMirrorResult } from "./ccFeedMirror.js";
+import { feedMirrorCurrencies, planOpenBucketMirror, type CcFeedMirrorResult } from "./ccFeedMirror.js";
 import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
 import {
@@ -219,75 +218,94 @@ export function applyCardUnbilledMovements(
   const bankCupo = bankCupoCaptureFromListing(payload.issuer_balances);
 
   const accounts: CardListingAccountImportResult[] = [];
-  for (const card of payload.cards) {
-    const accountId = masterAccountIdForIssuerCardAccount(card.account);
-    const { cardGroup } = creditCardMasterMetaForAccount(accountId);
-    const lines = card.lines.map((line) => webPasteLineFromCardListingLine(cardGroup, line));
-    const close = closes.get(card.account.number);
-    const applied = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
-    const feedClose = applied?.close ?? null;
-    // Before the lines: a plan makes its purchase row import as an installment overlap.
-    const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
-    const result = importCcWebPasteLines(
-      accountId,
-      { lines, errors: [] },
-      "cc_santander_fetch",
-      applied
-        ? { targetBillingMonth: applied.close.rows_billing_month, lineBillingMonths: applied.lineBillingMonths }
-        : undefined
-    );
-    const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
-    // The merge re-syncs balances and valuation points after any write; a close with nothing to
-    // write (no movements, or only repeats) changed the facturación state all the same.
-    if (feedClose && result.batch_id == null && (feedClose.status === "new" || feedClose.lines_moved_forward > 0)) {
-      recomputeCcBillingMonthBalances(accountId);
-      upsertCreditCardValuationsFromLedger(accountId);
+  withExpenseLinkSyncDeferred(() => {
+    for (const card of payload.cards) {
+      const accountId = masterAccountIdForIssuerCardAccount(card.account);
+      // One card-line write per card: the close, the plans, the lines, the tags and the mirror
+      // land together and the card re-syncs once.
+      const listed = cardLineWrite(accountId, "card feed", () => applyCardListing(accountId, card, closes, bankCupo, sourceRef));
+      // After the write's re-sync: the check reads the facturación the write left.
+      accounts.push({
+        ...listed,
+        feed_close: listed.feed_close
+          ? { ...listed.feed_close, provisional_check: provisionalCheck(accountId, listed.feed_close.billing_month) }
+          : null,
+      });
     }
-    // Last: everything this listing shows is now on file, so what the buckets hold beyond it is
-    // what the bank dropped. Only from a close on record (the window start) and per currency the
-    // listing proves complete: its SALDO INICIAL row, or the bank's cupo identity.
-    const stated = new Set<"clp" | "usd">();
-    if (close?.saldo_inicial_clp != null) stated.add("clp");
-    if (close?.saldo_inicial_usd != null) stated.add("usd");
-    const recordedClose = feedClose ? null : latestFeedBillingClose(accountId);
-    const windowStartIso = feedClose?.close_iso ?? recordedClose?.close_date ?? null;
-    const closeOnRecord = feedClose ?? recordedClose;
-    const bankUsed: Partial<Record<"clp" | "usd", number>> = {};
-    if (bankCupo.status === "present") {
-      for (const row of bankCupo.rows) if (row.account_id === accountId) bankUsed[row.currency] = row.cupo_utilizado;
-    }
-    const proof =
-      windowStartIso && closeOnRecord
-        ? feedMirrorCurrencies({ stated, closeOnRecord, lines: card.lines, bankUsed })
-        : {};
-    const mirror =
-      windowStartIso && Object.keys(proof).length > 0
-        ? mirrorOpenBucketsToFeed(accountId, { windowStartIso, proof, feedLines: lines })
-        : null;
-    accounts.push({
-      account: card.account.number,
-      account_id: accountId,
-      lines_parsed: result.lines_parsed,
-      inserted: result.inserted,
-      skipped_duplicate: result.skipped_duplicate,
-      skipped_cuota_billing: result.skipped_cuota_billing,
-      batch_id: result.batch_id,
-      feed_close: feedClose
-        ? { ...feedClose, provisional_check: provisionalCheck(accountId, feedClose.billing_month) }
-        : null,
-      plans_created: plansCreated,
-      first_due_nudges: result.installment_first_due_nudges ?? [],
-      cuota_lines_tagged: tagged.length,
-      mirror,
-      planted_payments: result.planted_payments,
-    });
-  }
-  // Tagged cuota purchases (count unknown) are marked after their card's write: one more pass,
-  // so a facturado one of them paid gets its PAGO tonight rather than at the next card write.
-  applyFacturadoFinancingLinks();
+    // Tagged cuota purchases (count unknown) are marked after their card's write: one more pass,
+    // so a facturado one of them paid gets its PAGO tonight rather than at the next card write.
+    runFinancingLinks();
+  });
   return {
     source: sourceRef,
     accounts,
     bank_cupo: recordBankCupoCapture(sourceRef, bankCupo, closes),
+  };
+}
+
+/** One card of a listing, inside its card-line write. */
+function applyCardListing(
+  accountId: number,
+  card: CardUnbilledMovementsPayload["cards"][number],
+  closes: Map<string, CardListingClose>,
+  bankCupo: ReturnType<typeof bankCupoCaptureFromListing>,
+  sourceRef: string
+): Omit<CardListingAccountImportResult, "feed_close"> & { feed_close: Omit<CardListingCloseImport, "provisional_check"> | null } {
+  const { cardGroup } = creditCardMasterMetaForAccount(accountId);
+  const lines = card.lines.map((line) => webPasteLineFromCardListingLine(cardGroup, line));
+  const close = closes.get(card.account.number);
+  const applied = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
+  const feedClose = applied?.close ?? null;
+  // Before the lines: a plan makes its purchase row import as an installment overlap.
+  const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
+  const result = insertLines(
+    accountId,
+    { lines, errors: [] },
+    "cc_santander_fetch",
+    applied
+      ? { targetBillingMonth: applied.close.rows_billing_month, lineBillingMonths: applied.lineBillingMonths }
+      : undefined
+  );
+  const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
+  // A close with nothing to write (no movements, or only repeats) changed the facturación state
+  // all the same: the card re-syncs.
+  if (feedClose && (feedClose.status === "new" || feedClose.lines_moved_forward > 0)) noteCardLineWritten(accountId);
+  // Last: everything this listing shows is now on file, so what the buckets hold beyond it is
+  // what the bank dropped. Only from a close on record (the window start) and per currency the
+  // listing proves complete: its SALDO INICIAL row, or the bank's cupo identity.
+  const stated = new Set<"clp" | "usd">();
+  if (close?.saldo_inicial_clp != null) stated.add("clp");
+  if (close?.saldo_inicial_usd != null) stated.add("usd");
+  const recordedClose = feedClose ? null : latestFeedBillingClose(accountId);
+  const windowStartIso = feedClose?.close_iso ?? recordedClose?.close_date ?? null;
+  const closeOnRecord = feedClose ?? recordedClose;
+  const bankUsed: Partial<Record<"clp" | "usd", number>> = {};
+  if (bankCupo.status === "present") {
+    for (const row of bankCupo.rows) if (row.account_id === accountId) bankUsed[row.currency] = row.cupo_utilizado;
+  }
+  const proof =
+    windowStartIso && closeOnRecord
+      ? feedMirrorCurrencies({ stated, closeOnRecord, lines: card.lines, bankUsed })
+      : {};
+  let mirror: CcFeedMirrorResult | null = null;
+  if (windowStartIso && Object.keys(proof).length > 0) {
+    const planned = planOpenBucketMirror(accountId, { windowStartIso, proof, feedLines: lines });
+    applyLinePlan(accountId, "card feed mirror", planned.plan);
+    mirror = planned.result;
+  }
+  return {
+    account: card.account.number,
+    account_id: accountId,
+    lines_parsed: result.lines_parsed,
+    inserted: result.inserted,
+    skipped_duplicate: result.skipped_duplicate,
+    skipped_cuota_billing: result.skipped_cuota_billing,
+    batch_id: result.batch_id,
+    feed_close: feedClose,
+    plans_created: plansCreated,
+    first_due_nudges: result.installment_first_due_nudges ?? [],
+    cuota_lines_tagged: tagged.length,
+    mirror,
+    planted_payments: result.planted_payments,
   };
 }

@@ -1,10 +1,9 @@
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { clearExpenseCategoryRule } from "./expenseCategoryRules.js";
 import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
-  assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
-  assignCcExpenseLineCategory,
   BILLS_CC_EXPENSE_SLUG,
   categoryUniqueForExpenseLine,
   countsTowardCcExpenseGastosMes,
@@ -388,8 +387,9 @@ describe("ccExpenseCategories", () => {
     );
     if (!line) return;
 
-    const result = assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
+    const result = assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: line.statement_line_id,
       unique: true,
     });
     expect(result.unique).toBe(true);
@@ -463,8 +463,9 @@ function createMerchantPropagationFixture(tag: string): {
       const merchantKey = normalizeCcExpenseMerchantKey(fx.merchant);
       const [target, ...peerIds] = fx.lineIds;
 
-      assignCcExpenseLineCategory({
-        statementLineId: target!,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: target!,
         unique: false,
         categorySlug: "supermarket",
       });
@@ -479,8 +480,9 @@ function createMerchantPropagationFixture(tag: string): {
         expect(ln.category_unique).toBe(false);
       }
 
-      assignCcExpenseLineCategory({
-        statementLineId: target!,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: target!,
         unique: true,
         categorySlug: "others",
       });
@@ -507,20 +509,23 @@ function createMerchantPropagationFixture(tag: string): {
       const merchantKey = normalizeCcExpenseMerchantKey(fx.merchant);
       const [target, ...peerIds] = fx.lineIds;
 
-      assignCcExpenseLineCategory({
-        statementLineId: target!,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: target!,
         unique: false,
         categorySlug: "supermarket",
       });
 
-      assignCcExpenseLineCategory({
-        statementLineId: target!,
+      assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: target!,
         unique: true,
         categorySlug: "fun",
       });
 
-      const cleared = assignCcExpenseLineCategory({
-        statementLineId: target!,
+      const cleared = assignFlowExpenseLineCategory({
+        source: "cc",
+        lineId: target!,
         unique: true,
         clearCategory: true,
       });
@@ -564,14 +569,16 @@ function createMerchantPropagationFixture(tag: string): {
     );
     if (peers.length === 0) return;
 
-    assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
+    assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: line.statement_line_id,
       unique: false,
       categorySlug: "supermarket",
     });
 
-    assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
+    assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: line.statement_line_id,
       unique: false,
       clearCategory: true,
     });
@@ -620,8 +627,9 @@ function createMerchantPropagationFixture(tag: string): {
       expect(resolveCcExpensePurchaseKey(lineId)).toBe(purchaseKey);
     }
 
-    const checkOnly = assignCcExpenseLineCategory({
-      statementLineId: inst.statement_line_id,
+    const checkOnly = assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: inst.statement_line_id,
       unique: true,
     });
     expect(checkOnly.purchase_key).toBe(purchaseKey);
@@ -633,8 +641,9 @@ function createMerchantPropagationFixture(tag: string): {
       expect(ln?.category_unique).toBe(true);
     }
 
-    assignCcExpenseLineCategory({
-      statementLineId: inst.statement_line_id,
+    assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: inst.statement_line_id,
       unique: true,
       categorySlug: "fun",
     });
@@ -646,8 +655,9 @@ function createMerchantPropagationFixture(tag: string): {
       expect(ln?.category_unique).toBe(true);
     }
 
-    assignCcExpenseLineCategory({
-      statementLineId: inst.statement_line_id,
+    assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: inst.statement_line_id,
       unique: false,
       categorySlug: "fun",
     });
@@ -685,8 +695,8 @@ function createMerchantPropagationFixture(tag: string): {
     });
     let purchaseKeyForCleanup: string | null = null;
     try {
-      const r = assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
-        purchaseId: created.id,
+      const r = assignFlowExpenseLineCategory({
+        lineId: -(created.id),
         unique: true,
         categorySlug: "supermarket",
       });

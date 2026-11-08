@@ -48,8 +48,7 @@
  * Deletion, not merge: the shorter row carries no field the fuller one lacks.
  */
 import { db } from "./db.js";
-import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
-import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
+import type { CardLinePlan } from "./cards/lineWriteSession.js";
 
 import { parseDdMmYyToIso, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -69,13 +68,9 @@ export type TruncatedMerchantDedupePlan = {
   gap: number;
 };
 
-export type TruncatedMerchantDedupeResult = {
-  removed_line_ids: number[];
-  removed_count: number;
+export type TruncatedMerchantDedupeResult = CardLinePlan & {
   /** `shorter → fuller` pairs (rule 2 pairs tagged), for the import report. */
   removed_pairs: string[];
-  /** Earliest transaction date removed — the caller's `affectedEvidenceFromYmd`. */
-  removed_from_date: string | null;
 };
 
 type BucketLine = {
@@ -200,34 +195,15 @@ export function planTruncatedMerchantDuplicateLines(accountId: number): Truncate
 }
 
 /**
- * Remove shorter re-listings from an account's **web-paste** buckets (see the plan above).
- *
- * The caller owns the revaluation: pass `removed_from_date` as `affectedEvidenceFromYmd` to
- * `upsertCreditCardValuationsFromLedger` and recompute the billing balances.
+ * The shorter re-listings to remove from an account's **web-paste** buckets (see the plan above),
+ * as the card-line funnel's plan: a category set on the cut or pending row belongs to the purchase,
+ * so it is carried to the fuller row.
  */
-export function removeTruncatedMerchantDuplicateLines(
-  accountId: number
-): TruncatedMerchantDedupeResult {
+export function planTruncatedMerchantDuplicateRemoval(accountId: number): TruncatedMerchantDedupeResult {
   const plan = planTruncatedMerchantDuplicateLines(accountId);
-  const ids = plan.map((p) => p.line_id);
-  if (ids.length === 0) {
-    return { removed_line_ids: [], removed_count: 0, removed_pairs: [], removed_from_date: null };
-  }
-
-  // Read the evidence date BEFORE deleting — afterwards the rows are gone.
-  const removed_from_date = earliestTransactionDateForLineIds(ids);
-  const del = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);
-  let removed_count = 0;
-  db.transaction(() => {
-    // A category set on the cut or pending row belongs to the purchase: keep it on the fuller row.
-    carryCcExpenseAssignments(plan.map((p) => ({ fromLineId: p.line_id, toLineId: p.keep_line_id })));
-    for (const id of ids) removed_count += del.run(id).changes;
-  })();
-
   return {
-    removed_line_ids: ids,
-    removed_count,
+    deleteLineIds: plan.map((p) => p.line_id),
+    carry: plan.map((p) => ({ fromLineId: p.line_id, toLineId: p.keep_line_id })),
     removed_pairs: plan.map((p) => p.pair).sort(),
-    removed_from_date,
   };
 }

@@ -20,7 +20,6 @@
  * purchase date (lines dated −3…+5 days, or a statement header naming the amount): the statement
  * that later prints the real PAGO settles the planted bucket line like any pasted one.
  */
-import { importCcWebPasteLines } from "./accountImports.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
@@ -30,7 +29,7 @@ import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from ".
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
-import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
+import { creditCardMasterMetaForAccount, type CcWebPasteParseResult } from "./ccWebPasteParse.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
@@ -248,7 +247,10 @@ let running = false;
  * Writes what {@link planFacturadoFinancingLinks} finds. Planting the PAGO is itself a card write,
  * which runs this again from inside the write funnel: the nested call returns at once.
  */
-export function applyFacturadoFinancingLinks(): FacturadoFinancingApplyResult | null {
+export function applyFacturadoFinancingLinks(
+  /** Plants the PAGO on the paid card (the card-line funnel's listing import, `cards/lineWrites.ts`). */
+  plant: (accountId: number, parsed: CcWebPasteParseResult) => void
+): FacturadoFinancingApplyResult | null {
   if (running) return null;
   running = true;
   try {
@@ -275,7 +277,7 @@ export function applyFacturadoFinancingLinks(): FacturadoFinancingApplyResult | 
           amount: -m.facturado_clp,
           raw_text: `${ddMmYyyyFromIso(m.paid_on)} PAGO (cuotas en otra tarjeta) ${m.facturado_clp}`,
         });
-        importCcWebPasteLines(m.financed_account_id, { lines: [line], errors: [] }, "cc_financing_payment");
+        plant(m.financed_account_id, { lines: [line], errors: [] });
         result.payments_planted.push({
           financed_account_id: m.financed_account_id,
           paid_on: m.paid_on,

@@ -29,11 +29,9 @@
  */
 import { db } from "../src/db.js";
 import {
-  deleteStatementLinesByIds,
   earliestTransactionDateForLineIds,
 } from "../src/ccCrossImportDedupe.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { deleteLines } from "../src/cards/lineWrites.js";
 import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "../src/ccPaymentLines.js";
 import { isGarbledUsdStatementMerchant } from "../src/ccStatementSection3.js";
 import { RE_USD_SECTION3 } from "../src/ccStatementLineRules.js";
@@ -120,9 +118,7 @@ if (!apply) {
 for (const [accountId, list] of byAccount) {
   const ids = list.map((m) => m.line.id);
   const removedFrom = earliestTransactionDateForLineIds(ids);
-  const removed = deleteStatementLinesByIds(ids);
-  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: removedFrom });
-  recomputeCcBillingMonthBalances(accountId);
+  const removed = deleteLines(accountId, ids, { what: "removing international extraction artifacts" });
   console.log(
     `account ${accountId}: deleted ${removed} lines, revalued from ${removedFrom ?? "(none)"}`
   );

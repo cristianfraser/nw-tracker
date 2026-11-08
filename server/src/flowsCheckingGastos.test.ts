@@ -1,8 +1,8 @@
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { describe, expect, it } from "vitest";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { db } from "./db.js";
 import {
-  assignCheckingGastosMovementCategory,
   autoMatchCategorySlugForDeposit,
   checkingGastosMovementBelongs,
   checkingGastosMovementPurchaseKey,
@@ -1315,8 +1315,9 @@ describe("flowsCheckingGastos", () => {
 
     expect(checkingGastosMovementBelongs(line.statement_line_id).ok).toBe(true);
 
-    assignCheckingGastosMovementCategory({
-      movementId: line.statement_line_id,
+    assignFlowExpenseLineCategory({
+      source: "checking",
+      lineId: line.statement_line_id,
       unique: true,
       categorySlug: "fun",
     });
@@ -1486,8 +1487,9 @@ describe("flowsCheckingGastos", () => {
     const line = before.find((l) => l.statement_line_id === movementId);
     expect(line?.category_slug).toBe("checking_internal_transfer");
 
-    assignCheckingGastosMovementCategory({
-      movementId,
+    assignFlowExpenseLineCategory({
+      source: "checking",
+      lineId: movementId,
       unique: true,
       clearCategory: true,
     });

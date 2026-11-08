@@ -1,8 +1,7 @@
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "./ccStatementSourceKind.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
-import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
+import { applyCardLinePlan } from "./ccCrossImportDedupe.js";
+import { noteCardLineWritten, withCardLineSession } from "./cards/lineWriteSession.js";
 import {
   hasEveryStatementTwinForBillingMonth,
   statementSlotsByBillingMonth,
@@ -102,7 +101,7 @@ export type CcOpenWebPastePdfReconcileResult = {
 export function reconcileOpenWebPasteAfterPdfClose(
   accountId: number,
   billingMonth: string,
-  opts?: { dryRun?: boolean; skipRecompute?: boolean }
+  opts?: { dryRun?: boolean }
 ): CcOpenWebPastePdfReconcileResult {
   const statements = listCcStatementsForAccount(accountId);
   const pdfStatements = statements.filter(
@@ -207,22 +206,23 @@ export function reconcileOpenWebPasteAfterPdfClose(
   }
 
   if (!opts?.dryRun) {
-    carryCcExpenseAssignments(settledBy);
     // A planted payment the statement prints is confirmed; one deleted unmatched is not (the
     // manual payment's overdue check then surfaces it).
     const deleting = new Set(toDelete);
     for (const c of plantedConfirmations) {
       if (deleting.has(c.lineId)) confirmManualPaymentForPlanted(planted.get(c.lineId)!, c.merchant);
     }
-    if (toDelete.length > 0) deleteStatementLinesByIds(toDelete);
-    if (toMove.length > 0) {
-      const openBm = billingMonthForManualLedgerPurchase(accountId);
-      if (!openBm) throw new Error(`Account ${accountId}: no open facturación to move lines into`);
-      moveOpenBucketLinesToBillingMonth(accountId, toMove, openBm);
-    }
-    if ((toDelete.length > 0 || toMove.length > 0) && !opts?.skipRecompute) {
-      recomputeCcBillingMonthBalances(accountId);
-    }
+    // A card-line write (the statement import's, when it runs inside one): the settled lines'
+    // assignments carried onto the statement's lines, then deleted; the unbilled ones moved on.
+    withCardLineSession(accountId, "statement bucket reconcile", () => {
+      applyCardLinePlan(accountId, { deleteLineIds: toDelete, carry: settledBy });
+      if (toMove.length > 0) {
+        const openBm = billingMonthForManualLedgerPurchase(accountId);
+        if (!openBm) throw new Error(`Account ${accountId}: no open facturación to move lines into`);
+        moveOpenBucketLinesToBillingMonth(accountId, toMove, openBm);
+        noteCardLineWritten(accountId);
+      }
+    });
   }
 
   return {
@@ -310,7 +310,7 @@ export function pdfClosedBillingMonthsFromImportRecords(
 export function reconcileOpenWebPasteAfterPdfImports(
   accountId: number,
   records: readonly CcStatementCsvRecord[],
-  opts?: { dryRun?: boolean; skipRecompute?: boolean }
+  opts?: { dryRun?: boolean }
 ): CcOpenWebPastePdfReconcileResult[] {
   const months = pdfClosedBillingMonthsFromImportRecords(records);
   return months.map((bm) => reconcileOpenWebPasteAfterPdfClose(accountId, bm, opts));

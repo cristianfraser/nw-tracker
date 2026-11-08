@@ -2,37 +2,27 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { importCcStatementPdfsForAccount, type CcPdfUploadFile } from "./ccStatementPdfUpload.js";
 import {
-  ccWebPasteToCsvRecords,
   newWebPasteBatchId,
   creditCardMasterMetaForAccount,
   webPasteLinesFromPastedListing,
-  type CcWebPasteParseResult,
-  type CcWebPasteRecordsOpts,
 } from "./ccWebPasteParse.js";
-import type { GroceryBranchLearningResult } from "./groceryBranchLearning.js";
-import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
-import { applyWebPasteInstallmentFirstDueNudges } from "./ccWebPasteInstallmentNudge.js";
-import { removeTruncatedMerchantDuplicateLines } from "./ccTruncatedMerchantDedupe.js";
-import { replacePlantedPaymentLinesFromImport, type PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
-import { replaceRecurringPendingLines } from "./ccRecurringPendingLines.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { insertLines } from "./cards/lineWrites.js";
+import { checkingAccountId } from "./checkingCartolaImport.js";
 import {
-  checkingAccountId,
-  importCheckingCartola,
-  isCheckingCartolaMonthImported,
-} from "./checkingCartolaImport.js";
-import { bankAccountStatementsKind, CARD_PASTED_LISTING, cardPastedListingSchema } from "nw-tracker-contracts";
-import { parsedCartolaFromStatement } from "./bankAccountStatementsApply.js";
-import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
+  bankAccountStatementsKind,
+  CARD_PASTED_LISTING,
+  cardPastedListingSchema,
+  type BankAccountStatementsPayload,
+} from "nw-tracker-contracts";
+import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { requestFeederParse } from "./ingestFeeder.js";
-import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
+import {
+  importCheckingPartialMovements,
+  type ImportFlowItem,
+  type SkippedImportFlowItem,
+} from "./checkingPartialMovementsImport.js";
 import { parseCuentaVistaWebPasteText } from "./cuentaVistaWebPasteParse.js";
-import { createImportBatch, type ImportBatchKind } from "./importBatches.js";
-import type {
-  CcImportFlowItem,
-  SkippedCcImportFlowItem,
-} from "./ccStatementsImport.js";
+import { createImportBatch } from "./importBatches.js";
 import type { DocumentImportType } from "./accountDocumentRegistry.js";
 
 function assertCreditCardAccount(accountId: number): void {
@@ -47,116 +37,11 @@ function assertCreditCardAccount(accountId: number): void {
 }
 
 /**
- * Import already-parsed web-paste lines.
- *
- * Shared by the manual paste and the Santander fetcher: both produce `CcWebPasteLine[]`, and every
- * behaviour that matters downstream — dedupe keys, installment overlap, first-due nudges, the batch
- * log — lives here so the two entry points cannot drift apart.
- *
- * @param batchKind `import_batches` kind, so a fetched import is distinguishable from a pasted one.
+ * A card's listing lines into its open buckets: the card-line funnel's listing import
+ * (`cards/lineWrites.ts` `insertLines`). Kept under this name for the callers outside the card
+ * writers (store receipts, payment receipts).
  */
-export function importCcWebPasteLines(
-  accountId: number,
-  parsed: CcWebPasteParseResult,
-  batchKind: ImportBatchKind = "cc_web_paste",
-  opts?: CcWebPasteRecordsOpts
-) {
-  assertCreditCardAccount(accountId);
-  const meta = creditCardMasterMetaForAccount(accountId);
-
-  if (parsed.lines.length === 0) {
-    return {
-      batch_id: null,
-      lines_parsed: 0,
-      inserted: 0,
-      skipped_duplicate: 0,
-      skipped_cuota_billing: 0,
-      skipped_saldo_inicial: 0,
-      inserted_flows: [] as CcImportFlowItem[],
-      skipped_flows: [] as SkippedCcImportFlowItem[],
-      grocery_branch_learning: { learned: [], ambiguous: [] } as GroceryBranchLearningResult,
-      planted_payments: { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null } as PlantedPaymentMatchResult,
-      parse_errors: parsed.errors,
-    };
-  }
-
-  const batchId = newWebPasteBatchId();
-  const { records, skipped_cuota_billing, skipped_saldo_inicial } = ccWebPasteToCsvRecords(
-    accountId,
-    meta.cardGroup,
-    meta.cardLast4,
-    batchId,
-    parsed.lines,
-    opts
-  );
-  const merged = mergeCcAccountFromParsedRows(accountId, records, { replaceLedger: false });
-
-  // A pasted line that re-lists a manual plan's upcoming cuota is import-skipped as an overlap,
-  // but it is evidence of the plan's real first-cuota month. Pin it (write-once) so the open
-  // facturación and the projected months bill the cuota in the right cycle.
-  const firstDueNudges = applyWebPasteInstallmentFirstDueNudges(accountId, parsed.lines);
-
-  // The scraper feed and a manual web paste describe the same transaction with different merchant
-  // widths, so the one-shot key cannot collapse them; this runs after every write (either source)
-  // and drops the truncated re-listing once its fuller twin exists.
-  const truncatedDedupe = removeTruncatedMerchantDuplicateLines(accountId);
-  // A payment the app planted before the bank listed it (receipt mail, entered by hand): the
-  // bank's own line for the same money replaces it, whatever its wording (ccPlantedPayments.ts).
-  const plantedPayments = replacePlantedPaymentLinesFromImport(accountId, records, batchKind);
-  // An automatic declared payment the bank first lists under another name (the car insurance as
-  // «CONVENIO P.A.T.»): its posted line replaces the pending one (ccRecurringPendingLines.ts).
-  const recurringPending = replaceRecurringPendingLines(accountId);
-  const removedFrom = [truncatedDedupe.removed_from_date, plantedPayments.removed_from_date, recurringPending.removed_from_date]
-    .filter((d): d is string => d != null)
-    .sort()[0];
-  if (truncatedDedupe.removed_count > 0 || plantedPayments.replaced.length > 0 || recurringPending.replaced.length > 0) {
-    upsertCreditCardValuationsFromLedger(accountId, {
-      affectedEvidenceFromYmd: removedFrom ?? null,
-    });
-    recomputeCcBillingMonthBalances(accountId);
-  }
-
-  // Per-line arrays stay out of the batch log — counters only.
-  const { inserted_flows, skipped_flows, ...statementCounters } = merged.statements;
-  const batch_id = createImportBatch(batchKind, `web-paste|${batchId}`, {
-    account_id: accountId,
-    lines_parsed: parsed.lines.length,
-    ...statementCounters,
-    skipped_cuota_billing: skipped_cuota_billing.length,
-    skipped_saldo_inicial: skipped_saldo_inicial.length,
-    ledger: merged.ledger,
-    installment_first_due_nudges: firstDueNudges,
-    truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
-    planted_payments: plantedPayments,
-    recurring_pending: recurringPending,
-    grocery_branch_learning: merged.grocery_branch_learning,
-    parse_errors: parsed.errors,
-  });
-
-  return {
-    batch_id,
-    lines_parsed: parsed.lines.length,
-    inserted: merged.statements.linesInserted,
-    skipped_duplicate: merged.statements.linesSkippedDuplicate,
-    skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
-    skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
-    skipped_cuota_billing: skipped_cuota_billing.length,
-    skipped_saldo_inicial: skipped_saldo_inicial.length,
-    overlap_removed: merged.overlap_removed ?? 0,
-    installment_first_due_nudges: firstDueNudges,
-    truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
-    planted_payments: plantedPayments,
-    recurring_pending: recurringPending,
-    grocery_branch_learning: merged.grocery_branch_learning,
-    inserted_flows,
-    skipped_flows: [
-      ...skipped_flows,
-      ...skipped_cuota_billing.map((f) => ({ ...f, reason: "cuota_billing" as const })),
-      ...skipped_saldo_inicial.map((f) => ({ ...f, reason: "saldo_inicial" as const })),
-    ],
-    parse_errors: parsed.errors,
-  };
-}
+export const importCcWebPasteLines = insertLines;
 
 /**
  * Manual paste from the account page: the ingest service reads the pasted text
@@ -171,7 +56,7 @@ export async function importCcWebPaste(accountId: number, text: string) {
   if (answer.result.kind !== CARD_PASTED_LISTING.kind || answer.result.schema_version !== CARD_PASTED_LISTING.schema_version) {
     throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${CARD_PASTED_LISTING.kind}`);
   }
-  return importCcWebPasteLines(accountId, webPasteLinesFromPastedListing(cardPastedListingSchema.parse(answer.result.payload)));
+  return insertLines(accountId, webPasteLinesFromPastedListing(cardPastedListingSchema.parse(answer.result.payload)));
 }
 
 function assertCuentaVistaAccount(accountId: number): void {
@@ -253,34 +138,29 @@ export function assertCheckingUploadAccount(accountId: number): number {
 /**
  * A monthly cartola uploaded as xlsx on the checking account's «recent movements» box (the
  * ingest service said it is not an «últimos movimientos» workbook). Throws when it is no cartola
- * either.
+ * either. Applied like every cartola (`applyBankAccountStatements`).
  */
 export async function importCheckingCartolaFromRecentXlsxUpload(accountId: number, buffer: Buffer, filename: string) {
-  const effectiveId = assertCheckingUploadAccount(accountId);
-  let cartola: ParsedCheckingCartola;
+  assertCheckingUploadAccount(accountId);
+  let payload: BankAccountStatementsPayload;
   try {
-    cartola = await parseCartolaXlsxUpload(buffer, filename);
+    payload = await parseCartolaXlsxUpload(buffer, filename);
   } catch (err) {
     throw new Error(`${filename}: neither an «últimos movimientos» workbook nor a cartola (${err instanceof Error ? err.message : String(err)})`);
   }
-  if (cartola.movements.length === 0 || !cartola.period_month) {
+  const statement = payload.statements[0];
+  if (!statement || statement.movements.length === 0 || !statement.period_month) {
     throw new Error(`${filename}: neither an «últimos movimientos» workbook nor a cartola`);
   }
-  const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } = importCheckingCartola(effectiveId, cartola);
-  const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
-    format: "cartola",
-    movements_inserted: movementsInserted,
-    movements_skipped: movementsSkipped,
-    period_month: cartola.period_month,
-  });
+  const applied = applyCartolaUpload(payload, filename);
   return {
-    batch_id,
+    batch_id: applied.batch_id,
     format: "cartola" as const,
-    inserted: movementsInserted,
-    skipped_duplicate: movementsSkipped,
-    inserted_flows,
-    skipped_flows,
-    errors: cartola.skipped.map((s) => s.reason),
+    inserted: applied.inserted,
+    skipped_duplicate: applied.skipped_duplicate,
+    inserted_flows: applied.inserted_flows,
+    skipped_flows: applied.skipped_flows,
+    errors: statement.skipped_rows.map((s) => s.reason),
   };
 }
 
@@ -289,77 +169,64 @@ export async function importCheckingCartolaFromRecentXlsxUpload(accountId: numbe
  * (`POST /parse/santander.checking_cartola_xlsx`) and answers with the statement; a file it
  * cannot read throws with its reason.
  */
-async function parseCartolaXlsxUpload(buffer: Buffer, filename: string): Promise<ParsedCheckingCartola> {
+async function parseCartolaXlsxUpload(buffer: Buffer, filename: string): Promise<BankAccountStatementsPayload> {
   const answer = await requestFeederParse("santander.checking_cartola_xlsx", buffer, filename);
   if (answer.status === "unavailable") throw new Error(`The file could not be read: ${answer.message}`);
   if (answer.status !== "parsed") throw new Error(answer.message);
   if (answer.result.kind !== bankAccountStatementsKind.kind || answer.result.schema_version !== bankAccountStatementsKind.schema_version) {
     throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${bankAccountStatementsKind.kind}`);
   }
-  const [statement] = bankAccountStatementsKind.payload.parse(answer.result.payload).statements;
-  if (!statement) throw new Error(`${filename}: no cartola in the file`);
-  return parsedCartolaFromStatement(statement);
+  const payload = bankAccountStatementsKind.payload.parse(answer.result.payload);
+  if (payload.statements.length === 0) throw new Error(`${filename}: no cartola in the file`);
+  if (payload.account.product !== "checking") throw new Error(`${filename}: not a cuenta corriente cartola`);
+  return payload;
 }
 
+/** An uploaded cartola through the one cartola path, logged as an upload batch. */
+function applyCartolaUpload(payload: BankAccountStatementsPayload, filename: string) {
+  const flows = { inserted: [] as ImportFlowItem[], skipped: [] as SkippedImportFlowItem[] };
+  const details = applyBankAccountStatements(payload, flows);
+  const failed = details.files.find((f) => f.status === "parse_error");
+  if (failed) throw new Error(`${filename}: ${failed.error ?? "the cartola could not be imported"}`);
+  const periodMonth = payload.statements[0]!.period_month;
+  const alreadyImported = details.files.every((f) => f.status !== "imported");
+  const inserted = details.files.reduce((n, f) => n + f.movements_imported, 0);
+  const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
+    period_month: periodMonth,
+    movements_inserted: inserted,
+    movements_skipped: flows.skipped.length,
+    statuses: details.files.map((f) => f.status),
+  });
+  return {
+    batch_id,
+    period_month: periodMonth,
+    inserted,
+    skipped_duplicate: flows.skipped.length,
+    inserted_flows: flows.inserted,
+    skipped_flows: flows.skipped,
+    already_imported_month: alreadyImported,
+  };
+}
+
+/**
+ * The cartola upload of the cuenta corriente: the same path as the ingest kind (one period
+ * imported once; a stored month replaced only by count, or by `replaceMonth` = that period).
+ */
 export async function importCheckingCartolaXlsx(
   accountId: number,
   buffer: Buffer,
   filename: string,
   opts?: { replaceMonth?: string }
 ) {
-  const effectiveId = checkingAccountId();
-  if (accountId !== effectiveId) {
+  if (accountId !== checkingAccountId()) {
     throw new Error("Use the cuenta corriente account for cartola import");
   }
-
-  const cartola = await parseCartolaXlsxUpload(buffer, filename);
-  if (!cartola.period_month) {
+  const payload = await parseCartolaXlsxUpload(buffer, filename);
+  const periodMonth = payload.statements[0]!.period_month;
+  if (!periodMonth) {
     throw new Error("Could not determine cartola period month from file name");
   }
-
-  if (opts?.replaceMonth === cartola.period_month) {
-    db.prepare(
-      `DELETE FROM movements WHERE account_id = ? AND note LIKE ?`
-    ).run(effectiveId, `import:cartola|${cartola.period_month}|%`);
-    db.prepare(
-      `DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`
-    ).run(effectiveId, cartola.period_month);
-  } else if (isCheckingCartolaMonthImported(effectiveId, cartola.period_month)) {
-    const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } =
-      importCheckingCartola(effectiveId, cartola);
-    const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
-      period_month: cartola.period_month,
-      movements_inserted: movementsInserted,
-      movements_skipped: movementsSkipped,
-      merged: true,
-    });
-    return {
-      batch_id,
-      period_month: cartola.period_month,
-      inserted: movementsInserted,
-      skipped_duplicate: movementsSkipped,
-      inserted_flows,
-      skipped_flows,
-      already_imported_month: true,
-    };
-  }
-
-  const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } =
-    importCheckingCartola(effectiveId, cartola);
-  const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
-    period_month: cartola.period_month,
-    movements_inserted: movementsInserted,
-    movements_skipped: movementsSkipped,
-  });
-  return {
-    batch_id,
-    period_month: cartola.period_month,
-    inserted: movementsInserted,
-    skipped_duplicate: movementsSkipped,
-    inserted_flows,
-    skipped_flows,
-    already_imported_month: false,
-  };
+  return applyCartolaUpload({ ...payload, force_reimport: opts?.replaceMonth === periodMonth }, filename);
 }
 
 /**

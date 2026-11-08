@@ -1,0 +1,57 @@
+/**
+ * The movements write funnel (docs/untangle-plan.md F11): a bank row inserted, a superseded row
+ * deleted, a row re-dated with the bank's day kept as its posting day. The mark-input and write-log
+ * triggers see each write (docs/cache-registry.md); what a write still owes is the expense
+ * deposit-link re-sync (`expenseAssignmentWrites.ts`), which an import asks for once, at its end
+ * ({@link movementWrite}). The flow tables (F9) sit on these.
+ *
+ * Every function takes the database handle its caller writes through (the checking importers also
+ * run against a script's handle).
+ */
+import type { Database } from "better-sqlite3";
+import { db } from "./db.js";
+import { recordBankPosting } from "./movementBankPostings.js";
+import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
+
+/** Runs an import's movement writes; the expense deposit links re-sync once when it ends. */
+export function movementWrite<T>(body: () => T): T {
+  return withExpenseLinkSyncDeferred(() => {
+    const result = body();
+    requestExpenseLinkSync();
+    return result;
+  });
+}
+
+/** A single-leg peso row a bank document lists (cartola, «últimos movimientos», a paste). Returns its id. */
+export function insertBankPesoMovement(
+  row: { accountId: number; amount: number; occurredOn: string; note: string; flowKind: string | null },
+  dbHandle: Database = db
+): number {
+  const r = dbHandle
+    .prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+       VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
+    )
+    .run(row.accountId, row.amount, row.occurredOn, row.note, row.flowKind);
+  return Number(r.lastInsertRowid);
+}
+
+/** Deletes movements another row supersedes; returns how many went. */
+export function deleteMovements(ids: readonly number[], dbHandle: Database = db): number {
+  const del = dbHandle.prepare(`DELETE FROM movements WHERE id = ?`);
+  let n = 0;
+  for (const id of ids) n += del.run(id).changes;
+  return n;
+}
+
+/**
+ * Moves a movement to the day the money moved (`occurred_on`), keeping the day a bank document
+ * filed it on the account as its posting day (`movement_bank_postings`), which reconciliation reads.
+ */
+export function redateMovementKeepingBankDay(
+  row: { movementId: number; accountId: number; occurredOn: string; bankPostedOn: string },
+  dbHandle: Database = db
+): void {
+  dbHandle.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(row.occurredOn, row.movementId);
+  recordBankPosting(row.movementId, row.accountId, row.bankPostedOn, dbHandle);
+}

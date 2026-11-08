@@ -1,8 +1,8 @@
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { snapshotCcExpenseCategories } from "./ccExpenseCategoryPersist.js";
 import {
-  assignCcExpenseLineCategory,
   getCcExpenseCategoryBySlug,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
@@ -126,8 +126,9 @@ describe("ccExpenseCategoryPersist", () => {
       )
       .get(accountId, PARSER_ROW_ID) as { id: number; merchant: string };
 
-    assignCcExpenseLineCategory({
-      statementLineId: line.id,
+    assignFlowExpenseLineCategory({
+      source: "cc",
+      lineId: line.id,
       unique: false,
       categorySlug: "fun",
     });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccStatementLineBelongsToCreditCardGroup } from "./ccExpenseCategories.js";
-import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { checkingGastosMovementBelongs } from "./flowsCheckingGastos.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 

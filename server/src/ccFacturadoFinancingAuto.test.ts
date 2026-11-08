@@ -1,3 +1,9 @@
+import { insertLines } from "./cards/lineWrites.js";
+import type { CcWebPasteParseResult } from "./ccWebPasteParse.js";
+
+const plantFinancingPayment = (accountId: number, parsed: CcWebPasteParseResult) => {
+  insertLines(accountId, parsed, "cc_financing_payment");
+};
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { applyFacturadoFinancingLinks, planFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
@@ -69,7 +75,7 @@ describe("facturado paid with another card's cuotas", () => {
 
   it("links them and plants the PAGO once", () => {
     if (!financed || !financing) return;
-    const applied = applyFacturadoFinancingLinks()!;
+    const applied = applyFacturadoFinancingLinks(plantFinancingPayment)!;
     expect(applied.links_created).toContainEqual({ financed_account_id: financed, financed_billing_month: "2036-06" });
     expect(applied.payments_planted).toContainEqual({ financed_account_id: financed, paid_on: "2036-06-30", amount_clp: 2_467_034 });
 
@@ -84,7 +90,7 @@ describe("facturado paid with another card's cuotas", () => {
     expect(pago.map((p) => p.amount_clp)).toEqual([-2_467_034]);
 
     // A second pass finds the month linked and the payment on file: nothing more.
-    const again = applyFacturadoFinancingLinks()!;
+    const again = applyFacturadoFinancingLinks(plantFinancingPayment)!;
     expect(again.links_created.filter((l) => l.financed_account_id === financed)).toEqual([]);
     expect(again.payments_planted.filter((p) => p.financed_account_id === financed)).toEqual([]);
   });

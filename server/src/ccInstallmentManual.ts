@@ -1,15 +1,18 @@
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
-  deleteStatementLinesByIds,
-  removeOneShotLinesForInstallmentPurchase,
+  applyCardLinePlan,
+  planOneShotLinesForInstallmentPurchase,
   selLineCategory,
   upsertUniqueCat,
 } from "./ccCrossImportDedupe.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
-import { applyFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
+import { backfillMissingInstallmentPaymentsForPlans } from "./ccInstallmentPaymentBackfill.js";
+import {
+  noteCardLineEvidence,
+  noteCardLineFinancingLinks,
+  withCardLineSession,
+} from "./cards/lineWriteSession.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
@@ -34,7 +37,7 @@ function parsePurchaseDateIso(raw: string): string | null {
 export function createManualCcInstallmentPurchase(
   accountId: number,
   input: ManualCcPurchaseInput,
-  opts?: { removeSupersededOneShotLines?: boolean }
+  opts?: { removeSupersededOneShotLines?: boolean; sourceLineId?: number }
 ): { id: number; canonical_row_id: string } {
   const purchaseDate = parsePurchaseDateIso(input.purchase_date);
   if (!purchaseDate) throw new Error("invalid purchase_date");
@@ -46,43 +49,42 @@ export function createManualCcInstallmentPurchase(
   const cardGroup = ccCardGroupOrDefault(input.card_group);
   const merchant = String(input.merchant ?? input.description ?? "Compra manual").trim() || "Compra manual";
 
-  const r = db
-    .prepare(
-      `INSERT INTO cc_installment_purchases (
-         account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
-         cuotas_totales, merchant, description_merged, source
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
-    )
-    .run(
-      accountId,
-      cardGroup,
-      canonical,
-      purchaseDate,
-      principal,
-      cuotas,
-      merchant,
-      input.description?.trim() || null
-    );
+  return withCardLineSession(accountId, "manual installment plan", () => {
+    const r = db
+      .prepare(
+        `INSERT INTO cc_installment_purchases (
+           account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
+           cuotas_totales, merchant, description_merged, source, source_line_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)`
+      )
+      .run(
+        accountId,
+        cardGroup,
+        canonical,
+        purchaseDate,
+        principal,
+        cuotas,
+        merchant,
+        input.description?.trim() || null,
+        opts?.sourceLineId ?? null
+      );
 
-  const purchaseId = Number(r.lastInsertRowid);
-  // Fuzzy cross-source dedupe (merchant + date + amount tolerance) is only appropriate
-  // when the caller has no exact source line — e.g. a hand-entered manual purchase that
-  // supersedes a previously imported one-shot line. Callers that already know exactly which
-  // statement line the purchase came from (see convertStatementLineToInstallmentPurchase)
-  // pass removeSupersededOneShotLines: false and delete that line by id, so a second
-  // same-merchant/same-day line is never collateral-deleted.
-  if (opts?.removeSupersededOneShotLines !== false) {
-    removeOneShotLinesForInstallmentPurchase(accountId, purchaseId);
-  }
-
-  // The contract consumes cupo on its purchase date, so stamps written after it are stale.
-  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: purchaseDate });
-  recomputeCcBillingMonthBalances(accountId);
-  // A hand-entered plan, or a tagged feed purchase given its count, may be the one that paid
-  // another card's facturado.
-  applyFacturadoFinancingLinks();
-
-  return { id: purchaseId, canonical_row_id: canonical };
+    const purchaseId = Number(r.lastInsertRowid);
+    // Fuzzy cross-source dedupe (merchant + date + amount tolerance) is only appropriate
+    // when the caller has no exact source line — e.g. a hand-entered manual purchase that
+    // supersedes a previously imported one-shot line. A conversion names its line
+    // (`sourceLineId`) and keeps it, so a second same-merchant/same-day line is never
+    // collateral-deleted.
+    if (opts?.removeSupersededOneShotLines !== false && opts?.sourceLineId == null) {
+      applyCardLinePlan(accountId, planOneShotLinesForInstallmentPurchase(accountId, purchaseId));
+    }
+    // The contract consumes cupo on its purchase date, so stamps written after it are stale. A
+    // hand-entered plan, or a tagged feed purchase given its count, may be the one that paid
+    // another card's facturado.
+    noteCardLineEvidence(accountId, purchaseDate);
+    noteCardLineFinancingLinks(accountId);
+    return { id: purchaseId, canonical_row_id: canonical };
+  });
 }
 
 export function updateManualCcInstallmentPurchase(
@@ -92,13 +94,21 @@ export function updateManualCcInstallmentPurchase(
 ): void {
   const row = db
     .prepare(
-      `SELECT id, source, purchase_date FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
+      `SELECT id, source, purchase_date, source_line_id FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
     )
     .get(purchaseId, accountId) as
-    | { id: number; source: string; purchase_date: string | null }
+    | { id: number; source: string; purchase_date: string | null; source_line_id: number | null }
     | undefined;
   if (!row) throw new Error("purchase not found");
   if (row.source !== "manual") throw new Error("only manual purchases can be edited");
+  // A plan converted from a line takes its day, principal and merchant from the line: only the
+  // count is the plan's own (the purchases module pairs the two by those facts).
+  if (
+    row.source_line_id != null &&
+    (patch.purchase_date != null || patch.total_amount_clp != null || patch.merchant != null)
+  ) {
+    throw new Error("a plan converted from a card line takes its date, amount and merchant from the line");
+  }
 
   // A moved contract invalidates stamps after BOTH its old and new dates.
   let affectedFrom: string | null = row.purchase_date ?? null;
@@ -129,12 +139,14 @@ export function updateManualCcInstallmentPurchase(
   }
   if (fields.length === 0) return;
   params.push(purchaseId, accountId);
-  db.prepare(
-    `UPDATE cc_installment_purchases SET ${fields.join(", ")} WHERE id = ? AND account_id = ?`
-  ).run(...params);
-
-  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: affectedFrom });
-  recomputeCcBillingMonthBalances(accountId);
+  withCardLineSession(accountId, "manual installment plan edit", () => {
+    db.prepare(
+      `UPDATE cc_installment_purchases SET ${fields.join(", ")} WHERE id = ? AND account_id = ?`
+    ).run(...params);
+    // A new count moves which cuotas a statement's printed ones fill.
+    if (patch.cuotas_totales != null) backfillMissingInstallmentPaymentsForPlans([purchaseId]);
+    noteCardLineEvidence(accountId, affectedFrom);
+  });
 }
 
 const selStatementLineForConvert = db.prepare(`
@@ -177,53 +189,56 @@ export function convertStatementLineToInstallmentPurchase(
     parseDdMmYyToIso(line.posting_date ?? "");
   if (!purchaseDateIso) throw new Error("line has no parseable purchase date");
 
-  // Transfer category before the line is deleted by createManualCcInstallmentPurchase
-  const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
-  if (cat?.category_id != null) {
-    const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+  if (
+    db.prepare(`SELECT 1 FROM cc_installment_purchases WHERE source_line_id = ?`).get(lineId) != null
+  ) {
+    throw new Error("line is already converted to a plan");
+  }
+
+  return withCardLineSession(accountId, "convert a line to cuotas", () => {
+    // The plan's expense carries the line's category (an «Único» row under the plan's key); the
+    // line keeps its own rows, so deleting the plan leaves it as it was.
+    const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
+    if (cat?.category_id != null) {
+      const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+        accountId,
+        purchaseDateIso,
+        cuotasTotales: cuotas,
+        totalAmountClp: line.amount_clp!,
+        merchant: line.merchant,
+      });
+      upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
+    }
+
+    // The plan overlays the line (`source_line_id`): the line stays on file, the purchases module
+    // counts the purchase once, as the plan.
+    const created = createManualCcInstallmentPurchase(
       accountId,
-      purchaseDateIso,
-      cuotasTotales: cuotas,
-      totalAmountClp: line.amount_clp,
-      merchant: line.merchant,
-    });
-    upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
-  }
-
-  // Delete exactly the converted line by id. Do NOT let createManualCcInstallmentPurchase
-  // fuzzy-match one-shot lines: two distinct purchases with the same merchant and date
-  // (e.g. two "EXPRESS PLAZA L" charges on 30/06) would otherwise collide and the sibling
-  // line would be deleted too.
-  deleteStatementLinesByIds([lineId]);
-
-  const created = createManualCcInstallmentPurchase(
-    accountId,
-    {
-      purchase_date: purchaseDateIso,
-      total_amount_clp: line.amount_clp,
-      cuotas_totales: cuotas,
-      merchant: line.merchant ?? undefined,
-      card_group: line.card_group ?? undefined,
-    },
-    { removeSupersededOneShotLines: false }
-  );
-  // A line the card feed typed as a cuota purchase (count unknown until now) knows when its first
-  // cuota bills — the rule the feed import applies to the plans it creates itself: «cuota
-  // comercio» at the close after the purchase cycle, «precio contado» at the purchase cycle's own.
-  // The manual guess (the purchase's own cycle) is right for the second only.
-  if (line.cuota_purchase_kind) {
-    db.prepare(`UPDATE cc_installment_purchases SET first_due_month = ? WHERE id = ?`).run(
-      firstCuotaBillingMonth(
-        ccIssuerSlugForMasterAccount(accountId),
-        line.cuota_purchase_kind,
-        billingMonthContainingPurchase(accountId, purchaseDateIso)
-      ),
-      created.id
+      {
+        purchase_date: purchaseDateIso,
+        total_amount_clp: line.amount_clp!,
+        cuotas_totales: cuotas,
+        merchant: line.merchant ?? undefined,
+        card_group: line.card_group ?? undefined,
+      },
+      { sourceLineId: lineId }
     );
-    recomputeCcBillingMonthBalances(accountId);
-    upsertCreditCardValuationsFromLedger(accountId);
-  }
-  return created;
+    // A line the card feed typed as a cuota purchase (count unknown until now) knows when its first
+    // cuota bills — the rule the feed import applies to the plans it creates itself: «cuota
+    // comercio» at the close after the purchase cycle, «precio contado» at the purchase cycle's own.
+    // The manual guess (the purchase's own cycle) is right for the second only.
+    if (line.cuota_purchase_kind) {
+      db.prepare(`UPDATE cc_installment_purchases SET first_due_month = ? WHERE id = ?`).run(
+        firstCuotaBillingMonth(
+          ccIssuerSlugForMasterAccount(accountId),
+          line.cuota_purchase_kind,
+          billingMonthContainingPurchase(accountId, purchaseDateIso)
+        ),
+        created.id
+      );
+    }
+    return created;
+  });
 }
 
 export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId: number): void {
@@ -236,12 +251,10 @@ export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId:
     | undefined;
   if (!row) throw new Error("purchase not found");
   if (row.source !== "manual") throw new Error("only manual purchases can be deleted");
-  db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ? AND account_id = ?`).run(
-    purchaseId,
-    accountId
-  );
-  upsertCreditCardValuationsFromLedger(accountId, {
-    affectedEvidenceFromYmd: row.purchase_date ?? null,
+  // Undo of a conversion too: the line the plan overlaid is live again, its category, note and big
+  // group as they were.
+  withCardLineSession(accountId, "manual installment plan delete", () => {
+    db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ? AND account_id = ?`).run(purchaseId, accountId);
+    noteCardLineEvidence(accountId, row.purchase_date ?? null);
   });
-  recomputeCcBillingMonthBalances(accountId);
 }

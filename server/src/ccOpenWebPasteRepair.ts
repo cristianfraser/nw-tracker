@@ -1,5 +1,4 @@
 import { ymCompare } from "./calendarMonth.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
@@ -93,12 +92,10 @@ export type CcOpenWebPasteRepairResult = {
  * after a PDF close stay put; read paths attribute them to the current open month (see
  * {@link listStaleOpenWebPasteStatementDates}). The open bucket is created only when a line
  * moves into it: this runs on every card merge, and an eager create left a retired card an empty
- * «open» facturación each month (·0161, 2026-05 → 09).
+ * «open» facturación each month (·0161, 2026-05 → 09). A step of the card merge: the card-line write
+ * it runs in recomputes the balances once.
  */
-export function repairMisplacedOpenWebPasteBuckets(
-  accountId: number,
-  opts?: { skipRecompute?: boolean }
-): CcOpenWebPasteRepairResult {
+export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWebPasteRepairResult {
   const meta = creditCardMasterMetaForAccount(accountId);
   const openBm = targetBillingMonthForManualImports(accountId, meta.cardLast4);
 
@@ -124,10 +121,6 @@ export function repairMisplacedOpenWebPasteBuckets(
       moveLine.run(targetStmtId, line.id);
       linesMoved += 1;
     }
-  }
-
-  if (linesMoved > 0 && !opts?.skipRecompute) {
-    recomputeCcBillingMonthBalances(accountId);
   }
 
   return { lines_moved: linesMoved, target_billing_month: openBm };

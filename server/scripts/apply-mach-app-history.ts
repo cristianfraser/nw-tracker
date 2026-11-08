@@ -24,7 +24,7 @@
 import fs from "node:fs";
 import { db } from "../src/db.js";
 import { markCheckingExpenseRefund } from "../src/checkingExpenseRefunds.js";
-import { assignFlowExpenseLineCategory } from "../src/assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "../src/expenseAssignmentWrites.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
 import { setCcExpensePurchaseBigGroup } from "../src/ccExpenseBigGroups.js";
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";

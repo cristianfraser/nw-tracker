@@ -3,7 +3,7 @@ import { MATCH_WINDOWS } from "./matching/windows.js";
 import { countsTowardGastosMes } from "./flowsExpensesGastos.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
+import { buildFlowsExpenseLines } from "./flowsExpenses.js";
 import {
   merchantMatchesExpectation,
   REAL_ESTATE_LINKABLE_KINDS,
@@ -57,9 +57,9 @@ export function isGastosLineEligibleForRealEstateLink(line: FlowCcExpenseLineRow
   return countsTowardGastosMes(line, GASTOS_INSTALLMENT_MODE);
 }
 
+/** The expense lines a bill can be linked to: the lines alone, never the whole Expenses payload. */
 export function loadGastosLinesForRealEstateMatching(): FlowCcExpenseLineRow[] {
-  const payload = buildFlowsExpensesPayload();
-  return payload.lines.filter(isGastosLineEligibleForRealEstateLink);
+  return buildFlowsExpenseLines().filter(isGastosLineEligibleForRealEstateLink);
 }
 
 export function loadExistingLinks(): Map<number, RealEstateLinkRow> {

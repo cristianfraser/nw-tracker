@@ -13,6 +13,7 @@
  * days between, and `D` itself). A `consumed` set enforces one-to-one matching, and candidates
  * closest to the bank date win first.
  */
+import { deleteMovements } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { priorChileBusinessDayYmd } from "./marketHolidays.js";
@@ -166,7 +167,6 @@ export function supersedeImportedCheckingRowsForTransfer(
   const mag = Math.abs(amountClp);
   const removed_ids: number[] = [];
   if (!Number.isFinite(mag) || mag === 0) return { removed_ids };
-  const del = dbHandle.prepare(`DELETE FROM movements WHERE id = ?`);
   // to-endpoint sees +abono, from-endpoint sees −cargo.
   for (const [endpoint, signed] of [
     [toAccountId, mag] as const,
@@ -188,7 +188,7 @@ export function supersedeImportedCheckingRowsForTransfer(
       .all(endpoint, Math.round(signed), occurredOn, occurredOn) as ImportedCheckingRow[];
     const match = candidates.find((r) => bankDateMatchesTransferDate(r.occurred_on, occurredOn));
     if (!match) continue;
-    del.run(match.id);
+    deleteMovements([match.id], dbHandle);
     removed_ids.push(match.id);
     // The deleted row was the bank's listing: its date is the transfer's posting day here.
     recordBankPosting(transferMovementId, endpoint, match.occurred_on, dbHandle);

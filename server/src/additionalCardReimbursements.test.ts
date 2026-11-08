@@ -12,7 +12,7 @@ import { buildFlowsIncomeAggregates } from "./flowsOverview.js";
 import { isCheckingIncomeKind } from "./flowsCheckingIncomeOverrides.js";
 import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "./checkingExpenseRefunds.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
-import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
+import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 
 // Synthetic registry (vitest.config.ts): primary 0781-style cards, additional card 4999.
 const ADDITIONAL = "4999";

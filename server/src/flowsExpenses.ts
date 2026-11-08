@@ -52,6 +52,7 @@ import {
 } from "./ccAdditionalCardExpenseMatch.js";
 
 import { accountIdForLine, expenseEvidenceLines, supersededOneShotLineIds } from "./cards/purchases.js";
+import { db } from "./db.js";
 
 import {
 
@@ -110,7 +111,6 @@ import { buildCheckingGastosLinesForAccounts } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
   enrichFlowLinesWithExpenseDepositLinks,
-  syncExpenseDepositLinksFromGastosLines,
   type ExpenseDepositLinkDto,
 } from "./expenseDepositLinks.js";
 
@@ -946,21 +946,82 @@ export function expenseLineDraftForPieces(
   return { ...draft, purchase_key: resolvePurchaseKeyForGastosLine(draft) };
 }
 
-function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]): FlowCcExpenseLineRow[] {
-  const expanded = expandLineSplitsInDrafts(drafts);
-  const withNotes = enrichFlowLinesWithPurchaseNotes([...expanded]);
-  syncExpenseDepositLinksFromGastosLines(withNotes);
-  const withGroups = enrichFlowLinesWithBigGroups(withNotes);
-  const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
-  return withSpecificCategoryRules(
-    withExpenseDisplayNames(
-      withSubscriptionCategory(
-        withRecurringPaymentNames(
-          withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
-        )
-      )
-    )
-  );
+/**
+ * One step of the expense-line read pipeline: lines in, lines out, pure — it reads, never writes
+ * ({@link buildFlowsExpenseLines} throws naming the step that did).
+ */
+export type ExpenseLineStep = {
+  name: string;
+  // The lines grow fields from step to step (drafts become rows); each step keeps its own type.
+  run: (lines: readonly FlowCcExpenseLineRow[]) => FlowCcExpenseLineRow[];
+};
+
+const asRows = <T,>(f: (lines: T[]) => unknown) => (lines: readonly FlowCcExpenseLineRow[]) =>
+  f(lines as unknown as T[]) as FlowCcExpenseLineRow[];
+
+/**
+ * The expense-line pipeline, in its order (each step reads what an earlier one set):
+ * - nota pairing before the card refunds (a paired nota is no refund);
+ * - pieces before notes (a piece carries its own note key);
+ * - big groups and origin labels on the final keys;
+ * - deposit links, counterparties and receipts before the names and categories they decide;
+ * - the subscription category before the specific rules (which drop the bank-name marker);
+ * - the facturado-financing projection on the categorized lines, the financing-cost stamp last
+ *   (it drops the internal kind marker).
+ */
+export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
+  { name: "nota de crédito pairing", run: asRows(enrichLinesWithNotaDeCreditoPairing) },
+  { name: "card refunds", run: asRows(markCardRefunds) },
+  { name: "line pieces", run: asRows(expandLineSplitsInDrafts) },
+  { name: "purchase notes", run: asRows(enrichFlowLinesWithPurchaseNotes) },
+  { name: "big groups", run: asRows(enrichFlowLinesWithBigGroups) },
+  { name: "origin labels", run: asRows(enrichFlowLinesWithOriginLabels) },
+  { name: "expense deposit links", run: asRows(enrichFlowLinesWithExpenseDepositLinks) },
+  { name: "transfer counterparties", run: asRows(enrichFlowLinesWithTransferCounterparties) },
+  { name: "payment receipts", run: asRows(withPaymentReceipts) },
+  { name: "recurring payment names", run: asRows(withRecurringPaymentNames) },
+  { name: "subscription category", run: asRows(withSubscriptionCategory) },
+  { name: "display names", run: asRows(withExpenseDisplayNames) },
+  { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
+  { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
+  { name: "financing cost lines", run: asRows(markFinancingCostLines) },
+];
+
+const selTotalChanges = db.prepare(`SELECT total_changes() AS n`);
+
+function runExpenseLineSteps(
+  drafts: readonly FlowCcExpenseLineRowDraft[],
+  steps: readonly ExpenseLineStep[]
+): FlowCcExpenseLineRow[] {
+  let lines = drafts as unknown as FlowCcExpenseLineRow[];
+  for (const step of steps) {
+    const before = (selTotalChanges.get() as { n: number }).n;
+    lines = step.run(lines);
+    if ((selTotalChanges.get() as { n: number }).n !== before) {
+      throw new Error(`expense lines: the «${step.name}» step wrote to the database — the read pipeline only reads`);
+    }
+  }
+  return lines;
+}
+
+/** Every expense-line draft: card lines (none without cards), checking, manual, mirror, payslip. */
+function expenseLineDrafts(accountIds: readonly number[]): FlowCcExpenseLineRowDraft[] {
+  return [
+    ...(accountIds.length > 0 ? buildCcExpenseLines([...accountIds]) : []),
+    ...loadCheckingGastosLinesForExpenses(),
+    ...loadManualExpenseGastosLineDrafts(),
+    ...loadCheckingGapDepositMirrorGastosLineDrafts(),
+    ...loadPayslipExpenseLineDrafts(),
+  ];
+}
+
+/**
+ * The lines the expense deposit-link sync reads (`expenseAssignmentWrites.ts`, after a write):
+ * every line through the pipeline's steps up to the purchase notes.
+ */
+export function expenseLinesForDepositLinkSync(): FlowCcExpenseLineRow[] {
+  const upToNotes = EXPENSE_LINE_STEPS.slice(0, EXPENSE_LINE_STEPS.findIndex((s) => s.name === "purchase notes") + 1);
+  return runExpenseLineSteps(expenseLineDrafts(listCreditCardMasterAccountIds()), upToNotes);
 }
 
 /**
@@ -1068,24 +1129,7 @@ export function isPreTaxExpenseLine(line: Pick<FlowCcExpenseLineRow, "source">):
 
 /** Every gastos line the Expenses page lists: card, checking, manual, mirror and payslip lines. */
 export function buildFlowsExpenseLines(accountIds: readonly number[] = listCreditCardMasterAccountIds()): FlowCcExpenseLineRow[] {
-  if (accountIds.length === 0) {
-    return finalizeFlowExpenseLines([
-      ...loadCheckingGastosLinesForExpenses(),
-      ...loadManualExpenseGastosLineDrafts(),
-      ...loadCheckingGapDepositMirrorGastosLineDrafts(),
-      ...loadPayslipExpenseLineDrafts(),
-    ]);
-  }
-  const ccLines = buildCcExpenseLines([...accountIds]);
-  const checkingLines = loadCheckingGastosLinesForExpenses();
-  return markFinancingCostLines(applyCcFacturadoFinancingProjection(
-    finalizeFlowExpenseLines([
-      ...markCardRefunds(enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])),
-      ...loadManualExpenseGastosLineDrafts(),
-      ...loadCheckingGapDepositMirrorGastosLineDrafts(),
-      ...loadPayslipExpenseLineDrafts(),
-    ])
-  ));
+  return runExpenseLineSteps(expenseLineDrafts(accountIds), EXPENSE_LINE_STEPS);
 }
 
 export function buildFlowsExpensesPayload(): FlowsExpensesPayload {

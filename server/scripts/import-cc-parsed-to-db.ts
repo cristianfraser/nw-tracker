@@ -39,10 +39,8 @@ import {
   mergeInstallmentLedgerFromParsedRows,
 } from "../src/ccInstallmentLedgerMerge.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
-import {
-  assertCcPaymentEvidenceKept,
-  ccPaymentPairingIdsWithEvidence,
-} from "../src/ccPaymentMirrorEvidence.js";
+import { cardLineWrite } from "../src/cards/lineWrites.js";
+import { noteCardLineWritten } from "../src/cards/lineWriteSession.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { cardLast4FromParsedRow, resolveImportAccountIds } from "../src/ccParsedImportAccounts.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
@@ -200,8 +198,6 @@ function main() {
   let totalStatements = 0;
   let totalLines = 0;
   let totalGap = 0;
-  let totalVal = 0;
-  let totalBilling = 0;
   let totalCategoriesRestored = 0;
   const importRunAccounts: CcStatementImportAccountLog[] = [];
 
@@ -215,26 +211,23 @@ function main() {
     let purchaseUpserts = 0;
     let paymentUpserts = 0;
     let gapFilled = 0;
-    let valuationMonthsSynced = 0;
     let statementCount = 0;
     let statementLineCount = 0;
     let categoriesRestored = 0;
-    let billingSnapshots = 0;
     let linesSkippedDuplicate = 0;
     let linesSkippedInstallmentOverlap = 0;
 
     if (!dry) {
       if (replaceAccount) {
-        // One transaction, so a reload that drops a converted payment's evidence (new statement
-        // and line ids are fine — the pairing finds its payment by card, date and amount) rolls
-        // back instead of leaving the account wiped.
-        const st = db.transaction(() => {
-          const pairedWithEvidence = ccPaymentPairingIdsWithEvidence(accountId);
+        // One card-line write, so a reload that drops a converted payment's evidence (new
+        // statement and line ids are fine — the pairing finds its payment by card, date and
+        // amount) rolls back instead of leaving the account wiped.
+        const st = cardLineWrite(accountId, "the --wipe reload", () => {
           const reloaded = importCcStatementsFromCsvRecords(accountId, accountRecords);
           relinkCcTraspasoDeudaLinksForAccount(accountId);
-          assertCcPaymentEvidenceKept(accountId, pairedWithEvidence, "the --wipe reload");
+          noteCardLineWritten(accountId);
           return reloaded;
-        })();
+        });
         statementCount = st.statementCount;
         statementLineCount = st.linesInserted;
         linesSkippedDuplicate = st.linesSkippedDuplicate;
@@ -246,8 +239,6 @@ function main() {
         purchaseUpserts = ledger.purchaseUpserts;
         paymentUpserts = ledger.paymentUpserts;
         gapFilled = ledger.gapFilled;
-        valuationMonthsSynced = ledger.valuationMonthsSynced;
-        billingSnapshots = ledger.billingSnapshots;
       } else if (replaceLedgerOnly) {
         const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
           replaceLedger: true,
@@ -255,8 +246,6 @@ function main() {
         purchaseUpserts = ledger.purchaseUpserts;
         paymentUpserts = ledger.paymentUpserts;
         gapFilled = ledger.gapFilled;
-        valuationMonthsSynced = ledger.valuationMonthsSynced;
-        billingSnapshots = ledger.billingSnapshots;
       }
     } else {
       const chains = groupInstallmentLoanChains(accountRecords);
@@ -280,7 +269,7 @@ function main() {
     console.log(
       dry
         ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountRecords.length} csv rows`
-        : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}, valuations ${valuationMonthsSynced}, billing ${billingSnapshots}.`
+        : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}.`
     );
 
     totalPurchases += purchaseUpserts;
@@ -288,8 +277,6 @@ function main() {
     totalStatements += statementCount;
     totalLines += statementLineCount;
     totalGap += gapFilled;
-    totalVal += valuationMonthsSynced;
-    totalBilling += billingSnapshots;
     totalCategoriesRestored += categoriesRestored;
   }
 
@@ -301,7 +288,7 @@ function main() {
     console.log(
       dry
         ? `[dry-run] total: ~${totalPurchases} purchases, ~${totalPayments} payments from ${csvPath}`
-        : `Import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, ${totalStatements} statements (${totalLines} lines), categories restored ${totalCategoriesRestored}, gap-fill ${totalGap}, valuations ${totalVal}, billing ${totalBilling}.`
+        : `Import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, ${totalStatements} statements (${totalLines} lines), categories restored ${totalCategoriesRestored}, gap-fill ${totalGap}.`
     );
   }
 }

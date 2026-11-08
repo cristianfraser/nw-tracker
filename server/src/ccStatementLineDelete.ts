@@ -1,10 +1,13 @@
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { isListingSourceKind } from "./ccStatementSourceKind.js";
-import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
-import { keepingCcPaymentEvidence } from "./ccPaymentMirrorEvidence.js";
+import { deleteLines } from "./cards/lineWrites.js";
 import { db } from "./db.js";
 
-/** Delete one line from an open web-paste facturación bucket; recompute billing balances. */
+/**
+ * Delete one line from an open web-paste facturación bucket, through the card-line funnel: its
+ * evidence date read first, the payment-evidence guard (a pasted PAGO / ABONO DE DIVISAS line can
+ * be the only evidence of a converted card payment — deleting it throws), then the balances
+ * recomputed and the valuations re-synced from the line's date (the stamps it contradicts go).
+ */
 export function deleteCcWebPasteStatementLine(
   accountId: number,
   statementLineId: number
@@ -25,16 +28,7 @@ export function deleteCcWebPasteStatementLine(
   if (!isListingSourceKind(row.source_kind)) {
     throw new Error("only web-paste statement lines can be deleted");
   }
-
-  // A pasted PAGO / ABONO DE DIVISAS line can be the only evidence of a converted card payment:
-  // deleting it would leave that transfer booked against nothing, so it throws instead.
-  const removed_count = db.transaction(() =>
-    keepingCcPaymentEvidence(accountId, `deleting statement line ${statementLineId}`, () =>
-      deleteStatementLinesByIds([statementLineId])
-    )
-  )();
-  if (removed_count > 0) {
-    recomputeCcBillingMonthBalances(accountId);
-  }
-  return { removed_count };
+  return {
+    removed_count: deleteLines(accountId, [statementLineId], { what: `deleting statement line ${statementLineId}` }),
+  };
 }

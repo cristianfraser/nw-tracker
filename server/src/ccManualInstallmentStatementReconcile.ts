@@ -13,8 +13,7 @@ import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { ccCardGroupsCompatible } from "./ccIssuers.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { noteCardLineEvidence, withCardLineSession } from "./cards/lineWriteSession.js";
 import { statementKeyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -560,25 +559,23 @@ export function reconcileManualInstallmentPurchasesForStatements(
     }
   });
 
-  run();
-
-  if (deleted > 0 || converted > 0) {
-    // Deleting a twin removes dated evidence (its purchase-date ramp in the daily owed
-    // walk), so today-stamps written while it existed must self-purge from its purchase
-    // date onward — same contract as manual installment delete. Conversions keep the row
-    // (no evidence removed), so they don't widen the purge window.
-    const earliestDeletedYmd = matches.reduce<string | null>(
-      (min, m) =>
-        m.action === "deleted" && (min == null || m.manual_purchase_date < min)
-          ? m.manual_purchase_date
-          : min,
-      null
+  // A card-line write (joined to the statement import's when it runs inside one): deleting a twin
+  // removes dated evidence (its purchase-date ramp in the daily owed walk), so the stamps written
+  // while it existed are purged from its purchase date — same contract as a manual plan's delete.
+  // Conversions keep the row (no evidence removed), so they don't widen the purge window.
+  const write = () => {
+    run();
+    if (deleted === 0 && converted === 0) return;
+    noteCardLineEvidence(
+      accountId,
+      matches.reduce<string | null>(
+        (min, m) => (m.action === "deleted" && (min == null || m.manual_purchase_date < min) ? m.manual_purchase_date : min),
+        null
+      )
     );
-    upsertCreditCardValuationsFromLedger(accountId, {
-      affectedEvidenceFromYmd: earliestDeletedYmd ?? undefined,
-    });
-    recomputeCcBillingMonthBalances(accountId);
-  }
+  };
+  if (dryRun) run();
+  else withCardLineSession(accountId, "manual plan reconcile", write);
 
   return {
     statements_considered: statementIds.length,

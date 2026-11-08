@@ -48,24 +48,25 @@ function medianPositive(nums: number[]): number {
 }
 
 /**
- * Remove prior synthetic gap rows, then insert inferred payments for missing cuota indices
- * 1..M where M = max(non-null cuota_current) ≤ cuotas_totales, so the ledger reflects every
- * installment up to the last one seen on PDFs (e.g. only 3/3 present → backfill 1 and 2).
+ * For each given plan: remove its prior synthetic gap rows, then insert inferred payments for the
+ * missing cuota indices 1..M where M = max(non-null cuota_current) ≤ cuotas_totales, so the
+ * ledger reflects every installment up to the last one a statement printed (e.g. only 3/3 present
+ * → backfill 1 and 2). Runs for the plans a write created or changed (the merge's plans, a count
+ * edit), never as an account-wide pass.
  */
-export function backfillMissingInstallmentPaymentsForAccount(accountId: number): { inserted: number } {
-  const delSynth = db.prepare(`
-    DELETE FROM cc_installment_payments
-    WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)
-      AND parser_row_id LIKE ?
-  `);
-  delSynth.run(accountId, `${SYNTH_PARSER_PREFIX}%`);
-
-  const purchases = db
-    .prepare(
-      `SELECT id, purchase_date, total_amount_clp, cuotas_totales
-       FROM cc_installment_purchases WHERE account_id = ? ORDER BY id`
-    )
-    .all(accountId) as PurchaseRow[];
+export function backfillMissingInstallmentPaymentsForPlans(planIds: readonly number[]): { inserted: number } {
+  if (planIds.length === 0) return { inserted: 0 };
+  const delSynth = db.prepare(`DELETE FROM cc_installment_payments WHERE purchase_id = ? AND parser_row_id LIKE ?`);
+  const selPurchase = db.prepare(
+    `SELECT id, purchase_date, total_amount_clp, cuotas_totales FROM cc_installment_purchases WHERE id = ?`
+  );
+  const purchases: PurchaseRow[] = [];
+  for (const id of [...new Set(planIds)].sort((a, b) => a - b)) {
+    delSynth.run(id, `${SYNTH_PARSER_PREFIX}%`);
+    const pr = selPurchase.get(id) as PurchaseRow | undefined;
+    if (!pr) throw new Error(`installment gap fill: plan ${id} not found`);
+    purchases.push(pr);
+  }
 
   const selPay = db.prepare(
     `SELECT pay_by_date, amount_clp, cuota_current, cuota_total, parser_row_id
@@ -130,7 +131,10 @@ export function backfillMissingInstallmentPaymentsForAccount(accountId: number):
         }
       }
 
-      const purchaseIso = String(pr.purchase_date ?? "2000-01-01").trim();
+      const purchaseIso = String(pr.purchase_date ?? "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseIso)) {
+        throw new Error(`installment gap fill: plan ${pr.id} has no purchase date to place cuota ${k} from`);
+      }
 
       let payBy: string;
       if (prevK > 0 && nextK <= M) {

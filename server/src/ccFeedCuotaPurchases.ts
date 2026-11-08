@@ -22,8 +22,7 @@ import { findPlanForOneShotLine, merchantsMatchForCrossDedupe } from "./cards/pu
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { creditCardMasterMetaForAccount, type CcWebPasteLine } from "./ccWebPasteParse.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { noteCardLineWritten, withCardLineSession } from "./cards/lineWriteSession.js";
 import { parseDdMmYyToIso, daysBetweenIso, isWebPasteCutOf, normalizeMerchantText } from "nw-tracker-contracts";
 
 /** An open web-paste bucket line, as the feed matchers see it. */
@@ -113,6 +112,14 @@ export function createPlansForFeedCuotaPurchases(
   lines: readonly CcWebPasteLine[],
   feedFile: string | null
 ): CcFeedPlanCreated[] {
+  return withCardLineSession(accountId, "feed cuota plans", () => createPlansInSession(accountId, lines, feedFile));
+}
+
+function createPlansInSession(
+  accountId: number,
+  lines: readonly CcWebPasteLine[],
+  feedFile: string | null
+): CcFeedPlanCreated[] {
   const created: CcFeedPlanCreated[] = [];
   const meta = creditCardMasterMetaForAccount(accountId);
   for (const line of lines) {
@@ -155,11 +162,6 @@ export function createPlansForFeedCuotaPurchases(
       first_due_month: firstDue,
     });
   }
-  if (created.length > 0) {
-    // The plan's first due month was written after the create's own re-sync.
-    recomputeCcBillingMonthBalances(accountId);
-    upsertCreditCardValuationsFromLedger(accountId);
-  }
   return created;
 }
 
@@ -173,6 +175,10 @@ export function tagFeedCuotaPurchaseLines(
   accountId: number,
   lines: readonly CcWebPasteLine[]
 ): number[] {
+  return withCardLineSession(accountId, "feed cuota tags", () => tagInSession(accountId, lines));
+}
+
+function tagInSession(accountId: number, lines: readonly CcWebPasteLine[]): number[] {
   const typed = lines.filter((l) => l.cuota_purchase && l.currency === "clp");
   if (typed.length === 0) return [];
   const bucket = listOpenBucketLines(accountId);
@@ -190,6 +196,7 @@ export function tagFeedCuotaPurchaseLines(
     updKind.run(feed.cuota_purchase!.kind, hit.id);
     tagged.push(hit.id);
   }
-  if (tagged.length > 0) recomputeCcBillingMonthBalances(accountId);
+  // A tagged line counts as installment debt: the card-line write it runs in re-syncs.
+  if (tagged.length > 0) noteCardLineWritten(accountId);
   return tagged;
 }
