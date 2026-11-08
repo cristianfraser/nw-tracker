@@ -16,7 +16,8 @@ type ManualExpenseEntryRow = {
   amount_clp: number;
   spent_on: string;
   category: string;
-  note: string | null;
+  /** What it was, as the user wrote it (migration 275); null = the line shows its category. */
+  merchant: string | null;
 };
 
 export function validateManualExpenseCategorySlug(category: string | null | undefined): string {
@@ -28,11 +29,14 @@ export function validateManualExpenseCategorySlug(category: string | null | unde
   return slug;
 }
 
+/** The note's provenance prefix (human text: the line's name is the `merchant` column). */
+const MANUAL_NOTE_PREFIX = "manual:";
+
 export function normalizeManualExpenseNote(note: string | null | undefined): string | null {
   const t = String(note ?? "").trim();
-  if (!t) return "manual:";
-  if (t.startsWith("manual:") || t.startsWith("synthetic:")) return t;
-  return `manual:${t}`;
+  if (!t) return MANUAL_NOTE_PREFIX;
+  if (t.startsWith(MANUAL_NOTE_PREFIX) || t.startsWith("synthetic:")) return t;
+  return `${MANUAL_NOTE_PREFIX}${t}`;
 }
 
 function isFlowsManualExpenseEntryRow(row: ManualExpenseEntryRow): boolean {
@@ -47,7 +51,7 @@ function isFlowsManualExpenseEntryRow(row: ManualExpenseEntryRow): boolean {
 function loadManualExpenseEntryRows(): ManualExpenseEntryRow[] {
   return db
     .prepare(
-      `SELECT id, amount_clp, spent_on, category, note
+      `SELECT id, amount_clp, spent_on, category, merchant
        FROM expense_entries
        WHERE category IS NOT NULL AND expense_account_id IS NULL
        ORDER BY spent_on, id`
@@ -64,8 +68,7 @@ export function loadManualExpenseGastosLineDrafts(): FlowCcExpenseLineRowDraft[]
     const categorySlug = validateManualExpenseCategorySlug(row.category);
     const expenseMonth = monthKeyFromYmd(row.spent_on);
     const amountClp = Math.round(row.amount_clp);
-    // The `manual:` prefix is provenance; the line shows what was written after it.
-    const merchant = String(row.note ?? "").replace(/^manual:/, "").trim() || categorySlug;
+    const merchant = row.merchant?.trim() || categorySlug;
 
     lines.push({
       source: "manual",
@@ -100,7 +103,7 @@ export type ManualExpenseInput = {
   spent_on: string;
   amount_clp: number;
   category_slug: string;
-  /** What it was; stored with the `manual:` provenance prefix and shown as the line's merchant. */
+  /** What it was: the line's merchant, and the note (with its `manual:` provenance prefix). */
   description: string;
 };
 
@@ -109,6 +112,7 @@ function validManualExpense(input: ManualExpenseInput): {
   amountClp: number;
   category: string;
   note: string | null;
+  merchant: string;
 } {
   const spentOn = String(input.spent_on ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(spentOn)) throw new Error(`spent_on must be YYYY-MM-DD, got ${spentOn}`);
@@ -123,6 +127,7 @@ function validManualExpense(input: ManualExpenseInput): {
     amountClp,
     category: validateManualExpenseCategorySlug(input.category_slug),
     note: normalizeManualExpenseNote(description),
+    merchant: description,
   };
 }
 
@@ -141,21 +146,17 @@ function requireEditableManualExpense(id: number): void {
 export function createManualExpense(input: ManualExpenseInput): { id: number } {
   const v = validManualExpense(input);
   const result = db
-    .prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, note) VALUES (?, ?, ?, ?)`)
-    .run(v.amountClp, v.spentOn, v.category, v.note);
+    .prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, note, merchant) VALUES (?, ?, ?, ?, ?)`)
+    .run(v.amountClp, v.spentOn, v.category, v.note, v.merchant);
   return { id: Number(result.lastInsertRowid) };
 }
 
 export function updateManualExpense(id: number, input: ManualExpenseInput): void {
   requireEditableManualExpense(id);
   const v = validManualExpense(input);
-  db.prepare(`UPDATE expense_entries SET amount_clp = ?, spent_on = ?, category = ?, note = ? WHERE id = ?`).run(
-    v.amountClp,
-    v.spentOn,
-    v.category,
-    v.note,
-    id
-  );
+  db.prepare(
+    `UPDATE expense_entries SET amount_clp = ?, spent_on = ?, category = ?, note = ?, merchant = ? WHERE id = ?`
+  ).run(v.amountClp, v.spentOn, v.category, v.note, v.merchant, id);
 }
 
 /** Deletes a manual expense and the big group it carried (keyed `manual:<id>`). */

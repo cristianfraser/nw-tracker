@@ -21,6 +21,7 @@ import { runLoanPayments258 } from "./loanPayments258.js";
 import { runAccountRoles271 } from "./accountRoles271.js";
 import { runNavTreeRoles272 } from "./navTreeRoles272.js";
 import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
+import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
@@ -262,6 +263,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "273_expense_key_legacy_rewrite.sql": (dbi) => {
     runExpenseKeyLegacyRewrite273(dbi);
   },
+  "275_manual_expense_merchant.sql": runManualExpenseMerchant275,
 };
 
 /**

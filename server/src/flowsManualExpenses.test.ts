@@ -34,10 +34,10 @@ describe("flowsManualExpenses", () => {
   it("merges manual expense_entries into gastos payload", () => {
     const r = db
       .prepare(
-        `INSERT INTO expense_entries (amount_clp, spent_on, category, note)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO expense_entries (amount_clp, spent_on, category, note, merchant)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(123_456, "2099-03-31", "supermarket", "synthetic:excel-gap|2099-03|supermarket");
+      .run(123_456, "2099-03-31", "supermarket", "synthetic:excel-gap|2099-03|supermarket", "Market");
     const id = Number(r.lastInsertRowid);
     insertedIds.push(id);
 
@@ -45,6 +45,7 @@ describe("flowsManualExpenses", () => {
     const line = payload.lines.find((ln) => ln.source === "manual" && ln.statement_line_id === id);
     expect(line).toBeDefined();
     expect(line?.category_slug).toBe("supermarket");
+    expect(line?.merchant).toBe("Market");
     expect(line?.expense_month).toBe("2099-03");
     expect(line?.amount_clp).toBe(123_456);
     expect(line?.amount_usd_at_expense).not.toBeNull();
