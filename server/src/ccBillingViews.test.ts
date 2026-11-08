@@ -26,10 +26,7 @@ import {
 } from "./test/vitestDbSeed.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import {
-  billingMonthForManualLedgerPurchase,
-  lastPdfBillingMonthForAccount,
-} from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { ymCompare } from "./calendarMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import * as chileDate from "./chileDate.js";

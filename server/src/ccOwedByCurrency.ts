@@ -4,11 +4,7 @@ import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountUsd } from "./ccExpenseAmountClp.js";
 import { installmentRemainderAfterFacturacionClp } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
-import {
-  closeDateForBillingMonth,
-  lastClosedBillingMonthForAccount,
-  lastPdfBillingMonthForAccount,
-} from "./ccManualBillingMonth.js";
+import { closeDateForBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
 
 /**

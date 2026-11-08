@@ -1,10 +1,7 @@
 import crypto from "node:crypto";
 import type { CardPastedListing } from "nw-tracker-contracts";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import {
-  statementCloseDdMmYyyyForBillingMonth,
-  targetBillingMonthForManualImports,
-} from "./ccManualBillingMonth.js";
+import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
 import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
 import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines.js";
 import { activeAdditionalCardLast4ForAccount } from "./ccAdditionalCardExpenseMatch.js";

@@ -11,14 +11,10 @@ import {
 } from "./ccCuotaRetirement.js";
 import { derivedPayByIso, normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
-import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
+import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
-import {
-  billingMonthContainingPurchase,
-  billingMonthForLedgerPurchase,
-  closeDateForBillingMonth,
-} from "./ccManualBillingMonth.js";
+import { billingMonthContainingPurchase, billingMonthForLedgerPurchase, closeDateForBillingMonth } from "./cards/facturacion.js";
 import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
 import {
   calendarMonthsAfterPurchase,

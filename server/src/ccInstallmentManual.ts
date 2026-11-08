@@ -12,7 +12,7 @@ import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.j
 import { applyFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type ManualCcPurchaseInput = {

@@ -6,7 +6,7 @@ import {
   expenseLineOriginLabel,
   loadAccountNameById,
 } from "./ccExpenseOriginLabel.js";
-import { cardLast4ForCreditCardAccount } from "./ccManualBillingMonth.js";
+import { cardLast4ForCreditCardAccount } from "./cards/facturacion.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 

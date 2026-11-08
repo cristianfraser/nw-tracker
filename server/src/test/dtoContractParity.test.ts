@@ -9,7 +9,7 @@ import type { EquityBrokerHolding as S_EquityBrokerHolding } from "../equityBrok
 import type { FxCoverage as S_FxCoverage } from "../fxCoverage.js";
 import type { FxConversionWarningCode as S_FxConversionWarningCode, FxConversionWarning as S_FxConversionWarning } from "../fxConversionWarnings.js";
 import type { FxBidAskGapRow as S_FxBidAskGapRow } from "../fxBidAskGaps.js";
-import type { CcCloseSource as S_CcCloseSource } from "../ccBillingCloses.js";
+import type { CcCloseSource as S_CcCloseSource } from "../cards/facturacion.js";
 import type { UpcomingPaymentKind as S_UpcomingPaymentKind } from "../upcomingPayments.js";
 import type { CcCuotaPurchaseKind as S_CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
 import type { CcInstallmentPurchaseComputed as S_CcInstallmentPurchaseComputed, CcCuotaProgressCuota as S_CcCuotaProgressCuota, CcCuotaProgress as S_CcCuotaProgress, CcInstallmentMonthBreakdown as S_CcInstallmentMonthBreakdown, CcInstallmentCalendarMonthRow as S_CcInstallmentMonthRow } from "../creditCardInstallments.js";

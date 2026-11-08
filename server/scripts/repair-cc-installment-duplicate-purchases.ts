@@ -10,7 +10,7 @@ import {
   dedupeInstallmentPurchaseLedgerRows,
   installmentPurchaseLedgerDedupeKey,
 } from "../src/ccInstallmentLedgerDb.js";
-import { statementPeriodMonthFromParsedRow } from "../src/ccInstallmentStatementMonth.js";
+import { statementPeriodMonthFromParsedRow } from "../src/cards/statementMonth.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 
 function arg(name: string): string | undefined {

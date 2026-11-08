@@ -1,6 +1,6 @@
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
-import { cardLast4ForCreditCardAccount } from "./ccManualBillingMonth.js";
+import { cardLast4ForCreditCardAccount } from "./cards/facturacion.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineSource } from "./flowsExpenses.js";
 

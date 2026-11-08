@@ -19,7 +19,7 @@ import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { findPlanForOneShotLine, merchantsMatchForCrossDedupe } from "./cards/purchases.js";
-import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { creditCardMasterMetaForAccount, type CcWebPasteLine } from "./ccWebPasteParse.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";

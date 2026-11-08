@@ -23,7 +23,7 @@
 import { importCcWebPasteLines } from "./accountImports.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 
-import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { billingMonthForStatementDate } from "./cards/statementMonth.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";

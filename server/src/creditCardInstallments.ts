@@ -15,7 +15,7 @@ import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import type { CreditCardBillingConfig } from "./cards/config.js";
 import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ccStatementRowCount } from "./ccStatementsDb.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
 import {
   buildCcHistorialChartSeries,

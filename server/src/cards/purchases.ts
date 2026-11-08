@@ -25,8 +25,8 @@ import {
 } from "../ccInstallmentLineDedupe.js";
 import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch } from "../matching/installmentAmount.js";
 import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix } from "nw-tracker-contracts";
-import { paymentStatementMonthYm } from "../ccInstallmentStatementMonth.js";
-import { billingMonthContainingPurchase, lastPdfBillingMonthForAccount } from "../ccManualBillingMonth.js";
+import { paymentStatementMonthYm } from "./statementMonth.js";
+import { billingMonthContainingPurchase, lastPdfBillingMonthForAccount } from "./facturacion.js";
 
 /** A plan as the line matchers read it (`cc_installment_purchases`). */
 export type CardPlanForMatching = {

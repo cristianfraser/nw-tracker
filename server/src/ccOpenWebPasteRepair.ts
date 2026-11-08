@@ -1,10 +1,7 @@
 import { ymCompare } from "./calendarMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import {
-  statementCloseDdMmYyyyForBillingMonth,
-  targetBillingMonthForManualImports,
-} from "./ccManualBillingMonth.js";
-import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
+import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
+import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";

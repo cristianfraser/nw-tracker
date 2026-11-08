@@ -1,11 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
-import {
-  billingMonthForManualLedgerPurchase,
-  lastPdfBillingMonthForAccount,
-  periodToIsoForBillingMonth,
-} from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./cards/facturacion.js";
 import {
   openWebPasteSourcePdf,
   parseOpenWebPasteBillingMonth,

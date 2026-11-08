@@ -1,5 +1,5 @@
 import { accountInactiveByValuationTail } from "./accountValuationTailInactive.js";
-import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { billingMonthForStatementDate } from "./cards/statementMonth.js";
 import {
   ccInstallmentLedgerRowCount,
   liveCreditCardOutstandingClp,

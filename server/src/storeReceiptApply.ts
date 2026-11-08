@@ -54,7 +54,7 @@ import {
   resolveBranchMerchant,
   type PendingBranchReceipt,
 } from "./groceryBranchLearning.js";
-import { lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./ccManualBillingMonth.js";
+import { lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./cards/facturacion.js";
 import { importCcWebPasteLines } from "./accountImports.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import type { ImportBatchKind } from "./importBatches.js";

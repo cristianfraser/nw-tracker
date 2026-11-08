@@ -2,10 +2,7 @@ import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import { findPlanForOneShotLine } from "./cards/purchases.js";
-import {
-  billingMonthContainingPurchase,
-  billingMonthForManualLedgerPurchase,
-} from "./ccManualBillingMonth.js";
+import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";

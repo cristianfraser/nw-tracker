@@ -18,8 +18,8 @@
  */
 import { db } from "./db.js";
 import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
-import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
-import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./ccManualBillingMonth.js";
+import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
+import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./cards/facturacion.js";
 import { MORTGAGE_CUOTA_DAY, mortgageCuotaWindow } from "./mortgageCuotaDay.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";

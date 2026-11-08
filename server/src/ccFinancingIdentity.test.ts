@@ -11,7 +11,7 @@ import { snapshotTables } from "./test/snapshotTables.js";
 import { balanceUsdFxDateIso } from "./ccBillingBalances.js";
 import { ccSection3FinancingClpByDate } from "./ccFinancingCostDaily.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
-import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "./ccStatementSection3.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";

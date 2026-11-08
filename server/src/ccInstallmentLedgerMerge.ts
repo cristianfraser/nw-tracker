@@ -43,7 +43,7 @@ import {
 } from "./ccExpenseLineRekey.js";
 import { assertCcPaymentEvidenceKept, ccPaymentPairingIdsWithEvidence } from "./ccPaymentMirrorEvidence.js";
 import { installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
-import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
+import { statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function installmentContractAmountClp(row: CcStatementCsvRecord): number {

@@ -23,13 +23,8 @@ import {
 } from "./ccBillingStatementSlots.js";
 import { ccInstallmentLedgerRowCount, ccLedgerMonthEndIso, creditCardInstallmentPaymentsByBillingMonth, installmentRemainingClpByCalendarMonth, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
-import {
-  billingMonthForManualLedgerPurchase,
-  closeDateForBillingMonth,
-  pdfClosedBillingMonthsForAccount,
-  provisionallyClosedBillingMonthsForAccount,
-} from "./ccManualBillingMonth.js";
-import { feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.js";
+import { billingMonthForManualLedgerPurchase, closeDateForBillingMonth, pdfClosedBillingMonthsForAccount, provisionallyClosedBillingMonthsForAccount } from "./cards/facturacion.js";
+import { feedBillingCloseForMonth, type CcCloseSource } from "./cards/facturacion.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";

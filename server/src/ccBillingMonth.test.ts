@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { billingMonthForCcStatement } from "./ccBillingMonth.js";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 
 describe("billingMonthForCcStatement", () => {
   it("uses period_to month for Mar–Apr cycle (April facturación)", () => {

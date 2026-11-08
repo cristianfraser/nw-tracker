@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { billingMonthForCcStatement } from "./ccBillingMonth.js";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { db } from "./db.js";
 import {
   assertCcImportReconcilesOrThrow,

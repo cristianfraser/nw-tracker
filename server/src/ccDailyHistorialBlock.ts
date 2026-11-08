@@ -17,7 +17,7 @@ import {
   sumNullableDailySeries,
   type CcPlanTailPoint,
 } from "./ccInstallmentDebtDaily.js";
-import { closeEvidenceForBillingMonth } from "./ccBillingCloses.js";
+import { closeEvidenceForBillingMonth } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";

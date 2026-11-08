@@ -1,7 +1,7 @@
 import type { CcStatementSourceKind } from "./ccStatementSourceKind.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
-import { billingMonthForCcStatement } from "./ccBillingMonth.js";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type CcStatementRow = {

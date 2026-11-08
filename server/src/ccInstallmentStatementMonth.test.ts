@@ -6,7 +6,7 @@ import {
   planInstallmentsConsumed,
   scheduledPaymentsPlanBreakdownByMonth,
 } from "./ccInstallmentLedgerDb.js";
-import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
+import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 
 describe("statementPeriodMonthFromParsedRow", () => {
   it("prefers period_to over statement_date", () => {

@@ -185,7 +185,9 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
     expect(r.card_last4).toBe("0000");
     expect(r.cycle_month).toBe("2099-06");
     expect(r.cierre_iso).toBe("2099-06-20");
-    expect(r.pay_after_iso).toBe("2099-06-21");
+    // No statement prints the next period, so the issuer's rule decides: Santander starts the next
+    // cycle on the close day (`CC_ISSUERS`, close_day_offset_days 0).
+    expect(r.pay_after_iso).toBe("2099-06-20");
     expect(r.next_billing_month).toBe("2099-07");
     expect(r.show).toBe(true);
     expect(r.mode).toBe("wait");

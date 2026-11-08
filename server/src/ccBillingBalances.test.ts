@@ -10,7 +10,7 @@ import {
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 
 describe("facturadoFromStatement", () => {

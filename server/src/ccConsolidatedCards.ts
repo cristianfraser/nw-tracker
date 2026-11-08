@@ -1,5 +1,5 @@
 import { ccCardRegistry } from "./ccCardRegistry.js";
-import { cardLast4ForCreditCardAccount } from "./ccManualBillingMonth.js";
+import { cardLast4ForCreditCardAccount } from "./cards/facturacion.js";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
 

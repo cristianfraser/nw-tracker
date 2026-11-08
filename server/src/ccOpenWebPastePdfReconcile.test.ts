@@ -2,10 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { buildFacturaciones } from "./ccBillingViews.js";
 import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
-import {
-  billingMonthForManualLedgerPurchase,
-  lastPdfBillingMonthForAccount,
-} from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { ymCompare } from "./calendarMonth.js";
 import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import {

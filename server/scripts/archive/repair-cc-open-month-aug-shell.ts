@@ -9,10 +9,7 @@
 // Usage: npx tsx scripts/repair-cc-open-month-aug-shell.ts [--apply]
 import { db } from "../../src/db.js";
 import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
-import {
-  billingMonthForManualLedgerPurchase,
-  lastPdfBillingMonthForAccount,
-} from "../../src/ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount } from "../../src/cards/facturacion.js";
 
 const APPLY = process.argv.includes("--apply");
 const SHELL_SOURCE = "import:web-paste|open|2026-08";

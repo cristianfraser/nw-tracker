@@ -21,7 +21,7 @@ import {
   type CuotaRetirementMonth,
 } from "./ccCuotaRetirement.js";
 import { ccLedgerMonthEndIso, listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { buildCcInstallmentDebtDailySeries, type CcHistorialMonthLines } from "./creditCardChartSeries.js";
 
 /** Future daily point of the installment plan simulation (CLP; past today, one per calendar day). */

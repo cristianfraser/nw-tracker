@@ -2,7 +2,7 @@ import { cacheKeyCcLedgerGroup } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { dbInTransaction } from "./db.js";
-import type { CcCloseSource } from "./ccBillingCloses.js";
+import type { CcCloseSource } from "./cards/facturacion.js";
 import type {
   CcBillingDetailMonthRow,
   CcBillingDetailStatementRow,

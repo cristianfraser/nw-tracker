@@ -16,7 +16,7 @@
 import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { closeDateForBillingMonth } from "./ccManualBillingMonth.js";
+import { closeDateForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
 import { parseDdMmYyToIso, addCalendarMonths } from "nw-tracker-contracts";
 

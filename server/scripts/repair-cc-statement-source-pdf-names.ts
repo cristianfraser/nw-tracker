@@ -6,7 +6,7 @@
  *   npx tsx server/scripts/repair-cc-statement-source-pdf-names.ts --dry-run
  */
 import { db } from "../src/db.js";
-import { cardLast4ForCreditCardAccount } from "../src/ccManualBillingMonth.js";
+import { cardLast4ForCreditCardAccount } from "../src/cards/facturacion.js";
 import {
   assertCcStatementSourcePdfBasename,
   archivedCreditCardStatementPdfFileName,

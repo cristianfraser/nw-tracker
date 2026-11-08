@@ -2,7 +2,7 @@ import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import {
   ccWebPasteToCsvRecords,

@@ -1,4 +1,4 @@
-import { billingMonthForCcStatement } from "./ccBillingMonth.js";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
@@ -7,12 +7,8 @@ import {
   hasEveryStatementTwinForBillingMonth,
   statementSlotsByBillingMonth,
 } from "./ccBillingStatementSlots.js";
-import {
-  accountRequiresUsdStatementClose,
-  billingMonthForManualLedgerPurchase,
-  pdfClosedBillingMonthsForAccount,
-} from "./ccManualBillingMonth.js";
-import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
+import { accountRequiresUsdStatementClose, billingMonthForManualLedgerPurchase, pdfClosedBillingMonthsForAccount } from "./cards/facturacion.js";
+import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import {
   moveOpenBucketLinesToBillingMonth,
   parseOpenWebPasteBillingMonth,

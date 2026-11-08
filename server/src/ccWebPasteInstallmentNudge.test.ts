@@ -13,11 +13,8 @@ import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId,
 } from "./test/vitestDbSeed.js";
-import {
-  billingMonthContainingPurchase,
-  billingMonthForManualLedgerPurchase,
-} from "./ccManualBillingMonth.js";
-import { billingPeriodIsoRange } from "./ccBillingMonth.js";
+import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
+import { billingPeriodIsoRange } from "./cards/facturacion.js";
 import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { addCalendarMonths } from "nw-tracker-contracts";

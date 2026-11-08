@@ -1,6 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { buildExpenseKey } from "./expenseKeys.js";
-import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { billingMonthForStatementDate } from "./cards/statementMonth.js";
 import {
   categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
