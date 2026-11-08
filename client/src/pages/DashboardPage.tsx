@@ -643,7 +643,6 @@ export function DashboardPage() {
 
   return (
     <GroupInfoBase
-      mainClassName="page-dashboard"
       loading={contentLoading}
       portfolio={
         netWorthNav && dashForStrip
@@ -652,26 +651,28 @@ export function DashboardPage() {
               groupSlug: "net_worth",
               dash: dashForStrip,
               showUsd: stripShowUsd,
-              animated: true,
             }
           : null
       }
       coldStripShape={DASHBOARD_COLD_STRIP}
       charts={dashboardCharts}
-      pairs={dashboardPairedCharts}
       tableAccounts={netWorthTableAccounts}
-      serverPaginatedMonthlyDetail
-      flowsTitleKey="dashboard.wealthFlowsTitle"
-      flowsExcludeSpending
-      rail={
-        <>
-          <DashboardFlowsPeriods displayUnit={displayUnit} />
-          <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
-          <LatestExpensesTable />
-        </>
-      }
-      tileOrder={dashboardTileOrder}
-      tileWide={dashboardTileWide}
+      dashboard={{
+        mainClassName: "page-dashboard",
+        serverPaginatedMonthlyDetail: true,
+        flowsTitleKey: "dashboard.wealthFlowsTitle",
+        flowsExcludeSpending: true,
+        pairs: dashboardPairedCharts,
+        rail: (
+          <>
+            <DashboardFlowsPeriods displayUnit={displayUnit} />
+            <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
+            <LatestExpensesTable />
+          </>
+        ),
+        tileOrder: dashboardTileOrder,
+        tileWide: dashboardTileWide,
+      }}
       accountsTree={
         accountsTreeRoot ? (
           <NavAccountsTree

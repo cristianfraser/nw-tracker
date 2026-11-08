@@ -461,7 +461,6 @@ export function LiabilitiesGroupPage() {
               subgroup: categoryFilter ?? undefined,
               dash: dashForStrip,
               showUsd: stripShowUsd,
-              animated: true,
               // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
               placeholderPhase: stripIsPlaceholder || navCtx == null,
               linkedCardNavChildren,

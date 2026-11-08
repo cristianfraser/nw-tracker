@@ -43,7 +43,6 @@ export type GroupInfoPortfolioStrip = {
     "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
   showUsd: boolean;
-  animated?: boolean;
   /**
    * Dims the strip while `dash` is a placeholder of its own (a zero strip from the nav tree).
    * Defaults to the page's `loading`. The numbers themselves are shown as given — a cached
@@ -56,12 +55,35 @@ export type GroupInfoPortfolioStrip = {
 
 type GroupInfoTileId = "returns" | "detail" | "wealth-flows" | "export" | "accounts";
 
-export type GroupInfoBaseProps = {
+/** What only the home dashboard sets on the shared page body. */
+export type GroupInfoDashboardOptions = {
   mainClassName?: string;
+  /**
+   * Fetch the detalle-por-mes table page by page from the server instead of loading the
+   * whole consolidated-tables payload (dashboard net_worth; group pages stay client-paginated).
+   */
+  serverPaginatedMonthlyDetail: boolean;
+  /** i18n key of the flows table heading. */
+  flowsTitleKey: string;
+  /** The flows table leaves out the checking movements the Expenses page counts as spending. */
+  flowsExcludeSpending: boolean;
+  /**
+   * The rail: tiles that sit beside the strip and the main charts on the big-desktop tier
+   * (styles/page-grid.css `.page-rail`) and in the one stack below it. The wide tables, then the
+   * export row and the accounts tree, stay below both stacks.
+   */
+  rail: ReactNode;
+  /** Tiles after the band of the main column and the rail (the other charts). */
+  pairs: ReactNode;
+  /** A tile's place in the one-stack reading order (dashboardLayout.ts). */
+  tileOrder: (id: GroupInfoTileId) => number;
+  /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
+  tileWide: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
+};
+
+export type GroupInfoBaseProps = {
   /** Page heading; omitted on the home dashboard. */
   title?: string;
-  /** e.g. Agrupado / Aportes acumulados toggles (group pages). */
-  toolbar?: ReactNode;
   /** Nav node + dashboard bundle for the two-row portfolio card strip. */
   portfolio?: GroupInfoPortfolioStrip | null;
   /** First-ever visit (no nav tree yet, `portfolio` null): the blank card skeleton to draw instead. */
@@ -78,38 +100,12 @@ export type GroupInfoBaseProps = {
   loading?: boolean;
   /** Skip consolidated monthly perf + flows tables (pasivos specialized layouts). */
   hideConsolidatedTables?: boolean;
-  /**
-   * Fetch the detalle-por-mes table page by page from the server instead of loading the
-   * whole consolidated-tables payload (dashboard net_worth; group pages stay client-paginated).
-   */
-  serverPaginatedMonthlyDetail?: boolean;
-  /** i18n key of the flows table heading (default «Flujos»). */
-  flowsTitleKey?: string;
-  /**
-   * The flows table leaves out the checking movements the Expenses page counts as spending
-   * (home «Flujos de patrimonio»).
-   */
-  flowsExcludeSpending?: boolean;
-  /** Rendered right after the flows table (home «Últimos gastos»). */
-  afterFlows?: ReactNode;
-  /**
-   * The dashboard's rail: tiles that sit beside the strip and the main charts on the big-desktop
-   * tier (styles/page-grid.css `.page-rail`) and in the one stack below it. The wide tables, then
-   * the export row and the accounts tree, stay below both stacks.
-   */
-  rail?: ReactNode;
-  /** Tiles after the band of the main column and the rail (dashboard: the other charts). */
-  pairs?: ReactNode;
-  /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
-  tileOrder?: (id: GroupInfoTileId) => number;
-  /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
-  tileWide?: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
+  /** The home dashboard's own layout and tables. */
+  dashboard?: GroupInfoDashboardOptions;
 };
 
 export function GroupInfoBase({
-  mainClassName,
   title,
-  toolbar,
   portfolio,
   coldStripShape,
   charts,
@@ -118,15 +114,15 @@ export function GroupInfoBase({
   exportSlot,
   loading = false,
   hideConsolidatedTables = false,
-  serverPaginatedMonthlyDetail = false,
-  flowsTitleKey = "groupPage.flowsTitle",
-  flowsExcludeSpending = false,
-  afterFlows,
-  rail,
-  pairs,
-  tileOrder,
-  tileWide,
+  dashboard,
 }: GroupInfoBaseProps) {
+  const serverPaginatedMonthlyDetail = dashboard?.serverPaginatedMonthlyDetail ?? false;
+  const flowsTitleKey = dashboard?.flowsTitleKey ?? "groupPage.flowsTitle";
+  const flowsExcludeSpending = dashboard?.flowsExcludeSpending ?? false;
+  const rail = dashboard?.rail;
+  const pairs = dashboard?.pairs;
+  const tileOrder = dashboard?.tileOrder;
+  const tileWide = dashboard?.tileWide;
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const { installmentMode } = useCcInstallmentGastosMode();
@@ -249,7 +245,6 @@ export function GroupInfoBase({
         dash={portfolio.dash}
         parentNavNode={portfolio.navNode}
         showUsd={portfolio.showUsd}
-        animated={portfolio.animated}
         linkedCardNavChildren={portfolio.linkedCardNavChildren}
       />
     </Loadable>
@@ -287,10 +282,9 @@ export function GroupInfoBase({
     ) : null;
 
   return (
-    <main className={mainClassName}>
+    <main className={dashboard?.mainClassName}>
       <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
         {title != null ? <PageTitleRow title={title} /> : null}
-        {toolbar}
         {rail ? (
           <>
             <div className="page-main">
@@ -379,7 +373,6 @@ export function GroupInfoBase({
                 />
               )}
             </PageGridTile>
-            {afterFlows}
           </>
         ) : null}
         {/* The export row and the accounts tree close the page on every tier, rail or not. */}
