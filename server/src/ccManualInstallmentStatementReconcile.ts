@@ -17,7 +17,8 @@ import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { statementKeyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 const findStmtId = db.prepare(
   `SELECT id FROM cc_statements
@@ -279,18 +280,11 @@ function manualMatchesInstallmentLine(
   // Manual entry vs statement posting skews by a day or two (weekend/posting lag), so with
   // merchant, contract amount and cuota count already matched above, tolerate ±2 days.
   const lineIso = purchaseIsoFromLineFields(line.transaction_date, line.posting_date);
-  if (lineIso && isoDaysApart(lineIso, manual.purchase_date) <= 2) return true;
+  if (lineIso && dayWithinWindow(manual.purchase_date, lineIso, MATCH_WINDOWS.manual_statement_plan)) return true;
 
   const cur = line.nro_cuota_current;
   const isContractResumen = cur == null || cur === 0;
   return isContractResumen && purchaseAmountsMatch(manual.total_amount_clp, contractAmt);
-}
-
-function isoDaysApart(aIso: string, bIso: string): number {
-  const a = Date.parse(`${aIso}T00:00:00Z`);
-  const b = Date.parse(`${bIso}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.POSITIVE_INFINITY;
-  return Math.abs(a - b) / 86_400_000;
 }
 
 function resolveCategoryIdForManualPurchase(accountId: number, manualId: number, manualKey: string | null): number | null {

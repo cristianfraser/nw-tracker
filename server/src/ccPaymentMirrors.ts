@@ -26,7 +26,7 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
-import { daysBetweenIso } from "nw-tracker-contracts";
+import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { recordBankPosting } from "./movementBankPostings.js";
 
 
@@ -41,9 +41,8 @@ import {
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL, movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
-import { PLANTED_PAYMENT_WINDOW_DAYS } from "./ccPlantedPayments.js";
-
-const MATCH_WINDOW_DAYS = 4;
+import { MATCH_WINDOWS } from "./matching/windows.js";
+import { rankByDistance } from "./matching/pairing.js";
 
 /**
  * Checking legs of USD-debt payments («Egreso por Compra de Divisas»). Cross-currency, so the
@@ -154,8 +153,7 @@ function manualPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
       const same =
         e.currency === "usd" ? Math.round(amount * 100) === Math.round(r.amount * 100) : Math.round(amount) === Math.round(r.amount);
       if (!same) return false;
-      const gap = (Date.parse(`${e.pago_iso}T00:00:00Z`) - Date.parse(`${r.paid_on}T00:00:00Z`)) / 86_400_000;
-      return gap >= 0 && gap <= PLANTED_PAYMENT_WINDOW_DAYS;
+      return dayWithinWindow(r.paid_on, e.pago_iso, MATCH_WINDOWS.planted_payment);
     });
 }
 
@@ -237,17 +235,14 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
           return fx >= DIVISAS_IMPLIED_FX_MIN && fx <= DIVISAS_IMPLIED_FX_MAX;
         })
       : byAmount.get(amount) ?? [];
-    const near = pool
-      .map((e) => ({ e, d: Math.abs(daysBetweenIso(e.pago_iso, out.occurred_on)) }))
-      .filter((x) => x.d <= MATCH_WINDOW_DAYS)
-      .sort((a, b) => a.d - b.d);
+    const { ranked: near, tiedAtTop } = rankByDistance(
+      pool.filter((e) => dayWithinWindow(out.occurred_on, e.pago_iso, MATCH_WINDOWS.payment_mirror)),
+      (e) => Math.abs(daysBetweenIso(e.pago_iso, out.occurred_on))
+    );
     if (near.length === 0) continue;
-    if (near.length > 1 && near[0]!.d === near[1]!.d) {
-      ambiguous.add(out.id);
-      picked.push({ out, ev: near[0]!.e, skew: near[0]!.d });
-      continue;
-    }
-    picked.push({ out, ev: near[0]!.e, skew: near[0]!.d });
+    // The evidence stays in the list either way; a tie at the top blocks the pair (never a guess).
+    if (tiedAtTop) ambiguous.add(out.id);
+    picked.push({ out, ev: near[0]!.item, skew: near[0]!.d });
   }
   const evidenceClaims = new Map<string, number>();
   // One piece of evidence is one payment (card, date, currency, amount — the key the evidence list

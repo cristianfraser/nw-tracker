@@ -46,6 +46,34 @@ export function daysBetweenIso(fromYmd: string, toYmd: string): number {
   return isoDayNumber(toYmd) - isoDayNumber(fromYmd);
 }
 
+/**
+ * Whether `candidateYmd` lies inside a window around `anchorYmd`: from `daysBefore` days before it
+ * to `daysAfter` days after it, both inclusive. The one place a day window is read.
+ */
+export function dayWithinWindow(
+  anchorYmd: string,
+  candidateYmd: string,
+  window: { daysBefore: number; daysAfter: number }
+): boolean {
+  const gap = daysBetweenIso(anchorYmd, candidateYmd);
+  return gap >= -window.daysBefore && gap <= window.daysAfter;
+}
+
+/**
+ * `ymd` moved forward by `n` business days (`n` ≥ 0), where `isBusinessDay` is the calendar's test —
+ * a market-holiday calendar lives on the server, so it is passed in rather than imported here.
+ */
+export function addBusinessDaysIso(ymd: string, n: number, isBusinessDay: (ymd: string) => boolean): string {
+  if (!Number.isInteger(n) || n < 0) throw new Error(`addBusinessDaysIso: ${n} is not a whole number of days ≥ 0`);
+  let cur = requireIsoDate(ymd);
+  let left = n;
+  while (left > 0) {
+    cur = addDaysIso(cur, 1);
+    if (isBusinessDay(cur)) left--;
+  }
+  return cur;
+}
+
 const DD_MM = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/;
 /** pypdf can merge DD/MM/YY with MCC digits (e.g. 13/05/2511001SANTIAG). */
 const TX_DATE_MAX_PLAUSIBLE_YEAR = 2038;

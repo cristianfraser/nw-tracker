@@ -40,6 +40,7 @@ import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 
 export const APP_STORE_MERCHANT = "apple_app_store";
@@ -48,12 +49,12 @@ export const APP_STORE_MERCHANT = "apple_app_store";
 const APP_STORE_CARD_MERCHANT = /^(APPLE\.COM[/ ]BILL|ITUNES\.COM\/BILL)\b/i;
 
 const GUESS_PREFIX = "guess: ";
-const RECEIPT_DAYS_BEFORE = 1;
-const RECEIPT_DAYS_AFTER = 5;
-const RECEIPT_FX_TOLERANCE = 0.04;
-const CADENCE_FX_TOLERANCE = 0.03;
-const CADENCE_DAYS = 3;
-const CADENCE_WINDOW_DAYS = 500;
+const RECEIPT_DAYS_BEFORE = MATCH_WINDOWS.receipt.daysBefore;
+const RECEIPT_DAYS_AFTER = MATCH_WINDOWS.receipt.daysAfter;
+const RECEIPT_FX_TOLERANCE = MATCH_WINDOWS.receipt.toleranceFraction;
+const CADENCE_FX_TOLERANCE = MATCH_WINDOWS.subscription_cadence.toleranceFraction;
+const CADENCE_DAYS = MATCH_WINDOWS.subscription_cadence.daysAfter;
+const CADENCE_WINDOW_DAYS = MATCH_WINDOWS.subscription_cycle_horizon.daysAfter;
 
 type Period = "day" | "week" | "month" | "quarter" | "half_year" | "year";
 const PERIOD_MONTHS: Partial<Record<Period, number>> = { month: 1, quarter: 3, half_year: 6, year: 12 };

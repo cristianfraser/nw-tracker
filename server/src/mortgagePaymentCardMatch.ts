@@ -6,7 +6,7 @@
  * feed, a paste or the statement — and this module only PAIRS them, when read, never stored: a
  * card line's id changes on every re-import, so a match is identity (date, pesos), not an id.
  *
- * Pairing: same pesos (whole), the line dated from the payment day through `MATCH_WINDOW_DAYS`
+ * Pairing: same pesos (whole), the line dated from the payment day through `MATCH_WINDOWS.mortgage_cuota_card_line`
  * after, each side used once, in date order; a payment with two candidate lines is reported
  * ambiguous and left alone. Prepagos and the pie are not card payments and are not paired.
  *
@@ -22,11 +22,13 @@ import { db } from "./db.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
+import { pairOneToOne } from "./matching/pairing.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
+import { addBusinessDaysIso, dayWithinWindow } from "nw-tracker-contracts";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 
-export const MATCH_WINDOW_DAYS = 3;
-export const OVERDUE_BUSINESS_DAYS = 5;
-export const CHECK_WINDOW_DAYS = 45;
+export const OVERDUE_BUSINESS_DAYS = MATCH_WINDOWS.mortgage_cuota_overdue.daysAfter;
+export const CHECK_WINDOW_DAYS = MATCH_WINDOWS.mortgage_cuota_check_window.daysBefore;
 
 export type MortgageCardLine = {
   line_id: number;
@@ -90,24 +92,21 @@ export function matchMortgagePaymentsToCardLines(
   payments: readonly { cuota: string; paid_on: string; pago_clp: number }[],
   lines: readonly MortgageCardLine[]
 ): MortgageCardMatchResult {
-  const used = new Set<number>();
-  const out: MortgagePaymentCardMatch[] = [];
   const sorted = [...payments].sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.cuota.localeCompare(b.cuota));
-  for (const p of sorted) {
-    const until = chileCalendarAddDays(p.paid_on, MATCH_WINDOW_DAYS);
-    const candidates = lines.filter(
-      (l) => !used.has(l.line_id) && l.amount_clp === Math.round(p.pago_clp) && l.date >= p.paid_on && l.date <= until
-    );
-    if (candidates.length === 1) {
-      used.add(candidates[0]!.line_id);
-      out.push({ cuota: p.cuota, paid_on: p.paid_on, pago_clp: p.pago_clp, status: "matched", line: candidates[0]! });
-    } else if (candidates.length === 0) {
-      out.push({ cuota: p.cuota, paid_on: p.paid_on, pago_clp: p.pago_clp, status: "awaiting_card_line", line: null });
-    } else {
-      out.push({ cuota: p.cuota, paid_on: p.paid_on, pago_clp: p.pago_clp, status: "ambiguous", line: null });
-    }
-  }
-  return { payments: out, unmatched_lines: lines.filter((l) => !used.has(l.line_id)) };
+  // A cuota pairs with the one card line of its pesos in the window; several are reported, never guessed.
+  const result = pairOneToOne(sorted, lines, {
+    strategy: "unique",
+    accepts: (p, l) => l.amount_clp === Math.round(p.pago_clp) && dayWithinWindow(p.paid_on, l.date, MATCH_WINDOWS.mortgage_cuota_card_line),
+  });
+  const lineOf = new Map(result.pairs.map((x) => [x.left, x.right]));
+  const ambiguous = new Set(result.ambiguous.map((x) => x.left));
+  const out: MortgagePaymentCardMatch[] = sorted.map((p) => {
+    const base = { cuota: p.cuota, paid_on: p.paid_on, pago_clp: p.pago_clp };
+    const line = lineOf.get(p);
+    if (line) return { ...base, status: "matched" as const, line };
+    return { ...base, status: ambiguous.has(p) ? ("ambiguous" as const) : ("awaiting_card_line" as const), line: null };
+  });
+  return { payments: out, unmatched_lines: result.unclaimed };
 }
 
 /** The ledger's regular cuotas (numeric labels) against every mortgage card line. */
@@ -118,15 +117,7 @@ export function mortgageCardMatches(): MortgageCardMatchResult {
   return matchMortgagePaymentsToCardLines(payments, loadMortgageCardLines());
 }
 
-function addChileBusinessDays(ymd: string, n: number): string {
-  let cur = ymd;
-  let left = n;
-  while (left > 0) {
-    cur = chileCalendarAddDays(cur, 1);
-    if (isChileBusinessDay(cur)) left--;
-  }
-  return cur;
-}
+const addChileBusinessDays = (ymd: string, n: number): string => addBusinessDaysIso(ymd, n, isChileBusinessDay);
 
 export type MortgageCardMatchCheck = {
   ok: boolean;

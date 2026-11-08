@@ -10,7 +10,7 @@
  */
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { UNCLASSIFIED_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { automaticRecurringMatchForLine, matchRecurringPayments, type RecurringLine } from "./recurringPaymentMatch.js";
+import { automaticRecurringMatchForLine, matchRecurringPayments, recurringLineRef, toRecurringLine, type RecurringLine } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
 import { addDaysIso } from "nw-tracker-contracts";
@@ -31,20 +31,12 @@ type NamedLine = {
 /** The automatic entry a line pays: its name and every merchant pattern (the display rule reads the others). */
 export type RecurringLineEntry = { id: number; name: string; patterns: string[] };
 
-const lineRef = (l: NamedLine) => `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}`;
-
 export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today: string = chileCalendarTodayYmd()): L[] {
   const entries = listRecurringPayments().filter((e) => !e.manual);
   if (entries.length === 0) return lines;
   const uf = ufProjector();
   const candidates = lines.filter((l) => l.source === "cc" && l.amount_clp > 0 && l.purchase_on != null);
-  const recurringLines: RecurringLine[] = candidates.map((l) => ({
-    ref: lineRef(l),
-    purchase_on: l.purchase_on,
-    merchant: l.merchant,
-    display_merchant: l.display_merchant ?? null,
-    amount_clp: l.amount_clp,
-  }));
+  const recurringLines: RecurringLine[] = candidates.map((l) => toRecurringLine(l, { byPurchaseKey: true }));
   const occurrences = matchRecurringPayments({
     entries,
     lines: recurringLines,
@@ -56,7 +48,7 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
   });
 
   // Each entry's category: that of its most recent paid charge whose category is not «sin categoría».
-  const byRef = new Map(candidates.map((l) => [lineRef(l), l]));
+  const byRef = new Map(candidates.map((l) => [recurringLineRef(l, { byPurchaseKey: true }), l]));
   const categoryByEntry = new Map<number, { on: string; slug: string }>();
   for (const o of occurrences) {
     const line = o.matched ? byRef.get(o.matched.ref) : undefined;
@@ -72,7 +64,7 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
   }
   if (byLine.size === 0) return lines;
   return lines.map((l) => {
-    const entry = byLine.get(lineRef(l));
+    const entry = byLine.get(recurringLineRef(l, { byPurchaseKey: true }));
     if (!entry) return l;
     const category = categoryByEntry.get(entry.id);
     const takesCategory = l.category_from_bank_name && l.category_slug === UNCLASSIFIED_CC_EXPENSE_SLUG && category;

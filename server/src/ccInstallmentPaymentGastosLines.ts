@@ -10,6 +10,7 @@ import {
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
+import { installmentMerchantStemsMatch } from "./matching/installmentAmount.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
@@ -92,19 +93,10 @@ export function installmentCuotaSlotCovered(
     if (Number(acc) !== accountId) continue;
     if (purchaseOn !== pay.purchase_on) continue;
     if (cuota !== String(pay.cuota_current ?? "")) continue;
-    if (merchant !== pay.merchant_key && !merchantsStemMatchKey(merchant, pay.merchant_key)) continue;
+    if (merchant !== pay.merchant_key && !installmentMerchantStemsMatch(merchant, pay.merchant_key)) continue;
     if (purchaseAmountsMatch(Number(amt), pay.amount_clp)) return true;
   }
   return false;
-}
-
-function merchantsStemMatchKey(a: string, b: string): boolean {
-  const sa = merchantStemForInstallmentDedupe(a);
-  const sb = merchantStemForInstallmentDedupe(b);
-  if (!sa || !sb) return false;
-  const ua = sa.toUpperCase();
-  const ub = sb.toUpperCase();
-  return ua === ub || ua.startsWith(ub) || ub.startsWith(ua);
 }
 
 type PaymentRow = {

@@ -52,10 +52,8 @@ import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 
 import { parseDdMmYyToIso, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
-
-/** How far the bank may restate a transaction's date when it settles. */
-export const RESTATEMENT_WINDOW_DAYS = 4;
 
 export type MerchantDuplicateRule = "truncated" | "pending_authorization";
 
@@ -184,7 +182,7 @@ export function planTruncatedMerchantDuplicateLines(accountId: number): Truncate
       if (!sameAmount(shorter, longer)) continue;
       const gap = daysApart(shorter, longer);
       if (gap == null) continue;
-      if (rule === "truncated" ? gap > RESTATEMENT_WINDOW_DAYS : gap !== 0) continue;
+      if (gap > (rule === "truncated" ? MATCH_WINDOWS.truncated_merchant : MATCH_WINDOWS.pending_authorization).daysAfter) continue;
       // Report the closest fuller twin; any qualifying twin is enough to remove the shorter row.
       const prev = removed.get(shorter.id);
       if (prev && prev.gap <= gap) continue;

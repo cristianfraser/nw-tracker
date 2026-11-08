@@ -1,4 +1,6 @@
-import { daysBetweenIso } from "nw-tracker-contracts";
+import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
+import { pairOneToOne } from "./matching/pairing.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { db } from "./db.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
@@ -201,9 +203,6 @@ function loadPositiveInflowMovements(
     .all(...accountIds) as RawMovementRow[];
 }
 
-/** Max day gap between the two legs of an internal net-worth transfer (settlement/booking lag). */
-const INTERNAL_TRANSFER_MAX_DAY_GAP = 7;
-
 /**
  * Reclassify direct net-worth ↔ net-worth transfers that bypass checking. A still-unlinked deposit in
  * one account and a still-unlinked redemption of the same amount in a *different* account, within a few
@@ -219,32 +218,23 @@ export function resolveInternalNetWorthTransfers(
   const isUnlinked = (s: DepositReconciliationStatus | DepositRedemptionStatus): boolean =>
     s === "unlinked_checking_present" || s === "unlinked_no_checking_source";
 
-  const depIdx = rows.map((_, i) => i).filter((i) => isUnlinked(rows[i]!.status));
-  const redIdx = redemptions.map((_, i) => i).filter((i) => isUnlinked(redemptions[i]!.status));
+  const deposits = rows.filter((r) => isUnlinked(r.status));
+  const redeemed = redemptions.filter((r) => isUnlinked(r.status));
 
-  const pairs: { di: number; ri: number; gap: number }[] = [];
-  for (const di of depIdx) {
-    const dep = rows[di]!;
-    for (const ri of redIdx) {
-      const red = redemptions[ri]!;
-      if (red.account_id === dep.account_id) continue;
-      if (Math.round(red.amount_clp) !== Math.round(dep.amount_clp)) continue;
-      const gap = Math.abs(daysBetweenIso(dep.occurred_on, red.occurred_on));
-      if (gap > INTERNAL_TRANSFER_MAX_DAY_GAP) continue;
-      pairs.push({ di, ri, gap });
-    }
-  }
   // Closest gap first, then larger amounts, so the most confident pairs claim their legs first.
-  pairs.sort((a, b) => a.gap - b.gap || rows[b.di]!.amount_clp - rows[a.di]!.amount_clp);
-
-  const usedDep = new Set<number>();
-  const usedRed = new Set<number>();
+  // Same-amount peers at the same gap pair in list order (`nearest_global`): today's rule, declared.
+  const { pairs } = pairOneToOne(deposits, redeemed, {
+    strategy: "nearest_global",
+    accepts: (dep, red) =>
+      red.account_id !== dep.account_id &&
+      Math.round(red.amount_clp) === Math.round(dep.amount_clp) &&
+      dayWithinWindow(dep.occurred_on, red.occurred_on, MATCH_WINDOWS.internal_transfer_legs),
+    distance: (dep, red) => Math.abs(daysBetweenIso(dep.occurred_on, red.occurred_on)),
+    tieBreak: (a, b) => b.left.amount_clp - a.left.amount_clp,
+  });
   for (const p of pairs) {
-    if (usedDep.has(p.di) || usedRed.has(p.ri)) continue;
-    usedDep.add(p.di);
-    usedRed.add(p.ri);
-    rows[p.di]!.status = "resolved_internal_transfer";
-    redemptions[p.ri]!.status = "resolved_internal_transfer";
+    p.left.status = "resolved_internal_transfer";
+    p.right.status = "resolved_internal_transfer";
   }
 }
 

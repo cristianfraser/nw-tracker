@@ -12,7 +12,8 @@
  * (`placeholderPesos`). Occurrences are settled in due-date order and a line pays at most one, the
  * nearest in days, so an earlier occurrence never leaves a line to a later one.
  */
-import { addCalendarMonths, addDaysIso, daysBetweenIso, foldAccents } from "nw-tracker-contracts";
+import { addCalendarMonths, addDaysIso, dayWithinWindow, daysBetweenIso, foldAccents } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 function foldUpperAccents(s: string): string {
   return foldAccents(s).toUpperCase();
@@ -59,6 +60,47 @@ export type RecurringLine = {
   covers_through?: string | null;
 };
 
+/** An expense line as either recurring-payment reader holds it (a subset of `FlowCcExpenseLineRow`). */
+export type RecurringSourceLine = {
+  source: string;
+  statement_line_id: number;
+  purchase_key?: string | null;
+  purchase_on: string | null;
+  merchant: string | null;
+  display_merchant?: string | null;
+  amount_clp: number;
+  payment_receipt?: { vehicle_permit?: { expires_on?: string | null } | null } | null;
+};
+
+/**
+ * The one loader of the matcher's candidates: an expense line as a `RecurringLine`, named by its
+ * source, line id and purchase key, carrying what its document says it covers. «Próximos pagos»
+ * and the line-name pass feed the matcher through this, so both see the same candidate.
+ */
+export function recurringLineRef(
+  l: Pick<RecurringSourceLine, "source" | "statement_line_id" | "purchase_key">,
+  opts: { byPurchaseKey?: boolean } = {}
+): string {
+  return opts.byPurchaseKey ? `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}` : `${l.source}|${l.statement_line_id}`;
+}
+
+/**
+ * `byPurchaseKey` names a line by its purchase key as well: the line-name pass needs it (pieces and
+ * cuota lines of one statement line are distinct candidates there), while «Próximos pagos» names a
+ * line by source and statement line id and shows that name in its payload. Two declared shapes of
+ * one reference, until the payload's reference is dropped or unified.
+ */
+export function toRecurringLine(l: RecurringSourceLine, opts: { byPurchaseKey?: boolean } = {}): RecurringLine {
+  return {
+    ref: recurringLineRef(l, opts),
+    purchase_on: l.purchase_on,
+    merchant: l.merchant,
+    display_merchant: l.display_merchant ?? null,
+    amount_clp: l.amount_clp,
+    covers_through: l.payment_receipt?.vehicle_permit?.expires_on ?? null,
+  };
+}
+
 export type RecurringMatch = {
   ref: string;
   purchase_on: string;
@@ -94,10 +136,10 @@ export type RecurringModelInput = {
 };
 
 /** Days after a UF entry's line's day whose UF may price it (a listing priced at its posting day). */
-export const RECURRING_UF_LINE_DAYS = 5;
+const RECURRING_UF_LINE_DAYS = MATCH_WINDOWS.recurring_uf_line.daysAfter;
 
 /** How far before an entry's declaration its occurrences are still settled (history for placeholders). */
-const LOOKBACK_DAYS = 400;
+const LOOKBACK_DAYS = MATCH_WINDOWS.recurring_lookback.daysBefore;
 
 type DatedLine = RecurringLine & { purchase_on: string };
 
@@ -133,6 +175,33 @@ function dueDatesBetween(entry: RecurringEntry, fromYmd: string, toYmd: string):
   return out;
 }
 
+/** Index of the first of the entry's patterns a merchant name contains (accents and case folded); -1 for none. */
+export function recurringPatternIndex(entry: Pick<RecurringEntry, "patterns">, merchant: string | null): number {
+  if (!merchant) return -1;
+  const m = foldUpperAccents(merchant);
+  return entry.patterns.findIndex((p) => m.includes(foldUpperAccents(p)));
+}
+
+/**
+ * Whether `pesos` is within the entry's tolerance of its UF amount priced at `dayYmd` or at any of
+ * the `daysAfter` days after it (a listing priced at its posting day). The tolerance must be set.
+ */
+export function ufAmountFits(
+  entry: Pick<RecurringEntry, "amount" | "amount_tolerance_pct">,
+  pesos: number,
+  dayYmd: string,
+  ufOn: (ymd: string) => number,
+  daysAfter: number
+): boolean {
+  if (entry.amount_tolerance_pct == null) throw new Error("ufAmountFits: the entry has no amount tolerance");
+  const tolerance = entry.amount_tolerance_pct / 100;
+  for (let k = 0; k <= daysAfter; k += 1) {
+    const want = Math.round(entry.amount * ufOn(addDaysIso(dayYmd, k)));
+    if (Math.abs(pesos - want) <= tolerance * want) return true;
+  }
+  return false;
+}
+
 function merchantMatches(line: RecurringLine, foldedPatterns: readonly string[]): boolean {
   return [line.merchant, line.display_merchant].some(
     (m) => m != null && foldedPatterns.some((p) => foldUpperAccents(m).includes(p))
@@ -144,16 +213,16 @@ function amountFits(entry: RecurringEntry, line: DatedLine, expectedClp: number 
   // A line whose document says what it covers (a vehicle permit) is that payment whatever its
   // amount: a whole year paid in March is twice the cuota the placeholder expects.
   if (line.covers_through != null) return true;
-  const tolerance = entry.amount_tolerance_pct / 100;
   if (entry.currency === "clp") {
     if (expectedClp == null) throw new Error(`Recurring payment ${entry.id}: no expected pesos to match against`);
-    return Math.abs(line.amount_clp - expectedClp) <= tolerance * expectedClp;
+    return Math.abs(line.amount_clp - expectedClp) <= (entry.amount_tolerance_pct / 100) * expectedClp;
   }
-  for (let k = 0; k <= RECURRING_UF_LINE_DAYS; k += 1) {
-    const want = Math.round(entry.amount * ufOn(addDaysIso(line.purchase_on, k)));
-    if (Math.abs(line.amount_clp - want) <= tolerance * want) return true;
-  }
-  return false;
+  return ufAmountFits(entry, line.amount_clp, line.purchase_on, ufOn, RECURRING_UF_LINE_DAYS);
+}
+
+/** Whether a line's day is inside the entry's own window around a due date (`match_days_before` / `_after`). */
+function entryWindowContains(entry: RecurringEntry, dueYmd: string, lineYmd: string): boolean {
+  return dayWithinWindow(dueYmd, lineYmd, { daysBefore: entry.match_days_before, daysAfter: entry.match_days_after });
 }
 
 /** Whether a line fits an occurrence: pattern, date window and amount. Claims are not considered. */
@@ -164,8 +233,7 @@ function lineFitsOccurrence(
   line: DatedLine,
   ufOn: (ymd: string) => number
 ): boolean {
-  if (line.purchase_on < addDaysIso(dueYmd, -entry.match_days_before)) return false;
-  if (line.purchase_on > addDaysIso(dueYmd, entry.match_days_after)) return false;
+  if (!entryWindowContains(entry, dueYmd, line.purchase_on)) return false;
   if (!merchantMatches(line, entry.patterns.map(foldUpperAccents))) return false;
   return amountFits(entry, line, expectedClp, ufOn);
 }
@@ -204,8 +272,7 @@ function nearestFittingLine(
   let bestGap = Infinity;
   for (const line of lines) {
     if (claimed.has(line.ref)) continue;
-    if (line.purchase_on < addDaysIso(dueYmd, -entry.match_days_before)) continue;
-    if (line.purchase_on > addDaysIso(dueYmd, entry.match_days_after)) continue;
+    if (!entryWindowContains(entry, dueYmd, line.purchase_on)) continue;
     if (!merchantMatches(line, foldedPatterns)) continue;
     if (!amountFits(entry, line, expectedClp, ufOn)) continue;
     const gap = Math.abs(daysBetweenIso(dueYmd, line.purchase_on));

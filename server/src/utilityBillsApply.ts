@@ -40,6 +40,7 @@ import type {
 } from "nw-tracker-contracts";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import {
@@ -53,13 +54,13 @@ import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstat
 import { addCalendarMonths, normalizeCheckDigitId, daysBetweenIso } from "nw-tracker-contracts";
 
 /** How long after its due day a bill's charge may still be dated. */
-export const UTILITY_BILL_CHARGE_GRACE_DAYS = 20;
+export const UTILITY_BILL_CHARGE_GRACE_DAYS = MATCH_WINDOWS.utility_bill_charge.daysAfter;
 /** A gastos comunes statement's charge (a transfer later in the month) may be dated this long after its issue day. */
-export const HOA_CHARGE_WINDOW_DAYS = 35;
+export const HOA_CHARGE_WINDOW_DAYS = MATCH_WINDOWS.hoa_bill_charge.daysAfter;
 /** Past its charge window by this many days with no charge, a bill is reported overdue. */
-export const UTILITY_BILL_OVERDUE_DAYS = 5;
+export const UTILITY_BILL_OVERDUE_DAYS = MATCH_WINDOWS.utility_bill_overdue.daysAfter;
 /** A gastos comunes payment with no statement is reported once this old. */
-export const UNBILLED_HOA_PAYMENT_GRACE_DAYS = 10;
+export const UNBILLED_HOA_PAYMENT_GRACE_DAYS = MATCH_WINDOWS.unbilled_hoa_payment_grace.daysBefore;
 
 /** The real-estate bill kind each service is filed under. */
 export const UTILITY_SERVICE_KIND: Record<UtilityService, RealEstateBillKind> = {
@@ -70,13 +71,20 @@ export const UTILITY_SERVICE_KIND: Record<UtilityService, RealEstateBillKind> = 
   hoa: "gastos_comunes",
 };
 
+/** The charge of a utility bill lands this many months after its bill month (see `utilityBillMonth`). */
+const UTILITY_CHARGE_MONTH_LAG = 1;
+if (UTILITY_CHARGE_MONTH_LAG > MATCH_WINDOWS.real_estate_bill_purchase.daysAfter) {
+  throw new Error("The utility bill month lag is outside the real-estate bill/purchase window (MATCH_WINDOWS)");
+}
+
 /**
  * The bill's month on the page: the month it charges consumption for. Bills are issued just after
  * their period closes — ENEL's monthly period closes on the 1st–5th and the bill goes out a few days
  * later; Metrogas's two-month period closes on the 23rd–25th and the bill goes out that week — so it
  * is the month of the period's last day when that day falls in the month's second half, else the
  * month before (the period's last day, or the issue day when the period is not printed). The charge
- * then lands in that month's next month (+1), inside the page's +0..+2 window.
+ * then lands in that month's next month (`UTILITY_CHARGE_MONTH_LAG`), inside the bill/purchase window
+ * the page reads from `MATCH_WINDOWS.real_estate_bill_purchase`.
  */
 export function utilityBillMonth(b: Pick<UtilityBill, "period_to" | "issued_on">): string {
   const day = b.period_to ?? b.issued_on;

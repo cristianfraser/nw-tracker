@@ -35,6 +35,7 @@ import {
   type RecurringEntry,
   type RecurringFrequency,
   type RecurringLine,
+  toRecurringLine,
   type RecurringOccurrence,
   type RecurringStatus,
 } from "./recurringPaymentMatch.js";
@@ -474,14 +475,7 @@ const deleteRecurringStmt = db.prepare(`DELETE FROM recurring_payments WHERE id 
 
 /** The expense lines the matcher reads, each named by its source and statement line id. */
 function recurringLines(): RecurringLine[] {
-  return loadGastosLinesForRealEstateMatching().map((l) => ({
-    ref: `${l.source}|${l.statement_line_id}`,
-    purchase_on: l.purchase_on,
-    merchant: l.merchant,
-    display_merchant: l.display_merchant ?? null,
-    amount_clp: l.amount_clp,
-    covers_through: l.payment_receipt?.vehicle_permit?.expires_on ?? null,
-  }));
+  return loadGastosLinesForRealEstateMatching().map((l) => toRecurringLine(l));
 }
 
 /** A manual occurrence as a «Próximos pagos» row (its own name; the detail on hover). */

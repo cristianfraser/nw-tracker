@@ -13,6 +13,7 @@ import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
 
 const COLUMNS = [
@@ -346,7 +347,7 @@ const PESO_RECEIPT_CHARGED_IN_DOLLARS: Record<string, RegExp> = {
   uber_eats_summary: /UBER/i,
   uber_one: /UBER/i,
 } satisfies Partial<Record<PaymentProcessorSlug, RegExp>>;
-const PESO_RECEIPT_IN_DOLLARS_TOLERANCE = 0.04;
+const PESO_RECEIPT_IN_DOLLARS_TOLERANCE = MATCH_WINDOWS.receipt.toleranceFraction;
 
 /**
  * Whether a line carries a charge of the receipt: `exact` — the same pesos, or for a dollar receipt
@@ -424,8 +425,8 @@ function distinctiveWords(name: string): Set<string> {
 }
 
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
-const DAYS_BEFORE = 1;
-const DAYS_AFTER = 5;
+const DAYS_BEFORE = MATCH_WINDOWS.receipt.daysBefore;
+const DAYS_AFTER = MATCH_WINDOWS.receipt.daysAfter;
 
 /** Day number of an ISO date (UTC midnights are whole days apart); memoized — the matcher compares every receipt with every line. */
 const dayNumberByYmd = new Map<string, number>();
@@ -503,7 +504,7 @@ export function matchPaymentReceipts(
     r: StoredPaymentReceipt,
     amount: number,
     claimed: ReadonlySet<string>,
-    daysAfter = DAYS_AFTER
+    daysAfter: number = DAYS_AFTER
   ): ReceiptCandidateLine | "none" | string {
     const paidOn = r.paid_at_chile.slice(0, 10);
     const hint = PROCESSOR_MERCHANT_HINT[r.processor];

@@ -5,7 +5,7 @@ import {
   normalizeCcExpenseMerchantKey,
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
-import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
+import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch, purchaseAmountsMatch } from "./matching/installmentAmount.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
@@ -39,11 +39,7 @@ export type CcOneShotLineMatch = {
   purchase_date_iso: string | null;
 };
 
-export function purchaseAmountsMatch(a: number, b: number): boolean {
-  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return false;
-  const tol = Math.max(500, Math.round(0.02 * Math.max(a, b)));
-  return Math.abs(a - b) <= tol;
-}
+export { purchaseAmountsMatch };
 
 /**
  * Strip BCI Lider merchant suffixes before cross-source comparison:
@@ -68,12 +64,7 @@ export function merchantsMatchForCrossDedupe(
   const ba = normalizeBciMerchantForDedupe(a);
   const bb = normalizeBciMerchantForDedupe(b);
   if (ba && bb && ba === bb) return true;
-  const sa = merchantStemForInstallmentDedupe(a);
-  const sb = merchantStemForInstallmentDedupe(b);
-  if (!sa || !sb) return false;
-  const ua = sa.toUpperCase();
-  const ub = sb.toUpperCase();
-  return ua === ub || ua.startsWith(ub) || ub.startsWith(ua);
+  return installmentMerchantStemsMatch(a, b);
 }
 
 /** Web-paste «EXPRESS PLAZA L» vs PDF «RECAUDACION EX PLAZA LYON» (same Lyon parking charge). */
@@ -121,20 +112,14 @@ export function listInstallmentPurchasesForAccount(
  * principal or a single cuota. The bank's website lists a purchase as the full total at buy time
  * (e.g. a 6-cuota TGR buy of 9x.xxx), then later re-lists the same purchase as the per-cuota
  * charge that will post (1x.xxx) — a re-import of that cuota line must still dedupe against the
- * converted installment. Mirrors `plainPurchaseLineAmountBlocksInstallmentMatch` in
- * ccInstallmentPurchaseTotalLines.ts.
+ * converted installment. The same rule `plainPurchaseLineAmountBlocksInstallmentMatch` in
+ * ccInstallmentPurchaseTotalLines.ts reads (`amountIsPrincipalOrOneCuota`).
  */
 export function installmentPurchaseAmountMatchesOneShot(
   purchase: CcInstallmentPurchaseMatch,
   amountClp: number
 ): boolean {
-  if (purchaseAmountsMatch(purchase.total_amount_clp, amountClp)) return true;
-  const n = purchase.cuotas_totales;
-  if (n && n > 1 && Number.isFinite(purchase.total_amount_clp) && purchase.total_amount_clp > 0) {
-    const perCuota = Math.round(purchase.total_amount_clp / n);
-    if (purchaseAmountsMatch(perCuota, amountClp)) return true;
-  }
-  return false;
+  return amountIsPrincipalOrOneCuota(purchase.total_amount_clp, purchase.cuotas_totales, amountClp);
 }
 
 export function installmentPurchaseMatchesOneShot(
