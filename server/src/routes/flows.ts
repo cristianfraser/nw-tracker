@@ -1,4 +1,5 @@
 /** Flows: deposits, income, work earnings, expenses (manual, CC, real estate). Split verbatim from index.ts; paths unchanged. */
+import { assertDemoManualExpenseDescription } from "../demoWritePolicy.js";
 import express from "express";
 import { buildPayrollBreakdown } from "../payrollBreakdown.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
@@ -375,6 +376,7 @@ app.put("/api/flows/expenses/line-pieces", (req, res) => {
 
 app.post("/api/flows/expenses/manual", (req, res) => {
   try {
+    assertDemoManualExpenseDescription((req.body as ManualExpenseInput | undefined)?.description);
     res.status(201).json(createManualExpense(req.body as ManualExpenseInput));
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
@@ -383,6 +385,7 @@ app.post("/api/flows/expenses/manual", (req, res) => {
 
 app.patch("/api/flows/expenses/manual/:id", (req, res) => {
   try {
+    assertDemoManualExpenseDescription((req.body as ManualExpenseInput | undefined)?.description);
     updateManualExpense(Number(req.params.id), req.body as ManualExpenseInput);
     res.json({ ok: true });
   } catch (e) {

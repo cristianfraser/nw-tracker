@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -115,16 +116,18 @@ export function IncomeAllLinesTable({
                       }}
                       aria-label={t("income.colIncomeKind")}
                     >
-                      <option value="salary">{t("income.chart.salary")}</option>
-                      <option value="severance">{t("income.chart.severance")}</option>
-                      <option value="parent_gift">{t("income.chart.parent_gift")}</option>
-                      <option value="other">{t("income.chart.other")}</option>
+                      {/* The demo opens only the refund mark; the other kinds stay as generated. */}
+                      {(["salary", "severance", "parent_gift", "other"] as const).map((kind) => (
+                        <option key={kind} value={kind} disabled={DEMO_EDITS_LIMITED && kind !== row.income_kind}>
+                          {t(`income.chart.${kind}`)}
+                        </option>
+                      ))}
                       <option value={REFUND_OPTION}>{t("income.markRefund")}</option>
                     </select>
                   </td>
                   <td>{t("income.originChecking")}</td>
                   <td>
-                    <Button variant="secondary"
+                    {DEMO_EDITS_LIMITED ? null : <Button variant="secondary"
                       disabled={patchIncomeMovement.isPending}
                       onClick={() =>
                         setExcludeTarget({
@@ -135,7 +138,7 @@ export function IncomeAllLinesTable({
                       }
                     >
                       {t("income.excludeLine")}
-                    </Button>
+                    </Button>}
                   </td>
                 </tr>
               );

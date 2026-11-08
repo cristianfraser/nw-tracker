@@ -53,6 +53,7 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { DASHBOARD_PATH } from "../dashboardPath";
 
 /** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
 export function LiabilitiesGroupPage() {
@@ -535,7 +536,7 @@ export function LiabilitiesGroupPage() {
   }
 
   if (!navMatchNode && navSettled) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={DASHBOARD_PATH} replace />;
   }
 
   if (err) {

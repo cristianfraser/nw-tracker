@@ -205,3 +205,31 @@ h4 {
 .loadable.is-loading .chart-panel-title-row {
   pointer-events: auto;
 }
+
+/* Demo tour: the surface the current step talks about (DemoTour.tsx adds and removes it). */
+.demo-tour-target {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+  transition: outline-color 0.2s ease;
+  /* Above the fixed ticker (z-index 4), so the outlined surface is not cut by it. */
+  z-index: 5;
+}
+
+/* A content-fitted outline (DemoTour.tsx places it on the element's text and icons). */
+.demo-tour-ring {
+  position: fixed;
+  z-index: 5;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* Inside the sidebar's scroll box an outside outline is clipped: draw it inside the edge. */
+.app-sidebar .demo-tour-target {
+  outline-offset: -2px;
+}
+
+.demo-tour-target--positioned {
+  position: relative;
+}

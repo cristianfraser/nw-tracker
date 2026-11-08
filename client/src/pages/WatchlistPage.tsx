@@ -16,6 +16,7 @@ import {
 } from "../queries/hooks";
 import type { WatchlistRow, WatchlistSymbolSearchResult } from "../types";
 import { Button, Combobox, CommandItem } from "@crfrsr/ui";
+import { DASHBOARD_PATH } from "../dashboardPath";
 
 function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
   if (row.label_i18n_key) {
@@ -325,7 +326,7 @@ export function WatchlistPage() {
     return (
       <main>
         <p className="muted">
-          <Link to="/">{t("common.backToDashboard")}</Link>
+          <Link to={DASHBOARD_PATH}>{t("common.backToDashboard")}</Link>
         </p>
         <h1>{t("watchlist.pageTitle")}</h1>
         <p className="error">{error instanceof Error ? error.message : String(error)}</p>
@@ -336,7 +337,7 @@ export function WatchlistPage() {
   return (
     <main>
       <p className="muted">
-        <Link to="/">{t("common.backToDashboard")}</Link>
+        <Link to={DASHBOARD_PATH}>{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("watchlist.pageTitle")}</h1>
 

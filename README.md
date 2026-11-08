@@ -1,15 +1,16 @@
 # nw-tracker
 
-A personal net-worth tracker for the Chilean market — brokerage, retirement (AFP/AFC),
-crypto, real estate, cash, credit cards and more — consolidated into one dashboard with
-historical valuations, monthly P&L, aportes (contributions), and long-range projections.
+An automated net-worth and expense tracker for the Chilean market. It connects to banks, card
+issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it
+against the source's own totals, and values every account daily: brokerage, retirement (AFP/AFC),
+crypto, real estate, cash, credit cards and the mortgage, consolidated into one dashboard with
+daily history, returns, cash flow and long-range projections.
 
 **Live demo:** [nw-tracker-demo.onrender.com](https://nw-tracker-demo.onrender.com/?src=github)
 
-> Log in with your email and password: `frasertest26`
->
-> This is a personal-use app. The demo runs on incomplete, simulated data — nothing here
-> is real financial information, and some views may be sparse or unpopulated.
+> The demo shows a fictional person's finances, generated as documents and imported the same way
+> real ones are, at real market prices. It is open to anyone; a few edits are allowed and are
+> undone after a while.
 
 ## What it does
 
@@ -19,15 +20,39 @@ historical valuations, monthly P&L, aportes (contributions), and long-range proj
 - **Credit cards** — statement parsing, installment tracking, and "owed on date" liability
   curves.
 - **Projections** — real (today's-money) accumulation to retirement plus drawdown strategies.
-- **Data pipeline** — imports from spreadsheets, bank cartolas, and PDF statements; the app
-  itself always reads from SQLite.
+- **Expenses and income** — every card and bank line categorized, refunds netted, receipts
+  and transfer notices matched to the charges they explain.
+
+## How data arrives
+
+```
+Sources  →  Ingest service  →  Server  →  Client
+```
+
+- **Sources:** bank statements and daily movements, card statements and unbilled listings,
+  broker and pension-fund documents, mail (payment receipts, transfer notices, payslips,
+  utility bills) and market data (prices, exchange rates, UF).
+- **Ingest service** (`ingest/`): signs in to each source, fetches, reads PDFs and spreadsheets
+  (TypeScript plus Python PDF parsers) and decodes everything into canonical, bank-agnostic
+  payloads. It never opens the database.
+- **Contracts** (`server/contracts/`): the one package both sides share — a typed envelope and a
+  registry of versioned kinds (`card.statement`, `bank_account.movements`, `broker.notifications`,
+  …), validated before any handler runs.
+- **Server** (`server/`): the only database writer. `POST /api/ingest/<kind>` applies a payload
+  idempotently (a repeat is a `duplicate`, a disagreement a `conflict`); a scheduler queues the
+  nightly run and hourly polls as jobs that wait for one another instead of overlapping; every
+  import is reconciled against the source's own totals and balances, and a mismatch fails loudly
+  or raises a notification rather than being papered over.
+- **Client** (`client/`): shows what the server computed; it never re-sums or re-derives a figure.
 
 ## Stack
 
-- **Monorepo** — npm workspaces (`server`, `client`), Node 24, TypeScript throughout.
+- **Monorepo** — npm workspaces (`server`, `client`, `ingest`, `server/contracts`), Node 24,
+  TypeScript throughout; Python for the PDF parsers.
 - **Server** — Express + better-sqlite3 (SQLite), synchronous migrations.
 - **Client** — React + Vite, TanStack Query, Recharts, react-aria-components, i18next
-  (Spanish UI).
+  (English and Spanish).
+- **Ingest** — Playwright (bank sessions), IMAP (mail), poppler / qpdf (PDFs).
 
 ## Running locally
 

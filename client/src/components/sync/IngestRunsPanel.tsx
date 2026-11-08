@@ -24,6 +24,12 @@ function statusClass(run: IngestRunSummary): string {
 }
 
 /**
+ * The hosted demo runs no ingest service: its run history is generated from its documents, so
+ * there is nothing to start and no next run to wait for.
+ */
+const LIVE_SCHEDULE = import.meta.env.VITE_DEMO_MODE !== "1";
+
+/**
  * The ingest service's two runs (the hourly e-mail poll and the nightly) with a button to start
  * either now instead of waiting for its slot — a statement mail that just landed. The run is
  * queued (docs/job-queue-plan.md) and starts as soon as the ingest service is free; the server
@@ -50,7 +56,9 @@ export function IngestRunsPanel({
 
   const canStart = status != null && status.scheduler_enabled && !startRun.isPending;
 
-  const headline = !status
+  const headline = !LIVE_SCHEDULE
+    ? t("importSync.ingest.demoGenerated")
+    : !status
     ? "—"
     : !status.scheduler_enabled
       ? t("importSync.ingest.schedulerOff")
@@ -71,7 +79,7 @@ export function IngestRunsPanel({
               <tr>
                 <th>{t("importSync.ingest.colRun")}</th>
                 <th>{t("importSync.ingest.colLatest")}</th>
-                <th>{t("importSync.ingest.colNext")}</th>
+                {LIVE_SCHEDULE ? <th>{t("importSync.ingest.colNext")}</th> : null}
                 <th className={styles.colActions} />
               </tr>
             </thead>
@@ -96,13 +104,15 @@ export function IngestRunsPanel({
                   <span className="muted">{t("importSync.ingest.never")}</span>
                 )}
               </td>
-              <td className="muted">{formatWhen(row.next_slot_at)}</td>
+              {LIVE_SCHEDULE ? <td className="muted">{formatWhen(row.next_slot_at)}</td> : null}
               <td className={styles.colActions}>
-                <Button variant="secondary" disabled={!canStart} onClick={() => startRun.mutate(row.kind)}>
-                  {startRun.isPending && startRun.variables === row.kind
-                    ? t("importSync.ingest.runNowPending")
-                    : t("importSync.ingest.runNow")}
-                </Button>
+                {LIVE_SCHEDULE ? (
+                  <Button variant="secondary" disabled={!canStart} onClick={() => startRun.mutate(row.kind)}>
+                    {startRun.isPending && startRun.variables === row.kind
+                      ? t("importSync.ingest.runNowPending")
+                      : t("importSync.ingest.runNow")}
+                  </Button>
+                ) : null}
               </td>
             </tr>
           ))}

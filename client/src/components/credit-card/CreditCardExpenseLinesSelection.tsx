@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import {
   createContext,
   useCallback,
@@ -265,9 +266,11 @@ export function CreditCardExpenseLinesBulkFooter({
               {g.label}
             </option>
           ))}
-          <option value="__create_big_group__">
-            {t("expenses.creditCard.bigGroups.createOption")}
-          </option>
+          {DEMO_EDITS_LIMITED ? null : (
+            <option value="__create_big_group__">
+              {t("expenses.creditCard.bigGroups.createOption")}
+            </option>
+          )}
         </select>
       </div>
     </div>

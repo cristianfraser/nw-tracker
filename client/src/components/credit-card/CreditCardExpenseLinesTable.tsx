@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
@@ -349,7 +350,7 @@ function ExpenseLineRow({
   const selected = canSelect && selection.isSelected(ln);
 
   // Card-feed / pasted lines are the only ones the server lets you delete or convert by hand.
-  const canDelete = ln.source === "cc" && ln.web_paste === true && ln.statement_line_id > 0;
+  const canDelete = !DEMO_EDITS_LIMITED && ln.source === "cc" && ln.web_paste === true && ln.statement_line_id > 0;
   // A line the bank lists in cuotas without the count asks for it wherever it shows; any other
   // convertible line (facturación modal) offers the same input.
   const canMakeInstallment =
@@ -368,11 +369,14 @@ function ExpenseLineRow({
   const hasPieces = ln.piece_seq != null || ln.pieces_remainder === true;
   const canEditManual = actions.onEditManual != null && ln.source === "manual" && ln.statement_line_id > 0;
   const showNoteInput =
+    !DEMO_EDITS_LIMITED &&
     Boolean(ln.purchase_key) &&
     (ln.source === "cc" || (actions.enableCheckingNotes && ln.source === "checking"));
   const noteStatementLineId =
     ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
-  const needsAction = ln.cuota_purchase_kind != null || ln.branch_choices != null;
+  // The demo leaves branch picks closed (they write a catalog row every visitor would see).
+  const branchChoices = DEMO_EDITS_LIMITED ? null : ln.branch_choices;
+  const needsAction = ln.cuota_purchase_kind != null || branchChoices != null;
   // A big group shows on the row once set; until then its picker lives in the row's extras.
   const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
@@ -466,7 +470,7 @@ function ExpenseLineRow({
             </div>
           ) : null}
           {canMakeInstallment && !ln.cuota_purchase_kind ? <CuotasInline line={ln} /> : null}
-          {ln.branch_choices ? <BranchChoice choices={ln.branch_choices} /> : null}
+          {branchChoices ? <BranchChoice choices={branchChoices} /> : null}
           {bigGroupInPanel ? (
             <div className={styles.panelBigGroup}>
               <span className="muted">{t("expenses.creditCard.lineRow.bigGroupLabel")}</span>

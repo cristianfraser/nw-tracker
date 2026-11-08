@@ -100,6 +100,11 @@ export type GroupInfoBaseProps = {
   rail?: ReactNode;
   /** Tiles after the band of the main column and the rail (dashboard: the other charts). */
   pairs?: ReactNode;
+  /**
+   * Render only the first screen — the strip, the main charts and the rail — and leave out every
+   * tile below it (the demo's About preview, dashboardFold.ts).
+   */
+  foldOnly?: boolean;
   /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
   tileOrder?: (id: GroupInfoTileId) => number;
   /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
@@ -124,6 +129,7 @@ export function GroupInfoBase({
   afterFlows,
   rail,
   pairs,
+  foldOnly = false,
   tileOrder,
   tileWide,
 }: GroupInfoBaseProps) {
@@ -296,20 +302,20 @@ export function GroupInfoBase({
             <div className="page-main">
               {strip}
               {charts}
-              {returnsTile}
+              {foldOnly ? null : returnsTile}
             </div>
             <div className="page-rail">{rail}</div>
-            {pairs}
+            {foldOnly ? null : pairs}
           </>
         ) : (
           <>
             {strip}
             {charts}
-            {pairs}
-            {returnsTile}
+            {foldOnly ? null : pairs}
+            {foldOnly ? null : returnsTile}
           </>
         )}
-        {tablesEnabled ? (
+        {tablesEnabled && !foldOnly ? (
           <>
             <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
             <div className="chart-panel-title-row">
@@ -383,8 +389,8 @@ export function GroupInfoBase({
           </>
         ) : null}
         {/* The export row and the accounts tree close the page on every tier, rail or not. */}
-        {exportTile}
-        {accountsTile}
+        {foldOnly ? null : exportTile}
+        {foldOnly ? null : accountsTile}
       </Loadable>
     </main>
   );

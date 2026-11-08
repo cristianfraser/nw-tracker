@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { PageGridTile } from "../layout/PageGridTile";
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
@@ -81,20 +82,24 @@ function BigGroupBlock({
             {formatClp(totalClp)} · {t("expenses.creditCard.bigGroups.purchaseCount", { count: purchaseCount })}
           </span>
         </Button>
-        <Button variant="ghost" disabled={rename.isPending} onClick={onRename}>
-          {t("expenses.creditCard.bigGroups.renameAction")}
-        </Button>
-        <Button variant="ghost"
-          disabled={del.isPending || purchaseCount > 0}
-          title={
-            purchaseCount > 0
-              ? t("expenses.creditCard.bigGroups.deleteBlockedHint")
-              : undefined
-          }
-          onClick={onDelete}
-        >
-          {t("expenses.creditCard.bigGroups.deleteAction")}
-        </Button>
+        {DEMO_EDITS_LIMITED ? null : (
+          <>
+            <Button variant="ghost" disabled={rename.isPending} onClick={onRename}>
+              {t("expenses.creditCard.bigGroups.renameAction")}
+            </Button>
+            <Button variant="ghost"
+              disabled={del.isPending || purchaseCount > 0}
+              title={
+                purchaseCount > 0
+                  ? t("expenses.creditCard.bigGroups.deleteBlockedHint")
+                  : undefined
+              }
+              onClick={onDelete}
+            >
+              {t("expenses.creditCard.bigGroups.deleteAction")}
+            </Button>
+          </>
+        )}
         <label className={cn("radio-pill", styles.filter)}>
           <input type="checkbox" checked={excludedFromChart} onChange={onToggleExcluded} />
           {t("expenses.creditCard.bigGroups.chartFilterLabel")}

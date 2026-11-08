@@ -35,6 +35,12 @@ describe("demoReadOnlyMiddleware", () => {
     }
   });
 
+  it("lets the allowlisted demo edits through (counted by the quota middleware)", () => {
+    expect(run("PATCH", "/api/flows/expenses/credit-card/lines/12/category").nexted).toBe(true);
+    expect(run("POST", "/api/flows/expenses/manual").nexted).toBe(true);
+    expect(run("PATCH", "/api/flows/expenses/credit-card/purchase-notes").statusCode).toBe(403);
+  });
+
   it("exempts the analytics beacon and non-api paths", () => {
     expect(run("POST", USAGE_PAGE_VIEW_PATH).nexted).toBe(true);
     expect(run("POST", "/login").nexted).toBe(true);

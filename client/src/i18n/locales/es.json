@@ -22,7 +22,100 @@
     }
   },
   "demo": {
-    "readOnly": "Esta es una demo de solo lectura: los cambios no se pueden guardar."
+    "writable": {
+      "limitReached": "Llegaste al límite de ediciones de hoy en la demo. Las ediciones vuelven a los datos originales después de un rato.",
+      "manualExpenseHint": "En la demo la descripción se elige de una lista. Las ediciones se comparten con otros visitantes y se restablecen después de un rato."
+    },
+    "about": {
+      "navLabel": "Acerca de",
+      "title": "NW Tracker",
+      "lead": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado.",
+      "fictional": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato.",
+      "openDashboard": "Abrir el dashboard",
+      "howTitle": "Cómo funciona",
+      "youAreHere": "Estás aquí",
+      "pipeline": {
+        "sources": {
+          "title": "Fuentes",
+          "body": "Bancos (cartolas, movimientos diarios), emisores de tarjetas, corredoras, fondos de pensiones y de cesantía, casillas de correo (comprobantes, avisos de transferencia, liquidaciones) y datos de mercado (precios, tipos de cambio, UF).",
+          "link": "Documentos registrados"
+        },
+        "ingest": {
+          "title": "Servicio de ingesta",
+          "body": "Inicia sesión, descarga, lee PDFs y planillas y envía datos tipados al servidor. Corre cada noche a las 22:00 y revisa cada hora.",
+          "link": "Historial de corridas"
+        },
+        "server": {
+          "title": "Servidor",
+          "body": "El único que escribe en la base de datos. Cuadra cada importación con los totales y saldos del propio banco, valoriza cada cuenta a diario y avisa cuando algo no calza.",
+          "link": "Notificaciones"
+        },
+        "client": {
+          "title": "Cliente",
+          "body": "El cliente: muestra lo que calculó el servidor y nunca lo recalcula.",
+          "link": "Abrir el dashboard"
+        }
+      },
+      "pipelineNote": "En la demo no corren el servicio de ingesta ni las sesiones bancarias; el historial que se muestra se genera a partir de los mismos documentos ficticios.",
+      "source": "Código en GitHub",
+      "contact": "Preguntas: <mail>{{email}}</mail>"
+    },
+    "readOnly": "Esta es una demo de solo lectura: los cambios no se pueden guardar.",
+    "tour": {
+      "stepCount": "{{n}} de {{total}}",
+      "start": "Iniciar recorrido",
+      "contact": "Para cualquier pregunta, puedes escribir a <mail>cristian.fraser@gmail.com</mail>.",
+      "dismiss": "Cerrar",
+      "next": "Siguiente",
+      "back": "Atrás",
+      "finish": "Terminar",
+      "privacy": "Política de privacidad",
+      "steps": {
+        "welcome": {
+          "title": "Bienvenido a NW Tracker",
+          "body": "Un tracker automatizado de patrimonio y gastos: se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega y valoriza cada cuenta a diario. Mostrado aquí con las finanzas de una persona ficticia, generadas como documentos e importadas como las reales, a precios de mercado reales."
+        },
+        "cards": {
+          "title": "El patrimonio de un vistazo",
+          "body": "Cada tarjeta es una parte del patrimonio: el saldo de hoy con el P/L del día al lado, y luego los depósitos y el P/L del mes, del año y del total. Los saldos se actualizan solos a medida que reportan las fuentes, y se mueven durante el día con los precios en vivo."
+        },
+        "chart": {
+          "title": "Cada gráfico tiene sus propios controles",
+          "body": "Elige el período y el rango en cada gráfico. Diario valoriza cada día del calendario a los precios y al tipo de cambio de ese día; cambia CLP / USD abajo."
+        },
+        "sidebar": {
+          "title": "Una página por grupo y por cuenta",
+          "body": "Inversiones, efectivo, el departamento y la hipoteca en Pasivos: cada grupo se abre en sus cuentas, hasta una acción o una tarjeta de crédito con sus estados de cuenta."
+        },
+        "flows": {
+          "title": "A dónde fue la plata",
+          "body": "El panel Flujos suma el último mes y los últimos 12 meses: ingresos, gastos, ahorro, depósitos y P/L de inversiones. Las páginas de Flujos muestran el detalle, mes a mes y por categoría."
+        },
+        "end": {
+          "title": "Recorrido completo",
+          "body": "El código está disponible en <repo>GitHub</repo>."
+        }
+      }
+    },
+    "footer": {
+      "tour": "Recorrido de la demo",
+      "privacy": "Privacidad"
+    },
+    "privacy": {
+      "title": "Privacidad",
+      "intro": "Esta demo no tiene cuentas ni inicio de sesión, y todas sus cifras son sintéticas. Esta nota describe lo que se registra sobre las visitas.",
+      "visitsTitle": "Visitas",
+      "visitsBody": "Por cada visitante y día, la aplicación guarda un identificador obtenido con un hash de la dirección IP y el navegador junto a una clave que cambia a diario, de modo que no es posible seguir a un visitante de un día al siguiente. La aplicación no guarda la dirección IP. Junto al identificador se guardan: el user-agent del navegador, el país de la conexión, el sitio de origen (solo el dominio), una etiqueta de campaña del enlace si la hay y el número de solicitudes.",
+      "pagesTitle": "Páginas y tiempos",
+      "pagesBody": "Cada página abierta se registra con su ruta y cuánto tardó en cargar, asociada al identificador de ese día. Los tiempos de respuesta del servidor se guardan por endpoint y hora, no por visitante, durante 90 días.",
+      "cloudflareTitle": "Cloudflare Web Analytics",
+      "cloudflareBody": "La página carga el script de analítica de Cloudflare, que cuenta visitas sin cookies. La política de privacidad de Cloudflare cubre lo que hace con ellas.",
+      "browserTitle": "Tu navegador",
+      "browserBody": "No se crean cookies para los visitantes. Las preferencias de visualización (moneda, idioma, gráficos, si cerraste el recorrido) se guardan en el almacenamiento local del navegador y no se envían a ninguna parte.",
+      "hostingTitle": "Alojamiento",
+      "hostingBody": "La demo está alojada en Render, detrás de la red de Cloudflare. Como cualquier servicio de alojamiento, ambos reciben la dirección IP de cada solicitud para entregar la página, y pueden conservarla en sus propios registros según sus políticas de privacidad.",
+      "contact": "Preguntas: cristian.fraser@gmail.com"
+    }
   },
   "reminders": {
     "mortgageUf": {
@@ -477,6 +570,7 @@
     },
     "ingestRunsTitle": "Corridas de banco y correo",
     "ingest": {
+      "demoGenerated": "En la demo no corre el servicio de ingesta: este historial se generó a partir de los propios documentos de la demo.",
       "schedulerOff": "El programador de ingesta está apagado en esta instancia del servidor: las corridas solo se pueden iniciar desde la principal.",
       "inFlight": "En curso: {{kind}} desde {{time}}.",
       "idle": "Ninguna corrida en curso.",

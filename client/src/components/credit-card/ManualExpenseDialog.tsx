@@ -7,6 +7,7 @@ import { useTranslation } from "../../i18n";
 import { useDeleteManualExpenseMutation, useSaveManualExpenseMutation } from "../../queries/hooks";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Modal } from "../ui/Modal";
+import { DEMO_EDITS_LIMITED, DEMO_MANUAL_EXPENSE_DESCRIPTIONS } from "../../demoEdits";
 
 /**
  * Creates a manual expense — spending no bank or card line shows — or edits / deletes one
@@ -40,7 +41,11 @@ export function ManualExpenseDialog({
     setSpentOn(expense?.purchase_on ?? expense?.occurred_on ?? "");
     setAmountText(expense ? formatNumberInput(expense.amount_clp) : "");
     setCategorySlug(expense?.category_slug ?? "");
-    setDescription(expense?.merchant ?? "");
+    const merchant = expense?.merchant ?? "";
+    // The demo takes a description from its list only; another one has to be picked again.
+    setDescription(
+      DEMO_EDITS_LIMITED && !(DEMO_MANUAL_EXPENSE_DESCRIPTIONS as readonly string[]).includes(merchant) ? "" : merchant
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, expense]);
 
@@ -83,6 +88,7 @@ export function ManualExpenseDialog({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: "26rem" }}>
         <p className="muted">{t("expenses.creditCard.manualExpense.hint")}</p>
+        {DEMO_EDITS_LIMITED ? <p className="muted">{t("demo.writable.manualExpenseHint")}</p> : null}
         <Field label={t("expenses.creditCard.manualExpense.date")}>
           <Input type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
         </Field>
@@ -100,7 +106,18 @@ export function ManualExpenseDialog({
           </select>
         </Field>
         <Field label={t("expenses.creditCard.manualExpense.description")}>
-          <Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
+          {DEMO_EDITS_LIMITED ? (
+            <select value={description} onChange={(e) => setDescription(e.target.value)}>
+              <option value="" />
+              {DEMO_MANUAL_EXPENSE_DESCRIPTIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
+          )}
         </Field>
         {error ? <p className="error">{error}</p> : null}
         <div style={{ display: "flex", gap: "0.5rem" }}>

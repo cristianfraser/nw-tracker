@@ -22,7 +22,100 @@
     }
   },
   "demo": {
-    "readOnly": "This is a read-only demo — changes can't be saved."
+    "writable": {
+      "limitReached": "You've reached today's limit of edits on the demo. Edits reset to the original data after a while.",
+      "manualExpenseHint": "On the demo the description is picked from a list. Edits are shared with other visitors and reset after a while."
+    },
+    "about": {
+      "navLabel": "About",
+      "title": "NW Tracker",
+      "lead": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
+      "fictional": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
+      "openDashboard": "Open the dashboard",
+      "howTitle": "How it works",
+      "youAreHere": "You are here",
+      "pipeline": {
+        "sources": {
+          "title": "Sources",
+          "body": "Banks (statements, daily movements), card issuers, brokers, pension and unemployment funds, mailboxes (receipts, transfer notices, payslips) and market data (prices, exchange rates, UF).",
+          "link": "Documents on record"
+        },
+        "ingest": {
+          "title": "Ingest service",
+          "body": "Signs in, fetches, reads PDFs and spreadsheets and sends typed payloads to the server. Runs nightly at 22:00 and polls hourly.",
+          "link": "Run history"
+        },
+        "server": {
+          "title": "Server",
+          "body": "The only writer of the database. Checks each import against the bank's own totals and balances, values every account daily and raises a notification when something disagrees.",
+          "link": "Notifications"
+        },
+        "client": {
+          "title": "Client",
+          "body": "The client: it shows what the server computed and never recalculates it.",
+          "link": "Open the dashboard"
+        }
+      },
+      "pipelineNote": "On the demo the ingest service and bank sessions do not run; the history shown is generated from the same fictional documents.",
+      "source": "Source on GitHub",
+      "contact": "Questions: <mail>{{email}}</mail>"
+    },
+    "readOnly": "This is a read-only demo — changes can't be saved.",
+    "tour": {
+      "stepCount": "{{n}} of {{total}}",
+      "start": "Start tour",
+      "contact": "For any questions, feel free to write to <mail>cristian.fraser@gmail.com</mail>.",
+      "dismiss": "Dismiss",
+      "next": "Next",
+      "back": "Back",
+      "finish": "Finish",
+      "privacy": "Privacy policy",
+      "steps": {
+        "welcome": {
+          "title": "Welcome to NW Tracker",
+          "body": "An automated net-worth and expense tracker: it connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, and values every account daily. Shown here with a fictional person's finances, generated as documents and imported the way real ones are, at real market prices."
+        },
+        "cards": {
+          "title": "Net worth at a glance",
+          "body": "Each card is a part of net worth: today's balance with the day's P/L beside it, then this month's, this year's and the all-time deposits and P/L. Balances update by themselves as the sources report, and move during the day with live prices."
+        },
+        "chart": {
+          "title": "Every chart has its own controls",
+          "body": "Pick the period and range per chart. Daily values every calendar day at that day's prices and exchange rate; switch CLP / USD at the bottom."
+        },
+        "sidebar": {
+          "title": "A page for every group and account",
+          "body": "Investments, cash, the apartment and the mortgage under Liabilities: each group opens into its accounts, down to a single stock or credit card with its statements."
+        },
+        "flows": {
+          "title": "Where the money went",
+          "body": "The Flows panel sums last month and the last 12 months: income, expenses, savings, deposits and investment P/L. The Flows pages show the detailed breakdown, month by month and by category."
+        },
+        "end": {
+          "title": "Tour complete",
+          "body": "Code can be found on <repo>GitHub</repo>."
+        }
+      }
+    },
+    "footer": {
+      "tour": "Demo tour",
+      "privacy": "Privacy"
+    },
+    "privacy": {
+      "title": "Privacy",
+      "intro": "This demo has no accounts and no sign-in, and every figure in it is synthetic. This note describes what is recorded about visits.",
+      "visitsTitle": "Visits",
+      "visitsBody": "For each visitor and day, the application stores an identifier derived by hashing the IP address and browser with a key that changes daily, so a visitor cannot be followed from one day to the next. The application does not store the IP address itself. Stored alongside the identifier: the browser's user-agent string, the country of the connection, the referring site (domain only), a campaign tag from the link if present, and the number of requests made.",
+      "pagesTitle": "Pages and timings",
+      "pagesBody": "Each page opened is recorded with its path and how long it took to load, tied to that day's visitor id. Server response times are kept per endpoint and hour, not per visitor, for 90 days.",
+      "cloudflareTitle": "Cloudflare Web Analytics",
+      "cloudflareBody": "The page loads Cloudflare's analytics script, which counts page views without cookies. Cloudflare's own privacy policy covers what it does with them.",
+      "browserTitle": "Your browser",
+      "browserBody": "No cookies are set for visitors. Display choices (currency, language, chart settings, whether you closed the tour) are kept in your browser's local storage and never sent anywhere.",
+      "hostingTitle": "Hosting",
+      "hostingBody": "The demo is hosted on Render, behind Cloudflare's network. Like any web host, both receive the IP address of each request in order to deliver the page, and may keep it in their own logs under their privacy policies.",
+      "contact": "Questions: cristian.fraser@gmail.com"
+    }
   },
   "reminders": {
     "mortgageUf": {
@@ -477,6 +570,7 @@
     },
     "ingestRunsTitle": "Bank and e-mail runs",
     "ingest": {
+      "demoGenerated": "On the demo the ingest service does not run: this history was generated from the demo's own documents.",
       "schedulerOff": "The ingest scheduler is off on this server instance: runs can only be started from the primary one.",
       "inFlight": "Running: {{kind}} since {{time}}.",
       "idle": "No run in progress.",

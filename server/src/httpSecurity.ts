@@ -1,14 +1,16 @@
 import type { RequestHandler } from "express";
+import { demoWriteAllowedByPolicy } from "./demoWritePolicy.js";
 import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
 
 /**
  * Deployment modes share one binary and differ only by env:
  * - Local personal mode (default): bind 127.0.0.1, dev-origin CORS.
- * - Hosted demo mode (e.g. Render): HOST=0.0.0.0, DEMO_MODE=1 → open to anyone, reads only.
+ * - Hosted demo mode (e.g. Render): HOST=0.0.0.0, DEMO_MODE=1 → open to anyone, reads plus a few
+ *   edits without free text (demoWritePolicy.ts).
  *
  * Neither mode authenticates. The demo used to sit behind a shared-password login; recruiters
- * bounced off the gate instead of using it, so the demo is public and the read-only guard
- * below is what keeps its shared synthetic DB intact.
+ * bounced off the gate instead of using it, so the demo is public and the guard below is what
+ * keeps its shared synthetic DB intact (with the per-visitor quota and the reset, demoWritable.ts).
  */
 
 const DEFAULT_DEV_ORIGINS = [
@@ -34,22 +36,27 @@ export function resolveCorsOrigins(): string[] {
 
 // --- Demo read-only guard -----------------------------------------------------------
 //
-// The hosted demo is public (no login). Its synthetic DB is shared by every visitor and
-// only regenerates on deploy / cold start, so a single mutating request would corrupt what
-// the next visitor sees. Demo mode therefore serves reads only.
-
+// The hosted demo is public (no login). Its synthetic DB is shared by every visitor, so demo
+// mode serves reads plus the allowlisted edits (demoWritePolicy.ts); those are counted against
+// a per-visitor allowance and undone by the reset to the generated state (demoWritable.ts).
 
 const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
  * Rejects `/api` mutations with `403 { error: "demo_read_only" }` (the client turns that
- * sentinel into a localized message). Non-`/api` paths and the usage page-view beacon pass through.
+ * sentinel into a localized message). Non-`/api` paths, the usage page-view beacon and the
+ * allowlisted demo edits pass through.
  * Mounted only when `DEMO_MODE=1`, so local personal mode is unaffected.
  */
 export function demoReadOnlyMiddleware(): RequestHandler {
   return (req, res, next) => {
     const isApi = req.path === "/api" || req.path.startsWith("/api/");
-    if (!isApi || READ_ONLY_METHODS.has(req.method) || req.path === USAGE_PAGE_VIEW_PATH) {
+    if (
+      !isApi ||
+      READ_ONLY_METHODS.has(req.method) ||
+      req.path === USAGE_PAGE_VIEW_PATH ||
+      demoWriteAllowedByPolicy(req.method, req.path)
+    ) {
       next();
       return;
     }

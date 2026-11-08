@@ -22,6 +22,7 @@ import type { MarketSeriesPoint } from "../types";
 import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
 import { useTranslation } from "../i18n";
 import { queryLoadError } from "../queries/pageShapeReady";
+import { DASHBOARD_PATH } from "../dashboardPath";
 
 type RatesTab = "fx" | "tickers";
 
@@ -448,7 +449,7 @@ export function RatesPage() {
   return (
     <main>
       <p className="muted">
-        <Link to="/">{t("common.backToDashboard")}</Link>
+        <Link to={DASHBOARD_PATH}>{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("rates.pageTitle")}</h1>
       <FxCoverageBanner coverage={payload?.fx_coverage} />

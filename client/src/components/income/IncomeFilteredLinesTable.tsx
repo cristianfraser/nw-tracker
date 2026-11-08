@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -77,18 +78,20 @@ export function IncomeFilteredLinesTable({
               </td>
               <td className="muted">{filterReasonLabel(t, row.filter_reason)}</td>
               <td>
-                <Button variant="secondary"
-                  disabled={forceInclude.isPending}
-                  onClick={() =>
-                    setIncludeTarget({
-                      movement_id: row.movement_id,
-                      description: row.description,
-                      received_on: row.received_on,
-                    })
-                  }
-                >
-                  {t("income.includeLine")}
-                </Button>
+                {DEMO_EDITS_LIMITED ? null : (
+                  <Button variant="secondary"
+                    disabled={forceInclude.isPending}
+                    onClick={() =>
+                      setIncludeTarget({
+                        movement_id: row.movement_id,
+                        description: row.description,
+                        received_on: row.received_on,
+                      })
+                    }
+                  >
+                    {t("income.includeLine")}
+                  </Button>
+                )}
               </td>
             </tr>
           ))}
