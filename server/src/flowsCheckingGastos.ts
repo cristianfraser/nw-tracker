@@ -1,4 +1,5 @@
-import { daysBetweenIso } from "nw-tracker-contracts";
+import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -348,7 +349,7 @@ export function createSplittableInternalTransferPool(
 export function depositMatchesInternalTransferTiming(
   withdrawal: { occurred_on: string },
   deposit: Pick<DepositMatchCandidate, "occurred_on" | "category_slug">,
-  maxDayGap = 3
+  maxDayGap: number = MATCH_WINDOWS.deposit_outflow.daysAfter
 ): boolean {
   if (MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(deposit.category_slug)) {
     const withdrawalMonth = monthKeyFromYmd(withdrawal.occurred_on);
@@ -477,7 +478,7 @@ export function checkingCreditMatchesInternalWithdrawal(
   checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   deposits: readonly DepositMatchCandidate[],
   splittablePool: Map<string, number>,
-  maxDayGap = 3
+  maxDayGap: number = MATCH_WINDOWS.deposit_outflow.daysAfter
 ): boolean {
   const want = Math.round(credit.amount_clp);
   if (want <= 0) return false;
@@ -519,10 +520,10 @@ export function checkingCreditMatchesInternalWithdrawal(
 }
 
 /** Negative capital events on net-worth accounts (withdrawals / returns toward checking). */
-export const NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP = 14;
+export const NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP = MATCH_WINDOWS.net_worth_capital_return.daysAfter;
 
 /** AFP retiro ledger rows often post days after the checking abono (bidirectional match window). */
-export const AFP_RETIRO_RETURN_MAX_DAY_GAP = 31;
+export const AFP_RETIRO_RETURN_MAX_DAY_GAP = MATCH_WINDOWS.afp_retiro_return.daysAfter;
 
 function checkingWithdrawalPairKey(row: {
   account_id: number;
@@ -828,16 +829,12 @@ function withdrawalMatchesInternalCashTransferExact(
 /** Lump-sum reserva imports share one cartola day; only same-day checking wires may split against them. */
 /** Fintual (fondo reserva) credits the deposit up to a few days after the wire leaves checking, so
  *  the splittable pool can't require an exact same-date match. Exact amount still gates the pairing. */
-const SPLITTABLE_INTERNAL_TRANSFER_MAX_DAY_GAP = 8;
 
 function depositMatchesSplittableInternalTransferTiming(
   withdrawal: { occurred_on: string },
   deposit: Pick<DepositMatchCandidate, "occurred_on">
 ): boolean {
-  return (
-    Math.abs(daysBetweenIso(deposit.occurred_on, withdrawal.occurred_on)) <=
-    SPLITTABLE_INTERNAL_TRANSFER_MAX_DAY_GAP
-  );
+  return dayWithinWindow(withdrawal.occurred_on, deposit.occurred_on, MATCH_WINDOWS.splittable_internal_transfer);
 }
 
 function tryAllocateSplittableInternalTransferAmount(

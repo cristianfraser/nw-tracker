@@ -1,4 +1,5 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import { lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
 import { purchaseCountsAfterNotaPairing } from "./ccNotaDeCreditoPairing.js";
@@ -21,8 +22,8 @@ import { addCalendarMonths } from "nw-tracker-contracts";
 const GASTOS_INSTALLMENT_MODE = "total" as const;
 
 /** Bill month X may be paid same month (X+0) or on the card in X+1 / X+2. */
-export const REAL_ESTATE_LINK_PURCHASE_MONTH_OFFSET_MIN = 0;
-export const REAL_ESTATE_LINK_PURCHASE_MONTH_OFFSET_MAX = 2;
+export const REAL_ESTATE_LINK_PURCHASE_MONTH_OFFSET_MIN = -MATCH_WINDOWS.real_estate_bill_purchase.daysBefore;
+export const REAL_ESTATE_LINK_PURCHASE_MONTH_OFFSET_MAX = MATCH_WINDOWS.real_estate_bill_purchase.daysAfter;
 
 export type ExpenseExpectationRow = {
   id: number;

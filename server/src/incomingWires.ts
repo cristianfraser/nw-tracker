@@ -29,17 +29,18 @@ import type {
 
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { fintualUsdAccountId } from "./brokerAdapter.js";
 
 /** How long after its pay day a request waits for its wire before it is reported overdue. */
-const OVERDUE_AFTER_DUE_DAYS = 3;
+const OVERDUE_AFTER_DUE_DAYS = MATCH_WINDOWS.incoming_wire_overdue.daysAfter;
 /** How far past its pay day a wire may still pay a request. */
-const WIRE_AFTER_DUE_DAYS = 7;
+const WIRE_AFTER_DUE_DAYS = MATCH_WINDOWS.incoming_wire_request.daysAfter;
 /** Notices of one wire: the receiving bank may mail a day after the value date. */
-const NOTICES_OF_ONE_WIRE_DAYS = 2;
+const NOTICES_OF_ONE_WIRE_DAYS = MATCH_WINDOWS.incoming_wire_notices.daysAfter;
 /** A hand-entered transfer counts as the booked one within this window. */
-const EXISTING_TRANSFER_WINDOW_DAYS = 5;
+const EXISTING_TRANSFER_WINDOW_DAYS = MATCH_WINDOWS.incoming_wire_existing_transfer.daysAfter;
 
 export type WithdrawalRequest = {
   message_id: string;

@@ -53,11 +53,16 @@ describe("the matchers take their windows from the table", () => {
     "ccRecurringPendingLines", "recurringPaymentMatch", "ccFacturadoFinancingAuto", "ccManualInstallmentStatementReconcile",
     "flowsDepositsReconciliation", "movementMirrorPairs", "mortgagePaymentCardMatch", "paymentProcessorReceipts",
     "merchantExpenseNotes", "utilityBillsApply", "realEstateExpenseMatching", "bankTransferNotices", "incomingWires",
+    "mortgagePaymentCardMatch", "flowsCheckingGastos", "expenseDepositLinks", "ccCrossImportDedupe", "ccPlantedPayments",
   ];
-  const literalWindow = /\b(?:const|let)\s+[A-Za-z_]*(?:DAYS|DAY_GAP)[A-Za-z_]*\s*=\s*\d+\b/;
+  const literalWindow = /\b(?:const|let)\s+[A-Za-z_]*(?:DAYS|DAY_GAP)[A-Za-z_]*\s*(?::\s*number\s*)?=\s*\d+\s*;/;
   it.each(files)("%s declares no day-window constant of its own", (f) => {
     const text = fs.readFileSync(path.join(dir, `${f}.ts`), "utf8");
     const bad = text.split("\n").filter((l) => literalWindow.test(l) && !l.includes("// window-ok"));
     expect(bad).toEqual([]);
+  });
+
+  it.each(files.filter((f) => f !== "ccCrossImportDedupe"))("%s reads MATCH_WINDOWS", (f) => {
+    expect(fs.readFileSync(path.join(dir, `${f}.ts`), "utf8")).toContain("MATCH_WINDOWS");
   });
 });

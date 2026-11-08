@@ -30,7 +30,7 @@ export type MatchWindow = {
   candidate: string;
   daysBefore: number;
   daysAfter: number;
-  unit: "days" | "months";
+  unit: "days" | "business_days" | "months";
   amount: AmountRule;
   /** For `amount: "tolerance"`: the largest relative difference that still agrees. */
   toleranceFraction?: number;
@@ -224,6 +224,14 @@ export const MATCH_WINDOWS = {
     unit: "days",
     amount: "exact",
   },
+  incoming_wire_overdue: {
+    anchor: "withdrawal request's pay day",
+    candidate: "no wire yet",
+    daysBefore: 0,
+    daysAfter: 3,
+    unit: "days",
+    amount: "none",
+  },
   incoming_wire_existing_transfer: {
     anchor: "wire's value date",
     candidate: "hand-entered transfer",
@@ -240,6 +248,24 @@ export const MATCH_WINDOWS = {
     daysAfter: 3,
     unit: "days",
     amount: "exact",
+  },
+  mortgage_cuota_overdue: {
+    anchor: "ledger cuota's payment day (or a card line's day)",
+    candidate: "no counterpart yet",
+    daysBefore: 0,
+    daysAfter: 5,
+    unit: "business_days",
+    amount: "none",
+    note: "the nightly check fails when a cuota has no card line, or a charge no cuota, this long",
+  },
+  mortgage_cuota_check_window: {
+    anchor: "today",
+    candidate: "cuota or card line still judged by the nightly check",
+    daysBefore: 45,
+    daysAfter: 0,
+    unit: "days",
+    amount: "none",
+    note: "older unpaired rows are history, from before the card was charged",
   },
   mortgage_cuota_stored_link: {
     anchor: "sheet row's day",
@@ -268,6 +294,22 @@ export const MATCH_WINDOWS = {
     unit: "days",
     amount: "tolerance",
     toleranceFraction: 0.03,
+  },
+  subscription_cycle_horizon: {
+    anchor: "subscription receipt or notice",
+    candidate: "cycle-priced charge",
+    ...sym(500),
+    unit: "days",
+    amount: "none",
+    note: "how far from a subscription receipt a charge still counts as one of its cycles",
+  },
+  recurring_lookback: {
+    anchor: "recurring entry's declaration",
+    candidate: "earlier occurrence settled for its placeholder",
+    daysBefore: 400,
+    daysAfter: 0,
+    unit: "days",
+    amount: "none",
   },
   recurring_uf_line: {
     anchor: "line's day",

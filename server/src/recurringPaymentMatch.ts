@@ -60,6 +60,38 @@ export type RecurringLine = {
   covers_through?: string | null;
 };
 
+/** An expense line as either recurring-payment reader holds it (a subset of `FlowCcExpenseLineRow`). */
+export type RecurringSourceLine = {
+  source: string;
+  statement_line_id: number;
+  purchase_key?: string | null;
+  purchase_on: string | null;
+  merchant: string | null;
+  display_merchant?: string | null;
+  amount_clp: number;
+  payment_receipt?: { vehicle_permit?: { expires_on?: string | null } | null } | null;
+};
+
+/**
+ * The one loader of the matcher's candidates: an expense line as a `RecurringLine`, named by its
+ * source, line id and purchase key, carrying what its document says it covers. «Próximos pagos»
+ * and the line-name pass feed the matcher through this, so both see the same candidate.
+ */
+export function recurringLineRef(l: Pick<RecurringSourceLine, "source" | "statement_line_id" | "purchase_key">): string {
+  return `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}`;
+}
+
+export function toRecurringLine(l: RecurringSourceLine): RecurringLine {
+  return {
+    ref: recurringLineRef(l),
+    purchase_on: l.purchase_on,
+    merchant: l.merchant,
+    display_merchant: l.display_merchant ?? null,
+    amount_clp: l.amount_clp,
+    covers_through: l.payment_receipt?.vehicle_permit?.expires_on ?? null,
+  };
+}
+
 export type RecurringMatch = {
   ref: string;
   purchase_on: string;
@@ -98,7 +130,7 @@ export type RecurringModelInput = {
 const RECURRING_UF_LINE_DAYS = MATCH_WINDOWS.recurring_uf_line.daysAfter;
 
 /** How far before an entry's declaration its occurrences are still settled (history for placeholders). */
-const LOOKBACK_DAYS = 400;
+const LOOKBACK_DAYS = MATCH_WINDOWS.recurring_lookback.daysBefore;
 
 type DatedLine = RecurringLine & { purchase_on: string };
 

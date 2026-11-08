@@ -1,4 +1,5 @@
-import { daysBetweenIso } from "nw-tracker-contracts";
+import { dayWithinWindow } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { lenderMerchantPatterns } from "./accountRoles.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
@@ -43,7 +44,7 @@ import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
 
 /** Max days between CC purchase_on and depto sheet occurred_on for mortgage cuota match. */
-export const MORTGAGE_CC_PURCHASE_DAY_GAP = 14;
+export const MORTGAGE_CC_PURCHASE_DAY_GAP = MATCH_WINDOWS.mortgage_cuota_stored_link.daysAfter;
 
 /** Priority for conflict resolution when the same (purchase_key, deposit_movement_id) pair is
  *  written by more than one path: manual (user-curated) > auto (real checking/CC match) >
@@ -290,9 +291,7 @@ export function findUniqueCcLineForMortgageSheetRow(
     if (Math.round(line.amount_clp) !== want) return false;
     const purchaseDate = purchaseDateForGastosLine(line);
     if (!purchaseDate) return false;
-    return (
-      Math.abs(daysBetweenIso(purchaseDate, sheet.occurred_on)) <= MORTGAGE_CC_PURCHASE_DAY_GAP
-    );
+    return dayWithinWindow(sheet.occurred_on, purchaseDate, MATCH_WINDOWS.mortgage_cuota_stored_link);
   });
 
   if (candidates.length === 0) return null;
@@ -623,7 +622,7 @@ function assignBillsCategoryToMortgageLinkedLines(): void {
  * 3 days + description gate) couldn't pair it. The assertion pass re-searches with the same exact
  * rounded-amount tolerance but a wider date window, restricted ONLY to those asserted lines.
  */
-export const MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP = 14;
+export const MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP = MATCH_WINDOWS.manual_deposit_assertion.daysAfter;
 
 export type ManualDepositAssertion = {
   /** Checking account the outflow lives on. */
@@ -742,12 +741,7 @@ export function computeManualDepositAssertions(
     const candidateAccountByMovementId = new Map<number, number>();
     for (const d of pool) {
       if (Math.round(d.amount_clp) !== base.amount_clp) continue;
-      if (
-        Math.abs(daysBetweenIso(base.occurred_on, d.occurred_on)) >
-        MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP
-      ) {
-        continue;
-      }
+      if (!dayWithinWindow(base.occurred_on, d.occurred_on, MATCH_WINDOWS.manual_deposit_assertion)) continue;
       // Candidate events without a movement row (transfer legs, derived capital flows) are not
       // linkable deposit rows — they never show up in the reconciliation, so skip them here too.
       for (const movementId of listDepositMovementIdsAt(d.account_id, d.occurred_on, d.amount_clp)) {

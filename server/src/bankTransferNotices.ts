@@ -16,16 +16,17 @@
  * a transfer to some other account. Rows left tied that differ only by id are twins and pair in
  * order; any other tie is left unpaired and reported.
  */
-import { normalizeAccountNumber, normalizeRut } from "nw-tracker-contracts";
+import { addDaysIso, normalizeAccountNumber, normalizeRut } from "nw-tracker-contracts";
 import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
 
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 
-const WINDOW_DAYS = 6;
+const WINDOW_DAYS = MATCH_WINDOWS.transfer_notice.daysAfter;
 
 /** One account side of a bank movement on a tracked checking account. */
 export type TransferCandidateLeg = {
@@ -54,12 +55,6 @@ export type TransferNoticeMatch = {
   unpaired_notices: { message_id: string; reason: string }[];
   ambiguous: string[];
 };
-
-function addDays(ymd: string, n: number): string {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 /** The app accounts a transfer's counterparty is (`transfer_counterparty_accounts`). */
 export function counterpartyAccountsOf(counterparties: CounterpartyAccounts, p: TransferNotice["to"]): ReadonlySet<number> {
@@ -106,7 +101,7 @@ export function matchTransferNotices(
   ): TransferCandidateLeg | "none" | "ambiguous" {
     const day = n.sent_at_chile.slice(0, 10);
     const candidates = (byAccountAmount.get(`${account}|${amount}`) ?? [])
-      .filter((l) => !claimed.has(legKey(l)) && l.day >= day && l.day <= addDays(day, WINDOW_DAYS) && otherOk(l.other_account_id))
+      .filter((l) => !claimed.has(legKey(l)) && l.day >= day && l.day <= addDaysIso(day, WINDOW_DAYS) && otherOk(l.other_account_id))
       .sort((a, b) => a.day.localeCompare(b.day) || a.movement_id - b.movement_id);
     if (candidates.length === 0) return "none";
     const rank = (l: TransferCandidateLeg) =>
@@ -149,7 +144,7 @@ export function matchTransferNotices(
       }
     }
     // Before an account's bank history starts there is nothing to pair with.
-    const lastPostingDay = addDays(n.sent_at_chile.slice(0, 10), WINDOW_DAYS);
+    const lastPostingDay = addDaysIso(n.sent_at_chile.slice(0, 10), WINDOW_DAYS);
     if (sides.every((s) => lastPostingDay < (firstDay.get(s.account) ?? "9999"))) {
       skip("before the account's bank history");
       continue;
@@ -245,7 +240,7 @@ function trackedAccounts(): Map<string, number> {
 }
 
 /** How old a mail may be and still have its movement written: past this, the bank feed decides. */
-export const TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS = 3;
+export const TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS = MATCH_WINDOWS.transfer_notice_movement_max_age.daysBefore;
 
 const MAILER_NOTE_PREFIX: Record<string, string> = {
   santander: "import:santander-mail|",

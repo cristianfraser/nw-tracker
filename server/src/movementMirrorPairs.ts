@@ -28,6 +28,7 @@
  */
 import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
@@ -96,7 +97,7 @@ export type RejectedMirrorPair = {
 };
 
 /** Inflow on or after the outflow (causal order), at most this many calendar days later. */
-export const MIRROR_PAIR_MAX_DAY_GAP = 5;
+export const MIRROR_PAIR_MAX_DAY_GAP = MATCH_WINDOWS.mirror_pair.daysAfter;
 
 
 /** A credit the user classified as income (salary, parent gift, force-include) is not a transfer leg. */
@@ -207,7 +208,7 @@ function monthKey(ymd: string): string {
 }
 
 /** Days either side of the month boundary a month-precision leg may reach into. */
-export const MIRROR_MONTH_PRECISION_BOUNDARY_DAYS = 7;
+export const MIRROR_MONTH_PRECISION_BOUNDARY_DAYS = MATCH_WINDOWS.mirror_month_precision_boundary.daysAfter;
 
 /** Month-bucket kinds whose movements carry a conventional month-end date, not a real day. */
 export function mirrorLegIsMonthPrecision(kindSlug: string | null): boolean {

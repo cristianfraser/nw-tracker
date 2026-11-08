@@ -1,8 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import {
-  merchantsMatchForCrossDedupe,
-  purchaseAmountsMatch,
-} from "./ccCrossImportDedupe.js";
+import { amountIsPrincipalOrOneCuota, purchaseAmountsMatch } from "./matching/installmentAmount.js";
+import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
 import {
   categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
@@ -128,12 +126,7 @@ function plainPurchaseLineAmountBlocksInstallmentMatch(
   if (ln.line_role !== "purchase") return false;
   if (isInstallmentContractSummaryMerchant(ln.merchant)) return false;
   if (isUnindexedInstallmentResumenLine(ln)) return false;
-  if (purchaseAmountsMatch(ln.amount_clp, installmentTotalClp)) return false;
-  if (cuotasTotal && cuotasTotal > 0) {
-    const perCuota = Math.round(installmentTotalClp / cuotasTotal);
-    if (purchaseAmountsMatch(ln.amount_clp, perCuota)) return false;
-  }
-  return true;
+  return !amountIsPrincipalOrOneCuota(installmentTotalClp, cuotasTotal, ln.amount_clp);
 }
 
 function findMatchingCuotaLine(

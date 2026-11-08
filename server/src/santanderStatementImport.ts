@@ -41,12 +41,8 @@ import { ccOriginAmountCsvCell } from "./ccOriginCurrency.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 
-import crypto from "node:crypto";
+import { ccJsonStatementLineBaseKey, ccSha1Hex16, dedupeKeysByOccurrence } from "./ccDedupeKey.js";
 import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
-
-function sha1Hex16(payload: string): string {
-  return crypto.createHash("sha1").update(payload).digest("hex").slice(0, 16);
-}
 
 const findContractCanonical = db.prepare(
   `SELECT canonical_row_id, merchant FROM cc_installment_purchases
@@ -80,7 +76,7 @@ export function resolveJsonCuotaCanonicalRowId(
   for (const hit of hits) {
     if (merchantStemForInstallmentDedupe(hit.merchant) === stem) return hit.canonical_row_id;
   }
-  return `json-loan|${sha1Hex16(
+  return `json-loan|${ccSha1Hex16(
     `${cardGroup}|${purchaseDateIso}|${totalAmountClp}|${cuotasTotal}|${stem.toUpperCase()}`
   )}`;
 }
@@ -151,20 +147,21 @@ export function buildSantanderStatementRecords(
     statement_next_period_to: ctx.nextClose ?? "",
   };
 
-  const occurrence = new Map<string, number>();
+  // Occurrence-indexed in line order: the Nth identical line of the statement is its `#dupN` twin.
+  const baseKeys = lineRows.map((line) => {
+    const amountClp = currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : null;
+    const amountUsd = currency === "usd" ? line.amount : null;
+    const amountKey = currency === "usd" ? (amountUsd ?? 0).toFixed(2) : String(amountClp ?? 0);
+    return ccJsonStatementLineBaseKey(ctx.cardGroup, currency, line.transaction_date, line.merchant, amountKey);
+  });
+  const dedupeKeys = dedupeKeysByOccurrence(baseKeys);
   const records: CcStatementCsvRecord[] = [];
-  for (const line of lineRows) {
+  for (const [lineIndex, line] of lineRows.entries()) {
     // The record's amount for a cuota line is the purchase's total, its cuota rides apart.
     const amountClp = currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : null;
     const amountUsd = currency === "usd" ? line.amount : null;
     const dateIso = line.transaction_date;
-    const amountKey = currency === "usd" ? (amountUsd ?? 0).toFixed(2) : String(amountClp ?? 0);
-    const base = `json|${sha1Hex16(
-      `${ctx.cardGroup}|${currency}|${dateIso}|${normalizeMerchantText(line.merchant)}|${amountKey}`
-    )}`;
-    const n = occurrence.get(base) ?? 0;
-    occurrence.set(base, n + 1);
-    const dedupeKey = n === 0 ? base : `${base}#dup${n}`;
+    const dedupeKey = dedupeKeys[lineIndex]!;
 
     const canonical =
       line.installment && currency === "clp"
