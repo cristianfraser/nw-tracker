@@ -41,7 +41,7 @@ export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
     queryKey: queryKeys.dashboard(unit),
     queryFn: () => fetchDashboardBundle(unit),
     enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboard(unit), 1),
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboard(unit)),
   });
 }
 
@@ -51,7 +51,7 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabl
     queryKey: queryKeys.dashboardOverviewDaily(unit, days),
     queryFn: () => api.dashboardOverviewDaily(unit, days),
     enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardOverviewDaily(unit, days), 1),
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboardOverviewDaily(unit, days)),
   });
 }
 
@@ -61,7 +61,7 @@ export function useInversionesPerfDaily(unit: DisplayUnit, days: number, enabled
     queryKey: queryKeys.inversionesPerfDaily(unit, days),
     queryFn: () => api.inversionesPerfDaily(unit, days),
     enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.inversionesPerfDaily(unit, days), 1),
+    ...displayUnitQueryBehaviorFor(queryKeys.inversionesPerfDaily(unit, days)),
   });
 }
 
@@ -85,7 +85,7 @@ export function useDailySeries(
     queryKey: key,
     queryFn: () => api.dailySeries(unit, scope, days, { perfLevels }),
     enabled: enabled && scopeKey !== "",
-    ...displayUnitQueryBehaviorFor(key, 3),
+    ...displayUnitQueryBehaviorFor(key),
   });
 }
 
@@ -106,7 +106,7 @@ export function useDashboardNavContext(unit: DisplayUnit, root: string | null, e
     enabled: enabled && root != null,
     // A unit change holds nothing: the pages fall back to the unit's own nav snapshot cache, never
     // a converted context; another page starts from its own.
-    ...displayUnitQueryBehaviorFor(key, 3),
+    ...displayUnitQueryBehaviorFor(key),
   });
 }
 
@@ -131,7 +131,7 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     enabled: enabled && !cachedStrip,
     // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields; the pages
     // hold the previous unit's strip themselves, see useHeldNavStrip).
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit)),
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
   });
@@ -194,7 +194,7 @@ export function useGroupConsolidatedTables(
     queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit),
     queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit)),
   });
 }
 
@@ -204,7 +204,7 @@ export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit,
     queryKey: queryKeys.groupPeriodReturns(portfolioGroup, unit),
     queryFn: () => api.groupPeriodReturns(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupPeriodReturns(portfolioGroup, unit), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.groupPeriodReturns(portfolioGroup, unit)),
   });
 }
 
@@ -232,7 +232,7 @@ export function useGroupConsolidatedMonthlyPage(
     queryKey: key,
     queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(key, 2),
+    ...displayUnitQueryBehaviorFor(key),
   });
 }
 
@@ -246,7 +246,7 @@ export function useAccountsByPortfolioGroup(
     queryKey: queryKeys.accountsByPortfolioGroup(portfolioGroup, unit),
     queryFn: () => fetchAccountsByPortfolioGroup(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountsByPortfolioGroup(portfolioGroup, unit), 3),
+    ...displayUnitQueryBehaviorFor(queryKeys.accountsByPortfolioGroup(portfolioGroup, unit)),
     staleTime: DISPLAY_UNIT_STALE_MS,
     gcTime: DISPLAY_UNIT_STALE_MS,
   });
@@ -263,7 +263,7 @@ export function usePortfolioGroupBundle(opts: {
     queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
     queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     enabled: enabled && Boolean(portfolio_group),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, undefined, unit), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, undefined, unit)),
   });
 }
 
@@ -292,7 +292,7 @@ export function useGroupPageShell(opts: {
       cachedShell ? readGroupPageShellCache(portfolioGroup, unit) : undefined,
     initialDataUpdatedAt: cachedShell ? Date.now() : undefined,
     enabled: enabled && Boolean(portfolioGroup && navNode) && !cachedShell,
-    ...displayUnitQueryBehaviorFor(queryKeys.groupPageShell(portfolioGroup, unit), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.groupPageShell(portfolioGroup, unit)),
     staleTime: GROUP_PAGE_SHELL_STALE_MS,
     gcTime: GROUP_PAGE_SHELL_STALE_MS,
   });
@@ -582,7 +582,6 @@ export function useMarkMessagesReadMutation() {
     mutationFn: () => api.markMessagesRead(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.messagesUnread() });
-      window.dispatchEvent(new Event("nw-messages-read"));
     },
   });
 }
@@ -686,7 +685,7 @@ export function useFlowsOverview(unit: DisplayUnit, installmentMode: "split" | "
   return useQuery({
     queryKey,
     queryFn: () => api.flowsOverview(unit, installmentMode, days),
-    ...displayUnitQueryBehaviorFor(queryKey, 3),
+    ...displayUnitQueryBehaviorFor(queryKey),
   });
 }
 
@@ -744,7 +743,7 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
     queryKey: queryKeys.accountMonthlyPerformance(id ?? "", unit),
     queryFn: () => api.accountMonthlyPerformance(id!, unit),
     enabled: Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountMonthlyPerformance(id ?? "", unit), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.accountMonthlyPerformance(id ?? "", unit)),
   });
 }
 
@@ -753,7 +752,7 @@ export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = tr
     queryKey: queryKeys.portfolioGroupCcLedger(slug ?? ""),
     queryFn: () => api.portfolioGroupCcLedger(slug!),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupCcLedger(slug ?? ""), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupCcLedger(slug ?? "")),
   });
 }
 
@@ -762,7 +761,7 @@ export function usePortfolioGroupMortgageLedger(slug: string | undefined, enable
     queryKey: queryKeys.portfolioGroupMortgageLedger(slug ?? ""),
     queryFn: () => api.portfolioGroupMortgageLedger(slug!),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupMortgageLedger(slug ?? ""), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupMortgageLedger(slug ?? "")),
   });
 }
 
@@ -776,7 +775,7 @@ export function useAccountDetailBundle(
     queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity),
     queryFn: () => api.accountDetailBundle(id!, unit, { granularity: chartGranularity }),
     enabled: Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountDetail(id ?? "", unit, chartGranularity), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.accountDetail(id ?? "", unit, chartGranularity)),
   });
 }
 
@@ -842,7 +841,7 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         exclude_spending: filters.exclude_spending,
       }),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupFlows(slug, filtersKey), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.groupFlows(slug, filtersKey)),
   });
 }
 
@@ -866,7 +865,7 @@ export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilte
         amount_currency: filters.amount_currency,
       }),
     enabled: enabled && Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountFlows(id ?? "", filtersKey), 2),
+    ...displayUnitQueryBehaviorFor(queryKeys.accountFlows(id ?? "", filtersKey)),
   });
 }
 

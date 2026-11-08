@@ -15,6 +15,7 @@ import {
   expenseLineMatchesPurchaseBigGroupPatch,
 } from "../ccExpenseLineBuckets";
 import { queryKeys, type DisplayUnit } from "./keys";
+import { invalidateResources, resources } from "./resources";
 
 export type PatchCcExpenseLineCategoryVars = {
   lineId: number;
@@ -90,24 +91,9 @@ export function applyCcExpenseLineCategoryPatchFromServer(
   };
 }
 
-function invalidateAccountDetailBundle(
-  queryClient: ReturnType<typeof useQueryClient>,
-  accountId: string | number,
-  displayUnit: DisplayUnit
-) {
-  void queryClient.invalidateQueries({
-    queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
-  });
-}
-
-function invalidateAccountAndFlowQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-  accountId: string | number,
-  displayUnit: DisplayUnit
-) {
-  invalidateAccountDetailBundle(queryClient, accountId, displayUnit);
-  void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.flowsDeposits() });
+/** A card write: its account page, the expense lines and the deposits. */
+function cardWriteResources(accountId: string | number, displayUnit: DisplayUnit) {
+  return [resources.accountPage(accountId, displayUnit), resources.expenseLines(), resources.deposits()];
 }
 
 export function usePatchCcExpenseLineCategoryMutation() {
@@ -157,8 +143,7 @@ export function usePatchCcExpenseLineCategoryMutation() {
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+      void invalidateResources(queryClient, resources.expenseLines());
     },
   });
 }
@@ -248,12 +233,13 @@ export function usePatchCcExpensePurchaseNoteMutation() {
       );
       // The card page's purchase tables show the same note (a plan's `expense_purchase_key`).
       queryClient.setQueriesData<AccountDetailBundleResponse>(
-        { queryKey: ["accountDetail", String(result.account_id)] },
+        { queryKey: queryKeys.accountDetailAll(String(result.account_id)) },
         (old) => applyCcPurchaseNotePatchToDetail(old, result.purchase_key, result.notes)
       );
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+      // The note is patched in place on the Expenses page; the dashboard list refetches.
+      void invalidateResources(queryClient, [{ queryKey: queryKeys.latestExpensesAll() }]);
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
@@ -295,8 +281,7 @@ export function usePostVendorBranchChoiceMutation() {
   return useMutation({
     mutationFn: (vars: { key: string; display: string }) => api.postVendorBranchChoice(vars),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses(), exact: true });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+      void invalidateResources(queryClient, resources.expenseLineRows());
     },
   });
 }
@@ -327,9 +312,7 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
     onSettled: () => {
       // The gastos views leave excluded big groups out of the chart and carry each group's
       // usage; the lines payload lists the active groups: recompute both.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpensesGastosAll() });
-      void queryClient.invalidateQueries({ queryKey, exact: true });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+      void invalidateResources(queryClient, resources.expenseBigGroups());
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
@@ -358,7 +341,7 @@ export function useCreateCcExpenseBigGroupMutation() {
       });
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
+      void invalidateResources(queryClient, resources.expenseBigGroupCatalog());
     },
   });
 }
@@ -390,7 +373,7 @@ export function useRenameCcExpenseBigGroupMutation() {
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
+      void invalidateResources(queryClient, resources.expenseBigGroupCatalog());
     },
   });
 }
@@ -422,7 +405,7 @@ export function useDeleteCcExpenseBigGroupMutation() {
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
+      void invalidateResources(queryClient, resources.expenseBigGroupCatalog());
     },
   });
 }
@@ -435,7 +418,7 @@ export function useDeleteCcPurchaseMutation(opts: {
   return useMutation({
     mutationFn: (purchaseId: number) => api.deleteCcPurchase(opts.accountId, purchaseId),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
     },
   });
 }
@@ -447,8 +430,7 @@ export function useUpdateCcPurchaseCuotasMutation(opts: { accountId: number; dis
     mutationFn: ({ purchaseId, cuotas_totales }: { purchaseId: number; cuotas_totales: number }) =>
       api.updateCcPurchaseCuotas(opts.accountId, purchaseId, cuotas_totales),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
     },
   });
 }
@@ -461,7 +443,7 @@ export function useDeleteCcStatementLineMutation(opts: {
   return useMutation({
     mutationFn: (lineId: number) => api.deleteCcStatementLine(opts.accountId, lineId),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
     },
   });
 }
@@ -475,8 +457,7 @@ export function useMakeStatementLineInstallmentMutation(opts: {
     mutationFn: ({ lineId, cuotas_totales }: { lineId: number; cuotas_totales: number }) =>
       api.makeStatementLineInstallment(opts.accountId, lineId, cuotas_totales),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
     },
   });
 }
@@ -486,32 +467,28 @@ export function useAccountImportMutation(opts: { accountId: number; displayUnit:
   return useMutation({
     mutationFn: (run: () => Promise<Record<string, unknown>>) => run(),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
     },
   });
 }
 
 export function useLinkRealEstateExpenseMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsRealEstateExpenses();
   return useMutation({
     mutationFn: (body: { expense_entry_id: number; purchase_key: string }) =>
       api.linkRealEstateExpense(body),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.realEstateLinkCandidates());
     },
   });
 }
 
 export function useUnmatchRealEstateExpenseMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsRealEstateExpenses();
   return useMutation({
     mutationFn: (expenseEntryId: number) => api.unmatchRealEstateExpense(expenseEntryId),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.realEstateLinkCandidates());
     },
   });
 }
@@ -526,9 +503,7 @@ export function useAssignRealEstatePurchaseMutation() {
       bill_month?: string;
     }) => api.assignRealEstatePurchase(body),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateUnlinkedPurchases"] });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.realEstateCandidates());
     },
   });
 }
@@ -544,8 +519,7 @@ export function useCreateRealEstatePlaceMutation() {
       property_account_id?: number | null;
     }) => api.createRealEstatePlace(body),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() });
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.sidebarNav());
     },
   });
 }
@@ -556,8 +530,7 @@ export function useUpdateRealEstateBillMonthMutation() {
     mutationFn: (vars: { expense_entry_id: number; bill_month: string }) =>
       api.updateRealEstateBillMonth(vars.expense_entry_id, { bill_month: vars.bill_month }),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.realEstateLinkCandidates());
     },
   });
 }
@@ -568,7 +541,7 @@ export function useUpdateRealEstateMonthsCoveredMutation() {
     mutationFn: (vars: { expense_entry_id: number; months_covered: number }) =>
       api.updateRealEstateMonthsCovered(vars.expense_entry_id, { months_covered: vars.months_covered }),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+      void invalidateResources(queryClient, resources.realEstateExpenses());
     },
   });
 }
@@ -579,7 +552,7 @@ export function useUpdateRealEstateConsumptionMutation() {
     mutationFn: (vars: { expense_entry_id: number; kwh: number | null; m3: number | null }) =>
       api.updateRealEstateConsumption(vars.expense_entry_id, { kwh: vars.kwh, m3: vars.m3 }),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+      void invalidateResources(queryClient, resources.realEstateExpenses());
     },
   });
 }
@@ -589,9 +562,7 @@ export function useDeleteRealEstateExpenseEntryMutation() {
   return useMutation({
     mutationFn: (expenseEntryId: number) => api.deleteRealEstateExpenseEntry(expenseEntryId),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateUnlinkedPurchases"] });
-      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.realEstateCandidates());
     },
   });
 }
@@ -608,7 +579,7 @@ export function usePatchWorkEarningMutation() {
       return api.patchWorkEarning(id, body);
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+      void invalidateResources(queryClient, resources.income());
     },
   });
 }
@@ -627,8 +598,7 @@ export function usePatchIncomeMovementMutation() {
       return api.patchIncomeMovement(movement_id, body);
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+      void invalidateResources(queryClient, resources.income(), resources.expenseLines());
     },
   });
 }
@@ -640,9 +610,8 @@ export function useIncomeRefundMutation() {
     mutationFn: (vars: { movement_id: number; refund: boolean }) =>
       vars.refund ? api.markIncomeRefund(vars.movement_id) : api.unmarkIncomeRefund(vars.movement_id),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
       // A refund is a negative line on the Expenses page.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+      void invalidateResources(queryClient, resources.income(), resources.expenseLines());
     },
   });
 }
@@ -652,7 +621,7 @@ export function useForceIncludeIncomeMovementMutation() {
   return useMutation({
     mutationFn: (movement_id: number) => api.forceIncludeIncomeMovement(movement_id),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+      void invalidateResources(queryClient, resources.income());
     },
   });
 }
@@ -662,7 +631,7 @@ export function useRestoreIncomeMovementMutation() {
   return useMutation({
     mutationFn: (movement_id: number) => api.restoreIncomeMovement(movement_id),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+      void invalidateResources(queryClient, resources.income());
     },
   });
 }
@@ -676,8 +645,7 @@ export function useUpsertCcFacturadoFinancingLinkMutation() {
       financing: { account_id: number; purchase_key: string }[];
     }) => api.upsertCcFacturadoFinancingLink(body),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
+      void invalidateResources(queryClient, resources.expenseLines(), resources.financingLinks());
     },
   });
 }
@@ -687,8 +655,7 @@ export function useDeleteCcFacturadoFinancingLinkMutation() {
   return useMutation({
     mutationFn: (id: number) => api.deleteCcFacturadoFinancingLink(id),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
+      void invalidateResources(queryClient, resources.expenseLines(), resources.financingLinks());
     },
   });
 }
@@ -699,8 +666,7 @@ export function useSaveExpenseLinePiecesMutation() {
   return useMutation({
     mutationFn: (vars: Parameters<typeof api.putExpenseLinePieces>[0]) => api.putExpenseLinePieces(vars),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
-      void queryClient.invalidateQueries({ queryKey: ["expenseLinePieces"] });
+      void invalidateResources(queryClient, resources.expenseLines(), resources.expenseLinePieces());
     },
   });
 }
@@ -714,7 +680,7 @@ export function useSaveManualExpenseMutation() {
       else await api.updateManualExpense(vars.id, vars.input);
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+      void invalidateResources(queryClient, resources.expenseLines());
     },
   });
 }
@@ -724,7 +690,7 @@ export function useDeleteManualExpenseMutation() {
   return useMutation({
     mutationFn: (id: number) => api.deleteManualExpense(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+      void invalidateResources(queryClient, resources.expenseLines());
     },
   });
 }

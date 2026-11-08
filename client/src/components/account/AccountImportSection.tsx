@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "../../queries/keys";
 import { api } from "../../api";
 import { useTranslation } from "../../i18n";
 import { AccountImportPanel, useAccountImportSlots } from "./AccountImportPanel";
@@ -12,7 +13,7 @@ type Props = {
 export function AccountImportSection({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
   const { data: specs } = useQuery({
-    queryKey: ["accountImportSpecs", accountId],
+    queryKey: queryKeys.accountImportSpecs(accountId),
     queryFn: () => api.accountImportSpecs(accountId),
   });
   const slots = useAccountImportSlots(accountId, specs ?? null, t);

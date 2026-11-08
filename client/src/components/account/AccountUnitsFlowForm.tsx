@@ -98,7 +98,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
         queryClient.invalidateQueries({
           queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
         }),
-        queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.accountFlowsAll() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
       ]);

@@ -38,6 +38,7 @@ export async function fetchDashboardBundle(unit: DisplayUnit): Promise<Dashboard
 export type PortfolioGroupBundle = {
   accounts: AccountListRow[];
   ts: ValuationTimeseriesResponse;
+  /** Null only on a placeholder bundle (`groupPageChartPlaceholders`); a failed fetch fails the bundle. */
   groupPerf: GroupMonthlyPerformanceResponse | null;
 };
 
@@ -122,7 +123,7 @@ export async function fetchPortfolioGroupBundle(
   const [accounts, series, perfResult] = await Promise.all([
     accountsForPortfolioGroup(queryClient, slug, opts.unit),
     api.valuationTimeseries(opts.unit, { portfolio_group: slug }),
-    api.groupMonthlyPerformance(slug, opts.unit).catch(() => null),
+    api.groupMonthlyPerformance(slug, opts.unit),
   ]);
   return { accounts, ts: series, groupPerf: perfResult };
 }

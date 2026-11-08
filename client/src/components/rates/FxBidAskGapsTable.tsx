@@ -98,7 +98,7 @@ export function FxBidAskGapsTable() {
       await api.upsertFxBidAsk(gap.date, buy, sell);
       await reload();
       void queryClient.invalidateQueries({ queryKey: queryKeys.marketSeries() });
-      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardAll() });
     } catch (e) {
       setDrafts((prev) => ({
         ...prev,

@@ -8,7 +8,7 @@ import {
 } from "./fetchers";
 import { api } from "../api";
 import { hasDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
-import { queryKeys, type DisplayUnit } from "./keys";
+import { entityKeyLength, queryKeys, type DisplayUnit } from "./keys";
 
 /** Cached CLP/USD bundles stay warm while toggling display unit. */
 export const DISPLAY_UNIT_STALE_MS = 5 * 60_000;
@@ -41,13 +41,13 @@ export function keepPreviousDataSameEntity(queryKey: readonly unknown[], entityK
 /**
  * Query options for the display-unit payloads (bundles, series, tables, flows): warm for five
  * minutes, refetched on the live-quote cadence, and previous data held only across same-entity
- * key changes (see {@link keepPreviousDataSameEntity}).
+ * key changes (see {@link keepPreviousDataSameEntity}; the key declares its entity length).
  */
-export function displayUnitQueryBehaviorFor(queryKey: readonly unknown[], entityKeyLength: number) {
+export function displayUnitQueryBehaviorFor(queryKey: readonly unknown[]) {
   return {
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: LIVE_DASHBOARD_REFETCH_MS,
-    placeholderData: keepPreviousDataSameEntity(queryKey, entityKeyLength),
+    placeholderData: keepPreviousDataSameEntity(queryKey, entityKeyLength(queryKey)),
   };
 }
 

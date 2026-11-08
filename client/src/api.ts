@@ -39,56 +39,46 @@ function isProbablyHtml(body: string) {
   return t.startsWith("<!") || t.startsWith("<html") || t.startsWith("<");
 }
 
-async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<T> {
+/**
+ * The one request path: fetch, then one error rule for every route — the demo's read-only answer
+ * as a sentence, an HTML page as the "start the API" hint, a JSON `{ error }` as its message.
+ */
+async function request(path: string, init: RequestInit): Promise<{ res: Response; text: string }> {
   const url = `${base()}${path}`;
   let res: Response;
   try {
-    res = await fetch(url, { method, body: form, credentials: "same-origin" });
+    res = await fetch(url, { credentials: "same-origin", ...init });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`${API_HINT} (${msg})`, { cause: e });
   }
   const text = await res.text();
-  const trimmed = text.trim();
   if (!res.ok) {
+    const trimmed = text.trim();
     const readOnly = demoReadOnlyMessage(res.status, trimmed);
     if (readOnly) throw new Error(readOnly);
     if (isProbablyHtml(text)) throw new Error(`${API_HINT} (HTTP ${res.status})`);
     throw new Error(trimmed ? apiErrorMessage(trimmed) : res.statusText);
   }
+  return { res, text };
+}
+
+async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<T> {
+  const { text } = await request(path, { method, body: form });
+  const trimmed = text.trim();
   if (trimmed === "") return undefined as T;
   return JSON.parse(trimmed) as T;
 }
 
 async function j<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${base()}${path}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      credentials: "same-origin",
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`${API_HINT} (${msg})`, { cause: e });
-  }
-
-  const text = await res.text();
+  const { res, text } = await request(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
   const trimmed = text.trim();
-
-  if (!res.ok) {
-    const readOnly = demoReadOnlyMessage(res.status, trimmed);
-    if (readOnly) throw new Error(readOnly);
-    if (isProbablyHtml(text)) {
-      throw new Error(`${API_HINT} (HTTP ${res.status})`);
-    }
-    throw new Error(trimmed ? apiErrorMessage(trimmed) : res.statusText);
-  }
-
   if (res.status === 204 || trimmed === "") {
     return undefined as T;
   }
