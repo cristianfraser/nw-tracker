@@ -713,6 +713,7 @@ export type CardPlanCuota = {
   account_id: number;
   pay_by_date: string;
   statement_date: string | null;
+  statement_period_month: string | null;
   amount_clp: number;
   cuota_current: number | null;
   cuota_total: number | null;
@@ -726,7 +727,7 @@ export function planCuotas(accountIds: readonly number[]): CardPlanCuota[] {
   if (accountIds.length === 0) return [];
   return db
     .prepare(
-      `SELECT p.id AS payment_id, pr.account_id, p.pay_by_date, p.statement_date,
+      `SELECT p.id AS payment_id, pr.account_id, p.pay_by_date, p.statement_date, p.statement_period_month,
               p.amount_clp, p.cuota_current, p.cuota_total,
               pr.purchase_date, pr.merchant, pr.total_amount_clp
        FROM cc_installment_payments p

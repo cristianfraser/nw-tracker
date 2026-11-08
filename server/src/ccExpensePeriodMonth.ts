@@ -88,24 +88,3 @@ export function installmentModalLines<T extends GastosPeriodLine & { billing_mon
   );
 }
 
-/** Whether a line contributes to gastos_mes for the given installment counting mode. */
-export function lineCountsTowardGastosSum(
-  line: GastosPeriodLine & {
-    amount_clp?: number;
-    category_slug?: string;
-    installment_flag?: number;
-    nro_cuota_current?: number | null;
-    nota_credito_role?: string;
-  },
-  mode: CcInstallmentGastosMode,
-  countsTowardCategory: boolean
-): boolean {
-  if (!countsTowardCategory) return false;
-  const scope = line.gastos_scope ?? "both";
-  if (scope === "excluded") return false;
-  if (scope === "total_only") return mode === "total";
-  if (scope === "split_only") return mode === "split";
-  if (line.line_role === "installment_purchase_total") return mode === "total";
-  if (line.line_role === "installment_cuota") return mode === "split";
-  return true;
-}

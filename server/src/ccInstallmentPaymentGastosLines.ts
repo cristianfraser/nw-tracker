@@ -1,6 +1,5 @@
-import { monthKeyFromYmd } from "./calendarMonth.js";
 import { buildExpenseKey } from "./expenseKeys.js";
-import { billingMonthForStatementDate } from "./cards/statementMonth.js";
+import { paymentStatementMonthYm } from "./cards/statementMonth.js";
 import {
   categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
@@ -17,7 +16,6 @@ import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { CcExpenseLineRole } from "./ccExpensePeriodMonth.js";
 import { planCuotas } from "./cards/purchases.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 const PAYMENT_LINE_ID_OFFSET = 2_000_000_000;
 
@@ -137,11 +135,8 @@ export function buildInstallmentPaymentGastosLines(
 
     const payByIso =
       row.pay_by_date.length >= 10 ? row.pay_by_date.slice(0, 10) : row.pay_by_date;
-    const stmtIso = parseDdMmYyToIso(String(row.statement_date ?? "").trim());
-    const billingMonth =
-      (stmtIso ? billingMonthForStatementDate(stmtIso) : null) ??
-      billingMonthForStatementDate(payByIso) ??
-      monthKeyFromYmd(payByIso);
+    // The cuota's facturación: its statement's month, else its pay-by's (`paymentStatementMonthYm`).
+    const billingMonth = paymentStatementMonthYm(row);
     if (!billingMonth) continue;
 
     const purchaseOn =

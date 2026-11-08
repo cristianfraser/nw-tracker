@@ -12,17 +12,14 @@
  */
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import { ADDITIONAL_CARD_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
+import { countsTowardGastosMes, type GastosMesLine } from "./flowsExpensesGastos.js";
 
 /** The fields of a gastos line (`FlowCcExpenseLineRow`) the summary reads. */
-export type AdditionalCardChargeLineInput = {
+export type AdditionalCardChargeLineInput = GastosMesLine & {
   source: "cc" | "checking" | "manual" | "payslip";
   origin_card_last4: string | null;
   primary_card_last4: string | null;
-  category_slug: string;
-  line_role: "purchase" | "installment_cuota" | "installment_purchase_total";
-  gastos_scope?: "both" | "total_only" | "split_only" | "excluded";
   expense_month: string;
-  amount_clp: number;
   amount_usd_at_expense: number | null;
 };
 
@@ -62,16 +59,15 @@ export type AdditionalCardsSummary = {
 
 /**
  * A charge the additional cardholder owes: an additional-card CC line the user left in
- * `additional_card`, counted the way it bills (one-shots and cuotas; never an installment purchase
- * total, which only the «Total» gastos mode shows). A line the user recategorized is his own spend.
+ * `additional_card`, counted the way it bills — what counts toward gasto del mes in «Por cuota»
+ * mode (`countsTowardGastosMes`: one-shots and cuotas, never an installment purchase total). A line
+ * the user recategorized is his own spend.
  */
 export function isAdditionalCardChargeLine(line: AdditionalCardChargeLineInput): boolean {
   if (line.source !== "cc") return false;
   if (!isAdditionalCardExpenseLine(line.origin_card_last4, line.primary_card_last4)) return false;
   if (line.category_slug !== ADDITIONAL_CARD_CC_EXPENSE_SLUG) return false;
-  if (line.line_role === "installment_purchase_total") return false;
-  if (line.gastos_scope === "excluded" || line.gastos_scope === "total_only") return false;
-  return true;
+  return countsTowardGastosMes(line, "split");
 }
 
 /** A reimbursement: a checking refund line (negative) in `additional_card`. */

@@ -1,8 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
-import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
-import { lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
-import { purchaseCountsAfterNotaPairing } from "./ccNotaDeCreditoPairing.js";
+import { countsTowardGastosMes } from "./flowsExpensesGastos.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
@@ -46,22 +44,17 @@ export type RealEstateLinkRow = {
   link_source: "auto" | "manual";
 };
 
+/**
+ * A gastos line that may be a place's bill: what counts toward gasto del mes in «Total» mode
+ * (`countsTowardGastosMes`: no nota-annulled purchase or its nota, an expense category, the whole
+ * purchase), positive — an unmatched nota de crédito or a payroll deduction never paid a bill.
+ */
 export function isGastosLineEligibleForRealEstateLink(line: FlowCcExpenseLineRow): boolean {
   // A payroll deduction is never what paid a place's bill.
   if (line.source === "payslip") return false;
-  if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
-    return false;
-  }
   if (line.nota_credito_role === "unmatched_nota") return false;
   if (line.amount_clp <= 0) return false;
-  const countsCategory = countsTowardCcExpenseGastosMes(line.category_slug, {
-    installment_flag: line.installment_flag,
-    nro_cuota_current: line.nro_cuota_current,
-  });
-  if (!countsCategory) return false;
-  if (!purchaseCountsAfterNotaPairing(line)) return false;
-  if (!lineCountsTowardGastosSum(line, GASTOS_INSTALLMENT_MODE, countsCategory)) return false;
-  return true;
+  return countsTowardGastosMes(line, GASTOS_INSTALLMENT_MODE);
 }
 
 export function loadGastosLinesForRealEstateMatching(): FlowCcExpenseLineRow[] {

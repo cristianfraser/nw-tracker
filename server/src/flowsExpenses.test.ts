@@ -20,10 +20,10 @@ import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
 import { flowCcExpenseLineFingerprint } from "./ccExpenseLineDedupe.js";
 import { buildFlowsExpensesPayload, resolveExpenseMonth } from "./flowsExpenses.js";
-import { gastosSumMonthForLine, lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
+import { gastosSumMonthForLine } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
-import { buildFlowsExpensesGastosViews, gastosViewKey } from "./flowsExpensesGastos.js";
+import { buildFlowsExpensesGastosViews, countsTowardGastosMes, gastosViewKey } from "./flowsExpensesGastos.js";
 
 /** The Expenses page's Por cuota view at the subcategory level (every category its own), in CLP. */
 function splitView(payload: ReturnType<typeof buildFlowsExpensesPayload>) {
@@ -441,11 +441,7 @@ describe("flowsExpenses", () => {
 
     for (const ln of totals) {
       expect(gastosSumMonthForLine(ln, "split")).toBe("");
-      const countsCategory = countsTowardCcExpenseGastosMes(ln.category_slug, {
-        installment_flag: ln.installment_flag,
-        nro_cuota_current: ln.nro_cuota_current,
-      });
-      expect(lineCountsTowardGastosSum(ln, "split", countsCategory)).toBe(false);
+      expect(countsTowardGastosMes(ln, "split")).toBe(false);
     }
   });
 
@@ -475,14 +471,7 @@ describe("flowsExpenses", () => {
           return s;
         }
         if (ln.nota_credito_role === "unmatched_nota") return s + ln.amount_clp;
-        const countsCategory = countsTowardCcExpenseGastosMes(ln.category_slug, {
-          installment_flag: ln.installment_flag,
-          nro_cuota_current: ln.nro_cuota_current,
-        });
-        if (
-          (ln.amount_clp > 0 || ln.checking_refund === true) &&
-          lineCountsTowardGastosSum(ln, "split", countsCategory)
-        ) {
+        if (countsTowardGastosMes(ln, "split")) {
           // Mortgage-linked lines contribute only the carrying portion (deuda amortization
           // is tracked separately), matching the production aggregateGastosFromLines logic.
           const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);

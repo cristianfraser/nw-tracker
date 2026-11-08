@@ -28,7 +28,7 @@ import { isCcPaymentMerchant } from "../../src/ccPaymentLines.js";
 import { chileCalendarAddDays } from "../../src/chileDate.js";
 import { listCreditCardMasterAccountIds } from "../../src/creditCardTree.js";
 import { accountIdsUnderCheckingAccounts } from "../../src/movementBalanceCashAccounts.js";
-import { CC_PAYMENT_DESC_RE } from "../../src/checkingDescriptionPredicates.js";
+import { CC_PAYMENT_DESC_RE } from "../../src/ccPaymentLines.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../../src/ccPaymentMirrors.js";
 import { checkingMovementBalanceAtMonthEnd } from "../../src/checkingCartolaBalances.js";
 import { clearAggregationCache } from "../../src/cacheRegistry.js";

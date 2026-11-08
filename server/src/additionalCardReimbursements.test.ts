@@ -27,6 +27,8 @@ function chargeLine(
     primary_card_last4: PRIMARY,
     category_slug: "additional_card",
     line_role: "purchase",
+    installment_flag: 0,
+    nro_cuota_current: null,
     amount_usd_at_expense: patch.amount_clp / 1000,
     ...patch,
   };

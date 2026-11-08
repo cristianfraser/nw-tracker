@@ -23,7 +23,7 @@
 import { importCcWebPasteLines } from "./accountImports.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 
-import { billingMonthForStatementDate } from "./cards/statementMonth.js";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
@@ -78,17 +78,17 @@ function financedFacturados(linked: Set<string>): FinancedFacturado[] {
   for (const accountId of listCreditCardMasterAccountIds()) {
     const rows = db
       .prepare(
-        `SELECT statement_date, pay_by, source_kind FROM cc_statements
+        `SELECT statement_date, period_to, pay_by, source_kind FROM cc_statements
          WHERE account_id = ? AND currency = 'clp' AND monto_facturado > 0`
       )
-      .all(accountId) as { statement_date: string; pay_by: string | null; source_kind: string }[];
+      .all(accountId) as { statement_date: string; period_to: string | null; pay_by: string | null; source_kind: string }[];
     const seen = new Set<string>();
     for (const r of rows) {
       if (!isStatementSourceKind(r.source_kind)) continue;
       const closeIso = parseDdMmYyToIso(r.statement_date);
       const payByIso = r.pay_by ? parseDdMmYyToIso(r.pay_by) : null;
       if (!closeIso || !payByIso) continue;
-      const month = billingMonthForStatementDate(closeIso);
+      const month = billingMonthForCcStatement(r);
       if (!month || seen.has(month) || linked.has(`${accountId}|${month}`)) continue;
       seen.add(month);
       const facturado = statementFacturadoClpForBillingMonth(accountId, month);

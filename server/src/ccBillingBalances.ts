@@ -25,7 +25,6 @@ import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { db } from "./db.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { billingMonthForStatementDate } from "./cards/statementMonth.js";
 import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -720,7 +719,7 @@ export function statementHeaderFacturado(stmt: { monto_facturado: number | null 
 export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
-  stmt: { id: number; currency: string; monto_facturado: number | null; source_kind: string },
+  stmt: { id: number; currency: string; monto_facturado: number | null; source_kind: string; billing_month: string | null },
   fxDate: string
 ): { facturado_clp: number | null; facturado_usd: number | null } {
   const headerMonto = statementHeaderFacturado(stmt);
@@ -743,7 +742,8 @@ export function facturadoFromStatement(
   let clp = revolving + cuota;
   if (clp <= 0) {
     if (!isListingSourceKind(stmt.source_kind)) {
-      const billingMonth = billingMonthForStatementDate(fxDate);
+      // The statement's own facturación (`billingMonthForCcStatement`, stamped by the loader).
+      const billingMonth = stmt.billing_month;
       if (billingMonth) {
         clp = ledgerFacturadoClpForBillingMonth(accountId, billingMonth);
       }

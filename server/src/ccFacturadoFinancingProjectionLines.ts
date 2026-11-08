@@ -1,4 +1,4 @@
-import { billingMonthForStatementDate } from "./cards/statementMonth.js";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { BILLS_CC_EXPENSE_SLUG, countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import {
@@ -9,7 +9,6 @@ import type { ExpenseDepositLinkDto } from "./expenseDepositLinks.js";
 import { splittableMortgageLinkOf } from "./flowsExpensesGastos.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
  * Facturado-financing projection.
@@ -62,15 +61,14 @@ export function statementFacturadoClpForBillingMonth(
 ): number | null {
   const rows = db
     .prepare(
-      `SELECT statement_date, source_kind, monto_facturado FROM cc_statements
+      `SELECT statement_date, period_to, source_kind, monto_facturado FROM cc_statements
        WHERE account_id = ? AND currency = 'clp' AND monto_facturado IS NOT NULL`
     )
-    .all(accountId) as { statement_date: string; source_kind: string; monto_facturado: number }[];
+    .all(accountId) as { statement_date: string; period_to: string | null; source_kind: string; monto_facturado: number }[];
   const totals = new Set<number>();
   for (const r of rows) {
     if (!isStatementSourceKind(r.source_kind)) continue;
-    const iso = parseDdMmYyToIso(r.statement_date);
-    if (!iso || billingMonthForStatementDate(iso) !== billingMonth) continue;
+    if (billingMonthForCcStatement(r) !== billingMonth) continue;
     totals.add(Math.round(r.monto_facturado));
   }
   if (totals.size === 0) return null;

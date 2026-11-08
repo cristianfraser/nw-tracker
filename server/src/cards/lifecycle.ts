@@ -25,7 +25,7 @@ import { db } from "../db.js";
 import { dbStateMemo } from "../dbStateMemo.js";
 import { resolveMasterAccountIdForCardLast4 } from "./config.js";
 import { planCount } from "./purchases.js";
-import { billingMonthForStatementDate } from "./statementMonth.js";
+import { billingMonthContainingPurchase } from "./facturacion.js";
 
 export type CardLifecycle = "active" | "billing_stopped" | "retired" | "superseded";
 
@@ -94,7 +94,8 @@ export function cardStoppedBilling(accountId: number): boolean {
     const lastStatementMonth = lastImportedStatementBillingMonth(accountId);
     if (!lastStatementMonth) return false;
 
-    const todayMonth = billingMonthForStatementDate(chileCalendarTodayYmd());
+    // The facturación today belongs to (the bank's cycle), not the calendar month.
+    const todayMonth = billingMonthContainingPurchase(accountId, chileCalendarTodayYmd());
     if (!todayMonth || todayMonth.localeCompare(lastStatementMonth) <= 0) return false;
 
     const live = liveCreditCardOutstandingClp(accountId);

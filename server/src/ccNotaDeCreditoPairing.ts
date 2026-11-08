@@ -1,5 +1,4 @@
 import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./cards/notaDeCredito.js";
-import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 
 export type NotaDeCreditoRole =
@@ -104,14 +103,5 @@ export function enrichLinesWithNotaDeCreditoPairing(
   return lines.map((line) => {
     const role = notaDeCreditoRoleForLine(line, pairing);
     return role == null ? line : { ...line, nota_credito_role: role };
-  });
-}
-
-/** Whether a positive CC line still counts toward gastos del mes after NOTA pairing. */
-export function purchaseCountsAfterNotaPairing(line: FlowCcExpenseLineRowDraft): boolean {
-  if (line.nota_credito_role === "annulled_purchase") return false;
-  return countsTowardCcExpenseGastosMes(line.category_slug, {
-    installment_flag: line.installment_flag,
-    nro_cuota_current: line.nro_cuota_current,
   });
 }
