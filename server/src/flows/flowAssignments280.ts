@@ -421,3 +421,7 @@ export function runFlowKindsManualPurchase288(dbi: DatabaseType): void {
   if (left > 0) throw new Error(`migration 288: ${left} manual expense(s) on a flow of another kind`);
   reinstallFlowInsertTrigger(dbi, "expense_entries");
 }
+
+export function runFlowCategories289(dbi: DatabaseType): void {
+  moveKeyedTable(dbi, "289", "cc_expense_unique_purchases", "flow_categories", "purchase_key", ["account_id", "category_id"]);
+}

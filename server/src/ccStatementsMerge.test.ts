@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -192,7 +193,7 @@ describe("importCcStatementsMerge", () => {
       const additionalCardId = getCcExpenseCategoryBySlug(ADDITIONAL_CARD_CC_EXPENSE_SLUG)?.id;
       const unique = db
         .prepare(
-          `SELECT category_id FROM cc_expense_unique_purchases
+          `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL}
            WHERE account_id = ? AND purchase_key = ?`
         )
         .get(accountId, purchaseKey) as { category_id: number } | undefined;

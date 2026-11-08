@@ -470,6 +470,7 @@ const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
   "real_estate_expense_links",
   "real_estate_expense_link_rejections",
   "cc_expense_purchase_notes",
+  "cc_expense_unique_purchases",
 ]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [
@@ -487,6 +488,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "flow_links",
   "flow_link_rejections",
   "flow_notes",
+  "flow_categories",
 ];
 
 /**

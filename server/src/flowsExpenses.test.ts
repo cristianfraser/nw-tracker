@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -92,8 +93,7 @@ describe("flowsExpenses", () => {
        WHERE flow_id IN (SELECT id FROM flows WHERE legacy_key LIKE 'line-pr:vitest-addl-%')`
     ).run();
     db.prepare(
-      `DELETE FROM cc_expense_unique_purchases
-       WHERE purchase_key LIKE 'line-pr:vitest-addl-%'`
+      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key LIKE 'line-pr:vitest-addl-%')`
     ).run();
   }
 
@@ -214,11 +214,7 @@ describe("flowsExpenses", () => {
     expect(additionalCardId).toBeTruthy();
 
     // Simulate user-cleared unique: category_id NULL exists in DB at load.
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, NULL)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = NULL`
-    ).run(accountId, purchaseKey);
+    uniqueCategoryInsert.run(accountId, purchaseKey, null);
 
     const payload = buildFlowsExpensesPayload();
     const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
@@ -264,7 +260,7 @@ describe("flowsExpenses", () => {
     // clear_category test below (and into future suite runs).
     const prior = db
       .prepare(
-        `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
       )
       .get(titularCuota.account_id, purchaseKey) as { category_id: number | null } | undefined;
 
@@ -290,7 +286,7 @@ describe("flowsExpenses", () => {
 
       const row = db
         .prepare(
-          `SELECT c.slug FROM cc_expense_unique_purchases up
+          `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} up
            JOIN cc_expense_categories c ON c.id = up.category_id
            WHERE up.account_id = ? AND up.purchase_key = ?`
         )
@@ -298,13 +294,10 @@ describe("flowsExpenses", () => {
       expect(row?.slug).toBe("others");
     } finally {
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(titularCuota.account_id, purchaseKey);
       if (prior) {
-        db.prepare(
-          `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-           VALUES (?, ?, ?)`
-        ).run(titularCuota.account_id, purchaseKey, prior.category_id);
+        uniqueCategoryInsert.run(titularCuota.account_id, purchaseKey, prior.category_id);
       }
     }
   });
@@ -330,7 +323,7 @@ describe("flowsExpenses", () => {
       key
         ? (db
             .prepare(
-              `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+              `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
             )
             .get(titularCuota.account_id, key) as { category_id: number | null } | undefined)
         : undefined;
@@ -372,13 +365,10 @@ describe("flowsExpenses", () => {
       ) => {
         if (!key) return;
         db.prepare(
-          `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+          `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
         ).run(titularCuota.account_id, key);
         if (snap) {
-          db.prepare(
-            `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-             VALUES (?, ?, ?)`
-          ).run(titularCuota.account_id, key, snap.category_id);
+          uniqueCategoryInsert.run(titularCuota.account_id, key, snap.category_id);
         }
       };
       restoreKey(purchaseKey, prior);

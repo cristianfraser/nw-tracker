@@ -26,6 +26,7 @@
  * and checking debits the user categorized as spending (structured evidence the row is not one
  * leg of a move between own accounts).
  */
+import { FLOW_CATEGORIES_SQL } from "./flows/flowCategories.js";
 import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -171,7 +172,7 @@ function loadSpendingCategorizedOutflowIds(
     (
       db
         .prepare(
-          `SELECT u.purchase_key FROM cc_expense_unique_purchases u
+          `SELECT u.purchase_key FROM ${FLOW_CATEGORIES_SQL} u
            JOIN cc_expense_categories c ON c.id = u.category_id
            WHERE u.purchase_key LIKE 'checking-%' AND c.slug NOT IN (${ph})`
         )

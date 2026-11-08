@@ -1,3 +1,4 @@
+import { getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { deleteFlowNote, getFlowNote, setFlowNote, updateFlowNote } from "./flows/flowNotes.js";
 import type { Database } from "better-sqlite3";
 import { expenseKeyKind, isInstallmentContractKind } from "./expenseKeys.js";
@@ -220,12 +221,7 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
     };
   }
 
-  const existingUnique = dbHandle
-    .prepare(
-      `SELECT category_id FROM cc_expense_unique_purchases
-       WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(opts.accountId, purchaseKey) as { category_id: number | null } | undefined;
+  const existingUnique = getFlowCategory(opts.accountId, purchaseKey, dbHandle);
 
   if (existingUnique != null) {
     if (existingUnique.category_id == null) {
@@ -270,13 +266,7 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
     throw new Error("additional_card expense category missing; run migrations first");
   }
 
-  dbHandle
-    .prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-    )
-    .run(opts.accountId, purchaseKey, additionalCard.id);
+  putFlowCategory(opts.accountId, purchaseKey, additionalCard.id, "replace", dbHandle);
 
   const autoNote = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
   const existing = getCcExpensePurchaseNote(opts.accountId, purchaseKey);

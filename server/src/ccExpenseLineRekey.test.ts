@@ -1,4 +1,6 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
+import { getFlowCategory } from "./flows/flowCategories.js";
 import { generalRuleCategoryIdReaching, setExpenseCategoryRule } from "./expenseCategoryRules.js";
 import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
@@ -140,14 +142,14 @@ function lineIds(accountId: number): Map<string, number> {
 
 function categoryOf(accountId: number, key: string): number | null {
   return (
-    (db.prepare(`SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).get(accountId, key) as
+    (db.prepare(`SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`).get(accountId, key) as
       | { category_id: number }
       | undefined)?.category_id ?? null
   );
 }
 
 function setAssignments(accountId: number, key: string, categoryId: number, note: string): void {
-  db.prepare(`INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)`).run(
+  uniqueCategoryInsert.run(
     accountId,
     key,
     categoryId
@@ -178,7 +180,7 @@ function cleanup(accountId: number): void {
     accountId
   );
   db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
-  db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key LIKE 'line-pr:vitest-rekey-%'`).run(accountId);
+  db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key LIKE 'line-pr:vitest-rekey-%')`).run(accountId);
   db.prepare(`DELETE FROM flow_notes WHERE flow_id IN (SELECT id FROM flows WHERE legacy_key LIKE 'line-pr:vitest-rekey-%')`).run();
   db.prepare(`DELETE FROM flow_big_groups WHERE flow_id IN (SELECT id FROM flows WHERE legacy_key LIKE 'line-pr:vitest-rekey-%')`).run();
   db.prepare(`DELETE FROM expense_category_rules WHERE vendor LIKE 'VITEST %'`).run();
@@ -200,7 +202,7 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
     const fun = getCcExpenseCategoryBySlug("fun")!;
     const food = getCcExpenseCategoryBySlug("food")!;
     const oldKey = "line-pr:vitest-rekey-old";
-    db.prepare(`INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)`).run(
+    uniqueCategoryInsert.run(
       accountId,
       oldKey,
       fun.id
@@ -217,15 +219,11 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
     const newLine = lineId(accountId);
     const newKey = "line-pr:vitest-rekey-new";
 
-    const get = (table: string, col: string) =>
-      (db.prepare(`SELECT ${col} AS v FROM ${table} WHERE account_id = ? AND purchase_key = ?`).get(accountId, newKey) as
-        | { v: unknown }
-        | undefined)?.v;
-    expect(get("cc_expense_unique_purchases", "category_id")).toBe(fun.id);
+    expect(getFlowCategory(accountId, newKey)?.category_id).toBe(fun.id);
     expect(loadCcExpensePurchaseBigGroups().get(newKey)).toBe(BIG_GROUP);
     expect(getFlowNote(accountId, newKey)).toBe("kept");
     const oldLeft = db
-      .prepare(`SELECT COUNT(*) AS n FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`)
+      .prepare(`SELECT COUNT(*) AS n FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`)
       .get(accountId, oldKey) as { n: number };
     expect(oldLeft.n).toBe(0);
     const splits = db

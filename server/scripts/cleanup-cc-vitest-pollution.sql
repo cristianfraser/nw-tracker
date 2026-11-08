@@ -21,10 +21,13 @@ WHERE statement_id IN (
 
 DELETE FROM cc_statements WHERE source_pdf GLOB 'reconcile-*';
 
-DELETE FROM cc_expense_unique_purchases
-WHERE purchase_key LIKE '%reconcile-test-%'
-   OR purchase_key LIKE '%reconcile-out-%'
-   OR purchase_key LIKE '%ZReconcile%';
+DELETE FROM flow_categories
+WHERE flow_id IN (
+  SELECT id FROM flows
+  WHERE legacy_key LIKE '%reconcile-test-%'
+     OR legacy_key LIKE '%reconcile-out-%'
+     OR legacy_key LIKE '%ZReconcile%'
+);
 
 DELETE FROM cc_installment_purchases
 WHERE merchant LIKE 'ZReconcile%'

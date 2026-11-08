@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -46,11 +47,7 @@ function insertAssertedWithdrawal(
     .run(checkingId, amountClp, occurredOn, note);
   const purchaseKey = checkingCartolaStablePurchaseKey(checkingId, note, "gastos");
   if (!purchaseKey) throw new Error("fixture purchase key not derivable");
-  db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  ).run(checkingId, purchaseKey, depositsCategoryId);
+  uniqueCategoryInsert.run(checkingId, purchaseKey, depositsCategoryId);
   fixtureKeys.push(purchaseKey);
   return { movementId: Number(ins.lastInsertRowid), purchaseKey };
 }
@@ -103,7 +100,7 @@ describe("manual deposits-category assertions", () => {
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM movements WHERE note LIKE 'import:cartola|%|idx:997400_'`).run();
     for (const key of fixtureKeys) {
-      db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(key);
+      db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(key);
       deleteDepositLinks("purchase_key = ?", key);
     }
     fixtureKeys.length = 0;

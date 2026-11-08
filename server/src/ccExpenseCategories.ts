@@ -1,3 +1,4 @@
+import { FLOW_CATEGORIES_SQL, getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { InputError } from "./inputError.js";
 import { db } from "./db.js";
 import {
@@ -248,7 +249,7 @@ export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
   const uniqueRows = db
     .prepare(
       `SELECT up.account_id, up.purchase_key, c.slug
-       FROM cc_expense_unique_purchases up
+       FROM ${FLOW_CATEGORIES_SQL} up
        LEFT JOIN cc_expense_categories c ON c.id = up.category_id
        WHERE up.account_id IN (${ph})`
     )
@@ -444,12 +445,7 @@ export function ensureGenericUniquePurchaseRow(
   // purchase in Único-sin-categoría mode, which short-circuits resolution to
   // «Sin clasificar» before that branch. Only an explicit user clear may write that row.
   if (isCcTraspasoDeudaMerchant(merchantKey)) return false;
-  const exists = db
-    .prepare(
-      `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(accountId, purchaseKey) as { o: number } | undefined;
-  if (exists) return false;
+  if (getFlowCategory(accountId, purchaseKey) != null) return false;
 
   let categoryId: number | null = opts?.categoryId ?? null;
   if (categoryId == null && opts?.statementLineId != null) {
@@ -461,14 +457,7 @@ export function ensureGenericUniquePurchaseRow(
     categoryId = lc?.category_id ?? null;
   }
 
-  return (
-    db
-      .prepare(
-        `INSERT OR IGNORE INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-         VALUES (?, ?, ?)`
-      )
-      .run(accountId, purchaseKey, categoryId).changes > 0
-  );
+  return putFlowCategory(accountId, purchaseKey, categoryId, "keep");
 }
 
 /** Persist + register Único mode for generic merchants (same request + DB). */
@@ -493,11 +482,7 @@ export function registerUniquePurchaseMode(
   categoryId: number | null,
   uniquePurchaseModeKeys: Set<string>
 ): void {
-  db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  ).run(accountId, purchaseKey, categoryId);
+  putFlowCategory(accountId, purchaseKey, categoryId, "replace");
   uniquePurchaseModeKeys.add(uniquePurchaseMapKey(accountId, purchaseKey));
 }
 

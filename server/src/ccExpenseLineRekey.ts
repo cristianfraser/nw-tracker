@@ -203,7 +203,7 @@ type KeyedTable = "cc_expense_unique_purchases" | "cc_expense_purchase_big_group
  */
 type KeyedSpec = { table: KeyedTable; column: string; accountScoped: boolean; flowTable?: string };
 const KEYED_TABLES: KeyedSpec[] = [
-  { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true },
+  { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true, flowTable: "flow_categories" },
   { table: "cc_expense_purchase_big_groups", column: "group_slug", accountScoped: false, flowTable: "flow_big_groups" },
   { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true, flowTable: "flow_notes" },
 ];

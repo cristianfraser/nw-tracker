@@ -34,6 +34,7 @@
  *
  *   npx tsx scripts/rebuild-checking-gap-from-mails.ts --plan=<cfraser json> [--apply]
  */
+import { putFlowCategory } from "../src/flows/flowCategories.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -251,10 +252,9 @@ const mailNote = (m: Mail, description: string) => `import:santander-mail|${m.se
 const insSingle = db.prepare(
   `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
 );
-const setCategory = db.prepare(
-  `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)
-   ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-);
+const setCategory = {
+  run: (account: number, key: string, category: number | null) => putFlowCategory(account, key, category, "replace"),
+};
 function single(accountId: number, amount: number, m: Mail, note: string, postedOn: string): number {
   const id = Number(insSingle.run(accountId, amount, sentDay(m), mailNote(m, note)).lastInsertRowid);
   if (postedOn !== sentDay(m)) recordBankPosting(id, accountId, postedOn);
@@ -365,7 +365,7 @@ const tx = db.transaction(() => {
   if (!lump) throw new Error(`lump movement ${plan.lump_movement_id} not on the corriente`);
   const net = corrienteFlows.reduce((s, f) => s + f.amount, 0);
   const residual = plan.closing_clp - plan.opening_clp - net;
-  db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(`checking-mv:${plan.lump_movement_id}`);
+  db.prepare(`DELETE FROM flow_categories WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?) AND portion = 'gastos' AND piece_seq = -1`).run(plan.lump_movement_id);
   db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`).run(plan.lump_movement_id);
   db.prepare(`DELETE FROM movements WHERE id = ?`).run(plan.lump_movement_id);
   insSingle.run(

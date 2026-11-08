@@ -214,3 +214,24 @@ What the code forced, and why (each change is also in its commit):
   are re-kinded `purchase` and the insert trigger writes it (a database that runs migration 279 after this commit seeds them `purchase` at once, so its 288 report reads 0). No flow takes `refund` yet: the refund
   mark stays the flow-keyed `flow_refunds` row (it carries the category), and keeping a kind in step
   with the mark would be a second write for nothing a reader uses; step 4 or F20 can fold it.
+- **Categories (migration 289)** are `flow_categories` rows (flow, portion, piece, the account
+  they were written under, `category_id` — null is «Único» with no category). No `unique_row`
+  flag: the per-line category (`cc_expense_line_categories`) stays a row of the statement line,
+  because it names one line, not a key — four of the copy's 33 sit on cuota lines, whose flow is
+  their plan's, so folding them into the flow would put one cuota's category on every cuota. It is
+  not key-based (it references the line by id with a cascade), so it is not on the «still
+  key-based» list. One module (`flows/flowCategories.ts`: `FLOW_CATEGORIES_SQL`,
+  `getFlowCategory`, `putFlowCategory` with `replace` / `keep` / `coalesce` for the three upserts
+  the callers used, `updateFlowCategory`, `deleteFlowCategory`). Writes on the gastos read path
+  (the generic-transfer and deposit-match «Único» rows) name their row by the line's own key, so
+  they stamp keys and change no payload. Two behaviours moved: the statement re-import's restore
+  skips a snapshot key that no row carries any more (it wrote an orphan nothing read), and
+  converting a line to cuotas writes the plan's category after the plan exists (the key must name
+  it). `migrateCheckingGastosCategoryToStableKey` / `preserveCheckingGastosCategoriesForCartolaNotes`
+  now always find nothing: a cartola row's movement-id key resolves to no row, so no legacy row can
+  sit under it (the category is on the flow its cartola key keeps); the cartola import still calls
+  the latter (not this stream's file).
+- **Ids are reused, keyed flows are not:** `movements` has no AUTOINCREMENT, and a keyed flow
+  outlives its row, so a new movement that takes a deleted row's id answers to the old flow under
+  `checking-mv:<id>` (seen in the test DB, where fixtures reuse ids). Step 4's adoption, or a
+  delete trigger that drops `checking-mv:` keys with their row, must close it.

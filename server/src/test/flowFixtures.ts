@@ -2,6 +2,8 @@ import { db } from "../db.js";
 import { movementFlowId } from "../flows/flowIdentity.js";
 import { keyTarget, targetParams } from "../flows/flowKeyedAssignments.js";
 import { EXPENSE_DEPOSIT_LINKS_SQL } from "../flows/flowLinks.js";
+import { putFlowCategory } from "../flows/flowCategories.js";
+import { expenseKeySql } from "../expenseKeys.js";
 import { ensureVitestCreditCardFixtures, getVitestSantanderCcMasterAccountId } from "./vitestDbSeed.js";
 
 /**
@@ -91,3 +93,20 @@ export function deleteDepositLinks(where: string, ...params: unknown[]): void {
        AND rowid IN (SELECT link_order FROM ${EXPENSE_DEPOSIT_LINKS_SQL} WHERE ${where})`
   ).run(...params);
 }
+
+/**
+ * The «Único» rows (migration 289) with their row id, for a test's cleanup: `rid`, `purchase_key`,
+ * `account_id`, `category_id`.
+ */
+export const FLOW_CATEGORY_ROWS_SQL = `(
+  SELECT a.rowid AS rid, ${expenseKeySql("f.legacy_key", "a.portion", "NULLIF(a.piece_seq, -1)")} AS purchase_key,
+         a.account_id, a.category_id
+  FROM flow_categories a JOIN flows f ON f.id = a.flow_id
+)`;
+
+/** Writes an «Único» row as the old table's insert did (the key must name a row). */
+export const uniqueCategoryInsert = {
+  run: (accountId: number, purchaseKey: string, categoryId: number | null): void => {
+    putFlowCategory(accountId, purchaseKey, categoryId, "replace");
+  },
+};

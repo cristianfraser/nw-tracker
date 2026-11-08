@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { describe, expect, it } from "vitest";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
@@ -88,7 +89,7 @@ describe("flowsCheckingGastos", () => {
     for (const portion of ["gastos", "deposit"] as const) {
       const key = checkingGastosMovementPurchaseKey(movementId, portion);
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(corrienteId, key);
     }
 
@@ -123,7 +124,7 @@ describe("flowsCheckingGastos", () => {
     for (const portion of ["gastos", "deposit"] as const) {
       const key = checkingGastosMovementPurchaseKey(movementId, portion);
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(corrienteId, key);
     }
   });
@@ -1464,7 +1465,7 @@ describe("flowsCheckingGastos", () => {
     for (const portion of ["gastos", "deposit"] as const) {
       const key = checkingGastosMovementPurchaseKey(movementId, portion);
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(corrienteId, key);
     }
     const depositCandidates: DepositMatchCandidate[] = [
@@ -1507,7 +1508,7 @@ describe("flowsCheckingGastos", () => {
     for (const portion of ["gastos", "deposit"] as const) {
       const key = checkingGastosMovementPurchaseKey(movementId, portion);
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(corrienteId, key);
     }
   });

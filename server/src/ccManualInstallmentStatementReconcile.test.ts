@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -94,9 +95,7 @@ describe("reconcileManualInstallmentPurchasesForStatements", () => {
       merchant,
     });
     expect(manualKey).toBeTruthy();
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)`
-    ).run(accountId, manualKey!, cat.id);
+    uniqueCategoryInsert.run(accountId, manualKey!, cat.id);
 
     const res = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
     expect(res.matched).toBe(1);
@@ -120,7 +119,7 @@ describe("reconcileManualInstallmentPurchasesForStatements", () => {
     db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`).run(lineId);
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key LIKE ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key LIKE ?)`).run(
       accountId,
       `%${suffix}%`
     );

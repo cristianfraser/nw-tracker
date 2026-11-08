@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { convertMirrorPairs } from "./movementMirrorConvert.js";
@@ -338,7 +339,7 @@ describe("listMirrorPairCandidates", () => {
       (db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ?`).get(slug) as { id: number }).id;
 
     function cleanupEvidence() {
-      db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key LIKE ?`).run(
+      db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key LIKE ?)`).run(
         `checking-cartola:${ids.checking}:%`
       );
       db.prepare(
@@ -434,17 +435,14 @@ describe("listMirrorPairCandidates", () => {
       const row = cartola(ids.checking, "2026-06-22", -3_333_331, 4);
       const out = insLeg(ids.checking, -3_333_331, "2026-06-22", null, row.note);
       insLeg(ids.vista, 3_333_331, "2026-06-22");
-      const setCategory = db.prepare(
-        `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)
-         ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-      );
+      const setCategory = uniqueCategoryInsert;
       try {
         setCategory.run(ids.checking, row.key, categoryId("deposits"));
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         setCategory.run(ids.checking, row.key, categoryId("others"));
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
 
-        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(row.key);
+        db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(row.key);
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         db.prepare(
           `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 0, ?, 3333331)`

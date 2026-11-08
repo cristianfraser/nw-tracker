@@ -100,6 +100,6 @@ export function wipeVitestCcFixtureData(): void {
   // The owed walk's anchors (migration 259): left behind, they kept valuing the fixture card
   // after its valuations were wiped, and the group charts read it.
   db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ?`).run(id);
-  db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(id);
+  db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(id);
 }

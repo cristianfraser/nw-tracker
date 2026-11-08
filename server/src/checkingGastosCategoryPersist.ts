@@ -1,3 +1,4 @@
+import { deleteFlowCategory, getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { deleteFlowNote, getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import type { Database } from "better-sqlite3";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
@@ -16,14 +17,7 @@ function upsertUniquePurchaseCategory(
   categoryId: number | null,
   dbHandle: Database
 ): void {
-  dbHandle
-    .prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET
-         category_id = COALESCE(excluded.category_id, cc_expense_unique_purchases.category_id)`
-    )
-    .run(accountId, purchaseKey, categoryId);
+  putFlowCategory(accountId, purchaseKey, categoryId, "coalesce", dbHandle);
 }
 
 function migratePurchaseNotesKey(
@@ -50,23 +44,14 @@ export function transferCheckingGastosCategoryFromMovementToNote(
     const toKey = checkingCartolaStablePurchaseKey(accountId, toCartolaNote, portion);
     if (!toKey) continue;
     moveBillLink(fromKey, toKey, dbHandle);
-    const row = dbHandle
-      .prepare(
-        `SELECT category_id FROM cc_expense_unique_purchases
-         WHERE account_id = ? AND purchase_key = ?`
-      )
-      .get(accountId, fromKey) as { category_id: number | null } | undefined;
+    const row = getFlowCategory(accountId, fromKey, dbHandle);
     const notes = getFlowNote(accountId, fromKey, dbHandle);
     if (!row && !notes?.trim()) continue;
     if (row) {
       upsertUniquePurchaseCategory(accountId, toKey, row.category_id, dbHandle);
     }
     migratePurchaseNotesKey(accountId, fromKey, toKey, dbHandle);
-    dbHandle
-      .prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-      )
-      .run(accountId, fromKey);
+    deleteFlowCategory(accountId, fromKey, dbHandle);
     deleteFlowNote(accountId, fromKey, dbHandle);
     migrated += 1;
   }
@@ -85,12 +70,7 @@ export function migrateCheckingGastosCategoryToStableKey(
     const legacyKey = checkingMovementPurchaseKey(movementId, portion);
     const stableKey = checkingCartolaStablePurchaseKey(accountId, note, portion);
     if (!stableKey || stableKey === legacyKey) continue;
-    const row = dbHandle
-      .prepare(
-        `SELECT category_id FROM cc_expense_unique_purchases
-         WHERE account_id = ? AND purchase_key = ?`
-      )
-      .get(accountId, legacyKey) as { category_id: number | null } | undefined;
+    const row = getFlowCategory(accountId, legacyKey, dbHandle);
     if (!row) continue;
     upsertUniquePurchaseCategory(accountId, stableKey, row.category_id, dbHandle);
     migratePurchaseNotesKey(accountId, legacyKey, stableKey, dbHandle);

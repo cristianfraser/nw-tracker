@@ -1,3 +1,4 @@
+import { putFlowCategory } from "./flows/flowCategories.js";
 import {
   findOneShotLinesOfPlan,
   findPlanForOneShotLine,
@@ -17,11 +18,12 @@ export const selLineCategory = db.prepare<[number]>(
   `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
 );
 
-export const upsertUniqueCat = db.prepare(
-  `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-   VALUES (?, ?, ?)
-   ON CONFLICT(account_id, purchase_key) DO NOTHING`
-);
+export const upsertUniqueCat = {
+  run: (account: number, key: string | null, category: number | null) => {
+    if (key == null) throw new Error(`account ${account}: a plan with no expense key`);
+    return putFlowCategory(account, key, category, "keep");
+  },
+};
 
 export { purchaseAmountsMatch };
 

@@ -197,19 +197,6 @@ export function convertStatementLineToInstallmentPurchase(
   }
 
   return withCardLineSession(accountId, "convert a line to cuotas", () => {
-    // The plan's expense carries the line's category (an «Único» row under the plan's key); the
-    // line keeps its own rows, so deleting the plan leaves it as it was.
-    const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
-    if (cat?.category_id != null) {
-      const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
-        accountId,
-        purchaseDateIso,
-        cuotasTotales: cuotas,
-        totalAmountClp: line.amount_clp!,
-        merchant: line.merchant,
-      });
-      upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
-    }
 
     // The plan overlays the line (`source_line_id`): the line stays on file, the purchases module
     // counts the purchase once, as the plan.
@@ -224,6 +211,20 @@ export function convertStatementLineToInstallmentPurchase(
       },
       { sourceLineId: lineId }
     );
+    // The plan's expense carries the line's category (an «Único» row under the plan's key, written
+    // once the plan is on file: the key must name it); the line keeps its own rows, so deleting the
+    // plan leaves it as it was.
+    const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
+    if (cat?.category_id != null) {
+      const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+        accountId,
+        purchaseDateIso,
+        cuotasTotales: cuotas,
+        totalAmountClp: line.amount_clp!,
+        merchant: line.merchant,
+      });
+      upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
+    }
     // A line the card feed typed as a cuota purchase (count unknown until now) knows when its first
     // cuota bills — the rule the feed import applies to the plans it creates itself: «cuota
     // comercio» at the close after the purchase cycle, «precio contado» at the purchase cycle's own.

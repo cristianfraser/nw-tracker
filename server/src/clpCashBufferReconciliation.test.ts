@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -85,7 +86,7 @@ function cleanupFixtureRows(): void {
         portion
       );
       if (key) {
-        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(key);
+        db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(key);
         deleteDepositLinks("purchase_key = ?", key);
       }
     }

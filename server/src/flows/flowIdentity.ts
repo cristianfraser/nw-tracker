@@ -136,8 +136,9 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
   // bill-move policy, docs/untangle-flow-identity.md); a refusal the survivor already carries stays.
   dbHandle.prepare(`UPDATE flow_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   dbHandle.prepare(`UPDATE OR IGNORE flow_link_rejections SET flow_id = ? WHERE flow_id = ?`).run(to, from);
-  // Key-named rows (a big group, a note) on a flow, portion and piece: the preferred flow's row stays.
-  for (const table of ["flow_big_groups", "flow_notes"]) {
+  // Key-named rows (a category, a big group, a note) on a flow, portion and piece: the preferred
+  // flow's row stays.
+  for (const table of ["flow_categories", "flow_big_groups", "flow_notes"]) {
     if (prefer === "from") {
       dbHandle
         .prepare(

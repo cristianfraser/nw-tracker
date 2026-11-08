@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
 import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { db } from "./db.js";
@@ -454,11 +455,7 @@ describe("checkingCartolaPartialReconcile", () => {
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, officialNote);
 
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-    ).run(accountId, checkingMovementPurchaseKey(partialId), bills.id);
+    uniqueCategoryInsert.run(accountId, checkingMovementPurchaseKey(partialId), bills.id);
 
     const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
       {
@@ -474,7 +471,7 @@ describe("checkingCartolaPartialReconcile", () => {
     const stableKey = `checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`;
     const migrated = db
       .prepare(
-        `SELECT c.slug FROM cc_expense_unique_purchases up
+        `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} up
          JOIN cc_expense_categories c ON c.id = up.category_id
          WHERE up.account_id = ? AND up.purchase_key = ?`
       )
@@ -492,7 +489,7 @@ describe("checkingCartolaPartialReconcile", () => {
       officialNote
     );
     db.prepare(
-      `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
     ).run(accountId, stableKey);
   });
 

@@ -1,3 +1,4 @@
+import { expenseKeyNamesRow, FLOW_CATEGORIES_SQL, putFlowCategory } from "./flows/flowCategories.js";
 import { db } from "./db.js";
 import {
   loadCcStatementLineExpenseCtx,
@@ -44,7 +45,7 @@ export function snapshotCcExpenseCategories(accountId: number): CcExpenseCategor
   const uniqueCategoryByStablePurchaseKey = new Map<string, number | null>();
   const uniqueRows = db
     .prepare(
-      `SELECT purchase_key, category_id FROM cc_expense_unique_purchases WHERE account_id = ?`
+      `SELECT purchase_key, category_id FROM ${FLOW_CATEGORIES_SQL} WHERE account_id = ?`
     )
     .all(accountId) as { purchase_key: string; category_id: number | null }[];
 
@@ -124,15 +125,17 @@ export function restoreCcExpenseCategories(
      VALUES (?, ?)
      ON CONFLICT(statement_line_id) DO UPDATE SET category_id = excluded.category_id`
   );
-  const upsertUnique = db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  );
+  // A snapshot key the re-import no longer gives any row is left unwritten (it was never read).
+  const upsertUnique = {
+    run: (account: number, key: string, category: number) => {
+      if (expenseKeyNamesRow(key)) putFlowCategory(account, key, category, "replace");
+    },
+  };
   const delOrphanLineKeys = db.prepare(
-    `DELETE FROM cc_expense_unique_purchases
-     WHERE account_id = @accountId
-       AND (substr(purchase_key, 1, length(@line)) = @line OR substr(purchase_key, 1, length(@plan)) = @plan)`
+    `DELETE FROM flow_categories
+     WHERE account_id = @accountId AND (flow_id, portion, piece_seq) IN (
+       SELECT a.flow_id, a.portion, a.piece_seq FROM flow_categories a JOIN flows f ON f.id = a.flow_id
+       WHERE substr(f.legacy_key, 1, length(@line)) = @line OR substr(f.legacy_key, 1, length(@plan)) = @plan)`
   );
   let lineCategories = 0;
   let uniquePurchases = 0;
