@@ -675,7 +675,7 @@ export function buildCcExpenseLines(
       isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
 
     const amount = effectiveCcExpenseLineAmountClpWith(row, (usd) =>
-      isCcUsdPaymentLine({ installment_flag: row.installment_flag, merchant: row.merchant, usd })
+      isCcUsdPaymentLine({ id: row.statement_line_id, kind: row.kind, usd })
         ? usdPaymentClpFor(row.account_id, {
             statement_line_id: row.statement_line_id,
             date_iso: purchaseOn,

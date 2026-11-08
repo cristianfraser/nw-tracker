@@ -16,7 +16,6 @@
  * fx-converted like today, and is superseded by the PDF import that then links the real pair.
  */
 
-import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { db } from "./db.js";
 
 export type CcTraspasoDeudaPair = {
@@ -44,8 +43,7 @@ const listTraspasoLegCandidates = db.prepare(
   `SELECT l.id, s.statement_date, s.currency, l.merchant, l.amount_clp, l.amount_usd
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.installment_flag = 0
-     AND UPPER(l.merchant) LIKE '%TRASPASO%'
+   WHERE s.account_id = ? AND l.kind = 'card_debt_transfer'
      AND s.source_kind NOT IN ('listing_open', 'listing_other')
    ORDER BY s.statement_date, s.currency, l.id`
 );
@@ -68,9 +66,8 @@ const listLinksForAccount = db.prepare(
  * that no real statement has required yet.
  */
 export function computeCcTraspasoDeudaPairsForAccount(accountId: number): CcTraspasoDeudaPair[] {
-  const legs = (listTraspasoLegCandidates.all(accountId) as TraspasoLegRow[]).filter((r) =>
-    isCcTraspasoDeudaMerchant(r.merchant)
-  );
+  // The line's stored kind (`cards/lineKinds.ts`): a traspaso de deuda leg.
+  const legs = listTraspasoLegCandidates.all(accountId) as TraspasoLegRow[];
   const byStatementDate = new Map<string, TraspasoLegRow[]>();
   for (const leg of legs) {
     const group = byStatementDate.get(leg.statement_date) ?? [];

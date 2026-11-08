@@ -1,22 +1,17 @@
 import { db } from "./db.js";
-import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
-import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
+import { isCardDebtSettlementKind, requireStoredCardLineKind } from "./cards/lineKinds.js";
 
 /**
- * A card line that pays dollar debt: a dollar credit that is a payment (ABONO DE DIVISAS, a PAGO or
- * MONTO CANCELADO in dollars) or a traspaso de deuda's USD leg.
+ * A card line that pays dollar debt: a dollar credit whose stored kind (`cards/lineKinds.ts`) is a
+ * payment (ABONO DE DIVISAS, a PAGO or MONTO CANCELADO in dollars) or a traspaso de deuda's USD leg.
  */
-export function isCcUsdPaymentLine(line: {
-  installment_flag: number;
-  merchant: string | null;
-  usd: number;
-}): boolean {
-  if (line.installment_flag === 1 || !(line.usd < 0)) return false;
-  return isCcPaymentOrUsdDebtAbonoMerchant(line.merchant) || isCcTraspasoDeudaMerchant(line.merchant);
+export function isCcUsdPaymentLine(line: { id: number; kind: string | null; usd: number }): boolean {
+  if (!(line.usd < 0)) return false;
+  return isCardDebtSettlementKind(requireStoredCardLineKind(line.kind, line.id));
 }
 
 const usdStatementLinesStmt = db.prepare(
-  `SELECT id, installment_flag, merchant, amount_usd FROM cc_statement_lines WHERE statement_id = ?`
+  `SELECT id, kind, merchant, amount_usd FROM cc_statement_lines WHERE statement_id = ?`
 );
 
 /**
@@ -30,7 +25,7 @@ const usdStatementLinesStmt = db.prepare(
 export function usdBilledFromStatementLines(statementId: number): number {
   const rows = usdStatementLinesStmt.all(statementId) as {
     id: number;
-    installment_flag: number;
+    kind: string | null;
     merchant: string | null;
     amount_usd: number | null;
   }[];
@@ -40,7 +35,7 @@ export function usdBilledFromStatementLines(statementId: number): number {
     if (usd == null || !Number.isFinite(usd)) {
       throw new Error(`Dollar statement ${statementId}: line ${r.id} (${r.merchant ?? ""}) has no dollar amount`);
     }
-    if (isCcUsdPaymentLine({ installment_flag: r.installment_flag, merchant: r.merchant, usd })) continue;
+    if (isCcUsdPaymentLine({ id: r.id, kind: r.kind, usd })) continue;
     cents += Math.round(usd * 100);
   }
   return cents / 100;
