@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CheckingCartolaMonthRowDto } from "../../types";
-import { Table } from "../../components/ui/Table";
+import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import { loadableClass } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
 import { Button } from "@crfrsr/ui";
@@ -11,11 +11,6 @@ import { useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
 import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { useModalPeriodNav } from "../../periodModalNav";
 import { monthEndUtcYmd } from "../../calendarMonth";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../../components/ui/TableMobileCard";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 
 const MODAL_PAGE_SIZE = 20;
@@ -36,78 +31,6 @@ function cartolaMonthHasEmptyImport(row: CheckingCartolaMonthRowDto): boolean {
 function cartolaBalanceDiff(row: CheckingCartolaMonthRowDto): number | null {
   if (row.balance_end_clp == null || row.cartola_saldo_final_clp == null) return null;
   return row.balance_end_clp - row.cartola_saldo_final_clp;
-}
-
-function CheckingCartolaMonthMobileCard({
-  row,
-  labels,
-  emptyImportTitle,
-  onOpen,
-}: {
-  row: CheckingCartolaMonthRowDto;
-  labels: {
-    deposits: string;
-    withdrawals: string;
-    movements: string;
-    balanceEnd: string;
-    cartolaSaldo: string;
-    diff: string;
-    cartola: string;
-    cartolaYes: string;
-    cartolaNo: string;
-  };
-  emptyImportTitle?: string;
-  onOpen: (row: CheckingCartolaMonthRowDto) => void;
-}) {
-  const diff = cartolaBalanceDiff(row);
-  const hasMovements = row.movement_count > 0;
-  const title = (
-    <Button variant="link" onClick={() => onOpen(row)}>
-      {row.as_of_date} ({formatYearMonthLabel(row.period_month)})
-    </Button>
-  );
-
-  return (
-    <TableMobileCard title={title}>
-      <TableMobileCardSection>
-        <TableMobileCardRow label={labels.deposits} value={fmtMoney(row.deposits_clp, hasMovements)} />
-        <TableMobileCardRow label={labels.withdrawals} value={fmtMoney(row.withdrawals_clp, hasMovements)} />
-        <TableMobileCardRow
-          label={labels.movements}
-          value={
-            <span title={emptyImportTitle}>
-              {hasMovements || row.has_cartola ? row.movement_count : "—"}
-            </span>
-          }
-        />
-      </TableMobileCardSection>
-
-      <TableMobileCardSection>
-        <TableMobileCardRow
-          label={labels.balanceEnd}
-          value={row.balance_end_clp != null ? formatClp(row.balance_end_clp) : "—"}
-        />
-        <TableMobileCardRow
-          label={labels.cartolaSaldo}
-          value={
-            row.cartola_saldo_final_clp != null ? formatClp(row.cartola_saldo_final_clp) : "—"
-          }
-        />
-        <TableMobileCardRow label={labels.diff} value={diff != null ? formatClp(diff) : "—"} />
-      </TableMobileCardSection>
-
-      <TableMobileCardSection>
-        <TableMobileCardRow
-          label={labels.cartola}
-          value={
-            <span title={row.source_file || undefined}>
-              {row.has_cartola ? labels.cartolaYes : labels.cartolaNo}
-            </span>
-          }
-        />
-      </TableMobileCardSection>
-    </TableMobileCard>
-  );
 }
 
 export function CheckingCartolaMonthTable({
@@ -173,17 +96,84 @@ export function CheckingCartolaMonthTable({
 
   const selectedDiff = selected ? cartolaBalanceDiff(selected) : null;
 
-  const mobileLabels = {
+  const labels = {
     deposits: t("accountDetail.checking.colDeposits"),
     withdrawals: t("accountDetail.checking.colWithdrawals"),
-    movements: t("accountDetail.checking.colMovements"),
     balanceEnd: t("accountDetail.checking.colBalanceEnd"),
-    cartolaSaldo: t("accountDetail.checking.colCartolaSaldo"),
     diff: t("accountDetail.checking.colDiff"),
-    cartola: t("accountDetail.checking.colCartola"),
-    cartolaYes: t("accountDetail.checking.cartolaYes"),
-    cartolaNo: t("accountDetail.checking.cartolaNo"),
   };
+  const emptyImportTitle = (row: CheckingCartolaMonthRowDto) =>
+    cartolaMonthHasEmptyImport(row) ? t("accountDetail.checking.cartolaRegisteredNoMovements") : undefined;
+  const movementCount = (row: CheckingCartolaMonthRowDto) =>
+    row.movement_count > 0 || row.has_cartola ? row.movement_count : "—";
+  const cartolaFlag = (row: CheckingCartolaMonthRowDto) =>
+    row.has_cartola ? t("accountDetail.checking.cartolaYes") : t("accountDetail.checking.cartolaNo");
+  const columns: TableColumn<CheckingCartolaMonthRowDto>[] = [
+    {
+      key: "month",
+      header: t("accountDetail.monthCloseColumn"),
+      className: "mono",
+      cell: (row) => (
+        <Button variant="link" onClick={() => openMonth(row)}>
+          {row.as_of_date} ({formatYearMonthLabel(row.period_month)})
+        </Button>
+      ),
+      title: true,
+    },
+    {
+      key: "deposits",
+      header: labels.deposits,
+      className: "mono",
+      cell: (row) => fmtMoney(row.deposits_clp, row.movement_count > 0),
+    },
+    {
+      key: "withdrawals",
+      header: labels.withdrawals,
+      className: "mono",
+      cell: (row) => fmtMoney(row.withdrawals_clp, row.movement_count > 0),
+    },
+    {
+      key: "movements",
+      header: t("accountDetail.checking.colMovements"),
+      className: "mono",
+      cellProps: (row) => ({ title: emptyImportTitle(row) }),
+      cell: movementCount,
+      card: (row) => <span title={emptyImportTitle(row)}>{movementCount(row)}</span>,
+    },
+    {
+      key: "balanceEnd",
+      header: labels.balanceEnd,
+      className: "mono",
+      section: 1,
+      cell: (row) => (row.balance_end_clp != null ? formatClp(row.balance_end_clp) : "—"),
+    },
+    {
+      key: "cartolaSaldo",
+      header: t("accountDetail.checking.colCartolaSaldo"),
+      className: "mono muted",
+      section: 1,
+      cell: (row) => (row.cartola_saldo_final_clp != null ? formatClp(row.cartola_saldo_final_clp) : "—"),
+    },
+    {
+      key: "diff",
+      header: labels.diff,
+      className: "mono",
+      section: 1,
+      cell: (row) => {
+        const diff = cartolaBalanceDiff(row);
+        return diff != null ? formatClp(diff) : "—";
+      },
+    },
+    {
+      key: "cartola",
+      header: t("accountDetail.checking.colCartola"),
+      className: "mono",
+      section: 2,
+      cellProps: (row) => ({ title: row.source_file || undefined }),
+      cell: cartolaFlag,
+      card: (row) => <span title={row.source_file || undefined}>{cartolaFlag(row)}</span>,
+    },
+  ];
 
   if (rows.length === 0 && !loading) {
     return <p className="muted">{t("accountDetail.checking.cartolaMonthEmpty")}</p>;
@@ -199,75 +189,15 @@ export function CheckingCartolaMonthTable({
           })}
         </p>
       )}
-      <Table
+      <ColumnTable
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => row.period_month}
         wrapClassName={loadableClass(loading)}
         collapsedVisibleRows={collapsedVisibleRows}
         showMoreLabel={t("table.showMoreMonths", { count: hidden })}
         showLessLabel={t("table.showLessMonths")}
-        tableClassName="table--parallel-mobile"
-        header={
-          <thead>
-            <tr>
-              <th className="desktop-only">{t("accountDetail.monthCloseColumn")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colDeposits")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colWithdrawals")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colMovements")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colBalanceEnd")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colCartolaSaldo")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colDiff")}</th>
-              <th className="desktop-only">{t("accountDetail.checking.colCartola")}</th>
-              <th className="mobile-only" aria-hidden="true" />
-            </tr>
-          </thead>
-        }
-      >
-        {rows.map((row) => {
-          const diff = cartolaBalanceDiff(row);
-          const emptyImport = cartolaMonthHasEmptyImport(row);
-          const hasMovements = row.movement_count > 0;
-          return (
-            <tr key={row.period_month}>
-              <td className="mono desktop-only">
-                <Button variant="link" onClick={() => openMonth(row)}>
-                  {row.as_of_date} ({formatYearMonthLabel(row.period_month)})
-                </Button>
-              </td>
-              <td className="mono desktop-only">{fmtMoney(row.deposits_clp, hasMovements)}</td>
-              <td className="mono desktop-only">{fmtMoney(row.withdrawals_clp, hasMovements)}</td>
-              <td
-                className="mono desktop-only"
-                title={emptyImport ? t("accountDetail.checking.cartolaRegisteredNoMovements") : undefined}
-              >
-                {hasMovements || row.has_cartola ? row.movement_count : "—"}
-              </td>
-              <td className="mono desktop-only">
-                {row.balance_end_clp != null ? formatClp(row.balance_end_clp) : "—"}
-              </td>
-              <td className="mono muted desktop-only">
-                {row.cartola_saldo_final_clp != null
-                  ? formatClp(row.cartola_saldo_final_clp)
-                  : "—"}
-              </td>
-              <td className="mono desktop-only">{diff != null ? formatClp(diff) : "—"}</td>
-              <td className="mono desktop-only" title={row.source_file || undefined}>
-                {row.has_cartola
-                  ? t("accountDetail.checking.cartolaYes")
-                  : t("accountDetail.checking.cartolaNo")}
-              </td>
-              <td className="mobile-only">
-                <CheckingCartolaMonthMobileCard
-                  row={row}
-                  labels={mobileLabels}
-                  emptyImportTitle={
-                    emptyImport ? t("accountDetail.checking.cartolaRegisteredNoMovements") : undefined
-                  }
-                  onOpen={openMonth}
-                />
-              </td>
-            </tr>
-          );
-        })}
-      </Table>
+      />
 
       <Modal
         open={modalOpen}
@@ -286,16 +216,16 @@ export function CheckingCartolaMonthTable({
             <>
               <span className="mono">{selected.as_of_date}</span>
               {" · "}
-              {mobileLabels.deposits}: {fmtMoney(selected.deposits_clp, selected.movement_count > 0)}
+              {labels.deposits}: {fmtMoney(selected.deposits_clp, selected.movement_count > 0)}
               {" · "}
-              {mobileLabels.withdrawals}: {fmtMoney(selected.withdrawals_clp, selected.movement_count > 0)}
+              {labels.withdrawals}: {fmtMoney(selected.withdrawals_clp, selected.movement_count > 0)}
               {" · "}
-              {mobileLabels.balanceEnd}:{" "}
+              {labels.balanceEnd}:{" "}
               {selected.balance_end_clp != null ? formatClp(selected.balance_end_clp) : "—"}
               {selectedDiff != null ? (
                 <>
                   {" · "}
-                  {mobileLabels.diff}: {formatClp(selectedDiff)}
+                  {labels.diff}: {formatClp(selectedDiff)}
                 </>
               ) : null}
             </>

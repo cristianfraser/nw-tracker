@@ -28,4 +28,23 @@ describe("ColumnTable", () => {
     );
     expect(html).toContain('<td colSpan="4" class="muted">Nothing</td>');
   });
+
+  it("groups card cells by section, takes a card-only value, leaves out null cells, or draws them flat", () => {
+    const cols: TableColumn<Row>[] = [
+      { key: "name", header: "Name", cell: (r) => r.name, title: true },
+      { key: "a", header: "A", cell: () => "desk-a", card: () => "card-a" },
+      { key: "b", header: "B", cell: () => "b", section: 1 },
+      { key: "c", header: "C", cell: () => "c", card: () => null },
+    ];
+    const rows = [{ id: 1, name: "Alpha", amount: 1 }];
+    const html = renderToStaticMarkup(createElement(ColumnTable<Row>, { rows, columns: cols, rowKey: (r) => r.id }));
+    expect(html.match(/table-mobile-card__section/g)).toHaveLength(2);
+    expect(html).toContain("card-a");
+    expect(html).toContain('<td class="desktop-only">desk-a</td>');
+    expect(html).not.toContain('table-mobile-card__label">C</span>');
+    const flat = renderToStaticMarkup(
+      createElement(ColumnTable<Row>, { rows, columns: cols, rowKey: (r) => r.id, cardLayout: "flat" })
+    );
+    expect(flat).not.toContain("table-mobile-card__section");
+  });
 });

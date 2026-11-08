@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Pill } from "../components/ui/Pill";
-import { Table } from "../components/ui/Table";
-import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
+import { ColumnTable } from "../components/ui/ColumnTable";
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
 import { useTaxReturn } from "../queries/hooks";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
@@ -25,62 +24,64 @@ function useCodeLabel() {
     LABELLED_CODES.has(code) ? t(`taxReturn.codes.${code}`) : t("taxReturn.codeFallback", { code });
 }
 
+const f22Diff = (r: TaxReturnRow) => (r.changed ? (r.draft ?? 0) - (r.filed ?? 0) : null);
+
 function F22Table({ rows, loading }: { rows: TaxReturnRow[]; loading?: boolean }) {
   const { t } = useTranslation();
   const label = useCodeLabel();
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.table.code")}</th>
-        <th className="desktop-only">{t("taxReturn.table.concept")}</th>
-        <th className="desktop-only num">{t("taxReturn.table.filed")}</th>
-        <th className="desktop-only num">{t("taxReturn.table.informed")}</th>
-        <th className="desktop-only num">{t("taxReturn.table.draft")}</th>
-        <th className="desktop-only num">{t("taxReturn.table.difference")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   return (
-    <Table header={header} tableClassName="table--parallel-mobile" wrapClassName={loadableClass(loading)}>
-      {rows.map((r) => {
-        const diff = r.changed ? (r.draft ?? 0) - (r.filed ?? 0) : null;
+    <ColumnTable
+      rows={rows}
+      rowKey={(r) => r.code}
+      wrapClassName={loadableClass(loading)}
+      cardLayout="flat"
+      rowProps={(r) => {
         const strong = r.section === "subtotal" || r.section === "result";
         const faint = r.section === "memo" || r.section === "payment";
-        const style = { fontWeight: strong ? 600 : undefined, opacity: faint ? 0.7 : undefined };
-        const informed = (
-          <span style={r.informed_mismatch ? { color: "var(--negative)" } : undefined}>{money(r.informed)}</span>
-        );
-        return (
-          <tr key={r.code} style={style}>
-            <td className="desktop-only mono">{r.code}</td>
-            <td className="desktop-only">{label(r.code)}</td>
-            <td className="desktop-only num">{money(r.filed)}</td>
-            <td className="desktop-only num">{informed}</td>
-            <td className="desktop-only num" title={r.estimated ? t("taxReturn.estimatedTitle") : undefined}>
+        return { style: { fontWeight: strong ? 600 : undefined, opacity: faint ? 0.7 : undefined } };
+      }}
+      columns={[
+        { key: "code", header: t("taxReturn.table.code"), className: "mono", cell: (r) => r.code, title: (r) => `${r.code} · ${label(r.code)}` },
+        { key: "concept", header: t("taxReturn.table.concept"), cell: (r) => label(r.code), desktopOnly: true },
+        { key: "filed", header: t("taxReturn.table.filed"), headerClassName: "num", className: "num", cell: (r) => money(r.filed) },
+        {
+          key: "informed",
+          header: t("taxReturn.table.informed"),
+          headerClassName: "num",
+          className: "num",
+          cell: (r) => <span style={r.informed_mismatch ? { color: "var(--negative)" } : undefined}>{money(r.informed)}</span>,
+        },
+        {
+          key: "draft",
+          header: t("taxReturn.table.draft"),
+          headerClassName: "num",
+          className: "num",
+          cellProps: (r) => ({ title: r.estimated ? t("taxReturn.estimatedTitle") : undefined }),
+          cell: (r) => (
+            <>
               {r.estimated ? "≈ " : ""}
               {money(r.draft)}
-            </td>
-            <td className="desktop-only num" style={diff != null ? { color: "var(--negative)" } : undefined}>
-              {diff == null ? "" : formatClp(diff)}
-            </td>
-            <td className="mobile-only">
-              <TableMobileCard title={`${r.code} · ${label(r.code)}`}>
-                <TableMobileCardRow label={t("taxReturn.table.filed")} value={money(r.filed)} />
-                <TableMobileCardRow label={t("taxReturn.table.informed")} value={informed} />
-                <TableMobileCardRow
-                  label={t("taxReturn.table.draft")}
-                  value={`${r.estimated ? "≈ " : ""}${money(r.draft)}`}
-                />
-                {diff != null ? (
-                  <TableMobileCardRow label={t("taxReturn.table.difference")} value={formatClp(diff)} />
-                ) : null}
-              </TableMobileCard>
-            </td>
-          </tr>
-        );
-      })}
-    </Table>
+            </>
+          ),
+          card: (r) => `${r.estimated ? "≈ " : ""}${money(r.draft)}`,
+        },
+        {
+          key: "difference",
+          header: t("taxReturn.table.difference"),
+          headerClassName: "num",
+          className: "num",
+          cellProps: (r) => (f22Diff(r) != null ? { style: { color: "var(--negative)" } } : {}),
+          cell: (r) => {
+            const diff = f22Diff(r);
+            return diff == null ? "" : formatClp(diff);
+          },
+          card: (r) => {
+            const diff = f22Diff(r);
+            return diff == null ? null : formatClp(diff);
+          },
+        },
+      ]}
+    />
   );
 }
 
@@ -131,22 +132,6 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const c = data.crypto;
   if (c.sales.length === 0) return null;
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.crypto.date")}</th>
-        <th className="desktop-only">{t("taxReturn.crypto.coin")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.units")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.proceeds")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.cost")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.costReajustado")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.gain")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.decemberPct")}</th>
-        <th className="desktop-only num">{t("taxReturn.crypto.gainDecember")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   return (
     <PageGridTile id="crypto">
       <h2>{t("taxReturn.crypto.title")}</h2>
@@ -157,32 +142,22 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
           fees: t(`taxReturn.crypto.fees.${c.fee_policy}`),
         })}
       </p>
-      <Table header={header} tableClassName="table--parallel-mobile">
-        {c.sales.map((s) => (
-          <tr key={`${s.date}-${s.coin}-${s.units}`}>
-            <td className="desktop-only mono">{s.date}</td>
-            <td className="desktop-only">{s.coin}</td>
-            <td className="desktop-only num">{formatGroupedDecimal(s.units, 8)}</td>
-            <td className="desktop-only num">{formatClp(s.proceeds_clp)}</td>
-            <td className="desktop-only num">{formatClp(s.cost_clp)}</td>
-            <td className="desktop-only num">{formatClp(s.cost_reajustado_clp)}</td>
-            <td className="desktop-only num">{formatClp(s.gain_clp)}</td>
-            <td className="desktop-only num">{formatPct(s.december_pct, 1)}</td>
-            <td className="desktop-only num">{formatClp(s.gain_december_clp)}</td>
-            <td className="mobile-only">
-              <TableMobileCard title={`${s.date} · ${s.coin}`}>
-                <TableMobileCardRow label={t("taxReturn.crypto.units")} value={formatGroupedDecimal(s.units, 8)} />
-                <TableMobileCardRow label={t("taxReturn.crypto.proceeds")} value={formatClp(s.proceeds_clp)} />
-                <TableMobileCardRow label={t("taxReturn.crypto.cost")} value={formatClp(s.cost_clp)} />
-                <TableMobileCardRow label={t("taxReturn.crypto.costReajustado")} value={formatClp(s.cost_reajustado_clp)} />
-                <TableMobileCardRow label={t("taxReturn.crypto.gain")} value={formatClp(s.gain_clp)} />
-                <TableMobileCardRow label={t("taxReturn.crypto.decemberPct")} value={formatPct(s.december_pct, 1)} />
-                <TableMobileCardRow label={t("taxReturn.crypto.gainDecember")} value={formatClp(s.gain_december_clp)} />
-              </TableMobileCard>
-            </td>
-          </tr>
-        ))}
-      </Table>
+      <ColumnTable
+        rows={c.sales}
+        rowKey={(s) => `${s.date}-${s.coin}-${s.units}`}
+        cardLayout="flat"
+        columns={[
+          { key: "date", header: t("taxReturn.crypto.date"), className: "mono", cell: (s) => s.date, title: (s) => `${s.date} · ${s.coin}` },
+          { key: "coin", header: t("taxReturn.crypto.coin"), cell: (s) => s.coin, desktopOnly: true },
+          { key: "units", header: t("taxReturn.crypto.units"), headerClassName: "num", className: "num", cell: (s) => formatGroupedDecimal(s.units, 8) },
+          { key: "proceeds", header: t("taxReturn.crypto.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
+          { key: "cost", header: t("taxReturn.crypto.cost"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
+          { key: "costReajustado", header: t("taxReturn.crypto.costReajustado"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_reajustado_clp) },
+          { key: "gain", header: t("taxReturn.crypto.gain"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_clp) },
+          { key: "decemberPct", header: t("taxReturn.crypto.decemberPct"), headerClassName: "num", className: "num", cell: (s) => formatPct(s.december_pct, 1) },
+          { key: "gainDecember", header: t("taxReturn.crypto.gainDecember"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_december_clp) },
+        ]}
+      />
       <p>
         {t("taxReturn.crypto.totals", {
           sales: formatClp(c.sales_clp),
@@ -202,18 +177,6 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
   if (data.dividends.length === 0) return null;
   const missing = data.dividends.filter((d) => d.gross_usd == null).length;
   const usdOrMissing = (n: number | null) => (n == null ? t("taxReturn.dividends.missingDetail") : formatUsdFine(n));
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.dividends.date")}</th>
-        <th className="desktop-only num">{t("taxReturn.dividends.grossUsd")}</th>
-        <th className="desktop-only num">{t("taxReturn.dividends.withholdingUsd")}</th>
-        <th className="desktop-only num">{t("taxReturn.dividends.grossClp")}</th>
-        <th className="desktop-only num">{t("taxReturn.dividends.withholdingClp")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   return (
     <PageGridTile id="dividends">
       <h2>{t("taxReturn.dividends.title")}</h2>
@@ -224,25 +187,18 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
         })}
       </p>
       {missing > 0 ? <p style={{ color: "var(--negative)" }}>{t("taxReturn.dividends.missingNote", { count: missing })}</p> : null}
-      <Table header={header} tableClassName="table--parallel-mobile">
-        {data.dividends.map((d) => (
-          <tr key={d.date}>
-            <td className="desktop-only mono">{d.date}</td>
-            <td className="desktop-only num">{usdOrMissing(d.gross_usd)}</td>
-            <td className="desktop-only num">{usdOrMissing(d.withholding_usd)}</td>
-            <td className="desktop-only num">{money(d.gross_clp)}</td>
-            <td className="desktop-only num">{money(d.withholding_clp)}</td>
-            <td className="mobile-only">
-              <TableMobileCard title={d.date}>
-                <TableMobileCardRow label={t("taxReturn.dividends.grossUsd")} value={usdOrMissing(d.gross_usd)} />
-                <TableMobileCardRow label={t("taxReturn.dividends.withholdingUsd")} value={usdOrMissing(d.withholding_usd)} />
-                <TableMobileCardRow label={t("taxReturn.dividends.grossClp")} value={money(d.gross_clp)} />
-                <TableMobileCardRow label={t("taxReturn.dividends.withholdingClp")} value={money(d.withholding_clp)} />
-              </TableMobileCard>
-            </td>
-          </tr>
-        ))}
-      </Table>
+      <ColumnTable
+        rows={data.dividends}
+        rowKey={(d) => d.date}
+        cardLayout="flat"
+        columns={[
+          { key: "date", header: t("taxReturn.dividends.date"), className: "mono", cell: (d) => d.date, title: true },
+          { key: "grossUsd", header: t("taxReturn.dividends.grossUsd"), headerClassName: "num", className: "num", cell: (d) => usdOrMissing(d.gross_usd) },
+          { key: "withholdingUsd", header: t("taxReturn.dividends.withholdingUsd"), headerClassName: "num", className: "num", cell: (d) => usdOrMissing(d.withholding_usd) },
+          { key: "grossClp", header: t("taxReturn.dividends.grossClp"), headerClassName: "num", className: "num", cell: (d) => money(d.gross_clp) },
+          { key: "withholdingClp", header: t("taxReturn.dividends.withholdingClp"), headerClassName: "num", className: "num", cell: (d) => money(d.withholding_clp) },
+        ]}
+      />
       <LossOffsetHint data={data} kind="pool" />
     </PageGridTile>
   );
@@ -252,18 +208,6 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const f = data.foreign_shares;
   if (f.sales.length === 0) return null;
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.foreign.date")}</th>
-        <th className="desktop-only">{t("taxReturn.foreign.instrument")}</th>
-        <th className="desktop-only num">{t("taxReturn.foreign.gainUsd")}</th>
-        <th className="desktop-only num">{t("taxReturn.foreign.mode.usd_31dic")}</th>
-        <th className="desktop-only num">{t("taxReturn.foreign.mode.clp_ipc")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   return (
     <PageGridTile id="foreign-shares">
       <h2>{t("taxReturn.foreign.title")}</h2>
@@ -271,24 +215,24 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
         {t("taxReturn.foreign.explain", { mode: t(`taxReturn.foreign.mode.${f.default_mode}`) })}
         {f.provisional ? ` ${t("taxReturn.foreign.provisional")}` : ""}
       </p>
-      <Table header={header} tableClassName="table--parallel-mobile">
-        {f.sales.map((s) => (
-          <tr key={`${s.date}-${s.account_name}`}>
-            <td className="desktop-only mono">{s.date}</td>
-            <td className="desktop-only">{s.account_name}</td>
-            <td className="desktop-only num">{formatUsdFine(s.gain_usd)}</td>
-            <td className="desktop-only num">{formatClp(s.result_clp.usd_31dic)}</td>
-            <td className="desktop-only num">{formatClp(s.result_clp.clp_ipc)}</td>
-            <td className="mobile-only">
-              <TableMobileCard title={`${s.date} · ${s.account_name}`}>
-                <TableMobileCardRow label={t("taxReturn.foreign.gainUsd")} value={formatUsdFine(s.gain_usd)} />
-                <TableMobileCardRow label={t("taxReturn.foreign.mode.usd_31dic")} value={formatClp(s.result_clp.usd_31dic)} />
-                <TableMobileCardRow label={t("taxReturn.foreign.mode.clp_ipc")} value={formatClp(s.result_clp.clp_ipc)} />
-              </TableMobileCard>
-            </td>
-          </tr>
-        ))}
-      </Table>
+      <ColumnTable
+        rows={f.sales}
+        rowKey={(s) => `${s.date}-${s.account_name}`}
+        cardLayout="flat"
+        columns={[
+          {
+            key: "date",
+            header: t("taxReturn.foreign.date"),
+            className: "mono",
+            cell: (s) => s.date,
+            title: (s) => `${s.date} · ${s.account_name}`,
+          },
+          { key: "instrument", header: t("taxReturn.foreign.instrument"), cell: (s) => s.account_name, desktopOnly: true },
+          { key: "gainUsd", header: t("taxReturn.foreign.gainUsd"), headerClassName: "num", className: "num", cell: (s) => formatUsdFine(s.gain_usd) },
+          { key: "usd31", header: t("taxReturn.foreign.mode.usd_31dic"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.result_clp.usd_31dic) },
+          { key: "clpIpc", header: t("taxReturn.foreign.mode.clp_ipc"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.result_clp.clp_ipc) },
+        ]}
+      />
       <LossOffsetHint data={data} kind="foreign" />
     </PageGridTile>
   );
@@ -309,32 +253,6 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
   if (a.sales.length === 0 && a.distributions.length === 0 && !carried && !informed) return null;
   const taxed = a.sales.some((s) => s.regime === "tax_10pct");
   const hasInr = a.sales.some((s) => s.regime === "inr");
-  const salesHeader = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.art107.date")}</th>
-        <th className="desktop-only">{t("taxReturn.art107.instrument")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.units")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.proceeds")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.costPaid")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.costReajustado")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.closeDec31")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.result")}</th>
-        <th className="desktop-only">{t("taxReturn.art107.regime")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
-  const distributionsHeader = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.dividends.date")}</th>
-        <th className="desktop-only">{t("taxReturn.art107.colAccount")}</th>
-        <th className="desktop-only num">{t("taxReturn.art107.colAmount")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   return (
     <PageGridTile id="art107">
       <h2>{t("taxReturn.art107.title")}</h2>
@@ -349,39 +267,46 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
             {t("taxReturn.art107.costExplain", { option: t(`taxReturn.art107.option.${a.default_option}`) })}{" "}
             {t("taxReturn.art107.closeStandIn")}
           </p>
-          <Table header={salesHeader} tableClassName="table--parallel-mobile">
-            {a.sales.map((s, i) => {
-              const kind = t(`taxReturn.art107.kind.${s.kind}`);
-              const regime = <Pill size="small" uppercase={false}>{t(`taxReturn.art107.regimeLabel.${s.regime}`)}</Pill>;
-              const result = s.result_clp[a.default_option];
-              return (
-                <tr key={`${s.date}-${s.account_name}-${i}`} style={{ opacity: s.regime === "inr" ? 0.7 : undefined }}>
-                  <td className="desktop-only mono">{s.date}</td>
-                  <td className="desktop-only">
-                    {s.account_name} <span className="muted">{kind}</span>
-                  </td>
-                  <td className="desktop-only num">{formatGroupedDecimal(s.units, 0, 4)}</td>
-                  <td className="desktop-only num">{formatClp(s.proceeds_clp)}</td>
-                  <td className="desktop-only num">{formatClp(s.cost_clp)}</td>
-                  <td className="desktop-only num">{formatClp(s.cost_reajustado_clp)}</td>
-                  <td className="desktop-only num">{money(s.cost_close_dec31_clp)}</td>
-                  <td className="desktop-only num">{money(result)}</td>
-                  <td className="desktop-only">{regime}</td>
-                  <td className="mobile-only">
-                    <TableMobileCard title={`${s.date} · ${s.account_name} · ${kind}`}>
-                      <TableMobileCardRow label={t("taxReturn.art107.units")} value={formatGroupedDecimal(s.units, 0, 4)} />
-                      <TableMobileCardRow label={t("taxReturn.art107.proceeds")} value={formatClp(s.proceeds_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.art107.costPaid")} value={formatClp(s.cost_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.art107.costReajustado")} value={formatClp(s.cost_reajustado_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.art107.closeDec31")} value={money(s.cost_close_dec31_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.art107.result")} value={money(result)} />
-                      <TableMobileCardRow label={t("taxReturn.art107.regime")} value={regime} />
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
+          <ColumnTable
+            rows={a.sales}
+            rowKey={(s) => `${s.date}-${s.account_name}-${a.sales.indexOf(s)}`}
+            cardLayout="flat"
+            rowProps={(s) => ({ style: { opacity: s.regime === "inr" ? 0.7 : undefined } })}
+            columns={[
+              {
+                key: "date",
+                header: t("taxReturn.art107.date"),
+                className: "mono",
+                cell: (s) => s.date,
+                title: (s) => `${s.date} · ${s.account_name} · ${t(`taxReturn.art107.kind.${s.kind}`)}`,
+              },
+              {
+                key: "instrument",
+                header: t("taxReturn.art107.instrument"),
+                desktopOnly: true,
+                cell: (s) => (
+                  <>
+                    {s.account_name} <span className="muted">{t(`taxReturn.art107.kind.${s.kind}`)}</span>
+                  </>
+                ),
+              },
+              { key: "units", header: t("taxReturn.art107.units"), headerClassName: "num", className: "num", cell: (s) => formatGroupedDecimal(s.units, 0, 4) },
+              { key: "proceeds", header: t("taxReturn.art107.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
+              { key: "costPaid", header: t("taxReturn.art107.costPaid"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
+              { key: "costReajustado", header: t("taxReturn.art107.costReajustado"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_reajustado_clp) },
+              { key: "closeDec31", header: t("taxReturn.art107.closeDec31"), headerClassName: "num", className: "num", cell: (s) => money(s.cost_close_dec31_clp) },
+              { key: "result", header: t("taxReturn.art107.result"), headerClassName: "num", className: "num", cell: (s) => money(s.result_clp[a.default_option]) },
+              {
+                key: "regime",
+                header: t("taxReturn.art107.regime"),
+                cell: (s) => (
+                  <Pill size="small" uppercase={false}>
+                    {t(`taxReturn.art107.regimeLabel.${s.regime}`)}
+                  </Pill>
+                ),
+              },
+            ]}
+          />
           {taxed ? (
             <p>
               {t("taxReturn.art107.totals", {
@@ -417,20 +342,22 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
         <>
           <h3>{t("taxReturn.art107.distributionsTitle")}</h3>
           <p className="muted">{t("taxReturn.art107.distributionsExplain")}</p>
-          <Table header={distributionsHeader} tableClassName="table--parallel-mobile">
-            {a.distributions.map((d, i) => (
-              <tr key={`${d.date}-${d.account_name}-${i}`}>
-                <td className="desktop-only mono">{d.date}</td>
-                <td className="desktop-only">{d.account_name}</td>
-                <td className="desktop-only num">{formatClp(d.amount_clp)}</td>
-                <td className="mobile-only">
-                  <TableMobileCard title={`${d.date} · ${d.account_name}`}>
-                    <TableMobileCardRow label={t("taxReturn.art107.colAmount")} value={formatClp(d.amount_clp)} />
-                  </TableMobileCard>
-                </td>
-              </tr>
-            ))}
-          </Table>
+          <ColumnTable
+            rows={a.distributions}
+            rowKey={(d) => `${d.date}-${d.account_name}-${a.distributions.indexOf(d)}`}
+            cardLayout="flat"
+            columns={[
+              {
+                key: "date",
+                header: t("taxReturn.dividends.date"),
+                className: "mono",
+                cell: (d) => d.date,
+                title: (d) => `${d.date} · ${d.account_name}`,
+              },
+              { key: "account", header: t("taxReturn.art107.colAccount"), cell: (d) => d.account_name, desktopOnly: true },
+              { key: "amount", header: t("taxReturn.art107.colAmount"), headerClassName: "num", className: "num", cell: (d) => formatClp(d.amount_clp) },
+            ]}
+          />
           <p>{t("taxReturn.art107.distributionsTotal", { amount: formatClp(a.distributions_clp) })}</p>
         </>
       ) : null}
@@ -450,33 +377,6 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
   const f = data.usd_fx;
   if (!f) return null;
   if (f.disposals.length === 0 && f.fees.length === 0 && f.deferred.length === 0) return null;
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.usdFx.date")}</th>
-        <th className="desktop-only">{t("taxReturn.usdFx.account")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.usd")}</th>
-        <th className="desktop-only">{t("taxReturn.usdFx.purchaseDates")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.proceeds")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.cost")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.result")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.decemberPct")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.resultDecember")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
-  const feesHeader = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.usdFx.date")}</th>
-        <th className="desktop-only">{t("taxReturn.usdFx.account")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.usd")}</th>
-        <th className="desktop-only num">{t("taxReturn.usdFx.costLost")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   const codes =
     f.route === "idpc_1901" ? (
       f.codes[1901] != null && f.codes.idpc_clp != null ? (
@@ -503,35 +403,33 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
       {f.provisional ? <p className="muted">{t("taxReturn.usdFx.provisional", { month: f.reajuste_to_month.slice(0, 7) })}</p> : null}
       {f.disposals.length > 0 ? (
         <>
-          <Table header={header} tableClassName="table--parallel-mobile">
-            {f.disposals.map((s, i) => {
-              const bought = s.purchase_dates.join(", ");
-              return (
-                <tr key={`${s.date}-${s.account_name}-${i}`}>
-                  <td className="desktop-only mono">{s.date}</td>
-                  <td className="desktop-only">{s.account_name}</td>
-                  <td className="desktop-only num">{formatUsdFine(s.usd)}</td>
-                  <td className="desktop-only mono">{bought}</td>
-                  <td className="desktop-only num">{formatClp(s.proceeds_clp)}</td>
-                  <td className="desktop-only num">{formatClp(s.cost_clp)}</td>
-                  <td className="desktop-only num">{formatClp(s.gain_clp)}</td>
-                  <td className="desktop-only num">{formatPct(s.december_pct, 1)}</td>
-                  <td className="desktop-only num">{formatClp(s.gain_december_clp)}</td>
-                  <td className="mobile-only">
-                    <TableMobileCard title={`${s.date} · ${s.account_name}`}>
-                      <TableMobileCardRow label={t("taxReturn.usdFx.usd")} value={formatUsdFine(s.usd)} />
-                      <TableMobileCardRow label={t("taxReturn.usdFx.purchaseDates")} value={bought} />
-                      <TableMobileCardRow label={t("taxReturn.usdFx.proceeds")} value={formatClp(s.proceeds_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.usdFx.cost")} value={formatClp(s.cost_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.usdFx.result")} value={formatClp(s.gain_clp)} />
-                      <TableMobileCardRow label={t("taxReturn.usdFx.decemberPct")} value={formatPct(s.december_pct, 1)} />
-                      <TableMobileCardRow label={t("taxReturn.usdFx.resultDecember")} value={formatClp(s.gain_december_clp)} />
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
+          <ColumnTable
+            rows={f.disposals}
+            rowKey={(s) => `${s.date}-${s.account_name}-${f.disposals.indexOf(s)}`}
+            cardLayout="flat"
+            columns={[
+              {
+                key: "date",
+                header: t("taxReturn.usdFx.date"),
+                className: "mono",
+                cell: (s) => s.date,
+                title: (s) => `${s.date} · ${s.account_name}`,
+              },
+              { key: "account", header: t("taxReturn.usdFx.account"), cell: (s) => s.account_name, desktopOnly: true },
+              { key: "usd", header: t("taxReturn.usdFx.usd"), headerClassName: "num", className: "num", cell: (s) => formatUsdFine(s.usd) },
+              {
+                key: "purchaseDates",
+                header: t("taxReturn.usdFx.purchaseDates"),
+                className: "mono",
+                cell: (s) => s.purchase_dates.join(", "),
+              },
+              { key: "proceeds", header: t("taxReturn.usdFx.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
+              { key: "cost", header: t("taxReturn.usdFx.cost"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
+              { key: "result", header: t("taxReturn.usdFx.result"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_clp) },
+              { key: "decemberPct", header: t("taxReturn.usdFx.decemberPct"), headerClassName: "num", className: "num", cell: (s) => formatPct(s.december_pct, 1) },
+              { key: "resultDecember", header: t("taxReturn.usdFx.resultDecember"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_december_clp) },
+            ]}
+          />
           <p>
             {t("taxReturn.usdFx.totals", {
               result: formatClp(f.result_clp),
@@ -545,22 +443,23 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
         <>
           <h3>{t("taxReturn.usdFx.feesTitle")}</h3>
           <p className="muted">{t("taxReturn.usdFx.feesExplain")}</p>
-          <Table header={feesHeader} tableClassName="table--parallel-mobile">
-            {f.fees.map((x, i) => (
-              <tr key={`${x.date}-${x.account_name}-${i}`}>
-                <td className="desktop-only mono">{x.date}</td>
-                <td className="desktop-only">{x.account_name}</td>
-                <td className="desktop-only num">{formatUsdFine(x.usd)}</td>
-                <td className="desktop-only num">{formatClp(x.cost_lost_clp)}</td>
-                <td className="mobile-only">
-                  <TableMobileCard title={`${x.date} · ${x.account_name}`}>
-                    <TableMobileCardRow label={t("taxReturn.usdFx.usd")} value={formatUsdFine(x.usd)} />
-                    <TableMobileCardRow label={t("taxReturn.usdFx.costLost")} value={formatClp(x.cost_lost_clp)} />
-                  </TableMobileCard>
-                </td>
-              </tr>
-            ))}
-          </Table>
+          <ColumnTable
+            rows={f.fees}
+            rowKey={(x) => `${x.date}-${x.account_name}-${f.fees.indexOf(x)}`}
+            cardLayout="flat"
+            columns={[
+              {
+                key: "date",
+                header: t("taxReturn.usdFx.date"),
+                className: "mono",
+                cell: (x) => x.date,
+                title: (x) => `${x.date} · ${x.account_name}`,
+              },
+              { key: "account", header: t("taxReturn.usdFx.account"), cell: (x) => x.account_name, desktopOnly: true },
+              { key: "usd", header: t("taxReturn.usdFx.usd"), headerClassName: "num", className: "num", cell: (x) => formatUsdFine(x.usd) },
+              { key: "costLost", header: t("taxReturn.usdFx.costLost"), headerClassName: "num", className: "num", cell: (x) => formatClp(x.cost_lost_clp) },
+            ]}
+          />
           <p>{t("taxReturn.usdFx.feesTotal", { amount: formatClp(f.fees_lost_clp) })}</p>
         </>
       ) : null}
@@ -586,17 +485,6 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const s = data.settlement;
   if (!s || !s.expected) return null;
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.settlement.colDate")}</th>
-        <th className="desktop-only">{t("taxReturn.settlement.colAccount")}</th>
-        <th className="desktop-only">{t("taxReturn.settlement.colDescription")}</th>
-        <th className="desktop-only num">{t("taxReturn.settlement.colAmount")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   return (
     <PageGridTile id="settlement">
       <h2>{t("taxReturn.settlement.title")}</h2>
@@ -615,22 +503,23 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
         )}
       </p>
       {s.links.length > 0 ? (
-        <Table header={header} tableClassName="table--parallel-mobile">
-          {s.links.map((l) => (
-            <tr key={`${l.kind}-${l.account_id}-${l.occurred_on}-${l.amount}`}>
-              <td className="desktop-only mono">{l.occurred_on}</td>
-              <td className="desktop-only">{l.account_name ?? "—"}</td>
-              <td className="desktop-only">{settlementLinkLabel(t, l)}</td>
-              <td className="desktop-only num">{formatClp(l.amount)}</td>
-              <td className="mobile-only">
-                <TableMobileCard title={l.account_name ? `${l.occurred_on} · ${l.account_name}` : l.occurred_on}>
-                  <TableMobileCardRow label={t("taxReturn.settlement.colDescription")} value={settlementLinkLabel(t, l)} />
-                  <TableMobileCardRow label={t("taxReturn.settlement.colAmount")} value={formatClp(l.amount)} />
-                </TableMobileCard>
-              </td>
-            </tr>
-          ))}
-        </Table>
+        <ColumnTable
+          rows={s.links}
+          rowKey={(l) => `${l.kind}-${l.account_id}-${l.occurred_on}-${l.amount}`}
+          cardLayout="flat"
+          columns={[
+            {
+              key: "date",
+              header: t("taxReturn.settlement.colDate"),
+              className: "mono",
+              cell: (l) => l.occurred_on,
+              title: (l) => (l.account_name ? `${l.occurred_on} · ${l.account_name}` : l.occurred_on),
+            },
+            { key: "account", header: t("taxReturn.settlement.colAccount"), cell: (l) => l.account_name ?? "—", desktopOnly: true },
+            { key: "description", header: t("taxReturn.settlement.colDescription"), cell: (l) => settlementLinkLabel(t, l) },
+            { key: "amount", header: t("taxReturn.settlement.colAmount"), headerClassName: "num", className: "num", cell: (l) => formatClp(l.amount) },
+          ]}
+        />
       ) : null}
     </PageGridTile>
   );
@@ -640,18 +529,9 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const w = data.payroll_withholding;
   if (w.payslips === 0) return null;
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("taxReturn.payroll.colMonth")}</th>
-        <th className="desktop-only num">{t("taxReturn.payroll.colWithheld")}</th>
-        <th className="desktop-only num">{t("taxReturn.payroll.colTable")}</th>
-        <th className="desktop-only num">{t("taxReturn.payroll.colDifference")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
   const differs = (d: number) => Math.abs(d) > 1;
+  const monthLabel = (m: (typeof w.months)[number]) =>
+    `${m.period_month}${m.origin === "rebuilt" ? ` (${t("taxReturn.payroll.rebuilt")})` : ""}`;
   return (
     <PageGridTile id="payroll-withholding">
       <h2>{t("taxReturn.payroll.title")}</h2>
@@ -663,32 +543,24 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
           difference: formatClp(w.difference),
         })}
       </p>
-      <Table header={header} tableClassName="table--parallel-mobile">
-        {w.months.map((m) => {
-          const label = `${m.period_month}${m.origin === "rebuilt" ? ` (${t("taxReturn.payroll.rebuilt")})` : ""}`;
-          const style = differs(m.difference) ? { color: "var(--negative)" } : undefined;
-          return (
-            <tr key={m.payslip_id}>
-              <td className="desktop-only mono">{label}</td>
-              <td className="desktop-only num">{formatClp(m.withheld)}</td>
-              <td className="desktop-only num">{formatClp(m.by_table)}</td>
-              <td className="desktop-only num" style={style}>
-                {differs(m.difference) ? formatClp(m.difference) : "—"}
-              </td>
-              <td className="mobile-only">
-                <TableMobileCard title={label}>
-                  <TableMobileCardRow label={t("taxReturn.payroll.colWithheld")} value={formatClp(m.withheld)} />
-                  <TableMobileCardRow label={t("taxReturn.payroll.colTable")} value={formatClp(m.by_table)} />
-                  <TableMobileCardRow
-                    label={t("taxReturn.payroll.colDifference")}
-                    value={differs(m.difference) ? formatClp(m.difference) : "—"}
-                  />
-                </TableMobileCard>
-              </td>
-            </tr>
-          );
-        })}
-      </Table>
+      <ColumnTable
+        rows={w.months}
+        rowKey={(m) => m.payslip_id}
+        cardLayout="flat"
+        columns={[
+          { key: "month", header: t("taxReturn.payroll.colMonth"), className: "mono", cell: monthLabel, title: true },
+          { key: "withheld", header: t("taxReturn.payroll.colWithheld"), headerClassName: "num", className: "num", cell: (m) => formatClp(m.withheld) },
+          { key: "byTable", header: t("taxReturn.payroll.colTable"), headerClassName: "num", className: "num", cell: (m) => formatClp(m.by_table) },
+          {
+            key: "difference",
+            header: t("taxReturn.payroll.colDifference"),
+            headerClassName: "num",
+            className: "num",
+            cellProps: (m) => (differs(m.difference) ? { style: { color: "var(--negative)" } } : {}),
+            cell: (m) => (differs(m.difference) ? formatClp(m.difference) : "—"),
+          },
+        ]}
+      />
     </PageGridTile>
   );
 }

@@ -22,6 +22,12 @@ export type TableColumn<R> = {
   title?: true | ((row: R) => ReactNode);
   /** Left off the card (shown on the desktop row only). */
   desktopOnly?: true;
+  /** What the card shows for this cell when it differs from the desktop cell; null leaves the row out. */
+  card?: (row: R) => ReactNode | null;
+  /** The card section this cell is drawn in (cells of one number share a section; default 0). */
+  section?: number;
+  /** Extra attributes on the desktop cell (a tooltip, a style). */
+  cellProps?: (row: R) => HTMLAttributes<HTMLTableCellElement>;
   /** A sortable column (`Table`'s `data-sort-*` protocol): the row's sort value. */
   sort?: { type: "string" | "number" | "date"; value: (row: R) => string | number | null };
 };
@@ -39,6 +45,8 @@ export type ColumnTableProps<R> = Omit<TableProps, "header" | "children"> & {
   cardTail?: (row: R) => ReactNode;
   /** Extra attributes on a row (a class, a style). */
   rowProps?: (row: R) => HTMLAttributes<HTMLTableRowElement>;
+  /** `flat`: the card's cells sit directly under its title, with no section around them. */
+  cardLayout?: "sections" | "flat";
 };
 
 /** A table drawn from one column list: desktop cells and the mobile card alike. */
@@ -51,11 +59,37 @@ export function ColumnTable<R>({
   cardLead,
   cardTail,
   rowProps,
+  cardLayout = "sections",
   tableClassName,
   ...tableProps
 }: ColumnTableProps<R>) {
   const titleColumn = columns.find((c) => c.title);
   if (!titleColumn) throw new Error("ColumnTable: one column must be the card's title");
+  const cardColumns = columns.filter((c) => !c.title && !c.desktopOnly);
+  const sections = [...new Set(cardColumns.map((c) => c.section ?? 0))].sort((a, b) => a - b);
+  const cardRows = (row: R, cols: readonly TableColumn<R>[]) =>
+    cols.map((c) => {
+      const value = c.card ? c.card(row) : c.cell(row);
+      if (value === null) return null;
+      return (
+        <TableMobileCardRow
+          key={c.key}
+          label={c.label ?? (typeof c.header === "string" ? c.header : c.key)}
+          value={value}
+        />
+      );
+    });
+  const cardBody = (row: R) =>
+    cardLayout === "flat"
+      ? cardRows(row, cardColumns)
+      : sections.map((n) => (
+          <TableMobileCardSection key={n}>
+            {cardRows(
+              row,
+              cardColumns.filter((c) => (c.section ?? 0) === n)
+            )}
+          </TableMobileCardSection>
+        ));
   const header = (
     <thead>
       <tr>
@@ -87,7 +121,7 @@ export function ColumnTable<R>({
           return (
             <tr key={rowKey(row)} {...rowProps?.(row)} {...sortAttrs}>
               {columns.map((c) => (
-                <td key={c.key} className={cn("desktop-only", c.className)}>
+                <td key={c.key} {...c.cellProps?.(row)} className={cn("desktop-only", c.className)}>
                   {c.cell(row)}
                 </td>
               ))}
@@ -96,17 +130,7 @@ export function ColumnTable<R>({
                   title={titleColumn.title === true ? titleColumn.cell(row) : titleColumn.title!(row)}
                 >
                   {cardLead?.(row)}
-                  <TableMobileCardSection>
-                    {columns
-                      .filter((c) => !c.title && !c.desktopOnly)
-                      .map((c) => (
-                        <TableMobileCardRow
-                          key={c.key}
-                          label={c.label ?? (typeof c.header === "string" ? c.header : c.key)}
-                          value={c.cell(row)}
-                        />
-                      ))}
-                  </TableMobileCardSection>
+                  {cardBody(row)}
                   {cardTail?.(row)}
                 </TableMobileCard>
               </td>
