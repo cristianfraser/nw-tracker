@@ -1,4 +1,5 @@
 import { generalRuleCategoryIdReaching, setExpenseCategoryRule } from "./expenseCategoryRules.js";
+import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { vendorRuleKeyCandidates } from "./bankMerchantName.js";
 import { vendorCatalogFromEntries } from "./vendorCatalogMatch.js";
@@ -269,16 +270,11 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
     );
     try {
       importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-old")]);
-      db.prepare(
-        `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, 'line-pr:vitest-rekey-old', 'manual')`
-      ).run(entryId);
+      insertBillLink(entryId, "line-pr:vitest-rekey-old", "manual");
 
       importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-new")]);
 
-      const link = db
-        .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
-        .get(entryId) as { purchase_key: string } | undefined;
-      expect(link?.purchase_key).toBe("line-pr:vitest-rekey-new");
+      expect(billLinkPurchaseKey(entryId)).toBe("line-pr:vitest-rekey-new");
     } finally {
       db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
       db.prepare(`DELETE FROM expense_accounts WHERE id = ?`).run(placeId);

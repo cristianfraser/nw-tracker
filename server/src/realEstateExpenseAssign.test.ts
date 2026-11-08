@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { BILL_LINKS_SQL, billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
+import { fixtureMovement } from "./test/flowFixtures.js";
 import { db } from "./db.js";
 import { runExpenseConsumptionBackfill161 } from "./legacyNoteBackfills.js";
 import {
@@ -166,10 +168,9 @@ describe("updateRealEstateExpenseBillMonth", () => {
   it("tolerates a linked purchase_key that no longer resolves to a gastos line", () => {
     const accountId = ensureFixtureExpenseAccount();
     const entryId = insertFixtureEntry(accountId, null);
-    db.prepare(
-      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
-       VALUES (?, 'vitest:no-such-line', 'manual')`
-    ).run(entryId);
+    // A movement that is no gastos line: the link names a row, but not an eligible purchase.
+    const dropMovement = fixtureMovement(990_286_001);
+    insertBillLink(entryId, "checking-mv:990286001", "manual");
 
     updateRealEstateExpenseBillMonth(entryId, "2024-03");
     const row = db.prepare(`SELECT spent_on FROM expense_entries WHERE id = ?`).get(entryId) as {
@@ -178,6 +179,7 @@ describe("updateRealEstateExpenseBillMonth", () => {
     expect(row.spent_on).toBe("2024-03-31");
 
     db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+    dropMovement();
   });
 });
 
@@ -185,17 +187,14 @@ describe("deleteRealEstateExpenseEntry", () => {
   it("deletes the entry and cascades its link row", () => {
     const accountId = ensureFixtureExpenseAccount();
     const entryId = insertFixtureEntry(accountId, null);
-    db.prepare(
-      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
-       VALUES (?, 'vitest:fixture-key', 'manual')`
-    ).run(entryId);
+    const dropMovement = fixtureMovement(990_286_002);
+    insertBillLink(entryId, "checking-mv:990286002", "manual");
 
     deleteRealEstateExpenseEntry(entryId);
 
     expect(db.prepare(`SELECT 1 FROM expense_entries WHERE id = ?`).get(entryId)).toBeUndefined();
-    expect(
-      db.prepare(`SELECT 1 FROM real_estate_expense_links WHERE expense_entry_id = ?`).get(entryId)
-    ).toBeUndefined();
+    expect(billLinkPurchaseKey(entryId)).toBeNull();
+    dropMovement();
   });
 });
 
@@ -241,7 +240,7 @@ describe("listRealEstateUnlinkedPurchases", () => {
   it("excludes already-linked purchases and honors the q filter", () => {
     const linked = new Set(
       (
-        db.prepare(`SELECT purchase_key FROM real_estate_expense_links`).all() as {
+        db.prepare(`SELECT purchase_key FROM ${BILL_LINKS_SQL}`).all() as {
           purchase_key: string;
         }[]
       ).map((r) => r.purchase_key)

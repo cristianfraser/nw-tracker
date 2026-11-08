@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
@@ -539,19 +540,14 @@ describe("checkingCartolaPartialReconcile", () => {
         )
         .run().lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, ?, 'manual')`
-    ).run(entryId, checkingMovementPurchaseKey(partialId));
+    insertBillLink(entryId, checkingMovementPurchaseKey(partialId), "manual");
 
     try {
       const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
         { occurred_on: occurredOn, amount_clp: amountClp, branch: "Agustinas", description, document_no: "0560112904" },
       ]);
       expect(removed).toBe(1);
-      const link = db
-        .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
-        .get(entryId) as { purchase_key: string } | undefined;
-      expect(link?.purchase_key).toBe(`checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`);
+      expect(billLinkPurchaseKey(entryId)).toBe(`checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`);
     } finally {
       db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
       db.prepare(`DELETE FROM expense_accounts WHERE slug = 'vitest_cartola_place'`).run();

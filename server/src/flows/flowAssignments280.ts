@@ -320,3 +320,73 @@ export function runFlowLinksFundedDeposit285(dbi: DatabaseType): void {
   installWriteLog(dbi, "flow_links");
   dbi.exec(FUNDED_DEPOSIT_COUNTERPART_TRIGGER_SQL);
 }
+
+/**
+ * A key-named table onto `bill` rows of `to` (flow + the bill as `counterpart_entry_id`): moved in
+ * the old table's row order, a key naming nothing archived; returns the counts.
+ */
+function moveBillKeyed(
+  dbi: DatabaseType,
+  from: string,
+  to: "flow_links" | "flow_link_rejections",
+  extraColumns: readonly string[]
+): { before: number; moved: number; archived: number } {
+  const before = count(dbi, from);
+  const rows = dbi.prepare(`SELECT rowid AS _rowid, * FROM ${from} ORDER BY rowid`).all() as ({
+    _rowid: number;
+    expense_entry_id: number;
+    purchase_key: string;
+  } & Record<string, string | number | null>)[];
+  const flowOf = dbi.prepare(`SELECT id FROM flows WHERE legacy_key = ?`);
+  const insert = dbi.prepare(
+    `INSERT INTO ${to} (flow_id, portion, piece_seq, kind, counterpart_entry_id${extraColumns.map((c) => `, ${c}`).join("")})
+     VALUES (?, ?, ?, 'bill', ?${extraColumns.map(() => ", ?").join("")})`
+  );
+  const archive = dbi.prepare(`INSERT INTO flow_orphan_assignments (source_table, purchase_key, payload) VALUES (?, ?, ?)`);
+  let moved = 0;
+  let archived = 0;
+  for (const r of rows) {
+    const parts = expenseKeyParts(r.purchase_key);
+    if (!parts) throw new Error(`migration 286: ${from} holds «${r.purchase_key}», which is not an expense key`);
+    const flow = flowOf.get(parts.flowKey) as { id: number } | undefined;
+    const { _rowid, ...payload } = r;
+    void _rowid;
+    if (!flow) {
+      archive.run(from, r.purchase_key, JSON.stringify(payload));
+      archived += 1;
+      continue;
+    }
+    insert.run(flow.id, parts.portion, parts.pieceSeq ?? -1, r.expense_entry_id, ...extraColumns.map((c) => r[c]));
+    moved += 1;
+  }
+  const after = (dbi.prepare(`SELECT COUNT(*) AS c FROM ${to} WHERE kind = 'bill'`).get() as { c: number }).c;
+  console.log(`migration 286: ${from} ${before} → ${to} ${after} + ${archived} archived (key names no row)`);
+  if (after !== moved || moved + archived !== before) throw new Error(`migration 286: ${from}: ${before} rows became ${after} + ${archived}`);
+  // Read back under the old keys.
+  const keySql = expenseKeySql("f.legacy_key", "n.portion", "NULLIF(n.piece_seq, -1)");
+  const readBack = new Set(
+    (
+      dbi
+        .prepare(
+          `SELECT ${keySql} AS k, n.counterpart_entry_id AS e${extraColumns.map((c) => `, n.${c}`).join("")}
+           FROM ${to} n JOIN flows f ON f.id = n.flow_id WHERE n.kind = 'bill'`
+        )
+        .all() as Record<string, unknown>[]
+    ).map((n) => JSON.stringify([n.k, n.e, ...extraColumns.map((c) => n[c])]))
+  );
+  for (const r of rows) {
+    if (!flowOf.get(expenseKeyParts(r.purchase_key)!.flowKey)) continue;
+    if (!readBack.has(JSON.stringify([r.purchase_key, r.expense_entry_id, ...extraColumns.map((c) => r[c])]))) {
+      throw new Error(`migration 286: ${from} «${r.purchase_key}» → bill ${r.expense_entry_id} does not read back`);
+    }
+  }
+  return { before, moved, archived };
+}
+
+export function runFlowLinksBill286(dbi: DatabaseType): void {
+  moveBillKeyed(dbi, "real_estate_expense_links", "flow_links", ["link_source", "created_at"]);
+  moveBillKeyed(dbi, "real_estate_expense_link_rejections", "flow_link_rejections", ["created_at"]);
+  dbi.exec(`DROP TABLE real_estate_expense_links`);
+  dbi.exec(`DROP TABLE real_estate_expense_link_rejections`);
+  installWriteLog(dbi, "flow_link_rejections");
+}

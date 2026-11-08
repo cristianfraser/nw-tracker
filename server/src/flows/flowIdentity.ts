@@ -131,6 +131,11 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
     dbHandle.prepare(`UPDATE ${t} SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   }
   dbHandle.prepare(`UPDATE flow_evidence SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  // The merged flow's own links move by row (the rowid, their read order, stays): a bill pairs with
+  // one purchase, so a survivor already linked to another bill makes the update fail (the one
+  // bill-move policy, docs/untangle-flow-identity.md); a refusal the survivor already carries stays.
+  dbHandle.prepare(`UPDATE flow_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  dbHandle.prepare(`UPDATE OR IGNORE flow_link_rejections SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);

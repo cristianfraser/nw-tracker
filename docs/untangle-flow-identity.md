@@ -185,3 +185,16 @@ What the code forced, and why (each change is also in its commit):
   columns. A deposit link to a movement that is deleted goes with it (a movement-delete trigger:
   the deposit's flow may outlive its row when a key names it); a merged flow's links point at the
   survivor. Readers see the old shape through `EXPENSE_DEPOSIT_LINKS_SQL` (`flows/flowLinks.ts`).
+- **Bill links (migration 286)** are `bill` rows of `flow_links` (the purchase's flow, portion,
+  piece → the bill, `counterpart_entry_id`, with `link_source`); a refused pairing is a
+  `flow_link_rejections` row. One bill per purchase and one purchase per bill (two partial unique
+  indexes). Readers see the old shape through `BILL_LINKS_SQL` / `BILL_LINK_REJECTIONS_SQL`
+  (`flows/flowLinks.ts`), ordered as the old tables were read (by bill). **The one bill-move
+  policy** (`moveBillLink`, used by the card-line re-key mover and the cartola mover alike, and by
+  `mergeFlowInto`): the link and its refusals follow the purchase; a target already linked to
+  another bill **throws** — two bills claiming one payment is a conflict a human resolves, never
+  one dropped silently. The card-line mover used to report that conflict and leave both links
+  where they were; the cartola mover already threw. A refusal the target already carries stays.
+  `mergeFlowInto` now moves the merged flow's own `flow_links` and refusals onto the survivor (by
+  row, so the rowid read order stays): before, a link a mover had put on the cartola row's flow was
+  deleted with it when the adoption folded that flow into the daily row's.

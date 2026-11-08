@@ -38,6 +38,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { db } from "../src/db.js";
+import { billLinkedToKey, billLinkPurchaseKey, deleteBillLinkOfEntry, insertBillLink } from "../src/flows/flowLinks.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { parseChileanNumber } from "../src/chileanNumber.js";
 import { recordBankPosting } from "../src/movementBankPostings.js";
@@ -539,8 +540,6 @@ const tx = db.transaction(() => {
   say(`card payments paired: ${paired.length} (${cardDebits.length} corriente debits + ${paired.length - cardDebits.length} vista)`);
 
   // 6. Real-estate bills onto the mailed payments; the excel-gap rows they replace go.
-  const setLink = db.prepare(`UPDATE real_estate_expense_links SET purchase_key = ?, link_source = 'manual' WHERE expense_entry_id = ?`);
-  const insLink = db.prepare(`INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, ?, 'manual')`);
   const updBill = db.prepare(`UPDATE expense_entries SET amount_clp = ?, spent_on = ?, note = ? WHERE id = ? AND expense_account_id = ?`);
   const insBill = db.prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id) VALUES (?, ?, ?, ?, ?)`);
   const monthEnd = (ym: string) =>
@@ -552,12 +551,14 @@ const tx = db.transaction(() => {
     let entry = b.entry_id;
     if (entry == null) {
       entry = Number(insBill.run(b.paid.amount, monthEnd(b.bill_month), b.kind, note, plan.place_expense_account_id).lastInsertRowid);
-      insLink.run(entry, `checking-mv:${mv}`);
+      insertBillLink(entry, `checking-mv:${mv}`, "manual");
     } else {
       const old = db.prepare(`SELECT category, amount_clp, spent_on FROM expense_entries WHERE id = ?`).get(entry) as { category: string; amount_clp: number; spent_on: string };
       if (old.category !== b.kind) throw new Error(`bill ${entry} is ${old.category}, plan says ${b.kind}`);
       if (updBill.run(b.paid.amount, monthEnd(b.bill_month), note, entry, plan.place_expense_account_id).changes !== 1) throw new Error(`bill ${entry} not on the place`);
-      if (setLink.run(`checking-mv:${mv}`, entry).changes !== 1) throw new Error(`bill ${entry} has no link`);
+      if (billLinkPurchaseKey(entry) == null) throw new Error(`bill ${entry} has no link`);
+      deleteBillLinkOfEntry(entry);
+      insertBillLink(entry, `checking-mv:${mv}`, "manual");
       if (old.amount_clp !== b.paid.amount || old.spent_on !== monthEnd(b.bill_month))
         say(`  bill ${entry} ${b.kind}: ${old.spent_on} ${fmt(old.amount_clp)} → ${monthEnd(b.bill_month)} ${fmt(b.paid.amount)}`);
     }
@@ -565,8 +566,7 @@ const tx = db.transaction(() => {
   const delExcel = db.prepare(`DELETE FROM expense_entries WHERE id = ? AND note LIKE 'synthetic:excel-gap|%' AND expense_account_id IS NULL`);
   let excelGone = 0;
   for (const id of plan.excel_gap_entries_replaced) {
-    const linked = db.prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`).get(`manual:${id}`);
-    if (linked) throw new Error(`excel-gap row ${id} is still a bill's purchase`);
+    if (billLinkedToKey(`manual:${id}`) != null) throw new Error(`excel-gap row ${id} is still a bill's purchase`);
     excelGone += delExcel.run(id).changes;
   }
   if (excelGone !== plan.excel_gap_entries_replaced.length) throw new Error(`deleted ${excelGone} of ${plan.excel_gap_entries_replaced.length} excel-gap rows`);
