@@ -64,6 +64,11 @@ describe("expense line shapes: month and modal sections", () => {
     expect(total.month_modal_sections).toEqual({ split: ["excluded"], total: ["purchases"] });
   });
 
+  it("an annulled plan's total lists under Compras and Excluded in Total", () => {
+    const total = shape({ line_role: "installment_purchase_total", nota_credito_role: "annulled_purchase" });
+    expect(total.month_modal_sections.total).toEqual(["purchases", "excluded"]);
+  });
+
   it("purchases in an excluded category list under Excluded, not Compras", () => {
     expect(shape({ category_slug: "deposits" }).month_modal_sections).toEqual({ split: ["excluded"], total: ["excluded"] });
   });

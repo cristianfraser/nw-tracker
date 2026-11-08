@@ -42,8 +42,10 @@ function monthModalSections(
   const excludedSlug = rules.isCcExpenseTotalsExcludedSlug(line.category_slug);
   if (line.line_role === "installment_cuota") {
     if (!cuotaZero && counts) sections.push("installments");
-  } else if (!excludedSlug && counts) {
-    if (line.line_role === "purchase" || mode === "total") sections.push("purchases");
+  } else if (!excludedSlug) {
+    // A plan's whole price lists under Compras in «Total» whether or not it counts (an annulled
+    // plan is under Excluidos too); a one-shot purchase only when it counts.
+    if (line.line_role === "installment_purchase_total" ? mode === "total" : counts) sections.push("purchases");
   }
   if (isAbonoLine(line, rules)) sections.push("abonos");
   const excludedCuota = line.line_role === "installment_cuota" && (cuotaZero || excludedSlug);
