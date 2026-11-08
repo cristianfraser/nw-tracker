@@ -9,14 +9,16 @@
  * printed, so two renderings of the same statement (a number written «13,77» or «13.77», a
  * re-downloaded PDF under another file name) hash alike. The statement's identity columns (its
  * document name and close: the row the import resolves it to) and the columns the import derives
- * (the line kind, the origin-currency label, the dedupe keys, ids) stay out. A statement whose
- * import skipped a line (a duplicate of a line on file) hashes differently from its stored lines;
- * the import writes the incoming statement's hash, so only the migration's re-derivation can
- * disagree, and such a statement re-imports once.
+ * (the line kind, the origin-currency label, the dedupe keys, ids) stay out, and so do the lines
+ * the import drops as repeats within the statement. A statement whose import skipped a line as a
+ * duplicate of a line on ANOTHER statement hashes differently from its stored lines; the import
+ * writes the incoming statement's hash, so only the migration's re-derivation can disagree, and
+ * such a statement re-imports once.
  */
 import crypto from "node:crypto";
 import { storedCardLineDate, type CardCanonicalLine, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { ccCardGroupOrDefault } from "../ccIssuers.js";
+import { canonicalCcLineDedupeKeys } from "../ccDedupeKey.js";
 
 /** The line's pesos and dollars as the ledger stores them (`amount_clp` 0, `amount_usd` null when absent). */
 export function storedCardLineAmounts(line: Pick<CardCanonicalLine, "currency" | "amount">): {
@@ -82,6 +84,44 @@ export function storedLineColumns(statement: CardCanonicalStatement, line: CardC
   };
 }
 
+/** The line's import dedupe keys (the document's, plus the one-shot key). */
+export function canonicalLineDedupeKeys(cardGroup: string, line: CardCanonicalLine): string[] {
+  return canonicalCcLineDedupeKeys(cardGroup, {
+    installment: line.installment != null,
+    dateIso: line.transaction_date ?? line.posting_date,
+    merchant: line.merchant,
+    amountClp: storedCardLineAmounts(line).amount_clp,
+    documentKey: line.document.dedupe_key,
+  });
+}
+
+/**
+ * The statement's lines less those the import drops as repeats of an earlier line of the same
+ * statement (every one of its dedupe keys already taken: the parser printed the same line twice).
+ * A colliding computed key with a fresh document key is a same-statement twin and stays — the
+ * import suffixes it `#dupN`, and the suffixed key is what later lines collide with.
+ */
+export function statementLinesLessRepeats(statement: CardCanonicalStatement): CardCanonicalLine[] {
+  const cardGroup = ccCardGroupOrDefault(statement.card_group);
+  const seen = new Set<string>();
+  const kept: CardCanonicalLine[] = [];
+  for (const line of statement.lines) {
+    const keys = canonicalLineDedupeKeys(cardGroup, line);
+    if (keys.length > 0 && keys.every((k) => seen.has(k))) continue;
+    for (const k of keys) {
+      let key = k;
+      if (seen.has(key)) {
+        let n = 1;
+        while (seen.has(`${k}#dup${n}`)) n += 1;
+        key = `${k}#dup${n}`;
+      }
+      seen.add(key);
+    }
+    kept.push(line);
+  }
+  return kept;
+}
+
 /** The stored columns the fingerprint hashes, per statement and per line (see the module comment). */
 export type StoredStatementForFingerprint = Omit<ReturnType<typeof storedStatementColumns>, "source_pdf" | "statement_date">;
 export type StoredLineForFingerprint = ReturnType<typeof storedLineColumns>;
@@ -142,10 +182,13 @@ export function storedStatementFingerprint(
   return h.digest("hex").slice(0, 32);
 }
 
-/** A canonical statement's fingerprint: every line it carries, as the import would store it. */
+/**
+ * A canonical statement's fingerprint: its lines as the import would store them, less the repeats
+ * it drops ({@link statementLinesLessRepeats}).
+ */
 export function cardStatementFingerprint(statement: CardCanonicalStatement): string {
   return storedStatementFingerprint(
     storedStatementColumns(statement),
-    statement.lines.map((line) => storedLineColumns(statement, line))
+    statementLinesLessRepeats(statement).map((line) => storedLineColumns(statement, line))
   );
 }

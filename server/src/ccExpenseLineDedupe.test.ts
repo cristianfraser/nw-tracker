@@ -1,10 +1,6 @@
+import { canonicalCcLineDedupeKeys } from "./ccDedupeKey.js";
 import { describe, expect, it } from "vitest";
-import {
-  canonicalCcLineDedupeKeys,
-  dedupeFlowCcExpenseLines,
-  flowCcExpenseLineFingerprint,
-  purchaseExpenseLinesMatchForDisplayDedupe,
-} from "./ccExpenseLineDedupe.js";
+import { dedupeFlowCcExpenseLines, flowCcExpenseLineFingerprint, purchaseExpenseLinesMatchForDisplayDedupe } from "./ccExpenseLineDedupe.js";
 import type { CcExpenseLineForDedupe } from "./ccExpenseLineDedupe.js";
 
 type DedupeLine = CcExpenseLineForDedupe & { line_role?: string };

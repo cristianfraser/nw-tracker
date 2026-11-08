@@ -8,13 +8,9 @@ import {
   restoreLineCategories,
   snapshotLineCategories,
 } from "./flows/cardLineAdoption.js";
-import {
-  canonicalCcLineDedupeKeys,
-  ccLineDedupeKeyExistsOnAccount,
-  patchCcLineOriginCardOnDedupeHit,
-} from "./ccExpenseLineDedupe.js";
+import { ccLineDedupeKeyExistsOnAccount, patchCcLineOriginCardOnDedupeHit } from "./ccExpenseLineDedupe.js";
 import { ccLineOriginCurrency } from "./ccOriginCurrency.js";
-import { cardStatementFingerprint, storedCardLineAmounts, storedLineColumns, storedStatementColumns } from "./cards/statementStorage.js";
+import { canonicalLineDedupeKeys, cardStatementFingerprint, storedLineColumns, storedStatementColumns } from "./cards/statementStorage.js";
 import {
   cardStatementKey,
   parseDdMmYyToIso,
@@ -82,17 +78,6 @@ export function ccImportFlowItemFromLine(line: CardCanonicalLine, statementLabel
 export function ccStatementLabel(statementDate: string, currency: string): string {
   const iso = parseDdMmYyToIso(statementDate) ?? statementDate;
   return `${iso} · ${currency.toUpperCase()}`;
-}
-
-/** The line's import dedupe keys (the document's, plus the one-shot key). */
-export function canonicalLineDedupeKeys(cardGroup: string, line: CardCanonicalLine): string[] {
-  return canonicalCcLineDedupeKeys(cardGroup, {
-    installment: line.installment != null,
-    dateIso: line.transaction_date ?? line.posting_date,
-    merchant: line.merchant,
-    amountClp: storedCardLineAmounts(line).amount_clp,
-    documentKey: line.document.dedupe_key,
-  });
 }
 
 export type CcStatementsMergeResult = {

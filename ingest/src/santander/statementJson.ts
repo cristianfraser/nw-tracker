@@ -447,6 +447,7 @@ export function statementGroupPayload(group: SantanderStatementGroup): CardState
       lines: s.lines,
     }));
   return cardStatementKind.payload.parse({
+    format: "issuer_statement",
     account: { issuer: "santander", number: group.account },
     statement_number: group.extracto,
     close: national.header.close,

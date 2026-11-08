@@ -1,6 +1,5 @@
 import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { db } from "./db.js";
-import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
 
 export type CcExpenseLineForDedupe = {
   account_id: number;
@@ -193,30 +192,6 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
   }
 
   return [...best.values(), ...purchaseBest];
-}
-
-/** What a line's import dedupe keys are made of (a canonical line, or a stored line read back). */
-export type CcLineDedupeKeyInput = {
-  installment: boolean;
-  /** The line's day (transaction, else posting), ISO. */
-  dateIso: string | null;
-  merchant: string;
-  /** The line's pesos (0 for a dollar line). */
-  amountClp: number;
-  /** The document's own dedupe key, when it carries one. */
-  documentKey: string | null;
-};
-
-/** Canonical dedupe keys for import: the document's key, plus the one-shot key (ISO purchase date). */
-export function canonicalCcLineDedupeKeys(cardGroup: string, line: CcLineDedupeKeyInput): string[] {
-  const keys = new Set<string>();
-  const fromDocument = String(line.documentKey ?? "").trim();
-  if (fromDocument) keys.add(fromDocument);
-  if (line.installment) return [...keys];
-  if (!Number.isFinite(line.amountClp) || line.amountClp <= 0) return [...keys];
-  if (!line.dateIso) return [...keys];
-  keys.add(ccOneShotDedupeKey(cardGroup, line.merchant, Math.trunc(line.amountClp), line.dateIso));
-  return [...keys];
 }
 
 export type CcLineDedupeScanOpts = {

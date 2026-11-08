@@ -1,3 +1,4 @@
+import { runCardStatementFingerprint292 } from "./cardStatementFingerprint292.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -308,6 +309,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "289_flow_categories.sql": runFlowCategories289,
   "290_flow_retirement.sql": runFlowRetirement290,
   "291_movement_evidence_kind.sql": runMovementEvidenceKind291,
+  "292_cc_statement_canonical_fingerprint.sql": runCardStatementFingerprint292,
 };
 
 /**
