@@ -14,6 +14,8 @@
  * closest to the bank date win first.
  */
 import { deleteMovements } from "./movementWrites.js";
+import { adoptMovementFlow } from "./flows/flowIdentity.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { priorChileBusinessDayYmd } from "./marketHolidays.js";
@@ -154,7 +156,8 @@ export function bankDateMatchesTransferDate(bankDate: string, transferDate: stri
  * posting on that account (`movement_bank_postings`). Inserting the transfer would double-count the checking
  * account, so when a transfer touching a cartola checking account is created we remove the already
  * imported bank row it supersedes — leaving the single transfer as the one representation (symmetric
- * with the import-time skip). Matching is signed amount + the same business-day window, one-to-one.
+ * with the import-time skip); the transfer adopts the row's flow first. Matching is signed amount +
+ * the same business-day window, one-to-one.
  */
 export function supersedeImportedCheckingRowsForTransfer(
   transferMovementId: number,
@@ -188,6 +191,9 @@ export function supersedeImportedCheckingRowsForTransfer(
       .all(endpoint, Math.round(signed), occurredOn, occurredOn) as ImportedCheckingRow[];
     const match = candidates.find((r) => bankDateMatchesTransferDate(r.occurred_on, occurredOn));
     if (!match) continue;
+    // Adoption (F9 step 4): the transfer is the money the bank row listed, so it takes over the
+    // row's flow and whatever the user hung off it (a category, a refund mark, a note).
+    adoptMovementFlow(match.id, transferMovementId, checkingMovementPurchaseKey(transferMovementId), dbHandle);
     deleteMovements([match.id], dbHandle);
     removed_ids.push(match.id);
     // The deleted row was the bank's listing: its date is the transfer's posting day here.

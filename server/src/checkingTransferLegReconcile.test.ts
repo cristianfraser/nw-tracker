@@ -150,10 +150,18 @@ describe("reverse dedup: transfer created after the bank row was imported", () =
         .run(checkingId, "import:cartola-partial|2026-07-06|6000000|TRASPASO").lastInsertRowid
     );
 
+    // Something the user hung off the bank row (a refund mark) must survive the row.
+    const bankFlow = (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(bankId) as { flow_id: number }).flow_id;
+    db.prepare(`INSERT INTO flow_refunds (flow_id, category_id) SELECT ?, id FROM cc_expense_categories ORDER BY id LIMIT 1`).run(bankFlow);
+
     // User records the transfer effective Friday (brokerage → checking, 6M).
     const transferId = insertTransfer(6_000_000, "2026-07-03");
     const res = supersedeImportedCheckingRowsForTransfer(transferId, brokerageId, checkingId, 6_000_000, "2026-07-03");
     expect(res.removed_ids).toContain(bankId);
+    // Adoption: the transfer took over the bank row's flow, and the mark with it.
+    expect((db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(transferId) as { flow_id: number }).flow_id).toBe(bankFlow);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM flow_refunds WHERE flow_id = ?`).get(bankFlow)).toEqual({ n: 1 });
+    db.prepare(`DELETE FROM flow_refunds WHERE flow_id = ?`).run(bankFlow);
     expect(db.prepare(`SELECT 1 AS o FROM movements WHERE id = ?`).get(bankId)).toBeUndefined();
     // The deleted bank row's date stays as the transfer's posting day on checking.
     expect(bankPostedOn(transferId, checkingId)).toBe("2026-07-06");
