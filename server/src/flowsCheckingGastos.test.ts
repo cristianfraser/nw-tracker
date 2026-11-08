@@ -39,10 +39,7 @@ import {
   isCheckingOwnTraspasoOutflow,
 } from "./checkingDescriptionPredicates.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
-import {
-  isAutoDepositMatchedPurchaseNote,
-  parseAutoDepositMatchNote,
-} from "./ccExpenseDepositMatchNotes.js";
+import { isAutoDepositMatchedPurchaseNote } from "./ccExpenseDepositMatchNotes.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -1034,9 +1031,7 @@ describe("flowsCheckingGastos", () => {
     if (drafts.length === 0) return;
     const sample = drafts[0]!;
     expect(isAutoDepositMatchedPurchaseNote(sample.auto_deposit_match_note ?? "")).toBe(true);
-    expect(parseAutoDepositMatchNote(sample.auto_deposit_match_note ?? "").length).toBeGreaterThan(
-      0
-    );
+    expect(sample.deposit_match?.length ?? 0).toBeGreaterThan(0);
     const enriched = enrichFlowLinesWithPurchaseNotes([sample]);
     expect(isAutoDepositMatchedPurchaseNote(enriched[0]!.purchase_notes)).toBe(true);
   });

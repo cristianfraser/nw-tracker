@@ -21,6 +21,7 @@ import {
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
 import {
+  depositMatchSegments,
   formatAutoDepositMatchNote,
   type DepositMatchAllocation,
 } from "./ccExpenseDepositMatchNotes.js";
@@ -1356,15 +1357,14 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
       );
       categoryUnique = true;
     }
-    let autoDepositMatchNote: string | undefined;
+    let depositMatch: ReturnType<typeof depositMatchSegments> = [];
     if (isAutoExcludedMatch) {
       const allocations =
         opts.autoMatchedDeposits ??
         (matchedDeposit != null
           ? [{ deposit: matchedDeposit, amount_clp: amountClp }]
           : []);
-      const note = formatAutoDepositMatchNote(allocations);
-      if (note) autoDepositMatchNote = note;
+      depositMatch = depositMatchSegments(allocations);
     }
     lines.push({
       source: "checking",
@@ -1393,7 +1393,9 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
       ...(opts.purchasePortion === "deposit"
         ? { checking_purchase_portion: "deposit" as const }
         : {}),
-      ...(autoDepositMatchNote ? { auto_deposit_match_note: autoDepositMatchNote } : {}),
+      ...(depositMatch.length > 0
+        ? { deposit_match: depositMatch, auto_deposit_match_note: formatAutoDepositMatchNote(depositMatch) }
+        : {}),
     });
   };
 

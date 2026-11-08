@@ -13,20 +13,33 @@ export type DepositMatchAllocation = {
   amount_clp: number;
 };
 
-export function formatAutoDepositMatchNote(
-  matches: readonly DepositMatchAllocation[]
-): string {
-  const segments: string[] = [];
+/** The matcher's result as data: one segment per deposit that took pesos of the outflow. */
+export function depositMatchSegments(matches: readonly DepositMatchAllocation[]): ParsedDepositMatchSegment[] {
+  const out: ParsedDepositMatchSegment[] = [];
   for (const m of matches) {
     const amt = Math.round(m.amount_clp);
     if (amt <= 0) continue;
-    const mov = m.deposit.movement_id != null ? `|mov:${m.deposit.movement_id}` : "";
-    segments.push(
-      `acct:${m.deposit.account_id}|date:${m.deposit.occurred_on}|amt:${amt}${mov}`
-    );
+    out.push({
+      account_id: m.deposit.account_id,
+      occurred_on: m.deposit.occurred_on,
+      amount_clp: amt,
+      movement_id: m.deposit.movement_id,
+    });
   }
+  return out;
+}
+
+/**
+ * The matcher's result worded for the line's note, which the Expenses page still shows (and the
+ * client still reads to list deposit-matched lines). Nothing on the server parses it back: links
+ * read `deposit_match`.
+ */
+export function formatAutoDepositMatchNote(segments: readonly ParsedDepositMatchSegment[]): string {
   if (segments.length === 0) return "";
-  return `${AUTO_DEPOSIT_MATCH_NOTE_PREFIX}|${segments.join("|")}`;
+  const parts = segments.map(
+    (s) => `acct:${s.account_id}|date:${s.occurred_on}|amt:${s.amount_clp}${s.movement_id != null ? `|mov:${s.movement_id}` : ""}`
+  );
+  return `${AUTO_DEPOSIT_MATCH_NOTE_PREFIX}|${parts.join("|")}`;
 }
 
 export function isAutoDepositMatchedPurchaseNote(note: string): boolean {
@@ -40,24 +53,6 @@ export type ParsedDepositMatchSegment = {
   /** Present when the matcher named the deposit's movement row (notes written before carry none). */
   movement_id: number | null;
 };
-
-export function parseAutoDepositMatchNote(note: string): ParsedDepositMatchSegment[] {
-  const text = String(note ?? "").trim();
-  if (!text.startsWith(AUTO_DEPOSIT_MATCH_NOTE_PREFIX)) return [];
-  const body = text.slice(AUTO_DEPOSIT_MATCH_NOTE_PREFIX.length);
-  const segments: ParsedDepositMatchSegment[] = [];
-  const re = /acct:(\d+)\|date:(\d{4}-\d{2}-\d{2})\|amt:(\d+)(?:\|mov:(\d+))?/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) != null) {
-    segments.push({
-      account_id: Number(m[1]),
-      occurred_on: m[2]!,
-      amount_clp: Number(m[3]),
-      movement_id: m[4] != null ? Number(m[4]) : null,
-    });
-  }
-  return segments;
-}
 
 /** Replace stale auto line; preserve user suffix after blank line. */
 export function mergeAutoDepositMatchNote(
@@ -76,7 +71,8 @@ export function mergeAutoDepositMatchNote(
   return `${auto}\n\n${existing}`;
 }
 
-function extractUserNoteSuffix(note: string): string {
+/** A stored note without the matcher's line (what the user wrote after it). */
+export function extractUserNoteSuffix(note: string): string {
   const lines = note.split("\n");
   const first = lines[0]?.trim() ?? "";
   if (!isAutoDepositMatchedPurchaseNote(first)) return note.trim();

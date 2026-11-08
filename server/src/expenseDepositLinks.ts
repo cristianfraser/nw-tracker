@@ -3,7 +3,6 @@ import { lenderMerchantPatterns } from "./accountRoles.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import {
-  parseAutoDepositMatchNote,
   type ParsedDepositMatchSegment,
 } from "./ccExpenseDepositMatchNotes.js";
 import {
@@ -79,6 +78,7 @@ export type GastosLineForExpenseDepositLink = Pick<
   | "merchant"
   | "purchase_on"
   | "occurred_on"
+  | "deposit_match"
 >;
 
 export function carryingClpForExpenseDepositLink(link: {
@@ -526,12 +526,12 @@ export function tryAutoLinkExpenseDepositLine(line: {
   purchase_key: string;
   category_slug: string;
   amount_clp: number;
-  purchase_notes: string;
+  deposit_match?: readonly ParsedDepositMatchSegment[];
 }): ExpenseDepositLinkRow[] {
   if (line.category_slug !== DEPOSITS_CC_EXPENSE_SLUG) return [];
   if (line.amount_clp <= 0) return [];
 
-  const segments = parseAutoDepositMatchNote(line.purchase_notes);
+  const segments = line.deposit_match ?? [];
   if (segments.length === 0) return [];
 
   const paymentClp = Math.round(line.amount_clp);
@@ -644,9 +644,9 @@ function lineIsManualDepositAssertion(line: GastosLineForExpenseDepositLink): bo
   // (syncCheckingGapDepositMirrorLinks). Asserting it again linked the deposit twice, and because
   // mirror ids are rebuilt on every sync the second link pointed at a mirror id that no longer existed.
   if (expenseKeyKind(line.purchase_key) === "gap_mirror") return false;
-  // Auto-matched lines carry an `auto:deposit-match|…` note and are handled by
-  // tryAutoLinkExpenseDepositLine — only note-less (user-asserted) lines take this pass.
-  return parseAutoDepositMatchNote(line.purchase_notes).length === 0;
+  // Auto-matched lines carry the matcher's `deposit_match` and are handled by
+  // tryAutoLinkExpenseDepositLine — only unmatched (user-asserted) lines take this pass.
+  return (line.deposit_match?.length ?? 0) === 0;
 }
 
 /** Positive movement rows on `accountId`/`occurredOn` whose rounded amount matches `amountClp`. */

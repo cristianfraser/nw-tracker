@@ -1,6 +1,5 @@
 import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
-import { isAutoDepositMatchedPurchaseNote } from "../../ccExpenseDepositMatchNotes";
 import { useTranslation } from "../../i18n";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Button } from "@crfrsr/ui";
@@ -17,7 +16,7 @@ import {
 const DEPOSIT_MATCHED_PAGE_SIZE = 10;
 
 function isDepositLinkedExpenseLine(line: FlowCcExpenseLineRow): boolean {
-  return isAutoDepositMatchedPurchaseNote(line.purchase_notes) || (line.expense_deposit_links?.length ?? 0) > 0;
+  return (line.deposit_match?.length ?? 0) > 0 || (line.expense_deposit_links?.length ?? 0) > 0;
 }
 
 export function CreditCardDepositMatchedExpensesTable({

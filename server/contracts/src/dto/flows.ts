@@ -309,6 +309,15 @@ export interface ExpenseLinkLabel {
   inline: boolean;
 }
 
+/** One deposit the gastos matcher paired a checking outflow with, and the pesos it took. */
+export interface DepositMatchSegmentDto {
+  account_id: number;
+  occurred_on: string;
+  amount_clp: number;
+  /** The deposit's movement row when it is one (twin deposits share account, day and pesos). */
+  movement_id: number | null;
+}
+
 export interface FlowCcExpenseLineRow {
   source: FlowCcExpenseLineSource;
   statement_line_id: number;
@@ -376,6 +385,11 @@ export interface FlowCcExpenseLineRow {
   primary_card_last4?: string | null;
   /** Linked net-worth deposits (investment capital + mortgage amortization splits). */
   expense_deposit_links?: ExpenseDepositLinkDto[];
+  /**
+   * The deposits the gastos matcher paired this checking outflow with (server
+   * `flowsCheckingGastos.ts`): what the auto deposit links are built from. Absent when unmatched.
+   */
+  deposit_match?: DepositMatchSegmentDto[];
   /**
    * The card feed typed this one-shot line as a purchase in cuotas whose count is not known yet —
    * the card page offers «¿cuántas cuotas?» on it (server `flowsExpenses.ts`).

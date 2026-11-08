@@ -7,7 +7,6 @@ import {
   splitCheckingWithdrawalAgainstDeposits,
 } from "./flowsCheckingGastos.js";
 import { loadDepositMatchCandidates, type DepositMatchCandidate } from "./checkingCartolaLoaders.js";
-import { parseAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import { syncCuentaAhorroDepositSplitMirrors, upsertCuentaAhorroDepositSplit } from "./cuentaAhorroDepositSplits.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsExpenses.js";
@@ -162,7 +161,7 @@ describe("a deposit is claimed once across the checking accounts", () => {
       .filter(
         (l) =>
           debits.includes(l.statement_line_id) &&
-          parseAutoDepositMatchNote(l.auto_deposit_match_note ?? "").some((seg) => seg.account_id === ahorroId)
+          (l.deposit_match ?? []).some((seg) => seg.account_id === ahorroId)
       )
       .map((l) => l.statement_line_id);
   }
@@ -231,7 +230,7 @@ describe("twin deposits are two claims", () => {
     const out = new Map<number, number[]>();
     for (const line of loadFinalizedCheckingGastosLinesReadOnly()) {
       if (!debits.includes(line.statement_line_id)) continue;
-      const ids = parseAutoDepositMatchNote(line.purchase_notes)
+      const ids = (line.deposit_match ?? [])
         .filter((seg) => seg.account_id === ahorroId)
         .map((seg) => seg.movement_id)
         .filter((id): id is number => id != null);
