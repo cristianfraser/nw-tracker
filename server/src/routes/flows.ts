@@ -1,5 +1,7 @@
 /** Flows: deposits, income, work earnings, expenses (manual, CC, real estate). Split verbatim from index.ts; paths unchanged. */
 import express from "express";
+import { writeHandler } from "../inputError.js";
+import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "../expenseLinkSync.js";
 import { buildPayrollBreakdown } from "../payrollBreakdown.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
@@ -73,6 +75,18 @@ import {
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
 
+/**
+ * A write that can move an expense deposit link (an income mark, a refund, pieces, a manual
+ * expense): the links re-sync once it is done — reading the lines never does.
+ */
+const linkSyncingWrite = (fn: (req: express.Request, res: express.Response) => void): express.RequestHandler =>
+  writeHandler((req, res) =>
+    withExpenseLinkSyncDeferred(() => {
+      fn(req, res);
+      requestExpenseLinkSync();
+    })
+  );
+
 export function registerFlowsRoutes(app: express.Express): void {
 app.get("/api/flows/deposits", (_req, res) => {
   res.json(
@@ -142,7 +156,7 @@ app.get("/api/income", (req, res) => {
   });
 });
 
-app.patch("/api/work-earnings/:id", (req, res) => {
+app.patch("/api/work-earnings/:id", writeHandler((req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid id" });
@@ -171,18 +185,14 @@ app.patch("/api/work-earnings/:id", (req, res) => {
       return;
     }
   }
-  try {
-    const row = updatePayrollWorkEarning(id, {
-      earning_type: body.earning_type,
-      movement_id: body.movement_id,
-    });
-    res.json(row);
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+  const row = updatePayrollWorkEarning(id, {
+    earning_type: body.earning_type,
+    movement_id: body.movement_id,
+  });
+  res.json(row);
+}));
 
-app.patch("/api/income/movements/:movement_id", (req, res) => {
+app.patch("/api/income/movements/:movement_id", linkSyncingWrite((req, res) => {
   const movementId = Number(req.params.movement_id);
   if (!Number.isFinite(movementId) || movementId <= 0) {
     res.status(400).json({ error: "invalid movement_id" });
@@ -209,67 +219,59 @@ app.patch("/api/income/movements/:movement_id", (req, res) => {
     res.status(400).json({ error: "income_kind, excluded, force_include, or note required" });
     return;
   }
-  try {
-    if (body.excluded === false) {
-      restoreCheckingIncomeMovement(movementId);
-      res.json({
-        movement_id: movementId,
-        excluded: false,
-        force_include: false,
-        income_kind: null,
-        note: null,
-      });
-      return;
-    }
-    if (body.force_include === false) {
-      clearCheckingIncomeForceInclude(movementId);
-      res.json({
-        movement_id: movementId,
-        excluded: false,
-        force_include: false,
-        income_kind: null,
-        note: null,
-      });
-      return;
-    }
-    const row = upsertCheckingIncomeMovementOverride(movementId, {
-      income_kind: body.income_kind,
-      excluded: body.excluded,
-      force_include: body.force_include,
-      note: body.note,
-    });
+  if (body.excluded === false) {
+    restoreCheckingIncomeMovement(movementId);
     res.json({
-      movement_id: row.movement_id,
-      excluded: row.is_excluded === 1,
-      force_include: row.force_include === 1,
-      income_kind: row.income_kind,
-      note: row.note,
+      movement_id: movementId,
+      excluded: false,
+      force_include: false,
+      income_kind: null,
+      note: null,
     });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    return;
   }
-});
+  if (body.force_include === false) {
+    clearCheckingIncomeForceInclude(movementId);
+    res.json({
+      movement_id: movementId,
+      excluded: false,
+      force_include: false,
+      income_kind: null,
+      note: null,
+    });
+    return;
+  }
+  const row = upsertCheckingIncomeMovementOverride(movementId, {
+    income_kind: body.income_kind,
+    excluded: body.excluded,
+    force_include: body.force_include,
+    note: body.note,
+  });
+  res.json({
+    movement_id: row.movement_id,
+    excluded: row.is_excluded === 1,
+    force_include: row.force_include === 1,
+    income_kind: row.income_kind,
+    note: row.note,
+  });
+}));
 
-app.post("/api/income/movements/:movement_id/force-include", (req, res) => {
+app.post("/api/income/movements/:movement_id/force-include", linkSyncingWrite((req, res) => {
   const movementId = Number(req.params.movement_id);
   if (!Number.isFinite(movementId) || movementId <= 0) {
     res.status(400).json({ error: "invalid movement_id" });
     return;
   }
-  try {
-    const row = upsertCheckingIncomeMovementOverride(movementId, { force_include: true });
-    res.json({
-      ok: true,
-      movement_id: row.movement_id,
-      force_include: true,
-    });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+  const row = upsertCheckingIncomeMovementOverride(movementId, { force_include: true });
+  res.json({
+    ok: true,
+    movement_id: row.movement_id,
+    force_include: true,
+  });
+}));
 
 /** Marks a checking credit as a refund of spending (out of income, a negative gastos line). */
-app.post("/api/income/movements/:movement_id/refund", (req, res) => {
+app.post("/api/income/movements/:movement_id/refund", linkSyncingWrite((req, res) => {
   const movementId = Number(req.params.movement_id);
   if (!Number.isFinite(movementId) || movementId <= 0) {
     res.status(400).json({ error: "invalid movement_id" });
@@ -283,9 +285,9 @@ app.post("/api/income/movements/:movement_id/refund", (req, res) => {
     const err = e as Error & { status?: number };
     res.status(err.status ?? 400).json({ error: err.message });
   }
-});
+}));
 
-app.delete("/api/income/movements/:movement_id/refund", (req, res) => {
+app.delete("/api/income/movements/:movement_id/refund", linkSyncingWrite((req, res) => {
   const movementId = Number(req.params.movement_id);
   if (!Number.isFinite(movementId) || movementId <= 0) {
     res.status(400).json({ error: "invalid movement_id" });
@@ -293,21 +295,17 @@ app.delete("/api/income/movements/:movement_id/refund", (req, res) => {
   }
   unmarkCheckingExpenseRefund(movementId);
   res.json({ ok: true, movement_id: movementId });
-});
+}));
 
-app.post("/api/income/movements/:movement_id/restore", (req, res) => {
+app.post("/api/income/movements/:movement_id/restore", linkSyncingWrite((req, res) => {
   const movementId = Number(req.params.movement_id);
   if (!Number.isFinite(movementId) || movementId <= 0) {
     res.status(400).json({ error: "invalid movement_id" });
     return;
   }
-  try {
-    restoreCheckingIncomeMovement(movementId);
-    res.json({ ok: true, movement_id: movementId });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+  restoreCheckingIncomeMovement(movementId);
+  res.json({ ok: true, movement_id: movementId });
+}));
 
 app.get("/api/expenses", (_req, res) => {
   const rows = db
@@ -352,56 +350,36 @@ function piecesLineRef(source: unknown, lineId: unknown): { source: ExpenseLineP
 }
 
 app.get("/api/flows/expenses/line-pieces", (req, res) => {
-  try {
-    const ref = piecesLineRef(req.query.source, req.query.line_id);
-    res.json(getExpenseLinePieces(ref.source, ref.lineId));
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
+  const ref = piecesLineRef(req.query.source, req.query.line_id);
+  res.json(getExpenseLinePieces(ref.source, ref.lineId));
 });
 
-app.put("/api/flows/expenses/line-pieces", (req, res) => {
+app.put("/api/flows/expenses/line-pieces", linkSyncingWrite((req, res) => {
   const body = req.body as { source?: string; line_id?: number; pieces?: ExpenseLinePieceInput[] };
-  try {
-    const ref = piecesLineRef(body.source, body.line_id);
-    if (!Array.isArray(body.pieces)) throw new Error("pieces must be an array");
-    res.json(replaceExpenseLinePieces(ref.source, ref.lineId, body.pieces));
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+  const ref = piecesLineRef(body.source, body.line_id);
+  if (!Array.isArray(body.pieces)) throw new Error("pieces must be an array");
+  res.json(replaceExpenseLinePieces(ref.source, ref.lineId, body.pieces));
+}));
 
-app.post("/api/flows/expenses/manual", (req, res) => {
-  try {
-    res.status(201).json(createManualExpense(req.body as ManualExpenseInput));
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+app.post("/api/flows/expenses/manual", linkSyncingWrite((req, res) => {
+  res.status(201).json(createManualExpense(req.body as ManualExpenseInput));
+}));
 
-app.patch("/api/flows/expenses/manual/:id", (req, res) => {
-  try {
-    updateManualExpense(Number(req.params.id), req.body as ManualExpenseInput);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+app.patch("/api/flows/expenses/manual/:id", linkSyncingWrite((req, res) => {
+  updateManualExpense(Number(req.params.id), req.body as ManualExpenseInput);
+  res.json({ ok: true });
+}));
 
-app.delete("/api/flows/expenses/manual/:id", (req, res) => {
-  try {
-    deleteManualExpense(Number(req.params.id));
-    res.status(204).send();
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+app.delete("/api/flows/expenses/manual/:id", linkSyncingWrite((req, res) => {
+  deleteManualExpense(Number(req.params.id));
+  res.status(204).send();
+}));
 
 app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {
   res.json({ links: listCcFacturadoFinancingLinks() });
 });
 
-app.post("/api/flows/expenses/credit-card/financing-links", (req, res) => {
+app.post("/api/flows/expenses/credit-card/financing-links", writeHandler((req, res) => {
   const body = req.body as {
     financed_account_id?: number;
     financed_billing_month?: string;
@@ -416,19 +394,15 @@ app.post("/api/flows/expenses/credit-card/financing-links", (req, res) => {
     res.status(400).json({ error: "financed_account_id and financed_billing_month required" });
     return;
   }
-  try {
-    const link = upsertCcFacturadoFinancingLink({
-      financedAccountId,
-      financedBillingMonth,
-      financing,
-    });
-    res.json({ ok: true, id: link.id });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "link failed" });
-  }
-});
+  const link = upsertCcFacturadoFinancingLink({
+    financedAccountId,
+    financedBillingMonth,
+    financing,
+  });
+  res.json({ ok: true, id: link.id });
+}));
 
-app.delete("/api/flows/expenses/credit-card/financing-links/:id", (req, res) => {
+app.delete("/api/flows/expenses/credit-card/financing-links/:id", writeHandler((req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid link id" });
@@ -436,7 +410,7 @@ app.delete("/api/flows/expenses/credit-card/financing-links/:id", (req, res) => 
   }
   deleteCcFacturadoFinancingLink(id);
   res.status(204).send();
-});
+}));
 
 app.get("/api/flows/expenses/real-estate", (_req, res) => {
   res.json(buildRealEstateExpensesPayload());
@@ -451,7 +425,7 @@ app.get("/api/flows/expenses/real-estate/candidates", (req, res) => {
   res.json({ candidates: listRealEstateLinkCandidates(expenseEntryId) });
 });
 
-app.put("/api/flows/expenses/real-estate/links", (req, res) => {
+app.put("/api/flows/expenses/real-estate/links", writeHandler((req, res) => {
   const body = req.body as { expense_entry_id?: number; purchase_key?: string };
   const expenseEntryId = Number(body.expense_entry_id);
   const purchaseKey = String(body.purchase_key ?? "").trim();
@@ -459,29 +433,19 @@ app.put("/api/flows/expenses/real-estate/links", (req, res) => {
     res.status(400).json({ error: "expense_entry_id and purchase_key required" });
     return;
   }
-  try {
-    const link = manualLinkRealEstateExpense(expenseEntryId, purchaseKey);
-    res.json(link);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "link failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  const link = manualLinkRealEstateExpense(expenseEntryId, purchaseKey);
+  res.json(link);
+}));
 
-app.delete("/api/flows/expenses/real-estate/links/:expenseEntryId", (req, res) => {
+app.delete("/api/flows/expenses/real-estate/links/:expenseEntryId", writeHandler((req, res) => {
   const expenseEntryId = Number(req.params.expenseEntryId);
   if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
-  try {
-    unmatchRealEstateExpense(expenseEntryId);
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "unmatch failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  unmatchRealEstateExpense(expenseEntryId);
+  res.status(204).send();
+}));
 
 app.get("/api/flows/expenses/real-estate/unlinked-purchases", (req, res) => {
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
@@ -497,7 +461,7 @@ app.get("/api/flows/expenses/real-estate/unlinked-purchases", (req, res) => {
   });
 });
 
-app.post("/api/flows/expenses/real-estate/places", (req, res) => {
+app.post("/api/flows/expenses/real-estate/places", writeHandler((req, res) => {
   const body = req.body as {
     slug?: string;
     label?: string;
@@ -505,20 +469,15 @@ app.post("/api/flows/expenses/real-estate/places", (req, res) => {
     active_to?: string | null;
     property_account_id?: number | null;
   };
-  try {
-    const place = createRealEstatePlace({
-      slug: String(body.slug ?? ""),
-      label: String(body.label ?? ""),
-      activeFrom: body.active_from ?? null,
-      activeTo: body.active_to ?? null,
-      propertyAccountId: body.property_account_id ?? null,
-    });
-    res.status(201).json(place);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "create place failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  const place = createRealEstatePlace({
+    slug: String(body.slug ?? ""),
+    label: String(body.label ?? ""),
+    activeFrom: body.active_from ?? null,
+    activeTo: body.active_to ?? null,
+    propertyAccountId: body.property_account_id ?? null,
+  });
+  res.status(201).json(place);
+}));
 
 /** Net-worth property masters (candidates for a place's property_account_id link). */
 app.get("/api/flows/expenses/real-estate/property-accounts", (_req, res) => {
@@ -534,7 +493,7 @@ app.get("/api/flows/expenses/real-estate/property-accounts", (_req, res) => {
   res.json({ accounts: rows });
 });
 
-app.post("/api/flows/expenses/real-estate/assign", (req, res) => {
+app.post("/api/flows/expenses/real-estate/assign", writeHandler((req, res) => {
   const body = req.body as {
     purchase_key?: string;
     account_slug?: string;
@@ -550,23 +509,18 @@ app.post("/api/flows/expenses/real-estate/assign", (req, res) => {
     res.status(400).json({ error: "purchase_key, account_slug and kind required" });
     return;
   }
-  try {
-    const result = assignPurchaseToRealEstateExpense({
-      purchaseKey,
-      accountSlug,
-      kind,
-      billMonth: typeof body.bill_month === "string" ? body.bill_month : undefined,
-      kwh: body.kwh ?? null,
-      m3: body.m3 ?? null,
-    });
-    res.status(201).json(result);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "assign failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  const result = assignPurchaseToRealEstateExpense({
+    purchaseKey,
+    accountSlug,
+    kind,
+    billMonth: typeof body.bill_month === "string" ? body.bill_month : undefined,
+    kwh: body.kwh ?? null,
+    m3: body.m3 ?? null,
+  });
+  res.status(201).json(result);
+}));
 
-app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/bill-month", (req, res) => {
+app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/bill-month", writeHandler((req, res) => {
   const expenseEntryId = Number(req.params.expenseEntryId);
   if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
     res.status(400).json({ error: "invalid expense entry id" });
@@ -577,65 +531,45 @@ app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/bill-month", 
     res.status(400).json({ error: "bill_month must be YYYY-MM" });
     return;
   }
-  try {
-    updateRealEstateExpenseBillMonth(expenseEntryId, billMonth);
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "update failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  updateRealEstateExpenseBillMonth(expenseEntryId, billMonth);
+  res.status(204).send();
+}));
 
-app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/months-covered", (req, res) => {
+app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/months-covered", writeHandler((req, res) => {
   const expenseEntryId = Number(req.params.expenseEntryId);
   if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
-  try {
-    updateRealEstateExpenseMonthsCovered(expenseEntryId, Number((req.body as { months_covered?: number }).months_covered));
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "update failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  updateRealEstateExpenseMonthsCovered(expenseEntryId, Number((req.body as { months_covered?: number }).months_covered));
+  res.status(204).send();
+}));
 
-app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/consumption", (req, res) => {
+app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/consumption", writeHandler((req, res) => {
   const expenseEntryId = Number(req.params.expenseEntryId);
   if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
   const body = req.body as { kwh?: number | null; m3?: number | null };
-  try {
-    updateRealEstateExpenseConsumption(expenseEntryId, {
-      kwh: body.kwh ?? null,
-      m3: body.m3 ?? null,
-    });
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "update failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  updateRealEstateExpenseConsumption(expenseEntryId, {
+    kwh: body.kwh ?? null,
+    m3: body.m3 ?? null,
+  });
+  res.status(204).send();
+}));
 
-app.delete("/api/flows/expenses/real-estate/entries/:expenseEntryId", (req, res) => {
+app.delete("/api/flows/expenses/real-estate/entries/:expenseEntryId", writeHandler((req, res) => {
   const expenseEntryId = Number(req.params.expenseEntryId);
   if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
-  try {
-    deleteRealEstateExpenseEntry(expenseEntryId);
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "delete failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  deleteRealEstateExpenseEntry(expenseEntryId);
+  res.status(204).send();
+}));
 
-app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
+app.patch("/api/flows/expenses/credit-card/purchase-notes", writeHandler((req, res) => {
   const body = req.body as {
     account_id?: number;
     purchase_key?: string;
@@ -656,25 +590,15 @@ app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
     res.status(400).json({ error: "purchase_key or statement_line_id required" });
     return;
   }
-  try {
-    const result = setCcExpensePurchaseNote({
-      accountId,
-      purchaseKey,
-      notes: body.notes,
-    });
-    res.json({ account_id: accountId, purchase_key: purchaseKey, notes: result.notes });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "save failed";
-    console.error("PATCH /api/flows/expenses/credit-card/purchase-notes", {
-      body: req.body,
-      error: msg,
-      stack: e instanceof Error ? e.stack : undefined,
-    });
-    res.status(400).json({ error: msg });
-  }
-});
+  const result = setCcExpensePurchaseNote({
+    accountId,
+    purchaseKey,
+    notes: body.notes,
+  });
+  res.json({ account_id: accountId, purchase_key: purchaseKey, notes: result.notes });
+}));
 
-app.post("/api/flows/expenses/vendor-branch-choice", (req, res) => {
+app.post("/api/flows/expenses/vendor-branch-choice", writeHandler((req, res) => {
   const body = req.body as { key?: string; display?: string };
   const key = String(body.key ?? "").trim();
   const display = String(body.display ?? "").trim();
@@ -682,15 +606,11 @@ app.post("/api/flows/expenses/vendor-branch-choice", (req, res) => {
     res.status(400).json({ error: "key and display required" });
     return;
   }
-  try {
-    saveVendorBranchChoice(key, display);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
-});
+  saveVendorBranchChoice(key, display);
+  res.json({ ok: true });
+}));
 
-app.put("/api/flows/expenses/credit-card/purchase-big-group", (req, res) => {
+app.put("/api/flows/expenses/credit-card/purchase-big-group", writeHandler((req, res) => {
   const body = req.body as {
     purchase_key?: string;
     group_slug?: string | null;
@@ -700,38 +620,28 @@ app.put("/api/flows/expenses/credit-card/purchase-big-group", (req, res) => {
     res.status(400).json({ error: "purchase_key required" });
     return;
   }
-  try {
-    const result = setCcExpensePurchaseBigGroup({
-      purchaseKey,
-      groupSlug: body.group_slug,
-    });
-    res.json({
-      purchase_key: purchaseKey,
-      group_slug: result.group_slug,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "save failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  const result = setCcExpensePurchaseBigGroup({
+    purchaseKey,
+    groupSlug: body.group_slug,
+  });
+  res.json({
+    purchase_key: purchaseKey,
+    group_slug: result.group_slug,
+  });
+}));
 
-app.post("/api/flows/expenses/credit-card/big-groups", (req, res) => {
+app.post("/api/flows/expenses/credit-card/big-groups", writeHandler((req, res) => {
   const body = req.body as { label?: string };
   const label = String(body.label ?? "").trim();
   if (!label) {
     res.status(400).json({ error: "label required" });
     return;
   }
-  try {
-    const group = createCcExpenseBigGroup(label);
-    res.status(201).json(group);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "create failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  const group = createCcExpenseBigGroup(label);
+  res.status(201).json(group);
+}));
 
-app.patch("/api/flows/expenses/credit-card/big-groups/:slug", (req, res) => {
+app.patch("/api/flows/expenses/credit-card/big-groups/:slug", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
   const body = req.body as { label?: string };
   const label = String(body.label ?? "").trim();
@@ -739,31 +649,21 @@ app.patch("/api/flows/expenses/credit-card/big-groups/:slug", (req, res) => {
     res.status(400).json({ error: "slug and label required" });
     return;
   }
-  try {
-    const group = renameCcExpenseBigGroup(slug, label);
-    res.json(group);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "rename failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  const group = renameCcExpenseBigGroup(slug, label);
+  res.json(group);
+}));
 
-app.delete("/api/flows/expenses/credit-card/big-groups/:slug", (req, res) => {
+app.delete("/api/flows/expenses/credit-card/big-groups/:slug", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
   if (!slug) {
     res.status(400).json({ error: "slug required" });
     return;
   }
-  try {
-    deleteCcExpenseBigGroup(slug);
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "delete failed";
-    res.status(400).json({ error: msg });
-  }
-});
+  deleteCcExpenseBigGroup(slug);
+  res.status(204).send();
+}));
 
-app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) => {
+app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", writeHandler((req, res) => {
   const route = "PATCH /api/flows/expenses/credit-card/lines/:lineId/category";
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId === 0) {
@@ -786,32 +686,21 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     body.rule_link != null
       ? { kind: String(body.rule_link.kind ?? "") as CategoryRuleLinkKind, key: String(body.rule_link.key ?? "") }
       : null;
-  try {
-    const bodySource = body.source;
-    const source =
-      bodySource === "checking" || bodySource === "cc" || bodySource === "manual" || bodySource === "payslip"
-        ? bodySource
-        : undefined;
-    const result = assignFlowExpenseLineCategory({
-      lineId,
-      source,
-      unique,
-      categorySlug: categorySlug || null,
-      clearCategory,
-      ruleLink,
-    });
-    res.json(result);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "assign failed";
-    console.error(route, {
-      lineId,
-      body: req.body,
-      error: msg,
-      stack: e instanceof Error ? e.stack : undefined,
-    });
-    res.status(400).json({ error: msg });
-  }
-});
+  const bodySource = body.source;
+  const source =
+    bodySource === "checking" || bodySource === "cc" || bodySource === "manual" || bodySource === "payslip"
+      ? bodySource
+      : undefined;
+  const result = assignFlowExpenseLineCategory({
+    lineId,
+    source,
+    unique,
+    categorySlug: categorySlug || null,
+    clearCategory,
+    ruleLink,
+  });
+  res.json(result);
+}));
 
 /** Stale external sources + last sync state (AFP / Fintual / BCentral BDE). */
 }

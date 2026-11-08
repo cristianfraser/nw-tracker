@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { SPLITTABLE_DEPOSIT_KINDS } from "./cards/bankDescriptionRules.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -173,7 +174,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
 export function checkingGastosMovementCategoryTarget(movementId: number): ExpenseCategoryTargetFacts {
   const belong = checkingGastosMovementBelongs(movementId);
   if (!belong.ok || belong.account_id == null) {
-    throw new Error("checking gastos movement not found");
+    throw new InputError("checking gastos movement not found");
   }
   const purchaseKey = checkingGastosMovementPurchaseKey(movementId);
   const depositKey = checkingGastosMovementPurchaseKey(movementId, "deposit");

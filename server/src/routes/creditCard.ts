@@ -29,10 +29,11 @@ import { bankAccountMovementsKind } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "../bankAccountMovementsApply.js";
 import { requestFeederParse } from "../ingestFeeder.js";
 import { uploadFields, uploadSingle } from "../uploadMiddleware.js";
-import { accountIdFromReq, asyncHandler } from "./shared.js";
+import { accountIdFromReq } from "./shared.js";
+import { writeHandler } from "../inputError.js";
 
 export function registerCreditCardRoutes(app: express.Express): void {
-app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
+app.patch("/api/accounts/:id/cc-purchases/:purchaseId", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   const purchaseId = Number(req.params.purchaseId);
   if (!Number.isFinite(purchaseId) || purchaseId <= 0) {
@@ -40,52 +41,40 @@ app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
     return;
   }
   const body = req.body as Record<string, unknown>;
-  try {
-    updateManualCcInstallmentPurchase(id, purchaseId, {
-      purchase_date: body.purchase_date != null ? String(body.purchase_date) : undefined,
-      total_amount_clp:
-        body.total_amount_clp != null ? Number(body.total_amount_clp) : undefined,
-      cuotas_totales: body.cuotas_totales != null ? Number(body.cuotas_totales) : undefined,
-      merchant: body.merchant != null ? String(body.merchant) : undefined,
-      description: body.description != null ? String(body.description) : undefined,
-    });
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "update failed" });
-  }
-});
+  updateManualCcInstallmentPurchase(id, purchaseId, {
+    purchase_date: body.purchase_date != null ? String(body.purchase_date) : undefined,
+    total_amount_clp:
+      body.total_amount_clp != null ? Number(body.total_amount_clp) : undefined,
+    cuotas_totales: body.cuotas_totales != null ? Number(body.cuotas_totales) : undefined,
+    merchant: body.merchant != null ? String(body.merchant) : undefined,
+    description: body.description != null ? String(body.description) : undefined,
+  });
+  res.json({ ok: true });
+}));
 
-app.delete("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
+app.delete("/api/accounts/:id/cc-purchases/:purchaseId", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   const purchaseId = Number(req.params.purchaseId);
   if (!Number.isFinite(purchaseId) || purchaseId <= 0) {
     res.status(400).json({ error: "invalid purchase id" });
     return;
   }
-  try {
-    deleteManualCcInstallmentPurchase(id, purchaseId);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "delete failed" });
-  }
-});
+  deleteManualCcInstallmentPurchase(id, purchaseId);
+  res.json({ ok: true });
+}));
 
-app.delete("/api/accounts/:id/cc-statement-lines/:lineId", (req, res) => {
+app.delete("/api/accounts/:id/cc-statement-lines/:lineId", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId <= 0) {
     res.status(400).json({ error: "invalid statement line id" });
     return;
   }
-  try {
-    deleteCcWebPasteStatementLine(id, lineId);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "delete failed" });
-  }
-});
+  deleteCcWebPasteStatementLine(id, lineId);
+  res.json({ ok: true });
+}));
 
-app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", (req, res) => {
+app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId <= 0) {
@@ -97,13 +86,9 @@ app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", (req, 
     res.status(400).json({ error: "cuotas_totales must be a positive number" });
     return;
   }
-  try {
-    const result = convertStatementLineToInstallmentPurchase(id, lineId, cuotas);
-    res.json({ ok: true, purchase_id: result.id });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "conversion failed" });
-  }
-});
+  const result = convertStatementLineToInstallmentPurchase(id, lineId, cuotas);
+  res.json({ ok: true, purchase_id: result.id });
+}));
 
 app.get("/api/accounts/:id/import-specs", (req, res) => {
   const id = accountIdFromReq(req);
@@ -127,34 +112,26 @@ app.get("/api/accounts/:id/import-specs", (req, res) => {
 
 app.post(
   "/api/accounts/:id/imports/cc-web-paste",
-  asyncHandler(async (req, res) => {
+  writeHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const text = typeof req.body?.text === "string" ? req.body.text : "";
     if (!text.trim()) {
       res.status(400).json({ error: "text is required" });
       return;
     }
-    try {
-      res.json(await importCcWebPaste(id, text));
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
-    }
+    res.json(await importCcWebPaste(id, text));
   })
 );
 
-app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", (req, res) => {
+app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   const text = typeof req.body?.text === "string" ? req.body.text : "";
   if (!text.trim()) {
     res.status(400).json({ error: "text is required" });
     return;
   }
-  try {
-    res.json(importCuentaVistaWebPaste(id, text));
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
-  }
-});
+  res.json(importCuentaVistaWebPaste(id, text));
+}));
 
 app.post(
   "/api/accounts/:id/imports/cc-statement-pdf",
@@ -163,7 +140,7 @@ app.post(
     { name: "usd", maxCount: 1 },
     { name: "file", maxCount: 2 },
   ]) as unknown as express.RequestHandler,
-  asyncHandler(async (req, res) => {
+  writeHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const files = req.files as Record<string, { originalname: string; buffer: Buffer }[]> | undefined;
     const uploads: { originalname: string; buffer: Buffer }[] = [];
@@ -176,11 +153,7 @@ app.post(
       res.status(400).json({ error: "Upload at least one PDF (field clp, usd, or file)" });
       return;
     }
-    try {
-      res.json(await importCcStatementPdfUpload(id, uploads));
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
-    }
+    res.json(await importCcStatementPdfUpload(id, uploads));
   })
 );
 
@@ -190,44 +163,40 @@ app.post(
   // The ingest service decodes the workbook (`/parse/santander.checking_xlsx`); a monthly cartola
   // uploaded here instead (not an «últimos movimientos» workbook) stays on the server's own path
   // until the cartolas move to ingest.
-  asyncHandler(async (req, res) => {
+  writeHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
       res.status(400).json({ error: "file is required" });
       return;
     }
-    try {
-      assertCheckingUploadAccount(id);
-      const parsed = await requestFeederParse("santander.checking_xlsx", f.buffer, f.originalname);
-      if (parsed.status === "unavailable") {
-        res.status(503).json({ error: `The file could not be read: ${parsed.message}` });
-        return;
-      }
-      if (parsed.status === "unreadable") {
-        res.status(400).json({ error: parsed.message });
-        return;
-      }
-      if (parsed.status === "not_this_format") {
-        res.json(await importCheckingCartolaFromRecentXlsxUpload(id, f.buffer, f.originalname));
-        return;
-      }
-      if (parsed.result.kind !== bankAccountMovementsKind.kind || parsed.result.schema_version !== bankAccountMovementsKind.schema_version) {
-        throw new Error(`ingest answered ${parsed.result.kind} v${parsed.result.schema_version}, not ${bankAccountMovementsKind.kind}`);
-      }
-      const payload = bankAccountMovementsKind.payload.parse(parsed.result.payload);
-      const { account_id: _accountId, ...applied } = applyBankAccountMovements(payload, f.originalname);
-      res.json({ format: "ultimos_movimientos" as const, ...applied, parse_errors: payload.rejected_rows });
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+    assertCheckingUploadAccount(id);
+    const parsed = await requestFeederParse("santander.checking_xlsx", f.buffer, f.originalname);
+    if (parsed.status === "unavailable") {
+      res.status(503).json({ error: `The file could not be read: ${parsed.message}` });
+      return;
     }
+    if (parsed.status === "unreadable") {
+      res.status(400).json({ error: parsed.message });
+      return;
+    }
+    if (parsed.status === "not_this_format") {
+      res.json(await importCheckingCartolaFromRecentXlsxUpload(id, f.buffer, f.originalname));
+      return;
+    }
+    if (parsed.result.kind !== bankAccountMovementsKind.kind || parsed.result.schema_version !== bankAccountMovementsKind.schema_version) {
+      throw new Error(`ingest answered ${parsed.result.kind} v${parsed.result.schema_version}, not ${bankAccountMovementsKind.kind}`);
+    }
+    const payload = bankAccountMovementsKind.payload.parse(parsed.result.payload);
+    const { account_id: _accountId, ...applied } = applyBankAccountMovements(payload, f.originalname);
+    res.json({ format: "ultimos_movimientos" as const, ...applied, parse_errors: payload.rejected_rows });
   })
 );
 
 app.post(
   "/api/accounts/:id/imports/checking-cartola-xlsx",
   uploadSingle("file") as unknown as express.RequestHandler,
-  asyncHandler(async (req, res) => {
+  writeHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
@@ -236,18 +205,14 @@ app.post(
     }
     const replaceMonth =
       typeof req.query.replaceMonth === "string" ? req.query.replaceMonth : undefined;
-    try {
-      res.json(await importCheckingCartolaXlsx(id, f.buffer, f.originalname, { replaceMonth }));
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
-    }
+    res.json(await importCheckingCartolaXlsx(id, f.buffer, f.originalname, { replaceMonth }));
   })
 );
 
 app.post(
   "/api/accounts/:id/imports/document",
   uploadSingle("file") as unknown as express.RequestHandler,
-  (req, res) => {
+  writeHandler((req, res) => {
     const id = accountIdFromReq(req);
     const f = req.file;
     const type = typeof req.body?.type === "string" ? req.body.type : "";
@@ -259,14 +224,10 @@ app.post(
       res.status(400).json({ error: "type is required" });
       return;
     }
-    try {
-      res.json(
-        importAccountDocument(id, type as "afp_uno_cert", f.buffer, f.originalname, f.mimetype)
-      );
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
-    }
-  }
+    res.json(
+      importAccountDocument(id, type as "afp_uno_cert", f.buffer, f.originalname, f.mimetype)
+    );
+  })
 );
 
 app.get("/api/accounts/:id/credit-card-config", (req, res) => {
@@ -278,7 +239,7 @@ app.get("/api/accounts/:id/credit-card-config", (req, res) => {
   res.json({ config: getCreditCardAccountConfig(id) });
 });
 
-app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
+app.patch("/api/accounts/:id/credit-card-config", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   if (!isCreditCardAccountId(id)) {
     res.status(404).json({ error: "not a credit-card account" });
@@ -297,7 +258,7 @@ app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
     config: result.config,
     billing_config: loadCreditCardBillingConfig(id),
   });
-});
+}));
 
 
 }

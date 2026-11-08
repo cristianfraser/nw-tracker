@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { db } from "./db.js";
 import {
   generalRuleCategory,
@@ -1025,11 +1026,11 @@ export function ccPlanCategoryTarget(purchaseId: number): ExpenseCategoryTargetF
       }
     | undefined;
   if (!pr) {
-    throw new Error("manual installment purchase not found");
+    throw new InputError("manual installment purchase not found");
   }
   const allowed = new Set(listCreditCardMasterAccountIds());
   if (!allowed.has(pr.account_id)) {
-    throw new Error("account is not in credit card group");
+    throw new InputError("account is not in credit card group");
   }
   const purchaseIso = pr.purchase_date.length >= 10 ? pr.purchase_date.slice(0, 10) : pr.purchase_date;
   const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
@@ -1040,7 +1041,7 @@ export function ccPlanCategoryTarget(purchaseId: number): ExpenseCategoryTargetF
     merchant: pr.merchant,
   });
   if (!purchaseKey) {
-    throw new Error("merchant and contract details required to classify manual installment");
+    throw new InputError("merchant and contract details required to classify manual installment");
   }
   return {
     accountId: pr.account_id,
@@ -1057,7 +1058,7 @@ export function ccPlanCategoryTarget(purchaseId: number): ExpenseCategoryTargetF
 export function ccExpenseLineCategoryTarget(statementLineId: number): ExpenseCategoryTargetFacts {
   const belong = ccStatementLineBelongsToCreditCardGroup(statementLineId);
   if (!belong.ok || belong.account_id == null) {
-    throw new Error("statement line not in credit card group");
+    throw new InputError("statement line not in credit card group");
   }
   const purchaseKey = resolveCcExpensePurchaseKey(statementLineId);
   return {

@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { deleteLines } from "./cards/lineWrites.js";
 import { db } from "./db.js";
@@ -23,10 +24,10 @@ export function deleteCcWebPasteStatementLine(
     | { id: number; account_id: number; source_kind: string }
     | undefined;
 
-  if (!row) throw new Error("statement line not found");
-  if (row.account_id !== accountId) throw new Error("statement line not on this account");
+  if (!row) throw new InputError("statement line not found");
+  if (row.account_id !== accountId) throw new InputError("statement line not on this account");
   if (!isListingSourceKind(row.source_kind)) {
-    throw new Error("only web-paste statement lines can be deleted");
+    throw new InputError("only web-paste statement lines can be deleted");
   }
   return {
     removed_count: deleteLines(accountId, [statementLineId], { what: `deleting statement line ${statementLineId}` }),

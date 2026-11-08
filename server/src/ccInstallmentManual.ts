@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
@@ -40,10 +41,10 @@ export function createManualCcInstallmentPurchase(
   opts?: { removeSupersededOneShotLines?: boolean; sourceLineId?: number }
 ): { id: number; canonical_row_id: string } {
   const purchaseDate = parsePurchaseDateIso(input.purchase_date);
-  if (!purchaseDate) throw new Error("invalid purchase_date");
+  if (!purchaseDate) throw new InputError("invalid purchase_date");
   const principal = Math.trunc(input.total_amount_clp);
   const cuotas = Math.trunc(input.cuotas_totales);
-  if (principal <= 0 || cuotas <= 0) throw new Error("principal and cuotas must be positive");
+  if (principal <= 0 || cuotas <= 0) throw new InputError("principal and cuotas must be positive");
 
   const canonical = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const cardGroup = ccCardGroupOrDefault(input.card_group);
@@ -99,15 +100,15 @@ export function updateManualCcInstallmentPurchase(
     .get(purchaseId, accountId) as
     | { id: number; source: string; purchase_date: string | null; source_line_id: number | null }
     | undefined;
-  if (!row) throw new Error("purchase not found");
-  if (row.source !== "manual") throw new Error("only manual purchases can be edited");
+  if (!row) throw new InputError("purchase not found");
+  if (row.source !== "manual") throw new InputError("only manual purchases can be edited");
   // A plan converted from a line takes its day, principal and merchant from the line: only the
   // count is the plan's own (the purchases module pairs the two by those facts).
   if (
     row.source_line_id != null &&
     (patch.purchase_date != null || patch.total_amount_clp != null || patch.merchant != null)
   ) {
-    throw new Error("a plan converted from a card line takes its date, amount and merchant from the line");
+    throw new InputError("a plan converted from a card line takes its date, amount and merchant from the line");
   }
 
   // A moved contract invalidates stamps after BOTH its old and new dates.
@@ -116,7 +117,7 @@ export function updateManualCcInstallmentPurchase(
   const params: unknown[] = [];
   if (patch.purchase_date != null) {
     const iso = parsePurchaseDateIso(patch.purchase_date);
-    if (!iso) throw new Error("invalid purchase_date");
+    if (!iso) throw new InputError("invalid purchase_date");
     if (affectedFrom == null || iso < affectedFrom) affectedFrom = iso;
     fields.push("purchase_date = ?");
     params.push(iso);
@@ -163,7 +164,7 @@ export function convertStatementLineToInstallmentPurchase(
   cuotasTotales: number
 ): { id: number; canonical_row_id: string } {
   const cuotas = Math.trunc(cuotasTotales);
-  if (cuotas <= 0) throw new Error("cuotas_totales must be positive");
+  if (cuotas <= 0) throw new InputError("cuotas_totales must be positive");
 
   const line = selStatementLineForConvert.get(lineId) as
     | {
@@ -179,20 +180,20 @@ export function convertStatementLineToInstallmentPurchase(
       }
     | undefined;
 
-  if (!line) throw new Error("statement line not found");
-  if (line.account_id !== accountId) throw new Error("line does not belong to this account");
-  if (line.installment_flag !== 0) throw new Error("line is already an installment line");
-  if (!line.amount_clp || line.amount_clp <= 0) throw new Error("line has no positive CLP amount");
+  if (!line) throw new InputError("statement line not found");
+  if (line.account_id !== accountId) throw new InputError("line does not belong to this account");
+  if (line.installment_flag !== 0) throw new InputError("line is already an installment line");
+  if (!line.amount_clp || line.amount_clp <= 0) throw new InputError("line has no positive CLP amount");
 
   const purchaseDateIso =
     parseDdMmYyToIso(line.transaction_date ?? "") ??
     parseDdMmYyToIso(line.posting_date ?? "");
-  if (!purchaseDateIso) throw new Error("line has no parseable purchase date");
+  if (!purchaseDateIso) throw new InputError("line has no parseable purchase date");
 
   if (
     db.prepare(`SELECT 1 FROM cc_installment_purchases WHERE source_line_id = ?`).get(lineId) != null
   ) {
-    throw new Error("line is already converted to a plan");
+    throw new InputError("line is already converted to a plan");
   }
 
   return withCardLineSession(accountId, "convert a line to cuotas", () => {
@@ -249,8 +250,8 @@ export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId:
     .get(purchaseId, accountId) as
     | { id: number; source: string; purchase_date: string | null }
     | undefined;
-  if (!row) throw new Error("purchase not found");
-  if (row.source !== "manual") throw new Error("only manual purchases can be deleted");
+  if (!row) throw new InputError("purchase not found");
+  if (row.source !== "manual") throw new InputError("only manual purchases can be deleted");
   // Undo of a conversion too: the line the plan overlaid is live again, its category, note and big
   // group as they were.
   withCardLineSession(accountId, "manual installment plan delete", () => {
