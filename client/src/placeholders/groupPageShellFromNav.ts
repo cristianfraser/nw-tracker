@@ -1,4 +1,4 @@
-import { navAccountIdSet } from "../portfolioNavDashboardCards";
+import { navAccountIdSet } from "../navCardMetrics";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import type { GroupPageShell } from "../queries/groupPageShell";
 import type { DisplayUnit } from "../queries/keys";

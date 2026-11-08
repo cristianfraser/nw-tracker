@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { queryKeys } from "../../queries/keys";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -164,13 +165,13 @@ export function MirrorPairsPanelPage() {
     mutationFn: (pairs: MirrorPairRef[]) => api.rejectMovementMirrors(pairs),
     onSuccess: () => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: ["movementMirrorCandidates"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.movementMirrorCandidates() });
     },
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
   });
   const unreject = useMutation({
     mutationFn: (pairs: MirrorPairRef[]) => api.unrejectMovementMirrors(pairs),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["movementMirrorCandidates"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.movementMirrorCandidates() }),
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
   });
   const convertCc = useMutation({

@@ -10,7 +10,6 @@ import {
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { queryKeys } from "../../queries/keys";
 import { prefetchPageShapeForPath } from "../../queries/prefetchPageShape";
 import { useMessagesUnreadCount, useSidebarNav } from "../../queries/hooks";
 import type { SidebarNavResponse } from "../../types";
@@ -211,14 +210,6 @@ export function AppSidebar() {
   );
   const unreadCount = unread?.count ?? 0;
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsedIds);
-
-  useEffect(() => {
-    const onRead = () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.messagesUnread() });
-    };
-    window.addEventListener("nw-messages-read", onRead);
-    return () => window.removeEventListener("nw-messages-read", onRead);
-  }, [queryClient]);
 
   // `language` is a dep because buildSidebarNavFromApi resolves node labels via
   // module-level i18n.t — without it a language switch keeps the stale tree.

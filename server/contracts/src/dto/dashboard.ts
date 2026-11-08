@@ -65,6 +65,12 @@ export interface DashboardAccountRow {
   /** The old all-time figure: P/L acumulado ÷ net deposits (`pct_total_*` is the compounded return). */
   pct_total_on_deposits_clp?: number | null;
   pct_total_on_deposits_usd?: number | null;
+  /** The short label the strip cards and breakdowns show (server `accountNavLabel`). */
+  nav_label?: string;
+  /** The account page draws a Rentabilidad table (an investment account). */
+  has_period_returns?: boolean;
+  /** A property's loan: the mortgage its net equity is net of (null for any other account). */
+  loan_account_id?: number | null;
 }
 
 export interface DashboardLinkedBalanceRow {

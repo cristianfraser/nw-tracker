@@ -6,7 +6,6 @@ import type {
   CcExpenseCategoryDto,
   FlowCcExpenseLineRow,
 } from "../../types";
-import { isUnclassifiedPendingGasto } from "../../ccExpenseLineBuckets";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
 import {
@@ -37,7 +36,7 @@ export function CreditCardUnclassifiedExpensesTable({
   const unclassifiedGastos = useMemo(
     () =>
       lines
-        .filter(isUnclassifiedPendingGasto)
+        .filter((ln) => ln.pending_classification === true)
         .sort(sortCreditCardExpenseLinesByAmountDesc),
     [lines]
   );

@@ -1315,7 +1315,7 @@
         "save": "Guardar vínculo",
         "remove": "Quitar"
       },
-      "installmentPurchaseTotalLabel": "Compra en cuotas · {{count}} cuotas",
+      "installmentPurchaseTotalLabel": "{{count}} cuotas",
       "cuotaPurchasePendingBadge": "En cuotas · ¿cuántas?",
       "cuotaPurchasePendingHint": {
         "cuota_comercio": "El feed de la tarjeta lista esta compra en «cuota comercio» por su monto total sin el número de cuotas; su primera cuota se factura en el cierre siguiente.",
@@ -1445,6 +1445,10 @@
         "deleteConfirm": "¿Eliminar este gasto manual?"
       },
       "lineRow": {
+        "planCountSave": "Cambiar cuotas",
+        "planRemove": "Quitar cuotas",
+        "planRemoveConfirmTitle": "¿Quitar las cuotas?",
+        "planRemoveConfirmBody": "{{merchant}} vuelve a ser un solo cargo.",
         "sortDate": "Fecha",
         "sortAmount": "Monto",
         "sortCategory": "Categoría",

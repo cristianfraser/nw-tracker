@@ -13,7 +13,6 @@ import { AccountImportSection } from "../../components/account/AccountImportSect
 import { CreditCardConfigSection } from "../../components/account/CreditCardConfigSection";
 import { CreditCardDetailSections } from "./CreditCardSections";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
-import { movementUnitsKind } from "./shared";
 import styles from "../AccountDetailPage.module.css";
 
 type Props = {
@@ -78,7 +77,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
       <AccountFlowsSection
         accountId={summary.account_id}
-        movementUnitsKind={movementUnitsKind}
       />
     </AccountDetailSharedLayout>
   );

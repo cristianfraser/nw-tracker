@@ -24,6 +24,7 @@ describe("the expense-line read pipeline", () => {
       "facturado financing projection",
       "financing cost lines",
       "flow ids",
+      "line shapes",
     ]);
   });
 

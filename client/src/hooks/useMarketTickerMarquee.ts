@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { queryShowsLoading } from "../queries/pageShapeReady";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatGroupedDecimal, formatGroupedDecimalTrimmed } from "../format";
 import { useTranslation } from "../i18n";
@@ -179,5 +180,5 @@ export function useMarketTickerMarquee(): { items: TickerMarqueeItem[]; loading:
   );
 
   // Loading = nothing yet (first load) or the other unit's strip held while this unit's loads.
-  return { items, loading: isPending || isPlaceholderData };
+  return { items, loading: queryShowsLoading({ isPending, isPlaceholderData }) };
 }

@@ -7,7 +7,7 @@ import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDeta
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
-import { queryShowsLoading } from "../../queries/pageShapeReady";
+import { dailyPayloadPending, queryShowsLoading } from "../../queries/pageShapeReady";
 import { timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../../components/ui/SurfaceControls";
@@ -42,9 +42,6 @@ import {
   MONTHLY_PERF_COLLAPSED,
   isDeptoMortgageCategory,
   isDeptoPropertyCategory,
-  mayHavePeriodReturns,
-  movementUnitsKind,
-  tickerLabelFromCategory,
 } from "./shared";
 
 import type { TimeseriesBlock } from "../../types";
@@ -98,7 +95,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const perfIsDaily = perfPrefs.period === "day";
   // Detalle table período (independent of the charts); tables always cover full history.
   const detallePrefs = useSurfacePrefs(
-    `account.${summary.account_id || "pending"}.detalle`,
+    summary.account_id ? `account.${summary.account_id}.detalle` : null,
     "month",
     "total"
   );
@@ -123,18 +120,15 @@ export function StandardAccountDetailPage({ data }: Props) {
     perfIsDaily,
     { perfLevels: true }
   );
-  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
-  // held placeholder) it gets no data and shows its pending frame — title row and controls over
-  // an empty box — never the monthly block.
-  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
-  const perfDailyPending = perfIsDaily && queryShowsLoading(perfDailySeries);
+  const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
+  const perfDailyPending = dailyPayloadPending(perfIsDaily, perfDailySeries);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily || valuationDailyPending) return null;
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
   }, [valuationIsDaily, valuationDailyPending, dailySeries.data, valuationBlockForChart, ts.accounts]);
   const valuationLoading = loading || valuationDailyPending;
   const perfLoading = loading || perfDailyPending;
-  const detalleDailyLoading = detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData;
+  const detalleDailyLoading = queryShowsLoading(detalleDailySeries);
   const valuationControls = (
     <SurfaceControls
       period={valuationPrefs.period}
@@ -183,7 +177,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showPositionBlock = !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
   const showPeriodReturns =
     periodReturns === undefined
-      ? mayHavePeriodReturns(data.accountDashRow)
+      ? data.accountDashRow == null || data.accountDashRow.has_period_returns === true
       : periodReturns !== null;
   const showEquityReturnColumns = summary.position?.dividends_clp != null;
   // Shown only when the ticker is held through more than one cash account (broker).
@@ -257,13 +251,13 @@ export function StandardAccountDetailPage({ data }: Props) {
           >
             <tr>
               <td className="mono">
-                {summary.position?.ticker ?? tickerLabelFromCategory(summary.category_slug)}
+                {summary.position?.ticker ?? summary.ticker ?? "—"}
               </td>
               <td className="mono">
                 {summary.position?.units != null && Number.isFinite(summary.position.units)
                   ? formatInstrumentUnits(
                     summary.position.units,
-                    summary.position.units_kind ?? movementUnitsKind(summary.category_slug)
+                    summary.position.units_kind ?? summary.units_kind ?? "shares"
                   )
                   : "—"}
               </td>
@@ -517,7 +511,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                     period={detallePrefs.period === "year" ? "year" : "month"}
                     isMortgageAccount={isMortgageAccount}
                     isAfpAccount={isCuotaLedgerAccount}
-                    movementUnitsKind={movementUnitsKind}
+                    unitsKind={summary.units_kind}
                     loading={loading}
                   />
                 )}
@@ -622,7 +616,7 @@ export function StandardAccountDetailPage({ data }: Props) {
           ) : null
         }
         accountId={summary.account_id}
-        movementUnitsKind={movementUnitsKind}
+        unitsKind={summary.units_kind}
       />
     </AccountDetailSharedLayout>
   );

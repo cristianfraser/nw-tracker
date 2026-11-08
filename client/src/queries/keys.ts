@@ -5,25 +5,46 @@ export function otherDisplayUnit(unit: DisplayUnit): DisplayUnit {
   return unit === "usd" ? "clp" : "usd";
 }
 
+const ENTITY = Symbol("entityKeyLength");
+
+/**
+ * A display-unit query key with its entity length: how many leading elements name the entity
+ * (group, account, scope) — previous data is held across a change of the rest (unit, period,
+ * page, filter), never across entities ({@link entityKeyLength}). Declared once, with the key.
+ */
+function withEntity<K extends readonly unknown[]>(key: K, entityLength: number): K {
+  Object.defineProperty(key, ENTITY, { value: entityLength, enumerable: false });
+  return key;
+}
+
+/** The entity length a key was declared with; a key without one is not a display-unit query. */
+export function entityKeyLength(key: readonly unknown[]): number {
+  const n = (key as unknown as Record<symbol, unknown>)[ENTITY];
+  if (typeof n !== "number") throw new Error(`query key ${JSON.stringify(key)} declares no entity length`);
+  return n;
+}
+
 export const queryKeys = {
-  dashboard: (unit: DisplayUnit) => ["dashboard", unit] as const,
+  dashboard: (unit: DisplayUnit) =>
+    withEntity(["dashboard", unit] as const, 1),
   /** Without `root`, the prefix of every page's nav-context in that unit (for invalidation). */
   dashboardNav: (unit: DisplayUnit, root?: string) =>
-    (root == null ? ["dashboardNav", unit] : ["dashboardNav", unit, root]) as readonly unknown[],
-  dashboardNavSnapshot: (unit: DisplayUnit) => ["dashboardNavSnapshot", unit] as const,
+    withEntity((root == null ? ["dashboardNav", unit] : ["dashboardNav", unit, root]) as readonly unknown[], 3),
+  dashboardNavSnapshot: (unit: DisplayUnit) =>
+    withEntity(["dashboardNavSnapshot", unit] as const, 2),
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
   dashboardOverviewDaily: (unit: DisplayUnit, days: number) =>
-    ["dashboardOverviewDaily", unit, days] as const,
+    withEntity(["dashboardOverviewDaily", unit, days] as const, 1),
   inversionesPerfDaily: (unit: DisplayUnit, days: number) =>
-    ["inversionesPerfDaily", unit, days] as const,
+    withEntity(["inversionesPerfDaily", unit, days] as const, 1),
   /** `variant` "perf" carries the day-mode P/L levels (`perf_levels`); a separate entity, so
    * neither variant is ever held as the other's placeholder. */
   dailySeries: (scope: string, variant: "base" | "perf", unit: DisplayUnit, days: number) =>
-    ["dailySeries", scope, variant, unit, days] as const,
+    withEntity(["dailySeries", scope, variant, unit, days] as const, 3),
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
-    ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
+    withEntity(["groupConsolidatedTables", group, subgroup ?? null, unit] as const, 2),
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>
-    ["groupPeriodReturns", group, unit] as const,
+    withEntity(["groupPeriodReturns", group, unit] as const, 2),
   latestExpenses: (limit: number) => ["latestExpenses", limit] as const,
   latestExpensesAll: () => ["latestExpenses"] as const,
   groupConsolidatedMonthlyPage: (
@@ -32,12 +53,13 @@ export const queryKeys = {
     period: "month" | "year",
     page: number,
     installmentMode: "split" | "total"
-  ) => ["groupConsolidatedMonthlyPage", group, unit, period, page, installmentMode] as const,
+  ) =>
+    withEntity(["groupConsolidatedMonthlyPage", group, unit, period, page, installmentMode] as const, 2),
   sidebarNav: () => ["sidebarNav"] as const,
   panelNetWorthTree: () => ["panelNetWorthTree"] as const,
   accountsAll: () => ["accountsAll"] as const,
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
-    ["accounts", "portfolioGroup", portfolioGroup, unit] as const,
+    withEntity(["accounts", "portfolioGroup", portfolioGroup, unit] as const, 3),
   ratesInstruments: () => ["ratesInstruments"] as const,
   /** Prefix keys (no unit) invalidate every unit's copy at once. */
   marketTickerAll: () => ["marketTicker"] as const,
@@ -63,8 +85,11 @@ export const queryKeys = {
   flowsPl: (days?: number) => ["flowsPl", days ?? null] as const,
   flowsDepositsReconciliation: () => ["flowsDepositsReconciliation"] as const,
   flowsRealEstateExpenses: () => ["flowsRealEstateExpenses"] as const,
+  /** Prefix of every link-candidates list. */
+  realEstateLinkCandidatesAll: () => ["realEstateLinkCandidates"] as const,
   realEstateLinkCandidates: (expenseEntryId: number) =>
     ["realEstateLinkCandidates", expenseEntryId] as const,
+  realEstateUnlinkedPurchasesAll: () => ["realEstateUnlinkedPurchases"] as const,
   realEstateUnlinkedPurchases: (params: Record<string, string>) =>
     ["realEstateUnlinkedPurchases", params] as const,
   realEstatePropertyAccounts: () => ["realEstatePropertyAccounts"] as const,
@@ -75,21 +100,28 @@ export const queryKeys = {
     ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(","), includePreTax] as const,
   /** Nested under `flowsExpenses()` too: a line edit refetches the overview. Entity = up to the unit. */
   flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) =>
-    ["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const,
+    withEntity(["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const, 3),
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
-    ["portfolioGroup", group, subgroup ?? null, unit] as const,
+    withEntity(["portfolioGroup", group, subgroup ?? null, unit] as const, 2),
   groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
-    ["groupPageShell", portfolioGroup, unit] as const,
+    withEntity(["groupPageShell", portfolioGroup, unit] as const, 2),
+  /** Prefix: every account page bundle (without `id`), or one account's in every unit. */
+  accountDetailAll: (id?: string) => (id == null ? ["accountDetail"] : ["accountDetail", id]) as readonly unknown[],
   accountDetail: (id: string, unit: DisplayUnit, granularity: "monthly" | "daily") =>
-    ["accountDetail", id, unit, granularity] as const,
+    withEntity(["accountDetail", id, unit, granularity] as const, 2),
   accountMonthlyPerformance: (id: string, unit: DisplayUnit) =>
-    ["accountMonthlyPerformance", id, unit] as const,
-  portfolioGroupCcLedger: (slug: string) => ["portfolioGroupCcLedger", slug] as const,
-  portfolioGroupMortgageLedger: (slug: string) => ["portfolioGroupMortgageLedger", slug] as const,
-  groupFlows: (slug: string, filtersKey: string) => ["groupFlows", slug, filtersKey] as const,
-  accountFlows: (id: string, filtersKey: string) => ["accountFlows", id, filtersKey] as const,
+    withEntity(["accountMonthlyPerformance", id, unit] as const, 2),
+  portfolioGroupCcLedger: (slug: string) =>
+    withEntity(["portfolioGroupCcLedger", slug] as const, 2),
+  portfolioGroupMortgageLedger: (slug: string) =>
+    withEntity(["portfolioGroupMortgageLedger", slug] as const, 2),
+  groupFlows: (slug: string, filtersKey: string) =>
+    withEntity(["groupFlows", slug, filtersKey] as const, 2),
+  accountFlowsAll: () => ["accountFlows"] as const,
+  accountFlows: (id: string, filtersKey: string) =>
+    withEntity(["accountFlows", id, filtersKey] as const, 2),
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
   wealthPercentile: () => ["wealth-percentile"] as const,
@@ -99,4 +131,11 @@ export const queryKeys = {
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
     ["benchmarkComparison", scope, benchmark, unit] as const,
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,
+  dashboardAll: () => ["dashboard"] as const,
+  portfolioGroupAll: () => ["portfolioGroup"] as const,
+  accountMonthlyPerformanceAll: () => ["accountMonthlyPerformance"] as const,
+  expenseLinePiecesAll: () => ["expenseLinePieces"] as const,
+  expenseLinePieces: (source: string | null, lineId: number) => ["expenseLinePieces", source, lineId] as const,
+  accountValuations: (accountId: number | string) => ["accountValuations", accountId] as const,
+  accountImportSpecs: (accountId: number | string) => ["accountImportSpecs", accountId] as const,
 };

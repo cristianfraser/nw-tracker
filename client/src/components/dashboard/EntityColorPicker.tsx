@@ -24,6 +24,7 @@ import {
   type EntityColorTarget,
 } from "../../entityColor";
 import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import styles from "./EntityColorPicker.module.css";
 
 const DEBOUNCE_MS = 400;
@@ -32,12 +33,7 @@ function invalidateColorQueries(queryClient: ReturnType<typeof useQueryClient>) 
   void queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() });
-  void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-  void queryClient.invalidateQueries({ queryKey: ["valuationTimeseries"] });
-  void queryClient.invalidateQueries({ queryKey: ["portfolioGroup"] });
-  void queryClient.invalidateQueries({ queryKey: ["accountDetail"] });
-  void queryClient.invalidateQueries({ queryKey: ["groupMonthlyPerformance"] });
-  void queryClient.invalidateQueries({ queryKey: ["accountMonthlyPerformance"] });
+  void invalidateResources(queryClient, resources.entityColors());
 }
 
 export function EntityColorPicker({

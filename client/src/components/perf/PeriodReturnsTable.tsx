@@ -226,7 +226,8 @@ export function PeriodReturnsWithBenchmark({
   data: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
   scope: { accountId: number } | { portfolioGroup: string };
-  surfaceId: string;
+  /** Null until the page's scope is known (its benchmark choice is not read or stored). */
+  surfaceId: string | null;
   /** The payload is not in yet (or is held prior data): the table dims. */
   loading?: boolean;
 }) {

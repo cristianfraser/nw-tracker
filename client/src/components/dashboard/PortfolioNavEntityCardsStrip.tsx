@@ -21,7 +21,7 @@ import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 
 type StripDash = Pick<
   DashboardResponse,
-  "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
+  "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
 >;
 
 export type PortfolioNavEntityCardsStripProps = {

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { queryShowsLoading } from "../queries/pageShapeReady";
 import { Link } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
@@ -320,7 +321,7 @@ export function WatchlistPage() {
   const { displayUnit } = useDisplayPreferences();
   const { data, isPending, isPlaceholderData, error } = useWatchlist(displayUnit);
   // Pending, or the held rows of the other display unit while this unit's load.
-  const loading = isPending || isPlaceholderData;
+  const loading = queryShowsLoading({ isPending, isPlaceholderData });
   if (error) {
     return (
       <main>

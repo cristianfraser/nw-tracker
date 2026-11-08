@@ -27,6 +27,8 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { accountProfile } from "./accountProfile.js";
+import { accountSummaryProfileFields } from "./accountRowProfileFields.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
@@ -145,6 +147,8 @@ export async function buildAccountDetailBundle(
     movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
     book_ledger_edit: bookLedgerEditSchemaForAccount(accountId),
     mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(accountId),
+    // What the account holds and is, from its profile: the client picks these (F12).
+    ...accountSummaryProfileFields(accountProfile(accountId)),
   };
 
   const tsRaw = getAccountValuationTimeseries(accountId, unit, { granularity });

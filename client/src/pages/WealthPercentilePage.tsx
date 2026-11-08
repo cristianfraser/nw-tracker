@@ -7,8 +7,7 @@ import { ChartEmptyState } from "../components/charts/ChartEmptyState";
 import { minMaxForKeys } from "../components/charts/chartLayout";
 import { percentileLogAxisFor, topPercentOf } from "../components/charts/percentileLogAxis";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
-import { Table } from "../components/ui/Table";
-import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
+import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency, formatGroupedDecimal } from "../format";
 import { useWealthPercentile } from "../queries/hooks";
@@ -113,59 +112,40 @@ function MyDataTable({
       ? t("wealthPercentile.belowSupport")
       : formatGroupedDecimal(cell.percentile ?? Number.NaN, 1);
 
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("wealthPercentile.table.year")}</th>
-        <th className="desktop-only">{t("wealthPercentile.table.finNetWorth")}</th>
-        <th className="desktop-only">%CL fin.</th>
-        <th className="desktop-only">{t("wealthPercentile.table.netWorth")}</th>
-        <th className="desktop-only">%CL</th>
-        {countries.map((c) => (
-          <th key={c} className="desktop-only">{`%${c}`}</th>
-        ))}
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
+  const columns: TableColumn<WealthPercentileYearRow>[] = [
+    { key: "year", header: t("wealthPercentile.table.year"), className: "mono", cell: (row) => `${row.year}${yearMarkers(row)}`, title: true },
+    {
+      key: "finNetWorth",
+      header: t("wealthPercentile.table.finNetWorth"),
+      className: "mono",
+      cell: (row) => money(row.fin_net_worth_usd, row.fin_net_worth_clp),
+    },
+    { key: "clFin", header: "%CL fin.", className: "mono", cell: (row) => pctText(row.cl_financial) },
+    {
+      key: "netWorth",
+      header: t("wealthPercentile.table.netWorth"),
+      className: "mono",
+      cell: (row) => money(row.net_worth_usd, row.net_worth_clp),
+    },
+    { key: "cl", header: "%CL", className: "mono", cell: (row) => pctText(row.cl_total) },
+    ...countries.map(
+      (c): TableColumn<WealthPercentileYearRow> => ({
+        key: c,
+        header: `%${c}`,
+        className: "mono",
+        cell: (row) => pctText(row.benchmarks[c]),
+      })
+    ),
+  ];
 
   return (
-    <Table header={header} tableClassName="table--parallel-mobile" wrapClassName={loadableClass(loading)}>
-      {rowsDescOf(rows).map((row) => {
-        const yearLabel = `${row.year}${yearMarkers(row)}`;
-        return (
-          <tr key={row.year}>
-            <td className="mono desktop-only">{yearLabel}</td>
-            <td className="mono desktop-only">{money(row.fin_net_worth_usd, row.fin_net_worth_clp)}</td>
-            <td className="mono desktop-only">{pctText(row.cl_financial)}</td>
-            <td className="mono desktop-only">{money(row.net_worth_usd, row.net_worth_clp)}</td>
-            <td className="mono desktop-only">{pctText(row.cl_total)}</td>
-            {countries.map((c) => (
-              <td key={c} className="mono desktop-only">
-                {pctText(row.benchmarks[c])}
-              </td>
-            ))}
-            <td className="mobile-only">
-              <TableMobileCard title={yearLabel}>
-                <TableMobileCardRow
-                  label={t("wealthPercentile.table.finNetWorth")}
-                  value={money(row.fin_net_worth_usd, row.fin_net_worth_clp)}
-                />
-                <TableMobileCardRow label="%CL fin." value={pctText(row.cl_financial)} />
-                <TableMobileCardRow
-                  label={t("wealthPercentile.table.netWorth")}
-                  value={money(row.net_worth_usd, row.net_worth_clp)}
-                />
-                <TableMobileCardRow label="%CL" value={pctText(row.cl_total)} />
-                {countries.map((c) => (
-                  <TableMobileCardRow key={c} label={`%${c}`} value={pctText(row.benchmarks[c])} />
-                ))}
-              </TableMobileCard>
-            </td>
-          </tr>
-        );
-      })}
-    </Table>
+    <ColumnTable
+      rows={rowsDescOf(rows)}
+      columns={columns}
+      rowKey={(row) => row.year}
+      wrapClassName={loadableClass(loading)}
+      cardLayout="flat"
+    />
   );
 }
 
@@ -240,51 +220,40 @@ function CountryDataTable({
     <ThresholdPairsCell cell={cell} ownUsd={ownUsd} ownClp={ownClp} displayUnit={displayUnit} />
   );
 
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("wealthPercentile.table.year")}</th>
-        <th className="desktop-only">CL fin.</th>
-        <th className="desktop-only">CL</th>
-        {countries.map((c) => (
-          <th key={c} className="desktop-only">
-            {c}
-          </th>
-        ))}
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
+  const columns: TableColumn<WealthPercentileYearRow>[] = [
+    {
+      key: "year",
+      header: t("wealthPercentile.table.year"),
+      className: "mono",
+      cellProps: () => ({ style: { verticalAlign: "top" } }),
+      cell: (row) => `${row.year}${yearMarkers(row)}`,
+      title: true,
+    },
+    {
+      key: "clFin",
+      header: "CL fin.",
+      className: "mono",
+      cell: (row) => pairs(row.cl_financial, row.fin_net_worth_usd, row.fin_net_worth_clp),
+    },
+    { key: "cl", header: "CL", className: "mono", cell: (row) => pairs(row.cl_total, row.net_worth_usd, row.net_worth_clp) },
+    ...countries.map(
+      (c): TableColumn<WealthPercentileYearRow> => ({
+        key: c,
+        header: c,
+        className: "mono",
+        cell: (row) => pairs(row.benchmarks[c], row.net_worth_usd, row.net_worth_clp),
+      })
+    ),
+  ];
 
   return (
-    <Table header={header} tableClassName="table--parallel-mobile" wrapClassName={loadableClass(loading)}>
-      {rowsDescOf(rows).map((row) => {
-        const yearLabel = `${row.year}${yearMarkers(row)}`;
-        return (
-          <tr key={row.year}>
-            <td className="mono desktop-only" style={{ verticalAlign: "top" }}>
-              {yearLabel}
-            </td>
-            <td className="mono desktop-only">{pairs(row.cl_financial, row.fin_net_worth_usd, row.fin_net_worth_clp)}</td>
-            <td className="mono desktop-only">{pairs(row.cl_total, row.net_worth_usd, row.net_worth_clp)}</td>
-            {countries.map((c) => (
-              <td key={c} className="mono desktop-only">
-                {pairs(row.benchmarks[c], row.net_worth_usd, row.net_worth_clp)}
-              </td>
-            ))}
-            <td className="mobile-only">
-              <TableMobileCard title={yearLabel}>
-                <TableMobileCardRow label="CL fin." value={pairs(row.cl_financial, row.fin_net_worth_usd, row.fin_net_worth_clp)} />
-                <TableMobileCardRow label="CL" value={pairs(row.cl_total, row.net_worth_usd, row.net_worth_clp)} />
-                {countries.map((c) => (
-                  <TableMobileCardRow key={c} label={c} value={pairs(row.benchmarks[c], row.net_worth_usd, row.net_worth_clp)} />
-                ))}
-              </TableMobileCard>
-            </td>
-          </tr>
-        );
-      })}
-    </Table>
+    <ColumnTable
+      rows={rowsDescOf(rows)}
+      columns={columns}
+      rowKey={(row) => row.year}
+      wrapClassName={loadableClass(loading)}
+      cardLayout="flat"
+    />
   );
 }
 

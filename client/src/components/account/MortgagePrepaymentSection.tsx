@@ -7,8 +7,7 @@ import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { loadableClass } from "../ui/Loadable";
 import { PageGridTile } from "../layout/PageGridTile";
-import { Table } from "../ui/Table";
-import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
+import { ColumnTable } from "../ui/ColumnTable";
 
 const PAGE_SIZE = 12;
 const DEFAULT_BENCHMARK = "spy";
@@ -115,112 +114,72 @@ export function MortgagePrepaymentSection({
         </p>
       ) : null}
       {totals ? (
-        <Table
-          tableClassName="table--parallel-mobile"
+        <ColumnTable
+          rows={[totals]}
+          rowKey={() => "totals"}
           tableStyle={{ fontSize: "var(--font-size-prose)", marginBottom: "0.75rem" }}
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("accountDetail.prepayments.totalLabel")}</th>
-                <th className="desktop-only">{labels.extra}</th>
-                <th className="desktop-only">{labels.prepaid}</th>
-                <th className="desktop-only">{labels.invested}</th>
-                <th className="desktop-only">{labels.delta}</th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          <tr>
-            <td className="muted desktop-only">{totals.covered_payments}</td>
-            <td className="mono desktop-only">{money(totals.extra)}</td>
-            <td className="mono desktop-only">
-              {money(totals.prepaid_value)}
-              {irr(totals.prepaid_irr_pct)}
-            </td>
-            <td className="mono desktop-only">
-              {money(totals.invested_value)}
-              {irr(totals.invested_irr_pct)}
-            </td>
-            <td className="mono desktop-only" style={{ fontWeight: 600 }}>
-              {delta(totals.delta, totals.delta_pct)}
-            </td>
-            <td className="mobile-only">
-              <TableMobileCard
-                title={`${t("accountDetail.prepayments.totalLabel")} (${totals.covered_payments})`}
-              >
-                <TableMobileCardSection>
-                  <TableMobileCardRow label={labels.extra} value={money(totals.extra)} />
-                  <TableMobileCardRow
-                    label={labels.prepaid}
-                    value={
-                      <>
-                        {money(totals.prepaid_value)}
-                        {irr(totals.prepaid_irr_pct)}
-                      </>
-                    }
-                  />
-                  <TableMobileCardRow
-                    label={labels.invested}
-                    value={
-                      <>
-                        {money(totals.invested_value)}
-                        {irr(totals.invested_irr_pct)}
-                      </>
-                    }
-                  />
-                  <TableMobileCardRow
-                    label={labels.delta}
-                    value={delta(totals.delta, totals.delta_pct)}
-                  />
-                </TableMobileCardSection>
-              </TableMobileCard>
-            </td>
-          </tr>
-        </Table>
+          columns={[
+            {
+              key: "total",
+              header: t("accountDetail.prepayments.totalLabel"),
+              className: "muted",
+              cell: (x) => x.covered_payments,
+              title: (x) => `${t("accountDetail.prepayments.totalLabel")} (${x.covered_payments})`,
+            },
+            { key: "extra", header: labels.extra, className: "mono", cell: (x) => money(x.extra) },
+            {
+              key: "prepaid",
+              header: labels.prepaid,
+              className: "mono",
+              cell: (x) => (
+                <>
+                  {money(x.prepaid_value)}
+                  {irr(x.prepaid_irr_pct)}
+                </>
+              ),
+            },
+            {
+              key: "invested",
+              header: labels.invested,
+              className: "mono",
+              cell: (x) => (
+                <>
+                  {money(x.invested_value)}
+                  {irr(x.invested_irr_pct)}
+                </>
+              ),
+            },
+            {
+              key: "delta",
+              header: labels.delta,
+              className: "mono",
+              cellProps: () => ({ style: { fontWeight: 600 } }),
+              cell: (x) => delta(x.delta, x.delta_pct),
+            },
+          ]}
+        />
       ) : null}
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
-        <Table
-          tableClassName="table--parallel-mobile"
+        <ColumnTable
+          rows={pageRows}
+          rowKey={(row) => `${row.date}|${row.cuota}`}
+          rowProps={() => ({ className: cn(data == null && "muted") })}
           tableStyle={{ fontSize: "var(--font-size-prose)" }}
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{labels.date}</th>
-                <th className="desktop-only">{labels.cuota}</th>
-                <th className="desktop-only">{labels.extra}</th>
-                <th className="desktop-only">{labels.prepaid}</th>
-                <th className="desktop-only">{labels.invested}</th>
-                <th className="desktop-only">{labels.delta}</th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          {pageRows.map((row) => (
-            <tr key={`${row.date}|${row.cuota}`} className={cn(data == null && "muted")}>
-              <td className="mono desktop-only">{row.date}</td>
-              <td className="desktop-only">{row.cuota}</td>
-              <td className="mono desktop-only">{money(row.extra)}</td>
-              <td className="mono desktop-only">{money(row.prepaid_value)}</td>
-              <td className="mono desktop-only">{money(row.invested_value)}</td>
-              <td className="mono desktop-only">{delta(row.delta, row.delta_pct)}</td>
-              <td className="mobile-only">
-                <TableMobileCard title={`${row.date} · ${row.cuota}`}>
-                  <TableMobileCardSection>
-                    <TableMobileCardRow label={labels.extra} value={money(row.extra)} />
-                    <TableMobileCardRow label={labels.prepaid} value={money(row.prepaid_value)} />
-                    <TableMobileCardRow label={labels.invested} value={money(row.invested_value)} />
-                    <TableMobileCardRow
-                      label={labels.delta}
-                      value={delta(row.delta, row.delta_pct)}
-                    />
-                  </TableMobileCardSection>
-                </TableMobileCard>
-              </td>
-            </tr>
-          ))}
-        </Table>
+          columns={[
+            {
+              key: "date",
+              header: labels.date,
+              className: "mono",
+              cell: (row) => row.date,
+              title: (row) => `${row.date} · ${row.cuota}`,
+            },
+            { key: "cuota", header: labels.cuota, cell: (row) => row.cuota, desktopOnly: true },
+            { key: "extra", header: labels.extra, className: "mono", cell: (row) => money(row.extra) },
+            { key: "prepaid", header: labels.prepaid, className: "mono", cell: (row) => money(row.prepaid_value) },
+            { key: "invested", header: labels.invested, className: "mono", cell: (row) => money(row.invested_value) },
+            { key: "delta", header: labels.delta, className: "mono", cell: (row) => delta(row.delta, row.delta_pct) },
+          ]}
+        />
       </PaginatedTable>
     </PageGridTile>
   );

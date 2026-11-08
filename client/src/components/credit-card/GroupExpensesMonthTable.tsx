@@ -3,7 +3,7 @@ import { useTranslation } from "../../i18n";
 import { flowPeriodLabel, formatFlowMoney, type FlowChartGranularity } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow, FlowCcExpenseMonthRow } from "../../types";
-import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
+import type { CcInstallmentGastosMode } from "../../expenseLineShape";
 import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../ui/PaginatedTable";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useModalPeriodNav } from "../../periodModalNav";

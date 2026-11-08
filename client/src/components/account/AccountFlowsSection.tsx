@@ -6,12 +6,12 @@ import { PageGridTile } from "../layout/PageGridTile";
 export function AccountFlowsSection({
   addMovementsForm,
   accountId,
-  movementUnitsKind,
+  unitsKind,
 }: {
   /** Brokerage manual movement entry, rendered under the Flujos heading. */
   addMovementsForm?: ReactNode;
   accountId: number;
-  movementUnitsKind?: (slug: string) => "shares" | "coin";
+  unitsKind?: "shares" | "coin";
 }) {
   const { t } = useTranslation();
 
@@ -19,7 +19,7 @@ export function AccountFlowsSection({
     <PageGridTile id="flows">
       <h2>{t("accountDetail.flowsTitle")}</h2>
       {addMovementsForm}
-      <FlowsPanel kind="account" accountId={accountId} movementUnitsKind={movementUnitsKind} showPersonalOnlyFilter />
+      <FlowsPanel kind="account" accountId={accountId} unitsKind={unitsKind} showPersonalOnlyFilter />
     </PageGridTile>
   );
 }

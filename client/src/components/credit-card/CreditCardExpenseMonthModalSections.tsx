@@ -2,26 +2,12 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
-import {
-  countsTowardAbonosMes,
-  countsTowardComprasModal,
-  countsTowardGastosMes,
-  isCcExpenseTotalsExcludedSlug,
-  isInstallmentCuotaZeroLine,
-  isNotaCreditoExcludedLine,
-  sumLineAmountsClp,
-} from "../../ccExpenseLineBuckets";
-import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
-import {
-  gastosPeriodMonthForLine,
-  installmentModalLines,
-  purchaseModalLines,
-} from "../../ccExpensePeriodMonth";
+import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
+import { lineInModalSection, linePeriodMonth, type CcInstallmentGastosMode } from "../../expenseLineShape";
 import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByStatement,
 } from "./CreditCardExpenseLinesTable";
-import { ExpenseLinePiecesDialog } from "./ExpenseLinePiecesDialog";
 import { ManualExpenseDialog } from "./ManualExpenseDialog";
 
 export type CreditCardExpenseMonthBucket = {
@@ -38,59 +24,20 @@ const emptyBucket = (): CreditCardExpenseMonthBucket => ({
   excluded: [],
 });
 
-function linesForAbonosAndExcluded(
-  lines: readonly FlowCcExpenseLineRow[],
-  periodMonth: string
-): FlowCcExpenseLineRow[] {
-  return lines.filter((ln) => gastosPeriodMonthForLine(ln) === periodMonth);
-}
-
-/** Cuota lines billed this month that belong in the Cuotas table (gastos-eligible only). */
-export function countsTowardInstallmentsModal(
-  line: FlowCcExpenseLineRow,
-  installmentMode: CcInstallmentGastosMode
-): boolean {
-  return !isInstallmentCuotaZeroLine(line) && countsTowardGastosMes(line, installmentMode);
-}
-
-/** Cuota 0 or totals-excluded category — visible under Excluded, not in gastos sums. */
-export function countsTowardExcludedCuotaModal(line: FlowCcExpenseLineRow): boolean {
-  return (
-    isInstallmentCuotaZeroLine(line) || isCcExpenseTotalsExcludedSlug(line.category_slug)
-  );
-}
-
-function countsTowardExcludedNonCuotaModal(
-  line: FlowCcExpenseLineRow,
-  installmentMode: CcInstallmentGastosMode
-): boolean {
-  if (line.amount_clp <= 0) return false;
-  if (line.line_role === "installment_cuota") return false;
-  return !countsTowardGastosMes(line, installmentMode);
-}
-
+/** The month's lines by section, as the server placed them (`month_modal_sections`). */
 export function buildCreditCardExpenseMonthBucket(
   lines: readonly FlowCcExpenseLineRow[],
   periodMonth: string,
   installmentMode: CcInstallmentGastosMode
 ): CreditCardExpenseMonthBucket {
-  const inScope = linesForAbonosAndExcluded(lines, periodMonth);
-  const cuotasForMonth = installmentModalLines(lines, periodMonth);
-  const excludedCuotas = cuotasForMonth.filter(countsTowardExcludedCuotaModal);
-  const excludedOther = inScope.filter(
-    (ln) =>
-      isNotaCreditoExcludedLine(ln) ||
-      countsTowardExcludedNonCuotaModal(ln, installmentMode)
-  );
+  const inMonth = lines.filter((ln) => linePeriodMonth(ln) === periodMonth);
+  const section = (name: Parameters<typeof lineInModalSection>[2]) =>
+    inMonth.filter((ln) => lineInModalSection(ln, installmentMode, name)).sort(sortCreditCardExpenseLinesByStatement);
   return {
-    purchases: purchaseModalLines(lines, periodMonth)
-      .filter((ln) => countsTowardComprasModal(ln, installmentMode))
-      .sort(sortCreditCardExpenseLinesByStatement),
-    installments: cuotasForMonth
-      .filter((ln) => countsTowardInstallmentsModal(ln, installmentMode))
-      .sort(sortCreditCardExpenseLinesByStatement),
-    abonos: inScope.filter(countsTowardAbonosMes).sort(sortCreditCardExpenseLinesByStatement),
-    excluded: [...excludedCuotas, ...excludedOther].sort(sortCreditCardExpenseLinesByStatement),
+    purchases: section("purchases"),
+    installments: section("installments"),
+    abonos: section("abonos"),
+    excluded: section("excluded"),
   };
 }
 
@@ -120,7 +67,6 @@ export function CreditCardExpenseMonthModalSections({
   enableCheckingNotes?: boolean;
 }) {
   const { t } = useTranslation();
-  const [piecesLine, setPiecesLine] = useState<FlowCcExpenseLineRow | null>(null);
   const [manualLine, setManualLine] = useState<FlowCcExpenseLineRow | null>(null);
 
   const purchasesSum = useMemo(
@@ -159,10 +105,8 @@ export function CreditCardExpenseMonthModalSections({
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
         enableCheckingNotes={enableCheckingNotes}
-        onEditPieces={setPiecesLine}
         onEditManual={setManualLine}
       />
-      <ExpenseLinePiecesDialog line={piecesLine} categories={categories} onClose={() => setPiecesLine(null)} />
       <ManualExpenseDialog
         open={manualLine != null}
         expense={manualLine}

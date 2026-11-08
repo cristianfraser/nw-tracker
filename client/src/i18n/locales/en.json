@@ -1315,7 +1315,7 @@
         "save": "Save link",
         "remove": "Remove"
       },
-      "installmentPurchaseTotalLabel": "Installment purchase · {{count}} installments",
+      "installmentPurchaseTotalLabel": "{{count}} installments",
       "cuotaPurchasePendingBadge": "Installments · count?",
       "cuotaPurchasePendingHint": {
         "cuota_comercio": "The card feed lists this «cuota comercio» purchase at its full amount without the number of installments; its first installment bills at the next close.",
@@ -1445,6 +1445,10 @@
         "deleteConfirm": "Delete this manual expense?"
       },
       "lineRow": {
+        "planCountSave": "Change installments",
+        "planRemove": "Undo installments",
+        "planRemoveConfirmTitle": "Undo the installments?",
+        "planRemoveConfirmBody": "{{merchant}} goes back to a single charge.",
         "sortDate": "Date",
         "sortAmount": "Amount",
         "sortCategory": "Category",

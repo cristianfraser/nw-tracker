@@ -3,9 +3,9 @@ import {
   hasMaterialDashboardBalance,
   isChartActiveAccount,
 } from "./accountGroupTotals";
-import { dashboardBucketRoutePath } from "./portfolioDashboardBuckets";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import i18n from "./i18n";
+import type { SurfacePeriod } from "./surfaceDisplayPrefs";
 import type { DashboardAccountRow, NavCardAmountDto } from "./types";
 
 export type CardGroupMetrics = {
@@ -23,16 +23,7 @@ export type CardGroupMetrics = {
   delta_period_usd?: number | null;
 };
 
-export type CardGroupMetricsPeriod = "day" | "month" | "year";
-
-/**
- * Month/year-only surfaces (flow pages, detalle tables, CC rollups) clamp the global
- * D | M | Y toggle: `day` renders as the monthly view there — daily rows are a
- * net-worth-surface feature, not a flows one.
- */
-export function monthYearMetricsPeriod(period: CardGroupMetricsPeriod): "month" | "year" {
-  return period === "year" ? "year" : "month";
-}
+export type CardGroupMetricsPeriod = SurfacePeriod;
 
 export type CardBreakdownLine = {
   label: string;
@@ -135,25 +126,15 @@ function accountDetailPath(accountId: number): string {
   return `/account/${accountId}`;
 }
 
-/** Pasivos hipoteca leaf paired with a property row (e.g. depto), not in `real_estate` accounts. */
+/** The property's loan row (server `loan_account_id`), when it has a value. */
 function mortgageAccountForPropertyRow(
   allAccounts: DashboardAccountRow[],
   propertyRow: DashboardAccountRow | undefined
 ): DashboardAccountRow | undefined {
-  // Page-bundle rows carry group/bucket slugs but not category_slug; match either. Prefer
-  // the mortgage sharing the property's name (e.g. both «depto»).
-  const mortgages = allAccounts.filter(
-    (a) =>
-      (a.category_slug === "mortgage" || a.group_slug === "liabilities__mortgage") &&
-      a.current_value_clp != null
-  );
-  if (!mortgages.length) return undefined;
-  if (propertyRow) {
-    const key = propertyRow.name.trim().toLowerCase();
-    const byName = mortgages.find((m) => m.name.trim().toLowerCase() === key);
-    if (byName) return byName;
-  }
-  return mortgages.length === 1 ? mortgages[0] : undefined;
+  const loanId = propertyRow?.loan_account_id;
+  if (loanId == null) return undefined;
+  const loan = allAccounts.find((a) => a.account_id === loanId);
+  return loan?.current_value_clp != null ? loan : undefined;
 }
 
 export type CardGroupMetricsByPeriod = Record<CardGroupMetricsPeriod, CardGroupMetrics>;
@@ -256,6 +237,8 @@ export function compareDashboardCardMainDesc(
 export function buildRealEstateCardBreakdown(
   accounts: DashboardAccountRow[],
   total: NavCardAmountDto,
+  /** The real-estate node's own page (`route_path`): the head line's link without a property row. */
+  nodeRoute: string,
   allAccounts?: DashboardAccountRow[]
 ): CardBreakdownLine[] {
   const props = valueRows(accounts.filter((a) => a.group_slug === "real_estate"));
@@ -269,14 +252,7 @@ export function buildRealEstateCardBreakdown(
   const propertyName = props[0]!.name.trim().toLowerCase();
   const netClp = total.clp;
   const groupUsd = total.usd;
-  const propertyTo =
-    propertyRow != null
-      ? accountDetailPath(propertyRow.account_id)
-      : dashboardBucketRoutePath("real_estate");
-  const mortgageTo =
-    mortgageRow != null
-      ? accountDetailPath(mortgageRow.account_id)
-      : liabilitiesSubgroupPath("mortgage");
+  const propertyTo = propertyRow != null ? accountDetailPath(propertyRow.account_id) : nodeRoute;
 
   lines.push({
     label: propertyName,
@@ -294,6 +270,7 @@ export function buildRealEstateCardBreakdown(
     // The single card path: property rows store equity (net of the linked hipoteca), so
     // gross valor = equity + outstanding mortgage — both straight from account values.
     const mortgageClp = mortgageRow.current_value_clp;
+    const mortgageTo = accountDetailPath(mortgageRow.account_id);
     const mortgageUsd = mortgageRow.current_value_usd ?? null;
     lines.push({
       label: i18n.t("realEstate.propertyValue"),

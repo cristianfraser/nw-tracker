@@ -15,7 +15,7 @@ import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { PageGridTile } from "../layout/PageGridTile";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
-import { queryShowsLoading } from "../../queries/pageShapeReady";
+import { dailyPayloadPending, queryShowsLoading } from "../../queries/pageShapeReady";
 import type {
   AccountMonthlyPerformanceRow,
   AccountMortgageLedgerResponse,
@@ -95,9 +95,7 @@ export function LiabilitiesMortgageGroupSection({
     isDaily && summary.account_id > 0,
     { perfLevels: true }
   );
-  // A Diario combo draws only its own daily series: until it is this unit's (not pending, not a
-  // held placeholder) it gets no points and shows its pending frame, never the monthly points.
-  const dailyPending = isDaily && queryShowsLoading(dailySeries);
+  const dailyPending = dailyPayloadPending(isDaily, dailySeries);
   const dailyPerfPoints = useMemo(() => {
     if (!isDaily || dailyPending) return null;
     if (!dailySeries.data?.points.length || !monthlyPerfRows.length) return null;
@@ -238,7 +236,7 @@ export function LiabilitiesMortgageGroupSection({
                 series={detalleDailySeries.data}
                 displayUnit={displayUnit}
                 dimClosedDays
-                loading={detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData}
+                loading={queryShowsLoading(detalleDailySeries)}
               />
             ) : (
               <MonthlyPerfDetailTable

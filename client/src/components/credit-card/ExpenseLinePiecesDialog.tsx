@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { queryKeys } from "../../queries/keys";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input } from "@crfrsr/ui";
 import { api } from "../../api";
@@ -40,7 +41,7 @@ export function ExpenseLinePiecesDialog({
   const lineId = line?.statement_line_id ?? 0;
   const open = source != null && lineId > 0;
   const query = useQuery({
-    queryKey: ["expenseLinePieces", source, lineId],
+    queryKey: queryKeys.expenseLinePieces(source, lineId),
     queryFn: () => api.expenseLinePieces(source!, lineId),
     enabled: open,
     staleTime: 0,

@@ -3,7 +3,7 @@ import { useTranslation } from "../../i18n";
 import { buildCcDailyHistorialRows } from "../../ccDailyHistorial";
 import { windowCcHistorialRows } from "../../chartRangeWindow";
 import { useDailySeries } from "../../queries/hooks";
-import { queryShowsLoading } from "../../queries/pageShapeReady";
+import { dailyPayloadPending } from "../../queries/pageShapeReady";
 import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { timeRangeToDays } from "../../timeRange";
 import type { AccountCcInstallmentsResponse } from "../../types";
@@ -82,9 +82,7 @@ export function CreditCardHistorialSurface({
     timeRangeToDays(timeRange),
     isDaily && hasHistorial
   );
-  // Day mode draws only its own daily series: until it is here (not pending, not a held
-  // placeholder) the chart gets no rows and shows its pending frame, never the monthly rows.
-  const dailyPending = isDaily && queryShowsLoading(daily);
+  const dailyPending = dailyPayloadPending(isDaily, daily);
   const dailyRows = useMemo(
     () =>
       isDaily && !dailyPending && daily.data

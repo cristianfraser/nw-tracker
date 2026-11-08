@@ -15,7 +15,7 @@ import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 export type PortfolioNavChildDetailCardsProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
+    "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;

@@ -1,14 +1,7 @@
-import { useCallback, useState } from "react";
+import { usePersistedPref } from "./usePersistedPref";
 
-const LS_KEY = "nw-tracker.expenses.includePreTax";
-
-function readStored(): boolean {
-  try {
-    return localStorage.getItem(LS_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+const parseInclude = (raw: string | null) => raw === "1";
+const asText = (include: boolean) => (include ? "1" : "0");
 
 /**
  * Whether the Expenses page also counts the deductions taken from a payslip (pre-tax expenses);
@@ -18,14 +11,6 @@ export function useExpensesIncludePreTax(): {
   includePreTax: boolean;
   setIncludePreTax: (include: boolean) => void;
 } {
-  const [includePreTax, setState] = useState<boolean>(readStored);
-  const setIncludePreTax = useCallback((include: boolean) => {
-    setState(include);
-    try {
-      localStorage.setItem(LS_KEY, include ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const [includePreTax, setIncludePreTax] = usePersistedPref("nw-tracker.expenses.includePreTax", parseInclude, asText);
   return { includePreTax, setIncludePreTax };
 }

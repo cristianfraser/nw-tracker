@@ -34,13 +34,12 @@ type FmtPerf = (n: number | null | undefined) => string;
 function formatStockInflow(
   row: PerfRow,
   isAfpAccount: boolean,
-  movementUnitsKind?: (slug: string) => "shares" | "coin"
+  unitsKind: "shares" | "coin" = "shares"
 ): string {
   const u = row.stock_units_inflow ?? 0;
   if (!Number.isFinite(u) || u === 0) return "—";
   if (isAfpAccount) return formatInstrumentUnits(u, "shares");
-  const kind = movementUnitsKind?.("") ?? "shares";
-  return formatInstrumentUnits(u, kind);
+  return formatInstrumentUnits(u, unitsKind);
 }
 
 function formatPerfPeriodLabel(asOfDate: string, isYearly: boolean): string {
@@ -55,7 +54,7 @@ export function MonthlyPerfDetailTable({
   displayUnit,
   isMortgageAccount = false,
   isAfpAccount = false,
-  movementUnitsKind,
+  unitsKind,
   showStockInflowsColumn = true,
   serverPagination,
   period,
@@ -71,7 +70,7 @@ export function MonthlyPerfDetailTable({
   displayUnit: "clp" | "usd";
   isMortgageAccount?: boolean;
   isAfpAccount?: boolean;
-  movementUnitsKind?: (slug: string) => "shares" | "coin";
+  unitsKind?: "shares" | "coin";
   /** Off for consolidated group tables (mixed instruments). */
   showStockInflowsColumn?: boolean;
   /**
@@ -154,7 +153,7 @@ export function MonthlyPerfDetailTable({
               ? {
                   key: "units",
                   direction: units > 0 ? ("in" as const) : ("out" as const),
-                  amount: formatStockInflow({ ...row, stock_units_inflow: Math.abs(units) }, isAfpAccount, movementUnitsKind),
+                  amount: formatStockInflow({ ...row, stock_units_inflow: Math.abs(units) }, isAfpAccount, unitsKind),
                   title: inflowLabel,
                 }
               : null,

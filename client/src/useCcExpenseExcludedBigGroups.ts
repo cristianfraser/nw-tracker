@@ -1,25 +1,23 @@
 import { useCallback, useMemo, useState } from "react";
+import { readPref, writePref } from "./usePersistedPref";
 
 const LS_KEY = "nw-tracker.ccExpenseExcludedBigGroups";
 
 function readStoredExcluded(): Set<string> | null {
+  const raw = readPref(LS_KEY);
+  if (!raw) return null;
+  let parsed: unknown;
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return new Set(parsed.filter((s): s is string => typeof s === "string" && s.length > 0));
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
+  if (!Array.isArray(parsed)) return null;
+  return new Set(parsed.filter((s): s is string => typeof s === "string" && s.length > 0));
 }
 
 function writeStoredExcluded(slugs: ReadonlySet<string>): void {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify([...slugs]));
-  } catch {
-    /* ignore */
-  }
+  writePref(LS_KEY, JSON.stringify([...slugs]));
 }
 
 function defaultExcludedForActive(activeSlugs: readonly string[]): Set<string> {

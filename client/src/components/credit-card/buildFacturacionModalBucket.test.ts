@@ -33,11 +33,11 @@ function line(
 }
 
 describe("buildFacturacionModalBucket", () => {
-  it("files the lines the server marks as financing under coste financiero", () => {
+  it("files the lines the server marks as financing and as abonos", () => {
     const bucket = buildFacturacionModalBucket([
       line({ statement_line_id: 1, merchant: "JUMBO", amount_clp: 50_000 }),
       line({ statement_line_id: 2, merchant: "INTERESES ROTATIVOS", amount_clp: 12_000, is_financing_cost: true }),
-      line({ statement_line_id: 3, merchant: "PAGO", amount_clp: -100_000 }),
+      line({ statement_line_id: 3, merchant: "PAGO", amount_clp: -100_000, abono: true }),
     ]);
     expect(bucket.gastos.map((l) => l.merchant)).toEqual(["JUMBO"]);
     expect(bucket.costeFinanciero.map((l) => l.merchant)).toEqual(["INTERESES ROTATIVOS"]);

@@ -32,7 +32,7 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
   const [saved, setSaved] = useState(false);
 
   const valuationsQuery = useQuery({
-    queryKey: ["accountValuations", accountId],
+    queryKey: queryKeys.accountValuations(accountId),
     queryFn: () => api.accountValuations(accountId),
   });
 
@@ -43,7 +43,7 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
       }),
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
-      queryClient.invalidateQueries({ queryKey: ["accountValuations", accountId] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.accountValuations(accountId) }),
     ]);
   };
 

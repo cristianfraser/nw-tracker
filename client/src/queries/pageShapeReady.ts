@@ -36,3 +36,12 @@ export function queryShowsLoading(q: { isPending: boolean; isPlaceholderData: bo
 export function queryLoadError(q: { data: unknown; error: unknown }): unknown {
   return q.data === undefined ? q.error : null;
 }
+
+/**
+ * A Diario chart draws only its own daily payload: until it is this unit's (not pending, not a
+ * held placeholder) the chart gets no data and shows its pending frame — title row and controls
+ * over an empty box — never the monthly block.
+ */
+export function dailyPayloadPending(isDaily: boolean, q: { isPending: boolean; isPlaceholderData: boolean }): boolean {
+  return isDaily && queryShowsLoading(q);
+}

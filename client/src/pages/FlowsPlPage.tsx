@@ -20,7 +20,7 @@ import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
 import type { FlowsPlAccountRow, FlowsPlBucketBlock, FlowsPlBucketSlug } from "../types";
-import { queryLoadError } from "../queries/pageShapeReady";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 
 const PAGE_SIZE = 12;
 
@@ -72,7 +72,7 @@ export function FlowsPlPage() {
   const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // Pending, or holding the prior Diario window while the new one loads: dimmed.
-  const loading = isPending || isPlaceholderData;
+  const loading = queryShowsLoading({ isPending, isPlaceholderData });
 
   const chartPoints = useMemo(() => {
     if (!data) return [];

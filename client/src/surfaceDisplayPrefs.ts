@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { readPref, writePref } from "./usePersistedPref";
 import { parseTimeRange, type TimeRange } from "./timeRange";
 
 /**
@@ -34,6 +35,8 @@ export type StoredSurfacePrefs = {
   area?: SurfaceAreaMode;
   /** P/L combo charts that can show returns instead of money: `true` = the % view. */
   percent?: boolean;
+  /** An accounts table's «Liquidadas» row group, opened. */
+  liquidatedOpen?: boolean;
 };
 
 export type SurfaceCompositionView = "composition" | "map";
@@ -73,29 +76,12 @@ export function parseStoredSurfacePrefs(raw: string | null): StoredSurfacePrefs 
   if (rec.view === "composition" || rec.view === "map") out.view = rec.view;
   if (rec.area === "ytd" || rec.area === "total") out.area = rec.area;
   if (typeof rec.percent === "boolean") out.percent = rec.percent;
+  if (typeof rec.liquidatedOpen === "boolean") out.liquidatedOpen = rec.liquidatedOpen;
   return out;
 }
 
-function lsGet(key: string): string | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function lsSet(key: string, value: string): void {
-  try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(key, value);
-  } catch {
-    /* ignore (private mode / quota) */
-  }
-}
-
 export function readStoredSurfacePrefs(surfaceId: string): StoredSurfacePrefs {
-  return parseStoredSurfacePrefs(lsGet(SURFACE_PREFS_LS_PREFIX + surfaceId));
+  return parseStoredSurfacePrefs(readPref(SURFACE_PREFS_LS_PREFIX + surfaceId));
 }
 
 /** Merge `patch` over the currently stored fields and persist; returns the merged value. */
@@ -104,8 +90,34 @@ export function writeStoredSurfacePref(
   patch: StoredSurfacePrefs
 ): StoredSurfacePrefs {
   const merged = { ...readStoredSurfacePrefs(surfaceId), ...patch };
-  lsSet(SURFACE_PREFS_LS_PREFIX + surfaceId, JSON.stringify(merged));
+  writePref(SURFACE_PREFS_LS_PREFIX + surfaceId, JSON.stringify(merged));
   return merged;
+}
+
+/**
+ * One surface's stored fields and a writer. `surfaceId` null = the page does not know which
+ * surface yet (its group has not resolved): nothing is read or written, every field is the
+ * caller's default. A `surfaceId` change on a mounted component (route param swap, e.g.
+ * `group.<slug>.valuation` across group pages) re-seeds from storage during render.
+ */
+function useStoredSurface(surfaceId: string | null): [StoredSurfacePrefs, (patch: StoredSurfacePrefs) => void] {
+  const [state, setState] = useState(() => ({
+    surfaceId,
+    stored: surfaceId == null ? {} : readStoredSurfacePrefs(surfaceId),
+  }));
+  let stored = state.stored;
+  if (state.surfaceId !== surfaceId) {
+    stored = surfaceId == null ? {} : readStoredSurfacePrefs(surfaceId);
+    setState({ surfaceId, stored });
+  }
+  const write = useCallback(
+    (patch: StoredSurfacePrefs) => {
+      if (surfaceId == null) return;
+      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, patch) });
+    },
+    [surfaceId]
+  );
+  return [stored, write];
 }
 
 export type SurfacePrefsValue = {
@@ -117,40 +129,16 @@ export type SurfacePrefsValue = {
 
 /**
  * Per-surface Período/Rango state. Defaults are primitives (stable deps); surfaces that
- * only use one of the pair pass any default for the other and ignore it. A `surfaceId`
- * change on a mounted component (route param swap, e.g. `group.<slug>.valuation` across
- * group pages) re-seeds from storage during render.
+ * only use one of the pair pass any default for the other and ignore it.
  */
 export function useSurfacePrefs(
-  surfaceId: string,
+  surfaceId: string | null,
   defaultPeriod: SurfacePeriod,
   defaultRange: TimeRange
 ): SurfacePrefsValue {
-  const [state, setState] = useState(() => ({
-    surfaceId,
-    stored: readStoredSurfacePrefs(surfaceId),
-  }));
-
-  let stored = state.stored;
-  if (state.surfaceId !== surfaceId) {
-    stored = readStoredSurfacePrefs(surfaceId);
-    setState({ surfaceId, stored });
-  }
-
-  const setPeriod = useCallback(
-    (p: SurfacePeriod) => {
-      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { period: p }) });
-    },
-    [surfaceId]
-  );
-
-  const setRange = useCallback(
-    (r: TimeRange) => {
-      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { range: r }) });
-    },
-    [surfaceId]
-  );
-
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setPeriod = useCallback((p: SurfacePeriod) => write({ period: p }), [write]);
+  const setRange = useCallback((r: TimeRange) => write({ range: r }), [write]);
   return {
     period: stored.period ?? defaultPeriod,
     range: stored.range ?? defaultRange,
@@ -164,55 +152,21 @@ export function useSurfacePrefs(
  * The stored slug is only a preference: the caller checks it against the listed benchmarks.
  */
 export function useSurfaceBenchmark(
-  surfaceId: string,
+  surfaceId: string | null,
   defaultBenchmark: string
 ): { benchmark: string; setBenchmark: (slug: string) => void } {
-  const [state, setState] = useState(() => ({
-    surfaceId,
-    stored: readStoredSurfacePrefs(surfaceId),
-  }));
-
-  let stored = state.stored;
-  if (state.surfaceId !== surfaceId) {
-    stored = readStoredSurfacePrefs(surfaceId);
-    setState({ surfaceId, stored });
-  }
-
-  const setBenchmark = useCallback(
-    (slug: string) => {
-      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { benchmark: slug }) });
-    },
-    [surfaceId]
-  );
-
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setBenchmark = useCallback((slug: string) => write({ benchmark: slug }), [write]);
   return { benchmark: stored.benchmark ?? defaultBenchmark, setBenchmark };
 }
 
-/**
- * Money or % view of a return combo (`<pageKey>.perf`-style surface). Default money (`false`).
- */
-export function useSurfacePercentMode(surfaceId: string): {
+/** Money or % view of a return combo (`<pageKey>.perf`-style surface). Default money (`false`). */
+export function useSurfacePercentMode(surfaceId: string | null): {
   percent: boolean;
   setPercent: (on: boolean) => void;
 } {
-  const [state, setState] = useState(() => ({
-    surfaceId,
-    stored: readStoredSurfacePrefs(surfaceId),
-  }));
-
-  let stored = state.stored;
-  if (state.surfaceId !== surfaceId) {
-    stored = readStoredSurfacePrefs(surfaceId);
-    setState({ surfaceId, stored });
-  }
-
-  const setPercent = useCallback(
-    (on: boolean) => {
-      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { percent: on }) });
-    },
-    [surfaceId]
-  );
-
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setPercent = useCallback((on: boolean) => write({ percent: on }), [write]);
   return { percent: stored.percent ?? false, setPercent };
 }
 
@@ -220,28 +174,12 @@ export function useSurfacePercentMode(surfaceId: string): {
  * Composition panel view (`<pageKey>.proportional`): the share chart or the value
  * treemap (default). Stored beside that surface's Período/Rango, which only the share chart uses.
  */
-export function useSurfaceCompositionView(surfaceId: string): {
+export function useSurfaceCompositionView(surfaceId: string | null): {
   view: SurfaceCompositionView;
   setView: (v: SurfaceCompositionView) => void;
 } {
-  const [state, setState] = useState(() => ({
-    surfaceId,
-    stored: readStoredSurfacePrefs(surfaceId),
-  }));
-
-  let stored = state.stored;
-  if (state.surfaceId !== surfaceId) {
-    stored = readStoredSurfacePrefs(surfaceId);
-    setState({ surfaceId, stored });
-  }
-
-  const setView = useCallback(
-    (v: SurfaceCompositionView) => {
-      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { view: v }) });
-    },
-    [surfaceId]
-  );
-
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setView = useCallback((v: SurfaceCompositionView) => write({ view: v }), [write]);
   return { view: stored.view ?? "map", setView };
 }
 
@@ -250,27 +188,21 @@ export function useSurfaceCompositionView(surfaceId: string): {
  * the sum within each year, `total` over the whole history. Stored beside the chart's
  * Período/Rango.
  */
-export function useSurfaceAreaMode(surfaceId: string): {
+export function useSurfaceAreaMode(surfaceId: string | null): {
   area: SurfaceAreaMode;
   setArea: (a: SurfaceAreaMode) => void;
 } {
-  const [state, setState] = useState(() => ({
-    surfaceId,
-    stored: readStoredSurfacePrefs(surfaceId),
-  }));
-
-  let stored = state.stored;
-  if (state.surfaceId !== surfaceId) {
-    stored = readStoredSurfacePrefs(surfaceId);
-    setState({ surfaceId, stored });
-  }
-
-  const setArea = useCallback(
-    (a: SurfaceAreaMode) => {
-      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { area: a }) });
-    },
-    [surfaceId]
-  );
-
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setArea = useCallback((a: SurfaceAreaMode) => write({ area: a }), [write]);
   return { area: stored.area ?? "ytd", setArea };
+}
+
+/** An accounts table's «Liquidadas» group, opened or not (`<pageKey>.accounts`). */
+export function useSurfaceLiquidatedOpen(surfaceId: string | null): {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+} {
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setOpen = useCallback((open: boolean) => write({ liquidatedOpen: open }), [write]);
+  return { open: stored.liquidatedOpen ?? false, setOpen };
 }
