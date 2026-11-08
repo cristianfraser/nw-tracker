@@ -1,4 +1,5 @@
 import { isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
+import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import { insertBankPesoMovement } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
@@ -20,7 +21,6 @@ import {
   clearCheckingAccountValuations,
   ensureCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
-import { preserveCheckingGastosCategoriesForCartolaNotes } from "./checkingGastosCategoryPersist.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
@@ -129,11 +129,8 @@ export function deleteCheckingCartolaMonthImport(
   periodMonth: string,
   dbHandle: Database = db
 ): { movements: number; imports: number } {
-  preserveCheckingGastosCategoriesForCartolaNotes(
-    accountId,
-    `import:cartola|${periodMonth}|%`,
-    dbHandle
-  );
+  // The month's rows go; a flow something hangs off is retired with its document (migration 290),
+  // and the re-imported row with the same identity takes it back (`insertBankPesoMovement`).
   const delMov = dbHandle
     .prepare(
       `DELETE FROM movements
@@ -270,8 +267,11 @@ export function importCheckingCartola(
   partialsRemoved: number;
   inserted_flows: ImportFlowItem[];
   skipped_flows: SkippedImportFlowItem[];
+  /** Rows that took a retired flow back (a re-imported month), or found several (left alone). */
+  flow_adoptions: NonNullable<RetiredMovementAdoption>[];
 } {
   assertCheckingCartolaSaldoIdentity(cartola);
+  const flow_adoptions: NonNullable<RetiredMovementAdoption>[] = [];
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) {
     throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
@@ -393,7 +393,8 @@ export function importCheckingCartola(
           note,
           flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
         },
-        dbHandle
+        dbHandle,
+        flow_adoptions
       );
       movementsInserted += 1;
       inserted_flows.push(flowOf(mv));
@@ -441,7 +442,7 @@ export function importCheckingCartola(
     );
   });
   tx();
-  return { movementsInserted, movementsSkipped, partialsRemoved, inserted_flows, skipped_flows };
+  return { movementsInserted, movementsSkipped, partialsRemoved, inserted_flows, skipped_flows, flow_adoptions };
 }
 
 export type ImportCheckingCartolasResult = {
@@ -638,7 +639,14 @@ export function importCartolaList(
     }
 
     try {
-      const { movementsInserted, inserted_flows, skipped_flows } = importCheckingCartola(accountId, cartola);
+      const { movementsInserted, inserted_flows, skipped_flows, flow_adoptions } = importCheckingCartola(accountId, cartola);
+      const ambiguous = flow_adoptions.filter((a) => a.status === "ambiguous");
+      if (flow_adoptions.length > 0) {
+        console.log(
+          `  cartola ${cartola.period_month}: ${flow_adoptions.length - ambiguous.length} row(s) took their flow back` +
+            (ambiguous.length > 0 ? `; AMBIGUOUS (left alone): movements ${ambiguous.map((a) => a.movement_id).join(", ")}` : "")
+        );
+      }
       flows?.inserted.push(...inserted_flows);
       flows?.skipped.push(...skipped_flows);
       fileLogs.push(

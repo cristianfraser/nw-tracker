@@ -44,7 +44,7 @@ export function targetParams(t: KeyTarget): [number, CheckingPortion, number] {
 export function keyedRowsSql(table: string, columns: readonly string[]): string {
   const key = expenseKeySql("f.legacy_key", "a.portion", `NULLIF(a.piece_seq, ${WHOLE_FLOW_PIECE})`);
   const cols = columns.map((c) => `a.${c}`).join(", ");
-  return `(SELECT ${key} AS purchase_key${cols ? `, ${cols}` : ""} FROM ${table} a JOIN flows f ON f.id = a.flow_id)`;
+  return `(SELECT ${key} AS purchase_key${cols ? `, ${cols}` : ""} FROM ${table} a JOIN flows f ON f.id = a.flow_id WHERE f.legacy_key IS NOT NULL)`;
 }
 
 /**

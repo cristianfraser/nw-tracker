@@ -6,7 +6,7 @@ import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
-import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { db } from "./db.js";

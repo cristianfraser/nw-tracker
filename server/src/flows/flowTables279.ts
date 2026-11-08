@@ -111,7 +111,10 @@ function movementEvidenceValues(a: string): string {
     WHEN ${a}.note LIKE 'import:fintual|%' OR ${a}.note LIKE 'import:racional%' THEN 'broker_document'
     WHEN ${a}.note LIKE 'import:buda|%' OR ${a}.note LIKE 'import:excel|%' OR ${a}.note LIKE 'import:dap|%' THEN 'legacy_import'
     ELSE 'manual' END`;
-  return `${kind}, 'movements', ${a}.id, NULL, ${a}.occurred_on, ${a}.amount, ${a}.currency, ${a}.note,
+  // A bank document's row is identified by the row its importer writes (the cartola identity, the
+  // daily listing's): the document key adoption looks for when the row comes back (migration 290).
+  const documentKey = `CASE WHEN ${kind} IN ('cartola', 'cartola_anchor', 'daily_listing') THEN ${a}.note END`;
+  return `${kind}, 'movements', ${a}.id, ${documentKey}, ${a}.occurred_on, ${a}.amount, ${a}.currency, ${a}.note,
     CASE ${kind} WHEN 'cartola' THEN 3 WHEN 'cartola_anchor' THEN 3 WHEN 'daily_listing' THEN 2 WHEN 'mail_notice' THEN 2 ELSE 1 END`;
 }
 
@@ -145,7 +148,7 @@ function gapMirrorEvidenceValues(a: string): string {
 const EVIDENCE_COLUMNS = `source_kind, source_table, source_row_id, document_key, stated_on, stated_amount, stated_currency,
   stated_description, authority`;
 
-type SourceSpec = {
+export type SourceSpec = {
   table: FlowSourceTable | "income_entries";
   flowValues: (a: string) => string;
   evidenceValues: (a: string) => string;
@@ -155,7 +158,7 @@ type SourceSpec = {
   hasFlowColumn: boolean;
 };
 
-const SOURCES: readonly SourceSpec[] = [
+export const FLOW_SOURCES: readonly SourceSpec[] = [
   { table: "cc_installment_purchases", flowValues: planFlowValues, evidenceValues: planEvidenceValues, hasFlowColumn: true },
   { table: "cc_statement_lines", flowValues: lineFlowValues, evidenceValues: lineEvidenceValues, hasFlowColumn: true },
   { table: "movements", flowValues: movementFlowValues, evidenceValues: movementEvidenceValues, hasFlowColumn: true },
@@ -211,7 +214,7 @@ END`;
 
 /** Re-creates one table's insert trigger (its flow values changed: migration 288). */
 export function reinstallFlowInsertTrigger(dbi: DatabaseType, table: SourceSpec["table"]): void {
-  const spec = SOURCES.find((s) => s.table === table);
+  const spec = FLOW_SOURCES.find((s) => s.table === table);
   if (!spec) throw new Error(`no flow source ${table}`);
   dbi.exec(`DROP TRIGGER IF EXISTS flow_${table}_ai`);
   dbi.exec(flowInsertTriggerSql(spec));
@@ -219,7 +222,7 @@ export function reinstallFlowInsertTrigger(dbi: DatabaseType, table: SourceSpec[
 
 /** Re-creates the delete triggers so a flow holding a row of `keepIfIn` outlives its rows (migration 283). */
 export function reinstallFlowDeleteTriggers(dbi: DatabaseType, keepIfIn: readonly string[]): void {
-  for (const spec of SOURCES) {
+  for (const spec of FLOW_SOURCES) {
     dbi.exec(`DROP TRIGGER IF EXISTS flow_${spec.table}_ad`);
     dbi.exec(flowDeleteTriggerSql(spec, keepIfIn));
   }
@@ -308,7 +311,7 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
       tally.resolved += 1;
       if (flowByKey.has(resolved.flowKey)) continue;
       const primary = resolved.rows[0]!;
-      const spec = SOURCES.find((s) => s.table === primary.table)!;
+      const spec = FLOW_SOURCES.find((s) => s.table === primary.table)!;
       const id = Number(
         dbi
           .prepare(`INSERT INTO flows (${FLOW_COLUMNS}, legacy_key) SELECT ${spec.flowValues("r")}, ? FROM ${primary.table} r WHERE r.id = ?`)
@@ -332,11 +335,11 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
   //    against a plan joins the plan's).
   for (const [k, flowId] of rowFlow) {
     const [table, id] = k.split("|") as [FlowSourceTable, string];
-    const spec = SOURCES.find((s) => s.table === table)!;
+    const spec = FLOW_SOURCES.find((s) => s.table === table)!;
     if (spec.hasFlowColumn) dbi.prepare(`UPDATE ${table} SET flow_id = ? WHERE id = ?`).run(flowId, Number(id));
   }
   let keylessFlows = 0;
-  for (const spec of SOURCES) {
+  for (const spec of FLOW_SOURCES) {
     const where = [spec.where?.("r")].filter(Boolean);
     const ids = (
       dbi.prepare(`SELECT r.id FROM ${spec.table} r ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY r.id`).all() as {
@@ -371,7 +374,7 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
   }
 
   // 3. One evidence row per document row.
-  for (const spec of SOURCES) {
+  for (const spec of FLOW_SOURCES) {
     const where = [spec.where?.("r")].filter(Boolean);
     const ids = (
       dbi.prepare(`SELECT r.id FROM ${spec.table} r ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`).all() as { id: number }[]
@@ -383,7 +386,7 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
   }
 
   // 4. Triggers: rows written later; the write log of the new tables.
-  for (const spec of SOURCES) {
+  for (const spec of FLOW_SOURCES) {
     dbi.exec(flowInsertTriggerSql(spec));
     dbi.exec(flowDeleteTriggerSql(spec, []));
   }
@@ -404,7 +407,7 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
   console.log(`migration 279 (flows): ${JSON.stringify(report)}`);
 
   // Every row that must be a flow is one; every flow has its evidence or its key.
-  for (const spec of SOURCES.filter((s) => s.hasFlowColumn)) {
+  for (const spec of FLOW_SOURCES.filter((s) => s.hasFlowColumn)) {
     const where = [`r.flow_id IS NULL`, spec.where?.("r")].filter(Boolean).join(" AND ");
     const missing = dbi.prepare(`SELECT r.id FROM ${spec.table} r WHERE ${where} LIMIT 5`).all() as { id: number }[];
     if (missing.length > 0) {

@@ -10,7 +10,7 @@ import {
   importCheckingPartialMovements,
   partialMovementNote,
 } from "./checkingPartialMovementsImport.js";
-import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
 import {

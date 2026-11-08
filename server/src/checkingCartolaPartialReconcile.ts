@@ -1,7 +1,7 @@
 import type { Database } from "better-sqlite3";
 
 
-import { deleteMovements, redateMovementKeepingBankDay } from "./movementWrites.js";
+import { deleteMovements, redateMovementKeepingBankDay, repointMovementReferences } from "./movementWrites.js";
 import { db } from "./db.js";
 import {
   cartolaMovementMatchesImportedRow,
@@ -11,7 +11,6 @@ import {
 } from "./checkingCartolaParse.js";
 import { adoptMovementFlow } from "./flows/flowIdentity.js";
 import { buildExpenseKey } from "./expenseKeys.js";
-import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
@@ -153,12 +152,6 @@ export function prunePartialMovementsSupersededByCartola(
     if (!matchingMv) continue;
     const cartolaNote = findMatchingCartolaMovementNoteInDb(accountId, matchingMv, dbHandle);
     if (cartolaNote) {
-      transferCheckingGastosCategoryFromMovementToNote(
-        accountId,
-        partial.id,
-        cartolaNote,
-        dbHandle
-      );
       const official = dbHandle
         .prepare(
           `SELECT id FROM movements
@@ -177,10 +170,7 @@ export function prunePartialMovementsSupersededByCartola(
             dbHandle
           );
         }
-        // The cartola row takes over the daily row's flow, and with it every assignment on the
-        // flow (bug 2: the refund mark used to go with the deleted row).
-        adoptMovementFlow(partial.id, official.id, officialRowKey(accountId, official.id, cartolaNote), dbHandle);
-        carryMovementKeyedIncomeState(partial.id, official.id, dbHandle);
+        adoptPartialIntoCartolaRow(accountId, partial.id, official.id, cartolaNote, dbHandle);
       }
     }
     deleteMovements([partial.id], dbHandle);
@@ -199,13 +189,20 @@ function officialRowKey(accountId: number, officialId: number, cartolaNote: stri
 }
 
 /**
- * What hangs off a daily row by its id and must survive the cartola replacing it: the payslip it
- * paid (paired the day the salary lands). It references movements without a cascade, so a row still
- * carrying one cannot be deleted — moving it is what lets the prune run. The user's income
- * classification hangs off the flow, which the official row takes over (`adoptMovementFlow`).
+ * Adoption on arrival (F9 step 4): the cartola row takes over the daily row's flow, and with it every
+ * assignment on the flow — category, «Único», note, big group, pieces, links, refund mark, income
+ * classification (bug 2: the refund mark used to go with the deleted row); the flow answers to the
+ * cartola row's key. A payslip names the daily row by id, so it moves to the cartola row.
  */
-function carryMovementKeyedIncomeState(fromId: number, toId: number, dbHandle: Database): void {
-  dbHandle.prepare(`UPDATE payroll_work_earnings SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
+export function adoptPartialIntoCartolaRow(
+  accountId: number,
+  partialId: number,
+  officialId: number,
+  cartolaNote: string,
+  dbHandle: Database = db
+): void {
+  adoptMovementFlow(partialId, officialId, officialRowKey(accountId, officialId, cartolaNote), dbHandle);
+  repointMovementReferences(partialId, officialId, dbHandle);
 }
 
 /** Prune superseded partial rows and refresh balance/aggregation caches when needed. */

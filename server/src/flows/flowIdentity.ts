@@ -150,6 +150,13 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
     dbHandle.prepare(`UPDATE OR IGNORE ${table} SET flow_id = ? WHERE flow_id = ?`).run(to, from);
     dbHandle.prepare(`DELETE FROM ${table} WHERE flow_id = ?`).run(from);
   }
+  // Pieces are one set per flow: the preferred flow's set stays.
+  const hasParts = (f: number) => dbHandle.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ?`).get(f) != null;
+  if (hasParts(from)) {
+    if (prefer === "from") dbHandle.prepare(`DELETE FROM flow_parts WHERE flow_id = ?`).run(to);
+    if (!hasParts(to)) dbHandle.prepare(`UPDATE flow_parts SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+    dbHandle.prepare(`DELETE FROM flow_parts WHERE flow_id = ?`).run(from);
+  }
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);

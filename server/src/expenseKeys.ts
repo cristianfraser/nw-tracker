@@ -292,3 +292,8 @@ export function groceryReceiptKey(chain: string, receiptNumber: string, purchase
   }
   return `${chain}|${receiptNumber}|${day}`;
 }
+
+/** Key of a checking movement with no cartola identity (a daily row, a mail-built row). */
+export function checkingMovementPurchaseKey(movementId: number, portion: CheckingPortion = "gastos"): string {
+  return buildExpenseKey({ kind: "checking_mv", movementId, portion });
+}

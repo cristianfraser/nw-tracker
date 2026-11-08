@@ -33,7 +33,7 @@ import { MATCH_WINDOWS } from "./matching/windows.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
-import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
