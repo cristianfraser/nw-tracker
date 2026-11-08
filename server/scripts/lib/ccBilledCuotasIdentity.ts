@@ -1,6 +1,6 @@
 import { billingDetailCacheForAccount } from "../../src/ccBillingDetailCache.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "../../src/ccInstallmentLedgerDb.js";
-import { isPdfStatementSource } from "../../src/ccManualBillingMonth.js";
+import { isStatementSourceKind } from "../../src/ccStatementSourceKind.js";
 import { listCcStatementsForAccount } from "../../src/ccStatementsDb.js";
 import { db } from "../../src/db.js";
 
@@ -28,7 +28,7 @@ export function ccBilledCuotasIdentity(accountId: number): CcBilledCuotasMonth[]
   );
   const billedByMonth = new Map<string, number>();
   for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.currency === "usd" || !st.billing_month || !isPdfStatementSource(st.source_pdf)) continue;
+    if (st.currency === "usd" || !st.billing_month || !isStatementSourceKind(st.source_kind)) continue;
     const { clp } = sumPrintedCuotas.get(st.id) as { clp: number };
     billedByMonth.set(st.billing_month, (billedByMonth.get(st.billing_month) ?? 0) + clp);
   }

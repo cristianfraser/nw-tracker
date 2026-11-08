@@ -18,6 +18,7 @@
  * import, and `--full` bypasses it entirely for a from-scratch reconciliation.
  */
 import crypto from "node:crypto";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { db } from "./db.js";
 
 /**
@@ -119,7 +120,7 @@ export function filterUnchangedStatementRecords(
     const fingerprint = ccStatementRecordsFingerprint(stmtRecords);
     fingerprintByKey.set(key, fingerprint);
 
-    if (sourcePdf.startsWith("import:web-paste")) {
+    if (isListingSourceKind(ccStatementSourceKindOf(sourcePdf))) {
       changed.push(...stmtRecords);
       continue;
     }

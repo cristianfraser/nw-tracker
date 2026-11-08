@@ -14,7 +14,7 @@ export function listCcStatementsMissingPeriodTo(): CcStatementMissingPeriodRow[]
               s.currency, s.layout, s.card_last4
        FROM cc_statements s
        JOIN accounts a ON a.id = s.account_id
-       WHERE s.source_pdf NOT LIKE 'import:web-paste%'
+       WHERE s.source_kind NOT IN ('listing_open', 'listing_other')
          AND TRIM(COALESCE(s.period_to, '')) = ''
        ORDER BY s.source_pdf`
     )

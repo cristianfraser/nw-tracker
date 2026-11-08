@@ -93,7 +93,7 @@ const stmtHeaderLegs = db.prepare(
           (SELECT MIN(s.id) FROM cc_statements s
             WHERE s.account_id = g.account_id AND s.currency = g.currency
               AND s.statement_date = substr(g.statement_close_iso, 9, 2) || '/' || substr(g.statement_close_iso, 6, 2) || '/' || substr(g.statement_close_iso, 1, 4)
-              AND s.source_pdf NOT LIKE 'import:web-paste%') AS statement_id
+              AND s.source_kind NOT IN ('listing_open', 'listing_other')) AS statement_id
    FROM cc_header_payment_legs g
    JOIN accounts a ON a.id = g.account_id
    WHERE (@account_id IS NULL OR g.account_id = @account_id)`

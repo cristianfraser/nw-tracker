@@ -3,16 +3,13 @@ import {
   billingPeriodIsoRange,
   loadCreditCardBillingConfig,
 } from "./ccBillingMonth.js";
+import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { closeEvidenceForBillingMonth, type CcCloseSource, latestFeedBillingClose, latestKnownCloseIso, nextPeriodStartIsoForBillingMonth, statementOwnCloseIso } from "./ccBillingCloses.js";
 import { db } from "./db.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { ddMmYyyyFromIso, addCalendarMonths } from "nw-tracker-contracts";
-
-export function isPdfStatementSource(sourcePdf: string): boolean {
-  return !String(sourcePdf ?? "").trim().startsWith("import:web-paste");
-}
 
 /**
  * True when this account's imported PDF history carries a USD statement stream — closing a
@@ -23,7 +20,7 @@ export function isPdfStatementSource(sourcePdf: string): boolean {
  */
 export function accountRequiresUsdStatementClose(accountId: number): boolean {
   for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.currency === "usd" && isPdfStatementSource(st.source_pdf)) return true;
+    if (st.currency === "usd" && isStatementSourceKind(st.source_kind)) return true;
   }
   return false;
 }
@@ -58,7 +55,7 @@ export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string>
     : null;
   const byMonth = new Map<string, { currencies: Set<string>; clpCloseIso: string | null }>();
   for (const st of statements) {
-    if (!isPdfStatementSource(st.source_pdf)) continue;
+    if (!isStatementSourceKind(st.source_kind)) continue;
     const bm = st.billing_month;
     if (!bm) continue;
     let month = byMonth.get(bm);

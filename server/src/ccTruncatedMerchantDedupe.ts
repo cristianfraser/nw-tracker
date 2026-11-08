@@ -171,7 +171,7 @@ export function planTruncatedMerchantDuplicateLines(accountId: number): Truncate
       `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, l.transaction_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND s.source_pdf LIKE 'import:web-paste%'`
+       WHERE s.account_id = ? AND s.source_kind IN ('listing_open', 'listing_other')`
     )
     .all(accountId) as BucketLine[];
 

@@ -1,10 +1,10 @@
 import fs from "node:fs";
+import { ccStatementSourceKindOf, isCorpusPdfSourceKind, isListingSourceKind } from "./ccStatementSourceKind.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import {
   cartolaPeriodRangeCoversMonth,
-  isCcStatementPdfSource,
   matrixMonthForCartolaPeriodMonth,
   matrixMonthForCcStatement,
   matrixMonthsForCartolaPeriodRange,
@@ -214,7 +214,7 @@ export function ccCreditCardAccountHasUsdStatements(accountId: number): boolean 
        WHERE account_id = ?
          AND (currency = 'usd' OR layout = 'international_usd')
          AND trim(source_pdf) != ''
-         AND source_pdf NOT LIKE 'import:web-paste%'
+         AND source_kind NOT IN ('listing_open', 'listing_other')
        LIMIT 1`
     )
     .get(accountId);
@@ -306,7 +306,7 @@ export function resolveCcStatementPdfPath(
   opts: { usd: boolean }
 ): string | null {
   const t = String(sourcePdf ?? "").trim();
-  if (!t || t.startsWith("import:web-paste")) return null;
+  if (!t || isListingSourceKind(ccStatementSourceKindOf(t))) return null;
   const last4 = ccCardLast4FromSourcePdf(t);
   if (!last4) return null;
   return resolveExistingFile(ccStatementPdfSearchDirs(last4, opts.usd), t);
@@ -336,11 +336,11 @@ export function requireCcStatementPdfPath(
   return abs;
 }
 
-/** Fail when any statement from the PDF corpus (`isCcStatementPdfSource`) has an invalid `source_pdf` or no on-disk file. */
+/** Fail when any statement from the PDF corpus (`statement_pdf` kind) has an invalid `source_pdf` or no on-disk file. */
 export function assertAllCcStatementPdfsResolvable(): void {
   const rows = db
     .prepare(
-      `SELECT s.id, s.account_id, a.name AS account_name, s.source_pdf, s.currency, s.layout,
+      `SELECT s.id, s.account_id, a.name AS account_name, s.source_pdf, s.source_kind, s.currency, s.layout,
               s.card_last4
        FROM cc_statements s
        JOIN accounts a ON a.id = s.account_id
@@ -351,6 +351,7 @@ export function assertAllCcStatementPdfsResolvable(): void {
     account_id: number;
     account_name: string;
     source_pdf: string;
+    source_kind: string;
     currency: string;
     layout: string | null;
     card_last4: string | null;
@@ -358,7 +359,7 @@ export function assertAllCcStatementPdfsResolvable(): void {
 
   const errors: string[] = [];
   for (const row of rows) {
-    if (!isCcStatementPdfSource(row.source_pdf)) continue;
+    if (!isCorpusPdfSourceKind(row.source_kind)) continue;
     try {
       requireCcStatementPdfPath(row.source_pdf, row);
     } catch (e) {
@@ -378,6 +379,7 @@ export function assertAllCcStatementPdfsResolvable(): void {
 
 type CcStmtRow = {
   source_pdf: string;
+  source_kind: string;
   currency: string;
   layout?: string | null;
   period_to: string | null;
@@ -397,7 +399,7 @@ function ccRowsForCurrencySlot(
   rows: CcStmtRow[],
   slot: "clp" | "usd" | undefined
 ): CcStmtRow[] {
-  const pdfs = rows.filter((r) => isCcStatementPdfSource(r.source_pdf));
+  const pdfs = rows.filter((r) => isCorpusPdfSourceKind(r.source_kind));
   if (slot == null) return pdfs;
   return pdfs.filter((r) =>
     slot === "usd" ? isCcUsdStatementRow(r) : !isCcUsdStatementRow(r)
@@ -488,11 +490,12 @@ function buildCcDocumentMonthsSet(
 ): Set<string> {
   const rows = db
     .prepare(
-      `SELECT period_to, source_pdf, currency, layout FROM cc_statements WHERE account_id = ?`
+      `SELECT period_to, source_pdf, source_kind, currency, layout FROM cc_statements WHERE account_id = ?`
     )
     .all(accountId) as {
     period_to: string | null;
     source_pdf: string;
+    source_kind: string;
     currency: string;
     layout?: string | null;
   }[];
@@ -513,13 +516,13 @@ function buildCcDocumentPathsByMonth(
 ): Map<string, string> {
   const rows = db
     .prepare(
-      `SELECT source_pdf, currency, layout, period_to, card_last4 FROM cc_statements WHERE account_id = ?`
+      `SELECT source_pdf, source_kind, currency, layout, period_to, card_last4 FROM cc_statements WHERE account_id = ?`
     )
     .all(accountId) as CcStmtRow[];
 
   const byMonth = new Map<string, CcStmtRow[]>();
   for (const row of rows) {
-    if (!isCcStatementPdfSource(row.source_pdf)) continue;
+    if (!isCorpusPdfSourceKind(row.source_kind)) continue;
     const ym = matrixMonthForCcStatement(row);
     if (!ym) continue;
     const list = byMonth.get(ym) ?? [];

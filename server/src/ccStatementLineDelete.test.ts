@@ -11,7 +11,7 @@ describe("deleteCcWebPasteStatementLine", () => {
     if (!master) return;
 
     const webPasteStmt = listCcStatementsForAccount(master.id).find((s) =>
-      String(s.source_pdf).startsWith("import:web-paste")
+      s.source_kind === "listing_open"
     );
     if (!webPasteStmt) return;
 
@@ -33,7 +33,7 @@ describe("deleteCcWebPasteStatementLine", () => {
     expect(after.c).toBe(before.c - 1);
 
     const pdfStmt = listCcStatementsForAccount(master.id).find(
-      (s) => !String(s.source_pdf).startsWith("import:web-paste")
+      (s) => s.source_kind !== "listing_open"
     );
     if (pdfStmt) {
       const pdfLine = db

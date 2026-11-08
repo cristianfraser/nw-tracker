@@ -1,4 +1,5 @@
 import { insertAppMessage } from "./appMessages.js";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 
 export type CcStatementPdfImportLog = {
@@ -31,7 +32,7 @@ function groupCsvRowsByPdf(records: readonly CcStatementCsvRecord[]): CcStatemen
   const byPdf = new Map<string, CcStatementPdfImportLog>();
   for (const row of records) {
     const sourcePdf = String(row.source_pdf ?? "").trim();
-    if (!sourcePdf || sourcePdf.startsWith("import:web-paste")) continue;
+    if (!sourcePdf || isListingSourceKind(ccStatementSourceKindOf(sourcePdf))) continue;
     const cur = byPdf.get(sourcePdf);
     if (cur) {
       cur.csv_rows += 1;

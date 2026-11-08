@@ -34,7 +34,7 @@ describe("reconcileOpenWebPasteAfterPdfClose", () => {
     if (!lastPdf || !openBm || ymCompare(openBm, addCalendarMonths(lastPdf, 1)) < 0) return;
 
     const pdfStmt = listCcStatementsForAccount(master.id).find(
-      (st) => st.billing_month === lastPdf && !st.source_pdf.startsWith("import:web-paste")
+      (st) => st.billing_month === lastPdf && st.source_kind !== "listing_open"
     );
     if (!pdfStmt) return;
 
@@ -131,12 +131,12 @@ describe("reconcileOpenWebPasteAfterPdfClose", () => {
     const pdfStmt = listCcStatementsForAccount(master.id).find(
       (st) =>
         st.billing_month === lastPdf &&
-        !st.source_pdf.startsWith("import:web-paste") &&
+        st.source_kind !== "listing_open" &&
         st.monto_facturado != null &&
         st.monto_facturado > 0
     );
     const webStmt = listCcStatementsForAccount(master.id).find(
-      (st) => st.billing_month === lastPdf && st.source_pdf.startsWith("import:web-paste")
+      (st) => st.billing_month === lastPdf && st.source_kind === "listing_open"
     );
     if (!pdfStmt?.monto_facturado || !webStmt) return;
 

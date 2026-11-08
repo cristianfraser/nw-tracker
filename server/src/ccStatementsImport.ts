@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
 import {
   restoreCcExpenseCategories,
@@ -47,7 +48,7 @@ export function statementKeyFromRow(row: CcStatementCsvRecord): string {
 
 function assertCcStatementCsvHeader(row: CcStatementCsvRecord): void {
   const sourcePdf = String(row.source_pdf ?? "").trim();
-  if (!sourcePdf || sourcePdf.startsWith("import:web-paste")) return;
+  if (!sourcePdf || isListingSourceKind(ccStatementSourceKindOf(sourcePdf))) return;
   const missing: string[] = [];
   if (!String(row.statement_date ?? "").trim()) missing.push("statement_date");
   if (!String(row.period_from ?? "").trim()) missing.push("period_from");
@@ -312,7 +313,7 @@ export function importCcStatementsMerge(
     // right after this loop, so a skip against one destroys the purchase from both places
     // (2026-08 ·0101: 9 lines / 1.xxx.xxx CLP vanished). Web-paste imports keep full scans —
     // deduping a re-paste against its own bucket and against PDF lines is their whole point.
-    const dedupeScanOpts = { excludeWebPasteSources: !sourcePdf.startsWith("import:web-paste") };
+    const dedupeScanOpts = { excludeWebPasteSources: !isListingSourceKind(ccStatementSourceKindOf(sourcePdf)) };
 
     // An empty header cell (a total the statement does not print) stores 0, monto_facturado null.
     const header = {

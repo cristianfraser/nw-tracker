@@ -123,7 +123,7 @@ function webPasteLineIdsForDedupeKey(accountId: number, dedupeKey: string): numb
       .prepare(
         `SELECT l.id FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND s.source_pdf LIKE 'import:web-paste%' AND l.dedupe_key = ?
+         WHERE s.account_id = ? AND s.source_kind IN ('listing_open', 'listing_other') AND l.dedupe_key = ?
          ORDER BY l.id`
       )
       .all(accountId, dedupeKey) as { id: number }[]

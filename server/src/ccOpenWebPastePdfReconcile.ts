@@ -1,4 +1,5 @@
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
+import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
@@ -9,7 +10,6 @@ import {
 import {
   accountRequiresUsdStatementClose,
   billingMonthForManualLedgerPurchase,
-  isPdfStatementSource,
   pdfClosedBillingMonthsForAccount,
 } from "./ccManualBillingMonth.js";
 import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
@@ -109,7 +109,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
 ): CcOpenWebPastePdfReconcileResult {
   const statements = listCcStatementsForAccount(accountId);
   const pdfStatements = statements.filter(
-    (st) => st.billing_month === billingMonth && isPdfStatementSource(st.source_pdf)
+    (st) => st.billing_month === billingMonth && isStatementSourceKind(st.source_kind)
   );
   if (pdfStatements.length === 0) {
     return {
@@ -301,8 +301,7 @@ export function pdfClosedBillingMonthsFromImportRecords(
 ): string[] {
   const months = new Set<string>();
   for (const row of records) {
-    const sourcePdf = String(row.source_pdf ?? "").trim();
-    if (sourcePdf.startsWith("import:web-paste")) continue;
+    if (isListingSourceKind(ccStatementSourceKindOf(row.source_pdf))) continue;
     const bm = billingMonthForCcStatement({
       statement_date: row.statement_date,
       period_to: row.period_to,

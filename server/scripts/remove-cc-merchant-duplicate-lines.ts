@@ -36,7 +36,7 @@ const accountIds = (
   db
     .prepare(
       `SELECT DISTINCT account_id FROM cc_statements
-       WHERE source_pdf LIKE 'import:web-paste%' ORDER BY account_id`
+       WHERE source_kind IN ('listing_open', 'listing_other') ORDER BY account_id`
     )
     .all() as { account_id: number }[]
 ).map((r) => r.account_id);
@@ -47,7 +47,7 @@ const lineById = db.prepare(
 const bucketCount = db.prepare(
   `SELECT COUNT(*) AS c FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND s.source_pdf LIKE 'import:web-paste%'`
+   WHERE s.account_id = ? AND s.source_kind IN ('listing_open', 'listing_other')`
 );
 
 function fmt(r: LineRow): string {

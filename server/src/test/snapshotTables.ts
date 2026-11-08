@@ -15,7 +15,11 @@ export function snapshotTables(tables: readonly string[]): () => void {
     if (!/^[A-Za-z0-9_]+$/.test(table)) {
       throw new Error(`snapshotTables: invalid table name ${table}`);
     }
-    rowsByTable.set(table, db.prepare(`SELECT * FROM ${table}`).all() as Record<string, unknown>[]);
+    // Stored columns only: a generated column (`cc_statements.source_kind`) cannot be inserted.
+    const columns = (db.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[])
+      .map((c) => `"${c.name}"`)
+      .join(", ");
+    rowsByTable.set(table, db.prepare(`SELECT ${columns} FROM ${table}`).all() as Record<string, unknown>[]);
   }
   return () => {
     // Defer FK checks to commit: tables can be wiped/refilled in any order because the

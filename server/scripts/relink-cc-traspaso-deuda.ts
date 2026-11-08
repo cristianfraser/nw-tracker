@@ -21,7 +21,7 @@ const accountRows = db
      JOIN cc_statements s ON s.id = l.statement_id
      WHERE l.installment_flag = 0
        AND UPPER(l.merchant) LIKE '%TRASPASO%DEUDA%'
-       AND s.source_pdf NOT LIKE 'import:web-paste%'
+       AND s.source_kind NOT IN ('listing_open', 'listing_other')
      ORDER BY s.account_id`
   )
   .all() as { id: number }[];

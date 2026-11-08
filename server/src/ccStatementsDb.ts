@@ -1,3 +1,4 @@
+import type { CcStatementSourceKind } from "./ccStatementSourceKind.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
@@ -8,6 +9,8 @@ export type CcStatementRow = {
   account_id: number;
   card_group: string;
   source_pdf: string;
+  /** What document the row is (migration 274): read it through `ccStatementSourceKind.ts`. */
+  source_kind: CcStatementSourceKind;
   statement_date: string;
   statement_date_iso: string;
   period_from: string | null;
@@ -89,7 +92,7 @@ export function listCcStatementsForAccount(accountId: number): readonly CcStatem
 function listCcStatementsForAccountUncached(accountId: number): CcStatementRow[] {
   const rows = db
     .prepare(
-      `SELECT id, account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
+      `SELECT id, account_id, card_group, source_pdf, source_kind, statement_date, period_from, period_to, pay_by,
               card_last4, card_product, layout, currency,
               saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
               next_period_from, next_period_to

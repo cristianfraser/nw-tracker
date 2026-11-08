@@ -46,7 +46,7 @@ const listTraspasoLegCandidates = db.prepare(
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.installment_flag = 0
      AND UPPER(l.merchant) LIKE '%TRASPASO%'
-     AND s.source_pdf NOT LIKE 'import:web-paste%'
+     AND s.source_kind NOT IN ('listing_open', 'listing_other')
    ORDER BY s.statement_date, s.currency, l.id`
 );
 

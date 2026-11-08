@@ -31,10 +31,10 @@ function cleanup(): void {
   db.prepare(
     `DELETE FROM cc_statement_lines
      WHERE merchant = 'PAGO' AND amount_clp = -2467034 AND transaction_date LIKE '%/2036'
-       AND statement_id IN (SELECT id FROM cc_statements WHERE account_id = ? AND source_pdf LIKE 'import:web-paste%')`
+       AND statement_id IN (SELECT id FROM cc_statements WHERE account_id = ? AND source_kind IN ('listing_open', 'listing_other'))`
   ).run(financed);
   db.prepare(
-    `DELETE FROM cc_statements WHERE account_id = ? AND (source_pdf LIKE ? OR (source_pdf LIKE 'import:web-paste%' AND statement_date LIKE '%/2036'))`
+    `DELETE FROM cc_statements WHERE account_id = ? AND (source_pdf LIKE ? OR (source_kind IN ('listing_open', 'listing_other') AND statement_date LIKE '%/2036'))`
   ).run(financed, `${TAG}|%`);
 }
 

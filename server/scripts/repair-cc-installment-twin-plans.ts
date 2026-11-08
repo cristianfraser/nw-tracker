@@ -192,7 +192,7 @@ function statementTwinEvidence(): TwinEvidence[] {
               COUNT(*) AS n
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
-       WHERE l.installment_flag = 1 AND s.source_pdf NOT LIKE 'import:web-paste%'
+       WHERE l.installment_flag = 1 AND s.source_kind NOT IN ('listing_open', 'listing_other')
        GROUP BY s.id, l.merchant, l.transaction_date, l.amount_clp, l.nro_cuota_total, l.nro_cuota_current
        HAVING COUNT(*) > 1`
     )

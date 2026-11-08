@@ -1,5 +1,6 @@
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
 import { expensePieceKeySuffix } from "./expenseKeys.js";
+import type { ParsedDepositMatchSegment } from "./ccExpenseDepositMatchNotes.js";
 import { withPaymentReceipts, type PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import {
@@ -14,7 +15,7 @@ import {
 } from "./additionalCardReimbursements.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 
-import { isPdfStatementSource } from "./ccManualBillingMonth.js";
+import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 
@@ -272,6 +273,9 @@ export type FlowCcExpenseLineRow = {
   /** Linked net-worth deposits (investment capital + mortgage amortization splits). */
   expense_deposit_links?: ExpenseDepositLinkDto[];
 
+  /** The deposits the gastos matcher paired this checking outflow with; absent when unmatched. */
+  deposit_match?: ParsedDepositMatchSegment[];
+
   /**
    * The card feed typed this one-shot line as a purchase in cuotas whose count is not known yet
    * (`ccFeedCuotaPurchases.ts`) — the card page asks for the count to turn it into its plan.
@@ -462,7 +466,7 @@ export function buildCcExpenseLines(
 
     .prepare(
 
-      `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date, s.source_pdf,
+      `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date, s.source_pdf, s.source_kind,
 
               s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
 
@@ -507,6 +511,8 @@ export function buildCcExpenseLines(
     statement_date: string;
 
     source_pdf: string;
+
+    source_kind: string;
 
     statement_currency: string;
 
@@ -785,7 +791,7 @@ export function buildCcExpenseLines(
 
       billing_month: billingMonth,
 
-      web_paste: !isPdfStatementSource(row.source_pdf),
+      web_paste: isListingSourceKind(row.source_kind),
 
       purchase_month: purchaseMonth,
 

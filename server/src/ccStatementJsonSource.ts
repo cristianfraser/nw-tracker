@@ -20,12 +20,9 @@
  * Web-paste buckets are provisional evidence and never own a close.
  */
 import { db } from "./db.js";
+import { isJsonStatementSourceKind } from "./ccStatementSourceKind.js";
 
 export const SANTANDER_JSON_SOURCE_PREFIX = "import:santander-json|";
-
-export function isSantanderJsonSource(sourcePdf: string | null | undefined): boolean {
-  return String(sourcePdf ?? "").trim().startsWith(SANTANDER_JSON_SOURCE_PREFIX);
-}
 
 /** Stable synthetic source id for a JSON-written statement (one per close + currency). */
 export function santanderJsonSourcePdf(currency: "clp" | "usd", statementDate: string): string {
@@ -40,9 +37,9 @@ export function padCcStatementDate(date: string): string {
 }
 
 const listOwningSources = db.prepare(
-  `SELECT source_pdf FROM cc_statements
+  `SELECT source_kind FROM cc_statements
    WHERE account_id = ? AND statement_date = ? AND currency = ?
-     AND source_pdf NOT LIKE 'import:web-paste%'`
+     AND source_kind NOT IN ('listing_open', 'listing_other')`
 );
 
 export type CcStatementSourceOwner = "json" | "pdf" | null;
@@ -54,15 +51,15 @@ export function statementSourceOwnerForClose(
   currency: "clp" | "usd"
 ): CcStatementSourceOwner {
   const rows = listOwningSources.all(accountId, padCcStatementDate(statementDate), currency) as {
-    source_pdf: string;
+    source_kind: string;
   }[];
   if (rows.length === 0) return null;
-  return rows.some((r) => isSantanderJsonSource(r.source_pdf)) ? "json" : "pdf";
+  return rows.some((r) => isJsonStatementSourceKind(r.source_kind)) ? "json" : "pdf";
 }
 
 const listJsonOwnedCloses = db.prepare(
   `SELECT DISTINCT statement_date, currency FROM cc_statements
-   WHERE account_id = ? AND source_pdf LIKE 'import:santander-json|%'`
+   WHERE account_id = ? AND source_kind = 'statement_json'`
 );
 
 /** `${padded statement_date}\t${currency}` closes the JSON importer owns on this account. */
@@ -81,7 +78,7 @@ export type JsonOwnedStatementRow = {
 
 const listJsonOwnedStatements = db.prepare(
   `SELECT id, card_group, source_pdf, statement_date, currency FROM cc_statements
-   WHERE account_id = ? AND source_pdf LIKE 'import:santander-json|%'`
+   WHERE account_id = ? AND source_kind = 'statement_json'`
 );
 
 /** The JSON-written statement rows on this account, for PDF supersession. */

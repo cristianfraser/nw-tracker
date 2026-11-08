@@ -21,6 +21,7 @@
  * that later prints the real PAGO settles the planted bucket line like any pasted one.
  */
 import { importCcWebPasteLines } from "./accountImports.js";
+import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
@@ -28,7 +29,6 @@ import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProj
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
@@ -76,13 +76,13 @@ function financedFacturados(linked: Set<string>): FinancedFacturado[] {
   for (const accountId of listCreditCardMasterAccountIds()) {
     const rows = db
       .prepare(
-        `SELECT statement_date, pay_by, source_pdf FROM cc_statements
+        `SELECT statement_date, pay_by, source_kind FROM cc_statements
          WHERE account_id = ? AND currency = 'clp' AND monto_facturado > 0`
       )
-      .all(accountId) as { statement_date: string; pay_by: string | null; source_pdf: string }[];
+      .all(accountId) as { statement_date: string; pay_by: string | null; source_kind: string }[];
     const seen = new Set<string>();
     for (const r of rows) {
-      if (!isPdfStatementSource(r.source_pdf)) continue;
+      if (!isStatementSourceKind(r.source_kind)) continue;
       const closeIso = parseDdMmYyToIso(r.statement_date);
       const payByIso = r.pay_by ? parseDdMmYyToIso(r.pay_by) : null;
       if (!closeIso || !payByIso) continue;

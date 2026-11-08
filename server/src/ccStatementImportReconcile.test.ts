@@ -467,7 +467,7 @@ describe("ccStatementImportReconcile", () => {
     const anchor = db
       .prepare(
         `SELECT statement_date, period_to FROM cc_statements
-         WHERE account_id = ? AND source_pdf NOT LIKE 'import:web-paste%'
+         WHERE account_id = ? AND source_kind NOT IN ('listing_open', 'listing_other')
            AND monto_facturado IS NOT NULL AND monto_facturado > 0
          ORDER BY statement_date DESC LIMIT 1`
       )

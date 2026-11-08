@@ -1,4 +1,4 @@
-import { isPdfStatementSource } from "./ccManualBillingMonth.js";
+import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 
 export type CcStatementSlotByCurrency = {
@@ -17,8 +17,8 @@ function assignStatementToSlot(
     else slot.clp = st;
     return;
   }
-  const curPdf = isPdfStatementSource(current.source_pdf);
-  const nextPdf = isPdfStatementSource(st.source_pdf);
+  const curPdf = isStatementSourceKind(current.source_kind);
+  const nextPdf = isStatementSourceKind(st.source_kind);
   if (!curPdf && nextPdf) {
     if (currency === "usd") slot.usd = st;
     else slot.clp = st;
@@ -43,8 +43,8 @@ export function hasEveryStatementTwinForBillingMonth(
   requiresUsd: boolean
 ): boolean {
   if (!slot) return false;
-  const clpPdf = slot.clp != null && isPdfStatementSource(slot.clp.source_pdf);
-  const usdPdf = slot.usd != null && isPdfStatementSource(slot.usd.source_pdf);
+  const clpPdf = slot.clp != null && isStatementSourceKind(slot.clp.source_kind);
+  const usdPdf = slot.usd != null && isStatementSourceKind(slot.usd.source_kind);
   return clpPdf && (!requiresUsd || usdPdf);
 }
 

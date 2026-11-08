@@ -149,7 +149,7 @@ export function activeAdditionalCardLast4ForAccount(
          FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ?
-           AND s.source_pdf NOT LIKE 'import:web-paste%'
+           AND s.source_kind NOT IN ('listing_open', 'listing_other')
            AND l.origin_card_last4 IN (SELECT value FROM json_each(?))
        )
        SELECT DISTINCT origin FROM dated WHERE close_iso = (SELECT MAX(close_iso) FROM dated)`

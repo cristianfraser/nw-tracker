@@ -2,6 +2,7 @@ import {
   cartolaStatementMonths,
   monthKeyFromYmd,
 } from "./calendarMonth.js";
+import { isCorpusPdfSourceKind } from "./ccStatementSourceKind.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function isoFromPeriodField(raw: string | null | undefined): string | null {
@@ -9,14 +10,6 @@ function isoFromPeriodField(raw: string | null | undefined): string | null {
   if (!t) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
   return parseDdMmYyToIso(t);
-}
-
-/** Real imported statement PDF (excludes web-paste / manual movement buckets). */
-export function isCcStatementPdfSource(sourcePdf: string | null | undefined): boolean {
-  const t = String(sourcePdf ?? "").trim();
-  // `import:<kind>|…` came from outside the PDF corpus: a web paste, the Santander statement JSON,
-  // statements rebuilt from mails (`import:santander-mail|`), the CMR card's mailed PDFs (`import:cmr|`).
-  return t.length > 0 && !t.startsWith("import:");
 }
 
 /** `YYYY-MM` from `credit_card_statements.period_to` (billing cycle end). */
@@ -28,9 +21,9 @@ export function matrixMonthFromCcPeriodTo(periodTo: string | null | undefined): 
 /** Matrix row month for a CC PDF statement; requires `period_to` (no fallbacks). */
 export function matrixMonthForCcStatement(row: {
   period_to?: string | null;
-  source_pdf?: string | null;
+  source_kind: string;
 }): string | null {
-  if (!isCcStatementPdfSource(row.source_pdf)) return null;
+  if (!isCorpusPdfSourceKind(row.source_kind)) return null;
   return matrixMonthFromCcPeriodTo(row.period_to);
 }
 

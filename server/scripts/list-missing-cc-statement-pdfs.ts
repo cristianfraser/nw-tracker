@@ -28,7 +28,7 @@ function listMissingCcStatementRows(): MissingRow[] {
        FROM cc_statements s
        JOIN accounts a ON a.id = s.account_id
        WHERE trim(s.source_pdf) != ''
-         AND s.source_pdf NOT LIKE 'import:web-paste%'
+         AND s.source_kind NOT IN ('listing_open', 'listing_other')
        ORDER BY s.period_to, s.source_pdf`
     )
     .all() as MissingRow[];

@@ -12,7 +12,7 @@ import {
   archivedCreditCardStatementPdfFileName,
   requireCcStatementPdfPath,
 } from "../src/importSyncDocumentFilePath.js";
-import { isCcStatementPdfSource } from "../src/importSyncDocumentMonth.js";
+import { isCorpusPdfSourceKind } from "../src/ccStatementSourceKind.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
 type StmtRow = {
@@ -20,6 +20,7 @@ type StmtRow = {
   account_id: number;
   card_group: string;
   source_pdf: string;
+  source_kind: string;
   statement_date: string;
   period_to: string | null;
   card_last4: string | null;
@@ -32,11 +33,11 @@ function main(): void {
   const dryRun = process.argv.includes("--dry-run");
   const rows = db
     .prepare(
-      `SELECT id, account_id, card_group, source_pdf, statement_date, period_to,
+      `SELECT id, account_id, card_group, source_pdf, source_kind, statement_date, period_to,
               card_last4, currency, layout
        FROM cc_statements
        WHERE trim(source_pdf) != ''
-         AND source_pdf NOT LIKE 'import:web-paste%'`
+         AND source_kind NOT IN ('listing_open', 'listing_other')`
     )
     .all() as StmtRow[];
 
@@ -59,7 +60,7 @@ function main(): void {
 
   const apply = db.transaction(() => {
     for (const row of rows) {
-      if (!isCcStatementPdfSource(row.source_pdf)) continue;
+      if (!isCorpusPdfSourceKind(row.source_kind)) continue;
 
       let last4 = String(row.card_last4 ?? "").trim();
       if (!/^\d{4}$/.test(last4)) {

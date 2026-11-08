@@ -29,16 +29,16 @@ describe("santanderStatementImport", () => {
     db.prepare(
       `DELETE FROM cc_statement_lines WHERE statement_id IN (
          SELECT id FROM cc_statements WHERE account_id = ?
-           AND (source_pdf LIKE 'import:santander-json|%' OR source_pdf LIKE 'vitest-json-%'))`
+           AND (source_kind = 'statement_json' OR source_pdf LIKE 'vitest-json-%'))`
     ).run(id);
     db.prepare(
       `DELETE FROM cc_statements WHERE account_id = ?
-         AND (source_pdf LIKE 'import:santander-json|%' OR source_pdf LIKE 'vitest-json-%')`
+         AND (source_kind = 'statement_json' OR source_pdf LIKE 'vitest-json-%')`
     ).run(id);
     // Every merge on a card master ensures the open web-paste bucket; drop the empty ones it left.
     db.prepare(
       `DELETE FROM cc_statements WHERE account_id = ?
-         AND source_pdf LIKE 'import:web-paste|open|%'
+         AND source_kind = 'listing_open'
          AND NOT EXISTS (SELECT 1 FROM cc_statement_lines l WHERE l.statement_id = cc_statements.id)`
     ).run(id);
     db.prepare(
@@ -259,7 +259,7 @@ describe("santanderStatementImport", () => {
       .prepare(
         `SELECT source_pdf FROM cc_statements
          WHERE account_id = ? AND statement_date = '20/09/2026' AND currency = 'clp'
-           AND source_pdf NOT LIKE 'import:web-paste%'`
+           AND source_kind NOT IN ('listing_open', 'listing_other')`
       )
       .all(id) as { source_pdf: string }[];
     expect(owning.map((r) => r.source_pdf)).toEqual(["vitest-json-guard.pdf"]);
@@ -275,7 +275,7 @@ describe("santanderStatementImport", () => {
     const otherMonth = db
       .prepare(
         `SELECT COUNT(*) AS n FROM cc_statements
-         WHERE account_id = ? AND statement_date = '20/10/2026' AND source_pdf NOT LIKE 'import:web-paste%'`
+         WHERE account_id = ? AND statement_date = '20/10/2026' AND source_kind NOT IN ('listing_open', 'listing_other')`
       )
       .get(id) as { n: number };
     expect(otherMonth.n).toBe(1);

@@ -1,4 +1,5 @@
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { BILLS_CC_EXPENSE_SLUG, countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import {
   listCcFacturadoFinancingLinks,
@@ -8,7 +9,6 @@ import {
   hasSplittableMortgageExpenseDepositLink,
   type ExpenseDepositLinkDto,
 } from "./expenseDepositLinks.js";
-import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
@@ -64,13 +64,13 @@ export function statementFacturadoClpForBillingMonth(
 ): number | null {
   const rows = db
     .prepare(
-      `SELECT statement_date, source_pdf, monto_facturado FROM cc_statements
+      `SELECT statement_date, source_kind, monto_facturado FROM cc_statements
        WHERE account_id = ? AND currency = 'clp' AND monto_facturado IS NOT NULL`
     )
-    .all(accountId) as { statement_date: string; source_pdf: string; monto_facturado: number }[];
+    .all(accountId) as { statement_date: string; source_kind: string; monto_facturado: number }[];
   const totals = new Set<number>();
   for (const r of rows) {
-    if (!isPdfStatementSource(r.source_pdf)) continue;
+    if (!isStatementSourceKind(r.source_kind)) continue;
     const iso = parseDdMmYyToIso(r.statement_date);
     if (!iso || billingMonthForStatementDate(iso) !== billingMonth) continue;
     totals.add(Math.round(r.monto_facturado));

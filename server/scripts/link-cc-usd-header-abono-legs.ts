@@ -33,7 +33,7 @@ const tx = db.transaction(() => {
   const usdStatements = db
     .prepare(
       `SELECT id, account_id, statement_date, pay_by, abono FROM cc_statements
-       WHERE currency = 'usd' AND source_pdf NOT LIKE 'import:web-paste%' ORDER BY account_id`
+       WHERE currency = 'usd' AND source_kind NOT IN ('listing_open', 'listing_other') ORDER BY account_id`
     )
     .all() as Stmt[];
   const iso = (d: string) => {

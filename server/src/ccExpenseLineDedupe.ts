@@ -30,12 +30,12 @@ const dbCheckDedupeKey = db.prepare(
 // Web-paste bucket lines are NOT durable evidence for a PDF statement import: the same merge
 // deletes them right after (`reconcileOpenWebPasteAfterPdfImports`), so a skip against one
 // destroys the purchase from both places — the 2026-08 ·0101 facturación lost 9 lines
-// (1.xxx.xxx CLP) this way. `NOT LIKE 'import:web-paste%'` mirrors `isWebPasteSource`.
+// (1.xxx.xxx CLP) this way. The listing kinds are `ccStatementSourceKind.ts`'s.
 const dbCheckDedupeKeyNoWebPaste = db.prepare(
   `SELECT 1 AS o FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
-     AND s.source_pdf NOT LIKE 'import:web-paste%'
+     AND s.source_kind NOT IN ('listing_open', 'listing_other')
    LIMIT 1`
 );
 
@@ -50,7 +50,7 @@ const dbFindLineByDedupeKeyNoWebPaste = db.prepare(
   `SELECT l.id, l.origin_card_last4 FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
-     AND s.source_pdf NOT LIKE 'import:web-paste%'
+     AND s.source_kind NOT IN ('listing_open', 'listing_other')
    LIMIT 1`
 );
 

@@ -23,6 +23,7 @@
  * Leaf module (no billing-view imports) so `ccManualBillingMonth` can depend on it.
  */
 import { db } from "./db.js";
+import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { billingPeriodIsoRange, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
@@ -64,9 +65,6 @@ function daysBetweenIso(fromIso: string, toIso: string): number {
   return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / 86_400_000);
 }
 
-function isRealStatement(st: CcStatementRow): boolean {
-  return !String(st.source_pdf ?? "").trim().startsWith("import:web-paste");
-}
 
 // ---------------------------------------------------------------------------------------------
 // Observed closes (feed SALDO INICIAL)
@@ -188,7 +186,7 @@ export function announcedCloseIsoForBillingMonth(
 ): string | null {
   let found: { iso: string; from: string } | null = null;
   for (const st of statements) {
-    if (!isRealStatement(st)) continue;
+    if (!isStatementSourceKind(st.source_kind)) continue;
     const iso = isoFromField(st.next_period_to);
     if (!iso || iso.slice(0, 7) !== billingMonth) continue;
     if (found && found.iso !== iso) {
@@ -215,7 +213,7 @@ export function closeDayOffsetDays(
 ): number | null {
   let latest: { close: string; offset: number } | null = null;
   for (const st of statements) {
-    if (!isRealStatement(st)) continue;
+    if (!isStatementSourceKind(st.source_kind)) continue;
     const periodTo = isoFromField(st.period_to);
     const nextFrom = isoFromField(st.next_period_from);
     if (!periodTo || !nextFrom) continue;
@@ -240,7 +238,7 @@ function realStatementCloseIso(
   billingMonth: string
 ): string | null {
   for (const st of statements) {
-    if (st.billing_month !== billingMonth || !isRealStatement(st)) continue;
+    if (st.billing_month !== billingMonth || !isStatementSourceKind(st.source_kind)) continue;
     const iso = statementOwnCloseIso(st);
     if (iso) return iso;
   }
@@ -259,7 +257,7 @@ export function latestKnownCloseIso(
 ): string | null {
   let latest = latestFeedBillingClose(accountId)?.close_date ?? null;
   for (const st of statements) {
-    if (!isRealStatement(st)) continue;
+    if (!isStatementSourceKind(st.source_kind)) continue;
     const announced = isoFromField(st.next_period_to);
     const counted = announced != null && (announcedThrough == null || announced <= announcedThrough);
     for (const iso of [statementOwnCloseIso(st), counted ? announced : null]) {
@@ -320,7 +318,7 @@ export function nextPeriodStartIsoForBillingMonth(
   statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
 ): { iso: string; source: CcCloseSource } {
   for (const st of statements) {
-    if (st.billing_month !== billingMonth || !isRealStatement(st)) continue;
+    if (st.billing_month !== billingMonth || !isStatementSourceKind(st.source_kind)) continue;
     const printed = isoFromField(st.next_period_from);
     if (printed) return { iso: printed, source: "statement" };
   }
@@ -359,7 +357,7 @@ export function feedCloseStatementMismatches(
   const problems: string[] = [];
   for (const close of closes) {
     for (const st of statements) {
-      if (!isRealStatement(st) || st.billing_month !== close.billing_month) continue;
+      if (!isStatementSourceKind(st.source_kind) || st.billing_month !== close.billing_month) continue;
       const stClose = isoFromField(st.period_to) ?? isoFromField(st.statement_date);
       const label = `${st.currency.toUpperCase()} statement ${st.statement_date} (${st.source_pdf})`;
       if (stClose !== close.close_date) {

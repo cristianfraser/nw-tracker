@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import {
   listInstallmentPurchaseSiblingStatementLineIds,
   loadCcStatementLineExpenseCtx,
@@ -37,7 +38,7 @@ const listInstallmentLinesForStatement = db.prepare(
 );
 
 const loadStatementMeta = db.prepare(
-  `SELECT id, account_id, card_group, source_pdf, period_from, period_to
+  `SELECT id, account_id, card_group, source_pdf, source_kind, period_from, period_to
    FROM cc_statements WHERE id = ?`
 );
 
@@ -366,8 +367,7 @@ export function collectStatementIdsFromImportRecords(
 ): number[] {
   const keys = new Set<string>();
   for (const r of records) {
-    const src = String(r.source_pdf ?? "").trim();
-    if (!src || src.startsWith("import:web-paste")) continue;
+    if (!String(r.source_pdf ?? "").trim() || isListingSourceKind(ccStatementSourceKindOf(r.source_pdf))) continue;
     keys.add(statementKeyFromRow(r));
   }
   const ids: number[] = [];
@@ -442,12 +442,13 @@ export function reconcileManualInstallmentPurchasesForStatements(
             account_id: number;
             card_group: string;
             source_pdf: string;
+            source_kind: string;
             period_from: string | null;
             period_to: string | null;
           }
         | undefined;
       if (!st || st.account_id !== accountId) continue;
-      if (String(st.source_pdf ?? "").trim().startsWith("import:web-paste")) continue;
+      if (isListingSourceKind(st.source_kind)) continue;
 
       const lines = listInstallmentLinesForStatement.all(stmtId) as {
         id: number;

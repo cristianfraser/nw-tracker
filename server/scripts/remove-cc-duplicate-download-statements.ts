@@ -43,7 +43,6 @@ import {
 import { mergeCcAccountFromParsedRows } from "../src/ccInstallmentLedgerMerge.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { padCcStatementDate } from "../src/ccStatementJsonSource.js";
-import { isSantanderJsonSource } from "../src/ccStatementJsonSource.js";
 import {
   assertCcPaymentEvidenceKept,
   ccPaymentPairingIdsWithEvidence,
@@ -124,7 +123,7 @@ const stored = db
   .prepare(
     `SELECT id, account_id, card_group, source_pdf, statement_date, period_from, currency
      FROM cc_statements
-     WHERE source_pdf NOT LIKE 'import:%'
+     WHERE source_kind = 'statement_pdf'
      ORDER BY account_id, id`
   )
   .all() as StoredStatement[];
@@ -152,7 +151,6 @@ const leftAlone: string[] = [];
 const refused: string[] = [];
 
 for (const s of stored) {
-  if (isSantanderJsonSource(s.source_pdf)) continue;
   const close = padCcStatementDate(s.statement_date);
   if (parsedBySourceClose.has(`${s.source_pdf}\t${close}`)) continue;
   const reachableByClose = parsedOnAccount.some(

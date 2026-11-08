@@ -1,4 +1,5 @@
 import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
+import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import {
   debtCcExpenseLineAmountClp,
@@ -311,7 +312,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       db
         .prepare(
           `SELECT DISTINCT statement_date FROM cc_statements
-           WHERE account_id = ? AND currency = 'usd' AND source_pdf NOT LIKE 'import:web-paste%'`
+           WHERE account_id = ? AND currency = 'usd' AND source_kind NOT IN ('listing_open', 'listing_other')`
         )
         .all(accountId) as { statement_date: string }[]
     )
@@ -783,7 +784,7 @@ export function statementHeaderFacturado(stmt: { monto_facturado: number | null 
 export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
-  stmt: { id: number; currency: string; monto_facturado: number | null; source_pdf?: string | null },
+  stmt: { id: number; currency: string; monto_facturado: number | null; source_kind: string },
   fxDate: string
 ): { facturado_clp: number | null; facturado_usd: number | null } {
   const headerMonto = statementHeaderFacturado(stmt);
@@ -805,8 +806,7 @@ export function facturadoFromStatement(
   const cuota = installmentCuotaDueForAccountStatementDateClp(accountId, statementDate);
   let clp = revolving + cuota;
   if (clp <= 0) {
-    const isWebPaste = String(stmt.source_pdf ?? "").trim().startsWith("import:web-paste");
-    if (!isWebPaste) {
+    if (!isListingSourceKind(stmt.source_kind)) {
       const billingMonth = billingMonthForStatementDate(fxDate);
       if (billingMonth) {
         clp = ledgerFacturadoClpForBillingMonth(accountId, billingMonth);
@@ -868,7 +868,7 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
   const openBm = billingMonthForManualLedgerPurchase(accountId);
   if (openBm && !creditCardBillingDetailInactive(accountId)) {
     const hasPdfForOpen = statements.some(
-      (s) => s.billing_month === openBm && !String(s.source_pdf ?? "").startsWith("import:web-paste")
+      (s) => s.billing_month === openBm && !isListingSourceKind(s.source_kind)
     );
     if (!hasPdfForOpen) {
       upsertBalance.run({

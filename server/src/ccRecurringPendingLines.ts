@@ -53,7 +53,7 @@ export function replaceRecurringPendingLines(accountId: number): RecurringPendin
     db
       .prepare(
         `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, l.transaction_date,
-                CASE WHEN s.source_pdf LIKE 'import:web-paste%' THEN 1 ELSE 0 END AS bucket
+                CASE WHEN s.source_kind IN ('listing_open', 'listing_other') THEN 1 ELSE 0 END AS bucket
          FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ?`
       )

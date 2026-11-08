@@ -1,11 +1,8 @@
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
 import { keepingCcPaymentEvidence } from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
-
-function isWebPasteStatementSource(sourcePdf: string): boolean {
-  return String(sourcePdf ?? "").trim().startsWith("import:web-paste");
-}
 
 /** Delete one line from an open web-paste facturación bucket; recompute billing balances. */
 export function deleteCcWebPasteStatementLine(
@@ -14,18 +11,18 @@ export function deleteCcWebPasteStatementLine(
 ): { removed_count: number } {
   const row = db
     .prepare(
-      `SELECT l.id, s.account_id, s.source_pdf
+      `SELECT l.id, s.account_id, s.source_kind
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE l.id = ?`
     )
     .get(statementLineId) as
-    | { id: number; account_id: number; source_pdf: string }
+    | { id: number; account_id: number; source_kind: string }
     | undefined;
 
   if (!row) throw new Error("statement line not found");
   if (row.account_id !== accountId) throw new Error("statement line not on this account");
-  if (!isWebPasteStatementSource(row.source_pdf)) {
+  if (!isListingSourceKind(row.source_kind)) {
     throw new Error("only web-paste statement lines can be deleted");
   }
 

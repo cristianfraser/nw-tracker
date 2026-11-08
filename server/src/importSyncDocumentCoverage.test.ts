@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  isCcStatementPdfSource,
   matrixMonthForCartolaPeriodMonth,
   matrixMonthForCcStatement,
 } from "./importSyncDocumentMonth.js";
@@ -142,12 +141,12 @@ describe("importSyncDocumentCoverage", () => {
     const accountId = ccIds[0]!;
     const stmt = db
       .prepare(
-        `SELECT period_to, source_pdf FROM cc_statements
+        `SELECT period_to, source_pdf, source_kind FROM cc_statements
          WHERE account_id = ?
          ORDER BY id DESC`
       )
-      .all(accountId) as { period_to: string; source_pdf: string }[];
-    const pdfStmt = stmt.find((s) => isCcStatementPdfSource(s.source_pdf));
+      .all(accountId) as { period_to: string; source_pdf: string; source_kind: string }[];
+    const pdfStmt = stmt.find((s) => s.source_kind === "statement_pdf");
     if (!pdfStmt) return;
 
     const ym = matrixMonthForCcStatement(pdfStmt);
@@ -172,10 +171,11 @@ describe("importSyncDocumentCoverage", () => {
         if (acc.document_kind === "cc_statement") {
           const rows = db
             .prepare(
-              `SELECT source_pdf, period_to, currency, layout FROM cc_statements WHERE account_id = ?`
+              `SELECT source_pdf, source_kind, period_to, currency, layout FROM cc_statements WHERE account_id = ?`
             )
             .all(acc.account_id) as {
               source_pdf: string;
+              source_kind: string;
               period_to: string | null;
               currency: string;
               layout?: string | null;

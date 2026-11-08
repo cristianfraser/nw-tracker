@@ -26,7 +26,7 @@ describe("facturadoFromStatement", () => {
     const stmt = listCcStatementsForAccount(master.id).find(
       (s) =>
         s.billing_month === openBm &&
-        String(s.source_pdf ?? "").startsWith("import:web-paste")
+        s.source_kind === "listing_open"
     );
     if (!stmt) return;
 

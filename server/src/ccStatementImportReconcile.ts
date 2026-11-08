@@ -1,4 +1,5 @@
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
 import { canonicalCcLineDedupeKeys } from "./ccExpenseLineDedupe.js";
 import {
@@ -501,7 +502,7 @@ function csvRecordToReconcileRow(row: CcStatementCsvRecord): CcReconcileRow {
     row_id: String(row.row_id ?? "").trim() || null,
     transaction_date: String(row.transaction_date ?? "").trim() || null,
     posting_date: String(row.posting_date ?? "").trim() || null,
-    from_web_paste: isWebPasteSource(sourcePdf),
+    from_web_paste: isListingSourceKind(ccStatementSourceKindOf(sourcePdf)),
     source_pdf: sourcePdf || null,
   };
 }
@@ -572,7 +573,7 @@ export function dedupeCrossSourceReconcileRows(rows: readonly CcReconcileRow[]):
 
 export function dbLineToReconcileRow(
   line: ReturnType<typeof listCcStatementLinesForStatement>[number],
-  stmt: { currency: string; layout: string; source_pdf: string }
+  stmt: { currency: string; layout: string; source_pdf: string; source_kind: string }
 ): CcReconcileRow {
   return {
     currency: stmt.currency === "usd" ? "usd" : "clp",
@@ -589,13 +590,9 @@ export function dbLineToReconcileRow(
     row_id: line.parser_row_id,
     transaction_date: line.transaction_date,
     posting_date: line.posting_date,
-    from_web_paste: isWebPasteSource(stmt.source_pdf),
+    from_web_paste: isListingSourceKind(stmt.source_kind),
     source_pdf: stmt.source_pdf,
   };
-}
-
-function isWebPasteSource(sourcePdf: string): boolean {
-  return String(sourcePdf ?? "").trim().startsWith("import:web-paste");
 }
 
 function findPdfAnchorForBillingMonth(
@@ -610,7 +607,7 @@ function findPdfAnchorForBillingMonth(
   for (const st of listCcStatementsForAccount(accountId)) {
     if (st.billing_month !== billingMonth) continue;
     if (pdfFilter && st.source_pdf !== pdfFilter) continue;
-    if (isWebPasteSource(st.source_pdf)) continue;
+    if (isListingSourceKind(st.source_kind)) continue;
     if (currency === "clp" && st.currency === "usd") continue;
     if (currency === "usd" && st.currency !== "usd") continue;
     const monto = st.monto_facturado;
@@ -760,7 +757,7 @@ export function buildProjectedReconcileRows(
 
   for (const st of listCcStatementsForAccount(accountId)) {
     if (st.billing_month !== billingMonth) continue;
-    if (pdfReconcileOnly && isWebPasteSource(st.source_pdf)) continue;
+    if (pdfReconcileOnly && isListingSourceKind(st.source_kind)) continue;
     const stmtKey = `${st.card_group}\t${st.source_pdf}\t${st.statement_date}`;
     if (replaceStatementKeys.has(stmtKey)) continue;
     for (const line of listCcStatementLinesForStatement(st.id)) {
@@ -779,7 +776,7 @@ export function buildProjectedReconcileRows(
 
   for (const rec of incoming) {
     if (billingMonthFromCsvRecord(rec) !== billingMonth) continue;
-    if (pdfReconcileOnly && isWebPasteSource(String(rec.source_pdf ?? ""))) continue;
+    if (pdfReconcileOnly && isListingSourceKind(ccStatementSourceKindOf(rec.source_pdf))) continue;
     const row = csvRecordToReconcileRow(rec);
     const stmtKey = statementKeyFromRow(rec);
     const keys = canonicalCcLineDedupeKeys(String(rec.card_group ?? "A"), {
@@ -836,7 +833,7 @@ export function assertCcImportReconcilesOrThrow(
 
   for (const billingMonth of affectedBillingMonths(incoming)) {
     const incomingForMonth = incoming.filter((r) => billingMonthFromCsvRecord(r) === billingMonth);
-    const pdfIncoming = incomingForMonth.filter((r) => !isWebPasteSource(String(r.source_pdf ?? "")));
+    const pdfIncoming = incomingForMonth.filter((r) => !isListingSourceKind(ccStatementSourceKindOf(r.source_pdf)));
 
     if (pdfIncoming.length === 0) {
       continue;

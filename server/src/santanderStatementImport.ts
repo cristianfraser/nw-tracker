@@ -6,7 +6,7 @@
  * the SAME pipeline as PDF statements (`mergeCcAccountFromParsedRows`) — reconcile gate,
  * installment ledger, web-paste supersede, traspaso links and valuation re-sync included. A
  * JSON statement is a real statement (it counts toward facturación close and open-bucket
- * supersede exactly like a PDF, via `isPdfStatementSource`); the PDF stays the permanent
+ * supersede exactly like a PDF, via its `source_kind`); the PDF stays the permanent
  * archive and the cross-check when it arrives later.
  *
  * Ownership guard: a (close, currency) already written from a PDF is never rewritten from
@@ -229,7 +229,7 @@ export function isoToCsvDate(iso: string): string {
 const listStatementClosesForCurrency = db.prepare(
   `SELECT DISTINCT statement_date, card_group FROM cc_statements
    WHERE account_id = ? AND currency = ?
-     AND source_pdf NOT LIKE 'import:web-paste%'`
+     AND source_kind NOT IN ('listing_open', 'listing_other')`
 );
 
 /**
@@ -388,7 +388,7 @@ export function statementNextPeriodTo(
     .prepare(
       `SELECT next_period_to FROM cc_statements
        WHERE account_id = ? AND statement_date = ? AND currency = ?
-         AND source_pdf NOT LIKE 'import:web-paste%'
+         AND source_kind NOT IN ('listing_open', 'listing_other')
        ORDER BY id DESC LIMIT 1`
     )
     .get(accountId, padCcStatementDate(statementDate), currency) as
@@ -410,6 +410,6 @@ export function fillStatementNextPeriodTo(
   db.prepare(
     `UPDATE cc_statements SET next_period_to = ?
      WHERE account_id = ? AND statement_date = ? AND currency = ? AND next_period_to IS NULL
-       AND source_pdf NOT LIKE 'import:web-paste%'`
+       AND source_kind NOT IN ('listing_open', 'listing_other')`
   ).run(padCcStatementDate(nextClose), accountId, padCcStatementDate(statementDate), currency);
 }

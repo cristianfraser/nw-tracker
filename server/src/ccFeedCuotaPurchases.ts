@@ -45,7 +45,7 @@ const selOpenBucketLines = db.prepare<[number]>(
   `SELECT l.id, l.transaction_date, l.posting_date, l.merchant, l.amount_clp, l.amount_usd,
           l.installment_flag, l.cuota_purchase_kind, s.source_pdf
    FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND s.source_pdf LIKE 'import:web-paste|open|%'
+   WHERE s.account_id = ? AND s.source_kind = 'listing_open'
    ORDER BY l.id`
 );
 

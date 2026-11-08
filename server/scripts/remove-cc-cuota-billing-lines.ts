@@ -44,7 +44,7 @@ const rows = db
             l.amount_clp, l.amount_usd
      FROM cc_statement_lines l
      JOIN cc_statements s ON s.id = l.statement_id
-     WHERE s.source_pdf LIKE 'import:web-paste%'
+     WHERE s.source_kind IN ('listing_open', 'listing_other')
      ORDER BY s.account_id, l.transaction_date, l.id`
   )
   .all() as LineRow[];

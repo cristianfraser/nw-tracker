@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { removeOneShotLinesSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
@@ -25,7 +26,6 @@ import {
 } from "./ccOpenWebPastePdfReconcile.js";
 import { assertCcImportReconcilesOrThrow } from "./ccStatementImportReconcile.js";
 import {
-  isSantanderJsonSource,
   deleteJsonStatementsByIds,
   jsonOwnedClosesForAccount,
   listJsonOwnedStatementsForAccount,
@@ -531,8 +531,8 @@ export function mergeCcAccountFromParsedRows(
   if (jsonOwned.size > 0) {
     const incomingPdfCloses = new Set<string>();
     for (const rec of records) {
-      const src = String(rec.source_pdf ?? "").trim();
-      const isRealPdf = !src.startsWith("import:web-paste") && !isSantanderJsonSource(src);
+      const kind = ccStatementSourceKindOf(rec.source_pdf);
+      const isRealPdf = kind === "statement_pdf" || kind === "statement_other";
       if (!isRealPdf) continue;
       const closeKey = `${padCcStatementDate(String(rec.statement_date ?? ""))}\t${currencyFromRow(rec)}`;
       if (jsonOwned.has(closeKey)) incomingPdfCloses.add(closeKey);

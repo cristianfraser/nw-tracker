@@ -317,13 +317,13 @@ const dbOneShotCandidates = db.prepare<[number, number]>(
 // PDF statement imports scan with web-paste statements excluded: the merge's own supersede
 // deletes the open bucket's in-period lines right after the line loop, so a bucket line must
 // never count as "already imported" — the 2026-08 ·0101 facturación lost 9 purchases
-// (1.xxx.xxx CLP) to exactly that skip+delete pair. `NOT LIKE` mirrors `isWebPasteSource`.
+// (1.xxx.xxx CLP) to exactly that skip+delete pair. The listing kinds are `ccStatementSourceKind.ts`'s.
 const dbOneShotCandidatesNoWebPaste = db.prepare<[number, number]>(
   `SELECT l.id, l.merchant, l.transaction_date, l.posting_date
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?
-     AND s.source_pdf NOT LIKE 'import:web-paste%'`
+     AND s.source_kind NOT IN ('listing_open', 'listing_other')`
 );
 
 /**
