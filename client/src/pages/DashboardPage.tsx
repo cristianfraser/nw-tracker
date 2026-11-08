@@ -17,11 +17,7 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { otherDisplayUnit } from "../queries/keys";
-import {
-  isBundleContentLoading,
-  queryShowsLoading,
-  useRealBundleForContent,
-} from "../queries/pageShapeReady";
+import { dailyPayloadPending, isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
@@ -240,13 +236,9 @@ export function DashboardPage() {
     allocationIsDaily && !valueMapShown
   );
   const allocationDailyData = allocationDaily.data;
-  // A Diario chart draws only its own daily payload: until that payload is this unit's (not
-  // pending, not a held placeholder) the chart shows its pending frame — title row and controls
-  // over an empty box — never the monthly block. The bundle's own loading dims every chart.
-  const dailyPending = (on: boolean, q: { isPending: boolean; isPlaceholderData: boolean }) =>
-    on && queryShowsLoading(q);
-  const overviewDailyPending = dailyPending(overviewIsDaily, overviewDaily);
-  const allocationDailyPending = dailyPending(allocationIsDaily, allocationDaily);
+  // The bundle's own loading dims every chart.
+  const overviewDailyPending = dailyPayloadPending(overviewIsDaily, overviewDaily);
+  const allocationDailyPending = dailyPayloadPending(allocationIsDaily, allocationDaily);
   const valuationChartsLoading = contentLoading || overviewDailyPending;
   const allocationLoading = contentLoading || allocationDailyPending;
   const dailyOverviewBlock = useMemo(() => {
@@ -306,7 +298,7 @@ export function DashboardPage() {
     timeRangeToDays(combosPrefs.range),
     combosIsDaily
   );
-  const combosDailyPending = dailyPending(combosIsDaily, inversionesDaily);
+  const combosDailyPending = dailyPayloadPending(combosIsDaily, inversionesDaily);
   const combosLoading = contentLoading || combosDailyPending;
   // Diario: the day combo once it is this unit's, else no points (the pending frame).
   const dailyRetirementBrokeragePoints = useMemo((): ComboRow[] | null => {

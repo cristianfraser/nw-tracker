@@ -9,7 +9,7 @@ import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobil
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
 import { useTaxReturn } from "../queries/hooks";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
-import { queryLoadError } from "../queries/pageShapeReady";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 
 /** Codes with a label in master.json (`taxReturn.codes.<code>`); others show «Código N». */
 const LABELLED_CODES = new Set([
@@ -699,7 +699,7 @@ export function TaxReturnPage() {
   const q = useTaxReturn(taxYear);
   const data = q.data;
   // First load, or the previous year's return held while the chosen year's loads.
-  const loading = q.isPending || q.isPlaceholderData;
+  const loading = queryShowsLoading(q);
 
   return (
     <main>

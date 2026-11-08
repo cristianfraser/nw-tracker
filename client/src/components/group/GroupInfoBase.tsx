@@ -335,7 +335,7 @@ export function GroupInfoBase({
                 <DailyPerfDetailTable
                   series={dailySeries.data}
                   displayUnit={displayUnit}
-                  loading={dailySeries.isPending || dailySeries.isPlaceholderData}
+                  loading={queryShowsLoading(dailySeries)}
                 />
               )
             ) : monthlyError ? (

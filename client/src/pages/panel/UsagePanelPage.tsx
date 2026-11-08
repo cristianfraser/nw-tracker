@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { Button } from "@crfrsr/ui";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { Loadable } from "../../components/ui/Loadable";
@@ -51,7 +52,7 @@ export function UsagePanelPage() {
   const report = useUsageReport(days);
   const trend = useUsageEndpointTrend(selected, days);
   const data = report.data;
-  const loading = report.isPending || report.isPlaceholderData;
+  const loading = queryShowsLoading(report);
 
   if (queryLoadError(report)) {
     return (

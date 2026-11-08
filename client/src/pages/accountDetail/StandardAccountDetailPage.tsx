@@ -7,7 +7,7 @@ import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDeta
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
-import { queryShowsLoading } from "../../queries/pageShapeReady";
+import { dailyPayloadPending, queryShowsLoading } from "../../queries/pageShapeReady";
 import { timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../../components/ui/SurfaceControls";
@@ -120,18 +120,15 @@ export function StandardAccountDetailPage({ data }: Props) {
     perfIsDaily,
     { perfLevels: true }
   );
-  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
-  // held placeholder) it gets no data and shows its pending frame — title row and controls over
-  // an empty box — never the monthly block.
-  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
-  const perfDailyPending = perfIsDaily && queryShowsLoading(perfDailySeries);
+  const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
+  const perfDailyPending = dailyPayloadPending(perfIsDaily, perfDailySeries);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily || valuationDailyPending) return null;
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
   }, [valuationIsDaily, valuationDailyPending, dailySeries.data, valuationBlockForChart, ts.accounts]);
   const valuationLoading = loading || valuationDailyPending;
   const perfLoading = loading || perfDailyPending;
-  const detalleDailyLoading = detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData;
+  const detalleDailyLoading = queryShowsLoading(detalleDailySeries);
   const valuationControls = (
     <SurfaceControls
       period={valuationPrefs.period}

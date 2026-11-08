@@ -22,7 +22,7 @@ import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { GROUP_COLD_STRIP } from "../coldPageShape";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
-import { queryShowsLoading } from "../queries/pageShapeReady";
+import { dailyPayloadPending, queryShowsLoading } from "../queries/pageShapeReady";
 import { useDailySeries, useSidebarNav } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../servedDailyPerfCombo";
@@ -176,12 +176,9 @@ export function GroupInfoPage() {
     timeRangeToDays(proportionalPrefs.range),
     proportionalIsDaily && !valueMapShown && portfolioGroup !== ""
   );
-  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
-  // held placeholder) the chart gets no data and shows its pending frame — title row and
-  // controls over an empty box — never the monthly block.
-  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
-  const perfDailyPending = perfIsDaily && queryShowsLoading(perfDailySeries);
-  const proportionalDailyPending = proportionalIsDaily && queryShowsLoading(proportionalDailySeries);
+  const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
+  const perfDailyPending = dailyPayloadPending(perfIsDaily, perfDailySeries);
+  const proportionalDailyPending = dailyPayloadPending(proportionalIsDaily, proportionalDailySeries);
   const dailyProportionalBlock = useMemo(() => {
     if (!proportionalIsDaily || proportionalDailyPending) return null;
     const daily = proportionalDailySeries.data;

@@ -35,7 +35,7 @@ import {
   usePortfolioGroupMortgageLedger,
   useSidebarNav,
 } from "../queries/hooks";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { dailyPayloadPending, queryLoadError } from "../queries/pageShapeReady";
 import { usePortfolioPageData } from "./usePortfolioPageData";
 
 /** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
@@ -203,11 +203,8 @@ export function LiabilitiesGroupPage() {
     timeRangeToDays(proportionalPrefs.range),
     proportionalIsDaily && portfolioGroup !== ""
   );
-  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
-  // held placeholder) the chart gets no data and shows its pending frame — title row and
-  // controls over an empty box — never the monthly block.
-  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
-  const proportionalDailyPending = proportionalIsDaily && queryShowsLoading(proportionalDailySeries);
+  const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
+  const proportionalDailyPending = dailyPayloadPending(proportionalIsDaily, proportionalDailySeries);
   const dailyProportionalBlock = useMemo(() => {
     if (!proportionalIsDaily || proportionalDailyPending) return null;
     const daily = proportionalDailySeries.data;
