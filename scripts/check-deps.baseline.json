@@ -1,7 +1,7 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 5740,
-  "largest_cycle": 72,
+  "edge_count": 5737,
+  "largest_cycle": 71,
   "cycle_members": [
     "ingest/src/config.ts",
     "ingest/src/email/fetch.ts",
@@ -56,7 +56,6 @@
     "server/src/ccOpenWebPastePdfReconcile.ts",
     "server/src/ccOpenWebPasteRepair.ts",
     "server/src/ccOwedWalk.ts",
-    "server/src/ccPlantedPayments.ts",
     "server/src/ccStatementMetadata.ts",
     "server/src/ccStatementsImport.ts",
     "server/src/ccWebPasteParse.ts",
