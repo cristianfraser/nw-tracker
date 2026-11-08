@@ -4,12 +4,14 @@
  * payload lists it apart (`refund_lines`) — and it is a negative gastos line in its category, so the
  * category shows what was spent net of what came back (`checkingExpenseRefundLineDrafts` in
  * `flowsExpenses.ts`). The category lives here, on the refund, and the expenses page edits it like
- * any line's.
+ * any line's. The mark hangs off the credit's flow (`flow_refunds`, migration 280), so it stays when
+ * the cartola row takes over a daily row's flow.
  */
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { movementFlowId } from "./flows/flowIdentity.js";
 
 export type CheckingExpenseRefund = {
   movement_id: number;
@@ -27,8 +29,8 @@ export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
     .prepare(
       `SELECT m.id AS movement_id, m.account_id, m.occurred_on AS received_on,
               ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, m.note, c.slug AS category_slug
-       FROM checking_expense_refunds r
-       JOIN movements m ON m.id = r.movement_id
+       FROM flow_refunds r
+       JOIN movements m ON m.flow_id = r.flow_id
        JOIN cc_expense_categories c ON c.id = r.category_id
        ORDER BY m.occurred_on, m.id`
     )
@@ -43,12 +45,16 @@ export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
 }
 
 export function loadCheckingExpenseRefundMovementIds(): Set<number> {
-  const rows = db.prepare(`SELECT movement_id FROM checking_expense_refunds`).all() as { movement_id: number }[];
+  const rows = db
+    .prepare(`SELECT m.id AS movement_id FROM flow_refunds r JOIN movements m ON m.flow_id = r.flow_id`)
+    .all() as { movement_id: number }[];
   return new Set(rows.map((r) => r.movement_id));
 }
 
 export function isCheckingExpenseRefund(movementId: number): boolean {
-  return db.prepare(`SELECT 1 FROM checking_expense_refunds WHERE movement_id = ?`).get(movementId) != null;
+  return (
+    db.prepare(`SELECT 1 FROM flow_refunds r JOIN movements m ON m.flow_id = r.flow_id WHERE m.id = ?`).get(movementId) != null
+  );
 }
 
 function categoryIdFor(slug: string): number {
@@ -75,18 +81,18 @@ function assertCheckingCredit(movementId: number): void {
 export function markCheckingExpenseRefund(movementId: number, categorySlug = "unclassified"): void {
   assertCheckingCredit(movementId);
   db.prepare(
-    `INSERT INTO checking_expense_refunds (movement_id, category_id) VALUES (?, ?)
-     ON CONFLICT(movement_id) DO UPDATE SET category_id = excluded.category_id`
-  ).run(movementId, categoryIdFor(categorySlug));
+    `INSERT INTO flow_refunds (flow_id, category_id) VALUES (?, ?)
+     ON CONFLICT(flow_id) DO UPDATE SET category_id = excluded.category_id`
+  ).run(movementFlowId(movementId), categoryIdFor(categorySlug));
 }
 
 export function unmarkCheckingExpenseRefund(movementId: number): void {
-  db.prepare(`DELETE FROM checking_expense_refunds WHERE movement_id = ?`).run(movementId);
+  db.prepare(`DELETE FROM flow_refunds WHERE flow_id = ?`).run(movementFlowId(movementId));
 }
 
 export function setCheckingExpenseRefundCategory(movementId: number, categorySlug: string): void {
   const r = db
-    .prepare(`UPDATE checking_expense_refunds SET category_id = ? WHERE movement_id = ?`)
-    .run(categoryIdFor(categorySlug), movementId);
+    .prepare(`UPDATE flow_refunds SET category_id = ? WHERE flow_id = ?`)
+    .run(categoryIdFor(categorySlug), movementFlowId(movementId));
   if (r.changes !== 1) throw Object.assign(new Error(`movement ${movementId} is not a refund`), { status: 404 });
 }

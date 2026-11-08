@@ -125,6 +125,17 @@ export function buildExpenseKey(key: ExpenseKey): string {
   }
 }
 
+/**
+ * SQL for the key an assignment row stands for, built from its flow's key (`baseSql`), its portion
+ * column (`'deposit'` adds the deposit suffix) and its piece column (a sequence adds the piece mark);
+ * null columns are left out.
+ */
+export function expenseKeySql(baseSql: string, portionSql: string | null, pieceSql: string | null): string {
+  const portion = portionSql ? ` || CASE WHEN ${portionSql} = 'deposit' THEN '${DEPOSIT_SUFFIX}' ELSE '' END` : "";
+  const piece = pieceSql ? ` || CASE WHEN ${pieceSql} IS NULL THEN '' ELSE '${SPLIT_MARK}' || ${pieceSql} END` : "";
+  return `(${baseSql}${portion}${piece})`;
+}
+
 /** The key a piece of `base` carries (`<base>#split:<seq>`). */
 export function expensePieceKey(base: string, seq: number): string {
   return `${base}${expensePieceKeySuffix(seq)}`;

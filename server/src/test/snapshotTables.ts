@@ -29,7 +29,9 @@ export function snapshotTables(tables: readonly string[]): () => void {
       for (const [table] of rowsByTable) db.prepare(`DELETE FROM ${table}`).run();
       for (const [table, rows] of rowsByTable) {
         if (rows.length === 0) continue;
-        const cols = Object.keys(rows[0]!);
+        // A row's flow (migration 279) went with the delete when nothing else named it: the
+        // restored row gets a flow of its own from the insert trigger.
+        const cols = Object.keys(rows[0]!).filter((c) => c !== '"flow_id"' && c !== "flow_id");
         const insert = db.prepare(
           `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${cols.map((c) => `@${c}`).join(", ")})`
         );

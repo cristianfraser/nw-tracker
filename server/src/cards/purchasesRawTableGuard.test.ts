@@ -37,6 +37,9 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccExpenseCategories.ts": "raw: purchase key → line ids through parser_row_id (key resolvers)",
   "expenseDepositLinks.ts": "raw: mortgage-link category writer by line id",
   "ccExpenseGenericTransferBackfill.ts": "raw: category backfill",
+  // The flow identity (F9 step 3): which rows a key names, the flows seeded from them.
+  "flows/flowKeyResolve.ts": "raw: expense key → the rows it names (flows' evidence)",
+  "flows/flowTables279.ts": "raw: migration 279 hook (seeds a flow per row)",
   // The link tables keyed by line id.
   "ccTraspasoDeudaLinks.ts": "raw: persists traspaso pairs by line id (statement lines only)",
   "ccStatementsDb.ts": "raw: a statement's own lines for the statement payload",

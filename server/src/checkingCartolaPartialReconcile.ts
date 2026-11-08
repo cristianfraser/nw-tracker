@@ -6,8 +6,11 @@ import { db } from "./db.js";
 import {
   cartolaMovementMatchesImportedRow,
   cartolaNoteContent,
+  checkingCartolaStablePurchaseKey,
   type ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
+import { adoptMovementFlow } from "./flows/flowIdentity.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
@@ -174,6 +177,9 @@ export function prunePartialMovementsSupersededByCartola(
             dbHandle
           );
         }
+        // The cartola row takes over the daily row's flow, and with it every assignment on the
+        // flow (bug 2: the refund mark used to go with the deleted row).
+        adoptMovementFlow(partial.id, official.id, officialRowKey(accountId, official.id, cartolaNote), dbHandle);
         carryMovementKeyedIncomeState(partial.id, official.id, dbHandle);
       }
     }
@@ -182,6 +188,14 @@ export function prunePartialMovementsSupersededByCartola(
   }
 
   return { removed: removed_ids.length, removed_ids };
+}
+
+/** The key the official row's expense line carries: its cartola identity, else its movement id. */
+function officialRowKey(accountId: number, officialId: number, cartolaNote: string): string {
+  return (
+    checkingCartolaStablePurchaseKey(accountId, cartolaNote) ??
+    buildExpenseKey({ kind: "checking_mv", movementId: officialId, portion: "gastos" })
+  );
 }
 
 /**

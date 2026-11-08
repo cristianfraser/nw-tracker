@@ -459,7 +459,19 @@ export const WRITE_LOGGED_TABLES_270: readonly string[] = [
 ];
 
 /** Tables with write triggers now: 270's plus the tables later migrations added with their own. */
-export const WRITE_LOGGED_TABLES: readonly string[] = [...WRITE_LOGGED_TABLES_270, "account_roles", "owner_identity"];
+/** Logged tables a later migration dropped: their rows moved onto the flows (F9 step 3, 280+). */
+const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set(["checking_expense_refunds"]);
+
+export const WRITE_LOGGED_TABLES: readonly string[] = [
+  ...WRITE_LOGGED_TABLES_270.filter((t) => !DROPPED_LOGGED_TABLES.has(t)),
+  "account_roles",
+  "owner_identity",
+  "outside_parties",
+  "flows",
+  "flow_evidence",
+  "flow_orphan_assignments",
+  "flow_refunds",
+];
 
 /**
  * A table's write triggers: one row naming the table on every insert, delete and update that

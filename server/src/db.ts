@@ -23,6 +23,8 @@ import { runNavTreeRoles272 } from "./navTreeRoles272.js";
 import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
 import { registerCardLineKindFunction, runCardLineKind276 } from "./cardLineKind276.js";
+import { runFlowTables279 } from "./flows/flowTables279.js";
+import { runFlowRefunds280 } from "./flows/flowAssignments280.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -270,6 +272,10 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "275_manual_expense_merchant.sql": runManualExpenseMerchant275,
   "276_cc_statement_line_kind.sql": runCardLineKind276,
   "277_owner_identity.sql": runOwnerIdentity277,
+  "279_flows.sql": (dbi) => {
+    runFlowTables279(dbi);
+  },
+  "280_flow_refunds.sql": runFlowRefunds280,
 };
 
 /**
