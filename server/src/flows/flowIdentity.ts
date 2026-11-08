@@ -156,3 +156,49 @@ export function adoptMovementFlow(fromMovementId: number, toMovementId: number, 
   if (holder != null && holder !== from && holder !== to) mergeFlowInto(holder, from, "to", dbHandle);
   dbHandle.prepare(`UPDATE flows SET legacy_key = ? WHERE id = ?`).run(parts.flowKey, from);
 }
+
+/**
+ * The flow each expense line is (`flow_id` on the Expenses lines, F9 step 3): the flow its key
+ * names, else the flow of the row it was built from (a card line, a plan's own line, a checking
+ * movement, a manual expense, a gap mirror); none for a payslip deduction (no flow in step 3).
+ */
+export function withExpenseLineFlowIds<
+  L extends { source: string; statement_line_id: number; purchase_key: string; installment_purchase_id?: number }
+>(lines: readonly L[], dbHandle: Database = db): (L & { flow_id?: number })[] {
+  const byKey = new Map(
+    (dbHandle.prepare(`SELECT legacy_key AS k, id FROM flows WHERE legacy_key IS NOT NULL`).all() as { k: string; id: number }[]).map(
+      (r) => [r.k, r.id]
+    )
+  );
+  const rowFlows = (table: string) =>
+    new Map(
+      (dbHandle.prepare(`SELECT id, flow_id FROM ${table} WHERE flow_id IS NOT NULL`).all() as { id: number; flow_id: number }[]).map(
+        (r) => [r.id, r.flow_id]
+      )
+    );
+  const lines_ = rowFlows("cc_statement_lines");
+  const movements = rowFlows("movements");
+  const plans = rowFlows("cc_installment_purchases");
+  const entries = rowFlows("expense_entries");
+  const mirrors = new Map(
+    (
+      dbHandle
+        .prepare(`SELECT source_row_id AS id, flow_id FROM flow_evidence WHERE source_table = 'checking_gap_deposit_mirrors'`)
+        .all() as { id: number; flow_id: number }[]
+    ).map((r) => [r.id, r.flow_id])
+  );
+  return lines.map((l) => {
+    const keyed = byKey.get(expenseKeyParts(l.purchase_key)?.flowKey ?? "");
+    let flowId = keyed;
+    if (flowId == null) {
+      if (l.source === "cc") {
+        flowId = l.statement_line_id > 0 ? lines_.get(l.statement_line_id) : plans.get(l.installment_purchase_id ?? -1);
+      } else if (l.source === "checking") {
+        flowId = l.statement_line_id > 0 ? movements.get(l.statement_line_id) : mirrors.get(-l.statement_line_id);
+      } else if (l.source === "manual") {
+        flowId = entries.get(l.statement_line_id);
+      }
+    }
+    return flowId == null ? { ...l } : { ...l, flow_id: flowId };
+  });
+}

@@ -124,6 +124,7 @@ import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
+import { withExpenseLineFlowIds } from "./flows/flowIdentity.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 
 export { listCreditCardMasterAccountIds };
@@ -146,6 +147,12 @@ export type FlowCcExpenseLineRow = {
   installment_purchase_id?: number;
 
   installment_source?: "manual" | "statement";
+
+  /**
+   * The flow the line is (F9 step 3; `withExpenseLineFlowIds`): what an assignment hangs off. The
+   * client still names a line by `purchase_key` until wave 4.
+   */
+  flow_id?: number;
 
   /** CC statement line id or checking movement id. */
 
@@ -996,6 +1003,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
+  { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },
 ];
 
 /** A plan's own lines name their plan and its owner ({@link FlowCcExpenseLineRow.installment_source}). */
