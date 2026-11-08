@@ -22,6 +22,7 @@ import { runAccountRoles271 } from "./accountRoles271.js";
 import { runNavTreeRoles272 } from "./navTreeRoles272.js";
 import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
+import { registerCardLineKindFunction, runCardLineKind276 } from "./cardLineKind276.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
@@ -64,6 +65,8 @@ if (!fs.existsSync(dataDir)) {
 const dbInternal = new Database(dbPath);
 dbInternal.pragma("journal_mode = WAL");
 dbInternal.pragma("foreign_keys = ON");
+// The card-line classifier, for the triggers that keep `cc_statement_lines.kind` (migration 276).
+registerCardLineKindFunction(dbInternal);
 
 /**
  * Execute the full schema baseline (generated from the live DB; all statements are
@@ -264,6 +267,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
     runExpenseKeyLegacyRewrite273(dbi);
   },
   "275_manual_expense_merchant.sql": runManualExpenseMerchant275,
+  "276_cc_statement_line_kind.sql": runCardLineKind276,
 };
 
 /**

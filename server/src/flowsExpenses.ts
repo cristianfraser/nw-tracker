@@ -1,13 +1,9 @@
+import { requireStoredCardLineKind } from "./cards/lineKinds.js";
+import type { CardLineKind } from "nw-tracker-contracts";
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
 import { expensePieceKeySuffix } from "./expenseKeys.js";
 import type { ParsedDepositMatchSegment } from "./ccExpenseDepositMatchNotes.js";
 import { withPaymentReceipts, type PaymentReceiptDto } from "./paymentProcessorReceipts.js";
-import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
-import {
-  isCcTraspasoDeudaMerchant,
-  isClpSection3FinancingChargeMerchant,
-  isUsdSection3FinancingChargeMerchant,
-} from "./ccStatementSection3.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import {
   buildAdditionalCardsSummary,
@@ -207,6 +203,13 @@ export type FlowCcExpenseLineRow = {
    * (`withSubscriptionCategory`). Dropped from the finalized lines.
    */
   category_from_bank_name?: true;
+
+  /**
+   * Card statement lines: the line's stored kind (`cc_statement_lines.kind`, `cards/lineKinds.ts`),
+   * which the refund and financing stamps read. Dropped from the finalized lines
+   * ({@link markFinancingCostLines}, the last step).
+   */
+  cc_line_kind?: CardLineKind;
 
   installment_flag: number;
 
@@ -476,7 +479,7 @@ export function buildCcExpenseLines(
 
               l.nro_cuota_current, l.nro_cuota_total,
 
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind
+              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind, l.kind
 
        FROM cc_statement_lines l
 
@@ -547,6 +550,8 @@ export function buildCcExpenseLines(
     valor_cuota_mensual_usd: number | null;
 
     cuota_purchase_kind: CcCuotaPurchaseKind | null;
+
+    kind: string | null;
 
   }[];
 
@@ -814,6 +819,8 @@ export function buildCcExpenseLines(
       amount_usd_at_expense: amountUsdAtExpense,
 
       merchant: row.merchant,
+
+      cc_line_kind: requireStoredCardLineKind(row.kind, row.statement_line_id),
 
       installment_flag: isInstallment ? 1 : 0,
 
@@ -1129,32 +1136,26 @@ export function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]
  */
 export function markCardRefunds(lines: readonly FlowCcExpenseLineRowDraft[]): FlowCcExpenseLineRowDraft[] {
   return lines.map((l) => {
-    if (l.source !== "cc" || l.amount_clp >= 0 || l.line_role !== "purchase") return l;
+    if (l.source !== "cc" || l.line_role !== "purchase" || l.cc_line_kind !== "card_refund") return l;
     if (l.nota_credito_role === "matched_nota" || l.nota_credito_role === "annulled_purchase") return l;
-    if (isCcPaymentMerchant(l.merchant) || isCcUsdDebtAbonoMerchant(l.merchant)) return l;
-    if (isCcTraspasoDeudaMerchant(l.merchant)) return l;
     return { ...l, card_refund: true as const };
   });
 }
 
 /**
- * Stamps the card lines the bank charged as financing (2026-10-28): a positive one-shot line whose
- * merchant is a section-3 charge by the statement-line rules the card's P/L reads
- * (`isClp/UsdSection3FinancingChargeMerchant`, `ccStatementLineRules.json`) — the dollar rule when
- * the line carries dollars, the peso rule otherwise. The client kept its own copy of those rules,
- * which had drifted (the CMR card's «Servicio Administracion» / «Impuesto ITE» read as Gastos).
+ * Stamps the card lines the bank charged as financing (2026-10-28): a line whose stored kind is
+ * `financing_charge` — a positive one-shot section-3 charge by the statement-line rules the card's
+ * P/L reads (`isClp/UsdSection3FinancingChargeMerchant`, `ccStatementLineRules.json`; decided once
+ * at import, `cards/lineKinds.ts`). The client kept its own copy of those rules, which had drifted
+ * (the CMR card's «Servicio Administracion» / «Impuesto ITE» read as Gastos). The last step of the
+ * pipeline: it also drops the internal kind marker.
  */
 export function markFinancingCostLines(lines: readonly FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
-  return lines.map((l) => (isFinancingCostLine(l) ? { ...l, is_financing_cost: true as const } : l));
-}
-
-function isFinancingCostLine(
-  l: Pick<FlowCcExpenseLineRow, "source" | "installment_flag" | "amount_clp" | "amount_usd" | "merchant">
-): boolean {
-  if (l.source !== "cc" || l.installment_flag || l.amount_clp <= 0) return false;
-  const usd = l.amount_usd;
-  if (usd != null && usd > 0) return isUsdSection3FinancingChargeMerchant(l.merchant, usd);
-  return isClpSection3FinancingChargeMerchant(l.merchant);
+  return lines.map((l) => {
+    const { cc_line_kind: kind, ...rest } = l;
+    if (kind === undefined) return l;
+    return kind === "financing_charge" && l.source === "cc" ? { ...rest, is_financing_cost: true as const } : rest;
+  });
 }
 
 /** Whether a line was deducted from a payslip before the pay reached the account (the `pre_tax` flag). */

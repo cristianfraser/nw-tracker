@@ -7,6 +7,7 @@ import { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from 
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
+import { cardLineKind } from "./cards/lineKinds.js";
 import {
   aggregateGastosFromLines,
   bigGroupUsageByMode,
@@ -16,6 +17,22 @@ import {
   expenseYearMonthlyAverages,
   gastosViewKey,
 } from "./flowsExpensesGastos.js";
+
+/** A card line as the builder emits it: with the kind the importer stored for its statement line. */
+function withStoredKind<L extends FlowCcExpenseLineRow>(l: L): L {
+  if (l.source !== "cc") return l;
+  const dollars = l.amount_usd != null;
+  return {
+    ...l,
+    cc_line_kind: cardLineKind({
+      installment_flag: l.installment_flag,
+      merchant: l.merchant,
+      amount_clp: dollars ? null : l.amount_clp,
+      amount_usd: l.amount_usd,
+      statement_currency: dollars ? "usd" : "clp",
+    }),
+  };
+}
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   const purchaseOn = partial.purchase_on ?? "2025-03-03";
@@ -128,7 +145,7 @@ describe("aggregateGastosFromLines", () => {
       ccLine({ ...one, statement_line_id: 7, purchase_on: "2025-04-24", amount_clp: -2_000, category_slug: "fun", merchant: "NOTA DE CREDITO" }),
       ccLine({ ...one, statement_line_id: 8, purchase_on: "2025-04-25", amount_clp: -70_000, category_slug: "unclassified", merchant: "TRASPASO DE DEUDA INTERNACIO" }),
     ];
-    const lines = markCardRefunds(enrichLinesWithNotaDeCreditoPairing(drafts)) as FlowCcExpenseLineRow[];
+    const lines = markCardRefunds(enrichLinesWithNotaDeCreditoPairing(drafts.map(withStoredKind))) as FlowCcExpenseLineRow[];
     expect(lines.filter((l) => l.card_refund).map((l) => l.statement_line_id)).toEqual([2, 7]);
     const agg = aggregateGastosFromLines(lines, ["supermarket", "fun"], "split");
     const april = agg.by_month.find((m) => m.period_month === "2025-04")!;
@@ -546,7 +563,7 @@ describe("bigGroupUsageByMode", () => {
 
 describe("markFinancingCostLines", () => {
   const charge = (over: Partial<FlowCcExpenseLineRow>) =>
-    ccLine({ line_role: "purchase", installment_flag: 0, nro_cuota_current: null, amount_clp: 2_990, ...over });
+    withStoredKind(ccLine({ line_role: "purchase", installment_flag: 0, nro_cuota_current: null, amount_clp: 2_990, ...over }));
 
   it("stamps the bank's section-3 charges the card P/L counts, by the shared statement-line rules", () => {
     const [admin, ite, interest, usdFee, purchase, payment, traspaso, cuota, checking] = markFinancingCostLines([
@@ -569,6 +586,12 @@ describe("markFinancingCostLines", () => {
     expect(traspaso!.is_financing_cost).toBeUndefined();
     expect(cuota!.is_financing_cost).toBeUndefined();
     expect(checking!.is_financing_cost).toBeUndefined();
+  });
+
+  it("reads the stored kind and drops it from the line", () => {
+    const [line] = markFinancingCostLines([{ ...ccLine({ merchant: "SUPERMERCADO" }), cc_line_kind: "financing_charge" }]);
+    expect(line!.is_financing_cost).toBe(true);
+    expect("cc_line_kind" in line!).toBe(false);
   });
 
   it("never stamps a credit", () => {

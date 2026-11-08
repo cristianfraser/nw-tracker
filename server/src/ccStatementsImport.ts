@@ -1,3 +1,4 @@
+import { cardLineKind } from "./cards/lineKinds.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
@@ -278,12 +279,12 @@ export function importCcStatementsMerge(
       statement_id, transaction_date, posting_date, place, merchant, description_merged,
       country, amount_orig, orig_currency, amount_clp, amount_usd, installment_flag,
       nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, valor_cuota_mensual_usd,
-      interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line, origin_card_last4
+      interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line, origin_card_last4, kind
     ) VALUES (
       @statement_id, @transaction_date, @posting_date, @place, @merchant, @description_merged,
       @country, @amount_orig, @orig_currency, @amount_clp, @amount_usd, @installment_flag,
       @nro_cuota_current, @nro_cuota_total, @valor_cuota_mensual_clp, @valor_cuota_mensual_usd,
-      @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4
+      @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4, @kind
     )
   `);
 
@@ -492,13 +493,14 @@ export function importCcStatementsMerge(
         parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
         parseDdMmYyToIso(String(row.posting_date ?? "").trim());
       const amountOrig = parseCcOriginAmount(String(row.amount_orig ?? ""));
+      const merchant = String(row.merchant ?? "").trim() || null;
 
       const ins = insLine.run({
         statement_id: statementId,
         transaction_date: String(row.transaction_date ?? "").trim() || null,
         posting_date: String(row.posting_date ?? "").trim() || null,
         place: String(row.place ?? "").trim() || null,
-        merchant: String(row.merchant ?? "").trim() || null,
+        merchant,
         description_merged: String(row.description_merged ?? "").trim() || null,
         country: String(row.country ?? "").trim() || null,
         amount_orig: amountOrig,
@@ -516,6 +518,13 @@ export function importCcStatementsMerge(
         parser_row_id: String(row.row_id ?? "").trim() || null,
         raw_line: String(row.raw_line ?? "").trim() || null,
         origin_card_last4: originCardLast4,
+        kind: cardLineKind({
+          installment_flag: inst ? 1 : 0,
+          merchant,
+          amount_clp: amountClp,
+          amount_usd: amountUsd,
+          statement_currency: currency,
+        }),
       });
       const statementLineId = Number(ins.lastInsertRowid);
       const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
