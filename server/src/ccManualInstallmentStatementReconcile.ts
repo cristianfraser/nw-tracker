@@ -17,7 +17,7 @@ import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { ccCardGroupsCompatible } from "./ccIssuers.js";
 import { noteCardLineEvidence, withCardLineSession } from "./cards/lineWriteSession.js";
-import { statementKeyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { cardStatementKey, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
@@ -333,14 +333,15 @@ export type CcManualInstallmentReconcileResult = {
 /**
  * Resolves statement DB ids touched by this import batch (PDF sources only).
  */
-export function collectStatementIdsFromImportRecords(
+export function collectStatementIdsFromImport(
   accountId: number,
-  records: readonly CcStatementCsvRecord[]
+  statements: readonly CardCanonicalStatement[]
 ): number[] {
   const keys = new Set<string>();
-  for (const r of records) {
-    if (!String(r.source_pdf ?? "").trim() || isListingSourceKind(ccStatementSourceKindOf(r.source_pdf))) continue;
-    keys.add(statementKeyFromRow(r));
+  for (const st of statements) {
+    if (st.lines.length === 0) continue;
+    if (!st.document.trim() || isListingSourceKind(ccStatementSourceKindOf(st.document))) continue;
+    keys.add(cardStatementKey(st));
   }
   const ids: number[] = [];
   for (const k of keys) {
@@ -570,8 +571,8 @@ export function reconcileManualInstallmentPurchasesForStatements(
 
 export function reconcileManualInstallmentPurchasesAfterStatementImport(
   accountId: number,
-  records: readonly CcStatementCsvRecord[]
+  statements: readonly CardCanonicalStatement[]
 ): CcManualInstallmentReconcileResult {
-  const ids = collectStatementIdsFromImportRecords(accountId, records);
+  const ids = collectStatementIdsFromImport(accountId, statements);
   return reconcileManualInstallmentPurchasesForStatements(accountId, ids);
 }

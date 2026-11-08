@@ -18,7 +18,7 @@ import {
   listPlantedPaymentLines,
   plantedPaymentMatchesStatementLine,
 } from "./ccPlantedPayments.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import type { CardCanonicalStatement } from "nw-tracker-contracts";
 import {
   listCcStatementLinesForStatement,
   listCcStatementsForAccount,
@@ -292,16 +292,12 @@ export function webPasteLineMatchesStatementLine(
   return merchantsMatchForCrossDedupe(web.merchant, stmt.line.merchant);
 }
 
-export function pdfClosedBillingMonthsFromImportRecords(
-  records: readonly CcStatementCsvRecord[]
-): string[] {
+export function pdfClosedBillingMonthsFromImport(statements: readonly CardCanonicalStatement[]): string[] {
   const months = new Set<string>();
-  for (const row of records) {
-    if (isListingSourceKind(ccStatementSourceKindOf(row.source_pdf))) continue;
-    const bm = billingMonthForCcStatement({
-      statement_date: row.statement_date,
-      period_to: row.period_to,
-    });
+  for (const st of statements) {
+    if (st.lines.length === 0) continue;
+    if (isListingSourceKind(ccStatementSourceKindOf(st.document))) continue;
+    const bm = billingMonthForCcStatement({ statement_date: st.close, period_to: st.period_to });
     if (bm) months.add(bm);
   }
   return [...months].sort();
@@ -309,10 +305,10 @@ export function pdfClosedBillingMonthsFromImportRecords(
 
 export function reconcileOpenWebPasteAfterPdfImports(
   accountId: number,
-  records: readonly CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts?: { dryRun?: boolean }
 ): CcOpenWebPastePdfReconcileResult[] {
-  const months = pdfClosedBillingMonthsFromImportRecords(records);
+  const months = pdfClosedBillingMonthsFromImport(statements);
   return months.map((bm) => reconcileOpenWebPasteAfterPdfClose(accountId, bm, opts));
 }
 

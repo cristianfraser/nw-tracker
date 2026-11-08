@@ -9,13 +9,8 @@ import {
 import { backfillMissingInstallmentPaymentsForPlans } from "./ccInstallmentPaymentBackfill.js";
 import { resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
-import {
-  currencyFromRow,
-  importCcStatementsMerge,
-  statementKeyFromRow,
-  type CcStatementCsvRecord,
-  type CcStatementsMergeOpts,
-} from "./ccStatementsImport.js";
+import { importCcStatementsMerge, type CcStatementsMergeOpts } from "./ccStatementsImport.js";
+import { storedCardLineAmounts } from "./cards/statementStorage.js";
 import { reconcileManualInstallmentPurchasesAfterStatementImport } from "./ccManualInstallmentStatementReconcile.js";
 import { assertFeedClosesMatchStatements } from "./ccBillingCloses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
@@ -39,18 +34,29 @@ import {
   type ReimportedCardLinesResult,
 } from "./flows/cardLineAdoption.js";
 import { installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
-import { statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
-import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { billingMonthForCcStatement } from "./cards/statementMonth.js";
+import {
+  cardStatementKey,
+  parseDdMmYyToIso,
+  storedCardLineDate,
+  type CardCanonicalLine,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
 import { noteCardLineEvidence, noteCardLineFinancingLinks, withCardLineSession } from "./cards/lineWriteSession.js";
 import { planTruncatedMerchantDuplicateRemoval } from "./ccTruncatedMerchantDedupe.js";
 import { planRecurringPendingReplacement, type RecurringPendingResult } from "./ccRecurringPendingLines.js";
 import { replacePlantedPaymentLinesFromImport, type PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 
-function installmentContractAmountClp(row: CcStatementCsvRecord): number {
-  const a = parseOptionalChileanInteger(String(row.amount_clp ?? "")) ?? 0;
-  const b = parseOptionalChileanInteger(String(row.monto_origen_operacion_clp ?? "")) ?? 0;
-  const c = parseOptionalChileanInteger(String(row.monto_total_a_pagar_clp ?? "")) ?? 0;
-  return Math.max(a, b, c);
+/** One line of an import with the statement it sits on. */
+export type CardStatementLineRef = { statement: CardCanonicalStatement; line: CardCanonicalLine };
+
+/** Every line of the given statements, each with its statement, in import order. */
+export function statementLineRefs(statements: readonly CardCanonicalStatement[]): CardStatementLineRef[] {
+  return statements.flatMap((statement) => statement.lines.map((line) => ({ statement, line })));
+}
+
+function installmentContractAmountClp({ line }: CardStatementLineRef): number {
+  return Math.max(storedCardLineAmounts(line).amount_clp, line.installment?.total_amount ?? 0);
 }
 
 /** The statement rows of one installment plan: cuota N on one statement, N+1 on the next. */
@@ -60,41 +66,31 @@ export type CcInstallmentLoanChain = {
   canonical_row_id: string;
   /** Occurrence among same-identity twin purchases, 0-based ({@link groupInstallmentLoanChains}). */
   twin_index: number;
-  rows: CcStatementCsvRecord[];
+  rows: CardStatementLineRef[];
 };
 
-function txDateIso(row: CcStatementCsvRecord): string | null {
-  const raw = String(row.transaction_date ?? row.posting_date ?? "").trim();
-  return parseDdMmYyToIso(raw);
-}
-
-function makeLoanKey(row: CcStatementCsvRecord): string | null {
-  const cg = ccCardGroupOrDefault(row.card_group);
-  const iso = txDateIso(row);
-  const amt = installmentContractAmountClp(row);
-  const nt = parseOptionalChileanInteger(String(row.nro_cuota_total ?? ""));
+function makeLoanKey(ref: CardStatementLineRef): string | null {
+  const { statement, line } = ref;
+  const cg = ccCardGroupOrDefault(statement.card_group);
+  const iso = line.transaction_date;
+  const amt = installmentContractAmountClp(ref);
+  const nt = line.installment?.count ?? null;
   if (!iso || amt <= 0 || nt == null || nt <= 0) return null;
   const merch =
-    merchantStemForInstallmentDedupe(row.merchant) ||
-    merchantStemForInstallmentDedupe(row.description_merged);
+    merchantStemForInstallmentDedupe(line.merchant) ||
+    merchantStemForInstallmentDedupe(line.description);
   if (!merch) return null;
   return `${cg}\t${iso}\t${amt}\t${nt}\t${merch.toUpperCase()}`;
 }
 
-function pickCanonicalForLoan(rows: CcStatementCsvRecord[]): string {
-  const ids = [
-    ...new Set(
-      rows
-        .map((r) => String(r.canonical_row_id ?? "").trim())
-        .filter(Boolean)
-    ),
-  ].sort();
+function pickCanonicalForLoan(rows: readonly CardStatementLineRef[]): string {
+  const ids = [...new Set(rows.map((r) => r.line.installment?.plan_id ?? "").filter(Boolean))].sort();
   return ids[0] ?? "unknown";
 }
 
 /** `#dupN` suffix the parser (and the statement-JSON importer) gives the Nth same-statement twin. */
-function dedupeKeyOccurrence(row: CcStatementCsvRecord): number {
-  const m = /#dup(\d+)$/.exec(String(row.dedupe_key ?? "").trim());
+function dedupeKeyOccurrence({ line }: CardStatementLineRef): number {
+  const m = /#dup(\d+)$/.exec(String(line.document.dedupe_key ?? "").trim());
   return m ? Number(m[1]) : 0;
 }
 
@@ -107,24 +103,19 @@ function dedupeKeyOccurrence(row: CcStatementCsvRecord): number {
  * with the Nth line of the next is exact.
  */
 export function groupInstallmentLoanChains(
-  records: readonly CcStatementCsvRecord[]
+  statements: readonly CardCanonicalStatement[]
 ): Map<string, CcInstallmentLoanChain> {
-  const byStatementCuota = new Map<string, { loanKey: string; rows: CcStatementCsvRecord[] }>();
-  for (const row of records) {
-    const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-    if (!inst) continue;
-    if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
-    if (installmentContractAmountClp(row) <= 0) continue;
-    const loanKey = makeLoanKey(row);
+  const byStatementCuota = new Map<string, { loanKey: string; rows: CardStatementLineRef[] }>();
+  for (const ref of statementLineRefs(statements)) {
+    const { statement, line } = ref;
+    if (!line.installment) continue;
+    if (isInstallmentContractSummaryMerchant(line.merchant)) continue;
+    if (installmentContractAmountClp(ref) <= 0) continue;
+    const loanKey = makeLoanKey(ref);
     if (!loanKey) continue;
-    const bucketKey = [
-      loanKey,
-      String(row.source_pdf ?? ""),
-      String(row.statement_date ?? ""),
-      String(row.nro_cuota_current ?? "").trim(),
-    ].join("\t");
+    const bucketKey = [loanKey, statement.document, statement.close, String(line.installment.number ?? "")].join("\t");
     const bucket = byStatementCuota.get(bucketKey) ?? { loanKey, rows: [] };
-    bucket.rows.push(row);
+    bucket.rows.push(ref);
     byStatementCuota.set(bucketKey, bucket);
   }
 
@@ -133,18 +124,18 @@ export function groupInstallmentLoanChains(
     const ordered = [...rows].sort(
       (a, b) =>
         dedupeKeyOccurrence(a) - dedupeKeyOccurrence(b) ||
-        String(a.row_id ?? "").localeCompare(String(b.row_id ?? ""))
+        String(a.line.document.line_id ?? "").localeCompare(String(b.line.document.line_id ?? ""))
     );
-    ordered.forEach((row, twinIndex) => {
+    ordered.forEach((ref, twinIndex) => {
       const chainKey = `${loanKey}\t${twinIndex}`;
       const chain = chains.get(chainKey) ?? {
         loan_key: loanKey,
-        card_group: ccCardGroupOrDefault(row.card_group),
+        card_group: ccCardGroupOrDefault(ref.statement.card_group),
         canonical_row_id: "",
         twin_index: twinIndex,
         rows: [],
       };
-      chain.rows.push(row);
+      chain.rows.push(ref);
       chains.set(chainKey, chain);
     });
   }
@@ -210,24 +201,24 @@ export type CcInstallmentLedgerMergeOpts = {
   replaceLedger?: boolean;
 };
 
-export function mergeInstallmentLedgerFromParsedRows(
+export function mergeInstallmentLedgerFromStatements(
   accountId: number,
-  accountRecords: CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts?: CcInstallmentLedgerMergeOpts
 ): CcInstallmentLedgerMergeResult {
   return withCardLineSession(accountId, "installment ledger merge", () =>
-    mergeInstallmentLedgerInSession(accountId, accountRecords, opts)
+    mergeInstallmentLedgerInSession(accountId, statements, opts)
   );
 }
 
 function mergeInstallmentLedgerInSession(
   accountId: number,
-  accountRecords: CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts?: CcInstallmentLedgerMergeOpts
 ): CcInstallmentLedgerMergeResult {
   const replaceLedger = opts?.replaceLedger === true;
 
-  const byLoan = groupInstallmentLoanChains(accountRecords);
+  const byLoan = groupInstallmentLoanChains(statements);
 
   const insP = db.prepare(
     `INSERT INTO cc_installment_purchases (
@@ -314,32 +305,32 @@ function mergeInstallmentLedgerInSession(
     for (const agg of byLoan.values()) {
       const loanKey = agg.loan_key;
       const sorted = [...agg.rows].sort(
-        (a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? "")
+        (a, b) => stmtSortKey(a.statement.close) - stmtSortKey(b.statement.close)
       );
       const first = sorted[0]!;
       let purchaseDate: string | null = null;
       for (const r of sorted) {
-        const iso = txDateIso(r);
+        const iso = r.line.transaction_date;
         if (iso && (!purchaseDate || iso < purchaseDate)) purchaseDate = iso;
       }
-      if (!purchaseDate) purchaseDate = parseDdMmYyToIso(first.statement_date ?? "") ?? "2000-01-01";
+      if (!purchaseDate) purchaseDate = parseDdMmYyToIso(first.statement.close) ?? "2000-01-01";
 
       let maxTotal = 0;
       let maxCuotas = 0;
       for (const r of sorted) {
-        if (isInstallmentContractSummaryMerchant(String(r.merchant ?? ""))) continue;
+        if (isInstallmentContractSummaryMerchant(r.line.merchant)) continue;
         maxTotal = Math.max(maxTotal, installmentContractAmountClp(r));
-        const nt = parseOptionalChileanInteger(String(r.nro_cuota_total ?? ""));
+        const nt = r.line.installment?.count ?? null;
         if (nt != null && nt > 0) maxCuotas = Math.max(maxCuotas, nt);
       }
       if (maxCuotas <= 0) continue;
 
       // Parser-provided baseline match (the Python parser matched it against the archived
       // installments CSV at parse time) — trusted as-is; runtime never re-reads cfraser CSVs.
-      const matched = String(first.matched_excel_row ?? "").trim();
+      const matched = first.line.document.baseline_match ?? "";
       const matched_baseline = matched !== "" ? matched : null;
 
-      const merchant = String(first.merchant ?? "").trim() || null;
+      const merchant = first.line.merchant || null;
       const fingerprint = installmentPurchaseLedgerDedupeKey({
         purchase_date: purchaseDate,
         total_amount_clp: maxTotal,
@@ -353,14 +344,14 @@ function mergeInstallmentLedgerInSession(
           account_id: accountId,
           card_group: agg.card_group,
           canonical_row_id: agg.canonical_row_id,
-          dedupe_key: String(first.dedupe_key ?? "").trim() || loanKey,
-          parser_row_id_sample: String(first.row_id ?? "").trim() || null,
-          source_pdf_sample: String(first.source_pdf ?? "").trim() || null,
+          dedupe_key: first.line.document.dedupe_key || loanKey,
+          parser_row_id_sample: first.line.document.line_id,
+          source_pdf_sample: first.statement.document.trim() || null,
           purchase_date: purchaseDate,
           total_amount_clp: maxTotal,
           cuotas_totales: maxCuotas,
           merchant,
-          description_merged: String(first.description_merged ?? "").trim() || null,
+          description_merged: first.line.description,
           matched_baseline_purchase_id: matched_baseline,
           twin_index: agg.twin_index,
         });
@@ -394,10 +385,10 @@ function mergeInstallmentLedgerInSession(
           total_amount_clp: maxTotal,
           cuotas_totales: maxCuotas,
           merchant,
-          description_merged: String(first.description_merged ?? "").trim() || null,
-          dedupe_key: String(first.dedupe_key ?? "").trim() || loanKey,
-          parser_row_id_sample: String(first.row_id ?? "").trim() || null,
-          source_pdf_sample: String(first.source_pdf ?? "").trim() || null,
+          description_merged: first.line.description,
+          dedupe_key: first.line.document.dedupe_key || loanKey,
+          parser_row_id_sample: first.line.document.line_id,
+          source_pdf_sample: first.statement.document.trim() || null,
           matched_baseline_purchase_id: matched_baseline,
         });
         purchaseUpserts++;
@@ -407,9 +398,9 @@ function mergeInstallmentLedgerInSession(
       planIdByTwin.set(agg.twin_index, pid);
       planIdsByLoan.set(loanKey, planIdByTwin);
 
-      const payGroups = new Map<string, CcStatementCsvRecord[]>();
+      const payGroups = new Map<string, CardStatementLineRef[]>();
       for (const r of sorted) {
-        const pk = `${r.source_pdf}\t${r.statement_date}`;
+        const pk = `${r.statement.document}\t${r.statement.close}`;
         const list = payGroups.get(pk) ?? [];
         list.push(r);
         payGroups.set(pk, list);
@@ -418,43 +409,43 @@ function mergeInstallmentLedgerInSession(
       const payByRule = () => ccDerivedPayByRuleForAccount(accountId);
       for (const list of payGroups.values()) {
         const chosen = [...list].sort((a, b) => {
-          const da = String(a.is_duplicate_across_statements ?? "").toLowerCase() === "true";
-          const dbi = String(b.is_duplicate_across_statements ?? "").toLowerCase() === "true";
+          const da = a.line.document.duplicate_across_statements;
+          const dbi = b.line.document.duplicate_across_statements;
           if (da !== dbi) return da ? 1 : -1;
-          return String(a.row_id ?? "").localeCompare(String(b.row_id ?? ""));
+          return String(a.line.document.line_id ?? "").localeCompare(String(b.line.document.line_id ?? ""));
         })[0]!;
+        const { statement, line } = chosen;
+        const inst = line.installment!;
 
         const payBy = resolveInstallmentPayByIso(
           {
-            pay_by: chosen.pay_by,
-            statement_date: chosen.statement_date,
-            period_to: chosen.period_to,
-            transaction_date: chosen.transaction_date,
+            pay_by: statement.pay_by ?? undefined,
+            statement_date: statement.close,
+            period_to: statement.period_to ?? undefined,
+            transaction_date: storedCardLineDate(line.printed_transaction_date, line.transaction_date) ?? undefined,
           },
           payByRule
         );
         if (!payBy) continue;
-        const cuotaAmt = parseOptionalChileanInteger(String(chosen.valor_cuota_mensual_clp ?? ""));
+        const cuotaAmt = inst.cuota_amount;
         if (cuotaAmt == null || cuotaAmt <= 0) continue;
         // A «00/N» row (bought this cycle, nothing billed yet) is stored with no cuota number: the
         // PDF parse leaves the cell empty, the statement JSON writes 0. Stored as 0 it read as
         // cuota 1 billed (`ledgerInstallmentsPaid` matched it by amount; 2026-10-28, plan 173).
-        const ccRaw = String(chosen.nro_cuota_current ?? "").trim();
-        const ccParsed = ccRaw ? parseOptionalChileanInteger(ccRaw) : null;
-        const cuota_current = ccParsed === 0 ? null : ccParsed;
-        const ct = parseOptionalChileanInteger(String(chosen.nro_cuota_total ?? ""));
+        const cuota_current = inst.number === 0 ? null : inst.number;
+        const ct = inst.count;
         const cuota_total = ct != null && ct > 0 ? ct : maxCuotas;
 
         insPay.run({
           purchase_id: pid,
           pay_by_date: payBy,
-          statement_date: String(chosen.statement_date ?? "").trim() || null,
-          statement_period_month: statementPeriodMonthFromParsedRow(chosen),
-          source_pdf: String(chosen.source_pdf ?? "").trim() || null,
+          statement_date: statement.close.trim() || null,
+          statement_period_month: billingMonthForCcStatement({ statement_date: statement.close, period_to: statement.period_to }),
+          source_pdf: statement.document.trim() || null,
           amount_clp: cuotaAmt,
           cuota_current,
           cuota_total,
-          parser_row_id: String(chosen.row_id ?? "").trim() || null,
+          parser_row_id: line.document.line_id,
         });
         paymentUpserts++;
       }
@@ -514,13 +505,13 @@ export type CcBucketPassesResult = {
  */
 function runBucketPasses(
   accountId: number,
-  records: readonly CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   listingBatchKind: string | null
 ): CcBucketPassesResult {
   const truncated = planTruncatedMerchantDuplicateRemoval(accountId);
   applyCardLinePlan(accountId, truncated);
   const planted = listingBatchKind
-    ? replacePlantedPaymentLinesFromImport(accountId, records, listingBatchKind)
+    ? replacePlantedPaymentLinesFromImport(accountId, statements, listingBatchKind)
     : { result: { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null }, plan: { deleteLineIds: [], carry: [] } };
   applyCardLinePlan(accountId, planted.plan);
   const recurring = planRecurringPendingReplacement(accountId);
@@ -543,9 +534,9 @@ function earliestIso(...dates: (string | null | undefined)[]): string | null {
   return out;
 }
 
-export function mergeCcAccountFromParsedRows(
+export function mergeCardStatements(
   accountId: number,
-  records: CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts?: {
     statements?: CcStatementsMergeOpts;
     replaceLedger?: boolean;
@@ -554,12 +545,12 @@ export function mergeCcAccountFromParsedRows(
     listingBatchKind?: string;
   }
 ): CcAccountImportMergeResult {
-  return withCardLineSession(accountId, "this statement import", () => mergeInSession(accountId, records, opts));
+  return withCardLineSession(accountId, "this statement import", () => mergeInSession(accountId, statements, opts));
 }
 
 function mergeInSession(
   accountId: number,
-  records: CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts?: {
     statements?: CcStatementsMergeOpts;
     replaceLedger?: boolean;
@@ -587,11 +578,11 @@ function mergeInSession(
   const supersededReplaceKeys = new Set<string>();
   if (jsonOwned.size > 0) {
     const incomingPdfCloses = new Set<string>();
-    for (const rec of records) {
-      const kind = ccStatementSourceKindOf(rec.source_pdf);
+    for (const statement of statements) {
+      const kind = ccStatementSourceKindOf(statement.document);
       const isRealPdf = kind === "statement_pdf" || kind === "statement_other";
       if (!isRealPdf) continue;
-      const closeKey = `${padCcStatementDate(String(rec.statement_date ?? ""))}\t${currencyFromRow(rec)}`;
+      const closeKey = `${padCcStatementDate(statement.close)}\t${statement.currency}`;
       if (jsonOwned.has(closeKey)) incomingPdfCloses.add(closeKey);
     }
     if (incomingPdfCloses.size > 0) {
@@ -613,7 +604,7 @@ function mergeInSession(
       : replaceKeys;
 
   // Validate before writing anything — throws if reconcile pre-checks fail.
-  assertCcImportReconcilesOrThrow(accountId, records, {
+  assertCcImportReconcilesOrThrow(accountId, statements, {
     replaceStatementKeys: effectiveReplaceKeys,
   });
 
@@ -627,7 +618,7 @@ function mergeInSession(
   // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
   // lands on a close with no competing statement row (lines cascade via the FK).
   deleteJsonStatementsByIds(supersededJsonStatementIds);
-  const statements = importCcStatementsMerge(accountId, records, {
+  const statementsResult = importCcStatementsMerge(accountId, statements, {
     replaceAll: false,
     replaceStatementKeys: effectiveReplaceKeys,
     skipGlobalDedupeKeys: true,
@@ -637,17 +628,14 @@ function mergeInSession(
   // SALDO INICIAL on the same date — two independent renderings of one number. Throws inside
   // the transaction, so a disagreeing import writes nothing.
   assertFeedClosesMatchStatements(accountId);
-  const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
+  const ledger = mergeInstallmentLedgerFromStatements(accountId, statements, {
     replaceLedger: opts?.replaceLedger ?? false,
   });
-  const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(
-    accountId,
-    records
-  );
+  const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(accountId, statements);
   const overlap = planOneShotLinesSupersededByInstallmentPurchases(accountId);
   applyCardLinePlan(accountId, overlap);
   const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId);
-  const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records);
+  const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, statements);
   // Statement replacement above cascaded any existing traspaso links away; rebuild them
   // from the final line set (throws on an unpairable leg, aborting the whole merge).
   relinkCcTraspasoDeudaLinksForAccount(accountId);
@@ -657,14 +645,14 @@ function mergeInSession(
   // the branch's merchant string, so the next receipt at that store writes its own line.
   const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
   const expense_line_rekey = adoptReimportedCardLines(expenseLines);
-  const bucket = runBucketPasses(accountId, records, opts?.listingBatchKind ?? null);
+  const bucket = runBucketPasses(accountId, statements, opts?.listingBatchKind ?? null);
   // Whatever this import added for past days invalidates the frozen daily stamps written after
   // it — a paste of last week's purchases must show up on those days, not as today's move; bucket
   // lines the statement settled are evidence removed on their own dates.
   noteCardLineEvidence(
     accountId,
     earliestIso(
-      statements.earliestInsertedTxDate,
+      statementsResult.earliestInsertedTxDate,
       ledger.earliestNewPurchaseDate,
       ...web_paste_pdf_reconcile.map((r) => r.earliest_deleted_iso)
     )
@@ -673,7 +661,7 @@ function mergeInSession(
   // plan, a statement's), or the statement that facturado closed on.
   noteCardLineFinancingLinks(accountId);
   return {
-    statements,
+    statements: statementsResult,
     ledger,
     overlap_removed: overlap.removed_line_ids.length,
     manual_installment_reconcile,
@@ -686,10 +674,7 @@ function mergeInSession(
   };
 }
 
-export function replaceStatementKeysFromRecords(records: CcStatementCsvRecord[]): Set<string> {
-  const keys = new Set<string>();
-  for (const row of records) {
-    keys.add(statementKeyFromRow(row));
-  }
-  return keys;
+/** The ledger statement keys a set of statements names (`card_group\tsource_pdf\tstatement_date`). */
+export function statementKeysOf(statements: readonly CardCanonicalStatement[]): Set<string> {
+  return new Set(statements.map(cardStatementKey));
 }

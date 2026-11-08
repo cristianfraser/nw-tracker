@@ -1,4 +1,3 @@
-import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
@@ -14,65 +13,26 @@ import {
   ccLineDedupeKeyExistsOnAccount,
   patchCcLineOriginCardOnDedupeHit,
 } from "./ccExpenseLineDedupe.js";
-import { ccLineOriginCurrency, parseCcOriginAmount } from "./ccOriginCurrency.js";
-import { ccStatementRecordsFingerprint } from "./ccStatementFingerprint.js";
-import { parseOptionalChileanInteger, parseDdMmYyToIso, cardLineKind } from "nw-tracker-contracts";
+import { ccLineOriginCurrency } from "./ccOriginCurrency.js";
+import { cardStatementFingerprint, storedCardLineAmounts, storedLineColumns, storedStatementColumns } from "./cards/statementStorage.js";
+import {
+  cardStatementKey,
+  parseDdMmYyToIso,
+  type CardCanonicalLine,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
 
-function parseUsdAmount(s: string): number | null {
-  let t = String(s ?? "").trim().replace(/US\$/gi, "").replace(/\$/g, "").trim();
-  if (!t) return null;
-  const neg = t.startsWith("-");
-  if (neg) t = t.slice(1).trim();
-  if (/,\d{1,2}$/.test(t)) {
-    t = t.replace(/\./g, "").replace(",", ".");
-  } else {
-    t = t.replace(/,/g, "");
-  }
-  const n = Number(t);
-  if (!Number.isFinite(n)) return null;
-  return neg ? -n : n;
-}
-
-export type CcStatementCsvRecord = Record<string, string>;
-
-/** A `DD/MM/YYYY` CSV cell zero-padded, or null when empty; any other shape throws. */
-function ddMmYyyyOrNull(raw: string | undefined): string | null {
-  const t = String(raw ?? "").trim();
-  if (!t) return null;
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
-  if (!m) throw new Error(`Unexpected statement date "${t}" (want DD/MM/YYYY)`);
-  return `${m[1]!.padStart(2, "0")}/${m[2]!.padStart(2, "0")}/${m[3]}`;
-}
-
-export function statementKeyFromRow(row: CcStatementCsvRecord): string {
-  return `${row.card_group ?? "A"}\t${row.source_pdf ?? ""}\t${row.statement_date ?? ""}`;
-}
-
-function assertCcStatementCsvHeader(row: CcStatementCsvRecord): void {
-  const sourcePdf = String(row.source_pdf ?? "").trim();
-  if (!sourcePdf || isListingSourceKind(ccStatementSourceKindOf(sourcePdf))) return;
+function assertStatementHeader(statement: CardCanonicalStatement): void {
+  if (isListingSourceKind(ccStatementSourceKindOf(statement.document))) return;
   const missing: string[] = [];
-  if (!String(row.statement_date ?? "").trim()) missing.push("statement_date");
-  if (!String(row.period_from ?? "").trim()) missing.push("period_from");
-  if (!String(row.period_to ?? "").trim()) missing.push("period_to");
+  if (!statement.close.trim()) missing.push("statement_date");
+  if (!statement.period_from) missing.push("period_from");
+  if (!statement.period_to) missing.push("period_to");
   if (missing.length === 0) return;
   throw new Error(
-    `CC statement import missing ${missing.join(", ")} for ${sourcePdf}; ` +
+    `CC statement import missing ${missing.join(", ")} for ${statement.document}; ` +
       `re-run parse:cc-pdfs and import`
   );
-}
-
-function layoutFromRow(row: CcStatementCsvRecord): string {
-  const layout = String(row.parser_layout ?? "").trim();
-  if (layout === "international_usd") return "international_usd";
-  if (layout.startsWith("wide")) return "wide";
-  return "compact";
-}
-
-export function currencyFromRow(row: CcStatementCsvRecord): string {
-  if (String(row.currency ?? "").toLowerCase() === "usd") return "usd";
-  if (layoutFromRow(row) === "international_usd") return "usd";
-  return "clp";
 }
 
 /** Per-line import outcome, rendered by the account-page import panel (parity with checking imports). */
@@ -101,26 +61,18 @@ export type CcImportSkipReason =
 
 export type SkippedCcImportFlowItem = CcImportFlowItem & { reason: CcImportSkipReason };
 
-export function ccImportFlowItemFromRow(
-  row: CcStatementCsvRecord,
-  statementLabel: string
-): CcImportFlowItem {
-  const amountClpRaw = String(row.amount_clp ?? "").trim();
-  const amountUsdRaw = String(row.amount_usd ?? "").trim();
-  const cuotaCur = parseOptionalChileanInteger(String(row.nro_cuota_current ?? ""));
-  const cuotaTot = parseOptionalChileanInteger(String(row.nro_cuota_total ?? ""));
-  const txRaw = String(row.transaction_date ?? "").trim();
-  const postRaw = String(row.posting_date ?? "").trim();
+export function ccImportFlowItemFromLine(line: CardCanonicalLine, statementLabel: string): CcImportFlowItem {
+  const inst = line.installment;
   return {
-    occurred_on: parseDdMmYyToIso(txRaw) ?? parseDdMmYyToIso(postRaw) ?? (txRaw || postRaw),
-    description:
-      String(row.merchant ?? "").trim() || String(row.description_merged ?? "").trim() || "—",
-    amount_clp: parseOptionalChileanInteger(amountClpRaw),
-    amount_usd: amountUsdRaw ? parseUsdAmount(amountUsdRaw) : null,
-    installment: String(row.installment_flag ?? "").toLowerCase() === "true",
+    occurred_on:
+      line.transaction_date ?? line.posting_date ?? (line.printed_transaction_date || line.printed_posting_date || ""),
+    description: line.merchant || line.description || "—",
+    amount_clp: line.currency === "clp" ? line.amount : null,
+    amount_usd: line.currency === "usd" ? line.amount : null,
+    installment: inst != null,
     cuota:
-      cuotaCur != null && cuotaTot != null
-        ? `${String(cuotaCur).padStart(2, "0")}/${String(cuotaTot).padStart(2, "0")}`
+      inst?.number != null && inst.count != null
+        ? `${String(inst.number).padStart(2, "0")}/${String(inst.count).padStart(2, "0")}`
         : null,
     statement: statementLabel,
   };
@@ -130,6 +82,17 @@ export function ccImportFlowItemFromRow(
 export function ccStatementLabel(statementDate: string, currency: string): string {
   const iso = parseDdMmYyToIso(statementDate) ?? statementDate;
   return `${iso} · ${currency.toUpperCase()}`;
+}
+
+/** The line's import dedupe keys (the document's, plus the one-shot key). */
+export function canonicalLineDedupeKeys(cardGroup: string, line: CardCanonicalLine): string[] {
+  return canonicalCcLineDedupeKeys(cardGroup, {
+    installment: line.installment != null,
+    dateIso: line.transaction_date ?? line.posting_date,
+    merchant: line.merchant,
+    amountClp: storedCardLineAmounts(line).amount_clp,
+    documentKey: line.document.dedupe_key,
+  });
 }
 
 export type CcStatementsMergeResult = {
@@ -181,15 +144,6 @@ const findStmtByClose = db.prepare(
    LIMIT 1`
 );
 
-function originCardLast4FromCsvRow(
-  row: CcStatementCsvRecord,
-  primaryCardLast4: string | null
-): string | null {
-  const v = String(row.origin_card_last4 ?? "").trim();
-  if (v.length > 0) return v;
-  return primaryCardLast4;
-}
-
 function maybeApplyAdditionalCardNoCuenta(
   accountId: number,
   statementLineId: number,
@@ -207,19 +161,9 @@ function maybeApplyAdditionalCardNoCuenta(
 
 export function importCcStatementsMerge(
   accountId: number,
-  records: CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts?: CcStatementsMergeOpts
 ): CcStatementsMergeResult {
-  // The import labels each line's original currency (`ccOriginCurrency.ts`); a record that carries
-  // a label comes from a producer, or a parsed CSV, older than that rule. Checked before any write.
-  for (const row of records) {
-    if (String(row.orig_currency ?? "").trim()) {
-      throw new Error(
-        `CC statement import (${String(row.source_pdf ?? "").trim()}): line «${String(row.merchant ?? "").trim()}» ` +
-          `carries orig_currency "${row.orig_currency}", but origins are labeled on import — re-run parse:cc-pdfs`
-      );
-    }
-  }
   const categorySnap = snapshotLineCategories(accountId);
 
   const replaceAll = opts?.replaceAll === true;
@@ -235,12 +179,16 @@ export function importCcStatementsMerge(
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
   }
 
-  const byStmt = new Map<string, CcStatementCsvRecord[]>();
-  for (const row of records) {
-    const k = statementKeyFromRow(row);
-    const list = byStmt.get(k) ?? [];
-    list.push(row);
-    byStmt.set(k, list);
+  // One entry per ledger statement: a source never names one statement twice, but a caller may
+  // hand several copies of a statement's lines (the parsed corpus re-sent), which import in order.
+  const byStmt = new Map<string, { statement: CardCanonicalStatement; lines: CardCanonicalLine[] }>();
+  for (const statement of statements) {
+    // A statement is its lines: one with none writes nothing (a bucket whose rows were all skipped).
+    if (statement.lines.length === 0) continue;
+    const k = cardStatementKey(statement);
+    const entry = byStmt.get(k);
+    if (entry) entry.lines.push(...statement.lines);
+    else byStmt.set(k, { statement, lines: [...statement.lines] });
   }
 
   const insStmt = db.prepare(`
@@ -284,7 +232,7 @@ export function importCcStatementsMerge(
     ) VALUES (
       @statement_id, @transaction_date, @posting_date, @place, @merchant, @description_merged,
       @country, @amount_orig, @orig_currency, @amount_clp, @amount_usd, @installment_flag,
-      @nro_cuota_current, @nro_cuota_total, @valor_cuota_mensual_clp, @valor_cuota_mensual_usd,
+      @nro_cuota_current, @nro_cuota_total, @valor_cuota_mensual_clp, NULL,
       @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4, @kind
     )
   `);
@@ -303,13 +251,10 @@ export function importCcStatementsMerge(
   const inserted_flows: CcImportFlowItem[] = [];
   const skipped_flows: SkippedCcImportFlowItem[] = [];
 
-  for (const [key, rows] of byStmt) {
-    const first = rows[0]!;
-    assertCcStatementCsvHeader(first);
-    const currency = currencyFromRow(first);
-    const cardGroup = ccCardGroupOrDefault(first.card_group);
-    const sourcePdf = String(first.source_pdf ?? "").trim();
-    const statementDate = String(first.statement_date ?? "").trim();
+  for (const [key, { statement, lines }] of byStmt) {
+    assertStatementHeader(statement);
+    const stored = storedStatementColumns(statement);
+    const { card_group: cardGroup, source_pdf: sourcePdf, statement_date: statementDate, currency } = stored;
     // A PDF/JSON statement import must not count open web-paste bucket lines as existing
     // evidence: `reconcileOpenWebPasteAfterPdfImports` deletes the bucket's in-period lines
     // right after this loop, so a skip against one destroys the purchase from both places
@@ -317,82 +262,31 @@ export function importCcStatementsMerge(
     // deduping a re-paste against its own bucket and against PDF lines is their whole point.
     const dedupeScanOpts = { excludeWebPasteSources: !isListingSourceKind(ccStatementSourceKindOf(sourcePdf)) };
 
-    // An empty header cell (a total the statement does not print) stores 0, monto_facturado null.
-    const header = {
-      saldo_anterior:
-        parseUsdAmount(String(first.statement_saldo_anterior ?? "")) ??
-        parseOptionalChileanInteger(String(first.statement_saldo_anterior ?? "")) ?? 0,
-      abono:
-        parseUsdAmount(String(first.statement_abono ?? "")) ??
-        parseOptionalChileanInteger(String(first.statement_abono ?? "")) ?? 0,
-      compras_cargos:
-        parseUsdAmount(String(first.statement_compras_cargos ?? "")) ??
-        parseOptionalChileanInteger(String(first.statement_compras_cargos ?? "")) ?? 0,
-      deuda_total:
-        parseUsdAmount(String(first.statement_deuda_total ?? "")) ??
-        parseOptionalChileanInteger(String(first.statement_deuda_total ?? "")) ?? 0,
-      monto_facturado: (() => {
-        const v =
-          parseUsdAmount(String(first.statement_monto_facturado ?? "")) ??
-          parseOptionalChileanInteger(String(first.statement_monto_facturado ?? ""));
-        // As printed, whatever the sign: a period that ended in credit bills a negative amount,
-        // one with nothing to pay 0 (`statementHeaderFacturado`).
-        return v ?? null;
-      })(),
-      monto_pagado_anterior:
-        parseUsdAmount(String(first.statement_monto_pagado_anterior ?? "")) ??
-        parseOptionalChileanInteger(String(first.statement_monto_pagado_anterior ?? "")) ?? 0,
-      monto_pagado_anterior_date: (() => {
-        const s = String(first.statement_monto_pagado_anterior_date ?? "").trim();
-        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
-      })(),
-      // The printed following cycle (`ccBillingCloses.ts`), DD/MM/YYYY like period_from/to.
-      next_period_from: ddMmYyyyOrNull(first.statement_next_period_from),
-      next_period_to: ddMmYyyyOrNull(first.statement_next_period_to),
-    };
     // The synthesized header PAGO is dated evidence like any line (see `normalizedPostCloseLines`),
     // so it too can contradict a stamp written after that day.
-    if (
-      header.monto_pagado_anterior_date &&
-      (earliestInsertedTxDate == null ||
-        header.monto_pagado_anterior_date < earliestInsertedTxDate)
-    ) {
-      earliestInsertedTxDate = header.monto_pagado_anterior_date;
+    const paidOn = stored.monto_pagado_anterior_date;
+    if (paidOn && (earliestInsertedTxDate == null || paidOn < earliestInsertedTxDate)) {
+      earliestInsertedTxDate = paidOn;
     }
 
     const stmtParams = {
       account_id: accountId,
-      card_group: cardGroup,
-      source_pdf: sourcePdf,
-      statement_date: statementDate,
-      period_from: String(first.period_from ?? "").trim() || null,
-      period_to: String(first.period_to ?? "").trim() || null,
-      pay_by: String(first.pay_by ?? "").trim() || null,
-      card_last4: String(first.card_last4 ?? "").trim() || null,
-      card_product: String(first.card_product ?? "").trim() || null,
-      layout: layoutFromRow(first),
-      currency,
+      ...stored,
       // Written here rather than by the caller because only this loop knows which row the
       // statement actually resolved to: the close-date fallback below can match a row filed
       // under a DIFFERENT source_pdf (a re-downloaded statement), and a fingerprint keyed by
-      // the CSV's own tuple would silently never land — leaving it re-importing forever.
-      import_fingerprint: ccStatementRecordsFingerprint(rows),
-      ...header,
+      // the incoming statement's own identity would silently never land — leaving it
+      // re-importing forever.
+      import_fingerprint: cardStatementFingerprint({ ...statement, lines }),
     };
 
     let statementId: number;
-    const cardLast4 = String(first.card_last4 ?? "").trim() || null;
+    const cardLast4 = stored.card_last4;
     let existing = findStmtId.get(accountId, cardGroup, sourcePdf, statementDate) as
       | { id: number }
       | undefined;
     if (!existing) {
-      existing = findStmtByClose.get(
-        accountId,
-        cardGroup,
-        statementDate,
-        cardLast4,
-        currency
-      ) as { id: number } | undefined;
+      existing = findStmtByClose.get(accountId, cardGroup, statementDate, cardLast4, currency) as { id: number } | undefined;
     }
 
     if (existing) {
@@ -410,13 +304,12 @@ export function importCcStatementsMerge(
     const seenDedupeInBatch = new Set<string>();
     const statementLabel = ccStatementLabel(statementDate, currency);
 
-    for (const row of rows) {
-      const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-      // An empty integer cell (a USD line's amount_clp, a one-shot's cuota columns) stores 0.
-      const amountClp = parseOptionalChileanInteger(String(row.amount_clp ?? "")) ?? 0;
-      const amountUsd = parseUsdAmount(String(row.amount_usd ?? ""));
-      const flowItem = ccImportFlowItemFromRow(row, statementLabel);
-      let dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
+    for (const line of lines) {
+      const inst = line.installment != null;
+      const columns = storedLineColumns(statement, line);
+      const amountClp = columns.amount_clp;
+      const flowItem = ccImportFlowItemFromLine(line, statementLabel);
+      let dedupeKeys = canonicalLineDedupeKeys(cardGroup, line);
 
       if (dedupeKeys.length > 0) {
         // All keys seen (parser key included) = a truly redundant repeat: skip. A
@@ -437,23 +330,11 @@ export function importCcStatementsMerge(
         });
         for (const k of dedupeKeys) seenDedupeInBatch.add(k);
         if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys, dedupeScanOpts)) {
-          const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
-          const patch = patchCcLineOriginCardOnDedupeHit(
-            accountId,
-            dedupeKeys,
-            originCardLast4,
-            dedupeScanOpts
-          );
+          const originCardLast4 = columns.origin_card_last4;
+          const patch = patchCcLineOriginCardOnDedupeHit(accountId, dedupeKeys, originCardLast4, dedupeScanOpts);
           if (patch.patched) linesOriginCardPatched += 1;
           if (patch.lineId != null) {
-            if (
-              maybeApplyAdditionalCardNoCuenta(
-                accountId,
-                patch.lineId,
-                originCardLast4,
-                cardLast4
-              )
-            ) {
+            if (maybeApplyAdditionalCardNoCuenta(accountId, patch.lineId, originCardLast4, cardLast4)) {
               additionalCardCategoriesApplied += 1;
             }
           }
@@ -463,12 +344,10 @@ export function importCcStatementsMerge(
         }
       }
 
-      if (!inst && amountClp != null && amountClp > 0) {
-        const purchaseDateIso =
-          parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
-          parseDdMmYyToIso(String(row.posting_date ?? "").trim());
-        const merchant = String(row.merchant ?? "").trim() || null;
-        if (shouldSkipOneShotStatementImport(accountId, merchant, purchaseDateIso, amountClp)) {
+      const lineDateIso = line.transaction_date ?? line.posting_date;
+      if (!inst && amountClp > 0) {
+        const merchant = columns.merchant;
+        if (shouldSkipOneShotStatementImport(accountId, merchant, lineDateIso, amountClp)) {
           linesSkippedInstallmentOverlap += 1;
           skipped_flows.push({ ...flowItem, reason: "installment_overlap" });
           continue;
@@ -478,7 +357,7 @@ export function importCcStatementsMerge(
         const isSameStatementTwin = dedupeKeys.some((k) => k.includes("#dup"));
         if (
           !isSameStatementTwin &&
-          oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp, {
+          oneShotLineFuzzyMatchExists(accountId, merchant, lineDateIso, amountClp, {
             ...dedupeScanOpts,
             excludeLineIds: insertedLineIdsByStatement.get(statementId),
           })
@@ -489,51 +368,18 @@ export function importCcStatementsMerge(
         }
       }
 
-      const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
-      const lineDateIso =
-        parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
-        parseDdMmYyToIso(String(row.posting_date ?? "").trim());
-      const amountOrig = parseCcOriginAmount(String(row.amount_orig ?? ""));
-      const merchant = String(row.merchant ?? "").trim() || null;
-
       const ins = insLine.run({
         statement_id: statementId,
-        transaction_date: String(row.transaction_date ?? "").trim() || null,
-        posting_date: String(row.posting_date ?? "").trim() || null,
-        place: String(row.place ?? "").trim() || null,
-        merchant,
-        description_merged: String(row.description_merged ?? "").trim() || null,
-        country: String(row.country ?? "").trim() || null,
-        amount_orig: amountOrig,
-        orig_currency: ccLineOriginCurrency({ amountOrig, amountUsd, dateIso: lineDateIso }),
-        amount_clp: amountClp,
-        amount_usd: amountUsd,
-        installment_flag: inst ? 1 : 0,
-        nro_cuota_current: parseOptionalChileanInteger(String(row.nro_cuota_current ?? "")) ?? 0,
-        nro_cuota_total: parseOptionalChileanInteger(String(row.nro_cuota_total ?? "")) ?? 0,
-        valor_cuota_mensual_clp: parseOptionalChileanInteger(String(row.valor_cuota_mensual_clp ?? "")) ?? 0,
-        valor_cuota_mensual_usd: parseUsdAmount(String(row.valor_cuota_mensual_usd ?? "")),
-        interest_rate_text: String(row.interest_rate_text ?? "").trim() || null,
-        tipo_cuota: String(row.tipo_cuota ?? "").trim() || null,
+        ...columns,
+        orig_currency: ccLineOriginCurrency({ amountOrig: columns.amount_orig, amountUsd: columns.amount_usd, dateIso: lineDateIso }),
         dedupe_key: dedupeKeys[dedupeKeys.length - 1] ?? null,
-        parser_row_id: String(row.row_id ?? "").trim() || null,
-        raw_line: String(row.raw_line ?? "").trim() || null,
-        origin_card_last4: originCardLast4,
-        kind: cardLineKind({
-          installment_flag: inst ? 1 : 0,
-          merchant,
-          amount_clp: amountClp,
-          amount_usd: amountUsd,
-          statement_currency: currency,
-        }),
+        kind: line.kind,
       });
       const statementLineId = Number(ins.lastInsertRowid);
       const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
       writtenHere.add(statementLineId);
       insertedLineIdsByStatement.set(statementId, writtenHere);
-      if (
-        maybeApplyAdditionalCardNoCuenta(accountId, statementLineId, originCardLast4, cardLast4)
-      ) {
+      if (maybeApplyAdditionalCardNoCuenta(accountId, statementLineId, columns.origin_card_last4, cardLast4)) {
         additionalCardCategoriesApplied += 1;
       }
       // Earliest date this import actually ADDED evidence for — dedupe-skipped rows change
@@ -566,13 +412,13 @@ export function importCcStatementsMerge(
 }
 
 /** Full account wipe + reload (CLI `import:cc-parsed --wipe`). */
-export function importCcStatementsFromCsvRecords(
+export function importCcStatementsWipeAndReload(
   accountId: number,
-  records: CcStatementCsvRecord[]
+  statements: readonly CardCanonicalStatement[]
 ): CcStatementsMergeResult {
   return db.transaction(() => {
     const expenseLines = captureCardLines(accountId);
-    const result = importCcStatementsMerge(accountId, records, {
+    const result = importCcStatementsMerge(accountId, statements, {
       replaceAll: true,
       skipGlobalDedupeKeys: false,
     });

@@ -31,7 +31,7 @@ import {
   type CcOpenBucketLine,
 } from "./ccFeedCuotaPurchases.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import type { CcListingLine } from "./ccWebPasteParse.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
@@ -105,7 +105,7 @@ export function feedMirrorCurrencies(opts: {
 /** Bucket lines of the mirrored window that no feed row accounts for (read-only planner). */
 export function planFeedMirror(
   accountId: number,
-  opts: { windowStartIso: string; currencies: ReadonlySet<"clp" | "usd">; feedLines: readonly CcWebPasteLine[] }
+  opts: { windowStartIso: string; currencies: ReadonlySet<"clp" | "usd">; feedLines: readonly CcListingLine[] }
 ): CcOpenBucketLine[] {
   const candidates = listOpenBucketLines(accountId).filter((line) => {
     if (line.installment_flag) return false;
@@ -136,7 +136,7 @@ export function planOpenBucketMirror(
   opts: {
     windowStartIso: string;
     proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>;
-    feedLines: readonly CcWebPasteLine[];
+    feedLines: readonly CcListingLine[];
   }
 ): { result: CcFeedMirrorResult; plan: CardLinePlan } {
   const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null));

@@ -1,20 +1,20 @@
-import type {
-  CardStatementApplyDetails,
-  CardStatementCurrency,
-  CardStatementOutcome,
-  CardStatementPayload,
+import {
+  unpaddedCardLineDate,
+  type CardCanonicalStatement,
+  type CardStatementApplyDetails,
+  type CardStatementCurrency,
+  type CardStatementOutcome,
+  type CardIssuerStatementPayload,
 } from "nw-tracker-contracts";
 import { diffStatementAgainstLedger } from "./cardStatementCrossCheck.js";
-import { filterUnchangedStatementRecords } from "./ccStatementFingerprint.js";
+import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { padCcStatementDate, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
-import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
+import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
 import {
   assertNoCardRoutingConflict,
-  buildSantanderStatementRecords,
+  buildSantanderStatement,
   fillStatementNextPeriodTo,
   inheritedStatementCtx,
-  isoToCsvDate,
   statementNextPeriodTo,
   usdStatementIsStaleEcho,
   writeSantanderStatements,
@@ -42,14 +42,14 @@ type Review = {
   outcome: CardStatementOutcome;
   owner: "pdf" | "json" | null;
   report: string[];
-  write?: CcStatementCsvRecord[];
+  write?: CardCanonicalStatement;
 };
 
 function unexplainedDifferences(d: ReturnType<typeof diffStatementAgainstLedger>): number {
   return d.only_in_json.length - d.expected_only_in_json + d.only_in_db.length;
 }
 
-function reviewStatement(accountId: number, statementDate: string, payload: CardStatementPayload, statement: CardStatementCurrency): Review {
+function reviewStatement(accountId: number, statementDate: string, payload: CardIssuerStatementPayload, statement: CardStatementCurrency): Review {
   const report: string[] = [];
   if (statement.lines.length === 0) return { statement, outcome: "empty", owner: null, report };
 
@@ -62,7 +62,7 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
 
   const owner = statementSourceOwnerForClose(accountId, statementDate, statement.currency);
   let nextCloseDisagrees = false;
-  const nextClose = payload.next_close ? padCcStatementDate(isoToCsvDate(payload.next_close)) : null;
+  const nextClose = payload.next_close ? padCcStatementDate(unpaddedCardLineDate(payload.next_close)) : null;
   // The announced next close is the same printed «próximo período» end the PDF carries; a
   // PDF-owned close gets it filled when the PDF format predates the line, and a disagreement is a
   // problem.
@@ -115,25 +115,25 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
   }
 
   const ctx = inheritedStatementCtx(accountId, statement.currency, statementDate);
-  const records = buildSantanderStatementRecords(statement.currency, statement.lines, statement, {
+  const write = buildSantanderStatement(statement.currency, statement.lines, statement, {
     accountId,
     statementDate,
     cardGroup: ctx.cardGroup,
     periodFrom: ctx.periodFrom,
-    payBy: payload.pay_by ? padCcStatementDate(isoToCsvDate(payload.pay_by)) : null,
+    payBy: payload.pay_by ? padCcStatementDate(unpaddedCardLineDate(payload.pay_by)) : null,
     cardLast4: payload.titular_last4,
     nextClose,
   });
   report.push(
     `  → ${owner === "json" ? "JSON-owned, rewrite" : "not in ledger, write"}: ` +
-      `${records.length} line(s) as ${records[0]?.source_pdf} (group ${ctx.cardGroup}, period ${ctx.periodFrom} → ${statementDate})`
+      `${write.lines.length} line(s) as ${write.lines.length > 0 ? write.document : undefined} (group ${ctx.cardGroup}, period ${ctx.periodFrom} → ${statementDate})`
   );
-  return { statement, outcome: "pending", owner, report, write: records };
+  return { statement, outcome: "pending", owner, report, write };
 }
 
-export function applyCardStatement(payload: CardStatementPayload): CardStatementApplyDetails {
-  const accountId = masterAccountIdForIssuerCardAccount(payload.account);
-  const statementDate = padCcStatementDate(isoToCsvDate(payload.close));
+export function applyCardStatement(payload: CardIssuerStatementPayload): CardStatementApplyDetails {
+  const accountId = cardAccountForIssuerNumber(payload.account);
+  const statementDate = padCcStatementDate(unpaddedCardLineDate(payload.close));
   const reviews = payload.statements.map((s) => reviewStatement(accountId, statementDate, payload, s));
 
   let written: CardStatementApplyDetails["written"] = null;
@@ -144,7 +144,7 @@ export function applyCardStatement(payload: CardStatementPayload): CardStatement
   if (
     pending.length > 0 &&
     pending.every((r) => r.owner === "json") &&
-    filterUnchangedStatementRecords(accountId, pending.flatMap((r) => r.write!)).changed.length === 0
+    filterUnchangedStatements(accountId, pending.map((r) => r.write!).filter((w) => w.lines.length > 0)).changed.length === 0
   ) {
     for (const review of pending) {
       review.outcome = "clean";
@@ -154,7 +154,7 @@ export function applyCardStatement(payload: CardStatementPayload): CardStatement
   }
   const toWrite = pending.filter((r) => r.write != null);
   if (toWrite.length > 0) {
-    const result = writeSantanderStatements(accountId, toWrite.flatMap((r) => r.write!));
+    const result = writeSantanderStatements(accountId, toWrite.map((r) => r.write!));
     written = { currencies: result.currencies, lines_inserted: result.lineCount };
     for (const review of toWrite) {
       const post = diffStatementAgainstLedger(accountId, statementDate, review.statement);

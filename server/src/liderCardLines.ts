@@ -8,9 +8,7 @@
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { findLines, merchantsMatchForCrossDedupe } from "./cards/purchases.js";
-import { webPasteAmountClpForDb } from "./ccPaymentLines.js";
-import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import { listingLineStoredAmount, type CcListingLine } from "./ccWebPasteParse.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
@@ -67,7 +65,7 @@ export function findLedgerLineSameDayAndAmount(
 }
 
 export type LiderLineClassification = {
-  line: CcWebPasteLine;
+  line: CcListingLine;
   /** Signed amount in the DB's convention (charges positive, payments negative). */
   amount_clp_db: number;
   /** Set when an existing ledger line already covers this day+amount under another merchant. */
@@ -82,13 +80,12 @@ export type LiderLineClassification = {
  */
 export function classifyLiderLines(
   accountId: number,
-  lines: readonly CcWebPasteLine[]
-): { importable: CcWebPasteLine[]; sameDayAmount: LiderLineClassification[] } {
-  const meta = creditCardMasterMetaForAccount(accountId);
-  const importable: CcWebPasteLine[] = [];
+  lines: readonly CcListingLine[]
+): { importable: CcListingLine[]; sameDayAmount: LiderLineClassification[] } {
+  const importable: CcListingLine[] = [];
   const sameDayAmount: LiderLineClassification[] = [];
   for (const line of lines) {
-    const amountDb = webPasteAmountClpForDb(line.amount_clp, line.merchant, meta.cardGroup);
+    const amountDb = line.currency === "clp" ? listingLineStoredAmount(line) : 0;
     const match = findLedgerLineSameDayAndAmount(accountId, line.transaction_date, amountDb);
     // A merchant the normal dedupe already matches needs no special handling — let the shared
     // path skip it as a duplicate so the reason shows up in the batch log.

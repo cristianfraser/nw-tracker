@@ -9,12 +9,16 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { classifyCcStatementLine, isGarbledUsdStatementMerchant } from "./ccStatementSection3.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
+import { storedCardLineAmounts } from "./cards/statementStorage.js";
 import {
-  currencyFromRow,
-  statementKeyFromRow,
-  type CcStatementCsvRecord,
-} from "./ccStatementsImport.js";
-import { parseOptionalChileanInteger, parseChileanNumber, isCcPaymentMerchant, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
+  cardStatementKey,
+  parseDdMmYyToIso,
+  storedCardLineDate,
+  isCcPaymentMerchant,
+  isCcTraspasoDeudaMerchant,
+  type CardCanonicalLine,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
@@ -79,16 +83,6 @@ export class CcStatementImportReconcileError extends Error {
 }
 
 /** A parsed-statement CSV header amount (Chilean style): an empty cell reads 0, text that is not a number throws. */
-function parseAmountNumber(s: string): number {
-  const t = String(s ?? "").trim();
-  return t ? parseChileanNumber(t) : 0;
-}
-
-/** Parsed-statement CSV integer cell: empty reads 0; text that is not a number throws. */
-function parseInt10(s: string): number {
-  return parseOptionalChileanInteger(s) ?? 0;
-}
-
 function installmentCuotaCountsTowardOperaciones(row: CcReconcileRow): boolean {
   const layout = row.parser_layout;
   if (layout.includes("wide_master_tcom_cuotas_tasa")) return false;
@@ -480,35 +474,29 @@ export function reconcileBillingMonthMovements(
   };
 }
 
-function billingMonthFromCsvRecord(row: CcStatementCsvRecord): string | null {
-  return billingMonthForCcStatement({
-    statement_date: row.statement_date,
-    period_to: row.period_to,
-  });
+function billingMonthOfStatement(statement: CardCanonicalStatement): string | null {
+  return billingMonthForCcStatement({ statement_date: statement.close, period_to: statement.period_to });
 }
 
-function csvRecordToReconcileRow(row: CcStatementCsvRecord): CcReconcileRow {
-  const layout = String(row.parser_layout ?? "").trim() || "compact";
-  const currency =
-    String(row.currency ?? "").toLowerCase() === "usd" || layout === "international_usd"
-      ? "usd"
-      : "clp";
-  const sourcePdf = String(row.source_pdf ?? "").trim();
+function canonicalLineToReconcileRow(statement: CardCanonicalStatement, line: CardCanonicalLine): CcReconcileRow {
+  const inst = line.installment;
+  const { amount_clp, amount_usd } = storedCardLineAmounts(line);
+  const sourcePdf = statement.document.trim();
   return {
-    currency,
-    installment_flag: String(row.installment_flag ?? "").toLowerCase() === "true",
-    merchant: String(row.merchant ?? "").trim() || null,
-    amount_clp: parseInt10(String(row.amount_clp ?? "")),
-    amount_usd: Number(String(row.amount_usd ?? "").replace(",", ".")) || 0,
-    valor_cuota_mensual_clp: parseInt10(String(row.valor_cuota_mensual_clp ?? "")),
-    valor_cuota_mensual_usd: Number(String(row.valor_cuota_mensual_usd ?? "").replace(",", ".")) || 0,
-    nro_cuota_current: parseInt10(String(row.nro_cuota_current ?? "")) || null,
-    nro_cuota_total: parseInt10(String(row.nro_cuota_total ?? "")) || null,
-    parser_layout: layout,
-    dedupe_key: String(row.dedupe_key ?? "").trim() || null,
-    row_id: String(row.row_id ?? "").trim() || null,
-    transaction_date: String(row.transaction_date ?? "").trim() || null,
-    posting_date: String(row.posting_date ?? "").trim() || null,
+    currency: statement.currency,
+    installment_flag: inst != null,
+    merchant: line.merchant || null,
+    amount_clp,
+    amount_usd: amount_usd ?? 0,
+    valor_cuota_mensual_clp: inst?.cuota_amount ?? 0,
+    valor_cuota_mensual_usd: 0,
+    nro_cuota_current: inst?.number || null,
+    nro_cuota_total: inst?.count || null,
+    parser_layout: line.document.section || "compact",
+    dedupe_key: line.document.dedupe_key,
+    row_id: line.document.line_id,
+    transaction_date: storedCardLineDate(line.printed_transaction_date, line.transaction_date),
+    posting_date: storedCardLineDate(line.printed_posting_date, line.posting_date),
     from_web_paste: isListingSourceKind(ccStatementSourceKindOf(sourcePdf)),
     source_pdf: sourcePdf || null,
   };
@@ -679,62 +667,47 @@ export function mergeImportReconcileHeader(
   };
 }
 
-function headerAmountFromCsv(first: CcStatementCsvRecord, field: string): number | null {
-  const rawStr = String(first[field] ?? "").trim();
-  if (!rawStr) return null;
-  const currency = currencyFromRow(first);
-  const raw = parseAmountNumber(rawStr);
-  if (currency === "usd") {
-    return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : null;
-  }
+/** A header amount as the reconcile reads it: dollars to the cent, pesos whole; null when not printed. */
+function headerAmount(statement: CardCanonicalStatement, raw: number | null): number | null {
+  if (raw == null) return null;
+  if (statement.currency === "usd") return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : null;
   const n = Math.trunc(raw);
   return n !== 0 ? n : raw === 0 ? 0 : null;
 }
 
-function headerFromCsvRecords(records: CcStatementCsvRecord[]): CcReconcileHeader {
-  const first = records[0];
-  if (!first) {
+function headerFromStatement(statement: CardCanonicalStatement | undefined): CcReconcileHeader {
+  if (!statement) {
     return { monto_facturado: null, compras_cargos: null, source_pdf: null };
   }
-  const currency = currencyFromRow(first);
-  const montoRaw = parseAmountNumber(String(first.statement_monto_facturado ?? ""));
-  const comprasRaw = parseAmountNumber(String(first.statement_compras_cargos ?? ""));
-  const monto =
-    currency === "usd"
-      ? montoRaw > 0
-        ? Math.round(montoRaw * 100) / 100
-        : null
-      : Math.trunc(montoRaw) > 0
-        ? Math.trunc(montoRaw)
-        : null;
-  const compras =
-    currency === "usd"
-      ? comprasRaw !== 0
-        ? Math.round(comprasRaw * 100) / 100
-        : null
-      : Math.trunc(comprasRaw) > 0
-        ? Math.trunc(comprasRaw)
-        : null;
+  const h = statement.header;
+  const montoRaw = h.monto_facturado ?? 0;
+  const comprasRaw = h.compras_cargos ?? 0;
+  const usd = statement.currency === "usd";
+  const monto = usd ? (montoRaw > 0 ? Math.round(montoRaw * 100) / 100 : null) : Math.trunc(montoRaw) > 0 ? Math.trunc(montoRaw) : null;
+  const compras = usd
+    ? comprasRaw !== 0
+      ? Math.round(comprasRaw * 100) / 100
+      : null
+    : Math.trunc(comprasRaw) > 0
+      ? Math.trunc(comprasRaw)
+      : null;
   return {
     monto_facturado: monto,
     compras_cargos: compras,
-    source_pdf: String(first.source_pdf ?? "").trim() || null,
-    saldo_anterior: headerAmountFromCsv(first, "statement_saldo_anterior"),
-    monto_facturado_anterior: headerAmountFromCsv(
-      first,
-      "statement_monto_facturado_anterior"
-    ),
-    monto_pagado_anterior: headerAmountFromCsv(first, "statement_monto_pagado_anterior"),
-    abono: headerAmountFromCsv(first, "statement_abono"),
-    deuda_total: headerAmountFromCsv(first, "statement_deuda_total"),
-    pdf_total_operaciones: headerAmountFromCsv(first, "pdf_total_operaciones"),
+    source_pdf: statement.document.trim() || null,
+    saldo_anterior: headerAmount(statement, h.saldo_anterior),
+    monto_facturado_anterior: headerAmount(statement, h.monto_facturado_anterior),
+    monto_pagado_anterior: headerAmount(statement, h.monto_pagado_anterior),
+    abono: headerAmount(statement, h.abono),
+    deuda_total: headerAmount(statement, h.deuda_total),
+    pdf_total_operaciones: headerAmount(statement, h.pdf_total_operaciones),
   };
 }
 
 export function buildProjectedReconcileRows(
   accountId: number,
   billingMonth: string,
-  incoming: readonly CcStatementCsvRecord[],
+  incoming: readonly CardCanonicalStatement[],
   replaceStatementKeys: ReadonlySet<string>,
   opts?: { pdfReconcileOnly?: boolean }
 ): CcReconcileRow[] {
@@ -770,31 +743,31 @@ export function buildProjectedReconcileRows(
     for (const line of listCcStatementLinesForStatement(st.id)) {
       const row = dbLineToReconcileRow(line, st);
       const keys = canonicalCcLineDedupeKeys(st.card_group, {
-        installment_flag: row.installment_flag ? "true" : "false",
-        transaction_date: row.transaction_date ?? "",
-        posting_date: row.posting_date ?? "",
+        installment: row.installment_flag,
+        dateIso: parseDdMmYyToIso(row.transaction_date ?? "") ?? parseDdMmYyToIso(row.posting_date ?? ""),
         merchant: row.merchant ?? "",
-        amount_clp: String(row.amount_clp),
-        dedupe_key: row.dedupe_key ?? "",
+        amountClp: row.amount_clp,
+        documentKey: row.dedupe_key,
       });
       addRow(row, keys, stmtKey);
     }
   }
 
-  for (const rec of incoming) {
-    if (billingMonthFromCsvRecord(rec) !== billingMonth) continue;
-    if (pdfReconcileOnly && isListingSourceKind(ccStatementSourceKindOf(rec.source_pdf))) continue;
-    const row = csvRecordToReconcileRow(rec);
-    const stmtKey = statementKeyFromRow(rec);
-    const keys = canonicalCcLineDedupeKeys(String(rec.card_group ?? "A"), {
-      installment_flag: row.installment_flag ? "true" : "false",
-      transaction_date: row.transaction_date ?? "",
-      posting_date: row.posting_date ?? "",
-      merchant: row.merchant ?? "",
-      amount_clp: String(row.amount_clp),
-      dedupe_key: row.dedupe_key ?? "",
-    });
-    addRow(row, keys, stmtKey);
+  for (const statement of incoming) {
+    if (billingMonthOfStatement(statement) !== billingMonth) continue;
+    if (pdfReconcileOnly && isListingSourceKind(ccStatementSourceKindOf(statement.document))) continue;
+    const stmtKey = cardStatementKey(statement);
+    for (const line of statement.lines) {
+      const row = canonicalLineToReconcileRow(statement, line);
+      const keys = canonicalCcLineDedupeKeys(statement.card_group, {
+        installment: row.installment_flag,
+        dateIso: line.transaction_date ?? line.posting_date,
+        merchant: row.merchant ?? "",
+        amountClp: row.amount_clp,
+        documentKey: row.dedupe_key,
+      });
+      addRow(row, keys, stmtKey);
+    }
   }
 
   const merged = [...byDedupe.values(), ...withoutKey];
@@ -812,35 +785,28 @@ function normalizeStemBucketKey(row: CcReconcileRow, stem: string): string {
   return `stem:${row.currency}:${date}:${stem}:${row.amount_clp}`;
 }
 
-function affectedBillingMonths(incoming: readonly CcStatementCsvRecord[]): string[] {
+function affectedBillingMonths(incoming: readonly CardCanonicalStatement[]): string[] {
   const months = new Set<string>();
-  for (const rec of incoming) {
-    const bm = billingMonthFromCsvRecord(rec);
+  for (const statement of incoming) {
+    const bm = billingMonthOfStatement(statement);
     if (bm) months.add(bm);
   }
   return [...months].sort();
 }
 
-function sourcePdfsFromRecords(records: readonly CcStatementCsvRecord[]): string[] {
-  const pdfs = new Set<string>();
-  for (const rec of records) {
-    const pdf = String(rec.source_pdf ?? "").trim();
-    if (pdf) pdfs.add(pdf);
-  }
-  return [...pdfs].sort();
-}
-
 export function assertCcImportReconcilesOrThrow(
   accountId: number,
-  incoming: readonly CcStatementCsvRecord[],
+  incoming: readonly CardCanonicalStatement[],
   opts?: { replaceStatementKeys?: ReadonlySet<string> }
 ): CcImportReconcileResult[] {
   const replaceKeys = opts?.replaceStatementKeys ?? new Set<string>();
   const results: CcImportReconcileResult[] = [];
 
   for (const billingMonth of affectedBillingMonths(incoming)) {
-    const incomingForMonth = incoming.filter((r) => billingMonthFromCsvRecord(r) === billingMonth);
-    const pdfIncoming = incomingForMonth.filter((r) => !isListingSourceKind(ccStatementSourceKindOf(r.source_pdf)));
+    const incomingForMonth = incoming.filter((st) => billingMonthOfStatement(st) === billingMonth);
+    const pdfIncoming = incomingForMonth.filter(
+      (st) => st.lines.length > 0 && !isListingSourceKind(ccStatementSourceKindOf(st.document))
+    );
 
     if (pdfIncoming.length === 0) {
       continue;
@@ -850,15 +816,12 @@ export function assertCcImportReconcilesOrThrow(
       pdfReconcileOnly: true,
     });
 
-    for (const sourcePdf of sourcePdfsFromRecords(pdfIncoming)) {
-      const stmtPdfIncoming = pdfIncoming.filter((r) => String(r.source_pdf ?? "").trim() === sourcePdf);
-      const reconcileCurrencies = [
-        ...new Set(stmtPdfIncoming.map((r) => currencyFromRow(r) as "clp" | "usd")),
-      ].sort();
+    for (const sourcePdf of [...new Set(pdfIncoming.map((st) => st.document.trim()).filter(Boolean))].sort()) {
+      const stmtPdfIncoming = pdfIncoming.filter((st) => st.document.trim() === sourcePdf);
+      const reconcileCurrencies = [...new Set(stmtPdfIncoming.map((st) => st.currency))].sort();
 
       for (const headerCurrency of reconcileCurrencies) {
-        const currencyIncoming = stmtPdfIncoming.filter((r) => currencyFromRow(r) === headerCurrency);
-        const csvHeader = headerFromCsvRecords(currencyIncoming);
+        const csvHeader = headerFromStatement(stmtPdfIncoming.find((st) => st.currency === headerCurrency));
         const dbAnchor = findPdfAnchorForBillingMonth(
           accountId,
           billingMonth,

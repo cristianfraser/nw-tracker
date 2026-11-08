@@ -5,7 +5,7 @@ import { findPlanForOneShotLine } from "./cards/purchases.js";
 import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
 import { withCardLineSession } from "./cards/lineWriteSession.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import type { CcListingLine } from "./ccWebPasteParse.js";
 
 export type CcInstallmentFirstDueNudge = {
   purchase_id: number;
@@ -55,14 +55,14 @@ const updFirstDueMonth = db.prepare<[string, number]>(
  */
 export function applyWebPasteInstallmentFirstDueNudges(
   accountId: number,
-  parsedLines: readonly CcWebPasteLine[]
+  parsedLines: readonly CcListingLine[]
 ): CcInstallmentFirstDueNudge[] {
   // A card-line write (the listing import's, when it runs inside one): a pinned first cuota moves
   // the plan's schedule, which the write's finish re-syncs once.
   return withCardLineSession(accountId, "first-cuota nudge", () => nudgeInSession(accountId, parsedLines));
 }
 
-function nudgeInSession(accountId: number, parsedLines: readonly CcWebPasteLine[]): CcInstallmentFirstDueNudge[] {
+function nudgeInSession(accountId: number, parsedLines: readonly CcListingLine[]): CcInstallmentFirstDueNudge[] {
   const openBm = billingMonthForManualLedgerPurchase(accountId);
   if (!openBm) return [];
 
@@ -70,7 +70,7 @@ function nudgeInSession(accountId: number, parsedLines: readonly CcWebPasteLine[
   const nudged = new Set<number>();
 
   for (const line of parsedLines) {
-    const amountClp = Math.abs(Math.trunc(line.amount_clp));
+    const amountClp = line.currency === "clp" ? Math.abs(Math.trunc(line.amount)) : 0;
     if (amountClp <= 0) continue; // PAGOs / USD-only lines carry no CLP charge
 
     const match = findPlanForOneShotLine(

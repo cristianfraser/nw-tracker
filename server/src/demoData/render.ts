@@ -15,10 +15,12 @@ import type {
   EmploymentPayslipsPayload,
   PayrollParametersPayload,
 } from "nw-tracker-contracts";
-import { CARD_PARSED_STATEMENT_COLUMNS } from "nw-tracker-contracts";
-import type { CcStatementCsvRecord } from "../ccStatementsImport.js";
-import type { CcWebPasteParseResult } from "../ccWebPasteParse.js";
-import { webPasteAmountFromDebtPositive } from "../ccPaymentLines.js";
+import {
+  CARD_PARSED_STATEMENT_COLUMNS,
+  canonicalStatementsFromParsedRecords,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
+import type { CcListingParseResult } from "../ccWebPasteParse.js";
 import { AFC_RATES_PCT, afpEmployerRatePct, AFP_NAMES, afpWorkerRatePct, pensionCapUf, unemploymentCapUf } from "../legalParameters.js";
 import type { MarketReader } from "./market.js";
 import { addMonths, daysInMonth, MONTH_NAMES_ES, monthOf, type CardDef, type Month, type Ymd, ymd } from "./person.js";
@@ -104,22 +106,27 @@ export function renderCurrentMonthListing(rows: BankRow[]): BankAccountMovements
 
 /* ------------------------------ card statements ---------------------------------- */
 
-function emptyRecord(): CcStatementCsvRecord {
-  return Object.fromEntries(CARD_PARSED_STATEMENT_COLUMNS.map((c) => [c, ""])) as CcStatementCsvRecord;
+type ParsedRecord = Record<string, string>;
+
+function emptyRecord(): ParsedRecord {
+  return Object.fromEntries(CARD_PARSED_STATEMENT_COLUMNS.map((c) => [c, ""]));
 }
 
-/** Every closed facturación as the statement parser would print its lines. */
-export function renderCardStatementRecords(ledger: Ledger): CcStatementCsvRecord[] {
-  const out: CcStatementCsvRecord[] = [];
+/**
+ * Every closed facturación as the statement parser would print its lines, read the way the
+ * parser's output is read (`canonicalStatementsFromParsedRecords`): canonical statements.
+ */
+export function renderCardStatements(ledger: Ledger): CardCanonicalStatement[] {
+  const out: ParsedRecord[] = [];
   for (const s of ledger.statements) out.push(...statementRecords(s, ledger.person.cards));
-  return out;
+  return canonicalStatementsFromParsedRecords(out);
 }
 
-function statementRecords(s: CardStatement, cards: readonly CardDef[]): CcStatementCsvRecord[] {
+function statementRecords(s: CardStatement, cards: readonly CardDef[]): ParsedRecord[] {
   const card = cards.find((c) => c.key === s.card)!;
   const clp = s.currency === "clp";
   const source = `import:demo-statement|${card.last4}|${s.currency}|${s.close}`;
-  const header = (): CcStatementCsvRecord => {
+  const header = (): ParsedRecord => {
     const r = emptyRecord();
     r.card_group = "A";
     r.source_pdf = source;
@@ -152,7 +159,7 @@ function statementRecords(s: CardStatement, cards: readonly CardDef[]): CcStatem
     r.statement_next_period_to = ddmmyyyy(s.nextClose);
     return r;
   };
-  const rows: CcStatementCsvRecord[] = [];
+  const rows: ParsedRecord[] = [];
   let i = 0;
   const id = () => `demo|${card.last4}|${s.currency}|${s.close}|${i++}`;
   for (const l of s.lines) {
@@ -202,34 +209,25 @@ function statementRecords(s: CardStatement, cards: readonly CardDef[]): CcStatem
   return rows;
 }
 
-/** The open cycle (after the last close) as the card feed lists it, per card. */
-export function renderOpenCycle(ledger: Ledger): { card: CardDef; listing: CcWebPasteParseResult }[] {
+/** The open cycle (after the last close) as the card feed lists it, per card (debt-positive). */
+export function renderOpenCycle(ledger: Ledger): { card: CardDef; listing: CcListingParseResult }[] {
   return ledger.openCycle
     .map((o) => {
       const card = ledger.person.cards.find((c) => c.key === o.card)!;
-      const lines: CcWebPasteParseResult["lines"] = o.lines.map((l) => {
-        const pasted = webPasteAmountFromDebtPositive(l.amount, card.issuer);
-        return {
-          transaction_date: l.date,
-          merchant: l.merchant,
-          amount_clp: l.currency === "clp" ? pasted : 0,
-          amount_usd: l.currency === "usd" ? pasted : null,
-          currency: l.currency,
-          raw_line: `${l.date} ${l.merchant}`,
-        };
-      });
+      const lines: CcListingParseResult["lines"] = o.lines.map((l) => ({
+        transaction_date: l.date,
+        merchant: l.merchant,
+        currency: l.currency,
+        amount: l.amount,
+        raw_line: `${l.date} ${l.merchant}`,
+      }));
       if (o.payment) {
         if (o.payment.clp > 0)
-          lines.push({ transaction_date: o.payment.date, merchant: "PAGO", amount_clp: webPasteAmountFromDebtPositive(-o.payment.clp, card.issuer), amount_usd: null, currency: "clp", raw_line: "PAGO" });
-        if (o.payment.usd > 0)
-          lines.push({
-            transaction_date: o.payment.date,
-            merchant: o.payment.usdViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO",
-            amount_clp: 0,
-            amount_usd: webPasteAmountFromDebtPositive(-o.payment.usd, card.issuer),
-            currency: "usd",
-            raw_line: o.payment.usdViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO",
-          });
+          lines.push({ transaction_date: o.payment.date, merchant: "PAGO", currency: "clp", amount: -o.payment.clp, raw_line: "PAGO" });
+        if (o.payment.usd > 0) {
+          const merchant = o.payment.usdViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO";
+          lines.push({ transaction_date: o.payment.date, merchant, currency: "usd", amount: -o.payment.usd, raw_line: merchant });
+        }
       }
       return { card, listing: { lines, errors: [] } };
     })

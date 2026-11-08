@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { ufProjector } from "./ufProjection.js";
@@ -45,7 +45,7 @@ afterAll(() => {
 });
 
 function feed(date: string, merchant: string, amount: number) {
-  const line = webPasteLineFromCardListingLine("santander", {
+  const line = listingLineFromCardListingLine("santander", {
     date,
     merchant,
     currency: "clp",
@@ -53,7 +53,7 @@ function feed(date: string, merchant: string, amount: number) {
     raw_text: `${date} ${merchant} ${amount}`,
     holder: "titular",
   });
-  return importCcWebPasteLines(master, { lines: [line], errors: [] }, "cc_santander_fetch");
+  return importCcListingLines(master, { lines: [line], errors: [] }, "cc_santander_fetch");
 }
 
 function linesNamed(merchant: string): number {

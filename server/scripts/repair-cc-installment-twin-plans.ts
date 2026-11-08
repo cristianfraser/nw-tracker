@@ -7,7 +7,7 @@
  * This re-runs the fixed builder over the twin loans' parsed rows only — every other plan is left
  * alone — which adds the missing twins, re-points the first plan's links at its own lines and,
  * from the earliest purchase it adds, re-syncs the card's valuations and billing-month balances
- * (both inside `mergeInstallmentLedgerFromParsedRows`).
+ * (both inside `mergeInstallmentLedgerFromStatements`).
  *
  * Report-first: without --apply the whole run happens inside a transaction that is rolled back
  * after the report, so the report IS the post-repair ledger.
@@ -18,15 +18,15 @@ import path from "node:path";
 
 
 import { ccBilledCuotasIdentity } from "./lib/ccBilledCuotasIdentity.js";
-import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import {
   groupInstallmentLoanChains,
-  mergeInstallmentLedgerFromParsedRows,
+  mergeInstallmentLedgerFromStatements,
 } from "../src/ccInstallmentLedgerMerge.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
-import { cardLast4FromParsedRow } from "../src/ccParsedImportAccounts.js";
-import type { CcStatementCsvRecord } from "../src/ccStatementsImport.js";
+import { canonicalStatementsFromParsedRecords, type CardCanonicalStatement } from "nw-tracker-contracts";
+import { cardAccountForStatement } from "../src/cards/documentAccount.js";
+import type { CardStatementLineRef } from "../src/ccInstallmentLedgerMerge.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { db } from "../src/db.js";
 
@@ -243,14 +243,13 @@ function main(): void {
     );
   }
 
-  const records = readCommaCsvRecords(csvPath) as CcStatementCsvRecord[];
-  const byAccount = new Map<number, CcStatementCsvRecord[]>();
-  for (const row of records) {
-    const accountId = resolveMasterAccountIdForImportCardLast4(cardLast4FromParsedRow(row));
+  const byAccount = new Map<number, CardCanonicalStatement[]>();
+  for (const statement of canonicalStatementsFromParsedRecords(readCommaCsvRecords(csvPath))) {
+    const accountId = cardAccountForStatement(statement);
     if (accountId == null) continue;
     if (Number.isFinite(onlyAccount) && onlyAccount > 0 && accountId !== onlyAccount) continue;
     const list = byAccount.get(accountId) ?? [];
-    list.push(row);
+    list.push(statement);
     byAccount.set(accountId, list);
   }
 
@@ -267,7 +266,7 @@ function main(): void {
     for (const loan of twinLoans) {
       const [cardGroup, purchaseIso, amount, cuotas, merchant] = loan.split("\t");
       const loanChains = twinChains.filter((c) => c.loan_key === loan);
-      const statements = new Set(loanChains.flatMap((c) => c.rows.map((r) => `${r.source_pdf}\t${r.statement_date}`)));
+      const statements = new Set(loanChains.flatMap((c) => c.rows.map((r) => `${r.statement.document}\t${r.statement.close}`)));
       console.log(
         `  group ${cardGroup}  ${purchaseIso}  ${fmt(Number(amount))} × ${cuotas}  ${merchant} — ` +
           `${loanChains.length} twins on ${statements.size} statement(s)`
@@ -280,9 +279,9 @@ function main(): void {
       // fail with SQLITE_BUSY_SNAPSHOT.
       db.transaction(() => {
         const before = snapshot(accountId);
-        mergeInstallmentLedgerFromParsedRows(
+        mergeInstallmentLedgerFromStatements(
           accountId,
-          twinChains.flatMap((c) => c.rows)
+          statementsOfRefs(twinChains.flatMap((c) => c.rows))
         );
         const after = snapshot(accountId);
         reportDiff(before, after);
@@ -308,3 +307,14 @@ function main(): void {
 }
 
 main();
+
+/** The given lines as statements again: each statement with only those of its lines. */
+function statementsOfRefs(refs: readonly CardStatementLineRef[]): CardCanonicalStatement[] {
+  const byStatement = new Map<CardCanonicalStatement, CardCanonicalStatement>();
+  for (const { statement, line } of refs) {
+    const st = byStatement.get(statement) ?? { ...statement, lines: [] };
+    st.lines.push(line);
+    byStatement.set(statement, st);
+  }
+  return [...byStatement.values()];
+}

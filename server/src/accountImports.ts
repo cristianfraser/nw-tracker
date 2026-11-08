@@ -41,7 +41,7 @@ function assertCreditCardAccount(accountId: number): void {
  * (`cards/lineWrites.ts` `insertLines`). Kept under this name for the callers outside the card
  * writers (store receipts, payment receipts).
  */
-export const importCcWebPasteLines = insertLines;
+export const importCcListingLines = insertLines;
 
 /**
  * Manual paste from the account page: the ingest service reads the pasted text
@@ -56,7 +56,10 @@ export async function importCcWebPaste(accountId: number, text: string) {
   if (answer.result.kind !== CARD_PASTED_LISTING.kind || answer.result.schema_version !== CARD_PASTED_LISTING.schema_version) {
     throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${CARD_PASTED_LISTING.kind}`);
   }
-  return insertLines(accountId, webPasteLinesFromPastedListing(cardPastedListingSchema.parse(answer.result.payload)));
+  return insertLines(
+    accountId,
+    webPasteLinesFromPastedListing(cardPastedListingSchema.parse(answer.result.payload), creditCardMasterMetaForAccount(accountId).cardGroup)
+  );
 }
 
 function assertCuentaVistaAccount(accountId: number): void {

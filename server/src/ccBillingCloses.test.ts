@@ -7,7 +7,7 @@ import { closeDayOffsetDays, closeEvidenceForBillingMonth, nextPeriodStartIsoFor
 import { feedCloseStatementMismatches, recordFeedBillingClose } from "./ccBillingCloses.js";
 import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase, isProvisionallyClosedBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount, pdfClosedBillingMonthsForAccount, statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
 import { feedLineBillingMonths } from "./cardUnbilledMovementsApply.js";
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
 import { ccInstallmentDebtDailyClp } from "./ccInstallmentDebtDaily.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
@@ -20,7 +20,7 @@ import { facturacionMonthByStatementDate, reconcileOpenWebPasteAfterPdfClose, st
 import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { listCcBillingMonthBalances, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { ccWebPasteToCsvRecords, webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
+import { ccWebPasteToCsvRecords, webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
 
 /**
@@ -113,7 +113,7 @@ describe("credit-card close evidence", () => {
     );
   }
 
-  function webLine(dateIso: string, merchant: string, clp: number): CcWebPasteLine {
+  function webLine(dateIso: string, merchant: string, clp: number): CcListingLine {
     return { transaction_date: dateIso, merchant, amount_clp: clp, amount_usd: null, currency: "clp", raw_line: merchant };
   }
 
@@ -551,7 +551,7 @@ describe("credit-card close evidence", () => {
     // paste files every line there — a line dated inside September's cycle included.
     const openMonth = targetBillingMonthForManualImports(accountId, LAST4);
     expect(openMonth).toBe("2026-10");
-    const result = importCcWebPasteLines(accountId, {
+    const result = importCcListingLines(accountId, {
       lines: [webLine("2026-09-03", "PASTE SEPT VITEST", -10_000), webLine("2026-09-25", "PASTE OCT VITEST", -2_400)],
       errors: [],
     });

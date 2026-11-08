@@ -1,7 +1,7 @@
 import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
+import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
 
 /**
  * The issuer's own credit line per card and currency, as a `card.unbilled_movements` listing
@@ -32,7 +32,7 @@ export function bankCupoRowsFromListing(
   const seen = new Set<string>();
   for (const r of rows) {
     const where = `${r.account.number} ${r.currency}`;
-    const accountId = masterAccountIdForIssuerCardAccount(r.account);
+    const accountId = cardAccountForIssuerNumber(r.account);
     const byPlastic = resolveMasterAccountIdForImportCardLast4(r.card_last4);
     if (byPlastic !== accountId) {
       throw new Error(

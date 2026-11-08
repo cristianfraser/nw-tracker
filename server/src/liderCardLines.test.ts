@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { classifyLiderLines, findLedgerLineSameDayAndAmount } from "./liderCardLines.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import type { CcListingLine } from "./ccWebPasteParse.js";
 
 describe("liderCardLines", () => {
   const created: number[] = [];
@@ -36,7 +36,7 @@ describe("liderCardLines", () => {
     ).run(sid, merchant, amountClp, txDate, `vitest-lider-${sid}`);
   }
 
-  function line(partial: Partial<CcWebPasteLine>): CcWebPasteLine {
+  function line(partial: Partial<CcListingLine>): CcListingLine {
     return {
       transaction_date: "2026-07-30",
       merchant: "EXPRESS LYON, SANTIAGO",

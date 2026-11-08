@@ -4,7 +4,7 @@ import { db } from "./db.js";
 import {
   applyWebPasteInstallmentFirstDueNudges,
 } from "./ccWebPasteInstallmentNudge.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import type { CcListingLine } from "./ccWebPasteParse.js";
 import {
   ccInstallmentsDbApiPayload,
 } from "./ccInstallmentLedgerDb.js";
@@ -40,7 +40,7 @@ function webPasteLine(
   transactionDateIso: string,
   merchant: string,
   amountClp: number
-): CcWebPasteLine {
+): CcListingLine {
   return {
     transaction_date: transactionDateIso,
     merchant,

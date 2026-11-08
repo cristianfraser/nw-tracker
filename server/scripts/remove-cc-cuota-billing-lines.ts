@@ -5,7 +5,7 @@
  * whose merchant is the reference `CUOT: <cuota №>OPER: <plan №>` valued at the monthly cuota
  * (first seen 2026-08-25 on the ·0901 master: 20 rows, 1.xxx.xxx CLP). Those rows re-list the
  * installment schedule the app already bills, so each one double-counts a cuota in the owed walk
- * and the open-month gastos. `importCcWebPasteLines` now skips them at import
+ * and the open-month gastos. `importCcListingLines` now skips them at import
  * (`isCcCuotaBillingReferenceMerchant`); this script removes the ones already stored.
  *
  * Report by default. `--apply` deletes them through the supported evidence path: the earliest

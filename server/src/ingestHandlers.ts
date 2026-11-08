@@ -19,7 +19,7 @@ import { matchPaymentReceiptsToExpenseLines, storePaymentProcessorReceipts } fro
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
-import { applyParsedCcStatements } from "./ccParsedStatementsApply.js";
+import { applyCanonicalCardStatements, applyParsedStatementsPayload } from "./ccParsedStatementsApply.js";
 import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
 import { applyPensionAccountBalance, applyPensionAccountCertificates } from "./pensionAccountCertificatesApply.js";
 import { applyUnemploymentFundBalance } from "./unemploymentFundBalanceApply.js";
@@ -115,16 +115,20 @@ const HANDLERS: IngestHandlerMap = {
     },
   },
   "bank_account.statements": { apply: ({ payload }) => ({ details: applyBankAccountStatements(payload) }) },
-  "card.parsed_statements": {
-    apply({ payload }) {
-      const records = payload.rows.map((values) => Object.fromEntries(payload.columns.map((c, i) => [c, values[i]!])));
-      return { details: applyParsedCcStatements(records, { dryRun: false, full: payload.full }) };
-    },
-  },
+  // Still accepted for one release (the feeder deploys with the server): the parser's columns,
+  // converted into the canonical statements `card.statement` carries.
+  "card.parsed_statements": { apply: ({ payload }) => ({ details: applyParsedStatementsPayload(payload, { dryRun: false }) }) },
   "merchant.purchase_document": {
     apply: ({ payload, envelope }) => ({ details: applyMerchantPurchaseDocument(payload, envelope.source.ref) }),
   },
-  "card.statement": { apply: ({ payload }) => ({ details: applyCardStatement(payload) }) },
+  "card.statement": {
+    apply: ({ payload }) => ({
+      details:
+        payload.format === "canonical"
+          ? applyCanonicalCardStatements(payload.statements, { dryRun: false, full: payload.full })
+          : applyCardStatement(payload),
+    }),
+  },
   "payroll.parameters": { apply: ({ payload }) => ({ details: applyPayrollParameters(payload) }) },
   "pension_account.balance": { apply: ({ payload }) => ({ details: applyPensionAccountBalance(payload) }) },
   "unemployment_fund.balance": { apply: ({ payload }) => ({ details: applyUnemploymentFundBalance(payload) }) },

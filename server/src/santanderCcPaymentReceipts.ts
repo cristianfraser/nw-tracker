@@ -37,7 +37,7 @@ import type {
   CardPaymentReceiptPayload,
 } from "nw-tracker-contracts";
 
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -47,7 +47,7 @@ import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
 import { recordPlantedPaymentLine } from "./ccPlantedPayments.js";
 import {
@@ -159,15 +159,13 @@ function synthesizeTransferFromReceipt(
     recordSyntheticCcPaymentTransfer(movementId, messageId, receipt.amount_clp, receipt.paid_on);
 
     const cardGroup = creditCardMasterMetaForAccount(cardAccountId).cardGroup;
-    const line = webPasteLineFromCardListingLine(
-      cardGroup,
-      santanderReceiptCardLine({
+    const line = listingLineFromCardListingLine(santanderReceiptCardLine({
         paid_on: receipt.paid_on,
         amount_clp: receipt.amount_clp,
         amount_usd: isUsd ? receipt.amount_usd! : null,
       })
     );
-    const planted = importCcWebPasteLines(cardAccountId, { lines: [line], errors: [] }, "cc_santander_receipt");
+    const planted = importCcListingLines(cardAccountId, { lines: [line], errors: [] }, "cc_santander_receipt");
     // Registered as planted: a bank listing under other wording replaces it (ccPlantedPayments.ts).
     recordPlantedPaymentLine(
       cardAccountId,

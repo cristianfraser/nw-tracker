@@ -1,9 +1,9 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import {
   applyCardPaymentReceipt,
   applyPaymentReceipt,
@@ -239,8 +239,8 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
     // Tomorrow's feed row lands on the one-shot dedupe key — nothing inserted twice. This literal
     // is what ingest's feed parser makes of that row (pinned by the same literal in
     // ingest/src/santander/cardFeed.test.ts).
-    const feedRow = webPasteLineFromCardListingLine("santander", SANTANDER_FEED_PAGO_ROW);
-    const feed = importCcWebPasteLines(master, { lines: [feedRow], errors: [] }, "cc_santander_fetch");
+    const feedRow = listingLineFromCardListingLine("santander", SANTANDER_FEED_PAGO_ROW);
+    const feed = importCcListingLines(master, { lines: [feedRow], errors: [] }, "cc_santander_fetch");
     expect(feed.inserted).toBe(0);
     expect(feed.skipped_duplicate).toBe(1);
 

@@ -16,17 +16,10 @@ import { fileURLToPath } from "node:url";
 
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
-import {
-  cardLast4FromParsedRow,
-  resolveImportAccountIds,
-} from "../src/ccParsedImportAccounts.js";
+import { canonicalStatementsFromParsedRecords, type CardCanonicalStatement } from "nw-tracker-contracts";
+import { cardAccountForStatement } from "../src/cards/documentAccount.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
-import {
-  currencyFromRow,
-  importCcStatementsMerge,
-  statementKeyFromRow,
-  type CcStatementCsvRecord,
-} from "../src/ccStatementsImport.js";
+import { importCcStatementsMerge } from "../src/ccStatementsImport.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 
@@ -37,10 +30,6 @@ function arg(name: string): string | undefined {
   const p = `--${name}=`;
   const hit = process.argv.find((a) => a.startsWith(p));
   return hit ? hit.slice(p.length) : undefined;
-}
-
-function isUsdStatementRow(row: CcStatementCsvRecord): boolean {
-  return currencyFromRow(row) === "usd";
 }
 
 const findStmtByPdf = db.prepare(
@@ -56,11 +45,11 @@ const findStmtByCloseUsd = db.prepare(
      AND currency = 'usd'`
 );
 
-function usdStatementExistsOnAccount(accountId: number, first: CcStatementCsvRecord): boolean {
-  const cardGroup = String(first.card_group ?? "A").trim() || "A";
-  const sourcePdf = String(first.source_pdf ?? "").trim();
-  const statementDate = String(first.statement_date ?? "").trim();
-  const cardLast4 = String(first.card_last4 ?? "").trim() || null;
+function usdStatementExistsOnAccount(accountId: number, statement: CardCanonicalStatement): boolean {
+  const cardGroup = statement.card_group.trim() || "A";
+  const sourcePdf = statement.document;
+  const statementDate = statement.close;
+  const cardLast4 = statement.card_last4;
   if (
     findStmtByPdf.get(accountId, cardGroup, sourcePdf, statementDate) as { id: number } | undefined
   ) {
@@ -85,20 +74,10 @@ function runParseCcPdfs(): void {
   }
 }
 
-function resolveAccountIdForUsdRows(
-  rows: CcStatementCsvRecord[],
-  fallbackLast4: string | undefined
-): number | null {
-  for (const row of rows) {
-    const l4 = cardLast4FromParsedRow(row);
-    if (!l4) continue;
-    const id = resolveMasterAccountIdForImportCardLast4(l4);
-    if (id != null) return id;
-  }
-  if (fallbackLast4) {
-    return resolveMasterAccountIdForImportCardLast4(fallbackLast4);
-  }
-  return null;
+function resolveAccountIdForUsdStatement(statement: CardCanonicalStatement, fallbackLast4: string | undefined): number | null {
+  const id = cardAccountForStatement(statement);
+  if (id != null) return id;
+  return fallbackLast4 ? resolveMasterAccountIdForImportCardLast4(fallbackLast4) : null;
 }
 
 function main(): void {
@@ -113,44 +92,35 @@ function main(): void {
   }
 
   const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
-  const allRecords = readCommaCsvRecords(csvPath);
-  const usdRecords = allRecords.filter(isUsdStatementRow);
-  if (usdRecords.length === 0) {
+  const usdStatements = canonicalStatementsFromParsedRecords(readCommaCsvRecords(csvPath)).filter(
+    (st) => st.currency === "usd"
+  );
+  if (usdStatements.length === 0) {
     console.log("No USD rows in parsed CSV.");
     return;
   }
 
-  const byStmtKey = new Map<string, CcStatementCsvRecord[]>();
-  for (const row of usdRecords) {
-    const k = statementKeyFromRow(row);
-    const list = byStmtKey.get(k) ?? [];
-    list.push(row);
-    byStmtKey.set(k, list);
-  }
-
-  const { accountIds } = resolveImportAccountIds({ records: usdRecords });
-  const allowedAccounts = new Set(accountIds);
-
   let statementsToImport = 0;
   let rowsToImport = 0;
-  const pending: CcStatementCsvRecord[] = [];
+  const byAccount = new Map<number, CardCanonicalStatement[]>();
   const skippedNoAccount: string[] = [];
 
-  for (const [, rows] of byStmtKey) {
-    const first = rows[0]!;
-    const accountId = resolveAccountIdForUsdRows(rows, fallbackLast4);
-    if (accountId == null || !allowedAccounts.has(accountId)) {
-      skippedNoAccount.push(String(first.source_pdf ?? first.statement_date));
+  for (const statement of usdStatements) {
+    const accountId = resolveAccountIdForUsdStatement(statement, fallbackLast4);
+    if (accountId == null) {
+      skippedNoAccount.push(statement.document || statement.close);
       continue;
     }
-    if (usdStatementExistsOnAccount(accountId, first)) continue;
+    if (usdStatementExistsOnAccount(accountId, statement)) continue;
     statementsToImport += 1;
-    rowsToImport += rows.length;
-    pending.push(...rows);
+    rowsToImport += statement.lines.length;
+    const list = byAccount.get(accountId) ?? [];
+    list.push(statement);
+    byAccount.set(accountId, list);
   }
 
   console.log(
-    `# USD statements in CSV: ${byStmtKey.size}; missing in DB: ${statementsToImport} (${rowsToImport} lines)`
+    `# USD statements in CSV: ${usdStatements.length}; missing in DB: ${statementsToImport} (${rowsToImport} lines)`
   );
   if (skippedNoAccount.length > 0) {
     console.warn(
@@ -169,15 +139,6 @@ function main(): void {
   if (dryRun) {
     console.log("[dry-run] Would import missing USD statements only (merge, no wipe).");
     return;
-  }
-
-  const byAccount = new Map<number, CcStatementCsvRecord[]>();
-  for (const row of pending) {
-    const accountId = resolveAccountIdForUsdRows([row], fallbackLast4);
-    if (accountId == null) continue;
-    const list = byAccount.get(accountId) ?? [];
-    list.push(row);
-    byAccount.set(accountId, list);
   }
 
   let totalInserted = 0;

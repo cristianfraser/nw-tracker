@@ -10,11 +10,11 @@
  * {@link MANUAL_PAYMENT_CONFIRM_BUSINESS_DAYS} Chile business days after its day fails the
  * nightly `synthetic_cc_payments_check`.
  */
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 
 import { confirmManualPaymentForPlanted, recordPlantedPaymentLine } from "./ccPlantedPayments.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
 
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
@@ -169,8 +169,8 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
       .run(transferId, cardId, currency, magnitude, paidOn);
     const manualId = Number(ins.lastInsertRowid);
 
-    const line = webPasteLineFromCardListingLine(cardGroup, manualPaymentListingLine(input, magnitude));
-    const imported = importCcWebPasteLines(cardId, { lines: [line], errors: [] }, "cc_manual_payment");
+    const line = listingLineFromCardListingLine(manualPaymentListingLine(input, magnitude));
+    const imported = importCcListingLines(cardId, { lines: [line], errors: [] }, "cc_manual_payment");
     const payment = { currency, amount: magnitude, paid_on: paidOn };
     const rec = recordPlantedPaymentLine(
       cardId,

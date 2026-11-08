@@ -14,7 +14,7 @@
  * and close, while a row under the parse's group exists (2019-07-24 ·0113: the B copy carried a
  * fingerprint from a later import and the A row only the MONTO CANCELADO −1xx.xxx again). Inside one
  * IMMEDIATE transaction this deletes the stale rows and re-imports their twins in full from the
- * parse through `mergeCcAccountFromParsedRows`, carrying categories, notes, big groups and splits
+ * parse through `mergeCardStatements`, carrying categories, notes, big groups and splits
  * from the deleted lines to the new ones (`flows/cardLineAdoption.ts`) and failing when a paired card
  * payment loses its evidence. Without --apply everything is rolled back, so the report IS the plan.
  *
@@ -24,12 +24,9 @@ import path from "node:path";
 
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
-import { cardLast4FromParsedRow } from "../src/ccParsedImportAccounts.js";
-import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
-import {
-  mergeCcAccountFromParsedRows,
-  replaceStatementKeysFromRecords,
-} from "../src/ccInstallmentLedgerMerge.js";
+import { canonicalStatementsFromParsedRecords } from "nw-tracker-contracts";
+import { cardAccountForStatement } from "../src/cards/documentAccount.js";
+import { mergeCardStatements, statementKeysOf } from "../src/ccInstallmentLedgerMerge.js";
 import { adoptReimportedCardLines, captureCardLines } from "../src/flows/cardLineAdoption.js";
 import {
   assertCcPaymentEvidenceKept,
@@ -55,6 +52,7 @@ type StatementRow = {
 };
 
 const records = readCommaCsvRecords(csvPath);
+const parsedStatements = canonicalStatementsFromParsedRecords(records);
 const parsedGroups = new Map<string, Set<string>>();
 for (const r of records) {
   const key = `${String(r.source_pdf ?? "").trim()}\t${String(r.statement_date ?? "").trim()}`;
@@ -92,10 +90,9 @@ const tx = db.transaction(() => {
   for (const [accountId, rows] of byAccount) {
     const twins = rows.map((s) => parseGroupRow.get(identity(s))!);
     const twinFiles = new Set(twins.map((t) => `${t.source_pdf}\t${t.statement_date}`));
-    const accountRecords = records.filter((r) => {
-      const acc = resolveMasterAccountIdForImportCardLast4(cardLast4FromParsedRow(r));
-      return acc === accountId && twinFiles.has(`${String(r.source_pdf).trim()}\t${String(r.statement_date).trim()}`);
-    });
+    const accountRecords = parsedStatements.filter(
+      (st) => cardAccountForStatement(st) === accountId && twinFiles.has(`${st.document}\t${st.close}`)
+    );
     const before = new Map(rows.map((s) => [s.id, stats(s.id)]));
     const twinBefore = new Map(twins.map((t) => [t.id, stats(t.id)]));
 
@@ -103,13 +100,13 @@ const tx = db.transaction(() => {
     const capture = captureCardLines(accountId);
     const del = db.prepare(`DELETE FROM cc_statements WHERE id = ?`);
     for (const s of rows) del.run(s.id);
-    const merged = mergeCcAccountFromParsedRows(accountId, accountRecords, {
-      replaceStatementKeys: replaceStatementKeysFromRecords(accountRecords),
+    const merged = mergeCardStatements(accountId, accountRecords, {
+      replaceStatementKeys: statementKeysOf(accountRecords),
     });
     const rekey = adoptReimportedCardLines(capture);
     assertCcPaymentEvidenceKept(accountId, pairedWithEvidence, "the stale statement replacement");
 
-    console.log(`\naccount ${accountId}: ${rows.length} stale copies, ${accountRecords.length} parsed lines re-imported`);
+    console.log(`\naccount ${accountId}: ${rows.length} stale copies, ${accountRecords.reduce((n, st) => n + st.lines.length, 0)} parsed lines re-imported`);
     for (const s of rows) {
       const twin = parseGroupRow.get(identity(s))!;
       const now = db
@@ -119,9 +116,9 @@ const tx = db.transaction(() => {
         .all(accountId, s.source_pdf, s.statement_date, s.currency) as { id: number }[];
       if (now.length !== 1) throw new Error(`${s.source_pdf} ${s.statement_date}: ${now.length} statement rows after the repair`);
       const after = stats(now[0]!.id);
-      const expected = accountRecords.filter(
-        (r) => String(r.source_pdf).trim() === s.source_pdf && String(r.statement_date).trim() === s.statement_date
-      ).length;
+      const expected = accountRecords
+        .filter((st) => st.document === s.source_pdf && st.close === s.statement_date)
+        .reduce((n, st) => n + st.lines.length, 0);
       const b = before.get(s.id)!;
       const t = twinBefore.get(twin.id)!;
       console.log(

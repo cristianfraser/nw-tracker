@@ -21,7 +21,7 @@ import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { findPlanForOneShotLine, merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import { creditCardMasterMetaForAccount, type CcWebPasteLine } from "./ccWebPasteParse.js";
+import { creditCardMasterMetaForAccount, type CcListingLine } from "./ccWebPasteParse.js";
 import { noteCardLineWritten, withCardLineSession } from "./cards/lineWriteSession.js";
 import { parseDdMmYyToIso, daysBetweenIso, isWebPasteCutOf, normalizeMerchantText } from "nw-tracker-contracts";
 
@@ -71,14 +71,14 @@ function merchantsSame(a: string | null | undefined, b: string | null | undefine
  */
 export function bucketLineMatchesFeedLine(
   line: CcOpenBucketLine,
-  feed: CcWebPasteLine,
+  feed: CcListingLine,
   maxDayGap: number
 ): boolean {
   const lineUsd = line.amount_usd != null && line.amount_usd !== 0;
   if (lineUsd !== (feed.currency === "usd")) return false;
   if (lineUsd) {
-    if (Math.abs(Math.abs(line.amount_usd!) - Math.abs(feed.amount_usd ?? 0)) > 0.005) return false;
-  } else if (Math.round(Math.abs(line.amount_clp ?? 0)) !== Math.round(Math.abs(feed.amount_clp))) {
+    if (Math.abs(Math.abs(line.amount_usd!) - Math.abs(feed.amount)) > 0.005) return false;
+  } else if (Math.round(Math.abs(line.amount_clp ?? 0)) !== Math.round(Math.abs(feed.amount))) {
     return false;
   }
   const lineIso = bucketLinePurchaseIso(line);
@@ -109,7 +109,7 @@ const updFirstDue = db.prepare(`UPDATE cc_installment_purchases SET first_due_mo
  */
 export function createPlansForFeedCuotaPurchases(
   accountId: number,
-  lines: readonly CcWebPasteLine[],
+  lines: readonly CcListingLine[],
   feedFile: string | null
 ): CcFeedPlanCreated[] {
   return withCardLineSession(accountId, "feed cuota plans", () => createPlansInSession(accountId, lines, feedFile));
@@ -117,7 +117,7 @@ export function createPlansForFeedCuotaPurchases(
 
 function createPlansInSession(
   accountId: number,
-  lines: readonly CcWebPasteLine[],
+  lines: readonly CcListingLine[],
   feedFile: string | null
 ): CcFeedPlanCreated[] {
   const created: CcFeedPlanCreated[] = [];
@@ -125,7 +125,7 @@ function createPlansInSession(
   for (const line of lines) {
     const cp = line.cuota_purchase;
     if (!cp || cp.cuota_count == null || line.currency !== "clp") continue;
-    const principal = Math.abs(Math.round(line.amount_clp));
+    const principal = Math.abs(Math.round(line.amount));
     if (principal <= 0) continue;
     if (findPlanForOneShotLine(accountId, line.merchant, line.transaction_date, principal)) continue;
     const firstDue = firstCuotaBillingMonth(
@@ -173,19 +173,19 @@ const updKind = db.prepare(`UPDATE cc_statement_lines SET cuota_purchase_kind = 
  */
 export function tagFeedCuotaPurchaseLines(
   accountId: number,
-  lines: readonly CcWebPasteLine[]
+  lines: readonly CcListingLine[]
 ): number[] {
   return withCardLineSession(accountId, "feed cuota tags", () => tagInSession(accountId, lines));
 }
 
-function tagInSession(accountId: number, lines: readonly CcWebPasteLine[]): number[] {
+function tagInSession(accountId: number, lines: readonly CcListingLine[]): number[] {
   const typed = lines.filter((l) => l.cuota_purchase && l.currency === "clp");
   if (typed.length === 0) return [];
   const bucket = listOpenBucketLines(accountId);
   const used = new Set<number>();
   const tagged: number[] = [];
   for (const feed of typed) {
-    const principal = Math.abs(Math.round(feed.amount_clp));
+    const principal = Math.abs(Math.round(feed.amount));
     if (findPlanForOneShotLine(accountId, feed.merchant, feed.transaction_date, principal)) continue;
     const hit = bucket.find(
       (b) => !used.has(b.id) && !b.installment_flag && bucketLineMatchesFeedLine(b, feed, 0)

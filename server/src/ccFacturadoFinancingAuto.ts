@@ -28,8 +28,8 @@ import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProj
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { creditCardMasterMetaForAccount, type CcWebPasteParseResult } from "./ccWebPasteParse.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import type { CcListingParseResult } from "./ccWebPasteParse.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
@@ -248,7 +248,7 @@ let running = false;
  */
 export function applyFacturadoFinancingLinks(
   /** Plants the PAGO on the paid card (the card-line funnel's listing import, `cards/lineWrites.ts`). */
-  plant: (accountId: number, parsed: CcWebPasteParseResult) => void
+  plant: (accountId: number, parsed: CcListingParseResult) => void
 ): FacturadoFinancingApplyResult | null {
   if (running) return null;
   running = true;
@@ -268,8 +268,7 @@ export function applyFacturadoFinancingLinks(
         result.links_created.push({ financed_account_id: m.financed_account_id, financed_billing_month: m.financed_billing_month });
       }
       if (!m.payment_on_file) {
-        const { cardGroup } = creditCardMasterMetaForAccount(m.financed_account_id);
-        const line = webPasteLineFromCardListingLine(cardGroup, {
+        const line = listingLineFromCardListingLine({
           date: m.paid_on,
           merchant: "PAGO",
           currency: "clp",

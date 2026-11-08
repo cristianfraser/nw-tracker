@@ -21,7 +21,7 @@
  * pending-review) is listed and left alone.
  *
  * Report by default. `--apply` repairs each account in one transaction: the copies are deleted
- * (their lines cascade) and each P is re-imported through `mergeCcAccountFromParsedRows` with its
+ * (their lines cascade) and each P is re-imported through `mergeCardStatements` with its
  * lines replaced — the same merge the importer runs, so every import gate (reconcile, feed closes,
  * valuations) applies — and the converted card payments that had evidence before must still find
  * it afterwards (`assertCcPaymentEvidenceKept`), else the whole account rolls back.
@@ -35,12 +35,13 @@ import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import {
-  ccImportFlowItemFromRow,
-  currencyFromRow,
-  statementKeyFromRow,
-  type CcStatementCsvRecord,
-} from "../src/ccStatementsImport.js";
-import { mergeCcAccountFromParsedRows } from "../src/ccInstallmentLedgerMerge.js";
+  canonicalStatementsFromParsedRecords,
+  cardStatementKey,
+  storedCardLineDate,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
+import { ccImportFlowItemFromLine } from "../src/ccStatementsImport.js";
+import { mergeCardStatements } from "../src/ccInstallmentLedgerMerge.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { padCcStatementDate } from "../src/ccStatementJsonSource.js";
 import {
@@ -78,7 +79,7 @@ type ParsedStatement = {
   close: string;
   pay_by: string;
   currency: string;
-  records: CcStatementCsvRecord[];
+  statement: CardCanonicalStatement;
 };
 
 /** Date, merchant and the amount in the statement's own currency (a stored USD line keeps CLP 0). */
@@ -98,24 +99,19 @@ const records = readCommaCsvRecords(csvPath);
 if (records.length === 0) throw new Error(`No rows read from ${csvPath}`);
 
 const parsed = new Map<string, ParsedStatement>();
-for (const r of records) {
-  const src = String(r.source_pdf ?? "").trim();
+for (const statement of canonicalStatementsFromParsedRecords(records)) {
+  const src = statement.document;
   if (!src || src.startsWith("import:")) continue;
-  const key = statementKeyFromRow(r);
-  let st = parsed.get(key);
-  if (!st) {
-    st = {
-      key,
-      card_group: String(r.card_group ?? ""),
-      source_pdf: src,
-      close: padCcStatementDate(String(r.statement_date ?? "")),
-      pay_by: padCcStatementDate(String(r.pay_by ?? "")),
-      currency: currencyFromRow(r),
-      records: [],
-    };
-    parsed.set(key, st);
-  }
-  st.records.push(r);
+  const key = cardStatementKey(statement);
+  parsed.set(key, {
+    key,
+    card_group: statement.card_group,
+    source_pdf: src,
+    close: padCcStatementDate(statement.close),
+    pay_by: padCcStatementDate(statement.pay_by ?? ""),
+    currency: statement.currency,
+    statement,
+  });
 }
 const parsedBySourceClose = new Set([...parsed.values()].map((p) => `${p.source_pdf}\t${p.close}`));
 
@@ -184,9 +180,15 @@ for (const s of stored) {
     continue;
   }
   const onTarget = new Map<string, number>();
-  for (const r of p.records) {
-    const it = ccImportFlowItemFromRow(r, "");
-    const k = lineIdentity(p.currency, String(r.transaction_date ?? ""), it.description, it.amount_clp, it.amount_usd);
+  for (const line of p.statement.lines) {
+    const it = ccImportFlowItemFromLine(line, "");
+    const k = lineIdentity(
+      p.currency,
+      storedCardLineDate(line.printed_transaction_date, line.transaction_date),
+      it.description,
+      it.amount_clp,
+      it.amount_usd
+    );
     onTarget.set(k, (onTarget.get(k) ?? 0) + 1);
   }
   const missing: StoredLine[] = [];
@@ -211,7 +213,7 @@ for (const pl of plans) {
   console.log(
     `duplicate copy: statement ${pl.copy.id} (account ${pl.copy.account_id}, ${pl.copy.source_pdf}, ` +
       `close ${pl.copy.statement_date}, ${pl.lines.length} line(s)) = ${pl.target.source_pdf} ` +
-      `(statement ${pl.targetStatementId}, close ${pl.target.close}, ${pl.target.records.length} parsed row(s))`
+      `(statement ${pl.targetStatementId}, close ${pl.target.close}, ${pl.target.statement.lines.length} parsed row(s))`
   );
 }
 for (const m of leftAlone) console.log(`left alone: ${m}`);
@@ -237,8 +239,7 @@ for (const [accountId, list] of byAccount) {
   const result = db.transaction(() => {
     const before = ccPaymentPairingIdsWithEvidence(accountId);
     for (const pl of list) delStatement.run(pl.copy.id);
-    const targetRecords = list.flatMap((pl) => pl.target.records);
-    const merged = mergeCcAccountFromParsedRows(accountId, targetRecords, {
+    const merged = mergeCardStatements(accountId, list.map((pl) => pl.target.statement), {
       replaceLedger: false,
       replaceStatementKeys: new Set(list.map((pl) => pl.target.key)),
     });

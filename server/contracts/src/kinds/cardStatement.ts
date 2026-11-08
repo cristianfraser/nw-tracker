@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 import { issuerCardAccountSchema } from "./cardUnbilledMovements.js";
+import { cardCanonicalStatementSchema } from "../cards/canonicalLine.js";
 
 const currency = z.enum(["clp", "usd"]);
 
@@ -78,35 +79,61 @@ export const cardStatementCurrencySchema = z
 export type CardStatementCurrency = z.infer<typeof cardStatementCurrencySchema>;
 
 /**
- * One facturación of a card account: its close, the dates the issuer prints with it, and the
- * statement of each currency it billed. The server writes it to the ledger unless a statement
- * document of higher rank (the PDF) already holds that close, in which case it is a cross-check.
+ * One facturación of a card account as the issuer states it: its close, the dates the issuer prints
+ * with it, and the statement of each currency it billed. The server writes it to the ledger unless a
+ * statement document of higher rank (the PDF) already holds that close, in which case it is a
+ * cross-check.
+ */
+export const cardIssuerStatementSchema = z
+  .object({
+    format: z.literal("issuer_statement"),
+    account: issuerCardAccountSchema,
+    /** The issuer's number for the statement (provenance). */
+    statement_number: z.string().regex(/^\d+$/),
+    close: isoDateSchema,
+    pay_by: isoDateSchema.nullable(),
+    /** The next close the issuer announces. */
+    next_close: isoDateSchema.nullable(),
+    /** The titular plastic the statement is issued for. */
+    titular_last4: z.string().regex(/^\d{4}$/).nullable(),
+    statements: z.array(cardStatementCurrencySchema).min(1).max(2),
+  })
+  .strict()
+  .refine((p) => new Set(p.statements.map((s) => s.currency)).size === p.statements.length, {
+    message: "one statement per currency",
+  });
+
+/**
+ * Card statements already in the canonical card-line shape (`cards/canonicalLine.ts`) — the
+ * statement parser's output, converted once by the feeder — each routed to its card by its plastic.
+ * The server imports the statements whose content changed since their last import (`full`
+ * re-imports every one).
+ */
+export const cardCanonicalStatementsSchema = z
+  .object({
+    format: z.literal("canonical"),
+    /** Re-import and re-reconcile every statement, not only the changed ones. */
+    full: z.boolean(),
+    statements: z.array(cardCanonicalStatementSchema).min(1),
+  })
+  .strict();
+
+/**
+ * A card statement: a facturación as the issuer states it (`issuer_statement`), or statements in
+ * the canonical card-line shape (`canonical`). One concept with two renderings; `card.parsed_statements`
+ * (the parser's columns) is still accepted for one release and converts into the canonical form.
  */
 export const cardStatementKind = defineIngestKind({
   kind: "card.statement",
-  schema_version: 2,
-  description: "One facturación of a card account: close, dates and each currency's statement.",
+  schema_version: 3,
+  description: "Card statements: a facturación as the issuer states it, or statements in the canonical card-line shape.",
   ref: "read",
-  payload: z
-    .object({
-      account: issuerCardAccountSchema,
-      /** The issuer's number for the statement (provenance). */
-      statement_number: z.string().regex(/^\d+$/),
-      close: isoDateSchema,
-      pay_by: isoDateSchema.nullable(),
-      /** The next close the issuer announces. */
-      next_close: isoDateSchema.nullable(),
-      /** The titular plastic the statement is issued for. */
-      titular_last4: z.string().regex(/^\d{4}$/).nullable(),
-      statements: z.array(cardStatementCurrencySchema).min(1).max(2),
-    })
-    .strict()
-    .refine((p) => new Set(p.statements.map((s) => s.currency)).size === p.statements.length, {
-      message: "one statement per currency",
-    }),
+  payload: z.discriminatedUnion("format", [cardIssuerStatementSchema, cardCanonicalStatementsSchema]),
 });
 
+export type CardIssuerStatementPayload = z.infer<typeof cardIssuerStatementSchema>;
 export type CardStatementPayload = z.infer<typeof cardStatementKind.payload>;
+export type CardCanonicalStatementsPayload = z.infer<typeof cardCanonicalStatementsSchema>;
 
 /**
  * What the server made of one currency's statement:

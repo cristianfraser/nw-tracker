@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { listOverdueUnconfirmedManualCardPayments, recordManualCardPayment } from "./ccManualPayments.js";
 import { plantedPaymentMatchesStatementLine, type PlantedPaymentRow } from "./ccPlantedPayments.js";
@@ -83,7 +83,7 @@ function creditLines(currency: "clp" | "usd", amount: number): { id: number; mer
 }
 
 function feed(date: string, merchant: string, currency: "clp" | "usd", amount: number) {
-  const line = webPasteLineFromCardListingLine("santander", {
+  const line = listingLineFromCardListingLine("santander", {
     date,
     merchant,
     currency,
@@ -91,7 +91,7 @@ function feed(date: string, merchant: string, currency: "clp" | "usd", amount: n
     raw_text: `${date} ${merchant} ${amount}`,
     holder: "titular",
   });
-  return importCcWebPasteLines(master, { lines: [line], errors: [] }, "cc_santander_fetch");
+  return importCcListingLines(master, { lines: [line], errors: [] }, "cc_santander_fetch");
 }
 
 function confirmedOn(manualId: number): string | null {

@@ -13,7 +13,7 @@ import path from "node:path";
 import { db } from "../src/db.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
-import { currencyFromRow } from "../src/ccStatementsImport.js";
+import { canonicalStatementsFromParsedRecords } from "nw-tracker-contracts";
 import { parseOptionalChileanInteger, parseChileanNumber } from "../src/chileanNumber.js";
 
 const apply = process.argv.includes("--apply");
@@ -28,7 +28,7 @@ const want = new Map<string, { source_pdf: string; statement_date: string; curre
 for (const r of readCommaCsvRecords(csvPath)) {
   const cell = String(r.statement_monto_facturado ?? "").trim();
   if (!cell) continue;
-  const currency = currencyFromRow(r as never);
+  const currency = canonicalStatementsFromParsedRecords([r])[0]!.currency;
   const value = printed(currency, cell);
   if (value > 0) continue;
   const key = `${r.source_pdf}|${r.statement_date}|${currency}`;

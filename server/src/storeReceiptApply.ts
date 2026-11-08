@@ -55,8 +55,8 @@ import {
   type PendingBranchReceipt,
 } from "./groceryBranchLearning.js";
 import { lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./cards/facturacion.js";
-import { importCcWebPasteLines } from "./accountImports.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import { importCcListingLines } from "./accountImports.js";
+import type { CcListingLine } from "./ccWebPasteParse.js";
 import type { ImportBatchKind } from "./importBatches.js";
 import { classifyLiderLines, liderMasterAccountId } from "./liderCardLines.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
@@ -186,7 +186,7 @@ type ChainCardRule = {
   master_account_id: () => number;
   /** Printed branch string (every rendering of it) → the bank's exact merchant string. */
   branch_merchants: () => Readonly<Record<string, string>>;
-  classify: (accountId: number, lines: readonly CcWebPasteLine[]) => { importable: CcWebPasteLine[] };
+  classify: (accountId: number, lines: readonly CcListingLine[]) => { importable: CcListingLine[] };
   raw_line_prefix: string;
 };
 
@@ -570,19 +570,18 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
         const learned = learnBranchForPendingReceipt(pending);
         movement = learned.status === "learned" ? { status: "matched", branch, merchant: learned.merchant } : { status: "pending_branch", branch };
       } else {
-        const line: CcWebPasteLine = {
+        const line: CcListingLine = {
           transaction_date: purchaseIso,
           merchant,
-          amount_clp: paid,
-          amount_usd: null,
           currency: "clp",
+          amount: paid,
           raw_line: `${rule.raw_line_prefix}|${receipt.parsed.boleta_number}|${purchaseIso}|${paid}`,
         };
         const { importable } = rule.classify(accountId, [line]);
         if (importable.length === 0) {
           movement = { status: "same_day_amount" };
         } else {
-          const res = importCcWebPasteLines(accountId, { lines: importable, errors: [] }, rule.batch_kind);
+          const res = importCcListingLines(accountId, { lines: importable, errors: [] }, rule.batch_kind);
           movement = { status: res.inserted > 0 ? "created" : "duplicate" };
         }
         markReceiptCardLine(receiptId, movement.status === "created" ? "created" : "covered", accountId);

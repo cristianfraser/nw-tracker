@@ -1,21 +1,24 @@
-import type { CardParsedStatementsApplyDetails } from "nw-tracker-contracts";
+import {
+  canonicalStatementsFromParsedPayload,
+  type CardCanonicalStatement,
+  type CardParsedStatementsApplyDetails,
+  type CardParsedStatementsPayload,
+} from "nw-tracker-contracts";
 import type { CcIssuerSlug } from "./ccIssuers.js";
-import { groupInstallmentLoanChains, replaceStatementKeysFromRecords } from "./ccInstallmentLedgerMerge.js";
+import { groupInstallmentLoanChains, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { cardAccountsForStatements } from "./cards/documentAccount.js";
 import { replaceStatementLines } from "./cards/lineWrites.js";
 import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
-import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { cardLast4FromParsedRow, resolveImportAccountIds } from "./ccParsedImportAccounts.js";
-import { filterUnchangedStatementRecords, groupRecordsByStatement } from "./ccStatementFingerprint.js";
+import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { buildCcStatementImportAccountLog, logCcStatementImportRun, type CcStatementImportAccountLog } from "./ccStatementImportLog.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 
 /**
- * Parsed card statements (`card.parsed_statements`, or the parsed CSV a maintenance run reads) →
- * the ledger, merging: each line goes to its card account by `card_last4` (through the card
- * registry's consolidation redirects), and per account only the statements whose rows changed
- * since their last import are re-imported (`ccStatementFingerprint.ts`) — `full` re-imports
- * every one, which is the periodic from-scratch reconcile. Each account's changed statements go
+ * Canonical card statements (`card.statement` statements, a `card.parsed_statements` converted,
+ * the parsed CSV a maintenance run reads, the demo's) → the ledger, merging: each statement goes
+ * to its card account by its plastic (`cards/documentAccount.ts`), and per account only the
+ * statements whose content changed since their last import are re-imported
+ * (`ccStatementFingerprint.ts`) — `full` re-imports every one, which is the periodic from-scratch reconcile. Each account's changed statements go
  * through the card-line funnel's `replaceStatementLines` together (one call), as they always have: reconcile
  * gates, installment ledger, web-paste supersede, traspaso links and valuation re-sync included.
  *
@@ -40,39 +43,30 @@ function accountLabelForId(accountId: number): string {
   return `${m?.[1] ?? "?"} ${row?.name ?? ""}`.trim();
 }
 
-export function partitionParsedRecordsByAccount(
-  records: readonly CcStatementCsvRecord[],
-  accountIds: readonly number[]
-): Map<number, CcStatementCsvRecord[]> {
-  const allowed = new Set(accountIds);
-  const byAccount = new Map<number, CcStatementCsvRecord[]>(accountIds.map((id) => [id, []]));
-  for (const row of records) {
-    const accountId = resolveMasterAccountIdForImportCardLast4(cardLast4FromParsedRow(row));
-    if (accountId == null || !allowed.has(accountId)) continue;
-    byAccount.get(accountId)!.push(row);
-  }
-  return byAccount;
-}
-
-export function applyParsedCcStatements(
-  records: readonly CcStatementCsvRecord[],
+export function applyCanonicalCardStatements(
+  statements: readonly CardCanonicalStatement[],
   opts: ApplyParsedCcStatementsOptions
 ): CardParsedStatementsApplyDetails {
   // Every card's write asks for the expense-link sync: one, when the corpus is in.
-  return withExpenseLinkSyncDeferred(() => applyParsed(records, opts));
+  return withExpenseLinkSyncDeferred(() => applyStatements(statements, opts));
 }
 
-function applyParsed(
-  records: readonly CcStatementCsvRecord[],
+/** A `card.parsed_statements` (the parser's columns) → canonical statements → {@link applyCanonicalCardStatements}. */
+export function applyParsedStatementsPayload(
+  payload: CardParsedStatementsPayload,
+  opts: Pick<ApplyParsedCcStatementsOptions, "dryRun">
+): CardParsedStatementsApplyDetails {
+  return applyCanonicalCardStatements(canonicalStatementsFromParsedPayload(payload), { dryRun: opts.dryRun, full: payload.full });
+}
+
+function applyStatements(
+  statements: readonly CardCanonicalStatement[],
   opts: ApplyParsedCcStatementsOptions
 ): CardParsedStatementsApplyDetails {
   const report: string[] = [];
   const problems: string[] = [];
-  const { accountIds, discovery } = resolveImportAccountIds({
-    records: [...records],
-    accountId: opts.accountId,
-    issuer: opts.issuer,
-  });
+  const discovery = cardAccountsForStatements(statements, { accountId: opts.accountId, issuer: opts.issuer });
+  const accountIds = discovery.accountIds;
   if (accountIds.length === 0) {
     problems.push(
       "no card account takes any line: lines need a card_last4 (or a last4 in source_pdf) a card account carries" +
@@ -85,20 +79,18 @@ function applyParsed(
   }
   report.push(`# import targets (${accountIds.length}): ${accountIds.map((id) => `${id} (${accountLabelForId(id)})`).join("; ")}`);
   if (discovery.unknownLast4.length > 0) {
-    const skipped = records.filter((row) => discovery.unknownLast4.includes(cardLast4FromParsedRow(row))).length;
     problems.push(
-      `${skipped} line(s) carry a card no account takes (last4 ${discovery.unknownLast4.join(", ")}) — add a consolidation redirect or the card's account`
+      `${discovery.linesUnknownCard} line(s) carry a card no account takes (last4 ${discovery.unknownLast4.join(", ")}) — add a consolidation redirect or the card's account`
     );
   }
-  if (discovery.rowsWithoutCard > 0) report.push(`# lines without a card_last4 / source_pdf last4: ${discovery.rowsWithoutCard}`);
+  if (discovery.linesWithoutCard > 0) report.push(`# lines without a card_last4 / source_pdf last4: ${discovery.linesWithoutCard}`);
   const write = !opts.dryRun && problems.length === 0;
 
-  const byAccount = partitionParsedRecordsByAccount(records, accountIds);
   const accounts: CardParsedStatementsApplyDetails["accounts"] = [];
   const runLog: CcStatementImportAccountLog[] = [];
   for (const accountId of accountIds) {
-    const accountRecords = byAccount.get(accountId) ?? [];
-    if (accountRecords.length === 0) {
+    const accountStatements = discovery.byAccount.get(accountId) ?? [];
+    if (accountStatements.length === 0) {
       report.push(`# skip account ${accountId}: no lines for this card`);
       continue;
     }
@@ -114,15 +106,15 @@ function applyParsed(
       payment_upserts: 0,
     };
     const filtered = opts.full
-      ? { changed: accountRecords, skippedKeys: [] as string[] }
-      : filterUnchangedStatementRecords(accountId, accountRecords);
+      ? { changed: accountStatements, skippedKeys: [] as string[] }
+      : filterUnchangedStatements(accountId, accountStatements);
     row.statements_unchanged = filtered.skippedKeys.length;
     if (filtered.changed.length === 0) {
       report.push(`# account ${accountId}: all ${row.statements_unchanged} statement(s) unchanged — skipped`);
       accounts.push(row);
       continue;
     }
-    row.statements_imported = groupRecordsByStatement(filtered.changed as never).size;
+    row.statements_imported = filtered.changed.length;
     if (row.statements_unchanged > 0) {
       report.push(`# account ${accountId}: ${row.statements_unchanged} statement(s) unchanged, importing ${row.statements_imported}`);
     }
@@ -130,7 +122,7 @@ function applyParsed(
     let statementsMerged = 0;
     if (write) {
       const merged = replaceStatementLines(accountId, filtered.changed, {
-        replaceStatementKeys: replaceStatementKeysFromRecords(filtered.changed),
+        replaceStatementKeys: statementKeysOf(filtered.changed),
       });
       statementsMerged = merged.statements.statementCount;
       row.lines_inserted = merged.statements.linesInserted;
@@ -156,12 +148,13 @@ function applyParsed(
       const chains = groupInstallmentLoanChains(filtered.changed);
       row.purchase_upserts = chains.size;
       for (const chain of chains.values()) {
-        row.payment_upserts += new Set(chain.rows.map((r) => `${r.source_pdf}\t${r.statement_date}`)).size;
+        row.payment_upserts += new Set(chain.rows.map((r) => `${r.statement.document}\t${r.statement.close}`)).size;
       }
-      report.push(`[dry-run] account ${accountId}: ~${row.purchase_upserts} purchases, ~${row.payment_upserts} payments, ${filtered.changed.length} line(s) to import`);
+      const lineCount = filtered.changed.reduce((n, st) => n + st.lines.length, 0);
+      report.push(`[dry-run] account ${accountId}: ~${row.purchase_upserts} purchases, ~${row.payment_upserts} payments, ${lineCount} line(s) to import`);
     }
     runLog.push(
-      buildCcStatementImportAccountLog(accountId, row.label, accountRecords, {
+      buildCcStatementImportAccountLog(accountId, row.label, accountStatements, {
         statements_merged: statementsMerged,
         lines_inserted: row.lines_inserted,
         lines_skipped_duplicate: row.lines_skipped_duplicate,

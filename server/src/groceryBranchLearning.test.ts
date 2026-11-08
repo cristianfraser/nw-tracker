@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { db } from "./db.js";
 import {
@@ -182,7 +182,7 @@ describe("groceryBranchLearning", () => {
     const twinA = insertPendingReceipt("VITEST SUC #6", "2037-01-11", 4440, master);
     const twinB = insertPendingReceipt("VITEST SUC #7", "2037-01-11", 4440, master);
     // Santander web pastes carry charges negative; the funnel stores them positive.
-    const res = importCcWebPasteLines(master, {
+    const res = importCcListingLines(master, {
       lines: [
         { transaction_date: "2037-01-10", merchant: "VITEST HIPER PASTE, SANTIAGO", amount_clp: -9990, amount_usd: null, currency: "clp", raw_line: "vitest paste 1" },
         { transaction_date: "2037-01-11", merchant: "VITEST TWIN, SANTIAGO", amount_clp: -4440, amount_usd: null, currency: "clp", raw_line: "vitest paste 2" },

@@ -1,6 +1,6 @@
 import { insertAppMessage } from "./appMessages.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import type { CardCanonicalStatement } from "nw-tracker-contracts";
 
 export type CcStatementPdfImportLog = {
   source_pdf: string;
@@ -28,27 +28,17 @@ export type CcStatementImportRunLog = {
   accounts: CcStatementImportAccountLog[];
 };
 
-function groupCsvRowsByPdf(records: readonly CcStatementCsvRecord[]): CcStatementPdfImportLog[] {
+function groupLinesByPdf(statements: readonly CardCanonicalStatement[]): CcStatementPdfImportLog[] {
   const byPdf = new Map<string, CcStatementPdfImportLog>();
-  for (const row of records) {
-    const sourcePdf = String(row.source_pdf ?? "").trim();
-    if (!sourcePdf || isListingSourceKind(ccStatementSourceKindOf(sourcePdf))) continue;
+  for (const st of statements) {
+    const sourcePdf = st.document.trim();
+    if (st.lines.length === 0 || !sourcePdf || isListingSourceKind(ccStatementSourceKindOf(sourcePdf))) continue;
     const cur = byPdf.get(sourcePdf);
     if (cur) {
-      cur.csv_rows += 1;
+      cur.csv_rows += st.lines.length;
       continue;
     }
-    const currency =
-      String(row.currency ?? "").toLowerCase() === "usd" ||
-      String(row.parser_layout ?? "").trim() === "international_usd"
-        ? "usd"
-        : "clp";
-    byPdf.set(sourcePdf, {
-      source_pdf: sourcePdf,
-      csv_rows: 1,
-      currency,
-      card_last4: String(row.card_last4 ?? "").trim() || null,
-    });
+    byPdf.set(sourcePdf, { source_pdf: sourcePdf, csv_rows: st.lines.length, currency: st.currency, card_last4: st.card_last4 });
   }
   return [...byPdf.values()].sort((a, b) => a.source_pdf.localeCompare(b.source_pdf));
 }
@@ -56,7 +46,7 @@ function groupCsvRowsByPdf(records: readonly CcStatementCsvRecord[]): CcStatemen
 export function buildCcStatementImportAccountLog(
   accountId: number,
   accountLabel: string,
-  records: readonly CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   stats: {
     statements_merged: number;
     lines_inserted: number;
@@ -66,9 +56,10 @@ export function buildCcStatementImportAccountLog(
     payment_upserts: number;
   }
 ): CcStatementImportAccountLog {
-  const pdfs = groupCsvRowsByPdf(records);
+  const pdfs = groupLinesByPdf(statements);
+  const lineCount = statements.reduce((n, st) => n + st.lines.length, 0);
   const warnings: string[] = [];
-  if (records.length === 0) {
+  if (lineCount === 0) {
     warnings.push("no CSV rows for this account in the import batch");
   } else if (stats.lines_inserted === 0 && stats.lines_skipped_duplicate === 0) {
     warnings.push("CSV rows present but no statement lines inserted — check parse/organize");
@@ -83,7 +74,7 @@ export function buildCcStatementImportAccountLog(
   return {
     account_id: accountId,
     account_label: accountLabel,
-    csv_rows: records.length,
+    csv_rows: lineCount,
     pdfs,
     warnings,
     ...stats,

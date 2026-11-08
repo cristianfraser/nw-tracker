@@ -25,18 +25,16 @@ import { applyFacturadoFinancingLinks } from "../ccFacturadoFinancingAuto.js";
 import { requestExpenseLinkSync } from "../expenseLinkSync.js";
 // Registers the expense-link sync the finish asks for.
 import "../expenseAssignmentWrites.js";
-import {
-  mergeCcAccountFromParsedRows,
-  type CcAccountImportMergeResult,
-} from "../ccInstallmentLedgerMerge.js";
+import type { CardCanonicalStatement } from "nw-tracker-contracts";
+import { mergeCardStatements, type CcAccountImportMergeResult } from "../ccInstallmentLedgerMerge.js";
 import type { CcStatementsMergeOpts } from "../ccStatementsImport.js";
-import type { CcStatementCsvRecord, CcImportFlowItem, SkippedCcImportFlowItem } from "../ccStatementsImport.js";
+import type { CcImportFlowItem, SkippedCcImportFlowItem } from "../ccStatementsImport.js";
 import {
-  ccWebPasteToCsvRecords,
   creditCardMasterMetaForAccount,
+  listingStatements,
   newWebPasteBatchId,
-  type CcWebPasteParseResult,
-  type CcWebPasteRecordsOpts,
+  type CcListingParseResult,
+  type CcListingStatementsOpts,
 } from "../ccWebPasteParse.js";
 import { applyWebPasteInstallmentFirstDueNudges, type CcInstallmentFirstDueNudge } from "../ccWebPasteInstallmentNudge.js";
 import type { RecurringPendingResult } from "../ccRecurringPendingLines.js";
@@ -69,7 +67,7 @@ export const CARD_LINE_WRITE_FRAME: CardLineWriteFrame = {
 };
 registerCardLineWriteFrame(CARD_LINE_WRITE_FRAME);
 
-function plantFinancingPayment(accountId: number, parsed: CcWebPasteParseResult): void {
+function plantFinancingPayment(accountId: number, parsed: CcListingParseResult): void {
   insertLines(accountId, parsed, "cc_financing_payment");
 }
 
@@ -94,16 +92,16 @@ export function deleteLines(
 }
 
 /**
- * A statement's records (PDF, JSON, the parsed corpus): the statements they name replace the stored
- * copies of the same statements (`replaceStatementKeys`), the plans and the bucket follow.
+ * Canonical statements (PDF, JSON, the parsed corpus): they replace the stored copies of the same
+ * statements (`replaceStatementKeys`), the plans and the bucket follow.
  */
 export function replaceStatementLines(
   accountId: number,
-  records: CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   opts: { replaceStatementKeys: Set<string>; replaceLedger?: boolean; statements?: CcStatementsMergeOpts }
 ): CcAccountImportMergeResult {
   return withCardLineSession(accountId, "this statement import", () =>
-    mergeCcAccountFromParsedRows(accountId, records, {
+    mergeCardStatements(accountId, statements, {
       replaceLedger: opts.replaceLedger ?? false,
       replaceStatementKeys: opts.replaceStatementKeys,
       statements: opts.statements,
@@ -117,7 +115,7 @@ function assertCreditCardAccount(accountId: number): void {
 
 /**
  * A card's listing lines — the manual paste, the Santander feed, a planted payment, a receipt's
- * line — into its open buckets. Both the paste and the fetcher produce `CcWebPasteLine[]`, and
+ * line — into its open buckets. Every listing source produces `CcListingLine[]` (debt-positive), and
  * every behaviour that matters downstream (dedupe keys, installment overlap, first-due nudges, the
  * batch log) lives here so the entry points cannot drift apart.
  *
@@ -125,9 +123,9 @@ function assertCreditCardAccount(accountId: number): void {
  */
 export function insertLines(
   accountId: number,
-  parsed: CcWebPasteParseResult,
+  parsed: CcListingParseResult,
   batchKind: ImportBatchKind = "cc_web_paste",
-  opts?: CcWebPasteRecordsOpts
+  opts?: CcListingStatementsOpts
 ) {
   assertCreditCardAccount(accountId);
   const meta = creditCardMasterMetaForAccount(accountId);
@@ -153,15 +151,14 @@ export function insertLines(
 
   return withCardLineSession(accountId, `listing import (${batchKind})`, () => {
     const batchId = newWebPasteBatchId();
-    const { records, skipped_cuota_billing, skipped_saldo_inicial } = ccWebPasteToCsvRecords(
+    const { statements, skipped_cuota_billing, skipped_saldo_inicial } = listingStatements(
       accountId,
       meta.cardGroup,
       meta.cardLast4,
-      batchId,
       parsed.lines,
       opts
     );
-    const merged = mergeCcAccountFromParsedRows(accountId, records, { replaceLedger: false, listingBatchKind: batchKind });
+    const merged = mergeCardStatements(accountId, statements, { replaceLedger: false, listingBatchKind: batchKind });
 
     // A pasted line that re-lists a manual plan's upcoming cuota is import-skipped as an overlap,
     // but it is evidence of the plan's real first-cuota month. Pin it (write-once) so the open

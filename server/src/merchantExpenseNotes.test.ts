@@ -1,7 +1,7 @@
 import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { MerchantPurchaseDocument } from "nw-tracker-contracts";
-import { importCcWebPasteLines } from "./accountImports.js";
+import { importCcListingLines } from "./accountImports.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
@@ -270,7 +270,7 @@ describe("merchantExpenseNotes", () => {
     const doc = receipt("2037-02-20", [{ app: "Example Chat - Meet People", product: "Boost", amount: 13500 }]);
     send({ ...doc, card_last4: "4321" });
     // Santander web pastes carry charges negative; dollars only, as the feed lists them.
-    const res = importCcWebPasteLines(master, {
+    const res = importCcListingLines(master, {
       lines: [{ transaction_date: "2037-02-21", merchant: "APPLE.COM/BILL", amount_clp: 0, amount_usd: -13.5, currency: "usd", raw_line: "vitest apple paste" }],
       errors: [],
     });

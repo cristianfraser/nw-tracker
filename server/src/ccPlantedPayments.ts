@@ -24,7 +24,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { EMPTY_CARD_LINE_PLAN, type CardLinePlan } from "./cards/lineWriteSession.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
+import { storedCardLineAmounts } from "./cards/statementStorage.js";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
@@ -192,23 +193,22 @@ export function confirmManualPaymentForPlanted(planted: PlantedPaymentRow, bankM
 }
 
 type ImportedPayment = {
-  record: CcStatementCsvRecord;
+  line: CardCanonicalLine;
   merchant: string;
   date: string;
   currency: "clp" | "usd";
   amount: number;
 };
 
-/** A record of this import that is a credit payment line, with its money in its own currency. */
-function importedPayment(record: CcStatementCsvRecord): ImportedPayment | null {
-  if (!isPaymentLikeCreditMerchant(record.merchant)) return null;
-  const date = parseDdMmYyToIso(String(record.transaction_date ?? ""));
+/** A line of this import that is a credit payment line, with its money in its own currency. */
+function importedPayment(line: CardCanonicalLine): ImportedPayment | null {
+  if (!isPaymentLikeCreditMerchant(line.merchant)) return null;
+  const date = line.transaction_date;
   if (!date) return null;
-  const usd = Number(String(record.amount_usd ?? "").trim() || "0");
-  const clp = Number(String(record.amount_clp ?? "").trim() || "0");
-  if (!Number.isFinite(usd) || !Number.isFinite(clp)) return null;
-  if (usd !== 0) return usd < 0 ? { record, merchant: record.merchant!, date, currency: "usd", amount: -usd } : null;
-  if (clp < 0) return { record, merchant: record.merchant!, date, currency: "clp", amount: -clp };
+  const { amount_clp: clp, amount_usd } = storedCardLineAmounts(line);
+  const usd = amount_usd ?? 0;
+  if (usd !== 0) return usd < 0 ? { line, merchant: line.merchant, date, currency: "usd", amount: -usd } : null;
+  if (clp < 0) return { line, merchant: line.merchant, date, currency: "clp", amount: -clp };
   return null;
 }
 
@@ -219,14 +219,14 @@ function importedPayment(record: CcStatementCsvRecord): ImportedPayment | null {
  */
 export function replacePlantedPaymentLinesFromImport(
   accountId: number,
-  records: readonly CcStatementCsvRecord[],
+  statements: readonly CardCanonicalStatement[],
   batchKind: string
 ): PlantedPaymentReplacementPlan {
   const none = { result: EMPTY_MATCH, plan: EMPTY_CARD_LINE_PLAN };
   if (isPlantingBatchKind(batchKind)) return none;
   const planted = listPlantedPaymentLines(accountId);
   if (planted.length === 0) return none;
-  const payments = records.map(importedPayment).filter((p): p is ImportedPayment => p != null);
+  const payments = statements.flatMap((st) => st.lines).map(importedPayment).filter((p): p is ImportedPayment => p != null);
   if (payments.length === 0) return none;
 
   const fits = (p: ImportedPayment, row: PlantedPaymentRow): boolean => {
@@ -254,7 +254,7 @@ export function replacePlantedPaymentLinesFromImport(
       return;
     }
     const row = rows[0]!;
-    const stored = webPasteLineIdsForDedupeKey(accountId, String(p.record.dedupe_key ?? ""));
+    const stored = webPasteLineIdsForDedupeKey(accountId, p.line.document.dedupe_key ?? "");
     const bankLines = stored.filter((id) => id !== row.line_id);
     if (stored.includes(row.line_id) || bankLines.length === 0) {
       // The bank's line is the planted line itself (identical rendering), or the import skipped

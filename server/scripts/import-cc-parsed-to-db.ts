@@ -32,18 +32,18 @@ import path from "node:path";
 
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
-import { applyParsedCcStatements } from "../src/ccParsedStatementsApply.js";
-import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
+import { canonicalStatementsFromParsedRecords, type CardCanonicalStatement } from "nw-tracker-contracts";
+import { applyCanonicalCardStatements } from "../src/ccParsedStatementsApply.js";
+import { importCcStatementsWipeAndReload } from "../src/ccStatementsImport.js";
 import {
   groupInstallmentLoanChains,
-  mergeInstallmentLedgerFromParsedRows,
+  mergeInstallmentLedgerFromStatements,
 } from "../src/ccInstallmentLedgerMerge.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
 import { cardLineWrite } from "../src/cards/lineWrites.js";
 import { noteCardLineWritten } from "../src/cards/lineWriteSession.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import { cardLast4FromParsedRow, resolveImportAccountIds } from "../src/ccParsedImportAccounts.js";
-import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
+import { cardAccountsForStatements, type CardStatementAccounts } from "../src/cards/documentAccount.js";
 import {
   buildCcStatementImportAccountLog,
   logCcStatementImportRun,
@@ -58,29 +58,7 @@ function arg(name: string): string | undefined {
   return hit.slice(p.length);
 }
 
-function partitionRecordsByAccount(
-  records: Record<string, string>[],
-  accountIds: number[]
-): Map<number, Record<string, string>[]> {
-  const allowed = new Set(accountIds);
-  const byAcc = new Map<number, Record<string, string>[]>();
-  for (const id of accountIds) byAcc.set(id, []);
-
-  for (const row of records) {
-    const l4 = cardLast4FromParsedRow(row);
-    const accId = resolveMasterAccountIdForImportCardLast4(l4);
-    if (accId == null || !allowed.has(accId)) continue;
-    byAcc.get(accId)!.push(row);
-  }
-  return byAcc;
-}
-
-function logAccountRouting(
-  discovery: ReturnType<typeof resolveImportAccountIds>["discovery"],
-  accountIds: number[],
-  records: Record<string, string>[],
-  dry: boolean
-): void {
+function logAccountRouting(discovery: CardStatementAccounts, accountIds: number[], dry: boolean): void {
   const notes = accountIds.map((id) => {
     const row = db
       .prepare(`SELECT name, notes FROM accounts WHERE id = ?`)
@@ -91,22 +69,16 @@ function logAccountRouting(
   });
   console.log(`# import targets (${accountIds.length}): ${notes.join("; ")}`);
   if (discovery.unknownLast4.length > 0) {
-    console.warn(
-      `# CSV rows skipped — no master account for last4: ${discovery.unknownLast4.join(", ")}`
-    );
-    const skippedRows = records.filter((row) => {
-      const l4 = cardLast4FromParsedRow(row);
-      return l4 && discovery.unknownLast4.includes(l4);
-    }).length;
-    if (skippedRows > 0 && !dry) {
+    console.warn(`# CSV rows skipped — no master account for last4: ${discovery.unknownLast4.join(", ")}`);
+    if (discovery.linesUnknownCard > 0 && !dry) {
       console.error(
-        `# FAIL: ${skippedRows} CSV row(s) skipped for unknown last4 — add ccConsolidatedCards redirect or master account, then re-run.`
+        `# FAIL: ${discovery.linesUnknownCard} CSV row(s) skipped for unknown last4 — add ccConsolidatedCards redirect or master account, then re-run.`
       );
       process.exit(1);
     }
   }
-  if (discovery.rowsWithoutCard > 0) {
-    console.warn(`# CSV rows skipped — missing card_last4 / source_pdf last4: ${discovery.rowsWithoutCard}`);
+  if (discovery.linesWithoutCard > 0) {
+    console.warn(`# CSV rows skipped — missing card_last4 / source_pdf last4: ${discovery.linesWithoutCard}`);
   }
 }
 
@@ -138,6 +110,7 @@ function main() {
   const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
 
   const records = readCommaCsvRecords(csvPath);
+  const statements: CardCanonicalStatement[] = canonicalStatementsFromParsedRecords(records);
   if (records.length === 0) {
     console.error(`No rows read from ${csvPath}`);
     process.exit(1);
@@ -149,7 +122,7 @@ function main() {
   // The merge (default) is the same apply the nightly reaches through ingest
   // (`card.parsed_statements`); this script keeps it for manual runs and the two reload modes.
   if (!wipe && !replaceLedgerOnly) {
-    const details = applyParsedCcStatements(records, {
+    const details = applyCanonicalCardStatements(statements, {
       dryRun: dry,
       full: fullReimport,
       accountId: accountIdFilter,
@@ -160,11 +133,11 @@ function main() {
     process.exit(details.problems.length > 0 ? 1 : 0);
   }
 
-  const { accountIds, discovery } = resolveImportAccountIds({
-    records,
+  const discovery = cardAccountsForStatements(statements, {
     accountId: accountIdFilter,
     issuer: santander ? "santander" : undefined,
   });
+  const accountIds = discovery.accountIds;
 
   if (accountIds.length === 0) {
     console.error(
@@ -188,10 +161,9 @@ function main() {
     console.log(
       `# import-cc-parsed mode: ${wipe ? "wipe (full account reload)" : replaceLedgerOnly ? "replace-ledger (installment ledger only)" : "merge (default)"}`
     );
-    logAccountRouting(discovery, accountIds, records, dry);
+    logAccountRouting(discovery, accountIds, dry);
   }
 
-  const byAccountRecords = partitionRecordsByAccount(records, accountIds);
 
   let totalPurchases = 0;
   let totalPayments = 0;
@@ -202,8 +174,9 @@ function main() {
   const importRunAccounts: CcStatementImportAccountLog[] = [];
 
   for (const accountId of accountIds) {
-    const accountRecords = byAccountRecords.get(accountId) ?? [];
-    if (accountRecords.length === 0 && !dry) {
+    const accountRecords = discovery.byAccount.get(accountId) ?? [];
+    const accountLineCount = accountRecords.reduce((n, st) => n + st.lines.length, 0);
+    if (accountLineCount === 0 && !dry) {
       console.warn(`# skip account ${accountId}: no CSV rows for this card`);
       continue;
     }
@@ -223,7 +196,7 @@ function main() {
         // statement and line ids are fine — the pairing finds its payment by card, date and
         // amount) rolls back instead of leaving the account wiped.
         const st = cardLineWrite(accountId, "the --wipe reload", () => {
-          const reloaded = importCcStatementsFromCsvRecords(accountId, accountRecords);
+          const reloaded = importCcStatementsWipeAndReload(accountId, accountRecords);
           relinkCcTraspasoDeudaLinksForAccount(accountId);
           noteCardLineWritten(accountId);
           return reloaded;
@@ -233,14 +206,14 @@ function main() {
         linesSkippedDuplicate = st.linesSkippedDuplicate;
         linesSkippedInstallmentOverlap = st.linesSkippedInstallmentOverlap;
         categoriesRestored += st.categoriesRestored;
-        const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
+        const ledger = mergeInstallmentLedgerFromStatements(accountId, accountRecords, {
           replaceLedger: true,
         });
         purchaseUpserts = ledger.purchaseUpserts;
         paymentUpserts = ledger.paymentUpserts;
         gapFilled = ledger.gapFilled;
       } else if (replaceLedgerOnly) {
-        const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
+        const ledger = mergeInstallmentLedgerFromStatements(accountId, accountRecords, {
           replaceLedger: true,
         });
         purchaseUpserts = ledger.purchaseUpserts;
@@ -251,7 +224,7 @@ function main() {
       const chains = groupInstallmentLoanChains(accountRecords);
       purchaseUpserts = chains.size;
       for (const chain of chains.values()) {
-        paymentUpserts += new Set(chain.rows.map((r) => `${r.source_pdf}\t${r.statement_date}`)).size;
+        paymentUpserts += new Set(chain.rows.map((r) => `${r.statement.document}\t${r.statement.close}`)).size;
       }
     }
 
@@ -268,7 +241,7 @@ function main() {
 
     console.log(
       dry
-        ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountRecords.length} csv rows`
+        ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountLineCount} csv rows`
         : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}.`
     );
 

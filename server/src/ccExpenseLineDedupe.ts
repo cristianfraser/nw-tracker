@@ -1,7 +1,6 @@
 import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type CcExpenseLineForDedupe = {
   account_id: number;
@@ -196,39 +195,27 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
   return [...best.values(), ...purchaseBest];
 }
 
-export type CcStatementCsvDedupeRow = {
-  installment_flag?: string;
-  transaction_date?: string;
-  posting_date?: string;
-  merchant?: string;
-  amount_clp?: string;
-  dedupe_key?: string;
+/** What a line's import dedupe keys are made of (a canonical line, or a stored line read back). */
+export type CcLineDedupeKeyInput = {
+  installment: boolean;
+  /** The line's day (transaction, else posting), ISO. */
+  dateIso: string | null;
+  merchant: string;
+  /** The line's pesos (0 for a dollar line). */
+  amountClp: number;
+  /** The document's own dedupe key, when it carries one. */
+  documentKey: string | null;
 };
 
-/** Canonical dedupe keys for import (ISO purchase date). */
-export function canonicalCcLineDedupeKeys(
-  cardGroup: string,
-  row: CcStatementCsvDedupeRow
-): string[] {
+/** Canonical dedupe keys for import: the document's key, plus the one-shot key (ISO purchase date). */
+export function canonicalCcLineDedupeKeys(cardGroup: string, line: CcLineDedupeKeyInput): string[] {
   const keys = new Set<string>();
-  const fromCsv = String(row.dedupe_key ?? "").trim();
-  if (fromCsv) keys.add(fromCsv);
-
-  const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-  if (inst) return [...keys];
-
-  const amountRaw = String(row.amount_clp ?? "").replace(/\s+/g, "").replace(/\./g, "");
-  const amount = Number(amountRaw);
-  if (!Number.isFinite(amount) || amount <= 0) return [...keys];
-
-  const dateIso =
-    parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
-    parseDdMmYyToIso(String(row.posting_date ?? "").trim());
-  if (!dateIso) return [...keys];
-
-  keys.add(
-    ccOneShotDedupeKey(cardGroup, String(row.merchant ?? ""), Math.trunc(amount), dateIso)
-  );
+  const fromDocument = String(line.documentKey ?? "").trim();
+  if (fromDocument) keys.add(fromDocument);
+  if (line.installment) return [...keys];
+  if (!Number.isFinite(line.amountClp) || line.amountClp <= 0) return [...keys];
+  if (!line.dateIso) return [...keys];
+  keys.add(ccOneShotDedupeKey(cardGroup, line.merchant, Math.trunc(line.amountClp), line.dateIso));
   return [...keys];
 }
 

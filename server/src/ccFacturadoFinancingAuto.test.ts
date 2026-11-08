@@ -1,7 +1,7 @@
 import { insertLines } from "./cards/lineWrites.js";
-import type { CcWebPasteParseResult } from "./ccWebPasteParse.js";
+import type { CcListingParseResult } from "./ccWebPasteParse.js";
 
-const plantFinancingPayment = (accountId: number, parsed: CcWebPasteParseResult) => {
+const plantFinancingPayment = (accountId: number, parsed: CcListingParseResult) => {
   insertLines(accountId, parsed, "cc_financing_payment");
 };
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

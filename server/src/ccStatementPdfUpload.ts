@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cardParsedStatementsKind } from "nw-tracker-contracts";
+import {
+  canonicalStatementsFromParsedPayload,
+  cardParsedStatementsKind,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
 import { requestFeederParse } from "./ingestFeeder.js";
 import { resolveCcStatementSlotDir } from "./cfraserPaths.js";
 import { db } from "./db.js";
@@ -9,18 +13,9 @@ import {
   archivedCreditCardStatementPdfFileName,
   canonicalCcStatementPdfName,
 } from "./importSyncDocumentFilePath.js";
-import {
-  mergeCcAccountFromParsedRows,
-  replaceStatementKeysFromRecords,
-} from "./ccInstallmentLedgerMerge.js";
-import {
-  currencyFromRow,
-  type CcImportFlowItem,
-  type CcStatementCsvRecord,
-  type SkippedCcImportFlowItem,
-} from "./ccStatementsImport.js";
-import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { cardLast4FromParsedRow } from "./ccParsedImportAccounts.js";
+import { mergeCardStatements, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import type { CcImportFlowItem, SkippedCcImportFlowItem } from "./ccStatementsImport.js";
+import { cardAccountForStatement, cardLast4OfStatement } from "./cards/documentAccount.js";
 
 export type CcPdfUploadFile = {
   originalname: string;
@@ -59,14 +54,15 @@ export type CcStatementPdfImportResult = {
 
 /**
  * Each uploaded PDF goes to the ingest service's card statement parser
- * (`POST /parse/card_statement.pdf`), which answers with its lines as `card.parsed_statements`.
- * A file it cannot read is a parse failure; the service not answering throws.
+ * (`POST /parse/card_statement.pdf`), which answers with its lines as `card.parsed_statements`,
+ * read into canonical statements. A file it cannot read is a parse failure; the service not
+ * answering throws.
  */
 async function parseUploadedPdfs(files: readonly { name: string; buffer: Buffer }[]): Promise<{
-  records: CcStatementCsvRecord[];
+  statements: CardCanonicalStatement[];
   failures: string[];
 }> {
-  const records: CcStatementCsvRecord[] = [];
+  const statements: CardCanonicalStatement[] = [];
   const failures: string[] = [];
   for (const file of files) {
     const answer = await requestFeederParse("card_statement.pdf", file.buffer, file.name);
@@ -79,9 +75,9 @@ async function parseUploadedPdfs(files: readonly { name: string; buffer: Buffer 
       throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${cardParsedStatementsKind.kind}`);
     }
     const payload = cardParsedStatementsKind.payload.parse(answer.result.payload);
-    for (const values of payload.rows) records.push(Object.fromEntries(payload.columns.map((c, i) => [c, values[i]!])));
+    statements.push(...canonicalStatementsFromParsedPayload(payload));
   }
-  return { records, failures };
+  return { statements, failures };
 }
 
 function archivePath(destDir: string, fileName: string): string {
@@ -96,7 +92,7 @@ function archivePath(destDir: string, fileName: string): string {
 function persistUploadedCcStatementPdfs(opts: {
   tmpDir: string;
   accountId: number;
-  bySourcePdf: Map<string, CcStatementCsvRecord[]>;
+  bySourcePdf: Map<string, CardCanonicalStatement[]>;
 }): string[] {
   const saved: string[] = [];
 
@@ -111,18 +107,18 @@ function persistUploadedCcStatementPdfs(opts: {
      WHERE source_pdf = ? AND purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
   );
 
-  for (const [oldName, rows] of opts.bySourcePdf) {
+  for (const [oldName, statements] of opts.bySourcePdf) {
     const tmpSrc = path.join(opts.tmpDir, oldName);
     if (!fs.existsSync(tmpSrc)) continue;
 
-    const first = rows[0]!;
-    const last4 = String(first.card_last4 ?? "").trim();
-    const usd = currencyFromRow(first) === "usd";
+    const first = statements[0]!;
+    const last4 = first.card_last4 ?? "";
+    const usd = first.currency === "usd";
     const destDir = resolveCcStatementSlotDir(last4, usd);
     fs.mkdirSync(destDir, { recursive: true });
     let archiveBase =
-      archivedCreditCardStatementPdfFileName(first) ??
-      canonicalCcStatementPdfName(first.period_to, last4, { usd }) ??
+      archivedCreditCardStatementPdfFileName({ period_to: first.period_to ?? "", card_last4: last4, currency: first.currency }) ??
+      canonicalCcStatementPdfName(first.period_to ?? undefined, last4, { usd }) ??
       oldName;
     if (!archiveBase.toLowerCase().endsWith(".pdf")) {
       archiveBase = `${archiveBase}.pdf`;
@@ -168,37 +164,37 @@ export async function importCcStatementPdfsForAccount(
 
     const parsed = await parseUploadedPdfs(files.map((f, i) => ({ name: uploadedNames[i]!, buffer: f.buffer })));
     const parseFailures = parsed.failures;
-    if (parsed.records.length === 0) {
+    if (parsed.statements.length === 0) {
       throw new Error(parseFailures[0] ?? "PDF parse produced no output");
     }
 
-    const allRecords = parsed.records;
-    const records: CcStatementCsvRecord[] = [];
-    const bySourcePdf = new Map<string, CcStatementCsvRecord[]>();
+    const statements: CardCanonicalStatement[] = [];
+    const bySourcePdf = new Map<string, CardCanonicalStatement[]>();
     // Track what the uploaded PDFs actually resolved to, for a diagnosable error.
     const seenLast4: Set<string> = new Set();
     const seenAccountIds: Set<number> = new Set();
 
-    for (const row of allRecords) {
-      const src = String(row.source_pdf ?? "").trim();
+    for (const statement of parsed.statements) {
+      const src = statement.document;
       // The parser renames PDFs to canonical names (e.g. `155028273.pdf` →
       // `2026-06-26 estado de cuenta tarjeta <last4>.pdf`) so source_pdf never
       // matches the original upload filename. The tmp dir is isolated to the
       // uploaded files, so all rows here come from them — no allowedNames guard needed.
       // Match parity with the CLI/inbox import: prefer the parser's card_last4,
       // fall back to the filename only when it is absent.
-      const l4 = cardLast4FromParsedRow(row);
-      const target = resolveMasterAccountIdForImportCardLast4(l4);
+      const l4 = cardLast4OfStatement(statement);
+      const target = cardAccountForStatement(statement);
       if (l4) seenLast4.add(l4);
       if (target != null) seenAccountIds.add(target);
       if (target !== accountId) continue;
-      records.push(row);
+      statements.push(statement);
       const list = bySourcePdf.get(src) ?? [];
-      list.push(row);
+      list.push(statement);
       bySourcePdf.set(src, list);
     }
 
-    if (records.length === 0) {
+    const lineCount = statements.reduce((n, st) => n + st.lines.length, 0);
+    if (lineCount === 0) {
       const last4s = [...seenLast4].sort().join(", ") || "none";
       const accIds = [...seenAccountIds].sort((a, b) => a - b).join(", ") || "none";
       throw new Error(
@@ -207,8 +203,8 @@ export async function importCcStatementPdfsForAccount(
       );
     }
 
-    const replaceKeys = replaceStatementKeysFromRecords(records);
-    const merged = mergeCcAccountFromParsedRows(accountId, records, {
+    const replaceKeys = statementKeysOf(statements);
+    const merged = mergeCardStatements(accountId, statements, {
       replaceStatementKeys: replaceKeys,
       replaceLedger: false,
     });
@@ -223,8 +219,8 @@ export async function importCcStatementPdfsForAccount(
       account_id: accountId,
       files: uploadedNames,
       saved_pdfs: savedPdfs,
-      csv_rows: records.length,
-      lines_parsed: records.length,
+      csv_rows: lineCount,
+      lines_parsed: lineCount,
       inserted: merged.statements.linesInserted,
       skipped_duplicate: merged.statements.linesSkippedDuplicate,
       skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,

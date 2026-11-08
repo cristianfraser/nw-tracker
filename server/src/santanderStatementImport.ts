@@ -1,8 +1,8 @@
 /**
  * Santander statement JSON → ledger write path («JSON leads, PDF import guarded»).
  *
- * Builds `CcStatementCsvRecord` rows from a `card.statement` (the fetched statement JSON, decoded
- * by ingest: `ingest/src/santander/statementJson.ts`) and writes them through
+ * Builds the canonical statements of a `card.statement` (the fetched statement JSON, decoded by
+ * ingest: `ingest/src/santander/statementJson.ts`) and writes them through
  * the SAME pipeline as PDF statements (`mergeCcAccountFromParsedRows`) — reconcile gate,
  * installment ledger, web-paste supersede, traspaso links and valuation re-sync included. A
  * JSON statement is a real statement (it counts toward facturación close and open-bucket
@@ -32,17 +32,20 @@
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { padCcStatementDate, santanderJsonSourcePdf } from "./ccStatementJsonSource.js";
-import {
-  mergeCcAccountFromParsedRows,
-  replaceStatementKeysFromRecords,
-} from "./ccInstallmentLedgerMerge.js";
+import { mergeCardStatements, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import { ccOriginAmountCsvCell } from "./ccOriginCurrency.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 
 import { ccJsonStatementLineBaseKey, ccSha1Hex16, dedupeKeysByOccurrence } from "./ccDedupeKey.js";
-import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
+import {
+  cardLineKind,
+  cardStatementLayout,
+  EMPTY_CARD_STATEMENT_HEADER,
+  parseDdMmYyToIso,
+  normalizeMerchantText,
+  type CardCanonicalLine,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
 
 const findContractCanonical = db.prepare(
   `SELECT canonical_row_id, merchant FROM cc_installment_purchases
@@ -97,20 +100,18 @@ export type SantanderStatementRecordsCtx = {
 };
 
 /**
- * One facturación currency → importable CSV records.
+ * One facturación currency → its canonical statement.
  *
  * Line dedupe keys are minted in a `json|` key space (sha16 of group+currency+date+merchant+
  * amount, `#dupN` occurrence for same-statement twins) — deterministic across re-imports so
  * statement replacement stays idempotent and category assignments survive via key restore.
  */
-export function buildSantanderStatementRecords(
+export function buildSantanderStatement(
   currency: "clp" | "usd",
   lines: readonly CardStatementLine[],
   totals: Pick<CardStatementCurrency, "billed_total" | "payments_total"> | null,
   ctx: SantanderStatementRecordsCtx
-): CcStatementCsvRecord[] {
-  const sourcePdf = santanderJsonSourcePdf(currency, ctx.statementDate);
-
+): CardCanonicalStatement {
   const paymentRows = currency === "clp" ? lines.filter((l) => l.kind === "payment") : [];
   const nonPaymentRows = lines.filter((l) => !paymentRows.includes(l));
   // Payment-only months (dormant cards) keep the payment row as a negative line — a statement
@@ -131,96 +132,90 @@ export function buildSantanderStatementRecords(
   }
   const pagadoDate = paymentRows.length === 1 ? paymentRows[0]!.transaction_date : null;
   const billed = totals?.billed_total ?? null;
-
-  const headerCols: Record<string, string> = {
-    statement_saldo_anterior: "",
-    statement_abono: "",
-    statement_compras_cargos: "",
-    statement_deuda_total: "",
-    statement_monto_facturado: currency === "clp" && billed != null ? String(billed) : "",
-    statement_monto_pagado_anterior:
-      currency === "clp" && totalPagos != null && totalPagos > 0 ? String(-totalPagos) : "",
-    statement_monto_pagado_anterior_date: currency === "clp" ? (pagadoDate ?? "") : "",
-    // Only the end is published (FechaProxFact); the cycle's first day stays whatever the PDF
-    // prints — the close-day offset is read from statements that print both.
-    statement_next_period_from: "",
-    statement_next_period_to: ctx.nextClose ?? "",
-  };
+  const section = currency === "usd" ? "international_usd" : "compact";
 
   // Occurrence-indexed in line order: the Nth identical line of the statement is its `#dupN` twin.
+  const lineAmount = (line: CardStatementLine): number =>
+    // A cuota line's amount is the purchase's total; its cuota rides apart.
+    currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : Number(line.amount.toFixed(2));
   const baseKeys = lineRows.map((line) => {
-    const amountClp = currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : null;
-    const amountUsd = currency === "usd" ? line.amount : null;
-    const amountKey = currency === "usd" ? (amountUsd ?? 0).toFixed(2) : String(amountClp ?? 0);
+    const amountKey = currency === "usd" ? lineAmount(line).toFixed(2) : String(lineAmount(line));
     return ccJsonStatementLineBaseKey(ctx.cardGroup, currency, line.transaction_date, line.merchant, amountKey);
   });
   const dedupeKeys = dedupeKeysByOccurrence(baseKeys);
-  const records: CcStatementCsvRecord[] = [];
-  for (const [lineIndex, line] of lineRows.entries()) {
-    // The record's amount for a cuota line is the purchase's total, its cuota rides apart.
-    const amountClp = currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : null;
-    const amountUsd = currency === "usd" ? line.amount : null;
-    const dateIso = line.transaction_date;
+  const canonicalLines = lineRows.map((line, lineIndex): CardCanonicalLine => {
+    const amount = lineAmount(line);
     const dedupeKey = dedupeKeys[lineIndex]!;
-
-    const canonical =
-      line.installment && currency === "clp"
-        ? resolveJsonCuotaCanonicalRowId(
-            ctx.accountId,
-            ctx.cardGroup,
-            dateIso,
-            line.installment.total_amount,
-            line.installment.count,
-            line.merchant
-          )
-        : "";
-
-    records.push({
-      card_group: ctx.cardGroup,
-      source_pdf: sourcePdf,
-      statement_date: ctx.statementDate,
-      period_from: ctx.periodFrom,
-      period_to: ctx.statementDate,
-      pay_by: ctx.payBy ?? "",
-      card_last4: ctx.cardLast4 ?? "",
-      card_product: "",
-      parser_layout: currency === "usd" ? "international_usd" : "compact",
+    const merchant = line.merchant.trim();
+    const inst = line.installment;
+    return {
+      kind: cardLineKind({
+        installment_flag: inst != null,
+        merchant: merchant || null,
+        amount_clp: currency === "clp" ? amount : 0,
+        amount_usd: currency === "usd" ? amount : null,
+        statement_currency: currency,
+      }),
+      transaction_date: line.transaction_date,
+      posting_date: line.posting_date ?? null,
+      printed_transaction_date: null,
+      printed_posting_date: null,
+      merchant,
+      description: null,
+      place: line.place?.trim() || null,
+      country: line.country?.trim() || null,
       currency,
-      installment_flag: line.installment ? "true" : "false",
-      transaction_date: isoToCsvDate(line.transaction_date),
-      posting_date: line.posting_date ? isoToCsvDate(line.posting_date) : "",
-      place: line.place ?? "",
-      merchant: line.merchant,
-      description_merged: "",
-      country: line.country ?? "",
-      amount_orig: line.origin_amount != null ? ccOriginAmountCsvCell(line.origin_amount) : "",
-      foreign_currency: "",
-      amount_clp: amountClp != null ? String(amountClp) : "",
-      amount_usd: amountUsd != null ? amountUsd.toFixed(2) : "",
-      nro_cuota_current: line.installment ? String(line.installment.number) : "",
-      nro_cuota_total: line.installment ? String(line.installment.count) : "",
-      valor_cuota_mensual_clp: line.installment ? String(line.installment.cuota_amount) : "",
-      valor_cuota_mensual_usd: "",
-      interest_rate_text: "",
-      tipo_cuota: "",
-      authorization_code: line.authorization_code ?? "",
-      origin_card_last4: line.card_last4 ?? "",
-      dedupe_key: dedupeKey,
-      row_id: `json:${dedupeKey}`,
-      canonical_row_id: canonical,
-      is_duplicate_across_statements: "false",
-      raw_line: line.raw_text,
-      ...headerCols,
-    });
-  }
-  return records;
-}
+      amount,
+      origin_amount: line.origin_amount != null ? Number(line.origin_amount.toFixed(2)) : null,
+      installment: inst
+        ? {
+            number: inst.number,
+            count: inst.count,
+            cuota_amount: inst.cuota_amount,
+            total_amount: null,
+            interest_rate_text: null,
+            cuota_type: null,
+            plan_id:
+              currency === "clp"
+                ? resolveJsonCuotaCanonicalRowId(ctx.accountId, ctx.cardGroup, line.transaction_date, inst.total_amount, inst.count, line.merchant)
+                : null,
+          }
+        : null,
+      origin_card_last4: line.card_last4?.trim() || null,
+      cuota_purchase: null,
+      document: {
+        line_id: `json:${dedupeKey}`,
+        dedupe_key: dedupeKey,
+        section,
+        raw_text: line.raw_text.trim() || null,
+        duplicate_across_statements: false,
+        baseline_match: null,
+      },
+    };
+  });
 
-/** `2026-07-23` → `23/7/2026`, the unpadded form statement CSV records carry for line dates. */
-export function isoToCsvDate(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) throw new Error(`Expected an ISO date, got "${iso}"`);
-  return `${Number(m[3])}/${Number(m[2])}/${m[1]}`;
+  return {
+    document: santanderJsonSourcePdf(currency, ctx.statementDate),
+    card_group: ctx.cardGroup,
+    close: ctx.statementDate,
+    period_from: ctx.periodFrom,
+    period_to: ctx.statementDate,
+    pay_by: ctx.payBy,
+    card_last4: ctx.cardLast4?.trim() || null,
+    card_product: null,
+    currency,
+    layout: cardStatementLayout(section),
+    header: {
+      ...EMPTY_CARD_STATEMENT_HEADER,
+      monto_facturado: currency === "clp" && billed != null ? billed : null,
+      monto_pagado_anterior: currency === "clp" && totalPagos != null && totalPagos > 0 ? -totalPagos : null,
+      monto_pagado_anterior_date: currency === "clp" ? pagadoDate : null,
+      // Only the end is published (FechaProxFact); the cycle's first day stays whatever the PDF
+      // prints — the close-day offset is read from statements that print both.
+      next_period_to: ctx.nextClose ?? null,
+    },
+    lines: canonicalLines,
+  };
 }
 
 const listStatementClosesForCurrency = db.prepare(
@@ -346,31 +341,28 @@ export type SantanderStatementWriteResult = {
 /** Write one facturación (both currencies together, so a traspaso month links atomically). */
 export function writeSantanderStatements(
   accountId: number,
-  records: CcStatementCsvRecord[]
+  statements: readonly CardCanonicalStatement[]
 ): SantanderStatementWriteResult {
-  if (records.length === 0) throw new Error("writeSantanderStatements: no records");
+  if (statements.length === 0) throw new Error("writeSantanderStatements: no statements");
   // One close per call: the result names a single facturación, and the caller verifies it.
-  const closes = new Set(records.map((r) => padCcStatementDate(String(r.statement_date ?? ""))));
+  const closes = new Set(statements.map((st) => padCcStatementDate(st.close)));
   if (closes.size !== 1) {
     throw new Error(
-      `writeSantanderStatements: records span ${closes.size} closes (${[...closes].join(", ")}) — ` +
+      `writeSantanderStatements: statements span ${closes.size} closes (${[...closes].join(", ")}) — ` +
         `write one facturación per call`
     );
   }
-  for (const last4 of new Set(records.map((r) => String(r.card_last4 ?? "").trim()))) {
+  for (const last4 of new Set(statements.map((st) => st.card_last4 ?? ""))) {
     assertNoCardRoutingConflict(accountId, last4 || null);
   }
-  const merged = mergeCcAccountFromParsedRows(accountId, records, {
+  const merged = mergeCardStatements(accountId, statements, {
     replaceLedger: false,
-    replaceStatementKeys: replaceStatementKeysFromRecords(records),
+    replaceStatementKeys: statementKeysOf(statements),
   });
   return {
     accountId,
-    statementDate: String(records[0]!.statement_date ?? ""),
-    currencies: [...new Set(records.map((r) => (r.currency === "usd" ? "usd" : "clp")))] as (
-      | "clp"
-      | "usd"
-    )[],
+    statementDate: statements[0]!.close,
+    currencies: [...new Set(statements.map((st) => st.currency))],
     lineCount: merged.statements.linesInserted,
   };
 }

@@ -1,32 +1,39 @@
 import crypto from "node:crypto";
-import type { CardPastedListing } from "nw-tracker-contracts";
+import {
+  cardLineKind,
+  isCcPaymentMerchant,
+  EMPTY_CARD_STATEMENT_HEADER,
+  type CardCanonicalLine,
+  type CardCanonicalStatement,
+  type CardPastedListing,
+} from "nw-tracker-contracts";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
 import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
-import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines.js";
 import { activeAdditionalCardLast4ForAccount } from "./ccAdditionalCardExpenseMatch.js";
 import { db } from "./db.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
-import { ccIssuerBySlug } from "./ccIssuers.js";
-import {
-  ccImportFlowItemFromRow,
-  ccStatementLabel,
-  type CcImportFlowItem,
-  type CcStatementCsvRecord,
-} from "./ccStatementsImport.js";
+import { ccIssuerBySlug, ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
+import { ccImportFlowItemFromLine, ccStatementLabel, type CcImportFlowItem } from "./ccStatementsImport.js";
 
-export type CcWebPasteLine = {
+/**
+ * One line of a card's listing of movements not billed yet — the nightly feed, a pasted table, a
+ * planted payment, a receipt's line — in the canonical card-line terms: debt-positive (a charge
+ * positive, a payment or credit negative) in its own currency. Each source converts once into
+ * this (the feed: `listingLineFromCardListingLine`; a paste: {@link webPasteLinesFromPastedListing},
+ * which applies the issuer's web-UI sign), and {@link listingStatements} files the lines into the
+ * card's open buckets as canonical statements.
+ */
+export type CcListingLine = {
   transaction_date: string;
   merchant: string;
-  /** Raw pasted CLP amount (signed); 0 when the line was pasted in USD. */
-  amount_clp: number;
-  /** Raw pasted USD amount (signed) when the line carried a USD token; null otherwise. */
-  amount_usd: number | null;
   currency: "clp" | "usd";
+  /** Debt-positive, in `currency`. */
+  amount: number;
   raw_line: string;
   /**
-   * Santander card feed only: this row is a purchase in cuotas (the feed types it), listed at its
-   * full principal. `cuota_count` when known — printed in the type, or read from the same-day
+   * Card feed only: this row is a purchase in cuotas (the feed types it), listed at its full
+   * principal. `cuota_count` when known — printed in the type, or read from the same-day
    * stamp-tax row (`ccCuotaPurchaseKinds.ts`). Absent on pasted lines.
    */
   cuota_purchase?: CcFeedCuotaPurchase | null;
@@ -46,29 +53,39 @@ export type CcFeedCuotaPurchase = {
   stamp_tax_clp: number | null;
 };
 
-export type CcWebPasteParseResult = {
-  lines: CcWebPasteLine[];
+export type CcListingParseResult = {
+  lines: CcListingLine[];
   errors: string[];
 };
 
 /**
- * A paste the ingest service read (`card.pasted_listing`, `POST /parse/card.web_paste`) → the
- * import's line shape: merchants normalized the way every card source's are (`normCcMerchant`),
- * amounts still signed as the issuer's table prints them (`webPasteAmountClpForDb` /
- * `webPasteAmountUsdForDb` apply the issuer's rule when the lines are stored).
+ * A paste the ingest service read (`card.pasted_listing`, `POST /parse/card.web_paste`) → listing
+ * lines: merchants normalized the way every card source's are (`normCcMerchant`), amounts turned
+ * debt-positive by the issuer's web-UI sign (`CC_ISSUERS[…].web_paste.sign`, found by the card
+ * group the paste goes under: Santander shows charges negative, so its signs flip).
  */
-export function webPasteLinesFromPastedListing(listing: CardPastedListing): CcWebPasteParseResult {
+export function webPasteLinesFromPastedListing(listing: CardPastedListing, cardGroup: string): CcListingParseResult {
+  const flip = ccIssuerForWebPasteCardGroup(cardGroup).web_paste.sign === "charges_negative";
   return {
     lines: listing.lines.map((l) => ({
       transaction_date: l.date,
       merchant: normCcMerchant(l.merchant),
-      amount_clp: l.currency === "clp" ? l.amount : 0,
-      amount_usd: l.currency === "usd" ? l.amount : null,
       currency: l.currency,
+      amount: flip ? -l.amount : l.amount,
       raw_line: l.raw_line,
     })),
     errors: listing.errors,
   };
+}
+
+/**
+ * A listing line's amount as stored: a payment (PAGO, ABONO, …) is always a credit, whatever sign
+ * the listing showed; pesos are whole.
+ */
+export function listingLineStoredAmount(line: Pick<CcListingLine, "merchant" | "currency" | "amount">): number {
+  const amount = line.currency === "clp" ? Math.trunc(line.amount) : line.amount;
+  if (amount === 0) return 0;
+  return isCcPaymentMerchant(line.merchant) ? -Math.abs(amount) : amount;
 }
 
 /**
@@ -98,11 +115,8 @@ export function isCcSaldoInicialMerchant(merchant: string | null | undefined): b
  * One-shot dedupe key of a pasted / fed line — the identity every re-listing of the same purchase
  * shares, on the pasted magnitude in its own currency (USD in cents keeps re-imports idempotent).
  */
-export function webPasteLineDedupeKey(cardGroup: string, line: CcWebPasteLine): string {
-  const dedupeAmount =
-    line.currency === "usd"
-      ? Math.round(Math.abs(line.amount_usd ?? 0) * 100)
-      : Math.abs(line.amount_clp);
+export function webPasteLineDedupeKey(cardGroup: string, line: CcListingLine): string {
+  const dedupeAmount = line.currency === "usd" ? Math.round(Math.abs(line.amount) * 100) : Math.abs(line.amount);
   return ccOneShotDedupeKey(cardGroup, line.merchant, dedupeAmount, line.transaction_date);
 }
 
@@ -113,7 +127,7 @@ export function webPasteLineDedupeKey(cardGroup: string, line: CcWebPasteLine): 
  * two charges (two Grindr subscriptions billed the same day), never one listed twice — the overlap
  * with what is already on file is the merge's dedupe against the DB, by these same keys.
  */
-export function webPasteListingDedupeKeys(cardGroup: string, lines: readonly CcWebPasteLine[]): string[] {
+export function webPasteListingDedupeKeys(cardGroup: string, lines: readonly CcListingLine[]): string[] {
   const occurrence = new Map<string, number>();
   return lines.map((line) => {
     const base = webPasteLineDedupeKey(cardGroup, line);
@@ -123,7 +137,7 @@ export function webPasteListingDedupeKeys(cardGroup: string, lines: readonly CcW
   });
 }
 
-export type CcWebPasteRecordsOpts = {
+export type CcListingStatementsOpts = {
   /**
    * Put every line in this facturación's bucket instead of the open month. The card feed passes
    * the month after its own SALDO INICIAL close: everything it lists after a close is unbilled by
@@ -140,27 +154,44 @@ export type CcWebPasteRecordsOpts = {
   lineBillingMonths?: readonly string[];
 };
 
-export function ccWebPasteToCsvRecords(
+/**
+ * Listing lines → the canonical statements of the card's open buckets (one per facturación month:
+ * `import:web-paste|open|<month>`, closing on the month's config close), each line with its
+ * occurrence-indexed one-shot key and its kind. The previous facturación's «SALDO INICIAL» row and
+ * the bank's cuota-billing re-listings are reported, never filed.
+ */
+export function listingStatements(
   accountId: number,
   cardGroup: string,
   cardLast4: string,
-  batchId: string,
-  parsed: CcWebPasteLine[],
-  opts?: CcWebPasteRecordsOpts
+  parsed: readonly CcListingLine[],
+  opts?: CcListingStatementsOpts
 ): {
-  records: CcStatementCsvRecord[];
+  statements: CardCanonicalStatement[];
   skipped_cuota_billing: CcImportFlowItem[];
   skipped_saldo_inicial: CcImportFlowItem[];
 } {
   const openBillingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
   /** One open-period bucket per billing month (append on re-import via dedupe_key). */
-  const bucketFor = new Map<string, { sourcePdf: string; statementDate: string }>();
-  const bucket = (billingMonth: string) => {
+  const bucketFor = new Map<string, CardCanonicalStatement>();
+  const bucket = (billingMonth: string): CardCanonicalStatement => {
     let b = bucketFor.get(billingMonth);
     if (!b) {
       b = {
-        sourcePdf: `import:web-paste|open|${billingMonth}`,
-        statementDate: statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth),
+        document: `import:web-paste|open|${billingMonth}`,
+        card_group: cardGroup,
+        close: statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth),
+        period_from: null,
+        period_to: null,
+        pay_by: null,
+        card_last4: cardLast4,
+        card_product: null,
+        // USD charges land on the CLP open bucket as foreign lines: MONTO US$ is authoritative and
+        // the CLP value is derived at read time via FX (effectiveCcExpenseLineAmountClp).
+        currency: "clp",
+        layout: "compact",
+        header: EMPTY_CARD_STATEMENT_HEADER,
+        lines: [],
       };
       bucketFor.set(billingMonth, b);
     }
@@ -170,7 +201,6 @@ export function ccWebPasteToCsvRecords(
   let additionalLast4: string | null = null;
   const additionalCardLast4 = () => (additionalLast4 ??= activeAdditionalCardLast4ForAccount(accountId));
 
-  const records: CcStatementCsvRecord[] = [];
   const skipped_cuota_billing: CcImportFlowItem[] = [];
   const skipped_saldo_inicial: CcImportFlowItem[] = [];
   // Occurrence-indexed: a row the listing shows twice is two charges (`#dupN`, see
@@ -178,69 +208,62 @@ export function ccWebPasteToCsvRecords(
   const dedupeKeys = webPasteListingDedupeKeys(cardGroup, parsed);
   const lineMonths = opts?.lineBillingMonths;
   if (lineMonths && lineMonths.length !== parsed.length) {
-    throw new Error(
-      `ccWebPasteToCsvRecords: ${lineMonths.length} line billing month(s) for ${parsed.length} line(s)`
-    );
+    throw new Error(`listingStatements: ${lineMonths.length} line billing month(s) for ${parsed.length} line(s)`);
   }
 
   parsed.forEach((line, i) => {
     const billingMonth = lineMonths?.[i] ?? opts?.targetBillingMonth ?? openBillingMonth;
-    const { sourcePdf, statementDate } = bucket(billingMonth);
-    const isUsd = line.currency === "usd";
+    const statement = bucket(billingMonth);
     const dedupe_key = dedupeKeys[i]!;
-
-    const ddMm = (() => {
-      const [y, mo, d] = line.transaction_date.split("-");
-      return `${Number(d)}/${Number(mo)}/${y}`;
-    })();
-
-    // USD charges land on the CLP open bucket as foreign lines: MONTO US$ is authoritative and the
-    // CLP value is derived at read time via FX (effectiveCcExpenseLineAmountClp), so amount_clp stays empty.
-    const usdSigned = isUsd
-      ? webPasteAmountUsdForDb(line.amount_usd ?? 0, line.merchant, cardGroup)
-      : 0;
-
-    const record: CcStatementCsvRecord = {
-      card_group: cardGroup,
-      source_pdf: sourcePdf,
-      statement_date: statementDate,
-      card_last4: cardLast4,
-      transaction_date: ddMm,
-      merchant: line.merchant,
-      amount_clp: isUsd ? "" : String(webPasteAmountClpForDb(line.amount_clp, line.merchant, cardGroup)),
-      amount_usd: isUsd ? String(usdSigned) : "",
-      installment_flag: "false",
-      dedupe_key,
-      raw_line: line.raw_line,
-      row_id: `web:${dedupe_key}`,
-      currency: "clp",
-      parser_layout: "compact",
-      statement_saldo_anterior: "",
-      statement_abono: "",
-      statement_compras_cargos: "",
-      statement_deuda_total: "",
-      statement_monto_facturado: "",
-      ...(line.holder === "additional" ? { origin_card_last4: additionalCardLast4() } : {}),
+    const amount = listingLineStoredAmount(line);
+    const merchant = line.merchant.trim();
+    const canonical: CardCanonicalLine = {
+      kind: cardLineKind({
+        installment_flag: false,
+        merchant: merchant || null,
+        amount_clp: line.currency === "clp" ? amount : 0,
+        amount_usd: line.currency === "usd" ? amount : null,
+        statement_currency: "clp",
+      }),
+      transaction_date: line.transaction_date,
+      posting_date: null,
+      printed_transaction_date: null,
+      printed_posting_date: null,
+      merchant,
+      description: null,
+      place: null,
+      country: null,
+      currency: line.currency,
+      amount,
+      origin_amount: null,
+      installment: null,
+      origin_card_last4: line.holder === "additional" ? additionalCardLast4() : null,
+      cuota_purchase: line.cuota_purchase ?? null,
+      document: {
+        line_id: `web:${dedupe_key}`,
+        dedupe_key,
+        section: "compact",
+        raw_text: line.raw_line.trim() || null,
+        duplicate_across_statements: false,
+        baseline_match: null,
+      },
     };
+    const label = ccStatementLabel(statement.close, "clp");
     // The previous facturación's total, not a purchase (the feed reads it as the observed close).
     if (isCcSaldoInicialMerchant(line.merchant)) {
-      skipped_saldo_inicial.push(
-        ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp"))
-      );
+      skipped_saldo_inicial.push(ccImportFlowItemFromLine(canonical, label));
       return;
     }
     // Cuota-billing reference rows never import — the installment schedule already bills them.
     // Reported, not silent, so the batch summary explains parsed > inserted + skipped.
     if (isCcCuotaBillingReferenceMerchant(line.merchant)) {
-      skipped_cuota_billing.push(
-        ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp"))
-      );
+      skipped_cuota_billing.push(ccImportFlowItemFromLine(canonical, label));
       return;
     }
-    records.push(record);
+    statement.lines.push(canonical);
   });
 
-  return { records, skipped_cuota_billing, skipped_saldo_inicial };
+  return { statements: [...bucketFor.values()].filter((b) => b.lines.length > 0), skipped_cuota_billing, skipped_saldo_inicial };
 }
 
 export function newWebPasteBatchId(): string {

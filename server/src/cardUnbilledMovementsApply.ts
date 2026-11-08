@@ -2,9 +2,9 @@ import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { applyLinePlan, cardLineWrite, insertLines, runFinancingLinks } from "./cards/lineWrites.js";
 import { noteCardLineWritten } from "./cards/lineWriteSession.js";
 import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
-import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
-import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
-import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
+import { listingLineFromCardListingLine } from "./cardListingLines.js";
+import type { CcListingLine } from "./ccWebPasteParse.js";
 import { assertFeedClosesMatchStatements, recordFeedBillingClose } from "./ccBillingCloses.js";
 import { latestFeedBillingClose } from "./cards/facturacion.js";
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
@@ -109,7 +109,7 @@ export type CardUnbilledMovementsImportResult = {
  */
 export function feedLineBillingMonths(
   accountId: number,
-  lines: readonly CcWebPasteLine[],
+  lines: readonly CcListingLine[],
   feedBillingMonth: string
 ): string[] {
   if (lines.length === 0) return [];
@@ -128,7 +128,7 @@ export function feedLineBillingMonths(
 function applyFeedClose(
   accountId: number,
   close: CardListingClose,
-  lines: CcWebPasteLine[],
+  lines: CcListingLine[],
   sourceFile: string
 ): { close: Omit<CardListingCloseImport, "provisional_check">; lineBillingMonths: string[] } {
   return db.transaction(() => {
@@ -220,7 +220,7 @@ export function applyCardUnbilledMovements(
   const accounts: CardListingAccountImportResult[] = [];
   withExpenseLinkSyncDeferred(() => {
     for (const card of payload.cards) {
-      const accountId = masterAccountIdForIssuerCardAccount(card.account);
+      const accountId = cardAccountForIssuerNumber(card.account);
       // One card-line write per card: the close, the plans, the lines, the tags and the mirror
       // land together and the card re-syncs once.
       const listed = cardLineWrite(accountId, "card feed", () => applyCardListing(accountId, card, closes, bankCupo, sourceRef));
@@ -251,8 +251,7 @@ function applyCardListing(
   bankCupo: ReturnType<typeof bankCupoCaptureFromListing>,
   sourceRef: string
 ): Omit<CardListingAccountImportResult, "feed_close"> & { feed_close: Omit<CardListingCloseImport, "provisional_check"> | null } {
-  const { cardGroup } = creditCardMasterMetaForAccount(accountId);
-  const lines = card.lines.map((line) => webPasteLineFromCardListingLine(cardGroup, line));
+  const lines = card.lines.map((line) => listingLineFromCardListingLine(line));
   const close = closes.get(card.account.number);
   const applied = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
   const feedClose = applied?.close ?? null;

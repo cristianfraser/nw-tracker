@@ -28,8 +28,8 @@ import { officialPensionFundUnits } from "../spAfpFundUnits.js";
 import { loadUfLookup, ufImpliedIpcVariationPct, writeOfficialIpcMonths } from "../siiOfficialIpc.js";
 import { applyBankAccountStatements } from "../bankAccountStatementsApply.js";
 import { applyBankAccountMovements } from "../bankAccountMovementsApply.js";
-import { applyParsedCcStatements } from "../ccParsedStatementsApply.js";
-import { importCcWebPasteLines } from "../accountImports.js";
+import { applyCanonicalCardStatements } from "../ccParsedStatementsApply.js";
+import { importCcListingLines } from "../accountImports.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../ccPaymentMirrors.js";
 import { applyPayrollParameters } from "../payrollParametersApply.js";
 import { applyEmploymentPayslips } from "../payslipsApply.js";
@@ -58,7 +58,7 @@ import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarke
 import { dbMarketReader, writeSyntheticMarket, type MarketReader } from "./market.js";
 import { addDays, addMonths, type Month, type Person, type Ymd } from "./person.js";
 import {
-  renderCardStatementRecords,
+  renderCardStatements,
   renderCartolas,
   renderCurrentMonthListing,
   renderOpenCycle,
@@ -482,10 +482,9 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   const listing = renderCurrentMonthListing(cartolas.currentMonth);
   if (listing) applyBankAccountMovements(listing, `demo-ultimos-movimientos-${today}.xlsx`);
 
-  const records = renderCardStatementRecords(ledger);
-  const cards = applyParsedCcStatements(records, { dryRun: false, full: true });
+  const cards = applyCanonicalCardStatements(renderCardStatements(ledger), { dryRun: false, full: true });
   if (cards.problems.length) throw new Error(`demo: card statements: ${cards.problems.join("; ")}`);
-  for (const o of renderOpenCycle(ledger)) importCcWebPasteLines(ids.get(`card:${o.card.key}`)!, o.listing, "cc_web_paste");
+  for (const o of renderOpenCycle(ledger)) importCcListingLines(ids.get(`card:${o.card.key}`)!, o.listing, "cc_web_paste");
 
   const candidates = listCcPaymentMirrorCandidates().filter((c) => !c.blocked);
   if (candidates.length > 0) convertCcPaymentMirrors(candidates.map((c) => ({ out_movement_id: c.out.movement_id, statement_line_id: c.evidence.statement_line_id, statement_id: c.evidence.statement_id })));
