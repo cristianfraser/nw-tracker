@@ -80,7 +80,7 @@ describe("buildAdditionalCardsSummary", () => {
         chargeLine({ expense_month: "2098-12", amount_clp: 10_000 }),
         chargeLine({ expense_month: "2099-01", amount_clp: 6_000 }),
         chargeLine({ expense_month: "2099-01", amount_clp: 4_000 }),
-        chargeLine({ expense_month: "2099-01", amount_clp: -1_000 }), // nota de crédito
+        chargeLine({ expense_month: "2099-01", amount_clp: -1_000, card_refund: true }), // a nota de crédito no purchase annuls
         chargeLine({ expense_month: "2099-01", amount_clp: 99_000, category_slug: "food" }),
         // The cardholder's wires: refund lines in the category.
         chargeLine({ expense_month: "2099-01", amount_clp: -10_000, source: "checking", origin_card_last4: null, primary_card_last4: null }),
