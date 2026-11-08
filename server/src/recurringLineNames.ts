@@ -36,7 +36,7 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
   if (entries.length === 0) return lines;
   const uf = ufProjector();
   const candidates = lines.filter((l) => l.source === "cc" && l.amount_clp > 0 && l.purchase_on != null);
-  const recurringLines: RecurringLine[] = candidates.map(toRecurringLine);
+  const recurringLines: RecurringLine[] = candidates.map((l) => toRecurringLine(l, { byPurchaseKey: true }));
   const occurrences = matchRecurringPayments({
     entries,
     lines: recurringLines,
@@ -48,7 +48,7 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
   });
 
   // Each entry's category: that of its most recent paid charge whose category is not «sin categoría».
-  const byRef = new Map(candidates.map((l) => [recurringLineRef(l), l]));
+  const byRef = new Map(candidates.map((l) => [recurringLineRef(l, { byPurchaseKey: true }), l]));
   const categoryByEntry = new Map<number, { on: string; slug: string }>();
   for (const o of occurrences) {
     const line = o.matched ? byRef.get(o.matched.ref) : undefined;
@@ -64,7 +64,7 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
   }
   if (byLine.size === 0) return lines;
   return lines.map((l) => {
-    const entry = byLine.get(recurringLineRef(l));
+    const entry = byLine.get(recurringLineRef(l, { byPurchaseKey: true }));
     if (!entry) return l;
     const category = categoryByEntry.get(entry.id);
     const takesCategory = l.category_from_bank_name && l.category_slug === UNCLASSIFIED_CC_EXPENSE_SLUG && category;

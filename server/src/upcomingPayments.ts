@@ -475,7 +475,7 @@ const deleteRecurringStmt = db.prepare(`DELETE FROM recurring_payments WHERE id 
 
 /** The expense lines the matcher reads, each named by its source and statement line id. */
 function recurringLines(): RecurringLine[] {
-  return loadGastosLinesForRealEstateMatching().map(toRecurringLine);
+  return loadGastosLinesForRealEstateMatching().map((l) => toRecurringLine(l));
 }
 
 /** A manual occurrence as a «Próximos pagos» row (its own name; the detail on hover). */

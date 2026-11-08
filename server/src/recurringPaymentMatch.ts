@@ -77,13 +77,22 @@ export type RecurringSourceLine = {
  * source, line id and purchase key, carrying what its document says it covers. «Próximos pagos»
  * and the line-name pass feed the matcher through this, so both see the same candidate.
  */
-export function recurringLineRef(l: Pick<RecurringSourceLine, "source" | "statement_line_id" | "purchase_key">): string {
-  return `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}`;
+export function recurringLineRef(
+  l: Pick<RecurringSourceLine, "source" | "statement_line_id" | "purchase_key">,
+  opts: { byPurchaseKey?: boolean } = {}
+): string {
+  return opts.byPurchaseKey ? `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}` : `${l.source}|${l.statement_line_id}`;
 }
 
-export function toRecurringLine(l: RecurringSourceLine): RecurringLine {
+/**
+ * `byPurchaseKey` names a line by its purchase key as well: the line-name pass needs it (pieces and
+ * cuota lines of one statement line are distinct candidates there), while «Próximos pagos» names a
+ * line by source and statement line id and shows that name in its payload. Two declared shapes of
+ * one reference, until the payload's reference is dropped or unified.
+ */
+export function toRecurringLine(l: RecurringSourceLine, opts: { byPurchaseKey?: boolean } = {}): RecurringLine {
   return {
-    ref: recurringLineRef(l),
+    ref: recurringLineRef(l, opts),
     purchase_on: l.purchase_on,
     merchant: l.merchant,
     display_merchant: l.display_merchant ?? null,
