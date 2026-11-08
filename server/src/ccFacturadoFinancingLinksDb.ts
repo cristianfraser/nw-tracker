@@ -26,7 +26,7 @@ const selLinkPurchases = db.prepare(
           ${expenseKeySql("f.legacy_key", "a.portion", "NULLIF(a.piece_seq, -1)")} AS financing_purchase_key
      FROM flow_links a JOIN flows f ON f.id = a.flow_id
      WHERE a.kind = 'finances_facturado'
-     ORDER BY a.id`
+     ORDER BY a.rowid`
 );
 
 /** All links with their financing purchases. */

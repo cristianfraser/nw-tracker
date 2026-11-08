@@ -21,11 +21,12 @@
  * pairs where exactly one leg carries cuotas (`units_delta` moves onto the transfer row —
  * cuota readers already add transferLegUnitsThroughDate on top of the account_id ledger).
  * AFP/AFC *inflows* are excluded (funded from pre-tax payroll, never from checking); deposits
- * already explained by expense_deposit_links stay excluded (the link records the relation and
+ * already explained by deposit links (`flow_links`) stay excluded (the link records the relation and
  * gastos categorization keys off the checking row); so are credits the user classified as income
  * and checking debits the user categorized as spending (structured evidence the row is not one
  * leg of a move between own accounts).
  */
+import { FLOW_CATEGORIES_SQL } from "./flows/flowCategories.js";
 import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -39,6 +40,7 @@ import { db } from "./db.js";
 import { FLOW_PARTS_BY_LINE_SQL } from "./flows/flowParts.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
 
 export type MirrorLegDto = {
   movement_id: number;
@@ -77,7 +79,7 @@ export type MirrorPairCandidate = {
   month_precision: boolean;
   month_straddle: boolean;
   /**
-   * Pair comes from an existing expense_deposit_links row (auto/manual gastos match) rather
+   * Pair comes from an existing deposit link (auto/manual gastos match) rather
    * than the date/amount heuristic — the link *is* the evidence, so no window applies. The
    * link row cascades away when the deposit leg is deleted at conversion. An auto link with a
    * competing same-amount outflow in the window is ambiguous: the matcher picked one of them.
@@ -127,7 +129,7 @@ type EligibleLegRow = {
 /**
  * Legs eligible for pairing: single-leg CLP rows, optionally carrying cuotas. Excludes
  * flow_kind / USD legs (brokerage and USD-cash semantics must not be rewritten), anchor/opening
- * calibration rows, rows already explained by a link (expense_deposit_links), a synthetic
+ * calibration rows, rows already explained by a link (a `funded_deposit` flow link), a synthetic
  * mirror (checking_gap_deposit_mirrors), or a payroll liquidación (payroll_work_earnings —
  * income by construction, never a transfer leg), a credit the user classified as income, and
  * Buda buffer rows (budaWallet.ts).
@@ -148,7 +150,7 @@ function loadEligibleLegs(): EligibleLegRow[] {
            AND m.note NOT LIKE 'import:buda|%'
            AND m.note NOT LIKE 'buda-abono|%'
            AND m.note NOT LIKE 'ahorro-split|%'))
-         AND NOT EXISTS (SELECT 1 FROM expense_deposit_links l WHERE l.deposit_movement_id = m.id)
+         AND NOT EXISTS (SELECT 1 FROM ${EXPENSE_DEPOSIT_LINKS_SQL} l WHERE l.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM checking_gap_deposit_mirrors g WHERE g.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
          AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})
@@ -170,7 +172,7 @@ function loadSpendingCategorizedOutflowIds(
     (
       db
         .prepare(
-          `SELECT u.purchase_key FROM cc_expense_unique_purchases u
+          `SELECT u.purchase_key FROM ${FLOW_CATEGORIES_SQL} u
            JOIN cc_expense_categories c ON c.id = u.category_id
            WHERE u.purchase_key LIKE 'checking-%' AND c.slug NOT IN (${ph})`
         )
@@ -296,7 +298,7 @@ export function mirrorLegDirectionAllowed(
 type LinkedLegPair = { out: EligibleLegRow; in: EligibleLegRow; link_source: "auto" | "manual" };
 
 /**
- * Pairs already established by the gastos matcher: 1:1 `expense_deposit_links` rows (auto or
+ * Pairs already established by the gastos matcher: 1:1 `funded_deposit` links (auto or
  * manual) whose `checking-cartola:` purchase key resolves to a real checking outflow of the
  * same rounded amount as the deposit. These deposits are excluded from the heuristic pool
  * (the link already explains them), but the known pairing converts directly. Synthetic links
@@ -307,9 +309,10 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
   const rows = db
     .prepare(
       `SELECT purchase_key, deposit_movement_id, link_source
-       FROM expense_deposit_links
+       FROM ${EXPENSE_DEPOSIT_LINKS_SQL}
        WHERE link_source IN ('auto', 'manual')
-         AND substr(purchase_key, 1, length(@prefix)) = @prefix`
+         AND substr(purchase_key, 1, length(@prefix)) = @prefix
+       ORDER BY link_order`
     )
     .all({ prefix: EXPENSE_KEY_PREFIXES.checking_cartola }) as { purchase_key: string; deposit_movement_id: number; link_source: "auto" | "manual" }[];
   const byKey = new Map<string, number>();
@@ -475,7 +478,7 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
   const usedIn = new Set<number>();
   const result: MirrorPairCandidate[] = [];
 
-  // Link-established pairs first: the expense_deposit_links row is the pairing evidence.
+  // Link-established pairs first: the deposit link is the pairing evidence.
   for (const lp of collectLinkedLegPairs()) {
     if (ctx.rejected.has(`${lp.out.id}|${lp.in.id}`)) continue;
     const outKind = ctx.kindSlugFor(lp.out.account_id);

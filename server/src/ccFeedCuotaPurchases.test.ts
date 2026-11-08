@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -212,8 +213,8 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     db.prepare(`DELETE FROM cc_feed_billing_closes WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
@@ -234,7 +235,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       .get(accountId, merchant) as { id: number; origin: string | null };
     const cat = db
       .prepare(
-        `SELECT c.slug FROM cc_expense_unique_purchases u
+        `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} u
          JOIN cc_expense_categories c ON c.id = u.category_id
          WHERE u.account_id = ? AND u.purchase_key = ?`
       )

@@ -1,3 +1,5 @@
+import { getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
+import { deleteFlowNote, getFlowNote, setFlowNote, updateFlowNote } from "./flows/flowNotes.js";
 import type { Database } from "better-sqlite3";
 import { expenseKeyKind, isInstallmentContractKind } from "./expenseKeys.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
@@ -43,12 +45,7 @@ export function userDeclinedAutoCategoryForPurchase(
   purchaseKey: string,
   dbHandle: Database = db
 ): boolean {
-  const row = dbHandle
-    .prepare(
-      `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(accountId, purchaseKey) as { notes: string } | undefined;
-  return isUserDeclinedAutoCategoryNote(row?.notes ?? "");
+  return isUserDeclinedAutoCategoryNote(getFlowNote(accountId, purchaseKey, dbHandle) ?? "");
 }
 
 export function markUserDeclinedAutoCategory(
@@ -56,23 +53,9 @@ export function markUserDeclinedAutoCategory(
   purchaseKey: string,
   dbHandle: Database = db
 ): void {
-  const existing = (
-    dbHandle
-      .prepare(
-        `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-      )
-      .get(accountId, purchaseKey) as { notes: string } | undefined
-  )?.notes;
+  const existing = getFlowNote(accountId, purchaseKey, dbHandle);
   const merged = mergeUserDeclinedAutoCategoryNote(existing ?? "");
-  dbHandle
-    .prepare(
-      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes, updated_at)
-       VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET
-         notes = excluded.notes,
-         updated_at = excluded.updated_at`
-    )
-    .run(accountId, purchaseKey, merged);
+  setFlowNote(accountId, purchaseKey, merged, dbHandle);
 }
 
 export function clearUserDeclinedAutoCategory(
@@ -80,26 +63,13 @@ export function clearUserDeclinedAutoCategory(
   purchaseKey: string,
   dbHandle: Database = db
 ): void {
-  const existing = (
-    dbHandle
-      .prepare(
-        `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-      )
-      .get(accountId, purchaseKey) as { notes: string } | undefined
-  )?.notes;
+  const existing = getFlowNote(accountId, purchaseKey, dbHandle);
   const stripped = stripUserDeclinedAutoCategoryNote(existing ?? "");
   if (!stripped) {
-    dbHandle
-      .prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
-      .run(accountId, purchaseKey);
+    deleteFlowNote(accountId, purchaseKey, dbHandle);
     return;
   }
-  dbHandle
-    .prepare(
-      `UPDATE cc_expense_purchase_notes SET notes = ?, updated_at = datetime('now')
-       WHERE account_id = ? AND purchase_key = ?`
-    )
-    .run(stripped, accountId, purchaseKey);
+  updateFlowNote(accountId, purchaseKey, stripped, dbHandle);
 }
 
 export function isInstallmentContractPurchaseKey(purchaseKey: string): boolean {
@@ -251,12 +221,7 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
     };
   }
 
-  const existingUnique = dbHandle
-    .prepare(
-      `SELECT category_id FROM cc_expense_unique_purchases
-       WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(opts.accountId, purchaseKey) as { category_id: number | null } | undefined;
+  const existingUnique = getFlowCategory(opts.accountId, purchaseKey, dbHandle);
 
   if (existingUnique != null) {
     if (existingUnique.category_id == null) {
@@ -301,13 +266,7 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
     throw new Error("additional_card expense category missing; run migrations first");
   }
 
-  dbHandle
-    .prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-    )
-    .run(opts.accountId, purchaseKey, additionalCard.id);
+  putFlowCategory(opts.accountId, purchaseKey, additionalCard.id, "replace", dbHandle);
 
   const autoNote = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
   const existing = getCcExpensePurchaseNote(opts.accountId, purchaseKey);

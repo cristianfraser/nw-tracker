@@ -24,6 +24,7 @@
  * (`isMailRebuiltCheckingNote`), which the gastos and income pages read. The plan names the inputs
  * (mail archive, card and corriente rows) and the categories; the script checks every one of them.
  */
+import { deleteFlowCategory, FLOW_CATEGORIES_SQL } from "../src/flows/flowCategories.js";
 import fs from "node:fs";
 import { db } from "../src/db.js";
 import { setExpenseCategoryRule } from "../src/expenseCategoryRules.js";
@@ -210,12 +211,12 @@ try {
       const key = checkingGastosMovementPurchaseKey(id);
       const had = db
         .prepare(
-          `SELECT c.slug FROM cc_expense_unique_purchases u JOIN cc_expense_categories c ON c.id = u.category_id
+          `SELECT c.slug FROM ${FLOW_CATEGORIES_SQL} u JOIN cc_expense_categories c ON c.id = u.category_id
            WHERE u.account_id = ? AND u.purchase_key = ?`
         )
         .get(plan.corriente_account_id, key) as { slug: string } | undefined;
       if (had) {
-        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(plan.corriente_account_id, key);
+        deleteFlowCategory(plan.corriente_account_id, key);
         rows.push(`  (wire ${id}: category «${had.slug}» cleared — an internal transfer now)`);
       }
     }
@@ -240,7 +241,7 @@ try {
       dropSplits.run(e.ref);
       const had = db
         .prepare(
-          `SELECT COALESCE(c.slug, 'unclassified') AS slug FROM cc_expense_unique_purchases u
+          `SELECT COALESCE(c.slug, 'unclassified') AS slug FROM ${FLOW_CATEGORIES_SQL} u
            LEFT JOIN cc_expense_categories c ON c.id = u.category_id WHERE u.account_id = ? AND u.purchase_key = ?`
         )
         .get(plan.card_account_id, resolveCcExpensePurchaseKey(e.ref!)) as { slug: string } | undefined;

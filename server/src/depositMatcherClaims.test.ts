@@ -11,6 +11,8 @@ import { syncCuentaAhorroDepositSplitMirrors, upsertCuentaAhorroDepositSplit } f
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsExpenses.js";
 import { tryAutoLinkExpenseDepositLine } from "./expenseDepositLinks.js";
+import { buildExpenseKey } from "./expenseKeys.js";
+import { deleteDepositLinks, insertDepositLink, selectDepositLinks } from "./test/flowFixtures.js";
 
 const PREFIX = "vitest-deposit-claims";
 const WIRE = "Transf. Internet a otro Bancos";
@@ -90,7 +92,7 @@ beforeAll(() => {
 
 afterEach(() => {
   for (const id of movementIds.splice(0)) {
-    db.prepare(`DELETE FROM expense_deposit_links WHERE deposit_movement_id = ?`).run(id);
+    deleteDepositLinks("deposit_movement_id = ?", id);
     db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`).run(id);
     db.prepare(`DELETE FROM cuenta_ahorro_deposit_splits WHERE deposit_movement_id = ?`).run(id);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -197,11 +199,24 @@ describe("ahorro split mirrors", () => {
     )?.amount_clp;
   }
   function link(depositId: number, purchaseKey: string, amount: number): void {
-    db.prepare(
-      `INSERT INTO expense_deposit_links
-         (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
-       VALUES (?, ?, ?, ?, ?, 'auto')`
-    ).run(corrienteId, purchaseKey, depositId, amount, amount);
+    insertDepositLink({
+      account_id: corrienteId!,
+      purchase_key: purchaseKey,
+      deposit_movement_id: depositId,
+      payment_clp: amount,
+      amortization_clp: amount,
+      link_source: "auto",
+    });
+  }
+  /** A checking debit's key (the link must name a row). */
+  function debitKey(amount: number): string {
+    const id = insertMovement(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '2099-07-20', ?)`,
+      corrienteId,
+      -amount,
+      `${PREFIX}-debit`
+    );
+    return buildExpenseKey({ kind: "checking_mv", movementId: id, portion: "deposit" });
   }
 
   it("mirror only the self-funded pesos no real checking link explains", () => {
@@ -211,15 +226,18 @@ describe("ahorro split mirrors", () => {
     syncCuentaAhorroDepositSplitMirrors();
     expect(mirrorAmount(deposit)).toBe(300_000);
 
-    link(deposit, `${PREFIX}:partial`, 100_000);
+    link(deposit, debitKey(100_000), 100_000);
     syncCuentaAhorroDepositSplitMirrors();
     expect(mirrorAmount(deposit)).toBe(200_000);
 
-    link(deposit, "synthetic-checking-gap-mirror:987654321", 200_000);
+    const mirrorId = (db.prepare(`SELECT id FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`).get(deposit) as {
+      id: number;
+    }).id;
+    link(deposit, buildExpenseKey({ kind: "gap_mirror", mirrorId }), 200_000);
     syncCuentaAhorroDepositSplitMirrors();
     expect(mirrorAmount(deposit)).toBe(200_000);
 
-    link(deposit, `${PREFIX}:rest`, 200_000);
+    link(deposit, debitKey(200_000), 200_000);
     syncCuentaAhorroDepositSplitMirrors();
     expect(mirrorAmount(deposit)).toBeUndefined();
   });
@@ -245,9 +263,7 @@ describe("twin deposits are two claims", () => {
   }
   function linkedPurchaseKeys(depositId: number): string[] {
     return (
-      db.prepare(`SELECT purchase_key FROM expense_deposit_links WHERE deposit_movement_id = ?`).all(depositId) as {
-        purchase_key: string;
-      }[]
+      selectDepositLinks("deposit_movement_id = ?", depositId)
     ).map((r) => r.purchase_key);
   }
 

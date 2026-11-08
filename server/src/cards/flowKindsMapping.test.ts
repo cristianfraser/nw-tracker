@@ -50,7 +50,13 @@ describe("flow kinds", () => {
     expect(checkingIncome).toEqual(income);
   });
 
+  it("spending with no card line has kinds of its own", () => {
+    expect(flowKindClass("purchase")).toBe("spending");
+    expect(flowKindClass("refund")).toBe("spending");
+    expect(CARD_LINE_KINDS as readonly string[]).not.toContain("purchase");
+  });
+
   it("an unknown kind throws", () => {
-    expect(() => flowKindClass("purchase")).toThrow(/Unknown flow kind/);
+    expect(() => flowKindClass("shopping")).toThrow(/Unknown flow kind/);
   });
 });

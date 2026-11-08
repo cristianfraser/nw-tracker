@@ -62,7 +62,7 @@ function cleanupFixtureAccount(accountId: number): void {
   ).run(accountId);
   db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
   db.prepare(`DELETE FROM expense_category_rules WHERE vendor LIKE 'VITEST%'`).run();
-  db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(accountId);
 }
 
 describe("ccExpenseCategoryPersist", () => {

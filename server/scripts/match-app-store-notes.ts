@@ -11,6 +11,7 @@
  * something else stays; when the charge's link rests on a receipt and the note does not mention
  * the app, « · <label>» is appended. A note on a charge with no link is left alone.
  */
+import { deleteFlowNote, getFlowNote, updateFlowNote } from "../src/flows/flowNotes.js";
 import { db } from "../src/db.js";
 import { deriveMerchantChargeLinks } from "../src/merchantExpenseNotes.js";
 
@@ -24,11 +25,12 @@ console.log(`${result.links.length} App Store charge(s) named: ${receipt} by a r
 for (const u of result.unresolved) console.log(`  app not named: receipt ${u.issued_on} — ${u.products.join(", ")}`);
 
 if (prune) {
-  const noteOf = db.prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`);
-  const del = db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`);
-  const set = db.prepare(
-    `UPDATE cc_expense_purchase_notes SET notes = ?, updated_at = datetime('now') WHERE account_id = ? AND purchase_key = ?`
-  );
+  const noteOf = { get: (accountId: number, key: string) => {
+    const notes = getFlowNote(accountId, key);
+    return notes == null ? undefined : { notes };
+  } };
+  const del = { run: (accountId: number, key: string) => deleteFlowNote(accountId, key) };
+  const set = { run: (notes: string, accountId: number, key: string) => updateFlowNote(accountId, key, notes) };
   let deleted = 0;
   let appended = 0;
   let kept = 0;

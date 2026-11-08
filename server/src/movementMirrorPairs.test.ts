@@ -1,7 +1,9 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { convertMirrorPairs } from "./movementMirrorConvert.js";
 import { listMirrorPairCandidates, resolveMirrorPairRef, type MirrorPairCandidate } from "./movementMirrorPairs.js";
+import { deleteDepositLinks, insertDepositLink } from "./test/flowFixtures.js";
 
 const NOTE = "vitest-mirror-pairs";
 
@@ -62,7 +64,7 @@ function pairFor(pairs: MirrorPairCandidate[], outId: number): MirrorPairCandida
 function cleanup() {
   db.prepare(`DELETE FROM movement_mirror_pair_rejections WHERE out_movement_id IN (
     SELECT id FROM movements WHERE note LIKE 'vitest-mirror%')`).run();
-  db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key = 'vitest-mirror-link'`).run();
+  deleteDepositLinks(`deposit_movement_id IN (SELECT id FROM movements WHERE note LIKE 'vitest-mirror%')`);
   db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id IN (
     SELECT m.flow_id FROM movements m JOIN accounts a ON a.id = m.account_id WHERE a.name LIKE 'vitest-mirror-%')`).run();
   db.prepare(`DELETE FROM movements WHERE note LIKE 'vitest-mirror%'`).run();
@@ -222,13 +224,17 @@ describe("listMirrorPairCandidates", () => {
     }
   });
 
-  it("a deposit already in expense_deposit_links is not a candidate", () => {
+  it("a deposit already linked is not a candidate", () => {
     const out = insLeg(ids.generic, -AMT.linked, "2026-03-30");
     const dep = insLeg(ids.generic2, AMT.linked, "2026-03-30");
-    db.prepare(
-      `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
-       VALUES (?, 'vitest-mirror-link', ?, ?, 0, 'auto')`
-    ).run(ids.generic2, dep, AMT.linked);
+    insertDepositLink({
+      account_id: ids.generic2,
+      purchase_key: `checking-mv:${out}`,
+      deposit_movement_id: dep,
+      payment_clp: AMT.linked,
+      amortization_clp: 0,
+      link_source: "auto",
+    });
     expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
   });
 
@@ -273,24 +279,26 @@ describe("listMirrorPairCandidates", () => {
     });
   });
 
-  describe("link-established pairs (expense_deposit_links)", () => {
+  describe("link-established pairs (deposit links)", () => {
     const key = () => `checking-cartola:${ids.checking}:2026-05:2026-05-12:-6161617:0`;
     const cartolaNote = "import:cartola|2026-05|Ag|Transf a fondo|on:2026-05-12|amt:-6161617|idx:0";
 
     function cleanupLinks() {
-      db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key LIKE ?`).run(
-        `checking-cartola:${ids.checking}:%`
-      );
+      deleteDepositLinks("purchase_key LIKE ?", `checking-cartola:${ids.checking}:%`);
     }
 
     it("a 1:1 auto link becomes a high-confidence linked candidate; conversion cascades the link", () => {
       cleanupLinks();
       const out = insLeg(ids.checking, -6_161_617, "2026-05-12", null, cartolaNote);
       const dep = insLeg(ids.fund, 6_161_617, "2026-05-14", 3.21, NOTE);
-      db.prepare(
-        `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
-         VALUES (?, ?, ?, 6161617, 0, 'auto')`
-      ).run(ids.fund, key(), dep);
+      insertDepositLink({
+        account_id: ids.fund,
+        purchase_key: key(),
+        deposit_movement_id: dep,
+        payment_clp: 6161617,
+        amortization_clp: 0,
+        link_source: "auto",
+      });
       try {
         const p = pairFor(listMirrorPairCandidates(), out);
         expect(p).toBeDefined();
@@ -309,12 +317,10 @@ describe("listMirrorPairCandidates", () => {
       const multiKey = `checking-cartola:${ids.checking}:2026-05:2026-05-20:-7171717:0`;
       const depA = insLeg(ids.fund, 4_000_000, "2026-05-21", null, NOTE);
       const depB = insLeg(ids.fund2, 3_171_717, "2026-05-21", null, NOTE);
-      const ins = db.prepare(
-        `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
-         VALUES (?, ?, ?, ?, 0, 'auto')`
-      );
-      ins.run(ids.fund, multiKey, depA, 4_000_000);
-      ins.run(ids.fund2, multiKey, depB, 3_171_717);
+      const ins = (account_id: number, deposit_movement_id: number, payment_clp: number) =>
+        insertDepositLink({ account_id, purchase_key: multiKey, deposit_movement_id, payment_clp, amortization_clp: 0, link_source: "auto" });
+      ins(ids.fund, depA, 4_000_000);
+      ins(ids.fund2, depB, 3_171_717);
       try {
         // Two deposits on one outflow: no 1:1 transfer representation.
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
@@ -333,7 +339,7 @@ describe("listMirrorPairCandidates", () => {
       (db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ?`).get(slug) as { id: number }).id;
 
     function cleanupEvidence() {
-      db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key LIKE ?`).run(
+      db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key LIKE ?)`).run(
         `checking-cartola:${ids.checking}:%`
       );
       db.prepare(
@@ -344,9 +350,7 @@ describe("listMirrorPairCandidates", () => {
         `DELETE FROM flow_income_overrides WHERE flow_id IN (
            SELECT flow_id FROM movements WHERE account_id IN (?, ?))`
       ).run(ids.checking, ids.vista);
-      db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key LIKE ?`).run(
-        `checking-cartola:${ids.checking}:%`
-      );
+      deleteDepositLinks("purchase_key LIKE ?", `checking-cartola:${ids.checking}:%`);
     }
 
     it("a same-day same-amount sibling on the outflow account makes the pair ambiguous and is offered", () => {
@@ -386,18 +390,23 @@ describe("listMirrorPairCandidates", () => {
       insLeg(ids.checking, -3_737_371, "2026-06-15", null, one.note);
       const sibling = insLeg(ids.checking, -3_737_371, "2026-06-15", null, two.note);
       const dep = insLeg(ids.fund, 3_737_371, "2026-06-15");
-      const link = db.prepare(
-        `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
-         VALUES (?, ?, ?, 3737371, 0, ?)`
-      );
       try {
-        link.run(ids.fund, one.key, dep, "auto");
+        insertDepositLink({
+          account_id: ids.fund,
+          purchase_key: one.key,
+          deposit_movement_id: dep,
+          payment_clp: 3737371,
+          amortization_clp: 0,
+          link_source: "auto",
+        });
         let p = listMirrorPairCandidates().find((c) => c.in.movement_id === dep);
         expect(p!.linked).toBe(true);
         expect(p!.confidence).toBe("ambiguous");
         expect(p!.out_alternatives.map((x) => x.leg.movement_id)).toEqual([sibling]);
 
-        db.prepare(`UPDATE expense_deposit_links SET link_source = 'manual' WHERE deposit_movement_id = ?`).run(dep);
+        db.prepare(
+          `UPDATE flow_links SET link_source = 'manual' WHERE kind = 'funded_deposit' AND counterpart_flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
+        ).run(dep);
         p = listMirrorPairCandidates().find((c) => c.in.movement_id === dep);
         expect(p!.confidence).toBe("high");
         expect(p!.out_alternatives).toEqual([]);
@@ -426,17 +435,14 @@ describe("listMirrorPairCandidates", () => {
       const row = cartola(ids.checking, "2026-06-22", -3_333_331, 4);
       const out = insLeg(ids.checking, -3_333_331, "2026-06-22", null, row.note);
       insLeg(ids.vista, 3_333_331, "2026-06-22");
-      const setCategory = db.prepare(
-        `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)
-         ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-      );
+      const setCategory = uniqueCategoryInsert;
       try {
         setCategory.run(ids.checking, row.key, categoryId("deposits"));
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         setCategory.run(ids.checking, row.key, categoryId("others"));
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
 
-        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(row.key);
+        db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(row.key);
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         db.prepare(
           `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 0, ?, 3333331)`

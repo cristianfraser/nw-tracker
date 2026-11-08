@@ -21,6 +21,7 @@
  * - the balance before the first app row is one stand-in credit dated that day;
  * - the account never goes below zero and ends at exactly 0.
  */
+import { deleteFlowCategory } from "../src/flows/flowCategories.js";
 import fs from "node:fs";
 import { db } from "../src/db.js";
 import { markCheckingExpenseRefund } from "../src/checkingExpenseRefunds.js";
@@ -84,7 +85,7 @@ const tx = db.transaction(() => {
   // 2. What the mail build guessed after the first app row goes.
   const guesses = ledger.filter((l) => /^import:mach-mail\|(?:standin|closing)\|/.test(l.note ?? ""));
   for (const g of guesses) {
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(MACH, checkingGastosMovementPurchaseKey(g.id));
+    deleteFlowCategory(MACH, checkingGastosMovementPurchaseKey(g.id));
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(g.id);
     say(`  removed ${g.occurred_on} ${fmt(g.amt).padStart(9)}  ${g.note}`);
   }

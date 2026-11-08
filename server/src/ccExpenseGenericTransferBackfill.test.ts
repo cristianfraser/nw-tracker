@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { backfillGenericTransferUniquePurchases } from "./ccExpenseGenericTransferBackfill.js";
@@ -35,7 +36,7 @@ describe("backfillGenericTransferUniquePurchases", () => {
     if (!ctx) return;
     const purchaseKey = stableCcExpensePurchaseKeyFromCtx(ctx);
     db.prepare(
-      `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
     ).run(row.account_id, purchaseKey);
 
     const { inserted } = backfillGenericTransferUniquePurchases();
@@ -43,7 +44,7 @@ describe("backfillGenericTransferUniquePurchases", () => {
 
     const has = db
       .prepare(
-        `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `SELECT 1 AS o FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
       )
       .get(row.account_id, purchaseKey);
     expect(has).toBeTruthy();

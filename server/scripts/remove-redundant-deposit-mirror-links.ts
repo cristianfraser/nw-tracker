@@ -25,6 +25,7 @@ import { db } from "../src/db.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import { buildDepositsReconciliationPayload } from "../src/flowsDepositsReconciliation.js";
 import { EXPENSE_KEY_PREFIXES, expenseKeyKind } from "../src/expenseKeys.js";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "../src/flows/flowLinks.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -50,7 +51,7 @@ function readState(): State {
   const links = new Set(
     (
       db
-        .prepare(`SELECT deposit_movement_id, link_source, purchase_key FROM expense_deposit_links`)
+        .prepare(`SELECT deposit_movement_id, link_source, purchase_key FROM ${EXPENSE_DEPOSIT_LINKS_SQL} ORDER BY link_order`)
         .all() as { deposit_movement_id: number; link_source: string; purchase_key: string }[]
     ).map((r) => `deposit ${r.deposit_movement_id}  ${r.link_source}  ${mirrorLabel(r.purchase_key)}`)
   );

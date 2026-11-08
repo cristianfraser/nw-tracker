@@ -1,4 +1,11 @@
 /**
+ * ARCHIVED (F9 step 3, migration 287): reads `cc_expense_purchase_notes` (and
+ * `cc_expense_unique_purchases`), which moved onto the flow tables. A key no row carries no longer
+ * stays in an assignment table: each moving migration put such rows in `flow_orphan_assignments`
+ * (table, key, the row as JSON), and adoption on arrival (step 4) keeps a re-imported line's flow,
+ * so there is nothing left for this repair to find. Kept for the history it documents.
+ */
+/**
  * Moves card-line expense assignments (category «Único» rows, big groups, notes, category splits)
  * that re-imports left on keys no line carries onto the line that is the same purchase today.
  *

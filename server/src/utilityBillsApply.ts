@@ -50,6 +50,7 @@ import {
   updateRealEstateExpenseConsumption,
   updateRealEstateExpenseMonthsCovered,
 } from "./realEstateExpenseMatching.js";
+import { BILL_LINKS_SQL } from "./flows/flowLinks.js";
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
 import { addCalendarMonths, normalizeCheckDigitId, daysBetweenIso } from "nw-tracker-contracts";
 
@@ -297,7 +298,7 @@ export function applyUtilityBills(
   let lines = loadGastosLinesForRealEstateMatching();
   const linkOfKey = () =>
     new Map(
-      (db.prepare(`SELECT purchase_key, expense_entry_id FROM real_estate_expense_links`).all() as {
+      (db.prepare(`SELECT purchase_key, expense_entry_id FROM ${BILL_LINKS_SQL} ORDER BY expense_entry_id`).all() as {
         purchase_key: string;
         expense_entry_id: number;
       }[]).map((r) => [r.purchase_key, r.expense_entry_id])

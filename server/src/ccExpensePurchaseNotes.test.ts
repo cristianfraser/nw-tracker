@@ -1,7 +1,7 @@
+import { fixtureMovement } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { db } from "./db.js";
 import {
   enrichFlowLinesWithPurchaseNotes,
   getCcExpensePurchaseNote,
@@ -14,7 +14,8 @@ describe("ccExpensePurchaseNotes", () => {
   it("persists and loads notes by account and purchase_key", () => {
     const accountId = listCreditCardMasterAccountIds()[0];
     if (accountId == null) return;
-    const purchaseKey = `installment-h:${accountId}:2024-06-01:3:MERCHANT`;
+    const dropMovement = fixtureMovement(990_287_001);
+    const purchaseKey = "checking-mv:990287001";
     setCcExpensePurchaseNote({
       accountId,
       purchaseKey,
@@ -23,9 +24,7 @@ describe("ccExpensePurchaseNotes", () => {
     expect(getCcExpensePurchaseNote(accountId, purchaseKey)).toBe("birthday gift");
     setCcExpensePurchaseNote({ accountId, purchaseKey, notes: "" });
     expect(getCcExpensePurchaseNote(accountId, purchaseKey)).toBe("");
-    db.prepare(
-      `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-    ).run(accountId, purchaseKey);
+    dropMovement();
   });
 
   it("persists notes for checking gastos account", () => {
@@ -35,7 +34,8 @@ describe("ccExpensePurchaseNotes", () => {
     } catch {
       return;
     }
-    const purchaseKey = "checking-mv:test-note";
+    const dropMovement = fixtureMovement(990_287_002);
+    const purchaseKey = "checking-mv:990287002";
     setCcExpensePurchaseNote({
       accountId: checkingId,
       purchaseKey,
@@ -43,9 +43,7 @@ describe("ccExpensePurchaseNotes", () => {
     });
     expect(getCcExpensePurchaseNote(checkingId, purchaseKey)).toBe("transfer memo");
     setCcExpensePurchaseNote({ accountId: checkingId, purchaseKey, notes: "" });
-    db.prepare(
-      `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-    ).run(checkingId, purchaseKey);
+    dropMovement();
   });
 
   it("enriches flow lines with purchase_key and purchase_notes", () => {

@@ -282,7 +282,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
   return out;
 }
 
-/** @heavy Classify all net-worth positive inflows against the expense_deposit_links table. */
+/** @heavy Classify all net-worth positive inflows against the deposit links (`funded_deposit` flow links). */
 export function buildDepositsReconciliationPayload(): DepositReconciliationPayload {
   clearFxConversionWarnings();
 

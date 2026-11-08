@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -5,6 +6,7 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
+import { deleteDepositLinks, selectDepositLinks } from "./test/flowFixtures.js";
 
 /**
  * Task: a checking outflow the user manually categorized as `deposits` asserts that a matching
@@ -45,11 +47,7 @@ function insertAssertedWithdrawal(
     .run(checkingId, amountClp, occurredOn, note);
   const purchaseKey = checkingCartolaStablePurchaseKey(checkingId, note, "gastos");
   if (!purchaseKey) throw new Error("fixture purchase key not derivable");
-  db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  ).run(checkingId, purchaseKey, depositsCategoryId);
+  uniqueCategoryInsert.run(checkingId, purchaseKey, depositsCategoryId);
   fixtureKeys.push(purchaseKey);
   return { movementId: Number(ins.lastInsertRowid), purchaseKey };
 }
@@ -102,8 +100,8 @@ describe("manual deposits-category assertions", () => {
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM movements WHERE note LIKE 'import:cartola|%|idx:997400_'`).run();
     for (const key of fixtureKeys) {
-      db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(key);
-      db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key = ?`).run(key);
+      db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(key);
+      deleteDepositLinks("purchase_key = ?", key);
     }
     fixtureKeys.length = 0;
     // Re-sync so no auto link points at deleted movements.
@@ -123,11 +121,7 @@ describe("manual deposits-category assertions", () => {
 
     syncExpenseLinksNow();
 
-    const link = db
-      .prepare(
-        `SELECT deposit_movement_id, link_source FROM expense_deposit_links WHERE purchase_key = ?`
-      )
-      .get(purchaseKey) as { deposit_movement_id: number; link_source: string } | undefined;
+    const link = selectDepositLinks("purchase_key = ?", purchaseKey)[0];
     expect(link?.deposit_movement_id).toBe(depositId);
     expect(link?.link_source).toBe("auto");
 
@@ -153,9 +147,7 @@ describe("manual deposits-category assertions", () => {
 
     syncExpenseLinksNow();
 
-    const link = db
-      .prepare(`SELECT 1 FROM expense_deposit_links WHERE purchase_key = ?`)
-      .get(purchaseKey);
+    const link = selectDepositLinks("purchase_key = ?", purchaseKey)[0];
     expect(link).toBeUndefined();
 
     const payload = buildDepositsReconciliationPayload();
@@ -207,9 +199,7 @@ describe("manual deposits-category assertions", () => {
     const assertion = payload.manual_assertions.find((a) => a.purchase_key === purchaseKey);
     expect(assertion?.status).toBe("asserted_unmatched");
     expect(assertion?.candidate_count).toBe(0);
-    const link = db
-      .prepare(`SELECT 1 FROM expense_deposit_links WHERE purchase_key = ?`)
-      .get(purchaseKey);
+    const link = selectDepositLinks("purchase_key = ?", purchaseKey)[0];
     expect(link).toBeUndefined();
   });
 });

@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
 import {
   checkingCartolaStablePurchaseKey,
@@ -52,11 +53,11 @@ describe("checkingGastosCategoryPersist", () => {
       accountId,
       prefix
     );
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key LIKE ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key LIKE ?)`).run(
       accountId,
       "checking-cartola:%2099-05%"
     );
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key LIKE ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key LIKE ?)`).run(
       accountId,
       "checking-mv:%"
     );
@@ -69,10 +70,9 @@ describe("checkingGastosCategoryPersist", () => {
       .run(accountId, -50_000, "2099-05-10", note);
     const oldId = Number(ins.lastInsertRowid);
 
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)`
-    ).run(accountId, checkingMovementPurchaseKey(oldId), fun.id);
+    // The row answers to its cartola key; the category sits on its flow, which the key keeps when
+    // the row is deleted and imported again under a new id.
+    uniqueCategoryInsert.run(accountId, checkingGastosMovementPurchaseKey(oldId), fun.id);
 
     preserveCheckingGastosCategoriesForCartolaNotes(accountId, prefix);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(oldId);
@@ -91,7 +91,7 @@ describe("checkingGastosCategoryPersist", () => {
     const stableKey = checkingCartolaStablePurchaseKey(accountId, note)!;
     const row = db
       .prepare(
-        `SELECT category_id FROM cc_expense_unique_purchases
+        `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL}
          WHERE account_id = ? AND purchase_key = ?`
       )
       .get(accountId, stableKey) as { category_id: number } | undefined;
@@ -101,53 +101,32 @@ describe("checkingGastosCategoryPersist", () => {
       accountId,
       prefix
     );
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(
       stableKey
     );
   });
 
-  it("migrateCheckingGastosCategoryToStableKey copies legacy row", () => {
+  it("a cartola row's movement-id key names nothing, so no legacy row can be written under it", () => {
     const accountId = testCheckingAccountId();
     const bills = getCcExpenseCategoryBySlug("bills");
     if (accountId == null || !bills) return;
-
     const note = movementNote("2099-06", "Agustinas", "Vitest migrate", "", {
       occurredOn: "2099-06-01",
       amountClp: -1,
       cartolaIndex: 0,
     });
-    const ins = db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-         VALUES (?, ?, 'clp', ?, ?, NULL)`
-      )
-      .run(accountId, -1, "2099-06-01", note);
-    const id = Number(ins.lastInsertRowid);
-    const legacy = checkingMovementPurchaseKey(id);
-    const stable = checkingCartolaStablePurchaseKey(accountId, note)!;
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key IN (?, ?)`).run(
-      accountId,
-      legacy,
-      stable
+    const id = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, -1, 'clp', '2099-06-01', ?)`)
+        .run(accountId, note).lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)`
-    ).run(accountId, legacy, bills.id);
-
-    migrateCheckingGastosCategoryToStableKey(accountId, id, note);
-
-    const row = db
-      .prepare(
-        `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-      )
-      .get(accountId, stable) as { category_id: number } | undefined;
-    expect(row?.category_id).toBe(bills.id);
-
-    db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key IN (?, ?)`).run(
-      legacy,
-      stable
-    );
+    // A flow an earlier row of the same id left keyed would answer instead (ids are reused).
+    db.prepare(`DELETE FROM flows WHERE legacy_key = ?`).run(checkingMovementPurchaseKey(id));
+    try {
+      expect(() => uniqueCategoryInsert.run(accountId, checkingMovementPurchaseKey(id), bills.id)).toThrow(/no expense carries/);
+      expect(migrateCheckingGastosCategoryToStableKey(accountId, id, note)).toBe(0);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+    }
   });
 });

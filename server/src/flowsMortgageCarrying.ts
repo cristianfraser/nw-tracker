@@ -1,6 +1,6 @@
 /**
  * The mortgage carrying (interés + seguros) of every dividendo linked to the property's deposit
- * (`expense_deposit_links` with a depto cuota). The property deposit records the FULL dividendo
+ * (a `funded_deposit` flow link with a depto cuota). The property deposit records the FULL dividendo
  * and the property's P/L counts the carrying as a loss, while gastos already counts it as an
  * expense; so the flows readers that sit beside gastos — the flows overview, the /flows/deposits
  * page, the /flows P/L page — take it out of the deposit and put it back into the P/L. One list,

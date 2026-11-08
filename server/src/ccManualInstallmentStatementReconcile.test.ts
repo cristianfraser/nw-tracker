@@ -1,3 +1,5 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
+import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { listCcFacturadoFinancingLinks } from "./ccFacturadoFinancingLinksDb.js";
@@ -93,9 +95,7 @@ describe("reconcileManualInstallmentPurchasesForStatements", () => {
       merchant,
     });
     expect(manualKey).toBeTruthy();
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)`
-    ).run(accountId, manualKey!, cat.id);
+    uniqueCategoryInsert.run(accountId, manualKey!, cat.id);
 
     const res = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
     expect(res.matched).toBe(1);
@@ -119,7 +119,7 @@ describe("reconcileManualInstallmentPurchasesForStatements", () => {
     db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`).run(lineId);
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key LIKE ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key LIKE ?)`).run(
       accountId,
       `%${suffix}%`
     );
@@ -291,9 +291,7 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
         .run(accountId).lastInsertRowid
     );
     insertFinancingPurchase(linkId, accountId, manualKey);
-    db.prepare(
-      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'vitest twin note')`
-    ).run(accountId, manualKey);
+    setFlowNote(accountId, manualKey, "vitest twin note");
 
     try {
       const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
@@ -302,14 +300,11 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
 
       const pdfKey = `installment-h:${accountId}:2026-06-25:12:544574:MP *MERCADO LIBRE`;
       expect(financingKeys(linkId)).toEqual([pdfKey]);
-      const noteRow = db
-        .prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
-        .get(accountId, pdfKey) as { notes: string } | undefined;
-      expect(noteRow?.notes).toBe("vitest twin note");
+      expect(getFlowNote(accountId, pdfKey)).toBe("vitest twin note");
     } finally {
       db.prepare(`DELETE FROM flow_links WHERE financing_link_id = ?`).run(linkId);
       db.prepare(`DELETE FROM cc_facturado_financing_links WHERE id = ?`).run(linkId);
-      db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(accountId);
     }
   });
 

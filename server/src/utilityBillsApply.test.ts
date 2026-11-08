@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { billLinkPurchaseKey } from "./flows/flowLinks.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { UtilityBill } from "nw-tracker-contracts";
 import { db } from "./db.js";
@@ -174,7 +175,7 @@ describe("applyUtilityBills", () => {
       m3: null,
       expense_account_id: placeId,
     });
-    expect(db.prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`).get(o.expense_entry_id)).toEqual({ purchase_key: key });
+    expect(billLinkPurchaseKey(o.expense_entry_id!)).toBe(key);
 
     // Settled: a resend changes nothing and follows nothing.
     const again = applyUtilityBills({ bills: [{ ...b, message_id: "<another-copy@example.test>" }] }, { todayYmd: "2036-10-21" });

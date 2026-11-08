@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   AUTO_ADDITIONAL_CARD_NOTE_PREFIX,
@@ -107,11 +108,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
     const othersId = getCcExpenseCategoryBySlug("others")?.id;
     expect(othersId).toBeTruthy();
 
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-    ).run(accountId, purchaseKey, othersId);
+    uniqueCategoryInsert.run(accountId, purchaseKey, othersId!);
 
     const result = applyAdditionalCardNoCuentaForLine({
       accountId,
@@ -124,14 +121,14 @@ describe("ccAdditionalCardExpenseMatch", () => {
 
     const row = db
       .prepare(
-        `SELECT c.slug FROM cc_expense_unique_purchases up
+        `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} up
          JOIN cc_expense_categories c ON c.id = up.category_id
          WHERE up.account_id = ? AND up.purchase_key = ?`
       )
       .get(accountId, purchaseKey) as { slug: string } | undefined;
     expect(row?.slug).toBe("others");
 
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`).run(
       accountId,
       purchaseKey
     );

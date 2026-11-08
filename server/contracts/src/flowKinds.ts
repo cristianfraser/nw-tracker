@@ -42,6 +42,10 @@ export const FLOW_KINDS = [
   def("card_purchase", "spending"),
   def("card_refund", "spending"),
   def("installment_cuota", "spending"),
+  /** Spending recorded with no card line (a manual expense: the account it came from is unrecorded). */
+  def("purchase", "spending"),
+  /** Spending that came back off a card (someone paying back a shared expense, a cardholder's repayment). */
+  def("refund", "spending"),
   // income
   def("salary", "income"),
   def("severance", "income"),

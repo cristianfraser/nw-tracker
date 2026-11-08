@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
 import { checkingCartolaStablePurchaseKey, movementNote } from "./checkingCartolaParse.js";
 import {
@@ -68,14 +69,11 @@ describe("backfillCheckingAutoMatchCategories", () => {
       .run(vistaId, 50_000, "2099-11-05", vistaNote);
     const vistaMovementId = Number(vistaIns.lastInsertRowid);
 
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`).run(
       corrienteId,
       purchaseKey
     );
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)`
-    ).run(corrienteId, purchaseKey, depositsCat.id);
+    uniqueCategoryInsert.run(corrienteId, purchaseKey, depositsCat.id);
 
     const movement = movementForCheckingPurchaseKey(corrienteId, purchaseKey);
     expect(movement?.id).toBe(movementId);
@@ -92,14 +90,14 @@ describe("backfillCheckingAutoMatchCategories", () => {
 
     const row = db
       .prepare(
-        `SELECT category_id FROM cc_expense_unique_purchases
+        `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL}
          WHERE account_id = ? AND purchase_key = ?`
       )
       .get(corrienteId, purchaseKey) as { category_id: number | null };
     expect(row.category_id).toBe(checkingCat.id);
 
     db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(movementId, vistaMovementId);
-    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(
+    db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`).run(
       corrienteId,
       purchaseKey
     );

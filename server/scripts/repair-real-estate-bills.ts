@@ -17,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { markCheckingExpenseRefund } from "../src/checkingExpenseRefunds.js";
 import { db } from "../src/db.js";
+import { billLinkPurchaseKey } from "../src/flows/flowLinks.js";
 import {
   assignPurchaseToRealEstateExpense,
   deleteRealEstateExpenseEntry,
@@ -39,11 +40,7 @@ const steps = JSON.parse(readFileSync(planArg.slice("--plan=".length), "utf8")) 
 if (!Array.isArray(steps) || steps.length === 0) throw new Error("plan must be a non-empty array");
 
 function linkOf(entryId: number): string | null {
-  return (
-    (db.prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`).get(entryId) as
-      | { purchase_key: string }
-      | undefined)?.purchase_key ?? null
-  );
+  return billLinkPurchaseKey(entryId);
 }
 
 function describeEntry(entryId: number): string {

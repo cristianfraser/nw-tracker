@@ -6,6 +6,7 @@ import {
 } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
 
 /** Deposit movement ids whose split is pure-family (self_funded_clp = 0) → reconciled with no mirror. */
 export function loadPureFamilyAhorroDepositMovementIds(): Set<number> {
@@ -61,7 +62,7 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
     .prepare(
       `SELECT s.deposit_movement_id, s.self_funded_clp, m.occurred_on, m.note,
               COALESCE((
-                SELECT SUM(l.payment_clp) FROM expense_deposit_links l
+                SELECT SUM(l.payment_clp) FROM ${EXPENSE_DEPOSIT_LINKS_SQL} l
                 WHERE l.deposit_movement_id = s.deposit_movement_id
                   AND l.link_source IN ('auto', 'manual')
                   AND substr(l.purchase_key, 1, ?) != ?

@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL, fixtureCardLine } from "./test/flowFixtures.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { clearExpenseCategoryRule } from "./expenseCategoryRules.js";
 import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
@@ -196,6 +197,8 @@ describe("ccExpenseCategories", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
     const purchaseKey = "line-pr:vitest-traspaso-register";
+    const dropLine = fixtureCardLine(990_289_001);
+    db.prepare(`UPDATE cc_statement_lines SET parser_row_id = 'vitest-traspaso-register' WHERE id = 990289001`).run();
     const modeKeys = new Set<string>();
     try {
       registerGenericUniquePurchaseMode(
@@ -208,7 +211,7 @@ describe("ccExpenseCategories", () => {
       expect(
         db
           .prepare(
-            `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+            `SELECT 1 AS o FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
           )
           .get(accountId, purchaseKey)
       ).toBeUndefined();
@@ -232,14 +235,15 @@ describe("ccExpenseCategories", () => {
       expect(
         db
           .prepare(
-            `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+            `SELECT 1 AS o FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
           )
           .get(accountId, purchaseKey)
       ).toBeTruthy();
     } finally {
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(accountId, purchaseKey);
+      dropLine();
     }
   });
 
@@ -446,7 +450,7 @@ function createMerchantPropagationFixture(tag: string): {
     }
     for (const pk of purchaseKeys) {
       db.prepare(
-        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
       ).run(accountId, pk);
     }
     clearExpenseCategoryRule(merchantKey, null);
@@ -705,13 +709,13 @@ function createMerchantPropagationFixture(tag: string): {
       expect(r.category_slug).toBe("supermarket");
       const up = db
         .prepare(
-          `SELECT 1 FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+          `SELECT 1 FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
         )
         .get(master.id, r.purchase_key);
       expect(up).toBeDefined();
     } finally {
       if (purchaseKeyForCleanup) {
-        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(
+        db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`).run(
           master.id,
           purchaseKeyForCleanup
         );

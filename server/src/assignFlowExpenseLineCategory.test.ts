@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccStatementLineBelongsToCreditCardGroup } from "./ccExpenseCategories.js";
@@ -29,10 +30,10 @@ describe("assignFlowExpenseLineCategory", () => {
     expect(ccResult.merchant_key).toBe("OKM DEPTO");
 
     db.prepare(
-      `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
     ).run(checking.account_id, checkingResult.purchase_key);
     db.prepare(
-      `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
     ).run(cc.account_id!, ccResult.purchase_key);
   });
 

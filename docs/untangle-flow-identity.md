@@ -173,3 +173,65 @@ What the code forced, and why (each change is also in its commit):
   from-legs of mirror-merge transfers out of a month-precision account (the cuenta de ahorro) whose
   outflow event keeps its month-end date while the transfer is dated the checking day, so the old
   account|day|pesos key never matched the «internal by construction» rule it was built for.
+
+## Step 3 as built, part 2 (flow-identity-2a2, 2026-11-08)
+
+- **Deposit links (migration 285)** are `funded_deposit` rows of `flow_links`: the purchase's flow
+  (portion, piece) → the deposit's flow (`counterpart_flow_id`; the claim is the deposit's flow,
+  bug 8), with `payment_clp`, `amortization_clp`, `depto_cuota`, `depto_occurred_on` and
+  `link_source` as link attributes. `flow_links` was rebuilt for the kinds still to come and lost
+  its explicit `id`: the rowid keeps insertion order (the order the old tables were read in) and a
+  re-derivation that rewrites the same links is no change to `withoutChurn`, which compares
+  columns. A deposit link to a movement that is deleted goes with it (a movement-delete trigger:
+  the deposit's flow may outlive its row when a key names it); a merged flow's links point at the
+  survivor. Readers see the old shape through `EXPENSE_DEPOSIT_LINKS_SQL` (`flows/flowLinks.ts`).
+- **Bill links (migration 286)** are `bill` rows of `flow_links` (the purchase's flow, portion,
+  piece → the bill, `counterpart_entry_id`, with `link_source`); a refused pairing is a
+  `flow_link_rejections` row. One bill per purchase and one purchase per bill (two partial unique
+  indexes). Readers see the old shape through `BILL_LINKS_SQL` / `BILL_LINK_REJECTIONS_SQL`
+  (`flows/flowLinks.ts`), ordered as the old tables were read (by bill). **The one bill-move
+  policy** (`moveBillLink`, used by the card-line re-key mover and the cartola mover alike, and by
+  `mergeFlowInto`): the link and its refusals follow the purchase; a target already linked to
+  another bill **throws** — two bills claiming one payment is a conflict a human resolves, never
+  one dropped silently. The card-line mover used to report that conflict and leave both links
+  where they were; the cartola mover already threw. A refusal the target already carries stays.
+  `mergeFlowInto` now moves the merged flow's own `flow_links` and refusals onto the survivor (by
+  row, so the rowid read order stays): before, a link a mover had put on the cartola row's flow was
+  deleted with it when the adoption folded that flow into the daily row's.
+- **Notes (migration 287)** are `flow_notes` rows (flow, portion, piece) that keep the account they
+  were written under (`account_id`): readers still ask by (account, key), and the cleanups of a
+  test or a wiped card delete by account. One module reads and writes them (`flows/flowNotes.ts`:
+  `FLOW_NOTES_SQL` for the old shape, `getFlowNote` / `setFlowNote` / `updateFlowNote` /
+  `deleteFlowNote`); a write names its row by key, so a note can no longer be written on a key that
+  names nothing (it threw nothing before and was never read). The movers move them with
+  `moveKeyedRows` (the card-line mover through its `flowTable`, the manual-plan reconcile with
+  `keep-target`, as before). `mergeFlowInto` now carries the merged flow's notes and big groups
+  (the preferred flow's row wins), for the reason given for links above.
+  `scripts/repair-cc-expense-orphaned-line-keys.ts` read the dropped table: archived (deliverable
+  6), since the moving migrations archive what it looked for.
+- **Kinds (migration 288, deliverable 7):** `FLOW_KINDS` gained `purchase` (spending with no card
+  line: a manual expense) and `refund` (spending that came back off a card). Manual expenses' flows
+  are re-kinded `purchase` and the insert trigger writes it (a database that runs migration 279 after this commit seeds them `purchase` at once, so its 288 report reads 0). No flow takes `refund` yet: the refund
+  mark stays the flow-keyed `flow_refunds` row (it carries the category), and keeping a kind in step
+  with the mark would be a second write for nothing a reader uses; step 4 or F20 can fold it.
+- **Categories (migration 289)** are `flow_categories` rows (flow, portion, piece, the account
+  they were written under, `category_id` — null is «Único» with no category). No `unique_row`
+  flag: the per-line category (`cc_expense_line_categories`) stays a row of the statement line,
+  because it names one line, not a key — four of the copy's 33 sit on cuota lines, whose flow is
+  their plan's, so folding them into the flow would put one cuota's category on every cuota. It is
+  not key-based (it references the line by id with a cascade), so it is not on the «still
+  key-based» list. One module (`flows/flowCategories.ts`: `FLOW_CATEGORIES_SQL`,
+  `getFlowCategory`, `putFlowCategory` with `replace` / `keep` / `coalesce` for the three upserts
+  the callers used, `updateFlowCategory`, `deleteFlowCategory`). Writes on the gastos read path
+  (the generic-transfer and deposit-match «Único» rows) name their row by the line's own key, so
+  they stamp keys and change no payload. Two behaviours moved: the statement re-import's restore
+  skips a snapshot key that no row carries any more (it wrote an orphan nothing read), and
+  converting a line to cuotas writes the plan's category after the plan exists (the key must name
+  it). `migrateCheckingGastosCategoryToStableKey` / `preserveCheckingGastosCategoriesForCartolaNotes`
+  now always find nothing: a cartola row's movement-id key resolves to no row, so no legacy row can
+  sit under it (the category is on the flow its cartola key keeps); the cartola import still calls
+  the latter (not this stream's file).
+- **Ids are reused, keyed flows are not:** `movements` has no AUTOINCREMENT, and a keyed flow
+  outlives its row, so a new movement that takes a deleted row's id answers to the old flow under
+  `checking-mv:<id>` (seen in the test DB, where fixtures reuse ids). Step 4's adoption, or a
+  delete trigger that drops `checking-mv:` keys with their row, must close it.

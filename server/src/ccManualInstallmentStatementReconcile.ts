@@ -1,3 +1,4 @@
+import { deleteFlowCategory, getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { db } from "./db.js";
 import { keyTarget, moveKeyedRows, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
@@ -46,9 +47,7 @@ const delManualPurchase = db.prepare(
   `DELETE FROM cc_installment_purchases WHERE id = ? AND account_id = ? AND source = 'manual'`
 );
 
-const delUniqueByKey = db.prepare(
-  `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-);
+const delUniqueByKey = { run: (account: number, key: string) => deleteFlowCategory(account, key) };
 
 // Purchase-key references that must follow the surviving PDF purchase when a manual twin is
 // deleted (facturado-financing links, purchase notes, big-group assignments). UPDATE OR IGNORE
@@ -71,13 +70,6 @@ function moveFinancingLinks(accountId: number, fromKey: string, toKey: string): 
   return moved;
 }
 
-const updNoteKey = db.prepare(
-  `UPDATE OR IGNORE cc_expense_purchase_notes SET purchase_key = ?
-   WHERE account_id = ? AND purchase_key = ?`
-);
-const delNoteKey = db.prepare(
-  `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-);
 
 const findPdfPlansForLineIdentity = db.prepare(
   `SELECT id, source, purchase_date, total_amount_clp, cuotas_totales, merchant
@@ -197,19 +189,14 @@ function migrateManualPurchaseKeyRefs(
   for (const manualKey of manualKeys) {
     if (!manualKey || manualKey === pdfKey) continue;
     rewritten += moveFinancingLinks(accountId, manualKey, pdfKey);
-    for (const [upd, del] of [[updNoteKey, delNoteKey]] as const) {
-      rewritten += upd.run(pdfKey, accountId, manualKey).changes;
-      del.run(accountId, manualKey);
-    }
-    // Big groups sit on the flow (migration 282); the target's own wins, as before.
+    // Notes and big groups sit on the flow (migrations 287, 282); the target's own wins, as before.
+    if (moveKeyedRows("flow_notes", manualKey, pdfKey, "keep-target")) rewritten += 1;
     if (moveKeyedRows("flow_big_groups", manualKey, pdfKey, "keep-target")) rewritten += 1;
   }
   return rewritten;
 }
 
-const selUniqueCat = db.prepare(
-  `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-);
+const selUniqueCat = { get: (account: number, key: string) => getFlowCategory(account, key) };
 
 const insLineCat = db.prepare(
   `INSERT INTO cc_expense_line_categories (statement_line_id, category_id)
@@ -217,11 +204,9 @@ const insLineCat = db.prepare(
    ON CONFLICT(statement_line_id) DO UPDATE SET category_id = excluded.category_id`
 );
 
-const upsertUniqueCat = db.prepare(
-  `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-   VALUES (?, ?, ?)
-   ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-);
+const upsertUniqueCat = {
+  run: (account: number, key: string, category: number | null) => putFlowCategory(account, key, category, "replace"),
+};
 
 function purchaseIsoFromLineFields(transaction_date: string | null, posting_date: string | null): string | null {
   return (

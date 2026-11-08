@@ -5,6 +5,7 @@
  * link) re-syncs the links here, after it. Reading the expense lines never writes: the sync used to
  * run inside the read pipeline (`flowsExpenses.ts`).
  */
+import { deleteFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { InputError } from "./inputError.js";
 import { db } from "./db.js";
 import {
@@ -90,12 +91,10 @@ export function assignExpenseCategory(target: ExpenseCategoryTarget, opts: Assig
   }
   const keys = [purchaseKey, ...target.siblingPurchaseKeys];
   const delLine = db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`);
-  const delUnique = db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`);
-  const upsertUnique = db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  );
+  const delUnique = { run: (account: number, key: string) => deleteFlowCategory(account, key) };
+  const upsertUnique = {
+    run: (account: number, key: string, category: number | null) => putFlowCategory(account, key, category, "replace"),
+  };
   db.transaction(() => {
     for (const lineId of target.lineCategoryRowIds) delLine.run(lineId);
     if (clearCategory) {

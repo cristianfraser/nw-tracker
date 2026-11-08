@@ -34,6 +34,7 @@
  * « (» and lowercased («Grindr - Gay Dating & Chat» → «grindr»), shortened to an App Store note
  * that name starts with («Tinder Dating App» → «tinder»).
  */
+import { FLOW_NOTES_SQL } from "./flows/flowNotes.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
@@ -181,7 +182,7 @@ function amountsAgree(charge: Charge, price: number, currency: "clp" | "usd", to
 function loadCharges(): Charge[] {
   const rows = findLines({ installmentFlag: 0, merchantPrefixes: ["APPLE.COM", "ITUNES.COM"] });
   const notes = new Map(
-    (db.prepare(`SELECT account_id, purchase_key, notes FROM cc_expense_purchase_notes`).all() as {
+    (db.prepare(`SELECT account_id, purchase_key, notes FROM ${FLOW_NOTES_SQL}`).all() as {
       account_id: number;
       purchase_key: string;
       notes: string;

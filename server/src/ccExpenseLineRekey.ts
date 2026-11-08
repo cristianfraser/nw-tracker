@@ -18,6 +18,7 @@
 import { db } from "./db.js";
 import { keyTarget, moveKeyedRows, TARGET_WHERE, targetParams, type KeyTarget } from "./flows/flowKeyedAssignments.js";
 import { buildExpenseKey } from "./expenseKeys.js";
+import { billLinkedToKey, moveBillLink } from "./flows/flowLinks.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule } from "./expenseCategoryRules.js";
 import {
@@ -202,9 +203,9 @@ type KeyedTable = "cc_expense_unique_purchases" | "cc_expense_purchase_big_group
  */
 type KeyedSpec = { table: KeyedTable; column: string; accountScoped: boolean; flowTable?: string };
 const KEYED_TABLES: KeyedSpec[] = [
-  { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true },
+  { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true, flowTable: "flow_categories" },
   { table: "cc_expense_purchase_big_groups", column: "group_slug", accountScoped: false, flowTable: "flow_big_groups" },
-  { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true },
+  { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true, flowTable: "flow_notes" },
 ];
 
 /** A keyed row of `spec`, by key: read, write, delete, move. */
@@ -279,7 +280,7 @@ function keyedRow(
 }
 
 export type CcLineMoveConflict = {
-  table: KeyedTable | "cc_expense_line_splits" | "real_estate_expense_links";
+  table: KeyedTable | "cc_expense_line_splits";
   from: string;
   to: string;
   stored: unknown;
@@ -318,7 +319,7 @@ export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
       if (keyedRowOps(spec, ref.accountId, key).get()) return true;
     }
   }
-  if (key && db.prepare(`SELECT 1 FROM real_estate_expense_links WHERE purchase_key = ?`).get(key)) {
+  if (key && billLinkedToKey(key) != null) {
     return true;
   }
   return db.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ?`).get(refFlowId(ref)) != null;
@@ -326,32 +327,11 @@ export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
 
 /**
  * Moves the place bill linked to `fromKey` onto `toKey` (and its rejections, so a refused pairing
- * stays refused). A bill pairs with one purchase, so a copy never takes it: the link stays with the
- * line it was made on. A target already linked to another bill is a conflict.
+ * stays refused) under the one bill-move policy ({@link moveBillLink}: a target already linked to
+ * another bill throws). A bill pairs with one purchase, so a copy never takes it.
  */
 function moveRealEstateLink(fromKey: string, toKey: string, out: CcLineMoveApplyResult): void {
-  const stored = db
-    .prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`)
-    .get(fromKey) as { expense_entry_id: number } | undefined;
-  db.prepare(
-    `UPDATE OR IGNORE real_estate_expense_link_rejections SET purchase_key = ? WHERE purchase_key = ?`
-  ).run(toKey, fromKey);
-  if (!stored) return;
-  const current = db
-    .prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`)
-    .get(toKey) as { expense_entry_id: number } | undefined;
-  if (current) {
-    out.conflicts.push({
-      table: "real_estate_expense_links",
-      from: fromKey,
-      to: toKey,
-      stored: stored.expense_entry_id,
-      current: current.expense_entry_id,
-    });
-    return;
-  }
-  db.prepare(`UPDATE real_estate_expense_links SET purchase_key = ? WHERE purchase_key = ?`).run(toKey, fromKey);
-  out.moved.real_estate_expense_links += 1;
+  if (moveBillLink(fromKey, toKey)) out.moved.real_estate_expense_links += 1;
 }
 
 /**

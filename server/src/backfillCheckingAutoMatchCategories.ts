@@ -1,3 +1,4 @@
+import { FLOW_CATEGORIES_SQL, updateFlowCategory } from "./flows/flowCategories.js";
 import type { Database } from "better-sqlite3";
 import { parseExpenseKey } from "./expenseKeys.js";
 import {
@@ -125,17 +126,15 @@ export function backfillCheckingAutoMatchCategories(dbHandle: Database = db): {
   const rows = dbHandle
     .prepare(
       `SELECT account_id, purchase_key, category_id
-       FROM cc_expense_unique_purchases
+       FROM ${FLOW_CATEGORIES_SQL}
        WHERE purchase_key LIKE 'checking-%'
          AND (category_id IS NULL OR category_id IN (?, ?))`
     )
     .all(depositsCat.id, checkingInternalCat.id) as CheckingPurchaseRow[];
 
-  const update = dbHandle.prepare(
-    `UPDATE cc_expense_unique_purchases
-     SET category_id = ?
-     WHERE account_id = ? AND purchase_key = ?`
-  );
+  const update = {
+    run: (category: number | null, account: number, key: string) => updateFlowCategory(account, key, category, dbHandle),
+  };
 
   const depositCandidates = loadDepositMatchCandidates();
   let updated = 0;

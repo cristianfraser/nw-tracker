@@ -29,6 +29,7 @@
  * - the categories of the plan on the purchase lines;
  * - month-end anchors = the running sum of the lines (see step 7), checked day by day.
  */
+import { deleteFlowCategory, FLOW_CATEGORIES_SQL } from "../src/flows/flowCategories.js";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../src/db.js";
@@ -222,10 +223,10 @@ const tx = db.transaction(() => {
     )
     .all() as { id: number; account_id: number; occurred_on: string; amount: number }[];
   const catOf = db.prepare(
-    `SELECT c.slug FROM cc_expense_unique_purchases u LEFT JOIN cc_expense_categories c ON c.id = u.category_id
+    `SELECT c.slug FROM ${FLOW_CATEGORIES_SQL} u LEFT JOIN cc_expense_categories c ON c.id = u.category_id
      WHERE u.account_id = ? AND u.purchase_key = ?`
   );
-  const dropCat = db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`);
+  const dropCat = { run: (account: number, key: string) => deleteFlowCategory(account, key) };
   const dropSplits = db.prepare(`DELETE FROM flow_parts WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`);
   for (const d of debits) {
     const key = checkingGastosMovementPurchaseKey(d.id);

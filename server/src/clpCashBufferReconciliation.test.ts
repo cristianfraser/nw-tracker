@@ -1,3 +1,4 @@
+import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
 import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -7,6 +8,7 @@ import { createPanelAccount } from "./createPanelAccount.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import { seedNavTree } from "./seedNavTree.js";
+import { deleteDepositLinks } from "./test/flowFixtures.js";
 
 /**
  * End-to-end coverage for the generic CLP-cash buffer pattern (e.g. a "Fintual CLP" panel
@@ -84,8 +86,8 @@ function cleanupFixtureRows(): void {
         portion
       );
       if (key) {
-        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(key);
-        db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key = ?`).run(key);
+        db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(key);
+        deleteDepositLinks("purchase_key = ?", key);
       }
     }
   }

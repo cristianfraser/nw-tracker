@@ -38,6 +38,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { PensionMovement } from "nw-tracker-contracts";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "../src/flows/flowLinks.js";
 
 function arg(name: string): string | null {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -303,7 +304,7 @@ function write(): void {
     for (const [table, col] of [
       ["payroll_work_earnings", "movement_id"],
       ["f22_settlements", "movement_id"],
-      ["expense_deposit_links", "deposit_movement_id"],
+      [EXPENSE_DEPOSIT_LINKS_SQL, "deposit_movement_id"],
       ["movement_mirror_merges", "transfer_movement_id"],
     ] as const) {
       const n = (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} IN (${ph})`).get(...oldIds) as { n: number }).n;

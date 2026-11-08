@@ -10,6 +10,15 @@ import {
 } from "./realEstateExpenseMerchants.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import {
+  BILL_LINK_REJECTIONS_SQL,
+  BILL_LINKS_SQL,
+  billLinkPurchaseKey,
+  deleteAutoBillLinks,
+  deleteBillLinkOfEntry,
+  insertBillLink,
+  insertBillRejection,
+} from "./flows/flowLinks.js";
 
 /**
  * Bills pair with FULL payments: an installment-paid bill (TGR contribuciones in 3/6
@@ -65,7 +74,7 @@ export function loadGastosLinesForRealEstateMatching(): FlowCcExpenseLineRow[] {
 export function loadExistingLinks(): Map<number, RealEstateLinkRow> {
   const rows = db
     .prepare(
-      `SELECT expense_entry_id, purchase_key, link_source FROM real_estate_expense_links`
+      `SELECT expense_entry_id, purchase_key, link_source FROM ${BILL_LINKS_SQL} ORDER BY expense_entry_id`
     )
     .all() as RealEstateLinkRow[];
   return new Map(rows.map((r) => [r.expense_entry_id, r]));
@@ -73,7 +82,7 @@ export function loadExistingLinks(): Map<number, RealEstateLinkRow> {
 
 export function loadLinkedPurchaseKeys(): Set<string> {
   const rows = db
-    .prepare(`SELECT purchase_key FROM real_estate_expense_links`)
+    .prepare(`SELECT purchase_key FROM ${BILL_LINKS_SQL}`)
     .all() as { purchase_key: string }[];
   return new Set(rows.map((r) => r.purchase_key));
 }
@@ -81,7 +90,7 @@ export function loadLinkedPurchaseKeys(): Set<string> {
 export function loadAllRejections(): Map<number, Set<string>> {
   const rows = db
     .prepare(
-      `SELECT expense_entry_id, purchase_key FROM real_estate_expense_link_rejections`
+      `SELECT expense_entry_id, purchase_key FROM ${BILL_LINK_REJECTIONS_SQL} ORDER BY expense_entry_id, purchase_key`
     )
     .all() as { expense_entry_id: number; purchase_key: string }[];
   const out = new Map<number, Set<string>>();
@@ -239,7 +248,7 @@ export function findInvalidRealEstateExpenseLinks(
   const out: InvalidRealEstateLink[] = [];
   for (const [entryId, link] of existingLinks) {
     const exp = expById.get(entryId);
-    if (!exp) throw new Error(`real_estate_expense_links: entry ${entryId} is not a place bill`);
+    if (!exp) throw new Error(`bill links: entry ${entryId} is not a place bill`);
     const line = gastosLineByPurchaseKey(link.purchase_key, gastosLines);
     if (!line) {
       out.push({ expense_entry_id: entryId, purchase_key: link.purchase_key, problem: "missing_purchase" });
@@ -259,9 +268,8 @@ export function dropInvalidRealEstateExpenseLinks(
   existingLinks: ReadonlyMap<number, RealEstateLinkRow>
 ): DropInvalidRealEstateLinksResult {
   const invalid = findInvalidRealEstateExpenseLinks(expectations, gastosLines, existingLinks);
-  const del = db.prepare(`DELETE FROM real_estate_expense_links WHERE expense_entry_id = ?`);
   db.transaction(() => {
-    for (const l of invalid) del.run(l.expense_entry_id);
+    for (const l of invalid) deleteBillLinkOfEntry(l.expense_entry_id);
   })();
   return {
     removedOutsideWindow: invalid.filter((l) => l.problem === "outside_window").length,
@@ -280,8 +288,7 @@ export function reconcileRealEstateExpenseLinks(opts?: {
 }): ReconcileRealEstateLinksResult {
   let clearedAutoLinks = 0;
   if (opts?.resetAutoLinks) {
-    const r = db.prepare(`DELETE FROM real_estate_expense_links WHERE link_source = 'auto'`).run();
-    clearedAutoLinks = r.changes;
+    clearedAutoLinks = deleteAutoBillLinks();
   }
 
   const expectations = listRealEstateExpectations();
@@ -329,13 +336,9 @@ export function runAutoLinkPass(
 
 export function persistAutoLinks(links: readonly RealEstateLinkRow[]): void {
   if (links.length === 0) return;
-  const ins = db.prepare(
-    `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
-     VALUES (?, ?, ?)`
-  );
   const tx = db.transaction(() => {
     for (const l of links) {
-      ins.run(l.expense_entry_id, l.purchase_key, l.link_source);
+      insertBillLink(l.expense_entry_id, l.purchase_key, l.link_source);
     }
   });
   tx();
@@ -363,15 +366,9 @@ export function manualLinkRealEstateExpense(
   const linkedKeys = loadLinkedPurchaseKeys();
   if (linkedKeys.has(purchaseKey)) throw new Error("purchase already linked");
 
-  const existing = db
-    .prepare(`SELECT 1 FROM real_estate_expense_links WHERE expense_entry_id = ?`)
-    .get(expenseEntryId);
-  if (existing) throw new Error("expectation already linked");
+  if (billLinkPurchaseKey(expenseEntryId) != null) throw new Error("expectation already linked");
 
-  db.prepare(
-    `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
-     VALUES (?, ?, 'manual')`
-  ).run(expenseEntryId, purchaseKey);
+  insertBillLink(expenseEntryId, purchaseKey, "manual");
 
   return { expense_entry_id: expenseEntryId, purchase_key: purchaseKey, link_source: "manual" };
 }
@@ -436,11 +433,9 @@ export function updateRealEstateExpenseBillMonth(
   if (!exp) throw new Error("expense entry not found");
   if (!/^\d{4}-\d{2}$/.test(billMonth)) throw new Error("bill_month must be YYYY-MM");
 
-  const link = db
-    .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
-    .get(expenseEntryId) as { purchase_key: string } | undefined;
-  if (link) {
-    const line = gastosLineByPurchaseKey(link.purchase_key, loadGastosLinesForRealEstateMatching());
+  const linkedKey = billLinkPurchaseKey(expenseEntryId);
+  if (linkedKey != null) {
+    const line = gastosLineByPurchaseKey(linkedKey, loadGastosLinesForRealEstateMatching());
     if (line && !purchaseMonthMatchesBillSlot(billMonth, purchaseMonthForLine(line))) {
       throw new Error(
         `bill_month ${billMonth} puts the linked purchase (${purchaseMonthForLine(line)}) outside the +0..+2 window`
@@ -522,10 +517,7 @@ export function assignPurchaseToRealEstateExpense(
         opts.m3 ?? null
       );
     entryId = Number(r.lastInsertRowid);
-    db.prepare(
-      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
-       VALUES (?, ?, 'manual')`
-    ).run(entryId, opts.purchaseKey);
+    insertBillLink(entryId, opts.purchaseKey, "manual");
   });
   tx();
 
@@ -543,21 +535,12 @@ export function deleteRealEstateExpenseEntry(expenseEntryId: number): void {
 }
 
 export function unmatchRealEstateExpense(expenseEntryId: number): void {
-  const row = db
-    .prepare(
-      `SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`
-    )
-    .get(expenseEntryId) as { purchase_key: string } | undefined;
-  if (!row) throw new Error("link not found");
+  const purchaseKey = billLinkPurchaseKey(expenseEntryId);
+  if (purchaseKey == null) throw new Error("link not found");
 
   const tx = db.transaction(() => {
-    db.prepare(`DELETE FROM real_estate_expense_links WHERE expense_entry_id = ?`).run(
-      expenseEntryId
-    );
-    db.prepare(
-      `INSERT OR IGNORE INTO real_estate_expense_link_rejections (expense_entry_id, purchase_key)
-       VALUES (?, ?)`
-    ).run(expenseEntryId, row.purchase_key);
+    deleteBillLinkOfEntry(expenseEntryId);
+    insertBillRejection(expenseEntryId, purchaseKey);
   });
   tx();
 }

@@ -1,3 +1,4 @@
+import { deleteFlowNote, FLOW_NOTES_SQL, getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
@@ -22,7 +23,7 @@ export function loadCcExpensePurchaseNotes(accountIds: number[]): Map<string, st
   const rows = db
     .prepare(
       `SELECT account_id, purchase_key, notes
-       FROM cc_expense_purchase_notes
+       FROM ${FLOW_NOTES_SQL}
        WHERE account_id IN (${ph})`
     )
     .all(...accountIds) as { account_id: number; purchase_key: string; notes: string }[];
@@ -33,12 +34,7 @@ export function loadCcExpensePurchaseNotes(accountIds: number[]): Map<string, st
 }
 
 export function getCcExpensePurchaseNote(accountId: number, purchaseKey: string): string {
-  const row = db
-    .prepare(
-      `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(accountId, purchaseKey) as { notes: string } | undefined;
-  return row?.notes ?? "";
+  return getFlowNote(accountId, purchaseKey) ?? "";
 }
 
 export function setCcExpensePurchaseNote(opts: {
@@ -57,19 +53,11 @@ export function setCcExpensePurchaseNote(opts: {
 
   const text = String(opts.notes ?? "").trim();
   if (!text) {
-    db.prepare(
-      `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-    ).run(opts.accountId, purchaseKey);
+    deleteFlowNote(opts.accountId, purchaseKey);
     return { notes: "" };
   }
 
-  db.prepare(
-    `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes, updated_at)
-     VALUES (?, ?, ?, datetime('now'))
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET
-       notes = excluded.notes,
-       updated_at = excluded.updated_at`
-  ).run(opts.accountId, purchaseKey, text);
+  setFlowNote(opts.accountId, purchaseKey, text);
   return { notes: text };
 }
 

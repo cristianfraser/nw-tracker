@@ -1,4 +1,6 @@
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { describe, expect, it } from "vitest";
+import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
@@ -453,11 +455,7 @@ describe("checkingCartolaPartialReconcile", () => {
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, officialNote);
 
-    db.prepare(
-      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-    ).run(accountId, checkingMovementPurchaseKey(partialId), bills.id);
+    uniqueCategoryInsert.run(accountId, checkingMovementPurchaseKey(partialId), bills.id);
 
     const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
       {
@@ -473,7 +471,7 @@ describe("checkingCartolaPartialReconcile", () => {
     const stableKey = `checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`;
     const migrated = db
       .prepare(
-        `SELECT c.slug FROM cc_expense_unique_purchases up
+        `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} up
          JOIN cc_expense_categories c ON c.id = up.category_id
          WHERE up.account_id = ? AND up.purchase_key = ?`
       )
@@ -491,7 +489,7 @@ describe("checkingCartolaPartialReconcile", () => {
       officialNote
     );
     db.prepare(
-      `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
     ).run(accountId, stableKey);
   });
 
@@ -539,19 +537,14 @@ describe("checkingCartolaPartialReconcile", () => {
         )
         .run().lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, ?, 'manual')`
-    ).run(entryId, checkingMovementPurchaseKey(partialId));
+    insertBillLink(entryId, checkingMovementPurchaseKey(partialId), "manual");
 
     try {
       const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
         { occurred_on: occurredOn, amount_clp: amountClp, branch: "Agustinas", description, document_no: "0560112904" },
       ]);
       expect(removed).toBe(1);
-      const link = db
-        .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
-        .get(entryId) as { purchase_key: string } | undefined;
-      expect(link?.purchase_key).toBe(`checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`);
+      expect(billLinkPurchaseKey(entryId)).toBe(`checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`);
     } finally {
       db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
       db.prepare(`DELETE FROM expense_accounts WHERE slug = 'vitest_cartola_place'`).run();

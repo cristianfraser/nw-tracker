@@ -1,3 +1,4 @@
+import { getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { db } from "./db.js";
 import {
   isGenericTransferMerchantKey,
@@ -22,16 +23,15 @@ export function backfillGenericTransferUniquePurchases(): {
   inserted: number;
   merchant_rules_removed: number;
 } {
-  const insertIgnore = db.prepare(
-    `INSERT OR IGNORE INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)`
-  );
+  const insertIgnore = {
+    run: (account: number, key: string, category: number | null) => ({
+      changes: putFlowCategory(account, key, category, "keep") ? 1 : 0,
+    }),
+  };
   const lineCategory = db.prepare(
     `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
   );
-  const hasUnique = db.prepare(
-    `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-  );
+  const hasUnique = { get: (account: number, key: string) => getFlowCategory(account, key) };
 
   let inserted = 0;
   const seen = new Set<string>();
