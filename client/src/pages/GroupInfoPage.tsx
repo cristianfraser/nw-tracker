@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
@@ -19,34 +18,12 @@ import {
   resolveGroupPageApiParams,
   resolveLinkedCardNavChildren,
 } from "../portfolioNavFromApi";
-import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { GROUP_COLD_STRIP } from "../coldPageShape";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
-import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
 import { useTranslation } from "../i18n";
-import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
-import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
-import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
-import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlaceholders";
-import { dashPickForNavStrip } from "../queries/fetchers";
-import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
-import { queryKeys } from "../queries/keys";
-import {
-  isBundleContentLoading,
-  queryShowsLoading,
-  useRealBundleForContent,
-} from "../queries/pageShapeReady";
-import {
-  useAccountsByPortfolioGroup,
-  useDailySeries,
-  useDashboardNavContext,
-  useDashboardNavSnapshot,
-  useHeldNavStrip,
-  useGroupPageShell,
-  usePortfolioGroupBundle,
-  useSidebarNav,
-} from "../queries/hooks";
+import { queryShowsLoading } from "../queries/pageShapeReady";
+import { useDailySeries, useSidebarNav } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../servedDailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
@@ -54,6 +31,7 @@ import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPre
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useMarkUsagePageNotFound } from "../usagePageTiming";
+import { usePortfolioPageData } from "./usePortfolioPageData";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
@@ -97,40 +75,26 @@ export function GroupInfoPage() {
     [navMatchNode, sidebarNav?.main]
   );
 
-  const queryClient = useQueryClient();
-  const shapeEnabled = Boolean(navMatchNode && portfolioGroup);
-  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit, shapeEnabled);
-  const { data: shapeAccounts } = useAccountsByPortfolioGroup(
+  const page = usePortfolioPageData({
     portfolioGroup,
+    navNode: navMatchNode ?? null,
     displayUnit,
-    shapeEnabled
-  );
-
-  const { data: shell } = useGroupPageShell({
-    portfolioGroup,
-    unit: displayUnit,
-    navNode: navMatchNode,
-    enabled: shapeEnabled,
+    pathname,
+    sidebarNav,
+    placeholderFirstMonth: (shellFirstMonth, snapshotFirstMonth) => shellFirstMonth ?? snapshotFirstMonth,
+    shellKeepsFirstChartDate: true,
   });
-
+  const { error } = page.bundle;
+  const { data: navCtx } = page.navCtxQuery;
   const {
-    data,
-    error,
-    isPending: groupPending,
-    isPlaceholderData,
-  } = usePortfolioGroupBundle({
-    portfolio_group: portfolioGroup,
-    unit: displayUnit,
-    enabled: Boolean(navMatchNode && portfolioGroup),
-  });
-
-  useEffect(() => {
-    if (!portfolioGroup) return;
-    void prefetchPortfolioGroupBundle(queryClient, {
-      portfolio_group: portfolioGroup,
-      unit: displayUnit,
-    });
-  }, [queryClient, portfolioGroup, displayUnit]);
+    contentLoading,
+    stripShowUsd,
+    accounts,
+    accountsTreeRoot,
+    stripIsPlaceholder,
+    dashForStrip,
+    resolved,
+  } = page;
 
   const [chartsGrouped, setChartsGrouped] = useState(true);
   const [showValuationDeposits, setShowValuationDeposits] = useState(true);
@@ -139,39 +103,6 @@ export function GroupInfoPage() {
     setChartsGrouped(true);
   }, [pathname]);
 
-  const placeholderFirstMonth = shell?.first_month ?? navSnapshot?.chart_shape?.first_month;
-  const placeholderBundle = useMemo(
-    () =>
-      buildPlaceholderPortfolioGroupBundle(
-        displayUnit,
-        shell?.accounts ?? [],
-        portfolioGroup,
-        placeholderFirstMonth,
-        navMatchNode
-      ),
-    [displayUnit, shell?.accounts, portfolioGroup, placeholderFirstMonth, navMatchNode]
-  );
-  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_proportional);
-  const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
-  const contentLoading = isBundleContentLoading({
-    isPending: groupPending,
-    isPlaceholderData,
-    bundleReady,
-  });
-
-  // The strip's own request, beside the page's: it waits for nothing the page loads.
-  const navCtxEnabled = pathnameUsesDashboardNavContext(pathname);
-  const {
-    data: navCtx,
-    isPending: navCtxPending,
-    isPlaceholderData: navCtxHeld,
-  } = useDashboardNavContext(displayUnit, navMatchNode?.slug ?? null, navCtxEnabled);
-  // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
-  // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
-  // in THEIR unit, and flips to the new values once they land — never a blank strip.
-  const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navMatchNode?.slug ?? null);
-  const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
   // The value map replaces the composition chart when this page's node has something to tile
   // (sub-groups or its own accounts); only the real nav-context payload carries it (a cached
   // snapshot's values are placeholders).
@@ -191,53 +122,8 @@ export function GroupInfoPage() {
   );
   const valueMapShown = valueMapEligible && compositionView.view === "map";
   // The map comes from nav-context, not the bundle: dim while that payload is not this unit's yet.
-  const valueMapLoading = navCtxPending || navCtxHeld;
+  const valueMapLoading = queryShowsLoading(page.navCtxQuery);
 
-  const accounts =
-    useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
-
-  const accountsTreeRoot = useMemo(
-    () => (navMatchNode ? enrichNavTreeWithAllAccounts(navMatchNode, accounts) : null),
-    [navMatchNode, accounts]
-  );
-
-  useEffect(() => {
-    if (!bundleReady || !data || !navMatchNode || !navCtx || !portfolioGroup) return;
-    const firstChartDate = data.ts.accounts_in_group?.points[0]?.as_of_date;
-    const nextShell = extractGroupPageShellFromReal(
-      data.accounts,
-      navCtx.accounts,
-      navMatchNode,
-      typeof firstChartDate === "string" ? firstChartDate : undefined
-    );
-    writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
-    queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
-  }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);
-
-  // No snapshot yet: nav-context alone, else a zero strip from the sidebar nav (cold cache).
-  const placeholderStripDash = useMemo(
-    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
-    [sidebarNav, displayUnit]
-  );
-  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx && !heldStrip;
-  const dashForStrip = useMemo(() => {
-    if (!navMatchNode) return null;
-    if (heldStrip) return heldStrip.dash;
-    if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
-    const accountsForDash = navCtx ? navCtx.accounts : navSnapshot.accounts;
-    return dashPickForNavStrip(
-      {
-        accounts: accountsForDash,
-        liabilities_breakdown:
-          navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
-        dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
-        nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
-        card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
-      }
-    );
-  }, [navMatchNode, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
-
-  const resolved = useRealBundle && data ? data : placeholderBundle;
 
   const tableAccounts = useMemo(
     () => accounts,

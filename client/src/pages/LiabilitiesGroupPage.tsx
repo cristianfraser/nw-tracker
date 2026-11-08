@@ -1,5 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
@@ -20,39 +19,24 @@ import {
   findBestNavNodeForPathname,
   resolveLinkedCardNavChildren,
 } from "../portfolioNavFromApi";
-import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { GROUP_COLD_STRIP } from "../coldPageShape";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
-import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
-import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
-import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
-import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
-import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlaceholders";
 import { emptyCcLedger, emptyMortgageLedger } from "../placeholders/accountDetailPlaceholders";
-import { dashPickForNavStrip } from "../queries/fetchers";
-import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
-import { queryKeys } from "../queries/keys";
-import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { timeRangeToDays } from "../timeRange";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import {
   useAccountMonthlyPerformance,
-  useAccountsByPortfolioGroup,
   useDailySeries,
-  useDashboardNavContext,
-  useDashboardNavSnapshot,
-  useHeldNavStrip,
-  useGroupPageShell,
-  usePortfolioGroupBundle,
   usePortfolioGroupCcLedger,
   usePortfolioGroupMortgageLedger,
   useSidebarNav,
 } from "../queries/hooks";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { usePortfolioPageData } from "./usePortfolioPageData";
 
 /** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
 export function LiabilitiesGroupPage() {
@@ -85,7 +69,6 @@ export function LiabilitiesGroupPage() {
     [navMatchNode]
   );
 
-  const queryClient = useQueryClient();
   const portfolioGroup =
     navMatchNode?.slug ??
     (categoryFilter === "credit_card"
@@ -94,12 +77,6 @@ export function LiabilitiesGroupPage() {
         ? "liabilities_mortgage"
         : "liabilities");
   const shapeEnabled = Boolean(navMatchNode);
-  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit, shapeEnabled);
-  const { data: shapeAccounts } = useAccountsByPortfolioGroup(
-    portfolioGroup,
-    displayUnit,
-    shapeEnabled
-  );
 
   // Per-surface control for the Pasivos valuation chart (persisted per liabilities scope).
   const valuationPrefs = useSurfacePrefs(`liab.${portfolioGroup}.valuation`, "day", "3y");
@@ -112,23 +89,28 @@ export function LiabilitiesGroupPage() {
   );
   const proportionalIsDaily = proportionalPrefs.period === "day";
 
-  const { data: shell } = useGroupPageShell({
-    portfolioGroup,
-    unit: displayUnit,
-    navNode: navMatchNode,
-    enabled: shapeEnabled,
-  });
 
-  const {
-    data,
-    error: queryError,
-    isPending: groupPending,
-    isPlaceholderData,
-  } = usePortfolioGroupBundle({
-    portfolio_group: portfolioGroup,
-    unit: displayUnit,
-    enabled: Boolean(navMatchNode),
+  const page = usePortfolioPageData({
+    portfolioGroup,
+    navNode: navMatchNode ?? null,
+    displayUnit,
+    pathname,
+    sidebarNav,
+    placeholderFirstMonth: () => undefined,
+    shellKeepsFirstChartDate: false,
   });
+  const { data, error: queryError } = page.bundle;
+  const { data: navCtx } = page.navCtxQuery;
+  const {
+    navSnapshot,
+    contentLoading,
+    stripShowUsd,
+    accounts,
+    accountsTreeRoot,
+    stripIsPlaceholder,
+    dashForStrip,
+    resolved,
+  } = page;
 
   const ccLedgerSlug =
     pageKind === "pasivos_root" || pageKind === "credit_card" ? portfolioGroup : undefined;
@@ -148,83 +130,6 @@ export function LiabilitiesGroupPage() {
   // A section mounts while its ledger loads (empty ledger, dimmed); a failed fetch leaves it out.
   const ccLedgerPending = ccLedgerSlug != null && ccLedgerQueryPending;
   const mortgageLedgerPending = mortgageLedgerSlug != null && mortgageLedgerQueryPending;
-
-  useEffect(() => {
-    if (!navMatchNode) return;
-    void prefetchPortfolioGroupBundle(queryClient, {
-      portfolio_group: portfolioGroup,
-      unit: displayUnit,
-    });
-  }, [queryClient, navMatchNode, portfolioGroup, displayUnit]);
-
-  const placeholderBundle = useMemo(
-    () =>
-      buildPlaceholderPortfolioGroupBundle(
-        displayUnit,
-        shell?.accounts ?? [],
-        portfolioGroup,
-        undefined,
-        navMatchNode
-      ),
-    [displayUnit, shell?.accounts, portfolioGroup, navMatchNode]
-  );
-  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_proportional);
-  const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
-  const contentLoading = isBundleContentLoading({
-    isPending: groupPending,
-    isPlaceholderData,
-    bundleReady,
-  });
-
-  // The strip's own request, beside the page's: it waits for nothing the page loads.
-  const navCtxEnabled = pathnameUsesDashboardNavContext(pathname);
-  const { data: navCtx } = useDashboardNavContext(displayUnit, navMatchNode?.slug ?? null, navCtxEnabled);
-  // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
-  // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
-  // in THEIR unit, and flips to the new values once they land — never a blank strip.
-  const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navMatchNode?.slug ?? null);
-  const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
-
-  const accounts =
-    useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
-
-  const accountsTreeRoot = useMemo(
-    () => (navMatchNode ? enrichNavTreeWithAllAccounts(navMatchNode, accounts) : null),
-    [navMatchNode, accounts]
-  );
-
-  useEffect(() => {
-    if (!bundleReady || !data || !navMatchNode || !navCtx) return;
-    const nextShell = extractGroupPageShellFromReal(data.accounts, navCtx.accounts, navMatchNode);
-    writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
-    queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
-  }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);
-
-  // No snapshot yet: nav-context alone, else a zero strip from the sidebar nav (cold cache).
-  const placeholderStripDash = useMemo(
-    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
-    [sidebarNav, displayUnit]
-  );
-  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx && !heldStrip;
-  const dashForStrip = useMemo(() => {
-    if (!navMatchNode) return null;
-    if (heldStrip) return heldStrip.dash;
-    if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
-    const accountsForDash = navCtx ? navCtx.accounts : navSnapshot.accounts;
-    return dashPickForNavStrip(
-      {
-        accounts: accountsForDash,
-        liabilities_breakdown:
-          navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
-        dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
-        nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
-        card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
-      }
-    );
-  }, [navMatchNode, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
-
-  const resolved = useRealBundle && data ? data : placeholderBundle;
 
   const tableAccountsForPerf = useMemo(
     () =>
