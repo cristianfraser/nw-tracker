@@ -27,14 +27,13 @@
  *   npx tsx scripts/remove-cc-intl-extraction-artifacts.ts            # report only
  *   npx tsx scripts/remove-cc-intl-extraction-artifacts.ts --apply
  */
+import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant, RE_USD_SECTION3 } from "nw-tracker-contracts";
 import { db } from "../src/db.js";
 import {
   earliestTransactionDateForLineIds,
 } from "../src/ccCrossImportDedupe.js";
 import { deleteLines } from "../src/cards/lineWrites.js";
-import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "../src/ccPaymentLines.js";
 import { isGarbledUsdStatementMerchant } from "../src/ccStatementSection3.js";
-import { RE_USD_SECTION3 } from "../src/ccStatementLineRules.js";
 
 const apply = process.argv.includes("--apply");
 

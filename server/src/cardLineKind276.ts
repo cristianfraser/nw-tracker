@@ -1,5 +1,5 @@
+import { cardLineKind } from "nw-tracker-contracts";
 import type { Database as DatabaseType } from "better-sqlite3";
-import { cardLineKind } from "./cards/lineKinds.js";
 
 /**
  * `cc_line_kind(installment_flag, merchant, amount_clp, amount_usd, statement_currency)`: the one

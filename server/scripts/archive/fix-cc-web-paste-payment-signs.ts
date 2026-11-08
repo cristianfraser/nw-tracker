@@ -2,8 +2,8 @@
  * Web paste stored PAGO / payments as positive charges (Math.abs).
  * DB convention: charges positive, payments negative (same as PDF MONTO CANCELADO).
  */
+import { isCcPaymentMerchant } from "nw-tracker-contracts";
 import { db } from "../../src/db.js";
-import { isCcPaymentMerchant } from "../../src/ccPaymentLines.js";
 import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
 
 const rows = db

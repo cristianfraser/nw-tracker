@@ -10,8 +10,7 @@ import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedger
 import { isInstallmentContractPurchaseKey } from "./ccAdditionalCardExpenseMatch.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
-import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
-import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
+import { parseDdMmYyToIso, normalizeMerchantText, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
 import { buildExpenseKey, parseExpenseKey } from "./expenseKeys.js";
 
 /** Asset group slug for `GET /api/flows/expenses/credit-card` (every card). */

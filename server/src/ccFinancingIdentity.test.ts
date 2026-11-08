@@ -5,6 +5,7 @@
  * is the oracle here, read straight from the statements of each facturación (dollars at the
  * facturación's debt rate), so the two sources cannot drift apart unnoticed.
  */
+import { isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { snapshotTables } from "./test/snapshotTables.js";
@@ -13,7 +14,6 @@ import { ccSection3FinancingClpByDate } from "./ccFinancingCostDaily.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
-import { isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "./ccStatementSection3.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { fxRowOnOrBefore } from "./fxRates.js";

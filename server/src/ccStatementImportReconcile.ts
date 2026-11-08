@@ -7,19 +7,14 @@ import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
-import {
-  classifyCcStatementLine,
-  isCcTraspasoDeudaMerchant,
-  isGarbledUsdStatementMerchant,
-} from "./ccStatementSection3.js";
+import { classifyCcStatementLine, isGarbledUsdStatementMerchant } from "./ccStatementSection3.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import {
   currencyFromRow,
   statementKeyFromRow,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
-import { parseOptionalChileanInteger, parseChileanNumber } from "nw-tracker-contracts";
+import { parseOptionalChileanInteger, parseChileanNumber, isCcPaymentMerchant, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;

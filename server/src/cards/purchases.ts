@@ -29,10 +29,9 @@ import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "../ccInstallmentLineDedupe.js";
-import { isCcPaymentMerchant } from "../ccPaymentLines.js";
 import { statementLineDateIso } from "../ccInstallmentPayBy.js";
 import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch } from "../matching/installmentAmount.js";
-import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix } from "nw-tracker-contracts";
+import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix, isCcPaymentMerchant } from "nw-tracker-contracts";
 import { paymentStatementMonthYm } from "./statementMonth.js";
 import { billingMonthContainingPurchase, lastPdfBillingMonthForAccount } from "./facturacion.js";
 

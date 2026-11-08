@@ -5,7 +5,7 @@
  * the predicate layer separate makes the classification rules independently testable and
  * keeps regex knowledge out of the matcher.
  */
-import { daysBetweenIso } from "nw-tracker-contracts";
+import { daysBetweenIso, isCcPaymentMerchant } from "nw-tracker-contracts";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import {
   isCheckingPartialWithdrawalNote,
@@ -17,7 +17,6 @@ import {
   normalizeCcExpenseMerchantKey,
 } from "./ccExpenseCategories.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import { bankDescriptionMatchesUnion, bankDescriptionPattern } from "./cards/bankDescriptions.js";
 import { DAP_ABONO_RULES } from "./cards/bankDescriptionRules.js";
 

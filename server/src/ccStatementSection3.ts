@@ -1,57 +1,14 @@
-import { ccCardRegistry } from "./ccCardRegistry.js";
-import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import {
   BCI_SECTION3_LAYOUTS,
-  CC_TRASPASO_DEUDA_TOKENS,
   MID_PERIOD_PAYMENT_LAYOUTS,
-  RE_CLP_SECTION3_CHARGE,
   RE_USD_GARBLED_MERCHANT,
-  RE_USD_SECTION3,
   SECTION3_CHARGE_LAYOUTS,
   USD_GARBLED_MERCHANT_MARKERS,
-} from "./ccStatementLineRules.js";
-
-export { RE_CLP_SECTION3_CHARGE, RE_USD_SECTION3 };
-
-/** USD debt rolled into CLP balance — section 3 for PDF reconcile, not financing cost. */
-export function isCcTraspasoDeudaMerchant(merchant: string | null | undefined): boolean {
-  const m = String(merchant ?? "").trim().toUpperCase();
-  return CC_TRASPASO_DEUDA_TOKENS.every((tok) => m.includes(tok));
-}
-
-export function isClpSection3Merchant(merchant: string | null): boolean {
-  const m = String(merchant ?? "").trim();
-  if (isCcPaymentMerchant(m)) return false;
-  return RE_CLP_SECTION3_CHARGE.test(m);
-}
-
-/**
- * Section 3 of an international statement. Payments (PAGO, MONTO CANCELADO, ABONO) stay out: on
- * the legacy USD format the printed section-3 total excludes the MONTO CANCELADO rows — they sit
- * in the header's «ABONO REALIZADO» — so counting them failed the parse-time cargos check on
- * three legacy statements. «ABONO DE DIVISAS» does belong to section 3.
- */
-export function isUsdSection3Merchant(merchant: string | null, amountUsd: number): boolean {
-  const m = String(merchant ?? "").trim().toUpperCase();
-  if (!m) return false;
-  if (isCcUsdDebtAbonoMerchant(m)) return true;
-  if (isCcPaymentMerchant(m)) return false;
-  if (amountUsd <= 0) return true;
-  return RE_USD_SECTION3.test(m);
-}
-
-export function isClpSection3FinancingChargeMerchant(merchant: string | null): boolean {
-  if (isCcTraspasoDeudaMerchant(merchant)) return false;
-  return isClpSection3Merchant(merchant);
-}
-
-export function isUsdSection3FinancingChargeMerchant(
-  merchant: string | null,
-  amountUsd: number
-): boolean {
-  if (isCcTraspasoDeudaMerchant(merchant)) return false;
-  return isUsdSection3Merchant(merchant, amountUsd);
-}
+  isCcPaymentMerchant,
+  isClpSection3Merchant,
+  isUsdSection3Merchant,
+} from "nw-tracker-contracts";
+import { ccCardRegistry } from "./ccCardRegistry.js";
 
 /** Merged pdftotext lines (a page counter «… DE 2» glued onto a merchant) with a wrong US$. */
 export function isGarbledUsdStatementMerchant(merchant: string | null | undefined): boolean {

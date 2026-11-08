@@ -1,5 +1,4 @@
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
-import { cardLineKind } from "./cards/lineKinds.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
@@ -17,7 +16,7 @@ import {
 } from "./ccExpenseLineDedupe.js";
 import { ccLineOriginCurrency, parseCcOriginAmount } from "./ccOriginCurrency.js";
 import { ccStatementRecordsFingerprint } from "./ccStatementFingerprint.js";
-import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { parseOptionalChileanInteger, parseDdMmYyToIso, cardLineKind } from "nw-tracker-contracts";
 
 function parseUsdAmount(s: string): number | null {
   let t = String(s ?? "").trim().replace(/US\$/gi, "").replace(/\$/g, "").trim();

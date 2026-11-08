@@ -1,6 +1,5 @@
-import { normCcMerchant } from "./ccDedupeKey.js";
+import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "nw-tracker-contracts";
 import { ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
-import { CC_PAYMENT_MERCHANTS, CC_USD_DEBT_ABONO_MERCHANT } from "./ccStatementLineRules.js";
 import { fixedBankDescriptionPattern } from "./cards/bankDescriptionRules.js";
 
 /**
@@ -9,20 +8,6 @@ import { fixedBankDescriptionPattern } from "./cards/bankDescriptionRules.js";
  * divisas purchase, a CMR online payment. The card side's own names are {@link isCcPaymentMerchant}.
  */
 export const CC_PAYMENT_DESC_RE = fixedBankDescriptionPattern("cc_payment");
-
-/**
- * CC statement / web-paste payment merchants (exact literals, not checking-cartola descriptions;
- * the set lives in `ccStatementLineRules.json`, shared with the Python parse reconcile).
- */
-export function isCcPaymentMerchant(merchant: string | null | undefined): boolean {
-  const m = normCcMerchant(String(merchant ?? ""));
-  return m.length > 0 && CC_PAYMENT_MERCHANTS.has(m);
-}
-
-/** «ABONO DE DIVISAS»: the payment of the USD debt (substring — some formats suffix it). */
-export function isCcUsdDebtAbonoMerchant(merchant: string | null | undefined): boolean {
-  return normCcMerchant(String(merchant ?? "")).includes(CC_USD_DEBT_ABONO_MERCHANT);
-}
 
 /**
  * The previous facturación's payment date printed in a statement header

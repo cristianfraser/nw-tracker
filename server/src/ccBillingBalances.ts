@@ -34,18 +34,9 @@ import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
-import {
-  isCcPaymentMerchant,
-  isCcPaymentOrUsdDebtAbonoMerchant,
-  requireHeaderPagoIso,
-} from "./ccPaymentLines.js";
-import {
-  isCcTraspasoDeudaMerchant,
-  isClpSection3FinancingChargeMerchant,
-  isUsdSection3FinancingChargeMerchant,
-} from "./ccStatementSection3.js";
+import { isCcPaymentOrUsdDebtAbonoMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
-import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant, isCcTraspasoDeudaMerchant, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 
 export type CcBillingMonthBalanceRow = {
   id: number;

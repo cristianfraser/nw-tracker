@@ -22,9 +22,9 @@
  *   npx tsx scripts/link-cc-header-payment-legs.ts            # report only
  *   npx tsx scripts/link-cc-header-payment-legs.ts --apply
  */
+import { isCcPaymentMerchant } from "nw-tracker-contracts";
 import { db } from "../../src/db.js";
 import { parseDdMmYyToIso, normalizeTransactionDateIso } from "../../src/ccInstallmentPayBy.js";
-import { isCcPaymentMerchant } from "../../src/ccPaymentLines.js";
 import { chileCalendarAddDays } from "../../src/chileDate.js";
 import { listCreditCardMasterAccountIds } from "../../src/creditCardTree.js";
 import { accountIdsUnderCheckingAccounts } from "../../src/movementBalanceCashAccounts.js";

@@ -1,6 +1,6 @@
+import { isClpSection3Merchant, isClpSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { isClpSection3Merchant, isClpSection3FinancingChargeMerchant } from "./ccStatementSection3.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 

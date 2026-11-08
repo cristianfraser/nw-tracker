@@ -1,5 +1,6 @@
+import { isCcPaymentMerchant } from "nw-tracker-contracts";
 import { describe, expect, it } from "vitest";
-import { isCcPaymentMerchant, webPasteAmountClpForDb } from "./ccPaymentLines.js";
+import { webPasteAmountClpForDb } from "./ccPaymentLines.js";
 
 describe("ccPaymentLines", () => {
   it("payment merchants are always negative regardless of issuer", () => {

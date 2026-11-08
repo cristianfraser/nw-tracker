@@ -1,3 +1,4 @@
+import { cardLineKind } from "nw-tracker-contracts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,6 @@ import { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from 
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
-import { cardLineKind } from "./cards/lineKinds.js";
 import {
   aggregateGastosFromLines,
   bigGroupUsageByMode,

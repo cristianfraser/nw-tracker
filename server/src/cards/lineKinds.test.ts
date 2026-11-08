@@ -1,5 +1,6 @@
+import { cardLineKind, type CardLineKindInput } from "nw-tracker-contracts";
 import { describe, expect, it } from "vitest";
-import { cardLineKind, requireStoredCardLineKind, type CardLineKindInput } from "./lineKinds.js";
+import { requireStoredCardLineKind } from "./lineKinds.js";
 
 const clp = (merchant: string, amount: number, extra: Partial<CardLineKindInput> = {}): CardLineKindInput => ({
   installment_flag: 0,

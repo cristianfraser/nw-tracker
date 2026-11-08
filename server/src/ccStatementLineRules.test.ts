@@ -1,12 +1,9 @@
+import { isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  classifyCcStatementLine,
-  isCcTraspasoDeudaMerchant,
-  type CcStatementLineSection,
-} from "./ccStatementSection3.js";
+import { classifyCcStatementLine, type CcStatementLineSection } from "./ccStatementSection3.js";
 
 type SectionCase = {
   currency: "clp" | "usd";

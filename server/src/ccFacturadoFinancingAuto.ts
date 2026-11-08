@@ -28,14 +28,13 @@ import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProj
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import { creditCardMasterMetaForAccount, type CcWebPasteParseResult } from "./ccWebPasteParse.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { findLines, planRows } from "./cards/purchases.js";
-import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
 /** Days past the pay-by a payment still counts toward the facturado (late payments happen). */
