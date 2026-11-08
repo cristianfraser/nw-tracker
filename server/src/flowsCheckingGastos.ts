@@ -3,10 +3,7 @@ import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
-import {
-  legacyCheckingGastosPurchaseKey,
-  parseLegacyCheckingGastosPurchaseKey,
-} from "./checkingGastosCategoryPersist.js";
+import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { db } from "./db.js";
@@ -84,10 +81,8 @@ export function checkingGastosMovementPurchaseKey(
     const stable = checkingCartolaStablePurchaseKey(row.account_id, row.note, portion);
     if (stable) return stable;
   }
-  return legacyCheckingGastosPurchaseKey(movementId, portion);
+  return checkingMovementPurchaseKey(movementId, portion);
 }
-
-export { legacyCheckingGastosPurchaseKey, parseLegacyCheckingGastosPurchaseKey };
 
 export function checkingGastosMovementBelongs(movementId: number): {
   ok: boolean;

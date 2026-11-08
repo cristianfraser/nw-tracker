@@ -51,7 +51,7 @@ export function loadExpenseCategoryRules(): ExpenseCategoryRules {
   const specific = new Map<string, string>();
   for (const r of rows) {
     if (r.link_kind === "") general.set(r.vendor, r.slug);
-    else specific.set(`${r.vendor}|${r.link_kind}|${r.link_key}`, r.slug);
+    else specific.set(specificMapKey(r.vendor, { kind: r.link_kind as CategoryRuleLinkKind, key: r.link_key }), r.slug);
   }
   return { catalog: loadVendorCatalog(), general, specific };
 }

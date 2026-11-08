@@ -7,7 +7,6 @@ import {
   it,
 } from "vitest";
 import {
-  legacyInstallmentHPurchaseKey,
   ADDITIONAL_CARD_CC_EXPENSE_SLUG,
   assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
@@ -15,6 +14,7 @@ import {
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { installmentHKeyWithoutTotal } from "./expenseKeys.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
@@ -324,7 +324,7 @@ describe("flowsExpenses", () => {
     if (!titularCuota) return;
 
     const purchaseKey = resolveCcExpensePurchaseKey(titularCuota.statement_line_id);
-    const legacyKey = legacyInstallmentHPurchaseKey(purchaseKey);
+    const legacyKey = installmentHKeyWithoutTotal(purchaseKey);
     const snapshotKey = (key: string | null) =>
       key
         ? (db

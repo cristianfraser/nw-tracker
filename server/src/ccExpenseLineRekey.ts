@@ -16,6 +16,7 @@
  * that purchase (the same statement filed twice): its assignments go to the copy that stayed.
  */
 import { db } from "./db.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule } from "./expenseCategoryRules.js";
 import {
@@ -229,7 +230,7 @@ export type CcLineMoveApplyResult = {
 };
 
 function linePrKey(ref: CcLineRef): string | null {
-  return !ref.installment && ref.parserRowId ? `line-pr:${ref.parserRowId}` : null;
+  return !ref.installment && ref.parserRowId ? buildExpenseKey({ kind: "line_pr", parserRowId: ref.parserRowId }) : null;
 }
 
 /** True when the line holds anything these moves carry (a `line-pr:` row or a card split). */
@@ -385,8 +386,8 @@ export function applyCcLineMoves(
       if (targetSplits.n > 0) {
         out.conflicts.push({
           table: "cc_expense_line_splits",
-          from: `line:${from.lineId}`,
-          to: `line:${to.lineId}`,
+          from: buildExpenseKey({ kind: "line", lineId: from.lineId }),
+          to: buildExpenseKey({ kind: "line", lineId: to.lineId }),
           stored: splits.n,
           current: targetSplits.n,
         });

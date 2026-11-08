@@ -1,4 +1,5 @@
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
+import { expensePieceKeySuffix } from "./expenseKeys.js";
 import { withPaymentReceipts, type PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import {
@@ -978,7 +979,7 @@ export function expandLineSplitsInDrafts(
             : usdShare(draft.amount_usd_at_expense, split.amount_clp),
         category_slug: split.category_slug,
         category_unique: true,
-        split_purchase_key_suffix: `#split:${split.seq}`,
+        split_purchase_key_suffix: expensePieceKeySuffix(split.seq),
         piece_seq: split.seq,
       });
     }

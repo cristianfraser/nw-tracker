@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { listBudaAbonosWithoutRealOutflowLink, syncBudaAbonoDepositMirrors } from "./budaWallet.js";
-import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import { loadDepositMatchCandidates } from "./checkingCartolaLoaders.js";
 import { db } from "./db.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
@@ -97,7 +97,7 @@ describe("syncBudaAbonoDepositMirrors", () => {
 
   it("a link from a mirror line is not a real outflow", () => {
     if (abonoId == null) return;
-    insertLink(checkingGapDepositMirrorPurchaseKey(987654321));
+    insertLink(buildExpenseKey({ kind: "gap_mirror", mirrorId: 987654321 }));
     expect(listBudaAbonosWithoutRealOutflowLink().has(abonoId)).toBe(true);
     syncBudaAbonoDepositMirrors();
     expect(mirrorFor(abonoId)).toBeDefined();

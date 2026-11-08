@@ -16,8 +16,8 @@ import {
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
-import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
+import { buildExpenseKey, parseExpenseKey } from "./expenseKeys.js";
 
 /** Asset group slug for `GET /api/flows/expenses/credit-card` (every card). */
 export function primaryCreditCardExpensesGroupSlug(): string {
@@ -278,7 +278,7 @@ export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
 
 export function resolveCcExpensePurchaseKey(statementLineId: number): string {
   const ctx = loadCcStatementLineExpenseCtx(statementLineId);
-  if (!ctx) return `line-fallback:missing:${statementLineId}`;
+  if (!ctx) return buildExpenseKey({ kind: "line_fallback_missing", lineId: statementLineId });
   return stableCcExpensePurchaseKeyFromCtx(ctx);
 }
 
@@ -289,28 +289,6 @@ function uniquePurchaseMapKey(accountId: number, purchaseKey: string): string {
 /** The general category rule for a bank merchant (global, keyed on its vendor). */
 export function resolveMerchantCategorySlug(merchantKey: string, merchantRules: ExpenseCategoryRules): string | null {
   return generalRuleCategory(merchantRules, merchantKey);
-}
-
-function uniquePurchaseModeKeysForResolve(
-  accountId: number,
-  statementLineId: number,
-  purchaseKey: string,
-  uniquePurchaseModeKeys?: Set<string>
-): string[] {
-  if (!uniquePurchaseModeKeys || uniquePurchaseModeKeys.size === 0) return [];
-  const keys = [uniquePurchaseMapKey(accountId, purchaseKey)];
-  if (purchaseKey.startsWith("checking-cartola:")) {
-    const portion: "gastos" | "deposit" = purchaseKey.endsWith(":deposit")
-      ? "deposit"
-      : "gastos";
-    keys.push(
-      uniquePurchaseMapKey(
-        accountId,
-        legacyCheckingGastosPurchaseKey(statementLineId, portion)
-      )
-    );
-  }
-  return keys;
 }
 
 type ResolveCcExpenseCategoryOpts = {
@@ -351,34 +329,10 @@ function resolveAssignedCcExpenseCategory(opts: ResolveCcExpenseCategoryOpts): {
 
 function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts, onMerchantRule: () => void): string | null {
   const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
-  let uniqueSlug = opts.uniquePurchases.get(uniqueKey);
-  if (uniqueSlug == null) {
-    const legacyKey = legacyInstallmentHPurchaseKey(opts.purchaseKey);
-    if (legacyKey) {
-      uniqueSlug =
-        opts.uniquePurchases.get(uniquePurchaseMapKey(opts.accountId, legacyKey)) ?? undefined;
-    }
-  }
-  if (uniqueSlug == null && opts.purchaseKey.startsWith("checking-cartola:")) {
-    const portion: "gastos" | "deposit" = opts.purchaseKey.endsWith(":deposit")
-      ? "deposit"
-      : "gastos";
-    const legacyKey = uniquePurchaseMapKey(
-      opts.accountId,
-      legacyCheckingGastosPurchaseKey(opts.statementLineId, portion)
-    );
-    uniqueSlug = opts.uniquePurchases.get(legacyKey) ?? undefined;
-  }
+  const uniqueSlug = opts.uniquePurchases.get(uniqueKey);
   if (uniqueSlug != null) return uniqueSlug;
 
-  if (
-    uniquePurchaseModeKeysForResolve(
-      opts.accountId,
-      opts.statementLineId,
-      opts.purchaseKey,
-      opts.uniquePurchaseModeKeys
-    ).some((key) => opts.uniquePurchaseModeKeys?.has(key))
-  ) {
+  if (opts.uniquePurchaseModeKeys?.has(uniqueKey)) {
     onMerchantRule();
     return UNCLASSIFIED_CC_EXPENSE_SLUG;
   }
@@ -409,35 +363,31 @@ function resolveInstallmentPurchaseIdsFromKey(
   accountId: number,
   purchaseKey: string
 ): number[] {
-  if (purchaseKey.startsWith("installment:")) {
-    const purchaseId = Number(purchaseKey.slice("installment:".length));
-    return Number.isFinite(purchaseId) ? [purchaseId] : [];
-  }
-  if (purchaseKey.startsWith("installment-pr:")) {
-    const parserRowId = purchaseKey.slice("installment-pr:".length);
+  const key = parseExpenseKey(purchaseKey);
+  if (key?.kind === "installment") return [key.purchaseId];
+  if (key?.kind === "installment_pr") {
     const hits = db
       .prepare(
         `SELECT DISTINCT purchase_id FROM cc_installment_payments WHERE parser_row_id = ?`
       )
-      .all(parserRowId) as { purchase_id: number }[];
+      .all(key.parserRowId) as { purchase_id: number }[];
     return hits.map((h) => h.purchase_id);
   }
-  const parsed = parseInstallmentHPurchaseKey(purchaseKey);
-  if (parsed) {
+  if (key?.kind === "installment_h") {
     const rows = db
       .prepare(
         `SELECT id, merchant, total_amount_clp FROM cc_installment_purchases
          WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ?`
       )
-      .all(accountId, parsed.purchaseIso, parsed.nroTotal) as {
+      .all(accountId, key.purchaseIso, key.cuotasTotal) as {
       id: number;
       merchant: string | null;
       total_amount_clp: number;
     }[];
     return rows
-      .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === parsed.merchantKey)
+      .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === key.merchantKey)
       // When the key carries a total, disambiguate same-identity purchases by amount.
-      .filter((r) => parsed.totalClp == null || Math.round(r.total_amount_clp) === parsed.totalClp)
+      .filter((r) => key.totalClp == null || Math.round(r.total_amount_clp) === key.totalClp)
       .map((r) => r.id);
   }
   return [];
@@ -572,9 +522,8 @@ export type CcStatementLineExpenseCtx = {
 
 /**
  * Canonical `installment-h:` key. Includes the ledger total so two purchases that share
- * account/date/cuotas/merchant but differ by amount get distinct keys. When the total is absent it
- * emits the legacy (no-total) key, which read paths still resolve via
- * {@link legacyInstallmentHPurchaseKey}. Keep in sync with the parsers in this file.
+ * account/date/cuotas/merchant but differ by amount get distinct keys; without a total (no ledger
+ * plan) it is the identity-only form.
  */
 export function stableInstallmentHPurchaseKeyFromLedgerArgs(opts: {
   accountId: number;
@@ -586,46 +535,14 @@ export function stableInstallmentHPurchaseKeyFromLedgerArgs(opts: {
   const merchantKey = normalizeCcExpenseMerchantKey(opts.merchant);
   if (!opts.purchaseDateIso || !merchantKey || opts.cuotasTotales <= 0) return null;
   const total = opts.totalAmountClp;
-  if (total != null && Number.isFinite(total)) {
-    return `installment-h:${opts.accountId}:${opts.purchaseDateIso}:${opts.cuotasTotales}:${Math.round(total)}:${merchantKey}`;
-  }
-  return `installment-h:${opts.accountId}:${opts.purchaseDateIso}:${opts.cuotasTotales}:${merchantKey}`;
-}
-
-/**
- * Legacy (pre-amount) form of a new `installment-h:` key — drops the total segment. Returns null
- * when the key is already legacy (or not an installment-h key). Used for read fallback so category /
- * notes / big-group rows stored before the amount was added keep resolving.
- */
-export function legacyInstallmentHPurchaseKey(purchaseKey: string): string | null {
-  if (!purchaseKey.startsWith("installment-h:")) return null;
-  const parts = purchaseKey.split(":");
-  // New: installment-h:acct:iso:cuotaTotal:total:merchant...  (total is a pure integer at index 4)
-  if (parts.length < 6 || !/^\d+$/.test(parts[4] ?? "")) return null;
-  return [parts[0], parts[1], parts[2], parts[3], ...parts.slice(5)].join(":");
-}
-
-/** Parse an `installment-h:` key (new-with-total or legacy). `totalClp` is null for legacy keys. */
-export function parseInstallmentHPurchaseKey(purchaseKey: string): {
-  accountId: number;
-  purchaseIso: string;
-  nroTotal: number;
-  totalClp: number | null;
-  merchantKey: string;
-} | null {
-  if (!purchaseKey.startsWith("installment-h:")) return null;
-  const parts = purchaseKey.split(":");
-  if (parts.length < 5) return null;
-  const accountId = Number(parts[1]);
-  const purchaseIso = parts[2] ?? "";
-  const nroTotal = Number(parts[3]);
-  const hasTotal = parts.length >= 6 && /^\d+$/.test(parts[4] ?? "");
-  const totalClp = hasTotal ? Number(parts[4]) : null;
-  const merchantKey = hasTotal ? parts.slice(5).join(":") : parts.slice(4).join(":");
-  if (!Number.isFinite(accountId) || !purchaseIso || !Number.isFinite(nroTotal) || !merchantKey) {
-    return null;
-  }
-  return { accountId, purchaseIso, nroTotal, totalClp, merchantKey };
+  return buildExpenseKey({
+    kind: "installment_h",
+    accountId: opts.accountId,
+    purchaseIso: opts.purchaseDateIso,
+    cuotasTotal: opts.cuotasTotales,
+    totalClp: total != null && Number.isFinite(total) ? Math.round(total) : null,
+    merchantKey,
+  });
 }
 
 /** Stable across PDF reimports (uses parser_row_id / installment-h, not DB line id). */
@@ -644,16 +561,19 @@ export function stableCcExpensePurchaseKeyFromCtx(ctx: CcStatementLineExpenseCtx
     }
     const parserRowId = String(ctx.parser_row_id ?? "").trim();
     if (parserRowId && !parserRowId.startsWith("synthetic:")) {
-      return `installment-pr:${parserRowId}`;
+      return buildExpenseKey({ kind: "installment_pr", parserRowId });
     }
   }
   const parserRowId = String(ctx.parser_row_id ?? "").trim();
   if (parserRowId && !parserRowId.startsWith("synthetic:")) {
-    return `line-pr:${parserRowId}`;
+    return buildExpenseKey({ kind: "line_pr", parserRowId });
   }
-  const merch = normalizeCcExpenseMerchantKey(ctx.merchant);
-  const iso = purchaseDateIsoFromLine(ctx) ?? "";
-  return `line-fallback:${ctx.account_id}:${merch}:${iso}`;
+  return buildExpenseKey({
+    kind: "line_fallback",
+    accountId: ctx.account_id,
+    merchantKey: normalizeCcExpenseMerchantKey(ctx.merchant),
+    purchaseIso: purchaseDateIsoFromLine(ctx) ?? "",
+  });
 }
 
 function purchaseDateIsoFromLine(ctx: CcStatementLineExpenseCtx): string | null {
@@ -988,13 +908,12 @@ export function listStatementLineIdsForPurchaseKey(
   statementLineId: number,
   purchaseKey?: string
 ): number[] {
-  const key = purchaseKey ?? resolveCcExpensePurchaseKey(statementLineId);
+  const key = parseExpenseKey(purchaseKey ?? resolveCcExpensePurchaseKey(statementLineId));
   const ctx = loadCcStatementLineExpenseCtx(statementLineId);
   if (!ctx) return [statementLineId];
 
-  if (key.startsWith("installment:")) {
-    const purchaseId = Number(key.slice("installment:".length));
-    if (!Number.isFinite(purchaseId)) return [statementLineId];
+  if (key?.kind === "installment") {
+    const purchaseId = key.purchaseId;
     const parserRows = db
       .prepare(
         `SELECT parser_row_id FROM cc_installment_payments
@@ -1017,14 +936,13 @@ export function listStatementLineIdsForPurchaseKey(
     return out.length > 0 ? out : [statementLineId];
   }
 
-  const parsedH = parseInstallmentHPurchaseKey(key);
-  if (parsedH) {
+  if (key?.kind === "installment_h") {
     const cuotaClp = ctx.valor_cuota_mensual_clp;
     const out = listInstallmentHHeuristicStatementLineIds(
-      parsedH.accountId,
-      parsedH.purchaseIso,
-      parsedH.nroTotal,
-      parsedH.merchantKey,
+      key.accountId,
+      key.purchaseIso,
+      key.cuotasTotal,
+      key.merchantKey,
       Number.isFinite(cuotaClp as number) ? (cuotaClp as number) : null,
       true
     );
@@ -1032,8 +950,8 @@ export function listStatementLineIdsForPurchaseKey(
     return listInstallmentPurchaseSiblingStatementLineIds(statementLineId);
   }
 
-  if (key.startsWith("line-pr:")) {
-    const parserRowId = key.slice("line-pr:".length);
+  if (key?.kind === "line_pr") {
+    const parserRowId = key.parserRowId;
     const hit = db
       .prepare(
         `SELECT l.id FROM cc_statement_lines l
@@ -1044,8 +962,8 @@ export function listStatementLineIdsForPurchaseKey(
     return hit ? [hit.id] : [statementLineId];
   }
 
-  if (key.startsWith("installment-pr:")) {
-    const parserRowId = key.slice("installment-pr:".length);
+  if (key?.kind === "installment_pr") {
+    const parserRowId = key.parserRowId;
     const siblings = listInstallmentSiblingIdsViaLedger({
       ...ctx,
       parser_row_id: parserRowId,
@@ -1054,10 +972,7 @@ export function listStatementLineIdsForPurchaseKey(
     return [statementLineId];
   }
 
-  if (key.startsWith("line:")) {
-    const id = Number(key.slice("line:".length));
-    return Number.isFinite(id) && id > 0 ? [id] : [statementLineId];
-  }
+  if (key?.kind === "line") return [key.lineId];
 
   return [statementLineId];
 }
@@ -1131,21 +1046,6 @@ function executeCcExpenseCategoryAssignment(opts: {
     if (clearCategory) {
       if (unique) {
         upsertUniquePurchase.run(accountId, purchaseKey, null);
-        // The resolver falls back to the legacy installment-h key (no amount segment)
-        // when the current key has no category — a populated legacy row would shadow
-        // this clear and the contract would keep its old category. Mirror the clear
-        // onto an existing legacy row (never create one).
-        const legacyKey = legacyInstallmentHPurchaseKey(purchaseKey);
-        if (
-          legacyKey &&
-          db
-            .prepare(
-              `SELECT 1 FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-            )
-            .get(accountId, legacyKey)
-        ) {
-          upsertUniquePurchase.run(accountId, legacyKey, null);
-        }
       } else {
         delUniquePurchase.run(accountId, purchaseKey);
         if (merchantKey) clearExpenseCategoryRule(merchantKey, ruleLink);
@@ -1188,14 +1088,13 @@ function executeCcExpenseCategoryAssignment(opts: {
 }
 
 function statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey: string): number[] {
-  const parsed = parseInstallmentHPurchaseKey(purchaseKey);
-  if (!parsed) return [];
-  const { accountId, purchaseIso, nroTotal, merchantKey } = parsed;
+  const key = parseExpenseKey(purchaseKey);
+  if (key?.kind !== "installment_h") return [];
   return listInstallmentHHeuristicStatementLineIds(
-    accountId,
-    purchaseIso,
-    nroTotal,
-    merchantKey,
+    key.accountId,
+    key.purchaseIso,
+    key.cuotasTotal,
+    key.merchantKey,
     null,
     false
   );

@@ -1,7 +1,6 @@
 import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
-import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { mergeAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import { mergeAutoAdditionalCardNote } from "./ccAdditionalCardExpenseMatch.js";
@@ -98,20 +97,7 @@ export function enrichFlowLinesWithPurchaseNotes(
   return lines.map((ln) => {
     const { auto_deposit_match_note, auto_additional_card_note, split_purchase_key_suffix, ...rest } = ln;
     const purchase_key = resolvePurchaseKeyForGastosLine(rest) + (split_purchase_key_suffix ?? "");
-    const dbNotes =
-      notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ??
-      (purchase_key.startsWith("checking-cartola:") && ln.statement_line_id > 0
-        ? notes.get(
-            purchaseNotesMapKey(
-              ln.account_id,
-              legacyCheckingGastosPurchaseKey(
-                ln.statement_line_id,
-                rest.checking_purchase_portion === "deposit" ? "deposit" : "gastos"
-              )
-            )
-          )
-        : undefined) ??
-      "";
+    const dbNotes = notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ?? "";
     let purchase_notes = dbNotes;
     if (auto_deposit_match_note) {
       purchase_notes = mergeAutoDepositMatchNote(purchase_notes, auto_deposit_match_note);

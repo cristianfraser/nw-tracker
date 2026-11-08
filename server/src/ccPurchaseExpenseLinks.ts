@@ -1,7 +1,5 @@
-import {
-  legacyInstallmentHPurchaseKey,
-  stableInstallmentHPurchaseKeyFromLedgerArgs,
-} from "./ccExpenseCategories.js";
+import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
+import { expenseKeyKind, installmentHKeyWithoutTotal } from "./expenseKeys.js";
 import type { CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
@@ -20,7 +18,7 @@ export function withPurchaseExpenseLinks(
   if (purchases.length === 0) return [...purchases];
   const byKey = new Map<string, FlowCcExpenseLineRow>();
   for (const l of cachedFlowsExpenseLines()) {
-    if (l.source !== "cc" || l.account_id !== accountId || !l.purchase_key.startsWith("installment-h:")) continue;
+    if (l.source !== "cc" || l.account_id !== accountId || expenseKeyKind(l.purchase_key) !== "installment_h") continue;
     const prev = byKey.get(l.purchase_key);
     if (!prev || (!prev.payment_receipt && l.payment_receipt)) byKey.set(l.purchase_key, l);
   }
@@ -41,7 +39,7 @@ export function withPurchaseExpenseLinks(
       merchant: row.merchant,
     });
     if (key == null) return p;
-    const legacy = legacyInstallmentHPurchaseKey(key);
+    const legacy = installmentHKeyWithoutTotal(key);
     const line = byKey.get(key) ?? (legacy ? byKey.get(legacy) : undefined);
     if (!line) return p;
     return {

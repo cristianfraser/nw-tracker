@@ -1,12 +1,12 @@
 import { db } from "./db.js";
 import {
-  legacyInstallmentHPurchaseKey,
   listInstallmentPurchaseSiblingStatementLineIds,
   loadCcStatementLineExpenseCtx,
   normalizeCcExpenseMerchantKey,
   stableCcExpensePurchaseKeyFromCtx,
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
+import { buildExpenseKey, installmentHKeyWithoutTotal } from "./expenseKeys.js";
 import {
   merchantsMatchForCrossDedupe,
   purchaseAmountsMatch,
@@ -298,13 +298,13 @@ function resolveCategoryIdForManualPurchase(accountId: number, manualId: number,
     if (r?.category_id != null) return r.category_id;
     // Fall back to the pre-amount (legacy) installment-h key so categories stored before the
     // key gained the total-amount segment still resolve.
-    const legacy = legacyInstallmentHPurchaseKey(manualKey);
+    const legacy = installmentHKeyWithoutTotal(manualKey);
     if (legacy) {
       const rLegacy = selUniqueCat.get(accountId, legacy) as { category_id: number } | undefined;
       if (rLegacy?.category_id != null) return rLegacy.category_id;
     }
   }
-  const instKey = `installment:${manualId}`;
+  const instKey = buildExpenseKey({ kind: "installment", purchaseId: manualId });
   const r2 = selUniqueCat.get(accountId, instKey) as { category_id: number } | undefined;
   return r2?.category_id ?? null;
 }
@@ -326,10 +326,10 @@ function applyCategoryToMatchedLines(accountId: number, matchedLineId: number, c
 function deleteManualPurchaseExpenseKeys(accountId: number, manualId: number, manualKey: string | null): void {
   if (manualKey) {
     delUniqueByKey.run(accountId, manualKey);
-    const legacy = legacyInstallmentHPurchaseKey(manualKey);
+    const legacy = installmentHKeyWithoutTotal(manualKey);
     if (legacy) delUniqueByKey.run(accountId, legacy);
   }
-  delUniqueByKey.run(accountId, `installment:${manualId}`);
+  delUniqueByKey.run(accountId, buildExpenseKey({ kind: "installment", purchaseId: manualId }));
 }
 
 export type CcManualInstallmentReconcileMatch = {
@@ -533,7 +533,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
         // projecting its financed facturación the moment the twin collapses.
         const pdfKey = pdfPurchaseKeyForMatchedLine(accountId, hitLine);
         if (pdfKey) {
-          const manualKeys = [manualKey, manualKey ? legacyInstallmentHPurchaseKey(manualKey) : null]
+          const manualKeys = [manualKey, manualKey ? installmentHKeyWithoutTotal(manualKey) : null]
             .filter((k): k is string => k != null);
           purchaseKeyRefsRewritten += migrateManualPurchaseKeyRefs(accountId, manualKeys, pdfKey);
         }

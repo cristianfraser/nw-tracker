@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX } from "./checkingGapDepositMirrorKey.js";
+import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import {
   NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP,
@@ -67,8 +67,8 @@ export function listBudaAbonosWithoutRealOutflowLink(): Set<number> {
     )
     .all(
       budaId,
-      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX.length,
-      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX
+      EXPENSE_KEY_PREFIXES.gap_mirror.length,
+      EXPENSE_KEY_PREFIXES.gap_mirror
     ) as { id: number }[];
   return new Set(rows.map((r) => r.id));
 }

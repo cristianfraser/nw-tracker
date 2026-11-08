@@ -3,6 +3,7 @@ import {
   loadCcStatementLineExpenseCtx,
   stableCcExpensePurchaseKeyFromCtx,
 } from "./ccExpenseCategories.js";
+import { EXPENSE_KEY_PREFIXES, parseExpenseKey } from "./expenseKeys.js";
 
 export type CcExpenseCategorySnapshot = {
   lineCategoryByParserRowId: Map<string, number>;
@@ -77,22 +78,17 @@ function migrateStoredPurchaseKeyToStable(
   storedKey: string,
   stableKeysSeen: Set<string>
 ): string | null {
-  if (storedKey.startsWith("installment-h:") || storedKey.startsWith("line-pr:")) {
+  const key = parseExpenseKey(storedKey);
+  if (key?.kind === "installment_h" || key?.kind === "line_pr" || key?.kind === "installment_pr") {
     return storedKey;
   }
-  if (storedKey.startsWith("installment-pr:")) {
-    return storedKey;
-  }
-  if (storedKey.startsWith("line:")) {
-    const oldId = Number(storedKey.slice("line:".length));
-    if (!Number.isFinite(oldId)) return null;
-    const ctx = loadCcStatementLineExpenseCtx(oldId);
+  if (key?.kind === "line") {
+    const ctx = loadCcStatementLineExpenseCtx(key.lineId);
     if (!ctx || ctx.account_id !== accountId) return null;
     return stableCcExpensePurchaseKeyFromCtx(ctx);
   }
-  if (storedKey.startsWith("installment:")) {
-    const purchaseId = Number(storedKey.slice("installment:".length));
-    if (!Number.isFinite(purchaseId)) return null;
+  if (key?.kind === "installment") {
+    const purchaseId = key.purchaseId;
     const parserRows = db
       .prepare(
         `SELECT parser_row_id FROM cc_installment_payments
@@ -135,14 +131,14 @@ export function restoreCcExpenseCategories(
   );
   const delOrphanLineKeys = db.prepare(
     `DELETE FROM cc_expense_unique_purchases
-     WHERE account_id = ?
-       AND (purchase_key LIKE 'line:%' OR purchase_key LIKE 'installment:%')`
+     WHERE account_id = @accountId
+       AND (substr(purchase_key, 1, length(@line)) = @line OR substr(purchase_key, 1, length(@plan)) = @plan)`
   );
   let lineCategories = 0;
   let uniquePurchases = 0;
 
   const tx = db.transaction(() => {
-    delOrphanLineKeys.run(accountId);
+    delOrphanLineKeys.run({ accountId, line: EXPENSE_KEY_PREFIXES.line, plan: EXPENSE_KEY_PREFIXES.installment });
 
     const newLines = db
       .prepare(

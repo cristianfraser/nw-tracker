@@ -31,7 +31,8 @@ import { daysBetweenIso } from "nw-tracker-contracts";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
-import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
@@ -189,7 +190,7 @@ function loadSpendingCategorizedOutflowIds(
   for (const out of outs) {
     if (!checkingIds.has(out.account_id)) continue;
     const key =
-      checkingCartolaStablePurchaseKey(out.account_id, out.note) ?? legacyCheckingGastosPurchaseKey(out.id);
+      checkingCartolaStablePurchaseKey(out.account_id, out.note) ?? checkingMovementPurchaseKey(out.id);
     if (spendingKeys.has(key) || splitIds.has(out.id)) ids.add(out.id);
   }
   return ids;
@@ -306,9 +307,9 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
       `SELECT purchase_key, deposit_movement_id, link_source
        FROM expense_deposit_links
        WHERE link_source IN ('auto', 'manual')
-         AND purchase_key LIKE 'checking-cartola:%'`
+         AND substr(purchase_key, 1, length(@prefix)) = @prefix`
     )
-    .all() as { purchase_key: string; deposit_movement_id: number; link_source: "auto" | "manual" }[];
+    .all({ prefix: EXPENSE_KEY_PREFIXES.checking_cartola }) as { purchase_key: string; deposit_movement_id: number; link_source: "auto" | "manual" }[];
   const byKey = new Map<string, number>();
   const byDeposit = new Map<number, number>();
   for (const r of rows) {

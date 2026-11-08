@@ -6,7 +6,7 @@ import {
   DEPOSITS_CC_EXPENSE_SLUG,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
-import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import {
   carryingClpForExpenseDepositLink,
   computeManualDepositAssertions,
@@ -220,7 +220,7 @@ describe("computeManualDepositAssertions", () => {
     const mirrorLine = {
       source: "checking" as const,
       account_id: 1,
-      purchase_key: checkingGapDepositMirrorPurchaseKey(4242),
+      purchase_key: buildExpenseKey({ kind: "gap_mirror", mirrorId: 4242 }),
       category_slug: DEPOSITS_CC_EXPENSE_SLUG,
       amount_clp: 50_000,
       purchase_notes: "",

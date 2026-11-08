@@ -1,5 +1,5 @@
 import type { Database } from "better-sqlite3";
-import { parseLegacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { parseExpenseKey } from "./expenseKeys.js";
 import {
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
@@ -36,8 +36,8 @@ function movementFromLegacyPurchaseKey(
   purchaseKey: string,
   dbHandle: Database
 ): MovementRow | null {
-  const parsed = parseLegacyCheckingGastosPurchaseKey(purchaseKey);
-  if (!parsed) return null;
+  const parsed = parseExpenseKey(purchaseKey);
+  if (parsed?.kind !== "checking_mv") return null;
   return (
     dbHandle
       .prepare(
@@ -53,16 +53,11 @@ function movementFromStablePurchaseKey(
   purchaseKey: string,
   dbHandle: Database
 ): MovementRow | null {
-  const m =
-    /^checking-cartola:(\d+):([^:]+):(\d{4}-\d{2}-\d{2}):(-?\d+):(\d+)(?::deposit)?$/.exec(
-      purchaseKey
-    );
-  if (!m) return null;
-  const keyAccountId = Number(m[1]);
-  if (keyAccountId !== accountId) return null;
-  const occurredOn = m[3]!;
-  const amountClp = Number(m[4]);
-  const idx = m[5]!;
+  const key = parseExpenseKey(purchaseKey);
+  if (key?.kind !== "checking_cartola" || key.accountId !== accountId) return null;
+  const occurredOn = key.occurredOn;
+  const amountClp = Number(key.amountClp);
+  const idx = key.cartolaIndex;
   const noteNeedle = `|on:${occurredOn}|amt:${amountClp}|idx:${idx}`;
   return (
     dbHandle

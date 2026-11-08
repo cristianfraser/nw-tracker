@@ -34,10 +34,7 @@ import {
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { syncCuentaAhorroDepositSplitMirrors } from "./cuentaAhorroDepositSplits.js";
 import { syncBudaAbonoDepositMirrors } from "./budaWallet.js";
-import {
-  checkingGapDepositMirrorPurchaseKey,
-  isCheckingGapDepositMirrorPurchaseKey,
-} from "./checkingGapDepositMirrorKey.js";
+import { buildExpenseKey, EXPENSE_KEY_PREFIXES, expenseKeyKind } from "./expenseKeys.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
@@ -460,7 +457,7 @@ function syncCheckingGapDepositMirrorLinks(): void {
     const amt = Math.round(row.amount_clp);
     upsertExpenseDepositLink({
       account_id: row.account_id,
-      purchase_key: checkingGapDepositMirrorPurchaseKey(row.id),
+      purchase_key: buildExpenseKey({ kind: "gap_mirror", mirrorId: row.id }),
       deposit_movement_id: row.deposit_movement_id,
       payment_clp: amt,
       amortization_clp: amt,
@@ -610,11 +607,11 @@ function assignBillsCategoryToMortgageLinkedLines(): void {
     `INSERT OR IGNORE INTO cc_expense_line_categories (statement_line_id, category_id)
      SELECT csl.id, cat.id
      FROM expense_deposit_links edl
-     JOIN cc_statement_lines csl ON csl.parser_row_id = substr(edl.purchase_key, 9)
-     JOIN cc_expense_categories cat ON cat.slug = ?
-     WHERE edl.purchase_key LIKE 'line-pr:%'
+     JOIN cc_statement_lines csl ON csl.parser_row_id = substr(edl.purchase_key, length(@prefix) + 1)
+     JOIN cc_expense_categories cat ON cat.slug = @slug
+     WHERE substr(edl.purchase_key, 1, length(@prefix)) = @prefix
        AND edl.depto_cuota IS NOT NULL`
-  ).run(BILLS_CC_EXPENSE_SLUG);
+  ).run({ prefix: EXPENSE_KEY_PREFIXES.line_pr, slug: BILLS_CC_EXPENSE_SLUG });
 }
 
 /**
@@ -646,7 +643,7 @@ function lineIsManualDepositAssertion(line: GastosLineForExpenseDepositLink): bo
   // A synthetic mirror line already has its direct 1:1 link to its own deposit
   // (syncCheckingGapDepositMirrorLinks). Asserting it again linked the deposit twice, and because
   // mirror ids are rebuilt on every sync the second link pointed at a mirror id that no longer existed.
-  if (isCheckingGapDepositMirrorPurchaseKey(line.purchase_key)) return false;
+  if (expenseKeyKind(line.purchase_key) === "gap_mirror") return false;
   // Auto-matched lines carry an `auto:deposit-match|…` note and are handled by
   // tryAutoLinkExpenseDepositLine — only note-less (user-asserted) lines take this pass.
   return parseAutoDepositMatchNote(line.purchase_notes).length === 0;

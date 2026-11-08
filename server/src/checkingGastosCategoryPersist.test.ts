@@ -4,7 +4,7 @@ import {
   movementNote,
 } from "./checkingCartolaParse.js";
 import {
-  legacyCheckingGastosPurchaseKey,
+  checkingMovementPurchaseKey,
   migrateCheckingGastosCategoryToStableKey,
   preserveCheckingGastosCategoriesForCartolaNotes,
 } from "./checkingGastosCategoryPersist.js";
@@ -72,7 +72,7 @@ describe("checkingGastosCategoryPersist", () => {
     db.prepare(
       `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
        VALUES (?, ?, ?)`
-    ).run(accountId, legacyCheckingGastosPurchaseKey(oldId), fun.id);
+    ).run(accountId, checkingMovementPurchaseKey(oldId), fun.id);
 
     preserveCheckingGastosCategoriesForCartolaNotes(accountId, prefix);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(oldId);
@@ -123,7 +123,7 @@ describe("checkingGastosCategoryPersist", () => {
       )
       .run(accountId, -1, "2099-06-01", note);
     const id = Number(ins.lastInsertRowid);
-    const legacy = legacyCheckingGastosPurchaseKey(id);
+    const legacy = checkingMovementPurchaseKey(id);
     const stable = checkingCartolaStablePurchaseKey(accountId, note)!;
     db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key IN (?, ?)`).run(
       accountId,

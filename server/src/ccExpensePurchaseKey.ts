@@ -2,8 +2,8 @@ import {
   resolveCcExpensePurchaseKey,
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
-import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
 import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 /** Stable purchase identity (installment-h / line-pr / line-fallback), shared with categories and notes. */
@@ -22,10 +22,10 @@ export function resolvePurchaseKeyForGastosLine(
   > & { checking_purchase_portion?: "deposit" }
 ): string {
   if (line.source === "manual" && line.statement_line_id > 0) {
-    return `manual:${line.statement_line_id}`;
+    return buildExpenseKey({ kind: "manual", entryId: line.statement_line_id });
   }
   if (line.source === "payslip") {
-    return `payslip:${line.statement_line_id}`;
+    return buildExpenseKey({ kind: "payslip", lineId: line.statement_line_id });
   }
   if (line.source === "checking" && line.statement_line_id > 0) {
     return checkingGastosMovementPurchaseKey(
@@ -37,7 +37,7 @@ export function resolvePurchaseKeyForGastosLine(
     // checking_gap_deposit_mirrors row id, encoded as a negative statement_line_id by
     // flowsCheckingGapDepositMirrors.ts. Real checking lines always carry a positive
     // movements.id, so this convention is unambiguous.
-    return checkingGapDepositMirrorPurchaseKey(-line.statement_line_id);
+    return buildExpenseKey({ kind: "gap_mirror", mirrorId: -line.statement_line_id });
   }
   if (line.statement_line_id > 0) {
     return resolveCcExpensePurchaseKey(line.statement_line_id);
@@ -62,6 +62,10 @@ export function resolvePurchaseKeyForGastosLine(
     });
     if (hKey) return hKey;
   }
-  const iso = line.purchase_on ?? "";
-  return `line-fallback:${line.account_id}:${line.merchant_key}:${iso}`;
+  return buildExpenseKey({
+    kind: "line_fallback",
+    accountId: line.account_id,
+    merchantKey: line.merchant_key,
+    purchaseIso: line.purchase_on ?? "",
+  });
 }

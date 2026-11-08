@@ -6,6 +6,7 @@
  * that key. The table's own `note` column is provenance (`split:manual|…`) and is left as stored.
  */
 import { getCcExpenseCategoryBySlug, isCcExpenseTotalsExcludedSlug } from "./ccExpenseCategories.js";
+import { expensePieceKey } from "./expenseKeys.js";
 import { db } from "./db.js";
 import { expenseLineDraftForPieces } from "./flowsExpenses.js";
 
@@ -107,7 +108,7 @@ export function replaceExpenseLinePieces(
 
   const categoryId = (slug: string) => getCcExpenseCategoryBySlug(slug)!.id;
   const accountId = line.account_id;
-  const pieceKey = (seq: number) => `${line.purchase_key}#split:${seq}`;
+  const pieceKey = (seq: number) => expensePieceKey(line.purchase_key, seq);
   let nextSeq = Math.max(-1, ...existingSeqs) + 1;
 
   db.transaction(() => {

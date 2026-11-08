@@ -5,7 +5,7 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
-import { CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX } from "./checkingGapDepositMirrorKey.js";
+import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 
 /** Deposit movement ids whose split is pure-family (self_funded_clp = 0) → reconciled with no mirror. */
 export function loadPureFamilyAhorroDepositMovementIds(): Set<number> {
@@ -73,8 +73,8 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
        )`
     )
     .all(
-      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX.length,
-      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX
+      EXPENSE_KEY_PREFIXES.gap_mirror.length,
+      EXPENSE_KEY_PREFIXES.gap_mirror
     ) as {
     deposit_movement_id: number;
     self_funded_clp: number;

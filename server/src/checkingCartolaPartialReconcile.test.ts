@@ -8,7 +8,7 @@ import {
   importCheckingPartialMovements,
   partialMovementNote,
 } from "./checkingPartialMovementsImport.js";
-import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
 import {
@@ -453,7 +453,7 @@ describe("checkingCartolaPartialReconcile", () => {
       `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
        VALUES (?, ?, ?)
        ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-    ).run(accountId, legacyCheckingGastosPurchaseKey(partialId), bills.id);
+    ).run(accountId, checkingMovementPurchaseKey(partialId), bills.id);
 
     const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
       {
@@ -537,7 +537,7 @@ describe("checkingCartolaPartialReconcile", () => {
     );
     db.prepare(
       `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, ?, 'manual')`
-    ).run(entryId, legacyCheckingGastosPurchaseKey(partialId));
+    ).run(entryId, checkingMovementPurchaseKey(partialId));
 
     try {
       const { removed } = prunePartialMovementsSupersededByCartola(accountId, [

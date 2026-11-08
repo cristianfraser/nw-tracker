@@ -1,4 +1,5 @@
 import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
+import { buildExpenseKey } from "./expenseKeys.js";
 
 /**
  * A Santander cartola as the cartola import reads it, and the ledger's own keys for its movements
@@ -123,8 +124,15 @@ export function checkingCartolaStablePurchaseKey(
   const amountClp = n.match(/\|amt:([^|]+)/)?.[1]?.trim();
   const cartolaIndex = n.match(/\|idx:(\d+)/)?.[1]?.trim();
   if (!periodMonth || !occurredOn || amountClp == null || cartolaIndex == null) return null;
-  const base = `checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:${cartolaIndex}`;
-  return portion === "deposit" ? `${base}:deposit` : base;
+  return buildExpenseKey({
+    kind: "checking_cartola",
+    accountId,
+    periodMonth,
+    occurredOn,
+    amountClp,
+    cartolaIndex: Number(cartolaIndex),
+    portion,
+  });
 }
 
 /** Description + document parsed back out of an `import:cartola|…` movement note. */

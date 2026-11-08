@@ -5,6 +5,7 @@ import {
   normalizeCcExpenseMerchantKey,
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 
@@ -161,7 +162,9 @@ export function updateManualExpense(id: number, input: ManualExpenseInput): void
 export function deleteManualExpense(id: number): void {
   requireEditableManualExpense(id);
   db.transaction(() => {
-    db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`).run(`manual:${id}`);
+    db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`).run(
+      buildExpenseKey({ kind: "manual", entryId: id })
+    );
     db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(id);
   })();
 }

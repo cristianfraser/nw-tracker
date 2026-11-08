@@ -24,10 +24,7 @@
 import { db } from "../src/db.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import { buildDepositsReconciliationPayload } from "../src/flowsDepositsReconciliation.js";
-import {
-  CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX,
-  isCheckingGapDepositMirrorPurchaseKey,
-} from "../src/checkingGapDepositMirrorKey.js";
+import { EXPENSE_KEY_PREFIXES, expenseKeyKind } from "../src/expenseKeys.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -39,7 +36,7 @@ type State = {
 
 function mirrorLabel(key: string): string {
   // Mirror ids are rebuilt by other syncs, so compare mirror links by deposit, not by id.
-  return isCheckingGapDepositMirrorPurchaseKey(key) ? `${CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX}*` : key;
+  return expenseKeyKind(key) === "gap_mirror" ? `${EXPENSE_KEY_PREFIXES.gap_mirror}*` : key;
 }
 
 function readState(): State {

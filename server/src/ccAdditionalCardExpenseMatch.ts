@@ -1,4 +1,5 @@
 import type { Database } from "better-sqlite3";
+import { expenseKeyKind, isInstallmentContractKind } from "./expenseKeys.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { db } from "./db.js";
 import {
@@ -101,11 +102,7 @@ export function clearUserDeclinedAutoCategory(
 }
 
 export function isInstallmentContractPurchaseKey(purchaseKey: string): boolean {
-  return (
-    purchaseKey.startsWith("installment-h:") ||
-    purchaseKey.startsWith("installment-pr:") ||
-    purchaseKey.startsWith("installment:")
-  );
+  return isInstallmentContractKind(expenseKeyKind(purchaseKey));
 }
 
 /**

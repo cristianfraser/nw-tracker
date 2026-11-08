@@ -1,4 +1,5 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import {
   categoryUniqueForExpenseLine,
@@ -183,6 +184,12 @@ export function buildInstallmentPaymentGastosLines(
       continue;
     }
 
+    const fallbackKey = buildExpenseKey({
+      kind: "line_fallback",
+      accountId: row.account_id,
+      merchantKey,
+      purchaseIso: purchaseOn,
+    });
     const purchaseKey =
       row.cuota_total != null && row.cuota_total > 0
         ? stableInstallmentHPurchaseKeyFromLedgerArgs({
@@ -191,8 +198,8 @@ export function buildInstallmentPaymentGastosLines(
             cuotasTotales: row.cuota_total,
             totalAmountClp: row.total_amount_clp,
             merchant: row.merchant,
-          }) ?? `line-fallback:${row.account_id}:${merchantKey}:${purchaseOn}`
-        : `line-fallback:${row.account_id}:${merchantKey}:${purchaseOn}`;
+          }) ?? fallbackKey
+        : fallbackKey;
     const lineId = installmentPaymentGastosLineId(row.payment_id);
     registerGenericUniquePurchaseMode(
       row.account_id,

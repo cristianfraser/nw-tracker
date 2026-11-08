@@ -1,4 +1,5 @@
 import { foldAccents } from "nw-tracker-contracts";
+import { expenseKeyKind } from "./expenseKeys.js";
 import { db } from "./db.js";
 
 export type CcExpenseBigGroupRow = {
@@ -103,7 +104,7 @@ export function setCcExpensePurchaseBigGroup(opts: {
   if (!purchaseKey) {
     throw new Error("purchase_key required");
   }
-  if (purchaseKey.startsWith("payslip:")) {
+  if (expenseKeyKind(purchaseKey) === "payslip") {
     throw new Error("payroll deductions take no big group");
   }
 
