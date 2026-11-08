@@ -267,3 +267,17 @@ export function installmentHKeyWithoutTotal(text: string): string | null {
   if (key?.kind !== "installment_h" || key.totalClp == null) return null;
   return buildExpenseKey({ ...key, totalClp: null });
 }
+
+/**
+ * Natural receipt identity, `<chain>|<receipt_number>|<YYYY-MM-DD>` — the formula
+ * migration 178 backfilled (`groceryReceiptKey178.ts` keeps its own frozen copy).
+ */
+export function groceryReceiptKey(chain: string, receiptNumber: string, purchasedAt: string): string {
+  const day = purchasedAt.slice(0, 10);
+  if (!chain || !receiptNumber || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    throw new Error(
+      `grocery receipt key needs chain, receipt number and a 'YYYY-MM-DD …' purchase datetime, got ${JSON.stringify({ chain, receiptNumber, purchasedAt })}`
+    );
+  }
+  return `${chain}|${receiptNumber}|${day}`;
+}

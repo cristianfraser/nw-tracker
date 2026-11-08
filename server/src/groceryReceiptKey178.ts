@@ -7,7 +7,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
  * copy) lands on one row. `source` / `source_key` stay as provenance of the document that owns
  * the row (UNIQUE per document); which document wins is decided by the importer's source rank
  * (`storeReceiptApply.ts`), not here. The backfill formula below MUST equal
- * `groceryReceiptKey` in that module.
+ * `groceryReceiptKey` in `expenseKeys.ts`.
  *
  * Runs inside the migration transaction with foreign_keys=OFF (arranged by db.ts):
  * `grocery_receipt_items` references this table ON DELETE CASCADE, so DROP TABLE under

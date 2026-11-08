@@ -45,6 +45,7 @@ import { addDaysIso } from "nw-tracker-contracts";
 import type { StoreReceiptApplyDetails, StoreReceiptDocumentKind, StoreReceiptPayload } from "nw-tracker-contracts";
 
 import { ccCardRegistry } from "./ccCardRegistry.js";
+import { groceryReceiptKey } from "./expenseKeys.js";
 import {
   learnBranchForPendingReceipt,
   markReceiptCardLine,
@@ -130,20 +131,6 @@ export type ResolvedReceipt = IncomingReceipt & {
 // ---------------------------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------------------------
-
-/**
- * Natural receipt identity, `<chain>|<receipt_number>|<YYYY-MM-DD>` — the same formula
- * migration 178 backfilled (`groceryReceiptKey178.ts`); keep the two in step.
- */
-export function groceryReceiptKey(chain: string, receiptNumber: string, purchasedAt: string): string {
-  const day = purchasedAt.slice(0, 10);
-  if (!chain || !receiptNumber || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    throw new Error(
-      `grocery receipt key needs chain, receipt number and a 'YYYY-MM-DD …' purchase datetime, got ${JSON.stringify({ chain, receiptNumber, purchasedAt })}`
-    );
-  }
-  return `${chain}|${receiptNumber}|${day}`;
-}
 
 export type ReceiptResolution =
   | { action: "insert" }

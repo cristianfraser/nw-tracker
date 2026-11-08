@@ -2,10 +2,10 @@ import { describe, expect, afterEach, it } from "vitest";
 import { rolledBack } from "./ingestReceiver.js";
 import { storeReceiptKind, type StoreReceiptPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { groceryReceiptKey } from "./expenseKeys.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 import {
   applyStoreReceipt,
-  groceryReceiptKey,
   incomingReceiptFromPayload,
   movementIsTerminal,
   resolveAliasProductId,
