@@ -28,7 +28,7 @@ import {
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
-import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
+import { monthYearSurfacePeriod } from "../../surfaceDisplayPrefs";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto, PeriodReturnsPayload } from "../../types";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
@@ -182,7 +182,7 @@ export function GroupInfoBase({
     portfolio?.groupSlug ?? "",
     displayUnit,
     // Detalle tables are month/year surfaces — the day toggle renders the monthly view.
-    monthYearMetricsPeriod(tablePeriod),
+    monthYearSurfacePeriod(tablePeriod),
     monthlyPage,
     MONTHLY_PERF_DETAIL_PAGE_SIZE,
     tablesFetchEnabled && serverPaginatedMonthlyDetail && tablePeriod !== "day",
@@ -275,7 +275,7 @@ export function GroupInfoBase({
           data={shownPeriodReturns ?? null}
           displayUnit={displayUnit}
           scope={{ portfolioGroup: portfolio?.groupSlug ?? "" }}
-          surfaceId={`group.${portfolio?.groupSlug || "pending"}.returns`}
+          surfaceId={portfolio?.groupSlug ? `group.${portfolio.groupSlug}.returns` : null}
           loading={shownPeriodReturns === undefined || periodReturnsHeld}
         />
       </PageGridTile>
@@ -339,7 +339,7 @@ export function GroupInfoBase({
                 rows={monthlyRows}
                 yearlyRows={yearlyRows}
                 displayUnit={displayUnit}
-                period={monthYearMetricsPeriod(tablePeriod)}
+                period={monthYearSurfacePeriod(tablePeriod)}
                 isMortgageAccount={tableFlags.isMortgageAccount}
                 showStockInflowsColumn={false}
                 loading={monthlyLoading}

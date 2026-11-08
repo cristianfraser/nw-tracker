@@ -52,20 +52,12 @@ export function GroupInfoPage() {
   const portfolioGroup = apiParams?.portfolio_group ?? "";
 
   // Per-surface controls (persisted per group slug): valuation chart + the two P/L combos.
-  const valuationPrefs = useSurfacePrefs(
-    `group.${portfolioGroup || "pending"}.valuation`,
-    "day",
-    "3y"
-  );
-  const perfPrefs = useSurfacePrefs(`group.${portfolioGroup || "pending"}.combos`, "month", "3y");
-  const proportionalPrefs = useSurfacePrefs(
-    `group.${portfolioGroup || "pending"}.proportional`,
-    "month",
-    "total"
-  );
-  const compositionView = useSurfaceCompositionView(
-    `group.${portfolioGroup || "pending"}.proportional`
-  );
+  // Null until the page's group is known: defaults, nothing stored.
+  const surfaceId = (key: string) => (portfolioGroup ? `group.${portfolioGroup}.${key}` : null);
+  const valuationPrefs = useSurfacePrefs(surfaceId("valuation"), "day", "3y");
+  const perfPrefs = useSurfacePrefs(surfaceId("combos"), "month", "3y");
+  const proportionalPrefs = useSurfacePrefs(surfaceId("proportional"), "month", "total");
+  const compositionView = useSurfaceCompositionView(surfaceId("proportional"));
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
   const proportionalIsDaily = proportionalPrefs.period === "day";

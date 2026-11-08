@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
+import { useSurfaceLiquidatedOpen } from "../../surfaceDisplayPrefs";
 import { Button } from "@crfrsr/ui";
 import { Link } from "react-router-dom";
 import { cn } from "../../cn";
@@ -111,26 +112,6 @@ function serverPctOnDeposits(pct: PctBySlice) {
   };
 }
 
-const LIQUIDATED_OPEN_LS_PREFIX = "nw-tracker.surface.";
-
-function readLiquidatedOpen(pageSlug: string): boolean {
-  try {
-    return localStorage.getItem(`${LIQUIDATED_OPEN_LS_PREFIX}${pageSlug}.liquidated`) === "open";
-  } catch {
-    return false;
-  }
-}
-
-function writeLiquidatedOpen(pageSlug: string, open: boolean): void {
-  try {
-    const key = `${LIQUIDATED_OPEN_LS_PREFIX}${pageSlug}.liquidated`;
-    if (open) localStorage.setItem(key, "open");
-    else localStorage.removeItem(key);
-  } catch {
-    // Per-viewer convenience only: unavailable storage just forgets the choice.
-  }
-}
-
 /**
  * Leaf-bucket account summary: one row per account leaf, replacing the old per-account
  * compact cards. An account row projects its own dashboard row (value, metrics, server pct);
@@ -154,13 +135,9 @@ export function PortfolioNavAccountsSummaryTable({
   animated = true,
 }: PortfolioNavAccountsSummaryTableProps) {
   const { t } = useTranslation();
-  const [liquidatedOpen, setLiquidatedOpen] = useState(() => readLiquidatedOpen(pageNode.slug));
-  const toggleLiquidated = () => {
-    setLiquidatedOpen((open) => {
-      writeLiquidatedOpen(pageNode.slug, !open);
-      return !open;
-    });
-  };
+  const liquidated = useSurfaceLiquidatedOpen(`${pageNode.slug}.liquidated`);
+  const liquidatedOpen = liquidated.open;
+  const toggleLiquidated = () => liquidated.setOpen(!liquidatedOpen);
 
   const childRow = (child: NavTreeNodeDto, kind: RowKind): AccountTableRow => {
     const label = resolveNavTreeLabel(child);

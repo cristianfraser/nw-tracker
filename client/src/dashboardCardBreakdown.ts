@@ -5,6 +5,7 @@ import {
 } from "./accountGroupTotals";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import i18n from "./i18n";
+import type { SurfacePeriod } from "./surfaceDisplayPrefs";
 import type { DashboardAccountRow, NavCardAmountDto } from "./types";
 
 export type CardGroupMetrics = {
@@ -22,16 +23,7 @@ export type CardGroupMetrics = {
   delta_period_usd?: number | null;
 };
 
-export type CardGroupMetricsPeriod = "day" | "month" | "year";
-
-/**
- * Month/year-only surfaces (flow pages, detalle tables, CC rollups) clamp the global
- * D | M | Y toggle: `day` renders as the monthly view there — daily rows are a
- * net-worth-surface feature, not a flows one.
- */
-export function monthYearMetricsPeriod(period: CardGroupMetricsPeriod): "month" | "year" {
-  return period === "year" ? "year" : "month";
-}
+export type CardGroupMetricsPeriod = SurfacePeriod;
 
 export type CardBreakdownLine = {
   label: string;

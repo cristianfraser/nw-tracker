@@ -1,9 +1,10 @@
 import type { CardGroupMetricsPeriod } from "./dashboardCardBreakdown";
+import { monthYearSurfacePeriod, type SurfacePeriod } from "./surfaceDisplayPrefs";
 import { formatClp, formatUsd } from "./format";
 import { formatYearMonthLabel } from "./formatDateLabel";
 import type { DisplayUnit } from "./queries/keys";
 
-export type FlowChartGranularity = "day" | "month" | "year";
+export type FlowChartGranularity = SurfacePeriod;
 
 export function flowChartGranularityFromMetricsPeriod(
   period: CardGroupMetricsPeriod
@@ -16,9 +17,7 @@ export function flowChartGranularityFromMetricsPeriod(
  * years is unwieldy — the daily surface is the chart). Charts get the full granularity; tables
  * get this clamp.
  */
-export function flowTableGranularity(g: FlowChartGranularity): "month" | "year" {
-  return g === "year" ? "year" : "month";
-}
+export const flowTableGranularity: (g: FlowChartGranularity) => "month" | "year" = monthYearSurfacePeriod;
 
 export function formatFlowMoney(amount: number, unit: DisplayUnit): string {
   return unit === "usd" ? formatUsd(amount) : formatClp(amount);

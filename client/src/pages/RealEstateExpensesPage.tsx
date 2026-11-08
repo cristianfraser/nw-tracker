@@ -9,7 +9,7 @@ import { Table } from "../components/ui/Table";
 import { loadableClass } from "../components/ui/Loadable";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
-import { monthYearMetricsPeriod } from "../dashboardCardBreakdown";
+import { monthYearSurfacePeriod } from "../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../timeRange";
 import { rollupChartPointsByYear } from "../flowsDisplay";
 import {
@@ -90,7 +90,7 @@ export function RealEstateExpensesPage() {
   );
   // Real estate is billed-period (bill_month) → month/year only; the global Período toolbar
   // clamps Diario → Mensual here (a per-day billed view has no meaning). Rango still applies.
-  const granularity = monthYearMetricsPeriod(metricsPeriod);
+  const granularity = monthYearSurfacePeriod(metricsPeriod);
   const { accountSlug } = useParams<{ accountSlug?: string }>();
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
   const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);

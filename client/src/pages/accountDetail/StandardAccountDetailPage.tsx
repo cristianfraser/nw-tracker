@@ -95,7 +95,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const perfIsDaily = perfPrefs.period === "day";
   // Detalle table período (independent of the charts); tables always cover full history.
   const detallePrefs = useSurfacePrefs(
-    `account.${summary.account_id || "pending"}.detalle`,
+    summary.account_id ? `account.${summary.account_id}.detalle` : null,
     "month",
     "total"
   );
