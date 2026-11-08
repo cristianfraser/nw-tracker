@@ -1,14 +1,15 @@
 /**
  * The mortgage cuota is paid with a credit card, so every regular cuota in the depto ledger has a
  * twin on a card: a «TOKU *METLIFE HIPOTECAR» / «MUTUARIA» line (`isMortgageCcExpenseMerchant`)
- * for the same pesos, dated the payment day or a few days after. The two sides are written by
- * their own sources — the ledger row from the mortgage sheet or the form, the card line from the
- * feed, a paste or the statement — and this module only PAIRS them, when read, never stored: a
- * card line's id changes on every re-import, so a match is identity (date, pesos), not an id.
+ * for the same pesos. The two sides are written by their own sources — the ledger row from the
+ * mortgage sheet or the form, the card line from the feed, a paste or the statement — and ONE
+ * pairing ties them: the `funded_deposit` flow link from the card line's flow to the cuota's
+ * property deposit (`syncMortgageExpenseDepositLinksFromSheet`, F20 «Links»), the same link the
+ * Expenses page splits the dividendo by. This module reads that link; it no longer pairs on its
+ * own (until 2026-11 it re-paired at read time with a narrower window — the payment day through 3
+ * days after — and so missed a card charge dated before the ledger day and a hand-made pairing).
  *
- * Pairing: same pesos (whole), the line dated from the payment day through `MATCH_WINDOWS.mortgage_cuota_card_line`
- * after, each side used once, in date order; a payment with two candidate lines is reported
- * ambiguous and left alone. Prepagos and the pie are not card payments and are not paired.
+ * Prepagos and the pie are not card payments and carry no cuota link.
  *
  * The nightly check (`mortgage_card_match_check`) fails when either side has waited longer than
  * `OVERDUE_BUSINESS_DAYS`: a payment with no card line (the card was never charged what the
@@ -23,9 +24,10 @@ import { findLines } from "./cards/purchases.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
-import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
-import { addBusinessDaysIso, dayWithinWindow } from "nw-tracker-contracts";
+import { addBusinessDaysIso } from "nw-tracker-contracts";
+import { db } from "./db.js";
+import { cachedFlowsExpenseLines } from "./flowsMortgageCarrying.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 
 export const OVERDUE_BUSINESS_DAYS = MATCH_WINDOWS.mortgage_cuota_overdue.daysAfter;
@@ -75,34 +77,87 @@ export function loadMortgageCardLines(): MortgageCardLine[] {
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.line_id - b.line_id);
 }
 
-/** Pure pairing of ledger cuota payments with card lines. */
-export function matchMortgagePaymentsToCardLines(
+/**
+ * Pure read of the pairing: each ledger cuota takes the card line its link names (`linkedFlowOf`:
+ * cuota → the card line's flow), and every mortgage card line no cuota names is unclaimed. A link
+ * naming a flow that is not exactly one mortgage card line, or two cuotas naming one line, is a data
+ * error.
+ */
+export function mortgagePaymentCardMatchesFromLinks(
   payments: readonly { cuota: string; paid_on: string; pago_clp: number }[],
-  lines: readonly MortgageCardLine[]
+  lines: readonly (MortgageCardLine & { flow_id: number })[],
+  linkedFlowOf: ReadonlyMap<string, number>
 ): MortgageCardMatchResult {
   const sorted = [...payments].sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.cuota.localeCompare(b.cuota));
-  // A cuota pairs with the one card line of its pesos in the window; several are reported, never guessed.
-  const result = pairOneToOne(sorted, lines, {
-    strategy: "unique",
-    accepts: (p, l) => l.amount_clp === Math.round(p.pago_clp) && dayWithinWindow(p.paid_on, l.date, MATCH_WINDOWS.mortgage_cuota_card_line),
-  });
-  const lineOf = new Map(result.pairs.map((x) => [x.left, x.right]));
-  const ambiguous = new Set(result.ambiguous.map((x) => x.left));
+  // Several lines share a flow when they are the cuotas of one plan (a purchase in cuotas): a link
+  // names a flow, so it can only name a flow with one card line.
+  const linesByFlow = new Map<number, (MortgageCardLine & { flow_id: number })[]>();
+  for (const l of lines) linesByFlow.set(l.flow_id, [...(linesByFlow.get(l.flow_id) ?? []), l]);
+  const claimed = new Set<number>();
   const out: MortgagePaymentCardMatch[] = sorted.map((p) => {
     const base = { cuota: p.cuota, paid_on: p.paid_on, pago_clp: p.pago_clp };
-    const line = lineOf.get(p);
-    if (line) return { ...base, status: "matched" as const, line };
-    return { ...base, status: ambiguous.has(p) ? ("ambiguous" as const) : ("awaiting_card_line" as const), line: null };
+    const flowId = linkedFlowOf.get(p.cuota);
+    if (flowId == null) return { ...base, status: "awaiting_card_line" as const, line: null };
+    const onFlow = linesByFlow.get(flowId) ?? [];
+    if (onFlow.length !== 1) {
+      throw new Error(`mortgage cuota ${p.cuota} is linked to flow ${flowId}, which carries ${onFlow.length} mortgage card lines (one expected)`);
+    }
+    const hit = onFlow[0]!;
+    if (claimed.has(flowId)) throw new Error(`mortgage card line ${hit.line_id} is linked to two cuotas`);
+    claimed.add(flowId);
+    const { flow_id: _flow, ...line } = hit;
+    return { ...base, status: "matched" as const, line };
   });
-  return { payments: out, unmatched_lines: result.unclaimed };
+  const unmatched = lines.filter((l) => !claimed.has(l.flow_id)).map(({ flow_id: _flow, ...l }) => l);
+  return { payments: out, unmatched_lines: unmatched };
 }
 
-/** The ledger's regular cuotas (numeric labels) against every mortgage card line. */
+/** The flow of each card line (its `flow_evidence` row). */
+function cardLineFlows(lineIds: readonly number[]): Map<number, number> {
+  const out = new Map<number, number>();
+  const stmt = db.prepare(
+    `SELECT flow_id FROM flow_evidence WHERE source_table = 'cc_statement_lines' AND source_row_id = ?`
+  );
+  for (const id of lineIds) {
+    const row = stmt.get(id) as { flow_id: number } | undefined;
+    if (row) out.set(id, row.flow_id);
+  }
+  return out;
+}
+
+/** Cuota → the flow of the card line its `funded_deposit` link hangs on (regular cuotas only). */
+function loadMortgageCuotaLinkedFlows(): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT depto_cuota, flow_id FROM flow_links
+       WHERE kind = 'funded_deposit' AND depto_cuota IS NOT NULL AND portion = 'gastos'`
+    )
+    .all() as { depto_cuota: string; flow_id: number }[];
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (numericCuota(r.depto_cuota) == null) continue;
+    if (out.has(r.depto_cuota)) throw new Error(`mortgage cuota ${r.depto_cuota} is linked to two card lines`);
+    out.set(r.depto_cuota, r.flow_id);
+  }
+  return out;
+}
+
+/** The ledger's regular cuotas (numeric labels) against every mortgage card line, through the stored links. */
 export function mortgageCardMatches(): MortgageCardMatchResult {
+  // The links are re-derived with the expense lines (cached; a write drops them), so building the
+  // lines first is what keeps the pairing current with the card lines and the ledger.
+  cachedFlowsExpenseLines();
   const payments = loadDeptoLedgerFromMovements()
     .filter((r) => numericCuota(r.cuota) != null)
     .map((r) => ({ cuota: r.cuota, paid_on: r.occurred_on, pago_clp: r.pago_clp }));
-  return matchMortgagePaymentsToCardLines(payments, loadMortgageCardLines());
+  const lines = loadMortgageCardLines();
+  const flowOfLine = cardLineFlows(lines.map((l) => l.line_id));
+  const withFlows = lines.map((l) => {
+    const flowId = flowOfLine.get(l.line_id);
+    if (flowId == null) throw new Error(`mortgage card line ${l.line_id} has no flow`);
+    return { ...l, flow_id: flowId };
+  });
+  return mortgagePaymentCardMatchesFromLinks(payments, withFlows, loadMortgageCuotaLinkedFlows());
 }
 
 const addChileBusinessDays = (ymd: string, n: number): string => addBusinessDaysIso(ymd, n, isChileBusinessDay);
