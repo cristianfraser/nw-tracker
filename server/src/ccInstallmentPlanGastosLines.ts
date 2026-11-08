@@ -6,6 +6,7 @@ import {
   resolveCcExpenseCategorySlug,
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
+import { buildExpenseKey } from "./expenseKeys.js";
 import { ccLedgerMonthEndIso, installmentPlanBreakdownByMonth } from "./ccInstallmentLedgerDb.js";
 import {
   installmentCuotaCoverageKeys,
@@ -112,7 +113,15 @@ export function buildInstallmentPlanGastosLines(
             cuotasTotales: cuotaTotal,
             totalAmountClp: purchase.total_amount_clp,
             merchant,
-          }) ?? `installment-h:${accountId}:${purchaseOn}:${cuotaTotal}:${merchantKey}`;
+          }) ??
+          buildExpenseKey({
+            kind: "installment_h",
+            accountId,
+            purchaseIso: purchaseOn,
+            cuotasTotal: cuotaTotal,
+            totalClp: null,
+            merchantKey,
+          });
         const lineId = installmentPlanGastosLineId(purchase.id, slot.installment_index);
         registerGenericUniquePurchaseMode(
           accountId,

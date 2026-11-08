@@ -22,7 +22,7 @@ describe("ccExpenseBigGroups", () => {
       expect(loadCcExpensePurchaseBigGroups().get(purchaseKey)).toBe(group.slug);
     }
     expect(() =>
-      setCcExpensePurchaseBigGroup({ purchaseKey: "payslip:vitest", groupSlug: group.slug })
+      setCcExpensePurchaseBigGroup({ purchaseKey: "payslip:900000001", groupSlug: group.slug })
     ).toThrow(/payroll/);
     for (const purchaseKey of ["line-pr:vitest-big-group", "manual:vitest-big-group"]) {
       setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: null });
