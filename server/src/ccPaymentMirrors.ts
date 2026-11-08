@@ -303,7 +303,7 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`
   );
   const delIncomeOverride = db.prepare(
-    `DELETE FROM checking_income_movement_overrides WHERE movement_id = ?`
+    `DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
   );
   const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
 

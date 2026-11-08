@@ -302,7 +302,6 @@ function write(): void {
     // by design — they belong to the rows that replace them).
     for (const [table, col] of [
       ["payroll_work_earnings", "movement_id"],
-      ["checking_income_movement_overrides", "movement_id"],
       ["f22_settlements", "movement_id"],
       ["expense_deposit_links", "deposit_movement_id"],
       ["movement_mirror_merges", "transfer_movement_id"],

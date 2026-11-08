@@ -1,11 +1,21 @@
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { db } from "./db.js";
+import { movementFlowId } from "./flows/flowIdentity.js";
 import { isCheckingCredit } from "./checkingCartolaLoaders.js";
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
+
+
+/**
+ * The user's income classification by movement: it hangs off the credit's flow
+ * (`flow_income_overrides`, migration 281), so it follows the flow when the cartola row takes over a
+ * daily row's.
+ */
+const INCOME_OVERRIDES_BY_MOVEMENT = `(SELECT m.id AS movement_id, o.is_excluded, o.force_include, o.income_kind, o.note, o.updated_at
+  FROM flow_income_overrides o JOIN movements m ON m.flow_id = o.flow_id)`;
 
 export const CHECKING_INCOME_KINDS = [
   "salary",
@@ -35,7 +45,7 @@ type OverrideRow = {
 export function loadForceIncludedCheckingIncomeMovementIds(): Set<number> {
   const rows = db
     .prepare(
-      `SELECT movement_id FROM checking_income_movement_overrides
+      `SELECT movement_id FROM ${INCOME_OVERRIDES_BY_MOVEMENT}
        WHERE force_include = 1 AND is_excluded = 0`
     )
     .all() as { movement_id: number }[];
@@ -45,7 +55,7 @@ export function loadForceIncludedCheckingIncomeMovementIds(): Set<number> {
 export function loadExcludedCheckingIncomeMovementIds(): Set<number> {
   const rows = db
     .prepare(
-      `SELECT movement_id FROM checking_income_movement_overrides WHERE is_excluded = 1`
+      `SELECT movement_id FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE is_excluded = 1`
     )
     .all() as { movement_id: number }[];
   return new Set(rows.map((r) => r.movement_id));
@@ -55,7 +65,7 @@ export function loadCheckingIncomeKindOverrides(): Map<number, CheckingIncomeKin
   const rows = db
     .prepare(
       `SELECT movement_id, income_kind
-       FROM checking_income_movement_overrides
+       FROM ${INCOME_OVERRIDES_BY_MOVEMENT}
        WHERE is_excluded = 0 AND income_kind IS NOT NULL`
     )
     .all() as { movement_id: number; income_kind: CheckingIncomeKind }[];
@@ -102,7 +112,7 @@ export function upsertCheckingIncomeMovementOverride(
   const existing = db
     .prepare(
       `SELECT movement_id, is_excluded, force_include, income_kind, note
-       FROM checking_income_movement_overrides WHERE movement_id = ?`
+       FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow | undefined;
 
@@ -133,35 +143,33 @@ export function upsertCheckingIncomeMovementOverride(
   }
 
   db.prepare(
-    `INSERT INTO checking_income_movement_overrides (movement_id, is_excluded, force_include, income_kind, note)
+    `INSERT INTO flow_income_overrides (flow_id, is_excluded, force_include, income_kind, note)
      VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(movement_id) DO UPDATE SET
+     ON CONFLICT(flow_id) DO UPDATE SET
        is_excluded = excluded.is_excluded,
        force_include = excluded.force_include,
        income_kind = excluded.income_kind,
        note = excluded.note,
        updated_at = datetime('now')`
-  ).run(movementId, is_excluded, force_include, income_kind, note);
+  ).run(movementFlowId(movementId), is_excluded, force_include, income_kind, note);
 
   return db
     .prepare(
       `SELECT movement_id, is_excluded, force_include, income_kind, note
-       FROM checking_income_movement_overrides WHERE movement_id = ?`
+       FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow;
 }
 
 export function deleteCheckingIncomeMovementOverride(movementId: number): void {
-  db.prepare(`DELETE FROM checking_income_movement_overrides WHERE movement_id = ?`).run(
-    movementId
-  );
+  db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id = ?`).run(movementFlowId(movementId));
 }
 
 export function restoreCheckingIncomeMovement(movementId: number): void {
   const existing = db
     .prepare(
       `SELECT movement_id, is_excluded, force_include, income_kind, note
-       FROM checking_income_movement_overrides WHERE movement_id = ?`
+       FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow | undefined;
   if (!existing || existing.is_excluded !== 1) {
@@ -181,7 +189,7 @@ export function clearCheckingIncomeForceInclude(movementId: number): void {
   const existing = db
     .prepare(
       `SELECT movement_id, is_excluded, force_include, income_kind, note
-       FROM checking_income_movement_overrides WHERE movement_id = ?`
+       FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow | undefined;
   if (!existing || existing.force_include !== 1) {
@@ -219,7 +227,7 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
          m.note AS cartola_note,
          o.note AS override_note,
          a.name AS account_label
-       FROM checking_income_movement_overrides o
+       FROM ${INCOME_OVERRIDES_BY_MOVEMENT} o
        JOIN movements m ON m.id = o.movement_id
        JOIN accounts a ON a.id = m.account_id
        WHERE o.is_excluded = 1

@@ -134,7 +134,7 @@ const insLegWithId = db.prepare(
    VALUES (?, ?, ?, 'clp', ?, ?, ?)`
 );
 const delMovement = db.prepare(`DELETE FROM movements WHERE id = ?`);
-const delIncomeOverride = db.prepare(`DELETE FROM checking_income_movement_overrides WHERE movement_id = ?`);
+const delIncomeOverride = db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`);
 const insRejection = db.prepare(
   `INSERT OR IGNORE INTO movement_mirror_pair_rejections (out_movement_id, in_movement_id) VALUES (?, ?)`
 );
@@ -251,7 +251,7 @@ function runSwap(item: Extract<PlanItem, { action: "swap" }>): Outcome {
       throw new Error(`transfer ${item.transfer}: sibling ${item.with} (${sibling.occurred_on}) is outside the pairing window`);
     }
   }
-  assertUnreferenced(item.with, new Set(["checking_income_movement_overrides", "movement_mirror_pair_rejections"]), "sibling");
+  assertUnreferenced(item.with, new Set(["movement_mirror_pair_rejections"]), "sibling");
   if (sibling.units_delta && other.units_delta) {
     throw new Error(`transfer ${item.transfer}: sibling ${item.with} and the other leg both move cuotas`);
   }

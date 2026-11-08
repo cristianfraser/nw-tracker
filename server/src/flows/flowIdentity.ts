@@ -105,6 +105,7 @@ function repointRow(row: FlowSourceRow, flowId: number, dbHandle: Database): voi
 type FlowAssignmentTable = { table: string; onConflict: "prefer" | "throw" };
 export const FLOW_ASSIGNMENT_TABLES: readonly FlowAssignmentTable[] = [
   { table: "flow_refunds", onConflict: "throw" },
+  { table: "flow_income_overrides", onConflict: "throw" },
 ];
 
 /**

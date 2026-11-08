@@ -158,13 +158,12 @@ describe("convertMirrorPairs", () => {
   it("drops the income override of a converted leg (no cascade on that FK)", () => {
     const outId = insLeg(genericId, -1_110_003, "2026-04-15");
     const inId = insLeg(checkingId, 1_110_003, "2026-04-15");
-    db.prepare(
-      `INSERT INTO checking_income_movement_overrides (movement_id, is_excluded) VALUES (?, 1)`
-    ).run(inId);
+    const inFlow = (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(inId) as { flow_id: number }).flow_id;
+    db.prepare(`INSERT INTO flow_income_overrides (flow_id, is_excluded) VALUES (?, 1)`).run(inFlow);
     convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
     const left = db
-      .prepare(`SELECT COUNT(*) AS c FROM checking_income_movement_overrides WHERE movement_id = ?`)
-      .get(inId) as { c: number };
+      .prepare(`SELECT COUNT(*) AS c FROM flow_income_overrides WHERE flow_id = ?`)
+      .get(inFlow) as { c: number };
     expect(left.c).toBe(0);
   });
 

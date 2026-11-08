@@ -24,7 +24,7 @@ import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
 import { registerCardLineKindFunction, runCardLineKind276 } from "./cardLineKind276.js";
 import { runFlowTables279 } from "./flows/flowTables279.js";
-import { runFlowRefunds280 } from "./flows/flowAssignments280.js";
+import { runFlowIncomeOverrides281, runFlowRefunds280 } from "./flows/flowAssignments280.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -79,8 +79,16 @@ registerCardLineKindFunction(dbInternal);
  * the modern schema the baseline creates.
  */
 export function initSchema() {
-  for (const stmt of SCHEMA_BASELINE_STATEMENTS) {
-    dbInternal.exec(stmt);
+  // The baseline builds a fresh database only: on one that has run migrations it would bring back,
+  // empty, every baseline table a later migration dropped (the assignment tables F9 moved onto
+  // the flows, 280+).
+  const migrated =
+    dbInternal.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'`).get() != null &&
+    dbInternal.prepare(`SELECT 1 FROM schema_migrations LIMIT 1`).get() != null;
+  if (!migrated) {
+    for (const stmt of SCHEMA_BASELINE_STATEMENTS) {
+      dbInternal.exec(stmt);
+    }
   }
 
   const migCount = dbInternal
@@ -276,6 +284,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
     runFlowTables279(dbi);
   },
   "280_flow_refunds.sql": runFlowRefunds280,
+  "281_flow_income_overrides.sql": runFlowIncomeOverrides281,
 };
 
 /**

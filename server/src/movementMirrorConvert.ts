@@ -83,7 +83,7 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
   // converted to a transfer the row is internal by construction and the override is moot.
   // (No ON DELETE CASCADE on this FK, so it must go explicitly before the leg.)
   const delIncomeOverride = db.prepare(
-    `DELETE FROM checking_income_movement_overrides WHERE movement_id = ?`
+    `DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
   );
 
   const run = db.transaction((requested: MirrorPairRef[]): ConvertedMirrorPair[] => {

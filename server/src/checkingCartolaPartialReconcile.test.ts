@@ -200,8 +200,8 @@ describe("checkingCartolaPartialReconcile", () => {
     const cleanup = () => {
       db.prepare(`DELETE FROM payroll_work_earnings WHERE source_pdf = ?`).run(sourcePdf);
       db.prepare(
-        `DELETE FROM checking_income_movement_overrides WHERE movement_id IN (
-           SELECT id FROM movements WHERE account_id = ? AND (note = ? OR note LIKE ?))`
+        `DELETE FROM flow_income_overrides WHERE flow_id IN (
+           SELECT flow_id FROM movements WHERE account_id = ? AND (note = ? OR note LIKE ?))`
       ).run(accountId, partialNote, `import:cartola|${periodMonth}|%`);
       db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, periodMonth);
       db.prepare(`DELETE FROM movements WHERE account_id = ? AND (note = ? OR note LIKE ?)`).run(
@@ -221,7 +221,9 @@ describe("checkingCartolaPartialReconcile", () => {
       `INSERT INTO payroll_work_earnings (period_month, employer_name, liquido, source_pdf, movement_id, link_source)
        VALUES (?, 'Vitest Employer', ?, ?, ?, 'auto')`
     ).run(periodMonth, amountClp, sourcePdf, partialId);
-    db.prepare(`INSERT INTO checking_income_movement_overrides (movement_id, income_kind) VALUES (?, 'salary')`).run(partialId);
+    db.prepare(
+      `INSERT INTO flow_income_overrides (flow_id, income_kind) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 'salary')`
+    ).run(partialId);
 
     try {
       const { partialsRemoved } = importCheckingCartola(accountId, {
@@ -243,7 +245,9 @@ describe("checkingCartolaPartialReconcile", () => {
         db.prepare(`SELECT movement_id FROM payroll_work_earnings WHERE source_pdf = ?`).get(sourcePdf)
       ).toEqual({ movement_id: official.id });
       expect(
-        db.prepare(`SELECT income_kind FROM checking_income_movement_overrides WHERE movement_id = ?`).get(official.id)
+        db
+          .prepare(`SELECT o.income_kind FROM flow_income_overrides o JOIN movements m ON m.flow_id = o.flow_id WHERE m.id = ?`)
+          .get(official.id)
       ).toEqual({ income_kind: "salary" });
     } finally {
       cleanup();

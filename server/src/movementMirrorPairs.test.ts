@@ -63,8 +63,8 @@ function cleanup() {
   db.prepare(`DELETE FROM movement_mirror_pair_rejections WHERE out_movement_id IN (
     SELECT id FROM movements WHERE note LIKE 'vitest-mirror%')`).run();
   db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key = 'vitest-mirror-link'`).run();
-  db.prepare(`DELETE FROM checking_income_movement_overrides WHERE movement_id IN (
-    SELECT m.id FROM movements m JOIN accounts a ON a.id = m.account_id WHERE a.name LIKE 'vitest-mirror-%')`).run();
+  db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id IN (
+    SELECT m.flow_id FROM movements m JOIN accounts a ON a.id = m.account_id WHERE a.name LIKE 'vitest-mirror-%')`).run();
   db.prepare(`DELETE FROM movements WHERE note LIKE 'vitest-mirror%'`).run();
   // Converted transfers and cartola-noted legs go with their fixture accounts (FK cascade).
   db.prepare(`DELETE FROM movements WHERE account_id IN (SELECT id FROM accounts WHERE name LIKE 'vitest-mirror-%')
@@ -341,8 +341,8 @@ describe("listMirrorPairCandidates", () => {
            SELECT id FROM movements WHERE account_id = ?)`
       ).run(ids.checking);
       db.prepare(
-        `DELETE FROM checking_income_movement_overrides WHERE movement_id IN (
-           SELECT id FROM movements WHERE account_id IN (?, ?))`
+        `DELETE FROM flow_income_overrides WHERE flow_id IN (
+           SELECT flow_id FROM movements WHERE account_id IN (?, ?))`
       ).run(ids.checking, ids.vista);
       db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key LIKE ?`).run(
         `checking-cartola:${ids.checking}:%`
@@ -413,7 +413,7 @@ describe("listMirrorPairCandidates", () => {
       try {
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         db.prepare(
-          `INSERT INTO checking_income_movement_overrides (movement_id, income_kind) VALUES (?, 'parent_gift')`
+          `INSERT INTO flow_income_overrides (flow_id, income_kind) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 'parent_gift')`
         ).run(dep);
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
       } finally {

@@ -200,13 +200,12 @@ function officialRowKey(accountId: number, officialId: number, cartolaNote: stri
 
 /**
  * What hangs off a daily row by its id and must survive the cartola replacing it: the payslip it
- * paid (paired the day the salary lands) and the user's income classification. Both reference
- * movements without a cascade, so a row still carrying either cannot be deleted — moving them is
- * what lets the prune run. An official row that already carries its own throws (two claims).
+ * paid (paired the day the salary lands). It references movements without a cascade, so a row still
+ * carrying one cannot be deleted — moving it is what lets the prune run. The user's income
+ * classification hangs off the flow, which the official row takes over (`adoptMovementFlow`).
  */
 function carryMovementKeyedIncomeState(fromId: number, toId: number, dbHandle: Database): void {
   dbHandle.prepare(`UPDATE payroll_work_earnings SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
-  dbHandle.prepare(`UPDATE checking_income_movement_overrides SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
 }
 
 /** Prune superseded partial rows and refresh balance/aggregation caches when needed. */

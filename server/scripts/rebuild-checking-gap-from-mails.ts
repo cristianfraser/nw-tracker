@@ -365,7 +365,7 @@ const tx = db.transaction(() => {
   const net = corrienteFlows.reduce((s, f) => s + f.amount, 0);
   const residual = plan.closing_clp - plan.opening_clp - net;
   db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(`checking-mv:${plan.lump_movement_id}`);
-  db.prepare(`DELETE FROM checking_income_movement_overrides WHERE movement_id = ?`).run(plan.lump_movement_id);
+  db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`).run(plan.lump_movement_id);
   db.prepare(`DELETE FROM movements WHERE id = ?`).run(plan.lump_movement_id);
   insSingle.run(
       CORRIENTE,

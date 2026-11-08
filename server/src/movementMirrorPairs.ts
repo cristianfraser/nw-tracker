@@ -102,8 +102,8 @@ export const MIRROR_PAIR_MAX_DAY_GAP = MATCH_WINDOWS.mirror_pair.daysAfter;
 
 
 /** A credit the user classified as income (salary, parent gift, force-include) is not a transfer leg. */
-const USER_CLASSIFIED_INCOME_SQL = `SELECT 1 FROM checking_income_movement_overrides o
-  WHERE o.movement_id = m.id AND o.is_excluded = 0 AND (o.income_kind IS NOT NULL OR o.force_include = 1)`;
+const USER_CLASSIFIED_INCOME_SQL = `SELECT 1 FROM flow_income_overrides o
+  WHERE o.flow_id = m.flow_id AND o.is_excluded = 0 AND (o.income_kind IS NOT NULL OR o.force_include = 1)`;
 
 /**
  * Expense categories that do not say an outflow was spent: no category, «unclassified»,

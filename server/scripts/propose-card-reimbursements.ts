@@ -79,7 +79,7 @@ type CreditRow = {
 /** The checking accounts' credits (whatever bank document listed them), with their classification. */
 function loadCredits(): CreditRow[] {
   const overrides = db.prepare(
-    `SELECT income_kind, is_excluded FROM checking_income_movement_overrides WHERE movement_id = ?`
+    `SELECT o.income_kind, o.is_excluded FROM flow_income_overrides o JOIN movements m ON m.flow_id = o.flow_id WHERE m.id = ?`
   );
   const all: CreditRow[] = listMovementBalanceCashAccountIds()
     .flatMap((accountId) => listCheckingMovements(accountId, "in"))
