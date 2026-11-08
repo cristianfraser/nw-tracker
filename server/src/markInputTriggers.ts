@@ -459,7 +459,7 @@ export const WRITE_LOGGED_TABLES_270: readonly string[] = [
 ];
 
 /** Tables with write triggers now: 270's plus the tables later migrations added with their own. */
-export const WRITE_LOGGED_TABLES: readonly string[] = [...WRITE_LOGGED_TABLES_270, "account_roles"];
+export const WRITE_LOGGED_TABLES: readonly string[] = [...WRITE_LOGGED_TABLES_270, "account_roles", "owner_identity"];
 
 /**
  * A table's write triggers: one row naming the table on every insert, delete and update that

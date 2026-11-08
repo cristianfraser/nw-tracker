@@ -31,7 +31,7 @@ import { recordBankPosting } from "./movementBankPostings.js";
 
 
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
-import { CC_PAYMENT_DESC_RE } from "./checkingDescriptionPredicates.js";
+import { CC_PAYMENT_DESC_RE } from "./ccPaymentLines.js";
 import {
   ccPaymentEvidenceKey,
   describeCcPaymentPairing,

@@ -13,19 +13,32 @@ export type CreditCardBillingConfig = {
   billing_cycle_end_day: number | null;
 };
 
+/** A card master's config row as stored. */
+export type CreditCardConfigRow = {
+  card_last4: string | null;
+  billing_cycle_start_day: number;
+  billing_cycle_end_day: number | null;
+  cupo_clp: number | null;
+  cupo_usd: number | null;
+};
+
 const stmtConfig = db.prepare(
-  `SELECT billing_cycle_start_day, billing_cycle_end_day
+  `SELECT card_last4, billing_cycle_start_day, billing_cycle_end_day, cupo_clp, cupo_usd
    FROM credit_card_account_config WHERE account_id = ?`
 );
+
+/** The card master's config row; an account without one is not a card master and throws. */
+export function loadCreditCardConfigRow(accountId: number): CreditCardConfigRow {
+  const row = stmtConfig.get(accountId) as CreditCardConfigRow | undefined;
+  if (!row) throw new Error(`Account ${accountId} is not a card master (no credit_card_account_config row)`);
+  return row;
+}
 
 /** The config cycle's end day when the column is NULL. */
 export const DEFAULT_BILLING_CYCLE_END_DAY = 20;
 
 export function loadCreditCardBillingConfig(accountId: number): CreditCardBillingConfig {
-  const row = stmtConfig.get(accountId) as
-    | { billing_cycle_start_day: number; billing_cycle_end_day: number | null }
-    | undefined;
-  if (!row) throw new Error(`Account ${accountId} is not a card master (no credit_card_account_config row)`);
+  const row = loadCreditCardConfigRow(accountId);
   return {
     billing_cycle_start_day: row.billing_cycle_start_day,
     billing_cycle_end_day: row.billing_cycle_end_day ?? DEFAULT_BILLING_CYCLE_END_DAY,

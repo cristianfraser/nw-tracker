@@ -1,3 +1,4 @@
+import { SPLITTABLE_DEPOSIT_KINDS } from "./cards/bankDescriptionRules.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
@@ -327,8 +328,8 @@ export function resolveAutoMatchCategorySlugForCheckingWithdrawal(
  */
 export const MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES = MONTH_PRECISION_ACCOUNT_KIND_SLUGS;
 
-/** Fintual reserva deposits may be merged on one day; checking wires can split against one lump sum. */
-export const SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES = new Set(["fondo_reserva"]);
+/** Fintual reserva deposits may be merged on one day; checking wires can split against one lump sum (`bankDescriptionRules.json` `splittable_deposit_kinds`). */
+export const SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES = SPLITTABLE_DEPOSIT_KINDS;
 
 export function createSplittableInternalTransferPool(
   deposits: readonly DepositMatchCandidate[]

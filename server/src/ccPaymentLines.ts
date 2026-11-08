@@ -1,6 +1,14 @@
 import { normCcMerchant } from "./ccDedupeKey.js";
 import { ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
 import { CC_PAYMENT_MERCHANTS, CC_USD_DEBT_ABONO_MERCHANT } from "./ccStatementLineRules.js";
+import { fixedBankDescriptionPattern } from "./cards/bankDescriptionRules.js";
+
+/**
+ * How a checking account's description names a card payment (`bankDescriptionRules.json`
+ * `cc_payment`): MONTO CANCELADO, PAGO … TARJETA, a traspaso to the card or the overdraft line, a
+ * divisas purchase, a CMR online payment. The card side's own names are {@link isCcPaymentMerchant}.
+ */
+export const CC_PAYMENT_DESC_RE = fixedBankDescriptionPattern("cc_payment");
 
 /**
  * CC statement / web-paste payment merchants (exact literals, not checking-cartola descriptions;

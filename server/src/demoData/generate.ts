@@ -439,6 +439,9 @@ function applyColors(ids: Map<Acct, number>): void {
 
 /* ------------------------------------ entry ---------------------------------------- */
 
+
+/** The demo person's name as a name pattern (`owner_identity`): «TITULAR DEMO - SANTANDER» is its own transfer. */
+export const DEMO_OWNER_NAME_PATTERN = "TITULAR\\s+DEMO";
 export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   const person = opts.person;
   const today = opts.today ?? chileCalendarTodayYmd();
@@ -446,6 +449,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   if (n > 0) throw new Error(`demo: target DB already has ${n} accounts — point NW_TRACKER_TEST_DB at a fresh file`);
 
   const ids = createAccounts(person);
+  // The owner as the bank prints its own transfers (`owner_identity`, migration 277).
+  db.prepare(`INSERT INTO owner_identity (kind, value) VALUES ('name_pattern', ?)`).run(DEMO_OWNER_NAME_PATTERN);
   seedNavTree();
   renameTreesCategoryToHobbies();
 

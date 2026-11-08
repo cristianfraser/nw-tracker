@@ -511,7 +511,7 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("excludes internal transfer and cc payment descriptions", () => {
-    expect(isExcludedCheckingWithdrawal("Cristian Fraser - Santander")).toBe(true);
+    expect(isExcludedCheckingWithdrawal("Titular Demo - Santander")).toBe(true);
     expect(isExcludedCheckingWithdrawal("MONTO CANCELADO")).toBe(true);
     expect(isExcludedCheckingWithdrawal("PAGO TARJETA DE CREDITO")).toBe(true);
     expect(isExcludedCheckingWithdrawal("Traspaso Internet a T. Crédito")).toBe(true);

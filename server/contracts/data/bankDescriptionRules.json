@@ -1,0 +1,71 @@
+{
+  "$comment": "How the bank's checking descriptions are read (server/src/cards/bankDescriptions.ts). Patterns are case-insensitive regular expressions matched against the description without its branch prefix. `owner_transfer` is filled with the owner's name patterns (table owner_identity, migration 277): no row, no match.",
+  "patterns": {
+    "owner_transfer": "{owner}\\s*-\\s*SANTANDER",
+    "cc_payment": "MONTO\\s+CANCELADO|PAGO\\s+.*TARJETA|TARJETA\\s+DE\\s+CR[EÉ]DITO|PAGO\\s+TARJETA|TRASPASO(?:\\s+\\w+)*\\s+A\\s+T\\.?\\s*CR[EÉ]DITO|TRASPASO(?:\\s+\\w+)*\\s+A\\s+L[IÍ]NEA\\s+CR[EÉ]DITO|(?:EGRESO\\s+POR\\s+)?COMPRA\\s+DE\\s+DIVISAS|PAGO\\s+EN\\s+L[IÍ]NEA\\s+(?:PROM\\.?\\s+)?CMR\\b",
+    "own_santander_transfer": "TRASPASO(?:\\s+\\w+)*\\s+A\\s+CUENTAM[AÁ]TICA",
+    "cuenta_vista_transfer": "TRASPASO(?:\\s+\\w+)*\\s+A\\s+CUENTA\\s+VISTA",
+    "reserva_transfer": "\\bRESERVA\\b|FONDO\\s+RESERVA|TRASPASO(?:\\s+\\w+)*\\s+A\\s+.*\\bRESERVA\\b|DEP[OÓ]SITO(?:\\s+\\w+)*\\s+A\\s+.*\\bRESERVA\\b",
+    "fintual_administradora": "FINTUAL\\s+ADMINISTRADORA",
+    "fintual": "\\bFINTUAL\\b",
+    "buda_exchange": "\\bTRANSF\\.?\\s+.*\\bBUDA\\b",
+    "afp_inflow": "\\bABONO\\s+10\\s*%\\s*AFP\\b|\\bANTI\\s+PREV\\s+AFP\\b",
+    "payroll": "\\bREMUNERACION(?:ES)?\\b",
+    "cash_deposit": "DEP[OÓ]SITO\\s+(?:EN\\s+EFECTIVO|CON\\s+(?:VALES?\\s+VISTA|CHEQUES?))",
+    "corriente_internet_transfer": "TRASPASO\\s+INTERNET\\s+(?:A\\s+CTA\\.?\\s*CTE?\\.?|DESDE\\s+CTA\\.?\\s*CT\\.?|(?:DE|A)\\s+CUENTA\\s+VISTA)",
+    "corriente_vista_outflow": "TRASPASO\\s+INTERNET\\s+A\\s+CTA\\.?\\s*CTE?\\.?",
+    "own_traspaso_inflow": "TRASPASO\\s+INTERNET\\s+(?:DESDE\\s+CTA\\.?\\s*CT\\.?|DE\\s+CUENTA\\s+VISTA)",
+    "mercado_capitales_cargo": "Cargo\\s+Mercado\\s+Capitales",
+    "dap_abonado": "\\bDAP\\s+(\\d+)\\s+ABONADO\\b",
+    "cobro_vvista_dap": "\\bCOBRO\\s+VVISTA\\s+(\\d+)",
+    "long_numeric_cargo_ref": "^\\d{10,}$"
+  },
+  "unions": {
+    "own_traspaso_outflow": [
+      "corriente_vista_outflow",
+      "own_santander_transfer",
+      "cuenta_vista_transfer",
+      "owner_transfer"
+    ],
+    "withdrawal_may_auto_match_deposit": [
+      "corriente_vista_outflow",
+      "owner_transfer",
+      "cuenta_vista_transfer",
+      "reserva_transfer",
+      "fintual"
+    ],
+    "excluded_withdrawal": [
+      "owner_transfer",
+      "cc_payment",
+      "own_santander_transfer",
+      "cuenta_vista_transfer",
+      "reserva_transfer",
+      "fintual_administradora"
+    ],
+    "excluded_inflow": [
+      "corriente_internet_transfer",
+      "owner_transfer",
+      "own_santander_transfer",
+      "cuenta_vista_transfer",
+      "reserva_transfer",
+      "fintual_administradora",
+      "fintual",
+      "buda_exchange",
+      "afp_inflow"
+    ],
+    "funds_investment_capital": [
+      "fintual",
+      "reserva_transfer"
+    ]
+  },
+  "dap_abono": {
+    "$comment": "A DAP refund pairs with its Mercado Capitales cargo: within max_day_gap days, the abono's document number up to doc_spread after the cargo's, the premium between min_premium_ratio (short terms) and max_premium_ratio (at max_day_gap), linear in between. Fitted on the documents on file (42-day ~0.49% on the Aug 2024 one).",
+    "max_day_gap": 365,
+    "min_premium_ratio": 0.01,
+    "max_premium_ratio": 0.1,
+    "doc_spread": 2
+  },
+  "splittable_deposit_kinds": [
+    "fondo_reserva"
+  ]
+}

@@ -18,6 +18,8 @@ import {
 } from "./ccExpenseCategories.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import { bankDescriptionMatchesUnion, bankDescriptionPattern } from "./cards/bankDescriptions.js";
+import { DAP_ABONO_RULES } from "./cards/bankDescriptionRules.js";
 
 /** Asset group for cash / efectivo accounts (internal transfer targets from checking). */
 export const CHECKING_GASTOS_CASH_GROUP = "cash_eqs";
@@ -62,45 +64,39 @@ export function isCheckingGastosWithdrawalNote(note: string | null | undefined):
   return n.startsWith("import:cartola|") || isCheckingPartialWithdrawalNote(n) || isMailRebuiltCheckingNote(n);
 }
 
-export const INTERNAL_TRANSFER_RE = /TITULAR\s+DEMO\s*-\s*SANTANDER/i;
-export const CC_PAYMENT_DESC_RE =
-  /MONTO\s+CANCELADO|PAGO\s+.*TARJETA|TARJETA\s+DE\s+CR[EÉ]DITO|PAGO\s+TARJETA|TRASPASO(?:\s+\w+)*\s+A\s+T\.?\s*CR[EÉ]DITO|TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[EÉ]DITO|(?:EGRESO\s+POR\s+)?COMPRA\s+DE\s+DIVISAS|PAGO\s+EN\s+L[IÍ]NEA\s+(?:PROM\.?\s+)?CMR\b/i;
+/** The owner's own transfers («<owner> - SANTANDER»): the owner's name is `owner_identity`, never a literal. */
+export function isOwnerTransferDescription(description: string): boolean {
+  return bankDescriptionPattern("owner_transfer").test(description);
+}
 /** Own Santander account transfers (not spending). */
-export const OWN_SANTANDER_TRANSFER_RE = /TRASPASO(?:\s+\w+)*\s+A\s+CUENTAM[AÁ]TICA/i;
+export const OWN_SANTANDER_TRANSFER_RE = bankDescriptionPattern("own_santander_transfer");
 /** Transfers to cuenta vista (CUENTAMATICA / vale vista), e.g. AFP 10% retiros. */
-export const CUENTA_VISTA_TRANSFER_DESC_RE =
-  /TRASPASO(?:\s+\w+)*\s+A\s+CUENTA\s+VISTA/i;
+export const CUENTA_VISTA_TRANSFER_DESC_RE = bankDescriptionPattern("cuenta_vista_transfer");
 /** Transfers to Fondo reserva (internal, not consumption). */
-export const RESERVA_TRANSFER_DESC_RE =
-  /\bRESERVA\b|FONDO\s+RESERVA|TRASPASO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b|DEP[OÓ]SITO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b/i;
+export const RESERVA_TRANSFER_DESC_RE = bankDescriptionPattern("reserva_transfer");
 
 /** Direct "FINTUAL ADMINISTRADORA" wires — excluded from the gastos list outright. Kept narrow so
  *  "TRASPASO A FINTUAL" / "Transf a Fintual" stay OUT of the exclusion set and flow through the
  *  gastos matcher instead (see the excludes-internal-transfer test). */
-export const FINTUAL_TRANSFER_DESC_RE = /FINTUAL\s+ADMINISTRADORA/i;
+export const FINTUAL_TRANSFER_DESC_RE = bankDescriptionPattern("fintual_administradora");
 
-/** Any transfer mentioning Fintual (Transf a Fintual, PAC FINTUAL, FINTUAL ADMINISTRADORA) is
- *  investment funding — used for auto-matching a withdrawal to a Fintual deposit. Broader than the
- *  exclusion regex; safe because the deposit pairing still requires an exact amount + date match. */
-export const FINTUAL_INVESTMENT_TRANSFER_RE = /\bFINTUAL\b/i;
-
-/** Incoming checking abono from Fintual (capital return from net-worth accounts). */
-export const FINTUAL_INCOMING_TRANSFER_RE = /\bFINTUAL\b/i;
+/** Any transfer mentioning Fintual (Transf a Fintual, PAC FINTUAL, FINTUAL ADMINISTRADORA, an
+ *  incoming abono): investment funding or a capital return. Broader than the exclusion pattern; the
+ *  deposit pairing still requires an exact amount + date match. */
+export const FINTUAL_TRANSFER_RE = bankDescriptionPattern("fintual");
 
 /** Buda.com crypto exchange wires into checking (sale proceeds, not salary / external income). */
-export const BUDA_CRYPTO_EXCHANGE_TRANSFER_RE = /\bTRANSF\.?\s+.*\bBUDA\b/i;
+export const BUDA_CRYPTO_EXCHANGE_TRANSFER_RE = bankDescriptionPattern("buda_exchange");
 
 /** AFP 10% retiro proceeds wired into checking (not external income). */
-export const AFP_CHECKING_INFLOW_DESC_RE = /\bABONO\s+10\s*%\s*AFP\b|\bANTI\s+PREV\s+AFP\b/i;
+export const AFP_CHECKING_INFLOW_DESC_RE = bankDescriptionPattern("afp_inflow");
 
 /** Employer payroll deposits (REMUNERACION) — real income even when swept to vista same day. */
-export const PAYROLL_REMUNERACION_INFLOW_RE = /\bREMUNERACION(?:ES)?\b/i;
+export const PAYROLL_REMUNERACION_INFLOW_RE = bankDescriptionPattern("payroll");
 
-/** ATM / branch cash deposit on cartola (often cuenta ahorro month-end retiro proceeds). */
-// Cash-style deposits into checking that book a cuenta_ahorro (or similar month-bucket) withdrawal
-// returning to the account: "Depósito en Efectivo", "Depósito con Vales Vista", "… con Cheque".
-export const CHECKING_CASH_DEPOSIT_INFLOW_RE =
-  /DEP[OÓ]SITO\s+(?:EN\s+EFECTIVO|CON\s+(?:VALES?\s+VISTA|CHEQUES?))/i;
+/** Cash-style deposits into checking that book a cuenta_ahorro (or similar month-bucket) withdrawal
+ *  returning to the account: "Depósito en Efectivo", "Depósito con Vales Vista", "… con Cheque". */
+export const CHECKING_CASH_DEPOSIT_INFLOW_RE = bankDescriptionPattern("cash_deposit");
 
 export function isPayrollRemuneracionCheckingInflow(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
@@ -117,15 +113,13 @@ export function isPayrollRemuneracionCartolaCredit(credit: {
 }
 
 /** Vista ↔ corriente internet traspaso (both directions on cartola). */
-export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE =
-  /TRASPASO\s+INTERNET\s+(?:A\s+CTA\.?\s*CTE?\.?|DESDE\s+CTA\.?\s*CT\.?|(?:DE|A)\s+CUENTA\s+VISTA)/i;
+export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE = bankDescriptionPattern("corriente_internet_transfer");
 
 /** Vista (or checking) outflow wiring money to cuenta corriente — always an internal move. */
-export const CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE =
-  /TRASPASO\s+INTERNET\s+A\s+CTA\.?\s*CTE?\.?/i;
+export const CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE = bankDescriptionPattern("corriente_vista_outflow");
 
 /** How the bank prints money arriving from the client's other checking account («desde Cta.Ct», «de Cuenta Vista»). */
-export const CHECKING_OWN_TRASPASO_INFLOW_RE = /TRASPASO\s+INTERNET\s+(?:DESDE\s+CTA\.?\s*CT\.?|DE\s+CUENTA\s+VISTA)/i;
+export const CHECKING_OWN_TRASPASO_INFLOW_RE = bankDescriptionPattern("own_traspaso_inflow");
 
 export function isCheckingOwnTraspasoInflow(description: string): boolean {
   return CHECKING_OWN_TRASPASO_INFLOW_RE.test(stripCheckingBranchPrefix(description).trim());
@@ -137,12 +131,7 @@ export function isCheckingOwnTraspasoInflow(description: string): boolean {
  */
 export function isCheckingOwnTraspasoOutflow(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
-  return (
-    CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE.test(d) ||
-    OWN_SANTANDER_TRANSFER_RE.test(d) ||
-    CUENTA_VISTA_TRANSFER_DESC_RE.test(d) ||
-    INTERNAL_TRANSFER_RE.test(d)
-  );
+  return bankDescriptionMatchesUnion("own_traspaso_outflow", d);
 }
 
 export function isCheckingCorrienteVistaTraspasoOutflow(description: string): boolean {
@@ -154,11 +143,7 @@ export function isCheckingCorrienteVistaTraspasoOutflow(description: string): bo
 export function checkingWithdrawalMayAutoMatchDeposit(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
   if (!d) return false;
-  if (isCheckingCorrienteVistaTraspasoOutflow(d)) return true;
-  if (INTERNAL_TRANSFER_RE.test(d)) return true;
-  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
+  if (bankDescriptionMatchesUnion("withdrawal_may_auto_match_deposit", d)) return true;
   const merchantKey = normalizeCcExpenseMerchantKey(d);
   if (isExactGenericUniqueMerchantKey(merchantKey)) return true;
   if (isGenericTransferMerchantKey(merchantKey)) return true;
@@ -166,26 +151,20 @@ export function checkingWithdrawalMayAutoMatchDeposit(description: string): bool
 }
 
 /** Santander capital-markets money order charge (downpayment rail). */
-export const MERCADO_CAPITALES_CARGO_RE = /Cargo\s+Mercado\s+Capitales/i;
+export const MERCADO_CAPITALES_CARGO_RE = bankDescriptionPattern("mercado_capitales_cargo");
 /** Long numeric cartola reference used for the same money-order rail. */
-export const LONG_NUMERIC_CARGO_REF_RE = /^\d{10,}$/;
+export const LONG_NUMERIC_CARGO_REF_RE = bankDescriptionPattern("long_numeric_cargo_ref");
 
 /** DAP refund when a money order was annulled or a DAP matured (paired with cargo by `doc:`). */
-export const DAP_ABONADO_RE = /\bDAP\s+(\d+)\s+ABONADO\b/i;
+export const DAP_ABONADO_RE = bankDescriptionPattern("dap_abonado");
 /** Cuenta vista return of a DAP placed via Mercado Capitales (vale vista collection). */
-export const COBRO_VVISTA_DAP_RE = /\bCOBRO\s+VVISTA\s+(\d+)/i;
+export const COBRO_VVISTA_DAP_RE = bankDescriptionPattern("cobro_vvista_dap");
 
-/** Max days between MC cargo and matching DAP ABONADO credit (12 months). */
-export const DAP_ABONO_MAX_DAY_GAP = 365;
-
-/** Min premium on short DAP maturities (e.g. 42-day ~0.49% on Aug 2024 doc 9204418). */
-export const DAP_ABONO_MIN_PREMIUM_RATIO = 0.01;
-
-/** Max premium at {@link DAP_ABONO_MAX_DAY_GAP} (longer DAP terms). */
-export const DAP_ABONO_MAX_PREMIUM_RATIO = 0.1;
-
-/** Abono `doc:` may be cargo doc + N (Santander cartola numbering). */
-export const DAP_ABONO_DOC_SPREAD = 2;
+/** The DAP refund bounds (`bankDescriptionRules.json` `dap_abono`): days, premium range, document spread. */
+export const DAP_ABONO_MAX_DAY_GAP = DAP_ABONO_RULES.max_day_gap;
+export const DAP_ABONO_MIN_PREMIUM_RATIO = DAP_ABONO_RULES.min_premium_ratio;
+export const DAP_ABONO_MAX_PREMIUM_RATIO = DAP_ABONO_RULES.max_premium_ratio;
+export const DAP_ABONO_DOC_SPREAD = DAP_ABONO_RULES.doc_spread;
 
 export function checkingCreditLooksLikeMonthBucketCashReturn(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
@@ -292,14 +271,8 @@ export function isDapReturnCreditDescription(description: string): boolean {
 export function isExcludedCheckingWithdrawal(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
   if (!d) return true;
-  if (INTERNAL_TRANSFER_RE.test(d)) return true;
   if (isCcPaymentMerchant(d)) return true;
-  if (CC_PAYMENT_DESC_RE.test(d)) return true;
-  if (OWN_SANTANDER_TRANSFER_RE.test(d)) return true;
-  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
-  return false;
+  return bankDescriptionMatchesUnion("excluded_withdrawal", d);
 }
 
 /** Incoming cartola abono excluded by description (symmetric to {@link isExcludedCheckingWithdrawal}). */
@@ -307,24 +280,13 @@ export function isExcludedCheckingInflow(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
   if (!d) return true;
   if (isDapReturnCreditDescription(d)) return true;
-  if (CHECKING_CORRIENTE_INTERNET_TRANSFER_RE.test(d)) return true;
-  if (INTERNAL_TRANSFER_RE.test(d)) return true;
-  if (OWN_SANTANDER_TRANSFER_RE.test(d)) return true;
-  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_INCOMING_TRANSFER_RE.test(d)) return true;
-  if (BUDA_CRYPTO_EXCHANGE_TRANSFER_RE.test(d)) return true;
-  if (AFP_CHECKING_INFLOW_DESC_RE.test(d)) return true;
-  return false;
+  return bankDescriptionMatchesUnion("excluded_inflow", d);
 }
 
 /** Wires from checking into Fintual / reserva (capital funding, not consumption). */
 export function checkingWithdrawalFundsInvestmentCapital(note: string | null): boolean {
   const d = stripCheckingBranchPrefix(cartolaDescriptionFromNote(note)).trim();
-  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  return false;
+  return bankDescriptionMatchesUnion("funds_investment_capital", d);
 }
 
 /**
@@ -350,7 +312,7 @@ export function checkingCreditLooksLikeFintualIncomingWire(description: string):
   const trimmed = description.trim();
   if (!trimmed) return false;
   if (isPayrollRemuneracionCheckingInflow(trimmed)) return false;
-  if (FINTUAL_INCOMING_TRANSFER_RE.test(trimmed)) return true;
+  if (FINTUAL_TRANSFER_RE.test(trimmed)) return true;
 
   const fullKey = normalizeCcExpenseMerchantKey(trimmed);
   if (/^\d{6,}\s+TRANSF\.?$/.test(fullKey)) return true;
@@ -367,7 +329,5 @@ export function checkingCreditLooksLikeFintualIncomingWire(description: string):
 
 export function withdrawalMayUseSplittableReservaPool(description: string): boolean {
   const d = description.trim();
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
-  return false;
+  return bankDescriptionMatchesUnion("funds_investment_capital", d);
 }

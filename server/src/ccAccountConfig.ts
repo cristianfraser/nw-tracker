@@ -9,6 +9,7 @@ import { accountKindSlugForAccountId } from "./accountBucket.js";
 
 import { patchCreditCardBillingConfig } from "./ccBillingBalances.js";
 import { db } from "./db.js";
+import { loadCreditCardConfigRow } from "./cards/config.js";
 
 export type CcCupoCurrency = "clp" | "usd";
 
@@ -34,32 +35,21 @@ export function isCreditCardAccountId(accountId: number): boolean {
   return accountKindSlugForAccountId(accountId) === "credit_card";
 }
 
-const configRowStmt = db.prepare(
-  `SELECT card_last4, billing_cycle_start_day, billing_cycle_end_day, cupo_clp, cupo_usd
-   FROM credit_card_account_config WHERE account_id = ?`
-);
-
-type ConfigRow = {
-  card_last4: string | null;
-  billing_cycle_start_day: number;
-  billing_cycle_end_day: number | null;
-  cupo_clp: number | null;
-  cupo_usd: number | null;
-};
-
 export function getCreditCardAccountConfig(accountId: number): CreditCardAccountConfigDto {
   if (!isCreditCardAccountId(accountId)) {
     throw new Error(`account ${accountId} is not a credit-card account`);
   }
-  const row = configRowStmt.get(accountId) as ConfigRow | undefined;
+  // The one config reader: a card master without a row is a routing bug and throws (it used to
+  // answer a default 21→20 cycle).
+  const row = loadCreditCardConfigRow(accountId);
   return {
     account_id: accountId,
-    card_last4: row?.card_last4 ?? null,
-    billing_cycle_start_day: row?.billing_cycle_start_day ?? 21,
-    billing_cycle_end_day: row ? row.billing_cycle_end_day : null,
+    card_last4: row.card_last4,
+    billing_cycle_start_day: row.billing_cycle_start_day,
+    billing_cycle_end_day: row.billing_cycle_end_day,
     cupo: [
-      { currency: "clp", value: row?.cupo_clp ?? null },
-      { currency: "usd", value: row?.cupo_usd ?? null },
+      { currency: "clp", value: row.cupo_clp },
+      { currency: "usd", value: row.cupo_usd },
     ],
   };
 }
