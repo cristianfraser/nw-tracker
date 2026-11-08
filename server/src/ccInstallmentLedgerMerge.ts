@@ -34,10 +34,10 @@ import {
 import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import {
-  captureCcExpenseLines,
-  rekeyCcExpenseLinesAfterImport,
-  type CcExpenseLineRekeyResult,
-} from "./ccExpenseLineRekey.js";
+  adoptReimportedCardLines,
+  captureCardLines,
+  type ReimportedCardLinesResult,
+} from "./flows/cardLineAdoption.js";
 import { installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
 import { statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
@@ -493,7 +493,7 @@ export type CcAccountImportMergeResult = {
   /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
   grocery_branch_learning: GroceryBranchLearningResult;
   /** Categories, big groups, notes and splits carried from replaced lines onto their new rows. */
-  expense_line_rekey: CcExpenseLineRekeyResult;
+  expense_line_rekey: ReimportedCardLinesResult;
   /** The bucket passes every import runs once its lines are on file. */
   bucket: CcBucketPassesResult;
 };
@@ -622,8 +622,8 @@ function mergeInSession(
   // converted card payments whose evidence was on file still find it — replaced lines, a superseded
   // JSON close and settled bucket lines all get new rows.
   // Before any line is replaced: the purchase assignments keyed by the old rows follow them
-  // onto the new ones at the end (`ccExpenseLineRekey.ts`).
-  const expenseLines = captureCcExpenseLines(accountId);
+  // onto the new ones at the end (`flows/cardLineAdoption.ts`).
+  const expenseLines = captureCardLines(accountId);
   // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
   // lands on a close with no competing statement row (lines cascade via the FK).
   deleteJsonStatementsByIds(supersededJsonStatementIds);
@@ -656,7 +656,7 @@ function mergeInSession(
   // whichever source (paste textarea, nightly feed, statement PDF). Pairing it here teaches
   // the branch's merchant string, so the next receipt at that store writes its own line.
   const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
-  const expense_line_rekey = rekeyCcExpenseLinesAfterImport(expenseLines);
+  const expense_line_rekey = adoptReimportedCardLines(expenseLines);
   const bucket = runBucketPasses(accountId, records, opts?.listingBatchKind ?? null);
   // Whatever this import added for past days invalidates the frozen daily stamps written after
   // it — a paste of last week's purchases must show up on those days, not as today's move; bucket

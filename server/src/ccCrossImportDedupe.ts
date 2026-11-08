@@ -11,7 +11,7 @@ import { db } from "./db.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { purchaseAmountsMatch } from "./matching/installmentAmount.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
+import { adoptReplacingCardLines } from "./flows/cardLineAdoption.js";
 import { noteCardLineEvidence, requireCardLineSession, type CardLinePlan } from "./cards/lineWriteSession.js";
 
 export const selLineCategory = db.prepare<[number]>(
@@ -130,7 +130,7 @@ export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number
     }
   }
   noteCardLineEvidence(accountId, earliestTransactionDateForLineIds(ids));
-  carryCcExpenseAssignments(plan.carry);
+  adoptReplacingCardLines(plan.carry);
   let n = 0;
   for (const id of ids) n += delLines.run(id).changes;
   return n;

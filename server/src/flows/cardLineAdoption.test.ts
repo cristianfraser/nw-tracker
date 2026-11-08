@@ -1,22 +1,22 @@
-import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
-import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
-import { getFlowCategory } from "./flows/flowCategories.js";
-import { generalRuleCategoryIdReaching, setExpenseCategoryRule } from "./expenseCategoryRules.js";
-import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
-import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
-import { vendorRuleKeyCandidates } from "./bankMerchantName.js";
-import { vendorCatalogFromEntries } from "./vendorCatalogMatch.js";
+import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "../test/flowFixtures.js";
+import { getFlowNote, setFlowNote } from "./flowNotes.js";
+import { getFlowCategory } from "./flowCategories.js";
+import { generalRuleCategoryIdReaching, setExpenseCategoryRule } from "../expenseCategoryRules.js";
+import { billLinkPurchaseKey, insertBillLink } from "./flowLinks.js";
+import { rulesFor } from "../test/expenseCategoryRulesFixture.js";
+import { vendorRuleKeyCandidates } from "../bankMerchantName.js";
+import { vendorCatalogFromEntries } from "../vendorCatalogMatch.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { loadCcExpensePurchaseBigGroups, setCcExpensePurchaseBigGroup } from "./ccExpenseBigGroups.js";
-import { carryCcExpenseAssignments, planCcLineMoves, type CcLineRef } from "./ccExpenseLineRekey.js";
+import { db } from "../db.js";
+import { loadCcExpensePurchaseBigGroups, setCcExpensePurchaseBigGroup } from "../ccExpenseBigGroups.js";
+import { adoptReplacingCardLines, planCcLineMoves, type CcLineRef } from "./cardLineAdoption.js";
 import {
   getCcExpenseCategoryBySlug,
   resolveMerchantCategorySlug,
-} from "./ccExpenseCategories.js";
-import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
-import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
-import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
+} from "../ccExpenseCategories.js";
+import { importCcStatementsFromCsvRecords } from "../ccStatementsImport.js";
+import { createRealEstatePlace } from "../flowsRealEstateExpenses.js";
+import { VITEST_SANTANDER_CC_MASTER_NOTES } from "../test/vitestDbSeed.js";
 
 function ref(lineId: number, parserRowId: string | null, identity: string): CcLineRef {
   return { lineId, accountId: 1, parserRowId, installment: false, identity };
@@ -187,7 +187,7 @@ function cleanup(accountId: number): void {
   db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = ?`).run(BIG_GROUP);
 }
 
-describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
+describe("adoptReimportedCardLines (statement re-import)", () => {
   let accountId = 0;
   beforeAll(() => {
     accountId = fixtureAccountId();
@@ -214,10 +214,15 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
        VALUES ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 1, ?, 1500), ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 2, ?, 1000)`
     ).run(oldLine, fun.id, oldLine, food.id);
 
+    const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+    const assignedFlow = flowOf(oldLine);
+
     // The parser now renders the same printed row under another id.
     importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-new")]);
     const newLine = lineId(accountId);
     const newKey = "line-pr:vitest-rekey-new";
+    // Adoption: the re-imported line is the same flow, so its id and every assignment stay.
+    expect(flowOf(newLine)).toBe(assignedFlow);
 
     expect(getFlowCategory(accountId, newKey)?.category_id).toBe(fun.id);
     expect(loadCcExpensePurchaseBigGroups().get(newKey)).toBe(BIG_GROUP);
@@ -312,7 +317,7 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
     ]);
     setAssignments(accountId, "line-pr:vitest-rekey-cut", fun.id, "pasted");
     const ids = lineIds(accountId);
-    carryCcExpenseAssignments([{ fromLineId: ids.get("vitest-rekey-cut")!, toLineId: ids.get("vitest-rekey-full")! }]);
+    adoptReplacingCardLines([{ fromLineId: ids.get("vitest-rekey-cut")!, toLineId: ids.get("vitest-rekey-full")! }]);
     expect(categoryOf(accountId, "line-pr:vitest-rekey-full")).toBe(fun.id);
     expect(noteOf(accountId, "line-pr:vitest-rekey-full")).toBe("pasted");
     expect(categoryOf(accountId, "line-pr:vitest-rekey-cut")).toBeNull();
@@ -335,7 +340,7 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       bills.id
     );
 
-    const result = carryCcExpenseAssignments([
+    const result = adoptReplacingCardLines([
       { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
       { fromLineId: ids.get("vitest-rekey-paste2")!, toLineId: ids.get("vitest-rekey-stmt2")! },
     ])!;
@@ -349,7 +354,7 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
     expect(line.category_id).toBe(bills.id);
 
     // A statement name that already resolves keeps its own rule.
-    const again = carryCcExpenseAssignments([
+    const again = adoptReplacingCardLines([
       { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
     ])!;
     expect(again.merchant_rules_copied).toEqual([]);

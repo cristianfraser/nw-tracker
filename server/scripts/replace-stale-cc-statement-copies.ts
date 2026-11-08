@@ -15,7 +15,7 @@
  * fingerprint from a later import and the A row only the MONTO CANCELADO −1xx.xxx again). Inside one
  * IMMEDIATE transaction this deletes the stale rows and re-imports their twins in full from the
  * parse through `mergeCcAccountFromParsedRows`, carrying categories, notes, big groups and splits
- * from the deleted lines to the new ones (`ccExpenseLineRekey.ts`) and failing when a paired card
+ * from the deleted lines to the new ones (`flows/cardLineAdoption.ts`) and failing when a paired card
  * payment loses its evidence. Without --apply everything is rolled back, so the report IS the plan.
  *
  *   npx tsx scripts/replace-stale-cc-statement-copies.ts [--csv=/abs/path.csv] [--apply]
@@ -30,7 +30,7 @@ import {
   mergeCcAccountFromParsedRows,
   replaceStatementKeysFromRecords,
 } from "../src/ccInstallmentLedgerMerge.js";
-import { captureCcExpenseLines, rekeyCcExpenseLinesAfterImport } from "../src/ccExpenseLineRekey.js";
+import { adoptReimportedCardLines, captureCardLines } from "../src/flows/cardLineAdoption.js";
 import {
   assertCcPaymentEvidenceKept,
   ccPaymentPairingIdsWithEvidence,
@@ -100,13 +100,13 @@ const tx = db.transaction(() => {
     const twinBefore = new Map(twins.map((t) => [t.id, stats(t.id)]));
 
     const pairedWithEvidence = ccPaymentPairingIdsWithEvidence(accountId);
-    const capture = captureCcExpenseLines(accountId);
+    const capture = captureCardLines(accountId);
     const del = db.prepare(`DELETE FROM cc_statements WHERE id = ?`);
     for (const s of rows) del.run(s.id);
     const merged = mergeCcAccountFromParsedRows(accountId, accountRecords, {
       replaceStatementKeys: replaceStatementKeysFromRecords(accountRecords),
     });
-    const rekey = rekeyCcExpenseLinesAfterImport(capture);
+    const rekey = adoptReimportedCardLines(capture);
     assertCcPaymentEvidenceKept(accountId, pairedWithEvidence, "the stale statement replacement");
 
     console.log(`\naccount ${accountId}: ${rows.length} stale copies, ${accountRecords.length} parsed lines re-imported`);

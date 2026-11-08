@@ -103,7 +103,8 @@ export function withCardLineSession<T>(accountId: number, what: string, body: ()
 /**
  * What a planner (dedupe, mirror, planted, recurring, reconcile) hands the funnel: the lines to
  * delete, and for each line another one that replaces it, whose expense assignments (category, big
- * group, note, pieces, a merchant rule) follow it (`carryCcExpenseAssignments`). A planner reads;
+ * group, note, pieces, a merchant rule) follow it (`adoptReplacingCardLines`: it takes over the
+ * line's flow). A planner reads;
  * it never deletes or carries itself.
  */
 export type CardLinePlan = {

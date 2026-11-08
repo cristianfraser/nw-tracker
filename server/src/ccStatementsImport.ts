@@ -8,7 +8,7 @@ import {
   snapshotCcExpenseCategories,
 } from "./ccExpenseCategoryPersist.js";
 import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
-import { captureCcExpenseLines, rekeyCcExpenseLinesAfterImport } from "./ccExpenseLineRekey.js";
+import { adoptReimportedCardLines, captureCardLines } from "./flows/cardLineAdoption.js";
 import {
   canonicalCcLineDedupeKeys,
   ccLineDedupeKeyExistsOnAccount,
@@ -571,12 +571,12 @@ export function importCcStatementsFromCsvRecords(
   records: CcStatementCsvRecord[]
 ): CcStatementsMergeResult {
   return db.transaction(() => {
-    const expenseLines = captureCcExpenseLines(accountId);
+    const expenseLines = captureCardLines(accountId);
     const result = importCcStatementsMerge(accountId, records, {
       replaceAll: true,
       skipGlobalDedupeKeys: false,
     });
-    rekeyCcExpenseLinesAfterImport(expenseLines);
+    adoptReimportedCardLines(expenseLines);
     return result;
   })();
 }
