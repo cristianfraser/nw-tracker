@@ -239,7 +239,7 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
     // Tomorrow's feed row lands on the one-shot dedupe key — nothing inserted twice. This literal
     // is what ingest's feed parser makes of that row (pinned by the same literal in
     // ingest/src/santander/cardFeed.test.ts).
-    const feedRow = listingLineFromCardListingLine("santander", SANTANDER_FEED_PAGO_ROW);
+    const feedRow = listingLineFromCardListingLine(SANTANDER_FEED_PAGO_ROW);
     const feed = importCcListingLines(master, { lines: [feedRow], errors: [] }, "cc_santander_fetch");
     expect(feed.inserted).toBe(0);
     expect(feed.skipped_duplicate).toBe(1);

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { mergeInstallmentLedgerFromParsedRows } from "./ccInstallmentLedgerMerge.js";
+import { mergeInstallmentLedgerFromStatements } from "./ccInstallmentLedgerMerge.js";
 import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
-describe("mergeInstallmentLedgerFromParsedRows canonical fingerprint", () => {
+describe("mergeInstallmentLedgerFromStatements canonical fingerprint", () => {
   const purchaseIds: number[] = [];
 
   afterEach(() => {
@@ -22,7 +22,7 @@ describe("mergeInstallmentLedgerFromParsedRows canonical fingerprint", () => {
     if (masterId == null) return;
     const master = { id: masterId };
 
-    const base: Partial<CcStatementCsvRecord> = {
+    const base: Partial<ParsedRecord> = {
       card_group: "A",
       installment_flag: "true",
       transaction_date: "26/02/2025",
@@ -49,9 +49,9 @@ describe("mergeInstallmentLedgerFromParsedRows canonical fingerprint", () => {
         nro_cuota_current: "2",
         pay_by: "25/04/2025",
       },
-    ] as CcStatementCsvRecord[];
+    ] as ParsedRecord[];
 
-    mergeInstallmentLedgerFromParsedRows(master.id, rows);
+    mergeInstallmentLedgerFromStatements(master.id, parsedStatements(rows));
     const purchases = db
       .prepare(
         `SELECT id FROM cc_installment_purchases
@@ -87,8 +87,8 @@ describe("mergeInstallmentLedgerFromParsedRows canonical fingerprint", () => {
         canonical_row_id: "canon-cuota-cero",
         row_id: "row-cuota-cero",
       },
-    ] as CcStatementCsvRecord[];
-    mergeInstallmentLedgerFromParsedRows(masterId, rows);
+    ] as ParsedRecord[];
+    mergeInstallmentLedgerFromStatements(masterId, parsedStatements(rows));
     const purchase = db
       .prepare(`SELECT id FROM cc_installment_purchases WHERE account_id = ? AND merchant = 'VITEST MERGE CUOTA CERO'`)
       .get(masterId) as { id: number };

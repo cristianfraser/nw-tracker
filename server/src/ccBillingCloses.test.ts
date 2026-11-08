@@ -20,7 +20,7 @@ import { facturacionMonthByStatementDate, reconcileOpenWebPasteAfterPdfClose, st
 import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { listCcBillingMonthBalances, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { ccWebPasteToCsvRecords, webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
+import { listingStatements, webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
 
 /**
@@ -113,8 +113,9 @@ describe("credit-card close evidence", () => {
     );
   }
 
-  function webLine(dateIso: string, merchant: string, clp: number): CcListingLine {
-    return { transaction_date: dateIso, merchant, amount_clp: clp, amount_usd: null, currency: "clp", raw_line: merchant };
+  /** A listing line as Santander's table shows it (`pasted`: charges negative), debt-positive. */
+  function webLine(dateIso: string, merchant: string, pasted: number): CcListingLine {
+    return { transaction_date: dateIso, merchant, currency: "clp", amount: -pasted, raw_line: merchant };
   }
 
   /** Bucket line with the exact key the feed/paste would give it (clp stored debt-positive). */
@@ -561,7 +562,7 @@ describe("credit-card close evidence", () => {
 
     // A per-line month list that does not cover the lines is a caller bug, not a guess.
     expect(() =>
-      ccWebPasteToCsvRecords(accountId, CARD_GROUP, LAST4, "vitest00", [webLine("2026-09-25", "X", -1)], {
+      listingStatements(accountId, CARD_GROUP, LAST4, [webLine("2026-09-25", "X", -1)], {
         lineBillingMonths: ["2026-10", "2026-11"],
       })
     ).toThrow(/1 line\(s\)/);
@@ -923,13 +924,13 @@ describe("credit-card close evidence", () => {
   });
 
   it("skips a pasted SALDO INICIAL row instead of importing the previous bill as a charge", () => {
-    const { records, skipped_saldo_inicial } = ccWebPasteToCsvRecords(accountId, CARD_GROUP, LAST4, "b1", [
+    const { statements, skipped_saldo_inicial } = listingStatements(accountId, CARD_GROUP, LAST4, [
       webLine("2026-09-24", "SALDO INICIAL", -1_892_666),
       webLine("2026-09-25", "SWITCH VITEST", -15_500),
     ]);
     expect(skipped_saldo_inicial).toHaveLength(1);
-    expect(records.map((r) => r.merchant)).toEqual(["SWITCH VITEST"]);
-    expect(records[0]!.source_pdf).toBe("import:web-paste|open|2026-10");
+    expect(statements.flatMap((st) => st.lines.map((l) => l.merchant))).toEqual(["SWITCH VITEST"]);
+    expect(statements[0]!.document).toBe("import:web-paste|open|2026-10");
   });
 
   it("settles the buckets against September's statement: billed lines go, unbilled ones move on", () => {

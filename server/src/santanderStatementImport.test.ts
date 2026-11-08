@@ -1,9 +1,9 @@
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { jsonOwnedClosesForAccount, santanderJsonSourcePdf, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
-import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { mergeCardStatements } from "./ccInstallmentLedgerMerge.js";
 import { db } from "./db.js";
-import { assertNoCardRoutingConflict, buildSantanderStatementRecords, inheritedStatementCtx, resolveJsonCuotaCanonicalRowId, usdStatementIsStaleEcho, writeSantanderStatements } from "./santanderStatementImport.js";
+import { assertNoCardRoutingConflict, buildSantanderStatement, inheritedStatementCtx, resolveJsonCuotaCanonicalRowId, usdStatementIsStaleEcho, writeSantanderStatements } from "./santanderStatementImport.js";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -81,7 +81,7 @@ describe("santanderStatementImport", () => {
   it("maps lines and folds the payment row into the header", () => {
     const id = masterId();
     if (id == null) return;
-    const records = buildSantanderStatementRecords(
+    const statement = buildSantanderStatement(
       "clp",
       [
         line({}),
@@ -92,40 +92,41 @@ describe("santanderStatementImport", () => {
       { ...CTX, accountId: id }
     );
 
-    expect(records).toHaveLength(2);
-    const first = records[0]!;
-    expect(first.source_pdf).toBe(santanderJsonSourcePdf("clp", "20/09/2026"));
-    expect(first.statement_monto_facturado).toBe("25000");
-    expect(first.statement_monto_pagado_anterior).toBe("-7000");
-    expect(first.statement_monto_pagado_anterior_date).toBe("2026-09-08");
-    expect(first.period_from).toBe("20/08/2026");
-    expect(first.period_to).toBe("20/09/2026");
+    expect(statement.lines).toHaveLength(2);
+    expect(statement.document).toBe(santanderJsonSourcePdf("clp", "20/09/2026"));
+    expect(statement.header.monto_facturado).toBe(25_000);
+    expect(statement.header.monto_pagado_anterior).toBe(-7_000);
+    expect(statement.header.monto_pagado_anterior_date).toBe("2026-09-08");
+    expect(statement.period_from).toBe("20/08/2026");
+    expect(statement.period_to).toBe("20/09/2026");
 
-    const cuota = records.find((r) => r.installment_flag === "true")!;
-    expect(cuota.amount_clp).toBe("60000");
-    expect(cuota.valor_cuota_mensual_clp).toBe("10000");
-    expect(cuota.canonical_row_id).toMatch(/^json-loan\|/);
-    expect(new Set(records.map((r) => r.dedupe_key)).size).toBe(records.length);
+    const cuota = statement.lines.find((l) => l.installment != null)!;
+    expect(cuota.kind).toBe("installment_cuota");
+    expect(cuota.amount).toBe(60_000);
+    expect(cuota.installment!.cuota_amount).toBe(10_000);
+    expect(cuota.installment!.plan_id).toMatch(/^json-loan\|/);
+    expect(new Set(statement.lines.map((l) => l.document.dedupe_key)).size).toBe(statement.lines.length);
   });
 
   it("keeps the payment row as a negative line on payment-only months", () => {
     const id = masterId();
     if (id == null) return;
-    const records = buildSantanderStatementRecords(
+    const statement = buildSantanderStatement(
       "clp",
       [line({ kind: "payment", merchant: "MONTO CANCELADO", amount: -2_368, transaction_date: "2025-10-23" })],
       totals({ payments_total: 2_368 }),
       { ...CTX, accountId: id }
     );
-    expect(records).toHaveLength(1);
-    expect(records[0]!.amount_clp).toBe("-2368");
-    expect(records[0]!.statement_monto_pagado_anterior).toBe("-2368");
+    expect(statement.lines).toHaveLength(1);
+    expect(statement.lines[0]!.amount).toBe(-2_368);
+    expect(statement.lines[0]!.kind).toBe("card_payment");
+    expect(statement.header.monto_pagado_anterior).toBe(-2_368);
   });
 
   it("imports a NOTA DE CREDITO (CodTxs 510) as a negative line, not a payment", () => {
     const id = masterId();
     if (id == null) return;
-    const records = buildSantanderStatementRecords(
+    const statement = buildSantanderStatement(
       "clp",
       [
         line({}),
@@ -134,43 +135,44 @@ describe("santanderStatementImport", () => {
       totals({ billed_total: 21_130 }),
       { ...CTX, accountId: id }
     );
-    expect(records).toHaveLength(2);
-    const nota = records.find((r) => r.merchant === "NOTA DE CREDITO")!;
-    expect(nota.amount_clp).toBe("-2140");
-    expect(nota.statement_monto_pagado_anterior).toBe("");
+    expect(statement.lines).toHaveLength(2);
+    const nota = statement.lines.find((l) => l.merchant === "NOTA DE CREDITO")!;
+    expect(nota.amount).toBe(-2_140);
+    expect(nota.kind).toBe("card_refund");
+    expect(statement.header.monto_pagado_anterior).toBe(null);
   });
 
   it("occurrence-suffixes same-statement twins", () => {
     const id = masterId();
     if (id == null) return;
     const twin = line({ merchant: "APPLE.COM/BILL", amount: 14_070 });
-    const records = buildSantanderStatementRecords("clp", [twin, { ...twin }], totals({}), {
+    const { lines } = buildSantanderStatement("clp", [twin, { ...twin }], totals({}), {
       ...CTX,
       accountId: id,
     });
-    expect(records[1]!.dedupe_key).toBe(`${records[0]!.dedupe_key}#dup1`);
+    expect(lines[1]!.document.dedupe_key).toBe(`${lines[0]!.document.dedupe_key}#dup1`);
   });
 
-  it("writes an international origin in the CSV's Chilean style and names no currency", () => {
+  it("carries an international line's dollars and origin to the cent", () => {
     const id = masterId();
     if (id == null) return;
-    const [rec] = buildSantanderStatementRecords(
+    const [l] = buildSantanderStatement(
       "usd",
       [line({ merchant: "TIENDA VITEST", amount: 12.5, origin_amount: 11_875 })],
       null,
       { ...CTX, accountId: id }
-    );
-    expect(rec!.amount_orig).toBe("11875,00");
-    expect(rec!.amount_usd).toBe("12.50");
-    // The import labels it (`ccOriginCurrency.ts`), and refuses a record that carries a label.
-    expect(rec!.orig_currency).toBeUndefined();
+    ).lines;
+    expect(l!.currency).toBe("usd");
+    expect(l!.amount).toBe(12.5);
+    // The import labels the origin's currency (`ccOriginCurrency.ts`).
+    expect(l!.origin_amount).toBe(11_875);
   });
 
   it("throws when the payment rows do not add up to the stated payments total", () => {
     const id = masterId();
     if (id == null) return;
     expect(() =>
-      buildSantanderStatementRecords(
+      buildSantanderStatement(
         "clp",
         [line({}), line({ kind: "payment", merchant: "MONTO CANCELADO", amount: -7_000 })],
         totals({ payments_total: 9_999 }),
@@ -198,7 +200,7 @@ describe("santanderStatementImport", () => {
   it("writes through the merge, takes ownership, and guards later PDF imports of the close", () => {
     const id = masterId();
     if (id == null) return;
-    const records = buildSantanderStatementRecords(
+    const statement = buildSantanderStatement(
       "clp",
       [line({}), line({ merchant: "FERRETERIA VITEST", amount: 15_000, transaction_date: "2026-09-06" })],
       totals({ billed_total: 25_000 }),
@@ -206,13 +208,13 @@ describe("santanderStatementImport", () => {
     );
 
     expect(statementSourceOwnerForClose(id, "20/09/2026", "clp")).toBe(null);
-    const write = writeSantanderStatements(id, records);
+    const write = writeSantanderStatements(id, [statement]);
     expect(write.lineCount).toBe(2);
     expect(statementSourceOwnerForClose(id, "20/09/2026", "clp")).toBe("json");
     expect(jsonOwnedClosesForAccount(id).has("20/09/2026\tclp")).toBe(true);
 
     // Idempotent rewrite: replacement keeps exactly the same two lines.
-    const rewrite = writeSantanderStatements(id, records);
+    const rewrite = writeSantanderStatements(id, [statement]);
     expect(rewrite.lineCount).toBe(2);
     const stored = db
       .prepare(
@@ -224,7 +226,7 @@ describe("santanderStatementImport", () => {
     expect(stored.n).toBe(2);
 
     // A later PDF import of the same close TAKES OVER from the JSON; other closes still import.
-    const pdfRecord = (over: Partial<CcStatementCsvRecord>): CcStatementCsvRecord => ({
+    const pdfRecord = (over: Partial<ParsedRecord>): ParsedRecord => ({
       card_group: "vitest-json",
       source_pdf: "vitest-json-guard.pdf",
       statement_date: "20/09/2026",
@@ -240,7 +242,7 @@ describe("santanderStatementImport", () => {
       row_id: "vitest-json-guard-1",
       ...over,
     });
-    const merged = mergeCcAccountFromParsedRows(id, [
+    const merged = mergeCardStatements(id, parsedStatements([
       pdfRecord({}),
       pdfRecord({
         source_pdf: "vitest-json-guard-2.pdf",
@@ -251,7 +253,7 @@ describe("santanderStatementImport", () => {
         dedupe_key: "vitest-json-guard-2",
         row_id: "vitest-json-guard-2",
       }),
-    ]);
+    ]));
     expect(merged.json_closes_superseded_by_pdf).toEqual(["20/09/2026 clp"]);
     // Still exactly one owning statement for the close — the PDF replaced the JSON row rather
     // than sitting alongside it (which the UNIQUE index would have allowed, doubling the ledger).
@@ -284,15 +286,15 @@ describe("santanderStatementImport", () => {
   it("writes one facturación per call", () => {
     const id = masterId();
     if (id == null) return;
-    const september = buildSantanderStatementRecords("clp", [line({})], totals({}), { ...CTX, accountId: id });
-    const october = buildSantanderStatementRecords(
+    const september = buildSantanderStatement("clp", [line({})], totals({}), { ...CTX, accountId: id });
+    const october = buildSantanderStatement(
       "clp",
       [line({ transaction_date: "2026-10-05" })],
       totals({}),
       { ...CTX, accountId: id, statementDate: "20/10/2026", periodFrom: "20/09/2026" }
     );
-    expect(() => writeSantanderStatements(id, [...september, ...october])).toThrow(
-      /records span 2 closes \(20\/09\/2026, 20\/10\/2026\) — write one facturación per call/
+    expect(() => writeSantanderStatements(id, [september, october])).toThrow(
+      /statements span 2 closes \(20\/09\/2026, 20\/10\/2026\) — write one facturación per call/
     );
     expect(statementSourceOwnerForClose(id, "20/09/2026", "clp")).toBe(null);
   });

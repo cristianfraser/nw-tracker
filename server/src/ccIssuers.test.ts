@@ -6,8 +6,7 @@ import {
   ccIssuerForParserLayout,
   ccIssuerForWebPasteCardGroup,
 } from "./ccIssuers.js";
-import { webPasteAmountClpForDb, webPasteAmountFromDebtPositive } from "./ccPaymentLines.js";
-import { webPasteLinesFromPastedListing } from "./ccWebPasteParse.js";
+import { listingLineStoredAmount, webPasteLinesFromPastedListing } from "./ccWebPasteParse.js";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
 
 describe("card issuers as data", () => {
@@ -19,22 +18,18 @@ describe("card issuers as data", () => {
   });
 
   it("a CMR paste is read with its issuer's sign (it used to throw)", () => {
-    const { lines } = webPasteLinesFromPastedListing({
-      lines: [
-        { date: "2021-03-05", merchant: "TIENDA", amount: 12_990, currency: "clp", raw_line: "05/03/2021 TIENDA 12.990" },
-        { date: "2021-03-09", merchant: "DEVOLUCION TIENDA", amount: -2_990, currency: "clp", raw_line: "x" },
-        { date: "2021-03-20", merchant: "PAGO", amount: 10_000, currency: "clp", raw_line: "y" },
-      ],
-      errors: [],
-    });
-    expect(lines.map((l) => webPasteAmountClpForDb(l.amount_clp, l.merchant, "CMR"))).toEqual([12_990, -2_990, -10_000]);
-  });
-
-  it("Santander's web table signs charges negative; BCI's positive", () => {
-    expect(webPasteAmountClpForDb(-1_990, "ARAMCO", "santander")).toBe(1_990);
-    expect(webPasteAmountClpForDb(1_990, "ARAMCO", "BCI")).toBe(1_990);
-    expect(webPasteAmountFromDebtPositive(1_990, "santander")).toBe(-1_990);
-    expect(webPasteAmountFromDebtPositive(1_990, "CMR")).toBe(1_990);
+    const { lines } = webPasteLinesFromPastedListing(
+      {
+        lines: [
+          { date: "2021-03-05", merchant: "TIENDA", amount: 12_990, currency: "clp", raw_line: "05/03/2021 TIENDA 12.990" },
+          { date: "2021-03-09", merchant: "DEVOLUCION TIENDA", amount: -2_990, currency: "clp", raw_line: "x" },
+          { date: "2021-03-20", merchant: "PAGO", amount: 10_000, currency: "clp", raw_line: "y" },
+        ],
+        errors: [],
+      },
+      "CMR"
+    );
+    expect(lines.map(listingLineStoredAmount)).toEqual([12_990, -2_990, -10_000]);
   });
 
   it("first-cuota timing per issuer and kind", () => {

@@ -44,9 +44,8 @@ function webPasteLine(
   return {
     transaction_date: transactionDateIso,
     merchant,
-    amount_clp: amountClp,
-    amount_usd: null,
     currency: "clp",
+    amount: amountClp,
     raw_line: `${transactionDateIso}\t${merchant}\t${amountClp}`,
   };
 }

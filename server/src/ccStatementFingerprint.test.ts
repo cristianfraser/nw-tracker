@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  ccStatementRecordsFingerprint,
-  filterUnchangedStatementRecords,
-  groupRecordsByStatement,
-} from "./ccStatementFingerprint.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
-import { statementKeyFromRow } from "./ccStatementsImport.js";
+import { cardStatementKey } from "nw-tracker-contracts";
+import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
+import { cardStatementFingerprint } from "./cards/statementStorage.js";
 import { db } from "./db.js";
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
+
+const fingerprint = (records: ParsedRecord[]) => cardStatementFingerprint(parsedStatements(records)[0]!);
 
 /**
  * Incremental import: the nightly job must stop re-importing and re-reconciling ~240 unchanged
@@ -22,7 +21,7 @@ describe("ccStatementFingerprint", () => {
     }
   });
 
-  function rec(over: Partial<CcStatementCsvRecord> = {}): CcStatementCsvRecord {
+  function rec(over: Partial<ParsedRecord> = {}): ParsedRecord {
     return {
       card_group: "vitest-fp",
       source_pdf: "vitest-fp.pdf",
@@ -64,75 +63,79 @@ describe("ccStatementFingerprint", () => {
     const a = rec({ row_id: "row-1", dedupe_key: "dk-1" });
     const b = rec({ row_id: "row-2", dedupe_key: "dk-2", merchant: "FARMACIA", amount_clp: "2500" });
 
-    // CSV ordering must not change the fingerprint.
-    expect(ccStatementRecordsFingerprint([a, b])).toBe(ccStatementRecordsFingerprint([b, a]));
+    // Line order must not change the fingerprint.
+    expect(fingerprint([a, b])).toBe(fingerprint([b, a]));
     // Any content change must.
-    expect(ccStatementRecordsFingerprint([a])).not.toBe(
-      ccStatementRecordsFingerprint([rec({ amount_clp: "10001" })])
-    );
+    expect(fingerprint([a])).not.toBe(fingerprint([rec({ amount_clp: "10001" })]));
     // A dropped line must, too — this is the case the old parser bug produced.
-    expect(ccStatementRecordsFingerprint([a, b])).not.toBe(ccStatementRecordsFingerprint([a]));
-    // A brand-new CSV column changes it: the parser changed, so re-validate once.
-    expect(ccStatementRecordsFingerprint([a])).not.toBe(
-      ccStatementRecordsFingerprint([{ ...a, brand_new_column: "x" } as CcStatementCsvRecord])
-    );
+    expect(fingerprint([a, b])).not.toBe(fingerprint([a]));
+    // A header the statement prints differently must.
+    expect(fingerprint([a])).not.toBe(fingerprint([rec({ statement_monto_facturado: "10000" })]));
   });
 
-  it("groups records per statement", () => {
-    const other = rec({ source_pdf: "vitest-fp-2.pdf", row_id: "row-9" });
-    const grouped = groupRecordsByStatement([rec(), rec({ row_id: "row-2" }), other]);
-    expect(grouped.size).toBe(2);
-    expect(grouped.get(statementKeyFromRow(rec()))).toHaveLength(2);
+  it("hashes what is stored, not how a source printed it", () => {
+    // The same dollars written «13,77» by the parser and carried as 13.77 by another source.
+    const usd = rec({ currency: "usd", parser_layout: "international_usd", amount_clp: "", amount_usd: "13,77" });
+    const st = parsedStatements([usd])[0]!;
+    expect(st.lines[0]!.amount).toBe(13.77);
+    // The document key and the identity columns the row is resolved by stay out.
+    expect(fingerprint([usd])).toBe(fingerprint([{ ...usd, dedupe_key: "another-key" }]));
+    expect(fingerprint([usd])).toBe(fingerprint([{ ...usd, source_pdf: "vitest-fp-redownload.pdf" }]));
+  });
+
+  it("leaves out a line the import drops as a repeat within the statement", () => {
+    const a = rec();
+    expect(fingerprint([a, { ...a }])).toBe(fingerprint([a]));
+    // A same-statement twin (a fresh document key) is a line of its own.
+    expect(fingerprint([a, { ...a, row_id: "row-2", dedupe_key: "dk-2" }])).not.toBe(fingerprint([a]));
   });
 
   it("skips a statement whose fingerprint matches and imports one that changed", () => {
     const accountId = fixtureAccountId();
     const records = [rec(), rec({ row_id: "row-2", dedupe_key: "dk-2", merchant: "FARMACIA" })];
-    const fp = ccStatementRecordsFingerprint(records);
-    seedStatement(accountId, fp);
+    seedStatement(accountId, fingerprint(records));
 
-    const unchanged = filterUnchangedStatementRecords(accountId, records);
+    const unchanged = filterUnchangedStatements(accountId, parsedStatements(records));
     expect(unchanged.changed).toHaveLength(0);
-    expect(unchanged.skippedKeys).toEqual([statementKeyFromRow(records[0]!)]);
+    expect(unchanged.skippedKeys).toEqual([cardStatementKey(parsedStatements(records)[0]!)]);
 
     // One extra line — the statement must go through the full import + reconcile again.
     const withExtra = [...records, rec({ row_id: "row-3", dedupe_key: "dk-3", amount_clp: "777" })];
-    const changed = filterUnchangedStatementRecords(accountId, withExtra);
-    expect(changed.changed).toHaveLength(3);
+    const changed = filterUnchangedStatements(accountId, parsedStatements(withExtra));
+    expect(changed.changed).toHaveLength(1);
+    expect(changed.changed[0]!.lines).toHaveLength(3);
     expect(changed.skippedKeys).toEqual([]);
   });
 
   it("treats a never-fingerprinted statement as changed, then settles once stored", () => {
     const accountId = fixtureAccountId();
-    const records = [rec()];
+    const statements = parsedStatements([rec()]);
     seedStatement(accountId, null); // pre-existing row from before this feature
 
-    const first = filterUnchangedStatementRecords(accountId, records);
+    const first = filterUnchangedStatements(accountId, statements);
     expect(first.changed).toHaveLength(1);
 
     // The importer writes the fingerprint onto the row it resolved (see ccStatementsImport).
-    const key = statementKeyFromRow(records[0]!);
     db.prepare(`UPDATE cc_statements SET import_fingerprint = ? WHERE id = ?`).run(
-      first.fingerprintByKey.get(key)!,
+      cardStatementFingerprint(statements[0]!),
       created[created.length - 1]!
     );
 
-    const second = filterUnchangedStatementRecords(accountId, records);
+    const second = filterUnchangedStatements(accountId, statements);
     expect(second.changed).toHaveLength(0);
-    expect(second.skippedKeys).toEqual([key]);
+    expect(second.skippedKeys).toEqual([cardStatementKey(statements[0]!)]);
   });
 
   it("never skips a web-paste bucket", () => {
     const accountId = fixtureAccountId();
     const records = [rec({ source_pdf: "import:web-paste|open|2026-08" })];
-    const fp = ccStatementRecordsFingerprint(records);
     db.prepare(
       `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency, import_fingerprint)
        VALUES (?, 'vitest-fp', 'import:web-paste|open|2026-08', '20/08/2026', '20/07/2026', '20/08/2026', 'clp', ?)`
-    ).run(accountId, fp);
+    ).run(accountId, fingerprint(records));
     created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
-    const result = filterUnchangedStatementRecords(accountId, records);
+    const result = filterUnchangedStatements(accountId, parsedStatements(records));
     expect(result.changed).toHaveLength(1);
     expect(result.skippedKeys).toEqual([]);
   });

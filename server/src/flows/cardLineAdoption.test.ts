@@ -1,3 +1,4 @@
+import { parsedStatements } from "../test/parsedStatementRecords.js";
 import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "../test/flowFixtures.js";
 import { getFlowNote, setFlowNote } from "./flowNotes.js";
 import { getFlowCategory } from "./flowCategories.js";
@@ -15,7 +16,7 @@ import {
   getCcExpenseCategoryBySlug,
   resolveMerchantCategorySlug,
 } from "../ccExpenseCategories.js";
-import { importCcStatementsFromCsvRecords } from "../ccStatementsImport.js";
+import { importCcStatementsWipeAndReload } from "../ccStatementsImport.js";
 import { createRealEstatePlace } from "../flowsRealEstateExpenses.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "../test/vitestDbSeed.js";
 
@@ -198,7 +199,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
   afterAll(() => cleanup(accountId));
 
   it("carries category, big group, note and splits onto the re-parsed line", () => {
-    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-old")]);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-old")]));
     const oldLine = lineId(accountId);
     const fun = getCcExpenseCategoryBySlug("fun")!;
     const food = getCcExpenseCategoryBySlug("food")!;
@@ -219,7 +220,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     const assignedFlow = flowOf(oldLine);
 
     // The parser now renders the same printed row under another id.
-    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-new")]);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-new")]));
     const newLine = lineId(accountId);
     const newKey = "line-pr:vitest-rekey-new";
     // Adoption: the re-imported line is the same flow, so its id and every assignment stay.
@@ -266,10 +267,10 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
         .run(placeId).lastInsertRowid
     );
     try {
-      importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-old")]);
+      importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-old")]));
       insertBillLink(entryId, "line-pr:vitest-rekey-old", "manual");
 
-      importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-new")]);
+      importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-new")]));
 
       expect(billLinkPurchaseKey(entryId)).toBe("line-pr:vitest-rekey-new");
     } finally {
@@ -282,10 +283,10 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     cleanup(accountId);
     db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
     const fun = getCcExpenseCategoryBySlug("fun")!;
-    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-one")]);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-one")]));
     setAssignments(accountId, "line-pr:vitest-rekey-one", fun.id, "trip");
 
-    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-two-a"), record("vitest-rekey-two-b")]);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-two-a"), record("vitest-rekey-two-b")]));
     for (const key of ["line-pr:vitest-rekey-two-a", "line-pr:vitest-rekey-two-b"]) {
       expect(categoryOf(accountId, key)).toBe(fun.id);
       expect(noteOf(accountId, key)).toBe("trip");
@@ -297,10 +298,10 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     cleanup(accountId);
     db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
     const fun = getCcExpenseCategoryBySlug("fun")!;
-    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-kept")]);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-kept")]));
     setAssignments(accountId, "line-pr:vitest-rekey-kept", fun.id, "mine");
 
-    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-kept"), record("vitest-rekey-sibling")]);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("vitest-rekey-kept"), record("vitest-rekey-sibling")]));
     expect([...lineIds(accountId).keys()].sort()).toEqual(["vitest-rekey-kept", "vitest-rekey-sibling"]);
     expect(categoryOf(accountId, "line-pr:vitest-rekey-kept")).toBe(fun.id);
     expect(categoryOf(accountId, "line-pr:vitest-rekey-sibling")).toBe(fun.id);
@@ -312,10 +313,10 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     cleanup(accountId);
     db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
     const fun = getCcExpenseCategoryBySlug("fun")!;
-    importCcStatementsFromCsvRecords(accountId, [
+    importCcStatementsWipeAndReload(accountId, parsedStatements([
       record("vitest-rekey-cut", "VITEST REKEY ME"),
       record("vitest-rekey-full", "VITEST SETTLED NAME"),
-    ]);
+    ]));
     setAssignments(accountId, "line-pr:vitest-rekey-cut", fun.id, "pasted");
     const ids = lineIds(accountId);
     replaceCardLines([{ fromLineId: ids.get("vitest-rekey-cut")!, toLineId: ids.get("vitest-rekey-full")! }]);
@@ -328,12 +329,12 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     cleanup(accountId);
     const health = getCcExpenseCategoryBySlug("healthcare")!;
     const bills = getCcExpenseCategoryBySlug("bills")!;
-    importCcStatementsFromCsvRecords(accountId, [
+    importCcStatementsWipeAndReload(accountId, parsedStatements([
       record("vitest-rekey-paste", "VITEST SHOP", 2501),
       record("vitest-rekey-stmt", "VITEST SHOP (T)", 2502),
       record("vitest-rekey-paste2", "VITEST TOKU", 2503),
       record("vitest-rekey-stmt2", "VITEST TOKU (T)", 2504),
-    ]);
+    ]));
     setExpenseCategoryRule("VITEST SHOP", null, health.id);
     const ids = lineIds(accountId);
     db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`).run(

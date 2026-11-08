@@ -1,13 +1,13 @@
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { describe, expect, it } from "vitest";
 import {
   buildCcStatementImportAccountLog,
   formatCcStatementImportLogBody,
 } from "./ccStatementImportLog.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 
 describe("ccStatementImportLog", () => {
   it("lists PDFs and warnings when no lines inserted", () => {
-    const records: CcStatementCsvRecord[] = [
+    const records: ParsedRecord[] = [
       {
         source_pdf: "2021-09-22 estado de cuenta tarjeta usd 4141.pdf",
         card_last4: "4141",
@@ -16,7 +16,7 @@ describe("ccStatementImportLog", () => {
         statement_date: "22/09/2021",
       },
     ];
-    const acc = buildCcStatementImportAccountLog(35, "4141 santander", records, {
+    const acc = buildCcStatementImportAccountLog(35, "4141 santander", parsedStatements(records), {
       statements_merged: 0,
       lines_inserted: 0,
       lines_skipped_duplicate: 0,

@@ -181,11 +181,11 @@ describe("groceryBranchLearning", () => {
     const receipt = insertPendingReceipt("VITEST SUC #5", "2037-01-10", 9990, master);
     const twinA = insertPendingReceipt("VITEST SUC #6", "2037-01-11", 4440, master);
     const twinB = insertPendingReceipt("VITEST SUC #7", "2037-01-11", 4440, master);
-    // Santander web pastes carry charges negative; the funnel stores them positive.
+    // Listing lines are debt-positive (a Santander paste's negative charges are flipped when read).
     const res = importCcListingLines(master, {
       lines: [
-        { transaction_date: "2037-01-10", merchant: "VITEST HIPER PASTE, SANTIAGO", amount_clp: -9990, amount_usd: null, currency: "clp", raw_line: "vitest paste 1" },
-        { transaction_date: "2037-01-11", merchant: "VITEST TWIN, SANTIAGO", amount_clp: -4440, amount_usd: null, currency: "clp", raw_line: "vitest paste 2" },
+        { transaction_date: "2037-01-10", merchant: "VITEST HIPER PASTE, SANTIAGO", currency: "clp", amount: 9990, raw_line: "vitest paste 1" },
+        { transaction_date: "2037-01-11", merchant: "VITEST TWIN, SANTIAGO", currency: "clp", amount: 4440, raw_line: "vitest paste 2" },
       ],
       errors: [],
     });

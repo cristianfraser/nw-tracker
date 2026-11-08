@@ -40,9 +40,8 @@ describe("liderCardLines", () => {
     return {
       transaction_date: "2026-07-30",
       merchant: "EXPRESS LYON, SANTIAGO",
-      amount_clp: 20470,
-      amount_usd: null,
       currency: "clp",
+      amount: 20470,
       raw_line: "vitest",
       ...partial,
     };
@@ -68,7 +67,7 @@ describe("liderCardLines", () => {
 
     const { importable, sameDayAmount } = classifyLiderLines(id, [
       line({}),
-      line({ transaction_date: "2026-08-03", merchant: "EXPRESS FICTICIA 2., SANTIAGO", amount_clp: 9080 }),
+      line({ transaction_date: "2026-08-03", merchant: "EXPRESS FICTICIA 2., SANTIAGO", amount: 9080 }),
     ]);
     expect(importable.map((l) => l.merchant)).toEqual(["EXPRESS FICTICIA 2., SANTIAGO"]);
     expect(sameDayAmount).toHaveLength(1);

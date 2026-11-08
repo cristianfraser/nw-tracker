@@ -5,14 +5,14 @@ import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
 import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import {
-  ccWebPasteToCsvRecords,
   creditCardMasterMetaForAccount,
   isCcCuotaBillingReferenceMerchant,
+  listingStatements,
   webPasteLinesFromPastedListing,
 } from "./ccWebPasteParse.js";
 
-/** Lines as the ingest service reads a paste (signed as the issuer's table prints them). */
-function pasted(rows: [date: string, merchant: string, amount: number, currency?: "clp" | "usd"][]) {
+/** Lines as the ingest service reads a paste (signed as the issuer's table prints them), under a paste group. */
+function pasted(rows: [date: string, merchant: string, amount: number, currency?: "clp" | "usd"][], cardGroup = "santander") {
   return webPasteLinesFromPastedListing({
     lines: rows.map(([date, merchant, amount, currency]) => ({
       date,
@@ -22,7 +22,7 @@ function pasted(rows: [date: string, merchant: string, amount: number, currency?
       raw_line: `${date}\t${merchant}\t${amount}`,
     })),
     errors: [],
-  }).lines;
+  }, cardGroup).lines;
 }
 
 /** A Santander paste: charges negative, the payment positive. */
@@ -40,7 +40,7 @@ function fixtureCardId(): number {
   return id;
 }
 
-describe("ccWebPasteToCsvRecords", () => {
+describe("listingStatements", () => {
   it("assigns pasted lines to open billing month after last PDF", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
@@ -49,36 +49,37 @@ describe("ccWebPasteToCsvRecords", () => {
     const lines = pasted([["2026-05-19", "SHOP", -10000]]);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
-    const { records } = ccWebPasteToCsvRecords(master.id, "santander", "4242", "test", lines);
-    expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
-    expect(records[0]?.statement_date).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
+    const { statements } = listingStatements(master.id, "santander", "4242", lines);
+    expect(statements[0]?.document).toBe(openWebPasteSourcePdf(openBm!));
+    expect(statements[0]?.close).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
   });
 
   it("dedupe keys match one-shot PDF formula for charges", () => {
     const lines = pasted([["2026-05-19", "SHOP", -10000]]);
     const line = lines[0]!;
-    const key = ccOneShotDedupeKey("santander", line.merchant, Math.abs(line.amount_clp), line.transaction_date);
+    const key = ccOneShotDedupeKey("santander", line.merchant, Math.abs(line.amount), line.transaction_date);
     expect(key).toHaveLength(16);
   });
 
-  it("stores charges positive and payments negative in CSV records", () => {
-    const lines = SANTANDER_LINES;
-    const { records } = ccWebPasteToCsvRecords(fixtureCardId(), "santander", "4242", "test", lines);
-    const charge = records.find((r) => r.merchant === "ARAMCO");
-    const pago = records.find((r) => r.merchant === "PAGO");
-    expect(charge?.amount_clp).toBe("1990");
-    expect(pago?.amount_clp).toBe("-5570527");
+  it("files charges positive and payments negative, each with its kind and listing key", () => {
+    const { statements } = listingStatements(fixtureCardId(), "santander", "4242", SANTANDER_LINES);
+    const lines = statements.flatMap((st) => st.lines);
+    const charge = lines.find((l) => l.merchant === "ARAMCO")!;
+    const pago = lines.find((l) => l.merchant === "PAGO")!;
+    expect(charge).toMatchObject({ currency: "clp", amount: 1990, kind: "card_purchase", printed_transaction_date: null });
+    expect(charge.document.line_id).toBe(`web:${charge.document.dedupe_key}`);
+    expect(pago).toMatchObject({ amount: -5570527, kind: "card_payment" });
   });
 
-  it("emits USD charges as amount_usd (charge positive) with amount_clp empty and no origin", () => {
+  it("files USD charges in dollars (charge positive) with no origin", () => {
     const lines = pasted([["2026-06-30", "ANTHROPIC* CLAU", -99.28, "usd"]]);
-    const { records } = ccWebPasteToCsvRecords(fixtureCardId(), "santander", "4242", "test", lines);
-    const r = records.find((x) => x.merchant === "ANTHROPIC* CLAU");
-    expect(r?.amount_clp).toBe(""); // no bogus CLP value
-    expect(r?.amount_usd).toBe("99.28"); // Santander charge → positive
+    const { statements } = listingStatements(fixtureCardId(), "santander", "4242", lines);
+    const l = statements[0]!.lines.find((x) => x.merchant === "ANTHROPIC* CLAU")!;
+    expect(statements[0]!.currency).toBe("clp"); // the peso bucket carries the dollar line
+    expect(l.currency).toBe("usd");
+    expect(l.amount).toBe(99.28); // Santander charge → positive
     // The web table prints no origin amount, and the import labels origins itself.
-    expect(r?.amount_orig).toBeUndefined();
-    expect(r?.orig_currency).toBeUndefined();
+    expect(l.origin_amount).toBeNull();
   });
 
   it("maps BCI master to BCI card_group", () => {
@@ -98,20 +99,14 @@ describe("ccWebPasteToCsvRecords", () => {
       .get() as { id: number } | undefined;
     if (!master) return;
     const meta = creditCardMasterMetaForAccount(master.id);
-    const lines = pasted([["2026-06-11", "ENTEL HOGAR", 21249]]);
+    const lines = pasted([["2026-06-11", "ENTEL HOGAR", 21249]], meta.cardGroup);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
-    const { records } = ccWebPasteToCsvRecords(
-      master.id,
-      meta.cardGroup,
-      meta.cardLast4,
-      "test",
-      lines
-    );
-    expect(records[0]?.card_group).toBe("BCI");
-    expect(records[0]?.card_last4).toBe("4343");
-    expect(records[0]?.amount_clp).toBe("21249");
-    expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
+    const { statements } = listingStatements(master.id, meta.cardGroup, meta.cardLast4, lines);
+    expect(statements[0]?.card_group).toBe("BCI");
+    expect(statements[0]?.card_last4).toBe("4343");
+    expect(statements[0]?.lines[0]?.amount).toBe(21249);
+    expect(statements[0]?.document).toBe(openWebPasteSourcePdf(openBm!));
   });
 });
 
@@ -212,7 +207,7 @@ describe("isCcCuotaBillingReferenceMerchant", () => {
   });
 });
 
-describe("cuota-billing rows in ccWebPasteToCsvRecords", () => {
+describe("cuota-billing rows in listingStatements", () => {
   it("routes CUOT reference rows to skipped_cuota_billing, keeps real purchases", () => {
     const lines = pasted([
       ["2026-08-25", "CUOT: 000000009OPER: 000032", -139583],
@@ -220,15 +215,10 @@ describe("cuota-billing rows in ccWebPasteToCsvRecords", () => {
       ["2026-08-25", "JUMBO COSTANERA CENTER", -32399],
     ]);
     expect(lines).toHaveLength(3);
-    const { records, skipped_cuota_billing } = ccWebPasteToCsvRecords(
-      fixtureCardId(),
-      "santander",
-      "4242",
-      "test",
-      lines
-    );
-    expect(records).toHaveLength(1);
-    expect(records[0]?.merchant).toBe("JUMBO COSTANERA CENTER");
+    const { statements, skipped_cuota_billing } = listingStatements(fixtureCardId(), "santander", "4242", lines);
+    const filed = statements.flatMap((st) => st.lines);
+    expect(filed).toHaveLength(1);
+    expect(filed[0]?.merchant).toBe("JUMBO COSTANERA CENTER");
     expect(skipped_cuota_billing).toHaveLength(2);
     expect(skipped_cuota_billing.map((f) => f.description)).toEqual([
       "CUOT: 000000009OPER: 000032",

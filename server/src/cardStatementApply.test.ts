@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cardStatementKind, type CardStatementLine, type CardStatementPayload } from "nw-tracker-contracts";
+import { cardIssuerStatementSchema, type CardIssuerStatementPayload, type CardStatementLine } from "nw-tracker-contracts";
 import { applyCardStatement } from "./cardStatementApply.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { db } from "./db.js";
@@ -28,8 +28,9 @@ function line(partial: Partial<CardStatementLine>): CardStatementLine {
   };
 }
 
-function payload(over: Partial<CardStatementPayload> = {}): CardStatementPayload {
-  return cardStatementKind.payload.parse({
+function payload(over: Partial<CardIssuerStatementPayload> = {}): CardIssuerStatementPayload {
+  return cardIssuerStatementSchema.parse({
+    format: "issuer_statement",
     account: { issuer: "santander", number: BANK_ACCOUNT },
     statement_number: "023",
     close: "2026-09-24",

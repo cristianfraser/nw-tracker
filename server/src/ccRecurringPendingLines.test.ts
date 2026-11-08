@@ -45,7 +45,7 @@ afterAll(() => {
 });
 
 function feed(date: string, merchant: string, amount: number) {
-  const line = listingLineFromCardListingLine("santander", {
+  const line = listingLineFromCardListingLine({
     date,
     merchant,
     currency: "clp",

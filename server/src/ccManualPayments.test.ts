@@ -83,7 +83,7 @@ function creditLines(currency: "clp" | "usd", amount: number): { id: number; mer
 }
 
 function feed(date: string, merchant: string, currency: "clp" | "usd", amount: number) {
-  const line = listingLineFromCardListingLine("santander", {
+  const line = listingLineFromCardListingLine({
     date,
     merchant,
     currency,

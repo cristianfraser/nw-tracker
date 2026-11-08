@@ -5,3 +5,4 @@ export * from "./text.js";
 export * from "./identifiers.js";
 export * from "./merchant.js";
 export * from "./schemas.js";
+export * from "./caseFile.js";

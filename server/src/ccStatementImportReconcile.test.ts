@@ -1,3 +1,4 @@
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { describe, expect, it } from "vitest";
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { db } from "./db.js";
@@ -10,7 +11,6 @@ import {
   sumParsedSectionsClp,
   type CcReconcileRow,
 } from "./ccStatementImportReconcile.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 
 function line(partial: Partial<CcReconcileRow>): CcReconcileRow {
   return {
@@ -438,7 +438,7 @@ describe("ccStatementImportReconcile", () => {
       | undefined;
     if (!st?.monto_facturado) return;
 
-    const rows = buildProjectedReconcileRows(master.id, "2026-05", [], new Set(), {
+    const rows = buildProjectedReconcileRows(master.id, "2026-05", parsedStatements([]), new Set(), {
       pdfReconcileOnly: true,
     });
     const result = reconcileBillingMonthMovements("2026-05", rows, {
@@ -455,7 +455,7 @@ describe("ccStatementImportReconcile", () => {
       .get() as { id: number } | undefined;
     if (!master) return;
 
-    expect(() => assertCcImportReconcilesOrThrow(master.id, [])).not.toThrow();
+    expect(() => assertCcImportReconcilesOrThrow(master.id, parsedStatements([]))).not.toThrow();
   });
 
   it("assertCcImportReconcilesOrThrow skips web-paste-only import when closed PDF exists", () => {
@@ -480,7 +480,7 @@ describe("ccStatementImportReconcile", () => {
     });
     if (!closedBm) return;
 
-    const incoming: CcStatementCsvRecord[] = [
+    const incoming: ParsedRecord[] = [
       {
         card_group: "santander",
         source_pdf: `import:web-paste|open|${closedBm}`,
@@ -495,6 +495,6 @@ describe("ccStatementImportReconcile", () => {
       },
     ];
 
-    expect(() => assertCcImportReconcilesOrThrow(master.id, incoming)).not.toThrow();
+    expect(() => assertCcImportReconcilesOrThrow(master.id, parsedStatements(incoming))).not.toThrow();
   });
 });

@@ -106,7 +106,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
   }
 
   function webLine(dateIso: string, merchant: string, clp: number): CcListingLine {
-    return { transaction_date: dateIso, merchant, amount_clp: -clp, amount_usd: null, currency: "clp", raw_line: merchant };
+    return { transaction_date: dateIso, merchant, currency: "clp", amount: clp, raw_line: merchant };
   }
 
   /** A bucket line with the key a feed row / paste gives it (clp stored debt-positive). */
@@ -158,7 +158,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
   /** A dollar bucket line, debt-positive, keyed like a feed row. */
   function insertUsdBucketLine(bucketId: number, dateIso: string, merchant: string, usd: number): number {
     const [y, m, d] = dateIso.split("-");
-    const line: CcListingLine = { transaction_date: dateIso, merchant, amount_clp: 0, amount_usd: -usd, currency: "usd", raw_line: merchant };
+    const line: CcListingLine = { transaction_date: dateIso, merchant, currency: "usd", amount: usd, raw_line: merchant };
     const key = webPasteLineDedupeKey(CARD_GROUP, line);
     return Number(
       db

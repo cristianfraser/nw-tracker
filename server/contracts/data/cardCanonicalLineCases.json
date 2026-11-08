@@ -1,0 +1,70 @@
+{
+  "$comment": "Each card source's conversion into the canonical card line (server/contracts/src/cards/canonicalLine.ts): debt-positive amounts in their own currency, ISO days with the printed text beside, the kind stamped by the one classifier. parsed_rows: the statement parser's CSV cells (contracts parsedStatementRows.ts; asserted by contracts, server and ingest). listing: a card.unbilled_movements line (server cardListingLines.ts + ccWebPasteParse.ts). paste: a pasted table's amount under an issuer's web-paste card group. statement_json: a card.statement issuer line (server santanderStatementImport.ts). Synthetic values only.",
+  "parsed_rows": [
+    {
+      "name": "a peso charge as printed",
+      "statement_currency": "clp",
+      "row": { "card_group": "A", "source_pdf": "vitest.pdf", "statement_date": "20/08/2026", "transaction_date": "5/8/2026", "posting_date": "06/08/2026", "merchant": "SUPERMERCADO VITEST", "description_merged": "SUPERMERCADO VITEST SANTIAGO", "place": "SANTIAGO", "amount_clp": "10000", "installment_flag": "false", "parser_layout": "compact_de_simple", "row_id": "r1", "dedupe_key": "k1", "raw_line": "05/08/26 SUPERMERCADO VITEST 10.000", "is_duplicate_across_statements": "false" },
+      "line": { "kind": "card_purchase", "transaction_date": "2026-08-05", "posting_date": "2026-08-06", "printed_transaction_date": "5/8/2026", "printed_posting_date": "06/08/2026", "merchant": "SUPERMERCADO VITEST", "description": "SUPERMERCADO VITEST SANTIAGO", "place": "SANTIAGO", "country": null, "currency": "clp", "amount": 10000, "origin_amount": null, "installment": null, "origin_card_last4": null, "document": { "line_id": "r1", "dedupe_key": "k1", "section": "compact_de_simple", "raw_text": "05/08/26 SUPERMERCADO VITEST 10.000", "duplicate_across_statements": false, "baseline_match": null } }
+    },
+    {
+      "name": "a payment prints negative and is the card's payment",
+      "statement_currency": "clp",
+      "row": { "transaction_date": "10/08/2026", "posting_date": "10/08/2026", "merchant": "MONTO CANCELADO", "amount_clp": "-250000", "installment_flag": "false" },
+      "line": { "kind": "card_payment", "currency": "clp", "amount": -250000, "installment": null }
+    },
+    {
+      "name": "a dollar line in the Chilean style, its origin with thousands",
+      "statement_currency": "usd",
+      "row": { "transaction_date": "07/08/2026", "posting_date": "08/08/2026", "merchant": "TIENDA VITEST", "amount_usd": "13,77", "amount_orig": "12.345,60", "country": "US", "installment_flag": "false", "parser_layout": "international_usd" },
+      "line": { "kind": "card_purchase", "currency": "usd", "amount": 13.77, "origin_amount": 12345.6, "country": "US" }
+    },
+    {
+      "name": "a dollar refund",
+      "statement_currency": "usd",
+      "row": { "transaction_date": "07/08/2026", "merchant": "TIENDA VITEST", "amount_usd": "-4,50", "installment_flag": "false" },
+      "line": { "kind": "card_refund", "currency": "usd", "amount": -4.5 }
+    },
+    {
+      "name": "a cuota with its plan's principal",
+      "statement_currency": "clp",
+      "row": { "transaction_date": "01/04/2026", "merchant": "MUEBLES VITEST", "amount_clp": "60000", "installment_flag": "true", "nro_cuota_current": "02", "nro_cuota_total": "06", "valor_cuota_mensual_clp": "10000", "monto_origen_operacion_clp": "60000", "monto_total_a_pagar_clp": "61000", "interest_rate_text": "0,00%", "tipo_cuota": "CUOTA COMERCIO", "canonical_row_id": "plan-1" },
+      "line": { "kind": "installment_cuota", "currency": "clp", "amount": 60000, "installment": { "number": 2, "count": 6, "cuota_amount": 10000, "total_amount": 61000, "interest_rate_text": "0,00%", "cuota_type": "CUOTA COMERCIO", "plan_id": "plan-1" } }
+    },
+    {
+      "name": "a «00/N» purchase row has no cuota number",
+      "statement_currency": "clp",
+      "row": { "transaction_date": "15/08/2026", "merchant": "MUEBLES VITEST", "amount_clp": "30000", "installment_flag": "true", "nro_cuota_total": "3", "valor_cuota_mensual_clp": "10000" },
+      "line": { "kind": "installment_cuota", "installment": { "number": null, "count": 3, "cuota_amount": 10000, "total_amount": null } }
+    },
+    {
+      "name": "a positive section-3 charge is a financing charge",
+      "statement_currency": "clp",
+      "row": { "transaction_date": "20/08/2026", "merchant": "INTERESES ROTATIVOS", "amount_clp": "1234", "installment_flag": "false" },
+      "line": { "kind": "financing_charge", "amount": 1234 }
+    }
+  ],
+  "listing": [
+    { "name": "a feed charge stays as listed", "line": { "date": "2026-11-06", "merchant": "SHOP VITEST", "currency": "clp", "amount": 12345, "raw_text": "x" }, "stored_amount": 12345 },
+    { "name": "a feed credit", "line": { "date": "2026-11-06", "merchant": "REFUND VITEST", "currency": "clp", "amount": -5000, "raw_text": "x" }, "stored_amount": -5000 },
+    { "name": "a feed payment", "line": { "date": "2026-11-06", "merchant": "PAGO", "currency": "clp", "amount": -100000, "raw_text": "x" }, "stored_amount": -100000 },
+    { "name": "feed dollars keep their cents", "line": { "date": "2026-11-06", "merchant": "SHOP VITEST", "currency": "usd", "amount": 13.77, "raw_text": "x" }, "stored_amount": 13.77 }
+  ],
+  "paste": [
+    { "name": "Santander shows a charge negative", "card_group": "santander", "merchant": "ARAMCO", "currency": "clp", "pasted": -1990, "stored_amount": 1990 },
+    { "name": "Santander shows a credit positive", "card_group": "santander", "merchant": "DEVOLUCION X", "currency": "clp", "pasted": 500, "stored_amount": -500 },
+    { "name": "a payment is a credit whatever the issuer shows (Santander)", "card_group": "santander", "merchant": "PAGO", "currency": "clp", "pasted": 5570527, "stored_amount": -5570527 },
+    { "name": "a payment is a credit whatever the issuer shows (BCI)", "card_group": "BCI", "merchant": "PAGO", "currency": "clp", "pasted": -566338, "stored_amount": -566338 },
+    { "name": "BCI shows a charge positive", "card_group": "BCI", "merchant": "TOKU *METLIFE HIPOTE", "currency": "clp", "pasted": 1795575, "stored_amount": 1795575 },
+    { "name": "BCI keeps a refund negative", "card_group": "BCI", "merchant": "GLASS LIDER.CL", "currency": "clp", "pasted": -38309, "stored_amount": -38309 },
+    { "name": "CMR shows charges positive", "card_group": "CMR", "merchant": "TIENDA", "currency": "clp", "pasted": 12990, "stored_amount": 12990 },
+    { "name": "CMR refund", "card_group": "CMR", "merchant": "DEVOLUCION TIENDA", "currency": "clp", "pasted": -2990, "stored_amount": -2990 },
+    { "name": "CMR payment", "card_group": "CMR", "merchant": "PAGO", "currency": "clp", "pasted": 10000, "stored_amount": -10000 },
+    { "name": "Santander dollars keep their cents", "card_group": "santander", "merchant": "APPLE.COM/BILL", "currency": "usd", "pasted": -9.5, "stored_amount": 9.5 }
+  ],
+  "statement_json": [
+    { "name": "a peso purchase", "currency": "clp", "line": { "kind": "purchase", "transaction_date": "2026-09-05", "posting_date": "2026-09-06", "merchant": "SUPERMERCADO VITEST", "amount": 12000, "origin_amount": null, "country": null, "place": "SANTIAGO", "card_last4": "0430", "authorization_code": null, "installment": null, "raw_text": "r" }, "canonical": { "kind": "card_purchase", "transaction_date": "2026-09-05", "posting_date": "2026-09-06", "printed_transaction_date": null, "currency": "clp", "amount": 12000, "place": "SANTIAGO", "origin_card_last4": "0430" } },
+    { "name": "a nota de crédito", "currency": "clp", "line": { "kind": "credit_note", "transaction_date": "2026-09-05", "posting_date": null, "merchant": "NOTA DE CREDITO", "amount": -2140, "origin_amount": null, "country": null, "place": null, "card_last4": null, "authorization_code": null, "installment": null, "raw_text": "r" }, "canonical": { "kind": "card_refund", "currency": "clp", "amount": -2140, "posting_date": null } },
+    { "name": "dollars rounded to the cent, origin too", "currency": "usd", "line": { "kind": "purchase", "transaction_date": "2026-09-05", "posting_date": null, "merchant": "TIENDA VITEST", "amount": 12.5, "origin_amount": 11875, "country": "US", "place": null, "card_last4": null, "authorization_code": null, "installment": null, "raw_text": "r" }, "canonical": { "kind": "card_purchase", "currency": "usd", "amount": 12.5, "origin_amount": 11875, "country": "US" } }
+  ]
+}

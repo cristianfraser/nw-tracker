@@ -1,10 +1,10 @@
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
-import { mergeCcAccountFromParsedRows, replaceStatementKeysFromRecords } from "./ccInstallmentLedgerMerge.js";
+import { mergeCardStatements, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
 import { ccPaymentPairingsWithoutEvidence, listCcPaymentPairings } from "./ccPaymentMirrorEvidence.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { deleteCcWebPasteStatementLine } from "./ccStatementLineDelete.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 import { undoMirrorConversion } from "./movementMirrorConvert.js";
 
@@ -72,7 +72,7 @@ describe("converted card payments across statement writes", () => {
   function statementRecords(opts: {
     pagoLineDate: string | null;
     headerPago?: { amount: string; date: string };
-  }): CcStatementCsvRecord[] {
+  }): ParsedRecord[] {
     const base = {
       card_group: "vitest-evidence",
       statement_date: "22/10/2037",
@@ -90,7 +90,7 @@ describe("converted card payments across statement writes", () => {
       statement_monto_pagado_anterior_date: opts.headerPago?.date ?? "",
     };
     const usd = { ...base, source_pdf: "vitest-evidence 2037-10-22 tarjeta usd.pdf", currency: "usd" };
-    const rows: CcStatementCsvRecord[] = [
+    const rows: ParsedRecord[] = [
       { ...clp, transaction_date: "05/10/2037", merchant: "VITEST EVIDENCE SHOP", amount_clp: "50000", dedupe_key: "vitest-evidence-shop", row_id: "vitest-evidence-shop" },
     ];
     if (opts.pagoLineDate) {
@@ -103,14 +103,14 @@ describe("converted card payments across statement writes", () => {
     return rows;
   }
 
-  const reimport = (records: CcStatementCsvRecord[]) =>
-    mergeCcAccountFromParsedRows(cardId, records, { replaceStatementKeys: replaceStatementKeysFromRecords(records) });
+  const reimport = (records: ParsedRecord[]) =>
+    mergeCardStatements(cardId, parsedStatements(records), { replaceStatementKeys: statementKeysOf(parsedStatements(records)) });
 
   const lineExists = (id: number | null) =>
     db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(id ?? -1) != null;
 
   it("a forced re-import keeps every converted payment; one that moves a paid payment writes nothing", () => {
-    mergeCcAccountFromParsedRows(cardId, statementRecords({ pagoLineDate: "09/10/2037" }));
+    mergeCardStatements(cardId, parsedStatements(statementRecords({ pagoLineDate: "09/10/2037" })));
     debit("2037-10-10", 271_000, "Traspaso Internet a T. Crédito");
     debit("2037-10-13", 95_000, "Egreso por Compra de Divisas");
     clearAggregationCache();

@@ -1,3 +1,4 @@
+import { parsedStatements } from "./test/parsedStatementRecords.js";
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
@@ -100,7 +101,7 @@ describe("repairMisplacedOpenWebPasteBuckets", () => {
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     if (!lastPdf) return;
 
-    const rows = buildProjectedReconcileRows(master.id, lastPdf, [], new Set(), {
+    const rows = buildProjectedReconcileRows(master.id, lastPdf, parsedStatements([]), new Set(), {
       pdfReconcileOnly: true,
     });
     const result = reconcileBillingMonthMovements(lastPdf, rows, {

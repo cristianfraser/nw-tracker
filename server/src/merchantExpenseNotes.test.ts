@@ -269,9 +269,9 @@ describe("merchantExpenseNotes", () => {
     if (master == null) throw new Error("synthetic preset master ·4321 missing from the test DB");
     const doc = receipt("2037-02-20", [{ app: "Example Chat - Meet People", product: "Boost", amount: 13500 }]);
     send({ ...doc, card_last4: "4321" });
-    // Santander web pastes carry charges negative; dollars only, as the feed lists them.
+    // Listing lines are debt-positive; dollars only, as the feed lists them.
     const res = importCcListingLines(master, {
-      lines: [{ transaction_date: "2037-02-21", merchant: "APPLE.COM/BILL", amount_clp: 0, amount_usd: -13.5, currency: "usd", raw_line: "vitest apple paste" }],
+      lines: [{ transaction_date: "2037-02-21", merchant: "APPLE.COM/BILL", currency: "usd", amount: 13.5, raw_line: "vitest apple paste" }],
       errors: [],
     });
     expect(res.inserted).toBe(1);

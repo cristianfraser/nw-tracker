@@ -2,9 +2,9 @@ import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { installmentPlanBreakdownByMonth } from "./ccInstallmentLedgerDb.js";
-import { mergeInstallmentLedgerFromParsedRows } from "./ccInstallmentLedgerMerge.js";
+import { mergeInstallmentLedgerFromStatements } from "./ccInstallmentLedgerMerge.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 const emptyMaps = {
@@ -31,7 +31,7 @@ function twinCuotaRows(opts: {
   cuota: number;
   keyBase: string;
   rowIds: string[];
-}): CcStatementCsvRecord[] {
+}): ParsedRecord[] {
   return opts.rowIds.map((rowId, n) => ({
     card_group: "A",
     installment_flag: "true",
@@ -49,7 +49,7 @@ function twinCuotaRows(opts: {
     row_id: rowId,
     canonical_row_id: rowId,
     is_duplicate_across_statements: "false",
-  })) as CcStatementCsvRecord[];
+  })) as ParsedRecord[];
 }
 
 type PlanRow = {
@@ -106,7 +106,7 @@ describe("same-statement twin installment purchases", () => {
       keyBase: "vitest-twin-feb",
       rowIds: ["vt-feb-b", "vt-feb-c", "vt-feb-a"],
     });
-    mergeInstallmentLedgerFromParsedRows(accountId, [...jan, ...feb]);
+    mergeInstallmentLedgerFromStatements(accountId, parsedStatements([...jan, ...feb]));
 
     const plans = plansFor(accountId, merchant);
     expect(plans.map((p) => p.twin_index)).toEqual([0, 1, 2]);
@@ -120,7 +120,7 @@ describe("same-statement twin installment purchases", () => {
     ]);
 
     // An incremental import (only the newer statement) lands on the same three plans.
-    mergeInstallmentLedgerFromParsedRows(accountId, feb);
+    mergeInstallmentLedgerFromStatements(accountId, parsedStatements(feb));
     expect(plansFor(accountId, merchant).map((p) => p.id)).toEqual(plans.map((p) => p.id));
 
     // The ledger loader accepts the twins and schedules all three cuotas in every month.
@@ -158,7 +158,7 @@ describe("same-statement twin installment purchases", () => {
       keyBase: "vitest-twin-late-feb",
       rowIds: ["vt-late-feb-a", "vt-late-feb-b"],
     });
-    expect(() => mergeInstallmentLedgerFromParsedRows(accountId, [...jan, ...feb])).toThrow(
+    expect(() => mergeInstallmentLedgerFromStatements(accountId, parsedStatements([...jan, ...feb]))).toThrow(
       /Twin plans start on the same statement/
     );
     expect(plansFor(accountId, merchant)).toEqual([]);
@@ -167,17 +167,15 @@ describe("same-statement twin installment purchases", () => {
   it("refuses a twin that appears mid-life against the stored ledger", () => {
     const accountId = fixtureMasterId();
     const merchant = "VITEST TWIN MIDLIFE";
-    mergeInstallmentLedgerFromParsedRows(
-      accountId,
-      twinCuotaRows({
+    mergeInstallmentLedgerFromStatements(
+      accountId, parsedStatements(twinCuotaRows({
         merchant,
         statementDate: "23/01/2025",
         payBy: "10/02/2025",
         cuota: 1,
         keyBase: "vitest-twin-mid-jan",
         rowIds: ["vt-mid-jan-a"],
-      })
-    );
+      })));
     const before = plansFor(accountId, merchant);
     expect(before).toHaveLength(1);
 
@@ -189,7 +187,7 @@ describe("same-statement twin installment purchases", () => {
       keyBase: "vitest-twin-mid-feb",
       rowIds: ["vt-mid-feb-a", "vt-mid-feb-b"],
     });
-    expect(() => mergeInstallmentLedgerFromParsedRows(accountId, feb)).toThrow(
+    expect(() => mergeInstallmentLedgerFromStatements(accountId, parsedStatements(feb))).toThrow(
       /Twin plans start on the same statement/
     );
     expect(plansFor(accountId, merchant)).toEqual(before);

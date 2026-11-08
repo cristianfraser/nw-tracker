@@ -1,4 +1,5 @@
-import { canonicalCcLineDedupeKeys } from "./ccDedupeKey.js";
+import { canonicalLineDedupeKeys } from "./cards/statementStorage.js";
+import { parsedStatements } from "./test/parsedStatementRecords.js";
 import { describe, expect, it } from "vitest";
 import { dedupeFlowCcExpenseLines, flowCcExpenseLineFingerprint, purchaseExpenseLinesMatchForDisplayDedupe } from "./ccExpenseLineDedupe.js";
 import type { CcExpenseLineForDedupe } from "./ccExpenseLineDedupe.js";
@@ -24,20 +25,24 @@ function line(partial: Partial<DedupeLine>): DedupeLine {
 
 describe("ccExpenseLineDedupe", () => {
   it("canonical keys match across dd/mm/yy and dd/mm/yyyy", () => {
-    const keysA = canonicalCcLineDedupeKeys("santander", {
-      merchant: "LOS BRAVOS SPA",
-      amount_clp: "38830",
-      transaction_date: "29/03/25",
-      dedupe_key: "legacykey00000001",
-      installment_flag: "false",
-    });
-    const keysB = canonicalCcLineDedupeKeys("santander", {
-      merchant: "LOS BRAVOS SPA",
-      amount_clp: "38830",
-      transaction_date: "29/03/2025",
-      dedupe_key: "legacykey00000002",
-      installment_flag: "false",
-    });
+    const keys = (transaction_date: string, dedupe_key: string) =>
+      canonicalLineDedupeKeys(
+        "santander",
+        parsedStatements([
+          {
+            card_group: "santander",
+            source_pdf: "vitest.pdf",
+            statement_date: "20/04/2025",
+            merchant: "LOS BRAVOS SPA",
+            amount_clp: "38830",
+            transaction_date,
+            dedupe_key,
+            installment_flag: "false",
+          },
+        ])[0]!.lines[0]!
+      );
+    const keysA = keys("29/03/25", "legacykey00000001");
+    const keysB = keys("29/03/2025", "legacykey00000002");
     expect(keysA.some((k) => keysB.includes(k))).toBe(true);
   });
 

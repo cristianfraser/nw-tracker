@@ -1,13 +1,13 @@
+import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   importCcStatementsMerge,
-  type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
-function row(overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord {
+function row(overrides: Partial<ParsedRecord>): ParsedRecord {
   return {
     card_group: "A",
     source_pdf: "test-clp.pdf",
@@ -65,8 +65,8 @@ describe("importCcStatementsMerge CLP vs USD", () => {
       row_id: "usd-1",
     });
 
-    importCcStatementsMerge(accountId, [clp], { skipGlobalDedupeKeys: true });
-    importCcStatementsMerge(accountId, [usd], { skipGlobalDedupeKeys: true });
+    importCcStatementsMerge(accountId, parsedStatements([clp]), { skipGlobalDedupeKeys: true });
+    importCcStatementsMerge(accountId, parsedStatements([usd]), { skipGlobalDedupeKeys: true });
 
     const stmts = db
       .prepare(
@@ -107,10 +107,10 @@ describe("importCcStatementsMerge fuzzy dedup", () => {
       row_id: "met-2",
     });
 
-    const r1 = importCcStatementsMerge(accountId, [firstImport], { skipGlobalDedupeKeys: true });
+    const r1 = importCcStatementsMerge(accountId, parsedStatements([firstImport]), { skipGlobalDedupeKeys: true });
     expect(r1.linesInserted).toBe(1);
 
-    const r2 = importCcStatementsMerge(accountId, [secondImport], { skipGlobalDedupeKeys: true });
+    const r2 = importCcStatementsMerge(accountId, parsedStatements([secondImport]), { skipGlobalDedupeKeys: true });
     expect(r2.linesInserted).toBe(0);
     expect(r2.linesSkippedFuzzyDuplicate).toBe(1);
 
@@ -142,7 +142,7 @@ describe("importCcStatementsMerge same-statement lines", () => {
       transaction_date: "08/06/2024",
       row_id: "cafe-2",
     });
-    const r = importCcStatementsMerge(accountId, [a, b], { skipGlobalDedupeKeys: true });
+    const r = importCcStatementsMerge(accountId, parsedStatements([a, b]), { skipGlobalDedupeKeys: true });
     expect(r.linesInserted).toBe(2);
     expect(r.linesSkippedFuzzyDuplicate).toBe(0);
   });
@@ -174,7 +174,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       statement_monto_facturado: "",
       row_id: "wp-fuzzy-1",
     });
-    const rPaste = importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
+    const rPaste = importCcStatementsMerge(accountId, parsedStatements([paste]), { skipGlobalDedupeKeys: true });
     expect(rPaste.linesInserted).toBe(1);
 
     const pdf = row({
@@ -185,7 +185,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       transaction_date: "11/06/2025",
       row_id: "pdf-fuzzy-1",
     });
-    const rPdf = importCcStatementsMerge(accountId, [pdf], { skipGlobalDedupeKeys: true });
+    const rPdf = importCcStatementsMerge(accountId, parsedStatements([pdf]), { skipGlobalDedupeKeys: true });
     expect(rPdf.linesSkippedFuzzyDuplicate).toBe(0);
     expect(rPdf.linesInserted).toBe(1);
   });
@@ -204,7 +204,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       statement_monto_facturado: "",
       row_id: "wp-key-1",
     });
-    importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
+    importCcStatementsMerge(accountId, parsedStatements([paste]), { skipGlobalDedupeKeys: true });
 
     const pdf = row({
       source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
@@ -214,7 +214,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       transaction_date: "06/06/2025",
       row_id: "pdf-key-1",
     });
-    const rPdf = importCcStatementsMerge(accountId, [pdf], { skipGlobalDedupeKeys: true });
+    const rPdf = importCcStatementsMerge(accountId, parsedStatements([pdf]), { skipGlobalDedupeKeys: true });
     expect(rPdf.linesSkippedDuplicate).toBe(0);
     expect(rPdf.linesInserted).toBe(1);
   });
@@ -232,7 +232,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       transaction_date: "06/06/2025",
       row_id: "pdf-rev-1",
     });
-    importCcStatementsMerge(accountId, [pdf], { skipGlobalDedupeKeys: true });
+    importCcStatementsMerge(accountId, parsedStatements([pdf]), { skipGlobalDedupeKeys: true });
 
     const paste = row({
       source_pdf: "import:web-paste|open|2025-06",
@@ -243,7 +243,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       statement_monto_facturado: "",
       row_id: "wp-rev-1",
     });
-    const rPaste = importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
+    const rPaste = importCcStatementsMerge(accountId, parsedStatements([paste]), { skipGlobalDedupeKeys: true });
     expect(rPaste.linesInserted).toBe(0);
     expect(rPaste.linesSkippedDuplicate).toBe(1);
   });
@@ -251,7 +251,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
 
 describe("importCcStatementsMerge origin currency", () => {
   // The parser writes MONTO MONEDA ORIGEN as printed and never a currency; the import labels it.
-  const usdLine = (overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord =>
+  const usdLine = (overrides: Partial<ParsedRecord>): ParsedRecord =>
     row({
       source_pdf: "2031-03-20 estado de cuenta tarjeta usd 4141.pdf",
       statement_date: "20/03/2031",
@@ -274,13 +274,13 @@ describe("importCcStatementsMerge origin currency", () => {
     try {
       importCcStatementsMerge(
         accountId,
-        [
+        parsedStatements([
           // Pesos from a GB-coded merchant: the old reader stored 18,25 and called it pounds.
           usdLine({ merchant: "TIENDA PESOS", country: "GB", amount_orig: "18.250,00", amount_usd: "19,21", row_id: "o-1" }),
           usdLine({ merchant: "TIENDA DOLARES", country: "US", amount_orig: "4,25", amount_usd: "4,25", row_id: "o-2" }),
           usdLine({ merchant: "TIENDA REALES", country: "BR", amount_orig: "15,00", amount_usd: "2,90", row_id: "o-3" }),
           usdLine({ merchant: "ABONO DE DIVISAS", country: "CH", amount_orig: "0,00", amount_usd: "-30,00", row_id: "o-4" }),
-        ],
+        ]),
         { skipGlobalDedupeKeys: true }
       );
     } finally {
@@ -306,7 +306,7 @@ describe("importCcStatementsMerge origin currency", () => {
     expect(() =>
       importCcStatementsMerge(
         accountId,
-        [usdLine({ merchant: "CON ETIQUETA", amount_orig: "5,00", amount_usd: "4,95", orig_currency: "CLP", row_id: "o-5" })],
+        parsedStatements([usdLine({ merchant: "CON ETIQUETA", amount_orig: "5,00", amount_usd: "4,95", orig_currency: "CLP", row_id: "o-5" })]),
         { skipGlobalDedupeKeys: true }
       )
     ).toThrow(/labeled on import/);
