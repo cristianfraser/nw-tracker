@@ -5,12 +5,8 @@ import type { DisplayUnit } from "./queries/keys";
 import type { ConsolidatedMonthlyPerfRow, PeriodReturnsPayload } from "./types";
 import { queryLoadError } from "./queries/pageShapeReady";
 
-export type GroupInfoTableAccount = {
-  id: number;
-  name: string;
-  /** Optional: dashboard/page-bundle rows may omit category_slug. */
-  category_slug?: string;
-};
+export type { GroupInfoTableAccount } from "./groupInfoTableAccount";
+import type { GroupInfoTableAccount } from "./groupInfoTableAccount";
 
 /**
  * Consolidated rows in the display unit: the payload's own rows when its unit matches (or is

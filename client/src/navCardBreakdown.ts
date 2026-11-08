@@ -10,7 +10,7 @@ import {
   isChartActiveAccount,
 } from "./accountGroupTotals";
 import { accountNavLabel } from "./accountRowFields";
-import { navAccountIdSet, requireNavCardMetrics } from "./portfolioNavDashboardCards";
+import { navAccountIdSet, requireNavCardMetrics } from "./navCardMetrics";
 import { mixedNavChildren, stripChartBucketNavNodes } from "./navChartBuckets";
 import {
   portfolioStripAccountChildren,

@@ -3,7 +3,6 @@ import {
   hasMaterialDashboardBalance,
   isChartActiveAccount,
 } from "./accountGroupTotals";
-import { dashboardBucketRoutePath } from "./portfolioDashboardBuckets";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import i18n from "./i18n";
 import type { DashboardAccountRow, NavCardAmountDto } from "./types";
@@ -246,6 +245,8 @@ export function compareDashboardCardMainDesc(
 export function buildRealEstateCardBreakdown(
   accounts: DashboardAccountRow[],
   total: NavCardAmountDto,
+  /** The real-estate node's own page (`route_path`): the head line's link without a property row. */
+  nodeRoute: string,
   allAccounts?: DashboardAccountRow[]
 ): CardBreakdownLine[] {
   const props = valueRows(accounts.filter((a) => a.group_slug === "real_estate"));
@@ -259,14 +260,7 @@ export function buildRealEstateCardBreakdown(
   const propertyName = props[0]!.name.trim().toLowerCase();
   const netClp = total.clp;
   const groupUsd = total.usd;
-  const propertyTo =
-    propertyRow != null
-      ? accountDetailPath(propertyRow.account_id)
-      : dashboardBucketRoutePath("real_estate");
-  const mortgageTo =
-    mortgageRow != null
-      ? accountDetailPath(mortgageRow.account_id)
-      : liabilitiesSubgroupPath("mortgage");
+  const propertyTo = propertyRow != null ? accountDetailPath(propertyRow.account_id) : nodeRoute;
 
   lines.push({
     label: propertyName,
@@ -284,6 +278,7 @@ export function buildRealEstateCardBreakdown(
     // The single card path: property rows store equity (net of the linked hipoteca), so
     // gross valor = equity + outstanding mortgage — both straight from account values.
     const mortgageClp = mortgageRow.current_value_clp;
+    const mortgageTo = accountDetailPath(mortgageRow.account_id);
     const mortgageUsd = mortgageRow.current_value_usd ?? null;
     lines.push({
       label: i18n.t("realEstate.propertyValue"),

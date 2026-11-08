@@ -1,5 +1,5 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
-import type { GroupInfoTableAccount } from "./useGroupInfoConsolidatedTables";
+import type { GroupInfoTableAccount } from "./groupInfoTableAccount";
 import type { DashboardAccountRow } from "./types";
 
 export type DashboardNwBucketSlug = "real_estate" | "retirement" | "brokerage" | "cash_eqs";
@@ -30,23 +30,3 @@ export function netWorthTableAccountsFromDash(accounts: readonly DashboardAccoun
       category_slug: a.category_slug,
     }));
 }
-
-/** Primary balance for a dashboard bucket card (for ordering the detail row). */
-/** Group page route for a dashboard bucket card title link (fallback when API omits `route_path`). */
-export function dashboardBucketRoutePath(bucketSlug: string): string | undefined {
-  switch (bucketSlug) {
-    case "real_estate":
-      return "/real_estate";
-    case "retirement":
-      return "/inversiones/retiro";
-    case "brokerage":
-      return "/inversiones/brokerage";
-    case "cash_eqs":
-      return "/cash_eqs/savings";
-    case "liabilities":
-      return "/liabilities";
-    default:
-      return undefined;
-  }
-}
-

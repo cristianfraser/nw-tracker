@@ -1,17 +1,8 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 5664,
+  "edge_count": 5704,
   "largest_cycle": 74,
   "cycle_members": [
-    "client/src/dashboardCardBreakdown.ts",
-    "client/src/navCardBreakdown.ts",
-    "client/src/navChartBuckets.ts",
-    "client/src/placeholders/groupPageShellFromNav.ts",
-    "client/src/portfolioDashboardBuckets.ts",
-    "client/src/portfolioNavDashboardCards.ts",
-    "client/src/portfolioNavFromApi.ts",
-    "client/src/queries/hooks.ts",
-    "client/src/useGroupInfoConsolidatedTables.ts",
     "ingest/src/config.ts",
     "ingest/src/email/fetch.ts",
     "ingest/src/email/imapSession.ts",
