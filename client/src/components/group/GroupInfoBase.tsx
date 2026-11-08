@@ -40,7 +40,7 @@ export type GroupInfoPortfolioStrip = {
   subgroup?: string;
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
+    "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
   showUsd: boolean;
   animated?: boolean;

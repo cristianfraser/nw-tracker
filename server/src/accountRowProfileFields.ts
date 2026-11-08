@@ -54,14 +54,12 @@ export function isPropertyKind(kind: string): boolean {
   return kind === "property" || kind === "real_estate";
 }
 
-/** The account page header's units word, ticker and depto role, from the profile's facts. */
+/** The account page header's units word and ticker, from the profile's holding. */
 export function accountSummaryProfileFields(p: {
-  kind: string;
   holding: { kind: string; ticker?: string; coin?: string };
-}): { units_kind: "shares" | "coin"; ticker: string | null; depto_role: "property" | "loan" | null } {
+}): { units_kind: "shares" | "coin"; ticker: string | null } {
   return {
     units_kind: p.holding.kind === "coin" ? "coin" : "shares",
     ticker: p.holding.kind === "stock" ? p.holding.ticker ?? null : p.holding.kind === "coin" ? p.holding.coin ?? null : null,
-    depto_role: isPropertyKind(p.kind) ? "property" : p.kind === "mortgage" ? "loan" : null,
   };
 }

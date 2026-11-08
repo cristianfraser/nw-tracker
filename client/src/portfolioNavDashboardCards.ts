@@ -4,7 +4,7 @@ import {
   type CardBreakdownLine,
 } from "./dashboardCardBreakdown";
 import { buildNavCardBreakdown } from "./navCardBreakdown";
-import { dashboardAccountNavLabel } from "./navAccountLabels";
+import { accountNavLabel } from "./accountRowFields";
 import i18n from "./i18n";
 import {
   collectNavAccountDataKeys,
@@ -132,7 +132,7 @@ export function inactiveAccountNavLeaf(row: DashboardAccountRow): NavTreeNodeDto
   return {
     node_id: `acc.${row.account_id}`,
     slug: `account_${row.account_id}`,
-    label: dashboardAccountNavLabel(row),
+    label: accountNavLabel(row),
     label_i18n_key: null,
     route_path: `/account/${row.account_id}`,
     active_prefix: null,

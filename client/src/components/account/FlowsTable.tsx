@@ -10,7 +10,7 @@ import styles from "./FlowsTable.module.css";
 
 function formatFlowUnits(
   row: FlowsApiRow,
-  movementUnitsKind?: (slug: string) => "shares" | "coin"
+  unitsKind: "shares" | "coin" = "shares"
 ): string | null {
   if (
     row.units_delta == null ||
@@ -21,7 +21,7 @@ function formatFlowUnits(
   }
   return formatInstrumentUnits(
     row.units_delta,
-    movementUnitsKind?.(row.bucket_slug ?? "") ?? "shares"
+    unitsKind
   );
 }
 
@@ -84,7 +84,7 @@ export function FlowsTable({
   loading,
   showAccountColumn = false,
   showUnitsColumn = true,
-  movementUnitsKind,
+  unitsKind,
   emptyMessage,
   filteredEmptyMessage,
   filterOptions,
@@ -102,7 +102,7 @@ export function FlowsTable({
   showAccountColumn?: boolean;
   /** Off for consolidated group tables (mixed instruments). */
   showUnitsColumn?: boolean;
-  movementUnitsKind?: (slug: string) => "shares" | "coin";
+  unitsKind?: "shares" | "coin";
   emptyMessage?: string;
   filteredEmptyMessage?: string;
   filterOptions?: FlowsFilterOptions;
@@ -268,7 +268,7 @@ export function FlowsTable({
     type: row.flow_type_label,
     accounts: flowAccountsCell(showAccountColumn ? "group" : "account", row),
     amount: formatMovementAmount(row),
-    units: showUnitsColumn ? formatFlowUnits(row, movementUnitsKind) : null,
+    units: showUnitsColumn ? formatFlowUnits(row, unitsKind) : null,
     note: row.note?.trim() ? row.note : null,
   }));
 

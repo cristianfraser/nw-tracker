@@ -104,7 +104,6 @@ describe("buildPlaceholderNavStripDash", () => {
   it("is all zeros, with USD fields only in USD", () => {
     const clp = buildPlaceholderNavStripDash(nav, "clp");
     expect(clp.accounts).toEqual([]);
-    expect(clp.totals.net_worth_clp).toBe(0);
     const month = clp.card_metrics_by_slug.tst_brokerage!.child.month;
     expect(month.delta_period_clp).toBe(0);
     expect(month.delta_period_usd).toBeNull();

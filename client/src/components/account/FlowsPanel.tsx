@@ -48,7 +48,8 @@ type GroupFlowsPanelProps = {
 type AccountFlowsPanelProps = {
   kind: "account";
   accountId: number | string;
-  movementUnitsKind?: (slug: string) => "shares" | "coin";
+  /** The account's units word (server `units_kind`). */
+  unitsKind?: "shares" | "coin";
   showPersonalOnlyFilter?: boolean;
 };
 
@@ -119,7 +120,7 @@ function GroupFlowsPanel({
 
 function AccountFlowsPanel({
   accountId,
-  movementUnitsKind,
+  unitsKind,
   showPersonalOnlyFilter = true,
   enabled = true,
 }: AccountFlowsPanelProps & { enabled?: boolean }) {
@@ -171,7 +172,7 @@ function AccountFlowsPanel({
       onPageChange={setPage}
       loading={queryShowsLoading(flows)}
       showAccountColumn={false}
-      movementUnitsKind={movementUnitsKind}
+      unitsKind={unitsKind}
       emptyMessage={t("accountDetail.flowsEmpty")}
       filteredEmptyMessage={t("accountDetail.flowsFilteredEmpty")}
       filterOptions={data?.filter_options}

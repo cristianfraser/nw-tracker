@@ -151,7 +151,7 @@ export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardRespo
 /** The card strip's slice of the dashboard payload (`GroupInfoPortfolioStrip.dash`). */
 export type NavStripDash = Pick<
   DashboardResponse,
-  "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
+  "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
 >;
 
 function zeroNavCardPeriodMetrics(unit: DisplayUnit): NavCardPeriodMetricsDto {
@@ -189,7 +189,7 @@ export function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
  * The card strip before any nav snapshot or nav-context exists (cold cache): built from the
  * sidebar nav alone. Every group node a strip can draw — the net-worth tree and every main root,
  * Pasivos included (the cash page hosts its credit-card cards) — gets a zero card-metrics entry,
- * which is what `requireNavCardMetrics` asks for; totals are zero and there are no account rows.
+ * which is what `requireNavCardMetrics` asks for; there are no account rows.
  * The strip mounts in its placeholder phase and spins once to the real values.
  */
 export function buildPlaceholderNavStripDash(nav: SidebarNavResponse, unit: DisplayUnit): NavStripDash {
@@ -205,7 +205,6 @@ export function buildPlaceholderNavStripDash(nav: SidebarNavResponse, unit: Disp
   }
   return {
     accounts: [],
-    totals: buildPlaceholderDashboardDash(unit).totals,
     liabilities_breakdown: {
       mortgage_clp: 0,
       credit_card_clp: 0,

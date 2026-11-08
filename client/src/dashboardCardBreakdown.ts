@@ -135,25 +135,15 @@ function accountDetailPath(accountId: number): string {
   return `/account/${accountId}`;
 }
 
-/** Pasivos hipoteca leaf paired with a property row (e.g. depto), not in `real_estate` accounts. */
+/** The property's loan row (server `loan_account_id`), when it has a value. */
 function mortgageAccountForPropertyRow(
   allAccounts: DashboardAccountRow[],
   propertyRow: DashboardAccountRow | undefined
 ): DashboardAccountRow | undefined {
-  // Page-bundle rows carry group/bucket slugs but not category_slug; match either. Prefer
-  // the mortgage sharing the property's name (e.g. both «depto»).
-  const mortgages = allAccounts.filter(
-    (a) =>
-      (a.category_slug === "mortgage" || a.group_slug === "liabilities__mortgage") &&
-      a.current_value_clp != null
-  );
-  if (!mortgages.length) return undefined;
-  if (propertyRow) {
-    const key = propertyRow.name.trim().toLowerCase();
-    const byName = mortgages.find((m) => m.name.trim().toLowerCase() === key);
-    if (byName) return byName;
-  }
-  return mortgages.length === 1 ? mortgages[0] : undefined;
+  const loanId = propertyRow?.loan_account_id;
+  if (loanId == null) return undefined;
+  const loan = allAccounts.find((a) => a.account_id === loanId);
+  return loan?.current_value_clp != null ? loan : undefined;
 }
 
 export type CardGroupMetricsByPeriod = Record<CardGroupMetricsPeriod, CardGroupMetrics>;
