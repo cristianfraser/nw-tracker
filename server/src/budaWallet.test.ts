@@ -44,7 +44,23 @@ describe("budaWallet retiro recognition", () => {
       { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: consumed }
     );
     expect(matched).toBe(true);
-    expect([...consumed]).toEqual(["97|2025-02-03|3000000"]);
+    expect([...consumed]).toEqual(["97|test:2025-02-03|3000000"]);
+  });
+
+  it("pairs two twin retiros (same account, day and pesos) with two inflows: each flow is its own claim (bug 8)", () => {
+    const twin = (flowId: number): DepositMatchCandidate => ({ ...budaRetiro("2025-02-03", 3_000_000), flow_id: flowId });
+    const outflows = [twin(901), twin(902)];
+    const consumed = new Set<string>();
+    const args = {
+      occurred_on: "2025-02-04",
+      amount_clp: 3_000_000,
+      note: creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA"),
+    };
+    const opts = { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: consumed };
+    expect(checkingCreditMatchesBudaRetiro(args, outflows, opts)).toBe(true);
+    expect(checkingCreditMatchesBudaRetiro(args, outflows, opts)).toBe(true);
+    expect(checkingCreditMatchesBudaRetiro(args, outflows, opts)).toBe(false);
+    expect([...consumed].sort()).toEqual(["97|flow:901", "97|flow:902"]);
   });
 
   it("does not double-consume the same retiro for two Buda inflows", () => {

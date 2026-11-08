@@ -125,3 +125,51 @@ tables AND the flow ids of every assigned flow unchanged (dump flow_id + assignm
 `transferCheckingGastosCategoryFromMovementToNote`, `carryMovementKeyedIncomeState`, `flowIdForKey` and the
 `legacy_key` column; the old assignment tables; `backfillCheckingAutoMatchCategories`. Guard test: no table outside
 `flow_*` references a line key or a movement id for an assignment.
+
+## Step 3 as built (flow-identity-2a, 2026-11-08)
+
+What the code forced, and why (each change is also in its commit):
+
+- **Identity is the expense key, one flow per key.** Migration 279 makes one flow for every key an
+  assignment table stores (`flows.legacy_key`, UNIQUE) and points every row that key names at it
+  (`flows/flowKeyResolve.ts`, the inverse of the key builders): a plan, its twins and the cuota lines
+  paid against it share the purchase's flow; rows that carry the same key (cuota lines of one
+  purchase with no plan, line-fallback twins) share one. Twin plans share one flow here, not one
+  each: their key — and so every assignment — is shared today; they split when adoption (step 4)
+  lets their assignments diverge. A checking movement's deposit-paired part is not a flow of its
+  own: the keyed assignment tables carry `portion` (`gastos` | `deposit`) and `piece_seq` (-1 =
+  the whole flow), and `expenseKeySql` rebuilds the key a row stands for.
+- **Every other row gets a flow of its own with no key** (6.8k on the real copy), and the insert
+  triggers give every row written later one (movements, card lines, plans, manual expenses, income
+  entries, gap mirrors), with its evidence row; `ensureFlowForKey` stamps the key when an assignment
+  first names it. A delete takes the row's evidence; its flow goes too when nothing holds it (no key,
+  no other evidence, no pieces). Kinds come from `LEGACY_FLOW_KIND_MAP` (movements: the
+  `MovementFlowType` member, kind-less rows by sign; card lines: the stored kind). Manual expenses
+  get `card_purchase` for want of a non-card spending kind in `FLOW_KINDS`; payslip lines get no flow
+  (no assignment names them; the pre-tax model is F20).
+- **A key that names no row is archived, not a failure.** On the real copy ~2k stored keys name
+  nothing (deleted daily rows' `checking-mv:` keys, re-parsed `line-pr:` ids, identity-only plan keys
+  the line builder no longer produces — exactly what migration 273 reported unread). Each table's
+  migration moves them to `flow_orphan_assignments` (table, key, the row as JSON) and proves
+  old = moved + archived. A malformed key still fails. (An orphan `checking-mv:<id>` would otherwise
+  attach to whatever movement reuses the id: `movements` has no AUTOINCREMENT.)
+- **Refund marks and income classifications are flow-keyed tables, not kinds** (`flow_refunds`,
+  `flow_income_overrides`): `FLOW_KINDS` has no refund-of-spending or excluded-income kind, and the
+  refund carries a category. They join the movement through `movements.flow_id`; a flow carrying one
+  must be one movement's (the migration checks).
+- **Bug 2:** the cartola row takes over the daily row's flow (`adoptMovementFlow`): the official
+  row's own flow merges into it, and it answers to the official row's key — refund mark, income
+  classification, big group and pieces follow; the old-table movers still move categories and notes
+  until their tables move.
+- **Bug 8:** an outflow's claim is its flow on its account (`DepositMatchCandidate.flow_id`,
+  `outflowFlowClaimKey`); the Buda retiro and internal-transfer key sets are built the same way.
+- **Parties** gained source `system` (the `unknown` party and the `unrecorded account` a manual
+  expense comes from).
+- **`flowIdForKey` lives in `flows/flowIdentity.ts`**: `expenseKeys.ts` is a leaf with no `db`
+  (`expenseKeySql` was added there instead).
+- The schema baseline now builds a fresh database only: on a migrated one it brought back, empty,
+  every baseline table a later migration dropped.
+  On the real copy the reconciliation moves 7 redemptions to `resolved_internal_transfer`: they are
+  from-legs of mirror-merge transfers out of a month-precision account (the cuenta de ahorro) whose
+  outflow event keeps its month-end date while the transfer is dated the checking day, so the old
+  account|day|pesos key never matched the «internal by construction» rule it was built for.

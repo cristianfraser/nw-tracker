@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
+import { outflowFlowClaimKey } from "./flowsCheckingGastos.js";
 import {
   convertMirrorPairs,
   MirrorConvertStaleError,
@@ -307,17 +308,22 @@ describe("reconciliation outflow keys for mirror-merge transfers", () => {
   it("includes a mirror-merge transfer into checking; still excludes a plain transfer into checking", () => {
     const outId = insLeg(genericId, -404_041, "2026-04-28");
     const inId = insLeg(checkingId, 404_041, "2026-04-28");
-    convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const [converted] = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]).converted;
 
-    db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
-       VALUES (NULL, ?, ?, 303031, 'clp', '2026-04-28', ?)`
-    ).run(generic2Id, checkingId, `${NOTE}|plain-transfer`);
+    const plain = db
+      .prepare(
+        `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+         VALUES (NULL, ?, ?, 303031, 'clp', '2026-04-28', ?)`
+      )
+      .run(generic2Id, checkingId, `${NOTE}|plain-transfer`).lastInsertRowid;
+    const flowOf = (id: number | bigint) =>
+      (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
 
     const nw = new Set([genericId, generic2Id]);
     const checking = new Set([checkingId]);
     const keys = loadInternalNetWorthTransferOutflowKeys(nw, checking);
-    expect(keys.has(`${genericId}|2026-04-28|404041`)).toBe(true);
-    expect(keys.has(`${generic2Id}|2026-04-28|303031`)).toBe(false);
+    // The claim is the transfer's flow on its from-account (bug 8), whatever day each leg posts.
+    expect(keys.has(outflowFlowClaimKey(genericId, flowOf(converted!.transfer_movement_id)))).toBe(true);
+    expect(keys.has(outflowFlowClaimKey(generic2Id, flowOf(plain)))).toBe(false);
   });
 });

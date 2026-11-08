@@ -14,7 +14,6 @@ import { depositFlowCategoryFromGroupSlug, listDepositFlowAccounts, type Deposit
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
-  MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
   movementClpLegOrZero,
   type MovementAmountFields,
@@ -28,6 +27,7 @@ import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from ".
 import { movementIsStateContribution } from "./depositFlowKind.js";
 import {
   netWorthCapitalLedgerOutflowPairKey,
+  outflowFlowClaimKey,
 } from "./flowsCheckingGastos.js";
 import {
   loadNetWorthCapitalReturnLedgerOutflows,
@@ -253,7 +253,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
 ): Set<string> {
   const rows = db
     .prepare(
-      `SELECT m.id, m.from_account_id, m.to_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency,
+      `SELECT m.id, m.flow_id, m.from_account_id, m.to_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency,
               EXISTS (SELECT 1 FROM movement_mirror_merges mm WHERE mm.transfer_movement_id = m.id) AS is_mirror_merge
        FROM movements m
        WHERE m.account_id IS NULL
@@ -263,6 +263,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
     )
     .all() as (MovementAmountFields & {
     id: number;
+    flow_id: number;
     from_account_id: number;
     to_account_id: number;
     occurred_on: string;
@@ -276,7 +277,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
       if (!netWorthAccountIds.has(r.to_account_id)) continue;
       if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
     }
-    out.add(`${r.from_account_id}|${r.occurred_on}|${Math.round(Math.abs(movementClpLegOrZero(r)))}`);
+    out.add(outflowFlowClaimKey(r.from_account_id, r.flow_id));
   }
   return out;
 }
@@ -391,13 +392,11 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   if (budaBufferId != null) {
     const retiros = db
       .prepare(
-        `SELECT occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
+        `SELECT flow_id FROM movements
          WHERE account_id = ? AND note = 'import:buda|retiro' AND ${MOVEMENT_CLP_LEG_SQL} < 0`
       )
-      .all(budaBufferId) as ({ occurred_on: string } & MovementAmountFields)[];
-    for (const r of retiros) {
-      budaRetiroKeys.add(`${budaBufferId}|${r.occurred_on}|${Math.round(Math.abs(movementClpLegOrZero(r)))}`);
-    }
+      .all(budaBufferId) as { flow_id: number }[];
+    for (const r of retiros) budaRetiroKeys.add(outflowFlowClaimKey(budaBufferId, r.flow_id));
   }
   const redemptions: DepositRedemptionRow[] = [];
   for (const outflow of loadNetWorthCapitalReturnLedgerOutflows()) {

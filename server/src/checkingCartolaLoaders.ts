@@ -67,6 +67,12 @@ export type DepositMatchCandidate = {
   /** The movement row the deposit is, when it is a movement on the account (not a transfer leg). */
   movement_id: number | null;
   /**
+   * The flow the event is a leg of (the movement's, a transfer's for either leg); with the account
+   * it is the claim an outflow pairing consumes (bug 8: never account|day|pesos, which made twin
+   * outflows one claim).
+   */
+  flow_id?: number | null;
+  /**
    * Set on a credit to a checking account only: the bank printed it as a traspaso from the client's
    * other checking account. Any other credit there (a third party's transfer, a salary) funded by
    * no debit of the client's, so no checking debit may claim it as its internal transfer.
@@ -90,12 +96,16 @@ function checkingOwnTraspasoFlag(
 export function depositEventClaimIdentity(
   accountId: number,
   e: Pick<DepositInflowEventWithCounter, "event_key">
-): { claim_key: string; movement_id: number | null } {
+): { claim_key: string; movement_id: number | null; flow_id: number | null } {
   if (e.event_key == null) {
     throw new Error(`deposit event on account ${accountId} carries no event key`);
   }
   const m = /^m:(\d+)$/.exec(e.event_key);
-  return { claim_key: `${accountId}|${e.event_key}`, movement_id: m ? Number(m[1]) : null };
+  const leg = /^[mt]:(\d+)(?::|$)/.exec(e.event_key);
+  const flow = leg
+    ? (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(Number(leg[1])) as { flow_id: number | null } | undefined)
+    : undefined;
+  return { claim_key: `${accountId}|${e.event_key}`, movement_id: m ? Number(m[1]) : null, flow_id: flow?.flow_id ?? null };
 }
 
 /**

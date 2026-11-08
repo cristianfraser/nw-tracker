@@ -447,8 +447,18 @@ function checkingWithdrawalPairKey(row: {
   return `${row.account_id}|${row.occurred_on}|${Math.round(Math.abs(row.amount_clp))}`;
 }
 
-export function netWorthCapitalLedgerOutflowPairKey(o: DepositMatchCandidate): string {
-  return `${o.account_id}|${o.occurred_on}|${o.amount_clp}`;
+/**
+ * The claim a capital-return pairing consumes: the outflow's flow on its account (bug 8 — two twin
+ * outflows, same account, day and pesos, are two claims). An outflow with no flow (a synthetic
+ * event) claims its own event.
+ */
+export function netWorthCapitalLedgerOutflowPairKey(o: Pick<DepositMatchCandidate, "account_id" | "flow_id" | "claim_key">): string {
+  return o.flow_id != null ? outflowFlowClaimKey(o.account_id, o.flow_id) : o.claim_key;
+}
+
+/** {@link netWorthCapitalLedgerOutflowPairKey} of the leg of flow `flowId` on `accountId`. */
+export function outflowFlowClaimKey(accountId: number, flowId: number): string {
+  return `${accountId}|flow:${flowId}`;
 }
 
 function checkingCreditMatchesCheckingOutflowCapitalReturn(
