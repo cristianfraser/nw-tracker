@@ -60,8 +60,8 @@ describe("importCcStatementsMerge CLP vs USD", () => {
       parser_layout: "international_usd",
       merchant: "USD ONLY",
       amount_clp: "",
-      amount_usd: "50.00",
-      statement_monto_facturado: "50.00",
+      amount_usd: "50,00",
+      statement_monto_facturado: "50,00",
       row_id: "usd-1",
     });
 

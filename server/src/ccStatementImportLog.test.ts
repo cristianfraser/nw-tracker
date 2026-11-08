@@ -14,6 +14,8 @@ describe("ccStatementImportLog", () => {
         currency: "usd",
         parser_layout: "international_usd",
         statement_date: "22/09/2021",
+        merchant: "VITEST SHOP",
+        amount_usd: "10,00",
       },
     ];
     const acc = buildCcStatementImportAccountLog(35, "4141 santander", parsedStatements(records), {

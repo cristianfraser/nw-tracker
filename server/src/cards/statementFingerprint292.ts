@@ -5,7 +5,7 @@
  * next send states and re-imports once; every other statement's next send reads unchanged.
  */
 import type { Database } from "better-sqlite3";
-import { storedStatementFingerprint } from "./cards/statementStorage.js";
+import { storedStatementFingerprint } from "./statementStorage.js";
 
 export function runCardStatementFingerprint292(dbi: Database): void {
   const statements = dbi

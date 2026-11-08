@@ -1,4 +1,4 @@
-import { runCardStatementFingerprint292 } from "./cardStatementFingerprint292.js";
+import { runCardStatementFingerprint292 } from "./cards/statementFingerprint292.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

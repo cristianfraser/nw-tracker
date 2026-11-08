@@ -97,8 +97,8 @@ describe("converted card payments across statement writes", () => {
       rows.push({ ...clp, transaction_date: opts.pagoLineDate, merchant: "MONTO CANCELADO", amount_clp: "-271000", dedupe_key: `vitest-evidence-pago-${opts.pagoLineDate}`, row_id: "vitest-evidence-pago" });
     }
     rows.push(
-      { ...usd, transaction_date: "06/10/2037", merchant: "VITEST EVIDENCE USD SHOP", amount_clp: "", amount_usd: "20.00", dedupe_key: "vitest-evidence-usd-shop", row_id: "vitest-evidence-usd-shop" },
-      { ...usd, transaction_date: "12/10/2037", merchant: "ABONO DE DIVISAS", amount_clp: "", amount_usd: "-100.00", dedupe_key: "vitest-evidence-abono", row_id: "vitest-evidence-abono" }
+      { ...usd, transaction_date: "06/10/2037", merchant: "VITEST EVIDENCE USD SHOP", amount_clp: "", amount_usd: "20,00", dedupe_key: "vitest-evidence-usd-shop", row_id: "vitest-evidence-usd-shop" },
+      { ...usd, transaction_date: "12/10/2037", merchant: "ABONO DE DIVISAS", amount_clp: "", amount_usd: "-100,00", dedupe_key: "vitest-evidence-abono", row_id: "vitest-evidence-abono" }
     );
     return rows;
   }
