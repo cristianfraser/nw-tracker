@@ -26,6 +26,7 @@
  * and checking debits the user categorized as spending (structured evidence the row is not one
  * leg of a move between own accounts).
  */
+import { movementNotAnchorSql } from "./flows/flowEvidence.js";
 import { FLOW_CATEGORIES_SQL } from "./flows/flowCategories.js";
 import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
@@ -144,10 +145,9 @@ function loadEligibleLegs(): EligibleLegRow[] {
          AND m.currency = 'clp'
          AND m.amount != 0
          AND m.flow_kind IS NULL
+         AND ${movementNotAnchorSql("m")}
          AND (m.note IS NULL OR (
-               m.note NOT LIKE 'import:cartola|anchor|%'
-           AND m.note NOT LIKE 'import:cartola|opening|%'
-           AND m.note NOT LIKE 'import:buda|%'
+               m.note NOT LIKE 'import:buda|%'
            AND m.note NOT LIKE 'buda-abono|%'
            AND m.note NOT LIKE 'ahorro-split|%'))
          AND NOT EXISTS (SELECT 1 FROM ${EXPENSE_DEPOSIT_LINKS_SQL} l WHERE l.deposit_movement_id = m.id)

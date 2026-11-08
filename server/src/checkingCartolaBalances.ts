@@ -1,4 +1,5 @@
 import type { Database } from "better-sqlite3";
+import { movementNotAnchorSql } from "./flows/flowEvidence.js";
 import { db } from "./db.js";
 import { cacheKeyCheckingBalance } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
@@ -209,10 +210,7 @@ export function checkingTimelineMonthKeys(
     .prepare(
       `SELECT ${BANK_POSTED_ON_SQL} AS posted_on FROM movements m ${BANK_POSTING_JOIN_SQL}
        WHERE (m.account_id = ? OR m.from_account_id = ? OR m.to_account_id = ?)
-         AND (m.note IS NULL OR (
-           m.note NOT LIKE 'import:cartola|anchor|%'
-           AND m.note NOT LIKE 'import:cartola|opening|%'
-         ))`
+         AND ${movementNotAnchorSql("m")}`
     )
     .all(accountId, accountId, accountId, accountId) as { posted_on: string }[]) {
     const mk = monthKeyFromYmd(r.posted_on);
@@ -311,10 +309,7 @@ export function nonAnchorClpFlowTotals(
        FROM movements m ${BANK_POSTING_JOIN_SQL}
        WHERE (m.account_id = ? OR m.from_account_id = ? OR m.to_account_id = ?)
          AND ${dateSql}
-         AND (m.note IS NULL OR (
-           m.note NOT LIKE 'import:cartola|anchor|%'
-           AND m.note NOT LIKE 'import:cartola|opening|%'
-         ))`
+         AND ${movementNotAnchorSql("m")}`
     )
     .all(accountId, accountId, accountId, accountId, ...dateParams) as MovementTransferRow[];
   let deposits = 0;

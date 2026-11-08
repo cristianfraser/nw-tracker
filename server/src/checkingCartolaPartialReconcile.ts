@@ -1,6 +1,7 @@
 import type { Database } from "better-sqlite3";
 
 
+import { movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { deleteMovements, redateMovementKeepingBankDay, repointMovementReferences } from "./movementWrites.js";
 import { db } from "./db.js";
 import {
@@ -97,7 +98,7 @@ export function partialMovementSupersededByCartola(
     .prepare(
       `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
        WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-         AND m.note LIKE 'import:cartola|%'`
+         AND ${movementSourceKindInSql("m", ["cartola", "cartola_anchor"])}`
     )
     .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
   for (const row of rows) {
@@ -119,7 +120,7 @@ export function findMatchingCartolaMovementNoteInDb(
     .prepare(
       `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
        WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-         AND m.note LIKE 'import:cartola|%' AND m.note NOT LIKE 'import:cartola|anchor|%'`
+         AND ${movementSourceKindInSql("m", ["cartola"])}`
     )
     .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
   for (const row of rows) {
@@ -139,9 +140,9 @@ export function prunePartialMovementsSupersededByCartola(
   const partialRows = dbHandle
     .prepare(
       `SELECT id, note, occurred_on FROM movements
-       WHERE account_id = ? AND note LIKE ?`
+       WHERE account_id = ? AND ${movementSourceKindInSql("movements", ["daily_listing"])}`
     )
-    .all(accountId, `${PARTIAL_NOTE_PREFIX}%`) as { id: number; note: string; occurred_on: string }[];
+    .all(accountId) as { id: number; note: string; occurred_on: string }[];
 
   const removed_ids: number[] = [];
 

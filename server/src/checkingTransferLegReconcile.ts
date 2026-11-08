@@ -13,6 +13,7 @@
  * days between, and `D` itself). A `consumed` set enforces one-to-one matching, and candidates
  * closest to the bank date win first.
  */
+import { movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { deleteMovements } from "./movementWrites.js";
 import { adoptMovementFlow } from "./flows/flowIdentity.js";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
@@ -184,8 +185,7 @@ export function supersedeImportedCheckingRowsForTransfer(
            AND ABS(${MOVEMENT_CLP_LEG_SQL} - ?) < 0.5
            AND occurred_on >= ?
            AND occurred_on <= date(?, '+10 days')
-           AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%')
-           AND note NOT LIKE 'import:cartola|anchor|%'
+           AND ${movementSourceKindInSql("movements", ["cartola", "daily_listing"])}
          ORDER BY occurred_on ASC, id ASC`
       )
       .all(endpoint, Math.round(signed), occurredOn, occurredOn) as ImportedCheckingRow[];

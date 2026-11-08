@@ -16,6 +16,7 @@
  * a transfer to some other account. Rows left tied that differ only by id are twins and pair in
  * order; any other tie is left unpaired and reported.
  */
+import { movementNotAnchorSql } from "./flows/flowEvidence.js";
 import { addDaysIso, normalizeAccountNumber, normalizeRut } from "nw-tracker-contracts";
 import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
@@ -193,7 +194,7 @@ export function loadTransferCandidateLegs(accountIds: readonly number[]): Transf
     .prepare(
       `SELECT m.id AS movement_id, m.account_id, NULL AS other_account_id, COALESCE(p.posted_on, m.occurred_on) AS day, m.amount
        FROM movements m LEFT JOIN movement_bank_postings p ON p.movement_id = m.id AND p.account_id = m.account_id
-       WHERE m.account_id IN (${ids}) AND m.currency = 'clp' AND COALESCE(m.note, '') NOT LIKE 'import:cartola|anchor|%'
+       WHERE m.account_id IN (${ids}) AND m.currency = 'clp' AND ${movementNotAnchorSql("m")}
        UNION ALL
        SELECT m.id, m.from_account_id, m.to_account_id, COALESCE(p.posted_on, m.occurred_on), -m.amount
        FROM movements m LEFT JOIN movement_bank_postings p ON p.movement_id = m.id AND p.account_id = m.from_account_id

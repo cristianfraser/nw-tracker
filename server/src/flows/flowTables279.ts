@@ -99,11 +99,14 @@ function gapMirrorFlowValues(a: string): string {
 const FLOW_COLUMNS = `kind, from_account_id, to_account_id, from_party_id, to_party_id, occurred_on, amount, currency,
   counter_amount, counter_currency, description`;
 
-/** Evidence of a movement: its document by its note's provenance (the note stays human text). */
-function movementEvidenceValues(a: string): string {
+/**
+ * A movement's document kind, from its note's provenance (the one place the note grammar is read;
+ * readers read `flow_evidence.source_kind`). Migration 291 keeps it in step when a note is rewritten.
+ */
+export function movementEvidenceKindSql(a: string): string {
   const mail = `(${a}.note LIKE 'import:santander-mail|%' OR ${a}.note LIKE 'import:mach-mail|%' OR ${a}.note LIKE 'import:bancochile-mail|%')`;
-  const kind = `CASE
-    WHEN ${a}.note LIKE 'import:cartola|anchor|%' THEN 'cartola_anchor'
+  return `CASE
+    WHEN ${a}.note LIKE 'import:cartola|anchor|%' OR ${a}.note LIKE 'import:cartola|opening|%' THEN 'cartola_anchor'
     WHEN ${a}.note LIKE 'import:cartola-partial|%' THEN 'daily_listing'
     WHEN ${a}.note LIKE 'import:cartola|%' THEN 'cartola'
     WHEN ${mail} AND EXISTS (SELECT 1 FROM transfer_notice_movements t WHERE t.movement_id = ${a}.id) THEN 'mail_notice'
@@ -111,11 +114,25 @@ function movementEvidenceValues(a: string): string {
     WHEN ${a}.note LIKE 'import:fintual|%' OR ${a}.note LIKE 'import:racional%' THEN 'broker_document'
     WHEN ${a}.note LIKE 'import:buda|%' OR ${a}.note LIKE 'import:excel|%' OR ${a}.note LIKE 'import:dap|%' THEN 'legacy_import'
     ELSE 'manual' END`;
-  // A bank document's row is identified by the row its importer writes (the cartola identity, the
-  // daily listing's): the document key adoption looks for when the row comes back (migration 290).
-  const documentKey = `CASE WHEN ${kind} IN ('cartola', 'cartola_anchor', 'daily_listing') THEN ${a}.note END`;
-  return `${kind}, 'movements', ${a}.id, ${documentKey}, ${a}.occurred_on, ${a}.amount, ${a}.currency, ${a}.note,
-    CASE ${kind} WHEN 'cartola' THEN 3 WHEN 'cartola_anchor' THEN 3 WHEN 'daily_listing' THEN 2 WHEN 'mail_notice' THEN 2 ELSE 1 END`;
+}
+
+/**
+ * A bank document's row is identified by the row its importer writes (the cartola identity, the
+ * daily listing's): the document key adoption looks for when the row comes back (migration 290).
+ */
+export function movementDocumentKeySql(a: string): string {
+  return `CASE WHEN ${movementEvidenceKindSql(a)} IN ('cartola', 'cartola_anchor', 'daily_listing') THEN ${a}.note END`;
+}
+
+export function movementEvidenceAuthoritySql(a: string): string {
+  return `CASE ${movementEvidenceKindSql(a)} WHEN 'cartola' THEN 3 WHEN 'cartola_anchor' THEN 3 WHEN 'daily_listing' THEN 2
+    WHEN 'mail_notice' THEN 2 ELSE 1 END`;
+}
+
+/** Evidence of a movement: its document by its note's provenance (the note stays human text). */
+function movementEvidenceValues(a: string): string {
+  return `${movementEvidenceKindSql(a)}, 'movements', ${a}.id, ${movementDocumentKeySql(a)}, ${a}.occurred_on, ${a}.amount,
+    ${a}.currency, ${a}.note, ${movementEvidenceAuthoritySql(a)}`;
 }
 
 function lineEvidenceValues(a: string): string {

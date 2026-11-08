@@ -3,6 +3,7 @@
  * (`flowsCheckingGastos.ts`). This layer only SELECTs and shapes rows — classification
  * lives in `checkingDescriptionPredicates.ts`, pairing policy in the engine.
  */
+import { CHECKING_LISTED_SOURCE_KINDS, movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import {
@@ -154,10 +155,7 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
        FROM movements
        WHERE account_id = ?
          AND ${MOVEMENT_CLP_LEG_SQL} ${direction === "in" ? ">" : "<"} 0
-         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%'
-              OR note LIKE 'import:santander-mail|%' OR note LIKE 'import:mach-mail|%'
-              OR note LIKE 'import:bancochile-mail|%')
-         AND note NOT LIKE 'import:cartola|anchor|%'
+         AND ${movementSourceKindInSql("movements", CHECKING_LISTED_SOURCE_KINDS)}
        ORDER BY occurred_on, id`
     )
     .all(accountId) as CheckingMovementRow[];

@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 /**
  * Provenance is read from columns and keys from the key module (docs/untangle-plan.md F9 steps 1–2).
  * This fails when runtime code goes back to testing a statement source prefix, parsing the deposit
- * matcher's note, or spelling a purchase key by hand. The owners of each spelling are allowed.
+ * matcher's note, testing a movement's note for its document kind (F9 step 4), or spelling a
+ * purchase key by hand. The owners of each spelling are allowed.
  */
 const SRC = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +27,11 @@ const RULES: { name: string; pattern: RegExp; allowedIn: readonly string[] }[] =
     pattern:
       /(startsWith|endsWith)\(\s*["'`](installment-h|installment-pr|installment|line-pr|line|line-fallback|checking-mv|checking-cartola|manual|payslip|synthetic-checking-gap-mirror):|[`"']#split:|`(installment-h|installment-pr|line-pr|line-fallback|checking-mv|checking-cartola|payslip|synthetic-checking-gap-mirror):\$\{/,
     allowedIn: ["expenseKeys.ts", "expenseKeyLegacyRewrite273.ts"],
+  },
+  {
+    name: "a movement's document kind tested by note prefix (read flow_evidence.source_kind, flows/flowEvidence.ts)",
+    pattern: /LIKE\s+'import:cartola(\|anchor|\|opening|-partial)?\|%'/,
+    allowedIn: ["flowTables279.ts"],
   },
 ];
 

@@ -37,6 +37,7 @@ import {
   runFlowRefunds280,
 } from "./flows/flowAssignments280.js";
 import { runFlowRetirement290 } from "./flows/flowRetirement290.js";
+import { runMovementEvidenceKind291 } from "./flows/flowEvidenceKind291.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -306,6 +307,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "288_flow_kinds_manual_purchase.sql": runFlowKindsManualPurchase288,
   "289_flow_categories.sql": runFlowCategories289,
   "290_flow_retirement.sql": runFlowRetirement290,
+  "291_movement_evidence_kind.sql": runMovementEvidenceKind291,
 };
 
 /**
