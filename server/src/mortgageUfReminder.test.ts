@@ -155,9 +155,11 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
        VALUES (?, '2099-06-11', 'TOKU *METLIFE HIPOTE', 1200000)`
     ).run(Number(stmt.lastInsertRowid));
 
-    // UF series: flat 06-11 & 06-21 (post-cierre) → qualifies; add a couple more days.
+    // UF series: flat 06-11 & 06-20 (the next cycle's first day: Santander's close day) → qualifies;
+    // add a couple more days.
     const uf: ReadonlyArray<[string, number]> = [
       ["2099-06-11", 40_000],
+      ["2099-06-20", 40_000],
       ["2099-06-21", 40_000],
       ["2099-07-10", 40_000],
     ];
