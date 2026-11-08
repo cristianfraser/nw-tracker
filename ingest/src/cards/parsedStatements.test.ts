@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { CARD_PARSED_STATEMENT_COLUMNS } from "nw-tracker-contracts";
-import { parsedStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
+import { CARD_PARSED_STATEMENT_COLUMNS, canonicalLineFromParsedRow, readCaseFile } from "nw-tracker-contracts";
+import { canonicalStatementsPayload, parsedStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
 
 function csvFile(text: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vitest-parsed-statements-"));
@@ -36,4 +36,31 @@ describe("readParsedStatementsCsv", () => {
     expect(readParsedStatementsCsv(path.join(os.tmpdir(), "no-such-parsed.csv"))).toBeNull();
     expect(readParsedStatementsCsv(csvFile(`${header}\n`))).toBeNull();
   });
+});
+
+describe("canonicalStatementsPayload", () => {
+  it("sends the parser's rows as canonical statements", () => {
+    const row = (merchant: string, amount: string) =>
+      CARD_PARSED_STATEMENT_COLUMNS.map((c) =>
+        ({ merchant, amount_clp: amount, card_last4: "0001", card_group: "A", source_pdf: "a.pdf", statement_date: "20/08/2026", installment_flag: "false" })[c as string] ?? ""
+      ).join(",");
+    const csv = readParsedStatementsCsv(csvFile(`${header}\n${row("UNO", "1.234")}\n${row("PAGO", "-500")}\n`))!;
+    const payload = canonicalStatementsPayload(csv, { full: true });
+    expect(payload.format).toBe("canonical");
+    expect(payload.statements).toHaveLength(1);
+    expect(payload.statements[0]!.lines.map((l) => [l.kind, l.amount])).toEqual([
+      ["card_purchase", 1234],
+      ["card_payment", -500],
+    ]);
+  });
+});
+
+type CanonicalCases = {
+  parsed_rows: { name: string; statement_currency: "clp" | "usd"; row: Record<string, string>; line: Record<string, unknown> }[];
+};
+
+describe("canonical card line cases (the conversion ingest runs before sending)", () => {
+  for (const c of readCaseFile<CanonicalCases>("cardCanonicalLineCases.json").parsed_rows) {
+    it(c.name, () => expect(canonicalLineFromParsedRow(c.row, c.statement_currency)).toMatchObject(c.line));
+  }
 });

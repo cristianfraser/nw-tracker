@@ -10,7 +10,7 @@
  * 2. Organize inbox PDFs → credit-card / cartola folders (writes the inbox manifest)
  * 3. Organize checking cartola `.xlsx` from the inbox → `excels/cuenta corriente/`
  * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV
- * 5. Send the parsed statements (`card.parsed_statements`)
+ * 5. Send the parsed statements (`card.statement`, canonical)
  * 6. Checking cartolas (when the inbox filed one, or `--checking`), the daily «ultimos
  *    movimientos» xlsx, the card-payment receipts, then the server tasks
  *    `synthetic_cc_payments_check` and `cc_payment_mirrors`
@@ -172,7 +172,7 @@ async function main(): Promise<void> {
   }
 
   if (!skipCcImport) {
-    // Ingest sends the parsed statements (`card.parsed_statements`) and the server imports the
+    // Ingest sends the parsed statements (`card.statement`, canonical) and the server imports the
     // ones whose rows changed; `--full` forces the from-scratch pass that re-reconciles every
     // statement in history (slow, but the periodic sanity check). One card account only: run
     // `npm run import:cc-parsed -- --account-id=<id>` by hand.

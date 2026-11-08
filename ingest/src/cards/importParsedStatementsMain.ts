@@ -1,7 +1,7 @@
 /**
  * Send every card statement `parse:cc-pdfs` read (`cfraser/cc-statements-parsed-all.csv`) to the
- * server as one `card.parsed_statements`. The server imports the statements whose rows changed
- * since their last import.
+ * server as one `card.statement` of canonical statements (converted here, once). The server imports
+ * the statements whose content changed since their last import.
  *
  *   npm run import:cc-statements -w nw-tracker-ingest                 # import the changed statements
  *   npm run import:cc-statements -w nw-tracker-ingest -- --dry-run    # report only
@@ -12,10 +12,10 @@
  * account takes) or is not reachable.
  */
 import path from "node:path";
-import { cardParsedStatementsKind, type CardParsedStatementsApplyDetails } from "nw-tracker-contracts";
+import { cardStatementKind, type CardParsedStatementsApplyDetails } from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
-import { parsedStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
+import { canonicalStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
 
 const dryRun = process.argv.includes("--dry-run");
 const full = process.argv.includes("--full");
@@ -28,10 +28,10 @@ async function main(): Promise<number> {
     console.error(`No parsed statement lines in ${file} — run parse:cc-pdfs first.`);
     return 1;
   }
-  const payload = parsedStatementsPayload(csv, { full });
+  const payload = canonicalStatementsPayload(csv, { full });
   let details: CardParsedStatementsApplyDetails;
   try {
-    const result = await ingestClient().send(cardParsedStatementsKind, payload, {
+    const result = await ingestClient().send(cardStatementKind, payload, {
       channel: "file",
       ref: path.basename(file),
     }, { dryRun });

@@ -1,11 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  canonicalStatementsFromParsedPayload,
-  cardParsedStatementsKind,
-  type CardCanonicalStatement,
-} from "nw-tracker-contracts";
+import { cardStatementKind, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { requestFeederParse } from "./ingestFeeder.js";
 import { resolveCcStatementSlotDir } from "./cfraserPaths.js";
 import { db } from "./db.js";
@@ -54,9 +50,8 @@ export type CcStatementPdfImportResult = {
 
 /**
  * Each uploaded PDF goes to the ingest service's card statement parser
- * (`POST /parse/card_statement.pdf`), which answers with its lines as `card.parsed_statements`,
- * read into canonical statements. A file it cannot read is a parse failure; the service not
- * answering throws.
+ * (`POST /parse/card_statement.pdf`), which answers with its canonical statements (`card.statement`,
+ * format `canonical`). A file it cannot read is a parse failure; the service not answering throws.
  */
 async function parseUploadedPdfs(files: readonly { name: string; buffer: Buffer }[]): Promise<{
   statements: CardCanonicalStatement[];
@@ -71,11 +66,12 @@ async function parseUploadedPdfs(files: readonly { name: string; buffer: Buffer 
       failures.push(`${file.name}: ${answer.message}`);
       continue;
     }
-    if (answer.result.kind !== cardParsedStatementsKind.kind || answer.result.schema_version !== cardParsedStatementsKind.schema_version) {
-      throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${cardParsedStatementsKind.kind}`);
+    if (answer.result.kind !== cardStatementKind.kind || answer.result.schema_version !== cardStatementKind.schema_version) {
+      throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${cardStatementKind.kind}`);
     }
-    const payload = cardParsedStatementsKind.payload.parse(answer.result.payload);
-    statements.push(...canonicalStatementsFromParsedPayload(payload));
+    const payload = cardStatementKind.payload.parse(answer.result.payload);
+    if (payload.format !== "canonical") throw new Error("ingest answered an issuer statement for a statement PDF");
+    statements.push(...payload.statements);
   }
   return { statements, failures };
 }

@@ -1,11 +1,18 @@
 import fs from "node:fs";
-import { cardParsedStatementsKind, type CardParsedStatementsPayload } from "nw-tracker-contracts";
+import {
+  canonicalStatementsFromParsedPayload,
+  cardParsedStatementsKind,
+  cardStatementKind,
+  type CardCanonicalStatementsPayload,
+  type CardParsedStatementsPayload,
+} from "nw-tracker-contracts";
 
 /**
  * The card statement parser's merged output (`cfraser/cc-statements-parsed-all.csv`, written by
- * `parse:cc-pdfs`) → one `card.parsed_statements`. Read exactly as the server's importer read it
- * (RFC 4180 quoting, headers trimmed / lower-cased / spaces to `_`, blank rows dropped, a short row
- * padded with ""), because the server hashes each statement's rows to decide what changed.
+ * `parse:cc-pdfs`) → canonical card statements (`card.statement`, format `canonical`): the parser's
+ * cells read once, here, by the contracts' converter (`canonicalStatementsFromParsedPayload`). The
+ * CSV is read as the parser writes it (RFC 4180 quoting, headers trimmed / lower-cased / spaces to
+ * `_`, blank rows dropped, a short row padded with "").
  */
 
 function normHeader(s: string): string {
@@ -73,4 +80,10 @@ export function readParsedStatementsCsv(file: string): { columns: string[]; rows
 
 export function parsedStatementsPayload(csv: { columns: string[]; rows: string[][] }, opts: { full: boolean }): CardParsedStatementsPayload {
   return cardParsedStatementsKind.payload.parse({ full: opts.full, columns: csv.columns, rows: csv.rows });
+}
+
+/** The parsed CSV as canonical statements, the `card.statement` payload the server imports. */
+export function canonicalStatementsPayload(csv: { columns: string[]; rows: string[][] }, opts: { full: boolean }): CardCanonicalStatementsPayload {
+  const statements = canonicalStatementsFromParsedPayload(parsedStatementsPayload(csv, opts));
+  return cardStatementKind.payload.parse({ format: "canonical", full: opts.full, statements }) as CardCanonicalStatementsPayload;
 }

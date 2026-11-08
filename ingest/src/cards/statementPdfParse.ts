@@ -2,17 +2,17 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cardParsedStatementsKind, type FeederParseResult } from "nw-tracker-contracts";
+import { cardStatementKind, type FeederParseResult } from "nw-tracker-contracts";
 import { resolveRepoRoot } from "../paths.js";
-import { parsedStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
+import { canonicalStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
 
 /** Parsing a scanned statement runs OCR; well within the server's wait for this format. */
 const PARSE_TIMEOUT_MS = 140_000;
 
 /**
- * One uploaded card statement PDF → `card.parsed_statements` (`POST /parse/card_statement.pdf`):
+ * One uploaded card statement PDF → `card.statement` canonical statements (`POST /parse/card_statement.pdf`):
  * the card statement parser (`ingest/python/parse-cc-statement-pdfs.py`) run on a directory
- * holding only this file, its merged CSV read as the import reads it. The parser's per-PDF cache
+ * holding only this file, its merged CSV converted to canonical statements as the corpus is. The parser's per-PDF cache
  * is the corpus's own (keyed by the PDF's bytes), so a statement already in the corpus parses
  * from cache. A parse that fails or reads no line is `unreadable`.
  */
@@ -43,9 +43,9 @@ export async function parseCardStatementPdf(content: Buffer, filename: string): 
     const csv = readParsedStatementsCsv(outCsv);
     if (!csv) throw new Error("the parser read no statement line from this PDF");
     return {
-      kind: cardParsedStatementsKind.kind,
-      schema_version: cardParsedStatementsKind.schema_version,
-      payload: parsedStatementsPayload(csv, { full: false }),
+      kind: cardStatementKind.kind,
+      schema_version: cardStatementKind.schema_version,
+      payload: canonicalStatementsPayload(csv, { full: false }),
     };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

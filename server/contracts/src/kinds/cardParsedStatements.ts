@@ -6,9 +6,10 @@ import { defineIngestKind } from "../defineKind.js";
  * PDF statement parser (`parse-cc-statement-pdfs.py`) writes to `cc-statements-parsed-all.csv`.
  * Every statement-level field rides on each of its lines (`statement_*`, `pdf_total_operaciones`).
  *
- * The rows travel verbatim, as the parser printed them: the server keeps a hash of each
- * statement's rows (`import_fingerprint`) to re-import only what changed, and keys stored line
- * identities on the parser's own (`dedupe_key`, `row_id`, `canonical_row_id`).
+ * The rows travel verbatim, as the parser printed them; the server reads them into canonical card
+ * statements (`cards/parsedStatementRows.ts`, the converter the feeder itself now runs before it
+ * sends `card.statement`). Kept for one release: a feeder deployed with the server sends
+ * `card.statement` (format `canonical`) instead.
  */
 export const CARD_PARSED_STATEMENT_COLUMNS = [
   "card_group",

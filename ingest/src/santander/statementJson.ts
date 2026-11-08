@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  cardStatementKind,
+  cardIssuerStatementSchema,
   type CardStatementLine,
   type CardStatementOutcome,
-  type CardStatementPayload,
+  type CardIssuerStatementPayload,
 } from "nw-tracker-contracts";
 
 /**
@@ -433,7 +433,7 @@ export function assembleSantanderStatementBatch(statements: readonly ParsedSanta
 }
 
 /** One facturación as the payload the server takes; null for an international with no national twin. */
-export function statementGroupPayload(group: SantanderStatementGroup): CardStatementPayload | null {
+export function statementGroupPayload(group: SantanderStatementGroup): CardIssuerStatementPayload | null {
   const national = group.national;
   if (!national || !national.header.close) return null;
   const statements = [national, group.international]
@@ -446,7 +446,7 @@ export function statementGroupPayload(group: SantanderStatementGroup): CardState
       payments_total: s.currency === "clp" ? s.header.total_pagos : null,
       lines: s.lines,
     }));
-  return cardStatementKind.payload.parse({
+  return cardIssuerStatementSchema.parse({
     format: "issuer_statement",
     account: { issuer: "santander", number: group.account },
     statement_number: group.extracto,

@@ -4,8 +4,8 @@
  *
  * - monthly cartolas (cuenta vista, cuenta corriente) → `bank_account.statements`;
  * - this month's «últimos movimientos» listing of the cuenta corriente → `bank_account.movements`;
- * - every closed facturación, pesos and dollars → `card.parsed_statements` rows (the statement
- *   parser's columns), and the open cycle as the card feed would list it;
+ * - every closed facturación, pesos and dollars → the statement parser's rows, read into canonical
+ *   card statements as the parser's output is, and the open cycle as the card feed would list it;
  * - liquidaciones → `employment.payslips`, with the month's Previred parameters → `payroll.parameters`.
  */
 import type {
