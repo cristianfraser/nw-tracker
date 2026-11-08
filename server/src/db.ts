@@ -20,6 +20,7 @@ import {
 import { runLoanPayments258 } from "./loanPayments258.js";
 import { runAccountRoles271 } from "./accountRoles271.js";
 import { runNavTreeRoles272 } from "./navTreeRoles272.js";
+import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
@@ -258,6 +259,9 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "270_cache_write_log.sql": runMarkInputChangeTriggers270,
   "271_account_roles.sql": runAccountRoles271,
   "272_nav_tree_roles.sql": runNavTreeRoles272,
+  "273_expense_key_legacy_rewrite.sql": (dbi) => {
+    runExpenseKeyLegacyRewrite273(dbi);
+  },
 };
 
 /**
