@@ -24,6 +24,8 @@ export type ExpenseVendorSource = {
     | "payment_receipt"
     | "transfer_counterparty"
     | "expense_deposit_links"
+    | "line_role"
+    | "nro_cuota_total"
   >
 >;
 
@@ -64,8 +66,9 @@ function InfoBlock({ lines }: { lines: readonly string[] }) {
 }
 
 /**
- * The ⓘ card: the merchant as the bank prints it (when the row shows another name) and what the
- * source is linked to (transfer counterparty, payment receipt, deposit), in full.
+ * The ⓘ card: the merchant as the bank prints it (when the row shows another name), a plan's
+ * cuota count on its full-price row, and what the source is linked to (transfer counterparty,
+ * payment receipt, deposit), in full.
  */
 export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
   const { t } = useTranslation();
@@ -76,6 +79,14 @@ export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
       bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: source.merchant_processor }));
     }
     blocks.push(<InfoBlock key="bank" lines={bank} />);
+  }
+  if (source.line_role === "installment_purchase_total") {
+    blocks.push(
+      <InfoBlock
+        key="cuotas"
+        lines={[t("expenses.creditCard.installmentPurchaseTotalLabel", { count: source.nro_cuota_total ?? 0 })]}
+      />
+    );
   }
   const c = source.transfer_counterparty;
   if (c) blocks.push(<InfoBlock key="counterparty" lines={transferCounterpartyDetailLines(c)} />);

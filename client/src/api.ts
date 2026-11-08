@@ -245,6 +245,12 @@ export const api = {
     ),
   deleteCcPurchase: (id: string | number, purchaseId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, { method: "DELETE" }),
+  updateCcPurchaseCuotas: (id: number, purchaseId: number, cuotas_totales: number) =>
+    j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cuotas_totales }),
+    }),
   deleteCcStatementLine: (id: string | number, lineId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-statement-lines/${lineId}`, { method: "DELETE" }),
   makeStatementLineInstallment: (id: string | number, lineId: number, cuotas_totales: number) =>

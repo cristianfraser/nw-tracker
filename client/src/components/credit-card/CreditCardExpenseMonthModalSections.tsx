@@ -8,7 +8,6 @@ import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByStatement,
 } from "./CreditCardExpenseLinesTable";
-import { ExpenseLinePiecesDialog } from "./ExpenseLinePiecesDialog";
 import { ManualExpenseDialog } from "./ManualExpenseDialog";
 
 export type CreditCardExpenseMonthBucket = {
@@ -68,7 +67,6 @@ export function CreditCardExpenseMonthModalSections({
   enableCheckingNotes?: boolean;
 }) {
   const { t } = useTranslation();
-  const [piecesLine, setPiecesLine] = useState<FlowCcExpenseLineRow | null>(null);
   const [manualLine, setManualLine] = useState<FlowCcExpenseLineRow | null>(null);
 
   const purchasesSum = useMemo(
@@ -107,10 +105,8 @@ export function CreditCardExpenseMonthModalSections({
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
         enableCheckingNotes={enableCheckingNotes}
-        onEditPieces={setPiecesLine}
         onEditManual={setManualLine}
       />
-      <ExpenseLinePiecesDialog line={piecesLine} categories={categories} onClose={() => setPiecesLine(null)} />
       <ManualExpenseDialog
         open={manualLine != null}
         expense={manualLine}

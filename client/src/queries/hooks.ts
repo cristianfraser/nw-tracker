@@ -721,6 +721,7 @@ export {
   useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
   useMakeStatementLineInstallmentMutation,
+  useUpdateCcPurchaseCuotasMutation,
   useAccountImportMutation,
   usePatchCcExpenseLineCategoryMutation,
   usePatchCcExpensePurchaseNoteMutation,

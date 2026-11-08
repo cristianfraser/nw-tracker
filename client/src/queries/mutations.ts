@@ -440,6 +440,19 @@ export function useDeleteCcPurchaseMutation(opts: {
   });
 }
 
+/** A manual plan's cuota count, changed from its row. */
+export function useUpdateCcPurchaseCuotasMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ purchaseId, cuotas_totales }: { purchaseId: number; cuotas_totales: number }) =>
+      api.updateCcPurchaseCuotas(opts.accountId, purchaseId, cuotas_totales),
+    onSettled: () => {
+      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+    },
+  });
+}
+
 export function useDeleteCcStatementLineMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;

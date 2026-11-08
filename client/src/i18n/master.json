@@ -4553,8 +4553,8 @@
         }
       },
       "installmentPurchaseTotalLabel": {
-        "en": "Installment purchase · {{count}} installments",
-        "es": "Compra en cuotas · {{count}} cuotas"
+        "en": "{{count}} installments",
+        "es": "{{count}} cuotas"
       },
       "cuotaPurchasePendingBadge": {
         "en": "Installments · count?",
@@ -5039,6 +5039,22 @@
         }
       },
       "lineRow": {
+        "planCountSave": {
+          "en": "Change installments",
+          "es": "Cambiar cuotas"
+        },
+        "planRemove": {
+          "en": "Undo installments",
+          "es": "Quitar cuotas"
+        },
+        "planRemoveConfirmTitle": {
+          "en": "Undo the installments?",
+          "es": "¿Quitar las cuotas?"
+        },
+        "planRemoveConfirmBody": {
+          "en": "{{merchant}} goes back to a single charge.",
+          "es": "{{merchant}} vuelve a ser un solo cargo."
+        },
         "sortDate": {
           "en": "Date",
           "es": "Fecha"

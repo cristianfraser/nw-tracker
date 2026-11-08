@@ -15,6 +15,7 @@ import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../..
 import { ExpensePurchaseNoteInput } from "./ExpensePurchaseNoteInput";
 import { ExpenseBigGroupPicker } from "./ExpenseBigGroupPicker";
 import { ExpenseOriginIcon } from "./ExpenseOriginIcon";
+import { ExpenseLinePiecesDialog } from "./ExpenseLinePiecesDialog";
 import {
   ExpenseRowMoreButton,
   ExpenseVendorLabel,
@@ -25,7 +26,9 @@ import {
 } from "./ExpenseVendorLabel";
 import {
   useAssignCcExpenseLineCategory,
+  useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
+  useUpdateCcPurchaseCuotasMutation,
   useMakeStatementLineInstallmentMutation,
   usePostVendorBranchChoiceMutation,
 } from "../../queries/hooks";
@@ -209,13 +212,18 @@ function FixedCategoryPill({
 }
 
 /** The separator between the parts of a row's text: drawn by the row, never part of a string. */
-/** The amount, with the installment detail in superscript («3/6 · $270.000», «6 cuotas»). */
+/**
+ * The amount, with a cuota's detail in superscript («3/6 · $270.000»). A plan's full-price row has
+ * none: its cuota count is in the ⓘ card.
+ */
 function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
-  const { t } = useTranslation();
   let sup: string[] | null = null;
-  if (line.line_role === "installment_purchase_total") {
-    sup = [t("expenses.creditCard.installmentPurchaseTotalLabel", { count: line.nro_cuota_total ?? 0 })];
-  } else if (line.installment_flag && line.nro_cuota_current != null && line.nro_cuota_total != null) {
+  if (
+    line.line_role !== "installment_purchase_total" &&
+    line.installment_flag &&
+    line.nro_cuota_current != null &&
+    line.nro_cuota_total != null
+  ) {
     const cuota = `${line.nro_cuota_current}/${line.nro_cuota_total}`;
     sup =
       line.line_role === "installment_cuota" && line.installment_total_clp != null
@@ -235,7 +243,7 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
 }
 
 type RowActions = {
-  onEditPieces?: (line: FlowCcExpenseLineRow) => void;
+  onEditPieces: (line: FlowCcExpenseLineRow) => void;
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
   enableCheckingNotes: boolean;
 };
@@ -319,6 +327,63 @@ function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
   );
 }
 
+/** A manual plan's count, changed in place, and «Quitar cuotas» to turn it back into one charge. */
+function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const purchaseId = line.installment_purchase_id;
+  const update = useUpdateCcPurchaseCuotasMutation({ accountId: line.account_id, displayUnit });
+  const remove = useDeleteCcPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const [value, setValue] = useState(line.nro_cuota_total != null ? String(line.nro_cuota_total) : "");
+  const [confirming, setConfirming] = useState(false);
+  if (purchaseId == null) {
+    throw new Error(`expense line ${line.statement_line_id} can edit its plan but names none`);
+  }
+  const parsed = parseNumberInput(value);
+  const count = parsed.ok ? parsed.value : null;
+  const valid = count != null && Number.isInteger(count) && count >= 2 && count !== line.nro_cuota_total;
+  const busy = update.isPending || remove.isPending;
+  const onError = (err: unknown) => window.alert(err instanceof Error ? err.message : String(err));
+  const submit = () => {
+    if (!valid || count == null) return;
+    update.mutate({ purchaseId, cuotas_totales: count }, { onError });
+  };
+  return (
+    <div className={styles.panelBigGroup}>
+      <Input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        aria-label={t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
+        aria-invalid={!parsed.ok || undefined}
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        style={{ width: "7rem" }}
+      />
+      <Button size="sm" disabled={!valid || busy} onClick={submit}>
+        {t("expenses.creditCard.lineRow.planCountSave")}
+      </Button>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+        {t("expenses.creditCard.lineRow.planRemove")}
+      </Button>
+      {!parsed.ok ? <span className="error">{parsed.message}</span> : null}
+      <ConfirmDialog
+        open={confirming}
+        title={t("expenses.creditCard.lineRow.planRemoveConfirmTitle")}
+        message={t("expenses.creditCard.lineRow.planRemoveConfirmBody", { merchant: expenseVendorName(line) })}
+        confirmLabel={t("expenses.creditCard.lineRow.planRemove")}
+        cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
+        confirmDisabled={busy}
+        onConfirm={() => remove.mutate(purchaseId, { onSuccess: () => setConfirming(false), onError })}
+        onCancel={() => setConfirming(false)}
+      />
+    </div>
+  );
+}
+
 function ExpenseLineRow({
   line: ln,
   categories,
@@ -348,23 +413,11 @@ function ExpenseLineRow({
   const canSelect = selectable && selection != null && !fixedCategory;
   const selected = canSelect && selection.isSelected(ln);
 
-  // Card-feed / pasted lines are the only ones the server lets you delete or convert by hand.
-  const canDelete = ln.source === "cc" && ln.web_paste === true && ln.statement_line_id > 0;
-  // A line the bank lists in cuotas without the count asks for it wherever it shows; any other
-  // convertible line (facturación modal) offers the same input.
-  const canMakeInstallment =
-    ln.source === "cc" &&
-    ln.statement_line_id > 0 &&
-    !ln.installment_flag &&
-    (ln.cuota_purchase_kind != null || ln.web_paste === true);
-  const canEditPieces =
-    actions.onEditPieces != null &&
-    (ln.source === "cc" || ln.source === "checking") &&
-    ln.statement_line_id > 0 &&
-    ln.line_role === "purchase" &&
-    !ln.installment_flag &&
-    !ln.checking_refund &&
-    ln.amount_clp > 0;
+  // What the row may do is the server's call (`can_*`, `expenseLineShapes.ts`).
+  const canDelete = ln.can_delete === true;
+  const canMakeInstallment = ln.can_make_installment === true;
+  const canEditInstallment = ln.can_edit_installment === true;
+  const canEditPieces = ln.can_edit_pieces === true;
   const hasPieces = ln.piece_seq != null || ln.pieces_remainder === true;
   const canEditManual = actions.onEditManual != null && ln.source === "manual" && ln.statement_line_id > 0;
   const showNoteInput =
@@ -386,6 +439,7 @@ function ExpenseLineRow({
     canEditPieces ||
     canEditManual ||
     canMakeInstallment ||
+    canEditInstallment ||
     canDelete;
   const merchant = expenseVendorName(ln);
 
@@ -466,6 +520,7 @@ function ExpenseLineRow({
             </div>
           ) : null}
           {canMakeInstallment && !ln.cuota_purchase_kind ? <CuotasInline line={ln} /> : null}
+          {canEditInstallment ? <PlanCuotasControls line={ln} /> : null}
           {ln.branch_choices ? <BranchChoice choices={ln.branch_choices} /> : null}
           {bigGroupInPanel ? (
             <div className={styles.panelBigGroup}>
@@ -486,7 +541,7 @@ function ExpenseLineRow({
           {canEditPieces || canEditManual || canDelete ? (
             <div className={styles.panelActions}>
               {canEditPieces ? (
-                <Button variant="ghost" size="sm" onClick={() => actions.onEditPieces?.(ln)}>
+                <Button variant="ghost" size="sm" onClick={() => actions.onEditPieces(ln)}>
                   {hasPieces
                     ? t("expenses.creditCard.pieces.actionEdit")
                     : t("expenses.creditCard.pieces.action")}
@@ -575,7 +630,6 @@ export function CreditCardExpenseLinesTable({
   collapsedVisibleRows,
   showMoreLabel,
   showLessLabel,
-  onEditPieces,
   onEditManual,
   enableCheckingNotes = false,
   hideHeader = false,
@@ -590,8 +644,6 @@ export function CreditCardExpenseLinesTable({
   collapsedVisibleRows?: number;
   showMoreLabel?: string;
   showLessLabel?: string;
-  /** Break a card / checking purchase line into dated pieces (row extras). */
-  onEditPieces?: (line: FlowCcExpenseLineRow) => void;
   /** Edit or delete a manual expense line (row extras). */
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
   /** Show note inputs for cuenta corriente (checking) rows — expenses tab only. */
@@ -606,6 +658,8 @@ export function CreditCardExpenseLinesTable({
   const [sort, setSort] = useState<SortState>(null);
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [showAll, setShowAll] = useState(false);
+  // «Desglosar» lives in the row on every surface: the table mounts the pieces dialog once.
+  const [piecesLine, setPiecesLine] = useState<FlowCcExpenseLineRow | null>(null);
 
   const categoryLabelBySlug = useMemo(
     () => new Map(categories.map((c) => [c.slug, ccExpenseCategoryPathLabel(c)])),
@@ -642,7 +696,7 @@ export function CreditCardExpenseLinesTable({
   const hidden = limit != null ? Math.max(0, sorted.length - limit) : 0;
   const visible = hidden > 0 && !showAll ? sorted.slice(0, limit ?? undefined) : sorted;
   const actions: RowActions = {
-    onEditPieces,
+    onEditPieces: setPiecesLine,
     onEditManual,
     enableCheckingNotes,
   };
@@ -695,6 +749,7 @@ export function CreditCardExpenseLinesTable({
           })}
         </div>
       </div>
+      <ExpenseLinePiecesDialog line={piecesLine} categories={categories} onClose={() => setPiecesLine(null)} />
       {hidden > 0 ? (
         <Button variant="ghost" onClick={() => setShowAll((s) => !s)}>
           {showAll
