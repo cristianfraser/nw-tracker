@@ -81,7 +81,7 @@ function planFlowValues(a: string): string {
 }
 
 function manualFlowValues(a: string): string {
-  return `'card_purchase', NULL, NULL, ${UNRECORDED_PARTY}, ${UNKNOWN_PARTY}, ${a}.spent_on, ${a}.amount_clp, 'clp',
+  return `'purchase', NULL, NULL, ${UNRECORDED_PARTY}, ${UNKNOWN_PARTY}, ${a}.spent_on, ${a}.amount_clp, 'clp',
     NULL, NULL, ${a}.merchant`;
 }
 
@@ -207,6 +207,14 @@ function flowDeleteTriggerSql(spec: SourceSpec, keepIfIn: readonly string[]): st
     AND NOT EXISTS (SELECT 1 FROM flow_evidence e WHERE e.flow_id = flows.id AND NOT (e.source_table = '${t}' AND e.source_row_id = OLD.id))${keep};
   DELETE FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id;
 END`;
+}
+
+/** Re-creates one table's insert trigger (its flow values changed: migration 288). */
+export function reinstallFlowInsertTrigger(dbi: DatabaseType, table: SourceSpec["table"]): void {
+  const spec = SOURCES.find((s) => s.table === table);
+  if (!spec) throw new Error(`no flow source ${table}`);
+  dbi.exec(`DROP TRIGGER IF EXISTS flow_${table}_ai`);
+  dbi.exec(flowInsertTriggerSql(spec));
 }
 
 /** Re-creates the delete triggers so a flow holding a row of `keepIfIn` outlives its rows (migration 283). */

@@ -209,3 +209,8 @@ What the code forced, and why (each change is also in its commit):
   (the preferred flow's row wins), for the reason given for links above.
   `scripts/repair-cc-expense-orphaned-line-keys.ts` read the dropped table: archived (deliverable
   6), since the moving migrations archive what it looked for.
+- **Kinds (migration 288, deliverable 7):** `FLOW_KINDS` gained `purchase` (spending with no card
+  line: a manual expense) and `refund` (spending that came back off a card). Manual expenses' flows
+  are re-kinded `purchase` and the insert trigger writes it (a database that runs migration 279 after this commit seeds them `purchase` at once, so its 288 report reads 0). No flow takes `refund` yet: the refund
+  mark stays the flow-keyed `flow_refunds` row (it carries the category), and keeping a kind in step
+  with the mark would be a second write for nothing a reader uses; step 4 or F20 can fold it.

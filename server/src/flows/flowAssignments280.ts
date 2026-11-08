@@ -2,7 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import { writeLogTriggerSql } from "../markInputTriggers.js";
 import { expenseKeySql } from "../expenseKeys.js";
 import { expenseKeyParts } from "./flowKeyResolve.js";
-import { reinstallFlowDeleteTriggers } from "./flowTables279.js";
+import { reinstallFlowDeleteTriggers, reinstallFlowInsertTrigger } from "./flowTables279.js";
 
 /**
  * Hooks of the assignment migrations (280+, docs/untangle-flow-identity.md F9 step 3): each moves
@@ -393,4 +393,31 @@ export function runFlowLinksBill286(dbi: DatabaseType): void {
 
 export function runFlowNotes287(dbi: DatabaseType): void {
   moveKeyedTable(dbi, "287", "cc_expense_purchase_notes", "flow_notes", "purchase_key", ["account_id", "notes", "updated_at"]);
+}
+
+/**
+ * Manual expenses are `purchase` flows, not `card_purchase` (no card line stands behind them): the
+ * existing flows are re-kinded and the insert trigger writes the new kind.
+ */
+export function runFlowKindsManualPurchase288(dbi: DatabaseType): void {
+  const changed = dbi
+    .prepare(
+      `UPDATE flows SET kind = 'purchase'
+       WHERE kind = 'card_purchase' AND id IN (SELECT flow_id FROM expense_entries WHERE expense_account_id IS NULL AND flow_id IS NOT NULL)`
+    )
+    .run().changes;
+  const manual = (
+    dbi.prepare(`SELECT COUNT(*) AS c FROM expense_entries WHERE expense_account_id IS NULL`).get() as { c: number }
+  ).c;
+  const left = (
+    dbi
+      .prepare(
+        `SELECT COUNT(*) AS c FROM expense_entries e JOIN flows f ON f.id = e.flow_id
+         WHERE e.expense_account_id IS NULL AND f.kind <> 'purchase'`
+      )
+      .get() as { c: number }
+  ).c;
+  console.log(`migration 288: ${changed} manual expense flow(s) re-kinded purchase (${manual} manual expenses)`);
+  if (left > 0) throw new Error(`migration 288: ${left} manual expense(s) on a flow of another kind`);
+  reinstallFlowInsertTrigger(dbi, "expense_entries");
 }
