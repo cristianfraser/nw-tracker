@@ -12,7 +12,7 @@
  * already dedupes it. A payment made at a branch has no such template: the bank may list it as
  * «PAGO», «ABONO …» or anything else. So when a card import (feed, paste — never a planting
  * import) brings a credit payment line with the same currency and amount (USD to the cent, CLP to
- * the peso) dated from the planted day to {@link PLANTED_PAYMENT_WINDOW_DAYS} days later, and the
+ * the peso) dated from the planted day to `MATCH_WINDOWS.planted_payment` days later, and the
  * pairing is one-to-one within the import, the bank's line replaces the planted one: expense
  * assignments carried, the planted line deleted (its row cascades), the caller re-syncs the
  * valuations from the planted date. When the bank's line IS the planted line (same key) or was
@@ -25,7 +25,8 @@ import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 /** Import batch kinds that plant a payment line (never matched against themselves). */
 export const PLANTING_BATCH_KINDS = ["cc_santander_receipt", "cc_manual_payment"] as const;
@@ -35,8 +36,7 @@ export function isPlantingBatchKind(kind: string): kind is PlantingBatchKind {
   return (PLANTING_BATCH_KINDS as readonly string[]).includes(kind);
 }
 
-/** A bank lists a payment the day it was made or later — never earlier. */
-export const PLANTED_PAYMENT_WINDOW_DAYS = 5;
+// A bank lists a payment the day it was made or later — never earlier (`MATCH_WINDOWS.planted_payment`).
 
 export type PlantedPaymentRow = {
   line_id: number;
@@ -90,10 +90,6 @@ const EMPTY_MATCH: PlantedPaymentMatchResult = {
 
 function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean {
   return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b);
-}
-
-function daysFrom(fromIso: string, toIso: string): number {
-  return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / 86_400_000);
 }
 
 /**
@@ -231,8 +227,7 @@ export function replacePlantedPaymentLinesFromImport(
 
   const fits = (p: ImportedPayment, row: PlantedPaymentRow): boolean => {
     if (p.currency !== row.currency || !sameMoney(p.currency, p.amount, row.amount)) return false;
-    const gap = daysFrom(row.paid_on, p.date);
-    return gap >= 0 && gap <= PLANTED_PAYMENT_WINDOW_DAYS;
+    return dayWithinWindow(row.paid_on, p.date, MATCH_WINDOWS.planted_payment);
   };
   const plantedFor = payments.map((p) => planted.filter((row) => fits(p, row)));
   const paymentsFor = new Map<number, number>();
@@ -327,6 +322,5 @@ export function plantedPaymentMatchesStatementLine(
   if (raw == null || raw >= 0 || !sameMoney(planted.currency, -raw, planted.amount)) return false;
   const iso = parseDdMmYyToIso(String(stmt.transaction_date ?? "")) ?? parseDdMmYyToIso(String(stmt.posting_date ?? ""));
   if (!iso) return false;
-  const gap = daysFrom(planted.paid_on, iso);
-  return gap >= 0 && gap <= PLANTED_PAYMENT_WINDOW_DAYS;
+  return dayWithinWindow(planted.paid_on, iso, MATCH_WINDOWS.planted_payment);
 }

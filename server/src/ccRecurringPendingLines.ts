@@ -11,13 +11,11 @@
 import { db } from "./db.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
-import { type RecurringEntry } from "./recurringPaymentMatch.js";
+import { recurringPatternIndex, ufAmountFits, type RecurringEntry } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
-import { parseDdMmYyToIso, daysBetweenIso, foldAccents } from "nw-tracker-contracts";
-
-/** How many days after the pending listing the posted line may be dated. */
-export const PENDING_RESTATEMENT_DAYS = 7;
+import { parseDdMmYyToIso, dayWithinWindow } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 export type RecurringPendingReplacement = { pending_line_id: number; posted_line_id: number; entry: string; amount_clp: number; pending_on: string };
 
@@ -29,20 +27,6 @@ export type RecurringPendingResult = {
 };
 
 type CardLine = { id: number; merchant: string | null; amount_clp: number | null; amount_usd: number | null; transaction_date: string | null; bucket: number };
-
-const fold = (s: string) => foldAccents(s).toUpperCase();
-
-function patternIndex(entry: RecurringEntry, merchant: string | null): number {
-  if (!merchant) return -1;
-  const m = fold(merchant);
-  return entry.patterns.findIndex((p) => m.includes(fold(p)));
-}
-
-function amountFitsEntry(entry: RecurringEntry, pesos: number, dayIso: string, ufOn: (ymd: string) => number): boolean {
-  if (entry.currency !== "uf" || entry.amount_tolerance_pct == null) return false;
-  const want = Math.round(entry.amount * ufOn(dayIso));
-  return Math.abs(pesos - want) <= (entry.amount_tolerance_pct / 100) * want;
-}
 
 export function replaceRecurringPendingLines(accountId: number): RecurringPendingResult {
   const result: RecurringPendingResult = { replaced: [], ambiguous: [], removed_from_date: null };
@@ -67,15 +51,16 @@ export function replaceRecurringPendingLines(accountId: number): RecurringPendin
 
   const pairs: { pending: (typeof lines)[number]; posted: (typeof lines)[number]; entry: RecurringEntry }[] = [];
   for (const entry of entries) {
-    const named = lines.map((l) => ({ l, k: patternIndex(entry, l.merchant) })).filter((x) => x.k >= 0);
+    const named = lines.map((l) => ({ l, k: recurringPatternIndex(entry, l.merchant) })).filter((x) => x.k >= 0);
     const postedFor = new Map<number, (typeof lines)[number][]>();
     const pendingFor = new Map<number, number>();
     for (const p of named) {
       if (p.l.bucket !== 1) continue;
       const later = named.filter((s) => {
         if (s.l.id === p.l.id || s.k === p.k || Math.round(s.l.amount_clp!) !== Math.round(p.l.amount_clp!)) return false;
-        const gap = daysBetweenIso(p.l.iso, s.l.iso);
-        return gap >= 0 && gap <= PENDING_RESTATEMENT_DAYS && amountFitsEntry(entry, Math.round(s.l.amount_clp!), s.l.iso, uf.ufOn);
+        // The posted pesos must fit the entry at the posted day's UF only (`daysAfter` 0) — narrower
+        // than the occurrence matcher's, which lets a listing be priced up to five days later.
+        return dayWithinWindow(p.l.iso, s.l.iso, MATCH_WINDOWS.recurring_pending) && ufAmountFits(entry, Math.round(s.l.amount_clp!), s.l.iso, uf.ufOn, 0);
       });
       if (later.length === 0) continue;
       postedFor.set(p.l.id, later.map((s) => s.l));

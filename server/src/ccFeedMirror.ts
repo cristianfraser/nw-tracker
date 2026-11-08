@@ -37,10 +37,10 @@ import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import { pairOneToOne } from "./matching/pairing.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 export const MIRROR_MAX_DELETIONS = 12;
-/** A pending authorization is restated at most a few days later. */
-const MIRROR_MAX_DAY_GAP = 4;
 
 export type CcFeedMirrorRemoved = {
   id: number;
@@ -120,21 +120,19 @@ export function planFeedMirror(
     return iso != null && iso >= opts.windowStartIso;
   });
   const feed = opts.feedLines.filter((f) => opts.currencies.has(f.currency));
-  const usedFeedRows = new Set<number>();
-  const listed = new Set<number>();
-  // Exact-date matches first, so a same-amount purchase a few days later can't steal the row.
-  for (const maxDayGap of [0, MIRROR_MAX_DAY_GAP]) {
-    for (const line of candidates) {
-      if (listed.has(line.id)) continue;
-      const idx = feed.findIndex(
-        (f, i) => !usedFeedRows.has(i) && bucketLineMatchesFeedLine(line, f, maxDayGap)
-      );
-      if (idx < 0) continue;
-      usedFeedRows.add(idx);
-      listed.add(line.id);
-    }
+  // Exact-date matches first, so a same-amount purchase a few days later can't steal the row; each
+  // pass pairs the first fitting row (the feed's own order — not the nearest, kept as it was).
+  let unlisted = [...candidates];
+  let freeFeed = [...feed];
+  for (const maxDayGap of [0, MATCH_WINDOWS.feed_mirror.daysAfter]) {
+    const pass = pairOneToOne(unlisted, freeFeed, {
+      strategy: "first",
+      accepts: (line, f) => bucketLineMatchesFeedLine(line, f, maxDayGap),
+    });
+    unlisted = pass.unpaired;
+    freeFeed = pass.unclaimed;
   }
-  return candidates.filter((line) => !listed.has(line.id));
+  return unlisted;
 }
 
 export function mirrorOpenBucketsToFeed(

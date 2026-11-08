@@ -30,7 +30,8 @@ import {
   type CcStatementLineRow,
   type CcStatementRow,
 } from "./ccStatementsDb.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 function fieldToIso(raw: string | null | undefined): string | null {
   const t = String(raw ?? "").trim();
@@ -291,8 +292,7 @@ export function webPasteLineMatchesStatementLine(
   const wd = linePurchaseIso(web);
   const sd = linePurchaseIso(stmt.line);
   if (!wd || !sd) return false;
-  const gapDays = Math.abs(Date.parse(`${wd}T00:00:00Z`) - Date.parse(`${sd}T00:00:00Z`)) / 86_400_000;
-  if (gapDays > 1) return false;
+  if (!dayWithinWindow(sd, wd, MATCH_WINDOWS.statement_bucket_line)) return false;
   return merchantsMatchForCrossDedupe(web.merchant, stmt.line.merchant);
 }
 

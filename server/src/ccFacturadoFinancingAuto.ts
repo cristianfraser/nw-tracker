@@ -36,9 +36,10 @@ import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 /** Days past the pay-by a payment still counts toward the facturado (late payments happen). */
-const PAY_BY_GRACE_DAYS = 10;
+const PAY_BY_GRACE_DAYS = MATCH_WINDOWS.financing_pay_by_grace.daysAfter;
 /** A day with more cuota purchases than this is not searched (2^n combinations). */
 const MAX_PURCHASES_PER_DAY = 10;
 
@@ -170,8 +171,8 @@ function exactSubsets(items: Payment[], target: number): Payment[][] {
 }
 
 function paymentOnFile(accountId: number, paidOn: string, amount: number): boolean {
-  const from = chileCalendarAddDays(paidOn, -3);
-  const to = chileCalendarAddDays(paidOn, 5);
+  const from = chileCalendarAddDays(paidOn, -MATCH_WINDOWS.financing_payment.daysBefore);
+  const to = chileCalendarAddDays(paidOn, MATCH_WINDOWS.financing_payment.daysAfter);
   const lines = db
     .prepare(
       `SELECT l.merchant, l.amount_clp, l.transaction_date, l.posting_date
