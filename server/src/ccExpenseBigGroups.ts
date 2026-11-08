@@ -1,6 +1,7 @@
 import { foldAccents } from "nw-tracker-contracts";
 import { expenseKeyKind } from "./expenseKeys.js";
 import { db } from "./db.js";
+import { keyedRowsSql, keyTarget, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
 
 export type CcExpenseBigGroupRow = {
   slug: string;
@@ -38,19 +39,19 @@ export function listCcExpenseBigGroups(): CcExpenseBigGroupRow[] {
 }
 
 /**
- * Purchase key → big group. A big group belongs to the expense (its purchase key names it on its
- * own), whichever account paid it — a manual expense has none.
+ * Purchase key → big group. A big group belongs to the expense — its flow (`flow_big_groups`,
+ * migration 282), whichever account paid it; read under the key its line carries.
  */
 export function loadCcExpensePurchaseBigGroups(): Map<string, string> {
   const rows = db
-    .prepare(`SELECT purchase_key, group_slug FROM cc_expense_purchase_big_groups`)
+    .prepare(`SELECT purchase_key, group_slug FROM ${keyedRowsSql("flow_big_groups", ["group_slug"])}`)
     .all() as { purchase_key: string; group_slug: string }[];
   return new Map(rows.map((r) => [r.purchase_key, r.group_slug]));
 }
 
 export function countPurchasesInBigGroup(slug: string): number {
   const row = db
-    .prepare(`SELECT COUNT(*) AS n FROM cc_expense_purchase_big_groups WHERE group_slug = ?`)
+    .prepare(`SELECT COUNT(*) AS n FROM flow_big_groups WHERE group_slug = ?`)
     .get(slug) as { n: number };
   return row.n;
 }
@@ -110,7 +111,8 @@ export function setCcExpensePurchaseBigGroup(opts: {
 
   const groupSlug = opts.groupSlug != null ? String(opts.groupSlug).trim() : "";
   if (!groupSlug) {
-    db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`).run(purchaseKey);
+    const at = keyTarget(purchaseKey, false);
+    if (at) db.prepare(`DELETE FROM flow_big_groups WHERE ${TARGET_WHERE}`).run(...targetParams(at));
     return { group_slug: null };
   }
 
@@ -122,10 +124,10 @@ export function setCcExpensePurchaseBigGroup(opts: {
   }
 
   db.prepare(
-    `INSERT INTO cc_expense_purchase_big_groups (purchase_key, group_slug)
-     VALUES (?, ?)
-     ON CONFLICT(purchase_key) DO UPDATE SET group_slug = excluded.group_slug`
-  ).run(purchaseKey, groupSlug);
+    `INSERT INTO flow_big_groups (flow_id, portion, piece_seq, group_slug)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(flow_id, portion, piece_seq) DO UPDATE SET group_slug = excluded.group_slug`
+  ).run(...targetParams(keyTarget(purchaseKey, true)), groupSlug);
   return { group_slug: groupSlug };
 }
 

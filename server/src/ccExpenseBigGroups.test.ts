@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { db } from "./db.js";
+import { createManualExpense } from "./flowsManualExpenses.js";
+import { ensureVitestCreditCardFixtures, getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 import {
   createCcExpenseBigGroup,
   deleteCcExpenseBigGroup,
@@ -17,18 +20,47 @@ describe("ccExpenseBigGroups", () => {
 
   it("keys a big group by the purchase alone, manual expenses included", () => {
     const group = createCcExpenseBigGroup(`Vitest trip ${Date.now()}`);
-    for (const purchaseKey of ["line-pr:vitest-big-group", "manual:vitest-big-group"]) {
-      setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: group.slug });
-      expect(loadCcExpensePurchaseBigGroups().get(purchaseKey)).toBe(group.slug);
+    ensureVitestCreditCardFixtures();
+    const accountId = getVitestSantanderCcMasterAccountId()!;
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, layout, currency)
+           VALUES (?, 'A', 'vitest big group.pdf', '24/09/2026', 'compact', 'clp')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key, parser_row_id)
+       VALUES (?, '03/09/2026', 'VITEST BIG GROUP', 1000, 0, 'vitest-big-group', 'vitest-big-group')`
+    ).run(statementId);
+    const manual = createManualExpense({
+      spent_on: "2026-09-03",
+      amount_clp: 1000,
+      category_slug: "unclassified",
+      description: "vitest big group",
+    });
+    const keys = ["line-pr:vitest-big-group", `manual:${manual.id}`];
+    try {
+      for (const purchaseKey of keys) {
+        setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: group.slug });
+        expect(loadCcExpensePurchaseBigGroups().get(purchaseKey)).toBe(group.slug);
+      }
+      expect(() =>
+        setCcExpensePurchaseBigGroup({ purchaseKey: "payslip:900000001", groupSlug: group.slug })
+      ).toThrow(/payroll/);
+      // A purchase key names a flow: one no document records takes no big group.
+      expect(() => setCcExpensePurchaseBigGroup({ purchaseKey: "line-pr:vitest-no-such-line", groupSlug: group.slug })).toThrow(
+        /no expense carries/
+      );
+      for (const purchaseKey of keys) setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: null });
+      deleteCcExpenseBigGroup(group.slug);
+      expect(listCcExpenseBigGroups().some((g) => g.slug === group.slug)).toBe(false);
+    } finally {
+      db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(manual.id);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
+      db.prepare(`DELETE FROM flows WHERE legacy_key IN (${keys.map(() => "?").join(",")})`).run(...keys);
     }
-    expect(() =>
-      setCcExpensePurchaseBigGroup({ purchaseKey: "payslip:900000001", groupSlug: group.slug })
-    ).toThrow(/payroll/);
-    for (const purchaseKey of ["line-pr:vitest-big-group", "manual:vitest-big-group"]) {
-      setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: null });
-    }
-    deleteCcExpenseBigGroup(group.slug);
-    expect(listCcExpenseBigGroups().some((g) => g.slug === group.slug)).toBe(false);
   });
 
   it("renames a big group", () => {

@@ -24,7 +24,7 @@ import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
 import { registerCardLineKindFunction, runCardLineKind276 } from "./cardLineKind276.js";
 import { runFlowTables279 } from "./flows/flowTables279.js";
-import { runFlowIncomeOverrides281, runFlowRefunds280 } from "./flows/flowAssignments280.js";
+import { runFlowBigGroups282, runFlowIncomeOverrides281, runFlowRefunds280 } from "./flows/flowAssignments280.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -285,6 +285,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   },
   "280_flow_refunds.sql": runFlowRefunds280,
   "281_flow_income_overrides.sql": runFlowIncomeOverrides281,
+  "282_flow_big_groups.sql": runFlowBigGroups282,
 };
 
 /**

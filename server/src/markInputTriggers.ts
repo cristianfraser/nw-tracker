@@ -460,7 +460,11 @@ export const WRITE_LOGGED_TABLES_270: readonly string[] = [
 
 /** Tables with write triggers now: 270's plus the tables later migrations added with their own. */
 /** Logged tables a later migration dropped: their rows moved onto the flows (F9 step 3, 280+). */
-const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set(["checking_expense_refunds", "checking_income_movement_overrides"]);
+const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
+  "checking_expense_refunds",
+  "checking_income_movement_overrides",
+  "cc_expense_purchase_big_groups",
+]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [
   ...WRITE_LOGGED_TABLES_270.filter((t) => !DROPPED_LOGGED_TABLES.has(t)),
@@ -472,6 +476,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "flow_orphan_assignments",
   "flow_refunds",
   "flow_income_overrides",
+  "flow_big_groups",
 ];
 
 /**

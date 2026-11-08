@@ -16,6 +16,7 @@
  * that purchase (the same statement filed twice): its assignments go to the copy that stayed.
  */
 import { db } from "./db.js";
+import { keyTarget, moveKeyedRows, TARGET_WHERE, targetParams, type KeyTarget } from "./flows/flowKeyedAssignments.js";
 import { buildExpenseKey } from "./expenseKeys.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule } from "./expenseCategoryRules.js";
@@ -190,12 +191,76 @@ export function planCcLineMoves(
 
 type KeyedTable = "cc_expense_unique_purchases" | "cc_expense_purchase_big_groups" | "cc_expense_purchase_notes";
 
-/** `accountScoped`: the row is keyed by (account, purchase key); big groups by the key alone. */
-const KEYED_TABLES: { table: KeyedTable; column: string; accountScoped: boolean }[] = [
+/**
+ * `accountScoped`: the row is keyed by (account, purchase key); big groups by the key alone.
+ * `flowTable`: the table now sits on the flows (F9 step 3) — the key names its flow row.
+ */
+type KeyedSpec = { table: KeyedTable; column: string; accountScoped: boolean; flowTable?: string };
+const KEYED_TABLES: KeyedSpec[] = [
   { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true },
-  { table: "cc_expense_purchase_big_groups", column: "group_slug", accountScoped: false },
+  { table: "cc_expense_purchase_big_groups", column: "group_slug", accountScoped: false, flowTable: "flow_big_groups" },
   { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true },
 ];
+
+/** A keyed row of `spec`, by key: read, write, delete, move. */
+function keyedRowOps(spec: KeyedSpec, accountId: number, key: string) {
+  if (spec.flowTable) {
+    const t = spec.flowTable;
+    const find = (create: boolean): KeyTarget | null => (create ? keyTarget(key, true) : keyTarget(key, false));
+    return {
+      get: (): { v: unknown } | undefined => {
+        const at = find(false);
+        return at
+          ? (db.prepare(`SELECT ${spec.column} AS v FROM ${t} WHERE ${TARGET_WHERE}`).get(...targetParams(at)) as { v: unknown } | undefined)
+          : undefined;
+      },
+      del: () => {
+        const at = find(false);
+        if (at) db.prepare(`DELETE FROM ${t} WHERE ${TARGET_WHERE}`).run(...targetParams(at));
+      },
+      insert: (v: unknown) => {
+        const at = find(true)!;
+        const extra = spec.accountScoped ? ", account_id" : "";
+        db.prepare(`INSERT INTO ${t} (flow_id, portion, piece_seq, ${spec.column}${extra}) VALUES (?, ?, ?, ?${spec.accountScoped ? ", ?" : ""})`).run(
+          ...targetParams(at),
+          v as string | number | null,
+          ...(spec.accountScoped ? [accountId] : [])
+        );
+      },
+      set: (v: unknown) => {
+        const at = find(false);
+        if (at) db.prepare(`UPDATE ${t} SET ${spec.column} = ? WHERE ${TARGET_WHERE}`).run(v as string | number | null, ...targetParams(at));
+      },
+      moveTo: (toKey: string) => {
+        moveKeyedRows(t, key, toKey, "replace-target");
+      },
+    };
+  }
+  const row = keyedRow(spec, accountId, key);
+  return {
+    get: () => db.prepare(`SELECT ${spec.column} AS v FROM ${spec.table} WHERE ${row.where}`).get(...row.params) as { v: unknown } | undefined,
+    del: () => {
+      db.prepare(`DELETE FROM ${spec.table} WHERE ${row.where}`).run(...row.params);
+    },
+    insert: (v: unknown) => {
+      if (spec.accountScoped) {
+        db.prepare(`INSERT INTO ${spec.table} (account_id, purchase_key, ${spec.column}) VALUES (?, ?, ?)`).run(
+          accountId,
+          key,
+          v as string | number | null
+        );
+      } else {
+        db.prepare(`INSERT INTO ${spec.table} (purchase_key, ${spec.column}) VALUES (?, ?)`).run(key, v as string | number | null);
+      }
+    },
+    set: (v: unknown) => {
+      db.prepare(`UPDATE ${spec.table} SET ${spec.column} = ? WHERE ${row.where}`).run(v as string | number | null, ...row.params);
+    },
+    moveTo: (toKey: string) => {
+      db.prepare(`UPDATE ${spec.table} SET purchase_key = ? WHERE ${row.where}`).run(toKey, ...row.params);
+    },
+  };
+}
 
 /** WHERE clause + params naming one keyed row of `spec`. */
 function keyedRow(
@@ -238,10 +303,7 @@ export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
   const key = linePrKey(ref);
   if (key) {
     for (const spec of KEYED_TABLES) {
-      const row = keyedRow(spec, ref.accountId, key);
-      if (db.prepare(`SELECT 1 FROM ${spec.table} WHERE ${row.where}`).get(...row.params)) {
-        return true;
-      }
+      if (keyedRowOps(spec, ref.accountId, key).get()) return true;
     }
   }
   if (key && db.prepare(`SELECT 1 FROM real_estate_expense_links WHERE purchase_key = ?`).get(key)) {
@@ -318,15 +380,11 @@ export function applyCcLineMoves(
     const toKey = linePrKey(to);
     if (fromKey && toKey && fromKey !== toKey && from.accountId === to.accountId) {
       for (const spec of KEYED_TABLES) {
-        const { table, column } = spec;
+        const { table } = spec;
         if (move.classificationOnly && table === "cc_expense_purchase_notes") continue;
-        const fromRow = keyedRow(spec, from.accountId, fromKey);
-        const toRow = keyedRow(spec, to.accountId, toKey);
-        const get = (r: { where: string; params: (number | string)[] }) =>
-          db.prepare(`SELECT ${column} AS v FROM ${table} WHERE ${r.where}`).get(...r.params) as
-            | { v: unknown }
-            | undefined;
-        const stored = get(fromRow);
+        const fromOps = keyedRowOps(spec, from.accountId, fromKey);
+        const toOps = keyedRowOps(spec, to.accountId, toKey);
+        const stored = fromOps.get();
         if (!stored) continue;
         if (opts?.skipCategorylessUnique && table === "cc_expense_unique_purchases" && stored.v == null) {
           out.categoryless_unique_skipped += 1;
@@ -336,38 +394,20 @@ export function applyCcLineMoves(
           out.kept_current += 1;
           continue;
         }
-        const current = get(toRow);
-        const del = () => db.prepare(`DELETE FROM ${table} WHERE ${fromRow.where}`).run(...fromRow.params);
+        const current = toOps.get();
         const targetEmpty =
           !current || (table === "cc_expense_purchase_notes" && String(current.v ?? "").trim() === "");
         if (targetEmpty) {
-          if (current) db.prepare(`DELETE FROM ${table} WHERE ${toRow.where}`).run(...toRow.params);
-          if (move.copy) {
-            if (spec.accountScoped) {
-              db.prepare(`INSERT INTO ${table} (account_id, purchase_key, ${column}) VALUES (?, ?, ?)`).run(
-                to.accountId,
-                toKey,
-                stored.v as string | number | null
-              );
-            } else {
-              db.prepare(`INSERT INTO ${table} (purchase_key, ${column}) VALUES (?, ?)`).run(
-                toKey,
-                stored.v as string | number | null
-              );
-            }
-          } else {
-            db.prepare(`UPDATE ${table} SET purchase_key = ? WHERE ${fromRow.where}`).run(toKey, ...fromRow.params);
-          }
+          if (current) toOps.del();
+          if (move.copy) toOps.insert(stored.v);
+          else fromOps.moveTo(toKey);
           out.moved[table] += 1;
         } else if (current.v === stored.v) {
-          if (!move.copy) del();
+          if (!move.copy) fromOps.del();
           out.duplicates_removed += 1;
         } else if (opts?.preferStoredKeys?.has(fromKey)) {
-          db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${toRow.where}`).run(
-            stored.v as string | number | null,
-            ...toRow.params
-          );
-          if (!move.copy) del();
+          toOps.set(stored.v);
+          if (!move.copy) fromOps.del();
           out.overridden += 1;
         } else {
           out.conflicts.push({ table, from: fromKey, to: toKey, stored: stored.v, current: current.v });
@@ -417,10 +457,7 @@ function assignmentSignature(ref: CcLineRef): string | null {
   const parts: unknown[] = [];
   if (key) {
     for (const spec of KEYED_TABLES) {
-      const row = keyedRow(spec, ref.accountId, key);
-      const r = db
-        .prepare(`SELECT ${spec.column} AS v FROM ${spec.table} WHERE ${row.where}`)
-        .get(...row.params) as { v: unknown } | undefined;
+      const r = keyedRowOps(spec, ref.accountId, key).get();
       parts.push(r ? ["row", r.v] : null);
     }
   }

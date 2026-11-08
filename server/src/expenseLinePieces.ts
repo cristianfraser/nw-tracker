@@ -8,6 +8,7 @@
 import { getCcExpenseCategoryBySlug, isCcExpenseTotalsExcludedSlug } from "./ccExpenseCategories.js";
 import { expensePieceKey } from "./expenseKeys.js";
 import { db } from "./db.js";
+import { deleteKeyedRow } from "./flows/flowKeyedAssignments.js";
 import { expenseLineDraftForPieces } from "./flowsExpenses.js";
 
 export type ExpenseLinePieceSource = "cc" | "checking";
@@ -119,7 +120,7 @@ export function replaceExpenseLinePieces(
         lineId,
         old.seq
       );
-      db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`).run(pieceKey(old.seq));
+      deleteKeyedRow("flow_big_groups", pieceKey(old.seq));
       db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`).run(
         accountId,
         pieceKey(old.seq)
