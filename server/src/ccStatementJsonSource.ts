@@ -9,7 +9,7 @@
  *  - The JSON importer skips PDF-owned closes entirely (report-only cross-check — the diff that
  *    has already caught real PDF data loss).
  *  - An incoming PDF for a JSON-owned close SUPERSEDES it: the JSON statement rows are deleted
- *    and the PDF is written in their place (`mergeCcAccountFromParsedRows`).
+ *    and the PDF is written in their place (`mergeCardStatements`).
  *
  * The asymmetry is deliberate. JSON is the fast first writer — it can publish a facturación the
  * day it closes — but it is not the authoritative document: the international endpoint is

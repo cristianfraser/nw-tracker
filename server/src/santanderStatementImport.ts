@@ -3,7 +3,7 @@
  *
  * Builds the canonical statements of a `card.statement` (the fetched statement JSON, decoded by
  * ingest: `ingest/src/santander/statementJson.ts`) and writes them through
- * the SAME pipeline as PDF statements (`mergeCcAccountFromParsedRows`) — reconcile gate,
+ * the SAME pipeline as PDF statements (`mergeCardStatements`) — reconcile gate,
  * installment ledger, web-paste supersede, traspaso links and valuation re-sync included. A
  * JSON statement is a real statement (it counts toward facturación close and open-bucket
  * supersede exactly like a PDF, via its `source_kind`); the PDF stays the permanent
@@ -11,7 +11,7 @@
  *
  * Ownership guard: a (close, currency) already written from a PDF is never rewritten from
  * JSON — those statements get the report-only diff. The symmetric PDF-side guard lives in
- * `mergeCcAccountFromParsedRows` (drops PDF records for JSON-owned closes).
+ * `mergeCardStatements` (drops PDF records for JSON-owned closes).
  *
  * Field mapping was validated empirically against the 2026-07-23 facturación (card ·0901,
  * statements 321/322) — see `ingest/src/santander/statementJson.ts` for the per-field traps. Header

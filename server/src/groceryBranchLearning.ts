@@ -10,7 +10,7 @@
  * written to) — no line written, nothing guessed, and the import step does not fail — and the
  * first line the bank itself writes on that card for the same day and the same pesos, from the
  * paste textarea, the nightly feed or the statement PDF, IS that purchase. The pairing runs
- * inside the shared card-write funnel (`mergeCcAccountFromParsedRows`) and again at each
+ * inside the shared card-write funnel (`mergeCardStatements`) and again at each
  * receipt import: it stores (chain, branch) → the line's merchant (statement convention, the
  * trailing « (T)» stripped) and marks the receipt `matched`, so the next receipt at that store
  * carries its own line through the normal path.
