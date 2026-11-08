@@ -1362,6 +1362,43 @@ Behaviour changes accepted in wave 2 (each measured on the real copy; the user h
 | `client` | F12 — server sends the shapes the client derives, resource definitions, one page-data hook, one column table, `usePersistedPref`; the 9-file cycle. Bug 13. | opus |
 | `flow-model` | F20 — parts, links, the cuenta de ahorro surgery, instrument events, then the behaviour changes one at a time (cost out of P/L and spending, the pre-tax account, card-funded capital flows, opening balances), each rehearsed on a real-DB snapshot | fable |
 
+**Wave 3 status (2026-11-08): merged into `untangle`.** Order landed: `matching-kit` (22d66d66, partial — the window
+table everywhere, `pairOneToOne` on 3 of ~9 matchers), `flow-identity-1` (c0170dd1; F9 steps 1–2: `expenseKeys.ts`,
+the generated `cc_statements.source_kind`, structured `deposit_match`, `expense_entries.merchant`, migrations 273–275;
+the movement provenance deferred), `cards-rules` in two parts (a43ac528, ce006bcf; F10 complete: `server/src/cards/**`
+with every purchases view, `facturacion.ts`, `lineKinds.ts` + stored `cc_statement_lines.kind` (migration 276),
+`lifecycle.ts`, issuer data, `bankDescriptions` + `owner_identity` (277), `contracts/flowKinds.ts`; raw-table readers
+down to the writers), `write-funnels` (c5ab5c57; F11: `cards/lineWrites.ts` + `lineWriteSession`, `movementWrites.ts`,
+`expenseAssignmentWrites.ts`, `expenseLinkSync.ts`, `source_line_id` (278), the declared `EXPENSE_LINE_STEPS` with a
+no-write guard, `writeHandler` / `InputError`; bugs 3, 15, 17), `flow-identity-2a` in two parts (aa97230e, 6cd33793;
+F9 step 3: `flows`, `flow_evidence`, `outside_parties` (279), every assignment table on the flow — refunds, income
+overrides, big groups, parts, links (deposit, bill, financing), notes, categories (280–289); bugs 2, 8),
+`flow-identity-2b` (d01d49db; F9 steps 4–5: `flows/flowAdoption.ts`, `flowRetirement.ts` (290), evidence kinds (291),
+the re-key movers deleted), `cards-canonical` (F13's card part: `contracts/cards/canonicalLine.ts`, one conversion per
+source, `card.statement` v3 with `card.parsed_statements` v2 accepted one release, `cards/documentAccount.ts`,
+fingerprints over stored rows (292)). Final checks: typecheck + conventions + check-deps ok (largest cycle 74 → 71
+files, 111 in cycles), contracts 126, client 475, ingest 489, Python ok, server **3216 passing, 0 failing**.
+
+**Wave 4 status (2026-11-08): merged into `untangle`, F20 stopped early by design.** `client` (3267eeea; F12: the
+server sends every shape the client derived — `expenseLineShapes.ts`, `can_*` flags, nav labels / tickers / units
+kind, `has_period_returns`, `loan_account_id`; `queries/resources.ts`, `usePortfolioPageData`, `ColumnTable`,
+`usePersistedPref`; the 9-file client cycle gone; bugs 6, 13). `flow-model` (1abe29a1; one change: the mortgage card
+match reads the stored cuota link) — every other F20 change is blocked on data decisions, see «Notes from waves 3–4».
+
+Behaviour changes accepted in waves 3–4 (measured on the real copy; the user has not reviewed them yet):
+- F11: re-uploading an already-imported cartola month no longer merges extra rows (the count-based replace rule on
+  every path); `replaceMonth` is `force_reimport`.
+- F9 step 3: 7 redemptions in the deposits reconciliation are `resolved_internal_transfer` (mirror-merge from-legs
+  out of the cuenta de ahorro whose month-end leg never matched the old account|day|pesos key); `category_unique`
+  reads true on 165 lines whose «Único» row existed only under a legacy key (migration 273).
+- F9 step 4 (bug 2): the 2 refund marks a forced cartola month re-import used to lose are kept.
+- F12: `can_make_installment` is true on every plain one-shot card line (~6 200 on the real data; 23 under the old
+  feed/paste-only rule) — the plan's «plain lines»; conversion is lossless since F11. **User to confirm or tighten.**
+- F20: 2 mortgage cuotas that read unmatched now match (one hand-made link whose card amount differs from the
+  ledger's, one card charge 6 days before the ledger day); `card_lines_without_payment` lost those 2.
+- cards-canonical: every `import_fingerprint` re-derived (migration 292); 4 older statements of one card re-import
+  once on the first nightly with the same content.
+
 **Wave 5 — closing, serial.** `deletions` (F19, sonnet) → `comments` (sonnet, the Comments
 extra) → `tests` (opus, the Tests extra: remove tests that repeat the implementation or cannot
 fail, rewrite internals-bound ones to behaviour) → `review` (the eight area reviewers again,
@@ -1496,6 +1533,63 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
   `fx_coverage.conversion_warnings` in the USD bundle depends on what was cached (predates the stream).
 - **Deploy note (wave 2):** migrations 270–272 run on the first boot; the client caches are empty once after the
   deploy (new key scheme); `docs/cache-registry.md` is the operator's reference for what drops what.
+
+### Notes from waves 3–4 (for wave 5 and after)
+
+- **User decisions that block the rest of F20** (`docs/untangle-flow-model.md`): (a) one regular mortgage cuota whose
+  stated parts exceed the stated payment by <0,1 % (a formula-era sheet row) — the fail-fast parts rule cannot land
+  until its figures are settled; (b) 28 of the 33 mirrored cuenta-de-ahorro months fall in months whose corriente
+  cartola prints no debit of those pesos — the money's real source must be stated before the surgery (5 pure-family,
+  6 with a real debit linked and 1 tax refund are mechanical). Not started: instrument events (the share-count
+  readers), cost out of P/L and spending (`perfKernel` must take capital and cost apart), the pre-tax account (payslip
+  lines have no flows yet), card-day capital flows, opening balances. Claim rule decided and documented, not coded:
+  the checking debit claims first, a card line only a deposit no debit claimed; on the real copy 0 deposits fit both.
+- **F9 leftovers:** `flows.legacy_key` and `flowIdForKey` stay — every keyed reader and the Expenses `purchase_key`
+  join on the key and the client sends keys; after the replay the flow ids agree with the keys, so readers can switch
+  to the row's `flow_id` (routes accept `flow_id` then; `client` kept `purchase_key`). `cc_expense_line_categories`
+  stays keyed by line id (4 of 33 rows sit on cuota lines whose flow is the plan's). Still note-derived: the cartola
+  identity and daily-feed grammar used for matching, the month replace by `note LIKE` (`accountImports:320`), and the
+  note-identified rows in `budaWallet`, `afcCertImport`, `fintualCertImport`, `groceryBranchLearning`; 27 test files
+  insert notes directly (`test/flowFixtures.ts` exists). 89 stored notes still contain an old `auto:deposit-match`
+  line (display text only). The pairing strategies F17 kept as `first` (feed mirror, manual plan) were not exercised
+  by the replay.
+- **F17 leftovers:** `pairOneToOne` adopted by the feed mirror, the mortgage pairing and the reconciliation only;
+  `bankTransferNotices`, `incomingWires`, `flowsCheckingGastos`, `expenseDepositLinks`, `movementMirrorPairs`, the
+  planted-payment and recurring matchers and `groceryBranchLearning` read `MATCH_WINDOWS` but keep their loops.
+  `MATCH_WINDOWS.mortgage_cuota_card_line` is read only by its test now (F20). `equitySplits.ts:172` /
+  `brokerSplitNotifications.ts:22` should read `MATCH_WINDOWS.same_split`. The Python dedupe-key builder is still its
+  own copy (`ccDedupeKeyCases.json` would re-parse the corpus). `ccStatementsImport` / `ccInstallmentLedgerMerge`
+  keep their own `#dup` handling instead of `ccDedupeKey`.
+- **F10 leftovers:** `ccFacturadoFinancingProjectionLines` keeps its counts check (differs on nota-annulled purchases,
+  60 lines); `movementMirrorPairs` NON_SPENDING list is a different definition; the BCI suffix strip still applies to
+  every issuer; `cardStoppedBilling` stays a reader beside the lifecycle enum (a nav-retired card may still bill).
+- **F11 leftovers:** ~18 movement writers (routes/movements, the mirror converters, broker and mail importers, the
+  receipt re-date) are not on `movementWrites` yet; `purchases.ts` should pair a plan with its `source_line_id`
+  one-to-one (readers still hide an identical same-day sibling of a converted line); `storeReceiptApply` /
+  `santanderCcPaymentReceipts` should import `insertLines` from `cards/lineWrites`.
+- **F12 leftovers (need server fields first):** the gastos stack order (depends on the client's Rango clip), the
+  value-map opening rule (depth from the page root), the slug branches in `liabilitiesPageKind` / cash parent /
+  `groupPageChartViews`, `chartColors`, the i18n and category lists, `ccYearlyRollup` / `ccDailyHistorial`, the
+  routes in `App.tsx`; `refetchInterval` stays (ingest writes are not on the price stamp); MirrorPairs, Groceries,
+  ProductConfig, AdditionalCards, CreditCardSections and the mortgage / CC tables stay on hand-paired tables; the
+  dashboard «Δ mensual por clase» title controls overflow 17 px at 375 (pre-existing). Server: `listCcExpenseCategories`
+  should send a counts-toward-totals flag (then `CC_EXPENSE_TOTALS_EXCLUDED_SLUGS` goes); `brokerageAcciones.ts`
+  `DashboardAccountStats` should type `nav_label`, `has_period_returns`, `loan_account_id`; `seedNavTree` should name
+  `dashboard.cards.inversiones` so `master.json` can carry it.
+- **DTOs:** `dto/flows.ts` wants optional `flow_id`; `dto/dashboard.ts` `totals.liabilities_usd` → `number | null`,
+  bucket totals a per-slug record; `dto/mortgage.ts` no longer produces the `ambiguous` card-match status.
+- **cards-canonical trade-off:** the fingerprint no longer sees parser-only fields the ledger does not store (plan
+  principal columns, parser layout, canonical row id) — a parser change touching only those needs `--full`.
+- **AGENTS.md is stale on** (the wave-5 Comments pass rewrites them): the cache sections (wave 2), «A re-imported
+  line keeps its expense assignments» (`ccExpenseLineRekey` is gone), the per-writer recompute / upsert sequences
+  (F11's funnel), «Ingest API» `card.parsed_statements` / `card.statement` and the web-paste sign text, «CC statement
+  import is incremental», `creditCardBillingDetailInactive` / `isNavRetiredCcMaster` (lifecycle), `panelCache.ts` /
+  the nav-snapshot key, `verify-cc-financing-identity.ts`, «One parser per format» paths.
+- **Deploy notes (waves 3–4):** migrations 273–292 run on the first boot (273 rewrites legacy keys, 279–291 build
+  the flow tables and drop the old assignment tables, 292 re-derives the fingerprints); `card.statement` v3 — the
+  ingest service and the server deploy together; the client caches start empty (wave 2's key scheme); check the
+  mortgage page's «Tarjeta» column once (2 cuotas changed); the `dashboardCcCardVsDetalle` test is deterministic now,
+  `ccGroupTotalMatchesCardsInvariant` still flakes order-dependently on a fresh test DB (passes alone) — Tests extra.
 
 ## Open decisions
 
