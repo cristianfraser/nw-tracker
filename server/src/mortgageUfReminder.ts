@@ -26,8 +26,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { ufClpByDateRange } from "./fxRates.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
-import { supersededCcTargetLast4 } from "./ccConsolidatedCards.js";
-import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
+import { supersededTargetLast4 } from "./cards/lifecycle.js";
+import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
 
@@ -188,7 +188,7 @@ function resolveMortgageCcMasterId(): number | null {
 
   // Follow superseded → operational master (bounded; no redirect cycles expected).
   for (let i = 0; i < 4; i++) {
-    const target = supersededCcTargetLast4(masterId);
+    const target = supersededTargetLast4(masterId);
     if (!target) break;
     const next = resolveMasterAccountIdForCardLast4(target);
     if (next == null || next === masterId) break;

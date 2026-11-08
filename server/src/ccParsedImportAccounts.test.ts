@@ -4,7 +4,7 @@ import {
   discoverMasterAccountIdsFromParsedRows,
   resolveImportAccountIds,
 } from "./ccParsedImportAccounts.js";
-import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
+import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
 
 describe("ccParsedImportAccounts", () => {
   it("reads last4 from card_last4 or source_pdf", () => {

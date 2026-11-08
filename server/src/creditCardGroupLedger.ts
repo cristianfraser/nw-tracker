@@ -22,7 +22,7 @@ import {
 import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
-import { isNavRetiredCcMaster } from "./ccNavRetired.js";
+import { cardNavRetired } from "./cards/lifecycle.js";
 
 type CcLedgerResponse = ReturnType<typeof creditCardInstallmentsResponse>;
 
@@ -266,7 +266,7 @@ function mergeTotals(ledgers: CcLedgerResponse[]): CcInstallmentsTotals {
  * is known, and `billing_month` is the masters' common open month (null when they differ).
  */
 function mergeCupo(ledgers: CcLedgerResponse[]): CcCupoSnapshot | undefined {
-  const active = ledgers.filter((l) => l.cupo != null && !isNavRetiredCcMaster(l.account_id));
+  const active = ledgers.filter((l) => l.cupo != null && !cardNavRetired(l.account_id));
   if (active.length === 0) return undefined;
   let total: number | null = 0;
   let used: number | null = null;
@@ -285,7 +285,7 @@ function mergeCupo(ledgers: CcLedgerResponse[]): CcCupoSnapshot | undefined {
 
 function mergeOpenBillingMonth(ledgers: CcLedgerResponse[]): string | null {
   const active = ledgers.filter(
-    (l) => l.open_billing_month != null && !isNavRetiredCcMaster(l.account_id)
+    (l) => l.open_billing_month != null && !cardNavRetired(l.account_id)
   );
   if (active.length === 0) return null;
   const first = active[0]!.open_billing_month!;

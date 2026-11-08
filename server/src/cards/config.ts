@@ -31,3 +31,21 @@ export function loadCreditCardBillingConfig(accountId: number): CreditCardBillin
     billing_cycle_end_day: row.billing_cycle_end_day ?? DEFAULT_BILLING_CYCLE_END_DAY,
   };
 }
+
+/** The card master whose configured titular plastic (`credit_card_account_config.card_last4`) is `last4`. */
+export function resolveMasterAccountIdForCardLast4(last4: string): number | null {
+  const l4 = String(last4 ?? "").trim();
+  if (!l4) return null;
+  const row = db
+    .prepare(
+      `SELECT a.id
+       FROM accounts a
+       JOIN credit_card_account_config c ON c.account_id = a.id
+       WHERE c.card_last4 = ?
+       LIMIT 1`
+    )
+    .get(l4) as { id: number } | undefined;
+  // `credit_card_account_config.card_last4` is the card identity — a master without a config row
+  // is a data problem, not a case for note archaeology.
+  return row?.id ?? null;
+}

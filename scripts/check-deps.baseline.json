@@ -1,6 +1,6 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 5633,
+  "edge_count": 5637,
   "largest_cycle": 74,
   "cycle_members": [
     "client/src/dashboardCardBreakdown.ts",
@@ -50,7 +50,6 @@
     "server/src/ccBillingBalances.ts",
     "server/src/ccBillingDetailCache.ts",
     "server/src/ccBillingViews.ts",
-    "server/src/ccConsolidatedCards.ts",
     "server/src/ccCreditCardValuations.ts",
     "server/src/ccCrossImportDedupe.ts",
     "server/src/ccExpenseCategories.ts",
@@ -83,7 +82,6 @@
     "server/src/checkingExpenseRefunds.ts",
     "server/src/checkingPartialMovementsImport.ts",
     "server/src/clpToUnitAt.ts",
-    "server/src/creditCardTree.ts",
     "server/src/dashboardChartMarkTotals.ts",
     "server/src/dashboardComposition.ts",
     "server/src/dashboardNavCardMetrics.ts",

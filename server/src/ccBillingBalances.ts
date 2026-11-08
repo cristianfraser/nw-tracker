@@ -30,7 +30,7 @@ import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
-import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
@@ -802,7 +802,7 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
 
   const today = chileCalendarTodayYmd();
   const openBm = billingMonthForManualLedgerPurchase(accountId);
-  if (openBm && !creditCardBillingDetailInactive(accountId)) {
+  if (openBm && !cardStoppedBilling(accountId)) {
     const hasPdfForOpen = statements.some(
       (s) => s.billing_month === openBm && !isListingSourceKind(s.source_kind)
     );

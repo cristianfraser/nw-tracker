@@ -1,6 +1,6 @@
 import { openFacturacionCredits } from "./ccBillingBalances.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { cardStoppedBilling } from "./cards/lifecycle.js";
 import type { CcFacturacionRow } from "./ccBillingViews.js";
 import { listCcPaymentEvidenceRows } from "./ccPaymentMirrorEvidence.js";
 import { usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
@@ -211,7 +211,7 @@ const accountNameStmt = db.prepare(`SELECT name FROM accounts WHERE id = ?`);
 
 /**
  * «Tarjetas: próximos pagos» on the home dashboard: per active card master (retired and superseded
- * cards never appear — the detalle's `creditCardBillingDetailInactive` rule), the facturaciones
+ * cards never appear — the detalle's `cardStoppedBilling` rule), the facturaciones
  * still owed, read from the same cached rows the card page's facturaciones table shows
  * (`billingDetailCacheForAccount`) less the payments made since. Pesos only.
  */
@@ -223,7 +223,7 @@ export function buildDashboardCcUpcomingPayments(): CcUpcomingPaymentsBlock {
     payments: CcCardPayments;
   }[] = [];
   for (const accountId of listCreditCardMasterAccountIds()) {
-    if (creditCardBillingDetailInactive(accountId)) continue;
+    if (cardStoppedBilling(accountId)) continue;
     const row = accountNameStmt.get(accountId) as { name: string } | undefined;
     if (!row) throw new Error(`Credit-card master ${accountId} not found`);
     const facturaciones = billingDetailCacheForAccount(accountId).facturaciones;

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
-import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
+import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
 
 /**
  * Santander account number → card last4, from gitignored `cfraser/organize-identifiers.json`.

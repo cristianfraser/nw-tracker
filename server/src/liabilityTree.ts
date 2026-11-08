@@ -1,7 +1,7 @@
 import { assertValuationCurrency } from "./valuationValue.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { colorRgbOfLargestBalanceAccount, getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
-import { isNavRetiredCcMaster } from "./ccNavRetired.js";
+import { cardNavRetired } from "./cards/lifecycle.js";
 import { db } from "./db.js";
 import { groupAccountIds, nettedGroup } from "./navTreeModel.js";
 import type { NavTreeNodeDto } from "./navTree.js";
@@ -83,7 +83,7 @@ function buildLiabilityNode(
       memberIds.add(item.account_id);
       if (accountChartInactive(item.account_id)) continue;
       // A retired card stays a member (group charts and totals keep its history) but leaves the nav.
-      if (isNavRetiredCcMaster(item.account_id)) continue;
+      if (cardNavRetired(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({

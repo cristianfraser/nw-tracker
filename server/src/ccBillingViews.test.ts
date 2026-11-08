@@ -11,7 +11,7 @@ import {
   incrementalChargesClpForBillingMonth,
   postCloseLiveBalanceAdjustmentClp,
 } from "./ccBillingBalances.js";
-import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { cardStoppedBilling } from "./cards/lifecycle.js";
 import {
   ccInstallmentsDbApiPayload,
   ccLedgerMonthEndIso,
@@ -363,7 +363,7 @@ describe("buildBillingDetailByMonth", () => {
     insStmt.run(acctId, "2025-02-21 estado de cuenta.pdf", "21/02/2025", "21/01/2025", "20/02/2025");
 
     try {
-      expect(creditCardBillingDetailInactive(acctId)).toBe(true);
+      expect(cardStoppedBilling(acctId)).toBe(true);
 
       recomputeCcBillingMonthBalances(acctId);
       const payload = ccInstallmentsDbApiPayload(acctId);

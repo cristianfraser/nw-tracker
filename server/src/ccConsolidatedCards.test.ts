@@ -4,7 +4,7 @@ import {
   normalizeCcImportCardLast4,
   resolveMasterAccountIdForImportCardLast4,
 } from "./ccConsolidatedCards.js";
-import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
+import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
 import { db } from "./db.js";
 
 describe("ccConsolidatedCards", () => {

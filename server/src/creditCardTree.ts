@@ -1,5 +1,5 @@
 import { accountProfile } from "./accountProfile.js";
-import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
+import { cardSuperseded } from "./cards/lifecycle.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug, type CcIssuerSlug } from "./ccIssuers.js";
 import { db } from "./db.js";
@@ -15,7 +15,7 @@ export function listCreditCardMasterAccountIds(): number[] {
     .all() as { id: number }[];
   return rows
     .map((r) => r.id)
-    .filter((id) => accountProfile(id).kind === "credit_card" && !isSupersededSantanderCcMaster(id));
+    .filter((id) => accountProfile(id).kind === "credit_card" && !cardSuperseded(id));
 }
 
 /**
@@ -36,20 +36,3 @@ export function listCreditCardMasterAccountIdsForIssuer(issuer: CcIssuerSlug): n
   return listCreditCardMasterAccountIds().filter((id) => ccIssuerSlugForMasterAccount(id) === issuer);
 }
 
-export function resolveMasterAccountIdForCardLast4(last4: string): number | null {
-  const l4 = String(last4 ?? "").trim();
-  if (!l4) return null;
-  const row = db
-    .prepare(
-      `SELECT a.id
-       FROM accounts a
-       JOIN credit_card_account_config c ON c.account_id = a.id
-       WHERE c.card_last4 = ?
-       LIMIT 1`
-    )
-    .get(l4) as { id: number } | undefined;
-  if (row) return row.id;
-  // `credit_card_account_config.card_last4` is the card identity — a master without a
-  // config row is a data problem, not a case for note archaeology.
-  return null;
-}

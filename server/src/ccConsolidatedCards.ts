@@ -1,7 +1,7 @@
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { cardLast4ForCreditCardAccount } from "./cards/facturacion.js";
 import { db } from "./db.js";
-import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
+import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
 
 /**
  * Cards whose statements/installments are tracked on the successor card.
@@ -21,30 +21,6 @@ export function normalizeCcImportCardLast4(last4: string): string {
 /** Resolve master account for PDF/CSV import (applies consolidation redirects). */
 export function resolveMasterAccountIdForImportCardLast4(last4: string): number | null {
   return resolveMasterAccountIdForCardLast4(normalizeCcImportCardLast4(last4));
-}
-
-export function supersededCcTargetLast4(accountId: number): string | null {
-  const row = db
-    .prepare(`SELECT superseded_target_last4 FROM credit_card_account_config WHERE account_id = ?`)
-    .get(accountId) as { superseded_target_last4: string | null } | undefined;
-  const target = String(row?.superseded_target_last4 ?? "").trim();
-  return target || null;
-}
-
-
-export function isSupersededSantanderCcMaster(accountId: number): boolean {
-  if (supersededCcTargetLast4(accountId) != null) return true;
-
-  const row = db
-    .prepare(`SELECT import_key, exclude_from_group_totals FROM accounts WHERE id = ?`)
-    .get(accountId) as { import_key: string | null; exclude_from_group_totals: number } | undefined;
-  if (!row) return false;
-  const importKey = String(row.import_key ?? "").trim();
-  if (!ccCardRegistry().superseded_master_notes.includes(importKey)) return false;
-  if (row.exclude_from_group_totals !== 1) return false;
-  const last4 = importKey.slice(importKey.lastIndexOf("|") + 1);
-  const targetLast4 = importRedirectLast4()[last4];
-  return targetLast4 != null && resolveMasterAccountIdForCardLast4(targetLast4) != null;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { accountChartInactive, navBucketChartInactive } from "./accountChartInactive.js";
-import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
+import { cardSuperseded } from "./cards/lifecycle.js";
 
 describe("accountChartInactive", () => {
   it("detects superseded Santander masters excluded from nav", () => {
@@ -13,7 +13,7 @@ describe("accountChartInactive", () => {
       )
       .get() as { id: number } | undefined;
     if (!row) return;
-    expect(isSupersededSantanderCcMaster(row.id)).toBe(true);
+    expect(cardSuperseded(row.id)).toBe(true);
   });
 
   it("CC masters are never tail-inactive", () => {

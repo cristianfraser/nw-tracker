@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { db } from "../db.js";
+import { cardStoppedBilling } from "./lifecycle.js";
 
 /**
  * A card whose installment ledger is fully settled (all cuotas billed long ago, $0 live
@@ -8,7 +8,7 @@ import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
  * used to keep it "active" forever, and the open-month rollforward then resurrected the
  * last pre-settlement statement balance as a live debt (·0161 regression: $1x.xxx).
  */
-describe("creditCardBillingDetailInactive with an installment ledger", () => {
+describe("cardStoppedBilling with an installment ledger", () => {
   const insertedStatementIds: number[] = [];
   const insertedPurchaseIds: number[] = [];
 
@@ -69,7 +69,7 @@ describe("creditCardBillingDetailInactive with an installment ledger", () => {
     if (!master) return;
     insertStatement(master, "vitest-inactive-old.pdf", "20/03/2020");
     insertPlan(master, "inactive-settled", 3, 3);
-    expect(creditCardBillingDetailInactive(master)).toBe(true);
+    expect(cardStoppedBilling(master)).toBe(true);
   });
 
   it("stays active while a plan has outstanding cuotas", () => {
@@ -77,6 +77,6 @@ describe("creditCardBillingDetailInactive with an installment ledger", () => {
     if (!master) return;
     insertStatement(master, "vitest-inactive-old.pdf", "20/03/2020");
     insertPlan(master, "inactive-outstanding", 1, 3);
-    expect(creditCardBillingDetailInactive(master)).toBe(false);
+    expect(cardStoppedBilling(master)).toBe(false);
   });
 });

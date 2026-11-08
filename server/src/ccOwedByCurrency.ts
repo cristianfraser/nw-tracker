@@ -2,7 +2,7 @@ import { ymCompare } from "./calendarMonth.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountUsd } from "./ccExpenseAmountClp.js";
 import { installmentRemainderAfterFacturacionClp } from "./ccInstallmentLedgerDb.js";
-import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { findLines } from "./cards/purchases.js";
 import { closeDateForBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
@@ -48,7 +48,7 @@ function roundUsd(n: number): number {
 export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCurrency {
   // A card that stopped billing has no facturación after its last statement (its announced next
   // close passes with nothing to bill), so its last statement is its last close.
-  const lastClosed = creditCardBillingDetailInactive(accountId)
+  const lastClosed = cardStoppedBilling(accountId)
     ? lastPdfBillingMonthForAccount(accountId)
     : lastClosedBillingMonthForAccount(accountId, asOfIso);
 

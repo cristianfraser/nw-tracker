@@ -22,7 +22,7 @@ import {
   type CcStatementSlotByCurrency,
 } from "./ccBillingStatementSlots.js";
 import { ccLedgerMonthEndIso, creditCardInstallmentPaymentsByBillingMonth, installmentRemainingClpByCalendarMonth, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
-import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { billingMonthForManualLedgerPurchase, closeDateForBillingMonth, pdfClosedBillingMonthsForAccount, provisionallyClosedBillingMonthsForAccount } from "./cards/facturacion.js";
 import { feedBillingCloseForMonth, type CcCloseSource } from "./cards/facturacion.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
@@ -202,7 +202,7 @@ function cupoAfterCloseForBillingMonth(
 
 /** What decides a card's billing months — open, provisionally closed — and each month's cupo en cuotas. */
 export type CcCupoFrame = {
-  /** The card stopped billing (`creditCardBillingDetailInactive`): no provisional months. */
+  /** The card stopped billing (`cardStoppedBilling`): no provisional months. */
   inactive: boolean;
   /** The open facturación (`billingMonthForManualLedgerPurchase`, from the bank's close evidence). */
   openBillingMonth: string | null;
@@ -223,7 +223,7 @@ export type CcCupoFrame = {
  * (the detalle's cuota-a-pagar source): what a provisional close billed is read from it.
  */
 export function ccCupoFrame(accountId: number, ledgerMonths: readonly CcInstallmentMonthRow[]): CcCupoFrame {
-  const inactive = creditCardBillingDetailInactive(accountId);
+  const inactive = cardStoppedBilling(accountId);
   // Closed at the bank, statement pending: a row even without bucket lines, statement-framed.
   const provisionalMonths = inactive
     ? new Set<string>()

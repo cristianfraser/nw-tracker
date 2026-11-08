@@ -1,4 +1,5 @@
 import { dbStateMemo } from "./dbStateMemo.js";
+import { CARD_CHART_INACTIVE, cardLifecycle } from "./cards/lifecycle.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
@@ -110,7 +111,7 @@ function isCreditCardChartAccountUncached(accountId: number): boolean {
  * Uses performance closes when available; otherwise stored `valuations`.
  */
 export function accountChartInactive(accountId: number): boolean {
-  if (isCreditCardChartAccount(accountId)) return false;
+  if (isCreditCardChartAccount(accountId)) return CARD_CHART_INACTIVE[cardLifecycle(accountId)];
   // An account valued from units holds something exactly when it has units: the price only
   // multiplies them. Reading the units keeps the answer (and every nav tree built on it) free of
   // prices, and spares building the account's whole monthly series.
