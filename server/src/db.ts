@@ -30,6 +30,7 @@ import {
   runFlowLinksFinancing284,
   runFlowLinksFundedDeposit285,
   runFlowLinksBill286,
+  runFlowNotes287,
   runFlowParts283,
   runFlowRefunds280,
 } from "./flows/flowAssignments280.js";
@@ -298,6 +299,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "284_flow_links.sql": runFlowLinksFinancing284,
   "285_flow_links_funded_deposit.sql": runFlowLinksFundedDeposit285,
   "286_flow_links_bill.sql": runFlowLinksBill286,
+  "287_flow_notes.sql": runFlowNotes287,
 };
 
 /**

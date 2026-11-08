@@ -1,3 +1,4 @@
+import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { listCcFacturadoFinancingLinks } from "./ccFacturadoFinancingLinksDb.js";
@@ -291,9 +292,7 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
         .run(accountId).lastInsertRowid
     );
     insertFinancingPurchase(linkId, accountId, manualKey);
-    db.prepare(
-      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'vitest twin note')`
-    ).run(accountId, manualKey);
+    setFlowNote(accountId, manualKey, "vitest twin note");
 
     try {
       const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
@@ -302,14 +301,11 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
 
       const pdfKey = `installment-h:${accountId}:2026-06-25:12:544574:MP *MERCADO LIBRE`;
       expect(financingKeys(linkId)).toEqual([pdfKey]);
-      const noteRow = db
-        .prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
-        .get(accountId, pdfKey) as { notes: string } | undefined;
-      expect(noteRow?.notes).toBe("vitest twin note");
+      expect(getFlowNote(accountId, pdfKey)).toBe("vitest twin note");
     } finally {
       db.prepare(`DELETE FROM flow_links WHERE financing_link_id = ?`).run(linkId);
       db.prepare(`DELETE FROM cc_facturado_financing_links WHERE id = ?`).run(linkId);
-      db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(accountId);
     }
   });
 

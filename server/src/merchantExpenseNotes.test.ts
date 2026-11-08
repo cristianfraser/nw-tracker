@@ -1,3 +1,4 @@
+import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { MerchantPurchaseDocument } from "nw-tracker-contracts";
 import { importCcWebPasteLines } from "./accountImports.js";
@@ -29,7 +30,7 @@ const restoreCcTables = snapshotTables([
   "cc_statements",
   "cc_statement_lines",
   "cc_expense_line_categories",
-  "cc_expense_purchase_notes",
+  "flow_notes",
   "cc_billing_month_balances",
   "valuations",
   "import_batches",
@@ -64,9 +65,7 @@ describe("merchantExpenseNotes", () => {
   }
 
   const note = (key: string): string | null =>
-    (db.prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`).get(accountId, key) as
-      | { notes: string }
-      | undefined)?.notes ?? null;
+    getFlowNote(accountId, key) ?? null;
 
   /** The charge's name as the expense lines show it: «label», or «≈ label» when inferred. */
   const named = (key: string, today = TODAY, account = accountId): string | null => {
@@ -104,7 +103,7 @@ describe("merchantExpenseNotes", () => {
 
   beforeEach(() => {
     wipeVitestCcFixtureData();
-    db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE purchase_key LIKE 'line-pr:vitest-appstore|%'`).run();
+    db.prepare(`DELETE FROM flow_notes WHERE flow_id IN (SELECT id FROM flows WHERE legacy_key LIKE 'line-pr:vitest-appstore|%')`).run();
     db.prepare(`DELETE FROM merchant_document_sources WHERE merchant = ?`).run(MERCHANT);
     statementId = Number(
       db
@@ -117,7 +116,7 @@ describe("merchantExpenseNotes", () => {
   });
 
   afterAll(() => {
-    db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE purchase_key LIKE 'line-pr:vitest-appstore|%'`).run();
+    db.prepare(`DELETE FROM flow_notes WHERE flow_id IN (SELECT id FROM flows WHERE legacy_key LIKE 'line-pr:vitest-appstore|%')`).run();
     db.prepare(`DELETE FROM merchant_document_sources WHERE merchant = ?`).run(MERCHANT);
     wipeVitestCcFixtureData();
     restoreFx();
@@ -152,7 +151,7 @@ describe("merchantExpenseNotes", () => {
 
   it("reuses an existing note the app's name starts with", () => {
     const old = line("2037-02-01", { pesos: 6000 });
-    db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'example')`).run(accountId, old);
+    setFlowNote(accountId, old, "example");
     const k = line("2037-02-16", { pesos: 6100 });
     send(receipt("2037-02-15", [{ app: "Example Dating App: Meet", amount: 6100 }]));
     expect(named(k)).toBe("example");
@@ -168,7 +167,7 @@ describe("merchantExpenseNotes", () => {
 
   it("writes no note: a note the user wrote stays, and the charge is still named", () => {
     const k = line("2037-04-02", { pesos: 9000 });
-    db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'mine')`).run(accountId, k);
+    setFlowNote(accountId, k, "mine");
     const other = line("2037-04-12", { pesos: 9100 });
     send(receipt("2037-04-01", [{ app: "Example Chat", amount: 9000 }]));
     send(receipt("2037-04-11", [{ app: "Example Chat", amount: 9100 }]));
@@ -243,7 +242,7 @@ describe("merchantExpenseNotes", () => {
     expect(named(raised)).toBe("≈ example music");
 
     const handNoted = line("2037-09-03", { pesos: 3300 });
-    db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'example tv')`).run(accountId, handNoted);
+    setFlowNote(accountId, handNoted, "example tv");
     const next = line("2037-10-04", { pesos: 3300 });
     expect(deriveMerchantChargeLinks({ merchant: MERCHANT, today: TODAY }).links.find((l) => l.key === next)?.basis).toBe("monthly run");
     expect(named(next)).toBe("≈ example tv");

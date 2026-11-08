@@ -205,7 +205,7 @@ type KeyedSpec = { table: KeyedTable; column: string; accountScoped: boolean; fl
 const KEYED_TABLES: KeyedSpec[] = [
   { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true },
   { table: "cc_expense_purchase_big_groups", column: "group_slug", accountScoped: false, flowTable: "flow_big_groups" },
-  { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true },
+  { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true, flowTable: "flow_notes" },
 ];
 
 /** A keyed row of `spec`, by key: read, write, delete, move. */

@@ -101,5 +101,5 @@ export function wipeVitestCcFixtureData(): void {
   // after its valuations were wiped, and the group charts read it.
   db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(id);
-  db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(id);
+  db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(id);
 }

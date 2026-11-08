@@ -213,7 +213,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);

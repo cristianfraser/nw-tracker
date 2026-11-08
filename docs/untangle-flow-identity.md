@@ -198,3 +198,14 @@ What the code forced, and why (each change is also in its commit):
   `mergeFlowInto` now moves the merged flow's own `flow_links` and refusals onto the survivor (by
   row, so the rowid read order stays): before, a link a mover had put on the cartola row's flow was
   deleted with it when the adoption folded that flow into the daily row's.
+- **Notes (migration 287)** are `flow_notes` rows (flow, portion, piece) that keep the account they
+  were written under (`account_id`): readers still ask by (account, key), and the cleanups of a
+  test or a wiped card delete by account. One module reads and writes them (`flows/flowNotes.ts`:
+  `FLOW_NOTES_SQL` for the old shape, `getFlowNote` / `setFlowNote` / `updateFlowNote` /
+  `deleteFlowNote`); a write names its row by key, so a note can no longer be written on a key that
+  names nothing (it threw nothing before and was never read). The movers move them with
+  `moveKeyedRows` (the card-line mover through its `flowTable`, the manual-plan reconcile with
+  `keep-target`, as before). `mergeFlowInto` now carries the merged flow's notes and big groups
+  (the preferred flow's row wins), for the reason given for links above.
+  `scripts/repair-cc-expense-orphaned-line-keys.ts` read the dropped table: archived (deliverable
+  6), since the moving migrations archive what it looked for.

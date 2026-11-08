@@ -88,8 +88,8 @@ describe("flowsExpenses", () => {
     db.prepare(`DELETE FROM cc_statements WHERE source_pdf = ?`).run(SRC_ADDITIONAL_FIXTURE);
     // Unique purchase rows (and notes) are keyed by purchase_key; delete any that reference our parser row ids.
     db.prepare(
-      `DELETE FROM cc_expense_purchase_notes
-       WHERE purchase_key LIKE 'line-pr:vitest-addl-%'`
+      `DELETE FROM flow_notes
+       WHERE flow_id IN (SELECT id FROM flows WHERE legacy_key LIKE 'line-pr:vitest-addl-%')`
     ).run();
     db.prepare(
       `DELETE FROM cc_expense_unique_purchases

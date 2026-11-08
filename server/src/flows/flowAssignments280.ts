@@ -390,3 +390,7 @@ export function runFlowLinksBill286(dbi: DatabaseType): void {
   dbi.exec(`DROP TABLE real_estate_expense_link_rejections`);
   installWriteLog(dbi, "flow_link_rejections");
 }
+
+export function runFlowNotes287(dbi: DatabaseType): void {
+  moveKeyedTable(dbi, "287", "cc_expense_purchase_notes", "flow_notes", "purchase_key", ["account_id", "notes", "updated_at"]);
+}

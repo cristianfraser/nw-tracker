@@ -136,6 +136,19 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
   // bill-move policy, docs/untangle-flow-identity.md); a refusal the survivor already carries stays.
   dbHandle.prepare(`UPDATE flow_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   dbHandle.prepare(`UPDATE OR IGNORE flow_link_rejections SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  // Key-named rows (a big group, a note) on a flow, portion and piece: the preferred flow's row stays.
+  for (const table of ["flow_big_groups", "flow_notes"]) {
+    if (prefer === "from") {
+      dbHandle
+        .prepare(
+          `DELETE FROM ${table} WHERE flow_id = ? AND EXISTS (SELECT 1 FROM ${table} x
+             WHERE x.flow_id = ? AND x.portion = ${table}.portion AND x.piece_seq = ${table}.piece_seq)`
+        )
+        .run(to, from);
+    }
+    dbHandle.prepare(`UPDATE OR IGNORE ${table} SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+    dbHandle.prepare(`DELETE FROM ${table} WHERE flow_id = ?`).run(from);
+  }
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);

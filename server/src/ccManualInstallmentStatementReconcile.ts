@@ -71,13 +71,6 @@ function moveFinancingLinks(accountId: number, fromKey: string, toKey: string): 
   return moved;
 }
 
-const updNoteKey = db.prepare(
-  `UPDATE OR IGNORE cc_expense_purchase_notes SET purchase_key = ?
-   WHERE account_id = ? AND purchase_key = ?`
-);
-const delNoteKey = db.prepare(
-  `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
-);
 
 const findPdfPlansForLineIdentity = db.prepare(
   `SELECT id, source, purchase_date, total_amount_clp, cuotas_totales, merchant
@@ -197,11 +190,8 @@ function migrateManualPurchaseKeyRefs(
   for (const manualKey of manualKeys) {
     if (!manualKey || manualKey === pdfKey) continue;
     rewritten += moveFinancingLinks(accountId, manualKey, pdfKey);
-    for (const [upd, del] of [[updNoteKey, delNoteKey]] as const) {
-      rewritten += upd.run(pdfKey, accountId, manualKey).changes;
-      del.run(accountId, manualKey);
-    }
-    // Big groups sit on the flow (migration 282); the target's own wins, as before.
+    // Notes and big groups sit on the flow (migrations 287, 282); the target's own wins, as before.
+    if (moveKeyedRows("flow_notes", manualKey, pdfKey, "keep-target")) rewritten += 1;
     if (moveKeyedRows("flow_big_groups", manualKey, pdfKey, "keep-target")) rewritten += 1;
   }
   return rewritten;

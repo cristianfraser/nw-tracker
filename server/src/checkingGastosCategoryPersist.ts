@@ -1,3 +1,4 @@
+import { deleteFlowNote, getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 import type { Database } from "better-sqlite3";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { db } from "./db.js";
@@ -31,22 +32,9 @@ function migratePurchaseNotesKey(
   stableKey: string,
   dbHandle: Database
 ): void {
-  const row = dbHandle
-    .prepare(
-      `SELECT notes FROM cc_expense_purchase_notes
-       WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(accountId, legacyKey) as { notes: string } | undefined;
-  if (!row?.notes?.trim()) return;
-  dbHandle
-    .prepare(
-      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes, updated_at)
-       VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT(account_id, purchase_key) DO UPDATE SET
-         notes = excluded.notes,
-         updated_at = excluded.updated_at`
-    )
-    .run(accountId, stableKey, row.notes);
+  const notes = getFlowNote(accountId, legacyKey, dbHandle);
+  if (!notes?.trim()) return;
+  setFlowNote(accountId, stableKey, notes, dbHandle);
 }
 
 /** Copy Único category + notes from `checking-mv:{id}` to stable cartola note key; move its bill link. */
@@ -68,13 +56,8 @@ export function transferCheckingGastosCategoryFromMovementToNote(
          WHERE account_id = ? AND purchase_key = ?`
       )
       .get(accountId, fromKey) as { category_id: number | null } | undefined;
-    const notesRow = dbHandle
-      .prepare(
-        `SELECT notes FROM cc_expense_purchase_notes
-         WHERE account_id = ? AND purchase_key = ?`
-      )
-      .get(accountId, fromKey) as { notes: string } | undefined;
-    if (!row && !notesRow?.notes?.trim()) continue;
+    const notes = getFlowNote(accountId, fromKey, dbHandle);
+    if (!row && !notes?.trim()) continue;
     if (row) {
       upsertUniquePurchaseCategory(accountId, toKey, row.category_id, dbHandle);
     }
@@ -84,9 +67,7 @@ export function transferCheckingGastosCategoryFromMovementToNote(
         `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
       )
       .run(accountId, fromKey);
-    dbHandle
-      .prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
-      .run(accountId, fromKey);
+    deleteFlowNote(accountId, fromKey, dbHandle);
     migrated += 1;
   }
   return migrated;

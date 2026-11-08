@@ -5,6 +5,7 @@
  * `#split:<seq>`, so a piece keeps its seq for life: its big group and note (what it was) hang off
  * that key. The table's own `note` column is provenance (`split:manual|…`) and is left as stored.
  */
+import { deleteFlowNote } from "./flows/flowNotes.js";
 import { getCcExpenseCategoryBySlug, isCcExpenseTotalsExcludedSlug } from "./ccExpenseCategories.js";
 import { expensePieceKey } from "./expenseKeys.js";
 import { db } from "./db.js";
@@ -118,10 +119,7 @@ export function replaceExpenseLinePieces(
       if (keptSeqs.has(old.seq)) continue;
       db.prepare(`DELETE FROM flow_parts WHERE flow_id = ${lineFlowSql(source)} AND seq = ?`).run(lineId, old.seq);
       deleteKeyedRow("flow_big_groups", pieceKey(old.seq));
-      db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`).run(
-        accountId,
-        pieceKey(old.seq)
-      );
+      deleteFlowNote(accountId, pieceKey(old.seq));
     }
     const upsert = db.prepare(
       `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, spent_on)
