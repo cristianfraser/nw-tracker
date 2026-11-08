@@ -1,4 +1,4 @@
-import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";

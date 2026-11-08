@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { plazaLyonMerchantsMatch } from "./ccCrossImportDedupe.js";
+import { plazaLyonMerchantsMatch } from "./cards/purchases.js";
 import {
   reconcilePurchaseRowsMatch,
   type CcReconcileRow,

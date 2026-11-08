@@ -17,7 +17,7 @@ import {
   moveOpenBucketLinesToBillingMonth,
   parseOpenWebPasteBillingMonth,
 } from "./ccOpenWebPasteRepair.js";
-import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import {
   confirmManualPaymentForPlanted,
   listPlantedPaymentLines,

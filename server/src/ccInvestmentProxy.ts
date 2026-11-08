@@ -11,7 +11,7 @@ import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
-import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import { supersededOneShotLineIds } from "./cards/purchases.js";
 import { facturacionPayByIsoResolver, type CcFacturacionRow } from "./ccBillingViews.js";
 import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
@@ -511,7 +511,7 @@ export function buildNormalPurchaseProxyForAccount(
 
   const facturacionByStatementDate = facturacionMonthByStatementDate(accountId);
   const payByIsoFor = facturacionPayByIsoResolver(accountId, facturaciones);
-  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const superseded = supersededOneShotLineIds(accountId);
   for (const row of rows) {
     if (row.cuota_purchase_kind != null || superseded.has(row.statement_line_id)) continue;
     const purchaseOn =

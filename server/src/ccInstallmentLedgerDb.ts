@@ -1,4 +1,7 @@
 import { historyTierMemo } from "./cacheRegistry.js";
+import { installmentPurchaseLedgerDedupeKey, purchaseFirstDueYm } from "./cards/purchases.js";
+// `server/scripts/repair-cc-installment-duplicate-purchases.ts` still imports these from here.
+export { dedupeInstallmentPurchaseLedgerRows, installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
 import { db } from "./db.js";
 import { sortActivePurchases, sortCuotaLinesInActiveOrder } from "./ccActivePurchaseOrder.js";
 import {
@@ -15,12 +18,8 @@ import {
   billingMonthContainingPurchase,
   billingMonthForLedgerPurchase,
   closeDateForBillingMonth,
-  lastPdfBillingMonthForAccount,
 } from "./ccManualBillingMonth.js";
-import {
-  isInstallmentContractSummaryMerchant,
-  merchantStemForInstallmentDedupe,
-} from "./ccInstallmentLineDedupe.js";
+import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
 import {
   calendarMonthsAfterPurchase,
   isNotaDeCreditoMerchant,
@@ -173,74 +172,6 @@ export function finalInstallmentPaymentBillingMonth(payList: PaymentRow[]): stri
     }
   }
   return bestYm;
-}
-
-/** First installment month (YYYY-MM): cuota 1 statement month, else month after 00/N preamble, else purchase month. */
-export function purchaseFirstDueYm(
-  pr: PurchaseRow,
-  payList: PaymentRow[],
-  accountId?: number
-): string {
-  const cuota1 = payList.find((p) => p.cuota_current === 1);
-  if (cuota1) {
-    const ym = paymentBillingMonth(cuota1);
-    if (ym) return ym;
-  }
-  const withCuota = payList
-    .filter((p) => p.cuota_current != null && p.cuota_current > 0)
-    .sort((a, b) => a.cuota_current! - b.cuota_current!);
-  if (withCuota.length > 0) {
-    const ym = paymentBillingMonth(withCuota[0]!);
-    if (ym) return ym;
-  }
-
-  const preambleOnly = payList.filter(
-    (p) => p.amount_clp > 0 && (p.cuota_current == null || p.cuota_current <= 0)
-  );
-  if (withCuota.length === 0 && preambleOnly.length > 0) {
-    // Cuota 1 bills the statement after the latest 00/N preamble, so the anchor is the
-    // preamble's STATEMENT month + 1. Anchoring on the pay-by month (already the next
-    // calendar month) pushed these plans one facturación late in every schedule consumer
-    // until real cuota-01 evidence arrived and silently shifted them back.
-    let lastStmtYm: string | null = null;
-    for (const p of preambleOnly) {
-      const ym = paymentBillingMonth(p);
-      if (ym && (lastStmtYm == null || ymCompare(ym, lastStmtYm) > 0)) lastStmtYm = ym;
-    }
-    if (lastStmtYm) return addCalendarMonths(lastStmtYm, 1);
-  }
-
-  // Evidence-backed first-cuota month (set by the web-paste importer when a pasted
-  // no-facturado line pins a manual plan's real first cycle). Ranks below any statement
-  // cuota evidence above, so a later PDF cuota-01 line always overrides it — but above the
-  // manual same-cycle guess below, which is only a heuristic for the yet-unbilled case.
-  const storedFirstDue = parseYearMonth(String(pr.first_due_month ?? "").slice(0, 7));
-
-  if (pr.source === "manual" && accountId != null) {
-    // Default guess: the first cuota bills at the close of the facturación the purchase
-    // falls into (Lider always bills cuota 1 same-cycle; Santander usually does, sometimes
-    // deferring it behind a cuota-00 preamble). The next statement's evidence replaces the
-    // guess either way: a cuota-01 line pins the real month, a cuota-00 preamble moves the
-    // anchor to statement + 1. Date-based (not "the open month at read time") so the guess
-    // does not drift forward as cycles roll while the statement is pending. The cycle is the
-    // bank's (`billingMonthContainingPurchase`): a ·0901 purchase on the 22nd belongs to the
-    // facturación that closes on the 24th, not to the next one as the config's 20th made it.
-    const base = storedFirstDue ?? billingMonthContainingPurchase(accountId, pr.purchase_date);
-    if (base) {
-      // A manual plan with no statement evidence cannot first-bill inside an already
-      // fully-imported facturación — that statement exists and did not bill it (reaching
-      // this branch means no cuota line matched). Advance to the first month whose
-      // statement is still pending. Statement-driven (last closed + 1, never the calendar),
-      // so a lagging import queue keeps the date-based guess and nothing drifts; with
-      // statements current this is the open month, and each later close without evidence
-      // rolls the leftover forward with it.
-      const lastClosed = lastPdfBillingMonthForAccount(accountId);
-      const firstPending = lastClosed ? addCalendarMonths(lastClosed, 1) : null;
-      return firstPending && ymCompare(firstPending, base) > 0 ? firstPending : base;
-    }
-  }
-  if (storedFirstDue) return storedFirstDue;
-  return parseYearMonth(pr.purchase_date.slice(0, 7)) ?? "1970-01";
 }
 
 /** PDF rows with an explicit cuota index (excludes resumen «03 CUOTAS COMERC» sin índice). */
@@ -641,27 +572,6 @@ function scheduledTotalRemainingByMonth(
   return out;
 }
 
-/**
- * Logical identity of an installment plan. The twin index is part of it: identical purchases
- * made the same day each print their own cuota line on every statement and are separate plans
- * that differ only in `twin_index` (migration 187).
- */
-export function installmentPurchaseLedgerDedupeKey(pr: {
-  purchase_date: string;
-  total_amount_clp: number;
-  cuotas_totales: number;
-  merchant: string | null;
-  twin_index: number;
-}): string {
-  return [
-    pr.purchase_date,
-    String(pr.total_amount_clp),
-    String(pr.cuotas_totales),
-    merchantStemForInstallmentDedupe(pr.merchant),
-    String(pr.twin_index),
-  ].join("\t");
-}
-
 /** Fail fast when multiple DB purchases share the same logical fingerprint. */
 export function assertNoDuplicateInstallmentPurchaseFingerprints(
   accountId: number,
@@ -705,37 +615,6 @@ export function filterInstallmentContractSummaryPurchases(purchases: PurchaseRow
     if (!isInstallmentContractSummaryMerchant(pr.merchant)) return true;
     return !detailKeys.has(installmentPurchaseLedgerDedupeKey(pr));
   });
-}
-
-/** Collapse duplicate PDF ledger rows (import/repair tooling only — not for API load). */
-export function dedupeInstallmentPurchaseLedgerRows<
-  T extends {
-    id: number;
-    purchase_date: string;
-    total_amount_clp: number;
-    cuotas_totales: number;
-    merchant: string | null;
-    twin_index: number;
-  },
->(purchases: readonly T[]): T[] {
-  const byKey = new Map<string, T>();
-  for (const pr of purchases) {
-    const key = installmentPurchaseLedgerDedupeKey(pr);
-    const prev = byKey.get(key);
-    if (!prev) {
-      byKey.set(key, pr);
-      continue;
-    }
-    const prevSummary = isInstallmentContractSummaryMerchant(prev.merchant);
-    const curSummary = isInstallmentContractSummaryMerchant(pr.merchant);
-    if (prevSummary && !curSummary) {
-      byKey.set(key, pr);
-      continue;
-    }
-    if (!prevSummary && curSummary) continue;
-    if (pr.id > prev.id) byKey.set(key, pr);
-  }
-  return [...byKey.values()];
 }
 
 /** Schedule load: contract-summary filter only (no fingerprint dedupe). */

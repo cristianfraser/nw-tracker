@@ -7,7 +7,7 @@
  */
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { webPasteAmountClpForDb } from "./ccPaymentLines.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { db } from "./db.js";

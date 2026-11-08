@@ -1,7 +1,7 @@
 import { ccIssuerBySlug, ccIssuerForParserLayout, type CcIssuer } from "./ccIssuers.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
-import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { canonicalCcLineDedupeKeys } from "./ccExpenseLineDedupe.js";
 import {
   isInstallmentContractSummaryMerchant,

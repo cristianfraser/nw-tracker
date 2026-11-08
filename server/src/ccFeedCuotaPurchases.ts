@@ -18,10 +18,7 @@
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
-import {
-  findMatchingInstallmentPurchase,
-  merchantsMatchForCrossDedupe,
-} from "./ccCrossImportDedupe.js";
+import { findPlanForOneShotLine, merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { creditCardMasterMetaForAccount, type CcWebPasteLine } from "./ccWebPasteParse.js";
@@ -123,7 +120,7 @@ export function createPlansForFeedCuotaPurchases(
     if (!cp || cp.cuota_count == null || line.currency !== "clp") continue;
     const principal = Math.abs(Math.round(line.amount_clp));
     if (principal <= 0) continue;
-    if (findMatchingInstallmentPurchase(accountId, line.merchant, line.transaction_date, principal)) continue;
+    if (findPlanForOneShotLine(accountId, line.merchant, line.transaction_date, principal)) continue;
     const firstDue = firstCuotaBillingMonth(
       ccIssuerSlugForMasterAccount(accountId),
       cp.kind,
@@ -183,7 +180,7 @@ export function tagFeedCuotaPurchaseLines(
   const tagged: number[] = [];
   for (const feed of typed) {
     const principal = Math.abs(Math.round(feed.amount_clp));
-    if (findMatchingInstallmentPurchase(accountId, feed.merchant, feed.transaction_date, principal)) continue;
+    if (findPlanForOneShotLine(accountId, feed.merchant, feed.transaction_date, principal)) continue;
     const hit = bucket.find(
       (b) => !used.has(b.id) && !b.installment_flag && bucketLineMatchesFeedLine(b, feed, 0)
     );

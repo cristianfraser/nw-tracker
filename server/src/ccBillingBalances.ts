@@ -8,7 +8,7 @@ import {
   effectiveCcExpenseLineAmountUsd,
   uniformDebtUsdRateInEffect,
 } from "./ccExpenseAmountClp.js";
-import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import { supersededOneShotLineIds } from "./cards/purchases.js";
 import {
   isInstallmentContractSummaryMerchant,
   redundantInstallmentSummaryLineIds,
@@ -144,7 +144,7 @@ function sumRevolvingLinesForAccountStatementDateClp(
 ): number {
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   const rows = listRevolvingLineRowsForStatementDate(accountId, statementDate);
-  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const superseded = supersededOneShotLineIds(accountId);
   let sum = 0;
   for (const r of rows) {
     if (superseded.has(r.id)) continue;
@@ -296,7 +296,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
          WHERE s.account_id = ? AND l.installment_flag = 0`
       )
       .all(accountId) as PostCloseLineRow[];
-    const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+    const superseded = supersededOneShotLineIds(accountId);
 
     const fxDateByStatementDate = new Map<string, string | null>();
     const fxDateFor = (statementDate: string): string | null => {
@@ -659,7 +659,7 @@ export function openMonthUsdFacturado(
   accountId: number,
   billingMonth: string
 ): { usd: number; clp: number } {
-  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const superseded = supersededOneShotLineIds(accountId);
   let usd = 0;
   let clp = 0;
   const addStatement = (statementDate: string) => {
@@ -696,7 +696,7 @@ export function openFacturacionCredits(
   accountId: number,
   billingMonth: string
 ): { clp: number; usd: number } {
-  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const superseded = supersededOneShotLineIds(accountId);
   let clp = 0;
   let usd = 0;
   for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {

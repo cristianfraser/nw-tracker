@@ -1,3 +1,4 @@
+import { purchaseFirstDueYm } from "./cards/purchases.js";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
@@ -6,7 +7,6 @@ import {
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import {
   ccInstallmentsDbApiPayload,
-  purchaseFirstDueYm,
 } from "./ccInstallmentLedgerDb.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import {

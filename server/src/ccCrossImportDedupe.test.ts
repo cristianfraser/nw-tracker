@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  installmentPurchaseMatchesOneShot,
-  merchantsMatchForCrossDedupe,
-  purchaseAmountsMatch,
-} from "./ccCrossImportDedupe.js";
+import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe, planMatchesOneShotLine } from "./cards/purchases.js";
 
 describe("ccCrossImportDedupe", () => {
   it("matches merchant stems across paste and manual labels", () => {
@@ -37,7 +34,7 @@ describe("ccCrossImportDedupe", () => {
       twin_index: 0,
     };
     expect(
-      installmentPurchaseMatchesOneShot(
+      planMatchesOneShotLine(
         purchase,
         "MERCADOPAGO*MIBICIO",
         "2026-05-19",
@@ -45,7 +42,7 @@ describe("ccCrossImportDedupe", () => {
       )
     ).toBe(true);
     expect(
-      installmentPurchaseMatchesOneShot(
+      planMatchesOneShotLine(
         purchase,
         "MERCADOPAGO*MIBICIO",
         "2026-05-20",
@@ -53,7 +50,7 @@ describe("ccCrossImportDedupe", () => {
       )
     ).toBe(false);
     expect(
-      installmentPurchaseMatchesOneShot(
+      planMatchesOneShotLine(
         purchase,
         "JUMBO COSTANERA",
         "2026-05-19",
@@ -74,14 +71,14 @@ describe("ccCrossImportDedupe", () => {
       twin_index: 0,
     };
     expect(
-      installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 92_918)
+      planMatchesOneShotLine(purchase, "TGR", "2026-06-28", 92_918)
     ).toBe(true);
     expect(
-      installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 15_486)
+      planMatchesOneShotLine(purchase, "TGR", "2026-06-28", 15_486)
     ).toBe(true);
     // Unrelated amount at the same merchant/date is still a distinct purchase.
     expect(
-      installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 30_000)
+      planMatchesOneShotLine(purchase, "TGR", "2026-06-28", 30_000)
     ).toBe(false);
   });
 });

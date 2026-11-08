@@ -8,10 +8,8 @@ import {
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { buildExpenseKey, installmentHKeyWithoutTotal } from "./expenseKeys.js";
-import {
-  merchantsMatchForCrossDedupe,
-  purchaseAmountsMatch,
-} from "./ccCrossImportDedupe.js";
+import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { ccCardGroupsCompatible } from "./ccIssuers.js";

@@ -1,6 +1,7 @@
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
-import { findMatchingInstallmentPurchase, purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
+import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
+import { findPlanForOneShotLine } from "./cards/purchases.js";
 import {
   billingMonthContainingPurchase,
   billingMonthForManualLedgerPurchase,
@@ -70,7 +71,7 @@ export function applyWebPasteInstallmentFirstDueNudges(
     const amountClp = Math.abs(Math.trunc(line.amount_clp));
     if (amountClp <= 0) continue; // PAGOs / USD-only lines carry no CLP charge
 
-    const match = findMatchingInstallmentPurchase(
+    const match = findPlanForOneShotLine(
       accountId,
       line.merchant,
       line.transaction_date,

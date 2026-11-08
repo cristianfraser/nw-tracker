@@ -51,7 +51,7 @@ import {
   userDeclinedAutoCategoryForPurchase,
 } from "./ccAdditionalCardExpenseMatch.js";
 
-import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import { supersededOneShotLineIds } from "./cards/purchases.js";
 
 import {
 
@@ -561,7 +561,7 @@ export function buildCcExpenseLines(
 
   for (const accountId of accountIds) {
 
-    for (const id of oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId)) {
+    for (const id of supersededOneShotLineIds(accountId)) {
 
       supersededByInstallmentPurchases.add(id);
 

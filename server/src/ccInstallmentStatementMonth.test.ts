@@ -1,9 +1,9 @@
+import { purchaseFirstDueYm } from "./cards/purchases.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   ledgerInstallmentsPaid,
   planInstallmentsConsumed,
-  purchaseFirstDueYm,
   scheduledPaymentsPlanBreakdownByMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";

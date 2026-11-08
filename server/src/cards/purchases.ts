@@ -24,7 +24,9 @@ import {
   merchantStemForInstallmentDedupe,
 } from "../ccInstallmentLineDedupe.js";
 import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch } from "../matching/installmentAmount.js";
-import { normalizeMerchantText, parseDdMmYyToIso, stripBciTerminalSuffix } from "nw-tracker-contracts";
+import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix } from "nw-tracker-contracts";
+import { paymentStatementMonthYm } from "../ccInstallmentStatementMonth.js";
+import { billingMonthContainingPurchase, lastPdfBillingMonthForAccount } from "../ccManualBillingMonth.js";
 
 /** A plan as the line matchers read it (`cc_installment_purchases`). */
 export type CardPlanForMatching = {
@@ -309,3 +311,115 @@ export function supersededOneShotLineIds(accountId: number): Set<number> {
   oneShotScanCache?.superseded.set(accountId, out);
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Plan schedule anchor
+// ---------------------------------------------------------------------------------------------
+
+/** What the first-cuota rule reads of a plan. */
+export type PlanFirstDueInput = {
+  id: number;
+  purchase_date: string;
+  merchant: string | null;
+  source: string;
+  /** Evidence-backed first-cuota month (YYYY-MM); NULL = derive it (migration 163). */
+  first_due_month: string | null;
+};
+
+/** What the first-cuota rule reads of a plan's payment rows. */
+export type PlanPaymentMonthInput = {
+  pay_by_date: string;
+  statement_date: string | null;
+  statement_period_month: string | null;
+  period_to_join: string | null;
+  amount_clp: number;
+  cuota_current: number | null;
+};
+
+function ymCompare(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+const paymentBillingMonth = (p: PlanPaymentMonthInput): string | null => paymentStatementMonthYm(p);
+
+/**
+ * A plan's first-cuota month (YYYY-MM), the anchor of its whole schedule: the month of its printed
+ * cuota 1 (else the lowest printed cuota), else the statement after its last 00/N preamble, else —
+ * for a manual plan — the stored pin or the purchase's own cycle, advanced past every facturación
+ * already closed without billing it, else the stored pin, else the purchase month. A plan with
+ * none of these (no readable purchase date) throws, naming the plan; it used to read «1970-01».
+ */
+export function purchaseFirstDueYm(
+  pr: PlanFirstDueInput,
+  payList: readonly PlanPaymentMonthInput[],
+  accountId?: number
+): string {
+  const cuota1 = payList.find((p) => p.cuota_current === 1);
+  if (cuota1) {
+    const ym = paymentBillingMonth(cuota1);
+    if (ym) return ym;
+  }
+  const withCuota = payList
+    .filter((p) => p.cuota_current != null && p.cuota_current > 0)
+    .sort((a, b) => a.cuota_current! - b.cuota_current!);
+  if (withCuota.length > 0) {
+    const ym = paymentBillingMonth(withCuota[0]!);
+    if (ym) return ym;
+  }
+
+  const preambleOnly = payList.filter(
+    (p) => p.amount_clp > 0 && (p.cuota_current == null || p.cuota_current <= 0)
+  );
+  if (withCuota.length === 0 && preambleOnly.length > 0) {
+    // Cuota 1 bills the statement after the latest 00/N preamble, so the anchor is the
+    // preamble's STATEMENT month + 1. Anchoring on the pay-by month (already the next
+    // calendar month) pushed these plans one facturación late in every schedule consumer
+    // until real cuota-01 evidence arrived and silently shifted them back.
+    let lastStmtYm: string | null = null;
+    for (const p of preambleOnly) {
+      const ym = paymentBillingMonth(p);
+      if (ym && (lastStmtYm == null || ymCompare(ym, lastStmtYm) > 0)) lastStmtYm = ym;
+    }
+    if (lastStmtYm) return addCalendarMonths(lastStmtYm, 1);
+  }
+
+  // Evidence-backed first-cuota month (set by the web-paste importer when a pasted
+  // no-facturado line pins a manual plan's real first cycle). Ranks below any statement
+  // cuota evidence above, so a later PDF cuota-01 line always overrides it — but above the
+  // manual same-cycle guess below, which is only a heuristic for the yet-unbilled case.
+  const storedFirstDue = parseYearMonth(String(pr.first_due_month ?? "").slice(0, 7));
+
+  if (pr.source === "manual" && accountId != null) {
+    // Default guess: the first cuota bills at the close of the facturación the purchase
+    // falls into (Lider always bills cuota 1 same-cycle; Santander usually does, sometimes
+    // deferring it behind a cuota-00 preamble). The next statement's evidence replaces the
+    // guess either way: a cuota-01 line pins the real month, a cuota-00 preamble moves the
+    // anchor to statement + 1. Date-based (not "the open month at read time") so the guess
+    // does not drift forward as cycles roll while the statement is pending. The cycle is the
+    // bank's (`billingMonthContainingPurchase`): a ·0901 purchase on the 22nd belongs to the
+    // facturación that closes on the 24th, not to the next one as the config's 20th made it.
+    const base = storedFirstDue ?? billingMonthContainingPurchase(accountId, pr.purchase_date);
+    if (base) {
+      // A manual plan with no statement evidence cannot first-bill inside an already
+      // fully-imported facturación — that statement exists and did not bill it (reaching
+      // this branch means no cuota line matched). Advance to the first month whose
+      // statement is still pending. Statement-driven (last closed + 1, never the calendar),
+      // so a lagging import queue keeps the date-based guess and nothing drifts; with
+      // statements current this is the open month, and each later close without evidence
+      // rolls the leftover forward with it.
+      const lastClosed = lastPdfBillingMonthForAccount(accountId);
+      const firstPending = lastClosed ? addCalendarMonths(lastClosed, 1) : null;
+      return firstPending && ymCompare(firstPending, base) > 0 ? firstPending : base;
+    }
+  }
+  if (storedFirstDue) return storedFirstDue;
+  const purchaseMonth = parseYearMonth(pr.purchase_date.slice(0, 7));
+  if (!purchaseMonth) {
+    throw new Error(
+      `Plan ${pr.id} (${pr.merchant ?? "?"}): no first cuota month — no printed cuota, no stored first month and an unreadable purchase date ${JSON.stringify(pr.purchase_date)}`
+    );
+  }
+  return purchaseMonth;
+}
+

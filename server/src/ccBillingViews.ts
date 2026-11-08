@@ -16,18 +16,12 @@ import {
   facturacionUsdRatesForAccount,
   type FacturacionUsdRateSource,
 } from "./ccFacturacionUsdRate.js";
-import { withCcOneShotScanCache } from "./ccCrossImportDedupe.js";
+import { withCcOneShotScanCache } from "./cards/purchases.js";
 import {
   statementSlotsByBillingMonth,
   type CcStatementSlotByCurrency,
 } from "./ccBillingStatementSlots.js";
-import {
-  ccInstallmentLedgerRowCount,
-  ccLedgerMonthEndIso,
-  creditCardInstallmentPaymentsByBillingMonth,
-  installmentRemainingClpByCalendarMonth,
-  liveCreditCardOutstandingClp,
-} from "./ccInstallmentLedgerDb.js";
+import { ccInstallmentLedgerRowCount, ccLedgerMonthEndIso, creditCardInstallmentPaymentsByBillingMonth, installmentRemainingClpByCalendarMonth, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   billingMonthForManualLedgerPurchase,
@@ -39,7 +33,7 @@ import { feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
-import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import { supersededOneShotLineIds } from "./cards/purchases.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -423,7 +417,7 @@ export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurc
     source_pdf: string;
   }[];
   if (rows.length === 0) return [];
-  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const superseded = supersededOneShotLineIds(accountId);
   const out: CcPendingCuotaPurchase[] = [];
   for (const r of rows) {
     if (superseded.has(r.id)) continue;

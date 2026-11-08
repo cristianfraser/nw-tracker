@@ -1,15 +1,17 @@
-import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js";
-import { db } from "./db.js";
-import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import {
-  normalizeCcExpenseMerchantKey,
-  stableInstallmentHPurchaseKeyFromLedgerArgs,
-} from "./ccExpenseCategories.js";
-import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch, purchaseAmountsMatch } from "./matching/installmentAmount.js";
+  findOneShotLinesOfPlan,
+  findPlanForOneShotLine,
+  merchantsMatchForCrossDedupe,
+  oneShotLinesSupersededByPlans,
+  purchaseDateIsoFromLine,
+  type CardPlanForMatching,
+} from "./cards/purchases.js";
+import { db } from "./db.js";
+import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
+import { purchaseAmountsMatch } from "./matching/installmentAmount.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
-import { parseDdMmYyToIso, stripBciTerminalSuffix } from "nw-tracker-contracts";
 
 export const selLineCategory = db.prepare<[number]>(
   `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
@@ -21,267 +23,7 @@ export const upsertUniqueCat = db.prepare(
    ON CONFLICT(account_id, purchase_key) DO NOTHING`
 );
 
-export type CcInstallmentPurchaseMatch = {
-  id: number;
-  purchase_date: string;
-  total_amount_clp: number;
-  cuotas_totales: number;
-  merchant: string | null;
-  twin_index: number;
-};
-
-export type CcOneShotLineMatch = {
-  statement_line_id: number;
-  merchant: string | null;
-  transaction_date: string | null;
-  posting_date: string | null;
-  amount_clp: number;
-  purchase_date_iso: string | null;
-};
-
 export { purchaseAmountsMatch };
-
-/**
- * Strip BCI Lider merchant suffixes before cross-source comparison:
- * - PDF merchants append " (T)" (e.g. "ENTEL HOGAR (T)")
- * - Web-paste merchants append ",CITY" (e.g. "ENTEL HOGAR,SANTIAGO")
- */
-function normalizeBciMerchantForDedupe(merchant: string | null | undefined): string {
-  return stripBciTerminalSuffix(normalizeCcExpenseMerchantKey(merchant))
-    .replace(/,\s*[A-ZÁÉÍÓÚÑ ]+$/i, "") // strip trailing ",CITY" from web-paste lines
-    .trim();
-}
-
-export function merchantsMatchForCrossDedupe(
-  a: string | null | undefined,
-  b: string | null | undefined
-): boolean {
-  const na = normalizeCcExpenseMerchantKey(a);
-  const nb = normalizeCcExpenseMerchantKey(b);
-  if (na && nb && na === nb) return true;
-  if (plazaLyonMerchantsMatch(a, b)) return true;
-  // BCI Lider: PDF adds " (T)", web-paste adds ",CITY" — strip both and compare.
-  const ba = normalizeBciMerchantForDedupe(a);
-  const bb = normalizeBciMerchantForDedupe(b);
-  if (ba && bb && ba === bb) return true;
-  return installmentMerchantStemsMatch(a, b);
-}
-
-/** Web-paste «EXPRESS PLAZA L» vs PDF «RECAUDACION EX PLAZA LYON» (same Lyon parking charge). */
-export function plazaLyonMerchantsMatch(
-  a: string | null | undefined,
-  b: string | null | undefined
-): boolean {
-  const ua = normalizeCcExpenseMerchantKey(a);
-  const ub = normalizeCcExpenseMerchantKey(b);
-  if (!ua || !ub) return false;
-  const plazaA = ua.includes("PLAZA") && (ua.includes("LYON") || ua.endsWith("PLAZA L"));
-  const plazaB = ub.includes("PLAZA") && (ub.includes("LYON") || ub.endsWith("PLAZA L"));
-  if (!plazaA || !plazaB) return false;
-  return (
-    ua.includes("RECAUDACION") ||
-    ub.includes("RECAUDACION") ||
-    ua.includes("EXPRESS") ||
-    ub.includes("EXPRESS")
-  );
-}
-
-function purchaseDateIsoFromLine(
-  transaction_date: string | null,
-  posting_date: string | null
-): string | null {
-  return (
-    parseDdMmYyToIso(transaction_date ?? "") ?? parseDdMmYyToIso(posting_date ?? "")
-  );
-}
-
-export function listInstallmentPurchasesForAccount(
-  accountId: number
-): CcInstallmentPurchaseMatch[] {
-  const rows = db
-    .prepare(
-      `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
-       FROM cc_installment_purchases WHERE account_id = ?`
-    )
-    .all(accountId) as CcInstallmentPurchaseMatch[];
-  return dedupeInstallmentPurchaseLedgerRows(rows);
-}
-
-/**
- * A one-shot line represents an installment purchase when its amount matches either the full
- * principal or a single cuota. The bank's website lists a purchase as the full total at buy time
- * (e.g. a 6-cuota TGR buy of 9x.xxx), then later re-lists the same purchase as the per-cuota
- * charge that will post (1x.xxx) — a re-import of that cuota line must still dedupe against the
- * converted installment. The same rule `plainPurchaseLineAmountBlocksInstallmentMatch` in
- * ccInstallmentPurchaseTotalLines.ts reads (`amountIsPrincipalOrOneCuota`).
- */
-export function installmentPurchaseAmountMatchesOneShot(
-  purchase: CcInstallmentPurchaseMatch,
-  amountClp: number
-): boolean {
-  return amountIsPrincipalOrOneCuota(purchase.total_amount_clp, purchase.cuotas_totales, amountClp);
-}
-
-export function installmentPurchaseMatchesOneShot(
-  purchase: CcInstallmentPurchaseMatch,
-  merchant: string | null,
-  purchaseDateIso: string | null,
-  amountClp: number
-): boolean {
-  if (!installmentPurchaseAmountMatchesOneShot(purchase, amountClp)) return false;
-  if (!merchantsMatchForCrossDedupe(purchase.merchant, merchant)) return false;
-  if (purchaseDateIso && purchase.purchase_date !== purchaseDateIso) return false;
-  return true;
-}
-
-export function findMatchingInstallmentPurchase(
-  accountId: number,
-  merchant: string | null,
-  purchaseDateIso: string | null,
-  amountClp: number
-): CcInstallmentPurchaseMatch | null {
-  const abs = Math.abs(Math.trunc(amountClp));
-  if (abs <= 0) return null;
-  for (const p of listInstallmentPurchasesForAccount(accountId)) {
-    if (installmentPurchaseMatchesOneShot(p, merchant, purchaseDateIso, abs)) return p;
-  }
-  return null;
-}
-
-/**
- * Read-scope memo for the account-level line scan + superseded set. Only active inside
- * `withCcOneShotScanCache` (synchronous read-only builds like detalle por mes, which call
- * these once per billing month). Import/write flows never enter the scope, so their dedupe
- * decisions always re-read the DB.
- */
-let oneShotScanCache: {
-  lines: Map<number, CcOneShotLineMatch[]>;
-  superseded: Map<number, Set<number>>;
-} | null = null;
-
-export function withCcOneShotScanCache<T>(fn: () => T): T {
-  if (oneShotScanCache) return fn(); // already inside a scope — reuse it
-  oneShotScanCache = { lines: new Map(), superseded: new Map() };
-  try {
-    return fn();
-  } finally {
-    oneShotScanCache = null;
-  }
-}
-
-export function listOneShotLinesForAccount(accountId: number): CcOneShotLineMatch[] {
-  const cached = oneShotScanCache?.lines.get(accountId);
-  if (cached) return cached;
-  const out = listOneShotLinesForAccountUncached(accountId);
-  oneShotScanCache?.lines.set(accountId, out);
-  return out;
-}
-
-function listOneShotLinesForAccountUncached(accountId: number): CcOneShotLineMatch[] {
-  const rows = db
-    .prepare(
-      `SELECT l.id AS statement_line_id, l.merchant, l.transaction_date, l.posting_date,
-              l.amount_clp, l.amount_usd, l.installment_flag,
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
-              s.statement_date, s.currency AS statement_currency
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND l.installment_flag = 0`
-    )
-    .all(accountId) as {
-    statement_line_id: number;
-    merchant: string | null;
-    transaction_date: string | null;
-    posting_date: string | null;
-    amount_clp: number | null;
-    amount_usd: number | null;
-    installment_flag: number;
-    valor_cuota_mensual_clp: number | null;
-    valor_cuota_mensual_usd: number | null;
-    statement_date: string;
-    statement_currency: string;
-  }[];
-
-  const out: CcOneShotLineMatch[] = [];
-  for (const r of rows) {
-    const fxDateIso = parseDdMmYyToIso(r.statement_date);
-    const amount = effectiveCcExpenseLineAmountClp(
-      {
-        installment_flag: 0,
-        amount_clp: r.amount_clp,
-        amount_usd: r.amount_usd,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-        statement_currency: r.statement_currency,
-      },
-      fxDateIso
-    );
-    if (amount == null || amount <= 0) continue;
-    out.push({
-      statement_line_id: r.statement_line_id,
-      merchant: r.merchant,
-      transaction_date: r.transaction_date,
-      posting_date: r.posting_date,
-      amount_clp: amount,
-      purchase_date_iso: purchaseDateIsoFromLine(r.transaction_date, r.posting_date),
-    });
-  }
-  return out;
-}
-
-export function findOneShotLinesMatchingPurchase(
-  accountId: number,
-  purchase: CcInstallmentPurchaseMatch
-): number[] {
-  const ids: number[] = [];
-  for (const line of listOneShotLinesForAccount(accountId)) {
-    if (
-      installmentPurchaseMatchesOneShot(
-        purchase,
-        line.merchant,
-        line.purchase_date_iso,
-        line.amount_clp
-      )
-    ) {
-      ids.push(line.statement_line_id);
-    }
-  }
-  return ids;
-}
-
-function oneShotLinesSupersededByInstallmentPurchases(
-  accountId: number
-): Map<number, CcInstallmentPurchaseMatch> {
-  const superseded = new Map<number, CcInstallmentPurchaseMatch>();
-  const purchases = listInstallmentPurchasesForAccount(accountId);
-  if (purchases.length === 0) return superseded;
-  for (const line of listOneShotLinesForAccount(accountId)) {
-    for (const p of purchases) {
-      if (
-        installmentPurchaseMatchesOneShot(
-          p,
-          line.merchant,
-          line.purchase_date_iso,
-          line.amount_clp
-        )
-      ) {
-        superseded.set(line.statement_line_id, p);
-        break;
-      }
-    }
-  }
-  return superseded;
-}
-
-export function oneShotStatementLineIdsSupersededByInstallmentPurchases(
-  accountId: number
-): Set<number> {
-  const cached = oneShotScanCache?.superseded.get(accountId);
-  if (cached) return cached;
-  const out = new Set(oneShotLinesSupersededByInstallmentPurchases(accountId).keys());
-  oneShotScanCache?.superseded.set(accountId, out);
-  return out;
-}
 
 export function shouldSkipOneShotStatementImport(
   accountId: number,
@@ -289,7 +31,7 @@ export function shouldSkipOneShotStatementImport(
   purchaseDateIso: string | null,
   amountClp: number
 ): boolean {
-  return findMatchingInstallmentPurchase(accountId, merchant, purchaseDateIso, amountClp) != null;
+  return findPlanForOneShotLine(accountId, merchant, purchaseDateIso, amountClp) != null;
 }
 
 const dbOneShotCandidates = db.prepare<[number, number]>(
@@ -379,7 +121,7 @@ export function removeOneShotLinesSupersededByInstallmentPurchases(
   accountId: number,
   opts?: { recompute?: boolean }
 ): CcCrossImportDedupeResult {
-  const superseded = oneShotLinesSupersededByInstallmentPurchases(accountId);
+  const superseded = oneShotLinesSupersededByPlans(accountId);
   for (const [lineId, purchase] of superseded) {
     const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
     if (cat?.category_id != null) {
@@ -412,9 +154,9 @@ export function removeOneShotLinesForInstallmentPurchase(
       `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
        FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
     )
-    .get(purchaseId, accountId) as CcInstallmentPurchaseMatch | undefined;
+    .get(purchaseId, accountId) as CardPlanForMatching | undefined;
   if (!purchase) return { removed_line_ids: [], removed_count: 0 };
-  const ids = findOneShotLinesMatchingPurchase(accountId, purchase);
+  const ids = findOneShotLinesOfPlan(accountId, purchase);
   const removedFrom = earliestTransactionDateForLineIds(ids);
   const removed_count = deleteStatementLinesByIds(ids);
   if (removed_count > 0) {

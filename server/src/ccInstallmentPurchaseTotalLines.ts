@@ -1,6 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { amountIsPrincipalOrOneCuota, purchaseAmountsMatch } from "./matching/installmentAmount.js";
-import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import {
   categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
@@ -14,7 +14,7 @@ import {
   isUnindexedInstallmentResumenLine,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
-import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js";
+import { dedupeInstallmentPurchaseLedgerRows } from "./cards/purchases.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";

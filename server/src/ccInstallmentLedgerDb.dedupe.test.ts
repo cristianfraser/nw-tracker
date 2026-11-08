@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js";
+import { dedupeInstallmentPurchaseLedgerRows } from "./cards/purchases.js";
 
 describe("dedupeInstallmentPurchaseLedgerRows", () => {
   it("keeps one row per purchase stem and prefers non-summary merchant", () => {

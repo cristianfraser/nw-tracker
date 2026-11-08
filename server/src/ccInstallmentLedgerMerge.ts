@@ -42,7 +42,7 @@ import {
   type CcExpenseLineRekeyResult,
 } from "./ccExpenseLineRekey.js";
 import { assertCcPaymentEvidenceKept, ccPaymentPairingIdsWithEvidence } from "./ccPaymentMirrorEvidence.js";
-import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
+import { installmentPurchaseLedgerDedupeKey } from "./cards/purchases.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
 
