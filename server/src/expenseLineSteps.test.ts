@@ -13,6 +13,7 @@ describe("the expense-line read pipeline", () => {
       "purchase notes",
       "big groups",
       "origin labels",
+      "installment plans",
       "expense deposit links",
       "transfer counterparties",
       "payment receipts",

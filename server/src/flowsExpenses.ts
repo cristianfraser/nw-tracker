@@ -51,7 +51,8 @@ import {
   userDeclinedAutoCategoryForPurchase,
 } from "./ccAdditionalCardExpenseMatch.js";
 
-import { accountIdForLine, expenseEvidenceLines, supersededOneShotLineIds } from "./cards/purchases.js";
+import { accountIdForLine, expenseEvidenceLines, planRows, supersededOneShotLineIds } from "./cards/purchases.js";
+import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 import { db } from "./db.js";
 
 import {
@@ -136,6 +137,15 @@ export type FlowCcExpenseLineSource = "cc" | "checking" | "manual" | "payslip";
 export type FlowCcExpenseLineRow = {
 
   source: FlowCcExpenseLineSource;
+
+  /**
+   * A plan's own line (a negative id: its cuotas, its «Total» row): the plan, and who owns it —
+   * `manual` (hand-entered or converted from a card line: count editable, deletable) or
+   * `statement` (the statements print it).
+   */
+  installment_purchase_id?: number;
+
+  installment_source?: "manual" | "statement";
 
   /** CC statement line id or checking movement id. */
 
@@ -976,6 +986,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "purchase notes", run: asRows(enrichFlowLinesWithPurchaseNotes) },
   { name: "big groups", run: asRows(enrichFlowLinesWithBigGroups) },
   { name: "origin labels", run: asRows(enrichFlowLinesWithOriginLabels) },
+  { name: "installment plans", run: withInstallmentPlans },
   { name: "expense deposit links", run: asRows(enrichFlowLinesWithExpenseDepositLinks) },
   { name: "transfer counterparties", run: asRows(enrichFlowLinesWithTransferCounterparties) },
   { name: "payment receipts", run: asRows(withPaymentReceipts) },
@@ -986,6 +997,18 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
 ];
+
+/** A plan's own lines name their plan and its owner ({@link FlowCcExpenseLineRow.installment_source}). */
+function withInstallmentPlans(lines: readonly FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
+  if (!lines.some((l) => l.source === "cc" && l.statement_line_id < 0)) return [...lines];
+  const sourceById = new Map(planRows().map((p) => [p.id, p.source === "manual" ? ("manual" as const) : ("statement" as const)]));
+  return lines.map((l) => {
+    if (l.source !== "cc" || l.statement_line_id >= 0) return l;
+    const planId = purchaseIdFromPlanGastosLineId(l.statement_line_id) ?? -l.statement_line_id;
+    const owner = sourceById.get(planId);
+    return owner ? { ...l, installment_purchase_id: planId, installment_source: owner } : l;
+  });
+}
 
 const selTotalChanges = db.prepare(`SELECT total_changes() AS n`);
 

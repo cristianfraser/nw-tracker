@@ -5,7 +5,7 @@ import {
   deleteManualCcInstallmentPurchase,
   updateManualCcInstallmentPurchase,
 } from "./ccInstallmentManual.js";
-import { buildCcExpenseLines } from "./flowsExpenses.js";
+import { buildCcExpenseLines, buildFlowsExpenseLines } from "./flowsExpenses.js";
 import { debtEventLines, planPurchaseEvents } from "./cards/purchases.js";
 import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import {
@@ -67,6 +67,10 @@ describe("convert a card line to cuotas, change the count, remove the plan (bug 
     expect(converted.debt).toEqual([]);
     expect(converted.plans).toBe(1);
     expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(lineId)).toBeDefined();
+    // The plan's lines say whose it is: a converted plan is the user's (editable).
+    const planLines = buildFlowsExpenseLines([accountId]).filter((l) => l.installment_purchase_id === planId);
+    expect(planLines.length).toBeGreaterThan(0);
+    expect(new Set(planLines.map((l) => l.installment_source))).toEqual(new Set(["manual"]));
 
     updateManualCcInstallmentPurchase(accountId, planId, { cuotas_totales: 6 });
     expect((db.prepare(`SELECT cuotas_totales FROM cc_installment_purchases WHERE id = ?`).get(planId) as { cuotas_totales: number }).cuotas_totales).toBe(6);
