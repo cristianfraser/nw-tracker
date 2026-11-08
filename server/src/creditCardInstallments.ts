@@ -12,8 +12,8 @@ import {
   type CcPendingCuotaPurchase,
 } from "./ccBillingViews.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
-import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
+import type { CreditCardBillingConfig } from "./cards/config.js";
+import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ccStatementRowCount } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";

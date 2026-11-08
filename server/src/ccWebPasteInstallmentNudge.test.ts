@@ -17,7 +17,8 @@ import {
   billingMonthContainingPurchase,
   billingMonthForManualLedgerPurchase,
 } from "./ccManualBillingMonth.js";
-import { billingPeriodIsoRange, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
+import { billingPeriodIsoRange } from "./ccBillingMonth.js";
+import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 

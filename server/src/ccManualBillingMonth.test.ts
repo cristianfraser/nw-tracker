@@ -28,6 +28,10 @@ describe("lastPdfBillingMonthForAccount", () => {
         .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
         .run(group.id, `Vitest · cc open month ${key}`, `vitest-cc-open-month|${key}`).lastInsertRowid
     );
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '0000', 'santander')`
+    ).run(id);
     accountIds.push(id);
     return id;
   }
@@ -95,6 +99,10 @@ describe("billingMonthContainingPurchase", () => {
         .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
         .run(group.id, `Vitest · purchase cycle ${key}`, `vitest-cc-purchase-cycle|${key}`).lastInsertRowid
     );
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '0000', ?)`
+    ).run(id, key === "bci" ? "bci" : "santander");
     accountIds.push(id);
     return id;
   }

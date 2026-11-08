@@ -1,4 +1,4 @@
-import { db } from "./db.js";
+import { DEFAULT_BILLING_CYCLE_END_DAY, type CreditCardBillingConfig } from "./cards/config.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
@@ -7,32 +7,6 @@ function isoFromStatementField(raw: string | null | undefined): string | null {
   if (!t) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
   return parseDdMmYyToIso(t);
-}
-
-export type CreditCardBillingConfig = {
-  billing_cycle_start_day: number;
-  billing_cycle_end_day: number | null;
-};
-
-const stmtConfig = db.prepare(
-  `SELECT billing_cycle_start_day, billing_cycle_end_day
-   FROM credit_card_account_config WHERE account_id = ?`
-);
-
-const DEFAULT_CONFIG: CreditCardBillingConfig = {
-  billing_cycle_start_day: 21,
-  billing_cycle_end_day: 20,
-};
-
-export function loadCreditCardBillingConfig(accountId: number): CreditCardBillingConfig {
-  const row = stmtConfig.get(accountId) as
-    | { billing_cycle_start_day: number; billing_cycle_end_day: number | null }
-    | undefined;
-  if (!row) return { ...DEFAULT_CONFIG };
-  return {
-    billing_cycle_start_day: row.billing_cycle_start_day ?? 21,
-    billing_cycle_end_day: row.billing_cycle_end_day ?? 20,
-  };
 }
 
 /** Billing month (YYYY-MM) from statement close date (~20th → month of statement). */
@@ -65,7 +39,7 @@ export function billingMonthForCcStatement(fields: {
  */
 export function billingPeriodIsoRange(
   billingMonth: string,
-  config: CreditCardBillingConfig = DEFAULT_CONFIG
+  config: CreditCardBillingConfig
 ): { period_from: string; period_to: string } | null {
   const m = /^(\d{4})-(\d{2})$/.exec(billingMonth);
   if (!m) return null;
@@ -73,7 +47,7 @@ export function billingPeriodIsoRange(
   const mo = Number(m[2]);
   if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) return null;
   const startDay = config.billing_cycle_start_day;
-  const endDay = config.billing_cycle_end_day ?? 20;
+  const endDay = config.billing_cycle_end_day ?? DEFAULT_BILLING_CYCLE_END_DAY;
   const prevMo = mo === 1 ? 12 : mo - 1;
   const prevY = mo === 1 ? y - 1 : y;
   const pad = (n: number) => String(n).padStart(2, "0");

@@ -1,3 +1,4 @@
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
@@ -32,6 +33,13 @@ const SANTANDER_LINES = pasted([
   ["2026-05-07", "PAGO", 5570527],
 ]);
 
+/** The vitest Santander card master (`test/vitestDbSeed.ts`): the records read its config cycle. */
+function fixtureCardId(): number {
+  const id = getVitestSantanderCcMasterAccountId();
+  if (id == null) throw new Error("vitest card fixture missing");
+  return id;
+}
+
 describe("ccWebPasteToCsvRecords", () => {
   it("assigns pasted lines to open billing month after last PDF", () => {
     const master = db
@@ -55,7 +63,7 @@ describe("ccWebPasteToCsvRecords", () => {
 
   it("stores charges positive and payments negative in CSV records", () => {
     const lines = SANTANDER_LINES;
-    const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
+    const { records } = ccWebPasteToCsvRecords(fixtureCardId(), "santander", "4242", "test", lines);
     const charge = records.find((r) => r.merchant === "ARAMCO");
     const pago = records.find((r) => r.merchant === "PAGO");
     expect(charge?.amount_clp).toBe("1990");
@@ -64,7 +72,7 @@ describe("ccWebPasteToCsvRecords", () => {
 
   it("emits USD charges as amount_usd (charge positive) with amount_clp empty and no origin", () => {
     const lines = pasted([["2026-06-30", "ANTHROPIC* CLAU", -99.28, "usd"]]);
-    const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
+    const { records } = ccWebPasteToCsvRecords(fixtureCardId(), "santander", "4242", "test", lines);
     const r = records.find((x) => x.merchant === "ANTHROPIC* CLAU");
     expect(r?.amount_clp).toBe(""); // no bogus CLP value
     expect(r?.amount_usd).toBe("99.28"); // Santander charge → positive
@@ -213,7 +221,7 @@ describe("cuota-billing rows in ccWebPasteToCsvRecords", () => {
     ]);
     expect(lines).toHaveLength(3);
     const { records, skipped_cuota_billing } = ccWebPasteToCsvRecords(
-      0,
+      fixtureCardId(),
       "santander",
       "4242",
       "test",

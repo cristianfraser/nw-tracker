@@ -1,8 +1,5 @@
-import {
-  billingMonthForStatementDate,
-  billingPeriodIsoRange,
-  loadCreditCardBillingConfig,
-} from "./ccBillingMonth.js";
+import { billingMonthForStatementDate, billingPeriodIsoRange } from "./ccBillingMonth.js";
+import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";

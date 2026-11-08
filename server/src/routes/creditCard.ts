@@ -14,7 +14,7 @@ import {
   isCreditCardAccountId,
   parseCreditCardConfigPatch,
 } from "../ccAccountConfig.js";
-import { loadCreditCardBillingConfig } from "../ccBillingMonth.js";
+import { loadCreditCardBillingConfig } from "../cards/config.js";
 import { documentImportSpecsForAccount } from "../accountDocumentRegistry.js";
 import {
   importAccountDocument,

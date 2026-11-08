@@ -200,6 +200,10 @@ describe("purchaseFirstDueYm closed-month clamp (manual plans)", () => {
         .run(group.id, "Vitest · first-due clamp", `vitest-first-due-clamp|${periodsTo.join(",")}`)
         .lastInsertRowid
     );
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '0000', 'santander')`
+    ).run(id);
     accountIds.push(id);
     for (const periodTo of periodsTo) {
       db.prepare(
