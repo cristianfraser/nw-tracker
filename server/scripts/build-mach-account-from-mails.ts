@@ -230,10 +230,10 @@ try {
     // A line's own category (or split) beats the merchant rule, so each top-up line is set too; what
     // it carried before is listed (a hint at what that money was spent on inside MACH).
     const splitsOf = db.prepare(
-      `SELECT c.slug, s.amount_clp FROM cc_expense_line_splits s JOIN cc_expense_categories c ON c.id = s.category_id
-       WHERE s.source = 'cc' AND s.line_id = ? ORDER BY s.seq`
+      `SELECT c.slug, s.amount_clp FROM flow_parts s JOIN cc_expense_categories c ON c.id = s.category_id
+       WHERE s.flow_id = (SELECT flow_id FROM cc_statement_lines WHERE id = ?) ORDER BY s.seq`
     );
-    const dropSplits = db.prepare(`DELETE FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ?`);
+    const dropSplits = db.prepare(`DELETE FROM flow_parts WHERE flow_id = (SELECT flow_id FROM cc_statement_lines WHERE id = ?)`);
     rows.push("\n  card top-up lines → internal transfer (category they carried before):");
     for (const e of events.filter((x) => x.kind === "card_load")) {
       const splits = splitsOf.all(e.ref) as { slug: string; amount_clp: number }[];

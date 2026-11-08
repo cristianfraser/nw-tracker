@@ -337,8 +337,8 @@ describe("listMirrorPairCandidates", () => {
         `checking-cartola:${ids.checking}:%`
       );
       db.prepare(
-        `DELETE FROM cc_expense_line_splits WHERE source = 'checking' AND line_id IN (
-           SELECT id FROM movements WHERE account_id = ?)`
+        `DELETE FROM flow_parts WHERE flow_id IN (
+           SELECT flow_id FROM movements WHERE account_id = ?)`
       ).run(ids.checking);
       db.prepare(
         `DELETE FROM flow_income_overrides WHERE flow_id IN (
@@ -439,7 +439,7 @@ describe("listMirrorPairCandidates", () => {
         db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(row.key);
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         db.prepare(
-          `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp) VALUES ('checking', ?, 0, ?, 3333331)`
+          `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 0, ?, 3333331)`
         ).run(out, categoryId("food"));
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
       } finally {

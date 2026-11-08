@@ -45,6 +45,8 @@ export type CcLineRef = {
   parserRowId: string | null;
   installment: boolean;
   identity: string;
+  /** The line's flow when it was read (it outlives a line a re-import deleted). */
+  flowId?: number | null;
 };
 
 export type CcLineMove = {
@@ -95,8 +97,11 @@ function usableParserRowId(raw: string | null): string | null {
   return t && !t.startsWith("synthetic:") ? t : null;
 }
 
-export function ccLineRefFromRow(row: CcLineIdentitySource & { id: number; parser_row_id: string | null }): CcLineRef {
+export function ccLineRefFromRow(
+  row: CcLineIdentitySource & { id: number; parser_row_id: string | null; flow_id?: number | null }
+): CcLineRef {
   return {
+    flowId: row.flow_id ?? null,
     lineId: row.id,
     accountId: row.account_id,
     parserRowId: usableParserRowId(row.parser_row_id),
@@ -108,11 +113,11 @@ export function ccLineRefFromRow(row: CcLineIdentitySource & { id: number; parse
 export const CC_LINE_REF_SELECT = `
   SELECT l.id, s.account_id, s.currency, l.transaction_date, l.posting_date, l.merchant,
          l.amount_clp, l.amount_usd, l.installment_flag, l.nro_cuota_current, l.nro_cuota_total,
-         l.parser_row_id
+         l.parser_row_id, l.flow_id
   FROM cc_statement_lines l
   JOIN cc_statements s ON s.id = l.statement_id`;
 
-type CcLineRefRow = CcLineIdentitySource & { id: number; parser_row_id: string | null };
+type CcLineRefRow = CcLineIdentitySource & { id: number; parser_row_id: string | null; flow_id: number | null };
 
 export function listCcLineRefsForAccount(accountId: number): CcLineRef[] {
   const rows = db.prepare(`${CC_LINE_REF_SELECT} WHERE s.account_id = ?`).all(accountId) as CcLineRefRow[];
@@ -298,6 +303,13 @@ function linePrKey(ref: CcLineRef): string | null {
   return !ref.installment && ref.parserRowId ? buildExpenseKey({ kind: "line_pr", parserRowId: ref.parserRowId }) : null;
 }
 
+/** A line's flow: the one read with it, else the line's current one (null when it is gone). */
+function refFlowId(ref: CcLineRef): number | null {
+  if (ref.flowId != null) return ref.flowId;
+  const row = db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(ref.lineId) as { flow_id: number | null } | undefined;
+  return row?.flow_id ?? null;
+}
+
 /** True when the line holds anything these moves carry (a `line-pr:` row or a card split). */
 export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
   const key = linePrKey(ref);
@@ -309,7 +321,7 @@ export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
   if (key && db.prepare(`SELECT 1 FROM real_estate_expense_links WHERE purchase_key = ?`).get(key)) {
     return true;
   }
-  return db.prepare(`SELECT 1 FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ?`).get(ref.lineId) != null;
+  return db.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ?`).get(refFlowId(ref)) != null;
 }
 
 /**
@@ -415,14 +427,12 @@ export function applyCcLineMoves(
       }
       if (!move.copy && !move.classificationOnly) moveRealEstateLink(fromKey, toKey, out);
     }
-    if (from.lineId !== to.lineId && !move.classificationOnly) {
-      const splits = db
-        .prepare(`SELECT COUNT(*) AS n FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ?`)
-        .get(from.lineId) as { n: number };
-      if (splits.n === 0) continue;
-      const targetSplits = db
-        .prepare(`SELECT COUNT(*) AS n FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ?`)
-        .get(to.lineId) as { n: number };
+    if (refFlowId(from) !== refFlowId(to) && !move.classificationOnly) {
+      const fromFlow = refFlowId(from);
+      const toFlow = refFlowId(to);
+      const splits = db.prepare(`SELECT COUNT(*) AS n FROM flow_parts WHERE flow_id = ?`).get(fromFlow) as { n: number };
+      if (splits.n === 0 || fromFlow === toFlow) continue;
+      const targetSplits = db.prepare(`SELECT COUNT(*) AS n FROM flow_parts WHERE flow_id = ?`).get(toFlow) as { n: number };
       if (targetSplits.n > 0) {
         out.conflicts.push({
           table: "cc_expense_line_splits",
@@ -433,17 +443,14 @@ export function applyCcLineMoves(
         });
         continue;
       }
+      // Pieces sit on the line's flow (migration 283): the replacing line's flow takes them.
       if (move.copy) {
         db.prepare(
-          `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp, note, spent_on)
-           SELECT source, ?, seq, category_id, amount_clp, note, spent_on FROM cc_expense_line_splits
-           WHERE source = 'cc' AND line_id = ?`
-        ).run(to.lineId, from.lineId);
+          `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, note, spent_on)
+           SELECT ?, seq, category_id, amount_clp, note, spent_on FROM flow_parts WHERE flow_id = ?`
+        ).run(toFlow, fromFlow);
       } else {
-        db.prepare(`UPDATE cc_expense_line_splits SET line_id = ? WHERE source = 'cc' AND line_id = ?`).run(
-          to.lineId,
-          from.lineId
-        );
+        db.prepare(`UPDATE flow_parts SET flow_id = ? WHERE flow_id = ?`).run(toFlow, fromFlow);
       }
       out.moved.cc_expense_line_splits += splits.n;
     }
@@ -462,8 +469,8 @@ function assignmentSignature(ref: CcLineRef): string | null {
     }
   }
   const splits = db
-    .prepare(`SELECT seq, category_id, amount_clp, note FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ? ORDER BY seq`)
-    .all(ref.lineId);
+    .prepare(`SELECT seq, category_id, amount_clp, note FROM flow_parts WHERE flow_id = ? ORDER BY seq`)
+    .all(refFlowId(ref));
   parts.push(splits);
   const sig = JSON.stringify(parts);
   return parts.every((p) => p == null || (Array.isArray(p) && p.length === 0)) ? null : sig;

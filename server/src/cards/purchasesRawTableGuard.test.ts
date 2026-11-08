@@ -40,6 +40,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   // The flow identity (F9 step 3): which rows a key names, the flows seeded from them.
   "flows/flowKeyResolve.ts": "raw: expense key → the rows it names (flows' evidence)",
   "flows/flowTables279.ts": "raw: migration 279 hook (seeds a flow per row)",
+  "flows/flowParts.ts": "raw: a line's pieces through its flow (the line id the pieces readers speak)",
   // The link tables keyed by line id.
   "ccTraspasoDeudaLinks.ts": "raw: persists traspaso pairs by line id (statement lines only)",
   "ccStatementsDb.ts": "raw: a statement's own lines for the statement payload",
@@ -47,6 +48,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "markInputTriggers.ts": "trigger DDL names the tables",
   "demoData/invariants.ts": "demo build check",
   "test/vitestDbSeed.ts": "test seed",
+  "test/flowFixtures.ts": "test fixture lines",
 };
 
 const SRC = path.dirname(path.dirname(fileURLToPath(import.meta.url)));

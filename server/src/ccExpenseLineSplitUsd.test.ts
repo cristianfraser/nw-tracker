@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { insertLineSplits } from "./ccExpenseLineSplits.js";
 import { db } from "./db.js";
+import { fixtureCardLine } from "./test/flowFixtures.js";
 import {
   expandLineSplitsInDrafts,
   type FlowCcExpenseLineRowDraft,
@@ -49,7 +50,9 @@ function draft(overrides: Partial<FlowCcExpenseLineRowDraft> = {}): FlowCcExpens
 }
 
 describe("expandLineSplitsInDrafts USD allocation", () => {
+  let dropLine = () => {};
   beforeAll(() => {
+    dropLine = fixtureCardLine(VITEST_LINE_ID, 130_000);
     const [catA, catB] = categorySlugs(2);
     insertLineSplits({
       source: "cc",
@@ -63,10 +66,11 @@ describe("expandLineSplitsInDrafts USD allocation", () => {
   });
 
   afterAll(() => {
-    db.prepare(`DELETE FROM cc_expense_line_splits WHERE line_id = ? AND note = ?`).run(
+    db.prepare(`DELETE FROM flow_parts WHERE flow_id = (SELECT flow_id FROM cc_statement_lines WHERE id = ?) AND note = ?`).run(
       VITEST_LINE_ID,
       VITEST_SPLIT_NOTE
     );
+    dropLine();
   });
 
   it("allocates amount_usd_at_expense by CLP share and sums back to the parent", () => {

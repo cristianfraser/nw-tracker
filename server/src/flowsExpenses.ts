@@ -323,7 +323,7 @@ export type FlowCcExpenseLineRow = {
    * a pending listing the bank names otherwise («CONVENIO P.A.T.» for the car insurance).
    */
   recurring_payment?: { id: number; name: string; patterns: string[] };
-  /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
+  /** One piece of a line split into pieces (`flow_parts.seq`). */
   piece_seq?: number;
   /** What a line's pieces leave of it: the line's own expense, on its own day. */
   pieces_remainder?: true;
@@ -853,7 +853,7 @@ export function loadFinalizedCheckingGastosLinesReadOnly(): Omit<
 }
 
 /**
- * A card or checking line split into pieces (`cc_expense_line_splits`): each piece is its own line,
+ * A card or checking line split into pieces (`flow_parts`): each piece is its own line,
  * in its category, on the day it was spent (the line's day when it names none). Pieces need not
  * cover the line — a cash withdrawal spent on several things, part of it never accounted for — so
  * what they leave stays the line's own expense, on its own day; they may not add up to more than

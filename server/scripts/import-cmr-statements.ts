@@ -226,7 +226,7 @@ const tx = db.transaction(() => {
      WHERE u.account_id = ? AND u.purchase_key = ?`
   );
   const dropCat = db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`);
-  const dropSplits = db.prepare(`DELETE FROM cc_expense_line_splits WHERE source = 'checking' AND line_id = ?`);
+  const dropSplits = db.prepare(`DELETE FROM flow_parts WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`);
   for (const d of debits) {
     const key = checkingGastosMovementPurchaseKey(d.id);
     const had = (catOf.get(d.account_id, key) as { slug: string | null } | undefined)?.slug;

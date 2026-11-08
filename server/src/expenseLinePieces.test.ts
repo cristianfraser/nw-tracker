@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
+import { fixtureMovement } from "./test/flowFixtures.js";
 import { expandLineSplitsInDrafts, type FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import {
   createManualExpense,
@@ -9,8 +10,9 @@ import {
   updateManualExpense,
 } from "./flowsManualExpenses.js";
 
-// A movement id no fixture uses: the splits table keys pieces by (source, line id) only.
+// A movement id no fixture uses; the pieces sit on its flow.
 const LINE_ID = 987_654_321;
+const dropMovement = fixtureMovement(LINE_ID, -150_000);
 
 function withdrawal(): FlowCcExpenseLineRowDraft {
   return {
@@ -41,17 +43,20 @@ function withdrawal(): FlowCcExpenseLineRowDraft {
 
 function insertPiece(seq: number, slug: string, amount: number, spentOn: string | null): void {
   db.prepare(
-    `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp, spent_on)
-     VALUES ('checking', ?, ?, ?, ?, ?)`
+    `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, spent_on)
+     VALUES ((SELECT flow_id FROM movements WHERE id = ?), ?, ?, ?, ?)`
   ).run(LINE_ID, seq, getCcExpenseCategoryBySlug(slug)!.id, amount, spentOn);
 }
 
 function clearPieces(): void {
-  db.prepare(`DELETE FROM cc_expense_line_splits WHERE source = 'checking' AND line_id = ?`).run(LINE_ID);
+  db.prepare(`DELETE FROM flow_parts WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`).run(LINE_ID);
 }
 
 describe("line pieces", () => {
-  afterAll(clearPieces);
+  afterAll(() => {
+    clearPieces();
+    dropMovement();
+  });
 
   it("dates each piece and keeps what the pieces leave on the line's own day", () => {
     clearPieces();

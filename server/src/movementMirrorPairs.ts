@@ -36,6 +36,7 @@ import { checkingMovementPurchaseKey } from "./checkingGastosCategoryPersist.js"
 import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
+import { FLOW_PARTS_BY_LINE_SQL } from "./flows/flowParts.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 
@@ -180,7 +181,7 @@ function loadSpendingCategorizedOutflowIds(
     (
       db
         .prepare(
-          `SELECT DISTINCT s.line_id FROM cc_expense_line_splits s
+          `SELECT DISTINCT s.line_id FROM ${FLOW_PARTS_BY_LINE_SQL} s
            JOIN cc_expense_categories c ON c.id = s.category_id
            WHERE s.source = 'checking' AND c.slug NOT IN (${ph})`
         )

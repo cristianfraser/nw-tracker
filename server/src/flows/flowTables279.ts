@@ -175,8 +175,8 @@ const SOURCES: readonly SourceSpec[] = [
   },
 ];
 
-/** The insert and delete triggers: a row written later gets its own flow; a row deleted takes its evidence along, and a keyless flow left with none goes too. */
-function flowTriggerSql(spec: SourceSpec): string[] {
+/** The insert trigger: a row written later gets its own flow and its evidence row. */
+function flowInsertTriggerSql(spec: SourceSpec): string {
   const t = spec.table;
   const when = spec.where ? ` WHEN ${spec.where("NEW")}` : "";
   const setFlow = spec.hasFlowColumn
@@ -184,21 +184,37 @@ function flowTriggerSql(spec: SourceSpec): string[] {
     : "";
   const evidenceFlow = spec.hasFlowColumn ? `(SELECT flow_id FROM ${t} WHERE id = NEW.id)` : `last_insert_rowid()`;
   const insertWhen = spec.hasFlowColumn ? `${when ? `${when} AND` : " WHEN"} NEW.flow_id IS NULL` : when;
-  const oldFlow = spec.hasFlowColumn
-    ? `OLD.flow_id`
-    : `(SELECT flow_id FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id)`;
-  return [
-    `CREATE TRIGGER flow_${t}_ai AFTER INSERT ON ${t}${insertWhen} BEGIN
+  return `CREATE TRIGGER flow_${t}_ai AFTER INSERT ON ${t}${insertWhen} BEGIN
   INSERT INTO flows (${FLOW_COLUMNS}) SELECT ${spec.flowValues("NEW")};
   ${setFlow}
   INSERT INTO flow_evidence (flow_id, ${EVIDENCE_COLUMNS}) SELECT ${evidenceFlow}, ${spec.evidenceValues("NEW")};
-END`,
-    `CREATE TRIGGER flow_${t}_ad AFTER DELETE ON ${t} BEGIN
+END`;
+}
+
+/**
+ * The delete trigger: a row deleted takes its evidence along, and its flow goes too when nothing
+ * else holds it — no key, no other evidence, no row in `keepIfIn` (the row-named assignments a
+ * re-key mover still has to carry: a line's pieces).
+ */
+function flowDeleteTriggerSql(spec: SourceSpec, keepIfIn: readonly string[]): string {
+  const t = spec.table;
+  const oldFlow = spec.hasFlowColumn
+    ? `OLD.flow_id`
+    : `(SELECT flow_id FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id)`;
+  const keep = keepIfIn.map((k) => `\n    AND NOT EXISTS (SELECT 1 FROM ${k} a WHERE a.flow_id = flows.id)`).join("");
+  return `CREATE TRIGGER flow_${t}_ad AFTER DELETE ON ${t} BEGIN
   DELETE FROM flows WHERE id = ${oldFlow} AND legacy_key IS NULL
-    AND NOT EXISTS (SELECT 1 FROM flow_evidence e WHERE e.flow_id = flows.id AND NOT (e.source_table = '${t}' AND e.source_row_id = OLD.id));
+    AND NOT EXISTS (SELECT 1 FROM flow_evidence e WHERE e.flow_id = flows.id AND NOT (e.source_table = '${t}' AND e.source_row_id = OLD.id))${keep};
   DELETE FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id;
-END`,
-  ];
+END`;
+}
+
+/** Re-creates the delete triggers so a flow holding a row of `keepIfIn` outlives its rows (migration 283). */
+export function reinstallFlowDeleteTriggers(dbi: DatabaseType, keepIfIn: readonly string[]): void {
+  for (const spec of SOURCES) {
+    dbi.exec(`DROP TRIGGER IF EXISTS flow_${spec.table}_ad`);
+    dbi.exec(flowDeleteTriggerSql(spec, keepIfIn));
+  }
 }
 
 const ASSIGNMENT_KEY_SOURCES: readonly { table: string; column: string }[] = [
@@ -359,7 +375,10 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
   }
 
   // 4. Triggers: rows written later; the write log of the new tables.
-  for (const spec of SOURCES) for (const sql of flowTriggerSql(spec)) dbi.exec(sql);
+  for (const spec of SOURCES) {
+    dbi.exec(flowInsertTriggerSql(spec));
+    dbi.exec(flowDeleteTriggerSql(spec, []));
+  }
   for (const table of ["outside_parties", "flows", "flow_evidence", "flow_orphan_assignments"]) {
     const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
     for (const sql of writeLogTriggerSql(table, columns, null)) dbi.exec(sql);

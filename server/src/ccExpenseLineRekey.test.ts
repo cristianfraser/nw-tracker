@@ -173,8 +173,8 @@ function lineId(accountId: number): number {
 
 function cleanup(accountId: number): void {
   db.prepare(
-    `DELETE FROM cc_expense_line_splits WHERE source = 'cc' AND line_id IN (
-       SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?)`
+    `DELETE FROM flow_parts WHERE flow_id IN (
+       SELECT l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?)`
   ).run(accountId);
   db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`).run(
     accountId
@@ -214,7 +214,8 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       oldKey
     );
     db.prepare(
-      `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp) VALUES ('cc', ?, 1, ?, 1500), ('cc', ?, 2, ?, 1000)`
+      `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp)
+       VALUES ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 1, ?, 1500), ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 2, ?, 1000)`
     ).run(oldLine, fun.id, oldLine, food.id);
 
     // The parser now renders the same printed row under another id.
@@ -234,7 +235,10 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       .get(accountId, oldKey) as { n: number };
     expect(oldLeft.n).toBe(0);
     const splits = db
-      .prepare(`SELECT line_id, amount_clp FROM cc_expense_line_splits WHERE source = 'cc' AND line_id IN (?, ?) ORDER BY seq`)
+      .prepare(
+        `SELECT l.id AS line_id, p.amount_clp FROM flow_parts p JOIN cc_statement_lines l ON l.flow_id = p.flow_id
+         WHERE l.id IN (?, ?) ORDER BY p.seq`
+      )
       .all(oldLine, newLine) as { line_id: number; amount_clp: number }[];
     expect(splits).toEqual([
       { line_id: newLine, amount_clp: 1500 },

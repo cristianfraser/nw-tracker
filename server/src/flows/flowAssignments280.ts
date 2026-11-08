@@ -2,6 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import { writeLogTriggerSql } from "../markInputTriggers.js";
 import { expenseKeySql } from "../expenseKeys.js";
 import { expenseKeyParts } from "./flowKeyResolve.js";
+import { reinstallFlowDeleteTriggers } from "./flowTables279.js";
 
 /**
  * Hooks of the assignment migrations (280+, docs/untangle-flow-identity.md F9 step 3): each moves
@@ -138,4 +139,47 @@ export function moveKeyedTable(
 
 export function runFlowBigGroups282(dbi: DatabaseType): void {
   moveKeyedTable(dbi, "282", "cc_expense_purchase_big_groups", "flow_big_groups", "purchase_key", ["group_slug"]);
+}
+
+/** The row table a piece's `source` names. */
+const PIECE_SOURCE_TABLE = { cc: "cc_statement_lines", checking: "movements" } as const;
+
+export function runFlowParts283(dbi: DatabaseType): void {
+  const before = count(dbi, "cc_expense_line_splits");
+  const rows = dbi.prepare(`SELECT * FROM cc_expense_line_splits ORDER BY source, line_id, seq`).all() as {
+    source: "cc" | "checking";
+    line_id: number;
+    seq: number;
+    category_id: number;
+    amount_clp: number;
+    note: string | null;
+    spent_on: string | null;
+  }[];
+  const insert = dbi.prepare(
+    `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, note, spent_on) VALUES (?, ?, ?, ?, ?, ?)`
+  );
+  const archive = dbi.prepare(`INSERT INTO flow_orphan_assignments (source_table, purchase_key, payload) VALUES (?, ?, ?)`);
+  let moved = 0;
+  let archived = 0;
+  for (const r of rows) {
+    const table = PIECE_SOURCE_TABLE[r.source];
+    if (!table) throw new Error(`migration 283: piece source ${String(r.source)}`);
+    const row = dbi.prepare(`SELECT flow_id FROM ${table} WHERE id = ?`).get(r.line_id) as { flow_id: number } | undefined;
+    if (!row) {
+      archive.run("cc_expense_line_splits", `${r.source}:${r.line_id}`, JSON.stringify(r));
+      archived += 1;
+      continue;
+    }
+    const sharing = (dbi.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE flow_id = ?`).get(row.flow_id) as { c: number }).c;
+    if (sharing !== 1) throw new Error(`migration 283: ${r.source} line ${r.line_id} shares its flow with ${sharing - 1} other row(s)`);
+    insert.run(row.flow_id, r.seq, r.category_id, r.amount_clp, r.note, r.spent_on);
+    moved += 1;
+  }
+  const after = count(dbi, "flow_parts");
+  console.log(`migration 283: cc_expense_line_splits ${before} → flow_parts ${after} + ${archived} archived (line not on file)`);
+  if (after !== moved || moved + archived !== before) throw new Error(`migration 283: ${before} rows became ${after} + ${archived}`);
+  dbi.exec(`DROP TABLE cc_expense_line_splits`);
+  installWriteLog(dbi, "flow_parts");
+  // A line a re-import deletes leaves its pieces on its flow for the re-key mover to carry.
+  reinstallFlowDeleteTriggers(dbi, ["flow_parts"]);
 }
