@@ -1,4 +1,3 @@
-import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth";
 import type { FlowCcExpenseLineRow, FlowCcExpenseLineSource } from "./types";
 
 export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
@@ -88,86 +87,6 @@ export function expenseLineMatchesPurchaseBigGroupPatch(
 ): boolean {
   // A big group belongs to the expense: its purchase key names it whichever account paid it.
   return ln.purchase_key === purchaseKey;
-}
-
-export function isInstallmentCuotaZeroLine(line: {
-  installment_flag: number;
-  nro_cuota_current: number | null;
-}): boolean {
-  return line.installment_flag === 1 && line.nro_cuota_current === 0;
-}
-
-/** A negative line that is spending coming back (`checking_refund` / `card_refund`). */
-export function isGastosRefundLine(line: Pick<FlowCcExpenseLineRow, "checking_refund" | "card_refund">): boolean {
-  return line.checking_refund === true || line.card_refund === true;
-}
-
-/**
- * Positive lines, and refunds, that count toward gasto del mes for the active installment mode.
- * A copy of the server's rule (`countsTowardGastosMes`, `flowsExpensesGastos.ts`), kept because the
- * month modal moves a line between its sections as a category edit is applied optimistically;
- * pinned to the server by `server/src/test/gastosMesCountingCases.json`, asserted by both suites.
- */
-export function countsTowardGastosMes(
-  line: FlowCcExpenseLineRow,
-  mode: CcInstallmentGastosMode = "split"
-): boolean {
-  if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
-    return false;
-  }
-  // A refund (a checking credit marked as one, or a card credit no purchase annuls — a small
-  // unpaired nota included) is spending coming back: it counts, negatively, in its category.
-  if (line.amount_clp <= 0 && !isGastosRefundLine(line)) return false;
-  if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
-  if (isInstallmentCuotaZeroLine(line)) return false;
-  const scope = line.gastos_scope ?? "both";
-  if (scope === "excluded") return false;
-  if (scope === "total_only") return mode === "total";
-  if (scope === "split_only") return mode === "split";
-  if (line.line_role === "installment_purchase_total") return mode === "total";
-  if (line.line_role === "installment_cuota") return mode === "split";
-  return true;
-}
-
-/** Compras modal table: purchase-month lines that belong in the gastos compras list. */
-export function countsTowardComprasModal(
-  line: FlowCcExpenseLineRow,
-  mode: CcInstallmentGastosMode = "split"
-): boolean {
-  if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
-  if (line.line_role === "installment_purchase_total") return mode === "total";
-  if (line.line_role !== "purchase") return false;
-  return countsTowardGastosMes(line, mode);
-}
-
-/** Negative lines shown in the «Abonos» modal section (excludes NOTA DE CREDITO handling). */
-export function countsTowardAbonosMes(line: FlowCcExpenseLineRow): boolean {
-  if (line.amount_clp >= 0 || isGastosRefundLine(line)) return false;
-  if (line.nota_credito_role === "matched_nota" || line.nota_credito_role === "unmatched_nota") {
-    return false;
-  }
-  return true;
-}
-
-/** Matched NOTA / annulled purchase pairs shown under «Excluidos». */
-export function isNotaCreditoExcludedLine(line: FlowCcExpenseLineRow): boolean {
-  return (
-    line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota"
-  );
-}
-
-/**
- * Positive, still-unclassified charges that belong in the «Gastos sin clasificar» pending list.
- * A NOTA-annulled purchase is dropped: it never counts toward gastos (it lives under «Excluidos»),
- * so its missing category is meaningless and shouldn't nag in the pending list.
- */
-export function isUnclassifiedPendingGasto(line: FlowCcExpenseLineRow): boolean {
-  return (
-    line.line_role !== "installment_purchase_total" &&
-    line.amount_clp > 0 &&
-    line.category_slug === "unclassified" &&
-    !isNotaCreditoExcludedLine(line)
-  );
 }
 
 export function sumLineAmountsClp(lines: readonly FlowCcExpenseLineRow[]): number {

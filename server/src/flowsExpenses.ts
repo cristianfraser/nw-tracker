@@ -126,6 +126,10 @@ import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGap
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 import { withExpenseLineFlowIds } from "./flows/flowIdentity.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
+import { withExpenseLineShapes } from "./expenseLineShapes.js";
+import { isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine } from "./ccExpenseCategories.js";
+import { countsTowardGastosMes, isGastosRefundLine } from "./flowsExpensesGastos.js";
+import type { ExpenseMonthModalSection } from "nw-tracker-contracts/dto/flows";
 
 export { listCreditCardMasterAccountIds };
 
@@ -334,6 +338,16 @@ export type FlowCcExpenseLineRow = {
   piece_seq?: number;
   /** What a line's pieces leave of it: the line's own expense, on its own day. */
   pieces_remainder?: true;
+  /** The line's shape and row capabilities (`expenseLineShapes.ts`, the last step). */
+  period_month?: string;
+  counts_toward_gastos?: Record<"split" | "total", boolean>;
+  month_modal_sections?: Record<"split" | "total", ExpenseMonthModalSection[]>;
+  abono?: boolean;
+  pending_classification?: boolean;
+  can_delete?: boolean;
+  can_make_installment?: boolean;
+  can_edit_installment?: boolean;
+  can_edit_pieces?: boolean;
 
 };
 
@@ -1004,6 +1018,16 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
   { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },
+  {
+    name: "line shapes",
+    run: (lines) =>
+      withExpenseLineShapes(lines, {
+        countsTowardGastosMes,
+        isGastosRefundLine,
+        isCcExpenseTotalsExcludedSlug,
+        isInstallmentCuotaZeroLine,
+      }),
+  },
 ];
 
 /** A plan's own lines name their plan and its owner ({@link FlowCcExpenseLineRow.installment_source}). */

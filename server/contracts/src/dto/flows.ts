@@ -409,7 +409,34 @@ export interface FlowCcExpenseLineRow {
   piece_seq?: number;
   /** What a line's pieces leave of it, on the line's own day. */
   pieces_remainder?: true;
+  /** A plan's own line: the plan, and who owns it (`manual`: editable; `statement`: printed). */
+  installment_purchase_id?: number;
+  installment_source?: "manual" | "statement";
+  /** The flow the line is (what an assignment hangs off; server `withExpenseLineFlowIds`). */
+  flow_id?: number;
+  // The line's shape (server `expenseLineShapes.ts`, the pipeline's last step): the client picks these.
+  /** The month the line is shown in (a plan's whole price: its purchase month; a cuota: its billing month). */
+  period_month?: string;
+  /** Whether it counts toward gasto del mes in each installment mode. */
+  counts_toward_gastos?: Record<"split" | "total", boolean>;
+  /** The month-modal sections that list it (in `period_month`), per installment mode. */
+  month_modal_sections?: Record<"split" | "total", ExpenseMonthModalSection[]>;
+  /** A payment or credit: the «Abonos» section of the month and facturación modals. */
+  abono?: boolean;
+  /** A positive charge still «sin categoría» that counts: the pending-classification list. */
+  pending_classification?: boolean;
+  /** The row may delete it (a card-feed or pasted line). */
+  can_delete?: boolean;
+  /** The row may turn it into a plan (a plain one-shot card purchase). */
+  can_make_installment?: boolean;
+  /** The row may change its plan's count or remove the plan (a manual plan's line). */
+  can_edit_installment?: boolean;
+  /** The row may break it into pieces. */
+  can_edit_pieces?: boolean;
 }
+
+/** A section of the expenses month modal. */
+export type ExpenseMonthModalSection = "purchases" | "installments" | "abonos" | "excluded";
 
 /** A card or checking purchase line and its pieces (`GET /api/flows/expenses/line-pieces`). */
 export interface ExpenseLinePieces {

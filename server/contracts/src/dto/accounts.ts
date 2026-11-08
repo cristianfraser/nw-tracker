@@ -93,6 +93,11 @@ export interface AccountSummaryResponse {
   movement_create?: MovementCreateSchema;
   book_ledger_edit?: BookLedgerEditSchema;
   mortgage_payment_create?: MortgagePaymentCreateSchema;
+  /** What the account holds a quantity of (server account profile): its units word, its ticker. */
+  units_kind?: "shares" | "coin";
+  ticker?: string | null;
+  /** The depto's property or its loan: the page draws the mortgage ledger sections. */
+  depto_role?: "property" | "loan" | null;
 }
 
 /** `GET /api/accounts/:id/detail-bundle` */

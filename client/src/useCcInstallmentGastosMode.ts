@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth";
+import type { CcInstallmentGastosMode } from "./expenseLineShape";
 
 const LS_KEY = "nw-tracker.ccInstallmentGastosMode";
 
