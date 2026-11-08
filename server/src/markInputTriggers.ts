@@ -466,6 +466,7 @@ const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
   "cc_expense_purchase_big_groups",
   "cc_expense_line_splits",
   "cc_facturado_financing_link_purchases",
+  "expense_deposit_links",
 ]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [

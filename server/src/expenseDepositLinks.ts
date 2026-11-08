@@ -36,6 +36,9 @@ import { syncCuentaAhorroDepositSplitMirrors } from "./cuentaAhorroDepositSplits
 import { syncBudaAbonoDepositMirrors } from "./budaWallet.js";
 import { buildExpenseKey, EXPENSE_KEY_PREFIXES, expenseKeyKind } from "./expenseKeys.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { movementFlowId } from "./flows/flowIdentity.js";
+import { keyTarget, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
 
 export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
 
@@ -370,7 +373,7 @@ export function loadExpenseDepositLinksMap(): Map<string, ExpenseDepositLinkRow[
     .prepare(
       `SELECT account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp,
               depto_cuota, depto_occurred_on, link_source
-       FROM expense_deposit_links`
+       FROM ${EXPENSE_DEPOSIT_LINKS_SQL} ORDER BY link_order`
     )
     .all() as ExpenseDepositLinkRow[];
   const out = new Map<string, ExpenseDepositLinkRow[]>();
@@ -391,7 +394,7 @@ const LINK_SOURCE_PRIORITY: Record<ExpenseDepositLinkSource, number> = {
 /** Best (highest-priority) link source per deposit movement id — manual > auto > synthetic. */
 export function loadBestLinkSourceByMovementId(): Map<number, ExpenseDepositLinkSource> {
   const rows = db
-    .prepare(`SELECT deposit_movement_id, link_source FROM expense_deposit_links`)
+    .prepare(`SELECT deposit_movement_id, link_source FROM ${EXPENSE_DEPOSIT_LINKS_SQL} ORDER BY link_order`)
     .all() as { deposit_movement_id: number; link_source: ExpenseDepositLinkSource }[];
   const out = new Map<number, ExpenseDepositLinkSource>();
   for (const row of rows) {
@@ -403,44 +406,48 @@ export function loadBestLinkSourceByMovementId(): Map<number, ExpenseDepositLink
   return out;
 }
 
+/**
+ * A purchase's link to the deposit it funded: a `funded_deposit` link from the purchase's flow to
+ * the deposit's flow (migration 285; the claim is the deposit's flow, bug 8). A lower-priority
+ * source never replaces a higher one; an equal or higher one rewrites the figures in place.
+ */
 function upsertExpenseDepositLink(row: ExpenseDepositLinkRow): void {
+  const at = keyTarget(row.purchase_key, true);
+  const counterpart = movementFlowId(row.deposit_movement_id);
   const existing = db
     .prepare(
-      `SELECT link_source FROM expense_deposit_links WHERE purchase_key = ? AND deposit_movement_id = ?`
+      `SELECT rowid AS link_rowid, link_source FROM flow_links
+       WHERE kind = 'funded_deposit' AND ${TARGET_WHERE} AND counterpart_flow_id = ?`
     )
-    .get(row.purchase_key, row.deposit_movement_id) as
-    | { link_source: ExpenseDepositLinkSource }
-    | undefined;
+    .get(...targetParams(at), counterpart) as { link_rowid: number; link_source: ExpenseDepositLinkSource } | undefined;
   if (existing && LINK_SOURCE_PRIORITY[existing.link_source] > LINK_SOURCE_PRIORITY[row.link_source]) {
     return;
   }
-
-  db.prepare(
-    `INSERT INTO expense_deposit_links (
-       account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp,
-       depto_cuota, depto_occurred_on, link_source
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(purchase_key, deposit_movement_id) DO UPDATE SET
-       account_id = excluded.account_id,
-       payment_clp = excluded.payment_clp,
-       amortization_clp = excluded.amortization_clp,
-       depto_cuota = excluded.depto_cuota,
-       depto_occurred_on = excluded.depto_occurred_on,
-       link_source = excluded.link_source`
-  ).run(
+  const figures = [
     row.account_id,
-    row.purchase_key,
-    row.deposit_movement_id,
     row.payment_clp,
     row.amortization_clp,
     row.depto_cuota,
     row.depto_occurred_on,
-    row.link_source
-  );
+    row.link_source,
+  ] as const;
+  if (existing) {
+    db.prepare(
+      `UPDATE flow_links SET account_id = ?, payment_clp = ?, amortization_clp = ?, depto_cuota = ?,
+         depto_occurred_on = ?, link_source = ?
+       WHERE rowid = ?`
+    ).run(...figures, existing.link_rowid);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO flow_links (flow_id, portion, piece_seq, kind, counterpart_flow_id, account_id, payment_clp,
+       amortization_clp, depto_cuota, depto_occurred_on, link_source)
+     VALUES (?, ?, ?, 'funded_deposit', ?, ?, ?, ?, ?, ?, ?)`
+  ).run(...targetParams(at), counterpart, ...figures);
 }
 
 function clearSyntheticExpenseDepositLinks(): void {
-  db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'synthetic'`).run();
+  db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'synthetic'`).run();
 }
 
 /** Direct 1:1 link from a checking_gap_deposit_mirrors row to its target deposit movement —
@@ -468,7 +475,7 @@ function syncCheckingGapDepositMirrorLinks(): void {
 }
 
 function clearAutoExpenseDepositLinks(): void {
-  db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'auto'`).run();
+  db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'auto'`).run();
 }
 
 export function syncMortgageExpenseDepositLinksFromSheet(
@@ -477,7 +484,7 @@ export function syncMortgageExpenseDepositLinksFromSheet(
   const manualKeys = new Set(
     (
       db
-        .prepare(`SELECT purchase_key FROM expense_deposit_links WHERE link_source = 'manual'`)
+        .prepare(`SELECT purchase_key FROM ${EXPENSE_DEPOSIT_LINKS_SQL} WHERE link_source = 'manual' ORDER BY link_order`)
         .all() as { purchase_key: string }[]
     ).map((r) => r.purchase_key)
   );
@@ -605,7 +612,7 @@ function assignBillsCategoryToMortgageLinkedLines(): void {
   db.prepare(
     `INSERT OR IGNORE INTO cc_expense_line_categories (statement_line_id, category_id)
      SELECT csl.id, cat.id
-     FROM expense_deposit_links edl
+     FROM ${EXPENSE_DEPOSIT_LINKS_SQL} edl
      JOIN cc_statement_lines csl ON csl.parser_row_id = substr(edl.purchase_key, length(@prefix) + 1)
      JOIN cc_expense_categories cat ON cat.slug = @slug
      WHERE substr(edl.purchase_key, 1, length(@prefix)) = @prefix
@@ -697,8 +704,8 @@ export function computeManualDepositAssertions(
   // linked to some other purchase is not claimable; a link on the asserted line itself resolves it.
   const linkRows = db
     .prepare(
-      `SELECT purchase_key, deposit_movement_id, account_id FROM expense_deposit_links
-       WHERE link_source IN ('auto', 'manual')`
+      `SELECT purchase_key, deposit_movement_id, account_id FROM ${EXPENSE_DEPOSIT_LINKS_SQL}
+       WHERE link_source IN ('auto', 'manual') ORDER BY link_order`
     )
     .all() as { purchase_key: string; deposit_movement_id: number; account_id: number }[];
   const movementsByPurchaseKey = new Map<string, number[]>();
@@ -796,7 +803,7 @@ export function syncExpenseDepositLinksFromGastosLines(
   lines: readonly GastosLineForExpenseDepositLink[]
 ): void {
   withoutChurn(
-    ["expense_deposit_links", "checking_gap_deposit_mirrors", "cc_expense_line_categories"],
+    ["flow_links", "checking_gap_deposit_mirrors", "cc_expense_line_categories"],
     ["created_at"],
     () => syncExpenseDepositLinksFromGastosLinesChurning(lines)
   );

@@ -19,6 +19,7 @@ import {
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
 
 /** Human provenance on the mirror row (never read back). */
 const BUDA_ABONO_MIRROR_NOTE = "buda-abono|self_funded";
@@ -60,7 +61,7 @@ export function listBudaAbonosWithoutRealOutflowLink(): Set<number> {
       `SELECT m.id FROM movements m
        WHERE m.account_id = ? AND m.note = 'import:buda|abono' AND ${MOVEMENT_CLP_LEG_SQL} > 0
          AND NOT EXISTS (
-           SELECT 1 FROM expense_deposit_links l
+           SELECT 1 FROM ${EXPENSE_DEPOSIT_LINKS_SQL} l
            WHERE l.deposit_movement_id = m.id
              AND l.link_source IN ('auto', 'manual')
              AND substr(l.purchase_key, 1, ?) != ?)`

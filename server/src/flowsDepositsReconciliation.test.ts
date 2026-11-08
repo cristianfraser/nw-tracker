@@ -162,7 +162,7 @@ describe("buildDepositsReconciliationPayload", () => {
       db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE note = ?`).run(
         "vitest-fixture-mirror"
       );
-      db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'synthetic'`).run();
+      db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'synthetic'`).run();
     });
 
     it("classifies a mirrored unlinked_no_checking_source deposit as linked_synthetic", () => {
@@ -240,7 +240,7 @@ describe("buildDepositsReconciliationPayload", () => {
     afterEach(() => {
       db.prepare(`DELETE FROM cuenta_ahorro_deposit_splits WHERE note = ?`).run("vitest-fixture-split");
       db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE note = ?`).run("ahorro-split|self_funded");
-      db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'synthetic'`).run();
+      db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'synthetic'`).run();
       syncExpenseLinksNow();
     });
 

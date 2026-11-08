@@ -28,6 +28,7 @@ import {
   runFlowBigGroups282,
   runFlowIncomeOverrides281,
   runFlowLinksFinancing284,
+  runFlowLinksFundedDeposit285,
   runFlowParts283,
   runFlowRefunds280,
 } from "./flows/flowAssignments280.js";
@@ -294,6 +295,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "282_flow_big_groups.sql": runFlowBigGroups282,
   "283_flow_parts.sql": runFlowParts283,
   "284_flow_links.sql": runFlowLinksFinancing284,
+  "285_flow_links_funded_deposit.sql": runFlowLinksFundedDeposit285,
 };
 
 /**

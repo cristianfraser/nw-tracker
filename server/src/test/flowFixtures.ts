@@ -1,4 +1,7 @@
 import { db } from "../db.js";
+import { movementFlowId } from "../flows/flowIdentity.js";
+import { keyTarget, targetParams } from "../flows/flowKeyedAssignments.js";
+import { EXPENSE_DEPOSIT_LINKS_SQL } from "../flows/flowLinks.js";
 import { ensureVitestCreditCardFixtures, getVitestSantanderCcMasterAccountId } from "./vitestDbSeed.js";
 
 /**
@@ -41,4 +44,50 @@ export function fixtureCardLine(id: number, amountClp = 1000): () => void {
   return () => {
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
   };
+}
+
+/** A deposit link as `expense_deposit_links` held it (now a `funded_deposit` flow link, migration 285). */
+export type FixtureDepositLink = {
+  account_id: number;
+  purchase_key: string;
+  deposit_movement_id: number;
+  payment_clp: number;
+  amortization_clp: number;
+  link_source: "auto" | "manual" | "synthetic";
+  depto_cuota?: string | null;
+  depto_occurred_on?: string | null;
+};
+
+/** Writes a deposit link: the purchase's flow (the key must name a row) → the deposit movement's flow. */
+export function insertDepositLink(link: FixtureDepositLink): void {
+  const at = keyTarget(link.purchase_key, true);
+  db.prepare(
+    `INSERT INTO flow_links (flow_id, portion, piece_seq, kind, counterpart_flow_id, account_id, payment_clp,
+       amortization_clp, depto_cuota, depto_occurred_on, link_source)
+     VALUES (?, ?, ?, 'funded_deposit', ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    ...targetParams(at),
+    movementFlowId(link.deposit_movement_id),
+    link.account_id,
+    link.payment_clp,
+    link.amortization_clp,
+    link.depto_cuota ?? null,
+    link.depto_occurred_on ?? null,
+    link.link_source
+  );
+}
+
+/** The deposit links in their old shape, filtered by `where` over those columns. */
+export function selectDepositLinks(where: string, ...params: unknown[]): (FixtureDepositLink & { created_at: string })[] {
+  return db
+    .prepare(`SELECT * FROM ${EXPENSE_DEPOSIT_LINKS_SQL} WHERE ${where} ORDER BY link_order`)
+    .all(...params) as (FixtureDepositLink & { created_at: string })[];
+}
+
+/** Deletes the deposit links `where` selects (over the old columns). */
+export function deleteDepositLinks(where: string, ...params: unknown[]): void {
+  db.prepare(
+    `DELETE FROM flow_links WHERE kind = 'funded_deposit'
+       AND rowid IN (SELECT link_order FROM ${EXPENSE_DEPOSIT_LINKS_SQL} WHERE ${where})`
+  ).run(...params);
 }

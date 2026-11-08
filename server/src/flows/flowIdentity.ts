@@ -131,6 +131,8 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
     dbHandle.prepare(`UPDATE ${t} SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   }
   dbHandle.prepare(`UPDATE flow_evidence SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
+  dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);
 }
 

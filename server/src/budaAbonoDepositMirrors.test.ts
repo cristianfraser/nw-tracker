@@ -4,9 +4,9 @@ import { buildExpenseKey } from "./expenseKeys.js";
 import { loadDepositMatchCandidates } from "./checkingCartolaLoaders.js";
 import { db } from "./db.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { deleteDepositLinks, insertDepositLink } from "./test/flowFixtures.js";
 
 const BUDA_IMPORT_KEY = "import:buda|key=buda_clp";
-const REAL_KEY = "checking-cartola:vitest-buda-abono-debit";
 
 let budaId: number | null = null;
 let createdBuda = false;
@@ -21,12 +21,26 @@ function mirrorFor(depositId: number): { id: number; amount_clp: number } | unde
 }
 
 function insertLink(purchaseKey: string): void {
-  db.prepare(
-    `INSERT INTO expense_deposit_links
-       (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
-     VALUES (?, ?, ?, 123456, 123456, 'auto')`
-  ).run(corrienteId, purchaseKey, abonoId);
+  insertDepositLink({
+    account_id: corrienteId!,
+    purchase_key: purchaseKey,
+    deposit_movement_id: abonoId!,
+    payment_clp: 123456,
+    amortization_clp: 123456,
+    link_source: "auto",
+  });
 }
+
+/** A checking debit's key: the real outflow a link can name. */
+function realDebitKey(): string {
+  realDebitId = Number(
+    db
+      .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, -123456, 'clp', '2011-03-04', ?)`)
+      .run(corrienteId, "vitest-buda-abono-debit").lastInsertRowid
+  );
+  return buildExpenseKey({ kind: "checking_mv", movementId: realDebitId, portion: "gastos" });
+}
+let realDebitId: number | null = null;
 
 beforeAll(() => {
   corrienteId = cartolaCashAccountIdOptional("cuenta_corriente");
@@ -74,10 +88,11 @@ beforeAll(() => {
 
 afterAll(() => {
   if (abonoId != null) {
-    db.prepare(`DELETE FROM expense_deposit_links WHERE deposit_movement_id = ?`).run(abonoId);
+    deleteDepositLinks("deposit_movement_id = ?", abonoId);
     db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`).run(abonoId);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(abonoId);
   }
+  if (realDebitId != null) db.prepare(`DELETE FROM movements WHERE id = ?`).run(realDebitId);
   if (coinId != null) {
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(coinId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(coinId);
@@ -97,16 +112,16 @@ describe("syncBudaAbonoDepositMirrors", () => {
 
   it("a link from a mirror line is not a real outflow", () => {
     if (abonoId == null) return;
-    insertLink(buildExpenseKey({ kind: "gap_mirror", mirrorId: 987654321 }));
+    insertLink(buildExpenseKey({ kind: "gap_mirror", mirrorId: mirrorFor(abonoId)!.id }));
     expect(listBudaAbonosWithoutRealOutflowLink().has(abonoId)).toBe(true);
     syncBudaAbonoDepositMirrors();
     expect(mirrorFor(abonoId)).toBeDefined();
-    db.prepare(`DELETE FROM expense_deposit_links WHERE deposit_movement_id = ?`).run(abonoId);
+    deleteDepositLinks("deposit_movement_id = ?", abonoId);
   });
 
   it("drops the mirror once the abono is linked to its real cartola debit", () => {
     if (abonoId == null) return;
-    insertLink(REAL_KEY);
+    insertLink(realDebitKey());
     expect(listBudaAbonosWithoutRealOutflowLink().has(abonoId)).toBe(false);
     syncBudaAbonoDepositMirrors();
     expect(mirrorFor(abonoId)).toBeUndefined();

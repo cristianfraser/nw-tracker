@@ -173,3 +173,15 @@ What the code forced, and why (each change is also in its commit):
   from-legs of mirror-merge transfers out of a month-precision account (the cuenta de ahorro) whose
   outflow event keeps its month-end date while the transfer is dated the checking day, so the old
   account|day|pesos key never matched the «internal by construction» rule it was built for.
+
+## Step 3 as built, part 2 (flow-identity-2a2, 2026-11-08)
+
+- **Deposit links (migration 285)** are `funded_deposit` rows of `flow_links`: the purchase's flow
+  (portion, piece) → the deposit's flow (`counterpart_flow_id`; the claim is the deposit's flow,
+  bug 8), with `payment_clp`, `amortization_clp`, `depto_cuota`, `depto_occurred_on` and
+  `link_source` as link attributes. `flow_links` was rebuilt for the kinds still to come and lost
+  its explicit `id`: the rowid keeps insertion order (the order the old tables were read in) and a
+  re-derivation that rewrites the same links is no change to `withoutChurn`, which compares
+  columns. A deposit link to a movement that is deleted goes with it (a movement-delete trigger:
+  the deposit's flow may outlive its row when a key names it); a merged flow's links point at the
+  survivor. Readers see the old shape through `EXPENSE_DEPOSIT_LINKS_SQL` (`flows/flowLinks.ts`).
