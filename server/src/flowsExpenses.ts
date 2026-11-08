@@ -989,7 +989,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
 
 const selTotalChanges = db.prepare(`SELECT total_changes() AS n`);
 
-function runExpenseLineSteps(
+export function runExpenseLineSteps(
   drafts: readonly FlowCcExpenseLineRowDraft[],
   steps: readonly ExpenseLineStep[]
 ): FlowCcExpenseLineRow[] {

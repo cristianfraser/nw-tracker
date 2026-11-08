@@ -5,6 +5,7 @@
  * link) re-syncs the links here, after it. Reading the expense lines never writes: the sync used to
  * run inside the read pipeline (`flowsExpenses.ts`).
  */
+import { InputError } from "./inputError.js";
 import { db } from "./db.js";
 import {
   ccExpenseLineCategoryTarget,
@@ -73,17 +74,17 @@ export function assignExpenseCategory(target: ExpenseCategoryTarget, opts: Assig
   const clearCategory = opts.clearCategory === true;
   const ruleLink = opts.ruleLink ?? null;
   if (hasCategory && categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG) {
-    throw new Error("cannot assign unclassified category");
+    throw new InputError("cannot assign unclassified category");
   }
   const { accountId, merchantKey, purchaseKey } = target;
   if (!opts.unique && hasCategory && !merchantKey) {
-    throw new Error("merchant required for comercio-wide category");
+    throw new InputError("merchant required for comercio-wide category");
   }
   let catId: number | null = null;
   let resolvedSlug = UNCLASSIFIED_CC_EXPENSE_SLUG;
   if (hasCategory) {
     const cat = getCcExpenseCategoryBySlug(categorySlug);
-    if (!cat) throw new Error("unknown category");
+    if (!cat) throw new InputError("unknown category");
     catId = cat.id;
     resolvedSlug = cat.slug;
   }
@@ -134,10 +135,10 @@ export function assignFlowExpenseLineCategory(opts: AssignOpts & {
   source?: FlowExpenseLineCategorySource;
 }): ExpenseCategoryAssignment {
   if (opts.source === "manual") {
-    throw new Error("manual expense entries are not editable");
+    throw new InputError("manual expense entries are not editable");
   }
   if (opts.source === "payslip") {
-    throw new Error("payslip deductions have a fixed category");
+    throw new InputError("payslip deductions have a fixed category");
   }
 
   if (opts.lineId < 0) {
@@ -163,15 +164,15 @@ export function assignFlowExpenseLineCategory(opts: AssignOpts & {
   const cc = ccStatementLineBelongsToCreditCardGroup(opts.lineId);
   let source = opts.source;
   if (source == null) {
-    if (checking.ok && cc.ok) throw new Error("ambiguous expense line id; pass source cc or checking");
+    if (checking.ok && cc.ok) throw new InputError("ambiguous expense line id; pass source cc or checking");
     if (checking.ok) source = "checking";
     else if (cc.ok) source = "cc";
-    else throw new Error("expense line not found");
+    else throw new InputError("expense line not found");
   }
   if (source === "checking") {
-    if (!checking.ok) throw new Error("checking gastos movement not found");
+    if (!checking.ok) throw new InputError("checking gastos movement not found");
     return assignExpenseCategory(checkingGastosMovementCategoryTarget(opts.lineId), opts);
   }
-  if (!cc.ok) throw new Error("statement line not in credit card group");
+  if (!cc.ok) throw new InputError("statement line not in credit card group");
   return assignExpenseCategory(ccExpenseLineCategoryTarget(opts.lineId), opts);
 }
