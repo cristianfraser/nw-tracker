@@ -3,17 +3,12 @@ import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { Button } from "@crfrsr/ui";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { Loadable } from "../../components/ui/Loadable";
-import { Table } from "../../components/ui/Table";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../../components/ui/TableMobileCard";
 import { formatDateTimeLabel } from "../../formatDateLabel";
 import { formatGroupedDecimal, formatOrDash, formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useUsageEndpointTrend, useUsageReport } from "../../queries/hooks";
-import type { UsageNotFoundPath } from "../../types/usage";
+import type { UsageEndpointTrendPoint, UsageNotFoundPath, UsagePageRow } from "../../types/usage";
+import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import type { UsageEndpointRow, UsageReportWindow } from "../../types";
 import { queryLoadError } from "../../queries/pageShapeReady";
 
@@ -62,52 +57,76 @@ export function UsagePanelPage() {
     );
   }
 
-  const pagesHeader = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("usage.colPage")}</th>
-        <th className="desktop-only">{t("usage.colViews")}</th>
-        <th className="desktop-only">{t("usage.colSettleP50")}</th>
-        <th className="desktop-only">{t("usage.colSettleP95")}</th>
-        <th className="desktop-only">{t("usage.colSettleMax")}</th>
-        <th className="desktop-only">{t("usage.colUnsettled")}</th>
-        <th className="desktop-only">{t("usage.colFetchedQueries")}</th>
-        <th className="desktop-only">{t("usage.colLastViewed")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
+  const trendButton = (row: UsageEndpointRow) => (
+    <Button variant="link" onClick={() => setSelected(row)} aria-pressed={selected?.key === row.key}>
+      {selected?.key === row.key ? t("usage.trendShown") : t("usage.showTrend")}
+    </Button>
   );
-
-  const endpointsHeader = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("usage.colEndpoint")}</th>
-        <th className="desktop-only">{t("usage.colCount")}</th>
-        <th className="desktop-only">{t("usage.colP50")}</th>
-        <th className="desktop-only">{t("usage.colP95")}</th>
-        <th className="desktop-only">{t("usage.colMax")}</th>
-        <th className="desktop-only">{t("usage.colTotalTime")}</th>
-        <th className="desktop-only">{t("usage.colWarm")}</th>
-        <th className="desktop-only">{t("usage.colErrors")}</th>
-        <th className="desktop-only">{t("usage.colSize")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
-
-  const trendHeader = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("usage.colDay")}</th>
-        <th className="desktop-only">{t("usage.colCount")}</th>
-        <th className="desktop-only">{t("usage.colAvg")}</th>
-        <th className="desktop-only">{t("usage.colP50")}</th>
-        <th className="desktop-only">{t("usage.colP95")}</th>
-        <th className="desktop-only">{t("usage.colMax")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
+  const pageColumns: TableColumn<UsagePageRow>[] = [
+    {
+      key: "route",
+      header: t("usage.colPage"),
+      className: "mono",
+      cell: (row) => (
+        <>
+          {row.route}
+          <NotFoundPaths paths={row.not_found_paths} />
+        </>
+      ),
+      title: (row) => <span className="mono">{row.route}</span>,
+    },
+    { key: "views", header: t("usage.colViews"), className: "mono", cell: (row) => formatCount(row.views) },
+    { key: "p50", header: t("usage.colSettleP50"), className: "mono", cell: (row) => formatMs(row.settle_p50_ms) },
+    { key: "p95", header: t("usage.colSettleP95"), className: "mono", cell: (row) => formatMs(row.settle_p95_ms) },
+    { key: "max", header: t("usage.colSettleMax"), className: "mono", cell: (row) => formatMs(row.settle_max_ms) },
+    { key: "unsettled", header: t("usage.colUnsettled"), className: "mono", cell: (row) => formatCount(row.unsettled_views) },
+    {
+      key: "queries",
+      header: t("usage.colFetchedQueries"),
+      className: "mono",
+      cell: (row) => formatGroupedDecimal(row.avg_fetched_queries, 1),
+    },
+    {
+      key: "last",
+      header: t("usage.colLastViewed"),
+      className: "mono",
+      cell: (row) => formatDateTimeLabel(new Date(row.last_viewed_at)),
+    },
+  ];
+  const endpointColumns: TableColumn<UsageEndpointRow>[] = [
+    {
+      key: "endpoint",
+      header: t("usage.colEndpoint"),
+      className: "mono",
+      cell: (row) => (
+        <>
+          {endpointLabel(row)} {trendButton(row)}
+        </>
+      ),
+      title: (row) => <span className="mono">{endpointLabel(row)}</span>,
+    },
+    { key: "count", header: t("usage.colCount"), className: "mono", cell: (row) => formatCount(row.count) },
+    { key: "p50", header: t("usage.colP50"), className: "mono", cell: (row) => formatMs(row.p50_ms) },
+    { key: "p95", header: t("usage.colP95"), className: "mono", cell: (row) => formatMs(row.p95_ms) },
+    { key: "max", header: t("usage.colMax"), className: "mono", cell: (row) => formatMs(row.max_ms) },
+    {
+      key: "total",
+      header: t("usage.colTotalTime"),
+      className: "mono",
+      cell: (row) => formatGroupedDecimal(row.total_ms / 1000, 1),
+    },
+    { key: "warm", header: t("usage.colWarm"), className: "mono", cell: (row) => formatShare(row.cache_warm_share) },
+    { key: "errors", header: t("usage.colErrors"), className: "mono", cell: (row) => errorsCell(row) },
+    { key: "size", header: t("usage.colSize"), className: "mono", cell: (row) => formatKb(row.avg_bytes) },
+  ];
+  const trendColumns: TableColumn<UsageEndpointTrendPoint>[] = [
+    { key: "day", header: t("usage.colDay"), className: "mono", cell: (p) => <span className="mono">{p.day}</span>, title: true },
+    { key: "count", header: t("usage.colCount"), className: "mono", cell: (p) => formatCount(p.count) },
+    { key: "avg", header: t("usage.colAvg"), className: "mono", cell: (p) => formatMs(p.avg_ms) },
+    { key: "p50", header: t("usage.colP50"), className: "mono", cell: (p) => formatMs(p.p50_ms) },
+    { key: "p95", header: t("usage.colP95"), className: "mono", cell: (p) => formatMs(p.p95_ms) },
+    { key: "max", header: t("usage.colMax"), className: "mono", cell: (p) => formatMs(p.max_ms) },
+  ];
 
   const pages = data?.pages ?? [];
   const endpoints = data?.endpoints ?? [];
@@ -151,55 +170,15 @@ export function UsagePanelPage() {
       <PageGridTile id="pages">
         <h2>{t("usage.pagesTitle")}</h2>
         <Loadable loading={loading}>
-          <Table
-            header={pagesHeader}
-            tableClassName="table--parallel-mobile"
+          <ColumnTable
+            rows={pages}
+            columns={pageColumns}
+            rowKey={(row) => row.route}
+            emptyLabel={t("usage.pagesEmpty")}
+            loading={loading}
+            cardLead={(row) => <NotFoundPaths paths={row.not_found_paths} />}
             collapsedVisibleRows={COLLAPSED_ROWS}
-          >
-            {pages.length === 0 && !loading ? (
-              <tr>
-                <td colSpan={9} className="muted">
-                  {t("usage.pagesEmpty")}
-                </td>
-              </tr>
-            ) : (
-              pages.map((row) => (
-                <tr key={row.route}>
-                  <td className="desktop-only mono">
-                    {row.route}
-                    <NotFoundPaths paths={row.not_found_paths} />
-                  </td>
-                  <td className="desktop-only mono">{formatCount(row.views)}</td>
-                  <td className="desktop-only mono">{formatMs(row.settle_p50_ms)}</td>
-                  <td className="desktop-only mono">{formatMs(row.settle_p95_ms)}</td>
-                  <td className="desktop-only mono">{formatMs(row.settle_max_ms)}</td>
-                  <td className="desktop-only mono">{formatCount(row.unsettled_views)}</td>
-                  <td className="desktop-only mono">{formatGroupedDecimal(row.avg_fetched_queries, 1)}</td>
-                  <td className="desktop-only mono">{formatDateTimeLabel(new Date(row.last_viewed_at))}</td>
-                  <td className="mobile-only">
-                    <TableMobileCard title={<span className="mono">{row.route}</span>}>
-                      <NotFoundPaths paths={row.not_found_paths} />
-                      <TableMobileCardSection>
-                        <TableMobileCardRow label={t("usage.colViews")} value={formatCount(row.views)} />
-                        <TableMobileCardRow label={t("usage.colSettleP50")} value={formatMs(row.settle_p50_ms)} />
-                        <TableMobileCardRow label={t("usage.colSettleP95")} value={formatMs(row.settle_p95_ms)} />
-                        <TableMobileCardRow label={t("usage.colSettleMax")} value={formatMs(row.settle_max_ms)} />
-                        <TableMobileCardRow label={t("usage.colUnsettled")} value={formatCount(row.unsettled_views)} />
-                        <TableMobileCardRow
-                          label={t("usage.colFetchedQueries")}
-                          value={formatGroupedDecimal(row.avg_fetched_queries, 1)}
-                        />
-                        <TableMobileCardRow
-                          label={t("usage.colLastViewed")}
-                          value={formatDateTimeLabel(new Date(row.last_viewed_at))}
-                        />
-                      </TableMobileCardSection>
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              ))
-            )}
-          </Table>
+          />
         </Loadable>
       </PageGridTile>
 
@@ -207,64 +186,15 @@ export function UsagePanelPage() {
         <h2>{t("usage.endpointsTitle")}</h2>
         <p className="muted">{t("usage.endpointsHint")}</p>
         <Loadable loading={loading}>
-          <Table
-            header={endpointsHeader}
-            tableClassName="table--parallel-mobile"
+          <ColumnTable
+            rows={endpoints}
+            columns={endpointColumns}
+            rowKey={(row) => row.key}
+            emptyLabel={t("usage.endpointsEmpty")}
+            loading={loading}
+            cardTail={trendButton}
             collapsedVisibleRows={COLLAPSED_ROWS}
-          >
-            {endpoints.length === 0 && !loading ? (
-              <tr>
-                <td colSpan={10} className="muted">
-                  {t("usage.endpointsEmpty")}
-                </td>
-              </tr>
-            ) : (
-              endpoints.map((row) => {
-                const trendButton = (
-                  <Button
-                    variant="link"
-                    onClick={() => setSelected(row)}
-                    aria-pressed={selected?.key === row.key}
-                  >
-                    {selected?.key === row.key ? t("usage.trendShown") : t("usage.showTrend")}
-                  </Button>
-                );
-                return (
-                  <tr key={row.key}>
-                    <td className="desktop-only mono">
-                      {endpointLabel(row)} {trendButton}
-                    </td>
-                    <td className="desktop-only mono">{formatCount(row.count)}</td>
-                    <td className="desktop-only mono">{formatMs(row.p50_ms)}</td>
-                    <td className="desktop-only mono">{formatMs(row.p95_ms)}</td>
-                    <td className="desktop-only mono">{formatMs(row.max_ms)}</td>
-                    <td className="desktop-only mono">{formatGroupedDecimal(row.total_ms / 1000, 1)}</td>
-                    <td className="desktop-only mono">{formatShare(row.cache_warm_share)}</td>
-                    <td className="desktop-only mono">{errorsCell(row)}</td>
-                    <td className="desktop-only mono">{formatKb(row.avg_bytes)}</td>
-                    <td className="mobile-only">
-                      <TableMobileCard title={<span className="mono">{endpointLabel(row)}</span>}>
-                        <TableMobileCardSection>
-                          <TableMobileCardRow label={t("usage.colCount")} value={formatCount(row.count)} />
-                          <TableMobileCardRow label={t("usage.colP50")} value={formatMs(row.p50_ms)} />
-                          <TableMobileCardRow label={t("usage.colP95")} value={formatMs(row.p95_ms)} />
-                          <TableMobileCardRow label={t("usage.colMax")} value={formatMs(row.max_ms)} />
-                          <TableMobileCardRow
-                            label={t("usage.colTotalTime")}
-                            value={formatGroupedDecimal(row.total_ms / 1000, 1)}
-                          />
-                          <TableMobileCardRow label={t("usage.colWarm")} value={formatShare(row.cache_warm_share)} />
-                          <TableMobileCardRow label={t("usage.colErrors")} value={errorsCell(row)} />
-                          <TableMobileCardRow label={t("usage.colSize")} value={formatKb(row.avg_bytes)} />
-                        </TableMobileCardSection>
-                        {trendButton}
-                      </TableMobileCard>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </Table>
+          />
         </Loadable>
       </PageGridTile>
 
@@ -278,32 +208,11 @@ export function UsagePanelPage() {
             </p>
           ) : (
             <Loadable loading={trend.isPending}>
-              <Table header={trendHeader} tableClassName="table--parallel-mobile">
-                {(trend.data?.points ?? [])
-                  .slice()
-                  .reverse()
-                  .map((p) => (
-                    <tr key={p.day}>
-                      <td className="desktop-only mono">{p.day}</td>
-                      <td className="desktop-only mono">{formatCount(p.count)}</td>
-                      <td className="desktop-only mono">{formatMs(p.avg_ms)}</td>
-                      <td className="desktop-only mono">{formatMs(p.p50_ms)}</td>
-                      <td className="desktop-only mono">{formatMs(p.p95_ms)}</td>
-                      <td className="desktop-only mono">{formatMs(p.max_ms)}</td>
-                      <td className="mobile-only">
-                        <TableMobileCard title={<span className="mono">{p.day}</span>}>
-                          <TableMobileCardSection>
-                            <TableMobileCardRow label={t("usage.colCount")} value={formatCount(p.count)} />
-                            <TableMobileCardRow label={t("usage.colAvg")} value={formatMs(p.avg_ms)} />
-                            <TableMobileCardRow label={t("usage.colP50")} value={formatMs(p.p50_ms)} />
-                            <TableMobileCardRow label={t("usage.colP95")} value={formatMs(p.p95_ms)} />
-                            <TableMobileCardRow label={t("usage.colMax")} value={formatMs(p.max_ms)} />
-                          </TableMobileCardSection>
-                        </TableMobileCard>
-                      </td>
-                    </tr>
-                  ))}
-              </Table>
+              <ColumnTable
+                rows={(trend.data?.points ?? []).slice().reverse()}
+                columns={trendColumns}
+                rowKey={(p) => p.day}
+              />
             </Loadable>
           )}
         </PageGridTile>
