@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  enrichLinesWithNotaDeCreditoPairing,
-  isNotaDeCreditoMerchant,
-  NOTA_DE_CREDITO_MATCH_MIN_CLP,
-  pairNotaDeCreditoAnnulments,
-} from "./ccNotaDeCreditoPairing.js";
+import { enrichLinesWithNotaDeCreditoPairing, pairNotaDeCreditoAnnulments } from "./ccNotaDeCreditoPairing.js";
+import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./cards/notaDeCredito.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 function ccLine(

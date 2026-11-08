@@ -29,14 +29,14 @@ import {
   isNotaDeCreditoMerchant,
   NOTA_DE_CREDITO_MATCH_MIN_CLP,
   NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE,
-} from "./ccNotaDeCreditoPairing.js";
+} from "./cards/notaDeCredito.js";
 import type {
   CcCuotaProgress,
   CcCuotaProgressCuota,
   CcInstallmentCalendarMonthRow,
   CcInstallmentMonthBreakdown,
   CcInstallmentPurchaseComputed,
-} from "./creditCardInstallments.js";
+} from "./cards/planTypes.js";
 import {
   ccPurchaseSourceLegacyFromOrigin,
   dataOriginFromCcPurchaseSource,

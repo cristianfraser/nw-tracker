@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import { buildBillingDetailByMonth } from "./ccBillingViews.js";
-import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
+import type { CcInstallmentMonthRow } from "./cards/planTypes.js";
 
 /**
  * Projected billing months are pay-frame: month-end owed = plan remainder after the PREVIOUS

@@ -1,6 +1,6 @@
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { expenseKeyKind, installmentHKeyWithoutTotal } from "./expenseKeys.js";
-import type { CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
+import type { CcInstallmentPurchaseComputed } from "./cards/planTypes.js";
 import { planRow } from "./cards/purchases.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { cachedFlowsExpenseLines } from "./flowsMortgageCarrying.js";

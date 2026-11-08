@@ -7,12 +7,16 @@
  * sums one-shot lines leaves out, and {@link oneShotLinesSupersededByPlans} what the write side
  * removes when it settles a line into its plan.
  *
- * Views delivered so far: the plans matched against lines ({@link listPlansForLineMatching}), the
- * one-shot lines ({@link listOneShotLinesForAccount}), the plan ↔ line identity
- * ({@link planMatchesOneShotLine}, {@link findPlanForOneShotLine}, {@link findOneShotLinesOfPlan})
- * and the superseded set. The rest of the views (debt events, open-cycle and billed lines, expense
- * lines, payment evidence, `findLines`) still live in their readers; the guard test
- * (`purchasesRawTableGuard.test.ts`) lists them.
+ * Views (the audit's numbering): 1 debt events ({@link debtEventLines}, {@link planPurchaseEvents}),
+ * 2 billed and open-cycle lines ({@link billedOneShotLines}, {@link linesOfClose},
+ * {@link linesOfStatement}, {@link openCycleCuotaPurchaseLines}), 3 expense evidence
+ * ({@link expenseEvidenceLines}), 4 plans ({@link planRows}, {@link ledgerPlans},
+ * {@link ledgerPlanCuotas}, {@link planPrintedCuotaLines}, {@link lineForPayment} — the plan ↔ line
+ * join on `parser_row_id` stays inside), 5 payment evidence ({@link clpPaymentLines},
+ * {@link usdDebtAbonoLines}, {@link traspasoUsdLegs}), 6 is a filter on 1 and 3 by kind, 7 the
+ * search the matchers of other domains run ({@link findLines}). {@link effectivePurchases} returns
+ * each purchase once. Readers that own rows (writers, import identity, re-key movers) still read the
+ * tables; the guard test (`purchasesRawTableGuard.test.ts`) lists them.
  *
  * Import rule: this module imports only leaf modules (no card ledger, no expense pipeline), so the
  * card domain can depend on it without growing the import cycle.
@@ -1109,4 +1113,41 @@ export function oneShotCreditLines(
     stmt_period_to: string | null;
     stmt_statement_date: string | null;
   }[];
+}
+
+// ---------------------------------------------------------------------------------------------
+// The purchases themselves
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A card purchase: a plain one-shot line, a line with the plan it was bought in (the plan carries
+ * the purchase, the line is its evidence), or a plan no line carries (a statement-owned plan, or one
+ * whose line was converted away).
+ */
+export type EffectivePurchase =
+  | { shape: "line"; line: CardOneShotLine }
+  | { shape: "line_with_plan"; line: CardOneShotLine; plan: CardPlanForMatching }
+  | { shape: "plan"; plan: CardPlanForMatching };
+
+/**
+ * The card's purchases, each once: every positive one-shot line (with its plan when one supersedes
+ * it), then the plans no line carries.
+ */
+export function effectivePurchases(accountId: number): EffectivePurchase[] {
+  const superseded = oneShotLinesSupersededByPlans(accountId);
+  const out: EffectivePurchase[] = [];
+  const plansWithLine = new Set<number>();
+  for (const line of listOneShotLinesForAccount(accountId)) {
+    const plan = superseded.get(line.statement_line_id);
+    if (plan) {
+      plansWithLine.add(plan.id);
+      out.push({ shape: "line_with_plan", line, plan });
+    } else {
+      out.push({ shape: "line", line });
+    }
+  }
+  for (const plan of listPlansForLineMatching(accountId)) {
+    if (!plansWithLine.has(plan.id)) out.push({ shape: "plan", plan });
+  }
+  return out;
 }

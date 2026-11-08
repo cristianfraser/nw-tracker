@@ -35,7 +35,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { derivedPayByIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
-import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
+import type { CcInstallmentMonthRow } from "./cards/planTypes.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso, addCalendarMonths } from "nw-tracker-contracts";
 /**
  * A detalle row in the STATEMENT frame — what the billing-detail bundle builds and every internal

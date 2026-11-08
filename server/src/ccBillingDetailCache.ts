@@ -9,7 +9,7 @@ import {
 } from "./ccBillingViews.js";
 import { planCount } from "./cards/purchases.js";
 import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
-import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
+import type { CcInstallmentMonthRow } from "./cards/planTypes.js";
 
 type CcInstallmentsDbPayload = ReturnType<typeof ccInstallmentsDbApiPayload>;
 

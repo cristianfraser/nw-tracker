@@ -12,7 +12,7 @@ import type { FxBidAskGapRow as S_FxBidAskGapRow } from "../fxBidAskGaps.js";
 import type { CcCloseSource as S_CcCloseSource } from "../cards/facturacion.js";
 import type { UpcomingPaymentKind as S_UpcomingPaymentKind } from "../upcomingPayments.js";
 import type { CcCuotaPurchaseKind as S_CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
-import type { CcInstallmentPurchaseComputed as S_CcInstallmentPurchaseComputed, CcCuotaProgressCuota as S_CcCuotaProgressCuota, CcCuotaProgress as S_CcCuotaProgress, CcInstallmentMonthBreakdown as S_CcInstallmentMonthBreakdown, CcInstallmentCalendarMonthRow as S_CcInstallmentMonthRow } from "../creditCardInstallments.js";
+import type { CcInstallmentPurchaseComputed as S_CcInstallmentPurchaseComputed, CcCuotaProgressCuota as S_CcCuotaProgressCuota, CcCuotaProgress as S_CcCuotaProgress, CcInstallmentMonthBreakdown as S_CcInstallmentMonthBreakdown, CcInstallmentCalendarMonthRow as S_CcInstallmentMonthRow } from "../cards/planTypes.js";
 import type { CcFacturadoBarSegments as S_CcFacturadoBarSegments, CcHistorialChartPoint as S_CcHistorialChartPoint } from "../creditCardChartSeries.js";
 import type { CcCupoEntry as S_CcCupoEntry, CreditCardAccountConfigDto as S_CreditCardAccountConfigDto } from "../ccAccountConfig.js";
 import type { AccountMonthlyPerformanceRow as S_AccountMonthlyPerformanceRow } from "../accountPerformance.js";
