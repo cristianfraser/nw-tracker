@@ -32,7 +32,6 @@ import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
-import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { buildFlowsCheckingIncomePayload, type FlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import { buildFlowsDepositsPayload, isPreTaxDepositRow, type FlowDepositRow } from "./flowsDeposits.js";
 import {
@@ -47,6 +46,9 @@ import {
   expenseLineGastosAmount,
   gastosViewKey,
   isGastosRefundLine,
+  mortgageLinkCarryingAmount,
+  mortgageLinkedLineCountsInMode,
+  splittableMortgageLinkOf,
   type GastosUnit,
 } from "./flowsExpensesGastos.js";
 import { listCcExpenseCategories } from "./ccExpenseCategories.js";
@@ -65,7 +67,6 @@ import {
   syncFlowsInputsWithLiveUsdRates,
   cachedMortgageCarryingEvents,
   mortgageCarryingEvents,
-  mortgageLinkCarryingAmount,
   sumMortgageCarryingBy,
 } from "./flowsMortgageCarrying.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
@@ -195,10 +196,9 @@ function lineGastosParts(
   const amount = expenseLineGastosAmount(ln, unit);
   if (!(amount > 0 || isGastosRefundLine(ln))) return null;
   const onCard = ln.source === "cc";
-  const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
-  if (hasSplittableMortgageExpenseDepositLink(link)) {
-    if (ln.line_role === "installment_purchase_total" && mode !== "total") return null;
-    if (ln.line_role === "installment_cuota" && mode !== "split") return null;
+  const link = splittableMortgageLinkOf(ln);
+  if (link) {
+    if (!mortgageLinkedLineCountsInMode(ln, mode)) return null;
     const carrying = mortgageLinkCarryingAmount(ln, link, unit);
     return { gasto: carrying, card: onCard ? carrying : 0 };
   }
@@ -224,8 +224,8 @@ function mortgageCardAmortizationByKey(
     const scope = ln.gastos_scope ?? "both";
     if (scope === "split_only" || scope === "excluded") continue;
     if (ln.line_role !== "purchase") continue;
-    const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
-    if (!hasSplittableMortgageExpenseDepositLink(link)) continue;
+    const link = splittableMortgageLinkOf(ln);
+    if (!link) continue;
     const key = `${ln.purchase_key}|${link.deposit_movement_id}`;
     if (seen.has(key)) continue;
     seen.add(key);

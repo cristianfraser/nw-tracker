@@ -5,10 +5,8 @@ import {
   listCcFacturadoFinancingLinks,
   type CcFacturadoFinancingLink,
 } from "./ccFacturadoFinancingLinksDb.js";
-import {
-  hasSplittableMortgageExpenseDepositLink,
-  type ExpenseDepositLinkDto,
-} from "./expenseDepositLinks.js";
+import type { ExpenseDepositLinkDto } from "./expenseDepositLinks.js";
+import { splittableMortgageLinkOf } from "./flowsExpensesGastos.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
@@ -232,8 +230,8 @@ export function applyCcFacturadoFinancingProjection(
         src.statement_line_id > 0
           ? src.statement_line_id
           : src.category_statement_line_id ?? null;
-      const mortgageLink = src.expense_deposit_links?.find((l) => l.depto_cuota != null);
-      if (hasSplittableMortgageExpenseDepositLink(mortgageLink)) {
+      const mortgageLink = splittableMortgageLinkOf(src);
+      if (mortgageLink) {
         // Mortgage line: split each cuota into carrying (bills) + amortization (offset), so the
         // aggregate's mortgage-split branch recognizes it (same handling as in Total mode).
         const carrySlices = splitIntegerEvenly(mortgageLink.carrying_clp, n);

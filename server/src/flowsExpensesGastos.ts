@@ -24,6 +24,7 @@ import {
   chartCategorySlugsForFlowsExpenses,
   expenseDepositAmortizationChartAmount,
   hasSplittableMortgageExpenseDepositLink,
+  type ExpenseDepositLinkDto,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./expenseDepositLinks.js";
 import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
@@ -92,8 +93,33 @@ export function expenseLineGastosAmount(line: FlowCcExpenseLineRow, unit: Gastos
   return line.amount_clp;
 }
 
+/**
+ * The mortgage dividendo a line paid, when its deposit link splits it into carrying and
+ * amortización (`hasSplittableMortgageExpenseDepositLink`): the one probe the gastos aggregation,
+ * the flows overview, the carrying events and the financing projection read.
+ */
+export function splittableMortgageLinkOf(
+  line: Pick<FlowCcExpenseLineRow, "expense_deposit_links">
+): ExpenseDepositLinkDto | null {
+  const link = line.expense_deposit_links?.find((l) => l.depto_cuota != null);
+  return hasSplittableMortgageExpenseDepositLink(link) ? link : null;
+}
+
+/**
+ * Whether a mortgage-linked line counts in the installment mode: an installment purchase total
+ * only in «Total», a cuota only in «Por cuota», anything else in both.
+ */
+export function mortgageLinkedLineCountsInMode(
+  line: Pick<FlowCcExpenseLineRow, "line_role">,
+  mode: CcInstallmentGastosMode
+): boolean {
+  if (line.line_role === "installment_purchase_total") return mode === "total";
+  if (line.line_role === "installment_cuota") return mode === "split";
+  return true;
+}
+
 /** Carrying (interés + seguros) share of a mortgage-linked payment, in the unit. */
-function mortgageLinkCarryingAmount(
+export function mortgageLinkCarryingAmount(
   line: FlowCcExpenseLineRow,
   link: { payment_clp: number; carrying_clp: number },
   unit: GastosUnit
@@ -213,12 +239,9 @@ export function aggregateGastosFromLines(
         sumBucket.gastosReal += amount;
         const skipChartCategory =
           ln.big_group_slug != null && excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
-        const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
-        if (hasSplittableMortgageExpenseDepositLink(link)) {
-          if (
-            (ln.line_role !== "installment_purchase_total" || mode === "total") &&
-            (ln.line_role !== "installment_cuota" || mode === "split")
-          ) {
+        const link = splittableMortgageLinkOf(ln);
+        if (link) {
+          if (mortgageLinkedLineCountsInMode(ln, mode)) {
             const carrying = mortgageLinkCarryingAmount(ln, link, unit);
             sumBucket.gastos += carrying;
             if (!skipChartCategory) {

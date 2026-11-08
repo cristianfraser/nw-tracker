@@ -13,7 +13,6 @@
 import { cacheKeyFlowsInputs } from "./cacheFamilies.js";
 import { dropFamiliesWhenInputChanged, getAggregationCached } from "./cacheRegistry.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import {
   buildFlowsExpenseLines,
   flowsExpensesPayloadFromLines,
@@ -23,7 +22,8 @@ import {
 } from "./flowsExpenses.js";
 import {
   buildFlowsExpensesGastosPayload,
-  expenseLineGastosAmount,
+  mortgageLinkCarryingAmount,
+  splittableMortgageLinkOf,
   type GastosUnit,
 } from "./flowsExpensesGastos.js";
 
@@ -36,19 +36,6 @@ export type MortgageCarryingEvent = {
   amount: number;
 };
 
-/** Carrying (interés + seguros) share of a mortgage-linked payment, in the unit. */
-export function mortgageLinkCarryingAmount(
-  line: FlowCcExpenseLineRow,
-  link: { payment_clp: number; carrying_clp: number },
-  unit: GastosUnit
-): number {
-  if (unit === "usd") {
-    // Same fx date as the payment line: allocate the line's USD by the carrying CLP share.
-    return expenseLineGastosAmount(line, unit) * (link.carrying_clp / link.payment_clp);
-  }
-  return link.carrying_clp;
-}
-
 export function mortgageCarryingEvents(
   lines: readonly FlowCcExpenseLineRow[],
   unit: GastosUnit
@@ -58,8 +45,8 @@ export function mortgageCarryingEvents(
   for (const ln of lines) {
     const scope = ln.gastos_scope ?? "both";
     if (scope === "split_only" || scope === "excluded") continue;
-    const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
-    if (!hasSplittableMortgageExpenseDepositLink(link)) continue;
+    const link = splittableMortgageLinkOf(ln);
+    if (!link) continue;
     const key = `${ln.purchase_key}|${link.deposit_movement_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
