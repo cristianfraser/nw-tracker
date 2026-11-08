@@ -8,10 +8,15 @@ import {
   type CardPlanForMatching,
 } from "./cards/purchases.js";
 import { db } from "./db.js";
-import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
+import {
+  isGenericTransferMerchantKey,
+  normalizeCcExpenseMerchantKey,
+  stableInstallmentHPurchaseKeyFromLedgerArgs,
+} from "./ccExpenseCategories.js";
+import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule } from "./expenseCategoryRules.js";
 import { purchaseAmountsMatch } from "./matching/installmentAmount.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { adoptReplacingCardLines } from "./flows/cardLineAdoption.js";
+import { adoptReplacingCardLines, type CardLineAdoptionResult } from "./flows/cardLineAdoption.js";
 import { noteCardLineEvidence, requireCardLineSession, type CardLinePlan } from "./cards/lineWriteSession.js";
 
 export const selLineCategory = db.prepare<[number]>(
@@ -130,7 +135,7 @@ export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number
     }
   }
   noteCardLineEvidence(accountId, earliestTransactionDateForLineIds(ids));
-  adoptReplacingCardLines(plan.carry);
+  replaceCardLines(plan.carry);
   let n = 0;
   for (const id of ids) n += delLines.run(id).changes;
   return n;
@@ -230,4 +235,54 @@ export function backfillCcCrossImportDedupe(
     }
   }
   return { accounts: accountIds.length, removed_total, by_account };
+}
+
+export type CardLineReplacementResult = {
+  adoption: CardLineAdoptionResult;
+  /** Per-line category overrides copied onto the replacing line. */
+  line_categories_copied: number;
+  /** Merchant rules added under the replacing line's merchant name. */
+  merchant_rules_copied: { account_id: number; from: string; to: string }[];
+};
+
+/**
+ * Each replaced line's replacement takes over its flow (`adoptReplacingCardLines`), and two things
+ * outside the flow follow too (the carry rules, F17): a per-line category override (keyed by line
+ * id, so it would cascade away with the deleted line), and a merchant rule. The statement prints the
+ * merchant under another name than the paste («FARMACIA CENTRAL (T)» for «FARMACIA CENTRAL» on
+ * BCI), so a rule on the pasted name stops applying the day the statement arrives; when no rule
+ * reaches the statement's name, the same rule is added under it — which also covers that merchant's
+ * later statement lines. Call before deleting the `from` lines.
+ */
+export function replaceCardLines(pairs: readonly { fromLineId: number; toLineId: number }[]): CardLineReplacementResult | null {
+  if (pairs.length === 0) return null;
+  const out: CardLineReplacementResult = {
+    adoption: adoptReplacingCardLines(pairs),
+    line_categories_copied: 0,
+    merchant_rules_copied: [],
+  };
+  const line = db.prepare(
+    `SELECT l.id, l.merchant, s.account_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ?`
+  );
+  const lineCategory = db.prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`);
+  const insertLineCategory = db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`);
+  for (const p of pairs) {
+    const from = line.get(p.fromLineId) as { id: number; merchant: string | null; account_id: number };
+    const to = line.get(p.toLineId) as { id: number; merchant: string | null; account_id: number };
+    const fromLine = lineCategory.get(from.id) as { category_id: number } | undefined;
+    if (fromLine && lineCategory.get(to.id) == null) {
+      insertLineCategory.run(to.id, fromLine.category_id);
+      out.line_categories_copied += 1;
+    }
+    // Rules are global and keyed on the vendor: a replacing line printed under another vendor gets
+    // the rule the old name had.
+    const fromKey = normalizeCcExpenseMerchantKey(from.merchant);
+    const toKey = normalizeCcExpenseMerchantKey(to.merchant);
+    if (!fromKey || !toKey || fromKey === toKey || isGenericTransferMerchantKey(toKey)) continue;
+    const fromCategoryId = generalRuleCategoryIdReaching(fromKey);
+    if (fromCategoryId == null || hasGeneralRule(toKey)) continue;
+    setExpenseCategoryRule(toKey, null, fromCategoryId);
+    out.merchant_rules_copied.push({ account_id: to.account_id, from: fromKey, to: toKey });
+  }
+  return out;
 }

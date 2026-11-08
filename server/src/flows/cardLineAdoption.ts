@@ -19,8 +19,6 @@
 import { db } from "../db.js";
 import { buildExpenseKey } from "../expenseKeys.js";
 import { statementLineDateIso } from "../ccInstallmentPayBy.js";
-import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule } from "../expenseCategoryRules.js";
-import { isGenericTransferMerchantKey, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { adoptFlow, flowExists, rowFlowId } from "./flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey } from "./flowIdentity.js";
 import { FLOW_HOLDING_TABLES } from "./flowRetirement290.js";
@@ -438,37 +436,21 @@ export function adoptReimportedCardLines(capture: CardLineCapture): ReimportedCa
   return { ...applied, unpaired };
 }
 
-export type CardLineReplacementResult = {
-  adoption: CardLineAdoptionResult;
-  /** Per-line category overrides copied onto the replacing line. */
-  line_categories_copied: number;
-  /** Merchant rules added under the replacing line's merchant name. */
-  merchant_rules_copied: { account_id: number; from: string; to: string }[];
-};
-
 /**
  * Each line's replacement takes over its flow, for callers that already know the pair (their
  * recognisers paired them across different merchants, so identity pairing cannot) — a pasted/fed
  * line settled by the statement that bills it, a cut or pending re-listing dropped for its fuller
  * twin, a planted payment replaced by the bank's line, a pending listing replaced by the posted one.
- * Call before deleting the `from` lines.
- *
- * Two things outside the flow follow too (the carry rules, F17): a per-line category override
- * (keyed by line id, so it would cascade away with the deleted line), and a merchant rule. The
- * statement prints the merchant under another name than the paste («FARMACIA CENTRAL (T)» for
- * «FARMACIA CENTRAL» on BCI), so a rule on the pasted name stops applying the day the statement
- * arrives; when no rule reaches the statement's name, the same rule is added under it — which also
- * covers that merchant's later statement lines.
+ * Call before deleting the `from` lines. What lives outside the flow (a per-line category, a
+ * merchant rule) is the caller's to carry (`ccCrossImportDedupe.applyCardLinePlan`).
  */
-export function adoptReplacingCardLines(
-  pairs: readonly { fromLineId: number; toLineId: number }[]
-): CardLineReplacementResult | null {
-  if (pairs.length === 0) return null;
+export function adoptReplacingCardLines(pairs: readonly { fromLineId: number; toLineId: number }[]): CardLineAdoptionResult {
+  const out = emptyResult();
+  if (pairs.length === 0) return out;
   const ids = [...new Set(pairs.flatMap((p) => [p.fromLineId, p.toLineId]))];
   const rows = db
     .prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (${ids.map(() => "?").join(",")})`)
     .all(...ids) as CcLineRefRow[];
-  const rowById = new Map(rows.map((r) => [r.id, r]));
   const byId = new Map(rows.map((r) => [r.id, ccLineRefFromRow(r)]));
   const moves: CcLineMove[] = [];
   for (const p of pairs) {
@@ -477,34 +459,7 @@ export function adoptReplacingCardLines(
     if (!from || !to) throw new Error(`adoptReplacingCardLines: line ${!from ? p.fromLineId : p.toLineId} not found`);
     moves.push({ from, to, by: "matched" });
   }
-  const out: CardLineReplacementResult = {
-    adoption: adoptCardLineMoves(moves),
-    line_categories_copied: 0,
-    merchant_rules_copied: [],
-  };
-
-  const lineCategory = db.prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`);
-  const insertLineCategory = db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`);
-  for (const p of pairs) {
-    const from = rowById.get(p.fromLineId)!;
-    const to = rowById.get(p.toLineId)!;
-    const fromLine = lineCategory.get(from.id) as { category_id: number } | undefined;
-    if (fromLine && lineCategory.get(to.id) == null) {
-      insertLineCategory.run(to.id, fromLine.category_id);
-      out.line_categories_copied += 1;
-    }
-
-    // Rules are global and keyed on the vendor: a replacing line printed under another vendor
-    // («FARMACIA CENTRAL (T)» for the paste's «FARMACIA CENTRAL») gets the rule the old name had.
-    const fromKey = normalizeCcExpenseMerchantKey(from.merchant);
-    const toKey = normalizeCcExpenseMerchantKey(to.merchant);
-    if (!fromKey || !toKey || fromKey === toKey || isGenericTransferMerchantKey(toKey)) continue;
-    const fromCategoryId = generalRuleCategoryIdReaching(fromKey);
-    if (fromCategoryId == null || hasGeneralRule(toKey)) continue;
-    setExpenseCategoryRule(toKey, null, fromCategoryId);
-    out.merchant_rules_copied.push({ account_id: to.account_id, from: fromKey, to: toKey });
-  }
-  return out;
+  return adoptCardLineMoves(moves);
 }
 
 /**

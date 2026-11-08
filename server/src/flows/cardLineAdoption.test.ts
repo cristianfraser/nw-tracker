@@ -9,7 +9,8 @@ import { vendorCatalogFromEntries } from "../vendorCatalogMatch.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../db.js";
 import { loadCcExpensePurchaseBigGroups, setCcExpensePurchaseBigGroup } from "../ccExpenseBigGroups.js";
-import { adoptReplacingCardLines, planCcLineMoves, type CcLineRef } from "./cardLineAdoption.js";
+import { planCcLineMoves, type CcLineRef } from "./cardLineAdoption.js";
+import { replaceCardLines } from "../ccCrossImportDedupe.js";
 import {
   getCcExpenseCategoryBySlug,
   resolveMerchantCategorySlug,
@@ -317,7 +318,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     ]);
     setAssignments(accountId, "line-pr:vitest-rekey-cut", fun.id, "pasted");
     const ids = lineIds(accountId);
-    adoptReplacingCardLines([{ fromLineId: ids.get("vitest-rekey-cut")!, toLineId: ids.get("vitest-rekey-full")! }]);
+    replaceCardLines([{ fromLineId: ids.get("vitest-rekey-cut")!, toLineId: ids.get("vitest-rekey-full")! }]);
     expect(categoryOf(accountId, "line-pr:vitest-rekey-full")).toBe(fun.id);
     expect(noteOf(accountId, "line-pr:vitest-rekey-full")).toBe("pasted");
     expect(categoryOf(accountId, "line-pr:vitest-rekey-cut")).toBeNull();
@@ -340,7 +341,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
       bills.id
     );
 
-    const result = adoptReplacingCardLines([
+    const result = replaceCardLines([
       { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
       { fromLineId: ids.get("vitest-rekey-paste2")!, toLineId: ids.get("vitest-rekey-stmt2")! },
     ])!;
@@ -354,7 +355,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     expect(line.category_id).toBe(bills.id);
 
     // A statement name that already resolves keeps its own rule.
-    const again = adoptReplacingCardLines([
+    const again = replaceCardLines([
       { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
     ])!;
     expect(again.merchant_rules_copied).toEqual([]);
