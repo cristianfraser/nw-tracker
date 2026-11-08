@@ -1,3 +1,5 @@
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
+import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
@@ -41,7 +43,7 @@ export function createManualCcInstallmentPurchase(
   if (principal <= 0 || cuotas <= 0) throw new Error("principal and cuotas must be positive");
 
   const canonical = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const cardGroup = String(input.card_group ?? "A").trim() || "A";
+  const cardGroup = ccCardGroupOrDefault(input.card_group);
   const merchant = String(input.merchant ?? input.description ?? "Compra manual").trim() || "Compra manual";
 
   const r = db
@@ -212,6 +214,7 @@ export function convertStatementLineToInstallmentPurchase(
   if (line.cuota_purchase_kind) {
     db.prepare(`UPDATE cc_installment_purchases SET first_due_month = ? WHERE id = ?`).run(
       firstCuotaBillingMonth(
+        ccIssuerSlugForMasterAccount(accountId),
         line.cuota_purchase_kind,
         billingMonthContainingPurchase(accountId, purchaseDateIso)
       ),

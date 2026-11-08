@@ -1,3 +1,4 @@
+import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { cardLineKind } from "./cards/lineKinds.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
@@ -306,7 +307,7 @@ export function importCcStatementsMerge(
     const first = rows[0]!;
     assertCcStatementCsvHeader(first);
     const currency = currencyFromRow(first);
-    const cardGroup = String(first.card_group ?? "A").trim() || "A";
+    const cardGroup = ccCardGroupOrDefault(first.card_group);
     const sourcePdf = String(first.source_pdf ?? "").trim();
     const statementDate = String(first.statement_date ?? "").trim();
     // A PDF/JSON statement import must not count open web-paste bucket lines as existing

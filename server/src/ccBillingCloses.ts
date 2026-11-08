@@ -22,6 +22,8 @@
  *
  * Leaf module (no billing-view imports) so `ccManualBillingMonth` can depend on it.
  */
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
+import { ccIssuerBySlug } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { billingPeriodIsoRange, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -309,8 +311,8 @@ export function closeEvidenceForBillingMonth(
 /**
  * First purchase date that belongs to the facturación AFTER `billingMonth`: the statement's
  * printed next-period start when it has one, else the known close shifted by the issuer's
- * close-day offset. With only an estimated close — or no statement that prints the offset — this
- * falls back to the day after the close, the inclusive reading the app used before.
+ * close-day offset — the latest statement that prints it, else the issuer's rule
+ * (`CC_ISSUERS[…].close_day_offset_days`). With only an estimated close this is the day after it.
  */
 export function nextPeriodStartIsoForBillingMonth(
   accountId: number,
@@ -324,7 +326,9 @@ export function nextPeriodStartIsoForBillingMonth(
   }
   const close = closeEvidenceForBillingMonth(accountId, billingMonth, statements);
   if (close.source === "estimated") return { iso: addDaysIso(close.close_iso, 1), source: "estimated" };
-  const offset = closeDayOffsetDays(accountId, statements) ?? 1;
+  const offset =
+    closeDayOffsetDays(accountId, statements) ??
+    ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.close_day_offset_days;
   return { iso: addDaysIso(close.close_iso, offset), source: close.source };
 }
 

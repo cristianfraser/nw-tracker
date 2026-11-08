@@ -10,6 +10,7 @@ import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines
 import { activeAdditionalCardLast4ForAccount } from "./ccAdditionalCardExpenseMatch.js";
 import { db } from "./db.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
+import { ccIssuerBySlug } from "./ccIssuers.js";
 import {
   ccImportFlowItemFromRow,
   ccStatementLabel,
@@ -249,35 +250,26 @@ export function newWebPasteBatchId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-const WEB_PASTE_CARD_GROUP_BY_ISSUER: Readonly<Record<string, string>> = {
-  santander: "santander",
-  bci: "BCI",
-};
-
 /**
  * Web-paste card group + card last4 of a credit-card master, from its config only: the issuer
- * (`credit_card_account_config.issuer`) and the card identity (`card_last4`); the import_key
- * suffix is a stable dedupe key, not the plastic, so it is not read. Throws for an account that is
- * not a master, an issuer with no web-paste card group, or a master without a config last4: all
- * data problems, never "not a card".
+ * (`credit_card_account_config.issuer`, whose `web_paste.card_group` names the bucket group) and
+ * the card identity (`card_last4`); the import_key suffix is a stable dedupe key, not the plastic,
+ * so it is not read. Throws for an account that is not a master or a master without a config
+ * last4: data problems, never "not a card".
  */
 export function creditCardMasterMetaForAccount(accountId: number): {
   cardGroup: string;
   cardLast4: string;
 } {
-  const issuer = ccIssuerSlugForMasterAccount(accountId);
+  const issuer = ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!;
   const row = db
     .prepare(`SELECT card_last4 FROM credit_card_account_config WHERE account_id = ?`)
     .get(accountId) as { card_last4: string | null };
-  const cardGroup = WEB_PASTE_CARD_GROUP_BY_ISSUER[issuer];
-  if (!cardGroup) {
-    throw new Error(`Credit card master ${accountId}: issuer "${issuer}" has no web-paste card group`);
-  }
   const cardLast4 = String(row.card_last4 ?? "").trim();
   if (!/^\d{4}$/.test(cardLast4)) {
     throw new Error(
       `Credit card master ${accountId} has no valid credit_card_account_config.card_last4 (${JSON.stringify(row.card_last4)})`
     );
   }
-  return { cardGroup, cardLast4 };
+  return { cardGroup: issuer.web_paste.card_group, cardLast4 };
 }

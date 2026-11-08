@@ -1,3 +1,4 @@
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
 import { findMatchingInstallmentPurchase, purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import {
@@ -86,6 +87,7 @@ export function applyWebPasteInstallmentFirstDueNudges(
 
     if (line.cuota_purchase && purchaseAmountsMatch(match.total_amount_clp, amountClp)) {
       const target = firstCuotaBillingMonth(
+        ccIssuerSlugForMasterAccount(accountId),
         line.cuota_purchase.kind,
         billingMonthContainingPurchase(accountId, match.purchase_date)
       );

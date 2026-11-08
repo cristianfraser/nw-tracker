@@ -15,6 +15,7 @@
  *    either way) but is tagged `cuota_purchase_kind`, which keeps it out of the facturación's
  *    billed estimate and counts it as installment debt until the statement's plan supersedes it.
  */
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import {
@@ -124,6 +125,7 @@ export function createPlansForFeedCuotaPurchases(
     if (principal <= 0) continue;
     if (findMatchingInstallmentPurchase(accountId, line.merchant, line.transaction_date, principal)) continue;
     const firstDue = firstCuotaBillingMonth(
+      ccIssuerSlugForMasterAccount(accountId),
       cp.kind,
       billingMonthContainingPurchase(accountId, line.transaction_date)
     );

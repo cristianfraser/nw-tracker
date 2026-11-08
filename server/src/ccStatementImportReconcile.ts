@@ -1,3 +1,4 @@
+import { ccIssuerBySlug, ccIssuerForParserLayout, type CcIssuer } from "./ccIssuers.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
@@ -246,8 +247,18 @@ function closeEnoughOperaciones(actual: number, expected: number, currency: "clp
   return Math.abs(actual - expected) <= band;
 }
 
-function isBciLiderReconcileRows(rows: readonly CcReconcileRow[]): boolean {
-  return rows.some((r) => String(r.parser_layout ?? "").startsWith("bci_lider"));
+/**
+ * The issuer whose «Monto total facturado» identity the statement follows: the one an
+ * issuer-specific parser layout names (BCI Lider), else Santander's — the layout-less statements
+ * (Santander, the CMR card's) reconcile by its candidates. The band is the issuer's
+ * (`CC_ISSUERS[…].monto_facturado_tolerance_pct`).
+ */
+function reconcileIssuerForRows(rows: readonly CcReconcileRow[]): CcIssuer {
+  for (const r of rows) {
+    const issuer = ccIssuerForParserLayout(r.parser_layout);
+    if (issuer) return issuer;
+  }
+  return ccIssuerBySlug("santander")!;
 }
 
 export type CcReconcileHeader = {
@@ -278,7 +289,8 @@ export function reconcileBillingMonthMovements(
   const checks: CcImportReconcileCheck[] = [];
   const monto = header.monto_facturado;
   const compras = header.compras_cargos;
-  const bciLider = isBciLiderReconcileRows(facturadoRows);
+  const reconcileIssuer = reconcileIssuerForRows(facturadoRows);
+  const bciLider = reconcileIssuer.slug === "bci";
 
   // The BCI `bci_incomplete_parse` hatch (<12 rows, or >8% gap vs pdf_total_operaciones) was
   // removed 2026-08-28: genuinely incomplete BCI parses already fail loudly at PARSE level
@@ -292,7 +304,7 @@ export function reconcileBillingMonthMovements(
     if (bciLider) {
       const billed = parsed.parsed_operaciones + parsed.parsed_cargos_abonos;
       const delta = billed - monto;
-      const tol = Math.max(TOL_CLP, Math.abs(monto) * 0.005);
+      const tol = Math.max(TOL_CLP, Math.abs(monto) * reconcileIssuer.monto_facturado_tolerance_pct);
       const ok = closeEnough(billed, monto, tol);
       checks.push({
         code: "monto_facturado",
@@ -356,7 +368,7 @@ export function reconcileBillingMonthMovements(
       Math.abs(c - monto) < Math.abs(best - monto) ? c : best
     );
     const delta = billed - monto;
-    const tol = Math.max(TOL_CLP, Math.abs(monto) * 0.025);
+    const tol = Math.max(TOL_CLP, Math.abs(monto) * reconcileIssuer.monto_facturado_tolerance_pct);
     const ok = closeEnough(billed, monto, tol);
     checks.push({
       code: "monto_facturado",

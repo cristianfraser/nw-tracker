@@ -24,9 +24,10 @@ import { webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js
 
 describe("feed cuota purchase rules", () => {
   it("bills cuota comercio at the close after the purchase cycle, precio contado at its own", () => {
-    expect(firstCuotaBillingMonth("cuota_comercio", "2026-09")).toBe("2026-10");
-    expect(firstCuotaBillingMonth("cuota_comercio", "2026-12")).toBe("2027-01");
-    expect(firstCuotaBillingMonth("precio_contado", "2026-09")).toBe("2026-09");
+    expect(firstCuotaBillingMonth("santander", "cuota_comercio", "2026-09")).toBe("2026-10");
+    expect(firstCuotaBillingMonth("santander", "cuota_comercio", "2026-12")).toBe("2027-01");
+    expect(firstCuotaBillingMonth("santander", "precio_contado", "2026-09")).toBe("2026-09");
+    expect(firstCuotaBillingMonth("bci", "cuota_comercio", "2026-09")).toBe("2026-09");
   });
 });
 

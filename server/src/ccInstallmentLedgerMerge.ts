@@ -1,3 +1,4 @@
+import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
@@ -68,7 +69,7 @@ function txDateIso(row: CcStatementCsvRecord): string | null {
 }
 
 function makeLoanKey(row: CcStatementCsvRecord): string | null {
-  const cg = String(row.card_group ?? "A").trim() || "A";
+  const cg = ccCardGroupOrDefault(row.card_group);
   const iso = txDateIso(row);
   const amt = installmentContractAmountClp(row);
   const nt = parseOptionalChileanInteger(String(row.nro_cuota_total ?? ""));
@@ -138,7 +139,7 @@ export function groupInstallmentLoanChains(
       const chainKey = `${loanKey}\t${twinIndex}`;
       const chain = chains.get(chainKey) ?? {
         loan_key: loanKey,
-        card_group: String(row.card_group ?? "A").trim() || "A",
+        card_group: ccCardGroupOrDefault(row.card_group),
         canonical_row_id: "",
         twin_index: twinIndex,
         rows: [],

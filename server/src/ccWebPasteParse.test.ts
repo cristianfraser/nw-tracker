@@ -164,13 +164,13 @@ describe("creditCardMasterMetaForAccount", () => {
     expect(() => creditCardMasterMetaForAccount(id)).toThrow(/credit_card_account_config\.card_last4/);
   });
 
-  it("throws for an issuer with no web-paste card group, and for an unknown issuer", () => {
+  it("reads a CMR card's paste group from its issuer (bug 7), and throws for an unknown issuer", () => {
     const cmr = makeAccount({
       importKey: "credit_card_master|cmr|vitest-meta-issuer",
       notes: null,
       config: { issuer: "cmr", cardLast4: "9935" },
     });
-    expect(() => creditCardMasterMetaForAccount(cmr)).toThrow(/issuer "cmr"/);
+    expect(creditCardMasterMetaForAccount(cmr)).toEqual({ cardGroup: "CMR", cardLast4: "9935" });
     const unknown = makeAccount({
       importKey: "credit_card_master|vitestbank|vitest-meta-unknown",
       notes: null,

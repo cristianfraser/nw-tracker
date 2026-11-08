@@ -1,4 +1,5 @@
 import { normCcMerchant } from "./ccDedupeKey.js";
+import { ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
 import { CC_PAYMENT_MERCHANTS, CC_USD_DEBT_ABONO_MERCHANT } from "./ccStatementLineRules.js";
 
 /**
@@ -44,17 +45,12 @@ export function isCcPaymentOrUsdDebtAbonoMerchant(
   return isCcPaymentMerchant(merchant) || isCcUsdDebtAbonoMerchant(merchant);
 }
 
-/** Santander web UI shows charges negative / payments positive — the opposite of BCI. */
-function isSantanderWebPasteGroup(cardGroup?: string | null): boolean {
-  return String(cardGroup ?? "").trim().toLowerCase() === "santander";
-}
-
 /**
  * Web-paste amount → DB / PDF convention: charges positive, payments / refunds negative.
- * Payment rows (PAGO, ABONO, …) are always negative. For other merchants the issuer's
- * web-UI sign convention is applied so an explicit refund / nota de crédito is preserved:
- *   - BCI / Lider: charges positive, refunds negative → keep the pasted sign.
- *   - Santander:  charges negative, refunds positive → flip the pasted sign.
+ * Payment rows (PAGO, ABONO, …) are always negative. For other merchants the issuer's web-UI sign
+ * (`CC_ISSUERS[…].web_paste.sign`, found by the card group the line is pasted under) is applied so
+ * an explicit refund / nota de crédito is preserved: charges shown positive keep the pasted sign,
+ * charges shown negative (Santander) are flipped.
  */
 export function webPasteAmountClpForDb(
   pasteAmount: number,
@@ -79,7 +75,7 @@ export function webPasteAmountUsdForDb(
  * it, so an ingested listing line reaches the web-paste import exactly as a paste of the same row.
  */
 export function webPasteAmountFromDebtPositive(amount: number, cardGroup?: string | null): number {
-  return isSantanderWebPasteGroup(cardGroup) ? -amount : amount;
+  return ccIssuerForWebPasteCardGroup(cardGroup).web_paste.sign === "charges_negative" ? -amount : amount;
 }
 
 function webPasteSignedAmount(
@@ -90,7 +86,7 @@ function webPasteSignedAmount(
   const abs = Math.abs(pasteAmount);
   if (abs === 0) return 0;
   if (isCcPaymentMerchant(merchant)) return -abs;
-  if (isSantanderWebPasteGroup(cardGroup)) {
+  if (ccIssuerForWebPasteCardGroup(cardGroup).web_paste.sign === "charges_negative") {
     return pasteAmount < 0 ? abs : -abs;
   }
   return pasteAmount < 0 ? -abs : abs;

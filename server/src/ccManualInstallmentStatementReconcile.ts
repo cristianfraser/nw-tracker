@@ -14,6 +14,7 @@ import {
 } from "./ccCrossImportDedupe.js";
 import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
+import { ccCardGroupsCompatible } from "./ccIssuers.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { statementKeyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
@@ -458,11 +459,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
 
       for (const manual of manuals) {
         if (consumedManualIds.has(manual.id)) continue;
-        const manualGroup = String(manual.card_group ?? "A").trim();
-        const groupCompatible =
-          manualGroup === String(st.card_group ?? "A").trim() ||
-          manualGroup === webPasteGroup;
-        if (!groupCompatible) continue;
+        if (!ccCardGroupsCompatible(manual.card_group, st.card_group, webPasteGroup)) continue;
         if (!isIsoInInclusivePeriod(manual.purchase_date, st.period_from, st.period_to)) continue;
         coveredManualIds.add(manual.id);
 
