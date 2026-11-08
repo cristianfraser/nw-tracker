@@ -1,16 +1,16 @@
-import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
+import { assignFlowExpenseLineCategory } from "../expenseAssignmentWrites.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { snapshotCcExpenseCategories } from "./ccExpenseCategoryPersist.js";
+import { db } from "../db.js";
+import { snapshotLineCategories } from "./cardLineAdoption.js";
 import {
   getCcExpenseCategoryBySlug,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
   resolveMerchantCategorySlug,
-} from "./ccExpenseCategories.js";
-import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
-import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
-import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
+} from "../ccExpenseCategories.js";
+import { importCcStatementsFromCsvRecords } from "../ccStatementsImport.js";
+import { buildFlowsExpensesPayload } from "../flowsExpenses.js";
+import { VITEST_SANTANDER_CC_MASTER_NOTES } from "../test/vitestDbSeed.js";
 
 /**
  * All statements/rules here live on the ISOLATED vitest fixture master.
@@ -65,7 +65,7 @@ function cleanupFixtureAccount(accountId: number): void {
   db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(accountId);
 }
 
-describe("ccExpenseCategoryPersist", () => {
+describe("line categories across a statement re-import", () => {
   let accountId = 0;
   beforeAll(() => {
     accountId = fixtureAccountId();
@@ -92,8 +92,8 @@ describe("ccExpenseCategoryPersist", () => {
        ON CONFLICT(statement_line_id) DO UPDATE SET category_id = excluded.category_id`
     ).run(line!.id, supermarket.id);
 
-    const snap = snapshotCcExpenseCategories(accountId);
-    expect(snap.lineCategoryByParserRowId.get(PARSER_ROW_ID)).toBe(supermarket.id);
+    const snap = snapshotLineCategories(accountId);
+    expect(snap.byParserRowId.get(PARSER_ROW_ID)).toBe(supermarket.id);
 
     importCcStatementsFromCsvRecords(accountId, [seedRecord()]);
 

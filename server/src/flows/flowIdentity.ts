@@ -35,6 +35,19 @@ export function flowIdForKey(key: string, dbHandle: Database = db): number | nul
   return row?.id ?? null;
 }
 
+/**
+ * The movement on `accountId` whose flow answers to a key (a cartola row's key names its row through
+ * its flow; null when no flow carries the key or none of its rows is on that account).
+ */
+export function movementIdOnFlowOfKey(key: string, accountId: number, dbHandle: Database = db): number | null {
+  const flowId = flowIdForKey(key, dbHandle);
+  if (flowId == null) return null;
+  const row = dbHandle
+    .prepare(`SELECT MIN(id) AS id FROM movements WHERE flow_id = ? AND account_id = ?`)
+    .get(flowId, accountId) as { id: number | null };
+  return row.id;
+}
+
 function rowFlowId(row: FlowSourceRow, dbHandle: Database): number | null {
   if (row.table === "checking_gap_deposit_mirrors") {
     const e = dbHandle

@@ -3,12 +3,13 @@ import { cardLineKind } from "./cards/lineKinds.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
-import {
-  restoreCcExpenseCategories,
-  snapshotCcExpenseCategories,
-} from "./ccExpenseCategoryPersist.js";
 import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
-import { adoptReimportedCardLines, captureCardLines } from "./flows/cardLineAdoption.js";
+import {
+  adoptReimportedCardLines,
+  captureCardLines,
+  restoreLineCategories,
+  snapshotLineCategories,
+} from "./flows/cardLineAdoption.js";
 import {
   canonicalCcLineDedupeKeys,
   ccLineDedupeKeyExistsOnAccount,
@@ -220,7 +221,7 @@ export function importCcStatementsMerge(
       );
     }
   }
-  const categorySnap = snapshotCcExpenseCategories(accountId);
+  const categorySnap = snapshotLineCategories(accountId);
 
   const replaceAll = opts?.replaceAll === true;
   const replaceKeys = opts?.replaceStatementKeys;
@@ -547,7 +548,7 @@ export function importCcStatementsMerge(
     }
   }
 
-  const restored = restoreCcExpenseCategories(accountId, categorySnap);
+  const restored = restoreLineCategories(accountId, categorySnap);
 
   return {
     statementCount,
@@ -558,7 +559,7 @@ export function importCcStatementsMerge(
     linesSkippedInstallmentOverlap,
     linesOriginCardPatched,
     additionalCardCategoriesApplied,
-    categoriesRestored: restored.lineCategories + restored.uniquePurchases,
+    categoriesRestored: restored,
     earliestInsertedTxDate,
     inserted_flows,
     skipped_flows,

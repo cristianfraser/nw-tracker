@@ -33,7 +33,6 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccManualInstallmentStatementReconcile.ts": "raw: manual plan replaced by its statement twin",
   "cardStatementCrossCheck.ts": "raw: JSON vs ledger cross-check",
   "santanderStatementImport.ts": "raw: stale-echo and plan lookups by canonical_row_id",
-  "ccExpenseCategoryPersist.ts": "raw: re-key mover (goes with F9 step 5)",
   "ccExpenseCategories.ts": "raw: purchase key → line ids through parser_row_id (key resolvers)",
   "expenseDepositLinks.ts": "raw: mortgage-link category writer by line id",
   "ccExpenseGenericTransferBackfill.ts": "raw: category backfill",

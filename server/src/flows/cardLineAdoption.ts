@@ -506,3 +506,58 @@ export function adoptReplacingCardLines(
   }
   return out;
 }
+
+/**
+ * A line's own category override (`cc_expense_line_categories`) names the line by id and cascades
+ * with it, so a statement re-import that replaces a statement's lines snapshots them first and puts
+ * each back on the line that comes back with the same parser row (else the same dedupe key). The
+ * flow-keyed assignments need no snapshot: the re-imported line adopts its flow.
+ */
+export type LineCategorySnapshot = { byParserRowId: Map<string, number>; byDedupeKey: Map<string, number> };
+
+export function snapshotLineCategories(accountId: number): LineCategorySnapshot {
+  const byParserRowId = new Map<string, number>();
+  const byDedupeKey = new Map<string, number>();
+  const rows = db
+    .prepare(
+      `SELECT l.parser_row_id, l.dedupe_key, lc.category_id
+       FROM cc_expense_line_categories lc
+       JOIN cc_statement_lines l ON l.id = lc.statement_line_id
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ?`
+    )
+    .all(accountId) as { parser_row_id: string | null; dedupe_key: string | null; category_id: number }[];
+  for (const r of rows) {
+    const prid = String(r.parser_row_id ?? "").trim();
+    if (prid) byParserRowId.set(prid, r.category_id);
+    const dedupe = String(r.dedupe_key ?? "").trim();
+    if (dedupe) byDedupeKey.set(dedupe, r.category_id);
+  }
+  return { byParserRowId, byDedupeKey };
+}
+
+/** Puts the snapshot's overrides back on the account's lines; returns how many lines got one. */
+export function restoreLineCategories(accountId: number, snap: LineCategorySnapshot): number {
+  const put = db.prepare(
+    `INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)
+     ON CONFLICT(statement_line_id) DO UPDATE SET category_id = excluded.category_id`
+  );
+  const lines = db
+    .prepare(
+      `SELECT l.id, l.parser_row_id, l.dedupe_key FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`
+    )
+    .all(accountId) as { id: number; parser_row_id: string | null; dedupe_key: string | null }[];
+  let restored = 0;
+  for (const l of lines) {
+    let categoryId = snap.byParserRowId.get(String(l.parser_row_id ?? "").trim());
+    if (categoryId == null) {
+      const dedupe = String(l.dedupe_key ?? "").trim();
+      if (dedupe) categoryId = snap.byDedupeKey.get(dedupe);
+    }
+    if (categoryId == null) continue;
+    put.run(l.id, categoryId);
+    restored += 1;
+  }
+  return restored;
+}
