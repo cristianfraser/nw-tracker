@@ -18,7 +18,8 @@
  */
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { db } from "./db.js";
+import { accountProfile } from "./accountProfile.js";
+import { findLines } from "./cards/purchases.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
@@ -57,32 +58,19 @@ export type MortgageCardMatchResult = {
 
 /** Every card line that pays the mortgage, oldest first (every card, every statement incl. the open bucket). */
 export function loadMortgageCardLines(): MortgageCardLine[] {
-  const lender = mortgageLenderMerchantSqlPrefilter("l.merchant");
-  const rows = db
-    .prepare(
-      `SELECT l.id AS line_id, s.account_id AS account_id, a.name AS account_name, l.merchant AS merchant,
-              l.transaction_date AS transaction_date, l.posting_date AS posting_date, l.amount_clp AS amount_clp
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       JOIN accounts a ON a.id = s.account_id
-       WHERE l.merchant IS NOT NULL AND l.amount_clp IS NOT NULL AND l.amount_clp > 0
-         AND ${lender.sql}`
-    )
-    .all(...lender.params) as {
-    line_id: number;
-    account_id: number;
-    account_name: string;
-    merchant: string;
-    transaction_date: string | null;
-    posting_date: string | null;
-    amount_clp: number;
-  }[];
   const out: MortgageCardLine[] = [];
-  for (const r of rows) {
+  for (const r of findLines({ merchantSql: mortgageLenderMerchantSqlPrefilter, amountClpSign: "positive" })) {
     if (!isMortgageCcExpenseMerchant(r.merchant)) continue;
     const date = statementLineDateIso({ transaction_date: r.transaction_date, posting_date: r.posting_date });
     if (!date) throw new Error(`mortgage card line ${r.line_id} has no readable date (${r.transaction_date} / ${r.posting_date})`);
-    out.push({ line_id: r.line_id, account_id: r.account_id, account_name: r.account_name, date, merchant: r.merchant, amount_clp: Math.round(r.amount_clp) });
+    out.push({
+      line_id: r.line_id,
+      account_id: r.account_id,
+      account_name: accountProfile(r.account_id).name,
+      date,
+      merchant: r.merchant!,
+      amount_clp: Math.round(r.amount_clp!),
+    });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.line_id - b.line_id);
 }

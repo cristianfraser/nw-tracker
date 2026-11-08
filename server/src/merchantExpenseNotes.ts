@@ -40,6 +40,7 @@ import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { findLines } from "./cards/purchases.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 
@@ -178,27 +179,7 @@ function amountsAgree(charge: Charge, price: number, currency: "clp" | "usd", to
 // Loading
 
 function loadCharges(): Charge[] {
-  const rows = db
-    .prepare(
-      `SELECT l.id, s.account_id, l.transaction_date, l.posting_date, l.merchant,
-              l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE l.installment_flag = 0
-         AND (upper(l.merchant) LIKE 'APPLE.COM%' OR upper(l.merchant) LIKE 'ITUNES.COM%')
-       ORDER BY l.id`
-    )
-    .all() as {
-    id: number;
-    account_id: number;
-    transaction_date: string | null;
-    posting_date: string | null;
-    merchant: string;
-    amount_clp: number | null;
-    amount_usd: number | null;
-    amount_orig: number | null;
-    orig_currency: string | null;
-  }[];
+  const rows = findLines({ installmentFlag: 0, merchantPrefixes: ["APPLE.COM", "ITUNES.COM"] });
   const notes = new Map(
     (db.prepare(`SELECT account_id, purchase_key, notes FROM cc_expense_purchase_notes`).all() as {
       account_id: number;
@@ -208,9 +189,9 @@ function loadCharges(): Charge[] {
   );
   const byKey = new Map<string, Charge>();
   for (const r of rows) {
-    if (!APP_STORE_CARD_MERCHANT.test(r.merchant.trim())) continue;
+    if (!APP_STORE_CARD_MERCHANT.test(r.merchant!.trim())) continue;
     const date = statementLineDateIso(r);
-    if (!date) throw new Error(`App Store card line ${r.id} has no date`);
+    if (!date) throw new Error(`App Store card line ${r.line_id} has no date`);
     const pesos =
       r.orig_currency === "clp" && r.amount_orig != null && r.amount_orig > 0
         ? Math.round(r.amount_orig)
@@ -219,7 +200,7 @@ function loadCharges(): Charge[] {
           : null;
     const usd = r.amount_usd != null && r.amount_usd > 0 ? r.amount_usd : null;
     if (pesos == null && usd == null) continue; // a refund or a payment, not a purchase
-    const key = resolveCcExpensePurchaseKey(r.id);
+    const key = resolveCcExpensePurchaseKey(r.line_id);
     const mapKey = `${r.account_id}|${key}`;
     const seen = byKey.get(mapKey);
     if (seen) {

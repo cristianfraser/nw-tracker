@@ -17,6 +17,7 @@
  * Import rule: this module imports only leaf modules (no card ledger, no expense pipeline), so the
  * card domain can depend on it without growing the import cycle.
  */
+import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
 import { effectiveCcExpenseLineAmountClp } from "../ccExpenseAmountClp.js";
 import {
@@ -423,3 +424,161 @@ export function purchaseFirstDueYm(
   return purchaseMonth;
 }
 
+
+// =============================================================================================
+// The views (docs/untangle-audit-line-readers.md «Views the module must offer»). Each returns
+// flow-shaped rows plus the ids a reader links by; the domain math (fx, facturación, pairing)
+// stays with the reader. Queries keep the shape and order their readers relied on.
+// =============================================================================================
+
+/** A statement line with its statement's context, as the views return it. */
+export type CardLine = {
+  line_id: number;
+  statement_id: number;
+  account_id: number;
+  /** The statement's close (dd/mm/yyyy) — a statement, an open bucket or an older paste. */
+  statement_date: string;
+  statement_currency: string;
+  source_pdf: string;
+  source_kind: string;
+  merchant: string | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  amount_orig: number | null;
+  orig_currency: string | null;
+  installment_flag: number;
+  nro_cuota_current: number | null;
+  nro_cuota_total: number | null;
+  valor_cuota_mensual_clp: number | null;
+  valor_cuota_mensual_usd: number | null;
+  cuota_purchase_kind: string | null;
+  /** The stored line kind (`cards/lineKinds.ts`, migration 276). */
+  kind: string | null;
+  origin_card_last4: string | null;
+  dedupe_key: string | null;
+  parser_row_id: string | null;
+  raw_line: string | null;
+};
+
+const CARD_LINE_COLUMNS = `l.id AS line_id, s.id AS statement_id, s.account_id, s.statement_date,
+  s.currency AS statement_currency, s.source_pdf, s.source_kind, l.merchant, l.transaction_date,
+  l.posting_date, l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.installment_flag,
+  l.nro_cuota_current, l.nro_cuota_total, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
+  l.cuota_purchase_kind, l.kind, l.origin_card_last4, l.dedupe_key, l.parser_row_id, l.raw_line`;
+
+// ---------------------------------------------------------------------------------------------
+// View 7 — the merchant / amount search for the matchers of other domains
+// ---------------------------------------------------------------------------------------------
+
+/** What {@link findLines} filters on; every field narrows, none set means every line. */
+export type FindLinesQuery = {
+  accountId?: number;
+  /** Exact stored peso amount. */
+  amountClp?: number;
+  /** Sign of the stored peso amount: `positive` > 0, `negative` < 0, `present` not null. */
+  amountClpSign?: "positive" | "negative" | "present";
+  installmentFlag?: 0 | 1;
+  /** Lines carrying a feed cuota-purchase tag (`cuota_purchase_kind`). */
+  cuotaPurchaseTagged?: true;
+  /** `UPPER(merchant) LIKE <prefix>%`, any of them. */
+  merchantPrefixes?: readonly string[];
+  /** A caller's SQL prefilter over the merchant column (e.g. the lender patterns); a superset. */
+  merchantSql?: (column: string) => { sql: string; params: readonly (string | number)[] };
+  /** Leave these lines out. */
+  excludeLineIds?: ReadonlySet<number>;
+  /**
+   * `statement`: by statement, then line (the default with `accountId` — one card's lines as its
+   * statements list them); `line`: by line id (the default otherwise); `newest_statement`: newest
+   * statement first, then newest line.
+   */
+  order?: "statement" | "line" | "newest_statement";
+  limit?: number;
+};
+
+/**
+ * Card lines by merchant, amount and card: the search the receipt, mortgage, grocery, App Store and
+ * tax matchers run, each pairing the result by its own rule. Read-only; rows come with their
+ * statement and account so a match can link back by `line_id`.
+ */
+export function findLines(q: FindLinesQuery = {}): CardLine[] {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (q.accountId != null) {
+    where.push("s.account_id = ?");
+    params.push(q.accountId);
+  }
+  if (q.amountClp != null) {
+    where.push("l.amount_clp = ?");
+    params.push(q.amountClp);
+  }
+  if (q.amountClpSign === "positive") where.push("l.amount_clp > 0");
+  if (q.amountClpSign === "negative") where.push("l.amount_clp < 0");
+  if (q.amountClpSign === "present") where.push("l.amount_clp IS NOT NULL");
+  if (q.installmentFlag != null) {
+    where.push("l.installment_flag = ?");
+    params.push(q.installmentFlag);
+  }
+  if (q.cuotaPurchaseTagged) where.push("l.cuota_purchase_kind IS NOT NULL");
+  if (q.merchantPrefixes && q.merchantPrefixes.length > 0) {
+    where.push(`(${q.merchantPrefixes.map(() => "upper(l.merchant) LIKE ?").join(" OR ")})`);
+    params.push(...q.merchantPrefixes.map((p) => `${p.toUpperCase()}%`));
+  }
+  if (q.merchantSql) {
+    const pre = q.merchantSql("l.merchant");
+    where.push(`l.merchant IS NOT NULL AND ${pre.sql}`);
+    params.push(...pre.params);
+  }
+  const order = { statement: "s.id, l.id", line: "l.id", newest_statement: "s.id DESC, l.id DESC" }[
+    q.order ?? (q.accountId != null ? "statement" : "line")
+  ];
+  const rows = db
+    .prepare(
+      `SELECT ${CARD_LINE_COLUMNS}
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY ${order}`
+    )
+    .all(...params) as CardLine[];
+  const kept = q.excludeLineIds ? rows.filter((r) => !q.excludeLineIds!.has(r.line_id)) : rows;
+  return q.limit != null ? kept.slice(0, q.limit) : kept;
+}
+
+/** The card account a statement line sits on; throws for an unknown line. */
+export function accountIdForLine(lineId: number): number {
+  const row = db
+    .prepare(`SELECT s.account_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ?`)
+    .get(lineId) as { account_id: number } | undefined;
+  if (!row) throw new Error(`card line ${lineId} not found`);
+  return row.account_id;
+}
+
+/**
+ * The additional plastics (of `last4s`) the account's latest real statement prints as line origins
+ * (bank listings are not statements). Several share the latest close when the statement lists
+ * more than one; none when no statement printed one.
+ */
+export function latestStatementOriginPlastics(
+  accountId: number,
+  last4s: readonly string[],
+  dbHandle: Database = db
+): string[] {
+  const rows = dbHandle
+    .prepare(
+      `WITH dated AS (
+         SELECT l.origin_card_last4 AS origin,
+                substr(s.statement_date, 7, 4) || '-' || substr(s.statement_date, 4, 2) || '-' ||
+                  substr(s.statement_date, 1, 2) AS close_iso
+         FROM cc_statement_lines l
+         JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ?
+           AND s.source_kind NOT IN ('listing_open', 'listing_other')
+           AND l.origin_card_last4 IN (SELECT value FROM json_each(?))
+       )
+       SELECT DISTINCT origin FROM dated WHERE close_iso = (SELECT MAX(close_iso) FROM dated)`
+    )
+    .all(accountId, JSON.stringify(last4s)) as { origin: string }[];
+  return rows.map((r) => r.origin);
+}

@@ -25,6 +25,7 @@
  * nothing that leads back to the funnel.
  */
 import { db } from "./db.js";
+import { findLines } from "./cards/purchases.js";
 import { parseDdMmYyToIso, stripBciTerminalSuffix } from "nw-tracker-contracts";
 
 export type GroceryCardLineStatus = "created" | "covered" | "pending_branch" | "matched";
@@ -58,14 +59,8 @@ const selectPending = db.prepare(
    WHERE card_line_account_id = ? AND card_line_status = 'pending_branch'
    ORDER BY purchased_at, id`
 );
-const selectCandidateLines = db.prepare(
-  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.raw_line
-   FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?
-     AND l.id NOT IN (SELECT learned_statement_line_id FROM grocery_branch_merchants
-                      WHERE learned_statement_line_id IS NOT NULL)
-   ORDER BY l.id`
+const selectLearnedLineIds = db.prepare(
+  `SELECT learned_statement_line_id AS id FROM grocery_branch_merchants WHERE learned_statement_line_id IS NOT NULL`
 );
 
 /**
@@ -143,7 +138,14 @@ function lineYmd(row: CandidateLine): string | null {
 export function learnBranchForPendingReceipt(receipt: PendingBranchReceipt): BranchLearnOutcome {
   if (!(receipt.card_paid_clp > 0)) return { status: "no_candidate" };
   const ownPrefix = `${receiptCardLineRawLinePrefix(receipt.store_chain)}|`;
-  const rows = selectCandidateLines.all(receipt.card_line_account_id, receipt.card_paid_clp) as CandidateLine[];
+  const learnedLineIds = new Set((selectLearnedLineIds.all() as { id: number }[]).map((r) => r.id));
+  const rows: CandidateLine[] = findLines({
+    accountId: receipt.card_line_account_id,
+    installmentFlag: 0,
+    amountClp: receipt.card_paid_clp,
+    excludeLineIds: learnedLineIds,
+    order: "line",
+  }).map((l) => ({ id: l.line_id, merchant: l.merchant, transaction_date: l.transaction_date, posting_date: l.posting_date, raw_line: l.raw_line }));
   const candidates = rows.filter(
     (r) =>
       !String(r.raw_line ?? "").startsWith(ownPrefix) &&

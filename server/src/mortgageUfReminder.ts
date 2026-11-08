@@ -18,6 +18,7 @@
  */
 import { db } from "./db.js";
 import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
+import { findLines } from "./cards/purchases.js";
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./cards/facturacion.js";
 import { MORTGAGE_CUOTA_DAY, mortgageCuotaWindow } from "./mortgageCuotaDay.js";
@@ -169,25 +170,12 @@ export function decideMortgageUfReminder(
   };
 }
 
-type MortgageCcLineRow = { merchant: string | null; account_id: number };
-
 /** Resolve the operational CC master that pays the mortgage, from its statement lines. */
 function resolveMortgageCcMasterId(): number | null {
   // SQL prefilter is a safe superset of `isMortgageCcExpenseMerchant` (its patterns are all
   // ASCII substrings; the normalizer only trims/collapses/uppercases). Newest statement first
   // (id order tracks import recency; statement_date is DD/MM/YYYY, unsafe to sort as text).
-  const lender = mortgageLenderMerchantSqlPrefilter("l.merchant");
-  const rows = db
-    .prepare(
-      `SELECT l.merchant AS merchant, s.account_id AS account_id
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE l.merchant IS NOT NULL
-         AND ${lender.sql}
-       ORDER BY s.id DESC, l.id DESC
-       LIMIT 25`
-    )
-    .all(...lender.params) as MortgageCcLineRow[];
+  const rows = findLines({ merchantSql: mortgageLenderMerchantSqlPrefilter, order: "newest_statement", limit: 25 });
 
   let masterId: number | null = null;
   for (const r of rows) {

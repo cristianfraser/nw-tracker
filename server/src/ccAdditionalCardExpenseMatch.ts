@@ -2,6 +2,7 @@ import type { Database } from "better-sqlite3";
 import { expenseKeyKind, isInstallmentContractKind } from "./expenseKeys.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { db } from "./db.js";
+import { latestStatementOriginPlastics } from "./cards/purchases.js";
 import {
   ADDITIONAL_CARD_CC_EXPENSE_SLUG,
   getCcExpenseCategoryBySlug,
@@ -140,29 +141,15 @@ export function activeAdditionalCardLast4ForAccount(
   if (additionalCardLast4s.length === 0) {
     throw new Error(`Card account ${accountId}: a line is marked additional, but no additional card is configured`);
   }
-  const rows = dbHandle
-    .prepare(
-      `WITH dated AS (
-         SELECT l.origin_card_last4 AS origin,
-                substr(s.statement_date, 7, 4) || '-' || substr(s.statement_date, 4, 2) || '-' ||
-                  substr(s.statement_date, 1, 2) AS close_iso
-         FROM cc_statement_lines l
-         JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ?
-           AND s.source_kind NOT IN ('listing_open', 'listing_other')
-           AND l.origin_card_last4 IN (SELECT value FROM json_each(?))
-       )
-       SELECT DISTINCT origin FROM dated WHERE close_iso = (SELECT MAX(close_iso) FROM dated)`
-    )
-    .all(accountId, JSON.stringify(additionalCardLast4s)) as { origin: string }[];
-  if (rows.length !== 1) {
+  const origins = latestStatementOriginPlastics(accountId, additionalCardLast4s, dbHandle);
+  if (origins.length !== 1) {
     throw new Error(
-      rows.length === 0
+      origins.length === 0
         ? `Card account ${accountId}: a line is marked additional, but no statement of this account prints an additional card`
-        : `Card account ${accountId}: its latest statement prints several additional cards (${rows.map((r) => r.origin).join(", ")})`
+        : `Card account ${accountId}: its latest statement prints several additional cards (${origins.join(", ")})`
     );
   }
-  return rows[0]!.origin;
+  return origins[0]!;
 }
 
 export function formatAutoAdditionalCardNote(opts: {

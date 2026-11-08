@@ -62,6 +62,7 @@ import { classifyLiderLines, liderMasterAccountId } from "./liderCardLines.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { findLines } from "./cards/purchases.js";
 
 export const GROCERY_CHAIN_LIDER = "lider";
 
@@ -245,23 +246,12 @@ export type CardLineMatch =
   | { status: "no_card_line" | "not_card_paid" }
   | { status: "ambiguous_card_line"; candidates: number };
 
-const selectCardLinesByAmount = db.prepare(
-  `SELECT DISTINCT s.account_id, l.transaction_date, l.posting_date, l.merchant
-   FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-   WHERE l.amount_clp = ?`
-);
-
 /** The card line that is this purchase, in `[fromYmd, toYmd]`. */
 export function findReceiptCardLine(rule: ChainMatchRule, paidClp: number, fromYmd: string, toYmd: string): CardLineMatch {
   if (paidClp <= 0) return { status: "not_card_paid" };
   const seen = new Set<string>();
   const hits: Extract<CardLineMatch, { status: "matched" }>[] = [];
-  for (const row of selectCardLinesByAmount.all(paidClp) as {
-    account_id: number;
-    transaction_date: string | null;
-    posting_date: string | null;
-    merchant: string | null;
-  }[]) {
+  for (const row of findLines({ amountClp: paidClp })) {
     const date = statementLineDateIso(row);
     if (!date || date < fromYmd || date > toYmd || !rule.merchant.test(row.merchant ?? "")) continue;
     // The same purchase on two statement versions (or a bucket line and its statement) is one hit.

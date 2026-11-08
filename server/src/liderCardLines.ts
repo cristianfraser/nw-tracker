@@ -7,10 +7,9 @@
  */
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
+import { findLines, merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { webPasteAmountClpForDb } from "./ccPaymentLines.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
-import { db } from "./db.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
@@ -36,13 +35,6 @@ export function liderMasterAccountId(): number {
   return resolved[0]!.accountId;
 }
 
-const dbOneShotLinesForAccount = db.prepare(
-  `SELECT l.merchant, l.transaction_date, l.posting_date, l.amount_clp
-   FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp IS NOT NULL`
-);
-
 /**
  * A ledger line for the same day and the exact same signed amount, whatever its merchant text.
  *
@@ -64,13 +56,7 @@ export function findLedgerLineSameDayAndAmount(
   dateIso: string,
   amountClpForDb: number
 ): { merchant: string | null } | null {
-  const rows = dbOneShotLinesForAccount.all(accountId) as {
-    merchant: string | null;
-    transaction_date: string | null;
-    posting_date: string | null;
-    amount_clp: number;
-  }[];
-  for (const row of rows) {
+  for (const row of findLines({ accountId, installmentFlag: 0, amountClpSign: "present" })) {
     if (row.amount_clp !== amountClpForDb) continue;
     const rowIso =
       parseDdMmYyToIso(String(row.transaction_date ?? "")) ??

@@ -8,6 +8,7 @@
  * refund's year (`offset_kept`) and pays the debt's year (`offset_paid`).
  */
 import { db } from "./db.js";
+import { findLines } from "./cards/purchases.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 export type F22SettlementLink = {
@@ -79,13 +80,8 @@ export function f22Settlement(taxYear: number, filed: Record<number, number> | n
   });
   for (const l of links) {
     if (l.movement_id != null || l.account_id == null) continue;
-    const lines = db
-      .prepare(
-        `SELECT l.transaction_date FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-          WHERE s.account_id = ? AND l.amount_clp = ?`
-      )
-      .all(l.account_id, l.amount) as { transaction_date: string }[];
-    if (!lines.some((x) => parseDdMmYyToIso(x.transaction_date) === l.occurred_on)) {
+    const lines = findLines({ accountId: l.account_id, amountClp: l.amount });
+    if (!lines.some((x) => parseDdMmYyToIso(x.transaction_date ?? "") === l.occurred_on)) {
       throw new Error(`F22 AT${taxYear}: no card line of ${l.amount} on ${l.occurred_on} (account ${l.account_id}) any more`);
     }
   }
