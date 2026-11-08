@@ -1,6 +1,7 @@
 import { deleteFlowCategory, getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { db } from "./db.js";
-import { keyTarget, moveKeyedRows, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
+import { adoptFlow } from "./flows/flowAdoption.js";
+import { ensureFlowForKey, flowIdForKey, mergeFlowInto } from "./flows/flowIdentity.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import {
   listInstallmentPurchaseSiblingStatementLineIds,
@@ -49,26 +50,6 @@ const delManualPurchase = db.prepare(
 
 const delUniqueByKey = { run: (account: number, key: string) => deleteFlowCategory(account, key) };
 
-// Purchase-key references that must follow the surviving PDF purchase when a manual twin is
-// deleted (facturado-financing links, purchase notes, big-group assignments). UPDATE OR IGNORE
-// + DELETE: when a row already exists under the PDF key, the PDF-side value wins and the stale
-// manual-key row is dropped.
-/**
- * The financing links of the manual plan's flow move to the statement plan's (migration 284): the
- * statement side's link wins when both carry one, as before.
- */
-function moveFinancingLinks(accountId: number, fromKey: string, toKey: string): number {
-  const from = keyTarget(fromKey, false);
-  if (!from) return 0;
-  const where = `kind = 'finances_facturado' AND account_id = ? AND ${TARGET_WHERE}`;
-  if (!db.prepare(`SELECT 1 FROM flow_links WHERE ${where}`).get(accountId, ...targetParams(from))) return 0;
-  const to = keyTarget(toKey, true);
-  const moved = db
-    .prepare(`UPDATE OR IGNORE flow_links SET flow_id = ?, portion = ?, piece_seq = ? WHERE ${where}`)
-    .run(...targetParams(to), accountId, ...targetParams(from)).changes;
-  db.prepare(`DELETE FROM flow_links WHERE ${where}`).run(accountId, ...targetParams(from));
-  return moved;
-}
 
 
 const findPdfPlansForLineIdentity = db.prepare(
@@ -179,21 +160,31 @@ function pdfPurchaseKeyForMatchedLine(
   return stableCcExpensePurchaseKeyFromCtx(ctx);
 }
 
-/** Repoint every purchase_key reference from the deleted manual's keys to the PDF key. */
-function migrateManualPurchaseKeyRefs(
-  accountId: number,
-  manualKeys: readonly string[],
-  pdfKey: string
-): number {
-  let rewritten = 0;
-  for (const manualKey of manualKeys) {
-    if (!manualKey || manualKey === pdfKey) continue;
-    rewritten += moveFinancingLinks(accountId, manualKey, pdfKey);
-    // Notes and big groups sit on the flow (migrations 287, 282); the target's own wins, as before.
-    if (moveKeyedRows("flow_notes", manualKey, pdfKey, "keep-target")) rewritten += 1;
-    if (moveKeyedRows("flow_big_groups", manualKey, pdfKey, "keep-target")) rewritten += 1;
+/** The manual plan's flow (null when the row has none). */
+function manualPlanFlowId(manualId: number): number | null {
+  return (db.prepare(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`).get(manualId) as { flow_id: number | null } | undefined)
+    ?.flow_id ?? null;
+}
+
+/**
+ * The statement plan (the flow its lines' key names) folds into the manual plan's flow; the flows
+ * still answering to the manual plan's older keys (the identity-only form, `installment:<id>`) fold
+ * in too. Returns how many flows folded in.
+ */
+function adoptStatementPlanFlow(manualId: number, manualFlow: number, manualKey: string | null, pdfKey: string): number {
+  let folded = 0;
+  const olderKeys = [manualKey ? installmentHKeyWithoutTotal(manualKey) : null, buildExpenseKey({ kind: "installment", purchaseId: manualId })];
+  for (const k of olderKeys) {
+    const f = k ? flowIdForKey(k) : null;
+    if (f != null && f !== manualFlow) {
+      mergeFlowInto(f, manualFlow, "to");
+      folded += 1;
+    }
   }
-  return rewritten;
+  const statementFlow = ensureFlowForKey(pdfKey);
+  if (statementFlow !== manualFlow) folded += 1;
+  adoptFlow({ survivor: manualFlow, arriving: statementFlow }, { prefer: "arriving", key: pdfKey, previousKey: manualKey });
+  return folded;
 }
 
 const selUniqueCat = { get: (account: number, key: string) => getFlowCategory(account, key) };
@@ -334,7 +325,8 @@ export type CcManualInstallmentReconcileResult = {
   /** Manual rows flipped to source='pdf' because no separate pdf plan existed for the contract. */
   converted: number;
   categories_transferred: number;
-  purchase_key_refs_rewritten: number;
+  /** Flows folded into a manual plan's flow when its statement twin took it over (F9 step 4). */
+  flows_adopted: number;
   matches: CcManualInstallmentReconcileMatch[];
 };
 
@@ -383,7 +375,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
       deleted: 0,
       converted: 0,
       categories_transferred: 0,
-      purchase_key_refs_rewritten: 0,
+      flows_adopted: 0,
       matches: [],
     };
   }
@@ -392,7 +384,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
   let deleted = 0;
   let converted = 0;
   let categoriesTransferred = 0;
-  let purchaseKeyRefsRewritten = 0;
+  let flowsAdopted = 0;
   const matches: CcManualInstallmentReconcileMatch[] = [];
   // Plans converted from web-pasted lines inherit the web-paste statement's issuer-derived
   // card_group (e.g. 'santander'), while PDF statements keep the legacy parser groups
@@ -500,20 +492,20 @@ export function reconcileManualInstallmentPurchasesForStatements(
           categoriesTransferred += 1;
         }
 
-        deleteManualPurchaseExpenseKeys(accountId, manual.id, manualKey);
-        delManualPurchase.run(manual.id, accountId);
-        deleted += 1;
-
-        // Facturado-financing links, notes and big-group assignments reference the plan by
-        // purchase_key (which embeds the manual's merchant text) — repoint them at the key the
-        // surviving PDF side's gastos rows will carry, or e.g. a financing link silently stops
-        // projecting its financed facturación the moment the twin collapses.
+        // Adoption on arrival (F9 step 4): the statement's plan is the same purchase, so it takes
+        // over the hand-entered plan's flow — notes, big group, financing links and every other
+        // assignment stay where the user put them (the statement side's own row wins a conflict, as
+        // before), and the flow answers to the key the statement's lines carry.
         const pdfKey = pdfPurchaseKeyForMatchedLine(accountId, hitLine);
-        if (pdfKey) {
-          const manualKeys = [manualKey, manualKey ? installmentHKeyWithoutTotal(manualKey) : null]
-            .filter((k): k is string => k != null);
-          purchaseKeyRefsRewritten += migrateManualPurchaseKeyRefs(accountId, manualKeys, pdfKey);
+        const manualFlow = manualPlanFlowId(manual.id);
+        if (pdfKey && manualFlow != null) {
+          flowsAdopted += adoptStatementPlanFlow(manual.id, manualFlow, manualKey, pdfKey);
+          delManualPurchase.run(manual.id, accountId);
+        } else {
+          deleteManualPurchaseExpenseKeys(accountId, manual.id, manualKey);
+          delManualPurchase.run(manual.id, accountId);
         }
+        deleted += 1;
       }
     }
 
@@ -571,7 +563,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
     deleted,
     converted,
     categories_transferred: categoriesTransferred,
-    purchase_key_refs_rewritten: purchaseKeyRefsRewritten,
+    flows_adopted: flowsAdopted,
     matches,
   };
 }

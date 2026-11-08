@@ -292,15 +292,21 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
     );
     insertFinancingPurchase(linkId, accountId, manualKey);
     setFlowNote(accountId, manualKey, "vitest twin note");
+    const flowOfKey = (k: string) => (db.prepare(`SELECT id FROM flows WHERE legacy_key = ?`).get(k) as { id: number } | undefined)?.id;
+    const assignedFlow = flowOfKey(manualKey);
 
     try {
       const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
       expect(result.deleted).toBe(1);
-      expect(result.purchase_key_refs_rewritten).toBe(2);
+      // The statement plan's flow folded into the manual plan's: the link and the note came along.
+      expect(result.flows_adopted).toBe(1);
 
       const pdfKey = `installment-h:${accountId}:2026-06-25:12:544574:MP *MERCADO LIBRE`;
       expect(financingKeys(linkId)).toEqual([pdfKey]);
       expect(getFlowNote(accountId, pdfKey)).toBe("vitest twin note");
+      // Adoption: the statement plan answers to the same flow the user's link and note were made on.
+      expect(assignedFlow).toBeDefined();
+      expect(flowOfKey(pdfKey)).toBe(assignedFlow);
     } finally {
       db.prepare(`DELETE FROM flow_links WHERE financing_link_id = ?`).run(linkId);
       db.prepare(`DELETE FROM cc_facturado_financing_links WHERE id = ?`).run(linkId);
