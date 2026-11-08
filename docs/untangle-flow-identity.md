@@ -235,3 +235,79 @@ What the code forced, and why (each change is also in its commit):
   outlives its row, so a new movement that takes a deleted row's id answers to the old flow under
   `checking-mv:<id>` (seen in the test DB, where fixtures reuse ids). Step 4's adoption, or a
   delete trigger that drops `checking-mv:` keys with their row, must close it.
+
+## Step 4 as built (flow-identity-2b, 2026-11-08)
+
+- **Retirement (migration 290).** A flow outlives its rows: when its last evidence row goes and
+  something hangs off it (`FLOW_HOLDING_TABLES` + its own `flow_links`) or a key names it, the delete
+  trigger sets `retired_on` and remembers the document its evidence named (`retired_source_table`,
+  `retired_document_key`); a bare flow still goes with its row. A key that names its row by id
+  (`checking-mv:`, `line:`, `installment:`, `manual:`, a gap mirror's) is detached into
+  `retired_key` on delete, so a reused id (no AUTOINCREMENT on `movements`, `cc_statement_lines`,
+  `flows`) never answers to the old flow; the hook detaches what the data already held. Readers of
+  the keyed tables skip keyless rows (`keyedRowsSql`). An unmatched bucket line inside the closed
+  cycle is deleted as before and its flow retires with whatever the user put on it.
+- **Adoption** (`flows/flowAdoption.ts`, `adoptFlow`): the arriving row's flow folds into the one on
+  file (`mergeFlowInto`, which now also carries pieces as one set per flow); the survivor answers to
+  the arriving row's key when it answered to one before, a flow still answering to the replaced
+  row's key folds in too (`previousKey` — an older flow of the same purchase, e.g. left by a
+  re-import before this step), and a card flow's amount, day, currency and merchant follow its most
+  trusted line evidence (statement 3 > listing 2 > manual 1; movements keep theirs — their evidence
+  states the signed bank figure and provenance text). Nothing reads the flow's own fields yet.
+- **Per importer** (the recognisers are unchanged; only the outcome moved):
+  - re-imported card lines (`adoptReimportedCardLines`, ex-`ccExpenseLineRekey`): same parser row,
+    then identity, twins in id order, the surviving copy; a split re-parse and a new twin still get
+    copies (they are other flows). The capture remembers only flows that outlive their row (a bare
+    one's id may be reused by the new line's flow). The import report lists pairings by identity /
+    survivor / fan-out, conflicts (the new line's row kept) and unpaired lines;
+  - a bucket line settled by its statement, a cut/pending re-listing dropped for its fuller twin, a
+    planted payment replaced by the bank's line, a pending listing replaced by the posted one
+    (`CardLinePlan.carry` → `replaceCardLines` in the funnel's delete step → `adoptReplacingCardLines`);
+    the per-line category and the merchant rule under the statement's name stay carry rules there;
+  - the statement plan replacing its hand-entered or feed-created twin
+    (`ccManualInstallmentStatementReconcile`, result `flows_adopted`): the statement plan's flow and
+    the flows of the manual plan's older keys fold into the manual plan's flow, the statement side's
+    row winning a conflict; the category still lands on the statement's lines;
+  - the cartola row replacing a daily row (`adoptPartialIntoCartolaRow`; the payslip link, which
+    names a movement, moves with `repointMovementReferences` in the movement funnel);
+  - a cartola month re-imported or a daily row listed again: the movement funnel
+    (`insertBankPesoMovement`) adopts the flow retired with the same document on the same account
+    (`adoptRetiredMovementFlow`; several → reported, left alone);
+  - a hand-entered transfer superseding an imported bank row (`supersedeImportedCheckingRowsForTransfer`);
+  - already adoptive, untouched: the mail-written movement and the Fintual synthesized retiro (the bank
+    listing is skipped and confirms the row, its day recorded as the posting day), the promoted
+    checking credit (rewritten in place), the converted manual plan (the precedent).
+- **Bug fixed on the replay:** a forced cartola month re-import dropped the refund marks on its rows
+  (their keyless flows went with the rows); they now return with the re-imported rows.
+- **Pairing strategies:** no recogniser changed strategy. The replay shows no ties to decide on (113
+  card pairs by parser row / identity with 0 ambiguous, 8 cartola rows by exact document); the manual
+  plan's first-matching line and the feed mirror's `first` stay `first` (not exercised by the replay).
+- **Provenance in columns (migration 291):** a movement's document kind is its evidence row's
+  `source_kind` (cartola, its opening anchor — `import:cartola|opening|` rows included —, daily
+  listing, mail notice / rebuilt, broker document, legacy import, manual), with `document_key` the
+  identity a bank row is re-found by; a trigger keeps them in step when an importer rewrites a note.
+  `flows/flowEvidence.ts` holds the readers' SQL; `listCheckingMovements`, the cartola balance walks,
+  the partial prune, the transfer-leg supersede, the mirror pairs and the transfer-notice pool read
+  it; `provenanceGuard.test.ts` fails on a new note-prefix test.
+
+## Step 5 as built (flow-identity-2b, 2026-11-08)
+
+Deleted: `ccExpenseLineRekey` (→ `flows/cardLineAdoption.ts`), `carryCcExpenseAssignments`,
+`ccExpenseCategoryPersist` (only a line's own category override, keyed by line id, is snapshotted
+and put back: `snapshotLineCategories` / `restoreLineCategories`), `checkingGastosCategoryPersist`
+with `transferCheckingGastosCategoryFromMovementToNote` and the cartola import's
+`preserveCheckingGastosCategoriesForCartolaNotes` call, `carryMovementKeyedIncomeState` (its payslip
+re-point is `repointMovementReferences`), `backfillCheckingAutoMatchCategories` (the mirror-pair
+finder names a cartola row by the flow its key answers to). Guard test
+`flows/assignmentGuard.test.ts`: no table outside `flow_*` stores an expense key, and every table
+naming a movement or card line by id is listed as a document's record.
+
+**Not done, and why:** `flowIdForKey` and `flows.legacy_key` stay — every keyed reader
+(`keyedRowsSql`, the link views, the Expenses lines' `purchase_key`) joins on the key, and the client
+sends `purchase_key` until wave 4; removing them needs the readers to join on the row's `flow_id`
+(the identity is now consistent for that: after the replay every line's and cartola row's flow is the
+flow its key names). Still note-derived: the cartola identity and the daily-feed grammar used for
+matching (`cartolaNoteContent`, `parsePartialMovementNote`), the month replace by
+`note LIKE 'import:cartola|<period>|%'` (`deleteCheckingCartolaMonthImport`, `accountImports`), the
+mail prefixes in the evidence trigger, and the note-identified rows in `budaWallet`,
+`afcCertImport`, `fintualCertImport`, `groceryBranchLearning`; the 27 test files' note inserts.
