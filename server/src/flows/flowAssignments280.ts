@@ -183,3 +183,30 @@ export function runFlowParts283(dbi: DatabaseType): void {
   // A line a re-import deletes leaves its pieces on its flow for the re-key mover to carry.
   reinstallFlowDeleteTriggers(dbi, ["flow_parts"]);
 }
+
+export function runFlowLinksFinancing284(dbi: DatabaseType): void {
+  const before = count(dbi, "cc_facturado_financing_link_purchases");
+  const rows = dbi.prepare(`SELECT * FROM cc_facturado_financing_link_purchases`).all() as {
+    link_id: number;
+    financing_account_id: number;
+    financing_purchase_key: string;
+  }[];
+  const flowOf = dbi.prepare(`SELECT id FROM flows WHERE legacy_key = ?`);
+  const insert = dbi.prepare(
+    `INSERT INTO flow_links (flow_id, portion, piece_seq, kind, financing_link_id, account_id)
+     VALUES (?, ?, ?, 'finances_facturado', ?, ?)`
+  );
+  for (const r of rows) {
+    const parts = expenseKeyParts(r.financing_purchase_key);
+    if (!parts) throw new Error(`migration 284: «${r.financing_purchase_key}» is not an expense key`);
+    const flow = flowOf.get(parts.flowKey) as { id: number } | undefined;
+    // A financing link names the plans that paid a facturado: one that names no plan is a broken link.
+    if (!flow) throw new Error(`migration 284: financing link ${r.link_id} names «${r.financing_purchase_key}», which no row carries`);
+    insert.run(flow.id, parts.portion, parts.pieceSeq ?? -1, r.link_id, r.financing_account_id);
+  }
+  const after = count(dbi, "flow_links");
+  console.log(`migration 284: cc_facturado_financing_link_purchases ${before} → flow_links ${after}`);
+  if (after !== before) throw new Error(`migration 284: ${before} rows became ${after}`);
+  dbi.exec(`DROP TABLE cc_facturado_financing_link_purchases`);
+  installWriteLog(dbi, "flow_links");
+}

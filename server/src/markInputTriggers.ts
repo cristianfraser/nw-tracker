@@ -465,6 +465,7 @@ const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
   "checking_income_movement_overrides",
   "cc_expense_purchase_big_groups",
   "cc_expense_line_splits",
+  "cc_facturado_financing_link_purchases",
 ]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [
@@ -479,6 +480,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "flow_income_overrides",
   "flow_big_groups",
   "flow_parts",
+  "flow_links",
 ];
 
 /**

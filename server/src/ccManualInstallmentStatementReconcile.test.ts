@@ -1,9 +1,27 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { listCcFacturadoFinancingLinks } from "./ccFacturadoFinancingLinksDb.js";
+import { keyTarget, targetParams } from "./flows/flowKeyedAssignments.js";
 import { getCcExpenseCategoryBySlug, stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import {
   reconcileManualInstallmentPurchasesForStatements,
 } from "./ccManualInstallmentStatementReconcile.js";
+
+
+/** A financing link's plan, named by its key (it sits on the plan's flow: migration 284). */
+function insertFinancingPurchase(linkId: number, accountId: number, key: string): void {
+  const at = keyTarget(key, true);
+  db.prepare(
+    `INSERT INTO flow_links (flow_id, portion, piece_seq, kind, financing_link_id, account_id)
+     VALUES (?, ?, ?, 'finances_facturado', ?, ?)`
+  ).run(...targetParams(at), linkId, accountId);
+}
+
+function financingKeys(linkId: number): string[] {
+  return listCcFacturadoFinancingLinks()
+    .filter((l) => l.id === linkId)
+    .flatMap((l) => l.financing.map((f) => f.purchase_key));
+}
 
 describe("reconcileManualInstallmentPurchasesForStatements", () => {
   it("deletes manual purchase and transfers category when line matches inside facturación period", () => {
@@ -272,10 +290,7 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
         )
         .run(accountId).lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO cc_facturado_financing_link_purchases (link_id, financing_account_id, financing_purchase_key)
-       VALUES (?, ?, ?)`
-    ).run(linkId, accountId, manualKey);
+    insertFinancingPurchase(linkId, accountId, manualKey);
     db.prepare(
       `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'vitest twin note')`
     ).run(accountId, manualKey);
@@ -286,16 +301,13 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
       expect(result.purchase_key_refs_rewritten).toBe(2);
 
       const pdfKey = `installment-h:${accountId}:2026-06-25:12:544574:MP *MERCADO LIBRE`;
-      const linkRow = db
-        .prepare(`SELECT financing_purchase_key FROM cc_facturado_financing_link_purchases WHERE link_id = ?`)
-        .get(linkId) as { financing_purchase_key: string };
-      expect(linkRow.financing_purchase_key).toBe(pdfKey);
+      expect(financingKeys(linkId)).toEqual([pdfKey]);
       const noteRow = db
         .prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
         .get(accountId, pdfKey) as { notes: string } | undefined;
       expect(noteRow?.notes).toBe("vitest twin note");
     } finally {
-      db.prepare(`DELETE FROM cc_facturado_financing_link_purchases WHERE link_id = ?`).run(linkId);
+      db.prepare(`DELETE FROM flow_links WHERE financing_link_id = ?`).run(linkId);
       db.prepare(`DELETE FROM cc_facturado_financing_links WHERE id = ?`).run(linkId);
       db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
     }
@@ -347,7 +359,7 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
 
   afterEach(() => {
     for (const id of accountIds) {
-      db.prepare(`DELETE FROM cc_facturado_financing_link_purchases WHERE financing_account_id = ?`).run(id);
+      db.prepare(`DELETE FROM flow_links WHERE kind = 'finances_facturado' AND account_id = ?`).run(id);
       db.prepare(`DELETE FROM cc_facturado_financing_links WHERE financed_account_id = ?`).run(id);
       db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(id);
       db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(id);
@@ -435,19 +447,13 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
         )
         .run(accountId).lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO cc_facturado_financing_link_purchases (link_id, financing_account_id, financing_purchase_key)
-       VALUES (?, ?, ?)`
-    ).run(linkId, accountId, keyFor("ZTIENDA PREAMBL"));
+    insertFinancingPurchase(linkId, accountId, keyFor("ZTIENDA PREAMBL"));
 
     const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
     expect(result.matched).toBe(1);
     expect(result.deleted).toBe(1);
     expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeFalsy();
-    const linkRow = db
-      .prepare(`SELECT financing_purchase_key FROM cc_facturado_financing_link_purchases WHERE link_id = ?`)
-      .get(linkId) as { financing_purchase_key: string };
-    expect(linkRow.financing_purchase_key).toBe(keyFor("ZTIENDA PREAMBLE SPA"));
+    expect(financingKeys(linkId)).toEqual([keyFor("ZTIENDA PREAMBLE SPA")]);
   });
 
   it("fails instead of keeping both plans when the row cannot be matched", () => {

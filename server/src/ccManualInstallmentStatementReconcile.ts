@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { moveKeyedRows } from "./flows/flowKeyedAssignments.js";
+import { keyTarget, moveKeyedRows, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import {
   listInstallmentPurchaseSiblingStatementLineIds,
@@ -54,14 +54,23 @@ const delUniqueByKey = db.prepare(
 // deleted (facturado-financing links, purchase notes, big-group assignments). UPDATE OR IGNORE
 // + DELETE: when a row already exists under the PDF key, the PDF-side value wins and the stale
 // manual-key row is dropped.
-const updFinancingKey = db.prepare(
-  `UPDATE OR IGNORE cc_facturado_financing_link_purchases SET financing_purchase_key = ?
-   WHERE financing_account_id = ? AND financing_purchase_key = ?`
-);
-const delFinancingKey = db.prepare(
-  `DELETE FROM cc_facturado_financing_link_purchases
-   WHERE financing_account_id = ? AND financing_purchase_key = ?`
-);
+/**
+ * The financing links of the manual plan's flow move to the statement plan's (migration 284): the
+ * statement side's link wins when both carry one, as before.
+ */
+function moveFinancingLinks(accountId: number, fromKey: string, toKey: string): number {
+  const from = keyTarget(fromKey, false);
+  if (!from) return 0;
+  const where = `kind = 'finances_facturado' AND account_id = ? AND ${TARGET_WHERE}`;
+  if (!db.prepare(`SELECT 1 FROM flow_links WHERE ${where}`).get(accountId, ...targetParams(from))) return 0;
+  const to = keyTarget(toKey, true);
+  const moved = db
+    .prepare(`UPDATE OR IGNORE flow_links SET flow_id = ?, portion = ?, piece_seq = ? WHERE ${where}`)
+    .run(...targetParams(to), accountId, ...targetParams(from)).changes;
+  db.prepare(`DELETE FROM flow_links WHERE ${where}`).run(accountId, ...targetParams(from));
+  return moved;
+}
+
 const updNoteKey = db.prepare(
   `UPDATE OR IGNORE cc_expense_purchase_notes SET purchase_key = ?
    WHERE account_id = ? AND purchase_key = ?`
@@ -187,10 +196,8 @@ function migrateManualPurchaseKeyRefs(
   let rewritten = 0;
   for (const manualKey of manualKeys) {
     if (!manualKey || manualKey === pdfKey) continue;
-    for (const [upd, del] of [
-      [updFinancingKey, delFinancingKey],
-      [updNoteKey, delNoteKey],
-    ] as const) {
+    rewritten += moveFinancingLinks(accountId, manualKey, pdfKey);
+    for (const [upd, del] of [[updNoteKey, delNoteKey]] as const) {
       rewritten += upd.run(pdfKey, accountId, manualKey).changes;
       del.run(accountId, manualKey);
     }

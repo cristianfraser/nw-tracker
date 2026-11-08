@@ -1,4 +1,6 @@
 import { db } from "./db.js";
+import { expenseKeySql } from "./expenseKeys.js";
+import { keyTarget, targetParams } from "./flows/flowKeyedAssignments.js";
 
 /**
  * A facturado-financing link: one financed facturado (account + billing month) jointly paid by a
@@ -18,9 +20,13 @@ const selLinks = db.prepare(
      ORDER BY financed_account_id, financed_billing_month`
 );
 
+/** The plans of each link: the `finances_facturado` links on their flows (migration 284), read under their keys. */
 const selLinkPurchases = db.prepare(
-  `SELECT link_id, financing_account_id, financing_purchase_key
-     FROM cc_facturado_financing_link_purchases`
+  `SELECT a.financing_link_id AS link_id, a.account_id AS financing_account_id,
+          ${expenseKeySql("f.legacy_key", "a.portion", "NULLIF(a.piece_seq, -1)")} AS financing_purchase_key
+     FROM flow_links a JOIN flows f ON f.id = a.flow_id
+     WHERE a.kind = 'finances_facturado'
+     ORDER BY a.id`
 );
 
 /** All links with their financing purchases. */
@@ -57,11 +63,11 @@ const selLinkId = db.prepare(
      WHERE financed_account_id = ? AND financed_billing_month = ?`
 );
 const delLinkPurchases = db.prepare(
-  `DELETE FROM cc_facturado_financing_link_purchases WHERE link_id = ?`
+  `DELETE FROM flow_links WHERE kind = 'finances_facturado' AND financing_link_id = ?`
 );
 const insLinkPurchase = db.prepare(
-  `INSERT OR IGNORE INTO cc_facturado_financing_link_purchases
-     (link_id, financing_account_id, financing_purchase_key) VALUES (?, ?, ?)`
+  `INSERT OR IGNORE INTO flow_links (flow_id, portion, piece_seq, kind, financing_link_id, account_id)
+     VALUES (?, ?, ?, 'finances_facturado', ?, ?)`
 );
 
 /**
@@ -84,7 +90,7 @@ export function upsertCcFacturadoFinancingLink(args: {
     const row = selLinkId.get(args.financedAccountId, args.financedBillingMonth) as { id: number };
     delLinkPurchases.run(row.id);
     for (const f of args.financing) {
-      insLinkPurchase.run(row.id, f.account_id, f.purchase_key);
+      insLinkPurchase.run(...targetParams(keyTarget(f.purchase_key, true)), row.id, f.account_id);
     }
     return row.id;
   });
