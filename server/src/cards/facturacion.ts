@@ -313,6 +313,11 @@ export function billingPeriodIsoRange(
 // Months: closed, provisional, open; purchase → month
 // ---------------------------------------------------------------------------------------------
 
+/** The card's issuer bills in dollars alone (`CC_ISSUERS[…].statement_currencies`): no peso statement ever closes a month. */
+export function accountStatementsAreUsdOnly(accountId: number): boolean {
+  return ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.statement_currencies === "usd_only";
+}
+
 /**
  * True when this account's imported PDF history carries a USD statement stream — closing a
  * facturación then waits for the USD twin too, until the bank closes a later facturación
@@ -321,6 +326,7 @@ export function billingPeriodIsoRange(
  * closing on CLP alone until its first USD statement lands.
  */
 export function accountRequiresUsdStatementClose(accountId: number): boolean {
+  if (accountStatementsAreUsdOnly(accountId)) return true;
   for (const st of listCcStatementsForAccount(accountId)) {
     if (st.currency === "usd" && isStatementSourceKind(st.source_kind)) return true;
   }
@@ -352,6 +358,7 @@ export function lastPdfBillingMonthForAccount(accountId: number): string | null 
 export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string> {
   const statements = listCcStatementsForAccount(accountId);
   const requiresUsd = accountRequiresUsdStatementClose(accountId);
+  const usdOnly = accountStatementsAreUsdOnly(accountId);
   const latestBankClose = requiresUsd
     ? latestKnownCloseIso(accountId, statements, chileCalendarTodayYmd())
     : null;
@@ -367,7 +374,12 @@ export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string>
   }
   const closed = new Set<string>();
   for (const [bm, { currencies, clpCloseIso }] of byMonth) {
-    if (!currencies.has("clp")) continue;
+    // A dollar-only card closes on its dollar statement; the others need the peso one.
+    if (!currencies.has(usdOnly ? "usd" : "clp")) continue;
+    if (usdOnly) {
+      closed.add(bm);
+      continue;
+    }
     const twinPending =
       requiresUsd &&
       !currencies.has("usd") &&

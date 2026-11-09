@@ -10,7 +10,9 @@
  * BCI prints the 10th of the month after the close as it falls, weekends included (14 of 14);
  * Santander lands on the 8th–10th with no exact rule from the close, and «the 10th, moved back
  * to the previous Chile business day» is the closest (16 of 23 on the current card, the other
- * seven one day earlier than predicted, never later); CMR printed close + 16 days (the 30th).
+ * seven one day earlier than predicted, never later); CMR printed close + 16 days (the 30th);
+ * the fictional US issuer (Lonestar) close + 25 days, the US norm (CARD Act: at least 21 days
+ * between the statement mailing and the due date).
  */
 export type CcDerivedPayByRule =
   | { kind: "next_month_day"; day: number; prior_business_day: boolean }
@@ -20,7 +22,9 @@ export type CcDerivedPayByRule =
  * How the issuer's web table signs an amount (the bank's own listing, pasted or fetched):
  * Santander shows charges negative and payments / refunds positive, BCI the other way round. The
  * CMR card's statements print charges positive; its web table was never pasted, so it takes that
- * convention (2026-11-08: a CMR paste used to throw for want of a rule).
+ * convention (2026-11-08: a CMR paste used to throw for want of a rule). The US issuer (Lonestar)
+ * has no web-paste source at all (its documents are statements only); its group and sign exist so
+ * the issuer row is complete and a stray paste reads like any charges-positive card.
  */
 export type CcWebPasteSign = "charges_negative" | "charges_positive";
 
@@ -33,9 +37,18 @@ export type CcWebPasteSign = "charges_negative" | "charges_positive";
  */
 export type CcFirstCuotaTiming = "purchase_cycle" | "next_cycle";
 
+/**
+ * Which currency statements a facturación of the issuer's card is made of: a peso statement and,
+ * when the card's history carries one, its dollar twin (`clp_and_usd`: the Chilean issuers), or a
+ * dollar statement alone (`usd_only`: a US card has no peso side, so its months close on the
+ * dollar statement and never wait for a peso one).
+ */
+export type CcStatementCurrencies = "clp_and_usd" | "usd_only";
+
 type CcIssuerDef = {
   slug: string;
   sort_order: number;
+  statement_currencies: CcStatementCurrencies;
   derived_pay_by: CcDerivedPayByRule;
   /** The bucket card_group a pasted or fed line is stored under, and how its web table signs it. */
   web_paste: { card_group: string; sign: CcWebPasteSign };
@@ -68,6 +81,7 @@ type CcIssuerDef = {
 export const CC_ISSUERS = [
   {
     slug: "santander",
+    statement_currencies: "clp_and_usd",
     sort_order: 0,
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: true },
     web_paste: { card_group: "santander", sign: "charges_negative" },
@@ -79,6 +93,7 @@ export const CC_ISSUERS = [
   },
   {
     slug: "bci",
+    statement_currencies: "clp_and_usd",
     sort_order: 10,
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: false },
     web_paste: { card_group: "BCI", sign: "charges_positive" },
@@ -90,6 +105,7 @@ export const CC_ISSUERS = [
   },
   {
     slug: "cmr",
+    statement_currencies: "clp_and_usd",
     sort_order: 20,
     derived_pay_by: { kind: "close_plus_days", days: 16 },
     web_paste: { card_group: "CMR", sign: "charges_positive" },
@@ -97,6 +113,21 @@ export const CC_ISSUERS = [
     first_cuota: { cuota_comercio: "purchase_cycle", precio_contado: "purchase_cycle" },
     parser_layout_prefixes: [],
     monto_facturado_tolerance_pct: 0.025,
+    merchant_suffixes: null,
+  },
+  {
+    // A fictional US bank (the demo's US chapter): USD only, one monthly statement closing on a
+    // fixed day of the month, the next cycle starting the day after, due 25 days after the close.
+    // No cuotas (a US card has none), no feed, no paste.
+    slug: "lonestar",
+    statement_currencies: "usd_only",
+    sort_order: 30,
+    derived_pay_by: { kind: "close_plus_days", days: 25 },
+    web_paste: { card_group: "LONESTAR", sign: "charges_positive" },
+    close_day_offset_days: 1,
+    first_cuota: { cuota_comercio: "purchase_cycle", precio_contado: "purchase_cycle" },
+    parser_layout_prefixes: [],
+    monto_facturado_tolerance_pct: 0.005,
     merchant_suffixes: null,
   },
 ] as const satisfies readonly CcIssuerDef[];

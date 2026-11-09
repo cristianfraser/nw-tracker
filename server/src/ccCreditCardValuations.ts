@@ -8,11 +8,22 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
 import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from "./ccBillingViews.js";
 import { planCount } from "./cards/purchases.js";
+import { accountStatementsAreUsdOnly } from "./cards/facturacion.js";
 import {
   ccLedgerMonthEndIso,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+
+/**
+ * Whether month-end anchors can be written from the billing detail: the card has a plan ledger, or
+ * its issuer bills in dollars alone (a US card has no cuotas, so its statements are the whole
+ * evidence). Any other statements-only master (the retired CMR card) keeps its script-written
+ * anchors.
+ */
+function hasBillingLedger(accountId: number): boolean {
+  return planCount(accountId) > 0 || accountStatementsAreUsdOnly(accountId);
+}
 
 const deleteNativeAnchor = db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ? AND as_of_date = ?`);
 const insertNativeAnchor = db.prepare(
@@ -90,7 +101,7 @@ function latestBillingDetailRow(
 }
 
 export function latestCreditCardBillingBalanceTotalClp(accountId: number): number | null {
-  if (planCount(accountId) === 0) return null;
+  if (!hasBillingLedger(accountId)) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
   const row = latestBillingDetailRow(detail);
   if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
@@ -100,7 +111,7 @@ export function latestCreditCardBillingBalanceTotalClp(accountId: number): numbe
 export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
   accountId: number
 ): { value_clp: number; as_of_date: string } | null {
-  if (planCount(accountId) === 0) return null;
+  if (!hasBillingLedger(accountId)) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
   const row = latestBillingDetailRow(detail);
   if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
@@ -118,7 +129,7 @@ export function creditCardBillingBalanceTotalClpAsOf(
   accountId: number,
   asOfYmd: string
 ): { value_clp: number; as_of_date: string } | null {
-  if (planCount(accountId) === 0) return null;
+  if (!hasBillingLedger(accountId)) return null;
   const asOfMonth = monthKeyFromYmd(asOfYmd);
   if (!asOfMonth) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
@@ -141,12 +152,9 @@ export function creditCardBillingBalanceTotalClpAsOf(
 export function ccLedgerStatementClosingPointsClp(
   accountId: number
 ): { as_of_date: string; value_clp: number }[] | null {
-  if (planCount(accountId) === 0) return null;
+  if (!hasBillingLedger(accountId)) return null;
   const { payload, detail } = billingDetailCacheForAccount(accountId);
-  if (payload == null) {
-    throw new Error(`account ${accountId}: ledger rows exist but cached bundle has no payload`);
-  }
-  const ledgerMonths = payload.months;
+  const ledgerMonths = payload?.months ?? [];
   const balanceByMonth = new Map(detail.map((d) => [d.billing_month, d.balance_statement_clp]));
   const months = [
     ...new Set([
@@ -158,7 +166,7 @@ export function ccLedgerStatementClosingPointsClp(
   // Built only when a month needs it (rare: every month usually has its detalle row).
   let frame: CcCupoFrame | null = null;
   const cupoEnCuotasClp = (ym: string): number =>
-    (frame ??= ccCupoFrame(accountId, planScheduleMonths(payload))).cupoEnCuotasClp(ym);
+    (frame ??= ccCupoFrame(accountId, payload ? planScheduleMonths(payload) : [])).cupoEnCuotasClp(ym);
   return months.map((ym) => ({
     as_of_date: ccLedgerMonthEndIso(ym),
     value_clp: Math.round(balanceByMonth.get(ym) ?? cupoEnCuotasClp(ym)),
@@ -173,15 +181,13 @@ export function ccLedgerStatementClosingPointsClp(
 export function ccLedgerStatementClosingPointsNative(
   accountId: number
 ): { as_of_date: string; owed: CcOwedNative }[] | null {
-  if (planCount(accountId) === 0) return null;
+  if (!hasBillingLedger(accountId)) return null;
   const { payload, detail } = billingDetailCacheForAccount(accountId);
-  if (payload == null) {
-    throw new Error(`account ${accountId}: ledger rows exist but cached bundle has no payload`);
-  }
-  const scheduleMonths = planScheduleMonths(payload);
+  const scheduleMonths = payload ? planScheduleMonths(payload) : [];
+  const ledgerMonths = payload?.months ?? [];
   const owedByMonth = ccStatementOwedByCurrencyByMonth(accountId, scheduleMonths);
   const months = [
-    ...new Set([...payload.months.map((h) => h.month), ...detail.map((d) => d.billing_month)]),
+    ...new Set([...ledgerMonths.map((h) => h.month), ...detail.map((d) => d.billing_month)]),
   ].sort((a, b) => a.localeCompare(b));
   if (months.length === 0) return null;
   let frame: CcCupoFrame | null = null;

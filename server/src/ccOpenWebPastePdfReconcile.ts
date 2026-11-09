@@ -6,7 +6,7 @@ import {
   hasEveryStatementTwinForBillingMonth,
   statementSlotsByBillingMonth,
 } from "./ccBillingStatementSlots.js";
-import { accountRequiresUsdStatementClose, billingMonthForManualLedgerPurchase, pdfClosedBillingMonthsForAccount } from "./cards/facturacion.js";
+import { accountRequiresUsdStatementClose, accountStatementsAreUsdOnly, billingMonthForManualLedgerPurchase, pdfClosedBillingMonthsForAccount } from "./cards/facturacion.js";
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import {
   moveOpenBucketLinesToBillingMonth,
@@ -128,7 +128,8 @@ export function reconcileOpenWebPasteAfterPdfClose(
   // month's dollar purchases twice (US$x.xxx,xx billed for US$x.xxx,xx).
   const fullyClosed = hasEveryStatementTwinForBillingMonth(
     statementSlotsByBillingMonth(accountId).get(billingMonth),
-    accountRequiresUsdStatementClose(accountId)
+    accountRequiresUsdStatementClose(accountId),
+    accountStatementsAreUsdOnly(accountId)
   );
   const statementCurrencies = new Set<"clp" | "usd">(
     pdfStatements.map((st) => (st.currency === "usd" ? "usd" : "clp"))
