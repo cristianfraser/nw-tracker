@@ -468,63 +468,73 @@ export type AssignPurchaseToRealEstateOpts = {
 export function assignPurchaseToRealEstateExpense(
   opts: AssignPurchaseToRealEstateOpts
 ): { expense_entry_id: number; link: RealEstateLinkRow } {
-  if (!REAL_ESTATE_LINKABLE_KINDS.includes(opts.kind as (typeof REAL_ESTATE_LINKABLE_KINDS)[number])) {
-    throw new Error(`kind must be one of: ${REAL_ESTATE_LINKABLE_KINDS.join(", ")}`);
-  }
-  const account = db
-    .prepare(
-      `SELECT a.id FROM expense_accounts a JOIN expense_groups g ON g.id = a.group_id
-       WHERE g.slug = 'real_estate' AND a.slug = ?`
-    )
-    .get(opts.accountSlug) as { id: number } | undefined;
-  if (!account) throw new Error(`unknown real-estate expense account: ${opts.accountSlug}`);
+  return assignPurchasesToRealEstateExpenses([opts])[0]!;
+}
 
-  const gastosLines = loadGastosLinesForRealEstateMatching();
-  const line = gastosLines.find((ln) => ln.purchase_key === opts.purchaseKey);
-  if (!line) throw new Error("purchase not found or not eligible");
-  if (loadLinkedPurchaseKeys().has(opts.purchaseKey)) throw new Error("purchase already linked");
-
-  const purchaseMonth = purchaseMonthForLine(line);
-  const billMonth = opts.billMonth ?? purchaseMonth;
-  if (!/^\d{4}-\d{2}$/.test(billMonth)) throw new Error("bill_month must be YYYY-MM");
-  if (!purchaseMonthMatchesBillSlot(billMonth, purchaseMonth)) {
-    throw new Error("purchase month does not match bill slot window");
-  }
-  for (const v of [opts.kwh, opts.m3]) {
-    if (v != null && (!Number.isFinite(v) || v < 0)) {
-      throw new Error("kwh/m3 must be non-negative numbers");
+/**
+ * {@link assignPurchaseToRealEstateExpense} for several purchases at once: the expense lines are
+ * read once and every bill is written in one transaction (all or none). A purchase named twice is
+ * refused like an already-linked one.
+ */
+export function assignPurchasesToRealEstateExpenses(
+  items: readonly AssignPurchaseToRealEstateOpts[]
+): { expense_entry_id: number; link: RealEstateLinkRow }[] {
+  if (items.length === 0) return [];
+  const accountStmt = db.prepare(
+    `SELECT a.id FROM expense_accounts a JOIN expense_groups g ON g.id = a.group_id
+     WHERE g.slug = 'real_estate' AND a.slug = ?`
+  );
+  for (const opts of items) {
+    if (!REAL_ESTATE_LINKABLE_KINDS.includes(opts.kind as (typeof REAL_ESTATE_LINKABLE_KINDS)[number])) {
+      throw new Error(`kind must be one of: ${REAL_ESTATE_LINKABLE_KINDS.join(", ")}`);
     }
+    if (!accountStmt.get(opts.accountSlug)) throw new Error(`unknown real-estate expense account: ${opts.accountSlug}`);
   }
-  assertConsumptionMatchesKind(opts.kind, { kwh: opts.kwh, m3: opts.m3 });
 
-  const noteParts = [line.merchant ?? opts.purchaseKey, line.purchase_on ?? purchaseMonth];
-  const note = `Asignado desde compra — ${noteParts.join(" · ")}`;
+  const lineByKey = new Map(loadGastosLinesForRealEstateMatching().map((ln) => [ln.purchase_key, ln]));
+  const linked = loadLinkedPurchaseKeys();
+  const planned = items.map((opts) => {
+    const account = accountStmt.get(opts.accountSlug) as { id: number };
+    const line = lineByKey.get(opts.purchaseKey);
+    if (!line) throw new Error("purchase not found or not eligible");
+    if (linked.has(opts.purchaseKey)) throw new Error("purchase already linked");
+    linked.add(opts.purchaseKey);
 
-  let entryId = 0;
-  const tx = db.transaction(() => {
-    const r = db
-      .prepare(
-        `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id, kwh, m3)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        line.amount_clp,
-        monthEndUtcYmd(billMonth),
-        opts.kind,
-        note,
-        account.id,
-        opts.kwh ?? null,
-        opts.m3 ?? null
-      );
-    entryId = Number(r.lastInsertRowid);
-    insertBillLink(entryId, opts.purchaseKey, "manual");
+    const purchaseMonth = purchaseMonthForLine(line);
+    const billMonth = opts.billMonth ?? purchaseMonth;
+    if (!/^\d{4}-\d{2}$/.test(billMonth)) throw new Error("bill_month must be YYYY-MM");
+    if (!purchaseMonthMatchesBillSlot(billMonth, purchaseMonth)) {
+      throw new Error("purchase month does not match bill slot window");
+    }
+    for (const v of [opts.kwh, opts.m3]) {
+      if (v != null && (!Number.isFinite(v) || v < 0)) {
+        throw new Error("kwh/m3 must be non-negative numbers");
+      }
+    }
+    assertConsumptionMatchesKind(opts.kind, { kwh: opts.kwh, m3: opts.m3 });
+    const noteParts = [line.merchant ?? opts.purchaseKey, line.purchase_on ?? purchaseMonth];
+    return { opts, accountId: account.id, line, billMonth, note: `Asignado desde compra — ${noteParts.join(" · ")}` };
   });
-  tx();
 
-  return {
-    expense_entry_id: entryId,
-    link: { expense_entry_id: entryId, purchase_key: opts.purchaseKey, link_source: "manual" },
-  };
+  const insert = db.prepare(
+    `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id, kwh, m3)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  const out: { expense_entry_id: number; link: RealEstateLinkRow }[] = [];
+  db.transaction(() => {
+    for (const p of planned) {
+      const entryId = Number(
+        insert.run(p.line.amount_clp, monthEndUtcYmd(p.billMonth), p.opts.kind, p.note, p.accountId, p.opts.kwh ?? null, p.opts.m3 ?? null)
+          .lastInsertRowid
+      );
+      insertBillLink(entryId, p.opts.purchaseKey, "manual");
+      out.push({
+        expense_entry_id: entryId,
+        link: { expense_entry_id: entryId, purchase_key: p.opts.purchaseKey, link_source: "manual" },
+      });
+    }
+  })();
+  return out;
 }
 
 /** Delete a bill entry outright (link + rejections cascade). For rows created by assign. */
