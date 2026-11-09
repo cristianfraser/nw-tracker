@@ -427,15 +427,6 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   return withRunningPlTotals(out);
 }
 
-function applyLiveCloseToCurrentMonthPerfRows(
-  accountId: number,
-  categorySlug: string,
-  sortedAsc: AccountMonthlyPerformanceRow[],
-  unit: TsUnit
-): AccountMonthlyPerformanceRow[] {
-  return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, sortedAsc, unit);
-}
-
 /**
  * Month-end close for monthly P/L must match the **account valuation chart**
  * (`buildPointsForAccounts`): the chart's cell, which is the account's value in the unit
@@ -591,7 +582,7 @@ export function valuationSeriesMonthlyPerformance(
   );
   // Live MTM marks refresh on every quote sync; do not bake them into the perf cache.
   const asc = [...base.monthly].reverse();
-  const withLive = applyLiveCloseToCurrentMonthPerfRows(accountId, row.bucket_slug, asc, unit);
+  const withLive = patchOrInsertLiveCurrentMonthPerfRows(accountId, row.bucket_slug, asc, unit);
   return {
     account_id: base.account_id,
     bucket_slug: base.bucket_slug,

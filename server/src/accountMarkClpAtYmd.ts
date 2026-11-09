@@ -300,14 +300,3 @@ export function accountMarkClpAtYmd(accountId: number, asOfYmd: string): Account
   const clp = qtyMarkValueIn(accountId, mark, asOfYmd, "clp", accountValueSide(accountId));
   return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: mark.as_of_date } : null;
 }
-
-/**
- * {@link accountMarkClpAtYmd} for a day before Chile today, never memoized (tests and the
- * identity check of the daily quantity series).
- */
-export function accountHistoricalMarkClpAtYmdUncached(accountId: number, asOfYmd: string): AccountMarkAtYmd | null {
-  const mark = accountHistoricalQtyMarkUncached(accountId, asOfYmd);
-  if (!mark) return null;
-  const clp = qtyMarkValueIn(accountId, mark, asOfYmd, "clp", accountValueSide(accountId));
-  return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: mark.as_of_date } : null;
-}

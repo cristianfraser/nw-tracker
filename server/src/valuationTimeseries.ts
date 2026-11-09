@@ -65,7 +65,7 @@ import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountV
 import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import {
   chartHostSlugForValuationGroup,
   composeReferenceValuesByDate,
@@ -490,7 +490,7 @@ function augmentChartDatesForFintualCertAccounts(
   const today = chileCalendarTodayYmd();
   for (const id of allIds) {
     const meta = chartMetaById.get(id);
-    if (!(meta?.import_key && isFintualCertV2ValuationNotes(meta.import_key))) continue;
+    if (!(meta?.import_key && isFintualCertV2AccountNotes(meta.import_key))) continue;
     const first = firstFintualCuotaEventYmd(id);
     if (!first) continue;
     for (const d of monthEndsBetweenInclusive(first, today)) aug.add(d);
@@ -725,18 +725,6 @@ function patchAccountLiveLastPoint(
   return isCreditCard
     ? patchLiveLastPointOnOrBeforeToday(points, dk, today, plotValue)
     : patchLiveLastPoint(points, dk, today, plotValue);
-}
-
-function patchLiveAfpMarksOnPoints(
-  rows: { account_id: number; bucket_slug: string; import_key?: string | null; name?: string | null }[],
-  unit: TsUnit,
-  points: Record<string, string | number | null>[]
-): Record<string, string | number | null>[] {
-  let next = points;
-  for (const r of rows) {
-    next = patchAccountLiveLastPoint(r, unit, next);
-  }
-  return next;
 }
 
 function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit) {
@@ -1994,7 +1982,7 @@ function getGroupValuationTimeseriesInnerUncached(
   const built = buildPointsForAccounts(chartTop, [], unit);
   const withLiveAfp = {
     ...built,
-    points: patchLiveAfpMarksOnPoints(rows, unit, built.points),
+    points: rows.reduce((pts, r) => patchAccountLiveLastPoint(r, unit, pts), built.points),
   };
   let accounts_in_group = appendGroupTabTotals(withLiveAfp);
   const consolidated = getGroupConsolidatedMonthlyPerfForRows(rows, groupSlug, unit);

@@ -7,7 +7,7 @@ import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm, cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import { accountHolding } from "./holdings.js";
 import { accountHoldingQtyAt, accountValueCurrency } from "./accountValue.js";
@@ -71,7 +71,7 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
   const importKey = (stmtImportKey.get(accountId) as { import_key: string | null } | undefined)?.import_key ?? null;
   const cuotaLedger =
     isCuotaLedgerKindSlug(kindSlug) && cuotaLedgerSeriesKeyForAccount(accountId) != null;
-  if ((cuotaLedger || isFintualCertV2ValuationNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
+  if ((cuotaLedger || isFintualCertV2AccountNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
     return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
   }
   // A ledger held in another currency (dollar cash): its own quantity, no price.
