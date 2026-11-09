@@ -7,11 +7,18 @@ import { staleDailyRunDays, DAILY_RUN_MESSAGE_TITLE } from "./dailyRunLog.js";
  * NEXT day.
  */
 describe("staleDailyRunDays", () => {
-  const cleanup = () =>
+  // The generated test person carries its own daily-run rows (demoData/ingestHistory.ts), newer
+  // than the one this test inserts; `staleDailyRunDays` reads the newest, so those rows are set
+  // aside under another title while the test runs and restored after it.
+  const STASHED_TITLE = `vitest-stash:${DAILY_RUN_MESSAGE_TITLE}`;
+  const cleanup = () => {
     db.prepare(`DELETE FROM app_messages WHERE body = 'vitest-daily-run-same-day'`).run();
+    db.prepare(`UPDATE app_messages SET title = ? WHERE title = ?`).run(DAILY_RUN_MESSAGE_TITLE, STASHED_TITLE);
+  };
 
   const insertRun = (createdAtUtc: string) => {
     cleanup();
+    db.prepare(`UPDATE app_messages SET title = ? WHERE title = ?`).run(STASHED_TITLE, DAILY_RUN_MESSAGE_TITLE);
     db.prepare(
       `INSERT INTO app_messages (kind, title, body, created_at) VALUES ('log', ?, 'vitest-daily-run-same-day', ?)`
     ).run(DAILY_RUN_MESSAGE_TITLE, createdAtUtc);
