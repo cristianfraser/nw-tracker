@@ -187,6 +187,8 @@ export type TaxReturnResponse = {
   tax_year: number;
   income_year: number;
   available_tax_years: number[];
+  /** The income year's US tax year when it has a 1040 (GET /api/tax-return/us); null otherwise. */
+  us_tax_year: number | null;
   provisional: boolean;
   base: "filed" | "informed" | "payroll" | "fees" | "none";
   tax_computed: boolean;
@@ -263,4 +265,79 @@ export type TaxReturnResponse = {
   art107: TaxReturnArt107;
   rentals: TaxReturnRentals;
   usd_fx: TaxReturnUsdFx;
+};
+
+/** GET /api/tax-return/us — the local Form 1040, v1 (server: f1040Payload.ts). */
+export type UsTaxReturnRowSection = "income" | "subtotal" | "deduction" | "tax" | "credit" | "payment" | "result";
+
+/** One 1040 line (the 2024 form's numbering: «1a», «25d», «35a»); whole dollars. */
+export type UsTaxReturnRow = {
+  line: string;
+  section: UsTaxReturnRowSection;
+  /** Null without a filed return; a line the filed return leaves out reads 0. */
+  filed: number | null;
+  draft: number;
+  /** Filed and draft both present and different. */
+  changed: boolean;
+};
+
+/** A W-2 rebuilt from the year's pay stubs (dollars to the cent). */
+export type UsTaxReturnW2 = {
+  employer: string;
+  ein: string;
+  stubs: number;
+  box1_wages: number;
+  box2_federal_withheld: number;
+  box3_social_security_wages: number;
+  box4_social_security_tax: number;
+  box5_medicare_wages: number;
+  box6_medicare_tax: number;
+  /** Box 12 code D: pre-tax 401(k). */
+  box12_d: number;
+  /** Box 12 code AA: Roth 401(k). */
+  box12_aa: number;
+  /** Box 12 code W: HSA through the cafeteria plan. */
+  box12_w: number;
+};
+
+export type UsTaxReturnNote = "no_state_return" | "first_year_full_resident" | "open_year" | "law_provisional";
+
+export type UsTaxReturnResponse = {
+  jurisdiction: "us";
+  /** The calendar tax year. */
+  tax_year: number;
+  available_tax_years: number[];
+  /** The year has not ended: the stubs to date. */
+  provisional: boolean;
+  /** Whose law the draft applied: the tax year, or the latest listed year for an open year. */
+  law_year: number;
+  filing_status: "single" | "married_jointly";
+  stubs: number;
+  notes: UsTaxReturnNote[];
+  w2s: UsTaxReturnW2[];
+  /** Social Security and Medicare withheld (W-2 boxes 4 and 6): reported, not part of the 1040's tax. */
+  fica: { social_security: number; medicare: number; total: number; additional_medicare_tax: number };
+  rows: UsTaxReturnRow[];
+  /** Line 24 (total tax) as filed / as drafted. */
+  tax_filed: number | null;
+  tax_draft: number;
+  /** Line 35a / line 37 of the draft. */
+  refund_draft: number;
+  owed_draft: number;
+  filed: { filed_on: string; filing_status: "single" | "married_jointly"; source_file: string } | null;
+  /** How the filed return was settled: its refund or payment against the linked movements. */
+  settlement: {
+    expected: { kind: "refund" | "payment"; amount: number } | null;
+    links: {
+      kind: "refund" | "payment";
+      account_id: number;
+      account_name: string;
+      movement_id: number;
+      occurred_on: string;
+      amount: number;
+      description: string;
+    }[];
+    settled: number;
+    difference: number | null;
+  } | null;
 };
