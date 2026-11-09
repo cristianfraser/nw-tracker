@@ -550,3 +550,48 @@ order-dependent flake in a file no stream touched, worth a look by whoever owns 
   every category write in the app runs that sync; the 2025 Form 1040 may renumber the deduction
   lines (the module uses the 2024 numbering for every year and says so on the page); the batch
   assign `assignPurchasesToRealEstateExpenses` is what a bulk tool should call.
+
+### Wave 4 status (2026-11-09): merged into the integration branch, green — the plan is built
+
+Two streams, one after the other — `us-f22-border` (af1d94d0) and `us-finish` (2e2616c6) — no merge
+conflicts. On the merged tree: `npm run typecheck` ok (conventions + check-deps ok), server
+489 files / 3248 tests on a fresh test DB, client 474, contracts 126, ingest 481, Python ok; both people
+generate on the synthetic market with the invariants passing — the demo person US$445.296 (409,4 M
+CLP; 2.908 movements; 4 tax passes; ~80 s; the 1040s of 2024 and 2025 filed and settled, the F22's
+1030 from AT2025), the test person US$28.302 (7 s). Not merged to `main`; the demo not released.
+AGENTS.md gained the F22 border facts and the finish's target / copy. `.gitignore` gained
+`server/data/*.pretax` (the generator's checkpoint beside a DB).
+
+What wave 4 landed: the US salary in the F22 as code 1030 with the treaty credit (748 / 1018, the
+35 % cap, then the proportional IGC cap), IBKR's interest in 1104, DJ 1898 per lender, the April
+loop filing the 1040 first and settling both returns (the IRS refund / payment on US checking,
+written through `recordFiledF1040` + `linkF1040Settlement`), the generator's W-2 derivation switched
+onto the server's `usW2.ts`; then the net-worth target restated to US$445k (`person.ts`, with the
+reason — tuning the story down meant fighting it), two invariants (the retirement split's
+membership; a filed 1040 for every US payroll year whose April has passed), the About page's two
+US-chapter paragraphs and two tour steps (Retiro page: Chile / US; tax page: two returns each
+April). The Render build's generation is estimated at 5–8 min on its CPU plus the market fetch,
+acceptable since the old version serves during a build.
+
+### Open after the plan (not scheduled)
+
+- **Flows overview:** no fx leg for dollars held in the checking accounts (and the spread on each
+  dollar sale between them) — the remaining «sin explicar», ≤ 50k a month on the demo.
+- **F22:** the foreign dividends' credit sits in 1018 while the SII's G08 puts it in 746; the
+  foreign salary's income base (gross less Social Security and Medicare) and the credit worksheet are
+  the module's own reading (medium confidence); a Chilean resident's dollar spending abroad counts
+  as dollar-lot disposals (286 on AT2025) — a posture question. 2025's Form 1040 may renumber lines.
+- **Performance:** `syncExpenseLinksNow()` inside a transaction takes ~46 s on the demo DB (the
+  nav model rebuilt per call while `dbStateMemo` is bypassed) and every category write runs it; the
+  April loop could save a pass by feeding the US salary into the simulator's settlement estimate
+  only (not `apvRegimeFor`).
+- **Smaller:** a `rent` bucket for the income chart; `ccExpensePurchaseNotes.ts`,
+  `checkingExpenseRefunds.ts`, `flowsDepositsReconciliation.ts`, `movementMirrorPairs.ts` still read
+  the peso checking list only; the DAP account has no import-key builder and IBKR's `broker_cash`
+  role is data; the Roth's SPY earns no dividends and `accountIdForEquityTicker("SPY")` throws
+  (only the Fintual mail import calls it); DJ 1898's columns are named after the loan accounts, not
+  the lenders; the About / tour copy was not viewed in a browser; `--real-market` was never
+  rehearsed on the laptop (the Render build will be the first run); the order-dependent
+  `merchantExpenseNotes.test.ts` flake. Phase 8 (non-resident F22, UCITS, options, a return) is out.
+- **Housekeeping:** the ten `us-*` stream worktrees and `us-deps` under `.claude/worktrees/` are
+  all merged and can be removed; a stale `node_modules` sits under `/private/tmp/claude-501/` too.

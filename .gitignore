@@ -11,6 +11,7 @@ server/data/*.db-journal
 server/data/*.db-wal
 server/data/*.db-shm
 server/data/*.pristine
+server/data/*.pretax
 server/data/*.db.backup-*
 server/data/*.db.bak-*
 server/data/snapshots/
