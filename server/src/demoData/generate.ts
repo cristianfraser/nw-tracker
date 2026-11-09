@@ -274,8 +274,8 @@ function writeContractorPayslips(ledger: Ledger): void {
         `${p.job.platform} contractor invoice`
       );
       const pid = Number(r.lastInsertRowid);
-      insLine.run(pid, 0, "haber", "Honorarios (contrato en USD)", p.grossUsd, payslipLineKind("haber", "Honorarios (contrato en USD)"));
-      insLine.run(pid, 1, "descuento", "Comisión de transferencia", p.feeUsd, payslipLineKind("descuento", "Comisión de transferencia"));
+      insLine.run(pid, 0, "haber", "Honorarios (contrato en USD)", p.grossUsd, payslipLineKind("haber", "Honorarios (contrato en USD)", "cl"));
+      insLine.run(pid, 1, "descuento", "Comisión de transferencia", p.feeUsd, payslipLineKind("descuento", "Comisión de transferencia", "cl"));
     }
   })();
 }

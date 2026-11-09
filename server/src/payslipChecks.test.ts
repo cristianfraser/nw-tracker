@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { employmentPayslipsKind, payrollParametersKind, type Payslip } from "nw-tracker-contracts";
+import { employmentPayslipsKind, payrollParametersKind, type ClPayslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { igcTax } from "./legalParameters.js";
 import { applyPayrollParameters } from "./payrollParametersApply.js";
@@ -22,8 +22,8 @@ const MONTH = {
 
 // Taxable pay 3.300.000 (one line taxable by section although its kind is an allowance), capped at
 // 80 UF × 40.000 = 3.200.000.
-function payslip(tax: number): Payslip {
-  const lines: Payslip["lines"] = [
+function payslip(tax: number): ClPayslip {
+  const lines: ClPayslip["lines"] = [
     { position: 0, side: "haber", section: "imponible", label: "Sueldo Base", amount: 3_280_000 },
     { position: 1, side: "haber", section: "imponible", label: "Asignacion Teletrabajo", amount: 20_000 },
     { position: 2, side: "haber", section: "no_imponible", label: "Asig. Colación", amount: 50_000 },
@@ -36,6 +36,8 @@ function payslip(tax: number): Payslip {
   const haberes = 3_350_000;
   const descuentos = 334_720 + 224_000 + 10_000 + 19_800 + tax;
   return {
+    jurisdiction: "cl",
+    pay_period: "monthly",
     document: DOC,
     period_month: "2099-03",
     employer: { name: "VITEST EMPLEADOR SPA", rut: null },

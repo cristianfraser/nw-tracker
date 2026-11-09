@@ -248,6 +248,8 @@ export function renderPayslips(ledger: Ledger): EmploymentPayslipsPayload | null
       const descuentos = sum("descuento");
       const [y, mo] = p.month.split("-").map(Number) as [number, number];
       return {
+        jurisdiction: "cl" as const,
+        pay_period: "monthly" as const,
         document: `liquidaciones/${p.job.id}/${p.month}${p.kind === "severance" ? "-finiquito" : ""}.pdf`,
         period_month: p.month,
         employer: { name: p.job.employer, rut: p.job.employerRut },

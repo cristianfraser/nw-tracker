@@ -165,7 +165,7 @@ if (!apply) {
   process.exit(0);
 }
 
-const kindOf = (l: Line) => payslipLineKind(l.side, l.label);
+const kindOf = (l: Line) => payslipLineKind(l.side, l.label, "cl");
 const writeLines = (payslipId: number, lines: readonly Line[]) => {
   db.prepare(`DELETE FROM payslip_lines WHERE payslip_id = ?`).run(payslipId);
   const ins = db.prepare(
