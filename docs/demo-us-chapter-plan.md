@@ -56,7 +56,9 @@ axis is the **jurisdiction**, each with its own parameter set per period and its
 | Return | F22 (`f22Draft.ts`) | 1040 (`f1040Draft.ts`, new) | state return |
 
 Model: `payroll_work_earnings.jurisdiction` (`cl` | `us`; `cl` backfilled), a jurisdiction
-on each parameter table (the US one its own table keyed by tax year), line kinds namespaced
+on each parameter table (the US one its own table keyed by tax year; the dated US law — brackets,
+standard deduction, wage base, limits — a sibling of `legalParameters.ts` with its rule: a year
+the table does not list throws, refreshed each January like the Chilean one), line kinds namespaced
 by jurisdiction (the kind classifier takes the jurisdiction; a US label in a Chilean payslip is
 an error, as today's unknown labels are), and every reader that recomputes or files a payslip
 dispatches on it. The payroll breakdown (`payrollBreakdown.ts`) already prices a dollar payslip at
@@ -66,14 +68,17 @@ its stored rate; its deduction groups gain the US kinds.
 
 ### Phase 1 — Depth from existing features (generator only, no app code)
 
-All of these the app supports today; the generator just never produced them.
+All of these the app supports today; the generator just never produced them. New accounts take
+their import key from a builder in `accountIdentityKeys.ts` (the AFP builder still lives in the
+demo; `kind=fund` has none) and their roles from `account_roles` (IBKR's cash is
+`broker_cash` with param `ibkr|usd`); new rows go through the write funnels (`movementWrites.ts`,
+the real importers), not more raw `INSERT`s in `generate.ts`.
 
 - **The three 10 % AFP withdrawals** (2020-08, 2020-12, 2021-05; 10 % with the 35 UF floor /
   150 UF cap, the whole balance when under 35 UF), as `withdrawal` rows of the cuota ledger.
-- **An AFP fund switch** A → E in 2020-03 and back in 2020-10 (`afp_fund_switch` transfer with
-  both cuota counts). Needs UNO's fund E official series on the demo (the uno.cl API, check it
-  serves fund E) — else the switch stays within Modelo before 2020-02, where the SP snapshot
-  would need fund E added.
+- **Fund A throughout** (decided 2026-11-09): the person never changes fund, only AFP (Modelo →
+  UNO in 2020-02, as now). A fund switch would need a fund-E official series and a sync that reads
+  more than Fondo A (`afpUnoOfficialSync.ts`); not worth it for the story.
 - **APV régimen B monthly** in the contractor years (2022-10 → 2024-03), up to the 600 UF cap,
   so the fees box's 770 bites; régimen A with the state bonus in the earlier low years (as now).
 - **Rolling 90-day peso DAPs** 2021-03 → 2023-12 (saving the Vitacura pie), interest to
@@ -111,11 +116,15 @@ All of these the app supports today; the generator just never produced them.
 
 ### Phase 3 — US retirement accounts
 
-- **401(k)**: a fund account valued in dollars (`valuations` in USD, like the APV accounts in
-  pesos: units × a target-date fund's daily value, synthetic or a real ticker), contributions
-  and the employer match bought every payday; nav group `retirement_us_401k` under Retirement,
-  colour, sync source none. The contributions are pre-tax deposits (`deposits_pre_tax`, like
-  AFP / AFC) in the flows overview.
+- **401(k)**: a fund account valued in dollars, contributions and the employer match bought
+  every payday; nav group `retirement_us_401k` under Retirement, colour, sync source none. The
+  contributions are pre-tax deposits (`deposits_pre_tax`, like AFP / AFC) in the flows overview.
+  **Two ways to value it, to decide first:** (a) USD `valuations` as book marks — any currency
+  since migration 260, converted once at the account's side (`book_mark` quantity source) —
+  generator only, no units; (b) units × a target-date fund's daily value, like the APV accounts
+  in pesos — but `fund_unit_daily` has only `unit_value_clp` and `holdingPrices.ts`'s fund
+  branch hardcodes `clp` although `Holding { kind: "fund", quote }` carries a quote currency, so
+  (b) is app work: a currency on the series table and `fundPriceAt` honouring `quote`.
 - **Roth IRA** (optional): US$7.000 a year from 2025, after-tax, invested in SPY at IBKR; the
   1040 shows nothing for it (that is the point), the MAGI check decides eligibility.
 - **HSA** (optional): pre-tax, small.
@@ -136,14 +145,22 @@ All of these the app supports today; the generator just never produced them.
 
 ### Phase 4a — Several loans and properties (app)
 
-The storage is per loan already (`loan_payments.loan_account_id`); five readers still find «the»
-property and mortgage by import key (`import:excel|key=property` / `key=mortgage`): the ledger
-loader (`deptoLedgerFromMovements.ts`), payment creation (`mortgagePaymentCreate.ts`), the
-liabilities tree seed (`seedLiabilitiesTree.ts`), the dashboard's real-estate card and the
-«Próximos pagos» mortgage item. Generalize them to a list of (property, loan) pairs — the
-mortgage page, the prepayment comparison, the real-estate expenses' mortgage rows and the
-upcoming payments per loan — then the demo's 2020 and 2024 purchases are two pairs. The
-personal app has one pair and must read exactly as before (parity on a real-DB copy).
+The storage is per loan already (`loan_payments.loan_account_id`), and since the untangle merge
+the identity is data too: the property holds the `property` role and its mortgage `loan_of
+<property id>` (`account_roles`, migration 271; `lender_pattern` rows on the loan name the
+lender as the card prints it), seeded from the import keys by the `accountRoles271.ts` triggers.
+What is still «the one pair»: `deptoLedgerFromMovements.ts` reads
+`accountWithRoleOptional("property")` («exactly one property for now»), and
+`mortgagePaymentCreate.ts` exports the singletons `deptoPropertyAccountId` /
+`deptoMortgageAccountId`, read by `upcomingPayments.ts`, `mortgageSheetPaymentsApply.ts` and
+`dailyReferenceLines.ts`; the quantity source `depto_loan { propertyAccountId }` is per property
+already, `depto_property` is not; `seedLiabilitiesTree.ts` already links every `loan_of`
+account. So: one depto ledger per `property` role holder, delete the two singletons, and the
+dashboard card, the upcoming payments, the reference lines, the mortgage page, the prepayment
+comparison and the real-estate expenses' mortgage rows loop over the pairs. The demo's 2020 and
+2024 purchases are then two more role rows (a second property's import key needs its builder and
+trigger rule, or the generator writes the roles). The personal app has one pair and must read
+exactly as before (parity on a real-DB copy).
 
 ### Phase 4b — The rentals
 
@@ -158,7 +175,8 @@ personal app has one pair and must read exactly as before (parity on a real-DB c
 - F22: a `dfl2` flag per place; the Centro rent is shown entering exempt; Vitacura's is a
   taxable-rent line the module gains (art. 20 N°1 b): the year's rent per contract, the
   contribuciones paid as a credit; the line and codes from the Suplemento), so from AT2025 the
-  Chilean return has a rent line beside the salary credit.
+  Chilean return has a rent line beside the salary credit. A code that enters 158 / 304 is added
+  in `f22Identities.ts` (`assertF22Identities` must still hold), never in `f22Draft.ts` alone.
 - The 1040 (phase 5) taxes both rents as foreign rental income, less expenses and depreciation —
   v2 of the module.
 
@@ -206,6 +224,18 @@ personal app has one pair and must read exactly as before (parity on a real-DB c
 1040 needs the payslips; the 401(k) changes box 1). 4a is app work that can start at once and
 must land before 4b; 4b can run beside 3. 6 needs 5. 7 is independent of 3–6. Each phase re-runs the generator (the April loop converges in a few passes;
 budget the Render build time) and updates the About page's copy, the tour and the invariants.
+
+## Rules of the merged tree (every phase)
+
+- A new table is listed in `markInputTriggers.ts` (write-logged, or declared unlogged), else
+  `cacheRegistry.test.ts` fails; a table a historical mark reads also needs a trigger spec.
+- A payload shape lives in `server/contracts/src/dto/*` and bumps `DTO_SCHEMA_VERSIONS`
+  (`schemaVersions.ts`; `sidebar_nav` is the nav-tree version the retirement split bumps); client
+  types are re-exports. A field on an ingest kind (`jurisdiction` on `employment.payslips`) bumps
+  that kind's `schema_version`.
+- Writes go through the funnels (`movementWrites.ts`, `applyEmploymentPayslips`, …); account
+  identities through `accountIdentityKeys.ts` and `account_roles`.
+- Migrations continue from 297.
 
 ## Out of scope
 
