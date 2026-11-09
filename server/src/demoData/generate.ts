@@ -212,6 +212,11 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
      VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insKind = db.prepare(`INSERT INTO crypto_movement_kinds (movement_id, kind) VALUES (?, ?)`);
+  // The exchange's record of each trade: the tax module prices a coin's lots from it (cryptoTaxLotEvents.ts).
+  const insTrade = db.prepare(
+    `INSERT INTO crypto_trade_details (movement_id, exchange_trade_id, units, price, price_currency, fee_amount, fee_currency, created_at)
+     VALUES (?, ?, ?, ?, 'clp', ?, 'clp', ?)`
+  );
   const insPeriod = db.prepare(`INSERT INTO pension_contribution_periods (movement_id, period_month) VALUES (?, ?)`);
   const sorted = [...ledger.direct].sort((a, b) => a.date.localeCompare(b.date));
   db.transaction(() => {
@@ -220,6 +225,10 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
         const r = insSingle.run(id(m.account), m.amount, m.currency, m.date, m.note, m.units ?? null, m.flowKind ?? null);
         const mid = Number(r.lastInsertRowid);
         if (m.cryptoKind) insKind.run(mid, m.cryptoKind);
+        if (m.exchangeTrade) {
+          if (m.units == null) throw new Error(`demo: exchange trade without units on ${m.date}`);
+          insTrade.run(mid, `demo-trade-${mid}`, m.units, m.exchangeTrade.priceClp, m.exchangeTrade.feeClp, `${m.date}T12:00:00Z`);
+        }
         for (const p of m.contributionPeriods ?? []) insPeriod.run(mid, p);
       } else {
         insTransfer.run(

@@ -145,6 +145,13 @@ export function resetDemoDatabaseToPristine(
         (database.prepare(`SELECT COUNT(*) AS c FROM pristine.sqlite_master WHERE name = 'sqlite_sequence'`).get() as {
           c: number;
         }).c > 0;
+      // The change log's ids must keep climbing across the reset: this process remembers the last
+      // id it applied (markInputChanges.ts), so a row numbered below it would never reach the caches.
+      const changeLogSeq = hasSequence
+        ? ((database.prepare(`SELECT seq FROM main.sqlite_sequence WHERE name = 'mark_input_changes'`).get() as
+            | { seq: number }
+            | undefined)?.seq ?? null)
+        : null;
       database.transaction(() => {
         for (const name of mainTables) {
           if (!tables.includes(name)) throw new Error(`demo reset: table ${name} is not in the pristine copy`);
@@ -164,6 +171,10 @@ export function resetDemoDatabaseToPristine(
         if (hasSequence) {
           database.exec(`DELETE FROM main.sqlite_sequence`);
           database.exec(`INSERT INTO main.sqlite_sequence SELECT * FROM pristine.sqlite_sequence`);
+          if (changeLogSeq != null) {
+            database.prepare(`DELETE FROM main.sqlite_sequence WHERE name = 'mark_input_changes'`).run();
+            database.prepare(`INSERT INTO main.sqlite_sequence (name, seq) VALUES ('mark_input_changes', ?)`).run(changeLogSeq);
+          }
         }
         // The restore's own inserts went through the mark-input triggers; every cache is dropped
         // below, so the log they wrote describes nothing worth trimming.

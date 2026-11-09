@@ -134,7 +134,7 @@ describe("resetDemoDatabaseToPristine", () => {
       scratch.exec(`
         CREATE TABLE parent (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
         CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id) ON DELETE CASCADE);
-        CREATE TABLE mark_input_changes (id INTEGER PRIMARY KEY, source TEXT);
+        CREATE TABLE mark_input_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT);
         INSERT INTO parent (name) VALUES ('a'), ('b');
         INSERT INTO child (parent_id) VALUES (1), (2);
       `);
@@ -154,6 +154,8 @@ describe("resetDemoDatabaseToPristine", () => {
       expect(count("child")).toBe(2);
       expect(count("mark_input_changes")).toBe(0);
       expect(scratch.prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'parent'`).pluck().get()).toBe(2);
+      // The change log's sequence is not rewound: the next row's id is above every id this process applied.
+      expect(scratch.prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'mark_input_changes'`).pluck().get()).toBe(1);
       expect(scratch.pragma("foreign_keys", { simple: true })).toBe(1);
       expect(resetDemoDatabaseToPristine({ pristinePath: pristine, database: scratch })).toBe(false);
     } finally {

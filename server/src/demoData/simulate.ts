@@ -77,6 +77,8 @@ export type DirectMovement =
       units?: number;
       flowKind?: string;
       cryptoKind?: "buy" | "sell";
+      /** The exchange's own record of a crypto trade (`crypto_trade_details`): the quoted price per coin in pesos and its commission. */
+      exchangeTrade?: { priceClp: number; feeClp: number };
       contributionPeriods?: Month[];
     }
   | {
@@ -1179,10 +1181,23 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         if (day <= today) {
           ensureClp(day, clp);
           book.transfer({ from: "checking", to: "exchangeClp", date: day, clp, flowKind: null, note: "Exchange|depósito" }, { account: "checking", description: "TRANSF A CRYPTO EXCHANGE SPA", side: "from" });
-          const btcUnits = Math.round((clp / (market.close("BTC-USD", day) * market.fx(day))) * 0.995 * 1e8) / 1e8;
+          // The exchange quotes the day's price and keeps 0,5 % of the pesos as its commission.
+          const priceClp = market.close("BTC-USD", day) * market.fx(day);
+          const btcUnits = Math.round((clp / priceClp) * 0.995 * 1e8) / 1e8;
+          const feeClp = Math.max(0, Math.round(clp - priceClp * btcUnits));
           book.addUnits("btc", btcUnits, 8);
           book.single({ type: "single", account: "exchangeClp", date: day, amount: -clp, currency: "clp", note: "Exchange|compra BTC" });
-          book.single({ type: "single", account: "btc", date: day, amount: clp, currency: "clp", note: "Exchange|compra BTC", units: btcUnits, cryptoKind: "buy" });
+          book.single({
+            type: "single",
+            account: "btc",
+            date: day,
+            amount: clp,
+            currency: "clp",
+            note: "Exchange|compra BTC",
+            units: btcUnits,
+            cryptoKind: "buy",
+            exchangeTrade: { priceClp, feeClp },
+          });
         }
       }
       // The mutual fund: a fixed monthly deposit buys cuotas at the day's value.
