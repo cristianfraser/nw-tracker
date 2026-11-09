@@ -1404,6 +1404,19 @@ extra) → `tests` (opus, the Tests extra: remove tests that repeat the implemen
 fail, rewrite internals-bound ones to behaviour) → `review` (the eight area reviewers again,
 sonnet, read-only; the dependency graph; the full suites) → merge `untangle` into `main`.
 
+**Wave 5 status (2026-11-09): merged into `untangle`.** In order: `deletions` (F19, 284272e9: about a third of
+the list was already gone; kept with a caller: the legacy group/subgroup surface, `groupTabAggregation.ts`, the
+chart registration, `jobQueue.max_attempts`), `can_make_installment` back to open-cycle or bank-tagged lines
+(c664c082, the user's choice), `comments` (70c34860; the Comments extra, plus the dependency guard it found
+pointing at the deleted `aggregationCache.ts`, 18cd43f6), `flow-model-2` (F20 second pass A–C, migrations
+293–295, f8927bf1 with the 270-hook fix for fresh databases), `tests` (the Tests extra; the two fragile tests
+fixed at their root) and a privacy pass (afd8bc84). Final checks on the merged tip: typecheck + conventions +
+check-deps ok (1178 files, largest cycle 37, 102 files in cycles), contracts 7 / 126, client 84 / 469, ingest
+57 / 481, Python ok, server **477 files / 3148 tests passing on a fresh test DB** (66 empty or
+implementation-restating tests removed, see «Notes from wave 5»). The read-only area review ran on f8927bf1
+(«Notes from wave 5»). Next: merge `main` (which gained the demo's About page meanwhile) into `untangle`, re-run
+the suites, merge into `main` and deploy with the wave 1–5 deploy notes.
+
 ### Agent briefs, in common
 
 Every brief carries: the fix sections of this file it implements (by name, with the file
@@ -1591,10 +1604,78 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
   mortgage page's «Tarjeta» column once (2 cuotas changed); the `dashboardCcCardVsDetalle` test is deterministic now,
   `ccGroupTotalMatchesCardsInvariant` still flakes order-dependently on a fresh test DB (passes alone) — Tests extra.
 
+### Notes from wave 5 (for the merge into `main` and after)
+
+- **F20 second pass landed A–C, D not reached** (`docs/untangle-flow-model.md` «Second pass»): A1 the lender's
+  dividend history cross-checks the ledger cuota by cuota (`server/scripts/cross-check-loan-payment-history.ts`,
+  report-first; 24 of 29 cuotas agreed, the 5 differences were the user's decisions and are corrected or accepted);
+  A2 `flow_parts.kind` (migration 293) and the mortgage dividendo's parts on the property-leg flow; A3
+  `loan_payments.prepayment_charge` from the paid liquidation, the prepago cash legs linked with a `bank_fee` part;
+  A4 the 2025 interest certificate agrees month by month once the charge is apart; B migration 294 drops
+  `checking_gap_deposit_mirrors` and `cuenta_ahorro_deposit_splits` (seven deposits linked to their real debits by
+  `server/scripts/retire-cuenta-ahorro-mirrors.ts`; the rest stay unlinked deposits — the user's decision: history is
+  not recreated); C `server/scripts/estimate-card-lines-from-receipts.ts` writes `import:estimate|receipts|<month>`
+  statements from unpaired store / App Store receipts in statement-less months (evidence kind `estimate`,
+  migration 295; 15 new statements and 4 rebuilt 2019 statements itemized on the real copy). Not started: cost out
+  of P/L and spending, the pre-tax account, card-day capital flows, opening balances, instrument events.
+- **F20 follow-ups:** 98 App Store receipts name a plastic the card registry does not know (69 in statement months)
+  — add it to the registry if it is the user's and rerun the estimate script; `expenseKeys.ts` `gap_mirror` key
+  kind and the negative-line-id mirror branch in `ccExpensePurchaseKey.ts` are dead; `f22AppEstimates.ts` reads
+  `loan_payments.interest`, so its 751 figure moves by the prepago charges (intended). `flows.legacy_key` and the
+  F9/F11/F17 leftovers of «Notes from waves 3–4» stand.
+- **Tests extra:** 123 tests asserted nothing on the synthetic person (they looked up real-DB rows and returned
+  early); 66 server, 4 client and 2 ingest/contracts tests removed, ~65 rewritten onto the person's accounts
+  (`test/tempCardMaster.ts`, `flowFixtures`); three stale expectations surfaced and were fixed in the tests. The
+  flaky `ccGroupTotalMatchesCardsInvariant` was files restoring `valuations` but not `cc_owed_anchors` /
+  `cc_billing_month_balances` (`vitest.setup.ts` now restores the three and warns when a file changes card lines
+  or movements of accounts it did not create); `dashboardCardClosingReconcile` rounded a difference instead of
+  the rounded totals. Still internals-bound: `liveTickIncrementalRebuild`, `visitedPagesWarm`, `syncDimmingWatch`,
+  `dashboardAccountRowCache`, `markInputChanges`; timing-sensitive: `apiRequestsInFlight`, `feederServer`,
+  `usageLog`. Behaviour left with no synthetic coverage: the multi-card primary-CLP statement pick, the manual-plan
+  category transfer on reconcile, the RE card inputs, the depto mortgage paths. Possible bug: the removed
+  `ccOpenWebPasteRepair` «PDF reconcile ignores stale open-bucket lines» case fails on the person's card (parsed
+  operaciones read one line against the header).
+- **Review (step 5, read-only; full report kept outside the repo):** check-deps 1178 files, largest cycle 37 (was
+  71 after wave 4, 186 at the start), 102 files in cycles (111 / 205). Ranked follow-ups: (1) ~20 `INSERT INTO
+  movements` sites outside `movementWrites.ts` (routes/movements, the mirror converters, mortgagePaymentCreate,
+  importers, the demo); (2) 8 route handlers still catch → 400 with the message (bug 15) in routes/creditCard,
+  usage, flows, mortgage, market; (3) 8 payment readers still classify by merchant regex though the line kind is
+  stored; (4) 57 hand-written `invalidateQueries` in ~17 client files outside `queries/resources.ts`; (5)
+  note-string branches in `accountRowProfileFields.ts`, `afpUnoValuation.ts`, `fintualFundUnitDaily.ts`,
+  `merchantExpenseNotes.ts`; (6) `credit_card_master|` prefix branching in `accountChartInactive.ts`,
+  `creditCardTree.ts`, `navTreeModel.ts` and the `__` slug parsing in `accountProfile` / `accountBucket` /
+  `portfolioGroupTree`; (7) `fxRates.ts` null-returning conversions and `ccBillingViews` `usdToClpAsDebt` beside
+  `rates.ts`; (8) ingest's three number-parser copies; (9) the «migration not applied» / `return {}` swallows in
+  `checkingCartolaBalances`, `checkingCartolaImport`, `checkingCartolaMonthSummary`, `globalSyncState`,
+  `sbifApiGate`; (10) migration hooks out of the flat folder and `expenseCategoryRulesMigration` off live vendor
+  code; then the folder moves. Also: 20 files read `process.env` outside `config.ts`; client re-summing in
+  `ccYearlyRollup`, `DepositsReconciliationPage`, `ccExpenseLineBuckets`; `RatesPage` hardcoded "No data".
+- **Comments extra:** stale names fixed, the AGENTS.md cache / re-import / card-statement / snapshot sections
+  rewritten; Python comments untouched (parse-cache version). Dead code it noticed: `deptoDividendosLedger.ts`
+  csv naming from the old staging table, `legacyNoteBackfills.ts` reading the dropped `depto_dividendos_sheet_rows`
+  (frozen hook), script-only exports in `chileDate.ts` / `checkingDescriptionPredicates.ts` / `afpUnoValuation.ts`,
+  `server/data/uf-sii-daily.csv` unread, `cfraserPaths.ts` legacy `cfraser/pdfs` fallback, `ccBillingViews.ts`
+  `cuota_a_pagar_next_mes_clp` still carried.
+- **Privacy:** production comments and an archived fixture carried relatives' names and RUT digits (also on
+  `origin/main` and in its history); masked in afd8bc84. The history itself is the user's call.
+- **Deploy notes (wave 5):** migrations 293–295 run on the first boot (293 rebuilds `flow_parts` with `kind` and
+  seeds the loan parts, 294 drops the two deposit tables, 295 adds the `estimate` evidence kind); the 270 hook now
+  skips logged tables a later migration dropped (a fresh database never creates them). **Three report-first
+  scripts must then be run on the live database, in this order**, each without `--apply` first:
+  `cross-check-loan-payment-history.ts --xlsx=<the lender's history> --plan=<the coordinator's plan> --liquidations=<dir>
+  --certificate=<pdf>`, `retire-cuenta-ahorro-mirrors.ts --plan=<the same plan>` (the migration drops the tables, the
+  script writes the seven links), `estimate-card-lines-from-receipts.ts --since=2016-01 --anchor=<json>` (with the
+  two receipt ids the rehearsal excluded) — the plan files live outside the repo with the coordinator. The user's
+  `cfraser/mortgage-sheet.json` on the server needs the 11 `accepted_differences` entries (laptop copy updated,
+  backup in `~/Documents/backups/nw-tracker/`). `can_make_installment` is back to open-cycle or bank-tagged lines.
+  The deposits reconciliation no longer has `linked_synthetic` / `resolved_family_funded` statuses. The ingest
+  service and the server deploy together (unchanged contracts since wave 4, but the same commit).
+
 ## Open decisions
 
 - The name and API of the purchases module (the audit decides).
-- The claim rule for a deposit funded by a card line when a checking debit of the same pesos
-  also exists (F20).
-- `docs/expense-identity-plan.md` is superseded by this file; delete it or leave a one-line
-  pointer here.
+- The claim rule for a deposit funded by a card line beside a same-pesos checking debit is decided
+  (`docs/untangle-flow-model.md`: the debit claims first) but not coded in the matcher.
+- Whether to rewrite the public history for the relatives' names and RUT digits masked in wave 5.
+- Where the receipt-estimated statements show in the UI (they carry the `import:estimate|` source like the
+  2019 rebuild's `import:santander-mail|` ones; the card page labels neither yet).
