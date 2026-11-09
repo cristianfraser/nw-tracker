@@ -91,6 +91,8 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
   }
   for (const other of others) {
     for (const row of keyless.get(other)!) repointRow(row, target, dbHandle);
+    // A facturado payment charge (migration 297) names the purchase by its flow: it follows it.
+    dbHandle.prepare(`UPDATE cc_facturado_payment_charges SET flow_id = ? WHERE flow_id = ?`).run(target, other);
     dbHandle.prepare(`DELETE FROM flows WHERE id = ? AND legacy_key IS NULL`).run(other);
   }
   dbHandle.prepare(`UPDATE flows SET legacy_key = ? WHERE id = ?`).run(resolved.flowKey, target);
@@ -141,6 +143,9 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
   // bill-move policy, docs/untangle-flow-identity.md); a refusal the survivor already carries stays.
   dbHandle.prepare(`UPDATE flow_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   dbHandle.prepare(`UPDATE OR IGNORE flow_link_rejections SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  // A facturado payment charge (migration 297) follows its purchase; two charges of one record on
+  // the two flows are one purchase claimed twice, and the update fails.
+  dbHandle.prepare(`UPDATE cc_facturado_payment_charges SET flow_id = ? WHERE flow_id = ?`).run(to, from);
   // Key-named rows (a category, a big group, a note) on a flow, portion and piece: the preferred
   // flow's row stays.
   for (const table of ["flow_categories", "flow_big_groups", "flow_notes"]) {

@@ -255,6 +255,20 @@ describe("ccFacturadoFinancingProjection", () => {
     // Total mode: June gastos = carrying + supermarket (mortgage line's own split; no gap).
     const total = aggregateGastosFromLines(out, CATS, "total");
     expect(monthGastos(total.by_month, "2026-06")).toBe(CARRY + SUPER);
+
+    // Partly paid outright: the mortgage parts keep their split, part in June and part in cuotas.
+    const partial: CcFacturadoFinancingLink[] = [
+      { ...links[0]!, financing: [{ account_id: 200, purchase_key: "instA" }], charges: [{ account_id: 200, flow_id: 1, amount_clp: MORT + SUPER - 1_200_000 }] },
+    ];
+    const own = lines.filter((l) => l.purchase_key !== "instB");
+    const pout = applyCcFacturadoFinancingProjection(own, partial, FACTURADO);
+    const pproj = pout.filter((l) => l.gastos_scope === "split_only" && l.expense_deposit_links != null);
+    expect(pproj.length).toBe(4);
+    expect(sum(pproj.map((l) => l.expense_deposit_links![0]!.carrying_clp))).toBe(CARRY);
+    expect(sum(pproj.map((l) => l.expense_deposit_links![0]!.amortization_clp))).toBe(AMORT);
+    const psplit = aggregateGastosFromLines(pout, CATS, "split");
+    const pTotal = ["2026-06", ...MONTHS].reduce((s, m) => s + monthGastos(psplit.by_month, m), 0);
+    expect(pTotal).toBe(CARRY + SUPER + (3 * 420_000 - 1_200_000));
   });
 
   it("no closed statement for the financed month → no interest gap line", () => {
@@ -304,6 +318,34 @@ describe("ccFacturadoFinancingProjection", () => {
     expect(out.length).toBe(lines.length);
     expect(out.some((l) => l.gastos_scope === "split_only")).toBe(false);
     expect(out.every((l) => l.gastos_scope == null)).toBe(true);
+  });
+
+  it("a facturado paid partly in one charge spreads only the financed share", () => {
+    const { lines } = buildScenario();
+    const financedPrincipal = 1_200_000; // paid by instA: 3 × 420.000, 60.000 of interest
+    const links: CcFacturadoFinancingLink[] = [
+      {
+        id: 1,
+        financed_account_id: 100,
+        financed_billing_month: "2026-06",
+        financing: [{ account_id: 200, purchase_key: "instA" }],
+        charges: [{ account_id: 200, flow_id: 1, amount_clp: F - financedPrincipal }],
+      },
+    ];
+    // instB is not this link's: drop it from the scenario.
+    const own = lines.filter((l) => l.purchase_key !== "instB");
+    const out = applyCcFacturadoFinancingProjection(own, links, FACTURADO);
+    const projected = out.filter((l) => l.gastos_scope === "split_only");
+    const sum = (ls: FlowCcExpenseLineRow[]) => ls.reduce((s, l) => s + l.amount_clp, 0);
+    const kept = projected.filter((l) => l.billing_month === "2026-06");
+    const spread = projected.filter((l) => MONTHS.includes(l.billing_month));
+    // What was paid outright stays in June, in each line's own category.
+    expect(sum(kept)).toBe(F - financedPrincipal);
+    expect(kept.every((l) => l.purchase_key.startsWith("financing-proj-rest:1:"))).toBe(true);
+    // The cuotas carry the financed share plus their interest, and nothing more.
+    expect(sum(spread.filter((l) => l.category_slug !== "bills"))).toBe(financedPrincipal);
+    expect(sum(spread.filter((l) => l.category_slug === "bills"))).toBe(3 * 420_000 - financedPrincipal);
+    expect(sum(projected)).toBe(F + 3 * 420_000 - financedPrincipal);
   });
 });
 

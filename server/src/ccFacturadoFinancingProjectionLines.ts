@@ -216,7 +216,20 @@ export function applyCcFacturadoFinancingProjection(
     // is rounding (each cuota rounds on its own), and a facturado only partly financed (gap < 0)
     // has no cost to show.
     const facturado = facturadoClpFor(link.financed_account_id, link.financed_billing_month);
-    const gap = facturado == null ? 0 : totalCuotas - facturado;
+    // A facturado paid partly in one charge (the matcher's `charges`, migration 297): the cuotas
+    // financed only the rest, so each financed purchase spreads that share and keeps the remainder
+    // in its own month, and interest is what the cuotas add on top of the financed principal.
+    const paidOutright = (link.charges ?? []).reduce((s, c) => s + c.amount_clp, 0);
+    let financedShare = 1;
+    if (paidOutright > 0) {
+      if (facturado == null || facturado <= paidOutright) {
+        throw new Error(
+          `financing link ${link.id}: charges of ${paidOutright} paid outright but the facturado is ${facturado ?? "unknown"}`
+        );
+      }
+      financedShare = (facturado - paidOutright) / facturado;
+    }
+    const gap = facturado == null ? 0 : totalCuotas - (facturado - paidOutright);
 
     for (const i of financedIdx) scopeByIndex.set(i, "total_only");
     for (const i of financingAllIdx) scopeByIndex.set(i, "excluded");
@@ -231,9 +244,33 @@ export function applyCcFacturadoFinancingProjection(
       const mortgageLink = splittableMortgageLinkOf(src);
       if (mortgageLink) {
         // Mortgage line: split each cuota into carrying (bills) + amortization (offset), so the
-        // aggregate's mortgage-split branch recognizes it (same handling as in Total mode).
-        const carrySlices = splitIntegerEvenly(mortgageLink.carrying_clp, n);
-        const amortSlices = splitIntegerEvenly(mortgageLink.amortization_clp, n);
+        // aggregate's mortgage-split branch recognizes it (same handling as in Total mode). In a
+        // partly financed facturado both parts spread their financed share and keep the rest.
+        const carryFin =
+          financedShare === 1 ? mortgageLink.carrying_clp : Math.round(mortgageLink.carrying_clp * financedShare);
+        const amortFin =
+          financedShare === 1 ? mortgageLink.amortization_clp : Math.round(mortgageLink.amortization_clp * financedShare);
+        const carryRest = mortgageLink.carrying_clp - carryFin;
+        const amortRest = mortgageLink.amortization_clp - amortFin;
+        if (carryRest + amortRest !== 0) {
+          projected.push({
+            ...src,
+            statement_line_id: nextSyntheticId--,
+            amount_clp: carryRest + amortRest,
+            amount_usd_at_expense:
+              src.amount_usd_at_expense == null
+                ? null
+                : src.amount_usd_at_expense * ((carryRest + amortRest) / src.amount_clp),
+            gastos_scope: "split_only",
+            category_statement_line_id: srcCategoryAnchorId,
+            purchase_key: `financing-proj-rest:${link.id}:${src.purchase_key}`,
+            expense_deposit_links: [
+              { ...mortgageLink, payment_clp: carryRest + amortRest, carrying_clp: carryRest, amortization_clp: amortRest },
+            ],
+          });
+        }
+        const carrySlices = splitIntegerEvenly(carryFin, n);
+        const amortSlices = splitIntegerEvenly(amortFin, n);
         months.forEach((m, k) => {
           const payment = carrySlices[k]! + amortSlices[k]!;
           projected.push(
@@ -263,7 +300,22 @@ export function applyCcFacturadoFinancingProjection(
         });
         continue;
       }
-      const slices = splitIntegerEvenly(src.amount_clp, n);
+      const financedClp = financedShare === 1 ? src.amount_clp : Math.round(src.amount_clp * financedShare);
+      const restClp = src.amount_clp - financedClp;
+      if (restClp !== 0) {
+        // The part paid outright stays in the purchase's own month, in «Por cuota» mode too.
+        projected.push({
+          ...src,
+          statement_line_id: nextSyntheticId--,
+          amount_clp: restClp,
+          amount_usd_at_expense:
+            src.amount_usd_at_expense == null ? null : src.amount_usd_at_expense * (restClp / src.amount_clp),
+          gastos_scope: "split_only",
+          category_statement_line_id: srcCategoryAnchorId,
+          purchase_key: `financing-proj-rest:${link.id}:${src.purchase_key}`,
+        });
+      }
+      const slices = splitIntegerEvenly(financedClp, n);
       months.forEach((m, k) => {
         projected.push(
           makeProjectedLine(src, {

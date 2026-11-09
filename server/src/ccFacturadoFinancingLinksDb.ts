@@ -12,7 +12,17 @@ export type CcFacturadoFinancingLink = {
   financed_account_id: number;
   financed_billing_month: string;
   financing: { account_id: number; purchase_key: string }[];
+  /**
+   * The purchases that paid part (or all) of the facturado in one charge (migration 297), by flow;
+   * empty for a link made by hand. The plans financed the facturado less their sum.
+   */
+  charges?: { account_id: number; flow_id: number; amount_clp: number }[];
 };
+
+const selCharges = db.prepare(
+  `SELECT financing_link_id AS link_id, account_id, flow_id, amount_clp
+     FROM cc_facturado_payment_charges ORDER BY rowid`
+);
 
 const selLinks = db.prepare(
   `SELECT id, financed_account_id, financed_billing_month
@@ -46,11 +56,18 @@ export function listCcFacturadoFinancingLinks(): CcFacturadoFinancingLink[] {
     list.push({ account_id: row.financing_account_id, purchase_key: row.financing_purchase_key });
     byLink.set(row.link_id, list);
   }
+  const chargesByLink = new Map<number, NonNullable<CcFacturadoFinancingLink["charges"]>>();
+  for (const c of selCharges.all() as { link_id: number; account_id: number; flow_id: number; amount_clp: number }[]) {
+    const list = chargesByLink.get(c.link_id) ?? [];
+    list.push({ account_id: c.account_id, flow_id: c.flow_id, amount_clp: c.amount_clp });
+    chargesByLink.set(c.link_id, list);
+  }
   return links.map((l) => ({
     id: l.id,
     financed_account_id: l.financed_account_id,
     financed_billing_month: l.financed_billing_month,
     financing: byLink.get(l.id) ?? [],
+    charges: chargesByLink.get(l.id) ?? [],
   }));
 }
 
@@ -65,6 +82,7 @@ const selLinkId = db.prepare(
 const delLinkPurchases = db.prepare(
   `DELETE FROM flow_links WHERE kind = 'finances_facturado' AND financing_link_id = ?`
 );
+const delCharges = db.prepare(`DELETE FROM cc_facturado_payment_charges WHERE financing_link_id = ?`);
 const insLinkPurchase = db.prepare(
   `INSERT OR IGNORE INTO flow_links (flow_id, portion, piece_seq, kind, financing_link_id, account_id)
      VALUES (?, ?, ?, 'finances_facturado', ?, ?)`
@@ -89,9 +107,43 @@ export function upsertCcFacturadoFinancingLink(args: {
     insLink.run(args.financedAccountId, args.financedBillingMonth);
     const row = selLinkId.get(args.financedAccountId, args.financedBillingMonth) as { id: number };
     delLinkPurchases.run(row.id);
+    // A link made by hand states the whole financing: a match's one-shot charges go with it.
+    delCharges.run(row.id);
     for (const f of args.financing) {
       insLinkPurchase.run(...targetParams(keyTarget(f.purchase_key, true)), row.id, f.account_id);
     }
+    return row.id;
+  });
+  return { id: run() };
+}
+
+const insCharge = db.prepare(
+  `INSERT INTO cc_facturado_payment_charges (financing_link_id, flow_id, account_id, amount_clp) VALUES (?, ?, ?, ?)`
+);
+
+/**
+ * Records how a facturado was paid, as the matcher found it (`ccFacturadoFinancingAuto.ts`): its
+ * link row, the plans as its financing purchases and the one-shot charges by flow. Refuses a
+ * facturado already recorded — a match is made once and never rewritten.
+ */
+export function recordCcFacturadoPayment(args: {
+  financedAccountId: number;
+  financedBillingMonth: string;
+  plans: { account_id: number; purchase_key: string }[];
+  charges: { account_id: number; flow_id: number; amount_clp: number }[];
+}): { id: number } {
+  if (!/^\d{4}-\d{2}$/.test(args.financedBillingMonth)) throw new Error("financed_billing_month must be YYYY-MM");
+  if (args.plans.length + args.charges.length === 0) throw new Error("a facturado payment needs at least one purchase");
+  const run = db.transaction(() => {
+    if (selLinkId.get(args.financedAccountId, args.financedBillingMonth)) {
+      throw new Error(`facturado ${args.financedAccountId}|${args.financedBillingMonth} already has a payment record`);
+    }
+    insLink.run(args.financedAccountId, args.financedBillingMonth);
+    const row = selLinkId.get(args.financedAccountId, args.financedBillingMonth) as { id: number };
+    for (const f of args.plans) {
+      insLinkPurchase.run(...targetParams(keyTarget(f.purchase_key, true)), row.id, f.account_id);
+    }
+    for (const c of args.charges) insCharge.run(row.id, c.flow_id, c.account_id, c.amount_clp);
     return row.id;
   });
   return { id: run() };
