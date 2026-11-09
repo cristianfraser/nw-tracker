@@ -94,6 +94,12 @@ services:
         value: nw-tracker.demo.db
       - key: DEMO_ANALYTICS_DB
         value: /var/data/demo-analytics.db
+      # Empty on purpose, and kept: this file once set --max-old-space-size here, which reached
+      # the client build too (Vite aborted at 320 MB, deploy e3e8a113, 2026-11-09), and Render
+      # keeps an env var a blueprint stops declaring — only a declared empty value clears it. The
+      # server's heap flag is on the startCommand above.
+      - key: NODE_OPTIONS
+        value: ""
       # Streamed prices: at most one cache rebuild per 15 s on the small instance (the home
       # server writes every 5 s; server/src/yahooPriceStream.ts).
       - key: LIVE_QUOTES_FLUSH_GAP_MS
