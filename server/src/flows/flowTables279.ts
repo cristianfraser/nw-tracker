@@ -134,12 +134,27 @@ export const ESTIMATE_DOCUMENT_PREFIX = "import:estimate|";
 /** The line id prefix of a card line written from a receipt (into an estimate statement or a rebuilt one). */
 export const ESTIMATE_LINE_ID_PREFIX = "estimate:";
 
-function lineEvidenceValues(a: string): string {
+/**
+ * Which kinds the evidence expression may name. Migration 279 creates `flow_evidence` without
+ * `estimate` (migration 295 adds it and re-kinds the lines of the estimate statements on file), so
+ * 279's replay and the triggers it installs speak 279's vocabulary; 295's reinstalled trigger and
+ * every later caller name `estimate`. The live database held three estimate statements before 279
+ * ran (2026-11-09), which the newer vocabulary turned into a CHECK failure at boot.
+ */
+export type EvidenceVocabulary = { estimateKind: boolean };
+const CURRENT_VOCABULARY: EvidenceVocabulary = { estimateKind: true };
+/** What `flow_evidence` accepts right after migration 279's own SQL. */
+const VOCABULARY_279: EvidenceVocabulary = { estimateKind: false };
+
+function lineEvidenceValues(a: string, vocabulary: EvidenceVocabulary = CURRENT_VOCABULARY): string {
   const sk = `(SELECT source_kind FROM cc_statements WHERE id = ${a}.statement_id)`;
   const doc = `(SELECT source_pdf FROM cc_statements WHERE id = ${a}.statement_id)`;
+  const other = vocabulary.estimateKind
+    ? `CASE WHEN ${doc} LIKE '${ESTIMATE_DOCUMENT_PREFIX}%' OR ${a}.parser_row_id LIKE '${ESTIMATE_LINE_ID_PREFIX}%' THEN 'estimate' ELSE 'statement_other' END`
+    : `'statement_other'`;
   return `CASE ${sk} WHEN 'listing_open' THEN 'listing_open' WHEN 'statement_json' THEN 'statement_json'
       WHEN 'statement_pdf' THEN 'statement_pdf'
-      WHEN 'statement_other' THEN CASE WHEN ${doc} LIKE '${ESTIMATE_DOCUMENT_PREFIX}%' OR ${a}.parser_row_id LIKE '${ESTIMATE_LINE_ID_PREFIX}%' THEN 'estimate' ELSE 'statement_other' END
+      WHEN 'statement_other' THEN ${other}
       ELSE 'statement_other' END,
     'cc_statement_lines', ${a}.id, COALESCE(${a}.parser_row_id, ${a}.dedupe_key),
     COALESCE(${isoFromDdMmSql(`${a}.transaction_date`)}, ${isoFromDdMmSql(`${a}.posting_date`)}), ${lineAmountSql(a)},
@@ -166,7 +181,7 @@ const EVIDENCE_COLUMNS = `source_kind, source_table, source_row_id, document_key
 export type SourceSpec = {
   table: FlowSourceTable | "income_entries";
   flowValues: (a: string) => string;
-  evidenceValues: (a: string) => string;
+  evidenceValues: (a: string, vocabulary?: EvidenceVocabulary) => string;
   /** Rows that are not flows (a real-estate bill is a link target). */
   where?: (a: string) => string;
   /** The row carries `flow_id` (the gap mirrors are named by their evidence only). */
@@ -188,7 +203,7 @@ export const FLOW_SOURCES: readonly SourceSpec[] = [
 ];
 
 /** The insert trigger: a row written later gets its own flow and its evidence row. */
-function flowInsertTriggerSql(spec: SourceSpec): string {
+function flowInsertTriggerSql(spec: SourceSpec, vocabulary: EvidenceVocabulary = CURRENT_VOCABULARY): string {
   const t = spec.table;
   const when = spec.where ? ` WHEN ${spec.where("NEW")}` : "";
   const setFlow = spec.hasFlowColumn
@@ -199,7 +214,7 @@ function flowInsertTriggerSql(spec: SourceSpec): string {
   return `CREATE TRIGGER flow_${t}_ai AFTER INSERT ON ${t}${insertWhen} BEGIN
   INSERT INTO flows (${FLOW_COLUMNS}) SELECT ${spec.flowValues("NEW")};
   ${setFlow}
-  INSERT INTO flow_evidence (flow_id, ${EVIDENCE_COLUMNS}) SELECT ${evidenceFlow}, ${spec.evidenceValues("NEW")};
+  INSERT INTO flow_evidence (flow_id, ${EVIDENCE_COLUMNS}) SELECT ${evidenceFlow}, ${spec.evidenceValues("NEW", vocabulary)};
 END`;
 }
 
@@ -389,14 +404,14 @@ export function runFlowTables279(dbi: DatabaseType): FlowSeedReport {
       dbi.prepare(`SELECT r.id FROM ${spec.table} r ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`).all() as { id: number }[]
     ).map((r) => r.id);
     const ins = dbi.prepare(
-      `INSERT INTO flow_evidence (flow_id, ${EVIDENCE_COLUMNS}) SELECT ?, ${spec.evidenceValues("r")} FROM ${spec.table} r WHERE r.id = ?`
+      `INSERT INTO flow_evidence (flow_id, ${EVIDENCE_COLUMNS}) SELECT ?, ${spec.evidenceValues("r", VOCABULARY_279)} FROM ${spec.table} r WHERE r.id = ?`
     );
     for (const id of ids) ins.run(rowFlow.get(`${spec.table}|${id}`)!, id);
   }
 
   // 4. Triggers: rows written later; the write log of the new tables.
   for (const spec of FLOW_SOURCES) {
-    dbi.exec(flowInsertTriggerSql(spec));
+    dbi.exec(flowInsertTriggerSql(spec, VOCABULARY_279));
     dbi.exec(flowDeleteTriggerSql(spec, []));
   }
   for (const table of ["outside_parties", "flows", "flow_evidence", "flow_orphan_assignments"]) {
