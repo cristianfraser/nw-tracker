@@ -151,8 +151,15 @@ export function resetDemoDatabaseToPristine(
         }
         for (const name of tables) {
           const q = `"${name.replace(/"/g, '""')}"`;
+          // The stored columns by name: a generated column (`cc_statements.source_kind`) is read by
+          // `SELECT *` but may not be written, so a bare `INSERT … SELECT *` counts one value too many.
+          const cols = (
+            database.prepare(`SELECT name FROM pragma_table_xinfo(?) WHERE hidden = 0`).all(name) as { name: string }[]
+          )
+            .map((c) => `"${c.name.replace(/"/g, '""')}"`)
+            .join(", ");
           database.exec(`DELETE FROM main.${q}`);
-          database.exec(`INSERT INTO main.${q} SELECT * FROM pristine.${q}`);
+          database.exec(`INSERT INTO main.${q} (${cols}) SELECT ${cols} FROM pristine.${q}`);
         }
         if (hasSequence) {
           database.exec(`DELETE FROM main.sqlite_sequence`);
