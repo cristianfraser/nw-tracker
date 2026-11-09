@@ -305,7 +305,9 @@ describe("GET /api/tax-return/us", () => {
   it("404s without US stubs, serves a listed year and refuses another", async () => {
     cleanup();
     expect((await fetch(`${baseUrl}/api/tax-return/us`)).status).toBe(404);
-    applyStubs(generatedStubs("2025-12-31"));
+    // The second half of 2025 only: the F22 below declares these stubs as foreign salary, reajustada
+    // by the official IPC, which the Vitest person's market holds for its own months only.
+    applyStubs(generatedStubs("2025-12-31").filter((st) => st.payDate >= "2025-07-01"));
     const ok = await fetch(`${baseUrl}/api/tax-return/us?tax_year=2025`);
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { jurisdiction: string; tax_year: number; rows: { line: string }[]; w2s: unknown[] };
