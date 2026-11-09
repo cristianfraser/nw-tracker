@@ -504,9 +504,26 @@ export function useCreateRealEstatePlaceMutation() {
       active_from?: string | null;
       active_to?: string | null;
       property_account_id?: number | null;
+      dfl2?: boolean;
+      dfl2_built_m2?: number | null;
+      dfl2_reception_year?: number | null;
     }) => api.createRealEstatePlace(body),
     onSettled: () => {
-      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.sidebarNav());
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.sidebarNav(), resources.income());
+    },
+  });
+}
+
+/** A place's DFL-2 declaration (its rent's F22 treatment and the contribuciones halving). */
+export function useSetRealEstatePlaceDfl2Mutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { slug: string; dfl2: boolean; dfl2_built_m2: number | null; dfl2_reception_year: number | null }) => {
+      const { slug, ...body } = vars;
+      return api.setRealEstatePlaceDfl2(slug, body);
+    },
+    onSettled: () => {
+      void invalidateResources(queryClient, resources.realEstateExpenses(), resources.income(), resources.taxReturn());
     },
   });
 }
@@ -577,6 +594,7 @@ export function usePatchIncomeMovementMutation() {
     mutationFn: (vars: {
       movement_id: number;
       income_kind?: import("../types").IncomeKind;
+      rent_place_slug?: string;
       excluded?: boolean;
       force_include?: boolean;
       note?: string | null;
@@ -585,7 +603,7 @@ export function usePatchIncomeMovementMutation() {
       return api.patchIncomeMovement(movement_id, body);
     },
     onSettled: () => {
-      void invalidateResources(queryClient, resources.income(), resources.expenseLines());
+      void invalidateResources(queryClient, resources.income(), resources.expenseLines(), resources.taxReturn());
     },
   });
 }

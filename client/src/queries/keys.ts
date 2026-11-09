@@ -81,6 +81,8 @@ export const queryKeys = {
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
   /** Bare `income()` is the prefix every income invalidation uses. */
   income: (unit?: DisplayUnit) => (unit ? (["income", unit] as const) : (["income"] as const)),
+  /** Under `income()`, so every income invalidation reaches it. */
+  incomeRentPlaces: () => ["income", "rentPlaces"] as const,
   flowsDeposits: () => ["flowsDeposits"] as const,
   flowsPl: (days?: number) => ["flowsPl", days ?? null] as const,
   flowsDepositsReconciliation: () => ["flowsDepositsReconciliation"] as const,
@@ -132,6 +134,7 @@ export const queryKeys = {
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
     ["benchmarkComparison", scope, benchmark, unit] as const,
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,
+  taxReturnAll: () => ["tax-return"] as const,
   dashboardAll: () => ["dashboard"] as const,
   portfolioGroupAll: () => ["portfolioGroup"] as const,
   accountMonthlyPerformanceAll: () => ["accountMonthlyPerformance"] as const,

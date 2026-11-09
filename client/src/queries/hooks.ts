@@ -646,6 +646,14 @@ export function useRealEstateUnlinkedPurchases(
   });
 }
 
+/** The places a rent credit can name, and the place each rent line names (the income page's type select). */
+export function useIncomeRentPlaces() {
+  return useQuery({
+    queryKey: queryKeys.incomeRentPlaces(),
+    queryFn: () => api.incomeRentPlaces(),
+  });
+}
+
 export function useRealEstatePropertyAccounts(enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.realEstatePropertyAccounts(),

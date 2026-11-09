@@ -3981,7 +3981,19 @@
       "parent_gift": {
         "en": "Dad",
         "es": "Papá"
+      },
+      "rent": {
+        "en": "Rent",
+        "es": "Arriendo"
       }
+    },
+    "rentOption": {
+      "en": "Rent · {{place}}",
+      "es": "Arriendo · {{place}}"
+    },
+    "rentOptionDfl2": {
+      "en": "Rent · {{place}} (DFL-2)",
+      "es": "Arriendo · {{place}} (DFL-2)"
     },
     "colDate": {
       "en": "Date",
@@ -4590,6 +4602,38 @@
   },
   "expenses": {
     "realEstate": {
+      "dfl2Field": {
+        "en": "DFL-2 «vivienda económica»",
+        "es": "DFL-2 «vivienda económica»"
+      },
+      "dfl2Explain": {
+        "en": "Up to 140 m² built, certified at the building's reception. Its rent is not declared in the F22 (up to two such places), and its contribuciones are halved for 20, 15 or 10 years from the reception by built area.",
+        "es": "Hasta 140 m² construidos, certificada en la recepción del edificio. Su arriendo no se declara en el F22 (hasta dos viviendas así) y sus contribuciones se rebajan a la mitad por 20, 15 o 10 años desde la recepción, según la superficie."
+      },
+      "dfl2BuiltM2Field": {
+        "en": "Built area (m²)",
+        "es": "Superficie construida (m²)"
+      },
+      "dfl2ReceptionYearField": {
+        "en": "Reception year",
+        "es": "Año de recepción"
+      },
+      "dfl2ModalTitle": {
+        "en": "DFL-2 · {{place}}",
+        "es": "DFL-2 · {{place}}"
+      },
+      "dfl2Save": {
+        "en": "Save",
+        "es": "Guardar"
+      },
+      "dfl2Action": {
+        "en": "DFL-2…",
+        "es": "DFL-2…"
+      },
+      "dfl2Summary": {
+        "en": "DFL-2: {{m2}} m², reception {{year}}; contribuciones halved through {{through}}.",
+        "es": "DFL-2: {{m2}} m², recepción {{year}}; contribuciones a la mitad hasta {{through}}."
+      },
       "colLinkedPurchase": {
         "en": "Linked expense",
         "es": "Gasto vinculado"
@@ -6666,6 +6710,18 @@
       }
     },
     "codes": {
+      "1849": {
+        "en": "Rent determined by contract (art. 20 N°1 b))",
+        "es": "Arriendos determinados según contrato (art. 20 N°1 b))"
+      },
+      "955": {
+        "en": "Effective income without full accounting (line 5)",
+        "es": "Rentas efectivas sin contabilidad completa (línea 5)"
+      },
+      "1637": {
+        "en": "Credit for contribuciones on rented property (art. 56 N°5)",
+        "es": "Crédito por impuesto territorial de bienes raíces arrendados (art. 56 N°5)"
+      },
       "1098": {
         "en": "Salaries and similar income (Chilean source)",
         "es": "Sueldos, pensiones y otras rentas de fuente nacional"
@@ -6989,6 +7045,56 @@
           "en": "IPC reajuste (Oficio 750)",
           "es": "Con reajuste IPC (Oficio 750)"
         }
+      }
+    },
+    "rentals": {
+      "title": {
+        "en": "Rents",
+        "es": "Arriendos"
+      },
+      "explain": {
+        "en": "The year's rent by place, reajustada to December. A DFL-2 place's rent is not declared (DFL N° 2 art. 15); any other place's is line 5 code 1849, and its contribuciones paid in the year credit the IGC (code 1637) up to the IGC on that rent, with no refund.",
+        "es": "El arriendo del año por lugar, reajustado a diciembre. El arriendo de un lugar DFL-2 no se declara (DFL N° 2 art. 15); el de cualquier otro va a la línea 5, código 1849, y sus contribuciones pagadas en el año son crédito contra el IGC (código 1637) hasta el IGC de ese arriendo, sin devolución."
+      },
+      "provisional": {
+        "en": "The year has not closed: the reajuste uses the latest published IPC.",
+        "es": "El año no ha cerrado: el reajuste usa el último IPC publicado."
+      },
+      "place": {
+        "en": "Place",
+        "es": "Lugar"
+      },
+      "treatment": {
+        "en": "Treatment",
+        "es": "Tratamiento"
+      },
+      "exempt": {
+        "en": "DFL-2, not declared",
+        "es": "DFL-2, no se declara"
+      },
+      "taxable": {
+        "en": "Taxable (1849)",
+        "es": "Afecto (1849)"
+      },
+      "credits": {
+        "en": "Credits",
+        "es": "Abonos"
+      },
+      "rent": {
+        "en": "Rent",
+        "es": "Arriendo"
+      },
+      "propertyTax": {
+        "en": "Contribuciones paid",
+        "es": "Contribuciones pagadas"
+      },
+      "totals": {
+        "en": "Taxable rent {{taxable}} · exempt DFL-2 rent {{exempt}}.",
+        "es": "Arriendo afecto {{taxable}} · arriendo DFL-2 exento {{exempt}}."
+      },
+      "credit": {
+        "en": "Contribuciones credit: {{paid}} paid, capped at {{cap}} (the IGC on the rent) → {{credit}}.",
+        "es": "Crédito por contribuciones: {{paid}} pagadas, tope {{cap}} (el IGC del arriendo) → {{credit}}."
       }
     },
     "art107": {

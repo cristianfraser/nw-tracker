@@ -234,6 +234,61 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
 }
 
 /**
+ * The year's rents by place (server: f22Rentals.ts): a non-DFL-2 place's rent is línea 5 letra a)
+ * (code 1849 → 955), its contribuciones the línea-39 credit (1637) up to the IGC on the rent; a
+ * DFL-2 place's rent is shown and enters no code (DFL N° 2 art. 15).
+ */
+function RentalsSection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const r = data.rentals;
+  if (r.places.length === 0) return null;
+  const credit = r.property_tax_credit;
+  return (
+    <PageGridTile id="rentals">
+      <h2>{t("taxReturn.rentals.title")}</h2>
+      <p className="muted">
+        {t("taxReturn.rentals.explain")}
+        {r.provisional ? ` ${t("taxReturn.rentals.provisional")}` : ""}
+      </p>
+      <ColumnTable
+        rows={r.places}
+        rowKey={(p) => p.slug}
+        cardLayout="flat"
+        columns={[
+          { key: "place", header: t("taxReturn.rentals.place"), cell: (p) => p.label, title: true },
+          {
+            key: "treatment",
+            header: t("taxReturn.rentals.treatment"),
+            cell: (p) => t(p.dfl2 ? "taxReturn.rentals.exempt" : "taxReturn.rentals.taxable"),
+          },
+          { key: "credits", header: t("taxReturn.rentals.credits"), headerClassName: "num", className: "num", cell: (p) => String(p.credits) },
+          { key: "rent", header: t("taxReturn.rentals.rent"), headerClassName: "num", className: "num", cell: (p) => formatClp(p.rent_clp) },
+          {
+            key: "propertyTax",
+            header: t("taxReturn.rentals.propertyTax"),
+            headerClassName: "num",
+            className: "num",
+            cell: (p) => formatClp(p.property_tax_paid_clp),
+          },
+        ]}
+      />
+      <p>
+        {t("taxReturn.rentals.totals", { taxable: formatClp(r.taxable_rent_clp), exempt: formatClp(r.exempt_rent_clp) })}
+      </p>
+      {credit ? (
+        <p className="muted">
+          {t("taxReturn.rentals.credit", {
+            paid: formatClp(credit.paid_clp),
+            cap: formatClp(credit.cap_clp),
+            credit: formatClp(credit.credit_clp),
+          })}
+        </p>
+      ) : null}
+    </PageGridTile>
+  );
+}
+
+/**
  * Art. 107 LIR: fund units and shares sold on the exchange. Sales through 2026 pay a flat 10%
  * single tax on the mayor valor (codes 1809 / 1813 → 1814, carried loss 1815, base 1816, line 66
  * 1829 / 1830); from 2027 they are ingreso no renta and only listed. The fund's distributions are
@@ -620,6 +675,7 @@ export function TaxReturnPage() {
               <CryptoSection data={data} />
               <DividendsSection data={data} />
               <ForeignSharesSection data={data} />
+              <RentalsSection data={data} />
               <Art107Section data={data} />
               <UsdFxSection data={data} />
             </>

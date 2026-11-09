@@ -497,6 +497,7 @@ export const api = {
     movementId: number,
     body: {
       income_kind?: import("./types").IncomeKind;
+      rent_place_slug?: string;
       excluded?: boolean;
       force_include?: boolean;
       note?: string | null;
@@ -574,11 +575,23 @@ export const api = {
     active_from?: string | null;
     active_to?: string | null;
     property_account_id?: number | null;
+    dfl2?: boolean;
+    dfl2_built_m2?: number | null;
+    dfl2_reception_year?: number | null;
   }) =>
     j<import("./types").RealEstatePlaceDto>("/api/flows/expenses/real-estate/places", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  setRealEstatePlaceDfl2: (
+    slug: string,
+    body: { dfl2: boolean; dfl2_built_m2: number | null; dfl2_reception_year: number | null }
+  ) =>
+    j<import("./types").RealEstatePlaceDto>(
+      `/api/flows/expenses/real-estate/places/${encodeURIComponent(slug)}/dfl2`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
+  incomeRentPlaces: () => j<import("./types").IncomeRentPlacesResponse>("/api/income/rent-places"),
   realEstatePropertyAccounts: () =>
     j<{ accounts: { id: number; name: string }[] }>(
       "/api/flows/expenses/real-estate/property-accounts"
