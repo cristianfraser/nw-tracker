@@ -120,6 +120,7 @@ export function initSchema() {
   if (count.c === 0) {
     seedReferenceData();
   }
+  ensureRetirementCountryAssetGroups();
 }
 
 /**
@@ -220,6 +221,42 @@ const SEED_ASSET_GROUPS: SeedAssetGroupRow[] = [
     { slug: "brokerage_acciones__slv", label: "SLV", parent: "brokerage_acciones", sort: 8 },
     { slug: "cash_eqs__dap", label: "DAP", parent: "cash_eqs__cash_savings", sort: 32 },
 ];
+
+/**
+ * Retirement by country (docs/demo-us-chapter-plan.md, phase 3): the asset groups of the Chile and
+ * US sub-buckets and the US accounts' leaves, created on every database when missing (by slug).
+ * Harmless without accounts: only the portfolio groups (`ensureRetirementCountrySplit` in
+ * `seedNavTree.ts`, called by the demo generator) put them in the nav tree, and only that call
+ * reparents the Chilean leaves under `retirement_cl`. A leaf's suffix after `__` is the account's
+ * behaviour kind: `us_401k` and `hsa` are cuota ledgers priced by a fund series, `roth_ira` holds
+ * shares (`accountProfile.ts`).
+ */
+const RETIREMENT_COUNTRY_ASSET_GROUPS: readonly SeedAssetGroupRow[] = [
+  { slug: "retirement_cl", label: "Chile", parent: "retirement", sort: 5 },
+  { slug: "retirement_us", label: "US", parent: "retirement", sort: 30 },
+  { slug: "retirement_us_401k", label: "401(k)", parent: "retirement_us", sort: 10 },
+  { slug: "retirement_us_401k__us_401k", label: "401(k)", parent: "retirement_us_401k", sort: 0 },
+  { slug: "retirement_us_roth_ira", label: "Roth IRA", parent: "retirement_us", sort: 20 },
+  { slug: "retirement_us_roth_ira__roth_ira", label: "Roth IRA", parent: "retirement_us_roth_ira", sort: 0 },
+  { slug: "retirement_us_hsa", label: "HSA", parent: "retirement_us", sort: 30 },
+  { slug: "retirement_us_hsa__hsa", label: "HSA", parent: "retirement_us_hsa", sort: 0 },
+];
+
+function ensureRetirementCountryAssetGroups(): void {
+  const idOf = dbInternal.prepare("SELECT id FROM asset_groups WHERE slug = ?");
+  const ins = dbInternal.prepare(
+    "INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (@slug, @label, @sort, @parent_id)"
+  );
+  const missing = RETIREMENT_COUNTRY_ASSET_GROUPS.filter((g) => idOf.get(g.slug) == null);
+  if (missing.length === 0) return;
+  dbInternal.transaction(() => {
+    for (const g of missing) {
+      const parent = g.parent ? (idOf.get(g.parent) as { id: number } | undefined) : undefined;
+      if (g.parent && !parent) throw new Error(`asset groups: ${g.slug}'s parent ${g.parent} does not exist`);
+      ins.run({ slug: g.slug, label: g.label, sort: g.sort, parent_id: parent?.id ?? null });
+    }
+  })();
+}
 
 function seedReferenceData() {
   const ins = dbInternal.prepare(

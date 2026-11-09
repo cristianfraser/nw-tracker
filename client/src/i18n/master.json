@@ -6226,6 +6226,26 @@
     "apv": {
       "en": "APV",
       "es": "APV"
+    },
+    "chile": {
+      "en": "Chile",
+      "es": "Chile"
+    },
+    "us": {
+      "en": "US",
+      "es": "EE. UU."
+    },
+    "us401k": {
+      "en": "401(k)",
+      "es": "401(k)"
+    },
+    "rothIra": {
+      "en": "Roth IRA",
+      "es": "Roth IRA"
+    },
+    "hsa": {
+      "en": "HSA",
+      "es": "HSA"
     }
   },
   "groceries": {
