@@ -174,7 +174,7 @@ describe("AFC ledger rebuild (test DB)", () => {
     db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND note = 'vitest:px'`).run(AFC_CIC_SERIES_KEY);
   });
 
-  it("imports the certificate at pay-date valor cuota, replacing the excel contributions; re-runs are idempotent", () => {
+  it("imports the certificate at pay-date valor cuota; re-runs are idempotent", () => {
     const cert = CERT;
     const plan = planAfcCertImport(accountId, cert);
     expect(plan.items.map((i) => [i.status, i.units])).toEqual([
@@ -186,8 +186,11 @@ describe("AFC ledger rebuild (test DB)", () => {
     expect(plan.excel_contribution_rows.map((m) => m.amount)).toEqual([22000]);
     expect(plan.excel_other_rows.map((m) => m.amount)).toEqual([-60000]);
 
-    const r = applyAfcCertImport(plan, { replaceExcelContributions: true });
-    expect(r).toEqual({ inserted: 4, units_updated: 0, deleted: 1, mismatches: 0 });
+    // The import leaves the excel-era rows alone: clear the contribution row so the account holds
+    // the certificate's rows alone.
+    for (const m of plan.excel_contribution_rows) db.prepare(`DELETE FROM movements WHERE id = ?`).run(m.id);
+    const r = applyAfcCertImport(plan);
+    expect(r).toEqual({ inserted: 4, units_updated: 0, mismatches: 0 });
     const rows = db
       .prepare(`SELECT occurred_on, amount, units_delta, note FROM movements WHERE account_id = ? AND amount > 0 ORDER BY occurred_on`)
       .all(accountId) as { occurred_on: string; amount: number; units_delta: number; note: string }[];
@@ -216,7 +219,7 @@ describe("AFC ledger rebuild (test DB)", () => {
     const changed = certWithChangedLeg();
     const mismatch = planAfcCertImport(accountId, changed);
     expect(mismatch.items[0]!.status).toBe("mismatch");
-    expect(applyAfcCertImport(mismatch, { replaceExcelContributions: false }).mismatches).toBe(1);
+    expect(applyAfcCertImport(mismatch).mismatches).toBe(1);
   });
 
   it("prices withdrawals at the valor cuota of their date, then lands the cartola's saldos with true-ups", () => {

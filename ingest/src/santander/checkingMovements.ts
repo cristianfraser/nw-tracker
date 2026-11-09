@@ -17,7 +17,7 @@ import { isChileanNumber, parseChileanNumber } from "../formats/chileanNumber.js
  * (Fecha dd-mm-yyyy).
  *
  * Only the PESO account's workbook is accepted (2026-10-09): the bank's dollar cuenta corriente
- * downloads under the same name with «Monto cargo (USD)» headers, and every row used to be sent
+ * downloads under the same name with «Monto cargo (USD)» headers, and every row would be sent
  * as pesos into the peso account. The headers must be the «($)» ones and row 2 must carry an
  * account number, which travels in the payload for the server to check against the account it
  * maps the listing to.

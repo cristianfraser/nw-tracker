@@ -12,10 +12,6 @@ import { latestFundUnitRow, upsertFundUnitSpotPreservingHistory } from "./fundUn
 import type { FintualCertificadoAggregateScan } from "./fintualCertificadoTransacciones.js";
 import type { GoalToImportNote } from "./fintualCertificadoTransacciones.js";
 
-export function isFintualCertV2ValuationNotes(importNotes: string | null | undefined): boolean {
-  return isFintualCertV2AccountNotes(importNotes);
-}
-
 function latestValuationClp(accountId: number, onOrBefore: string): number | null {
   const r = db
     .prepare(

@@ -11,8 +11,7 @@ import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
 
 /**
  * One run the server asked for, end to end: the log file, the runner, the facts the report
- * carries. The service's runners are the only runners (the shell runners and their timed
- * LaunchAgents were retired with F13).
+ * carries. The service's runners are the only runners.
  */
 
 const LOG_BY_KIND = { nightly: "daily-run.log", hourly: "email-run.log" } as const;

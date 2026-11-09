@@ -47,11 +47,6 @@ function toMapNode(dto: NavValueMapNodeDto, unit: Unit, depth = 0): MapNode | nu
   return value != null && value > 0 ? { dto, value } : null;
 }
 
-/** True when the payload can draw the map in `unit` (a CLP payload shown in USD cannot). */
-export function valueMapReadyForUnit(root: NavValueMapNodeDto | undefined, unit: Unit): boolean {
-  return root != null && unitValue(root, unit) != null;
-}
-
 /**
  * Keys the server puts on value-map nodes (`navValueMap.ts`), listed so the i18n dead-key check
  * sees them: «Otros», a proxied fund's non-ETF sleeve.

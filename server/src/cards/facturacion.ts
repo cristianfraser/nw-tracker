@@ -1,7 +1,6 @@
 /**
  * The facturación module (docs/untangle-plan.md F10): which month a card's money belongs to and
- * when that month closes. One place for the cycle rules that were spread over
- * `ccBillingMonth` / `ccManualBillingMonth` / `ccBillingCloses` / `ccInstallmentStatementMonth`:
+ * when that month closes. One place for the cycle rules:
  *
  * - closes, from the bank's own evidence ({@link closeEvidenceForBillingMonth}: statement → feed
  *   SALDO INICIAL → announced next period → estimate), and the cycle bounds they give
@@ -54,7 +53,7 @@ import { addCalendarMonths, ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker
  * into the month (the config cycle only for a card with no close on record). Only the estimate is
  * a guess, and callers that decide a month has closed refuse to act on it.
  *
- * Leaf module (no billing-view imports) so `ccManualBillingMonth` can depend on it.
+ * Leaf module: no billing-view imports.
  */
 export type CcCloseSource = "statement" | "feed" | "announced" | "estimated";
 
@@ -130,7 +129,7 @@ export function latestFeedBillingClose(accountId: number): CcFeedBillingClose | 
  * next-period end). Two statements announcing different closes for the same month is a
  * contradiction and throws; the CLP and USD twins of one facturación announce the same one.
  */
-export function announcedCloseIsoForBillingMonth(
+function announcedCloseIsoForBillingMonth(
   accountId: number,
   billingMonth: string,
   statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
@@ -469,18 +468,6 @@ export function billingMonthContainingPurchase(
     return bm;
   }
   throw new Error(`Account ${accountId}: no billing cycle contains ${purchaseIso} (close evidence overlaps)`);
-}
-
-/**
- * Close date (ISO) of a billing month from the best evidence: its statement's period end, the
- * feed-observed close, the close the previous statement announced, or the estimate from the
- * account's latest close day (`closeEvidenceForBillingMonth`).
- */
-export function periodToIsoForBillingMonth(
-  accountId: number,
-  billingMonth: string
-): string | null {
-  return closeEvidenceForBillingMonth(accountId, billingMonth).close_iso;
 }
 
 /**

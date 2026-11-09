@@ -343,7 +343,7 @@ export interface ProportionalSeriesLineDto {
   name: string;
   name_i18n_key?: string | null;
   color_rgb?: string | null;
-  /** Member identity for client color maps (same key the old pie sliceFill used). */
+  /** Member identity for client color maps (the key the client color maps use). */
   account_id?: number;
   values: (number | null)[];
 }

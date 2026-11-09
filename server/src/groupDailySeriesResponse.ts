@@ -70,9 +70,9 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
         )
       )
     : null;
-  // Composition shares (pie-replacement chart, day grain): per-account and, when the
+  // Composition shares (composition chart, day grain): per-account and, when the
   // page has bucket nodes, per grouped bucket line. Names/ids come from the same line
-  // metadata the valuation chart uses; the client colors by account_id like the pie did.
+  // metadata the valuation chart uses; the client colors by account_id.
   const dailyDates = series.points.map((p) => p.as_of_date);
   const shareLines = (
     lines: { account_id: number; name: string | null; values: (number | null)[] }[] | undefined

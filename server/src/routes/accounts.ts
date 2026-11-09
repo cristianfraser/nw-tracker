@@ -357,5 +357,4 @@ app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
   });
 });
 
-/** Inmuebles: dividendos sheet snapshot from SQLite (`depto_dividendos_sheet_rows`, filled at import:excel). */
 }

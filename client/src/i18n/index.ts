@@ -27,18 +27,6 @@ export default i18n;
 
 export { Trans, useTranslation } from "react-i18next";
 
-export type BrokeragePortfolioGroup = "mutual_funds" | "acciones" | "cripto";
-
-/** User-visible label for a brokerage portfolio subgroup (sidebar, cards, charts). */
-export function brokerageGroupLabel(group: BrokeragePortfolioGroup): string {
-  return i18n.t(`brokerage.groups.${group}`);
-}
-
-export function dashboardBucketLabel(bucket: "real_estate" | "retirement" | "brokerage" | "cash_eqs"): string {
-  if (bucket === "cash_eqs") return i18n.t("dashboard.buckets.cash_savings");
-  return i18n.t(`dashboard.buckets.${bucket}`);
-}
-
 export function ccExpenseCategoryLabel(slug: string): string {
   const key = `expenses.creditCard.categories.${slug}`;
   const t = i18n.t(key);

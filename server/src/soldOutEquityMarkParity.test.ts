@@ -1,13 +1,13 @@
 /**
- * Today's mark of a stock with no shares is answered from the shares (`computeEquityMtmClpDisplaySync`):
+ * Today's mark of a stock with no shares is answered from the shares (`equityTodayClp`):
  * same mark as the priced rule it replaced, for every stock account at several instants, and no
  * live quote read for an empty position.
  */
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { equityTodayClp } from "./test/todayClpMarks.js";
 import {
   accountUsesEquityMtm,
-  computeEquityMtmClpDisplaySync,
   equityShareUnitsThroughYmd,
   firstEquityShareActivityYmd,
 } from "./brokerageEquityMtm.js";
@@ -82,7 +82,7 @@ describe("today's mark of a stock with no shares reads no price", () => {
       if (!accountUsesEquityMtm(id)) continue;
       for (const now of PARITY_INSTANTS) {
         const before = observeLiveReads(() => priorEquityDisplaySync(id, now));
-        const after = observeLiveReads(() => computeEquityMtmClpDisplaySync(id, now));
+        const after = observeLiveReads(() => equityTodayClp(id, now));
         expect(after.out, `stock ${id} at ${now.toISOString()}`).toEqual(before.out);
         if (after.out != null && typeof after.out === "object" && after.out.value_clp === 0) {
           expect(after.tickers, `sold-out stock ${id} reads no quote`).toEqual([]);
@@ -92,7 +92,7 @@ describe("today's mark of a stock with no shares reads no price", () => {
     }
     expect(compared).toBeGreaterThanOrEqual(2 * PARITY_INSTANTS.length);
     const now = PARITY_INSTANTS[1]!;
-    expect(observeLiveReads(() => computeEquityMtmClpDisplaySync(soldOut, now)).out).toMatchObject({ value_clp: 0 });
+    expect(observeLiveReads(() => equityTodayClp(soldOut, now)).out).toMatchObject({ value_clp: 0 });
     expect(observeLiveReads(() => priorEquityDisplaySync(soldOut, now)).tickers).not.toEqual([]);
   });
 });

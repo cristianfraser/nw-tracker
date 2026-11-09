@@ -112,7 +112,6 @@ export function parseInformedDjHtml(html: string): Map<number, InformedDjField[]
     const data = rows.filter((r) => !r.header);
     if (data.length === 0) continue; // a DJ with nothing informed
     if (data.length > 1) throw new Error(`DJ ${djCode}: ${data.length} data rows, expected 1`);
-    // Lay the header rows onto a grid, honouring the spans.
     const grid: string[][] = [];
     const headerRows = rows.filter((r) => r.header);
     headerRows.forEach((r, ri) => {

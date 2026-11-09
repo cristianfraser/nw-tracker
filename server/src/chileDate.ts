@@ -160,7 +160,7 @@ export function chileCalendarTodayYmd(): string {
 
 /**
  * Calendar month-end `YYYY-MM-DD` for the month containing Chile `today`, when that day is still in the future
- * (e.g. today `2026-05-14` → `2026-05-31`). Used to prune Excel “placeholder” valuations that would otherwise
+ * (e.g. today `2026-05-14` → `2026-05-31`). Used to prune placeholder valuations that would otherwise
  * sort after mid-month Fintual snapshots.
  */
 export function chileFutureMonthEndPlaceholderYmd(): string | null {

@@ -2,7 +2,7 @@ import { loadBookValuationsAsc } from "./bookValuations.js";
 
 /**
  * `chart_inactive` / summary breakdown: one trailing zero month-end → inactive (hide breakdown line).
- * Chart tail **display** uses client `DEFAULT_TRAILING_ZERO_MONTHS_KEPT` (= 1) to keep one plotted zero.
+ * Chart tail display keeps one plotted zero (the clip in `timeseriesTailClip.ts`).
  */
 export const CHART_TRAILING_ZERO_MONTHS_KEPT = 0;
 

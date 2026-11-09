@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  accountingCurrencyNumberFlowParts,
   adaptiveUsdAccountingNumberFlowParts,
   adaptiveUsdFractionDigits,
   formatClp,
@@ -16,7 +17,6 @@ import {
   parseNumberInputOrThrow,
   roundUsdAdaptive,
   setDecimalSeparatorForFormatting,
-  titleBalanceDeltaNumberFlowParts,
 } from "./format";
 import type { DecimalSeparator } from "./numberFormatPreference";
 
@@ -189,17 +189,11 @@ describe("adaptive USD decimals (summary-card balances / deltas)", () => {
   });
 });
 
-describe("titleBalanceDeltaNumberFlowParts", () => {
-  it("uses + prefix for gains and parentheses for losses", () => {
-    expect(titleBalanceDeltaNumberFlowParts(4_822_484, "clp", "bare").prefix).toBe("+$");
-    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "bare").prefix).toBe("($");
-    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "bare").suffix).toBe(")");
-  });
-
+describe("accountingCurrencyNumberFlowParts", () => {
   it("locales follow the separator preference", () => {
-    expect(titleBalanceDeltaNumberFlowParts(100, "clp", "bare").locales).toBe("es-CL");
+    expect(accountingCurrencyNumberFlowParts(100, "clp", "bare").locales).toBe("es-CL");
     setDecimalSeparatorForFormatting("period");
-    expect(titleBalanceDeltaNumberFlowParts(100, "clp", "bare").locales).toBe("en-US");
+    expect(accountingCurrencyNumberFlowParts(100, "clp", "bare").locales).toBe("en-US");
   });
 });
 

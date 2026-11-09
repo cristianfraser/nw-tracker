@@ -95,7 +95,11 @@ export function withExpenseLineShapes<L extends FlowCcExpenseLineRow>(
         line.category_slug === "unclassified" &&
         !isNotaCreditoExcludedLine(line),
       can_delete: line.source === "cc" && line.web_paste === true && line.statement_line_id > 0,
-      can_make_installment: isPlainCardPurchase(line),
+      // Only a line of the open cycle (the card feed or a paste) or one the bank lists in cuotas without
+      // the count asks for a cuota count; a statement's one-shot line is settled as printed (user
+      // decision 2026-11-08, the pre-F12 rule).
+      can_make_installment:
+        isPlainCardPurchase(line) && (line.cuota_purchase_kind != null || line.web_paste === true),
       can_edit_installment:
         line.source === "cc" && line.installment_source === "manual" && line.installment_purchase_id != null,
       can_edit_pieces:

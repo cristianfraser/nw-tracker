@@ -3,11 +3,10 @@ import { clearEquityLiveQuoteCache, equitySessionYmdForTicker, shouldUseLiveEqui
 import { utcTodayYmd } from "./nyseSession.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClpCachedLive,
-  computeCryptoMtmClpDisplaySync,
   cryptoEquityTickerForAccount,
 } from "./cryptoValuation.js";
 import { db } from "./db.js";
+import { cryptoTodayClp } from "./test/todayClpMarks.js";
 
 const cachedLive = vi.hoisted(() => ({
   quote: null as { price: number; trade_date: string; source: "live" } | null,
@@ -59,23 +58,7 @@ function firstCryptoMtmAccount(): { account_id: number; ticker: "BTC-USD" | "ETH
   return null;
 }
 
-describe("computeCryptoMtmClpCachedLive", () => {
-  it("allows live on current UTC day", () => {
-    const acct = firstCryptoMtmAccount();
-    if (!acct) return;
-
-    const now = new Date("2026-05-19T15:00:00Z");
-    const session = equitySessionYmdForTicker(acct.ticker, now);
-    expect(shouldUseLiveEquityQuote(acct.ticker, session, now)).toBe(true);
-
-    cachedLive.quote = { price: 50_000, trade_date: session, source: "live" };
-    const clp = computeCryptoMtmClpCachedLive(acct.account_id, now);
-    expect(clp).not.toBeNull();
-    expect(clp!).toBeGreaterThan(0);
-  });
-});
-
-describe("computeCryptoMtmClpDisplaySync", () => {
+describe("cryptoTodayNativeValue", () => {
   it("prefers cached live over stale max EOD when live allowed", () => {
     const acct = firstCryptoMtmAccount();
     if (!acct) return;
@@ -85,7 +68,7 @@ describe("computeCryptoMtmClpDisplaySync", () => {
     if (!shouldUseLiveEquityQuote(acct.ticker, session, now)) return;
 
     cachedLive.quote = { price: 123_456, trade_date: utcTodayYmd(now), source: "live" };
-    const sync = computeCryptoMtmClpDisplaySync(acct.account_id, now);
+    const sync = cryptoTodayClp(acct.account_id, now);
     expect(sync).not.toBeNull();
     expect(sync!.as_of_date).toBe(session);
   });

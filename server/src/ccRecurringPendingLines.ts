@@ -4,7 +4,7 @@
  * «CONVENIO P.A.T.» on the 3rd/4th, then «SEG AUTO SANTANDER» on the 6th/7th, the same pesos. Both
  * names are patterns of one automatic `recurring_payments` entry; a bucket line under one pattern is
  * the pending listing of a line on the same card under another pattern of the entry, for the same
- * pesos, 0–`PENDING_RESTATEMENT_DAYS` days later, when those pesos fit the entry's amount (a UF
+ * pesos, 0–7 days later, when those pesos fit the entry's amount (a UF
  * entry: at the UF of the later day). The later line replaces it: assignments carried, the pending
  * line deleted. Only one-to-one pairs; anything else is reported and left alone.
  */

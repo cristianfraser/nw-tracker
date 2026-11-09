@@ -5,7 +5,7 @@ import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from "../../dashboardLayout";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
-import { flowChartGranularityFromMetricsPeriod, formatFlowMoney } from "../../flowsDisplay";
+import { formatFlowMoney } from "../../flowsDisplay";
 import { minAdaptiveUsdFractionDigits } from "../../format";
 import { rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../../flowsOverviewRows";
 import { useTranslation } from "../../i18n";
@@ -163,7 +163,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
 export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit }) {
   const { t } = useTranslation();
   const prefs = useSurfacePrefs("dashboard.flows", "month", "1y");
-  const granularity = flowChartGranularityFromMetricsPeriod(prefs.period);
+  const granularity = prefs.period;
   const isDaily = granularity === "day";
   const { installmentMode } = useCcInstallmentGastosMode();
   const overview = useFlowsOverview(

@@ -335,7 +335,6 @@ export function deriveMerchantChargeLinks(opts?: {
     receiptOfCharge.set(c.ci, c.ri);
   }
 
-  // App names for items that print only their product.
   const appByIcon = new Map<string, string>();
   for (const r of receipts) for (const i of r.items) if (i.app && i.iconKey) appByIcon.set(i.iconKey, i.app);
   const appByPlan = new Map<string, string>();

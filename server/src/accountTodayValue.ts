@@ -82,8 +82,7 @@ function storedTodayTail(p: AccountProfile, today: string): RawTodayValue | null
 }
 
 /**
- * Today's value by the profile's quantity source (formerly the ladder of
- * `syncLatestDisplayValueClp`). A source with no figure today falls back to the stored marks
+ * Today's value by the profile's quantity source. A source with no figure today falls back to the stored marks
  * ({@link storedTodayTail}).
  */
 function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined): RawTodayValue | null {

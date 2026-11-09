@@ -1996,6 +1996,24 @@
       }
     },
     "unitsFlow": {
+      "unitLabels": {
+        "cuotas": {
+          "en": "fund units",
+          "es": "cuotas"
+        },
+        "BTC": {
+          "en": "BTC",
+          "es": "BTC"
+        },
+        "ETH": {
+          "en": "ETH",
+          "es": "ETH"
+        },
+        "unidades": {
+          "en": "units",
+          "es": "unidades"
+        }
+      },
       "title": {
         "en": "Add contribution / withdrawal",
         "es": "Añadir aporte / retiro"
@@ -5318,10 +5336,6 @@
         "en": "Principal",
         "es": "Principal"
       },
-      "colAnnualRate": {
-        "en": "Annual rate %",
-        "es": "Tasa % anual"
-      },
       "colPurchaseDate": {
         "en": "Date",
         "es": "Fecha"
@@ -5329,10 +5343,6 @@
       "colPurchaseBillingMonth": {
         "en": "Billing month",
         "es": "Mes facturación"
-      },
-      "colOffsetCsv": {
-        "en": "CSV offset (months)",
-        "es": "Offset CSV (meses)"
       },
       "colCuotaClp": {
         "en": "Installment CLP",

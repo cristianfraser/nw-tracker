@@ -613,6 +613,12 @@
       "out": "Retiro"
     },
     "unitsFlow": {
+      "unitLabels": {
+        "cuotas": "cuotas",
+        "BTC": "BTC",
+        "ETH": "ETH",
+        "unidades": "unidades"
+      },
       "title": "Añadir aporte / retiro",
       "hint": "Aporte o retiro con contraparte. Ingresa el monto en CLP y las {{unit}}; el monto debe cuadrar con {{unit}} × valor cuota (si no, se rechaza).",
       "emptyDraft": "Sin borradores. Añade una fila, completa fecha, monto, cuotas y contraparte.",
@@ -1523,10 +1529,8 @@
       "colPurchase": "Compra",
       "colInstallments": "Cuotas",
       "colPrincipal": "Principal",
-      "colAnnualRate": "Tasa % anual",
       "colPurchaseDate": "Fecha",
       "colPurchaseBillingMonth": "Mes facturación",
-      "colOffsetCsv": "Offset CSV (meses)",
       "colCuotaClp": "Cuota CLP",
       "colLastPaid": "Mes último pago",
       "monthCuotasTitle": "Cuotas por facturación",

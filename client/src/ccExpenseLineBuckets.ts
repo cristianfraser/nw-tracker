@@ -8,9 +8,6 @@ export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
 /** Mortgage principal on real-estate deposit matches — chart stack only. */
 export const REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG = "real_estate_amortization";
 
-/** Carrying cost for linked mortgage payments. */
-export const BILLS_CC_EXPENSE_SLUG = "bills";
-
 /** Corriente ↔ vista checking auto-matches — excluded from gastos totals and chart stacks. */
 export const CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG = "checking_internal_transfer";
 
@@ -64,16 +61,8 @@ export function expenseLineMatchesCategoryPatch(
   return false;
 }
 
-/** All gastos lines for one purchase (cuotas, consolidated total, checking split). */
-export function expenseLineMatchesCategoryPurchaseKey(
-  ln: FlowCcExpenseLineRow,
-  accountId: number,
-  purchaseKey: string
-): boolean {
-  return ln.account_id === accountId && ln.purchase_key === purchaseKey;
-}
-
-export function expenseLineMatchesPurchaseNotePatch(
+/** The gastos lines of one purchase key on one account (cuotas, consolidated total, checking split). */
+export function expenseLineMatchesPurchaseKey(
   ln: FlowCcExpenseLineRow,
   accountId: number,
   purchaseKey: string

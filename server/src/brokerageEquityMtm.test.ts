@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
+import { equityTodayClp } from "./test/todayClpMarks.js";
 import { clearLiveMarketQuotesForTest } from "./liveMarketQuotesDb.js";
 import {
   computeEquityMtmClp,
-  computeEquityMtmClpDisplaySync,
-  computeLatestDisplayedEquityClp,
   equityTickerForAccount,
 } from "./brokerageEquityMtm.js";
 import { listAccountsForBucketSlug } from "./assetGroupTree.js";
@@ -54,22 +53,14 @@ describe("equityTickerForAccount", () => {
   });
 });
 
-describe("computeLatestDisplayedEquityClp", () => {
-  it("does not throw when resolving fallback EOD date", () => {
-    const acct = firstAccionesAccountWithTicker();
-    if (!acct) return;
-    expect(() => computeLatestDisplayedEquityClp(acct.account_id)).not.toThrow();
-  });
-});
-
-describe("computeEquityMtmClpDisplaySync", () => {
+describe("equityTodayNativeValue", () => {
   it("uses nyseDisplaySessionYmd after close", () => {
     const acct = firstAccionesAccountWithTicker();
     if (!acct) return;
     const afterClose = new Date("2026-05-19T17:00:00-04:00");
     const displayYmd = nyseDisplaySessionYmd(afterClose);
     const fromDisplay = computeEquityMtmClp(acct.account_id, displayYmd);
-    const sync = computeEquityMtmClpDisplaySync(acct.account_id, afterClose);
+    const sync = equityTodayClp(acct.account_id, afterClose);
     if (fromDisplay == null || sync == null) return;
     expect(sync.as_of_date).toBe(displayYmd);
     expect(sync.value_clp).toBe(fromDisplay);

@@ -7,7 +7,7 @@
  * Unlike the separator (which derives from the IANA timezone), the language
  * seed DOES read `navigator.language`: OS/browser language is exactly the
  * signal we want here — a Spanish-language browser gets `es`, anything else
- * gets `en`. Dates keep the fixed `es-CL` locale regardless (AGENTS.md), and
+ * gets `en`. Numeric dates are ISO in every language (AGENTS.md), and
  * the decimal separator stays an independent setting.
  */
 export type AppLanguage = "es" | "en";

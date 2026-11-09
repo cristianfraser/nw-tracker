@@ -283,7 +283,7 @@ export function facturadoClpUsdForStatementSlot(
 }
 
 /** CLP+USD facturado for a billing month from imported statements (header or line-derived). */
-export function facturadoTotalClpForStatementSlot(
+function facturadoTotalClpForStatementSlot(
   accountId: number,
   slot: CcStatementSlotByCurrency
 ): number | null {
@@ -407,7 +407,7 @@ export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurc
 }
 
 /** Σ CLP of {@link pendingCuotaPurchaseLines} per open-bucket month. */
-export function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, number> {
+function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, number> {
   const out = new Map<string, number>();
   for (const p of pendingCuotaPurchaseLines(accountId)) {
     out.set(p.billing_month, (out.get(p.billing_month) ?? 0) + p.amount_clp);
@@ -420,7 +420,7 @@ export function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<strin
  * far plus the cuota a pagar — not the prior balance rolled forward, and not net of the prior
  * bill's PAGO. Shared by Facturaciones and Detalle por mes so both views report the same facturado.
  */
-export function openMonthFacturadoTotalClp(
+function openMonthFacturadoTotalClp(
   accountId: number,
   billingMonth: string,
   cuotaAPagarClp: number
@@ -697,7 +697,7 @@ function buildBillingDetailByMonthInner(
   }
 
   // Roll the most-recently-closed month's balance into the open month.
-  // Balance = priorClosedBalance + (charges this cycle + cuota plans bought after its calendar
+  // Balance = the closed month's balance + (charges this cycle + cuota plans bought after its calendar
   // month-end − payments this cycle) — the same events the daily owed walk adds.
   // This means: before any PAGO row is imported, open month mirrors the closed balance.
   if (openBmRoll && !inactive) {

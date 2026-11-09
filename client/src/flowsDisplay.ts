@@ -1,16 +1,9 @@
-import type { CardGroupMetricsPeriod } from "./dashboardCardBreakdown";
 import { monthYearSurfacePeriod, type SurfacePeriod } from "./surfaceDisplayPrefs";
 import { formatClp, formatUsd } from "./format";
 import { formatYearMonthLabel } from "./formatDateLabel";
 import type { DisplayUnit } from "./queries/keys";
 
 export type FlowChartGranularity = SurfacePeriod;
-
-export function flowChartGranularityFromMetricsPeriod(
-  period: CardGroupMetricsPeriod
-): FlowChartGranularity {
-  return period;
-}
 
 /**
  * Period-detail tables stay at month/year grain even in Diario (a per-day flows table over

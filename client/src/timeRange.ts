@@ -1,9 +1,8 @@
 import { chileTodayYmd } from "./calendarMonth";
 
 /**
- * Global chart range ("from now back"): governs how far back charts and the daily detalle
- * reach, independent of the D/M/Y granularity toggle (which keeps governing card metric
- * windows). `total` = full history (the pre-range behavior for monthly/yearly charts).
+ * Chart range ("from now back"): governs how far back charts and the daily detalle
+ * reach, independent of the D/M/Y granularity toggle. `total` = full history.
  */
 export const TIME_RANGE_OPTIONS = ["30d", "60d", "90d", "6m", "1y", "3y", "5y", "10y", "total"] as const;
 export type TimeRange = (typeof TIME_RANGE_OPTIONS)[number];

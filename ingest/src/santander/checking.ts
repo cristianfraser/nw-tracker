@@ -49,7 +49,7 @@ export async function fetchCheckingMovements(
   });
 }
 
-// The monthly cartola used to be downloaded here as an `.xlsx`. It now arrives as the PDF Santander
-// mails every month ("Cartola Mensual de Cuentas."), fetched by `fetch:santander-docs` — one less
-// authenticated navigation against a bank that is sensitive to traffic, and the PDF is the document
-// the organizer already classifies. The web session is scoped to daily movements only.
+// The monthly cartola is not downloaded here: it arrives as the PDF Santander mails every month
+// ("Cartola Mensual de Cuentas."), fetched by `fetch:santander-docs` — one less authenticated
+// navigation against a bank that is sensitive to traffic. The web session is scoped to daily
+// movements only.

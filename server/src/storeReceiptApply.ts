@@ -54,7 +54,7 @@ import {
   resolveBranchMerchant,
   type PendingBranchReceipt,
 } from "./groceryBranchLearning.js";
-import { lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./cards/facturacion.js";
+import { closeEvidenceForBillingMonth, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { importCcListingLines } from "./accountImports.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
 import type { ImportBatchKind } from "./importBatches.js";
@@ -456,7 +456,6 @@ function upsertReceiptItems(receiptId: number, chain: string, parsed: ParsedRece
   }
   deleteTailItems.run(receiptId, parsed.items.length);
 
-  // Resolve still-unclassified items through the alias table.
   const unclassified = db
     .prepare(
       `SELECT id, barcode, description FROM grocery_receipt_items
@@ -492,7 +491,7 @@ const writeReceipt = db.transaction(
 export function lastClosedPeriodEndIso(accountId: number): string | null {
   const bm = lastPdfBillingMonthForAccount(accountId);
   if (!bm) return null;
-  return periodToIsoForBillingMonth(accountId, bm);
+  return closeEvidenceForBillingMonth(accountId, bm).close_iso;
 }
 
 // ---------------------------------------------------------------------------------------------

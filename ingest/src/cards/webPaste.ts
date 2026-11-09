@@ -1,6 +1,6 @@
 /**
  * Text pasted from a card issuer's web table («últimos movimientos» / unbilled movements) →
- * `card.pasted_listing` (moved from the server's `ccWebPasteParse.ts`). Tab-separated cells: a
+ * `card.pasted_listing`. Tab-separated cells: a
  * date printed once per day (the rows under it inherit it), the merchant, the amount. Amounts and
  * merchants stay as printed; the server applies the issuer's sign rules and its own merchant
  * normalization.

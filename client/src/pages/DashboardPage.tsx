@@ -363,7 +363,7 @@ export function DashboardPage() {
     );
   }
 
-  // Composition chart (pie replacement): shares served with the bundle (monthly) or from
+  // Composition chart: shares served with the bundle (monthly) or from
   // the overview-daily payload (none while it is pending: the pending frame); overview line
   // dataKey `cash` maps to the cash_eqs bucket color.
   const allocationBlock = allocationIsDaily

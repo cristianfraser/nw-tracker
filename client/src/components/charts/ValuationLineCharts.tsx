@@ -144,7 +144,7 @@ interface BlockProps {
    * or valuations turn positive (see {@link trimLeadingInactivePoints}).
    */
   trimLeadingInactive?: boolean;
-  /** Line colors: dashboard buckets, class-tab alignment with pie, or default. */
+  /** Line colors: dashboard buckets, class-tab palette, or default. */
   colorPlan?: ChartColorPlan;
   /** X-axis tick labels: calendar year, month+year, or daily sessions (ISO tooltip titles). */
   xAxisGranularity?: "month" | "year" | "day";

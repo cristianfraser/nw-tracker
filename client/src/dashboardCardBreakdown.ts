@@ -18,7 +18,7 @@ export type CardGroupMetrics = {
   /** Net deposits in the selected calendar month or year. */
   deposits_period_clp: number;
   deposits_period_usd?: number | null;
-  /** Balance change vs prior month/year-end close (Σ current − Σ prior; matches title Δ). */
+  /** Balance change vs prior month/year-end close (Σ current − Σ prior). */
   delta_period_clp: number | null;
   delta_period_usd?: number | null;
 };
@@ -377,13 +377,5 @@ export function roundedMetricDelta(
     return null;
   }
   return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;
-}
-
-/** Total row: deposits + lifetime Δ (same rounding as the card UI). */
-export function cardMainBalanceFromMetrics(metrics: CardGroupMetrics, showUsd: boolean): number | null {
-  const deposited = roundedMetricDeposits(metrics, showUsd, "total");
-  const delta = roundedMetricDelta(metrics, showUsd, "total");
-  if (deposited == null || delta == null) return null;
-  return deposited + delta;
 }
 

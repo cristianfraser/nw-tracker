@@ -21,7 +21,7 @@ import type { ProportionalSeriesBlockDto, ProportionalSeriesLineDto } from "../.
 const Y_TICKS = [0, 0.25, 0.5, 0.75, 1];
 
 /**
- * Proportional composition chart — the timeseries replacement for the allocation pies:
+ * Proportional composition chart:
  * 100%-stacked areas of the server-built share series (values 0..1, Σ==1 per date; see
  * `server/src/proportionalSeries.ts` for the negative-floor convention). Stacked areas at
  * every grain per the product decision. Yearly renders the last available date per year.

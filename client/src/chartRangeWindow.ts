@@ -65,7 +65,7 @@ export function windowMonthRows<T>(
 
 /**
  * Shared M/Y range window for a CC historial chart (`month`-keyed): left-clip + pad the empty
- * 20% lead. Used by both the CC account page and the Pasivos issuer section so their windows
+ * 20% lead. Used by both the CC account page and the Pasivos credit-card section so their windows
  * can't drift. The right edge (projected plan tail) is untouched; yearly rollup runs downstream.
  */
 export function windowCcHistorialRows(

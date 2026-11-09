@@ -2,8 +2,7 @@
  * The expense-assignment write funnel (docs/untangle-plan.md F11): a category set on an expense
  * line — a card line, a checking movement, a plan's line — goes through one executor, and every
  * write that can change an expense deposit link (a line import, a movement, a category, a manual
- * link) re-syncs the links here, after it. Reading the expense lines never writes: the sync used to
- * run inside the read pipeline (`flowsExpenses.ts`).
+ * link) re-syncs the links here, after it. Reading the expense lines never writes.
  */
 import { deleteFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { InputError } from "./inputError.js";

@@ -1,7 +1,7 @@
 /**
  * Fetches official daily UF (CLP per 1 UF) from the SII HTML tables
  * (e.g. https://www.sii.cl/valores_y_fechas/uf/uf2026.htm) and writes `server/data/uf-sii-daily.csv`
- * (committed; sole source for `uf_daily` during `import:excel`).
+ * (committed copy of the SII series).
  *
  * Usage (from repo root):
  *   npm run fetch-uf -w nw-tracker-server

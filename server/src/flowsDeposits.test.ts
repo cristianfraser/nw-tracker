@@ -196,7 +196,6 @@ describe("markPensionSwitchRows", () => {
   const row = (account_id: number, occurred_on: string, amount_clp: number, kind_slug = "afp"): FlowDepositRow => ({
     occurred_on,
     category: "inversiones",
-    category_label: "Retirement",
     account_id,
     account_name: `acct ${account_id}`,
     kind_slug,

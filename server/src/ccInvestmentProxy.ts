@@ -31,7 +31,7 @@ export function getCcProxyTickers(): string[] {
       return parsed as string[];
     }
   } catch {
-    // fall through
+    // unparseable setting: use the default tickers below
   }
   return [...CC_PROXY_DEFAULT_TICKERS];
 }
@@ -100,7 +100,6 @@ export function priceClpForTickerAt(
     if (row != null && Number.isFinite(row.unit_value) && row.unit_value > 0) {
       return { priceClp: row.unit_value, projected: false, lastRealDate: row.day };
     }
-    // Project forward
     const latest = stmtFundUnitLatest.get(ticker) as
       | { day: string; unit_value: number }
       | undefined;

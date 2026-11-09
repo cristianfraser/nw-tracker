@@ -62,7 +62,3 @@ function copyLegacyDemoPageviews(analytics: BetterSqliteDb): void {
   analytics.exec(`DROP TABLE demo_pageviews`);
 }
 
-/** Forget that the demo file was prepared (tests that swap the file). */
-export function resetUsageDbForTest(): void {
-  demoReady = false;
-}

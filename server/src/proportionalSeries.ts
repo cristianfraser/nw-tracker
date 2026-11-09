@@ -1,6 +1,5 @@
 /**
- * Proportional ("composition") share series — the timeseries replacement for the old
- * allocation pies. At each date the base is Σ max(value, 0) over the member series:
+ * Proportional ("composition") share series — shares of each member over time. At each date the base is Σ max(value, 0) over the member series:
  * negative members are floored to 0 (composition-of-assets framing — the true negative
  * stays visible on the valuation chart; e.g. CC-netted cash 2019-12), null/missing
  * members contribute 0, and a date whose base is 0 emits null for every series (the
@@ -13,7 +12,7 @@ export type ProportionalSeriesLineMeta = {
   name: string;
   name_i18n_key?: string | null;
   color_rgb?: string | null;
-  /** Member identity for client color maps (same key the old pie sliceFill used). */
+  /** Member identity for client color maps. */
   account_id?: number;
 };
 

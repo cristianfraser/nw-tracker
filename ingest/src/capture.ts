@@ -112,7 +112,7 @@ export class Recorder {
 
   attach(page: Page): void {
     page.on("response", (response) => {
-      // Recording is observation, never the job. A failure here used to surface as an unhandled
+      // Recording is observation, never the job. A failure here would surface as an unhandled
       // rejection from the event handler and kill the whole run — log it and carry on instead.
       void this.record(response).catch((err: unknown) => {
         log(`capture skipped (${err instanceof Error ? err.message.split("\n")[0] : String(err)})`);

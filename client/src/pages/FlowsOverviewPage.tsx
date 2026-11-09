@@ -10,7 +10,6 @@ import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { flowsOverviewRangeTotals, rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../flowsOverviewRows";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowPeriodLabel,
   flowTableGranularity,
   formatFlowMoney,
@@ -23,11 +22,6 @@ import type { FlowsOverviewTotals } from "../types";
 
 const PAGE_SIZE = 12;
 
-/**
- * Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. The
- * rows come from the server (`GET /api/flows/overview`); the page clips them to the chart's Rango
- * and rolls years up.
- */
 /** One figure of the totals lines and the detail table, desktop column and mobile card alike. */
 type OverviewColumn = {
   id: string;
@@ -80,6 +74,11 @@ const COLUMNS: readonly OverviewColumn[] = [
   },
 ];
 
+/**
+ * Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. The
+ * rows come from the server (`GET /api/flows/overview`); the page clips them to the chart's Rango
+ * and rolls years up.
+ */
 export function FlowsOverviewPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -94,13 +93,13 @@ export function FlowsOverviewPage() {
       onRangeChange={chartPrefs.setRange}
     />
   );
-  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const chartGranularity = metricsPeriod;
   const isDaily = chartGranularity === "day";
   // The detail table owns its período (month/year — the chart is the day surface) and
   // always covers full history.
   const tablePrefs = useSurfacePrefs("flows.overview.table", "month", "total");
   const tableGranularity = flowTableGranularity(
-    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+    tablePrefs.period
   );
   const { installmentMode } = useCcInstallmentGastosMode();
 

@@ -143,7 +143,7 @@ export const DEFAULT_LINE_COLORS = [
 
 /**
  * Asset **class** tabs only (not the main dashboard): each account gets a clearly different hue.
- * Order follows `accounts_in_group` rows; the same map keys lines (dataKey) and pie slices (account_id).
+ * Order follows `accounts_in_group` rows; the same map keys lines (dataKey) and the proportional-chart series (account_id).
  */
 const GROUP_TAB_ACCOUNT_COLORS = [
   "#60a5fa",
@@ -191,7 +191,7 @@ export function shadesForGroupSlug(slug: string): string[] {
 }
 
 /**
- * Dashboard allocation pie + overview consolidated lines share these hues
+ * Dashboard allocation + overview consolidated lines share these hues
  * (same bucket = same color family as primary-chart greens/blues/yellows).
  */
 const BUCKET_STROKE: Record<string, string> = {
@@ -226,7 +226,7 @@ export function allocationBucketColor(groupSlug: string, colorRgb?: string | nul
  */
 export const GROUP_TAB_TOTAL_LINE_STROKE = "#ffffff";
 
-/** Stroke for synthetic group Total (perf Δ total line/bars, pie) from nav `color_rgb`. */
+/** Stroke for synthetic group Total (perf Δ total line/bars) from nav `color_rgb`. */
 export function groupTabTotalStroke(
   groupTotalColorRgb: string | null | undefined,
   fallbackSlug: string
@@ -453,7 +453,7 @@ export type ChartSeriesColorKey = Pick<
   "account_id" | "name" | "dataKey" | "depositDataKey" | "color_rgb"
 >;
 
-/** Line chart (dataKey) + pie (account_id) use the same map on class tabs. */
+/** Line chart (dataKey) and proportional chart (account_id) use the same map on class tabs. */
 export function buildGroupTabColorMaps(
   groupSlug: AssetGroupSlug | "crypto",
   accounts: ChartSeriesColorKey[],

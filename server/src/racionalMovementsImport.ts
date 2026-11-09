@@ -420,7 +420,7 @@ function dividendDetailInput(
  * Write the planned movements, oldest first so the ledger reads chronologically. A dividend row
  * the crawl matched to the dividends API also gets its gross / withholding breakdown — on the
  * row just inserted, or on the ledger row it duplicates (the breakdown is idempotent, so a
- * re-run adds nothing). The watermark is the caller's (`runRacionalImport`): it depends on
+ * re-run adds nothing). The watermark is the caller's (ingest's crawl cursor): it depends on
  * every file of the run.
  */
 export function applyRacionalMovements(result: RacionalImportResult, sourceRef: string): RacionalImportResult {

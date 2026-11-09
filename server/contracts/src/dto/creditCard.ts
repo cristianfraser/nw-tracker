@@ -165,9 +165,7 @@ export interface CcInstallmentPurchaseComputed {
   installment_count: number;
   installments_paid: number;
   cuota_clp: number;
-  annual_interest_pct: number;
   first_due_month: string;
-  schedule_offset_months: number;
   purchase_month: string | null;
   /** Purchase date (YYYY-MM-DD; DB ledger only). */
   purchase_date?: string;

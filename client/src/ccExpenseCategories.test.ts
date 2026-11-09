@@ -3,7 +3,6 @@ import {
   assignableCcExpenseCategories,
   ccExpenseCategoriesAtLevel,
   ccExpenseCategoryPathLabel,
-  ccExpenseCategorySlugAtLevel,
   chartCcExpenseCategories,
 } from "./ccExpenseCategories";
 import type { FlowCcExpenseCategoryChartPoint } from "./types";
@@ -33,11 +32,8 @@ describe("subcategories", () => {
     expect(ccExpenseCategoryPathLabel(cat("bills", 10))).toBe("Cuentas y servicios");
   });
 
-  it("at the category level a subcategory's spend folds into its parent", () => {
-    const at = ccExpenseCategorySlugAtLevel(cats, "category");
-    expect(["taxes", "pension_fees", "bills", "food"].map(at)).toEqual(["bills", "bills", "bills", "food"]);
+  it("the category level lists only the top-level categories", () => {
     expect(ccExpenseCategoriesAtLevel(cats, "category").map((c) => c.slug)).toEqual(["transportation", "bills", "food"]);
-    expect(ccExpenseCategorySlugAtLevel(cats, "subcategory")("taxes")).toBe("taxes");
     expect(ccExpenseCategoriesAtLevel(cats, "subcategory")).toHaveLength(5);
   });
 });

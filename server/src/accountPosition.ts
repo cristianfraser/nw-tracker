@@ -1,4 +1,3 @@
-import { assertValuationCurrency } from "./valuationValue.js";
 import { equityAsTradedClose, equitySplitFactorAfter } from "./equitySplits.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -295,11 +294,6 @@ function cuotaLedgerPositionMeta(accountId: number, kind: string, series: string
   if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
   const px = fu?.unit_value;
   const pxDay = fu?.day;
-
-  const stored = db
-    .prepare(`SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
-    .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
-  if (stored) assertValuationCurrency(stored.currency, "clp", "accountPosition cuota-ledger stored");
 
   const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
 

@@ -253,7 +253,7 @@ const MAILER_NOTE_PREFIX: Record<string, string> = {
  * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`): «Transf a
  * <payee>» / «Transf. de <sender>». The payee's bank and account live in the notice the movement is
  * paired with (`movement_transfer_notices`), so the description does not repeat them (until
- * 2026-10-31 it read «Transf a <payee> (<bank>)»; `server/scripts/sanitize-transfer-mail-notes.ts`).
+ * 2026-10-31 it read «Transf a <payee> (<bank>)»).
  */
 export function transferNoticeMovementNote(issuer: string, n: TransferNotice): string {
   const prefix = MAILER_NOTE_PREFIX[issuer];

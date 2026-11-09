@@ -15,10 +15,10 @@ export type GroupPageChartContext = {
 };
 
 /**
- * Chart context for a group page. The "Agrupado" toggle and Pasivos grouping now follow the
- * SERVER payload: the grouped bucket blocks/pies/bars are computed server-side (see
+ * Chart context for a group page. The "Agrupado" toggle and Pasivos grouping follow the
+ * SERVER payload: the grouped bucket blocks/proportional shares/bars are computed server-side (see
  * server/src/groupChartBuckets.ts) from unclipped data, so the client only picks which precomputed
- * block to display — it never re-aggregates already-clipped series (which corrupted grouped totals).
+ * block to display — re-aggregating already-clipped series would corrupt grouped totals.
  */
 export function resolveGroupPageChartContext(
   navNode: NavTreeNodeDto,

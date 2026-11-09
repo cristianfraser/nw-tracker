@@ -7,11 +7,10 @@ import {
 import { db } from "./db.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
-import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
+import { isFintualCertV2AccountNotes, matchFintualCertGoalV2 } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import {
   fundSeriesKeyFromImportNotes,
-  isFintualCertV2ValuationNotes,
   recordFintualGoalFundUnitDaily,
 } from "./fintualFundUnitDaily.js";
 import { formatSyncClp, formatSyncIndex, type SyncFieldChange } from "./syncRunLog.js";
@@ -82,7 +81,7 @@ function storedFintualGoalNavAt(
   importNotes: string,
   asOfYmd: string
 ): number | null {
-  if (isFintualCertV2ValuationNotes(importNotes)) {
+  if (isFintualCertV2AccountNotes(importNotes)) {
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
     if (!seriesKey) return null;
     const units = fintualGoalUnitsFromMovements(accountId);
@@ -104,7 +103,7 @@ function priorFintualGoalNav(
   importNotes: string,
   beforeYmd: string
 ): { as_of_date: string; value_clp: number } | null {
-  if (isFintualCertV2ValuationNotes(importNotes)) {
+  if (isFintualCertV2AccountNotes(importNotes)) {
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
     if (!seriesKey) return null;
     const units = fintualGoalUnitsFromMovements(accountId);
@@ -119,7 +118,7 @@ function priorFintualGoalNav(
 }
 
 function storedFintualPublishUnitAt(importNotes: string, asOfYmd: string): number | null {
-  if (!isFintualCertV2ValuationNotes(importNotes)) return null;
+  if (!isFintualCertV2AccountNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
   const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value: number } | undefined;
@@ -131,7 +130,7 @@ function priorFintualPublishUnit(
   importNotes: string,
   beforeYmd: string
 ): { day: string; unit_value: number } | null {
-  if (!isFintualCertV2ValuationNotes(importNotes)) return null;
+  if (!isFintualCertV2AccountNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
   const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
@@ -201,7 +200,7 @@ export function collectFintualGoalValuationChanges(
     const appliedNav = resolution?.appliedNavClp ?? g.navClp;
     const nextRounded = Math.round(appliedNav);
 
-    if (isFintualCertV2ValuationNotes(target.importNotes)) {
+    if (isFintualCertV2AccountNotes(target.importNotes)) {
       const priorPos = priorFintualGoalNav(target.accountId, target.importNotes, snap.asOfDate);
       const priorUnit = priorFintualPublishUnit(target.importNotes, snap.asOfDate);
       // Without a publish price nothing is written for a v2 account (never NAV ÷ ledger cuotas:
@@ -311,7 +310,7 @@ export function syncFintualFundUnitsFromResolutions(
       if (v2Acc) notesTargets.push({ importNotes: v2Notes, accountId: v2Acc.id });
     }
     for (const target of notesTargets) {
-      if (!isFintualCertV2ValuationNotes(target.importNotes)) continue;
+      if (!isFintualCertV2AccountNotes(target.importNotes)) continue;
       if (r.fundPriceClp == null || !(r.fundPriceClp > 0)) {
         // No Fintual-priced cuota this poll (empty goal, or its closure day lags the publish
         // day): write nothing. Inferring NAV ÷ ledger cuotas is exactly the derivation that
@@ -402,7 +401,7 @@ export function applyFintualGoalsSnapshotToDb(
       continue;
     }
     const value_clp = Math.round(g.navClp * 100) / 100;
-    if (!isFintualCertV2ValuationNotes(target.importNotes)) {
+    if (!isFintualCertV2AccountNotes(target.importNotes)) {
       if (dryRun) {
         console.log(
           `[dry-run] account_id=${row.id} as_of=${snap.asOfDate} value_clp=${value_clp} ← goal "${g.name}"`
@@ -420,7 +419,7 @@ export function applyFintualGoalsSnapshotToDb(
         });
       }
     }
-    if (!isFintualCertV2ValuationNotes(target.importNotes)) {
+    if (!isFintualCertV2AccountNotes(target.importNotes)) {
       recordFintualGoalFundUnitDaily({
         accountId: row.id,
         importNotes: target.importNotes,
@@ -447,7 +446,7 @@ export function fintualSnapshotMatchesDb(
     const target = resolveFintualGoalApplyAccount(g);
     if (!target) return false;
     const resolution = byGoalId.get(String(g.id));
-    if (isFintualCertV2ValuationNotes(target.importNotes)) {
+    if (isFintualCertV2AccountNotes(target.importNotes)) {
       const goalsNav = fintualGoalsNavFromResolution(resolution, g.navClp);
       if (
         !fintualPublishUnitSynced(
@@ -481,7 +480,7 @@ export function cleanupMistakenPollDayFintualValuations(snap: FintualGoalSnapsho
   for (const g of snap.goals) {
     if (!g.matchedNotes && !matchFintualCertGoalV2(String(g.id), g.name)) continue;
     const target = resolveFintualGoalApplyAccount(g);
-    if (!target || isFintualCertV2ValuationNotes(target.importNotes)) continue;
+    if (!target || isFintualCertV2AccountNotes(target.importNotes)) continue;
     const row = accStmt.get(target.importNotes) as { id: number } | undefined;
     if (!row) continue;
     const value_clp = Math.round(g.navClp * 100) / 100;

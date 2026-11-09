@@ -61,7 +61,7 @@ function colLabel(key: string): string {
 }
 
 type MergedCellLine = {
-  /** Column key of the value the line carries (its label is the old column header). */
+  /** Column key of the value the line carries. */
   key: string;
   /** A total of the lines above it: no label, drawn under a separator line. */
   total?: boolean;
@@ -84,7 +84,7 @@ function ufClpTotalLine(uf: number | null, clp: number | null): MergedCellLine {
 }
 
 /**
- * Several former columns in one cell: one line per value, label / figure / muted figure
+ * Several values in one cell: one line per value, label / figure / muted figure
  * aligned in columns across the lines (desktop only; the mobile card keeps one row per value).
  * `labels: false` leaves the label column out where the header already says what each line is.
  */

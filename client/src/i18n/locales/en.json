@@ -613,6 +613,12 @@
       "out": "Withdrawal"
     },
     "unitsFlow": {
+      "unitLabels": {
+        "cuotas": "fund units",
+        "BTC": "BTC",
+        "ETH": "ETH",
+        "unidades": "units"
+      },
       "title": "Add contribution / withdrawal",
       "hint": "Contribution or withdrawal with a counterpart. Enter the CLP amount and the {{unit}}; the amount must match {{unit}} × unit value (otherwise it is rejected).",
       "emptyDraft": "No drafts. Add a row and fill in date, amount, units, and counterpart.",
@@ -1523,10 +1529,8 @@
       "colPurchase": "Purchase",
       "colInstallments": "Installments",
       "colPrincipal": "Principal",
-      "colAnnualRate": "Annual rate %",
       "colPurchaseDate": "Date",
       "colPurchaseBillingMonth": "Billing month",
-      "colOffsetCsv": "CSV offset (months)",
       "colCuotaClp": "Installment CLP",
       "colLastPaid": "Last paid month",
       "monthCuotasTitle": "Installments by billing cycle",

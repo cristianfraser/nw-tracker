@@ -172,7 +172,7 @@ export async function importCcStatementPdfsForAccount(
 
     for (const statement of parsed.statements) {
       const src = statement.document;
-      // The parser renames PDFs to canonical names (e.g. `155028273.pdf` →
+      // The parser renames PDFs to canonical names (e.g. `<client number>.pdf` →
       // `2026-06-26 estado de cuenta tarjeta <last4>.pdf`) so source_pdf never
       // matches the original upload filename. The tmp dir is isolated to the
       // uploaded files, so all rows here come from them — no allowedNames guard needed.

@@ -8,10 +8,8 @@ import type {
   AccountDetailBundleResponse,
 } from "../types";
 import {
-  expenseLineCategoryTargetId,
   expenseLineMatchesCategoryPatch,
-  expenseLineMatchesCategoryPurchaseKey,
-  expenseLineMatchesPurchaseNotePatch,
+  expenseLineMatchesPurchaseKey,
   expenseLineMatchesPurchaseBigGroupPatch,
 } from "../ccExpenseLineBuckets";
 import { queryKeys, type DisplayUnit } from "./keys";
@@ -27,23 +25,12 @@ export type PatchCcExpenseLineCategoryVars = {
   rule_link?: { kind: "receipt" | "app" | "recipient"; key: string } | null;
 };
 
-function lineMatchesCategoryTargetId(
-  ln: FlowCcExpenseLineRow,
-  targetLineId: number
-): boolean {
-  return (
-    expenseLineCategoryTargetId(ln) === targetLineId ||
-    ln.statement_line_id === targetLineId ||
-    ln.category_statement_line_id === targetLineId
-  );
-}
-
 function findCcExpenseCategoryPatchAnchor(
   lines: readonly FlowCcExpenseLineRow[],
   targetLineId: number,
   source: FlowCcExpenseLineSource
 ): FlowCcExpenseLineRow | undefined {
-  return lines.find((ln) => ln.source === source && lineMatchesCategoryTargetId(ln, targetLineId));
+  return lines.find((ln) => ln.source === source && expenseLineMatchesCategoryPatch(ln, targetLineId));
 }
 
 export function applyCcExpenseLineCategoryPatch(
@@ -79,7 +66,7 @@ export function applyCcExpenseLineCategoryPatchFromServer(
   return {
     ...data,
     lines: data.lines.map((ln) => {
-      if (!expenseLineMatchesCategoryPurchaseKey(ln, opts.accountId, opts.purchaseKey)) {
+      if (!expenseLineMatchesPurchaseKey(ln, opts.accountId, opts.purchaseKey)) {
         return ln;
       }
       return {
@@ -163,7 +150,7 @@ export function applyCcExpensePurchaseNotePatch(
   return {
     ...data,
     lines: data.lines.map((ln) => {
-      if (!expenseLineMatchesPurchaseNotePatch(ln, vars.account_id, vars.purchase_key)) {
+      if (!expenseLineMatchesPurchaseKey(ln, vars.account_id, vars.purchase_key)) {
         return ln;
       }
       return { ...ln, purchase_notes: vars.notes };

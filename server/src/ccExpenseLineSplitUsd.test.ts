@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { insertLineSplits } from "./ccExpenseLineSplits.js";
+import { lineFlowSql } from "./flows/flowParts.js";
 import { db } from "./db.js";
 import { fixtureCardLine } from "./test/flowFixtures.js";
 import {
@@ -54,15 +54,13 @@ describe("expandLineSplitsInDrafts USD allocation", () => {
   beforeAll(() => {
     dropLine = fixtureCardLine(VITEST_LINE_ID, 130_000);
     const [catA, catB] = categorySlugs(2);
-    insertLineSplits({
-      source: "cc",
-      lineId: VITEST_LINE_ID,
-      lineAmountClp: 130_000,
-      splits: [
-        { categorySlug: catA!, amountClp: 100_000, note: VITEST_SPLIT_NOTE },
-        { categorySlug: catB!, amountClp: 30_000, note: VITEST_SPLIT_NOTE },
-      ],
-    });
+    const catId = db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ? LIMIT 1`);
+    const ins = db.prepare(
+      `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, note)
+       VALUES (${lineFlowSql("cc")}, ?, ?, ?, ?)`
+    );
+    ins.run(VITEST_LINE_ID, 0, (catId.get(catA!) as { id: number }).id, 100_000, VITEST_SPLIT_NOTE);
+    ins.run(VITEST_LINE_ID, 1, (catId.get(catB!) as { id: number }).id, 30_000, VITEST_SPLIT_NOTE);
   });
 
   afterAll(() => {

@@ -7,8 +7,8 @@ import { parseDdMmYyToIso } from "../formats/ddMmYy.js";
 
 /**
  * Santander's monthly checking cartola workbook (`… Cartola de cuenta Corriente - <Mes> <año>.xlsx`)
- * → its period, printed balances and movements (moved from `server/src/checkingCartolaParse.ts`,
- * whose ledger note helpers stay on the server). A row the table holds but that is no movement is
+ * → its period, printed balances and movements (the ledger note helpers live in
+ * `server/src/checkingCartolaParse.ts`). A row the table holds but that is no movement is
  * kept in `skipped` with why; a running balance that disagrees with the printed one throws.
  */
 

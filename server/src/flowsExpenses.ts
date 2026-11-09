@@ -29,7 +29,6 @@ import {
 
   ADDITIONAL_CARD_CC_EXPENSE_SLUG,
 
-  primaryCreditCardExpensesGroupSlug,
 
   registerGenericUniquePurchaseMode,
 
@@ -1196,7 +1195,7 @@ export function flowsExpensesPayloadFromLines(
   lines: FlowCcExpenseLineRow[]
 ): FlowsExpensesPayload {
   return {
-    group_slug: primaryCreditCardExpensesGroupSlug(),
+    group_slug: "credit_cards",
     account_ids: accountIds,
     categories: listCcExpenseCategories(),
     big_groups: listCcExpenseBigGroups(),

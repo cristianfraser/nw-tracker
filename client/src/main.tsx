@@ -7,7 +7,7 @@ import "./i18n";
 import App from "./App";
 // @crfrsr/ui: shared reset + token defaults + component styles, before the
 // app's own CSS so app rules win. The library reset is the single reset for
-// all crfrsr apps (the app's former Meyer reset was removed in its favor).
+// all crfrsr apps.
 import "@crfrsr/ui/reset.css";
 import "@crfrsr/ui/tokens.css";
 import "@crfrsr/ui/styles.css";

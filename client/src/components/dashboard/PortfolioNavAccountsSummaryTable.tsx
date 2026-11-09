@@ -61,7 +61,7 @@ type AccountTableRow = {
   metricsByPeriod: CardGroupMetricsByPeriod;
   /** Per-slice % (server: the account row's pct fields, or a group's server pct). */
   pct: (slice: PeriodSlice, showUsd: boolean) => number | null;
-  /** The total cell's old figure: P/L acumulado ÷ net deposits (tooltip on the total %). */
+  /** The total cell's return on net deposits: P/L acumulado ÷ net deposits (tooltip on the total %). */
   pctOnDeposits: (showUsd: boolean) => number | null;
   fxMissing: boolean;
   syncStale: boolean;
@@ -113,8 +113,7 @@ function serverPctOnDeposits(pct: PctBySlice) {
 }
 
 /**
- * Leaf-bucket account summary: one row per account leaf, replacing the old per-account
- * compact cards. An account row projects its own dashboard row (value, metrics, server pct);
+ * Leaf-bucket account summary: one row per account leaf. An account row projects its own dashboard row (value, metrics, server pct);
  * a bucket listed beside the accounts (IPSA among Acciones' stocks) is one row too, with the
  * server's `value.child`, card metrics and `row_pct`. Balance carries the day P/L line under
  * the value; period columns (Mes/Año/Total) stack aportes and a `P/L (pct%)` line per cell.
@@ -342,7 +341,7 @@ export function PortfolioNavAccountsSummaryTable({
         /** `▲1xx.xxx (2,68%)` — P/L with the flow-adjusted period % as a parenthetical. */
         const plLine = (slice: PeriodSlice, variant: CellVariant) => {
           const pct = row.pct(slice, showUsd);
-          // The total %: the compounded return; its hover names the old figure on net deposits.
+          // The total %: the compounded return; its hover gives the return on net deposits.
           const onDeposits = slice === "total" ? row.pctOnDeposits(showUsd) : null;
           return (
             <span className={styles.plLine}>

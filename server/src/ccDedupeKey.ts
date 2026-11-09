@@ -28,7 +28,7 @@ export function ccSha1Hex16(payload: string): string {
 /**
  * Same-statement twins: the parser keeps identical lines apart with a `#dupN` suffix on the Nth
  * occurrence (N ≥ 1). This is the one place the suffix is written and the one place it is read; the
- * Python parser's own copy is pinned by `server/contracts/data/ccDedupeKeyCases.json`.
+ * Python parser keeps its own copy of the rule.
  */
 export function dedupeKeyWithOccurrence(base: string, occurrence: number): string {
   if (!Number.isInteger(occurrence) || occurrence < 0) throw new Error(`dedupe occurrence must be a whole number ≥ 0, got ${occurrence}`);

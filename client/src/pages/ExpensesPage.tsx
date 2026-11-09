@@ -16,7 +16,6 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
 import { useTranslation } from "../i18n";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
   formatFlowMoney,
   rollupChartPointsByYear,
@@ -35,7 +34,7 @@ const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
 /** Rangos long enough for the per-year average line to read as a trend. */
 const YEAR_AVERAGE_RANGES: ReadonlySet<TimeRange> = new Set(["3y", "5y", "10y", "total"]);
 
-/** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
+/** Expenses page: gastos by month and category, with the expense lines behind them. */
 export function ExpensesPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -57,7 +56,7 @@ export function ExpensesPage() {
   // The month-detail table owns its período (month/year) and always covers full history.
   const tablePrefs = useSurfacePrefs("flows.expenses.table", "month", "total");
   const tableGranularity = flowTableGranularity(
-    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+    tablePrefs.period
   );
   const { data, error } = useFlowsExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();

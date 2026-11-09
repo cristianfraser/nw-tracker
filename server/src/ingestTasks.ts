@@ -1,9 +1,7 @@
 /**
  * The server tasks a feeder run asks for (`POST /api/ingest/tasks/<task>`, `contracts/tasks.ts`),
  * run inside the server — the one process that writes the database. Each answers with whether
- * the run's step passes and its report (formerly the `convert:cc-payment-mirrors`,
- * `check:synthetic-cc-payments` and `check:cc-bank-cupo` server scripts, which ran as second
- * database writers beside the server).
+ * the run's step passes and its report.
  */
 import type { IngestTaskName, IngestTaskResult } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";

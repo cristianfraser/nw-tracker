@@ -166,7 +166,7 @@ export function breakdownForNavChild(
   }
   /**
    * Only the Pasivos root splits into the two liability kinds; its subgroup cards share that
-   * `asset_group_slug` and must describe themselves (issuer children, own accounts) instead.
+   * `asset_group_slug` and must describe themselves (their own children and accounts) instead.
    */
   if (isLiabilityGroupNavNode(navChild) && dash.liabilities_breakdown) {
     return { lines: buildLiabilitiesCardBreakdown(dash.liabilities_breakdown) };

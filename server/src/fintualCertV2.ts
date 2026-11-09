@@ -1,6 +1,6 @@
 /**
  * Fintual “certificado de transacciones” v2 accounts: cuotas in movements, valor cuota in fund_unit_daily.
- * Parallel to legacy `import:excel|key=…` accounts until manually removed.
+ * Parallel to the older `import:excel|key=…` accounts still in the database.
  */
 import fs from "node:fs";
 import path from "node:path";

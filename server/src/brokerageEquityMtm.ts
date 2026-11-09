@@ -23,7 +23,7 @@ import { holdingPriceAt } from "./holdingPrices.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue } from "./valueConvert.js";
 
-/** Equity symbols loaded at `import:excel` into `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
+/** Equity symbols the EOD sync always keeps in `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
 
 const insEod = db.prepare(
@@ -165,17 +165,6 @@ export function equityTodayNativeValue(
   return Number.isFinite(value) ? { value, currency: px.currency, as_of_date: px.as_of } : null;
 }
 
-/** {@link equityTodayNativeValue} in pesos, at today's sell rate. */
-export function computeEquityMtmClpDisplaySync(
-  accountId: number,
-  now: Date = new Date()
-): { value_clp: number; as_of_date: string } | null {
-  const native = equityTodayNativeValue(accountId, now);
-  if (!native) return null;
-  const clp = convertValue(native.value, native.currency, "clp", chileWallClockAt(now).ymd, "asset", now);
-  return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: native.as_of_date } : null;
-}
-
 /** 0 on the display session for a position emptied after holding shares, else no mark. */
 function soldOutEquityMark(
   accountId: number,
@@ -187,55 +176,17 @@ function soldOutEquityMark(
   return null;
 }
 
-const stmtMaxEqDate = db.prepare(
-  `SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`
-);
-
-/** Latest CLP mark for brokerage equities (live from DB scheduler, else EOD display session). */
-export function computeLatestDisplayedEquityClp(
-  accountId: number,
-  now: Date = new Date()
-): { value_clp: number; as_of_date: string } | null {
-  if (!accountUsesEquityMtm(accountId)) return null;
-  const ticker = requireEquityTicker(accountId);
-
-  const sync = computeEquityMtmClpDisplaySync(accountId, now);
-  if (sync != null && sync.value_clp > 0) return sync;
-
-  const mdRow = stmtMaxEqDate.get(ticker) as { md: string | null } | undefined;
-  const md = mdRow?.md;
-  if (!md) return null;
-
-  const fromFlows = computeEquityMtmClp(accountId, md);
-  if (fromFlows != null && Number.isFinite(fromFlows) && fromFlows > 0) {
-    return { value_clp: fromFlows, as_of_date: md };
-  }
-
-  return null;
-}
-
 /** Merge timeline keys with month-ends covered by `equity_daily` for MTM brokerage accounts. */
-export function expandSnapshotDatesForEquityMtm(
-  baseDates: string[],
-  allIds: number[],
-  merge: { spyId?: number; veaId?: number } | undefined
-): string[] {
+export function expandSnapshotDatesForEquityMtm(baseDates: string[], allIds: number[]): string[] {
   const s = new Set(baseDates);
-  const addTickerMonths = (accountId: number | undefined, ticker: string) => {
-    if (accountId == null || !accountUsesEquityMtm(accountId)) return;
+  for (const id of allIds) {
+    const ticker = equityTickerForAccount(id);
+    if (!ticker || !accountUsesEquityMtm(id)) continue;
     const r = db
       .prepare(`SELECT min(trade_date) AS a, max(trade_date) AS b FROM equity_daily WHERE ticker = ?`)
       .get(ticker) as { a: string | null; b: string | null } | undefined;
-    if (!r?.a || !r.b) return;
+    if (!r?.a || !r.b) continue;
     for (const me of monthEndsBetweenInclusive(r.a, r.b)) s.add(me);
-  };
-  if (merge?.spyId) addTickerMonths(merge.spyId, "SPY");
-  if (merge?.veaId) addTickerMonths(merge.veaId, "VEA");
-  if (!merge) {
-    for (const id of allIds) {
-      const t = equityTickerForAccount(id);
-      if (t) addTickerMonths(id, t);
-    }
   }
   return [...s].sort();
 }

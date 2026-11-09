@@ -88,7 +88,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
   const showUnitsFlowForm = supportsUnitsFlowMovements(summary.movement_create);
   const unitsFlowUnitLabel = showUnitsFlowForm
-    ? summary.movement_create?.unit_label ?? "unidades"
+    ? t(`accountDetail.unitsFlow.unitLabels.${summary.movement_create?.unit_label ?? "unidades"}`)
     : null;
 
   const valuationIsDaily = valuationPrefs.period === "day";

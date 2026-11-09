@@ -292,23 +292,6 @@ export function adaptiveUsdAccountingNumberFlowParts(
   return { value: abs, prefix: symbol, suffix: "", locales: numberLocale, format };
 }
 
-/** Card title balance Δ: `+$…` / `($…)` / `$0` (muted row; no ▲/▼ or green/red). */
-export function titleBalanceDeltaNumberFlowParts(
-  n: number,
-  unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp",
-  variant: CurrencySymbolVariant = "full"
-): ReturnType<typeof accountingCurrencyNumberFlowParts> {
-  const rounded = Math.round(n);
-  if (rounded < 0) {
-    return accountingCurrencyNumberFlowParts(rounded, unit, variant);
-  }
-  const base = accountingCurrencyNumberFlowParts(rounded, unit, variant);
-  if (rounded > 0) {
-    return { ...base, prefix: `+${base.prefix}` };
-  }
-  return base;
-}
-
 /** Plain percent for NumberFlow (no sign) — direction via ▲/▼; suffix `%`. */
 export function plainPercentNumberFlowParts(
   n: number,

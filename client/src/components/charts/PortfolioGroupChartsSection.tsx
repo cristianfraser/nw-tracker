@@ -58,7 +58,7 @@ export function PortfolioGroupChartsSection({
   accountsEmptyMessage: string;
   chartSeriesCount: number;
   valuationBlockForChart: TimeseriesBlock | null;
-  /** Composition-share block (pie replacement); rendered beside the valuation chart. */
+  /** Composition-share block; rendered beside the valuation chart. */
   proportionalBlock: ProportionalSeriesBlockDto | null;
   proportionalXAxisGranularity?: "day" | "month" | "year";
   proportionalTimeRange?: TimeRange;
@@ -77,7 +77,7 @@ export function PortfolioGroupChartsSection({
   groupColorRgb?: string | null;
   chartCtx: GroupPageChartContext | null;
   showValuationDeposits?: boolean;
-  /** Rendered below the valuation/pie charts and above monthly P/L (e.g. Agrupado / Aportes acumulados). */
+  /** Rendered below the valuation/composition charts and above monthly P/L (e.g. Agrupado / Aportes acumulados). */
   chartControls?: ReactNode;
   /** Omit investment-style group P/L charts (pasivos routes). */
   hideGroupPerf?: boolean;
@@ -85,7 +85,7 @@ export function PortfolioGroupChartsSection({
   valuationXAxisGranularity?: "month" | "year" | "day";
   /** P/L-combo override (daily per-account P/L bars + anchored cumulative areas). */
   perfXAxisGranularity?: "month" | "year" | "day";
-  /** Per-surface ranges (fall back to the global toolbar range when omitted). */
+  /** Per-surface ranges (omitted = no clip). */
   valuationTimeRange?: TimeRange;
   perfTimeRange?: TimeRange;
   /** Per-surface Período/Rango controls (the two P/L combos share `perfControls`). */

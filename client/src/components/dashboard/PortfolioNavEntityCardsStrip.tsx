@@ -86,8 +86,7 @@ function NavSummaryCard({
 
 /**
  * Portfolio strip: compact parent (plus a summary card per spread hub), optional detailed group
- * children, and — on leaf buckets — one accounts summary table for the account leaves (replaced
- * the per-account compact cards).
+ * children, and — on leaf buckets — one accounts summary table for the account leaves.
  */
 export function PortfolioNavEntityCardsStrip({
   dash,

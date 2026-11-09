@@ -1,12 +1,12 @@
 /**
- * Today's mark of a coin account holding no coins (`computeCryptoMtmClpDisplaySync`) is
+ * Today's mark of a coin account holding no coins (`cryptoTodayClp`) is
  * answered from the coins: same mark as the priced rule it replaced, for every crypto account
  * at several instants, and no live quote read for an empty account.
  */
 import { describe, expect, it } from "vitest";
+import { cryptoTodayClp } from "./test/todayClpMarks.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClpDisplaySync,
   cryptoCoinCumulativeThroughDate,
   cryptoEquityTickerForAccount,
 } from "./cryptoValuation.js";
@@ -59,7 +59,7 @@ describe("today's mark of a coin account with no coins reads no price", () => {
       if (!accountUsesCryptoMtm(id)) continue;
       for (const now of PARITY_INSTANTS) {
         const before = observeLiveReads(() => priorCryptoDisplaySync(id, now));
-        const after = observeLiveReads(() => computeCryptoMtmClpDisplaySync(id, now));
+        const after = observeLiveReads(() => cryptoTodayClp(id, now));
         expect(after.out, `coin ${id} at ${now.toISOString()}`).toEqual(before.out);
         if (after.out != null && typeof after.out === "object" && after.out.value_clp === 0) {
           expect(after.tickers, `empty coin account ${id} reads no quote`).toEqual([]);
@@ -69,6 +69,6 @@ describe("today's mark of a coin account with no coins reads no price", () => {
     }
     expect(compared).toBeGreaterThanOrEqual(2 * PARITY_INSTANTS.length);
     const now = PARITY_INSTANTS[1]!;
-    expect(observeLiveReads(() => computeCryptoMtmClpDisplaySync(soldOut, now)).out).toMatchObject({ value_clp: 0 });
+    expect(observeLiveReads(() => cryptoTodayClp(soldOut, now)).out).toMatchObject({ value_clp: 0 });
   });
 });

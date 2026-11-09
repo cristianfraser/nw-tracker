@@ -130,14 +130,6 @@ export const DASHBOARD_LAYOUT: Record<DashboardTileId, TileLayout> = Object.from
   READING_ORDER.map((id) => [id, { l: L[id], s: S[id], m: M[id] }])
 ) as Record<DashboardTileId, TileLayout>;
 
-/** The tiles of the big-desktop rail, in their `y` order. */
-export const RAIL_TILES: readonly DashboardTileId[] = READING_ORDER.filter(
-  (id) => L[id].x === 8
-).sort((a, b) => L[a].y - L[b].y);
-
-/** Render order below the big desktop: the reading order, which follows the layouts' `y` (asserted by a unit test). */
-export const DASHBOARD_TILE_ORDER = READING_ORDER;
-
 /** A tile's place in the reading order below the big desktop (`PageGridTile`'s `order`). */
 export function dashboardTileOrder(id: DashboardTileId): number {
   return READING_ORDER.indexOf(id);

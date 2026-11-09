@@ -7,9 +7,8 @@ import { isReadMethod, requestContext } from "./requestContext.js";
  * - Local personal mode (default): bind 127.0.0.1, dev-origin CORS.
  * - Hosted demo mode (e.g. Render): HOST=0.0.0.0, DEMO_MODE=1 → open to anyone, reads only.
  *
- * Neither mode authenticates. The demo used to sit behind a shared-password login; recruiters
- * bounced off the gate instead of using it, so the demo is public and the read-only guard
- * below is what keeps its shared synthetic DB intact.
+ * Neither mode authenticates: the demo is public (a login gate made visitors bounce) and the
+ * read-only guard below is what keeps its shared synthetic DB intact.
  */
 
 /** Bind host (`HOST`, `config.ts`). The default, 127.0.0.1, keeps the unauthenticated local API off the LAN. */

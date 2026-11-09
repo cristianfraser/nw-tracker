@@ -172,7 +172,7 @@ export function checkingCreditLooksLikeMonthBucketCashReturn(description: string
   return CHECKING_CASH_DEPOSIT_INFLOW_RE.test(d);
 }
 
-/** Absolute day gap; kept for server/scripts/link-buda-abonos-behind-stale-categories.ts. */
+/** Absolute day gap; only the archived script server/scripts/archive/link-buda-abonos-behind-stale-categories.ts uses it. */
 export function daysBetweenYmd(a: string, b: string): number {
   return Math.abs(daysBetweenIso(a, b));
 }

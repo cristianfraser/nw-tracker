@@ -89,7 +89,7 @@ export function landingPageReady(args: { loggedIn: boolean; productSummaryCalls:
 /**
  * Wait for the private app's landing page after a redirect into it, bounded by `LANDING_WAIT_MS`.
  *
- * This replaced a `networkidle` settle (20 s) that ran to its timeout every night: the SPA's
+ * A `networkidle` settle (20 s) would run to its timeout every night: the SPA's
  * analytics traffic never goes idle. The product-summary call is the proof the landing page loaded;
  * when it does not come but the window is on a private route the session is still usable (the
  * readers of that call report its absence themselves), so the run continues and says so.
@@ -215,7 +215,7 @@ function excerpt(text: string): string {
 /**
  * A successful login redirects the whole window from the public site to the private app. When the
  * bank rejects the login it shows a toast over the form instead (`TEXT.loginRejected`) and the window
- * stays put — which used to surface only as a 90-second navigation timeout with no hint of the cause.
+ * stays put — which would otherwise surface only as a 90-second navigation timeout with no hint of the cause.
  * The toast is checked while the redirect is pending, so a rejection fails within one poll and the
  * log carries the bank's own words; anything else ends in the timeout, and both outcomes leave the
  * frame's text and a screenshot behind (`saveLoginDiagnostics`) so the log says what was on screen.

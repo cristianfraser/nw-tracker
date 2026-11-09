@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DASHBOARD_LAYOUT,
-  DASHBOARD_TILE_ORDER,
   GRID,
-  RAIL_TILES,
   dashboardTileOrder,
   dashboardTileSmallSpan,
   type DashboardTileId,
@@ -18,11 +16,10 @@ function overlaps(a: TileRect, b: TileRect): boolean {
 
 describe("dashboard layout", () => {
   it("lists every tile once, in the one-stack reading order", () => {
-    expect([...DASHBOARD_TILE_ORDER].sort()).toEqual([...ids].sort());
     // The render order below 1440 is the reading order, which follows both stacked tiers' `y`.
-    expect(DASHBOARD_TILE_ORDER.map((id) => dashboardTileOrder(id))).toEqual(DASHBOARD_TILE_ORDER.map((_, i) => i));
+    expect(ids.map((id) => dashboardTileOrder(id))).toEqual(ids.map((_, i) => i));
     for (const tier of ["s", "m"] as const) {
-      const ys = DASHBOARD_TILE_ORDER.map((id) => DASHBOARD_LAYOUT[id][tier].y);
+      const ys = ids.map((id) => DASHBOARD_LAYOUT[id][tier].y);
       expect(ys, tier).toEqual([...ys].sort((a, b) => a - b));
     }
   });
@@ -57,7 +54,7 @@ describe("dashboard layout", () => {
                 ? "wide"
                 : null;
       expect(placement, id).not.toBeNull();
-      expect(RAIL_TILES.includes(id)).toBe(placement === "rail");
+      expect((DASHBOARD_LAYOUT[id].l.x === 8)).toBe(placement === "rail");
     }
     for (const a of ids) for (const b of ids) if (a < b) expect(overlaps(DASHBOARD_LAYOUT[a].l, DASHBOARD_LAYOUT[b].l), `${a} / ${b}`).toBe(false);
     const bandEnd = Math.max(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w < 6 || DASHBOARD_LAYOUT[id].l.w === 8).map((id) => DASHBOARD_LAYOUT[id].l.y + DASHBOARD_LAYOUT[id].l.h));

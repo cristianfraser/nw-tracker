@@ -10,7 +10,6 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import {
-  flowChartGranularityFromMetricsPeriod,
   formatFlowMoney,
   sumChartPointsField,
 } from "../flowsDisplay";
@@ -35,7 +34,7 @@ export function DepositsPage() {
       onRangeChange={chartPrefs.setRange}
     />
   );
-  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const chartGranularity = metricsPeriod;
   const { data, error: queryError } = useFlowsDeposits();
   const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;

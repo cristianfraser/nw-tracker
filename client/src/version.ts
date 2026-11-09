@@ -5,7 +5,7 @@
  *   → { client: {...}, server: {...}, match: true }
  *
  * `client` is baked into this bundle at build time (Vite `define`); `server` is
- * fetched from /api/health (auth-exempt, so it works pre-login). A `match: false`
+ * fetched from /api/health. A `match: false`
  * means the browser is running a stale cached bundle against a newer server.
  * See scripts/version-info.mjs for the version scheme.
  */

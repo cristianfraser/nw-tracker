@@ -2,7 +2,7 @@ import { parsedStatements } from "./test/parsedStatementRecords.js";
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
-import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./cards/facturacion.js";
+import { billingMonthForManualLedgerPurchase, closeEvidenceForBillingMonth, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import {
   openWebPasteSourcePdf,
   parseOpenWebPasteBillingMonth,
@@ -37,7 +37,7 @@ describe("repairMisplacedOpenWebPasteBuckets", () => {
     if (!lastPdf || !openBm) return;
     expect(ymCompare(openBm, addCalendarMonths(lastPdf, 1))).toBeGreaterThanOrEqual(0);
 
-    const periodTo = periodToIsoForBillingMonth(master.id, lastPdf);
+    const periodTo = closeEvidenceForBillingMonth(master.id, lastPdf).close_iso;
     if (!periodTo) return;
 
     const staleBm = lastPdf;

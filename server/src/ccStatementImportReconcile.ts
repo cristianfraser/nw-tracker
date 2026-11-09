@@ -221,8 +221,8 @@ function closeEnough(a: number, b: number, tol: number): boolean {
  * USD is held to the cent. Its line amounts are exact two-decimal values, so the sum must equal the
  * printed total — there is nothing to accumulate rounding from. The previous band allowed the larger
  * of 15% or a flat US$35 (and reached for `TOL_CLP`, one *peso*, as a dollar floor), which is wide
- * enough to swallow an entire line: statement ·0781 23/07/2026 imported 691.43 against a printed
- * TOTAL OPERACIONES of 705,50, silently missing a 14,07 charge — one of a same-day twin pair. On a
+ * enough to swallow an entire line: statement ·0781 23/07/2026 imported short of its printed
+ * TOTAL OPERACIONES by one small subscription charge — one of a same-day twin pair — without failing. On a
  * card whose USD side is mostly small subscriptions, almost any dropped line fell inside that band.
  *
  * CLP keeps its wider band: those amounts are whole pesos in the millions and the legacy layouts
@@ -415,9 +415,9 @@ export function reconcileBillingMonthMovements(
    *
    * Two shapes occur across the corpus and neither is wrong, so this accepts either rather than
    * forcing one identity: sometimes the billed total is just the period's charges (·0781 23/06/2026:
-   * monto 258.13 = compras 258.13, with a 176.70 saldo NOT carried), and sometimes it is those
-   * charges plus the prior balance and its payment (·0161 24/01/2024: 7.59 = 28.87 + 1701.85 −
-   * 1723.13), and sometimes it nets a traspaso de deuda internacional (248.99 − 79.37 = 169.62) —
+   * monto = compras, with a saldo anterior NOT carried), and sometimes it is those
+   * charges plus the prior balance and its payment (·0161 24/01/2024: monto = compras + the
+   * prior balance − its payment), and sometimes it nets a traspaso de deuda internacional (compras − traspaso = monto) —
    * an abono that moves the USD debt onto the CLP side of the same card, so no cash leaves the
    * checking account and the card's total debt is unchanged.
    * Forcing a single formula would fail legitimate statements — and because

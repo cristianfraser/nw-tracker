@@ -57,19 +57,6 @@ export function ccExpenseCategoryPathLabel(category: Pick<CcExpenseCategoryDto, 
 /** Which level the expenses chart groups spend by. */
 export type CcExpenseCategoryLevel = "category" | "subcategory";
 
-/**
- * The slug a line's spend is grouped under at a level: at «category» a subcategory's spend folds
- * into its parent; at «subcategory» every category is its own.
- */
-export function ccExpenseCategorySlugAtLevel(
-  categories: readonly CcExpenseCategoryDto[],
-  level: CcExpenseCategoryLevel
-): (slug: string) => string {
-  if (level === "subcategory") return (slug) => slug;
-  const parentOf = new Map(categories.filter((c) => c.parent_slug != null).map((c) => [c.slug, c.parent_slug!]));
-  return (slug) => parentOf.get(slug) ?? slug;
-}
-
 /** The categories the chart stacks at a level (at «category», only the top-level ones). */
 export function ccExpenseCategoriesAtLevel(
   categories: readonly CcExpenseCategoryDto[],

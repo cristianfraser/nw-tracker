@@ -56,11 +56,10 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const depositsFlow = buildFlowsDepositsPayload();
     const totalDeposits = depositsFlow.net_total_clp;
 
-    const bucketLabelBySlug = new Map(
-      getDashboardLayoutCards().map((c) => [c.bucket_slug, c.label])
-    );
+    const baseLayoutCards = getDashboardLayoutCards();
+    const bucketLabelBySlug = new Map(baseLayoutCards.map((c) => [c.bucket_slug, c.label]));
     // A netting bucket's card explains its netting with the linked balances footer.
-    const layoutCards = getDashboardLayoutCards().map((card) =>
+    const layoutCards = baseLayoutCards.map((card) =>
       groupNetsLinkedCards(card.slug)
         ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd) }
         : card

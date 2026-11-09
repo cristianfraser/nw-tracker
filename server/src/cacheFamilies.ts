@@ -118,7 +118,7 @@ export const CACHE_FAMILIES: Readonly<Record<string, CacheFamily>> = {
   /**
    * The flows overview's inputs (income, expense lines, deposits, the Expenses payloads): no live
    * quote, but the live dollar rate the expense lines priced unpaid dollars at
-   * (`dropFamilyWhenInputChanged`, `flowsMortgageCarrying.ts`).
+   * (`syncFlowsInputsWithLiveUsdRates`, `flowsMortgageCarrying.ts`).
    */
   flows_inputs: { prefix: "flows.overview.inputs|", reads: "any", accountScoped: false, historicalMarket: true, liveTick: "keep", ...aggregation },
   /** A checking account's display balance at a date (`checkingCartolaBalances.ts`). */

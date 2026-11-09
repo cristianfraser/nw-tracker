@@ -75,13 +75,6 @@ export function deptoPaymentFlowsInUnit(
 export const DEPOSIT_FLOW_CATEGORIES = ["real_estate", "cash", "brokerage", "inversiones"] as const;
 export type DepositFlowCategory = (typeof DEPOSIT_FLOW_CATEGORIES)[number];
 
-const CATEGORY_LABEL: Record<DepositFlowCategory, string> = {
-  real_estate: "Real estate",
-  cash: "Cash",
-  brokerage: "Brokerage",
-  inversiones: "Retirement",
-};
-
 export function depositFlowCategoryFromGroupSlug(groupSlug: string): DepositFlowCategory | null {
   if (groupSlug === "real_estate") return "real_estate";
   if (groupSlug === "cash_eqs") return "cash";
@@ -96,7 +89,6 @@ export type FlowDepositRow = {
   /** Bank posting date when it lies after today: listed under today, already counted. */
   posted_on?: string;
   category: DepositFlowCategory;
-  category_label: string;
   account_id: number;
   account_name: string;
   /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …) — see accountBucketKindSlug. */
@@ -185,7 +177,7 @@ export type FlowDepositsPayload = {
   fx_conversion_warnings: FxConversionWarning[];
   by_category: Record<
     DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
+    { rows: FlowDepositRow[]; total_clp: number; total_usd: number }
   >;
 };
 
@@ -304,8 +296,7 @@ export function netDepositFlowWindows(
  * Net capital flow for one account in the current calendar month through Chile today. The
  * events are display-dated, so a movement the bank posts later is already in today's
  * bucket — the same place the live balance counts it. Same event source as
- * `flowsDepositsNetInPeriodByAccount("month")`, so live current-month P/L reconciles with
- * the dashboard deposits column.
+ * the dashboard deposits column, so live current-month P/L reconciles with it.
  */
 export function netDepositFlowCurrentMonthThroughToday(
   accountId: number,
@@ -313,18 +304,6 @@ export function netDepositFlowCurrentMonthThroughToday(
 ): number {
   const today = chileCalendarTodayYmd();
   return netDepositFlowBetween(accountId, priorPeriodEndYmd("mtd", today), today, unit);
-}
-
-/** Net deposits in the current calendar month or year (flows-page accounts only). */
-export function flowsDepositsNetInPeriodByAccount(period: "month" | "year"): {
-  clp: Map<number, number>;
-  usd: Map<number, number>;
-} {
-  const opts = { period, includeExcludedFromGroupTotals: true };
-  return {
-    clp: flowsDepositsNetTotalsByAccount("clp", opts),
-    usd: flowsDepositsNetTotalsByAccount("usd", opts),
-  };
 }
 
 /** Net capital (deposits − withdrawals) per account — same accounts as the flows deposits page. */
@@ -370,7 +349,6 @@ export function buildFlowsDepositsPayload(opts?: {
         occurred_on: e.occurred_on,
         ...(e.posted_on ? { posted_on: e.posted_on } : {}),
         category,
-        category_label: CATEGORY_LABEL[category],
         account_id: acc.account_id,
         account_name: acc.name,
         kind_slug: acc.category_slug,
@@ -395,7 +373,6 @@ export function buildFlowsDepositsPayload(opts?: {
   for (const cat of DEPOSIT_FLOW_CATEGORIES) {
     const catRows = rows.filter((r) => r.category === cat);
     by_category[cat] = {
-      label: CATEGORY_LABEL[cat],
       rows: catRows,
       total_clp: catRows.reduce((s, r) => s + r.amount_clp, 0),
       total_usd: catRows.reduce((s, r) => s + r.amount_usd, 0),
@@ -454,7 +431,6 @@ function mortgageCarryingRows(
     out.push({
       occurred_on,
       category,
-      category_label: CATEGORY_LABEL[category],
       account_id: accountId,
       account_name: acc.name,
       kind_slug: acc.category_slug,

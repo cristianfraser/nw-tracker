@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectNavBucketCoverageKeys, stripChartBucketNavNodes } from "./navChartBuckets";
+import { stripChartBucketNavNodes } from "./navChartBuckets";
 import type { NavTreeNodeDto } from "./types";
 import { navNodeFixture } from "./test/navNodeFixture";
 
@@ -47,21 +47,5 @@ describe("stripChartBucketNavNodes", () => {
       "retirement_apv_a",
       "retirement_apv_b",
     ]);
-  });
-});
-
-describe("collectNavBucketCoverageKeys", () => {
-  it("collects slugs + asset group slugs across the group subtree", () => {
-    const node = navNodeFixture({
-      slug: "retirement_apv",
-      label: "APV",
-      asset_group_slug: "retirement_apv",
-      children: [
-        navNodeFixture({ slug: "retirement_apv_a", label: "apv-a", asset_group_slug: "retirement_apv_a" }),
-      ],
-    });
-    const keys = collectNavBucketCoverageKeys(node);
-    expect(keys).toContain("retirement_apv");
-    expect(keys).toContain("retirement_apv_a");
   });
 });

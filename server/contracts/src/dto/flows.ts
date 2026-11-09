@@ -10,7 +10,6 @@ export type DepositFlowCategory = "real_estate" | "cash" | "brokerage" | "invers
 export interface FlowDepositRow {
   occurred_on: string;
   category: DepositFlowCategory;
-  category_label: string;
   account_id: number;
   account_name: string;
   /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …). */
@@ -986,6 +985,6 @@ export interface FlowsDepositsResponse {
   chart_daily_usd: FlowDepositChartPoint[];
   by_category: Record<
     DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
+    { rows: FlowDepositRow[]; total_clp: number; total_usd: number }
   >;
 }

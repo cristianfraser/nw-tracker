@@ -8,12 +8,12 @@ import { accountWithRoleOptional } from "./accountRoles.js";
 import {
   FINTUAL_CERT_V2_ACCOUNT_NAMES,
   FINTUAL_CERT_V2_GOAL_IDS,
+  isFintualCertV2AccountNotes,
   matchFintualCertGoalV2,
 } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import {
   fundSeriesKeyFromImportNotes,
-  isFintualCertV2ValuationNotes,
   isFintualPublishedFundUnitNote,
 } from "./fintualFundUnitDaily.js";
 import { fintualExpectsCuotaOnPollDay } from "./fintualPublishDate.js";
@@ -85,7 +85,7 @@ export function fintualCertV2PositionFromCuotaClp(
   importNotes: string,
   asOfYmd: string
 ): number | null {
-  if (!isFintualCertV2ValuationNotes(importNotes)) return null;
+  if (!isFintualCertV2AccountNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
   const units = fintualGoalUnitsFromMovements(accountId);
@@ -163,7 +163,7 @@ export function fintualGoalsNavMatchesPriorPublishPosition(
   goalsNavClp: number | null | undefined
 ): boolean {
   if (goalsNavClp == null || !Number.isFinite(goalsNavClp)) return false;
-  if (!isFintualCertV2ValuationNotes(importNotes)) return false;
+  if (!isFintualCertV2AccountNotes(importNotes)) return false;
   // Asked once per mark of the account: it reads movements and fund units only (mark-input
   // tables, so a write to either drops the history tier).
   const memo = historyTierMemo<string, boolean>("fintual_goals_nav_matches_prior_publish");
@@ -211,7 +211,7 @@ export function fintualCertV2HeldFundMissingDayRow(
   importNotes: string,
   asOfYmd: string
 ): boolean {
-  if (!isFintualCertV2ValuationNotes(importNotes)) return false;
+  if (!isFintualCertV2AccountNotes(importNotes)) return false;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return false;
   const units = fintualGoalUnitsFromMovements(accountId);

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  cardMainBalanceFromMetrics,
   cardMetricsByPeriodForAccountRow,
   roundedMetricDelta,
   roundedMetricDeposits,
@@ -57,7 +56,6 @@ describe("cardMetricsByPeriodForAccountRow", () => {
     expect(roundedMetricDeposits(month, false, "total")).toBe(1_000_000);
     expect(roundedMetricDeposits(month, false, "period")).toBe(-2_719_944);
     expect(roundedMetricDelta(month, false, "period")).toBe(-241_251);
-    expect(cardMainBalanceFromMetrics(month, false)).toBe(1_968_035);
     // no day fields on the row: deposits 0, P/L absent
     expect(day.deposits_period_clp).toBe(0);
     expect(day.delta_period_clp).toBeNull();

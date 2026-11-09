@@ -2,8 +2,7 @@
  * The Lider BCI card's own lines, as the grocery receipts (`storeReceiptApply.ts`) write them: the
  * card's master account from the registry, and the same-day-same-amount check that keeps a
  * receipt's line from duplicating a purchase the ledger already holds under another merchant
- * name. (It was the «últimos movimientos» CSV importer until that scheduled export retired on
- * 2026-08-07; the importer went on 2026-10-03.)
+ * name.
  */
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";

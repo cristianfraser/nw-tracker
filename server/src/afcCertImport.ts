@@ -202,35 +202,15 @@ const stmtInsertContribution = db.prepare(
 const stmtUpdateUnits = db.prepare(`UPDATE movements SET units_delta = ? WHERE id = ?`);
 const stmtDeleteMovement = db.prepare(`DELETE FROM movements WHERE id = ?`);
 
-export type AfcCertApplyResult = { inserted: number; units_updated: number; deleted: number; mismatches: number };
+export type AfcCertApplyResult = { inserted: number; units_updated: number; mismatches: number };
 
 /**
- * Write the plan: insert / update-units the certificate contributions, delete the superseded
- * excel contribution rows when asked, plus any explicitly listed extra ids. Mismatches are never
- * written. One transaction.
+ * Write the plan: insert / update-units the certificate contributions. Mismatches are never
+ * written; excel-era rows are left as they are. One transaction.
  */
-export function applyAfcCertImport(
-  plan: AfcCertPlan,
-  opts: { replaceExcelContributions: boolean; dropIds?: readonly number[] }
-): AfcCertApplyResult {
-  const out: AfcCertApplyResult = { inserted: 0, units_updated: 0, deleted: 0, mismatches: 0 };
-  const dropIds = new Set(opts.dropIds ?? []);
-  for (const id of dropIds) {
-    const known = plan.excel_other_rows.some((m) => m.id === id) || plan.excel_contribution_rows.some((m) => m.id === id);
-    if (!known) throw new Error(`afc: --drop-ids ${id} is not an excel-era row of account ${plan.account_id}`);
-  }
+export function applyAfcCertImport(plan: AfcCertPlan): AfcCertApplyResult {
+  const out: AfcCertApplyResult = { inserted: 0, units_updated: 0, mismatches: 0 };
   db.transaction(() => {
-    if (opts.replaceExcelContributions) {
-      for (const m of plan.excel_contribution_rows) {
-        stmtDeleteMovement.run(m.id);
-        out.deleted += 1;
-      }
-    }
-    for (const id of dropIds) {
-      if (opts.replaceExcelContributions && plan.excel_contribution_rows.some((m) => m.id === id)) continue;
-      stmtDeleteMovement.run(id);
-      out.deleted += 1;
-    }
     for (const it of plan.items) {
       if (it.status === "insert") {
         const res = stmtInsertContribution.run(plan.account_id, it.contribution.amount_clp, it.contribution.pay_ymd, afcContributionNote(it.contribution), it.units);
@@ -567,8 +547,8 @@ export function applyUnemploymentFundDocuments(payload: UnemploymentFundDocument
         log(`  id ${m.id}  ${m.occurred_on}  ${fmt(m.amount).padStart(12)}  ${m.note ?? ""}`);
       }
     }
-    const r1 = applyAfcCertImport(plan, { replaceExcelContributions: false });
-    log(`→ wrote: inserted ${r1.inserted}, units updated ${r1.units_updated}, deleted ${r1.deleted}, mismatches skipped ${r1.mismatches}`);
+    const r1 = applyAfcCertImport(plan);
+    log(`→ wrote: inserted ${r1.inserted}, units updated ${r1.units_updated}, mismatches skipped ${r1.mismatches}`);
 
     const withdrawals = (label: string, quiet: boolean) => {
       const wplan = planAfcWithdrawalUnits(accountId);

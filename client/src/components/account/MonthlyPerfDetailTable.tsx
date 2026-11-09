@@ -91,8 +91,7 @@ export function MonthlyPerfDetailTable({
     return displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
   };
 
-  // Mortgage view: no stock units by definition, and the %/UF-día columns were dropped
-  // as redundant sheet helpers — only Saldo UF stays mortgage-specific.
+  // Mortgage view: no stock units by definition.
   const showStockInflows = showStockInflowsColumn && !isMortgageAccount;
 
   const plLabel = isMortgageAccount ? t("accountDetail.perf.plMortgage") : t("accountDetail.perf.plInvestment");

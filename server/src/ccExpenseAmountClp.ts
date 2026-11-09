@@ -3,7 +3,7 @@ import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 /**
  * One uniform CLP/USD rate in place of every debt-frame rate, while set: the anchor writer builds
  * the statement frame with it to split a balance into its peso and dollar parts (the balance is
- * affine in the rate — `ccOwedByCurrencyForStatementFrame` in `ccBillingViews.ts`). Synchronous
+ * affine in the rate — `ccStatementOwedByCurrencyByMonth` in `ccBillingViews.ts`). Synchronous
  * scope only; never set outside {@link withUniformDebtUsdRate}.
  */
 let uniformDebtUsdRate: number | null = null;

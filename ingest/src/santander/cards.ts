@@ -23,8 +23,8 @@ const CURRENCY_TAB_WAIT_MS = 15_000;
 /**
  * How long a view gets to render its currency tabs after its data call landed. The billed view
  * stays a skeleton — no tabs, no «Pagar hasta» — until the page's own PDF request answers, about
- * a second after the statement call (screenshots of 2026-10-10 02:54); the old 8 s `networkidle`
- * settle covered that by accident.
+ * a second after the statement call (screenshots of 2026-10-10 02:54); a `networkidle`
+ * settle would only cover that by accident.
  */
 const VIEW_RENDER_WAIT_MS = 15_000;
 

@@ -4,7 +4,7 @@ import { parseTimeRange, type TimeRange } from "./timeRange";
 
 /**
  * Per-surface display preferences (Período + Rango) — one setting per chart/table per
- * page instance, replacing the global toolbar pair.
+ * page instance.
  *
  * Storage: localStorage `nw-tracker.surface.<surfaceId>` holding PARTIAL JSON
  * (`{"period":"day"}`) — a missing field means "use the caller's default", so a future
@@ -44,7 +44,7 @@ export type SurfaceCompositionView = "composition" | "map";
 export type SurfaceAreaMode = "ytd" | "total";
 
 /**
- * M/Y-only surfaces (flow tables, the CC financing chart and detalle table): a stored `day`
+ * M/Y-only surfaces (flow tables, the CC detalle table): a stored `day`
  * — a key written while the surface still offered Diario — reads as month. The stored value
  * is left as is; the next explicit pick overwrites it.
  */

@@ -65,7 +65,7 @@ import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountV
 import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import {
   chartHostSlugForValuationGroup,
   composeReferenceValuesByDate,
@@ -116,7 +116,6 @@ function chartValueInUnit(clp: number, d: string, unit: TsUnit, side: ValueSide 
  */
 function accountChartValueInUnit(
   accountId: number,
-  _kindSlug: string,
   clp: number,
   d: string,
   unit: TsUnit
@@ -289,15 +288,6 @@ function cumulativeDepInUnitByDate(
   return out;
 }
 
-type MergePairOpts = {
-  btcId?: number;
-  ethId?: number;
-  spyId?: number;
-  veaId?: number;
-  /** Brokerage mutual-funds tab membership (`brokerageSubgroupMatchesCategory`). */
-  mutualFundsIds?: number[];
-};
-
 function bucketSlugByAccountId(accountIds: number[]): Map<number, string> {
   const uniq = [...new Set(accountIds.filter((id) => id > 0))];
   const m = new Map<number, string>();
@@ -340,29 +330,9 @@ function accountChartMetaById(
 function attachDepositSeriesKeys(
   top: AccountLine[],
   pocketDepMovs: Map<number, { occurred_on: string; amt: number }[]>,
-  merge: MergePairOpts | undefined,
   slugById: Map<number, string>
 ): AccountLine[] {
   return top.map((t) => {
-    if (t.dataKey === "crypto_total") {
-      const { btcId, ethId } = merge ?? {};
-      const has =
-        (btcId != null && (pocketDepMovs.get(btcId)?.length ?? 0) > 0) ||
-        (ethId != null && (pocketDepMovs.get(ethId)?.length ?? 0) > 0);
-      return has ? { ...t, depositDataKey: "crypto_total__dep" } : { ...t };
-    }
-    if (t.dataKey === "stocks_total") {
-      const { spyId, veaId } = merge ?? {};
-      const has =
-        (spyId != null && (pocketDepMovs.get(spyId)?.length ?? 0) > 0) ||
-        (veaId != null && (pocketDepMovs.get(veaId)?.length ?? 0) > 0);
-      return has ? { ...t, depositDataKey: "stocks_total__dep" } : { ...t };
-    }
-    if (t.dataKey === "mutual_funds_total") {
-      const ids = merge?.mutualFundsIds ?? [];
-      const has = ids.some((id) => (pocketDepMovs.get(id)?.length ?? 0) > 0);
-      return has ? { ...t, depositDataKey: "mutual_funds_total__dep" } : { ...t };
-    }
     if (t.account_id > 0) {
       const slug = slugById.get(t.account_id);
       const kind = slug ? accountBucketKindSlug(slug) : "";
@@ -519,7 +489,7 @@ function augmentChartDatesForFintualCertAccounts(
   const today = chileCalendarTodayYmd();
   for (const id of allIds) {
     const meta = chartMetaById.get(id);
-    if (!(meta?.import_key && isFintualCertV2ValuationNotes(meta.import_key))) continue;
+    if (!(meta?.import_key && isFintualCertV2AccountNotes(meta.import_key))) continue;
     const first = firstFintualCuotaEventYmd(id);
     if (!first) continue;
     for (const d of monthEndsBetweenInclusive(first, today)) aug.add(d);
@@ -574,8 +544,8 @@ function augmentChartDatesForCuotaLedgerAccounts(
 }
 
 /**
- * Month-end CLP series from `depto-dividendos.csv` (same as Numbers: **valor neto** + **pago acumulado**),
- * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the same amortization timeline as the sheet.
+ * Month-end CLP series from the depto ledger (**valor neto** + **pago acumulado**),
+ * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the ledger's amortization timeline.
  */
 function propertyDeptoClpSeriesBySnapshotDate(
   dateStrsAsc: string[],
@@ -756,27 +726,8 @@ function patchAccountLiveLastPoint(
     : patchLiveLastPoint(points, dk, today, plotValue);
 }
 
-function patchLiveAfpMarksOnPoints(
-  rows: { account_id: number; bucket_slug: string; import_key?: string | null; name?: string | null }[],
-  unit: TsUnit,
-  points: Record<string, string | number | null>[]
-): Record<string, string | number | null>[] {
-  let next = points;
-  for (const r of rows) {
-    next = patchAccountLiveLastPoint(r, unit, next);
-  }
-  return next;
-}
-
-function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit, merge?: MergePairOpts) {
-  const mergeIds = [
-    merge?.btcId,
-    merge?.ethId,
-    merge?.spyId,
-    merge?.veaId,
-    ...(merge?.mutualFundsIds ?? []),
-  ].filter((x): x is number => x != null);
-  const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds, ...mergeIds])];
+function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit) {
+  const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds])];
   if (allIds.length === 0) {
     return { accounts: top, points: [] as Record<string, string | number | null>[] };
   }
@@ -798,8 +749,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
           .all(...markIds) as { d: string }[]);
   let dateStrs = expandSnapshotDatesForEquityMtm(
     dates.map((x) => x.d),
-    allIds,
-    merge
+    allIds
   );
   dateStrs = expandSnapshotDatesForCryptoMtm(dateStrs, allIds);
   dateStrs = augmentChartDatesForDeptoAccounts(dateStrs, allIds, slugById);
@@ -852,7 +802,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       };
   const { closeByDate: propertyDeptoCloseByDate, pagoAcumuladoByDate: propertyDeptoPagoAcumByDate } =
     propertyDeptoSheets;
-  const topOut = attachDepositSeriesKeys(top, displayDepMovs, merge, slugById);
+  const topOut = attachDepositSeriesKeys(top, displayDepMovs, slugById);
   const depClpByAccAndDate = new Map<number, Map<string, number>>();
   const depUfByAccAndDate = new Map<number, Map<string, number>>();
   const depUsdByAccAndDate = new Map<number, Map<string, number>>();
@@ -900,18 +850,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const last = new Map<number, number>();
   /** Every other account's value in the unit (forward-filled over a date it has none). */
   const lastInUnit = new Map<number, number>();
-  const btcId = merge?.btcId;
-  const ethId = merge?.ethId;
-  const spyId = merge?.spyId;
-  const veaId = merge?.veaId;
-
-  const needsCrypto = topOut.some((t) => t.dataKey === "crypto_total");
-  const needsStocks = topOut.some((t) => t.dataKey === "stocks_total");
-  const needsMutualFunds = topOut.some((t) => t.dataKey === "mutual_funds_total");
-  /** Avoid drawing merged deposit lines at 0 from the first chart date before any inflows exist. */
-  let cryptoMergedDepSeen = false;
-  let stocksMergedDepSeen = false;
-  let mutualFundsMergedDepSeen = false;
   const singleAccountDepSeen = new Map<number, boolean>();
   const trailingChartDate = dateStrs.length > 0 ? dateStrs[dateStrs.length - 1]! : "";
   const todayYmd = chileCalendarTodayYmd();
@@ -989,132 +927,35 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       }
       if (raw != null) last.set(aid, raw);
       const v = last.get(aid);
-      row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, aidKind, v, d, unit);
-    }
-    // The legacy merged lines (no caller passes `merge` today): Σ of each member's value in the unit.
-    const mergedValue = (ids: readonly (number | undefined)[]): number | null => {
-      let sum = 0;
-      let any = false;
-      for (const id of ids) {
-        if (id == null) continue;
-        const v = plainValueAt(id, d);
-        if (v != null) lastInUnit.set(id, v);
-        const held = lastInUnit.get(id);
-        if (held != null) {
-          sum += held;
-          any = true;
-        }
-      }
-      return any ? sum : null;
-    };
-    if (needsCrypto && merge) row.crypto_total = mergedValue([btcId, ethId]);
-    if (needsStocks && merge) row.stocks_total = mergedValue([spyId, veaId]);
-    if (needsMutualFunds && merge?.mutualFundsIds && merge.mutualFundsIds.length > 0) {
-      row.mutual_funds_total = mergedValue(merge.mutualFundsIds);
+      row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, v, d, unit);
     }
     for (const t of topOut) {
       if (!t.depositDataKey) continue;
-      if (t.dataKey === "crypto_total") {
-        const btcC = btcId != null ? (depClpByAccAndDate.get(btcId)?.get(d) ?? 0) : 0;
-        const ethC = ethId != null ? (depClpByAccAndDate.get(ethId)?.get(d) ?? 0) : 0;
-        const sumClp = btcC + ethC;
-        let depPlot: number;
-        if (unit === "uf") {
-          const btcU = btcId != null ? (depUfByAccAndDate.get(btcId)?.get(d) ?? 0) : 0;
-          const ethU = ethId != null ? (depUfByAccAndDate.get(ethId)?.get(d) ?? 0) : 0;
-          depPlot = btcU + ethU;
-        } else if (unit === "usd") {
-          const btcU = btcId != null ? (depUsdByAccAndDate.get(btcId)?.get(d) ?? 0) : 0;
-          const ethU = ethId != null ? (depUsdByAccAndDate.get(ethId)?.get(d) ?? 0) : 0;
-          depPlot = btcU + ethU;
+      const aid = t.account_id;
+      const dk = t.depositDataKey;
+      let depPlot =
+        unit === "uf"
+          ? (depUfByAccAndDate.get(aid)?.get(d) ?? 0)
+          : unit === "usd"
+            ? (depUsdByAccAndDate.get(aid)?.get(d) ?? 0)
+            : (depClpByAccAndDate.get(aid)?.get(d) ?? 0);
+      if (
+        unit === "clp" &&
+        propertyAccountIds.length === 1 &&
+        bucketKindFromSlugMap(slugById, aid) === "property"
+      ) {
+        const fromSheet = propertyDeptoPagoAcumByDate.get(d);
+        if (fromSheet != null && Number.isFinite(fromSheet)) depPlot = fromSheet;
+      }
+      if (!singleAccountDepSeen.get(aid)) {
+        if (depPlot === 0) {
+          row[dk] = null;
         } else {
-          depPlot = sumClp;
-        }
-        if (!cryptoMergedDepSeen) {
-          if (depPlot === 0) {
-            row[t.depositDataKey] = null;
-          } else {
-            cryptoMergedDepSeen = true;
-            row[t.depositDataKey] = depPlot;
-          }
-        } else {
-          row[t.depositDataKey] = depPlot;
-        }
-      } else if (t.dataKey === "stocks_total") {
-        const spyC = spyId != null ? (depClpByAccAndDate.get(spyId)?.get(d) ?? 0) : 0;
-        const veaC = veaId != null ? (depClpByAccAndDate.get(veaId)?.get(d) ?? 0) : 0;
-        const sumClp = spyC + veaC;
-        let depPlot: number;
-        if (unit === "uf") {
-          const spyU = spyId != null ? (depUfByAccAndDate.get(spyId)?.get(d) ?? 0) : 0;
-          const veaU = veaId != null ? (depUfByAccAndDate.get(veaId)?.get(d) ?? 0) : 0;
-          depPlot = spyU + veaU;
-        } else if (unit === "usd") {
-          const spyU = spyId != null ? (depUsdByAccAndDate.get(spyId)?.get(d) ?? 0) : 0;
-          const veaU = veaId != null ? (depUsdByAccAndDate.get(veaId)?.get(d) ?? 0) : 0;
-          depPlot = spyU + veaU;
-        } else {
-          depPlot = sumClp;
-        }
-        if (!stocksMergedDepSeen) {
-          if (depPlot === 0) {
-            row[t.depositDataKey] = null;
-          } else {
-            stocksMergedDepSeen = true;
-            row[t.depositDataKey] = depPlot;
-          }
-        } else {
-          row[t.depositDataKey] = depPlot;
-        }
-      } else if (t.dataKey === "mutual_funds_total") {
-        const ids = merge?.mutualFundsIds ?? [];
-        let sumClp = 0;
-        let depPlot: number;
-        for (const id of ids) sumClp += depClpByAccAndDate.get(id)?.get(d) ?? 0;
-        if (unit === "uf") {
-          depPlot = ids.reduce((s, id) => s + (depUfByAccAndDate.get(id)?.get(d) ?? 0), 0);
-        } else if (unit === "usd") {
-          depPlot = ids.reduce((s, id) => s + (depUsdByAccAndDate.get(id)?.get(d) ?? 0), 0);
-        } else {
-          depPlot = sumClp;
-        }
-        if (!mutualFundsMergedDepSeen) {
-          if (depPlot === 0) {
-            row[t.depositDataKey] = null;
-          } else {
-            mutualFundsMergedDepSeen = true;
-            row[t.depositDataKey] = depPlot;
-          }
-        } else {
-          row[t.depositDataKey] = depPlot;
-        }
-      } else {
-        const aid = t.account_id;
-        const dk = t.depositDataKey;
-        let depPlot =
-          unit === "uf"
-            ? (depUfByAccAndDate.get(aid)?.get(d) ?? 0)
-            : unit === "usd"
-              ? (depUsdByAccAndDate.get(aid)?.get(d) ?? 0)
-              : (depClpByAccAndDate.get(aid)?.get(d) ?? 0);
-        if (
-          unit === "clp" &&
-          propertyAccountIds.length === 1 &&
-          bucketKindFromSlugMap(slugById, aid) === "property"
-        ) {
-          const fromSheet = propertyDeptoPagoAcumByDate.get(d);
-          if (fromSheet != null && Number.isFinite(fromSheet)) depPlot = fromSheet;
-        }
-        if (!singleAccountDepSeen.get(aid)) {
-          if (depPlot === 0) {
-            row[dk] = null;
-          } else {
-            singleAccountDepSeen.set(aid, true);
-            row[dk] = depPlot;
-          }
-        } else {
+          singleAccountDepSeen.set(aid, true);
           row[dk] = depPlot;
         }
+      } else {
+        row[dk] = depPlot;
       }
     }
     return row;
@@ -1364,7 +1205,7 @@ const OVERVIEW_LINE_PORTFOLIO_SLUG: Record<string, string> = {
   retirement: "retirement",
   brokerage: "brokerage",
   // The invested line is the Inversiones hub (retirement + brokerage): its node's colour, the one
-  // its card pill shows — it had none, so the client drew a fixed gold.
+  // its card pill shows.
   invested: "inversiones",
   cash: "cash_eqs",
   liabilities: "liabilities",
@@ -1536,8 +1377,8 @@ function buildDashboardPortfolioGroupTotalsClp(): {
     const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(slug);
     const tabRows = listAccountsForGroupTab(groupSlug, tabSubgroup);
     accountsBySlug.set(slug, tabRows);
-    // Consolidated closing is read for DATE DISCOVERY only now (kept cached — it also feeds
-    // the P/L detalle tables); the values come from marks below.
+    // Consolidated closing is read for DATE DISCOVERY only (cached — it also feeds the P/L
+    // detalle tables); the values come from marks below.
     const raw = getAggregationCached(cacheKeyGroupClosingByDate(slug, "clp"), () => {
       const consolidated = getGroupConsolidatedMonthlyPerfForRows(tabRows, groupSlug, "clp");
       return consolidatedClosingRawByDate(consolidated);
@@ -1573,7 +1414,7 @@ function buildDashboardPortfolioGroupTotalsClp(): {
       rowsBySlug.set(slug, rows);
       continue;
     }
-    // "Cuentas principales" child lines: Σ the same marks the group-page / day-mode daily
+    // Child lines: Σ the same marks the group-page / day-mode daily
     // series sums, at the month-end dates. `getBucketDailySeries`'s value at date `d` is
     // exactly this Σ, so the monthly child line equals the daily one point-for-point — the
     // null-before-first-holding included (an unstarted child reads absent, not a flat 0).
@@ -1954,8 +1795,7 @@ function addNullable(
 /**
  * Sum per-account lines of an **unclipped** group block into synthetic per-bucket lines, copying the
  * `__group_val_total` / `__group_dep_total` rows and the Total line VERBATIM (aggregates are never
- * display-derived). The display clip runs on the result afterwards. Mirrors the retired client
- * `aggregateValuationByBucket`, but reads uncorrupted data.
+ * display-derived). The display clip runs on the result afterwards.
  */
 function aggregateBlockByBuckets(
   base: GroupTabValuationBlock,
@@ -2137,12 +1977,10 @@ function getGroupValuationTimeseriesInnerUncached(
 
   /** Line chart uses every account in the group (SPY, VEA, Fintual RN, …) — no merged "Acciones" series. */
   const chartTop: AccountLine[] = pieTop;
-  const merge: MergePairOpts | undefined = undefined;
-
-  const built = buildPointsForAccounts(chartTop, [], unit, merge);
+  const built = buildPointsForAccounts(chartTop, [], unit);
   const withLiveAfp = {
     ...built,
-    points: patchLiveAfpMarksOnPoints(rows, unit, built.points),
+    points: rows.reduce((pts, r) => patchAccountLiveLastPoint(r, unit, pts), built.points),
   };
   let accounts_in_group = appendGroupTabTotals(withLiveAfp);
   const consolidated = getGroupConsolidatedMonthlyPerfForRows(rows, groupSlug, unit);
@@ -2208,7 +2046,7 @@ function getGroupValuationTimeseriesInnerUncached(
       }
     }
   }
-  // Composition timeseries (pie replacement): shares of the pre-clip per-account lines.
+  // Composition timeseries: shares of the pre-clip per-account lines.
   const group_allocation_proportional = buildProportionalFromBlock(accounts_in_group);
 
   const synthColors = syntheticGroupColorRgbMapForValuationGroup(groupSlug);
@@ -2216,7 +2054,7 @@ function getGroupValuationTimeseriesInnerUncached(
     accounts_in_group = { ...accounts_in_group, synthetic_group_color_rgb: synthColors };
   }
 
-  // Server-side "Agrupado" blocks/pies built from the pre-clip consolidated block (grouped totals
+  // Server-side "Agrupado" blocks built from the pre-clip consolidated block (grouped totals
   // must equal the raw view); each grouped block is display-clipped inside the helper.
   const grouped = opts?.groupedBlocks
     ? buildGroupedChartPayload(groupSlug, accounts_in_group, unit)
@@ -2251,7 +2089,7 @@ function buildDailyEquityPointsForAccount(
     if (clp == null) continue;
     points.push({
       as_of_date: r.trade_date,
-      [dk]: accountChartValueInUnit(accountId, "", clp, r.trade_date, unit),
+      [dk]: accountChartValueInUnit(accountId, clp, r.trade_date, unit),
     });
   }
   return { accounts: top, points };
@@ -2288,7 +2126,7 @@ export function getAccountValuationTimeseries(
       valueSeriesType: "data",
     },
   ];
-  let accounts = buildPointsForAccounts(top, [], unit, undefined);
+  let accounts = buildPointsForAccounts(top, [], unit);
 
   const bucketSlug = bucketSlugForAccountId(accountId);
   const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : null;
@@ -2350,7 +2188,7 @@ export function getAccountValuationTimeseries(
 
   if (accounts.points.length > 0) {
     // The live last point, the group chart's dispatcher: the account's one today value. A
-    // card's points stay on its owed-on-date marks (Saldo pasivos convention) and today is its
+    // card's points stay on its owed-on-date marks and today is its
     // owed walk — billing-month closings are NOT merged over history: they subtract the
     // next-month payment before it happens, so they understate month-end debt (facturaciones
     // have their own views).

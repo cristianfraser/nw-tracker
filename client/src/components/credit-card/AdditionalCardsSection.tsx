@@ -1,7 +1,6 @@
 import { PageGridTile } from "../layout/PageGridTile";
 import { useTranslation } from "../../i18n";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowPeriodLabel,
   flowTableGranularity,
   formatFlowMoney,
@@ -62,7 +61,7 @@ export function AdditionalCardsSection({
   const summary = loadedSummary ?? EMPTY_SUMMARY;
   const { t } = useTranslation();
   const prefs = useSurfacePrefs("flows.expenses.additionalCards", "month", "total");
-  const granularity = flowTableGranularity(flowChartGranularityFromMetricsPeriod(prefs.period));
+  const granularity = flowTableGranularity(prefs.period);
   const rows = granularity === "year" ? summary.by_year : summary.by_month;
   const newestFirst = [...rows].reverse();
   const { page, setPage, pageRows, total } = useClientPagination(newestFirst, PAGE_SIZE);
