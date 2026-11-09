@@ -491,6 +491,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "flow_link_rejections",
   "flow_notes",
   "flow_categories",
+  "sii_issued_fee_receipts",
 ];
 
 /**
