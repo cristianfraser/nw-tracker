@@ -21,6 +21,9 @@ server/data/.fintual-goals-latest.json
 server/data/.sbif-api-gate.json
 server/data/.bcentral-api-gate.json
 server/data/fintual-goal-map.json
+# The demo market artifact the publish job builds, and the job's state (docs/demo-market-publish-plan.md)
+server/data/demo-market/
+server/data/.demo-market-publish-state.json
 
 # Personal Numbers workbook (large / sensitive)
 *.numbers
