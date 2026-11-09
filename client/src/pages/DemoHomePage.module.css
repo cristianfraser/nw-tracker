@@ -161,12 +161,6 @@
   opacity: 0;
 }
 
-/* The tilted preview also rises into place as it fades in. `translate` is its own property,
-   applied before `transform`, so the tilt and the move into the dashboard are untouched. */
-.modeAbout .framePending {
-  translate: 0 1.25rem;
-}
-
 /* Nothing in the preview dims while it loads: the frame is only shown once its cards are real,
    and a dimmed chart or panel under the tilt reads as a broken page. */
 .modeAbout .frame :global(.loadable.is-loading) {
@@ -185,8 +179,7 @@
     transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
     border-radius 0.7s ease,
     box-shadow 0.7s ease,
-    opacity 0.45s ease,
-    translate 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+    opacity 0.45s ease;
 }
 
 /* Back on About the text fades in rather than popping over the moving preview. */

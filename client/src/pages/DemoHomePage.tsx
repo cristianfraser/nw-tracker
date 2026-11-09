@@ -164,12 +164,21 @@ export function DemoHomePage() {
   const [stripReady, setStripReady] = useState(false);
   const markStripReady = useCallback(() => setStripReady(true), []);
   const [previewShown, setPreviewShown] = useState(false);
+  // Revealed on About, the tilted preview fades in rising into place (the shared `reveal-in`
+  // animation, styles/motion.css); revealed on a direct /dashboard load it only fades: there the
+  // frame is the page, and a `translate` would briefly offset its fixed-position children.
+  const [revealRises, setRevealRises] = useState(false);
+  const aboutRef = useRef(about);
+  aboutRef.current = about;
   useEffect(() => {
     if (!stripReady || previewShown) return;
     // Two frames (the strip's resize re-measures the height before paint), or a short timer when
     // frames do not run (a background tab), whichever comes first.
     let second = 0;
-    const show = () => setPreviewShown(true);
+    const show = () => {
+      setRevealRises(aboutRef.current);
+      setPreviewShown(true);
+    };
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(show);
     });
@@ -317,7 +326,7 @@ export function DemoHomePage() {
       <div className={cn("page-grid", styles.pin)}>
         <div
           ref={frameRef}
-          className={cn("page-grid page-root", styles.frame, !previewShown && styles.framePending)}
+          className={cn("page-grid page-root", styles.frame, !previewShown && styles.framePending, revealRises && "reveal-in")}
           {...inertWhen(about || !previewShown)}
         >
           <DashboardFoldContext.Provider value={fold}>

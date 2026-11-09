@@ -1,0 +1,38 @@
+/*
+ * Reveal: what appears fades in while rising a little into place. One animation for every
+ * surface that uses it (the demo About preview, the demo tour card), so they move alike.
+ * Two keyframes because the fade is short and the rise long. `translate` is its own
+ * property, applied before `transform`, so it never fights a transform the element has
+ * (the About preview's tilt). Fill `backwards` only: once over, opacity and translate are
+ * the element's own again, so later transitions on them still run.
+ */
+:root {
+  --reveal-rise: 1.25rem;
+  --reveal-fade-duration: 0.45s;
+  --reveal-rise-duration: 1.2s;
+  --reveal-rise-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes reveal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes reveal-rise {
+  from {
+    translate: 0 var(--reveal-rise);
+  }
+}
+
+.reveal-in {
+  animation:
+    reveal-fade var(--reveal-fade-duration) ease backwards,
+    reveal-rise var(--reveal-rise-duration) var(--reveal-rise-ease) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-in {
+    animation: reveal-fade var(--reveal-fade-duration) ease backwards;
+  }
+}
