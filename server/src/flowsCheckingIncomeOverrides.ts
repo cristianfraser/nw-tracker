@@ -14,7 +14,7 @@ import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
  * (`flow_income_overrides`, migration 281), so it follows the flow when the cartola row takes over a
  * daily row's.
  */
-const INCOME_OVERRIDES_BY_MOVEMENT = `(SELECT m.id AS movement_id, o.is_excluded, o.force_include, o.income_kind, o.note, o.updated_at
+const INCOME_OVERRIDES_BY_MOVEMENT = `(SELECT m.id AS movement_id, o.is_excluded, o.force_include, o.income_kind, o.note, o.rent_place_id, o.updated_at
   FROM flow_income_overrides o JOIN movements m ON m.flow_id = o.flow_id)`;
 
 export const CHECKING_INCOME_KINDS = [
@@ -22,6 +22,8 @@ export const CHECKING_INCOME_KINDS = [
   "severance",
   "other",
   "parent_gift",
+  /** Rent of a tracked place (`expense_accounts`): the override names the place (`rent_place_id`). */
+  "rent",
 ] as const;
 
 /**
@@ -40,6 +42,7 @@ type OverrideRow = {
   force_include: number;
   income_kind: CheckingIncomeKind | null;
   note: string | null;
+  rent_place_id: number | null;
 };
 
 export function loadForceIncludedCheckingIncomeMovementIds(): Set<number> {
@@ -104,14 +107,19 @@ export function upsertCheckingIncomeMovementOverride(
     excluded?: boolean;
     force_include?: boolean;
     income_kind?: CheckingIncomeKind;
+    /** The place a `rent` credit is the rent of (required with `rent`, refused with any other kind). */
+    rent_place_slug?: string;
     note?: string | null;
   }
 ): OverrideRow {
   assertCheckingCreditMovement(movementId);
+  if (patch.rent_place_slug !== undefined && patch.income_kind !== "rent") {
+    throw new Error("rent_place_slug is only set with income_kind rent");
+  }
 
   const existing = db
     .prepare(
-      `SELECT movement_id, is_excluded, force_include, income_kind, note
+      `SELECT movement_id, is_excluded, force_include, income_kind, note, rent_place_id
        FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow | undefined;
@@ -127,6 +135,16 @@ export function upsertCheckingIncomeMovementOverride(
   const income_kind =
     patch.income_kind !== undefined ? patch.income_kind : (existing?.income_kind ?? null);
   const note = patch.note !== undefined ? patch.note : (existing?.note ?? null);
+  // A rent names its place; another kind names none (the table's CHECK holds the same).
+  const rent_place_id =
+    income_kind !== "rent"
+      ? null
+      : patch.rent_place_slug !== undefined
+        ? rentPlaceIdForSlug(patch.rent_place_slug)
+        : (existing?.rent_place_id ?? null);
+  if (income_kind === "rent" && rent_place_id == null) {
+    throw new Error("a rent names the place it is the rent of (rent_place_slug)");
+  }
 
   if (
     is_excluded === 0 &&
@@ -143,22 +161,75 @@ export function upsertCheckingIncomeMovementOverride(
   }
 
   db.prepare(
-    `INSERT INTO flow_income_overrides (flow_id, is_excluded, force_include, income_kind, note)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO flow_income_overrides (flow_id, is_excluded, force_include, income_kind, note, rent_place_id)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(flow_id) DO UPDATE SET
        is_excluded = excluded.is_excluded,
        force_include = excluded.force_include,
        income_kind = excluded.income_kind,
        note = excluded.note,
+       rent_place_id = excluded.rent_place_id,
        updated_at = datetime('now')`
-  ).run(movementFlowId(movementId), is_excluded, force_include, income_kind, note);
+  ).run(movementFlowId(movementId), is_excluded, force_include, income_kind, note, rent_place_id);
 
   return db
     .prepare(
-      `SELECT movement_id, is_excluded, force_include, income_kind, note
+      `SELECT movement_id, is_excluded, force_include, income_kind, note, rent_place_id
        FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow;
+}
+
+/** The id of a tracked place (an `expense_accounts` row under the real_estate group), by slug. */
+function rentPlaceIdForSlug(slug: string): number {
+  const r = db
+    .prepare(
+      `SELECT a.id FROM expense_accounts a JOIN expense_groups g ON g.id = a.group_id
+        WHERE g.slug = 'real_estate' AND a.slug = ?`
+    )
+    .get(slug) as { id: number } | undefined;
+  if (!r) throw new Error(`unknown place '${slug}'`);
+  return r.id;
+}
+
+/** The place slug each rent credit names, by movement (excluded credits left out). */
+export function loadRentPlaceSlugByMovementId(): Record<number, string> {
+  const rows = db
+    .prepare(
+      `SELECT o.movement_id, a.slug
+         FROM ${INCOME_OVERRIDES_BY_MOVEMENT} o
+         JOIN expense_accounts a ON a.id = o.rent_place_id
+        WHERE o.income_kind = 'rent' AND o.is_excluded = 0`
+    )
+    .all() as { movement_id: number; slug: string }[];
+  return Object.fromEntries(rows.map((r) => [r.movement_id, r.slug]));
+}
+
+/** One rent credit: the place it is the rent of, its day and its pesos. */
+export type RentCredit = { movementId: number; placeId: number; receivedOn: string; amountClp: number };
+
+/**
+ * The rent credits received in a year, from the user's classification (`income_kind = 'rent'`):
+ * a credit excluded from income is left out. A rent must be a peso credit (a dollar one throws: the
+ * F22 has no rule for it here), and a flow carries one movement.
+ */
+export function loadRentCreditsForYear(year: number): RentCredit[] {
+  const rows = db
+    .prepare(
+      `SELECT o.movement_id, o.rent_place_id, m.occurred_on, m.flow_id, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp
+         FROM ${INCOME_OVERRIDES_BY_MOVEMENT} o
+         JOIN movements m ON m.id = o.movement_id
+        WHERE o.income_kind = 'rent' AND o.is_excluded = 0 AND m.occurred_on LIKE ?
+        ORDER BY m.occurred_on, m.id`
+    )
+    .all(`${year}-%`) as { movement_id: number; rent_place_id: number; occurred_on: string; flow_id: number; amount_clp: number }[];
+  const flows = new Set<number>();
+  return rows.map((r) => {
+    if (flows.has(r.flow_id)) throw new Error(`rent flow ${r.flow_id} carries more than one movement`);
+    flows.add(r.flow_id);
+    if (!(r.amount_clp > 0)) throw new Error(`rent movement ${r.movement_id} is not a peso credit`);
+    return { movementId: r.movement_id, placeId: r.rent_place_id, receivedOn: r.occurred_on, amountClp: r.amount_clp };
+  });
 }
 
 export function deleteCheckingIncomeMovementOverride(movementId: number): void {
@@ -168,7 +239,7 @@ export function deleteCheckingIncomeMovementOverride(movementId: number): void {
 export function restoreCheckingIncomeMovement(movementId: number): void {
   const existing = db
     .prepare(
-      `SELECT movement_id, is_excluded, force_include, income_kind, note
+      `SELECT movement_id, is_excluded, force_include, income_kind, note, rent_place_id
        FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow | undefined;
@@ -188,7 +259,7 @@ export function restoreCheckingIncomeMovement(movementId: number): void {
 export function clearCheckingIncomeForceInclude(movementId: number): void {
   const existing = db
     .prepare(
-      `SELECT movement_id, is_excluded, force_include, income_kind, note
+      `SELECT movement_id, is_excluded, force_include, income_kind, note, rent_place_id
        FROM ${INCOME_OVERRIDES_BY_MOVEMENT} WHERE movement_id = ?`
     )
     .get(movementId) as OverrideRow | undefined;

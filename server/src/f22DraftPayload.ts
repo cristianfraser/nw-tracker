@@ -43,6 +43,8 @@ const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [770, "memo"],
   [110, "income"],
   [105, "income"],
+  [1849, "memo"],
+  [955, "income"],
   [161, "memo"],
   [155, "income"],
   [1869, "memo"],
@@ -66,6 +68,7 @@ const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [1829, "tax"],
   [1830, "tax"],
   [136, "credit"],
+  [1637, "credit"],
   [162, "credit"],
   [1018, "credit"],
   [610, "credit"],
@@ -268,6 +271,26 @@ export function buildF22Payload(taxYear: number) {
         amount_clp: x.amountClp,
       })),
       distributions_clp: d.art107DistributionsClp,
+    },
+    rentals: {
+      provisional: d.rentals.provisional,
+      places: d.rentals.places.map((p) => ({
+        slug: p.slug,
+        label: p.label,
+        dfl2: p.dfl2,
+        credits: p.credits,
+        rent_clp: p.rentClp,
+        property_tax_paid_clp: p.propertyTaxPaidClp,
+      })),
+      taxable_rent_clp: d.rentals.taxableRentClp,
+      exempt_rent_clp: d.rentals.exemptRentClp,
+      property_tax_credit: d.propertyTaxCredit == null
+        ? null
+        : {
+            paid_clp: d.propertyTaxCredit.paidClp,
+            cap_clp: d.propertyTaxCredit.capClp,
+            credit_clp: d.propertyTaxCredit.creditClp,
+          },
     },
     usd_fx: {
       route: d.usdFx.route,

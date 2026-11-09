@@ -7,6 +7,7 @@ import type {
   FlowCcExpenseLineSource,
 } from "./flowsExpenses.js";
 import { merchantMatchesExpectation } from "./realEstateExpenseMerchants.js";
+import { dfl2ContribucionesHalvedThroughYear, dfl2ContribucionesHalvingYears } from "./legalParameters.js";
 import {
   billMonthFromSpentOn,
   displayAmountClp,
@@ -88,9 +89,16 @@ export type RealEstatePlaceDto = {
   active_from: string | null;
   active_to: string | null;
   property_account_id: number | null;
+  /** A DFL-2 «vivienda económica»: its rent is not declared, its contribuciones are halved for a window. */
+  dfl2: boolean;
+  /** Built area and the building's reception year: set with the flag, and only with it. */
+  dfl2_built_m2: number | null;
+  dfl2_reception_year: number | null;
+  /** The last year of the contribuciones halving (`dfl2ContribucionesHalvedThroughYear`); null when not DFL-2. */
+  dfl2_contribuciones_halved_through: number | null;
 };
 
-export type RealEstatePlaceRow = RealEstatePlaceDto & { comunidad_merchant_patterns: string | null };
+export type RealEstatePlaceRow = RealEstatePlaceDto & { id: number; comunidad_merchant_patterns: string | null };
 
 export type RealEstateExpenseChartPoint = {
   as_of_date: string;
@@ -159,22 +167,81 @@ export type RealEstateLinkCandidateDto = {
   purchase_month_offset: number;
 };
 
+type PlaceDbRow = Omit<RealEstatePlaceRow, "dfl2" | "dfl2_contribuciones_halved_through"> & { dfl2: number };
+
+/** The DFL-2 fields of a stored place, checked: the area and the reception year go with the flag and only with it. */
+function dfl2Fields(r: Pick<PlaceDbRow, "slug" | "dfl2" | "dfl2_built_m2" | "dfl2_reception_year">) {
+  if (r.dfl2 === 1) {
+    if (r.dfl2_built_m2 == null || r.dfl2_reception_year == null) {
+      throw new Error(`place '${r.slug}': DFL-2 without its built area or reception year`);
+    }
+    return {
+      dfl2: true,
+      dfl2_built_m2: r.dfl2_built_m2,
+      dfl2_reception_year: r.dfl2_reception_year,
+      dfl2_contribuciones_halved_through: dfl2ContribucionesHalvedThroughYear(r.dfl2_built_m2, r.dfl2_reception_year),
+    };
+  }
+  if (r.dfl2_built_m2 != null || r.dfl2_reception_year != null) {
+    throw new Error(`place '${r.slug}': a DFL-2 area or reception year on a place that is not DFL-2`);
+  }
+  return { dfl2: false, dfl2_built_m2: null, dfl2_reception_year: null, dfl2_contribuciones_halved_through: null };
+}
+
 export function listRealEstatePlaces(): RealEstatePlaceRow[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT a.slug, a.label, a.sort_order, a.active_from, a.active_to,
-              a.property_account_id, a.comunidad_merchant_patterns
+      `SELECT a.id, a.slug, a.label, a.sort_order, a.active_from, a.active_to,
+              a.property_account_id, a.comunidad_merchant_patterns,
+              a.dfl2, a.dfl2_built_m2, a.dfl2_reception_year
        FROM expense_accounts a
        JOIN expense_groups g ON g.id = a.group_id
        WHERE g.slug = 'real_estate'
        ORDER BY a.sort_order, a.id`
     )
-    .all() as RealEstatePlaceRow[];
+    .all() as PlaceDbRow[];
+  return rows.map((r) => ({ ...r, ...dfl2Fields(r) }));
 }
 
-function placeToDto(place: RealEstatePlaceRow): RealEstatePlaceDto {
-  const { comunidad_merchant_patterns: _patterns, ...dto } = place;
+export function placeToDto(place: RealEstatePlaceRow): RealEstatePlaceDto {
+  const { comunidad_merchant_patterns: _patterns, id: _id, ...dto } = place;
   return dto;
+}
+
+/** The DFL-2 declaration of a place, as the place form sends it. */
+export type RealEstatePlaceDfl2Input = { dfl2: boolean; builtM2?: number | null; receptionYear?: number | null };
+
+/** The checked columns of a DFL-2 declaration (throws on an area above 140 m² or a missing field). */
+function dfl2Columns(input: RealEstatePlaceDfl2Input): { dfl2: 0 | 1; m2: number | null; year: number | null } {
+  if (!input.dfl2) {
+    if (input.builtM2 != null || input.receptionYear != null) {
+      throw new Error("a built area or reception year is only set on a DFL-2 place");
+    }
+    return { dfl2: 0, m2: null, year: null };
+  }
+  const m2 = input.builtM2;
+  const year = input.receptionYear;
+  if (m2 == null || !Number.isFinite(m2)) throw new Error("a DFL-2 place needs its built area (m²)");
+  if (year == null || !Number.isInteger(year) || year < 1959 || year > 2100) {
+    throw new Error("a DFL-2 place needs the building's reception year");
+  }
+  // Throws above 140 m² (not a vivienda económica) or on a non-positive area.
+  dfl2ContribucionesHalvingYears(m2);
+  return { dfl2: 1, m2, year };
+}
+
+/** Set or clear a place's DFL-2 declaration. */
+export function setRealEstatePlaceDfl2(slug: string, input: RealEstatePlaceDfl2Input): RealEstatePlaceDto {
+  const place = listRealEstatePlaces().find((p) => p.slug === slug);
+  if (!place) throw new Error(`unknown place '${slug}'`);
+  const c = dfl2Columns(input);
+  db.prepare(`UPDATE expense_accounts SET dfl2 = ?, dfl2_built_m2 = ?, dfl2_reception_year = ? WHERE id = ?`).run(
+    c.dfl2,
+    c.m2,
+    c.year,
+    place.id
+  );
+  return placeToDto(listRealEstatePlaces().find((p) => p.id === place.id)!);
 }
 
 const PLACE_SLUG_RE = /^[a-z0-9_]+$/;
@@ -186,6 +253,7 @@ export function createRealEstatePlace(opts: {
   activeFrom?: string | null;
   activeTo?: string | null;
   propertyAccountId?: number | null;
+  dfl2?: RealEstatePlaceDfl2Input;
 }): RealEstatePlaceDto {
   const slug = opts.slug.trim();
   const label = opts.label.trim();
@@ -222,27 +290,28 @@ export function createRealEstatePlace(opts: {
     .get(groupId) as { m: number };
   const sortOrder = maxSort.m + 10;
 
-  db.prepare(
-    `INSERT INTO expense_accounts (group_id, slug, label, sort_order, active_from, active_to, property_account_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    groupId,
-    slug,
-    label,
-    sortOrder,
-    opts.activeFrom || null,
-    opts.activeTo || null,
-    opts.propertyAccountId ?? null
+  const dfl2 = dfl2Columns(opts.dfl2 ?? { dfl2: false });
+  const id = Number(
+    db
+      .prepare(
+        `INSERT INTO expense_accounts (group_id, slug, label, sort_order, active_from, active_to, property_account_id,
+                                       dfl2, dfl2_built_m2, dfl2_reception_year)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        groupId,
+        slug,
+        label,
+        sortOrder,
+        opts.activeFrom || null,
+        opts.activeTo || null,
+        opts.propertyAccountId ?? null,
+        dfl2.dfl2,
+        dfl2.m2,
+        dfl2.year
+      ).lastInsertRowid
   );
-
-  return {
-    slug,
-    label,
-    sort_order: sortOrder,
-    active_from: opts.activeFrom || null,
-    active_to: opts.activeTo || null,
-    property_account_id: opts.propertyAccountId ?? null,
-  };
+  return placeToDto(listRealEstatePlaces().find((p) => p.id === id)!);
 }
 
 /** Places in date order (first occupied first), which is the order their schemes alternate in. */

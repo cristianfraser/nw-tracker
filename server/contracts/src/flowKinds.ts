@@ -51,6 +51,8 @@ export const FLOW_KINDS = [
   def("severance", "income"),
   def("parent_gift", "income"),
   def("other_income", "income"),
+  /** Rent of a place (`expense_accounts`), credited to checking; the F22 splits it by the place's DFL-2 flag. */
+  def("rent", "income"),
   // internal
   def("transfer", "internal"),
   def("card_payment", "internal"),
@@ -165,12 +167,14 @@ export const LEGACY_FLOW_KIND_MAP = {
     severance: "severance",
     other: "other_income",
     parent_gift: "parent_gift",
+    rent: "rent",
   },
   CheckingIncomeKind: {
     salary: "salary",
     severance: "severance",
     other: "other_income",
     parent_gift: "parent_gift",
+    rent: "rent",
   },
   CcExpenseLineRole: {
     purchase: "card_purchase",
