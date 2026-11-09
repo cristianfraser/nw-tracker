@@ -3,7 +3,6 @@ import {
   gastosPeriodMonthForLine,
   gastosSumMonthForLine,
   installmentModalLines,
-  lineMatchesGastosPeriodMonth,
   periodMonthsForGastosLine,
   purchaseModalLines,
 } from "./ccExpensePeriodMonth.js";
@@ -60,8 +59,6 @@ describe("ccExpensePeriodMonth", () => {
       installment_flag: 0,
     });
     expect(periodMonthsForGastosLine(line)).toEqual(["2024-03"]);
-    expect(lineMatchesGastosPeriodMonth(line, "2024-04")).toBe(false);
-    expect(lineMatchesGastosPeriodMonth(line, "2024-03")).toBe(true);
     expect(purchaseModalLines([line], "2024-03")).toHaveLength(1);
     expect(purchaseModalLines([line], "2024-04")).toHaveLength(0);
   });

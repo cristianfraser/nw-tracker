@@ -348,8 +348,6 @@ function ymCompare(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
-const paymentBillingMonth = (p: PlanPaymentMonthInput): string | null => paymentStatementMonthYm(p);
-
 /**
  * A plan's first-cuota month (YYYY-MM), the anchor of its whole schedule: the month of its printed
  * cuota 1 (else the lowest printed cuota), else the statement after its last 00/N preamble, else —
@@ -364,14 +362,14 @@ export function purchaseFirstDueYm(
 ): string {
   const cuota1 = payList.find((p) => p.cuota_current === 1);
   if (cuota1) {
-    const ym = paymentBillingMonth(cuota1);
+    const ym = paymentStatementMonthYm(cuota1);
     if (ym) return ym;
   }
   const withCuota = payList
     .filter((p) => p.cuota_current != null && p.cuota_current > 0)
     .sort((a, b) => a.cuota_current! - b.cuota_current!);
   if (withCuota.length > 0) {
-    const ym = paymentBillingMonth(withCuota[0]!);
+    const ym = paymentStatementMonthYm(withCuota[0]!);
     if (ym) return ym;
   }
 
@@ -385,7 +383,7 @@ export function purchaseFirstDueYm(
     // until real cuota-01 evidence arrived and silently shifted them back.
     let lastStmtYm: string | null = null;
     for (const p of preambleOnly) {
-      const ym = paymentBillingMonth(p);
+      const ym = paymentStatementMonthYm(p);
       if (ym && (lastStmtYm == null || ymCompare(ym, lastStmtYm) > 0)) lastStmtYm = ym;
     }
     if (lastStmtYm) return addCalendarMonths(lastStmtYm, 1);

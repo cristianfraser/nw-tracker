@@ -133,14 +133,3 @@ export function listCcStatementLinesForStatement(statementId: number): CcStateme
   }));
 }
 
-export function ccStatementsPayloadForAccount(accountId: number): {
-  statements: (CcStatementRow & { lines: CcStatementLineRow[] })[];
-} {
-  const statements = listCcStatementsForAccount(accountId);
-  return {
-    statements: statements.map((s) => ({
-      ...s,
-      lines: listCcStatementLinesForStatement(s.id),
-    })),
-  };
-}

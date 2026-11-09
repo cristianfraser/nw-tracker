@@ -105,8 +105,6 @@ export type CcIssuer = (typeof CC_ISSUERS)[number];
 
 export type CcIssuerSlug = (typeof CC_ISSUERS)[number]["slug"];
 
-export const CC_ISSUER_SLUGS: readonly CcIssuerSlug[] = CC_ISSUERS.map((i) => i.slug);
-
 export function ccMasterImportKeyPrefix(slug: CcIssuerSlug): string {
   return `credit_card_master|${slug}|`;
 }

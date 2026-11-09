@@ -370,14 +370,3 @@ export function ccInstallmentPlanTailClpForAccounts(
   return sumCcPlanTails(members.map((m) => ccPlanTailOnGrid(m, todayYmd, futureDates)));
 }
 
-/**
- * Future daily tail (`today+1 .. plan_end`) of the installment simulation for one CC master —
- * the single-member case of {@link ccInstallmentPlanTailClpForAccounts}: null when the account
- * has no schedule or the plan has already settled.
- */
-export function ccInstallmentPlanTailClp(
-  accountId: number,
-  todayYmd: string
-): CcPlanTailPoint[] | null {
-  return ccInstallmentPlanTailClpForAccounts([accountId], todayYmd);
-}

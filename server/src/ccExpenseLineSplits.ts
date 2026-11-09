@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { FLOW_PARTS_BY_LINE_SQL, lineFlowSql } from "./flows/flowParts.js";
+import { FLOW_PARTS_BY_LINE_SQL } from "./flows/flowParts.js";
 
 export type CcExpenseLineSplit = {
   source: "cc" | "checking";
@@ -51,39 +51,5 @@ export function loadCcExpenseLineSplits(): Map<string, CcExpenseLineSplit[]> {
     map.set(key, arr);
   }
   return map;
-}
-
-export function insertLineSplits(opts: {
-  source: "cc" | "checking";
-  lineId: number;
-  splits: Array<{ categorySlug: string; amountClp: number; note: string }>;
-  lineAmountClp: number;
-}): void {
-  const sum = opts.splits.reduce((s, p) => s + p.amountClp, 0);
-  if (Math.abs(sum - opts.lineAmountClp) > 1) {
-    throw new Error(
-      `cc_expense_line_splits sum (${sum}) ≠ line amount (${opts.lineAmountClp}) for ${opts.source}:${opts.lineId}`
-    );
-  }
-
-  const getCatId = db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ? LIMIT 1`);
-  const ins = db.prepare(
-    `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, note)
-     VALUES (${lineFlowSql(opts.source)}, ?, ?, ?, ?)
-     ON CONFLICT(flow_id, seq) DO UPDATE SET
-       category_id = excluded.category_id,
-       amount_clp  = excluded.amount_clp,
-       note        = excluded.note`
-  );
-
-  const tx = db.transaction(() => {
-    for (let i = 0; i < opts.splits.length; i++) {
-      const part = opts.splits[i]!;
-      const catRow = getCatId.get(part.categorySlug) as { id: number } | undefined;
-      if (!catRow) throw new Error(`unknown category slug: ${part.categorySlug}`);
-      ins.run(opts.lineId, i, catRow.id, part.amountClp, part.note);
-    }
-  });
-  tx();
 }
 

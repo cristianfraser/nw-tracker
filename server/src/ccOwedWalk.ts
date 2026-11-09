@@ -192,11 +192,6 @@ export function ccRevaluationCostByDate(accountId: number, unit: CurrencyCode): 
   return out;
 }
 
-/** The pesos-unit revaluation (see {@link ccRevaluationCostByDate}). */
-export function ccUsdRevaluationCostClpByDate(accountId: number): Map<string, number> {
-  return ccRevaluationCostByDate(accountId, "clp");
-}
-
 const CURRENCIES: readonly ("clp" | "usd")[] = ["clp", "usd"];
 
 /** Rate of one `c` into `unit` on `day` at the side a sub-balance of `qty` is valued at. */

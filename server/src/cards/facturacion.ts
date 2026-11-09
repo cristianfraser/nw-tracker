@@ -130,7 +130,7 @@ export function latestFeedBillingClose(accountId: number): CcFeedBillingClose | 
  * next-period end). Two statements announcing different closes for the same month is a
  * contradiction and throws; the CLP and USD twins of one facturación announce the same one.
  */
-export function announcedCloseIsoForBillingMonth(
+function announcedCloseIsoForBillingMonth(
   accountId: number,
   billingMonth: string,
   statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
@@ -469,18 +469,6 @@ export function billingMonthContainingPurchase(
     return bm;
   }
   throw new Error(`Account ${accountId}: no billing cycle contains ${purchaseIso} (close evidence overlaps)`);
-}
-
-/**
- * Close date (ISO) of a billing month from the best evidence: its statement's period end, the
- * feed-observed close, the close the previous statement announced, or the estimate from the
- * account's latest close day (`closeEvidenceForBillingMonth`).
- */
-export function periodToIsoForBillingMonth(
-  accountId: number,
-  billingMonth: string
-): string | null {
-  return closeEvidenceForBillingMonth(accountId, billingMonth).close_iso;
 }
 
 /**

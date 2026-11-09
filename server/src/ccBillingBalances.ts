@@ -429,7 +429,7 @@ export function normalizedInstallmentPurchaseEvents(
  * account, reused across every (close, month-end] window — the detalle builder calls this
  * once per account instead of re-scanning all lines per billing month.
  */
-export function postCloseLiveBalanceAdjustmentsClp(
+function postCloseLiveBalanceAdjustmentsClp(
   accountId: number,
   windows: readonly { closeIso: string; monthEndIso: string }[],
   opts?: { includeInstallmentPurchases?: boolean }

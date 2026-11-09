@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
-import { ccOwedByCurrencyAtYmd, ccOwedClpAtYmd, ccRevaluationCostByDate, ccUsdOwedRateClp, ccUsdRevaluationCostClpByDate } from "./ccOwedWalk.js";
+import { ccOwedByCurrencyAtYmd, ccOwedClpAtYmd, ccRevaluationCostByDate, ccUsdOwedRateClp } from "./ccOwedWalk.js";
 import { convertValue } from "./valueConvert.js";
 import { writeCcOwedAnchor } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -149,7 +149,7 @@ describe("per-currency owed walk", () => {
 
   it("the fx P/L plus the evidence at each day's rate is the change in value", () => {
     if (ccId == null) return;
-    const cost = ccUsdRevaluationCostClpByDate(ccId);
+    const cost = ccRevaluationCostByDate(ccId, "clp");
     let sumCost = 0;
     for (const [d, c] of cost) if (d > ANCHOR && d <= END) sumCost += c;
     const v0 = 100 * ccUsdOwedRateClp(100, ANCHOR)!;
@@ -171,7 +171,7 @@ describe("per-currency owed walk", () => {
 
   it("a dollar payment with its divisas purchase on file counts at the pesos paid", () => {
     if (payCardId == null) return;
-    const cost = ccUsdRevaluationCostClpByDate(payCardId);
+    const cost = ccRevaluationCostByDate(payCardId, "clp");
     const before = addDaysIso(PAY_DATE, -1);
     // The paid dollars' fx P/L that day: from the previous day's debt rate to the real rate.
     expect(cost.get(PAY_DATE)).toBeCloseTo(PAID_CLP - 100 * ccUsdOwedRateClp(100, before)!, 6);

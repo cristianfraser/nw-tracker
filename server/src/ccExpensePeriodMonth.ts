@@ -33,14 +33,6 @@ export function periodMonthsForGastosLine(line: GastosPeriodLine): string[] {
   return [gastosPeriodMonthForLine(line)];
 }
 
-/** Whether a line appears in any month modal bucket for that calendar month. */
-export function lineMatchesGastosPeriodMonth(
-  line: GastosPeriodLine,
-  periodMonth: string
-): boolean {
-  return gastosPeriodMonthForLine(line) === periodMonth;
-}
-
 /** Month bucket for gasto del mes / chart stacks. Empty string → skip in totals. */
 export function gastosSumMonthForLine(
   line: GastosPeriodLine,
