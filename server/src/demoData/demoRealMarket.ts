@@ -4,7 +4,9 @@
  * instance syncs from, so the demo's holdings are valued at real prices and the wake-on-visit
  * syncs (`demoMarketActivity.ts`) only ever append the days since:
  *
- * - `equity_daily`: Yahoo daily closes of every ticker the demo holds (BTC-USD included);
+ * - `equity_daily`: Yahoo daily closes of every ticker the demo holds (BTC-USD included); the IPSA
+ *   ETF's closes before Yahoo carries them (2026-07-02) from the committed snapshot of the Bolsa de
+ *   Santiago's (`DEMO_SANTIAGO_SNAPSHOT_CSV_PATH`: a closed past never changes);
  * - `fx_daily`: Yahoo CLP=X (write-once, like the live frame);
  * - `fx_daily_bcentral` / `eur_daily` / `uf_daily` / `utm_daily` / `ipc_daily`: Banco Central
  *   (`BCENTRAL_EMAIL` / `BCENTRAL_PASSWORD` are required — a Render secret on the demo);
@@ -84,6 +86,65 @@ export const DEMO_AFP_MODELO_CSV_PATH = resolve(
 );
 
 const MODELO_CSV_HEADER = "afp;fund;day;unit_value_clp";
+
+/** The Bolsa de Santiago's closes of the IPSA ETF before Yahoo carries them (committed data). */
+export const DEMO_SANTIAGO_SNAPSHOT_CSV_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../data/demo/cfietfipsa-sn-2025-2026.csv"
+);
+
+const SANTIAGO_SNAPSHOT_HEADER = "ticker;day;close_clp";
+
+/**
+ * Rows of a Santiago closes snapshot (`ticker;day;close_clp`, dot decimals, trading days
+ * ascending), by ticker. Throws on another header, a day out of order or repeated, or a close
+ * that is not positive.
+ */
+export function parseDemoSantiagoSnapshotCsv(text: string): Map<string, EodCloseSeries> {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines[0] !== SANTIAGO_SNAPSHOT_HEADER) throw new Error(`demo santiago csv: unexpected header «${lines[0] ?? ""}»`);
+  const out = new Map<string, EodCloseSeries>();
+  for (const line of lines.slice(1)) {
+    const cells = line.split(";");
+    if (cells.length !== 3) throw new Error(`demo santiago csv: unexpected line «${line}»`);
+    const [ticker, day, raw] = cells as [string, string, string];
+    if (!/\.SN$/.test(ticker)) throw new Error(`demo santiago csv: not a Santiago ticker «${line}»`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`demo santiago csv: invalid day «${line}»`);
+    if (!/^\d+(?:\.\d+)?$/.test(raw)) throw new Error(`demo santiago csv: unreadable close «${line}»`);
+    const close = Number(raw);
+    if (!(close > 0)) throw new Error(`demo santiago csv: non-positive close «${line}»`);
+    const s = out.get(ticker) ?? { dates: [], closes: [] };
+    const prev = s.dates.at(-1);
+    if (prev != null && day <= prev) throw new Error(`demo santiago csv: ${day} does not follow ${prev}`);
+    s.dates.push(day);
+    s.closes.push(close);
+    out.set(ticker, s);
+  }
+  if (out.size === 0) throw new Error("demo santiago csv: no rows");
+  return out;
+}
+
+/**
+ * A ticker's closes: the snapshot's before Yahoo's first day, then Yahoo's. Throws when the two
+ * leave a gap of more than a week (the snapshot must reach Yahoo's start).
+ */
+export function spliceSnapshotBeforeYahoo(snapshot: EodCloseSeries, yahoo: EodCloseSeries): EodCloseSeries {
+  const firstYahoo = yahoo.dates[0];
+  if (firstYahoo == null) return snapshot;
+  const dates: string[] = [];
+  const closes: number[] = [];
+  snapshot.dates.forEach((d, i) => {
+    if (d < firstYahoo) {
+      dates.push(d);
+      closes.push(snapshot.closes[i]!);
+    }
+  });
+  const last = dates.at(-1);
+  if (last != null && Date.parse(firstYahoo) - Date.parse(last) > 7 * 86_400_000) {
+    throw new Error(`demo market: the snapshot ends ${last}, more than a week before Yahoo starts ${firstYahoo}`);
+  }
+  return { dates: [...dates, ...yahoo.dates], closes: [...closes, ...yahoo.closes] };
+}
 
 /**
  * Rows of the Modelo snapshot (`afp;fund;day;unit_value`, plain dot decimals, one row per calendar
@@ -227,6 +288,7 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
 
   const equities: Record<string, number> = {};
   const dividends: Record<string, number> = {};
+  const snapshots = parseDemoSantiagoSnapshotCsv(readFileSync(DEMO_SANTIAGO_SNAPSHOT_CSV_PATH, "utf8"));
   for (const { ticker, firstUse } of tickers) {
     const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
     const withDividends = benchmarkTickers.has(ticker);
@@ -241,7 +303,8 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
       } else {
         raw = await fetchYahooDailyCloses(ticker, unixSeconds(from), p2);
       }
-      const s = closesThrough(raw, last);
+      const snapshot = snapshots.get(ticker);
+      const s = closesThrough(snapshot ? spliceSnapshotBeforeYahoo(snapshot, raw) : raw, last);
       if (s.dates.length === 0) throw new Error(`no closes for ${ticker}`);
       return { series: s, divs };
     });

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarket.js";
+import {
+  DEMO_AFP_MODELO_CSV_PATH,
+  DEMO_SANTIAGO_SNAPSHOT_CSV_PATH,
+  parseDemoAfpModeloCsv,
+  parseDemoSantiagoSnapshotCsv,
+  spliceSnapshotBeforeYahoo,
+} from "./demoRealMarket.js";
 
 const HEADER = "afp;fund;day;unit_value_clp";
 
@@ -30,5 +36,36 @@ describe("demo Modelo fund A snapshot", () => {
     expect(rows[0]!.day).toBe("2018-01-01");
     expect(rows.at(-1)!.day).toBe("2020-03-31");
     expect(rows).toHaveLength(821);
+  });
+});
+
+describe("demo Santiago closes snapshot", () => {
+  const H = "ticker;day;close_clp";
+
+  it("reads closes by ticker and throws on a bad row", () => {
+    const m = parseDemoSantiagoSnapshotCsv(`${H}\nABC.SN;2025-06-02;1000.5\nABC.SN;2025-06-03;1001\n`);
+    expect(m.get("ABC.SN")).toEqual({ dates: ["2025-06-02", "2025-06-03"], closes: [1000.5, 1001] });
+    expect(() => parseDemoSantiagoSnapshotCsv("day;close\n2025-06-02;1")).toThrow(/header/);
+    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nSPY;2025-06-02;1`)).toThrow(/Santiago/);
+    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nABC.SN;2025-06-03;1\nABC.SN;2025-06-02;1`)).toThrow(/follow/);
+    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nABC.SN;2025-06-02;0`)).toThrow(/non-positive/);
+    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\n`)).toThrow(/no rows/);
+  });
+
+  it("keeps the snapshot before Yahoo's first day, and refuses a gap", () => {
+    const snap = { dates: ["2025-06-02", "2025-06-03", "2025-06-04"], closes: [1, 2, 3] };
+    expect(spliceSnapshotBeforeYahoo(snap, { dates: ["2025-06-04", "2025-06-05"], closes: [30, 40] })).toEqual({
+      dates: ["2025-06-02", "2025-06-03", "2025-06-04", "2025-06-05"],
+      closes: [1, 2, 30, 40],
+    });
+    expect(spliceSnapshotBeforeYahoo(snap, { dates: [], closes: [] })).toEqual(snap);
+    expect(() => spliceSnapshotBeforeYahoo(snap, { dates: ["2025-07-01"], closes: [9] })).toThrow(/week/);
+  });
+
+  it("the committed snapshot reaches Yahoo's first IPSA ETF close", () => {
+    const m = parseDemoSantiagoSnapshotCsv(readFileSync(DEMO_SANTIAGO_SNAPSHOT_CSV_PATH, "utf8"));
+    const s = m.get("CFIETFIPSA.SN")!;
+    expect(s.dates[0]).toBe("2025-05-12");
+    expect(s.dates.at(-1)).toBe("2026-07-01");
   });
 });
