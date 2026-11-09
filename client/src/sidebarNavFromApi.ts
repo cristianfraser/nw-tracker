@@ -95,7 +95,7 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false, markers = false): SidebarN
   };
 }
 
-/** Build sidebar nodes from `GET /api/meta/sidebar-nav` (same layout sections as legacy builder). */
+/** Build sidebar nodes from `GET /api/meta/sidebar-nav`. */
 export function buildSidebarNavFromApi(payload: SidebarNavResponse): SidebarNavNode[] {
   const out: SidebarNavNode[] = [];
   if (payload.dashboard) {

@@ -22,11 +22,6 @@ import type { FlowsOverviewTotals } from "../types";
 
 const PAGE_SIZE = 12;
 
-/**
- * Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. The
- * rows come from the server (`GET /api/flows/overview`); the page clips them to the chart's Rango
- * and rolls years up.
- */
 /** One figure of the totals lines and the detail table, desktop column and mobile card alike. */
 type OverviewColumn = {
   id: string;
@@ -79,6 +74,11 @@ const COLUMNS: readonly OverviewColumn[] = [
   },
 ];
 
+/**
+ * Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. The
+ * rows come from the server (`GET /api/flows/overview`); the page clips them to the chart's Rango
+ * and rolls years up.
+ */
 export function FlowsOverviewPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();

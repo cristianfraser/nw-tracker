@@ -18,7 +18,7 @@ export type CardGroupMetrics = {
   /** Net deposits in the selected calendar month or year. */
   deposits_period_clp: number;
   deposits_period_usd?: number | null;
-  /** Balance change vs prior month/year-end close (Σ current − Σ prior; matches title Δ). */
+  /** Balance change vs prior month/year-end close (Σ current − Σ prior). */
   delta_period_clp: number | null;
   delta_period_usd?: number | null;
 };

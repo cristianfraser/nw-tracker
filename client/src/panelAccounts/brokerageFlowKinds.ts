@@ -17,7 +17,7 @@ export const BROKERAGE_FLOW_KINDS = [
   "other",
 
 ] as const;
-// `dividend_usd` (single-leg DRIP) was retired 2026-08-02: dividends are `dividend_payout`
+// There is no single-leg DRIP kind: dividends are `dividend_payout`
 // transfers (stock → USD cash) and reinvestments separate `stock_buy` rows. On this stock
 // form the payout counterpart is the RECEIVING USD cash account (role "to"); on the USD
 // cash form it is the paying stock (role "from") — see the form-context params below.

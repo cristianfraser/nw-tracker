@@ -5,11 +5,6 @@ import {
 import type { NavTreeNodeDto } from "./types";
 
 /**
- * Nav nodes that each become one chart series in "Agrupado" mode. The chart series themselves are
- * now aggregated server-side (see server/src/groupChartBuckets.ts); this client copy is retained
- * only for non-chart consumers (nav card breakdown coverage / counts).
- */
-/**
  * A node's first-level children when it holds accounts beside sub-buckets (Acciones: its stocks
  * and the Portafolio IPSA unit) — each one bucket; `null` when it holds only one kind. Mirrors
  * the server's `mixedChartChildren` (the server also orders them by balance; consumers here
@@ -22,6 +17,11 @@ export function mixedNavChildren(navNode: NavTreeNodeDto): NavTreeNodeDto[] | nu
   return [...groupKids, ...accountKids];
 }
 
+/**
+ * Nav nodes that each become one bucket of a group page. Chart series are aggregated server-side
+ * (server/src/groupChartBuckets.ts); this copy serves non-chart consumers (nav card breakdown
+ * coverage / counts).
+ */
 export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
   const mixed = mixedNavChildren(navNode);
   if (mixed) return mixed;

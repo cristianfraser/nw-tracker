@@ -88,7 +88,7 @@ export function buildPlaceholderDashboardTimeseries(
   };
 }
 
-/** Minimal dash payload so allocation pie and card strip can mount at zero. */
+/** Minimal dash payload so the allocation chart and card strip can mount at zero. */
 export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardResponse {
   const includeUsd = unit === "usd";
   const zeroBucketCloses = {

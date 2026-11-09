@@ -15,8 +15,7 @@ type Props = {
   colorRgb?: string | null;
 };
 
-/** Card title row — label only (the old period balance-Δ chip was removed with the
- * all-periods card metrics restructure; the Δ now lives in the metric rows). */
+/** Card title row — label only; the Δ lives in the metric rows. */
 export function DashboardCardTitleRow({ label, titleTo, colorRgb }: Props) {
   const rgb = parseRgbTriplet(colorRgb);
   const text = rgb ? (

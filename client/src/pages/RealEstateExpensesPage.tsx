@@ -88,7 +88,7 @@ export function RealEstateExpensesPage() {
       onRangeChange={chartPrefs.setRange}
     />
   );
-  // Real estate is billed-period (bill_month) → month/year only; the global Período toolbar
+  // Real estate is billed-period (bill_month) → month/year only; the surface's Período
   // clamps Diario → Mensual here (a per-day billed view has no meaning). Rango still applies.
   const granularity = monthYearSurfacePeriod(metricsPeriod);
   const { accountSlug } = useParams<{ accountSlug?: string }>();

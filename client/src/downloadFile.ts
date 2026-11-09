@@ -1,4 +1,4 @@
-/** Binary download through fetch (same-origin auth applies); errors surface as JSON `error`. */
+/** Binary download through fetch ; errors surface as JSON `error`. */
 export async function downloadFile(path: string): Promise<void> {
   const base = import.meta.env.VITE_API_URL ?? "";
   const res = await fetch(`${base}${path}`);

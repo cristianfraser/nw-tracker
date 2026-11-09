@@ -2,8 +2,7 @@ import type { ReactNode } from "react";
 
 /**
  * Chart panel heading: the `.chart-panel-title` heading plus optional right-aligned
- * per-surface controls (`SurfaceControls`). Without controls it renders the bare heading,
- * byte-identical to the pre-controls markup. Render this in EVERY branch of a chart —
+ * per-surface controls (`SurfaceControls`). Without controls it renders the bare heading. Render this in EVERY branch of a chart —
  * including empty states — so a range that clips everything away still offers its controls.
  */
 export function ChartPanelTitleRow({

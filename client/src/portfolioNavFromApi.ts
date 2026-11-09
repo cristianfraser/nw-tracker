@@ -102,7 +102,7 @@ export function isNavBucketNode(node: NavTreeNodeDto): boolean {
   return node.group_kind === "nav_bucket";
 }
 
-/** @deprecated Use {@link isNavBucketNode}. */
+/** Alias of {@link isNavBucketNode}. */
 export const isNavHubNode = isNavBucketNode;
 
 /** Pasivos root — sidebar / group page only; excluded from net-worth dashboard bucket cards. */

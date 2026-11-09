@@ -54,7 +54,7 @@ function formatProxyCell(
 }
 
 /**
- * Close date with its provenance: an estimate from the config cycle reads «≈», a close announced
+ * Close date with its provenance: an estimated close reads «≈», a close announced
  * by the previous statement carries a hint; a statement or feed close is plain.
  */
 function CloseDateCell({ row }: { row: CcFacturacionDto }) {

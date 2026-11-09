@@ -35,7 +35,7 @@ import { useChartStyle } from "./chartStyle";
 import { HATCH_TUNING } from "./hatchTuning";
 
 /**
- * The hand-drawn chart styles (rehearsal 2026-11-03): the series drawn by rough.js as if by a
+ * The hand-drawn chart styles: the series drawn by rough.js as if by a
  * pen, a pencil, a marker or a crayon. Recharts 3.9+ hands a `shape` the computed geometry of a
  * Line (`points`), an Area (`points` + `baseLine`) and a Bar (`x`, `y`, `width`, `height`), so
  * the sketch is a pure function of that geometry: no DOM, no post-processing. `injectRoughShapes`
@@ -305,7 +305,7 @@ const ROUGH_MODES: Record<Exclude<ChartStyle, "plain">, RoughMode> = {
     multiStrokeExtras: true,
     seedSalt: 3,
   },
-  // The former marker: two wide see-through passes over a fainter, wider bleed, the whole
+  // Watercolour: two wide see-through passes over a fainter, wider bleed, the whole
   // stroke blurred — it reads as a wash, like watercolour.
   watercolor: {
     roughness: 1.2,

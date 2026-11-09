@@ -5,7 +5,7 @@ export const PERIOD_REF_LINE_STROKE = "#94a3b8";
 
 /**
  * The dotted vertical "current period" marker shared by the CC historial chart and the expenses
- * chart. Drawn under the series, as it was when Recharts painted in JSX order.
+ * chart. Drawn under the series.
  */
 export function renderPeriodRefLine({ x, label }: { x: string; label?: string }) {
   return (

@@ -8,7 +8,7 @@ const PENDING_GRID_COLS = [0.2, 0.4, 0.6, 0.8, 1];
 /**
  * Every chart's empty branch. While `loading`, the chart box at the chart's size with an empty
  * plot — axes and the grid in the charts' own strokes, no series — the «no data» copy is for a real absence, never for data that has not
- * arrived. Render it under the ChartPanelTitleRow, where the message used to go. A chart that
+ * arrived. Render it under the ChartPanelTitleRow. A chart that
  * sizes its box explicitly passes the same `boxStyle`, so nothing shifts when the data lands.
  */
 export function ChartEmptyState({

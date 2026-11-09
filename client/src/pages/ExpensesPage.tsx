@@ -34,7 +34,7 @@ const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
 /** Rangos long enough for the per-year average line to read as a trend. */
 const YEAR_AVERAGE_RANGES: ReadonlySet<TimeRange> = new Set(["3y", "5y", "10y", "total"]);
 
-/** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
+/** Expenses page: gastos by month and category, with the expense lines behind them. */
 export function ExpensesPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();

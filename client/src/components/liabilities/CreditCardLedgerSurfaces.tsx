@@ -52,7 +52,7 @@ function surfaceIdPrefix(scope: CcSurfaceScope): string {
  * «Historial» — saldo total + deuda en cuotas lines over the stacked facturación bars (cuotas,
  * rest of CLP, US$). D/M/Y + Rango. Day mode swaps in the daily-series CC block (owed walk, plan
  * debt, plan tail and each card's bar on its close day — fetched in CLP for this scope). Renders
- * nothing without an installment ledger, like before — unless the host is still `loading` its
+ * nothing without an installment ledger — unless the host is still `loading` its
  * ledger bundle (a placeholder says nothing about absence): then the frame (title row + pending
  * chart box) renders dimmed.
  */
