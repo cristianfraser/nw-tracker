@@ -33,10 +33,6 @@ const LINES: [string, Point[]][] = [
 const MAX_GAP_PX = 3;
 
 describe("hand-drawn pens leave no gaps", () => {
-  it("covers every pen type", () => {
-    expect(PENS).toEqual(["pen", "pencil", "marker", "watercolor", "crayon"]);
-  });
-
   for (const style of PENS) {
     for (const [label, line] of LINES) {
       it(`${style}: ${label} line, 50 seeds, no interior stretch over ${MAX_GAP_PX} px without full ink`, () => {

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  decimalSeparatorFromTimeZone,
-  numberLocaleForSeparator,
-} from "./numberFormatPreference";
+import { decimalSeparatorFromTimeZone } from "./numberFormatPreference";
 
 describe("decimalSeparatorFromTimeZone", () => {
   it("defaults to comma (Chile, Europe, rest of world)", () => {
@@ -35,12 +32,5 @@ describe("decimalSeparatorFromTimeZone", () => {
     expect(decimalSeparatorFromTimeZone("America/Lima")).toBe("comma");
     expect(decimalSeparatorFromTimeZone("America/Bogota")).toBe("comma");
     expect(decimalSeparatorFromTimeZone("America/Panama")).toBe("comma");
-  });
-});
-
-describe("numberLocaleForSeparator", () => {
-  it("maps comma → es-CL and period → en-US", () => {
-    expect(numberLocaleForSeparator("comma")).toBe("es-CL");
-    expect(numberLocaleForSeparator("period")).toBe("en-US");
   });
 });

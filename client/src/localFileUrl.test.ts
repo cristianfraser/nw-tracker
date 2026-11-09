@@ -5,10 +5,10 @@ describe("absolutePathToFileUrl", () => {
   it("encodes spaces and builds file:/// on Unix paths", () => {
     expect(
       absolutePathToFileUrl(
-        "/Users/crfrsr/Projects/nw-tracker/cfraser/excels/cuenta corriente/2026-04-30 Cartola.xlsx"
+        "/Users/someone/data/statements/bank account/2026-04-30 Statement.xlsx"
       )
     ).toBe(
-      "file:///Users/crfrsr/Projects/nw-tracker/cfraser/excels/cuenta%20corriente/2026-04-30%20Cartola.xlsx"
+      "file:///Users/someone/data/statements/bank%20account/2026-04-30%20Statement.xlsx"
     );
   });
 });

@@ -56,22 +56,14 @@ function dashRow(
 }
 
 /** Mirrors `DashboardCardBreakdown` single-account collapse. */
-function visibleBreakdownLabels(lines: ReturnType<typeof buildNavCardBreakdown>): string[] {
-  if (!lines) return [];
-  const out: string[] = [];
-  const visit = (node: ReturnType<typeof nestCardBreakdownLines>[number]) => {
-    out.push(node.label);
-    const sole = node.children.length === 1 ? node.children[0]! : null;
-    const hideOnlyChild =
-      sole != null &&
-      sole.children.length === 0 &&
-      Boolean(sole.to?.startsWith("/account/"));
-    if (node.children.length > 0 && !hideOnlyChild) {
-      for (const child of node.children) visit(child);
-    }
-  };
-  for (const node of nestCardBreakdownLines(lines)) visit(node);
-  return out;
+type LabelTree = { label: string; children: LabelTree[] };
+
+function breakdownLabelTree(lines: ReturnType<typeof buildNavCardBreakdown>): LabelTree[] {
+  const toTree = (node: ReturnType<typeof nestCardBreakdownLines>[number]): LabelTree => ({
+    label: node.label,
+    children: node.children.map(toTree),
+  });
+  return lines ? nestCardBreakdownLines(lines).map(toTree) : [];
 }
 
 describe("buildNavCardBreakdown retirement", () => {
@@ -119,7 +111,7 @@ describe("buildNavCardBreakdown retirement", () => {
     expect(afcLine?.clp).toBe(8_000_000);
   });
 
-  it("collapsed breakdown shows APV and AFP+AFC bucket rows", () => {
+  it("nests the APV and AFP+AFC bucket rows over their accounts, largest first", () => {
     const retirement = groupNode("retirement", [
       groupNode(
         "retirement_afp_afc",
@@ -158,13 +150,11 @@ describe("buildNavCardBreakdown retirement", () => {
       }),
     });
 
-    expect(visibleBreakdownLabels(lines)).toEqual([
-      "APV",
-      "apv-a",
-      "apv-b",
-      "AFP + AFC",
-      "afp",
-      "afc",
+    const leaf = (label: string): LabelTree => ({ label, children: [] });
+    const group = (label: string, children: LabelTree[]): LabelTree => ({ label, children });
+    expect(breakdownLabelTree(lines)).toEqual([
+      group("APV", [group("apv-a", [leaf("apv-a")]), group("apv-b", [leaf("apv-b")])]),
+      group("AFP + AFC", [group("afp", [leaf("AFP UNO")]), group("afc", [leaf("AFC Banco")])]),
     ]);
   });
 

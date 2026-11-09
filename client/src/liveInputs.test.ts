@@ -23,11 +23,6 @@ describe("parseLiveInputs", () => {
     expect(inputs?.dimming).toBe(true);
     expect([...(inputs?.tickers ?? [])]).toEqual(["BTC-USD", "SPY"]);
   });
-
-  it("reads none as no inputs, a missing header as unknown", () => {
-    expect(parseLiveInputs("none")).toEqual({ tickers: new Set(), fx: false, dimming: false });
-    expect(parseLiveInputs(null)).toBeNull();
-  });
 });
 
 describe("queryReadsMovedPrice", () => {

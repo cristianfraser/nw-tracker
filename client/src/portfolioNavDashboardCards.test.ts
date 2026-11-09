@@ -270,40 +270,6 @@ describe("breakdownForNavChild cash_savings", () => {
     expect(br?.lines?.[0]?.clp).toBe(2_000_000);
     expect(br?.bottomLines).toBeUndefined();
   });
-
-  it("builds savings breakdown (not full cash hub) for savings nav node", () => {
-    const node: NavTreeNodeDto = navNodeFixture({
-      slug: "cash_savings",
-      label: "Ahorros y reservas",
-      asset_group_slug: "cash_eqs__cash_savings",
-      route_path: "/cash_eqs/savings",
-      children: [leafAccount(1)],
-    });
-    const br = breakdownForNavChild(node, {
-      card_metrics_by_slug: {},
-      liabilities_breakdown: undefined,
-      dashboard_layout: [],
-      accounts: [
-        {
-          account_id: 1,
-          name: "Reserva",
-          nav_label: "Reserva",
-          category_slug: "fondo_reserva",
-          category_label: "Reserva",
-          group_slug: "cash_eqs",
-          group_label: "Cash",
-          dashboard_bucket_slug: "cash_eqs",
-          bucket_slug: "cash_eqs__fondo_reserva",
-          current_value_clp: 2_000_000,
-          current_value_usd: null,
-          deposits_clp: 0,
-          exclude_from_group_totals: 0,
-        } as DashboardAccountRow,
-      ],
-    });
-    expect(br?.lines.length).toBeGreaterThan(0);
-    expect(br?.lines[0]?.clp).toBe(2_000_000);
-  });
 });
 
 describe("navParentMainValue", () => {

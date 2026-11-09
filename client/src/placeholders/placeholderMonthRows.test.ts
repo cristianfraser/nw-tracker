@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   emptyAccountMonthlyPerfRows,
   monthEndYmd,
@@ -13,20 +13,31 @@ describe("monthEndYmd", () => {
 });
 
 describe("monthEndYmdsThroughToday", () => {
-  it("includes current month end", () => {
-    const ends = monthEndYmdsThroughToday(2);
-    const now = new Date();
-    const y = now.getFullYear();
-    const expectedEnd = monthEndYmd(y, now.getMonth() + 1);
-    expect(ends[ends.length - 1]).toBe(expectedEnd);
-    expect(ends.length).toBeGreaterThanOrEqual(2);
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 1, 10, 12, 0, 0));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("runs from N months back through the current month's end, across a year boundary", () => {
+    expect(monthEndYmdsThroughToday(2)).toEqual(["2025-12-31", "2026-01-31", "2026-02-28"]);
   });
 });
 
 describe("emptyAccountMonthlyPerfRows", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 1, 10, 12, 0, 0));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("aligns row count with month-end series through today", () => {
     const rows = emptyAccountMonthlyPerfRows(42, "clp");
-    expect(rows.length).toBe(monthEndYmdsThroughToday().length);
+    expect(rows.length).toBe(25);
     expect(rows.every((r) => r.unit === "clp")).toBe(true);
     expect(rows.every((r) => r.nominal_pl == null)).toBe(true);
   });

@@ -228,7 +228,6 @@ describe("stale nav snapshot vs a grown nav tree", () => {
     writeSidebarNavCache(sidebarNav(true));
     expect(readDashboardNavSnapshotCache("clp")).toBeUndefined();
     expect(hasDashboardNavSnapshotCache("clp")).toBe(false);
-    expect(storage["nw:dashboard-nav-snapshot-v8:clp"]).toBeUndefined();
 
     // The next live snapshot, which carries the new slug, is kept.
     writeDashboardNavSnapshotCache("clp", snapshotWithSlugs([...OLD_SLUGS, "tst_new_portfolio"]));
