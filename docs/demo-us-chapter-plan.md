@@ -275,8 +275,8 @@ does the contractor payslips; the ingest kinds come when a real user needs them.
 
 ### Decisions taken for the build
 
-- **401(k) valuation: (b), units × a dollar fund series.** `fund_unit_daily` gains `currency`
-  (migration 298, every stored row `clp`); `fundPriceAt` prices a fund in the series' currency and
+- **401(k) valuation: (b), units × a dollar fund series.** `fund_unit_daily` already carries
+  `currency` (migration 257; every stored row `clp` — the 298 this plan first named was not needed); `fundPriceAt` prices a fund in the series' currency and
   `accountProfile` gives a fund holding its series' quote; every legacy reader of the column that
   assumes pesos asserts `clp` (fail fast), as the valuations readers do since migration 260. The
   401(k) is then a cuota ledger like the APV accounts, priced daily.
@@ -290,9 +290,10 @@ does the contractor payslips; the ingest kinds come when a real user needs them.
   two asset groups under `retirement`; the portfolio-group rows (and the reparenting of the Chilean
   leaf asset groups under `retirement_cl`) are written by the demo generator, and
   `rebuildRetirementNav` links by what exists, so the personal instance keeps its tree untouched.
-- **Migrations:** 297 `payroll_work_earnings.jurisdiction`, 298 `fund_unit_daily.currency`, later
-  ones numbered by the stream that needs them in the order the waves merge (the integrator
-  renumbers at merge when two streams took the same number).
+- **Migrations:** 297 `payroll_work_earnings.jurisdiction` (+ pay period, pay date, W-4 status, a
+  `memo` line side), 298 the property / loan identity roles (`us-loans`, renumbered from 299 at the
+  merge); later ones numbered by the stream that needs them in the order the waves merge (the
+  integrator renumbers at merge when two streams took the same number).
 
 ### Waves
 
@@ -338,3 +339,86 @@ provenance, server computes / client picks, tests on synthetic fixtures only, En
 i18n for copy), the commit convention (small commits on the stream branch, no co-author trailer),
 and the report shape: what changed, what was left as a note for another stream, the check results
 verbatim, the decisions it took.
+
+### Wave 1 status (2026-11-09): merged into the integration branch, green
+
+Four streams landed (us-retirement-nav 4db62848, us-payroll-model e9baa075, us-loans + the 299→298
+renumber, us-depth), no merge conflicts. On the merged tree: `npm run typecheck` ok (conventions +
+check-deps ok), server 483 files / 3197 tests on a fresh test DB, client 474, contracts 126, ingest
+481; both people generate on the synthetic market with the invariants passing — the demo person
+US$367.491 (337,9 M CLP; 2.083 movements; 3 tax passes; 30 s), the test person US$28.302 (3 s).
+Not merged to `main`.
+
+### Notes from wave 1 (for waves 2–4)
+
+- **Environment:** a worktree must not symlink the whole `node_modules` of a sibling checkout —
+  the store's `nw-tracker-*` workspace links then point at the SIBLING's sources (a stream
+  type-checked against the old contracts), and the integration worktree's store was stale
+  (Recharts 2 against the lock's 3.10.1). Now: a fresh `npm ci` lives in
+  `.claude/worktrees/us-deps` (better-sqlite3 built by hand — npm 11 skips install scripts; the
+  Recharts patch applied) and every worktree gets a `node_modules` DIRECTORY of links into it with
+  the four workspace packages pointing at itself (`server/`, `ingest/` node_modules linked too);
+  the script is the integrator's `link-deps.sh`. The streams' «client typecheck fails on
+  recharts» / «imapflow missing» were this, nothing else.
+- **For `us-chapter-gen` (phase 2 + 3 generator):**
+  - A US pay stub payload: `jurisdiction: "us"`, `pay_period: "biweekly"`, `pay_date`,
+    `period_start` / `period_end`, `employer {name, ein}`, `w4 {filing_status}`, `gross_pay`,
+    `total_deductions`, `net_pay`, lines with sides `haber` / `descuento` / `memo` (the employer
+    match is a `memo` line, outside the sums; an RSU vest is an earning plus an `RSU Offset`
+    deduction). The worked example is the fixture in `server/src/usPayslips.test.ts`; the labels
+    the classifier accepts are listed in `payslipLineKinds.ts`. FICA wages = gross − (medical +
+    dental/vision + HSA); withholding = `usPercentageMethodWithholding(wages − pre-tax 401(k) −
+    cafeteria, freq, status, year)` + `usSupplementalWithholding(bonus + RSU, prior, year)`;
+    Social Security / Medicare through `usSocialSecurityTax` / `usMedicareTax` with the employer's
+    year-to-date wages. A stub pairs with a single-leg USD credit of exactly `net_pay`, pay date
+    −2 … +3 days — the US checking account's credits must reach the income lines
+    (`buildFlowsCheckingIncomePayload`), else the invariants report the stubs unmatched. Chilean
+    payloads now carry `jurisdiction: "cl"`, `pay_period: "monthly"` (`render.ts` already does).
+  - The retirement split: create the US accounts first, then `ensureRetirementCountrySplit()`
+    (`seedNavTree.ts`; idempotent — reparents the Chilean leaf asset groups, creates the five
+    portfolio groups, reseeds); an empty US leaf is left out of the tree, so call `seedNavTree()`
+    again after creating accounts if the split ran earlier. The 401(k): asset group
+    `retirement_us_401k__us_401k` (kind `us_401k`, a cuota ledger), `fund_series_key` its own key,
+    rows through `writeFundUnitSeriesRows({seriesKey, currency: "usd", rows})`, contributions as
+    single-leg movements with `units_delta` and the dollars; HSA on `retirement_us_hsa__hsa`
+    (kind `hsa`); the Roth IRA on `retirement_us_roth_ira__roth_ira` holds SPY shares
+    (`equity_ticker`). 401(k) and HSA kinds are payroll-funded (pre-tax deposits); the pension rows
+    in `flowsDeposits.ts` filter `amount_clp > 0`, so a dollar contribution may need the peso leg
+    handled there (check). The position card prices a dollar fund at its price day's stored rate,
+    today's value at the live rate.
+  - `person.ts` gained `splits`, `afpWithdrawals`, `dap`, `ibkr`, `apv.monthly` and the play kind
+    `buy_clp`; stock holdings are tracked per broker in `simulate.ts` (`buyStock` / `sellStock` /
+    `depositBrokerUsd` take the cash account; `dollarBroker(month)` routes new dollars);
+    `DIVIDEND_WITHHOLDING_RATE` is exported and `taxDocuments.ts` reads the IBKR role to withhold
+    0 % there. Job 3 still runs to 2024-09 — phase 2 moves its end to 2024-03 and routes the US
+    salary. Peso sweeps after 2024-05 still buy SPY at the Chilean broker; only dollars go to IBKR.
+  - A second property and loan: `propertyAccountImportKey("centro")` under a `real_estate__property`
+    leaf, `loanAccountImportKey("centro")` under `liabilities__mortgage` (any order; the triggers
+    seed `property` / `loan_of`), the lender as an `account_roles` row (`lender_pattern`, the words
+    as the card prints them), the appraisal through `upsertPropertyAppraisalUf`, payments through
+    `commitMortgagePayment(<loan id>, …)`. Use a different key per property. (Wave 3's
+    `us-rentals-gen`, but the US checking and the transfers to Chile of wave 2 feed them.)
+  - The DAP account has no import key (no `import:dap` builder exists) and IBKR's `broker_cash`
+    role is written as data by the generator — a builder for each would be the clean form.
+- **For `us-rentals-app` (F22):** `f22Draft.ts:374` / `:102` — code 152 (DJ 1890 positive −
+  negative) can come out NEGATIVE (the demo's DAP interest under 2022 inflation: AT2023 −93.321,
+  AT2024 −211.470), and then `136 = 157 × 152 / 158` goes negative and raises 304. Check the
+  Suplemento: a floor at 0, or the negative into 169. Also the APV regime rule changed in the
+  generator: B when the IGC it saves beats A's 15 % bonus capped at 6 UTM (the old «marginal >
+  15 %» picked A for 2023 at 13,5 %), so 2023 is B (770 = 13,2 M in AT2024).
+- **Left global, deliberately (us-loans):** the scheduler's «is the mortgage sheet stale» query
+  (MAX regular cuota over all loans), the UF-reminder toast route (any lender's newest line),
+  `declareAccountsTrimmedTogether("depto_ledger")` over every property and mortgage, and the
+  prepayment comparison's single `mortgage` benchmark — two loans at different rates would each
+  need their own. The «Próximos pagos» item key is now `mortgage|<loan id>|<cuota>`.
+- **Payroll decisions (us-payroll-model):** the W-4 posture is stored per payslip
+  (`w4_filing_status`); a US payslip converts to pesos at the dollar mid of its pay date, at
+  runtime; supplemental wages withhold at the flat 22 %; no catch-up in the 401(k) check (age
+  unknown); the EIN is stored in `employer_rut`; 2025 withholding uses Pub. 15-T as published
+  while the 1040 side uses the OBBBA deduction; the 2026 Pub. 15-T offset is `// provisional`
+  (assumed = the 2026 standard deduction) — check it against the published tables; the other 2026
+  figures (brackets, wage base 184.500, 401(k) 24.500 / catch-up 8.000, IRA 7.500, HSA 4.400 /
+  8.750, Roth phase-out 153–168k) are from Rev. Proc. 2025-32 / Notice 2025-67 as recalled —
+  worth one check too. The real-market generation (`--real-market`) was not rehearsed on the
+  laptop (no Banco Central credentials); the ETF's pre-Yahoo closes come from the committed
+  `server/data/demo/cfietfipsa-sn-2025-2026.csv`.

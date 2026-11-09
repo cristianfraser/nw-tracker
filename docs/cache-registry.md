@@ -41,7 +41,7 @@ accounts declared trimmed together — `declareAccountsTrimmedTogether`, the dep
 | daily_overview | `daily.overview\|` | valuation | | ✓ | affected | | |
 | net_worth_ath | `daily.overview\|ath\|` | valuation | | ✓ | affected | | |
 | daily_reference_sources | `daily.refsrc\|` | valuation | | ✓ | affected | | |
-| depto_ledger | `depto.ledger\|` | valuation | | | keep | | |
+| depto_ledger | `depto.ledger\|` (`depto.ledger\|rows\|<property id>`, one per property) | valuation | | | keep | | |
 | cc_billing_detail | `cc.billing_detail\|` | valuation | ✓ | | affected | | |
 | cc_billing_parts | `cc.billing_parts\|` | valuation | ✓ | | keep | | |
 | cc_ledger | `cc.ledger\|` | any | | ✓ | affected | bypass | ✓ |
