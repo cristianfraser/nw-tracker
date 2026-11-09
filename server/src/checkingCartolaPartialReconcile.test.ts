@@ -70,8 +70,8 @@ describe("checkingCartolaPartialReconcile", () => {
     // últimos truncates the tail (reverse direction)
     expect(
       partialDescriptionsMatch(
-        "0011111111 Transf. Juan Alejandro Perez",
-        "0011111111 TRANSF. JUAN ALEJANDRO PEREZ SOTO"
+        "0012345678 Transf. Pedro Pablo Perez",
+        "0012345678 TRANSF. PEDRO PABLO PEREZ GONZALEZ"
       )
     ).toBe(true);
     // cartola marker prefix

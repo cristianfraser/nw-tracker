@@ -17,7 +17,7 @@ describe("shouldRecordFintualCertFundUnit", () => {
         accountId: 1,
         importNotes: "import:fintual|cert|key=risky_norris",
         asOfYmd: "2026-06-24",
-        goalsNavClp: 10_751_884,
+        goalsNavClp: 10_000_000,
         fundPriceClp: 4136.9,
       })
     ).toBe(true);
@@ -72,12 +72,12 @@ describe("fintualMappedGoalsApiSignature", () => {
         row: {
           id: "2859",
           name: "caca daca",
-          navClp: 11_157_014,
+          navClp: 10_400_000,
           matchedNotes: "import:fintual|cert|key=risky_norris",
         },
-        goalsApiNavClp: 10_751_884,
-        sharesValuationClp: 11_157_014,
-        appliedNavClp: 11_157_014,
+        goalsApiNavClp: 10_000_000,
+        sharesValuationClp: 10_400_000,
+        appliedNavClp: 10_400_000,
         units: 2696.9454,
         fintualShares: 2696.9454,
         fundPriceClp: 4136.9078,
@@ -86,7 +86,7 @@ describe("fintualMappedGoalsApiSignature", () => {
         closureLagsPublish: false,
       },
     ];
-    expect(fintualMappedGoalsApiSignature(resolutions)).toBe("2859:10751884");
+    expect(fintualMappedGoalsApiSignature(resolutions)).toBe("2859:10000000");
   });
 });
 
@@ -114,7 +114,7 @@ describe("collectFintualGoalValuationChanges v2", () => {
         {
           id: "2859",
           name: "caca daca",
-          navClp: 11_157_014,
+          navClp: 10_400_000,
           matchedNotes: "import:fintual|cert|key=risky_norris",
         },
       ],
@@ -122,9 +122,9 @@ describe("collectFintualGoalValuationChanges v2", () => {
     const resolutions: FintualGoalNavResolution[] = [
       {
         row: snap.goals[0]!,
-        goalsApiNavClp: 10_751_884,
-        sharesValuationClp: 11_157_014,
-        appliedNavClp: 11_157_014,
+        goalsApiNavClp: 10_000_000,
+        sharesValuationClp: 10_400_000,
+        appliedNavClp: 10_400_000,
         units: 2696.9454,
         fintualShares: 2696.9454,
         fundPriceClp: 4136.9078,

@@ -60,17 +60,17 @@ function ensureCertV2Account(notes: string): { accountId: number; cleanup: () =>
 
 describe("fintualCertV2Reconcile", () => {
   it("parses mapped nav signature", () => {
-    const m = parseFintualMappedNavSignature("2859:10751884|16749:45743110");
-    expect(m.get("2859")).toBe(10751884);
-    expect(m.get("16749")).toBe(45743110);
+    const m = parseFintualMappedNavSignature("2859:10000000|16749:40000000");
+    expect(m.get("2859")).toBe(10000000);
+    expect(m.get("16749")).toBe(40000000);
   });
 
   it("detects goals vs cuota position mismatch", () => {
     expect(
-      fintualCertV2GoalsCuotaReconciled({ goalsNavClp: 10_751_884, cuotaPositionClp: 11_157_014 })
+      fintualCertV2GoalsCuotaReconciled({ goalsNavClp: 10_000_000, cuotaPositionClp: 10_400_000 })
     ).toBe(false);
     expect(
-      fintualCertV2GoalsCuotaReconciled({ goalsNavClp: 10_751_884, cuotaPositionClp: 10_751_500 })
+      fintualCertV2GoalsCuotaReconciled({ goalsNavClp: 10_000_000, cuotaPositionClp: 9_999_700 })
     ).toBe(true);
   });
 
@@ -95,8 +95,8 @@ describe("fintualCertV2Reconcile", () => {
 
   it("trusts local cuotas when a flow post-dates the last goals poll", () => {
     const diverged = {
-      goalsNavClp: 18_476_613,
-      cuotaPositionClp: 16_476_613,
+      goalsNavClp: 18_000_000,
+      cuotaPositionClp: 16_000_000,
       asOfYmd: "2026-07-08",
       todayYmd: "2026-07-08",
     } as const;
@@ -322,7 +322,7 @@ describe("fintualCertV2Reconcile", () => {
     });
     const removed = cleanupUnreconciledFintualCertFundUnits(
       day,
-      new Map([["2859", 10_751_884]]),
+      new Map([["2859", 10_000_000]]),
       false
     );
     expect(removed).toBe(1);

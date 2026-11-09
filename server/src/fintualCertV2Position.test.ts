@@ -15,7 +15,7 @@ describe("fintual cert v2 position", () => {
     // Same identity + series columns the certificado ensure writes (fintualCertImport).
     const ins = db.prepare(
       `INSERT INTO accounts (asset_group_id, name, notes, import_key, fund_series_key)
-       VALUES (?, 'caca daca test', ?, ?, 'fintual_cert_risky_norris')`
+       VALUES (?, 'vitest cert fund test', ?, ?, 'fintual_cert_risky_norris')`
     );
     const r = ins.run(bucket!.id, notes, notes);
     const accountId = Number(r.lastInsertRowid);
@@ -54,7 +54,7 @@ describe("fintual cert v2 position", () => {
     // Same identity + series columns the certificado ensure writes (fintualCertImport).
     const ins = db.prepare(
       `INSERT INTO accounts (asset_group_id, name, notes, import_key, fund_series_key)
-       VALUES (?, 'caca daca test', ?, ?, 'fintual_cert_risky_norris')`
+       VALUES (?, 'vitest cert fund test', ?, ?, 'fintual_cert_risky_norris')`
     );
     const r = ins.run(bucket!.id, notes, notes);
     const accountId = Number(r.lastInsertRowid);

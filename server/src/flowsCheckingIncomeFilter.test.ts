@@ -119,7 +119,7 @@ describe("checkingCreditLooksLikeFintualIncomingWire", () => {
       true
     );
     expect(
-      checkingCreditLooksLikeFintualIncomingWire("0011111111 Transf. Juan Alejandro Perez")
+      checkingCreditLooksLikeFintualIncomingWire("0012345678 Transf. Pedro Pablo Perez")
     ).toBe(false);
   });
 });
@@ -153,7 +153,7 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
       occurred_on: "2099-04-02",
       amount_clp: 3_500_000,
       note:
-        "import:cartola|2099-04|Agustinas|0011111111 Transf. Juan Alejandro Perez|on:2099-04-02|amt:3500000|idx:2",
+        "import:cartola|2099-04|Agustinas|0012345678 Transf. Pedro Pablo Perez|on:2099-04-02|amt:3500000|idx:2",
     };
     expect(
       checkingCreditMatchesLedgerNetWorthCapitalReturn(namedCredit, [ledgerRetiro], {
@@ -240,7 +240,7 @@ describe("checkingCreditMayAutoMatchNetWorthCapitalReturn", () => {
     );
     expect(
       checkingCreditMayAutoMatchNetWorthCapitalReturn(
-        "0011111111 Transf. Juan Alejandro Perez"
+        "0012345678 Transf. Pedro Pablo Perez"
       )
     ).toBe(false);
   });
@@ -280,7 +280,7 @@ describe("checkingCreditMatchesNetWorthCapitalReturn", () => {
       occurred_on: "2099-02-10",
       amount_clp: 3_500_000,
       note:
-        "import:cartola|2099-02|Agustinas|0011111111 Transf. Juan Alejandro Perez|on:2099-02-10|amt:3500000|idx:3",
+        "import:cartola|2099-02|Agustinas|0012345678 Transf. Pedro Pablo Perez|on:2099-02-10|amt:3500000|idx:3",
     };
     expect(checkingCreditMatchesNetWorthCapitalReturn(namedCredit, [fintualWithdrawal])).toBe(
       false

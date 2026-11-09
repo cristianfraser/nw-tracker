@@ -54,7 +54,7 @@ describe("fintualPublishDate", () => {
 
   it("poll day caught up ignores stale fintualEveningSettledYmd", () => {
     const sig =
-      "1164983:18425830.92|16749:44773588.22|2859:10526623.06|78515:20154561.74";
+      "1164983:1000000.00|16749:2000000.00|2859:3000000.00|78515:4000000.00";
     const state: GlobalSyncStateFile = {
       fintualEveningSettledYmd: "2026-05-27",
       fintualLastAppliedSig: sig,

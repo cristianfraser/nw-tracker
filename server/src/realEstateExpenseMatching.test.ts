@@ -90,7 +90,7 @@ describe("merchantMatchesExpectation", () => {
   it("matches the place's comunidad patterns for gastos_comunes", () => {
     expect(
       merchantMatchesExpectation(
-        "COMUNIDAD VICTORIA SUBERCASEAUX,COMUNIDAD VICT",
+        "COMUNIDAD VICTORIA EJEMPLO,COMUNIDAD VICT",
         "gastos_comunes",
         "FLOW COMUNIDAD VICT"
       )

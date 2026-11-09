@@ -166,7 +166,7 @@ describe("merchant cleanup", () => {
   it("drops the bank's clutter and the processor prefix", () => {
     expect(cleanBankMerchant("EXPRESS LYON, SANTIAGO (T)")).toBe("EXPRESS LYON");
     expect(cleanBankMerchant("ENEL                            COMPRAS P.A.T.")).toBe("ENEL");
-    expect(cleanBankMerchant("0011111111 Transf. Ana P")).toBe("Transf. Ana P");
+    expect(cleanBankMerchant("0012345678 Transf. Ana P")).toBe("Transf. Ana P");
     expect(cleanBankMerchant("Agustinas Giro en Cajero Automático")).toBe("Giro en Cajero Automático");
     expect(splitProcessorPrefix("MERPAGO*MICOCACOLA")).toEqual({ name: "MICOCACOLA", processor: "Mercado Pago" });
     expect(splitProcessorPrefix("PAYU   *UBER EATS")).toEqual({ name: "UBER EATS", processor: "PayU" });

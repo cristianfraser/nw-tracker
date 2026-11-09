@@ -15,7 +15,7 @@ function insertRemuneracionCredit(
   const accountId = checkingAccountId();
   const note =
     `import:cartola|${occurredOn.slice(0, 7)}|G.Finanzas|` +
-    `0772399111 REMUNERACION    OVERACTIVE|on:${occurredOn}|amt:${amountClp}|idx:${idx}`;
+    `0001234567 REMUNERACION    EJEMPLOSOFT|on:${occurredOn}|amt:${amountClp}|idx:${idx}`;
   const ins = db
     .prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
@@ -38,7 +38,7 @@ function asCandidate(
     received_on: receivedOn,
     amount_clp: amountClp,
     amount_usd: null,
-    description: opts?.description ?? "0772399111 REMUNERACION    OVERACTIVE",
+    description: opts?.description ?? "0001234567 REMUNERACION    EJEMPLOSOFT",
     cartola_note: opts?.cartola_note ?? null,
     source: "checking",
   };
@@ -51,7 +51,7 @@ describe("payrollWorkEarningsLinking", () => {
     const result = findPayrollAutoLinkMovement(
       3_062_633,
       "2099-05",
-      "OVERACTIVE LLC",
+      "EJEMPLOSOFT LLC",
       candidates,
       new Set()
     );
@@ -62,16 +62,16 @@ describe("payrollWorkEarningsLinking", () => {
 
   it("links Dealsyte vista transfer via employer token with tolerance", () => {
     const candidates = [
-      asCandidate(201, "2019-07-01", 2_119_052, {
-        description: "Transf. DEALSYTE CH",
+      asCandidate(201, "2019-07-01", 2_100_000, {
+        description: "Transf. DEMOTECH CH",
         cartola_note:
-          "import:cartola|2019-07|G.Finanzas|Transf. DEALSYTE CH|on:2019-07-01|amt:2119052",
+          "import:cartola|2019-07|G.Finanzas|Transf. DEMOTECH CH|on:2019-07-01|amt:2100000",
       }),
     ];
     const result = findPayrollAutoLinkMovement(
-      2_119_052,
+      2_100_000,
       "2019-06",
-      "DEALSYTE CHILE SPA",
+      "DEMOTECH CHILE SPA",
       candidates,
       new Set()
     );
@@ -90,7 +90,7 @@ describe("payrollWorkEarningsLinking", () => {
     const result = findPayrollAutoLinkMovement(
       2_122_917,
       "2019-04",
-      "DEALSYTE CHILE SPA",
+      "DEMOTECH CHILE SPA",
       [sameMonth, nextMonth],
       new Set()
     );
@@ -103,7 +103,7 @@ describe("payrollWorkEarningsLinking", () => {
     const result = findPayrollAutoLinkMovement(
       3_000_000,
       "2099-05",
-      "OVERACTIVE LLC",
+      "EJEMPLOSOFT LLC",
       [a, b],
       new Set()
     );

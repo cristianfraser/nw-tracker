@@ -190,7 +190,7 @@ describe("isFintualSyncStale prior evening carry-over", () => {
   it("is not stale when poll day is caught up but fintualEveningSettledYmd lags", () => {
     const wedMorning = wallClock("2026-06-10", 8);
     const sig =
-      "1164983:18425830.92|16749:44773588.22|2859:10526623.06|78515:20154561.74";
+      "1164983:1000000.00|16749:2000000.00|2859:3000000.00|78515:4000000.00";
     const state: GlobalSyncStateFile = {
       fintualLastCheckYmd: "2026-06-09",
       fintualLastPublishYmd: "2026-06-09",
