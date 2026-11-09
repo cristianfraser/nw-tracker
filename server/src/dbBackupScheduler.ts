@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createDbSnapshot, listDbSnapshots } from "./dbSnapshot.js";
+import { planSnapshotRetention } from "./dbSnapshotRetention.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { serverConfig } from "./config.js";
 import { ScheduledJob, atStartThen } from "./schedulerKernel.js";
@@ -13,10 +14,13 @@ import { ScheduledJob, atStartThen } from "./schedulerKernel.js";
  *
  * Env (`config.ts`):
  * - `DB_BACKUP_ENABLED`   — off disables (default on; the demo profile defaults it off).
- * - `DB_BACKUP_KEEP`      — retention count for `auto-*` snapshots (default 14). Manual
- *                           `db:snapshot` files have other labels and are never pruned.
+ * - `DB_BACKUP_KEEP`      — days with one snapshot each (default 30); before that one per month
+ *                           (`dbSnapshotRetention.ts`). Every label is pruned alike — the deploy
+ *                           agent's `before-deploy-<sha>` and hand-made `db:snapshot` files too
+ *                           (until 2026-11-09 only `auto-daily` was, and 171 deploy snapshots had
+ *                           piled up: 4,2 GB in ten days).
  * - `DB_BACKUP_DIR`       — optional second copy (ideally another volume / synced folder).
- * - `DB_BACKUP_DIR_KEEP`  — retention for auto snapshots in `DB_BACKUP_DIR` (default 60).
+ * - `DB_BACKUP_DIR_KEEP`  — the daily window for `DB_BACKUP_DIR` (default 60 days).
  */
 
 const CHECK_INTERVAL_MS = 60 * 60_000;
@@ -24,20 +28,22 @@ const AUTO_LABEL = "auto-daily";
 
 let lastBackupChileYmd: string | null = null;
 
-function retentionCount(): number {
-  return serverConfig().dbBackup.keep;
-}
-
-function pruneAutoSnapshots(): void {
-  const auto = listDbSnapshots().filter((s) => path.basename(s.path).endsWith(`-${AUTO_LABEL}.db`));
-  for (const stale of auto.slice(retentionCount())) {
-    fs.rmSync(stale.path);
-    console.log(`db-backup: pruned ${path.basename(stale.path)}`);
+/** Deletes the snapshots in `dir` the retention rule does not keep; returns what went. */
+export function pruneDbSnapshots(dir: string | undefined, dailyDays: number, todayYmd = chileCalendarTodayYmd()): string[] {
+  const snapshots = listDbSnapshots(dir);
+  const plan = planSnapshotRetention(snapshots.map((s) => path.basename(s.path)), todayYmd, dailyDays);
+  const byName = new Map(snapshots.map((s) => [path.basename(s.path), s.path]));
+  for (const name of plan.prune) {
+    const file = byName.get(name)!;
+    fs.rmSync(file);
+    // A snapshot opened by a tool may have left its journal files beside it.
+    for (const sibling of [`${file}-wal`, `${file}-shm`]) if (fs.existsSync(sibling)) fs.rmSync(sibling);
   }
+  return plan.prune;
 }
 
-function secondaryRetentionCount(): number {
-  return serverConfig().dbBackup.dirKeep;
+function pruneSnapshots(): void {
+  for (const name of pruneDbSnapshots(undefined, serverConfig().dbBackup.keep)) console.log(`db-backup: pruned ${name}`);
 }
 
 function copyToSecondaryDir(snapshotPath: string): void {
@@ -47,13 +53,7 @@ function copyToSecondaryDir(snapshotPath: string): void {
   const dest = path.join(dir, path.basename(snapshotPath));
   fs.copyFileSync(snapshotPath, dest);
   console.log(`db-backup: secondary copy ${dest}`);
-  const auto = listDbSnapshots(dir).filter((s) =>
-    path.basename(s.path).endsWith(`-${AUTO_LABEL}.db`)
-  );
-  for (const stale of auto.slice(secondaryRetentionCount())) {
-    fs.rmSync(stale.path);
-    console.log(`db-backup: pruned secondary ${path.basename(stale.path)}`);
-  }
+  for (const name of pruneDbSnapshots(dir, serverConfig().dbBackup.dirKeep)) console.log(`db-backup: pruned secondary ${name}`);
 }
 
 /** Latest existing auto snapshot's Chile day (survives server restarts within a day). */
@@ -74,7 +74,7 @@ async function backupTick(): Promise<void> {
     lastBackupChileYmd = today;
     console.log(`db-backup: ${path.basename(r.path)} (${(r.bytes / 1024 / 1024).toFixed(1)} MiB)`);
     copyToSecondaryDir(r.path);
-    pruneAutoSnapshots();
+    pruneSnapshots();
   } catch (e) {
     console.error(`db-backup: failed — ${e instanceof Error ? e.message : e}`);
   }

@@ -398,7 +398,17 @@ app.delete("/api/flows/expenses/manual/:id", linkSyncingWrite((req, res) => {
 }));
 
 app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {
-  res.json({ links: listCcFacturadoFinancingLinks() });
+  // The manager lists financing by cuotas: a facturado paid outright (charges only) is not one.
+  res.json({
+    links: listCcFacturadoFinancingLinks()
+      .filter((l) => l.financing.length > 0)
+      .map(({ id, financed_account_id, financed_billing_month, financing }) => ({
+        id,
+        financed_account_id,
+        financed_billing_month,
+        financing,
+      })),
+  });
 });
 
 app.post("/api/flows/expenses/credit-card/financing-links", writeHandler((req, res) => {

@@ -20,7 +20,7 @@ import {
 } from "./markInputTriggers.js";
 import { runLoanPayments258 } from "./loanPayments258.js";
 import { runAccountRoles271 } from "./accountRoles271.js";
-import { runAccountRoles298 } from "./accountRoles298.js";
+import { runAccountRoles298 } from "./accountRoles299.js";
 import { runNavTreeRoles272 } from "./navTreeRoles272.js";
 import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
@@ -45,9 +45,10 @@ import { runFlowEvidenceEstimateKind295 } from "./flows/flowEvidenceEstimate295.
 import { runMovementEvidenceKind291 } from "./flows/flowEvidenceKind291.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runSiiIssuedFeeReceipts296 } from "./siiIssuedFeeReceipts296.js";
-import { runRentalPlaces299 } from "./rentalPlaces299.js";
-import { runF1040Filed300 } from "./f1040Filed300.js";
-import { runPayrollJurisdiction297 } from "./payrollJurisdiction297.js";
+import { runFacturadoPaymentCharges297 } from "./ccFacturadoPaymentCharges297.js";
+import { runRentalPlaces299 } from "./rentalPlaces300.js";
+import { runF1040Filed300 } from "./f1040Filed301.js";
+import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
@@ -332,7 +333,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "265_equity_splits.sql": runMarkInputChangeTriggers265,
   "270_cache_write_log.sql": runMarkInputChangeTriggers270,
   "271_account_roles.sql": runAccountRoles271,
-  "298_property_loan_identity_roles.sql": runAccountRoles298,
+  "299_property_loan_identity_roles.sql": runAccountRoles298,
   "272_nav_tree_roles.sql": runNavTreeRoles272,
   "273_expense_key_legacy_rewrite.sql": (dbi) => {
     runExpenseKeyLegacyRewrite273(dbi);
@@ -360,9 +361,10 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "294_retire_deposit_mirrors.sql": runRetireDepositMirrors294,
   "295_flow_evidence_estimate_kind.sql": runFlowEvidenceEstimateKind295,
   "296_sii_issued_fee_receipts.sql": runSiiIssuedFeeReceipts296,
-  "297_payroll_jurisdiction.sql": runPayrollJurisdiction297,
-  "299_rental_places_dfl2_and_rent_income.sql": runRentalPlaces299,
-  "300_us_f1040_filed.sql": runF1040Filed300,
+  "297_cc_facturado_payment_charges.sql": runFacturadoPaymentCharges297,
+  "298_payroll_jurisdiction.sql": runPayrollJurisdiction297,
+  "300_rental_places_dfl2_and_rent_income.sql": runRentalPlaces299,
+  "301_us_f1040_filed.sql": runF1040Filed300,
 };
 
 /**
@@ -481,8 +483,45 @@ export function runMigrations() {
   const exec = dbInternal.exec.bind(dbInternal);
   dbInternal.exec = (sql: string) => {
     noteDbWrite();
+    transactionEpoch += 1; // an `exec` may open, release or roll back a transaction or savepoint by hand
     return exec(sql);
   };
+}
+
+// Transactions are counted (`dbTransactionEpoch`): better-sqlite3 runs BEGIN / COMMIT / ROLLBACK and
+// the nested SAVEPOINT / RELEASE / ROLLBACK TO through its own native statements, which no proxy
+// above sees, so a memo scoped to a transaction (`dbStateMemo`) could not tell a rolled-back
+// transaction from a committed one by the write count alone. The epoch moves when an outermost
+// transaction begins and when it ends, and when any transaction function exits by throwing (its
+// writes rolled back, to the savepoint or wholesale).
+let transactionEpoch = 0;
+{
+  type TxFn = (...args: unknown[]) => unknown;
+  const transaction = dbInternal.transaction.bind(dbInternal) as (fn: TxFn) => Database.Transaction<TxFn>;
+  const wrap = (run: TxFn): TxFn =>
+    function (this: unknown, ...args: unknown[]) {
+      const outer = !dbInternal.inTransaction;
+      if (outer) transactionEpoch += 1;
+      try {
+        return run.apply(this, args);
+      } catch (e) {
+        transactionEpoch += 1;
+        throw e;
+      } finally {
+        if (outer) transactionEpoch += 1;
+      }
+    };
+  (dbInternal as { transaction: unknown }).transaction = (fn: TxFn) => {
+    const tx = transaction(fn);
+    const modes = { default: wrap(tx.default), deferred: wrap(tx.deferred), immediate: wrap(tx.immediate), exclusive: wrap(tx.exclusive) };
+    for (const m of Object.values(modes)) Object.assign(m, modes, { database: dbInternal });
+    return modes.default;
+  };
+}
+
+/** Moves whenever a transaction begins or ends, or a transaction function rolls back (see above). */
+export function dbTransactionEpoch(): number {
+  return transactionEpoch;
 }
 
 const db = wrapDatabaseForVerboseLog(dbInternal);

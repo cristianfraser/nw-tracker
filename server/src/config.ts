@@ -191,7 +191,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     },
     dbBackup: {
       enabled: flag("DB_BACKUP_ENABLED", true),
-      keep: positiveInteger(env, "DB_BACKUP_KEEP", 14),
+      keep: positiveInteger(env, "DB_BACKUP_KEEP", 30),
       dir: text(env, "DB_BACKUP_DIR"),
       dirKeep: positiveInteger(env, "DB_BACKUP_DIR_KEEP", 60),
     },

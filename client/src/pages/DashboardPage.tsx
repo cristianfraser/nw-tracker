@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useContext } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   MonthlyPerformanceComboChart,
@@ -54,7 +54,12 @@ import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../componen
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { useDashboardAboutPreview, useDashboardFold } from "../dashboardFold";
+import {
+  DashboardPreviewShownContext,
+  DashboardStripReadyContext,
+  useDashboardAboutPreview,
+  useDashboardFold,
+} from "../dashboardFold";
 import { dashboardTileOrder, dashboardTileWide } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
@@ -205,6 +210,14 @@ export function DashboardPage() {
       }
     );
   }, [netWorthNav, useRealBundle, stripFromHeldBundle, data, navSnapshot, placeholderStripDash]);
+  // The cards show real numbers (the bundle, a held bundle or a snapshot, never the zero
+  // placeholder): the demo's About page shows its preview from then on (dashboardFold.ts).
+  const stripReady = dashForStrip != null && dashForStrip !== placeholderStripDash;
+  const reportStripReady = useContext(DashboardStripReadyContext);
+  useEffect(() => {
+    if (stripReady) reportStripReady?.();
+  }, [stripReady, reportStripReady]);
+  const previewShown = useContext(DashboardPreviewShownContext);
 
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -460,6 +473,7 @@ export function DashboardPage() {
           includeAccumulatedLines={false}
           colorPlan={{ kind: "dashboard-overview" }}
           drawInMs={inAboutPreview ? NET_WORTH_DRAW_IN_MS : undefined}
+          drawInHold={!previewShown}
           xAxisGranularity={
             overviewIsDaily ? "day" : overviewPrefs.period === "year" ? "year" : "month"
           }

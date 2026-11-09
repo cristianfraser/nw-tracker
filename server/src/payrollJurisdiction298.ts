@@ -11,7 +11,7 @@ export function runPayrollJurisdiction297(dbi: DatabaseType): void {
   for (const table of ["payroll_work_earnings", "payslip_lines"]) {
     for (const k of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS write_log_${table}_${k}`);
     const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
-    if (columns.length === 0) throw new Error(`migration 297: table ${table} does not exist`);
+    if (columns.length === 0) throw new Error(`migration 298: table ${table} does not exist`);
     for (const sql of writeLogTriggerSql(table, columns, null)) dbi.exec(sql);
   }
 }

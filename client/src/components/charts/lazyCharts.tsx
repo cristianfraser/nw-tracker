@@ -1,7 +1,7 @@
 import { Suspense, type ComponentProps, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { lazyChunk, lazyComponent } from "../../lazyChunks";
 import { loadableClass } from "../ui/Loadable";
-import { ChartEmptyState } from "./ChartEmptyState";
+import { ChartEmptyState, ChartLegendPlaceholder } from "./ChartEmptyState";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 
 /**
@@ -46,27 +46,35 @@ function lazyChartWithProps<P extends object>(name: ChartName, frame: (props: P)
  * One chart panel (a `chart-grid__col`) while the chart engine loads. A plain function, not a
  * component: this module's only components are the lazy charts (fast refresh).
  */
-function panelFrame({
-  title,
-  titleAs,
-  controls,
-}: {
-  title: string;
-  titleAs?: "h2" | "h3";
-  controls?: ReactNode;
-}): ReactNode {
+function panelFrame(
+  {
+    title,
+    titleAs,
+    controls,
+  }: {
+    title: string;
+    titleAs?: "h2" | "h3";
+    controls?: ReactNode;
+  },
+  legend?: ReactNode
+): ReactNode {
   return (
     <div className={loadableClass(true, "chart-grid__col")}>
       {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
-      <ChartEmptyState loading message="" />
+      <ChartEmptyState loading message="" legend={legend} />
     </div>
   );
+}
+
+/** A line chart panel's frame: its legend row is reserved under the plot, as the loaded chart has it. */
+function linePanelFrame(props: { title: string; titleAs?: "h2" | "h3"; controls?: ReactNode }): ReactNode {
+  return panelFrame(props, <ChartLegendPlaceholder />);
 }
 
 /** CcInstallmentHistoryChart's box: no heading of its own, a fixed 280 px plot. */
 const CC_HISTORIAL_BOX_STYLE: CSSProperties = { height: 280, marginTop: "0.35rem" };
 
-export const LineChartPanel = lazyChart("LineChartPanel", panelFrame);
+export const LineChartPanel = lazyChart("LineChartPanel", linePanelFrame);
 
 export const MonthlyPerformanceComboChart = lazyChart("MonthlyPerformanceComboChart", panelFrame);
 

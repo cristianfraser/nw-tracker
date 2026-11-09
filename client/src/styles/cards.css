@@ -229,7 +229,7 @@
 
 .card .value .dashboard-card-value-empty,
 .card-breakdown__amount .dashboard-card-value-empty {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .card-breakdown__amount .dashboard-card-value--breakdown {

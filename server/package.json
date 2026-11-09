@@ -16,6 +16,7 @@
     "repair:cc-source-pdf": "tsx scripts/repair-cc-statement-source-pdf-names.ts",
     "list:missing-cc-pdfs": "tsx scripts/list-missing-cc-statement-pdfs.ts",
     "db:snapshot": "tsx scripts/db-snapshot.ts",
+    "db:prune-snapshots": "tsx scripts/prune-db-snapshots.ts",
     "demo:generate": "tsx scripts/generate-demo-data.ts --real-market",
     "demo:visits": "tsx scripts/print-demo-visits.ts",
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",

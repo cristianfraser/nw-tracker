@@ -19,7 +19,7 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
-import { ChartEmptyState } from "./ChartEmptyState";
+import { ChartEmptyState, ChartLegendPlaceholder } from "./ChartEmptyState";
 import { loadableClass } from "../ui/Loadable";
 import { cn } from "../../cn";
 import styles from "./ValuationLineCharts.module.css";
@@ -168,6 +168,8 @@ interface BlockProps {
    * updates are not animated by it. Omitted: no draw-in.
    */
   drawInMs?: number;
+  /** The draw-in waits while true (the chart is not on screen yet: the demo's held-back preview). */
+  drawInHold?: boolean;
   /**
    * The block is a placeholder or held prior data: the panel dims itself and, with nothing to
    * plot, draws an empty chart box instead of the «no valuation series» copy.
@@ -180,6 +182,8 @@ const LINE_HIT_STROKE_WIDTH = 24;
 
 /** When a series is focused (line or legend), other lines fade to this opacity. */
 const DIM_LINE_OPACITY = 0.16;
+/** Share of a slow draw-in (`drawInMs`) after which the ATH marker appears. */
+const ATH_AFTER_DRAW_IN_FRACTION = 0.8;
 
 /** The ATH marker's plotted row, for the tooltip's nearness test and its ATH line. */
 type AthTooltipContext = {
@@ -446,6 +450,7 @@ export function LineChartPanel({
   controls,
   athMarker,
   drawInMs,
+  drawInHold = false,
   loading,
 }: BlockProps) {
   const timeRange = timeRangeProp ?? "total";
@@ -577,19 +582,41 @@ export function LineChartPanel({
 
   const hasPlot = chartData.length > 0 && visibleSeries.length > 0;
   useEffect(() => {
-    if (drawIn === "pending" && hasPlot && !loading) setDrawIn("running");
-  }, [drawIn, hasPlot, loading]);
+    if (drawIn === "pending" && hasPlot && !loading && !drawInHold) setDrawIn("running");
+  }, [drawIn, hasPlot, loading, drawInHold]);
   useEffect(() => {
     if (drawIn !== "running" || drawInMs == null) return;
     const done = window.setTimeout(() => setDrawIn("done"), drawInMs);
     return () => window.clearTimeout(done);
   }, [drawIn, drawInMs]);
+  // The ATH marker waits for the lines' first draw: most of the slow wipe when `drawInMs` is set
+  // (the peak is usually near the right edge, so it lands as the wipe gets there), else Recharts'
+  // own line animation. Once shown it stays (a refetch's redraw never hides it).
+  const [athDue, setAthDue] = useState(false);
+  const drawStarted = drawInMs != null ? drawIn !== "pending" : hasPlot && !loading;
+  useEffect(() => {
+    if (athDue || !drawStarted) return;
+    const delay = drawInMs != null ? drawInMs * ATH_AFTER_DRAW_IN_FRACTION : CHART_ANIM_MS;
+    const due = window.setTimeout(() => setAthDue(true), delay);
+    return () => window.clearTimeout(due);
+  }, [athDue, drawStarted, drawInMs]);
+  const athShown = athDue || (drawInMs != null && drawIn === "done");
 
   if (!hasPlot) {
     return (
       <div className={loadableClass(loading, "chart-grid__col")}>
         {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
-        <ChartEmptyState loading={loading} message={i18n.t("charts.noValuationSeries")} />
+        <ChartEmptyState
+          loading={loading}
+          message={i18n.t("charts.noValuationSeries")}
+          legend={
+            visibleSeries.length > 0 ? (
+              <InteractiveLegend series={visibleSeries} focusColorIndex={null} onHighlight={() => {}} />
+            ) : (
+              <ChartLegendPlaceholder />
+            )
+          }
+        />
       </div>
     );
   }
@@ -751,7 +778,7 @@ export function LineChartPanel({
                 );
               });
               const athEl =
-                athPlacement && thickSeriesForAth
+                athShown && athPlacement && thickSeriesForAth
                   ? renderAthMarker({
                       x: athPlacement.x,
                       y: athPlacement.value,

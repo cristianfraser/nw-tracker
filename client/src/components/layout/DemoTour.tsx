@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Trans } from "react-i18next";
 import { useTranslation } from "../../i18n";
+import { cn } from "../../cn";
 import styles from "./DemoTour.module.css";
 import { DASHBOARD_PATH, DEMO_BUILD } from "../../dashboardPath";
 
@@ -223,7 +224,7 @@ function DemoTourPopover() {
 
   return (
     <div className={styles.dock}>
-      <section className={styles.popover} role="dialog" aria-modal="false" aria-labelledby={titleId}>
+      <section className={cn(styles.popover, "reveal-in")} role="dialog" aria-modal="false" aria-labelledby={titleId}>
         <div className={styles.header}>
           <strong id={titleId} className={styles.title}>
             {t(`demo.tour.steps.${step.id}.title`)}

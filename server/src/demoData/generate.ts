@@ -167,7 +167,7 @@ function createAccounts(person: Person): Map<Acct, number> {
   ids.set("afpUno", afp("uno", "UNO-A"));
   ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
   for (const h of person.houses) {
-    // The keys give the property its `property` role and the loan `loan_of` it (migration 298);
+    // The keys give the property its `property` role and the loan `loan_of` it (migration 299);
     // the lender, as the card prints it, is a role written as data.
     const property = createAccount(g("real_estate__property"), h.label, { key: propertyAccountImportKey(h.key) });
     const loan = createAccount(g("liabilities__mortgage"), h.label, { key: loanAccountImportKey(h.key) });

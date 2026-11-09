@@ -464,13 +464,15 @@ export type CardLine = {
   dedupe_key: string | null;
   parser_row_id: string | null;
   raw_line: string | null;
+  /** The purchase the line is evidence of (`flows`; copies of one purchase share it). */
+  flow_id: number | null;
 };
 
 const CARD_LINE_COLUMNS = `l.id AS line_id, s.id AS statement_id, s.account_id, s.statement_date,
   s.currency AS statement_currency, s.source_pdf, s.source_kind, l.merchant, l.transaction_date,
   l.posting_date, l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.installment_flag,
   l.nro_cuota_current, l.nro_cuota_total, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
-  l.cuota_purchase_kind, l.kind, l.origin_card_last4, l.dedupe_key, l.parser_row_id, l.raw_line`;
+  l.cuota_purchase_kind, l.kind, l.origin_card_last4, l.dedupe_key, l.parser_row_id, l.raw_line, l.flow_id`;
 
 // ---------------------------------------------------------------------------------------------
 // View 7 — the merchant / amount search for the matchers of other domains
@@ -492,6 +494,10 @@ export type FindLinesQuery = {
   merchantSql?: (column: string) => { sql: string; params: readonly (string | number)[] };
   /** Leave these lines out. */
   excludeLineIds?: ReadonlySet<number>;
+  /** The lines that are evidence of this flow. */
+  flowId?: number;
+  /** Peso statements only (`cc_statements.currency = 'clp'`). */
+  clpStatements?: true;
   /**
    * `statement`: by statement, then line (the default with `accountId` — one card's lines as its
    * statements list them); `line`: by line id (the default otherwise); `newest_statement`: newest
@@ -525,6 +531,11 @@ export function findLines(q: FindLinesQuery = {}): CardLine[] {
     params.push(q.installmentFlag);
   }
   if (q.cuotaPurchaseTagged) where.push("l.cuota_purchase_kind IS NOT NULL");
+  if (q.flowId != null) {
+    where.push("l.flow_id = ?");
+    params.push(q.flowId);
+  }
+  if (q.clpStatements) where.push("s.currency = 'clp'");
   if (q.merchantPrefixes && q.merchantPrefixes.length > 0) {
     where.push(`(${q.merchantPrefixes.map(() => "upper(l.merchant) LIKE ?").join(" OR ")})`);
     params.push(...q.merchantPrefixes.map((p) => `${p.toUpperCase()}%`));

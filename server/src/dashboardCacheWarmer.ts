@@ -6,8 +6,12 @@ import { serverConfig } from "./config.js";
 import { ScheduledJob, nextAlignedMs } from "./schedulerKernel.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
+import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { warmVisitedPages } from "./visitedPagesWarm.js";
+
+/** The home net-worth chart's default Rango (3y) in days, as the client asks for it (timeRange.ts). */
+const HOME_OVERVIEW_DEFAULT_DAYS = 1096;
 
 /**
  * Proactive dashboard cache warmer: rebuilds the page-bundle aggregation caches, the pages the
@@ -66,6 +70,12 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     await buildDashboardPageBundle("clp");
     await whenNoApiRequestsInFlight();
     await buildDashboardPageBundle("usd");
+    // The net-worth chart's default view (Diario, Rango 3y = 1096 days): a first visit's chart
+    // waits on it, and its first build takes seconds.
+    await whenNoApiRequestsInFlight();
+    getDashboardOverviewDaily("clp", HOME_OVERVIEW_DEFAULT_DAYS);
+    await whenNoApiRequestsInFlight();
+    getDashboardOverviewDaily("usd", HOME_OVERVIEW_DEFAULT_DAYS);
     const tBundles = performance.now();
     // The home dashboard's flows section (Por cuota, month rows).
     await whenNoApiRequestsInFlight();

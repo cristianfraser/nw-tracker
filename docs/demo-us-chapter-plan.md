@@ -595,3 +595,14 @@ acceptable since the old version serves during a build.
   `merchantExpenseNotes.test.ts` flake. Phase 8 (non-resident F22, UCITS, options, a return) is out.
 - **Housekeeping:** the ten `us-*` stream worktrees and `us-deps` under `.claude/worktrees/` are
   all merged and can be removed; a stale `node_modules` sits under `/private/tmp/claude-501/` too.
+
+### Merge into main (2026-11-09)
+
+`origin/main` had moved twelve commits while the waves ran, one of them taking migration **297**
+(`cc_facturado_payment_charges`), so at the merge the plan's four migrations were renumbered behind
+it: payroll jurisdiction **298**, property / loan roles **299**, DFL-2 + rent **300**, the filed
+1040 **301** (hook modules `payrollJurisdiction298.ts`, `accountRoles299.ts`, `rentalPlaces300.ts`,
+`f1040Filed301.ts`). The wave notes above keep the numbers the streams used at the time; AGENTS.md
+and the code carry the final ones. The other conflicts were the hook table in `db.ts`, the
+write-logged table list and the demo's front-door bullet in AGENTS.md (main's reveal-animation
+text kept, the US-chapter bullet added after it).
