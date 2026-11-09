@@ -182,6 +182,8 @@ const LINE_HIT_STROKE_WIDTH = 24;
 
 /** When a series is focused (line or legend), other lines fade to this opacity. */
 const DIM_LINE_OPACITY = 0.16;
+/** Share of a slow draw-in (`drawInMs`) after which the ATH marker appears. */
+const ATH_AFTER_DRAW_IN_FRACTION = 0.8;
 
 /** The ATH marker's plotted row, for the tooltip's nearness test and its ATH line. */
 type AthTooltipContext = {
@@ -587,16 +589,18 @@ export function LineChartPanel({
     const done = window.setTimeout(() => setDrawIn("done"), drawInMs);
     return () => window.clearTimeout(done);
   }, [drawIn, drawInMs]);
-  // The ATH marker waits for the lines' first draw: the slow wipe when `drawInMs` is set, else
-  // Recharts' own line animation. Once shown it stays (a refetch's redraw never hides it).
-  const [lineAnimationDone, setLineAnimationDone] = useState(false);
-  const plotReady = hasPlot && !loading;
+  // The ATH marker waits for the lines' first draw: most of the slow wipe when `drawInMs` is set
+  // (the peak is usually near the right edge, so it lands as the wipe gets there), else Recharts'
+  // own line animation. Once shown it stays (a refetch's redraw never hides it).
+  const [athDue, setAthDue] = useState(false);
+  const drawStarted = drawInMs != null ? drawIn !== "pending" : hasPlot && !loading;
   useEffect(() => {
-    if (drawInMs != null || lineAnimationDone || !plotReady) return;
-    const done = window.setTimeout(() => setLineAnimationDone(true), CHART_ANIM_MS);
-    return () => window.clearTimeout(done);
-  }, [drawInMs, lineAnimationDone, plotReady]);
-  const athShown = drawInMs != null ? drawIn === "done" : lineAnimationDone;
+    if (athDue || !drawStarted) return;
+    const delay = drawInMs != null ? drawInMs * ATH_AFTER_DRAW_IN_FRACTION : CHART_ANIM_MS;
+    const due = window.setTimeout(() => setAthDue(true), delay);
+    return () => window.clearTimeout(due);
+  }, [athDue, drawStarted, drawInMs]);
+  const athShown = athDue || (drawInMs != null && drawIn === "done");
 
   if (!hasPlot) {
     return (
