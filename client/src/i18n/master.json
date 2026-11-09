@@ -1996,6 +1996,24 @@
       }
     },
     "unitsFlow": {
+      "unitLabels": {
+        "cuotas": {
+          "en": "fund units",
+          "es": "cuotas"
+        },
+        "BTC": {
+          "en": "BTC",
+          "es": "BTC"
+        },
+        "ETH": {
+          "en": "ETH",
+          "es": "ETH"
+        },
+        "unidades": {
+          "en": "units",
+          "es": "unidades"
+        }
+      },
       "title": {
         "en": "Add contribution / withdrawal",
         "es": "Añadir aporte / retiro"
