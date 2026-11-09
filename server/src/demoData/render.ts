@@ -157,6 +157,8 @@ function statementRecords(s: CardStatement, cards: readonly CardDef[]): ParsedRe
   const card = cards.find((c) => c.key === s.card)!;
   const clp = s.currency === "clp";
   const source = `import:demo-statement|${card.last4}|${s.currency}|${s.close}`;
+  const fees = s.lines.filter((l) => l.fee).reduce((a, l) => a + l.amount, 0);
+  if (fees > 0 && clp) throw new Error(`demo: a fee on the peso statement ${source}`);
   const header = (): ParsedRecord => {
     const r = emptyRecord();
     r.card_group = "A";
@@ -171,7 +173,8 @@ function statementRecords(s: CardStatement, cards: readonly CardDef[]): ParsedRe
     r.currency = s.currency;
     const fmt = (n: number) => (clp ? String(Math.round(n)) : usd(n));
     r.statement_saldo_anterior = fmt(s.saldoAnterior);
-    r.statement_compras_cargos = fmt(s.facturado);
+    // The purchases; the issuer's own charges (a yearly fee) are billed beside them.
+    r.statement_compras_cargos = fmt(s.facturado - fees);
     r.statement_monto_facturado = fmt(s.facturado);
     r.pdf_total_operaciones = clp ? fmt(s.facturado) : "";
     if (clp) {
@@ -226,7 +229,8 @@ function statementRecords(s: CardStatement, cards: readonly CardDef[]): ParsedRe
   }
   if (!clp && s.paidPrevious > 0 && s.paidPreviousDate) {
     const r = header();
-    const label = s.paidPreviousViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO";
+    // The US card prints its autopay; a Chilean card the dollar abono or the payment.
+    const label = card.issuer === "lonestar" ? "AUTOPAY PAYMENT" : s.paidPreviousViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO";
     r.transaction_date = ddmmyyyy(s.paidPreviousDate);
     r.merchant = label;
     r.description_merged = label;

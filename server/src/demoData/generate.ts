@@ -54,14 +54,19 @@ import { commitMortgagePayment } from "../mortgagePaymentCreate.js";
 import {
   afpAccountImportKey,
   BUDA_ACCOUNT_IMPORT_KEY,
-  MORTGAGE_ACCOUNT_IMPORT_KEY,
-  PROPERTY_ACCOUNT_IMPORT_KEY,
+  loanAccountImportKey,
+  propertyAccountImportKey,
   usRetirementAccountImportKey,
 } from "../accountIdentityKeys.js";
+import { createRealEstatePlace } from "../flowsRealEstateExpenses.js";
+import { assignPurchasesToRealEstateExpenses, loadGastosLinesForRealEstateMatching } from "../realEstateExpenseMatching.js";
+import { upsertCheckingIncomeMovementOverride } from "../flowsCheckingIncomeOverrides.js";
+import { syncMortgageExpenseDepositLinksFromSheet } from "../expenseDepositLinks.js";
+import { expenseLinesForDepositLinkSync } from "../flowsExpenses.js";
 import { isChileBusinessDay, isNyseTradingDay } from "../marketHolidays.js";
 import { recordEquitySplit } from "../equitySplits.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
-import { isMortgageCcExpenseMerchant } from "../expenseDepositLinks.js";
+import { isLoanLenderMerchant } from "../expenseDepositLinks.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "../panelAccountNotes.js";
 import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarket.js";
 import { dbMarketReader, writeSyntheticMarket, type MarketReader } from "./market.js";
@@ -77,7 +82,7 @@ import {
   DEMO_CHECKING_NUMBER,
   DEMO_US_CHECKING_NUMBER,
 } from "./render.js";
-import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, US_RETIREMENT_FUND_SERIES_KEY, MORTGAGE_DESGRAVAMEN_CLP, MORTGAGE_INCENDIO_CLP, MORTGAGE_MERCHANT, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, US_RETIREMENT_FUND_SERIES_KEY, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
 import { aprilSettlementsFromTaxModule, settlementDifferences, writeDemoFiledReturns, writeDemoTaxDocuments } from "./taxDocuments.js";
@@ -151,9 +156,14 @@ function createAccounts(person: Person): Map<Acct, number> {
   if (person.firstMonth < AFP_SWITCH_MONTH) ids.set("afpModelo", afp("modelo", "Modelo-A"));
   ids.set("afpUno", afp("uno", "UNO-A"));
   ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
-  if (person.house) {
-    ids.set("property", createAccount(g("real_estate__property"), "Vitacura", { key: PROPERTY_ACCOUNT_IMPORT_KEY }));
-    ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Vitacura", { key: MORTGAGE_ACCOUNT_IMPORT_KEY }));
+  for (const h of person.houses) {
+    // The keys give the property its `property` role and the loan `loan_of` it (migration 298);
+    // the lender, as the card prints it, is a role written as data.
+    const property = createAccount(g("real_estate__property"), h.label, { key: propertyAccountImportKey(h.key) });
+    const loan = createAccount(g("liabilities__mortgage"), h.label, { key: loanAccountImportKey(h.key) });
+    db.prepare(`INSERT INTO account_roles (account_id, role, param) VALUES (?, 'lender_pattern', ?)`).run(loan, h.lender.pattern);
+    ids.set(`property:${h.key}`, property);
+    ids.set(`loan:${h.key}`, loan);
   }
   for (const c of person.cards) {
     const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `${ccMasterImportKeyPrefix(c.issuer)}${c.last4}` });
@@ -350,23 +360,27 @@ function writeContractorPayslips(ledger: Ledger): void {
 }
 
 /**
- * The mortgage ledger: the pie is written as the bank states it (no prior balance to compute it
- * from), every cuota and prepago through the app's own writer (`commitMortgagePayment`, as the
- * mortgage sheet import writes them) with the bank's figures. The property's appraisal on each
- * payment day is a valuation of the property account in UF.
+ * Each house's mortgage ledger: the pie is written as the bank states it (no prior balance to
+ * compute it from), every cuota and prepago through the app's own writer (`commitMortgagePayment`,
+ * as the mortgage sheet import writes them) with the bank's figures. The property's appraisal on
+ * each payment day is a valuation of the property account in UF.
  */
-function writeMortgage(ledger: Ledger, ids: Map<Acct, number>): void {
-  const m = ledger.mortgage;
-  const HOUSE = ledger.person.house;
-  if (!m || !HOUSE) return;
-  // The card line that pays a cuota must be one the app recognizes as the mortgage's.
-  if (!isMortgageCcExpenseMerchant(MORTGAGE_MERCHANT)) throw new Error(`demo: ${MORTGAGE_MERCHANT} is not a known mortgage lender`);
-  const propertyId = ids.get("property")!;
-  const mortgageId = ids.get("mortgage" as Acct)!;
+function writeMortgages(ledger: Ledger, ids: Map<Acct, number>): void {
+  for (const m of ledger.mortgages) writeMortgage(m, ids);
+}
+
+function writeMortgage(m: Ledger["mortgages"][number], ids: Map<Acct, number>): void {
+  const h = m.house;
+  const propertyId = ids.get(`property:${h.key}`)!;
+  const loanId = ids.get(`loan:${h.key}`)!;
+  // The card line that pays a cuota must be one the app recognizes as this loan's lender.
+  if (!isLoanLenderMerchant(h.lender.merchant, loanId)) throw new Error(`demo: ${h.lender.merchant} is not ${h.label}'s lender`);
   const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
   const r5 = (v: number) => Math.round(v * 1e5) / 1e5;
-  const valueUfAt = (day: Ymd) => HOUSE.valueUf * Math.pow(1 + HOUSE.monthlyAppreciation, Math.max(0, (Date.parse(day) - Date.parse(m.pieDate)) / (30.44 * 86_400_000)));
-  db.transaction(() => {
+  const valueUfAt = (day: Ymd) => h.valueUf * Math.pow(1 + h.monthlyAppreciation, Math.max(0, (Date.parse(day) - Date.parse(m.pieDate)) / (30.44 * 86_400_000)));
+  // Not one transaction: each payment is the writer's own, and inside an outer one the depto
+  // ledger it re-reads would be rebuilt from scratch for every cuota.
+  {
     const pie: DeptoDividendosPaymentRow = {
       cuota: "pie",
       occurred_on: m.pieDate,
@@ -383,20 +397,20 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>): void {
     const pm = db
       .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
       .run(propertyId, pie.amount_clp, pie.occurred_on, deptoPaymentHumanNote("property", "pie", false));
-    insertLoanPaymentRow({ movement_id: Number(pm.lastInsertRowid), loan_account_id: mortgageId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(pie) });
-    upsertPropertyAppraisalUf(propertyId, m.pieDate, r4(HOUSE.valueUf));
+    insertLoanPaymentRow({ movement_id: Number(pm.lastInsertRowid), loan_account_id: loanId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(pie) });
+    upsertPropertyAppraisalUf(propertyId, m.pieDate, r4(h.valueUf));
     for (const c of [...m.cuotas].sort((a, b) => a.date.localeCompare(b.date))) {
       // A prepago is all extra amortization, with no interest or insurance.
       const regular = c.n != null;
       commitMortgagePayment(
-        mortgageId,
+        loanId,
         {
           occurred_on: c.date,
           cuota: c.label,
           pago_clp: c.clp,
           interes_clp: regular ? Math.round(c.interestUf * c.ufDay) : 0,
-          incendio_clp: regular ? MORTGAGE_INCENDIO_CLP : 0,
-          desgravamen_clp: regular ? MORTGAGE_DESGRAVAMEN_CLP : 0,
+          incendio_clp: regular ? h.lender.incendioClp : 0,
+          desgravamen_clp: regular ? h.lender.desgravamenClp : 0,
           amortizacion_ext_clp: regular ? Math.round(c.extUf * c.ufDay) : c.clp,
           min_uf: regular ? r5(c.pmtUf) : null,
           max_uf: regular ? r5(c.pmtUf * 1.2 + c.extUf) : null,
@@ -406,7 +420,74 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>): void {
       );
       upsertPropertyAppraisalUf(propertyId, c.date, r4(valueUfAt(c.date)));
     }
+  }
+}
+
+/** The real-estate page's places, one per house (a DFL-2 house says so): config, written once. */
+function writePlaces(person: Person, ids: Map<Acct, number>): void {
+  for (const h of person.houses) {
+    createRealEstatePlace({
+      slug: h.key,
+      label: h.label,
+      activeFrom: h.month,
+      propertyAccountId: ids.get(`property:${h.key}`)!,
+      dfl2: h.dfl2 ? { dfl2: true, builtM2: h.dfl2.builtM2, receptionYear: h.dfl2.receptionYear } : { dfl2: false },
+    });
+  }
+}
+
+/** The single-leg checking movement the bank printed `description` on for `clp` that day. */
+function checkingMovementFor(checkingId: number, day: Ymd, clp: number, description: string): number {
+  const rows = db
+    .prepare(`SELECT id FROM movements WHERE account_id = ? AND occurred_on = ? AND amount = ? AND note LIKE ?`)
+    .all(checkingId, day, clp, `%${description}%`) as { id: number }[];
+  if (rows.length !== 1) throw new Error(`demo: ${rows.length} checking movements for «${description}» ${clp} on ${day}`);
+  return rows[0]!.id;
+}
+
+/** Each rent the agency forwarded is the rent of its place (the income override names it). */
+function writeRentOverrides(ledger: Ledger, ids: Map<Acct, number>): void {
+  const checkingId = ids.get("checking")!;
+  db.transaction(() => {
+    for (const r of ledger.rents) {
+      upsertCheckingIncomeMovementOverride(checkingMovementFor(checkingId, r.date, r.clp, r.description), { income_kind: "rent", rent_place_slug: r.house });
+    }
   })();
+}
+
+/**
+ * The places' gastos comunes and contribuciones as bill rows, each created from the checking
+ * purchase that paid it (the real-estate assign path: a bill exists only when a purchase backs it).
+ */
+function writePlaceBills(ledger: Ledger): void {
+  if (ledger.placeBills.length === 0) return;
+  const lines = loadGastosLinesForRealEstateMatching().filter((l) => l.source === "checking");
+  const byKey = new Map<string, string[]>();
+  for (const l of lines) {
+    const k = `${l.purchase_on}|${Math.round(l.amount_clp)}|${l.merchant}`;
+    byKey.set(k, [...(byKey.get(k) ?? []), l.purchase_key]);
+  }
+  assignPurchasesToRealEstateExpenses(
+    ledger.placeBills.map((b) => {
+      const keys = byKey.get(`${b.date}|${b.clp}|${b.description}`) ?? [];
+      if (keys.length !== 1) throw new Error(`demo: ${keys.length} expense lines for ${b.kind} of ${b.house} on ${b.date} (${b.clp})`);
+      return { purchaseKey: keys[0]!, accountSlug: b.house, kind: b.kind };
+    })
+  );
+}
+
+/**
+ * Each regular cuota's card line linked to the property deposit it funded (amortization vs carrying),
+ * as the app's link sync pairs them after a write — the generator writes no categories through the
+ * funnel, so it runs the mortgage half of that sync itself (outside a transaction: inside one the
+ * process caches it reads are rebuilt per cuota).
+ */
+function writeMortgageCardLinks(ledger: Ledger): void {
+  if (ledger.mortgages.length === 0) return;
+  const lines = expenseLinesForDepositLinkSync().filter((l) => l.source === "cc");
+  const made = syncMortgageExpenseDepositLinksFromSheet(lines);
+  const regular = ledger.mortgages.reduce((a, m) => a + m.cuotas.filter((c) => c.n != null).length, 0);
+  if (made.length !== regular) throw new Error(`demo: ${made.length} mortgage card lines linked, ${regular} regular cuotas`);
 }
 
 /** APV and mutual fund accounts are book accounts: units × the fund's value, marked every business day. */
@@ -521,8 +602,11 @@ function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
     for (const [desc, slug] of ledger.categoryByCheckingDescription) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(desc), null, cat(slug));
   }
   for (const [desc, slug] of ledger.categoryByUsDescription) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(desc), null, cat(slug));
+  // A cuota's card line: the app's link sync files a linked cuota under «Cuentas y servicios»
+  // (its carrying cost; the amortización is split off by the link) — the rule says the same.
+  for (const h of ledger.person.houses) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(h.lender.merchant), null, cat("bills"));
   const generic = db.prepare(`INSERT OR IGNORE INTO cc_expense_generic_unique_merchants (merchant_key, sort_order) VALUES (?, ?)`);
-  ["TRANSF A BROKER DEMO SPA", "TRANSF A CRYPTO EXCHANGE SPA", "TRANSF A AGF ANDES APV", "TRANSF A INMOBILIARIA LOS ALAMOS"].forEach((k, i) =>
+  ["TRANSF A BROKER DEMO SPA", "TRANSF A CRYPTO EXCHANGE SPA", "TRANSF A AGF ANDES APV", ...ledger.person.houses.map((h) => h.pieDescription)].forEach((k, i) =>
     generic.run(normalizeCcExpenseMerchantKey(k), 1000 + i * 10)
   );
   invalidateExpenseGenericUniqueMerchantCache();
@@ -561,6 +645,7 @@ function applyColors(ids: Map<Acct, number>): void {
     ["stock:SPY", "35,55,217"],
     ["card:main", "75,153,189"],
     ["card:second", "180,120,60"],
+    ["card:us", "190,30,45"],
   ];
   for (const [key, rgb] of colors) {
     const id = ids.get(key);
@@ -580,6 +665,7 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   if (n > 0) throw new Error(`demo: target DB already has ${n} accounts — point NW_TRACKER_TEST_DB at a fresh file`);
 
   const ids = createAccounts(person);
+  writePlaces(person, ids);
   // The owner as the bank prints its own transfers (`owner_identity`, migration 277).
   db.prepare(`INSERT INTO owner_identity (kind, value) VALUES ('name_pattern', ?)`).run(DEMO_OWNER_NAME_PATTERN);
   seedNavTree();
@@ -689,7 +775,10 @@ function writeLife(
   // Parsed as the ingest route parses it: the contract checks every stub's sums.
   const payslipResult = payslips ? applyEmploymentPayslips(employmentPayslipsKind.payload.parse(payslips)) : null;
   writeContractorPayslips(ledger);
-  writeMortgage(ledger, ids);
+  writeMortgages(ledger, ids);
+  writeMortgageCardLinks(ledger);
+  writeRentOverrides(ledger, ids);
+  writePlaceBills(ledger);
   writeFundValuations(ids, market, today);
   writeAfc(ledger, ids.get("afc")!, today);
   if (ids.has("dap")) writeTermDepositValuations(ledger, ids.get("dap")!, today);
