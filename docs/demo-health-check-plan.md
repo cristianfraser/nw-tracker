@@ -29,7 +29,7 @@ longer US-chapter history: every % the app shows compounds its scope's own daily
 the readers held the whole cached daily payload of every account and group (48 scopes × 2
 units; the CLP home bundle alone retained 98 MB). `dailyPctSeries.ts` now keeps only each
 day's pct for those readers (56 MB; the full warm ~200 MB) and `render.yaml` sets
-`NODE_OPTIONS=--max-old-space-size=320`; the warm's log line prints the heap it used, and
+`NODE_OPTIONS=--max-old-space-size=320` on the start command (as a service env var it reached the client build, which aborted); the warm's log line prints the heap it used, and
 `server/scripts/profile-cache-memory.ts` lists what each step retains. The stalls below are the
 same mechanism one notch down: a warm that fits in memory but holds the loop.
 
