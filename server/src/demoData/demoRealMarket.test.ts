@@ -5,7 +5,7 @@ import {
   DEMO_SANTIAGO_SNAPSHOT_CSV_PATH,
   parseDemoAfpModeloCsv,
   parseDemoSantiagoSnapshotCsv,
-  spliceSnapshotBeforeYahoo,
+  spliceSantiagoSnapshotWithLiveBars,
 } from "./demoRealMarket.js";
 
 const HEADER = "afp;fund;day;unit_value_clp";
@@ -52,20 +52,21 @@ describe("demo Santiago closes snapshot", () => {
     expect(() => parseDemoSantiagoSnapshotCsv(`${H}\n`)).toThrow(/no rows/);
   });
 
-  it("keeps the snapshot before Yahoo's first day, and refuses a gap", () => {
+  it("keeps the snapshot whole, appends the live bars after it, and refuses a stale snapshot", () => {
     const snap = { dates: ["2025-06-02", "2025-06-03", "2025-06-04"], closes: [1, 2, 3] };
-    expect(spliceSnapshotBeforeYahoo(snap, { dates: ["2025-06-04", "2025-06-05"], closes: [30, 40] })).toEqual({
+    expect(spliceSantiagoSnapshotWithLiveBars(snap, { dates: ["2025-06-04", "2025-06-05"], closes: [30, 40] }, "2025-06-05")).toEqual({
       dates: ["2025-06-02", "2025-06-03", "2025-06-04", "2025-06-05"],
-      closes: [1, 2, 30, 40],
+      closes: [1, 2, 3, 40],
     });
-    expect(spliceSnapshotBeforeYahoo(snap, { dates: [], closes: [] })).toEqual(snap);
-    expect(() => spliceSnapshotBeforeYahoo(snap, { dates: ["2025-07-01"], closes: [9] })).toThrow(/week/);
+    expect(spliceSantiagoSnapshotWithLiveBars(snap, { dates: [], closes: [] }, "2025-06-10")).toEqual(snap);
+    expect(() => spliceSantiagoSnapshotWithLiveBars(snap, { dates: ["2025-07-01"], closes: [9] }, "2025-07-01")).toThrow(/refresh it/);
+    expect(() => spliceSantiagoSnapshotWithLiveBars({ dates: [], closes: [] }, { dates: [], closes: [] }, "2025-07-01")).toThrow(/empty/);
   });
 
-  it("the committed snapshot reaches Yahoo's first IPSA ETF close", () => {
+  it("the committed snapshot starts at the IPSA ETF's inception and is refreshed", () => {
     const m = parseDemoSantiagoSnapshotCsv(readFileSync(DEMO_SANTIAGO_SNAPSHOT_CSV_PATH, "utf8"));
     const s = m.get("CFIETFIPSA.SN")!;
     expect(s.dates[0]).toBe("2025-05-12");
-    expect(s.dates.at(-1)).toBe("2026-07-01");
+    expect(s.dates.at(-1)! >= "2026-11-06").toBe(true);
   });
 });

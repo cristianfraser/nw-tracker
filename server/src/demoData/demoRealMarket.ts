@@ -5,9 +5,9 @@
  * syncs (`demoMarketActivity.ts`) only ever append the days since:
  *
  * - `equity_daily`: Yahoo daily closes of every ticker the demo holds (BTC-USD included); a `.SN`
- *   ticker's from the Bolsa de Santiago's own point history (Yahoo keeps no past bars for them),
- *   with the committed snapshot spliced before the live source's first day
- *   (`DEMO_SANTIAGO_SNAPSHOT_CSV_PATH`: a closed past never changes);
+ *   ticker's from the committed Bolsa de Santiago snapshot (`DEMO_SANTIAGO_SNAPSHOT_CSV_PATH`,
+ *   refreshed before a release: Yahoo keeps no past bars for them and Render cannot reach the
+ *   Bolsa), plus Yahoo's bars after it;
  * - `fx_daily`: Yahoo CLP=X (write-once, like the live frame);
  * - `fx_daily_bcentral` / `eur_daily` / `uf_daily` / `utm_daily` / `ipc_daily`: Banco Central
  *   (`BCENTRAL_EMAIL` / `BCENTRAL_PASSWORD` are required — a Render secret on the demo);
@@ -47,7 +47,6 @@ import {
   fetchYahooDailyClosesAndDividends,
   type EodCloseSeries,
 } from "../equityYahooEod.js";
-import { fetchBolsaSantiagoDailyCloses } from "../equityBolsaSantiagoEod.js";
 import { equityQuoteCurrency } from "../equityQuote.js";
 import { fetchYahooFxUsdDailyCloses } from "../fxYahooEodSync.js";
 import {
@@ -90,11 +89,20 @@ export const DEMO_AFP_MODELO_CSV_PATH = resolve(
 
 const MODELO_CSV_HEADER = "afp;fund;day;unit_value_clp";
 
-/** The Bolsa de Santiago's closes of the IPSA ETF before Yahoo carries them (committed data). */
+/**
+ * The Bolsa de Santiago's closes of every `.SN` ticker the demo holds (committed data, refreshed
+ * from a machine that reaches the exchange: `npm run demo:refresh-santiago-snapshot`). Render's
+ * servers cannot read the Bolsa's API (it answers an HTML page, like the Superintendencia), and
+ * Yahoo keeps no past bars for these tickers, so the snapshot IS the history and must reach
+ * {@link DEMO_SANTIAGO_SNAPSHOT_MAX_AGE_DAYS} of the build's yesterday.
+ */
 export const DEMO_SANTIAGO_SNAPSHOT_CSV_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../data/demo/cfietfipsa-sn-2025-2026.csv"
+  "../../data/demo/santiago-closes.csv"
 );
+/** How old the Santiago snapshot's last day may be, against the build's yesterday, before the build refuses. */
+export const DEMO_SANTIAGO_SNAPSHOT_MAX_AGE_DAYS = 7;
+export const DEMO_SANTIAGO_SNAPSHOT_REFRESH_COMMAND = "npm run demo:refresh-santiago-snapshot -w nw-tracker-server";
 
 const SANTIAGO_SNAPSHOT_HEADER = "ticker;day;close_clp";
 
@@ -127,26 +135,45 @@ export function parseDemoSantiagoSnapshotCsv(text: string): Map<string, EodClose
   return out;
 }
 
+/** The snapshot's last day, or a throw naming the refresh command when it is older than `maxAgeDays` before `yesterday`. */
+export function assertSantiagoSnapshotFresh(
+  snapshot: EodCloseSeries,
+  yesterday: string,
+  maxAgeDays: number = DEMO_SANTIAGO_SNAPSHOT_MAX_AGE_DAYS
+): string {
+  const last = snapshot.dates.at(-1);
+  if (last == null) throw new Error("demo market: the Santiago snapshot is empty");
+  const ageDays = Math.round((Date.parse(yesterday) - Date.parse(last)) / 86_400_000);
+  if (ageDays > maxAgeDays) {
+    throw new Error(
+      `demo market: the Santiago snapshot ends ${last}, ${ageDays} days before ${yesterday} (at most ${maxAgeDays}); refresh it: ${DEMO_SANTIAGO_SNAPSHOT_REFRESH_COMMAND}`
+    );
+  }
+  return last;
+}
+
 /**
- * A ticker's closes: the snapshot's before the live source's first day, then the live source's. Throws when the two
- * leave a gap of more than a week (the snapshot must reach Yahoo's start).
+ * A `.SN` ticker's closes: the committed snapshot, then the live source's bars dated after its
+ * last day (Yahoo answers today's bar at most). The snapshot must end within `maxAgeDays` of
+ * `yesterday`, else it is stale and the build refuses, naming the refresh command — never a
+ * silent hole in the series.
  */
-export function spliceSnapshotBeforeYahoo(snapshot: EodCloseSeries, yahoo: EodCloseSeries): EodCloseSeries {
-  const firstYahoo = yahoo.dates[0];
-  if (firstYahoo == null) return snapshot;
-  const dates: string[] = [];
-  const closes: number[] = [];
-  snapshot.dates.forEach((d, i) => {
-    if (d < firstYahoo) {
+export function spliceSantiagoSnapshotWithLiveBars(
+  snapshot: EodCloseSeries,
+  live: EodCloseSeries,
+  yesterday: string,
+  maxAgeDays: number = DEMO_SANTIAGO_SNAPSHOT_MAX_AGE_DAYS
+): EodCloseSeries {
+  const last = assertSantiagoSnapshotFresh(snapshot, yesterday, maxAgeDays);
+  const dates = [...snapshot.dates];
+  const closes = [...snapshot.closes];
+  live.dates.forEach((d, i) => {
+    if (d > last) {
       dates.push(d);
-      closes.push(snapshot.closes[i]!);
+      closes.push(live.closes[i]!);
     }
   });
-  const last = dates.at(-1);
-  if (last != null && Date.parse(firstYahoo) - Date.parse(last) > 7 * 86_400_000) {
-    throw new Error(`demo market: the snapshot ends ${last}, more than a week before Yahoo starts ${firstYahoo}`);
-  }
-  return { dates: [...dates, ...yahoo.dates], closes: [...closes, ...yahoo.closes] };
+  return { dates, closes };
 }
 
 /**
@@ -295,18 +322,24 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
   for (const { ticker, firstUse } of tickers) {
     const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
     const withDividends = benchmarkTickers.has(ticker);
-    // A Bolsa de Santiago instrument's history comes from the exchange's own point history:
-    // Yahoo keeps no past bars for the thin `.SN` tickers (on 2026-11-09 it answered one bar,
-    // today's, for CFIETFIPSA.SN, and the Render build failed on the snapshot splice).
+    // A `.SN` ticker's history is the committed snapshot (see DEMO_SANTIAGO_SNAPSHOT_CSV_PATH):
+    // Yahoo keeps no past bars for the thin Santiago tickers (on 2026-11-09 it answered one bar,
+    // today's, for CFIETFIPSA.SN) and Render cannot reach the Bolsa's API (2026-11-09: an HTML
+    // page where the laptop gets JSON), so the build only appends Yahoo's bars after the snapshot.
     const santiago = equityQuoteCurrency(ticker) === "clp";
-    const sourceLabel = santiago ? `Bolsa de Santiago ${ticker}` : `Yahoo ${ticker}`;
-    const { series, divs } = await withDemoMarketRetries(sourceLabel, async () => {
+    const santiagoSnapshot = snapshots.get(ticker);
+    if (santiago) {
+      // Decided before the retries: a stale or missing snapshot is a repository state, not a network failure.
+      if (!santiagoSnapshot) throw new Error(`demo market: ${ticker} has no committed Santiago snapshot (${DEMO_SANTIAGO_SNAPSHOT_REFRESH_COMMAND})`);
+      assertSantiagoSnapshotFresh(santiagoSnapshot, yesterday);
+    }
+    const { series, divs } = await withDemoMarketRetries(`Yahoo ${ticker}`, async () => {
       let raw: EodCloseSeries;
       let divs: { ex_date: string; amount: number }[] = [];
-      if (santiago) {
-        if (withDividends) throw new Error(`demo market: ${ticker} cannot be a dividend benchmark (no dividend source)`);
-        raw = await fetchBolsaSantiagoDailyCloses(ticker);
-      } else if (withDividends) {
+      if (santiago && withDividends) {
+        throw new Error(`demo market: ${ticker} cannot be a dividend benchmark (no dividend source)`);
+      }
+      if (withDividends) {
         const r = await fetchYahooDailyClosesAndDividends(ticker, unixSeconds(from), p2);
         raw = r.series;
         divs = r.dividends.filter((d) => d.ex_date <= last);
@@ -314,8 +347,7 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
       } else {
         raw = await fetchYahooDailyCloses(ticker, unixSeconds(from), p2);
       }
-      const snapshot = snapshots.get(ticker);
-      const s = closesThrough(snapshot ? spliceSnapshotBeforeYahoo(snapshot, raw) : raw, last);
+      const s = closesThrough(santiagoSnapshot ? spliceSantiagoSnapshotWithLiveBars(santiagoSnapshot, raw, yesterday) : raw, last);
       if (s.dates.length === 0) throw new Error(`no closes for ${ticker}`);
       return { series: s, divs };
     });

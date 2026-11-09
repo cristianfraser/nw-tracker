@@ -19,6 +19,7 @@
     "db:prune-snapshots": "tsx scripts/prune-db-snapshots.ts",
     "demo:generate": "tsx scripts/generate-demo-data.ts --real-market",
     "demo:visits": "tsx scripts/print-demo-visits.ts",
+    "demo:refresh-santiago-snapshot": "tsx scripts/refresh-demo-santiago-snapshot.ts",
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
     "reconcile:cartola-partials": "tsx scripts/reconcile-cartola-partials.ts",
