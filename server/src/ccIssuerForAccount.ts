@@ -22,3 +22,8 @@ export function ccIssuerSlugForMasterAccount(accountId: number): CcIssuerSlug {
 export function ccDerivedPayByRuleForAccount(accountId: number): CcDerivedPayByRule {
   return ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.derived_pay_by;
 }
+
+/** Where the card is paid with another card in one charge (merchant prefixes; empty: never). */
+export function ccFacturadoPaidAtMerchantPrefixesForAccount(accountId: number): readonly string[] {
+  return ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.facturado_paid_at_merchant_prefixes;
+}

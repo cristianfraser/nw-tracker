@@ -63,6 +63,15 @@ type CcIssuerDef = {
    * appends « (T)» and its web table «,CITY».
    */
   merchant_suffixes: "bci_terminal_and_city" | null;
+  /**
+   * Where the issuer's card is paid with another card in one charge, as that charge's merchant
+   * opens (folded, upper case): the facturado-financing matcher (`ccFacturadoFinancingAuto.ts`)
+   * takes a one-shot charge on another card as this card's payment only when it opens like one of
+   * these and equals a closed facturado to the peso. BCI Lider is paid at a Lider store's counter:
+   * «RECAUDACION EX PLAZA LYON» on the statement, «EXPRESS PLAZA L…» in the feed (2026-07-30,
+   * 2026-11-09); the Lider store names are the vendor catalog's Lider brands. None for the others.
+   */
+  facturado_paid_at_merchant_prefixes: readonly string[];
 };
 
 export const CC_ISSUERS = [
@@ -76,6 +85,7 @@ export const CC_ISSUERS = [
     parser_layout_prefixes: [],
     monto_facturado_tolerance_pct: 0.025,
     merchant_suffixes: null,
+    facturado_paid_at_merchant_prefixes: [],
   },
   {
     slug: "bci",
@@ -87,6 +97,7 @@ export const CC_ISSUERS = [
     parser_layout_prefixes: ["bci_lider"],
     monto_facturado_tolerance_pct: 0.005,
     merchant_suffixes: "bci_terminal_and_city",
+    facturado_paid_at_merchant_prefixes: ["RECAUDACION", "EXPRESS", "EXP LIDER", "HIP LIDER", "HIPER LIDER", "LIDER"],
   },
   {
     slug: "cmr",
@@ -98,6 +109,7 @@ export const CC_ISSUERS = [
     parser_layout_prefixes: [],
     monto_facturado_tolerance_pct: 0.025,
     merchant_suffixes: null,
+    facturado_paid_at_merchant_prefixes: [],
   },
 ] as const satisfies readonly CcIssuerDef[];
 

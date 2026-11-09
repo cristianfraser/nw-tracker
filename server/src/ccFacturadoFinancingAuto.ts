@@ -16,6 +16,17 @@
  * but the PAGO is planted). Only one exact combination may fit: two that fit, or a purchase that
  * fits two facturados, is reported and left alone. Months already linked are never touched.
  *
+ * A facturado paid in ONE charge on another card (2026-11-09) is matched too, more strictly: a
+ * single one-shot peso purchase equal to the facturado to the peso, inside the same window, whose
+ * merchant opens like a place the paid card's issuer is paid at (`facturado_paid_at_merchant_prefixes`
+ * on `CC_ISSUERS`: a Lider store for the BCI Lider card). One-shots never combine. Such a payment
+ * needs no financing link (nothing is spread over cuotas); its line is filed as an internal
+ * transfer instead — an «Único» row, only when the line has no category of its own, no per-line
+ * override, no declined automatic category and no merchant rule that already keeps it out of gastos
+ * (a Lider store's rule is groceries; «RECAUDACION …» is «no cuenta») — so it stays out of gastos, and the PAGO is planted
+ * as below. A pending listing that settles under another name is matched again on the next write
+ * (the PAGO is then on file; the new line gets its category).
+ *
  * The PAGO is planted only when the paid card holds no payment of that amount around the
  * purchase date (lines dated −3…+5 days, or a statement header naming the amount): the statement
  * that later prints the real PAGO settles the planted bucket line like any pasted one.
@@ -23,7 +34,6 @@
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
-import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
 import { listCcFacturadoFinancingLinks, upsertCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
@@ -32,6 +42,18 @@ import type { CcListingParseResult } from "./ccWebPasteParse.js";
 import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { ccFacturadoPaidAtMerchantPrefixesForAccount } from "./ccIssuerForAccount.js";
+import {
+  CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
+  NO_CUENTA_CC_EXPENSE_SLUG,
+  getCcExpenseCategoryBySlug,
+  resolveCcExpensePurchaseKey,
+  stableInstallmentHPurchaseKeyFromLedgerArgs,
+} from "./ccExpenseCategories.js";
+import { userDeclinedAutoCategoryForPurchase } from "./ccAdditionalCardExpenseMatch.js";
+import { getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
+import { requestExpenseLinkSync } from "./expenseLinkSync.js";
+import { generalRuleCategoryIdReaching } from "./expenseCategoryRules.js";
 import { db } from "./db.js";
 import { findLines, planRows } from "./cards/purchases.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant } from "nw-tracker-contracts";
@@ -44,7 +66,8 @@ const MAX_PURCHASES_PER_DAY = 10;
 
 type Payment =
   | { kind: "plan"; account_id: number; iso: string; principal_clp: number; plan_id: number; purchase_key: string }
-  | { kind: "tagged_line"; account_id: number; iso: string; principal_clp: number; line_id: number };
+  | { kind: "tagged_line"; account_id: number; iso: string; principal_clp: number; line_id: number }
+  | { kind: "one_shot"; account_id: number; iso: string; principal_clp: number; line_id: number; merchant: string };
 
 type FinancedFacturado = {
   account_id: number;
@@ -60,8 +83,11 @@ export type FacturadoFinancingMatch = {
   facturado_clp: number;
   paid_on: string;
   payments: Payment[];
-  /** `link`: every payment is a plan; `pending_plan`: a tagged line has no plan yet. */
-  status: "link" | "pending_plan";
+  /**
+   * `link`: every payment is a plan; `pending_plan`: a tagged line has no plan yet; `one_shot`: one
+   * charge at the full facturado (no link — the line is filed as an internal transfer).
+   */
+  status: "link" | "pending_plan" | "one_shot";
   /** Whether the paid card already shows the payment. */
   payment_on_file: boolean;
 };
@@ -132,6 +158,30 @@ function cuotaPayments(linkedKeys: Set<string>): Payment[] {
   return out;
 }
 
+/**
+ * The one-shot peso purchases on card masters whose merchant opens with one of `prefixes`: the
+ * candidates for a facturado paid in a single charge.
+ */
+function oneShotPayments(prefixes: readonly string[], masters: ReadonlySet<number>): Payment[] {
+  if (prefixes.length === 0) return [];
+  const out: Payment[] = [];
+  for (const l of findLines({ amountClpSign: "positive", installmentFlag: 0, merchantPrefixes: prefixes })) {
+    if (!masters.has(l.account_id) || l.statement_currency !== "clp") continue;
+    if (l.kind !== "card_purchase" || l.cuota_purchase_kind != null) continue;
+    const iso = normalizeTransactionDateIso(l.transaction_date ?? l.posting_date);
+    if (!iso) continue;
+    out.push({
+      kind: "one_shot",
+      account_id: l.account_id,
+      iso,
+      principal_clp: Math.round(l.amount_clp!),
+      line_id: l.line_id,
+      merchant: String(l.merchant ?? ""),
+    });
+  }
+  return out;
+}
+
 /** Every subset of `items` whose principals add up to `target`. */
 function exactSubsets(items: Payment[], target: number): Payment[][] {
   const out: Payment[][] = [];
@@ -175,6 +225,18 @@ export function planFacturadoFinancingLinks(): FacturadoFinancingPlan {
   const linkedMonths = new Set(links.map((l) => `${l.financed_account_id}|${l.financed_billing_month}`));
   const linkedKeys = new Set(links.flatMap((l) => l.financing.map((f) => `${f.account_id}|${f.purchase_key}`)));
   const payments = cuotaPayments(linkedKeys);
+  const masters = new Set(listCreditCardMasterAccountIds());
+  const oneShotsByPrefixes = new Map<string, Payment[]>();
+  const oneShotsFor = (accountId: number): Payment[] => {
+    const prefixes = ccFacturadoPaidAtMerchantPrefixesForAccount(accountId);
+    const key = prefixes.join("|");
+    let hit = oneShotsByPrefixes.get(key);
+    if (!hit) {
+      hit = oneShotPayments(prefixes, masters);
+      oneShotsByPrefixes.set(key, hit);
+    }
+    return hit;
+  };
   const plan: FacturadoFinancingPlan = { matches: [], ambiguous: [] };
   const candidates: { f: FinancedFacturado; picks: Payment[][] }[] = [];
 
@@ -195,12 +257,17 @@ export function planFacturadoFinancingLinks(): FacturadoFinancingPlan {
       }
       picks.push(...exactSubsets(day, f.facturado_clp));
     }
+    // A single charge for the whole facturado, at a place the card is paid at; never combined.
+    for (const p of oneShotsFor(f.account_id)) {
+      if (p.account_id === f.account_id || p.iso <= f.close_iso || p.iso > last) continue;
+      if (p.principal_clp === f.facturado_clp) picks.push([p]);
+    }
     if (picks.length === 0 && !skipped) continue;
     if (picks.length !== 1 || skipped) {
       plan.ambiguous.push({
         financed_account_id: f.account_id,
         financed_billing_month: f.billing_month,
-        reason: skipped ? "a day with too many cuota purchases to search" : `${picks.length} combinations of cuota purchases add up to the facturado`,
+        reason: skipped ? "a day with too many cuota purchases to search" : `${picks.length} combinations of purchases add up to the facturado`,
       });
       continue;
     }
@@ -217,7 +284,7 @@ export function planFacturadoFinancingLinks(): FacturadoFinancingPlan {
       plan.ambiguous.push({
         financed_account_id: f.account_id,
         financed_billing_month: f.billing_month,
-        reason: "its cuota purchases also add up to another facturado",
+        reason: "its purchases also add up to another facturado",
       });
       continue;
     }
@@ -228,7 +295,7 @@ export function planFacturadoFinancingLinks(): FacturadoFinancingPlan {
       facturado_clp: f.facturado_clp,
       paid_on: paidOn,
       payments: pick,
-      status: pick.every((p) => p.kind === "plan") ? "link" : "pending_plan",
+      status: pick.every((p) => p.kind === "plan") ? "link" : pick[0]!.kind === "one_shot" ? "one_shot" : "pending_plan",
       payment_on_file: paymentOnFile(f.account_id, paidOn, f.facturado_clp),
     });
   }
@@ -238,7 +305,29 @@ export function planFacturadoFinancingLinks(): FacturadoFinancingPlan {
 export type FacturadoFinancingApplyResult = FacturadoFinancingPlan & {
   links_created: { financed_account_id: number; financed_billing_month: string }[];
   payments_planted: { financed_account_id: number; paid_on: string; amount_clp: number }[];
+  /** One-shot payment lines filed as internal transfers by this pass. */
+  lines_filed_as_transfer: { account_id: number; line_id: number; financed_account_id: number; financed_billing_month: string }[];
 };
+
+/**
+ * Files a one-shot payment line as an internal transfer, unless the user has said anything about
+ * its category (an «Único» row, a per-line override, a declined automatic category) or a merchant
+ * rule already keeps it out of gastos («no cuenta» or internal transfer: «RECAUDACION …»). True
+ * when written.
+ */
+function fileOneShotAsInternalTransfer(accountId: number, lineId: number, merchant: string): boolean {
+  const lineRow = db.prepare(`SELECT 1 AS o FROM cc_expense_line_categories WHERE statement_line_id = ?`).get(lineId);
+  if (lineRow) return false;
+  const key = resolveCcExpensePurchaseKey(lineId);
+  if (getFlowCategory(accountId, key) !== undefined) return false;
+  if (userDeclinedAutoCategoryForPurchase(accountId, key)) return false;
+  const cat = getCcExpenseCategoryBySlug(CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG);
+  if (!cat) throw new Error(`expense category ${CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG} missing`);
+  const ruled = generalRuleCategoryIdReaching(merchant);
+  if (ruled != null && (ruled === cat.id || ruled === getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG)?.id)) return false;
+  putFlowCategory(accountId, key, cat.id, "keep");
+  return true;
+}
 
 let running = false;
 
@@ -254,7 +343,12 @@ export function applyFacturadoFinancingLinks(
   running = true;
   try {
     const plan = planFacturadoFinancingLinks();
-    const result: FacturadoFinancingApplyResult = { ...plan, links_created: [], payments_planted: [] };
+    const result: FacturadoFinancingApplyResult = {
+      ...plan,
+      links_created: [],
+      payments_planted: [],
+      lines_filed_as_transfer: [],
+    };
     for (const m of plan.matches) {
       if (m.status === "link") {
         upsertCcFacturadoFinancingLink({
@@ -267,13 +361,24 @@ export function applyFacturadoFinancingLinks(
         });
         result.links_created.push({ financed_account_id: m.financed_account_id, financed_billing_month: m.financed_billing_month });
       }
+      if (m.status === "one_shot") {
+        const p = m.payments[0] as Extract<Payment, { kind: "one_shot" }>;
+        if (fileOneShotAsInternalTransfer(p.account_id, p.line_id, p.merchant)) {
+          result.lines_filed_as_transfer.push({
+            account_id: p.account_id,
+            line_id: p.line_id,
+            financed_account_id: m.financed_account_id,
+            financed_billing_month: m.financed_billing_month,
+          });
+        }
+      }
       if (!m.payment_on_file) {
         const line = listingLineFromCardListingLine({
           date: m.paid_on,
           merchant: "PAGO",
           currency: "clp",
           amount: -m.facturado_clp,
-          raw_text: `${ddMmYyyyFromIso(m.paid_on)} PAGO (cuotas en otra tarjeta) ${m.facturado_clp}`,
+          raw_text: `${ddMmYyyyFromIso(m.paid_on)} PAGO (${m.status === "one_shot" ? "pagado con otra tarjeta" : "cuotas en otra tarjeta"}) ${m.facturado_clp}`,
         });
         plant(m.financed_account_id, { lines: [line], errors: [] });
         result.payments_planted.push({
@@ -283,6 +388,7 @@ export function applyFacturadoFinancingLinks(
         });
       }
     }
+    if (result.lines_filed_as_transfer.length > 0) requestExpenseLinkSync();
     return result;
   } finally {
     running = false;
