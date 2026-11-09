@@ -9,7 +9,7 @@ import {
   AFC_RATES_PCT,
   afpWorkerRatePct,
   boletaRetentionRate,
-  igcMarginalRate,
+  APV_ANNUAL_CAP_UF,
   igcTax,
   INDEPENDENT_OTHER_RATES,
   INDEPENDENT_TAXABLE_SHARE,
@@ -27,6 +27,7 @@ import { MORTGAGE_CUOTA_DAY } from "../mortgageCuotaDay.js";
 import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { ccIssuerBySlug } from "../ccIssuers.js";
 import { derivedPayByIso } from "../ccInstallmentPayBy.js";
+import { equityQuoteCurrency } from "../equityQuote.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
@@ -48,9 +49,14 @@ import { stream, type Rng } from "./rng.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
-export type CashAcct = "vista" | "checking" | "checkingUsd" | "brokerClp" | "brokerUsd" | "exchangeClp";
+export type CashAcct = "vista" | "checking" | "checkingUsd" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "exchangeClp";
+/** The cash accounts that hold dollars. */
+const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "brokerUsd", "ibkrUsd"]);
+/** The broker cash accounts a dollar stock trades against. */
+export type UsdBrokerCash = "brokerUsd" | "ibkrUsd";
 export type Acct =
   | CashAcct
+  | "dap"
   | "btc"
   | "apvA"
   | "apvB"
@@ -203,12 +209,17 @@ export type Ledger = {
   feeReceipts: FeeReceipt[];
   /** APV régimen B deposits (the AFP's DJ 1899). */
   apvBDeposits: { date: Ymd; clp: number }[];
+  /** The term deposits, in order (the bank's DJ 1890 reports their real interest). */
+  termDeposits: TermDeposit[];
   /**
    * Each income year's April settlement (positive paid, negative refunded) and the pension
    * contributions on fees the SII charged inside it (code 900).
    */
   aprilSettlements: Map<number, { clp: number; contributionsClp: number }>;
 };
+
+/** A peso term deposit (DAP): opened from checking, paid back to it with the interest at maturity. */
+export type TermDeposit = { open: Ymd; maturity: Ymd; principal: number; payout: number; paid: boolean };
 
 export type FeeReceipt = { issuedOn: Ymd; payer: string; grossClp: number; retentionClp: number; retainedBy: "payer" | "issuer" };
 
@@ -229,6 +240,26 @@ const MORTGAGE_DESGRAVAMEN_CLP = 4_500;
 export const APV_FUND_SERIES_KEY = "demo_apv_fondo";
 /** The mutual fund's valor cuota series (a person with `fund`). */
 export const MUTUAL_FUND_SERIES_KEY = "demo_fondo";
+
+/** The 15 % US tax the Chilean broker withholds from dividends (W-8BEN, no treaty). */
+export const DIVIDEND_WITHHOLDING_RATE = 0.15;
+
+/**
+ * The story's short-term dollar rate (≈ the T-bill yield), from each year on until the next entry:
+ * SGOV's distributions and the US broker's interest.
+ */
+const USD_YIELD_PCT_FROM_YEAR: readonly [number, number][] = [
+  [2024, 5.2],
+  [2025, 4.3],
+  [2026, 3.8],
+];
+/** The US broker pays the benchmark rate less this on idle dollars. */
+const IBKR_SWEEP_SPREAD_PCT = 0.5;
+function usdYieldPct(year: number): number {
+  const hit = [...USD_YIELD_PCT_FROM_YEAR].reverse().find(([from]) => year >= from);
+  if (!hit) throw new Error(`demo: no dollar short rate for ${year}`);
+  return hit[1];
+}
 
 /** Discretionary spend shares by category at the base lifestyle. */
 const CATEGORY_WEIGHTS: Record<string, number> = {
@@ -349,13 +380,36 @@ export function cardPayBy(card: CardDef, close: Ymd): Ymd {
 }
 
 
+/** The 10 % pension withdrawals: at least this many UF (all of a smaller balance), at most the cap. */
+const AFP_WITHDRAWAL_FLOOR_UF = 35;
+const AFP_WITHDRAWAL_CAP_UF = 150;
+
+/**
+ * The story's 30-day peso term-deposit rate (%), from each month on: low in 2021, high with the
+ * 2022 policy rate, easing in 2023.
+ */
+const DAP_RATE_PCT_30D_FROM: readonly [Month, number][] = [
+  ["2021-01", 0.12],
+  ["2021-08", 0.3],
+  ["2021-11", 0.55],
+  ["2022-03", 0.8],
+  ["2022-08", 0.95],
+  ["2023-06", 0.85],
+  ["2023-09", 0.7],
+];
+function dapRate30dPct(day: Ymd): number {
+  const hit = [...DAP_RATE_PCT_30D_FROM].reverse().find(([from]) => monthOf(day) >= from);
+  if (!hit) throw new Error(`demo: no term-deposit rate for ${day}`);
+  return hit[1];
+}
+
 /** When the AFP switch credits UNO (Modelo until then). */
 export const AFP_SWITCH_MONTH: Month = "2020-02";
 
 /* ------------------------------------ book -------------------------------------- */
 
 class Book {
-  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, brokerClp: 0, brokerUsd: 0, exchangeClp: 0 };
+  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, exchangeClp: 0 };
   units = new Map<string, number>();
   bank: BankRow[] = [];
   direct: DirectMovement[] = [];
@@ -367,11 +421,12 @@ class Book {
     checkingUsd: new Map(),
     brokerClp: new Map(),
     brokerUsd: new Map(),
+    ibkrUsd: new Map(),
     exchangeClp: new Map(),
   };
 
   private add(acct: CashAcct, amount: number, day: Ymd) {
-    const usd = acct === "checkingUsd" || acct === "brokerUsd";
+    const usd = USD_CASH.has(acct);
     this.bal[acct] = usd ? cents(this.bal[acct] + amount) : this.bal[acct] + amount;
     const m = this.daily[acct];
     m.set(day, (m.get(day) ?? 0) + amount);
@@ -416,7 +471,7 @@ class Book {
     const usd = t.usd != null ? cents(t.usd) : undefined;
     const cashLeg = (a: Acct, sign: 1 | -1) => {
       if (!isCash(a)) return;
-      const isUsd = a === "checkingUsd" || a === "brokerUsd";
+      const isUsd = USD_CASH.has(a);
       const v = isUsd ? usd : clp;
       if (v == null) throw new Error(`demo: transfer ${t.note} needs a ${isUsd ? "USD" : "CLP"} leg for ${a}`);
       this.add(a, sign * v, t.date);
@@ -424,7 +479,7 @@ class Book {
     cashLeg(t.from, -1);
     cashLeg(t.to, 1);
     // Selling dollars (a USD account sends, a peso account receives): the dollars are the from-leg.
-    const usdSale = clp != null && usd != null && (t.from === "checkingUsd" || t.from === "brokerUsd");
+    const usdSale = clp != null && usd != null && isCash(t.from) && USD_CASH.has(t.from);
     this.direct.push({
       type: "transfer",
       from: t.from,
@@ -458,7 +513,7 @@ class Book {
 }
 
 function isCash(a: Acct): a is CashAcct {
-  return ["vista", "checking", "checkingUsd", "brokerClp", "brokerUsd", "exchangeClp"].includes(a);
+  return ["vista", "checking", "checkingUsd", "brokerClp", "brokerUsd", "ibkrUsd", "exchangeClp"].includes(a);
 }
 
 /* -------------------------------- simulation ------------------------------------ */
@@ -491,6 +546,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     btc: BTC,
     cashBand: CASH_BAND,
     apv: APV,
+    dap: DAP,
   } = person;
   const contractJobFor = (month: Month): ContractJob | null => CONTRACT_JOBS.find((j) => month >= j.from && month <= j.to) ?? null;
   const contractorJobFor = (month: Month): ContractorJob | null =>
@@ -600,8 +656,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     return t;
   };
   /** Independent contributions (AFP, SIS, accidentes, Sanna, salud) on the honorarios of a year. */
-  const independentContributions = (y: number) => {
-    const t = yearTax(y);
+  const independentContributions = (y: number, t: YearTax = yearTax(y)) => {
     if (!t.independent || t.honorariosGross <= 0) return { base: 0, total: 0, pension: 0, healthAndAfp: 0 };
     const capClp = pensionCapUf(y) * 12 * market.uf(`${y}-12-31`);
     const base = Math.min(INDEPENDENT_TAXABLE_SHARE * t.honorariosGross, capClp);
@@ -611,15 +666,44 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const other = round(base * (INDEPENDENT_OTHER_RATES.sis + INDEPENDENT_OTHER_RATES.workAccidents + INDEPENDENT_OTHER_RATES.sanna));
     return { base, total: afpTotal + health + other, pension, healthAndAfp: afpTotal + health };
   };
-  const annualTax = (y: number) => {
-    const t = yearTax(y);
+  const annualTax = (y: number, t: YearTax = yearTax(y)) => {
     const uta = 12 * market.utm(`${y}-12`);
     const presumed = Math.min(PRESUMED_EXPENSES_RATE * t.honorariosGross, PRESUMED_EXPENSES_CAP_UTA * uta);
-    const contrib = independentContributions(y);
+    const contrib = independentContributions(y, t);
     const base = t.contractTaxable + t.honorariosGross - presumed - contrib.healthAndAfp - t.apvB;
     const igc = igcTax(base, uta, y + 1);
     const credits = t.iuscWithheld + Math.max(0, t.honorariosRetention - contrib.total);
-    return { base, igc, uta, result: round(igc - credits), marginal: igcMarginalRate(base, uta, y + 1) };
+    return { base, igc, uta, result: round(igc - credits) };
+  };
+  /** A whole year's taxable income as the jobs will pay it (for a decision taken before December). */
+  const projectedYearTax = (y: number): YearTax => {
+    const t: YearTax = { contractTaxable: 0, iuscWithheld: 0, honorariosGross: 0, honorariosRetention: 0, apvB: 0, independent: false };
+    for (let m: Month = `${y}-01`; m <= `${y}-12`; m = addMonths(m, 1)) {
+      const c = contractJobFor(m);
+      if (c) {
+        const ps = contractPayslip(c, m, market);
+        t.contractTaxable += ps.taxablePay - ps.pension - ps.health - ps.afc;
+      }
+      const k = contractorJobFor(m);
+      if (k) {
+        t.honorariosGross += round(k.monthlyUsd * market.fx(lastBusinessDay(m)));
+        t.independent = true;
+      }
+    }
+    t.apvB = yearTax(y).apvB;
+    return t;
+  };
+  /**
+   * The APV regime that pays more for `depositClp` in year `y`: B when the tax it saves (the IGC on
+   * the base with and without it) beats A's bonus (15 %, at most `bonusCapUtm` UTM a year less what
+   * the year's A deposits already earned).
+   */
+  const apvRegimeFor = (y: number, t: YearTax, depositClp: number, utmClp: number): "apvA" | "apvB" => {
+    const { base, uta } = annualTax(y, t);
+    const savedByB = igcTax(base, uta, y + 1) - igcTax(Math.max(0, base - depositClp), uta, y + 1);
+    const bonusLeft = Math.max(0, APV.bonusCapUtm * utmClp - (apvBonusByYear.get(y) ?? 0));
+    const bonusA = Math.min(depositClp * APV.bonusRate, bonusLeft);
+    return savedByB > bonusA ? "apvB" : "apvA";
   };
 
   /* ---------------------------------- AFP ----------------------------------- */
@@ -645,25 +729,86 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
 
   /* ---------------------------------- APV ------------------------------------ */
   const apvBonuses: { day: Ymd; clp: number }[] = [];
+  /** The state bonus each year's régimen A deposits earned (capped per year). */
+  const apvBonusByYear = new Map<number, number>();
+  /** UF deposited in APV each year (the 600 UF cap of régimen B). */
+  const apvUfByYear = new Map<number, number>();
+  /** The regime of the year's monthly deposits, decided at the first one. */
+  const apvMonthlyRegime = new Map<number, "apvA" | "apvB">();
+  const apvMonthlyIn = (m: Month) => APV.monthly != null && m >= APV.monthly.from && m <= APV.monthly.to;
+  /** One APV deposit from checking into régimen A or B. */
+  const apvDeposit = (day: Ymd, clp: number, regime: "apvA" | "apvB", year: number, note: string) => {
+    // A dollar earner sells dollars for it, keeping two months of spending in pesos after it.
+    ensureClp(day, clp + (contractorJobFor(monthOf(day)) ? 2 * trailingExpense() : 0));
+    const units = Math.round((clp / market.fundUnit(APV_FUND_SERIES_KEY, day)) * 1e4) / 1e4;
+    book.addUnits(regime, units, 4);
+    book.transfer(
+      { from: "checking", to: regime, date: day, clp, units, flowKind: null, note },
+      { account: "checking", description: "TRANSF A AGF ANDES APV", side: "from" }
+    );
+    apvUfByYear.set(year, (apvUfByYear.get(year) ?? 0) + clp / market.uf(day));
+    if (regime === "apvB") {
+      yearTax(year).apvB += clp;
+      apvBDeposits.push({ date: day, clp });
+    } else {
+      const utmClp = market.utm(monthOf(day));
+      const bonus = round(Math.min(clp * APV.bonusRate, Math.max(0, APV.bonusCapUtm * utmClp - (apvBonusByYear.get(year) ?? 0))));
+      if (bonus > 0) {
+        apvBonusByYear.set(year, (apvBonusByYear.get(year) ?? 0) + bonus);
+        apvBonuses.push({ day: firstBusinessDayOnOrAfter(ymd(`${year + 1}-08`, 20)), clp: bonus });
+      }
+    }
+  };
 
   /* ------------------------------ broker helpers ----------------------------- */
-  const buyStock = (day: Ymd, ticker: string, usd: number) => {
+  /** Shares of a ticker held at each broker's cash account (one stock account holds every broker's shares). */
+  const heldAt = new Map<string, number>();
+  const heldUnits = (ticker: string, cash: CashAcct) => heldAt.get(`${ticker}|${cash}`) ?? 0;
+  const addHeld = (ticker: string, cash: CashAcct, units: number) => {
+    heldAt.set(`${ticker}|${cash}`, Math.round((heldUnits(ticker, cash) + units) * 1e6) / 1e6);
+    book.addUnits(`stock:${ticker}`, units, 6);
+  };
+  /** The price a share held on `day` traded at: the split-adjusted close × the splits after `day`. */
+  const heldClose = (ticker: string, day: Ymd) =>
+    person.splits.filter((x) => x.ticker === ticker && x.exDate > day).reduce((f, x) => f * (x.numerator / x.denominator), market.close(ticker, day));
+  const brokerLabel = (cash: CashAcct) => (cash === "ibkrUsd" ? "IBKR" : "Broker");
+  const buyStock = (day: Ymd, ticker: string, usd: number, cash: UsdBrokerCash = "brokerUsd") => {
     usd = cents(usd);
     if (usd <= 0) return;
-    const px = market.close(ticker, day);
-    const units = Math.round((usd / px) * 1e6) / 1e6;
-    book.addUnits(`stock:${ticker}`, units, 6);
-    book.transfer({ from: "brokerUsd", to: `stock:${ticker}`, date: day, usd, units, flowKind: "stock_buy", note: `Broker|compra ${ticker}` });
+    const units = Math.round((usd / heldClose(ticker, day)) * 1e6) / 1e6;
+    addHeld(ticker, cash, units);
+    book.transfer({ from: cash, to: `stock:${ticker}`, date: day, usd, units, flowKind: "stock_buy", note: `${brokerLabel(cash)}|compra ${ticker}` });
   };
-  const sellStock = (day: Ymd, ticker: string, fraction: number): number => {
-    const held = book.unitsOf(`stock:${ticker}`);
-    const units = Math.round(held * fraction * 1e6) / 1e6;
+  const sellStock = (day: Ymd, ticker: string, fraction: number, cash: UsdBrokerCash = "brokerUsd"): number => {
+    const units = Math.round(heldUnits(ticker, cash) * fraction * 1e6) / 1e6;
     if (units <= 0) return 0;
-    const usd = cents(units * market.close(ticker, day));
-    book.addUnits(`stock:${ticker}`, -units, 6);
-    book.transfer({ from: `stock:${ticker}`, to: "brokerUsd", date: day, usd, units, flowKind: "stock_sell", note: `Broker|venta ${ticker}` });
+    const usd = cents(units * heldClose(ticker, day));
+    addHeld(ticker, cash, -units);
+    book.transfer({ from: `stock:${ticker}`, to: cash, date: day, usd, units, flowKind: "stock_sell", note: `${brokerLabel(cash)}|venta ${ticker}` });
     return usd;
   };
+  /** A peso-quoted (Santiago) ticker: pesos from checking to the broker's peso cash, then the buy. */
+  const buyStockClp = (day: Ymd, ticker: string, clp: number) => {
+    clp = round(clp / 1000) * 1000;
+    ensureClp(day, clp + 100_000);
+    book.transfer({ from: "checking", to: "brokerClp", date: day, clp, flowKind: null, note: "Broker|depósito" }, { account: "checking", description: "TRANSF A BROKER DEMO SPA", side: "from" });
+    const units = Math.round((clp / heldClose(ticker, day)) * 1e4) / 1e4;
+    addHeld(ticker, "brokerClp", units);
+    book.transfer({ from: "brokerClp", to: `stock:${ticker}`, date: day, clp, units, flowKind: "stock_buy", note: `Broker|compra ${ticker}` });
+  };
+  /** A peso-quoted sale: the pesos land at the broker and come home to checking the next business day. */
+  const sellStockClp = (day: Ymd, ticker: string, fraction: number) => {
+    const units = Math.round(heldUnits(ticker, "brokerClp") * fraction * 1e4) / 1e4;
+    if (units <= 0) return;
+    const clp = round(units * heldClose(ticker, day));
+    addHeld(ticker, "brokerClp", -units);
+    book.transfer({ from: `stock:${ticker}`, to: "brokerClp", date: day, clp, units, flowKind: "stock_sell", note: `Broker|venta ${ticker}` });
+    const home = nextChileBusinessDayYmd(day)!;
+    if (home <= today) {
+      book.transfer({ from: "brokerClp", to: "checking", date: home, clp, flowKind: null, note: "Broker|retiro" }, { account: "checking", description: "TRANSF. DE BROKER DEMO SPA", side: "to" });
+    }
+  };
+  const isClpTicker = (ticker: string) => equityQuoteCurrency(ticker) === "clp";
   /** CLP deposited to the broker and converted to dollars the same day. */
   const depositBrokerClp = (day: Ymd, clp: number) => {
     clp = round(clp / 1000) * 1000;
@@ -672,11 +817,14 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const usd = cents((clp / market.fx(day)) * 0.995);
     book.transfer({ from: "brokerClp", to: "brokerUsd", date: day, clp, usd, flowKind: "compra_usd_venta_clp", note: "Broker|compra de dólares" });
   };
-  const depositBrokerUsd = (day: Ymd, usd: number) => {
+  const depositBrokerUsd = (day: Ymd, usd: number, cash: UsdBrokerCash = "brokerUsd") => {
     usd = cents(Math.floor(usd / 100) * 100);
     if (usd <= 0) return;
-    book.transfer({ from: "checkingUsd", to: "brokerUsd", date: day, usd, flowKind: null, note: "Broker|depósito USD" });
+    book.transfer({ from: "checkingUsd", to: cash, date: day, usd, flowKind: null, note: `${brokerLabel(cash)}|depósito USD` });
   };
+  /** Where new dollars are invested this month: the second broker once it opens. */
+  const ibkrOpen = (m: Month) => person.ibkr != null && m >= person.ibkr.from;
+  const dollarBroker = (m: Month): UsdBrokerCash => (ibkrOpen(m) ? "ibkrUsd" : "brokerUsd");
   const sellUsd = (day: Ymd, usd: number, from: "checkingUsd" = "checkingUsd") => {
     usd = cents(Math.floor(usd / 10) * 10);
     if (usd <= 0) return;
@@ -689,6 +837,59 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
 
   /* --------------------------------- mortgage -------------------------------- */
   let mortgage: Ledger["mortgage"] = null;
+
+  /* ------------------------------ term deposits ------------------------------ */
+  const termDeposits: TermDeposit[] = [];
+  /**
+   * The month's term-deposit events. A deposit maturing this month pays principal + interest back to
+   * checking, and the same day the payout plus a top-up (at most `topUpClp`) is placed again — less
+   * when checking cannot spare it, keeping two and a half months of spending and the known needs of the
+   * next months (a car, a move); with no deposit running, payday opens one. Nothing is placed that
+   * would mature after the window, or under a million. Amounts round down to the half million so a
+   * small change elsewhere (an April settlement) does not change them. While the deposits hold the
+   * savings the cash band is lower, so the broker DCA pauses: he is saving the pie.
+   */
+  const runTermDeposits = (month: Month) => {
+    const cfg = DAP!;
+    const cushion = () => Math.max(2_000_000, 2.5 * trailingExpense());
+    // Pesos plus the dollars a dollar earner would sell for it, less the cushion and the known needs.
+    const available = (day: Ymd) =>
+      book.lowestFrom("checking", day) +
+      Math.max(0, book.lowestFrom("checkingUsd", day)) * market.fx(day) * 0.99 -
+      cushion() -
+      upcomingCashNeeds(month);
+    const halfMillions = (clp: number) => Math.floor(clp / 500_000) * 500_000;
+    const place = (day: Ymd, wanted: number, note: string) => {
+      const maturity = firstBusinessDayOnOrAfter(addDays(day, cfg.termDays));
+      if (monthOf(maturity) > cfg.to || wanted < 1_000_000) return;
+      ensureClp(day, wanted + cushion());
+      const principal = halfMillions(Math.min(wanted, book.lowestFrom("checking", day) - cushion()));
+      if (principal < 1_000_000) return;
+      const days = (Date.parse(maturity) - Date.parse(day)) / 86_400_000;
+      const payout = round(principal * (1 + (dapRate30dPct(day) / 100) * (days / 30)));
+      book.transfer(
+        { from: "checking", to: "dap", date: day, clp: principal, flowKind: null, note },
+        { account: "checking", description: "INVERSION DEPOSITO A PLAZO", side: "from" }
+      );
+      termDeposits.push({ open: day, maturity, principal, payout, paid: false });
+    };
+    const cur = termDeposits.at(-1);
+    if (cur && !cur.paid) {
+      if (monthOf(cur.maturity) !== month || cur.maturity > today) return;
+      const day = cur.maturity;
+      book.transfer(
+        { from: "dap", to: "checking", date: day, clp: cur.payout, flowKind: null, note: "Vencimiento depósito a plazo" },
+        { account: "checking", description: "VENCIMIENTO DEPOSITO A PLAZO", side: "to" }
+      );
+      cur.paid = true;
+      place(day, halfMillions(Math.min(cur.payout + cfg.topUpClp, available(day))), "Renovación depósito a plazo");
+      return;
+    }
+    if (month < cfg.from || month > cfg.to) return;
+    const day = lastBusinessDay(month);
+    if (day > today) return;
+    place(day, halfMillions(Math.min(cfg.openingClp, available(day))), "Depósito a plazo");
+  };
 
   /* --------------------------------- months ---------------------------------- */
   let lastAgeMonthsExpense: number[] = [];
@@ -704,6 +905,17 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const hasChecking = month >= person.checkingFrom;
 
     for (const d of deferred.filter((x) => monthOf(x.day) === month).sort((a, b) => a.day.localeCompare(b.day))) d.run();
+    // A split multiplies every broker's shares from its ex-date (the stored closes are already
+    // adjusted; `heldClose` prices the shares as traded).
+    for (const sp of person.splits) {
+      if (monthOf(sp.exDate) !== month || sp.exDate > today) continue;
+      const ratio = sp.numerator / sp.denominator;
+      for (const [key, units] of [...heldAt]) {
+        if (!key.startsWith(`${sp.ticker}|`) || units === 0) continue;
+        heldAt.set(key, Math.round(units * ratio * 1e6) / 1e6);
+      }
+      book.addUnits(`stock:${sp.ticker}`, book.unitsOf(`stock:${sp.ticker}`) * (ratio - 1), 6);
+    }
     // The first account opens with what he had saved.
     if (month === FIRST_MONTH) book.bankRow(person.opening.account, ymd(month, 1), "DEPOSITO EN EFECTIVO", person.opening.clp);
     // Opening the checking account after the vista: the vista's savings move over.
@@ -1057,28 +1269,31 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       if (want > 0 && day <= today) sellUsd(day, Math.min(book.lowestFrom("checkingUsd", day), want / market.fx(day)));
     }
 
-    /* ---------- APV (December) ---------- */
-    if (mo === 12 && year >= APV.from && working) {
+    /* ---------- APV (monthly in the window, else December) ---------- */
+    if (apvMonthlyIn(month) && working) {
+      const day = firstBusinessDayOnOrAfter(ymd(month, APV.depositDay));
+      const ufLeft = APV_ANNUAL_CAP_UF - (apvUfByYear.get(year) ?? 0);
+      const uf = Math.min(APV.monthly!.uf, ufLeft);
+      if (day <= today && uf > 0.5) {
+        const clp = Math.floor((uf * market.uf(day)) / 1000) * 1000;
+        let regime = apvMonthlyRegime.get(year);
+        if (!regime) {
+          // Decided once for the year, on the year's income and every monthly deposit it will hold.
+          let planned = 0;
+          for (let m: Month = month; m <= `${year}-12`; m = addMonths(m, 1)) if (apvMonthlyIn(m)) planned += APV.monthly!.uf;
+          const plannedClp = Math.min(planned, ufLeft) * market.uf(day);
+          regime = apvRegimeFor(year, projectedYearTax(year), plannedClp, market.utm(month));
+          apvMonthlyRegime.set(year, regime);
+        }
+        apvDeposit(day, clp, regime, year, `APV ${regime === "apvA" ? "régimen A" : "régimen B"} ${month}`);
+      }
+    }
+    if (mo === 12 && year >= APV.from && working && !apvMonthlyRegime.has(year)) {
       const day = firstBusinessDayOnOrAfter(ymd(month, APV.depositDay));
       if (day <= today) {
         const clp = round(APV.utm * market.utm(month));
-        const projected = annualTax(year);
-        const regime: "apvA" | "apvB" = projected.marginal > APV.bonusRate ? "apvB" : "apvA";
-        ensureClp(day, clp);
-        const units = Math.round((clp / market.fundUnit(APV_FUND_SERIES_KEY, day)) * 1e4) / 1e4;
-        book.addUnits(regime, units, 4);
-        book.transfer(
-          { from: "checking", to: regime, date: day, clp, units, flowKind: null, note: `APV ${regime === "apvA" ? "régimen A" : "régimen B"} ${year}` },
-          { account: "checking", description: "TRANSF A AGF ANDES APV", side: "from" }
-        );
-        if (regime === "apvB") {
-          yearTax(year).apvB += clp;
-          apvBDeposits.push({ date: day, clp });
-        }
-        else {
-          const bonus = round(Math.min(clp * APV.bonusRate, APV.bonusCapUtm * market.utm(month)));
-          apvBonuses.push({ day: firstBusinessDayOnOrAfter(ymd(`${year + 1}-08`, 20)), clp: bonus });
-        }
+        const regime = apvRegimeFor(year, yearTax(year), clp, market.utm(month));
+        apvDeposit(day, clp, regime, year, `APV ${regime === "apvA" ? "régimen A" : "régimen B"} ${year}`);
       }
     }
     for (const b of apvBonuses.filter((x) => monthOf(x.day) === month && x.day <= today)) {
@@ -1101,6 +1316,31 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       afpSwitched = true;
     }
 
+    /* ---------- pension withdrawals (the 10 % laws) ---------- */
+    for (const w of person.afpWithdrawals) {
+      if (monthOf(w) !== month) continue;
+      const day = firstBusinessDayOnOrAfter(w);
+      if (day > today) continue;
+      if (day < afpSwitchDays().credit) throw new Error(`demo: AFP withdrawal on ${day} before the move to UNO`);
+      const held = book.unitsOf("afpUno");
+      const px = market.fundUnit(afpUnoSeries, day);
+      const uf = market.uf(day);
+      const balance = held * px;
+      // 10 % of the balance, at least 35 UF and at most 150 UF; the whole balance under 35 UF.
+      const all = balance < AFP_WITHDRAWAL_FLOOR_UF * uf;
+      const clp = all ? round(balance) : round(Math.min(Math.max(0.1 * balance, AFP_WITHDRAWAL_FLOOR_UF * uf), AFP_WITHDRAWAL_CAP_UF * uf));
+      const units = all ? held : Math.round((clp / px) * 1e4) / 1e4;
+      const k = person.afpWithdrawals.indexOf(w) + 1;
+      book.addUnits("afpUno", -units, 4);
+      book.transfer(
+        { from: "afpUno", to: "checking", date: day, clp, units, flowKind: null, note: `Retiro de fondos AFP ${k}` },
+        { account: "checking", description: "TRANSF. DE AFP UNO RETIRO DE FONDOS", side: "to" }
+      );
+    }
+
+    /* ---------- term deposits ---------- */
+    if (DAP) runTermDeposits(month);
+
     /* ---------- investing ---------- */
     // Investing runs on payday (the last business day), after the salary lands.
     const brokerDay = lastBusinessDay(month);
@@ -1111,21 +1351,39 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const reserved = upcomingCashNeeds(month);
     if (brokerDay <= today) {
       const holdForHouse = HOUSE != null && month >= HOUSE.holdFromMonth && month <= HOUSE.month;
-      // Dividends (quarterly, net of the 15 % US withholding).
+      // Dividends (quarterly): the Chilean broker withholds the 15 % US tax (W-8BEN), the US one
+      // nothing (W-9).
       if (mo % 3 === 0) {
         for (const [ticker, dps] of Object.entries(DIVIDEND_PER_SHARE_USD)) {
-          const held = book.unitsOf(`stock:${ticker}`);
-          const perShare = ticker === "INTC" && month >= "2024-09" ? 0 : ticker === "INTC" && month >= "2023-03" ? 0.125 : dps;
-          const net = cents(held * perShare * 0.85);
-          if (net < 0.01) continue;
-          // Paid on the 8th: before any play of the month (the book applies events in code order).
-          const day = firstBusinessDayOnOrAfter(ymd(month, 8));
-          book.transfer({ from: `stock:${ticker}`, to: "brokerUsd", date: day, usd: net, flowKind: "dividend_payout", note: `Dividendo ${ticker}` });
+          for (const cash of ["brokerUsd", "ibkrUsd"] as const) {
+            const held = heldUnits(ticker, cash);
+            const perShare = ticker === "INTC" && month >= "2024-09" ? 0 : ticker === "INTC" && month >= "2023-03" ? 0.125 : dps;
+            const net = cents(held * perShare * (cash === "brokerUsd" ? 1 - DIVIDEND_WITHHOLDING_RATE : 1));
+            if (net < 0.01) continue;
+            // Paid on the 8th: before any play of the month (the book applies events in code order).
+            const day = firstBusinessDayOnOrAfter(ymd(month, 8));
+            book.transfer({ from: `stock:${ticker}`, to: cash, date: day, usd: net, flowKind: "dividend_payout", note: `Dividendo ${ticker}` });
+          }
+        }
+      }
+      // SGOV pays its T-bill interest monthly (a distribution, no withholding at the US broker).
+      if (ibkrOpen(month)) {
+        const held = heldUnits("SGOV", "ibkrUsd");
+        const day = firstBusinessDayOnOrAfter(ymd(month, 5));
+        const net = cents(held * market.close("SGOV", day) * (usdYieldPct(year) / 100 / 12));
+        if (net >= 0.01) book.transfer({ from: "stock:SGOV", to: "ibkrUsd", date: day, usd: net, flowKind: "dividend_payout", note: "Dividendo SGOV" });
+      }
+      // The US broker pays interest on the month's idle dollars (posted on payday).
+      if (ibkrOpen(month) && month > person.ibkr!.from) {
+        const idle = Math.max(0, book.lowestFrom("ibkrUsd", ymd(month, 1)));
+        const interest = cents((idle * (usdYieldPct(year) - IBKR_SWEEP_SPREAD_PCT)) / 100 / 12);
+        if (interest >= 0.01) {
+          book.single({ type: "single", account: "ibkrUsd", date: brokerDay, amount: interest, currency: "usd", note: "IBKR|intereses", flowKind: "savings_earnings" });
         }
       }
       // Plays this month: deposit what the broker lacks, then trade.
       const playsNow = PLAYS.filter((p) => monthOf(p.date) === month && p.date <= today).map((p) => {
-        if (p.kind !== "buy") return p;
+        if (p.kind !== "buy") return { ...p };
         const usdOk = usdFree(p.date) + brokerFree(p.date) >= p.usd;
         const clpNeed = (p.usd - brokerFree(p.date) - usdFree(p.date)) * market.fx(p.date) * 1.02;
         // Not enough pesos yet on the play's day: it waits for payday.
@@ -1133,8 +1391,17 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         return { ...p };
       });
       for (const p of playsNow) {
+        if (person.splits.some((x) => x.ticker === p.ticker && monthOf(x.exDate) === month)) {
+          throw new Error(`demo: play ${p.kind} ${p.ticker} on ${p.date} falls in the month of its split`);
+        }
         if (p.kind === "sell") {
-          sellStock(p.date, p.ticker, p.fraction);
+          if (isClpTicker(p.ticker)) sellStockClp(p.date, p.ticker, p.fraction);
+          else sellStock(p.date, p.ticker, p.fraction);
+          continue;
+        }
+        if (p.kind === "buy_clp") {
+          if (!isClpTicker(p.ticker)) throw new Error(`demo: ${p.ticker} is not quoted in pesos`);
+          buyStockClp(p.date, p.ticker, p.clp);
           continue;
         }
         // A play is never bigger than what the accounts can spare that day.
@@ -1144,7 +1411,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           brokerFree(p.date) + usdFree(p.date) + Math.max(0, book.lowestFrom("checking", p.date) - floorClp) / (market.fx(p.date) * 1.02);
         if (spareUsd < p.usd) {
           // Short on cash: trim SPY at the broker (up to half the position) for the rest.
-          const spyUsd = book.unitsOf("stock:SPY") * market.close("SPY", p.date);
+          const spyUsd = heldUnits("SPY", "brokerUsd") * heldClose("SPY", p.date);
           const fromSpy = Math.min(p.usd - Math.max(0, spareUsd), spyUsd * 0.5);
           if (fromSpy > 50) sellStock(p.date, "SPY", fromSpy / spyUsd);
           const reach = Math.max(0, spareUsd) + Math.max(0, fromSpy);
@@ -1172,7 +1439,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const allowDca = cashNow > CASH_BAND.low * avgExpense + reserved && !holdForHouse;
       if (allowDca) {
         if (contract) depositBrokerClp(brokerDay, contract.dcaClp);
-        if (contractor) depositBrokerUsd(brokerDay, Math.min(contractor.dcaUsd, usdFree(brokerDay)));
+        if (contractor) depositBrokerUsd(brokerDay, Math.min(contractor.dcaUsd, usdFree(brokerDay)), dollarBroker(month));
       }
       if (BTC && month >= BTC.from && month <= BTC.to && hasChecking) {
         const lump = BTC.lump && monthOf(BTC.lump.date) === month ? BTC.lump.clp : 0;
@@ -1215,7 +1482,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       if (!holdForHouse && working && cashAfter > CASH_BAND.high * avgExpense + reserved) {
         const excess = cashAfter - CASH_BAND.target * avgExpense - reserved;
         if (usdFree(brokerDay) * market.fx(brokerDay) > excess * 0.5 && contractor) {
-          depositBrokerUsd(brokerDay, Math.min(usdFree(brokerDay), excess / market.fx(brokerDay)));
+          depositBrokerUsd(brokerDay, Math.min(usdFree(brokerDay), excess / market.fx(brokerDay)), dollarBroker(month));
         } else {
           const clpRoom = book.bal.checking - avgExpense * 1.5 - reserved;
           if (clpRoom > 200_000) depositBrokerClp(brokerDay, Math.min(clpRoom, excess));
@@ -1224,6 +1491,18 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       // Lump sum: broker cash above US$ 2.500 buys SPY.
       if (brokerFree(brokerDay) > 2_500 && !holdForHouse) buyStock(brokerDay, "SPY", Math.floor(brokerFree(brokerDay) - 100));
       else if (brokerFree(brokerDay) >= 20 && !holdForHouse) buyStock(brokerDay, "SPY", Math.floor(brokerFree(brokerDay) * 100) / 100 - 5);
+      // The US broker: dollars above the idle cushion fill the SGOV reserve (half of each month's
+      // money) and buy SPY.
+      if (ibkrOpen(month)) {
+        const free = Math.max(0, book.lowestFrom("ibkrUsd", brokerDay));
+        const invest = Math.floor(free - person.ibkr!.idleUsd);
+        if (invest >= 100) {
+          const reserveGap = person.ibkr!.sgovReserveUsd - heldUnits("SGOV", "ibkrUsd") * heldClose("SGOV", brokerDay);
+          const toSgov = reserveGap > 0 ? Math.floor(Math.min(reserveGap, invest * 0.5)) : 0;
+          if (toSgov >= 100) buyStock(brokerDay, "SGOV", toSgov, "ibkrUsd");
+          if (invest - toSgov >= 100) buyStock(brokerDay, "SPY", invest - toSgov, "ibkrUsd");
+        }
+      }
     }
     if (process.env.DEMO_V2_TRACE) {
       console.log(
@@ -1232,6 +1511,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     }
     months.push({ month, expensesClp: round(expenses), cashClp: round(totalCashClp(ymd(month, daysInMonth(month)) <= today ? ymd(month, daysInMonth(month)) : today)), band: [round(CASH_BAND.low * avgExpense), round(CASH_BAND.high * avgExpense)] });
   }
+
+  if (DAP && `${DAP.from}-28` < today && termDeposits.length === 0) throw new Error("demo: the term-deposit window passed without a deposit");
 
   /* ---------- the open cycle (lines after the last close) ---------- */
   const openCycle: Ledger["openCycle"] = [];
@@ -1264,6 +1545,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     categoryByMerchant: catByMerchant,
     feeReceipts,
     apvBDeposits,
+    termDeposits,
     aprilSettlements,
   };
 
@@ -1287,7 +1569,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     for (let k = 1; k <= 6; k++) {
       const m = addMonths(month, k);
       for (const c of CARS) if (c.from === m) need += c.priceClp - c.tradeInClp - (c.id === "car1" ? 2_500_000 : 0);
-      if (m.endsWith("-12") && Number(m.slice(0, 4)) >= APV.from) need += APV.utm * market.utm(month);
+      if (m.endsWith("-12") && Number(m.slice(0, 4)) >= APV.from && !apvMonthlyIn(m)) need += APV.utm * market.utm(month);
+      if (apvMonthlyIn(m)) need += APV.monthly!.uf * market.uf(ymd(month, 1));
       if (HOUSE) for (const pp of HOUSE.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1));
       if (includePlays && k <= 3) for (const p of PLAYS) if (p.kind === "buy" && monthOf(p.date) === m) need += p.usd * market.fx(ymd(month, 1));
       // Moving in: the deposit (garantía) and the first rent.

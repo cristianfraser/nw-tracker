@@ -231,9 +231,14 @@ const CARDS: CardDef[] = [
   { key: "second", issuer: "bci", last4: "8823", displayName: "Mastercard Black 8823", from: "2022-11", closeDay: 25 },
 ];
 
-/** Broker plays: explicit buys and sells (USD), on top of the SPY DCA. */
+/**
+ * Broker plays at the Chilean broker, on top of the SPY DCA: buys in dollars, a buy in pesos of a
+ * Santiago-listed (`.SN`) ticker, and sells of a fraction of what the broker holds (a `.SN` sale
+ * pays pesos, any other dollars).
+ */
 export type Play =
   | { kind: "buy"; date: Ymd; ticker: string; usd: number }
+  | { kind: "buy_clp"; date: Ymd; ticker: string; clp: number }
   | { kind: "sell"; date: Ymd; ticker: string; fraction: number };
 
 const PLAYS: Play[] = [
@@ -243,17 +248,55 @@ const PLAYS: Play[] = [
   { kind: "buy", date: "2020-10-20", ticker: "ZM", usd: 1_500 },
   { kind: "buy", date: "2021-03-15", ticker: "NVDA", usd: 3_000 },
   { kind: "buy", date: "2021-04-20", ticker: "INTC", usd: 2_000 },
-  { kind: "sell", date: "2022-05-16", ticker: "ZM", fraction: 1 },
   { kind: "buy", date: "2023-03-15", ticker: "MSFT", usd: 3_000 },
+  // The pie: NVDA at a large gain, and ZM closed at a loss the same day (the loss offsets the gain).
   { kind: "sell", date: "2024-02-15", ticker: "NVDA", fraction: 0.6 },
+  { kind: "sell", date: "2024-02-15", ticker: "ZM", fraction: 1 },
   { kind: "sell", date: "2024-02-15", ticker: "SPY", fraction: 0.3 },
   { kind: "buy", date: "2025-04-09", ticker: "NVDA", usd: 4_000 },
+  // The Chilean IPSA ETF (an art. 107 fund), bought in pesos and partly sold at a gain.
+  { kind: "buy_clp", date: "2025-06-17", ticker: "CFIETFIPSA.SN", clp: 6_000_000 },
+  { kind: "sell", date: "2026-03-10", ticker: "CFIETFIPSA.SN", fraction: 0.4 },
   { kind: "buy", date: "2026-05-12", ticker: "OILK", usd: 5_000 },
   { kind: "buy", date: "2026-05-12", ticker: "LNG", usd: 5_000 },
   { kind: "sell", date: "2026-06-23", ticker: "OILK", fraction: 1 },
 ];
 
-const BROKER_TICKERS = ["SPY", "AAPL", "AMD", "MSFT", "ZM", "NVDA", "INTC", "OILK", "LNG"];
+const BROKER_TICKERS = ["SPY", "AAPL", "AMD", "MSFT", "ZM", "NVDA", "INTC", "OILK", "LNG", "SGOV", "CFIETFIPSA.SN"];
+
+/** A stock split as the exchange states it (shares × numerator / denominator from the ex-date). */
+export type StockSplit = { ticker: string; exDate: Ymd; numerator: number; denominator: number };
+
+/** NVDA's two splits while he holds it (Yahoo's closes are already adjusted for both). */
+const SPLITS: StockSplit[] = [
+  { ticker: "NVDA", exDate: "2021-07-20", numerator: 4, denominator: 1 },
+  { ticker: "NVDA", exDate: "2024-06-10", numerator: 10, denominator: 1 },
+];
+
+/** The three 10 % pension withdrawals of 2020–2021 (the day each was paid). */
+const AFP_WITHDRAWALS: Ymd[] = ["2020-08-10", "2020-12-14", "2021-05-10"];
+
+/** Rolling peso term deposits while saving the pie. */
+export type TermDeposits = {
+  from: Month;
+  /** No deposit matures after this month. */
+  to: Month;
+  termDays: number;
+  /** The first deposit (pesos); each renewal reinvests the payout plus a top-up. */
+  openingClp: number;
+  topUpClp: number;
+};
+const DAP: TermDeposits = { from: "2021-03", to: "2023-12", termDays: 90, openingClp: 5_000_000, topUpClp: 2_000_000 };
+
+/** A second US broker (Interactive Brokers): dollars, SGOV as the reserve, new SPY buys. */
+export type SecondBroker = {
+  from: Month;
+  /** Dollars left uninvested (they earn the sweep interest). */
+  idleUsd: number;
+  /** SGOV held as the dollar reserve before new money goes to SPY. */
+  sgovReserveUsd: number;
+};
+const IBKR: SecondBroker = { from: "2024-05", idleUsd: 2_000, sgovReserveUsd: 15_000 };
 export const BTC_TICKER = "BTC-USD";
 
 /** Quarterly dividend per share (USD), by ticker; paid in Mar/Jun/Sep/Dec, 15 % withheld. */
@@ -265,8 +308,21 @@ const BTC = { from: "2018-06" as Month, to: "2019-12" as Month, monthlyClp: 50_0
 /** Cash band on checking CLP + USD (months of trailing expenses). */
 const CASH_BAND = { low: 3, target: 4.5, high: 6, trailingMonths: 6 };
 
-/** APV: 40 UTM every December; regime A while the year's marginal tax rate is ≤ 15 %, B above. */
-const APV = { from: 2019, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18 };
+/**
+ * APV: 40 UTM every December; in the `monthly` window a deposit of `uf` every month instead (up to
+ * the 600 UF yearly cap). The regime is the one that pays more: B when the tax it saves beats
+ * regime A's state bonus (15 %, capped at 6 UTM a year) — for a deposit under the bonus cap, B
+ * exactly when the marginal rate is above 15 %.
+ */
+export type ApvPlan = {
+  from: number;
+  utm: number;
+  bonusRate: number;
+  bonusCapUtm: number;
+  depositDay: number;
+  monthly: { from: Month; to: Month; uf: number } | null;
+};
+const APV: ApvPlan = { from: 2019, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18, monthly: { from: "2022-10", to: "2024-03", uf: 30 } };
 
 export type Person = {
   /** Seeds every random stream. */
@@ -291,6 +347,12 @@ export type Person = {
   oneOffs: OneOff[];
   cards: CardDef[];
   plays: Play[];
+  splits: StockSplit[];
+  /** Days the AFP paid a withdrawal of funds (10 % of the balance, 35 UF floor, 150 UF cap). */
+  afpWithdrawals: Ymd[];
+  dap: TermDeposits | null;
+  /** A second US broker from `from`: the dollar DCA and lump sums go there (null: none). */
+  ibkr: SecondBroker | null;
   /** Every ticker the broker can hold (SPY first: the DCA and lump sums buy it). */
   brokerTickers: string[];
   dividendPerShareUsd: Record<string, number>;
@@ -298,7 +360,7 @@ export type Person = {
   /** A Fintual-style mutual fund: a monthly deposit from checking buys its cuotas (null: none). */
   fund: { name: string; from: Month; monthlyClp: number } | null;
   cashBand: { low: number; target: number; high: number; trailingMonths: number };
-  apv: { from: number; utm: number; bonusRate: number; bonusCapUtm: number; depositDay: number };
+  apv: ApvPlan;
   /** Where net worth should land today (USD), for the build's sanity check; null: no target. */
   netWorthTargetUsd: number | null;
   /** Days of generated ingest history (scheduler runs, run messages, bank checks) before today. */
@@ -327,6 +389,10 @@ export const DEMO_PERSON: Person = {
   oneOffs: ONE_OFFS,
   cards: CARDS,
   plays: PLAYS,
+  splits: SPLITS,
+  afpWithdrawals: AFP_WITHDRAWALS,
+  dap: DAP,
+  ibkr: IBKR,
   brokerTickers: BROKER_TICKERS,
   dividendPerShareUsd: DIVIDEND_PER_SHARE_USD,
   btc: BTC,
@@ -392,12 +458,16 @@ export function testPerson(today: Ymd): Person {
       { key: "second", issuer: "bci", last4: "6605", displayName: "Tarjeta Prueba 6605", from: back(9), closeDay: 25 },
     ],
     plays: [{ kind: "buy", date: ymd(back(3), 15), ticker: "AAPL", usd: 800 }],
+    splits: [],
+    afpWithdrawals: [],
+    dap: null,
+    ibkr: null,
     brokerTickers: ["SPY", "AAPL"],
     dividendPerShareUsd: { SPY: 1.55, AAPL: 0.23 },
     btc: null,
     fund: { name: "Fondo Moderado", from: back(16), monthlyClp: 120_000 },
     cashBand: CASH_BAND,
-    apv: APV,
+    apv: { ...APV, monthly: null },
     netWorthTargetUsd: null,
     // A few nights only: the suite exercises the writer without paying for weeks of runs.
     ingestHistoryDays: 3,
