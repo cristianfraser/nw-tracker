@@ -741,6 +741,7 @@
         "amortizacion": "Amortización",
         "amortExt": "Amort. ext",
         "interes": "Interés",
+        "prepaymentCharge": "Comisión de prepago",
         "min": "Mín",
         "max": "Máx",
         "cuotaPago": "Cuota · pago",

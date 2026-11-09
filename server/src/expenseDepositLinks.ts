@@ -59,6 +59,9 @@ export type ExpenseDepositLinkRow = {
   depto_cuota: string | null;
   depto_occurred_on: string | null;
   link_source: ExpenseDepositLinkSource;
+  /** The linked mortgage payment's parts (`EXPENSE_DEPOSIT_LINKS_SQL`); null or absent on any other deposit. */
+  parts_amortization_clp?: number | null;
+  parts_carrying_clp?: number | null;
 };
 
 export type ExpenseDepositLinkDto = {
@@ -98,12 +101,22 @@ export function carryingClpForExpenseDepositLink(link: {
   return carrying;
 }
 
+/**
+ * A link to a mortgage payment splits the card line by the payment's PARTS — amortization =
+ * principal + extra principal, carrying = interest + insurances (F20 «Parts»; the ledger's statement
+ * of the dividendo, the same figures the real-estate page shows). Whatever the card paid above the
+ * parts (the lender re-processed a cuota; its own row short of its total) is neither: it stays
+ * out of both and is a declared difference (`accepted_differences`), never silently absorbed. Any
+ * other deposit's carrying is the payment less the amortization, as before.
+ */
 export function expenseDepositLinkDto(row: ExpenseDepositLinkRow): ExpenseDepositLinkDto {
+  const carrying =
+    row.parts_carrying_clp != null ? row.parts_carrying_clp : carryingClpForExpenseDepositLink(row);
   return {
     deposit_movement_id: row.deposit_movement_id,
     payment_clp: row.payment_clp,
-    amortization_clp: row.amortization_clp,
-    carrying_clp: carryingClpForExpenseDepositLink(row),
+    amortization_clp: row.parts_amortization_clp ?? row.amortization_clp,
+    carrying_clp: carrying,
     depto_cuota: row.depto_cuota,
     depto_occurred_on: row.depto_occurred_on,
     link_source: row.link_source,
@@ -315,7 +328,7 @@ function resolveAmortizationForDepositMovement(
   if (sheetRow != null) {
     const amort = amortizationClpFromSheetRow(sheetRow);
     const paymentRef = Math.max(Math.round(movementClpLegOrZero(movement)), Math.round(sheetRow.pago_clp));
-    if (amort > paymentRef && sheetRow.cuota !== "9") {
+    if (amort > paymentRef) {
       throw new Error(
         `depto cuota ${sheetRow.cuota} amortization ${amort} exceeds payment ${paymentRef}`
       );
@@ -372,7 +385,7 @@ export function loadExpenseDepositLinksMap(): Map<string, ExpenseDepositLinkRow[
   const rows = db
     .prepare(
       `SELECT account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp,
-              depto_cuota, depto_occurred_on, link_source
+              depto_cuota, depto_occurred_on, link_source, parts_amortization_clp, parts_carrying_clp
        FROM ${EXPENSE_DEPOSIT_LINKS_SQL} ORDER BY link_order`
     )
     .all() as ExpenseDepositLinkRow[];
@@ -444,6 +457,47 @@ function upsertExpenseDepositLink(row: ExpenseDepositLinkRow): void {
        amortization_clp, depto_cuota, depto_occurred_on, link_source)
      VALUES (?, ?, ?, 'funded_deposit', ?, ?, ?, ?, ?, ?, ?)`
   ).run(...targetParams(at), counterpart, ...figures);
+}
+
+/**
+ * A hand-made `funded_deposit` link from a checking outflow to the deposit it funded (a script's
+ * write: the prepago's cash leg). The outflow's deposit portion is what funded the deposit, as the
+ * matcher writes it.
+ */
+export function insertManualFundedDepositLink(opts: {
+  outflowMovementId: number;
+  depositMovementId: number;
+  paymentClp: number;
+  deptoCuota?: string | null;
+  deptoOccurredOn?: string | null;
+}): void {
+  const outflow = db.prepare(`SELECT account_id FROM movements WHERE id = ?`).get(opts.outflowMovementId) as { account_id: number | null } | undefined;
+  if (!outflow?.account_id) throw new Error(`manual deposit link: movement ${opts.outflowMovementId} is not a single-leg row`);
+  upsertExpenseDepositLink({
+    account_id: outflow.account_id,
+    purchase_key: buildExpenseKey({ kind: "checking_mv", movementId: opts.outflowMovementId, portion: "deposit" }),
+    deposit_movement_id: opts.depositMovementId,
+    payment_clp: Math.round(opts.paymentClp),
+    amortization_clp: Math.round(opts.paymentClp),
+    depto_cuota: opts.deptoCuota ?? null,
+    depto_occurred_on: opts.deptoOccurredOn ?? null,
+    link_source: "manual",
+  });
+}
+
+/** The `funded_deposit` link from a checking outflow (either portion) to a deposit, if any. */
+export function linkedFundedDepositOf(
+  outflowMovementId: number,
+  depositMovementId: number
+): { payment_clp: number; link_source: ExpenseDepositLinkSource } | null {
+  const row = db
+    .prepare(
+      `SELECT l.payment_clp, l.link_source FROM flow_links l
+       WHERE l.kind = 'funded_deposit' AND l.flow_id = (SELECT flow_id FROM movements WHERE id = ?)
+         AND l.counterpart_flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
+    )
+    .get(outflowMovementId, depositMovementId) as { payment_clp: number; link_source: ExpenseDepositLinkSource } | undefined;
+  return row ?? null;
 }
 
 function clearSyntheticExpenseDepositLinks(): void {

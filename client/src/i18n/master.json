@@ -2451,6 +2451,10 @@
           "en": "Interest",
           "es": "Interés"
         },
+        "prepaymentCharge": {
+          "en": "Prepayment charge",
+          "es": "Comisión de prepago"
+        },
         "min": {
           "en": "Min",
           "es": "Mín"

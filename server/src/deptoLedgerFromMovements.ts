@@ -211,6 +211,8 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
       amortizacion_total_clp: sumPresent(Math.round, amortClp, amortExtClp),
       interes_clp: interesClp,
       interes_uf: interesUf,
+      prepayment_charge_clp: p.prepayment_charge ?? null,
+      prepayment_charge_uf: clpToUf4(p.prepayment_charge ?? null, ufDay),
       delta_credito_amort_clp: null,
       interes_oculto_clp: null,
       interes_oculto_b_clp: null,

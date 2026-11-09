@@ -68,8 +68,8 @@ export function insertLineSplits(opts: {
 
   const getCatId = db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ? LIMIT 1`);
   const ins = db.prepare(
-    `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, note)
-     VALUES (${lineFlowSql(opts.source)}, ?, ?, ?, ?)
+    `INSERT INTO flow_parts (flow_id, seq, kind, category_id, amount_clp, note)
+     VALUES (${lineFlowSql(opts.source)}, ?, 'piece', ?, ?, ?)
      ON CONFLICT(flow_id, seq) DO UPDATE SET
        category_id = excluded.category_id,
        amount_clp  = excluded.amount_clp,

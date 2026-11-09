@@ -74,6 +74,8 @@ function sheetRow(overrides: Partial<DeptoMortgageSheetRow>): DeptoMortgageSheet
     pago_acumulado_clp: null,
     amort_acum_clp: null,
     interes_acum_clp: null,
+    prepayment_charge_clp: null,
+    prepayment_charge_uf: null,
     ...overrides,
   };
 }

@@ -97,6 +97,9 @@ export type DeptoMortgageSheetRow = {
   amortizacion_total_clp: number | null;
   interes_clp: number | null;
   interes_uf: number | null;
+  /** A prepago's prepayment charge (the lender's comisión, a cost); null on a cuota. */
+  prepayment_charge_clp: number | null;
+  prepayment_charge_uf: number | null;
   delta_credito_amort_clp: number | null;
   interes_oculto_clp: number | null;
   interes_oculto_b_clp: number | null;
@@ -350,6 +353,8 @@ export type LoanPaymentRow = {
   interest: number | null;
   insurance_fire: number | null;
   insurance_life: number | null;
+  /** A prepago's COMISIÓN DE PREPAGO (+ any interés penal): a cost, never art. 55 bis interest; null on a cuota. */
+  prepayment_charge: number | null;
 };
 
 /** The columns a payment row fills (everything but the movement, account, leg and origin). */
@@ -386,11 +391,11 @@ export function insertLoanPaymentRow(row: LoanPaymentRow): void {
     `INSERT INTO loan_payments (
        movement_id, loan_account_id, leg, origin, cuota,
        loan_currency, balance_after, min_payment, max_payment,
-       payment_currency, principal, extra_principal, interest, insurance_fire, insurance_life
+       payment_currency, principal, extra_principal, interest, insurance_fire, insurance_life, prepayment_charge
      ) VALUES (
        @movement_id, @loan_account_id, @leg, @origin, @cuota,
        @loan_currency, @balance_after, @min_payment, @max_payment,
-       @payment_currency, @principal, @extra_principal, @interest, @insurance_fire, @insurance_life
+       @payment_currency, @principal, @extra_principal, @interest, @insurance_fire, @insurance_life, @prepayment_charge
      )`
   ).run(row);
 }
@@ -410,6 +415,8 @@ export function loanPaymentColumnsFromPaymentRow(r: DeptoDividendosPaymentRow): 
     interest: peso(r.interes_clp),
     insurance_fire: peso(r.incendio_clp),
     insurance_life: peso(r.desgravamen_clp),
+    // A cuota has no prepayment charge; a prepago's is set from its liquidation (the cross-check script).
+    prepayment_charge: null,
   };
 }
 

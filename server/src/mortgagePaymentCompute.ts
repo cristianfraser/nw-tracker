@@ -358,6 +358,8 @@ export function computeMortgagePaymentRow(
     amortizacion_ext_uf,
     amortizacion_total_uf: sumPresent(roundUf4, amortizacion_uf, amortizacion_ext_uf),
     amortizacion_total_clp: amortizacion_clp + amortizacion_ext_clp,
+    prepayment_charge_clp: null,
+    prepayment_charge_uf: null,
     interes_clp,
     interes_uf,
     delta_credito_amort_clp: null,

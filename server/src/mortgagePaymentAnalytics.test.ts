@@ -47,6 +47,8 @@ function cuota27Row(): DeptoMortgageSheetRow {
     pago_acumulado_clp: 148_338_452,
     amort_acum_clp: 82_440_931,
     interes_acum_clp: 10_105_744,
+    prepayment_charge_clp: null,
+    prepayment_charge_uf: null,
     pct_dividendo: null,
     mm_pct: null,
     yy_pct: null,

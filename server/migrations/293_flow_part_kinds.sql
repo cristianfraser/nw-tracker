@@ -1,0 +1,11 @@
+-- Parts carry a kind (docs/untangle-plan.md F20 «Parts»; docs/untangle-flow-model.md A2–A3). A
+-- flow's parts are not only a user's pieces of a card or checking line: the mortgage dividendo's
+-- split (principal and extra principal into the property, interest and the two insurances as
+-- spending), a prepago's split (principal, accrued interest, the lender's prepayment charge) and a
+-- cash leg's bank fee are parts too. `flow_parts` is rebuilt with `kind` (every row on file is a
+-- `piece`) and a category only a piece must carry; the hook (`flows/flowParts293.ts`) copies the
+-- rows, seeds the loan payments' parts from `loan_payments` and reinstalls the triggers.
+-- A prepago's pesos above its principal were stored whole as `interest`; `prepayment_charge` (the
+-- liquidation's COMISIÓN DE PREPAGO, a cost — never art. 55 bis interest) gets its own column, filled
+-- by `scripts/cross-check-loan-payment-history.ts` from the liquidation that was paid.
+ALTER TABLE loan_payments ADD COLUMN prepayment_charge REAL;

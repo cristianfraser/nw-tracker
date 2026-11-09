@@ -741,6 +741,7 @@
         "amortizacion": "Amortization",
         "amortExt": "Extra amort.",
         "interes": "Interest",
+        "prepaymentCharge": "Prepayment charge",
         "min": "Min",
         "max": "Max",
         "cuotaPago": "Installment · payment",

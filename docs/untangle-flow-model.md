@@ -20,13 +20,81 @@ in the first version of the script), so every difference below comes from the ch
 
 | # | Change | Status |
 |---|--------|--------|
-| 1 | Parts generalised | **not landed** — two of its three mechanisms cannot fold without a data or design decision (below) |
+| 1 | Parts generalised | **landed for the loan payments (second pass, A2–A3 below)**: the mortgage dividendo's and the prepagos' split are parts on the property-leg flow, read by every reader; the splittable reserva pool stays a links rule |
 | 2 | Links generalised | **mortgage pairing landed** (one stored link); the claim rule decided; card lines in the deposit pool, refund → purchase links not done |
-| 3 | Cuenta de ahorro surgery | **not landed** — 28 of the 33 mirrored months need a human pairing decision |
+| 3 | Cuenta de ahorro surgery | **decided otherwise and landed (second pass, B below)**: the mirrors and splits go; seven deposits get their real debit; the rest stay unlinked |
 | 4 | Instrument events | not started — the share-count readers it must change sit outside this stream's files |
 | 5–8 | Cost, pre-tax account, card-day capital flows, opening balances | not started (the stream stops where a change could not be rehearsed cleanly) |
 
-## Change 1 — parts (not landed)
+## Second pass (wave 5, stream `flow-model-2`, 2026-11-08)
+
+The user's data decisions of 2026-11-08 unblocked the first pass. Each item below was rehearsed on
+a fresh copy of the real database with the dump of «Rehearsal method» taken before and after (50
+payloads; the dump script was rewritten, it is not committed).
+
+### A1 — the lender's dividend history against the ledger
+
+`scripts/cross-check-loan-payment-history.ts` (pure logic in `loanPaymentHistoryCrossCheck.ts`,
+tested on synthetic rows) reads the lender's history (SheetJS, Chilean amounts), compares every
+regular cuota field by field (date, total, principal, extra principal, interest, the two
+insurances) and applies the user's plan: the bank's figure (`set_field`), the bank's date
+(`set_date`), the residual of a total above its printed parts stored as interest
+(`set_interest_residual`), and the declared differences (`accept`). Report-first, one IMMEDIATE
+transaction rolled back without `--apply`; inside it the balance chain is checked unchanged, Σ parts
+= payment ± 1 on every row but the accepted ones, and the card pairing must still match every cuota
+it matched before. Real copy: 29 cuotas compared, 24 agreeing on every field; 6 differences on 5
+cuotas, all in the plan (four of one peso, one of eleven pesos, one date six days off); one cuota's
+unprinted first-month interest written from the residual; three accepted differences (the first
+dividendo's interest against the bank's printed 0, one cuota the card paid a few hundred pesos above
+the lender's total, one lender row short of its own total). After the apply a re-run reports one
+difference (the accepted interest) and writes nothing. The hardcoded exception for that card-paid
+cuota in `expenseDepositLinks.ts` went: the check it bypassed holds without it.
+
+### A2 — parts on the property-leg flow
+
+Migration 293: `flow_parts` gains `kind` (every row on file a `piece`; a category only a piece
+must carry) — `piece`, `principal`, `extra_principal`, `interest`, `insurance_fire`,
+`insurance_life`, `prepayment_charge`, `bank_fee`, each with its flow class (`flows/flowParts.ts`).
+`flows/loanPaymentParts.ts` writes every loan payment's parts from `loan_payments` on the property
+leg's flow (the pie carries none) and is called by the sheet import, the payment form and the
+cross-check script; Σ parts = payment ± 1, fail fast, unless the config's `accepted_differences`
+names the row with field `parts_sum`. Readers: the real-estate page's `mortgage_parts` and the
+deposit links' `amortization_clp` / `carrying_clp` (so the Expenses page, the carrying list, the
+flows overview and the P/L page) read the parts; a stale part set against `loan_payments` is refused
+on read. Payload differences on the real copy, all from A1's corrections: the real-estate slots of
+the corrected cuotas (one to eleven pesos), the mortgage ledger rows (the interest cumulatives, the
+amortization cumulatives, the two new `prepayment_charge_*` fields), the deposits page (one cuota's
+day), and the carrying of two cuotas whose card payment exceeded the ledger's parts — the card paid
+0.03 % above the lender's total on one, the lender's own row is 0.03 % short on the other. That
+excess used to be counted as carrying (spending); it is now neither amortization nor carrying, so
+the Expenses totals read 0.0006 % lower, the overview's deposits and expenses move by the same
+pesos in those two months (`cash_unexplained` unchanged), and the two are declared differences.
+
+### A3 — prepagos
+
+A prepago's pesos above its principal were stored whole as interest. `loan_payments` gains
+`prepayment_charge` (the lender's COMISIÓN DE PREPAGO + INTERÉS PENAL: a cost, never art. 55 bis
+interest; a `prepayment_charge` part on the flow). The split comes from the liquidation the prepago
+paid, read from the lender's mails (`parsePrepagoLiquidation`, either digit grouping): the one whose
+TOTAL A PAGAR equals the payment, every line as printed (one of three on the real copy); when a
+round figure was paid instead, the liquidation calculated closest before the payment, with the
+principal the ledger's balance drop × its parity, the accrued interest the printed one scaled to the
+principal actually prepaid, and the charge the remainder (two of three). The 2025 certificate
+confirms the scaled interest to the peso. On the third prepago the remainder is 13 % above the
+scaled printed comisión (0.08 % of the payment); the ledger's principal moved by 0.04 % to the
+liquidation's. Each prepago's cash leg (the checking debit that bought the vale vista) was already
+linked by hand; the script checks the link's amount and writes the debit's excess over the prepago
+(the bank's document fee) as a `bank_fee` part on the debit's flow — no reader shows cost parts yet
+(D5). `f22AppEstimates.ts` (code 751) reads `loan_payments.interest`, which now excludes the charge
+on the loan leg too: its 2025 figure moves by the three prepagos' charges without a code change.
+
+### A4 — the 2025 certificate
+
+With `--certificate`, the script reads the art. 55 bis certificate (`pdftotext -layout`) and compares
+Σ interest by payment month over the loan leg (cuotas + prepagos' accrued interest). Real copy: 12 of
+12 months agree after A1 and A3 (the February figure is what fixed the scaling rule above).
+
+## Change 1 — parts (first pass, not landed)
 
 `flow_parts` (migration 283) already holds a user's pieces of a line. The other two mechanisms:
 
