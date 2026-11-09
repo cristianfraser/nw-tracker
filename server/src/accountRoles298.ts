@@ -1,7 +1,7 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 
 /**
- * Migration 299 hook: the roles of the properties and loans beyond the depto pair (the US chapter
+ * Migration 298 hook: the roles of the properties and loans beyond the depto pair (the US chapter
  * of the demo buys two more properties; docs/demo-us-chapter-plan.md «Phase 4a»). Pure (no `db`
  * import — the module graph is still initializing when it runs).
  *
@@ -15,12 +15,12 @@ import type { Database as DatabaseType } from "better-sqlite3";
  *
  * Frozen: a later change of the key shapes is a new migration.
  */
-export const PROPERTY_KEY_PREFIX_299 = "import:property|key=";
-export const LOAN_KEY_PREFIX_299 = "import:loan|property=";
+export const PROPERTY_KEY_PREFIX_298 = "import:property|key=";
+export const LOAN_KEY_PREFIX_298 = "import:loan|property=";
 
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
-const P = PROPERTY_KEY_PREFIX_299;
-const L = LOAN_KEY_PREFIX_299;
+const P = PROPERTY_KEY_PREFIX_298;
+const L = LOAN_KEY_PREFIX_298;
 /** The property key a key of either shape names (SQL over `col`). */
 const propertyPartSql = (col: string) => `substr(${col}, ${P.length + 1})`;
 const loanPartSql = (col: string) => `substr(${col}, ${L.length + 1})`;
@@ -51,7 +51,7 @@ function revokeSql(): string {
   ].join("\n  ");
 }
 
-export function runAccountRoles299(dbi: DatabaseType): void {
+export function runAccountRoles298(dbi: DatabaseType): void {
   dbi.exec(`DROP TRIGGER IF EXISTS account_roles_property_identity_ai`);
   dbi.exec(`DROP TRIGGER IF EXISTS account_roles_property_identity_au`);
   dbi.exec(`CREATE TRIGGER account_roles_property_identity_ai AFTER INSERT ON accounts WHEN NEW.import_key IS NOT NULL BEGIN

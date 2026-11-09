@@ -11,7 +11,7 @@ export const PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
 export const MORTGAGE_ACCOUNT_IMPORT_KEY = "import:excel|key=mortgage";
 /**
  * A property's import key. Without `key`, the depto property's (migration 271's pair); with one,
- * `import:property|key=<key>` — migration 299's triggers give it the `property` role. `key` is a
+ * `import:property|key=<key>` — migration 298's triggers give it the `property` role. `key` is a
  * stable slug (lowercase letters, digits, `_`), the same the property's loan names.
  */
 export function propertyAccountImportKey(key?: string): string {
@@ -21,7 +21,7 @@ export function propertyAccountImportKey(key?: string): string {
 
 /**
  * The import key of property `propertyKey`'s loan. Without `propertyKey`, the depto mortgage's;
- * with one, `import:loan|property=<key>` — migration 299's triggers give it `loan_of` the account
+ * with one, `import:loan|property=<key>` — migration 298's triggers give it `loan_of` the account
  * created under `propertyAccountImportKey(propertyKey)`, whichever comes first.
  */
 export function loanAccountImportKey(propertyKey?: string): string {

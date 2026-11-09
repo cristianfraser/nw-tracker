@@ -23,7 +23,7 @@ import { buildUpcomingPayments } from "./upcomingPayments.js";
 import { DEPTO_HIPOTECA_CHART_ACCOUNT_ID, DEPTO_VALOR_CHART_ACCOUNT_ID } from "./valuationTimeseries.js";
 
 /**
- * Two properties, each with its own loan (migration 299's key shapes: `import:property|key=…` /
+ * Two properties, each with its own loan (migration 298's key shapes: `import:property|key=…` /
  * `import:loan|property=…`), far in the past so they never meet generated data: each reads its own
  * depto ledger, «Próximos pagos» lists a cuota per loan, the overlays carry both pairs and the
  * real-estate page puts each loan's cuotas on its own place. Synthetic only; cleaned up.
