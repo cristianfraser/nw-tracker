@@ -24,12 +24,11 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="The NW Tracker dashboard: net-worth cards and a daily net-worth chart." />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Self-hosted fonts (src/styles/fonts.css). The latin files are preloaded so they
+         usually arrive before first paint and the page never swaps fonts; Vite rewrites
+         these paths to the same hashed assets the @font-face rules use. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/src/fonts/dm-sans-latin-opsz-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/src/fonts/jetbrains-mono-latin-wght-normal.woff2" />
     <script>
       // Cloudflare Web Analytics — loaded only when a site token was substituted at build
       // time (VITE_CF_ANALYTICS_TOKEN, set on the hosted demo; vite.config defaults it to

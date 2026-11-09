@@ -36,6 +36,7 @@
 .title {
   margin: 0;
   font-size: 2rem;
+  font-family: "DM Sans", "DM Sans Display Fallback", system-ui, sans-serif;
   line-height: 1.15;
   color: var(--text);
 }

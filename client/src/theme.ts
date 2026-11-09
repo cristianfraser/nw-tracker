@@ -28,7 +28,7 @@ const palette = {
 export const nwTrackerTheme: ThemeOverrides = {
   colors: { light: palette, dark: palette },
   typography: {
-    fontFamily: { base: '"DM Sans", system-ui, sans-serif' },
+    fontFamily: { base: '"DM Sans", "DM Sans Fallback", system-ui, sans-serif' },
   },
   radius: { lg: "5px" }, // --card-radius
 };
