@@ -18,6 +18,8 @@ import {
   listCheckingMovements,
   loadAllCheckingWithdrawals,
   loadCheckingWithdrawals,
+  listDollarCheckingAccountIds,
+  listDollarCheckingMovements,
   loadDepositMatchCandidates,
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
@@ -47,8 +49,9 @@ export type FlowCheckingIncomeLine = {
   account_id: number;
   account_label: string;
   received_on: string;
+  /** A dollar account's credit: its dollars at the day's `fx_daily` rate. */
   amount_clp: number;
-  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  /** CLP ÷ `fx_daily` on or before `received_on`; a dollar account's credit, its own dollars. */
   amount_usd: number | null;
   description: string;
   source: "checking";
@@ -365,9 +368,34 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     }
   }
 
+  // A dollar checking account's bank-listed credits (a US salary, a refund) are income at their
+  // dollars, priced in pesos at the day's rate. None of the peso matchers applies: a transfer
+  // between own accounts is a transfer row there, never a listed credit.
+  const dollarAccountIds = listDollarCheckingAccountIds();
+  const dollarLabels = loadAccountLabels(dollarAccountIds);
+  for (const accountId of dollarAccountIds) {
+    for (const m of listDollarCheckingMovements(accountId, "in")) {
+      if (excludedMovementIds.has(m.id)) continue;
+      const base = {
+        movement_id: m.id,
+        account_id: accountId,
+        account_label: dollarLabels.get(accountId) ?? String(accountId),
+        received_on: m.occurred_on,
+        amount_clp: m.amount_clp,
+        amount_usd: m.amount_usd,
+        description: cartolaDescriptionFromNote(m.note),
+      };
+      if (!forceIncludedMovementIds.has(m.id) && isExcludedCheckingInflow(base.description)) {
+        filtered_lines.push({ ...base, filter_reason: "excluded_description" });
+        continue;
+      }
+      lines.push({ ...base, source: "checking" });
+    }
+  }
+
   // A tax refund the Tesorería paid outside checking (e.g. cashed at BancoEstado and deposited into
   // the savings account) is income too; one paid into checking is already a credit above.
-  const checkingAccountIds = new Set(accountIds);
+  const checkingAccountIds = new Set([...accountIds, ...dollarAccountIds]);
   const outsideRefunds = loadF22RefundMovements().filter((r) => !checkingAccountIds.has(r.account_id));
   const refundAccountLabels = loadAccountLabels([...new Set(outsideRefunds.map((r) => r.account_id))]);
   for (const r of outsideRefunds) {

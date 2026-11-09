@@ -20,6 +20,7 @@ import {
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
+import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
 
 /**
  * External capital: the signed CLP leg on `movements`. Charts (“aportes acum.”), the dashboard
@@ -59,6 +60,8 @@ type SortFlow = {
   tie: string;
   /** Transfer legs only: the transfer's other endpoint. */
   counter_account_id?: number;
+  /** A dollar row's own dollars (signed like `amt`). */
+  amt_usd?: number | null;
 };
 
 /** "Today" for bank-dated timelines: no stored date ever exceeds it, so nothing is re-dated. */
@@ -99,7 +102,7 @@ function loadMovementSignedFlowEvents(
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT account_id, occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, id, note, flow_kind
+      `SELECT account_id, occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, id, note, flow_kind, units_delta
        FROM movements
        WHERE account_id IN (${ph})
        ORDER BY account_id, occurred_on, id`
@@ -110,6 +113,7 @@ function loadMovementSignedFlowEvents(
     id: number;
     note: string | null;
     flow_kind: string | null;
+    units_delta: number | null;
   })[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
   const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
@@ -122,6 +126,17 @@ function loadMovementSignedFlowEvents(
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND || r.flow_kind === CASH_FEE_FLOW_KIND) continue;
     if (personalOnly && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
+    // A dollar purchase of fund units on an account that is not dollar cash (a payroll
+    // contribution to a 401(k) or an HSA): its dollars, signed by the row, in pesos at the day's
+    // rate. Any other single-leg dollar row keeps reading no peso leg (it moves no capital here).
+    if (r.currency === "usd" && r.units_delta != null) {
+      if (!Number.isFinite(r.amount) || r.amount === 0) continue;
+      const usd = r.amount;
+      const amt = Math.sign(usd) * usdCashUsdToClpAt(Math.abs(usd), r.occurred_on, `usdFundDeposit:${r.id}`);
+      if (!map.has(r.account_id)) map.set(r.account_id, []);
+      map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt, amt_usd: usd, tie: `m:${r.id}` });
+      continue;
+    }
     const amt = movementClpLegOrZero(r);
     if (amt === 0 || !Number.isFinite(amt)) continue;
     if (!map.has(r.account_id)) map.set(r.account_id, []);

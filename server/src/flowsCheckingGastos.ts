@@ -63,6 +63,8 @@ import {
   loadCheckingCredits,
   loadCheckingWithdrawals,
   listCheckingMovements,
+  listDollarCheckingAccountIds,
+  listDollarCheckingMovements,
   loadDepositMatchCandidates,
   loadMovementBalanceCashCredits,
   type CheckingCredit,
@@ -93,6 +95,8 @@ export function checkingGastosMovementBelongs(movementId: number): {
   account_id?: number;
   merchant_key?: string;
 } {
+  const dollar = dollarCheckingGastosMovementBelongs(movementId);
+  if (dollar != null) return dollar;
   const checkingIds = new Set(listMovementBalanceCashAccountIds());
   if (checkingIds.size === 0) return { ok: false };
 
@@ -165,6 +169,17 @@ export function checkingGastosMovementBelongs(movementId: number): {
     account_id: row.account_id,
     merchant_key: normalizeCcExpenseMerchantKey(description),
   };
+}
+
+/** {@link checkingGastosMovementBelongs} for a movement on a dollar checking account (null: not one). */
+function dollarCheckingGastosMovementBelongs(movementId: number): { ok: boolean; account_id?: number; merchant_key?: string } | null {
+  const row = db.prepare(`SELECT account_id FROM movements WHERE id = ?`).get(movementId) as { account_id: number | null } | undefined;
+  if (row?.account_id == null || !listDollarCheckingAccountIds().includes(row.account_id)) return null;
+  const listed = listDollarCheckingMovements(row.account_id, "out").find((m) => m.id === movementId);
+  if (!listed) return { ok: false };
+  const description = cartolaDescriptionFromNote(listed.note);
+  if (isExcludedCheckingWithdrawal(description)) return { ok: false };
+  return { ok: true, account_id: row.account_id, merchant_key: normalizeCcExpenseMerchantKey(description) };
 }
 
 /**
@@ -1150,6 +1165,84 @@ export function buildCheckingGastosLinesForAccounts(
   accountIds: readonly number[],
   opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
 ): FlowCcExpenseLineRowDraft[] {
+  const dollarIds = new Set(listDollarCheckingAccountIds());
+  const pesoIds = accountIds.filter((id) => !dollarIds.has(id));
+  const dollarLines = accountIds.filter((id) => dollarIds.has(id)).flatMap((id) => buildDollarCheckingGastosLines(id, opts));
+  return [...buildPesoCheckingGastosLinesForAccounts(pesoIds, opts), ...dollarLines];
+}
+
+/**
+ * A dollar checking account's gastos lines: every debit its bank lists (a purchase, a bill, a
+ * fee), at its dollars, priced in pesos at the day's rate (`listDollarCheckingMovements`). Its
+ * transfers to own accounts are transfer rows, never listed, so there is nothing to pair with a
+ * deposit: no deposit matching runs. Category as any checking line's (rules by vendor, «Único»).
+ */
+function buildDollarCheckingGastosLines(
+  accountId: number,
+  opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
+): FlowCcExpenseLineRowDraft[] {
+  const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
+    opts.merchantRules != null
+      ? {
+          merchantRules: opts.merchantRules,
+          uniquePurchases: opts.uniquePurchases ?? new Map<string, string>(),
+          uniquePurchaseModeKeys: opts.uniquePurchaseModeKeys ?? new Set<string>(),
+        }
+      : loadCcExpenseCategoryMaps([accountId]);
+  const lines: FlowCcExpenseLineRowDraft[] = [];
+  // Newest first, as the gastos lines are listed.
+  for (const row of listDollarCheckingMovements(accountId, "out").reverse()) {
+    const description = cartolaDescriptionFromNote(row.note);
+    if (isExcludedCheckingWithdrawal(description)) continue;
+    const expenseMonth = monthKeyFromYmd(row.occurred_on);
+    if (!expenseMonth) throw new Error(`dollar checking movement ${row.id}: no month for ${row.occurred_on}`);
+    const merchantKey = normalizeCcExpenseMerchantKey(description);
+    const purchaseKey = checkingGastosMovementPurchaseKey(row.id, "gastos");
+    registerGenericUniquePurchaseMode(accountId, purchaseKey, merchantKey, uniquePurchaseModeKeys, { statementLineId: row.id });
+    const resolution = resolveCcExpenseCategory({
+      statementLineId: row.id,
+      accountId,
+      merchantKey,
+      purchaseKey,
+      lineOverrides: new Map(),
+      merchantRules,
+      uniquePurchases,
+      uniquePurchaseModeKeys,
+    });
+    lines.push({
+      source: "checking",
+      statement_line_id: row.id,
+      account_id: accountId,
+      expense_month: expenseMonth,
+      billing_month: expenseMonth,
+      purchase_month: expenseMonth,
+      line_role: "purchase",
+      occurred_on: row.occurred_on,
+      purchase_on: row.occurred_on,
+      statement_date: "",
+      amount_clp: Math.abs(row.amount_clp),
+      amount_usd: row.amount_usd,
+      amount_usd_at_expense: row.amount_usd,
+      merchant: description || null,
+      installment_flag: 0,
+      nro_cuota_current: null,
+      nro_cuota_total: null,
+      merchant_key: merchantKey,
+      category_slug: resolution.slug,
+      category_unique: categoryUniqueForExpenseLine(accountId, purchaseKey, merchantKey, uniquePurchases, uniquePurchaseModeKeys),
+      ...(resolution.fromBankName ? { category_from_bank_name: true as const } : {}),
+      origin_card_last4: null,
+      primary_card_last4: null,
+    });
+  }
+  return lines;
+}
+
+function buildPesoCheckingGastosLinesForAccounts(
+  accountIds: readonly number[],
+  opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
+): FlowCcExpenseLineRowDraft[] {
+  if (accountIds.length === 0) return [];
   const depositCandidates = opts.depositCandidates ?? loadDepositMatchCandidates();
   const checkingCredits = opts.checkingCredits ?? loadMovementBalanceCashCredits();
   const usedDepositKeys = new Set<string>();
