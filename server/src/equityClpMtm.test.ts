@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
-import { accountUsesEquityMtm, computeEquityMtmClp, computeEquityMtmClpDisplaySync } from "./brokerageEquityMtm.js";
+import { equityTodayClp } from "./test/todayClpMarks.js";
+import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 
 afterEach(() => {
@@ -95,7 +96,7 @@ describe("CLP-quoted equity MTM (.SN)", () => {
       // Jul 2 (0 units → $0); the Santiago display day must be the Chile day (Jul 3).
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2099-07-03T00:30:00-04:00"));
-      const sync = computeEquityMtmClpDisplaySync(accountId);
+      const sync = equityTodayClp(accountId);
       expect(sync).not.toBeNull();
       expect(sync!.value_clp).toBeCloseTo(2282 * 1300, 6);
       expect(sync!.as_of_date).toBe("2099-07-03");

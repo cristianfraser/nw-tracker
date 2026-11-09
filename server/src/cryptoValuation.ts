@@ -11,8 +11,6 @@ import { historyTierMemo } from "./cacheRegistry.js";
 import {
   equityCloseEod,
   equitySessionYmdForTicker,
-  getLiveEquityQuoteFromDb,
-  shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { holdingPriceAt } from "./holdingPrices.js";
@@ -137,20 +135,6 @@ export function requireCryptoMtmClp(accountId: number, asOfYmd: string, now?: Da
   );
 }
 
-/** Cached live crypto MTM when today's UTC session allows live quotes. */
-export function computeCryptoMtmClpCachedLive(
-  accountId: number,
-  now: Date = new Date()
-): number | null {
-  const ticker = cryptoEquityTickerForAccount(accountId);
-  if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
-  const session = equitySessionYmdForTicker(ticker, now);
-  if (!shouldUseLiveEquityQuote(ticker, session, now)) return null;
-  const cached = getLiveEquityQuoteFromDb(ticker);
-  if (!cached) return null;
-  return computeCryptoMtmClp(accountId, session, cached.price, now);
-}
-
 /**
  * Today's value of a coin position in dollars: the coins held today × today's price
  * (`holdingPriceAt`: the live quote of the UTC session while fresh, else the newest close on
@@ -174,17 +158,6 @@ export function cryptoTodayNativeValue(
     { now }
   );
   return px ? { value: units * px.price, currency: "usd", as_of_date: px.as_of } : null;
-}
-
-/** {@link cryptoTodayNativeValue} in pesos, at today's sell rate. */
-export function computeCryptoMtmClpDisplaySync(
-  accountId: number,
-  now: Date = new Date()
-): { value_clp: number; as_of_date: string } | null {
-  const native = cryptoTodayNativeValue(accountId, now);
-  if (!native) return null;
-  const clp = convertValue(native.value, "usd", "clp", chileWallClockAt(now).ymd, "asset", now);
-  return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: native.as_of_date } : null;
 }
 
 /**
