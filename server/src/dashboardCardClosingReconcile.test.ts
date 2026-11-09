@@ -18,10 +18,9 @@ describe("dashboard card closing reconcile", () => {
 
       const titleDelta =
         payload.totals.net_worth_clp - payload.totals.prior_closes.month.net_worth_clp;
-      expect(Math.round(titleDelta)).toBeCloseTo(
-        Math.round(row.closing_value - row.prior_closing),
-        0
-      );
+      // The payload carries each total rounded to the peso; round the row's two closes the same way
+      // (rounding their difference instead failed by a peso whenever the fractions straddled .5).
+      expect(titleDelta).toBe(Math.round(row.closing_value) - Math.round(row.prior_closing));
       const bucketDepSum = (["real_estate", "retirement", "brokerage", "cash_eqs"] as const).reduce(
         (s, slug) =>
           s +

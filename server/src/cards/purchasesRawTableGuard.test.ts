@@ -49,6 +49,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "test/vitestDbSeed.ts": "test seed",
   "test/flowFixtures.ts": "test fixture lines",
   "test/tempCardMaster.ts": "test fixture card cleanup",
+  "vitest.setup.ts": "per-file check that the person's card lines are unchanged",
 };
 
 const SRC = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
