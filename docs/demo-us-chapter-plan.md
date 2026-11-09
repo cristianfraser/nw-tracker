@@ -241,3 +241,100 @@ budget the Render build time) and updates the About page's copy, the tour and th
 
 Real ingest of US documents (ADP, IBKR statements, 1099s): the demo writes them directly, as it
 does the contractor payslips; the ingest kinds come when a real user needs them.
+
+## Execution plan (2026-11-09)
+
+### Where the work runs
+
+- **Integration branch `claude/demo-us-chapter-plan-6a9e1a`** (worktree
+  `.claude/worktrees/fervent-einstein-142b41`), cut from `main` at the commit that adds this file.
+  Each stream works in its own worktree `.claude/worktrees/us-<stream>` on branch `us-<stream>`,
+  branched from the integration branch, and is merged back once its checks pass. `main` moves only
+  when the user says so (pushing `main` deploys to the home server; the demo deploys from `demo`
+  through `npm run release:demo`, never unasked).
+- **This laptop has no live database.** Unit tests run on the Vitest person; the generator is
+  rehearsed on the synthetic market (`NW_TRACKER_TEST_DB=<fresh file> npx tsx
+  scripts/generate-demo-data.ts`, from `server/`; `--real-market` needs the network and the Banco
+  Central credentials and is the Render build's job). Phase 4a's «reads exactly as before» is shown
+  on the Vitest person (one property, one loan) by comparing payloads before and after.
+- **Checks every stream runs before merge:** `npm run typecheck` (root; includes
+  `check:conventions` and `check-deps`), `cd server && npm run test`, `npm run test -w
+  nw-tracker-client`, `npm run test -w nw-tracker-contracts`, and for a generator stream both
+  people regenerate (`--test` and the demo person on the synthetic market) with the invariants
+  passing. A worktree shares this checkout's `node_modules` by symlink (root, `server/`, `client/`;
+  the Recharts patch is already applied there) and generates its own test DB on the first server
+  test run.
+- **Conflicts are avoided by file ownership:** each brief names the files it owns; a change
+  another stream's files need is a note in the report, not an edit. Streams in one wave own
+  disjoint files; `client/src/i18n/master.json` is the one shared file (each stream adds keys in
+  its own section; the locale files are regenerated once at the merge).
+- **Models:** the streams run on Opus unless the table says otherwise (plumbing and copy on
+  Sonnet); the integration — briefs, merges, re-checks, the plan's status notes — on Fable.
+- **The user's rule: one wave at a time.** When a wave is merged and green, the integrator reports
+  and stops; the next wave starts on the user's «go».
+
+### Decisions taken for the build
+
+- **401(k) valuation: (b), units × a dollar fund series.** `fund_unit_daily` gains `currency`
+  (migration 298, every stored row `clp`); `fundPriceAt` prices a fund in the series' currency and
+  `accountProfile` gives a fund holding its series' quote; every legacy reader of the column that
+  assumes pesos asserts `clp` (fail fast), as the valuations readers do since migration 260. The
+  401(k) is then a cuota ledger like the APV accounts, priced daily.
+- **The US law lives in code**, `usLegalParameters.ts`, a sibling of `legalParameters.ts` keyed by
+  tax year (brackets by filing status, standard deduction, Social Security wage base and rate,
+  Medicare rate and the additional 0,9 %, the 401(k), HSA and IRA limits with the Roth phase-out,
+  Pub. 15-T's percentage-method tables for the W-4 postures the demo uses); a year it does not list
+  throws. No document imports these figures, so there is no table for them (the Chilean
+  `payroll_parameters` exists because Previred's PDF does).
+- **`retirement_cl` / `retirement_us` are created where the story needs them.** `db.ts` seeds the
+  two asset groups under `retirement`; the portfolio-group rows (and the reparenting of the Chilean
+  leaf asset groups under `retirement_cl`) are written by the demo generator, and
+  `rebuildRetirementNav` links by what exists, so the personal instance keeps its tree untouched.
+- **Migrations:** 297 `payroll_work_earnings.jurisdiction`, 298 `fund_unit_daily.currency`, later
+  ones numbered by the stream that needs them in the order the waves merge (the integrator
+  renumbers at merge when two streams took the same number).
+
+### Waves
+
+**Wave 1 — the app work the chapter needs, beside the cheap generator phase (4 streams, parallel).**
+
+| Stream | Phase | Owns | Model |
+|---|---|---|---|
+| `us-depth` | 1 (generator only: the three 10 % AFP withdrawals, APV-B monthly in the contractor years, rolling peso DAPs 2021-03 → 2023-12 with DJ 1890, the Chilean ETF bought 2025-06 and part sold 2026-03, a losing 2024 sale, the NVDA 10:1 split, IBKR as a second broker with SGOV and sweep interest) | `server/src/demoData/**` and its tests, `server/scripts/generate-demo-data.ts`, `server/data/demo/**` | opus |
+| `us-loans` | 4a (one depto ledger per `property` role holder; the two singletons deleted; every reader loops over the pairs; parity on the one-pair database) | `deptoLedgerFromMovements.ts`, `mortgagePaymentCreate.ts`, `mortgageSheetPaymentsApply.ts`, `upcomingPayments.ts` (mortgage part), `dailyReferenceLines.ts`, `liabilityTree.ts`, `mortgagePrepaymentComparison.ts`, `flowsRealEstateExpenses.ts` + `flows/loanPaymentParts.ts` (mortgage rows), the depto quantity sources in `accountMarkClpAtYmd.ts` / `accountProfile.ts`, `accountRoles.ts`, `accountIdentityKeys.ts`, `accountRoles271.ts`, the dashboard real-estate card builder, the mortgage routes and the client mortgage / Pasivos pages where they assume one loan | opus |
+| `us-payroll-model` | 2, app side (jurisdiction on `payroll_work_earnings`, US line kinds, `usLegalParameters.ts`, the checks' US branch — FICA, percentage-method withholding —, the breakdown's US deduction groups, the US branch of `applyEmploymentPayslips` with the sums validated, the contract's `jurisdiction` field and version bump; Chilean readers — `payrollTaxYear`, `f22Draft` — leave US payslips out) | `payslip*.ts`, `payroll*.ts` (server), `usLegalParameters.ts` (new), `server/contracts/src/kinds/employmentPayslips.ts`, migration 297, the income page's gross-vs-net client code | opus |
+| `us-retirement-nav` | 3, app side (the Chile / US split of the Retirement tree — seeds, `rebuildRetirementNav` by presence, synthetic colour ids, label keys, `sidebar_nav` + nav-snapshot version bumps — and the fund series currency: migration 298, `fundPriceAt` by quote, legacy readers assert `clp`) | `seedNavTree.ts`, `db.ts` (asset-group seed), `chartColorRgb.ts`, `navTreeRoles272.ts`, `client/src/sidebarNavFromApi.ts`, `client/src/dashboardNavSnapshotCache.ts`, `schemaVersions.ts`, `holdingPrices.ts`, `accountProfile.ts` (fund quote only — coordinate: `us-loans` owns its depto branch; both edit different functions), `fundUnitDaily.ts`, `cuotaLedgerAccounts.ts`, migration 298 | opus |
+
+**Wave 2 — the chapter itself in the generator, beside the rentals' and the card's app work (3 streams).**
+
+| Stream | Phase | Owns | Model |
+|---|---|---|---|
+| `us-chapter-gen` | 2 + 3, generator (the `us_w2` job, the US checking account and its gastos — a dollar checking account's debits as expense lines, priced at the day's rate in the peso views —, biweekly payslips through the US import branch, W-2 documents, the dollar lifestyle and the transfers to Chile, the 401(k) ledger on a USD fund series, Roth IRA and HSA, the `retirement_cl` / `retirement_us` groups written by the generator) | `server/src/demoData/**`, the checking-gastos loaders for a dollar account (`flowsCheckingGastos*.ts`, `checkingCartolaLoaders.ts` as needed) | opus |
+| `us-rentals-app` | 4b, app (a `dfl2` flag per place, the `rent` income kind, the F22's taxable-rent line and contribuciones credit through `f22Identities.ts`, the exempt DFL-2 rent shown entering) | `f22*.ts`, `flowsCheckingIncomeOverrides.ts`, the real-estate places' schema and routes, the tax page's rent rows | opus |
+| `us-card-issuer` | 7, app (a fictional USD-only issuer in `CC_ISSUERS` with its close and pay-by rules; the statement renders through the parsed-statement contract's USD side) | `ccIssuers.ts`, `ccInstallmentPayBy.ts`, `ccStatementLineRules.json` entries, their tests | sonnet |
+
+**Wave 3 — the rentals in the generator, the 1040 (2 streams).**
+
+| Stream | Phase | Owns | Model |
+|---|---|---|---|
+| `us-rentals-gen` | 4b, generator (the 2020 Centro apartment with its mortgage and rent from day one, Vitacura rented from 2024-06, agency fee, vacancy month, gastos comunes and contribuciones per place with the DFL-2 halving, both mortgages paid from checking; the US card's statements and payments, phase 7's generator part) | `server/src/demoData/**` | opus |
+| `us-1040` | 5, app (`f1040Draft.ts` from the US payslips, the filed-1040 storage, the tax page's jurisdiction tab; v1: wages, standard deduction, brackets, FICA reported, withholding credited) | `f1040*.ts` (new), the filed-return table and its migration, `routes/taxReturn*`, the tax page client code | opus |
+
+**Wave 4 — the border, and the finish (2 streams, the second after the first).**
+
+| Stream | Phase | Owns | Model |
+|---|---|---|---|
+| `us-f22-border` | 6 (the F22's foreign salary with the treaty credit, IBKR dividends and interest as foreign income; the April loop drafts the 1040 first and settles both) | `f22*.ts`, `demoData/taxDocuments.ts`, `demoData/generate.ts` (the loop) | opus |
+| `us-finish` | the net-worth target, the invariants, the About page's copy and the tour, both people regenerated, the Render build budget checked | `server/src/demoData/invariants.ts`, `person.ts` (target), the About / tour client code and `master.json` | sonnet |
+
+Phase 8 is out of this plan.
+
+### Agent briefs, in common
+
+Every brief carries: the phase of this file it implements (read first, with GUIDELINES.md and the
+AGENTS.md sections it names), the files it owns, the checks to run, the rule that a change outside
+its files is a note not an edit, the GUIDELINES rules (fail fast, no fallbacks, free text is
+provenance, server computes / client picks, tests on synthetic fixtures only, English identifiers,
+i18n for copy), the commit convention (small commits on the stream branch, no co-author trailer),
+and the report shape: what changed, what was left as a note for another stream, the check results
+verbatim, the decisions it took.
