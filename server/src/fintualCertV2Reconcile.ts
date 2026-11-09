@@ -17,7 +17,7 @@ import {
   isFintualPublishedFundUnitNote,
 } from "./fintualFundUnitDaily.js";
 import { fintualExpectsCuotaOnPollDay } from "./fintualPublishDate.js";
-import { latestFundUnitRow } from "./fundUnitDaily.js";
+import { assertFundSeriesClp, latestFundUnitRow } from "./fundUnitDaily.js";
 import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
@@ -90,6 +90,7 @@ export function fintualCertV2PositionFromCuotaClp(
   if (!seriesKey) return null;
   const units = fintualGoalUnitsFromMovements(accountId);
   if (units == null || units <= 0) return null;
+  assertFundSeriesClp(seriesKey, "fintualCertV2Reconcile");
   const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as
     | { unit_value: number; note: string }
     | undefined;
@@ -187,6 +188,7 @@ function goalsNavMatchesPriorPublishPositionUncached(
   if (units == null || units <= 1e-9) return false;
   const latest = latestFundUnitRow(seriesKey);
   if (!latest) return false;
+  assertFundSeriesClp(seriesKey, "fintualCertV2Reconcile");
   const rows = stmtRecentFundUnitsBeforeDay.all(seriesKey, latest.day) as {
     day: string;
     unit_value: number;
@@ -216,6 +218,7 @@ export function fintualCertV2HeldFundMissingDayRow(
   if (!seriesKey) return false;
   const units = fintualGoalUnitsFromMovements(accountId);
   if (units == null || units <= 1e-9) return false;
+  assertFundSeriesClp(seriesKey, "fintualCertV2Reconcile");
   const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as
     | { unit_value: number; note: string }
     | undefined;
@@ -332,6 +335,7 @@ export function listFintualCertV2ReconcileRows(
     if (accId == null) continue;
     const acc = { id: accId };
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+    if (seriesKey != null) assertFundSeriesClp(seriesKey, "fintualCertV2Reconcile");
     const unitRow =
       seriesKey != null
         ? (stmtFundUnitOnDay.get(seriesKey, publishYmd) as
@@ -370,6 +374,7 @@ export function cleanupUnreconciledFintualCertFundUnits(
 
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
     if (!seriesKey) continue;
+    assertFundSeriesClp(seriesKey, "fintualCertV2Reconcile");
     const row = stmtFundUnitOnDay.get(seriesKey, publishYmd) as
       | { unit_value: number; note: string }
       | undefined;

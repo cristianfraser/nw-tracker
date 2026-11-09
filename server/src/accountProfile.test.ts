@@ -12,6 +12,7 @@ const base: AccountProfileFacts = {
   usesEquityMtm: false,
   fundSeriesKey: null,
   quoteCurrencyOf: (t) => (t.endsWith(".SN") ? "clp" : "usd"),
+  fundQuoteCurrencyOf: () => "clp",
   roles: [],
   demoOrTest: true,
 };
@@ -100,5 +101,24 @@ describe("profileFromFacts", () => {
     expect(() => p({ kind: "afp", demoOrTest: false })).toThrow(/fund_series_key/);
     expect(() => p({ kind: "spy", usesEquityMtm: true })).toThrow(/equity_ticker/);
     expect(() => p({ kind: "btc", coinPriceTicker: "BTC-USD", usesEquityMtm: true })).toThrow(/coin units/);
+    // A US fund account has no UNO fallback, demo or not.
+    expect(() => p({ kind: "us_401k" })).toThrow(/fund_series_key/);
+    expect(() => p({ kind: "hsa" })).toThrow(/fund_series_key/);
+  });
+
+  it("prices a fund holding in its series' currency (a 401(k) on a dollar series)", () => {
+    const usd = p({
+      kind: "us_401k",
+      fundSeriesKey: "vitest_tdf_usd",
+      fundQuoteCurrencyOf: (k) => (k === "vitest_tdf_usd" ? "usd" : "clp"),
+    });
+    expect(usd.quantity).toEqual({ kind: "cuota_ledger", seriesKey: "vitest_tdf_usd" });
+    expect(usd.holding).toEqual({ kind: "fund", seriesKey: "vitest_tdf_usd", quote: "usd" });
+    expect(usd.priceless).toBe(false);
+    expect(p({ kind: "roth_ira", equityTicker: "SPY", usesEquityMtm: true }).holding).toEqual({
+      kind: "stock",
+      ticker: "SPY",
+      quote: "usd",
+    });
   });
 });

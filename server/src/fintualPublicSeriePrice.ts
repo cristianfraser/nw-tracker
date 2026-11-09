@@ -17,6 +17,7 @@
  * verified value-for-value against 20 months of stored bars on 2026-09-17: max deviation 6,4e-5
  * (weekend restatements), everything else exact to the 4th decimal.
  */
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { fetchOutboundText } from "./outboundFetch.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { db } from "./db.js";
@@ -159,6 +160,7 @@ export function reconcileFundUnitSeriesWithOfficialPrices(opts: {
     if (officialRaw == null || !(officialRaw > 0)) continue;
     const officialClp = Math.round(officialRaw * 10000) / 10000;
     checked += 1;
+    assertFundSeriesClp(opts.seriesKey, "fintualPublicSeriePrice");
     const existing = stmtGetBar.get(opts.seriesKey, day) as
       | { unit_value: number; note: string }
       | undefined;

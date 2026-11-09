@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { resolveEquityQuote } from "./equityQuote.js";
 import { resolveGroupDailySeries } from "./groupDailySeries.js";
 import { runningGrowth } from "./perfKernel.js";
@@ -207,6 +208,7 @@ function equityLevels(b: BenchmarkRow, todayYmd: string, now: Date): BenchmarkLe
 }
 
 function fundLevels(b: BenchmarkRow): BenchmarkLevelSeries {
+  assertFundSeriesClp(b.series_key!, "benchmarkLevels");
   const rows = db
     .prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? ORDER BY day`)
     .all(b.series_key!) as { day: string; unit_value: number }[];

@@ -3,10 +3,10 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   afpCuotasCumulativeThroughDate,
-  latestAfpUnoFundUnitRowOnOrBeforeForDisplay,
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
 import { cuotaLedgerDisplayTicker } from "./cuotaLedgerAccounts.js";
+import { fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 import { accountProfile, accountProfileOptional } from "./accountProfile.js";
 import {
   requireCryptoMtmClp,
@@ -290,9 +290,15 @@ function coinPositionMeta(accountId: number, priceTicker: string, asOf: string, 
  * certs; AFC: rebuilt from its certificate and cartolas) — no stored-valuation drift substitution.
  */
 function cuotaLedgerPositionMeta(accountId: number, kind: string, series: string, asOfCuotas: string): AccountPositionMeta {
-  let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
-  if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
-  const px = fu?.unit_value;
+  // The valor cuota in the series' currency; a fund on a dollar series (a 401(k)) shows its
+  // position in pesos at the day's rate, as a dollar stock's does.
+  const fu = fundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
+  const px =
+    fu == null
+      ? undefined
+      : fu.currency === "clp"
+        ? fu.unit_value
+        : (convertValue(fu.unit_value, fu.currency, "clp", fu.day, "asset") ?? undefined);
   const pxDay = fu?.day;
 
   const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);

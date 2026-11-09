@@ -7,7 +7,8 @@
  * - `stock`: shares of a ticker, priced in the ticker's quote currency.
  * - `coin`: a crypto coin (BTC, ETH), priced by its price series (`BTC-USD`) in dollars — the
  *   account holds the coin, the series is only where its price lives.
- * - `fund`: cuotas of a fund series (AFP, AFC, Fintual funds), priced in pesos.
+ * - `fund`: cuotas of a fund series (AFP, AFC, Fintual funds, a US 401(k) or HSA), priced in its
+ *   series' currency (`fund_unit_daily.currency`).
  * - `card`: a credit card holds no currency of its own — it holds sub-balances, one per
  *   facturación and currency.
  *

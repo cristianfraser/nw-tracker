@@ -10,6 +10,7 @@
  * the SP from then until it lands. Every run re-reads the whole current year: the SP's trailing
  * days are «provisorios» and a restated value replaces the stored one (reported as a step note).
  */
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { afpDisplayDayForOfficialDay, buildAfpDisplaySeries, type DisplayFundUnit, type OfficialFundUnit } from "./afpDisplayFrame.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
@@ -114,6 +115,7 @@ export function upsertAfpDisplayRows(
   const restated: { day: string; previous: number; next: number }[] = [];
   const run = () => {
     for (const r of rows) {
+      assertFundSeriesClp(seriesKey, "afpUnoOfficialSync");
       const prev = stmtDisplayRow.get(seriesKey, r.day) as { unit_value: number } | undefined;
       if (prev && Math.abs(prev.unit_value - r.unit_value) <= 0.005) continue;
       if (prev) restated.push({ day: r.day, previous: prev.unit_value, next: r.unit_value });

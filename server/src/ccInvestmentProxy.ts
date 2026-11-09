@@ -6,6 +6,7 @@
  *
  * Computed overlay only — not persisted, not part of net worth.
  */
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
@@ -63,6 +64,7 @@ function isFundSeriesTicker(ticker: string): boolean {
  */
 export function tickerHasAnyPriceData(ticker: string): boolean {
   if (isFundSeriesTicker(ticker)) {
+    assertFundSeriesClp(ticker, "ccInvestmentProxy");
     const row = stmtFundUnitLatest.get(ticker) as { unit_value: number } | undefined;
     return row != null && Number.isFinite(row.unit_value) && row.unit_value > 0;
   }
@@ -94,6 +96,7 @@ export function priceClpForTickerAt(
   ymd: string
 ): { priceClp: number; projected: boolean; lastRealDate: string } {
   if (isFundSeriesTicker(ticker)) {
+    assertFundSeriesClp(ticker, "ccInvestmentProxy");
     const row = stmtFundUnitOnOrBefore.get(ticker, ymd) as
       | { day: string; unit_value: number }
       | undefined;

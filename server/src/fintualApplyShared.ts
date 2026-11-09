@@ -1,3 +1,4 @@
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { assertValuationCurrency } from "./valuationValue.js";
 import { type ChileWallClock } from "./chileDate.js";
 import {
@@ -86,6 +87,7 @@ function storedFintualGoalNavAt(
     if (!seriesKey) return null;
     const units = fintualGoalUnitsFromMovements(accountId);
     if (units == null || units <= 0) return null;
+    assertFundSeriesClp(seriesKey, "fintualApplyShared");
     const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value: number } | undefined;
     if (row?.unit_value == null || !Number.isFinite(row.unit_value)) return null;
     return Math.round(units * row.unit_value);
@@ -108,6 +110,7 @@ function priorFintualGoalNav(
     if (!seriesKey) return null;
     const units = fintualGoalUnitsFromMovements(accountId);
     if (units == null || units <= 0) return null;
+    assertFundSeriesClp(seriesKey, "fintualApplyShared");
     const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
       | { day: string; unit_value: number }
       | undefined;
@@ -121,6 +124,7 @@ function storedFintualPublishUnitAt(importNotes: string, asOfYmd: string): numbe
   if (!isFintualCertV2AccountNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
+  assertFundSeriesClp(seriesKey, "fintualApplyShared");
   const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value: number } | undefined;
   if (row?.unit_value == null || !Number.isFinite(row.unit_value)) return null;
   return Math.round(row.unit_value * 10000) / 10000;
@@ -133,6 +137,7 @@ function priorFintualPublishUnit(
   if (!isFintualCertV2AccountNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
+  assertFundSeriesClp(seriesKey, "fintualApplyShared");
   const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
     | { day: string; unit_value: number }
     | undefined;

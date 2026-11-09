@@ -19,6 +19,7 @@
  * restatement is reported as a sync change, never silently kept). Only the CIC column is
  * stored — the FCS is the solidarity fund, nobody's account.
  */
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { foldAccents, parseChileanNumber } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import type { ChileWallClock } from "./chileDate.js";
@@ -169,6 +170,7 @@ export function upsertAfcCicRows(
   const run = () => {
     for (const r of rows) {
       const px = Math.round(r.cic_valor_cuota * 10000) / 10000;
+      assertFundSeriesClp(AFC_CIC_SERIES_KEY, "afcCicSeries");
       const prev = stmtSelectValue.get(AFC_CIC_SERIES_KEY, r.day) as { unit_value: number } | undefined;
       if (prev == null) {
         out.inserted += 1;
@@ -192,6 +194,7 @@ const stmtLatestDay = db.prepare(
 );
 
 export function latestAfcCicRow(): { day: string; unit_value: number } | null {
+  assertFundSeriesClp(AFC_CIC_SERIES_KEY, "afcCicSeries");
   const r = stmtLatestDay.get(AFC_CIC_SERIES_KEY) as { day: string; unit_value: number } | undefined;
   return r ?? null;
 }
