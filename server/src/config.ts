@@ -55,6 +55,8 @@ export type ServerConfig = {
   };
   dbBackup: { enabled: boolean; keep: number; dir: string | null; dirKeep: number };
   cacheWarm: boolean;
+  /** The nightly demo-market publish (`demoMarketPublishJob.ts`); also needs `DEMO_MARKET_PUBLISH_TOKEN`. */
+  demoMarketPublish: boolean;
   usageLog: boolean;
   /** The ingest scheduler (`ingestRunScheduler.ts`): only the primary instance's LaunchAgent sets it. */
   ingestScheduler: boolean;
@@ -85,6 +87,7 @@ export const BACKGROUND_JOB_FLAGS = [
   "USAGE_LOG_ENABLED",
   "INGEST_SCHEDULER_ENABLED",
   "JOB_QUEUE_EXECUTOR_ENABLED",
+  "DEMO_MARKET_PUBLISH_ENABLED",
 ] as const;
 
 /**
@@ -196,6 +199,8 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
       dirKeep: positiveInteger(env, "DB_BACKUP_DIR_KEEP", 60),
     },
     cacheWarm: flag("CACHE_WARM_ENABLED", true),
+    // Never on the demo itself, whatever the flag says: it is what the demo reads.
+    demoMarketPublish: !demo && flag("DEMO_MARKET_PUBLISH_ENABLED", true),
     usageLog: flag("USAGE_LOG_ENABLED", true),
     ingestScheduler,
     jobQueueExecutor,
