@@ -1,5 +1,5 @@
-import { CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
-import { useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { CartesianGrid, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { resolveLineSeriesColors } from "../../chartColors";
@@ -162,6 +162,12 @@ interface BlockProps {
    * the window.
    */
   athMarker?: NetWorthAthDto | null;
+  /**
+   * The lines draw in from left to right over this long (ms) the first time they are shown loaded,
+   * whatever the chart style (the hand-drawn pens have no entrance animation of their own); later
+   * updates are not animated by it. Omitted: no draw-in.
+   */
+  drawInMs?: number;
   /**
    * The block is a placeholder or held prior data: the panel dims itself and, with nothing to
    * plot, draws an empty chart box instead of the «no valuation series» copy.
@@ -439,9 +445,12 @@ export function LineChartPanel({
   timeRange: timeRangeProp,
   controls,
   athMarker,
+  drawInMs,
   loading,
 }: BlockProps) {
   const timeRange = timeRangeProp ?? "total";
+  // First loaded draw: the lines are wiped in over `drawInMs` (a clip on the line layers, chart-draw-in).
+  const [drawIn, setDrawIn] = useState<"pending" | "running" | "done">(drawInMs == null ? "done" : "pending");
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const blockPlotted = useMemo(
     () => (trimLeadingInactive ? trimLeadingInactivePoints(block, includeAccumulatedLines) : block),
@@ -566,7 +575,17 @@ export function LineChartPanel({
     return computeRegularMonthXAxisTicks(dates, { includeLastDataPoint: false });
   }, [chartData, xAxisGranularity]);
 
-  if (!chartData.length || !visibleSeries.length) {
+  const hasPlot = chartData.length > 0 && visibleSeries.length > 0;
+  useEffect(() => {
+    if (drawIn === "pending" && hasPlot && !loading) setDrawIn("running");
+  }, [drawIn, hasPlot, loading]);
+  useEffect(() => {
+    if (drawIn !== "running" || drawInMs == null) return;
+    const done = window.setTimeout(() => setDrawIn("done"), drawInMs);
+    return () => window.clearTimeout(done);
+  }, [drawIn, drawInMs]);
+
+  if (!hasPlot) {
     return (
       <div className={loadableClass(loading, "chart-grid__col")}>
         {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
@@ -585,10 +604,20 @@ export function LineChartPanel({
   return (
     <div className={loadableClass(loading, "chart-grid__col")}>
       {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
+      {/* The legend is HTML under the plot, never measured by Recharts: Recharts reads a legend's
+          size from its on-screen box, which a transform (the demo's tilted About preview) shrinks,
+          and kept that size until the legend next changed — the plot came out taller tilted and
+          shrank after the move. The plot area takes what the legend leaves, by layout. */}
       <div
-        className="chart-box line-chart-focus-wrap"
+        className={cn(
+          "chart-box chart-box--legend line-chart-focus-wrap",
+          drawIn === "pending" && "chart-draw-in chart-draw-in--pending",
+          drawIn === "running" && "chart-draw-in chart-draw-in--running"
+        )}
+        style={drawInMs == null ? undefined : ({ "--chart-draw-in-ms": `${drawInMs}ms` } as CSSProperties)}
         onPointerLeave={() => setHighlightedKey(null)}
       >
+        <div className="line-chart-plot">
         <AppLineChart
           data={plotChartData}
           tailClippedKeys={tailClippedKeys}
@@ -631,16 +660,6 @@ export function LineChartPanel({
               // with it Recharts clips each Line to the exact plot rect — which cut half the
               // stroke off the last segment, ending on the right edge (a day's move read faint).
               {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)}
-            />
-            <Legend
-              itemSorter={null}
-              content={() => (
-                <InteractiveLegend
-                  series={visibleSeries}
-                  focusColorIndex={focusColorIndex}
-                  onHighlight={setHighlightedKey}
-                />
-              )}
             />
             {(() => {
               // Faint references (USD milestones) take no hover: their values still reach the
@@ -745,6 +764,8 @@ export function LineChartPanel({
               return athEl ? [...hitLines, ...visLines, athEl] : [...hitLines, ...visLines];
             })()}
         </AppLineChart>
+        </div>
+        <InteractiveLegend series={visibleSeries} focusColorIndex={focusColorIndex} onHighlight={setHighlightedKey} />
       </div>
     </div>
   );

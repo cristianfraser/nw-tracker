@@ -11,6 +11,19 @@ const savedScrollByUrl = new Map<string, number>();
 /** How long a restore keeps trying while the page's content grows tall enough to reach it. */
 const RESTORE_WAIT_MS = 3000;
 
+/** A URL whose next arrival leaves the scroll alone (its page scrolls itself; see {@link skipNextScrollRestore}). */
+let skipRestoreFor: string | null = null;
+
+/**
+ * The next arrival at `pathname` (+ `search`) does not restore or reset the scroll: the caller
+ * scrolls itself. The demo's About page smooth-scrolls to the top before the dashboard moves in.
+ * Must be called before the route change's layout effects reach this hook (a descendant's layout
+ * effect, which runs first, qualifies).
+ */
+export function skipNextScrollRestore(pathname: string, search = ""): void {
+  skipRestoreFor = scrollMemoryKey(pathname, search);
+}
+
 function scrollMemoryKey(pathname: string, search: string): string {
   return `${pathname}${search}`;
 }
@@ -43,6 +56,10 @@ export function useScrollMemory(): void {
   useLayoutEffect(() => {
     if (currentKey.current === key) return;
     currentKey.current = key;
+    if (skipRestoreFor === key) {
+      skipRestoreFor = null;
+      return;
+    }
     const target = savedScrollByUrl.get(key) ?? 0;
     window.scrollTo({ top: target });
     if (target === 0) return;

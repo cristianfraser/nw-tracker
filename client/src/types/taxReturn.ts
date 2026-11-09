@@ -166,7 +166,7 @@ export type TaxReturnResponse = {
   income_year: number;
   available_tax_years: number[];
   provisional: boolean;
-  base: "filed" | "informed" | "payroll" | "none";
+  base: "filed" | "informed" | "payroll" | "fees" | "none";
   tax_computed: boolean;
   uta_clp: number;
   uta_provisional: boolean;
@@ -177,6 +177,15 @@ export type TaxReturnResponse = {
     incomplete_months: string[];
     provisional: boolean;
   };
+  /** The fees box drafted from the boletas de honorarios issued (null: none, or a filed year). */
+  fees: {
+    receipts: number;
+    gross_clp: number;
+    presumed_expenses_clp: number;
+    apv_clp: number;
+    net_clp: number;
+    retention_clp: number;
+  } | null;
   year_end_observado: number;
   /** How the filed form was settled: its refund or payment against the linked bank movements. */
   settlement: {

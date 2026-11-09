@@ -22,6 +22,24 @@
   inset: 0;
 }
 
+/* A line chart's box (ValuationLineCharts): the plot on top takes what its HTML legend leaves, by
+   layout, so no on-screen measurement decides the plot's height. */
+.chart-box--legend {
+  display: flex;
+  flex-direction: column;
+}
+
+.line-chart-plot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.line-chart-plot > .app-chart-frame {
+  position: absolute;
+  inset: 0;
+}
+
 /* Axis labels are numbers and dates: the numbers' font, as on the cards and tables. */
 .recharts-wrapper .recharts-cartesian-axis-tick-value {
   font-family: var(--font-mono);
@@ -337,4 +355,32 @@
   stroke: #334155;
   stroke-dasharray: 3 3;
   opacity: 0.35;
+}
+
+/* A line chart's first loaded draw (`drawInMs` on LineChartPanel): the line layers are clipped
+   to nothing while the data loads, then wiped in from left to right. Works for every chart style,
+   including the hand-drawn pens, which have no entrance animation of their own. */
+.chart-draw-in .recharts-line {
+  clip-path: inset(0 100% 0 0);
+}
+
+.chart-draw-in--running .recharts-line {
+  animation: chart-draw-in var(--chart-draw-in-ms, 4000ms) cubic-bezier(0.45, 0, 0.25, 1) forwards;
+}
+
+@keyframes chart-draw-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-draw-in .recharts-line,
+  .chart-draw-in--running .recharts-line {
+    clip-path: none;
+    animation: none;
+  }
 }

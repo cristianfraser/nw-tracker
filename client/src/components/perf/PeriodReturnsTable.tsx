@@ -78,6 +78,12 @@ export function PeriodReturnsTable({
 }) {
   const { t } = useTranslation();
   const data = dataProp ?? placeholderPeriodReturnsPayload(displayUnit);
+  // No payload yet: every cell carries blank lines in the loaded cells' styles (%, P/L, IRR,
+  // annualized; the benchmark row also Δ), so the table takes its loaded height.
+  const blankLines = dataProp == null;
+  // The comparison lands after the returns: its lines (IRR, the benchmark row) stay blank until then.
+  const comparisonPending = comparison != null && comparison.data == null;
+  const blank = (className: string | undefined) => <div className={className}>{"\u00a0"}</div>;
   const formatNominal = displayUnit === "usd" ? formatUsdFine : formatClp;
   const compare = comparison != null;
 
@@ -143,11 +149,13 @@ export function PeriodReturnsTable({
             </div>
             {cell.nominal_pl != null ? (
               <div className={styles.nominal}>{formatNominal(cell.nominal_pl)}</div>
-            ) : null}
+            ) : blankLines ? blank(styles.nominal) : null}
             {irr(
               benchByPeriod.get(cell.period)?.real_irr_pct,
               benchByPeriod.get(cell.period)?.irr_annualized
             )}
+            {comparisonPending ? blank(styles.irr) : null}
+            {blankLines ? blank(styles.annualized) : null}
             {cell.annualized_pct != null ? (
               <div className={styles.annualized} title={t("periodReturns.annualizedTitle")}>
                 {formatPct(cell.annualized_pct * 100)} {t("periodReturns.annualized")}
@@ -189,8 +197,15 @@ export function PeriodReturnsTable({
                 </div>
                 {b?.shadow_pl != null ? (
                   <div className={styles.nominal}>{formatNominal(b.shadow_pl)}</div>
-                ) : null}
+                ) : blankLines ? blank(styles.nominal) : null}
                 {irr(b?.shadow_irr_pct, b?.irr_annualized)}
+                {comparisonPending ? (
+                  <>
+                    {blank(styles.irr)}
+                    {blank(styles.annualized)}
+                    {blank(styles.delta)}
+                  </>
+                ) : null}
                 {b?.benchmark_annualized_pct != null ? (
                   <div className={styles.annualized} title={t("periodReturns.annualizedTitle")}>
                     {formatPct(b.benchmark_annualized_pct * 100)} {t("periodReturns.annualized")}

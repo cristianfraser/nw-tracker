@@ -62,8 +62,8 @@
         "es": "Acerca de"
       },
       "title": {
-        "en": "NW Tracker",
-        "es": "NW Tracker"
+        "en": "Welcome to NW Tracker",
+        "es": "Bienvenido a NW Tracker"
       },
       "lead": {
         "en": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
@@ -6668,6 +6668,18 @@
         "en": "Credit for taxes paid abroad",
         "es": "Crédito por impuestos soportados en el exterior"
       },
+      "547": {
+        "en": "Fees: gross income",
+        "es": "Honorarios: total ingresos brutos"
+      },
+      "494": {
+        "en": "Fees: presumed expenses (30%, at most 15 UTA)",
+        "es": "Honorarios: gastos presuntos (30 %, tope 15 UTA)"
+      },
+      "770": {
+        "en": "Fees: voluntary pension savings (APV, régimen B)",
+        "es": "Honorarios: ahorro previsional voluntario (APV, régimen B)"
+      },
       "110": {
         "en": "Fees (honorarios) income",
         "es": "Rentas de honorarios (art. 42 N°2)"
@@ -7089,6 +7101,10 @@
       "payroll": {
         "en": "No filed return or informed DJs: the salary comes from the {{months}} imported payslips.",
         "es": "Sin declaración presentada ni DJ informadas: el sueldo sale de las {{months}} liquidaciones importadas."
+      },
+      "fees": {
+        "en": "No filed return, informed DJs or payslips: the fees come from the boletas de honorarios issued.",
+        "es": "Sin declaración presentada, DJ ni liquidaciones: los honorarios salen de las boletas de honorarios emitidas."
       },
       "none": {
         "en": "No filed return, informed DJs or payslips for this year: only what the app calculates.",

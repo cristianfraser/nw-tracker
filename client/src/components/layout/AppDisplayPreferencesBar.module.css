@@ -4,6 +4,23 @@
   pointer-events: none;
 }
 
+/* Fades in whenever it mounts (the demo shows it only once the dashboard has moved in). */
+.dock {
+  animation: display-prefs-in 0.4s ease;
+}
+
+@keyframes display-prefs-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock {
+    animation: none;
+  }
+}
+
 .dock {
   display: flex;
   position: fixed;

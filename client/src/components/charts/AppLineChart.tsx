@@ -8,7 +8,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Line, LineChart, ResponsiveContainer } from "recharts";
+import { Line, LineChart } from "recharts";
+import { useElementSize } from "./useElementSize";
 import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { useChartStyle } from "./chartStyle";
@@ -59,8 +60,12 @@ export type AppLineChartProps = Omit<ComponentProps<typeof LineChart>, "data"> &
 };
 
 /**
- * App wrapper around Recharts {@link LineChart}: owns the ResponsiveContainer, default margin, and the docked
+ * App wrapper around Recharts {@link LineChart}: fills its box, owns the default margin and the docked
  * tooltip; injects `connectNulls` on `<Line>` children whose `dataKey` appears in `tailClippedKeys`.
+ *
+ * Measures its own layout box (`useElementSize`) instead of using `ResponsiveContainer`, whose first
+ * size is the on-screen box: inside a transform (the demo's tilted About preview) that is the
+ * shrunken size, and the chart kept it after the transform ended until something else resized it.
  */
 export function AppLineChart({ data, tailClippedKeys, tooltip, margin, children, ...rest }: AppLineChartProps) {
   const clipSet = useMemo(() => tailClipKeySet(tailClippedKeys), [tailClippedKeys]);
@@ -72,14 +77,17 @@ export function AppLineChart({ data, tailClippedKeys, tooltip, margin, children,
     return rough ? injectRoughShapes(clipped, rough, grainFilterId) : clipped;
   }, [children, clipSet, rough, grainFilterId]);
   const axisSides = useMemo(() => (rough?.extras ? roughAxisSides(children) : []), [children, rough]);
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={margin ?? RECHARTS_MONEY_CHART_MARGIN} {...rest}>
-        {tooltip ? appTooltipElement(tooltip) : null}
-        {rough ? <RoughChartDefs mode={rough} grainFilterId={grainFilterId} /> : null}
-        {mappedChildren}
-        {axisSides.length ? <RoughAxisLines sides={axisSides} seed={roughSeed("axis", rough?.seedSalt)} multiStroke={rough?.multiStrokeExtras ?? true} /> : null}
-      </LineChart>
-    </ResponsiveContainer>
+    <div ref={ref} className="app-chart-frame" style={{ width: "100%", height: "100%" }}>
+      {width > 0 && height > 0 ? (
+        <LineChart width={width} height={height} data={data} margin={margin ?? RECHARTS_MONEY_CHART_MARGIN} {...rest}>
+          {tooltip ? appTooltipElement(tooltip) : null}
+          {rough ? <RoughChartDefs mode={rough} grainFilterId={grainFilterId} /> : null}
+          {mappedChildren}
+          {axisSides.length ? <RoughAxisLines sides={axisSides} seed={roughSeed("axis", rough?.seedSalt)} multiStroke={rough?.multiStrokeExtras ?? true} /> : null}
+        </LineChart>
+      ) : null}
+    </div>
   );
 }

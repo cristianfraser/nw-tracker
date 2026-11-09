@@ -176,6 +176,25 @@ export type Ledger = {
   /** Names the category rules need (description / merchant → category slug). */
   categoryByCheckingDescription: Map<string, string>;
   categoryByMerchant: Map<string, string>;
+  /** The boletas de honorarios issued (internships: the payer withholds; contractor: the issuer pays in F29). */
+  feeReceipts: FeeReceipt[];
+  /** APV régimen B deposits (the AFP's DJ 1899). */
+  apvBDeposits: { date: Ymd; clp: number }[];
+  /**
+   * Each income year's April settlement (positive paid, negative refunded) and the pension
+   * contributions on fees the SII charged inside it (code 900).
+   */
+  aprilSettlements: Map<number, { clp: number; contributionsClp: number }>;
+};
+
+export type FeeReceipt = { issuedOn: Ymd; payer: string; grossClp: number; retentionClp: number; retainedBy: "payer" | "issuer" };
+
+export type SimulateOptions = {
+  /**
+   * The April settlement of each income year (code 305 plus the contributions charged), as the tax
+   * module computed it on a previous pass; a year not listed takes the simulator's own estimate.
+   */
+  aprilSettlements?: ReadonlyMap<number, number>;
 };
 
 /* --------------------------------- constants ------------------------------------ */
@@ -446,7 +465,8 @@ type CardCycleState = {
   paid: { clp: { amount: number; date: Ymd } | null; usd: { amount: number; date: Ymd; viaDivisas: boolean } | null };
 };
 
-export function simulate(person: Person, market: MarketReader, today: Ymd): Ledger {
+export function simulate(person: Person, market: MarketReader, today: Ymd, options: SimulateOptions = {}): Ledger {
+  const settlementOverrides = options.aprilSettlements ?? new Map<number, number>();
   const {
     seed: SEED,
     firstMonth: FIRST_MONTH,
@@ -485,6 +505,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
   const payslips: ContractPayslip[] = [];
   const contractorPayslips: ContractorPayslip[] = [];
   const afcContributions: Ledger["afcContributions"] = [];
+  const feeReceipts: FeeReceipt[] = [];
+  const apvBDeposits: Ledger["apvBDeposits"] = [];
+  const aprilSettlements: Ledger["aprilSettlements"] = new Map();
   const months: Ledger["months"] = [];
   const catByDesc = new Map<string, string>();
   const catByMerchant = new Map<string, string>();
@@ -717,6 +740,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
       const t = yearTax(year);
       t.honorariosGross += it.grossClp;
       t.honorariosRetention += it.grossClp - net;
+      const issued = lastBusinessDay(month);
+      if (issued <= today) feeReceipts.push({ issuedOn: issued, payer: it.employer, grossClp: it.grossClp, retentionClp: it.grossClp - net, retainedBy: "payer" });
       incomeNominal += net;
     }
     if (contract) {
@@ -757,6 +782,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
         ty.honorariosGross += grossClp;
         ty.honorariosRetention += ret;
         ty.independent = true;
+        feeReceipts.push({ issuedOn: wire, payer: contractor.employer, grossClp, retentionClp: ret, retainedBy: "issuer" });
         // The retention goes to the SII with the next F29 (by the 12th).
         const f29 = businessDayOnOrBefore(ymd(addMonths(monthOf(wire), 1), 12));
         if (f29 <= today) pendingF29.push({ day: f29, clp: ret });
@@ -770,18 +796,23 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
     }
 
     // Operación renta: April pays or May refunds the previous year.
-    if (mo === 4 && taxYears.has(year - 1)) {
-      const t = annualTax(year - 1);
+    // The amount is the tax module's (code 305 + the contributions charged) once a previous pass
+    // computed it; the simulator's own estimate only seeds the first pass.
+    if (mo === 4 && (taxYears.has(year - 1) || settlementOverrides.has(year - 1))) {
       const indep = independentContributions(year - 1);
-      if (t.result > 0) {
+      const retention = taxYears.get(year - 1)?.honorariosRetention ?? 0;
+      const contributionsClp = Math.min(indep.total, retention);
+      const result = settlementOverrides.get(year - 1) ?? annualTax(year - 1).result;
+      aprilSettlements.set(year - 1, { clp: result, contributionsClp });
+      if (result > 0) {
         const day = businessDayOnOrBefore(ymd(month, 28));
         if (day <= today) {
-          ensureClp(day, t.result);
-          bankBill("checking", day, "PAGO F22 TGR", "taxes", t.result);
+          ensureClp(day, result);
+          bankBill("checking", day, "PAGO F22 TGR", "taxes", result);
         }
-      } else if (t.result < 0) {
+      } else if (result < 0) {
         const day = firstBusinessDayOnOrAfter(ymd(addMonths(month, 1), 14));
-        if (day <= today) book.bankRow(hasChecking ? "checking" : "vista", day, "DEVOLUCION IMPUESTO TGR", -t.result);
+        if (day <= today) book.bankRow(hasChecking ? "checking" : "vista", day, "DEVOLUCION IMPUESTO TGR", -result);
         if (hasChecking) catByDesc.set("DEVOLUCION IMPUESTO TGR", "taxes");
       }
       if (indep.pension > 0) {
@@ -1037,7 +1068,10 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
           { from: "checking", to: regime, date: day, clp, units, flowKind: null, note: `APV ${regime === "apvA" ? "régimen A" : "régimen B"} ${year}` },
           { account: "checking", description: "TRANSF A AGF ANDES APV", side: "from" }
         );
-        if (regime === "apvB") yearTax(year).apvB += clp;
+        if (regime === "apvB") {
+          yearTax(year).apvB += clp;
+          apvBDeposits.push({ date: day, clp });
+        }
         else {
           const bonus = round(Math.min(clp * APV.bonusRate, APV.bonusCapUtm * market.utm(month)));
           apvBonuses.push({ day: firstBusinessDayOnOrAfter(ymd(`${year + 1}-08`, 20)), clp: bonus });
@@ -1212,6 +1246,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
     months,
     categoryByCheckingDescription: catByDesc,
     categoryByMerchant: catByMerchant,
+    feeReceipts,
+    apvBDeposits,
+    aprilSettlements,
   };
 
   /* ------------------------------ closures ------------------------------ */

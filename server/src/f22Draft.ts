@@ -15,6 +15,16 @@
  *   304 = 157 − 136 − 162 − 1018 − 610                     (162: the employer's IUSC withheld; 610: IDPC credit)
  *   305 = 304 + 1830 − 198 + 900                           (1830: art. 107's 10% impuesto único, outside IGC)
  *
+ * Fees (art. 42 N°2, línea 2) come from the boletas de honorarios issued (`sii_issued_fee_receipts`)
+ * for a year with no filed form: the fees box's gross (547), its presumed expenses (494: 30 % of
+ * the gross, at most 15 UTA), the net (110 = 547 − 494, less an APV régimen B deposit declared in
+ * the box as 770 when no employer reported the year) and the retention as a credit (198). The
+ * pension contributions the SII charges on fees (900) are not drafted: their rates (SIS, accident
+ * insurance, the coverage ramp) are not on file; a filed form carries them.
+ *
+ * Mortgage interest (art. 55 bis) is the interest paid (751: the lender's DJ 1898, else the ledger
+ * estimate) and its deduction (750: at most 8 UTA, reduced between 90 and 150 UTA of gross income).
+ *
  * 105 is a domestic dividend afecto al IGC (línea 2): an art. 107 fund's distributions, from DJ
  * 1922 when the custodian reported them, else estimated from the cash credited.
  *
@@ -173,9 +183,24 @@ export type F22DividendLine = {
 
 /**
  * Where the draft's other codes come from, in this order: the filed form, the informed DJs, the
- * imported liquidaciones (salary codes 1098 / 161 / 162, `payrollTaxYear`), or nothing.
+ * imported liquidaciones (salary codes 1098 / 161 / 162, `payrollTaxYear`), the boletas de
+ * honorarios issued (the fees box), or nothing. Fees are added to an informed or payroll base too.
  */
-export type F22DraftBase = "filed" | "informed" | "payroll" | "none";
+export type F22DraftBase = "filed" | "informed" | "payroll" | "fees" | "none";
+
+/** The fees box drafted from the boletas issued in the income year (null: none issued, or a filed year). */
+export type F22FeesBox = {
+  receipts: number;
+  grossClp: number;
+  /** 494: 30 % of the gross, at most 15 UTA. */
+  presumedExpensesClp: number;
+  /** 770: APV régimen B deposited by a worker independiente, declared in the box. */
+  apvClp: number;
+  /** 110: gross − presumed expenses − 770. */
+  netClp: number;
+  /** 198: what the payers withheld plus what the issuer paid in his F29. */
+  retentionClp: number;
+};
 
 export type F22Draft = {
   taxYear: number;
@@ -189,6 +214,7 @@ export type F22Draft = {
   yearEndObservado: number;
   filed: F22Codes | null;
   salary: PayrollTaxYear;
+  fees: F22FeesBox | null;
   /** The UTA the chain used is the latest month's, not December's (open year). */
   utaProvisional: boolean;
   informed: Record<number, number>;
@@ -272,8 +298,8 @@ function loadInformed(taxYear: number): Map<number, InformedDjField[]> {
 }
 
 /**
- * The informed codes with the detail codes the form repeats them in (1869 = 155, 751 = 750,
- * 161 = 1098, 1878 = 152). Over a filed base they replace what was filed: a third party's figure
+ * The informed codes with the detail codes the form repeats them in (1869 = 155, 161 = 1098,
+ * 1878 = 152). Over a filed base they replace what was filed: a third party's figure
  * is what the SII checks the return against (AT2025 filed 1.327.923 of mortgage interest against
  * the lender's 3.486.129, and no fund gain against Fintual's 1.759.346).
  */
@@ -281,12 +307,26 @@ function informedWithDetailCodes(informed: Record<number, number>): F22Codes {
   const out: F22Codes = { ...informed };
   const detail: [number, number][] = [
     [155, 1869],
-    [750, 751],
     [1098, 161],
     [152, 1878],
   ];
   for (const [code, repeat] of detail) if (informed[code] != null) out[repeat] = informed[code]!;
   return out;
+}
+
+/** Presumed expenses on fees: 30 % of the gross, at most 15 UTA (art. 50 LIR). */
+export const FEES_PRESUMED_EXPENSES_RATE = 0.3;
+export const FEES_PRESUMED_EXPENSES_CAP_UTA = 15;
+
+/** The boletas de honorarios issued in the income year: count, gross and retention. */
+function loadFeeReceipts(incomeYear: number): { receipts: number; grossClp: number; retentionClp: number } {
+  const r = db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(gross_clp), 0) AS gross, COALESCE(SUM(retention_clp), 0) AS retention
+         FROM sii_issued_fee_receipts WHERE issued_on LIKE ?`
+    )
+    .get(`${incomeYear}-%`) as { n: number; gross: number; retention: number };
+  return { receipts: r.n, grossClp: r.gross, retentionClp: r.retention };
 }
 
 /** Annual cap of the APV régimen B rebate, in UF at 31 December (art. 42 bis). */
@@ -366,7 +406,8 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
   const apv = apvRegimeBDeductionClp(dj, incomeYear);
   if (apv != null && f1887) out[765] = apv;
   const f1898 = dj.get(1898);
-  if (f1898) out[750] = informedDjAmount(f1898, "Monto Actualizado de los Intereses Pagados ($) en Dividendo");
+  // The interest paid (751); the deduction (750) is drafted from it (art. 55 bis).
+  if (f1898) out[751] = informedDjAmount(f1898, "Monto Actualizado de los Intereses Pagados ($) en Dividendo");
   const f1922 = dj.get(1922);
   if (f1922) Object.assign(out, informedDj1922Codes(f1922));
   // A zero a third party reports says nothing the form needs (no redemptions, no withholding).
@@ -434,13 +475,20 @@ export function buildF22Draft(
   const apvIndependiente = filed?.[770] != null ? apvRegimeBDeductionClp(dj, incomeYear) : null;
   if (filed?.[770] != null) delete informed[765];
   const salary = payrollTaxYear(incomeYear);
+  const feeReceipts = filed ? null : loadFeeReceipts(incomeYear);
+  const hasFees = feeReceipts != null && feeReceipts.receipts > 0;
   const base: F22DraftBase = filed
     ? "filed"
     : Object.keys(informed).length > 0
       ? "informed"
       : salary.months > 0
         ? "payroll"
-        : "none";
+        : hasFees
+          ? "fees"
+          : "none";
+  // The lender's DJ 1898 states the interest paid; the deduction (750) is the art. 55 bis share of
+  // it, decided below on the gross income like the ledger estimate.
+  const informedMortgageInterest = informed[751] ?? null;
   const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
 
   const crypto = cryptoTaxGainsForYear(incomeYear);
@@ -466,10 +514,33 @@ export function buildF22Draft(
     base === "filed"
       ? { ...filed!, ...informedWithDetailCodes(informed) }
       : base === "informed"
-        ? { ...informed }
+        ? informedWithDetailCodes(informed)
         : base === "payroll"
           ? { 1098: salary.taxablePayClp, 161: salary.taxablePayClp, 162: salary.withheldTaxClp }
           : {};
+  let fees: F22FeesBox | null = null;
+  if (hasFees) {
+    const presumed = Math.round(
+      Math.min(FEES_PRESUMED_EXPENSES_RATE * feeReceipts!.grossClp, FEES_PRESUMED_EXPENSES_CAP_UTA * utaClp)
+    );
+    // An APV régimen B deposit goes in the fees box when no employer reported the year (765 otherwise).
+    const apv = draftInput[1098] == null ? apvRegimeBDeductionClp(dj, incomeYear) ?? 0 : 0;
+    const beforeApv = feeReceipts!.grossClp - presumed;
+    const apvClp = Math.min(apv, beforeApv);
+    fees = {
+      receipts: feeReceipts!.receipts,
+      grossClp: feeReceipts!.grossClp,
+      presumedExpensesClp: presumed,
+      apvClp,
+      netClp: beforeApv - apvClp,
+      retentionClp: feeReceipts!.retentionClp,
+    };
+    draftInput[547] = fees.grossClp;
+    draftInput[494] = fees.presumedExpensesClp;
+    if (fees.apvClp > 0) draftInput[770] = fees.apvClp;
+    draftInput[110] = fees.netClp;
+    draftInput[198] = fees.retentionClp;
+  }
   if (apvIndependiente != null && filed?.[770] != null && filed[110] != null) {
     draftInput[770] = apvIndependiente;
     draftInput[110] = filed[110] - (apvIndependiente - filed[770]);
@@ -509,8 +580,13 @@ export function buildF22Draft(
   if (usdFx1032 > 0) estimatedCodes.push(1032);
   if (usdFxLoss > 0) estimatedCodes.push(169);
   let fundLossClp = 0;
-  let mortgageInterest = 0;
-  if (base === "payroll" || base === "none") {
+  let mortgageInterest = informedMortgageInterest ?? 0;
+  // Over a filed form the lender's figure replaces the filed 751, and 750 is drafted from it.
+  if (base === "filed" && informedMortgageInterest != null) {
+    delete draftInput[750];
+    delete draftInput[751];
+  }
+  if (base === "payroll" || base === "fees" || base === "none") {
     const funds = fundRedemptionGainsForYear(incomeYear);
     if (funds.gainClp > 0) {
       draftInput[155] = funds.gainClp;
@@ -522,8 +598,10 @@ export function buildF22Draft(
       addLoss(funds.lossClp);
       estimatedCodes.push(169);
     }
-    mortgageInterest = mortgageInterestForYear(incomeYear);
-    if (mortgageInterest > 0) estimatedCodes.push(750, 751);
+    if (informedMortgageInterest == null) {
+      mortgageInterest = mortgageInterestForYear(incomeYear);
+      if (mortgageInterest > 0) estimatedCodes.push(750, 751);
+    }
   }
   // An art. 107 fund's distributions are dividends afectos al IGC (línea 2, code 105): the DJ 1922
   // figure (or the filed one) when there is one, else the cash credited as an estimate — the IDPC
@@ -628,6 +706,7 @@ export function buildF22Draft(
     yearEndObservado,
     filed,
     salary,
+    fees,
     informed,
     draft,
     crypto,

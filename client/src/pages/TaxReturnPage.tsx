@@ -11,18 +11,13 @@ import { useTaxReturn } from "../queries/hooks";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
 import { queryLoadError } from "../queries/pageShapeReady";
 
-/** Codes with a label in master.json (`taxReturn.codes.<code>`); others show «Código N». */
-const LABELLED_CODES = new Set([
-  31, 39, 90, 91, 105, 136, 152, 155, 157, 158, 161, 162, 169, 170, 304, 305, 610, 748, 750, 751, 1018, 1032, 1098, 1104,
-  1809, 1813, 1814, 1815, 1816, 1829, 1830, 1869, 1878, 645, 1901,
-]);
-
 const money = (n: number | null) => (n == null ? "—" : formatClp(n));
 
 function useCodeLabel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // A code with a label in master.json (`taxReturn.codes.<code>`) shows it; any other «Código N».
   return (code: number) =>
-    LABELLED_CODES.has(code) ? t(`taxReturn.codes.${code}`) : t("taxReturn.codeFallback", { code });
+    i18n.exists(`taxReturn.codes.${code}`) ? t(`taxReturn.codes.${code}`) : t("taxReturn.codeFallback", { code });
 }
 
 function F22Table({ rows, loading }: { rows: TaxReturnRow[]; loading?: boolean }) {

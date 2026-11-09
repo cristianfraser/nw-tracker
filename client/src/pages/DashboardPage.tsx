@@ -58,7 +58,7 @@ import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../componen
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { useDashboardFoldOnly } from "../dashboardFold";
+import { useDashboardAboutPreview, useDashboardFold } from "../dashboardFold";
 import { dashboardTileOrder, dashboardTileWide } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
@@ -101,8 +101,14 @@ const COMBINED_PERF_YEARLY = {
   totalKey: "delta_combined",
 };
 
+/** On the demo's About preview the net-worth lines draw in slowly the first time (a direct load does not). */
+const NET_WORTH_DRAW_IN_MS = 3000;
+
 export function DashboardPage() {
-  const foldOnly = useDashboardFoldOnly();
+  const inAboutPreview = useDashboardAboutPreview();
+  const fold = useDashboardFold();
+  // The tiles below the fold fetch nothing of their own until they are shown (dashboardFold.ts).
+  const belowFoldShown = fold === "full";
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { displayUnit } = useDisplayPreferences();
@@ -238,7 +244,7 @@ export function DashboardPage() {
   const allocationDaily = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(allocationPrefs.range),
-    allocationIsDaily && !valueMapShown
+    allocationIsDaily && !valueMapShown && belowFoldShown
   );
   const allocationDailyData = allocationDaily.data;
   // A Diario chart draws only its own daily payload: until that payload is this unit's (not
@@ -305,7 +311,7 @@ export function DashboardPage() {
   const inversionesDaily = useInversionesPerfDaily(
     displayUnit,
     timeRangeToDays(combosPrefs.range),
-    combosIsDaily
+    combosIsDaily && belowFoldShown
   );
   const combosDailyPending = dailyPending(combosIsDaily, inversionesDaily);
   const combosLoading = contentLoading || combosDailyPending;
@@ -460,6 +466,7 @@ export function DashboardPage() {
           thickKey="total_nw"
           includeAccumulatedLines={false}
           colorPlan={{ kind: "dashboard-overview" }}
+          drawInMs={inAboutPreview ? NET_WORTH_DRAW_IN_MS : undefined}
           xAxisGranularity={
             overviewIsDaily ? "day" : overviewPrefs.period === "year" ? "year" : "month"
           }
@@ -679,7 +686,7 @@ export function DashboardPage() {
           <LatestExpensesTable />
         </>
       }
-      foldOnly={foldOnly}
+      fold={fold}
       tileOrder={dashboardTileOrder}
       tileWide={dashboardTileWide}
       accountsTree={

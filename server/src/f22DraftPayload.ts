@@ -38,6 +38,9 @@ export type F22PayloadRow = {
 /** Display order of the codes this taxpayer's return uses; any other stored code is appended as `other`. */
 const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [1098, "income"],
+  [547, "memo"],
+  [494, "memo"],
+  [770, "memo"],
   [110, "income"],
   [105, "income"],
   [161, "memo"],
@@ -165,6 +168,16 @@ export function buildF22Payload(taxYear: number) {
       incomplete_months: d.salary.incompleteMonths,
       provisional: d.salary.provisional,
     },
+    fees: d.fees == null
+      ? null
+      : {
+          receipts: d.fees.receipts,
+          gross_clp: d.fees.grossClp,
+          presumed_expenses_clp: d.fees.presumedExpensesClp,
+          apv_clp: d.fees.apvClp,
+          net_clp: d.fees.netClp,
+          retention_clp: d.fees.retentionClp,
+        },
     year_end_observado: d.yearEndObservado,
     settlement: f22Settlement(d.taxYear, d.filed),
     payroll_withholding: (() => {

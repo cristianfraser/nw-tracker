@@ -1,0 +1,223 @@
+/**
+ * The demo person's tax documents and returns, written the way a real year produces them:
+ *
+ * - the boletas de honorarios issued (`sii_issued_fee_receipts`, the SII's own record);
+ * - each foreign dividend's gross and US withholding (a broker statement, `movement_dividend_details`);
+ * - in March, the third parties' DJs (`sii_informed_dj`): the employer's 1887 (from the imported
+ *   liquidaciones, as `payrollTaxYear` rebuilds it), the AFP's 1899 (APV régimen B, in UF) and the
+ *   lender's 1898 (mortgage interest, actualizada);
+ * - in April, the return the tax module drafts (`buildF22Draft`): its 305 plus the pension
+ *   contributions on fees the SII charges (code 900, which the module does not draft) is what the
+ *   person pays or gets back, and the form is stored as filed once April has passed.
+ *
+ * The generator runs the simulation until every April settlement it booked is the tax module's
+ * figure (`aprilSettlementsFromTaxModule`); see generate.ts.
+ */
+import { db } from "../db.js";
+import { buildF22Draft, type F22Codes } from "../f22Draft.js";
+import { mortgageInterestForYear } from "../f22AppEstimates.js";
+import { payrollTaxYear } from "../payrollTaxYear.js";
+import { upsertMovementDividendDetail } from "../movementDividendDetails.js";
+import type { Ledger } from "./simulate.js";
+import type { Ymd } from "./person.js";
+
+/** US withholding on the demo's dividends (W-8BEN, no treaty: 15 % per the broker's statement). */
+const DIVIDEND_WITHHOLDING_RATE = 0.15;
+
+/** «1.234.567» — how the SII's DJ summary prints pesos. */
+function chileanInteger(n: number): string {
+  const sign = n < 0 ? "-" : "";
+  return sign + String(Math.abs(Math.round(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** «12,34» — UF with two decimals. */
+function chileanUf(n: number): string {
+  const [int, dec] = (Math.round(n * 100) / 100).toFixed(2).split(".");
+  return `${chileanInteger(Number(int))},${dec}`;
+}
+
+function ufOn(day: Ymd): number {
+  const r = db.prepare(`SELECT clp_per_uf AS v FROM uf_daily WHERE date = ?`).get(day) as { v: number } | undefined;
+  if (!r) throw new Error(`demo taxes: no UF for ${day}`);
+  return r.v;
+}
+
+function writeFeeReceipts(ledger: Ledger): void {
+  const ins = db.prepare(
+    `INSERT INTO sii_issued_fee_receipts (number, issued_on, payer_name, gross_clp, retention_clp, retained_by, source_file)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  const sorted = [...ledger.feeReceipts].sort((a, b) => a.issuedOn.localeCompare(b.issuedOn));
+  sorted.forEach((r, i) => ins.run(i + 1, r.issuedOn, r.payer, r.grossClp, r.retentionClp, r.retainedBy, `demo/boleta-${i + 1}.pdf`));
+}
+
+/** The broker statement's split of each dividend: gross = net ÷ (1 − 15 %), withholding = gross − net. */
+function writeDividendDetails(): void {
+  const rows = db
+    .prepare(`SELECT id, amount, occurred_on FROM movements WHERE flow_kind = 'dividend_payout' AND currency = 'usd' ORDER BY occurred_on, id`)
+    .all() as { id: number; amount: number; occurred_on: string }[];
+  for (const r of rows) {
+    const gross = Math.round((r.amount / (1 - DIVIDEND_WITHHOLDING_RATE)) * 100) / 100;
+    const withholding = Math.round((gross - r.amount) * 100) / 100;
+    upsertMovementDividendDetail({
+      movement_id: r.id,
+      gross_amount: gross,
+      withholding_amount: withholding,
+      currency: "usd",
+      withholding_rate_pct: DIVIDEND_WITHHOLDING_RATE * 100,
+      withholding_jurisdiction: "US",
+      tax_residency_country: "CHL",
+      pay_date: r.occurred_on,
+      source: "ibkr_statement",
+      source_ref: `demo broker statement ${r.occurred_on.slice(0, 7)}`,
+    });
+  }
+}
+
+/** The income years whose April settlement the simulation reached (the month loop got to April). */
+function settledIncomeYears(ledger: Ledger): number[] {
+  return [...ledger.aprilSettlements.keys()].sort((a, b) => a - b);
+}
+
+/** Every income year with any taxable activity the module could see, through last year. */
+function incomeYearsToDraft(ledger: Ledger, today: Ymd): number[] {
+  const first = Number(ledger.person.firstMonth.slice(0, 4));
+  const last = Number(today.slice(0, 4)) - 1;
+  const out: number[] = [];
+  for (let y = Math.max(first, 2017); y <= last; y++) {
+    // The settlement is in April of the next year: only years whose April the simulation reached.
+    if (`${y + 1}-04` <= today.slice(0, 7)) out.push(y);
+  }
+  return out;
+}
+
+/** The third parties' DJs about an income year, filed in March of the next. */
+function writeInformedDjs(ledger: Ledger, today: Ymd): void {
+  const ins = db.prepare(`INSERT INTO sii_informed_dj (tax_year, dj_code, field, value, source_file) VALUES (?, ?, ?, ?, ?)`);
+  for (const y of incomeYearsToDraft(ledger, today)) {
+    const taxYear = y + 1;
+    if (`${taxYear}-03-31` > today) continue;
+    const salary = payrollTaxYear(y);
+    if (salary.months > 0) {
+      if (salary.incompleteMonths.length > 0) {
+        throw new Error(`demo taxes: ${y} has payslips without totals (${salary.incompleteMonths.join(", ")})`);
+      }
+      const file = `demo/DJ_1887_${taxYear}.xlsx`;
+      ins.run(taxYear, 1887, "A: Renta Total Neta Pagada (Art.42 N°1, Ley de la Renta)", chileanInteger(salary.taxablePayClp), file);
+      ins.run(taxYear, 1887, "B: Impuesto Unico Retenido", chileanInteger(salary.withheldTaxClp), file);
+    }
+    const apv = ledger.apvBDeposits.filter((d) => d.date.startsWith(`${y}-`));
+    if (apv.length > 0) {
+      const uf = apv.reduce((s, d) => s + d.clp / ufOn(d.date), 0);
+      ins.run(taxYear, 1899, "I: Ahorro previsional voluntario / Régimen B / Monto (UF)", chileanUf(uf), `demo/DJ_1899_${taxYear}.xlsx`);
+    }
+    const interest = mortgageInterestForYear(y);
+    if (interest > 0) {
+      ins.run(taxYear, 1898, "A: Monto Actualizado de los Intereses Pagados ($) en Dividendo", chileanInteger(interest), `demo/DJ_1898_${taxYear}.xlsx`);
+    }
+  }
+}
+
+/** Everything a year's documents state, before its April. */
+export function writeDemoTaxDocuments(ledger: Ledger, today: Ymd): void {
+  db.transaction(() => {
+    writeFeeReceipts(ledger);
+    writeDividendDetails();
+    writeInformedDjs(ledger, today);
+  })();
+}
+
+/** The contributions on fees the SII charged inside a year's settlement (code 900). */
+function contributionsCharged(ledger: Ledger, incomeYear: number): number {
+  return ledger.aprilSettlements.get(incomeYear)?.contributionsClp ?? 0;
+}
+
+/**
+ * What the tax module says each income year settles in April: its 305 (0 when it computes no tax)
+ * plus the contributions charged. Years the module sees nothing in and the simulation did not
+ * settle are left out.
+ */
+export function aprilSettlementsFromTaxModule(ledger: Ledger, today: Ymd): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const y of incomeYearsToDraft(ledger, today)) {
+    const d = buildF22Draft(y + 1, today);
+    const r305 = d.taxComputed ? (d.draft[305] ?? 0) : 0;
+    const total = r305 + contributionsCharged(ledger, y);
+    if (total !== 0 || ledger.aprilSettlements.has(y)) out.set(y, total);
+  }
+  return out;
+}
+
+/** The years whose booked settlement differs from the module's, with both figures. */
+export function settlementDifferences(
+  ledger: Ledger,
+  module: ReadonlyMap<number, number>
+): { year: number; booked: number; module: number }[] {
+  const years = new Set([...settledIncomeYears(ledger), ...module.keys()]);
+  return [...years]
+    .sort((a, b) => a - b)
+    .map((year) => ({ year, booked: ledger.aprilSettlements.get(year)?.clp ?? 0, module: module.get(year) ?? 0 }))
+    .filter((x) => x.booked !== x.module);
+}
+
+/**
+ * The returns as filed: every year whose April has passed, the module's draft with the
+ * contributions charged (900) and the resulting 305.
+ */
+export function writeDemoFiledReturns(ledger: Ledger, today: Ymd): void {
+  const ins = db.prepare(`INSERT INTO sii_f22_filed (tax_year, code, amount, source_file) VALUES (?, ?, ?, ?)`);
+  const drafts: { taxYear: number; codes: F22Codes }[] = [];
+  for (const y of incomeYearsToDraft(ledger, today)) {
+    const taxYear = y + 1;
+    if (`${taxYear}-04-30` > today) continue;
+    const d = buildF22Draft(taxYear, today);
+    if (!d.taxComputed) continue;
+    const contributions = contributionsCharged(ledger, y);
+    const codes: F22Codes = { ...d.draft };
+    if (contributions > 0) codes[900] = contributions;
+    codes[305] = (d.draft[305] ?? 0) + contributions;
+    drafts.push({ taxYear, codes });
+  }
+  // Drafted first, written after: a filed year changes how the next year's draft reads.
+  db.transaction(() => {
+    for (const { taxYear, codes } of drafts) {
+      for (const [code, amount] of Object.entries(codes)) {
+        if (amount === 0 && ![304, 305].includes(Number(code))) continue;
+        ins.run(taxYear, Number(code), Math.round(amount), `demo/F22_AT${taxYear}.pdf`);
+      }
+      linkSettlement(taxYear, Math.round(codes[305] ?? 0));
+    }
+  })();
+}
+
+/**
+ * The bank movement that settled a filed return: the Tesorería's refund (May / June) or the
+ * April payment, for exactly the settlement (`f22_settlements`, as the report-first linker
+ * writes it for real returns). A settlement the simulation did not pay yet links nothing.
+ */
+function linkSettlement(taxYear: number, result305: number): void {
+  if (result305 === 0) return;
+  const refund = result305 < 0;
+  const wording = refund ? "DEVOLUCION IMPUESTO TGR" : "PAGO F22 TGR";
+  // A refund is a credit (+), a payment a debit (−): both are −305 in the ledger's sign.
+  const signed = -result305;
+  const rows = db
+    .prepare(
+      `SELECT id, account_id, occurred_on, amount, note FROM movements
+        WHERE account_id IS NOT NULL AND note LIKE ? AND amount = ? AND occurred_on BETWEEN ? AND ?`
+    )
+    .all(`%${wording}%`, signed, `${taxYear}-04-01`, `${taxYear}-06-30`) as {
+    id: number;
+    account_id: number;
+    occurred_on: string;
+    amount: number;
+    note: string;
+  }[];
+  if (rows.length === 0) return;
+  if (rows.length > 1) throw new Error(`demo taxes: AT${taxYear} settlement of ${result305} matches ${rows.length} movements`);
+  const m = rows[0]!;
+  db.prepare(
+    `INSERT INTO f22_settlements (tax_year, kind, account_id, movement_id, occurred_on, amount, description)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(taxYear, refund ? "refund" : "payment", m.account_id, m.id, m.occurred_on, Math.abs(m.amount), wording);
+}
