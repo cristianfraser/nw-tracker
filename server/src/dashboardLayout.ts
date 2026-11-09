@@ -10,20 +10,6 @@ export type DashboardLayoutCardRow = {
   route_path: string | null;
 };
 
-const fallbackBucketCardsQuery = `
-  SELECT slug, label,
-         COALESCE(dashboard_card_label_i18n_key, label_i18n_key) AS label_i18n_key,
-         dashboard_sort_order AS sort_order,
-         dashboard_bucket_slug AS bucket_slug,
-         dashboard_card_css AS card_css,
-         route_path
-  FROM portfolio_groups
-  WHERE dashboard_sort_order IS NOT NULL
-    AND dashboard_card_kind = 'bucket'
-    AND dashboard_bucket_slug IS NOT NULL
-  ORDER BY dashboard_sort_order ASC, id ASC
-`;
-
 /** Bucket cards under `net_worth`: unwrap `nav_bucket` nodes (inversiones → brokerage + retirement; cash_eqs → cash_savings). */
 const netWorthBucketCardsQuery = `
   WITH RECURSIVE nw_tree(id, slug, group_kind, depth) AS (
@@ -52,10 +38,10 @@ const netWorthBucketCardsQuery = `
 
 /**
  * Ordered bucket cards for the dashboard (Patrimonio neto hero stays client-first).
- * Prefers first-level children of the `net_worth` portfolio group; otherwise rows with `dashboard_sort_order`.
+ * First-level children of the `net_worth` portfolio group; an unseeded tree is an error.
  */
 export function getDashboardLayoutCards(): DashboardLayoutCardRow[] {
-  const fromNetWorth = db.prepare(netWorthBucketCardsQuery).all() as DashboardLayoutCardRow[];
-  if (fromNetWorth.length > 0) return fromNetWorth;
-  return db.prepare(fallbackBucketCardsQuery).all() as DashboardLayoutCardRow[];
+  const cards = db.prepare(netWorthBucketCardsQuery).all() as DashboardLayoutCardRow[];
+  if (cards.length === 0) throw new Error("dashboard layout: the net_worth nav tree has no bucket cards (seedNavTree)");
+  return cards;
 }
