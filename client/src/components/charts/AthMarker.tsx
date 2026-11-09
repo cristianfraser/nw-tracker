@@ -287,6 +287,7 @@ function AthMarkerShape({
     const w = ATH_MARKER_WIDTH;
     const h = ATH_MARKER_HEIGHT;
     return (
+      <g className="chart-ath-marker">
       <rect
         x={x - w / 2}
         y={y - h / 2}
@@ -296,6 +297,7 @@ function AthMarkerShape({
         fillOpacity={ATH_MARKER_OPACITY * opacity}
         style={{ pointerEvents: "none" }}
       />
+      </g>
     );
   }
   // Drawn with the chart's own pen (the same passes, soft edges and ends as the line it marks),
@@ -303,7 +305,7 @@ function AthMarkerShape({
   const linePen = athPenFor(style);
   if (!linePen) return null;
   return (
-    <g className="nw-rough nw-rough--ath" style={{ pointerEvents: "none" }}>
+    <g className="nw-rough nw-rough--ath chart-ath-marker" style={{ pointerEvents: "none" }}>
       <RoughPolylines runs={shape.runs} color={ATH_MARKER_STROKE} pen={linePen} seed={seed} width={ATH_PEN_WIDTH} opacity={opacity} />
     </g>
   );

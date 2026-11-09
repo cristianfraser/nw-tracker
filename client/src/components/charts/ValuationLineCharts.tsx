@@ -19,7 +19,7 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
-import { ChartEmptyState } from "./ChartEmptyState";
+import { ChartEmptyState, ChartLegendPlaceholder } from "./ChartEmptyState";
 import { loadableClass } from "../ui/Loadable";
 import { cn } from "../../cn";
 import styles from "./ValuationLineCharts.module.css";
@@ -587,12 +587,32 @@ export function LineChartPanel({
     const done = window.setTimeout(() => setDrawIn("done"), drawInMs);
     return () => window.clearTimeout(done);
   }, [drawIn, drawInMs]);
+  // The ATH marker waits for the lines' first draw: the slow wipe when `drawInMs` is set, else
+  // Recharts' own line animation. Once shown it stays (a refetch's redraw never hides it).
+  const [lineAnimationDone, setLineAnimationDone] = useState(false);
+  const plotReady = hasPlot && !loading;
+  useEffect(() => {
+    if (drawInMs != null || lineAnimationDone || !plotReady) return;
+    const done = window.setTimeout(() => setLineAnimationDone(true), CHART_ANIM_MS);
+    return () => window.clearTimeout(done);
+  }, [drawInMs, lineAnimationDone, plotReady]);
+  const athShown = drawInMs != null ? drawIn === "done" : lineAnimationDone;
 
   if (!hasPlot) {
     return (
       <div className={loadableClass(loading, "chart-grid__col")}>
         {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
-        <ChartEmptyState loading={loading} message={i18n.t("charts.noValuationSeries")} />
+        <ChartEmptyState
+          loading={loading}
+          message={i18n.t("charts.noValuationSeries")}
+          legend={
+            visibleSeries.length > 0 ? (
+              <InteractiveLegend series={visibleSeries} focusColorIndex={null} onHighlight={() => {}} />
+            ) : (
+              <ChartLegendPlaceholder />
+            )
+          }
+        />
       </div>
     );
   }
@@ -754,7 +774,7 @@ export function LineChartPanel({
                 );
               });
               const athEl =
-                athPlacement && thickSeriesForAth
+                athShown && athPlacement && thickSeriesForAth
                   ? renderAthMarker({
                       x: athPlacement.x,
                       y: athPlacement.value,

@@ -35,6 +35,34 @@
   min-height: 0;
 }
 
+/* A loading line chart's legend row (ChartLegendPlaceholder): the height of one row of the
+   loaded legend (ValuationLineCharts.module.css `.legend`), so the plot does not shrink when the
+   series land. */
+.chart-legend-placeholder {
+  display: flex;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  font-size: var(--font-size-card-label);
+  line-height: 1.35;
+}
+
+.chart-legend-placeholder > button {
+  visibility: hidden;
+}
+
+/* A line chart's grid and axes fade in when its data first lands: its loading frame draws none
+   (ChartEmptyState with a legend), since a stand-in grid could not match the real ticks. */
+.chart-box--legend .recharts-cartesian-grid,
+.chart-box--legend .recharts-cartesian-axis {
+  animation: chart-frame-in 400ms ease-out;
+}
+
+@keyframes chart-frame-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .line-chart-plot > .app-chart-frame {
   position: absolute;
   inset: 0;
@@ -382,5 +410,16 @@
   .chart-draw-in--running .recharts-line {
     clip-path: none;
     animation: none;
+  }
+}
+
+/* The ATH marker appears once the lines' first draw is over (ValuationLineCharts), with a short fade. */
+.chart-ath-marker {
+  animation: chart-ath-marker-in 250ms ease-out;
+}
+
+@keyframes chart-ath-marker-in {
+  from {
+    opacity: 0;
   }
 }
