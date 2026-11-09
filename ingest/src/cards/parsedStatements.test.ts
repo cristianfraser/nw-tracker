@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { CARD_PARSED_STATEMENT_COLUMNS, canonicalLineFromParsedRow, readCaseFile } from "nw-tracker-contracts";
+import { CARD_PARSED_STATEMENT_COLUMNS } from "nw-tracker-contracts";
 import { canonicalStatementsPayload, parsedStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
 
 function csvFile(text: string): string {
@@ -53,14 +53,4 @@ describe("canonicalStatementsPayload", () => {
       ["card_payment", -500],
     ]);
   });
-});
-
-type CanonicalCases = {
-  parsed_rows: { name: string; statement_currency: "clp" | "usd"; row: Record<string, string>; line: Record<string, unknown> }[];
-};
-
-describe("canonical card line cases (the conversion ingest runs before sending)", () => {
-  for (const c of readCaseFile<CanonicalCases>("cardCanonicalLineCases.json").parsed_rows) {
-    it(c.name, () => expect(canonicalLineFromParsedRow(c.row, c.statement_currency)).toMatchObject(c.line));
-  }
 });

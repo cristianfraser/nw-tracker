@@ -13,7 +13,7 @@ const NATIVE_HEADER =
   "Fecha,Hora,Id Inversión,Nombre Inversión,Nombre Fondo,Serie Fondo,Aporte Cuotas,Rescate Cuotas,Valor Cuota,Saldo Cuotas Final Dia,Aporte Pesos Chilenos,Rescate Pesos Chilenos,Medio,Saldo Pesos Chilenos Final Dia";
 
 const SAMPLE_ROW =
-  '14/05/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,"1.955,9173",0,"1.431,5534","19.107,7578",$2.800.000,0,Transferencia electronica,$27.353.776';
+  '14/05/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,"1.234,5000",0,"1.000,0000","5.234,5000",$1.234.500,0,Transferencia electronica,$5.234.500';
 
 describe("fintualCertificadoInbox", () => {
   let tmpRoot: string;

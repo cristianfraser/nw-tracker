@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 const READ: MortgageSheetRead = {
-  document: { path: "/x/cfraser.numbers", name: "cfraser.numbers", sha256: "a".repeat(64), size: 10, modified_at: "2099-10-11T15:00:00Z" },
+  document: { path: "/x/mortgage.numbers", name: "mortgage.numbers", sha256: "a".repeat(64), size: 10, modified_at: "2099-10-11T15:00:00Z" },
   sheet: "depto",
   table: "dividendos",
   rows: [
@@ -60,7 +60,7 @@ const READ: MortgageSheetRead = {
 describe("mortgageSheetPayload", () => {
   it("passes the reader's rows through the contract, without the local path", () => {
     const p = mortgageSheetPayload(READ);
-    expect(p.document).toEqual({ name: "cfraser.numbers", sha256: "a".repeat(64), size: 10, modified_at: "2099-10-11T15:00:00Z" });
+    expect(p.document).toEqual({ name: "mortgage.numbers", sha256: "a".repeat(64), size: 10, modified_at: "2099-10-11T15:00:00Z" });
     expect(p.rows.map((r) => r.label)).toEqual(["pie", "32"]);
     expect(p.projected).toEqual(["33"]);
   });

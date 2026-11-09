@@ -15,26 +15,26 @@ import {
 import { racionalApiDividendsFromResponse } from "./movements.js";
 
 /**
- * Fixtures are the real 2026-07-01 SLV purchase read out of the live app, which the ledger
- * already holds as movement 11110 (US$x.xxx,xx / 24,74186066 units) — so the parser is checked
- * against a movement whose correct outcome is known independently.
+ * Fixtures follow the app's purchase row and detail view word for word, with synthetic figures
+ * (US$1.250,00 for 25 units at US$50,00), so the parser is checked against an outcome known
+ * independently.
  */
-const SLV_ID = "sw5tfmczKzaeIRvs6jKGJknINRp2_2026-07-01T16:47:29.871Z_1346.17";
+const SLV_ID = "vitestUser000000000000000001_2026-07-01T16:47:29.871Z_1250";
 /** Real dividend id — ledger movement 11105 (VEA → Racional USD, 2026-06-23, US$x,xx). */
 const DIVIDEND_ID = "div_NF.f3bd0707-b9c1-437d-b3d3-6180456630b4_VEA_2026-06-23T10:44:11.025Z";
 const SLV_DETAIL =
-  "Compraste US$1.346,17 de Silver Trust (SLV). | Progreso | Orden | Creada | 01/07/26 12:47 | " +
-  "Tu compra de SLV | Monto comprado | US$1.346,17 | Comisión | US$0,00 | Sin comisión | " +
-  "Total orden | US$1.346,17 | Orden #86365B402E0D | Recibiste 24,74186066 acciones de " +
-  "Silver Trust (SLV), a un valor de US$54,41 por acción.";
+  "Compraste US$1.250,00 de Silver Trust (SLV). | Progreso | Orden | Creada | 01/07/26 12:47 | " +
+  "Tu compra de SLV | Monto comprado | US$1.250,00 | Comisión | US$0,00 | Sin comisión | " +
+  "Total orden | US$1.250,00 | Orden #0000000TEST1 | Recibiste 25,00000000 acciones de " +
+  "Silver Trust (SLV), a un valor de US$50,00 por acción.";
 
 describe("racionalMovements", () => {
   it("reads Chilean amounts and refuses an ambiguous currency", () => {
-    expect(parseRacionalAmount("US$1.346,17")).toEqual({ amount: 1346.17, currency: "usd" });
+    expect(parseRacionalAmount("US$1.250,00")).toEqual({ amount: 1250, currency: "usd" });
     expect(parseRacionalAmount("$3.000.000")).toEqual({ amount: 3000000, currency: "clp" });
     expect(parseRacionalAmount("US$2,13")).toEqual({ amount: 2.13, currency: "usd" });
     // No prefix → CLP vs USD is a ~900x error, so it must not be guessed.
-    expect(() => parseRacionalAmount("1.346,17")).toThrow(/Unexpected Racional amount/);
+    expect(() => parseRacionalAmount("1.250,00")).toThrow(/Unexpected Racional amount/);
   });
 
   it("classifies the app's own taxonomy and rejects anything unmapped", () => {
@@ -75,17 +75,17 @@ describe("racionalMovements", () => {
   it("pulls units, price, commission and order id out of the detail panel", () => {
     const d = parseRacionalDetail(SLV_DETAIL);
     // Units stay a decimal STRING — 8 decimals must not round-trip through a float.
-    expect(d.units).toBe("24.74186066");
-    expect(d.price).toBe(54.41);
+    expect(d.units).toBe("25.00000000");
+    expect(d.price).toBe(50);
     expect(d.commission).toBe(0);
-    expect(d.order_id).toBe("86365B402E0D");
+    expect(d.order_id).toBe("0000000TEST1");
     expect(d.detail_ticker).toBe("SLV");
   });
 
   it("builds the real SLV purchase", () => {
     const m = racionalRowToMovement({
       title: "Compra SLV",
-      amount: "US$1.346,17",
+      amount: "US$1.250,00",
       movement_id: SLV_ID,
       detail: SLV_DETAIL,
     });
@@ -93,18 +93,18 @@ describe("racionalMovements", () => {
       kind: "buy",
       ticker: "SLV",
       occurred_on: "2026-07-01",
-      amount: 1346.17,
+      amount: 1250,
       currency: "usd",
-      units: "24.74186066",
-      price: 54.41,
-      order_id: "86365B402E0D",
+      units: "25.00000000",
+      price: 50,
+      order_id: "0000000TEST1",
     });
   });
 
   it("records a trade listed without its share count as incomplete instead of refusing the row", () => {
     // Refusing is the importer's call, and only for a trade it would have to WRITE — one the
     // ledger already holds needs nothing from its detail view (racionalMovementsImport.test.ts).
-    const never = racionalRowToMovement({ title: "Compra SLV", amount: "US$1.346,17", movement_id: SLV_ID });
+    const never = racionalRowToMovement({ title: "Compra SLV", amount: "US$1.250,00", movement_id: SLV_ID });
     expect(never.units).toBeNull();
     expect(never.incomplete).toBe("share count unknown — the crawl never opened its detail view");
 
@@ -122,7 +122,7 @@ describe("racionalMovements", () => {
       "share count unknown — the crawl could not open its detail view (not among the 10 rendered rows)"
     );
 
-    const opened = racionalRowToMovement({ title: "Compra SLV", amount: "US$1.346,17", movement_id: SLV_ID, detail: SLV_DETAIL });
+    const opened = racionalRowToMovement({ title: "Compra SLV", amount: "US$1.250,00", movement_id: SLV_ID, detail: SLV_DETAIL });
     expect(opened.incomplete).toBeNull();
     // A cash row never needs its detail view.
     expect(racionalRowToMovement({ title: "Depósito", amount: "$1.000", occurred_on: "2099-07-02" }).incomplete).toBeNull();
@@ -150,7 +150,7 @@ describe("racionalMovements", () => {
     expect(() =>
       racionalRowToMovement({
         title: "Compra VEA",
-        amount: "US$1.346,17",
+        amount: "US$1.250,00",
         movement_id: SLV_ID,
         detail: SLV_DETAIL,
       })

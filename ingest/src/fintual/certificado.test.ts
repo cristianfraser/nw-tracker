@@ -24,8 +24,8 @@ function csv(lines: string[]): string {
 describe("fintual certificado → fund_account.transactions", () => {
   it("sends the rows that move pesos or cuotas, as printed, and leaves the daily balance rows out", () => {
     const file = csv([
-      '07/06/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,0,0,"1.434,9679","12.833,5741",0,0,"",$18.415.767',
-      '14/05/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,"1.955,9173",0,"1.431,5534","19.107,7578",$2.800.000,0,Transferencia electronica,$27.353.776',
+      '07/06/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,0,0,"1.001,0000","4.000,0000",0,0,"",$4.004.000',
+      '14/05/2026,12:00:00,1164983, Reserva,Very Conservative Streep,A,"1.234,5000",0,"1.000,0000","5.234,5000",$1.234.500,0,Transferencia electronica,$5.234.500',
       '15/05/2026,12:00:00,2000001,APV A,Risky Norris,APV,0,"10,5",,"1,0",0,$40.000,,$1',
     ]);
     const payload = fundAccountTransactionsKind.payload.parse(fundAccountTransactionsPayload(file, { maxMonth: null }));
@@ -35,11 +35,11 @@ describe("fintual certificado → fund_account.transactions", () => {
         date: "2026-05-14",
         investment: { id: "1164983", name: "Reserva" },
         medio: "Transferencia electronica",
-        clp_in: 2_800_000,
+        clp_in: 1_234_500,
         clp_out: 0,
-        units_in: 1955.9173,
+        units_in: 1234.5,
         units_out: 0,
-        unit_value: 1431.5534,
+        unit_value: 1000,
       },
       {
         date: "2026-05-15",
@@ -55,8 +55,8 @@ describe("fintual certificado → fund_account.transactions", () => {
   });
 
   it("reads Chilean money cells, a parenthesised one as negative", () => {
-    expect(parseFintualCertMoneyCell("$27.353.776")).toBe(27_353_776);
-    expect(parseFintualCertMoneyCell("1.431,5534")).toBe(1431.5534);
+    expect(parseFintualCertMoneyCell("$5.234.500")).toBe(5_234_500);
+    expect(parseFintualCertMoneyCell("1.000,1234")).toBe(1000.1234);
     expect(parseFintualCertMoneyCell("($1.000)")).toBe(-1000);
     expect(parseFintualCertMoneyCell("")).toBeNull();
   });

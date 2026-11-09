@@ -90,8 +90,8 @@ describe("national rows", () => {
 
   /**
    * The mapping most likely to be got wrong: `MontoCuota` is the TOTAL purchase and `MontoTxs` is
-   * the monthly cuota. Values mirror the CK ECOMMERCE row verified against the imported PDF
-   * (amount_clp 1xx.xxx, valor_cuota_mensual_clp 3x.xxx, cuota 1 of 3).
+   * the monthly cuota. A synthetic three-cuota purchase in the shape of a statement row
+   * (total 90.000, cuota 30.000, cuota 1 of 3).
    */
   it("maps MontoCuota to the total and MontoTxs to the monthly cuota", () => {
     const line = nationalRowToLine(
@@ -99,14 +99,14 @@ describe("national rows", () => {
         CodTxs: "205",
         NumeroCuotas: "01",
         TotalCuotas: "03",
-        MontoCuota: "0000100474",
-        MontoTxs: "0000033491",
+        MontoCuota: "0000090000",
+        MontoTxs: "0000030000",
       })
     );
     expect(line.kind).toBe("installment");
     // The line bills its cuota; the purchase's total rides with the installment.
-    expect(line.amount).toBe(33491);
-    expect(line.installment).toEqual({ number: 1, count: 3, cuota_amount: 33491, total_amount: 100474 });
+    expect(line.amount).toBe(30000);
+    expect(line.installment).toEqual({ number: 1, count: 3, cuota_amount: 30000, total_amount: 90000 });
   });
 
   it("signs each code: the payment and a nota de crédito negative, the bank's charges positive", () => {

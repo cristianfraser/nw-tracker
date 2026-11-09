@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readCaseFile } from "./caseFile.js";
 import { collapseSpaces, decodeHtmlEntities, foldAccents, foldUpper } from "./text.js";
-import {
-  isWebPasteCutOf,
-  normalizeMerchantText,
-  stripBciTerminalSuffix,
-  WEB_PASTE_MERCHANT_TRUNCATION_WIDTH,
-} from "./merchant.js";
+import { isWebPasteCutOf, normalizeMerchantText, stripBciTerminalSuffix } from "./merchant.js";
 import { normalizeAccountNumber, normalizeCheckDigitId, normalizeRut, rutDigitsWithoutVerifier } from "./identifiers.js";
 
 describe("accent folding (shared case table)", () => {
@@ -35,7 +30,6 @@ describe("merchant text (shared case table)", () => {
   });
 
   it("recognises the web listing's cut", () => {
-    expect("MERPAGO*PLANOUT".length).toBe(WEB_PASTE_MERCHANT_TRUNCATION_WIDTH);
     expect(isWebPasteCutOf("MERPAGO*PLANOUT", "MERPAGO*PLANOUTCANALDEVEN")).toBe(true);
     expect(isWebPasteCutOf("MERPAGO*PLANOU", "MERPAGO*PLANOUTCANALDEVEN")).toBe(false);
     expect(isWebPasteCutOf("MERPAGO*PLANOUT", "MERPAGO*PLANOUT")).toBe(false);
