@@ -14,6 +14,11 @@
  * estimated weekly lumps shrink by the itemized sum (its billed total unchanged). Which card: the
  * one that carried the merchant in the nearest statement months; a tie is reported, not written.
  *
+ * A rerun rewrites what an earlier run estimated: the `import:estimate|receipts|…` statements are
+ * not statements to the gap detection (nor to the attribution), so their months are gaps again and
+ * the funnel replaces the stored copies by key — a receipt the registry could not place before (a
+ * plastic added to `cc-cards.json` since) lands in its month without deleting anything by hand.
+ *
  * `--exclude` leaves receipts out by id (a line the matcher would not pair back with its receipt, as the
  * check below reports it). `--anchor` names a month whose only anchor is a mailed balance: `{card_master_account_id, date,
  * usd_debt_per_mail}`; the estimated dollar lines of that billing month may not exceed it.
@@ -71,6 +76,7 @@ const anchor = arg("anchor")
   : null;
 
 const REBUILT_PREFIX = "import:santander-mail|";
+const ESTIMATED_RECEIPTS_DOCUMENT_PREFIX = `${ESTIMATE_DOCUMENT_PREFIX}receipts|`;
 const LUMP_MERCHANTS = new Set(["COMPRAS DEL PERIODO (ESTIMADO)", "COMPRAS INTERNACIONALES (ESTIMADO)"]);
 const APP_STORE_LINE_MERCHANT = "APPLE.COM/BILL";
 
@@ -179,7 +185,10 @@ type Master = {
   firstStatementMonth: string | null;
 };
 const masters: Master[] = listCreditCardMasterAccountIds().map((account_id) => {
-  const statements = listCcStatementsForAccount(account_id).filter((s) => !isListingSourceKind(s.source_kind));
+  // An earlier run's own estimated statements are rewritten, so they count as gaps, not statements.
+  const statements = listCcStatementsForAccount(account_id).filter(
+    (s) => !isListingSourceKind(s.source_kind) && !s.source_pdf.startsWith(ESTIMATED_RECEIPTS_DOCUMENT_PREFIX)
+  );
   const months = statements.map((s) => s.statement_date_iso.slice(0, 7));
   const rebuilt = statements.filter((s) => s.source_pdf.startsWith(REBUILT_PREFIX)).map((s) => s.statement_date_iso.slice(0, 7));
   const gaps = new Map(gapBillingMonths(months, rebuilt, since).map((g) => [g.month, g]));
@@ -367,7 +376,7 @@ for (const [k, items] of byKey) {
       account_id: accountId,
       statement: {
         // One document per currency: the ledger keys a statement on document + close.
-        document: `${ESTIMATE_DOCUMENT_PREFIX}receipts|${currency}|${bm}`,
+        document: `${ESTIMATED_RECEIPTS_DOCUMENT_PREFIX}${currency}|${bm}`,
         card_group: meta.cardGroup,
         close: close.close_ddmmyyyy,
         period_from: ddMmYyyyFromIso(addDaysIso(previousClose.close_iso, 1)),
@@ -387,7 +396,7 @@ for (const [k, items] of byKey) {
 for (const x of rebuiltNoLump) console.log(`  rebuilt month without a lump to itemize (nothing written): ${x}`);
 for (const x of strandedInRebuilt) console.log(`  rebuilt month, no lump beside the receipt (nothing written): ${x}`);
 console.log(
-  `Statements: ${toWrite.length} new (${toWrite.reduce((s, w) => s + w.receipts.length, 0)} line(s)); ${toItemize.length} rebuilt statement(s) itemized (${toItemize.reduce((s, w) => s + w.receipts.length, 0)} line(s)).`
+  `Statements: ${toWrite.length} written, earlier estimates of the same months replaced (${toWrite.reduce((s, w) => s + w.receipts.length, 0)} line(s)); ${toItemize.length} rebuilt statement(s) itemized (${toItemize.reduce((s, w) => s + w.receipts.length, 0)} line(s)).`
 );
 
 /** The statement's fingerprint from its stored rows (the 292 rule), after its lines changed. */
