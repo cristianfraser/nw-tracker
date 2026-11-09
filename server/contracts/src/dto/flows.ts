@@ -868,7 +868,7 @@ export interface FlowWorkEarningRow {
   linked_account_label: string | null;
 }
 
-export type IncomeKind = PayrollEarningType | "other" | "parent_gift";
+export type IncomeKind = PayrollEarningType | "other" | "parent_gift" | "rent";
 
 export interface FlowIncomeMonthRow {
   period_month: string;
@@ -948,6 +948,19 @@ export interface RealEstatePlaceDto {
   active_from: string | null;
   active_to: string | null;
   property_account_id: number | null;
+  /** A DFL-2 «vivienda económica»: its rent is not declared, its contribuciones are halved for a window. */
+  dfl2: boolean;
+  /** Built area and the building's reception year: set with the flag, and only with it. */
+  dfl2_built_m2: number | null;
+  dfl2_reception_year: number | null;
+  /** The last year of the contribuciones halving; null when not DFL-2. */
+  dfl2_contribuciones_halved_through: number | null;
+}
+
+/** `GET /api/income/rent-places`: the places a rent credit can name, and the place each rent line names. */
+export interface IncomeRentPlacesResponse {
+  places: { slug: string; label: string; dfl2: boolean }[];
+  place_by_movement_id: Record<number, string>;
 }
 
 export interface RealEstateExpenseAccountBlock {

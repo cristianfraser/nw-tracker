@@ -8,11 +8,11 @@
  * already declared them (AT2022 filed 1032) shows the correction, not a double count; then it
  * recomputes the tax with the same chain the filed form shows:
  *
- *   158 = 1098 + 110 + 105 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169   (lines 1–14 less line 17; 110 = fees)
+ *   158 = 1098 + 110 + 105 + 955 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169   (lines 1–14 less line 17; 110 = fees; 955 = rent)
  *   170 = 158 − 750 − 765                                  (mortgage interest art. 55 bis; APV art. 42 bis)
  *   157 = IGC table on 170, in UTA of December of the income year
  *   136 = 157 × 152 / 158                                  (exempt income, art. 56 N°2)
- *   304 = 157 − 136 − 162 − 1018 − 610                     (162: the employer's IUSC withheld; 610: IDPC credit)
+ *   304 = 157 − 136 − 1637 − 162 − 1018 − 610              (1637: contribuciones on rented property; 162: IUSC withheld; 610: IDPC credit)
  *   305 = 304 + 1830 − 198 + 900                           (1830: art. 107's 10% impuesto único, outside IGC)
  *
  * Fees (art. 42 N°2, línea 2) come from the boletas de honorarios issued (`sii_issued_fee_receipts`)
@@ -24,6 +24,14 @@
  *
  * Mortgage interest (art. 55 bis) is the interest paid (751: the lender's DJ 1898, else the ledger
  * estimate) and its deduction (750: at most 8 UTA, reduced between 90 and 150 UTA of gross income).
+ *
+ * Rents (`f22Rentals`): a non-DFL-2 place's rent is línea 5 letra a), code 1849 → 955 (art. 20 N°1
+ * b)), its contribuciones the línea-39 credit 1637; a DFL-2 place's rent is not declared (shown).
+ *
+ * Real interest (DJ 1890) is the exempt income of línea 9 (152, art. 57 / art. 54 N°3): positive
+ * less negative, and a net negative goes to line 17 (169) as the Suplemento instructs for
+ * «resultados negativos … registrados en la línea 17» — never a negative 152, which made 136
+ * negative and raised 304.
  *
  * 105 is a domestic dividend afecto al IGC (línea 2): an art. 107 fund's distributions, from DJ
  * 1922 when the custodian reported them, else estimated from the cash credited.
@@ -48,7 +56,15 @@
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
-import { f22Code170, f22Code305 } from "./f22Identities.js";
+import {
+  f22Code158,
+  f22Code170,
+  f22Code304,
+  f22Code305,
+  f22Code955,
+  f22PropertyTaxCreditCap,
+} from "./f22Identities.js";
+import { rentalsForYear, type F22Rentals } from "./f22Rentals.js";
 import {
   APV_ANNUAL_CAP_UF,
   FOREIGN_TAX_CREDIT_CAP,
@@ -92,15 +108,30 @@ export const PAYMENT_SECTION_CODES: readonly number[] = [39, 85, 86, 87, 90, 91,
 
 export type F22Codes = Record<number, number>;
 
+/** What {@link computeF22Tax} may derive beyond the codes. */
+export type F22TaxOptions = {
+  /**
+   * The contribuciones paid on the rented properties of 1849: the chain then derives 1637 as this
+   * amount capped at the IGC on the rent ({@link f22PropertyTaxCreditCap}). Absent, 1637 is read
+   * from the codes (a filed form).
+   */
+  propertyTaxPaidClp?: number;
+};
+
 /** The chain above, from income codes to 304; everything rounded to whole pesos as the form does. */
-export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number): F22Codes {
+export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number, options: F22TaxOptions = {}): F22Codes {
   const v = (c: number) => codes[c] ?? 0;
   const out: F22Codes = { ...codes };
-  out[158] = Math.round(v(1098) + v(110) + v(105) + v(155) + v(152) + v(1032) + v(1104) + v(748) + v(1901) - v(169));
+  out[158] = Math.round(f22Code158(out));
   out[170] = Math.max(0, f22Code170(out));
   out[157] = Math.round(igcTax(out[170], utaClp, taxYear));
   out[136] = out[158] > 0 ? Math.round((out[157] * v(152)) / out[158]) : 0;
-  out[304] = out[157] - out[136] - v(162) - v(1018) - v(610);
+  if (options.propertyTaxPaidClp != null) {
+    const credit = Math.min(Math.round(options.propertyTaxPaidClp), f22PropertyTaxCreditCap(out));
+    if (credit > 0) out[1637] = credit;
+    else delete out[1637];
+  }
+  out[304] = f22Code304(out);
   return out;
 }
 
@@ -222,6 +253,10 @@ export type F22Draft = {
   usdFx: UsdFxYearTaxResult;
   /** Route `idpc_1901`: first-category tax on 1901 (line 58 d) and its line-5 credit — equal, net zero; 0 on the other route. */
   usdFxIdpcClp: number;
+  /** The year's rents by place: taxable (1849 → 955, credit 1637) and DFL-2 exempt (not declared). */
+  rentals: F22Rentals;
+  /** 1637 before its cap (the contribuciones on the taxable places) and the cap; null when no taxable rent. */
+  propertyTaxCredit: { paidClp: number; capClp: number; creditClp: number } | null;
 };
 
 /** What {@link buildF22Draft} may be told beyond the year: the dollars' exchange-result parameters and its loader (tests). */
@@ -371,7 +406,12 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
   }
   const f1890 = dj.get(1890);
   // Real interest on deposits: the positive less the negative the banks report (AT2025: 303.967 − 131.957).
-  if (f1890) out[152] = informedDjAmount(f1890, "Positivo", "B") - informedDjAmount(f1890, "Negativo", "C");
+  // A net negative (inflation above the nominal rate) is a line-17 loss (169), never a negative 152.
+  if (f1890) {
+    const realInterest = informedDjAmount(f1890, "Positivo", "B") - informedDjAmount(f1890, "Negativo", "C");
+    if (realInterest >= 0) out[152] = realInterest;
+    else out[169] = (out[169] ?? 0) - realInterest;
+  }
   // APV régimen B deposited directly: an employee deducts it in code 765 (line «Ahorro previsional,
   // según art. 42 bis inc. 1° LIR»), the UF deposited during the year at the UF of 31 December, at
   // most 600 UF (F22 line 23 instructions). Only alongside a DJ 1887 (an employee's year).
@@ -480,6 +520,10 @@ export function buildF22Draft(
   const usdFx1032 = usdFx.codes[1032] ?? 0;
   const usdFxLoss = usdFx.codes.loss169 ?? 0;
   const usdFxIdpcClp = usdFx.codes.idpcClp ?? 0;
+  const rentals = rentalsForYear(incomeYear);
+  // With taxable rent the app states 1849 / 955 and derives 1637; without, a filed form keeps its own.
+  const taxOptions: F22TaxOptions =
+    rentals.taxableRentClp > 0 ? { propertyTaxPaidClp: rentals.propertyTaxPaidClp } : {};
 
   const draftInput: F22Codes =
     base === "filed"
@@ -536,6 +580,10 @@ export function buildF22Draft(
     // A year with no base shows only what the app has; zeros would read as a declared zero.
     if (base !== "none" || v !== 0) draftInput[Number(c)] = v;
   }
+  if (rentals.taxableRentClp > 0) {
+    draftInput[1849] = rentals.taxableRentClp;
+    draftInput[955] = f22Code955(draftInput);
+  }
   const declaredLossClp = draftInput[169] ?? 0;
   const addLoss = (clp: number) => {
     if (clp > 0) draftInput[169] = (draftInput[169] ?? 0) + clp;
@@ -591,8 +639,9 @@ export function buildF22Draft(
     }
     return out;
   };
-  const taxComputed = base !== "none" || estimatedCodes.length > 0;
-  const draft = taxComputed ? computeF22Tax(finish(draftInput), utaClp, taxYear) : finish(draftInput);
+  const tax = (input: F22Codes) => computeF22Tax(input, utaClp, taxYear, taxOptions);
+  const taxComputed = base !== "none" || estimatedCodes.length > 0 || rentals.taxableRentClp > 0;
+  const draft = taxComputed ? tax(finish(draftInput)) : finish(draftInput);
   if (taxComputed) {
     draft[305] = f22Code305(draft);
     // Code 31 is the IGC to pay; a return with a refund does not print it.
@@ -604,7 +653,7 @@ export function buildF22Draft(
   const deductedClp = Math.min(gainsClp, lossesClp);
   const unusedLossClp = lossesClp - deductedClp;
   const taxedGainClp = gainsClp - deductedClp;
-  const taxOf = (input: F22Codes) => computeF22Tax(finish(input), utaClp, taxYear)[304]!;
+  const taxOf = (input: F22Codes) => tax(finish(input))[304]!;
   let taxEffectClp: number | null = null;
   if (taxComputed && unusedLossClp > 0) {
     const withGain = { ...draftInput, 1032: (draftInput[1032] ?? 0) + unusedLossClp };
@@ -696,5 +745,14 @@ export function buildF22Draft(
     art107InformedResultClp: f1922 ? zeroToNull(informedDjAmount(f1922, DJ1922_ART107_DIFFERENCE)) : null,
     usdFx,
     usdFxIdpcClp,
+    rentals,
+    propertyTaxCredit:
+      taxComputed && rentals.taxableRentClp > 0
+        ? {
+            paidClp: rentals.propertyTaxPaidClp,
+            capClp: f22PropertyTaxCreditCap(draft),
+            creditClp: draft[1637] ?? 0,
+          }
+        : null,
   };
 }

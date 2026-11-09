@@ -161,6 +161,28 @@ export type TaxReturnLossOffset = TaxReturnOffsetBalance & {
   parts: { source: TaxReturnLossOffsetSource; gain_clp: number; loss_clp: number }[];
 };
 
+/** One place's rent of the year (server: f22Rentals.ts), reajustada to December. */
+export type TaxReturnRentalPlace = {
+  slug: string;
+  label: string;
+  /** DFL-2: the rent is not declared (DFL N° 2 art. 15); otherwise it is code 1849. */
+  dfl2: boolean;
+  credits: number;
+  rent_clp: number;
+  /** Contribuciones paid in the year (they credit the IGC only on a taxable place). */
+  property_tax_paid_clp: number;
+};
+
+/** GET /api/tax-return `rentals`: the year's rents, taxable (1849 → 955, credit 1637) and exempt DFL-2. */
+export type TaxReturnRentals = {
+  provisional: boolean;
+  places: TaxReturnRentalPlace[];
+  taxable_rent_clp: number;
+  exempt_rent_clp: number;
+  /** Línea 39: the contribuciones paid on the taxable places, the cap (IGC on the rent) and the credit; null without taxable rent. */
+  property_tax_credit: { paid_clp: number; cap_clp: number; credit_clp: number } | null;
+};
+
 export type TaxReturnResponse = {
   tax_year: number;
   income_year: number;
@@ -239,5 +261,6 @@ export type TaxReturnResponse = {
     sales: TaxReturnForeignShareSale[];
   };
   art107: TaxReturnArt107;
+  rentals: TaxReturnRentals;
   usd_fx: TaxReturnUsdFx;
 };

@@ -197,6 +197,41 @@ export const INDEPENDENT_OTHER_RATES = { sis: 0.0149, workAccidents: 0.0093, san
 export const PRESUMED_EXPENSES_RATE = 0.3;
 export const PRESUMED_EXPENSES_CAP_UTA = 15;
 
+/* ------------------------------- real estate --------------------------------- */
+
+/**
+ * DFL N° 2 de 1959, «viviendas económicas»: at most 140 m² built (art. 1°). Its rent is not income
+ * for a natural person for up to two of them, the ones acquired first (art. 15; the F22 does not
+ * declare it — Suplemento AT2026, línea 9, 9.3 g), Circulares 57 y 68 de 2010, 22 de 2022). The
+ * pre-2023 regime: Ley 21.420 removed the benefits for properties acquired from then on, which this
+ * app does not model (a place is flagged by the user, who knows when it was acquired).
+ */
+export const DFL2_MAX_BUILT_M2 = 140;
+export const DFL2_MAX_EXEMPT_RENTALS = 2;
+
+/** DFL-2 art. 14: contribuciones halved for these many years from the reception, by built area. */
+const DFL2_CONTRIBUCIONES_HALVING: readonly { upToM2: number; years: number }[] = [
+  { upToM2: 70, years: 20 },
+  { upToM2: 100, years: 15 },
+  { upToM2: DFL2_MAX_BUILT_M2, years: 10 },
+];
+
+export function dfl2ContribucionesHalvingYears(builtM2: number): number {
+  if (!(builtM2 > 0)) throw new Error(`DFL-2: built area must be positive (${builtM2})`);
+  const row = DFL2_CONTRIBUCIONES_HALVING.find((r) => builtM2 <= r.upToM2);
+  if (!row) throw new Error(`DFL-2: ${builtM2} m² is above the ${DFL2_MAX_BUILT_M2} m² of a vivienda económica`);
+  return row.years;
+}
+
+/**
+ * The last calendar year whose contribuciones are halved: the halving runs whole years from the
+ * reception's (a simplification — the law counts from the reception date; the four yearly cuotas
+ * are paid April–November, so the first and last year may be partial in reality).
+ */
+export function dfl2ContribucionesHalvedThroughYear(builtM2: number, receptionYear: number): number {
+  return receptionYear + dfl2ContribucionesHalvingYears(builtM2) - 1;
+}
+
 /* ---------------------------------- reajuste ---------------------------------- */
 
 /** The SII prints a reajuste percentage with one decimal. */

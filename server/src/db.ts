@@ -45,6 +45,7 @@ import { runFlowEvidenceEstimateKind295 } from "./flows/flowEvidenceEstimate295.
 import { runMovementEvidenceKind291 } from "./flows/flowEvidenceKind291.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runSiiIssuedFeeReceipts296 } from "./siiIssuedFeeReceipts296.js";
+import { runRentalPlaces299 } from "./rentalPlaces299.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction297.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -359,6 +360,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "295_flow_evidence_estimate_kind.sql": runFlowEvidenceEstimateKind295,
   "296_sii_issued_fee_receipts.sql": runSiiIssuedFeeReceipts296,
   "297_payroll_jurisdiction.sql": runPayrollJurisdiction297,
+  "299_rental_places_dfl2_and_rent_income.sql": runRentalPlaces299,
 };
 
 /**

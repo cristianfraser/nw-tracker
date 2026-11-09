@@ -239,6 +239,11 @@ describe("buildChartScopes", () => {
       active_to: null,
       property_account_id: 1,
       comunidad_merchant_patterns: null,
+      id: 1,
+      dfl2: false,
+      dfl2_built_m2: null,
+      dfl2_reception_year: null,
+      dfl2_contribuciones_halved_through: null,
     };
     const scopes = buildChartScopes(
       [

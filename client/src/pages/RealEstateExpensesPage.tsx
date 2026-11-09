@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { RealEstateExpensesChart } from "../components/charts/RealEstateExpensesChart";
 import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAddPlaceModal";
+import { RealEstatePlaceDfl2Modal } from "../components/real-estate/RealEstatePlaceDfl2Modal";
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
@@ -14,6 +15,7 @@ import { clipMonthsThenRollup } from "../timeRange";
 import { rollupChartPointsByYear } from "../flowsDisplay";
 import {
   formatClp,
+  formatGroupedDecimal,
   formatGroupedDecimalTrimmed,
   formatNumberInput,
   parseNumberInput,
@@ -31,6 +33,7 @@ import {
 import type { RealEstateBillSlot } from "../types";
 import { Button, Input } from "@crfrsr/ui";
 import { queryLoadError } from "../queries/pageShapeReady";
+import { DEMO_EDITS_LIMITED } from "../demoEdits";
 
 /** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
 const CONSUMPTION_KINDS = new Set(["electricidad", "gas", "kwh"]);
@@ -95,6 +98,7 @@ export function RealEstateExpensesPage() {
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
   const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
+  const [dfl2PlaceSlug, setDfl2PlaceSlug] = useState<string | null>(null);
   const [editing, setEditing] = useState<{
     id: number;
     kwh: string;
@@ -259,7 +263,24 @@ export function RealEstateExpensesPage() {
               >
                 {t("expenses.realEstate.assignAction")}
               </Button>
+              {DEMO_EDITS_LIMITED ? null : (
+                <Button variant="secondary" onClick={() => setDfl2PlaceSlug(acc.account_slug)}>
+                  {t("expenses.realEstate.dfl2Action")}
+                </Button>
+              )}
             </h4>
+            {(() => {
+              const place = places.find((p) => p.slug === acc.account_slug);
+              return place?.dfl2 ? (
+                <p className="muted">
+                  {t("expenses.realEstate.dfl2Summary", {
+                    m2: formatGroupedDecimal(place.dfl2_built_m2!, 0, 2),
+                    year: place.dfl2_reception_year,
+                    through: place.dfl2_contribuciones_halved_through,
+                  })}
+                </p>
+              ) : null;
+            })()}
             <Table
               tableStyle={{ fontSize: "var(--font-size-prose)" }}
               header={
@@ -544,6 +565,10 @@ export function RealEstateExpensesPage() {
         onClose={() => setAssignPlace(null)}
       />
       <RealEstateAddPlaceModal open={addPlaceOpen} onClose={() => setAddPlaceOpen(false)} />
+      <RealEstatePlaceDfl2Modal
+        place={places.find((p) => p.slug === dfl2PlaceSlug) ?? null}
+        onClose={() => setDfl2PlaceSlug(null)}
+      />
     </>
   );
 }

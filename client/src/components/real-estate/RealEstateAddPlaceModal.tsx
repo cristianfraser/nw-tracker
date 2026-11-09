@@ -4,6 +4,7 @@ import { useTranslation } from "../../i18n";
 import { useRealEstatePropertyAccounts } from "../../queries/hooks";
 import { useCreateRealEstatePlaceMutation } from "../../queries/mutations";
 import { Button, Field, Input } from "@crfrsr/ui";
+import { EMPTY_DFL2_DRAFT, RealEstateDfl2Fields, dfl2BodyFromDraft, type Dfl2Draft } from "./RealEstateDfl2Fields";
 
 function slugFromLabel(label: string): string {
   return label
@@ -31,10 +32,12 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
   const [activeFrom, setActiveFrom] = useState("");
   const [activeTo, setActiveTo] = useState("");
   const [propertyAccountId, setPropertyAccountId] = useState<string>("");
+  const [dfl2, setDfl2] = useState<Dfl2Draft>(EMPTY_DFL2_DRAFT);
+  const [inputError, setInputError] = useState<string | null>(null);
   const { data: propertyData } = useRealEstatePropertyAccounts(open);
   const createMutation = useCreateRealEstatePlaceMutation();
 
-  const err = createMutation.error instanceof Error ? createMutation.error.message : null;
+  const err = inputError ?? (createMutation.error instanceof Error ? createMutation.error.message : null);
 
   const handleLabelChange = (value: string) => {
     setLabel(value);
@@ -42,7 +45,16 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
   };
 
   const handleCreate = async () => {
+    let dfl2Body: ReturnType<typeof dfl2BodyFromDraft>;
+    try {
+      dfl2Body = dfl2BodyFromDraft(dfl2);
+    } catch (e) {
+      setInputError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    setInputError(null);
     await createMutation.mutateAsync({
+      ...dfl2Body,
       slug,
       label,
       active_from: activeFrom.trim() || null,
@@ -55,6 +67,7 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
     setActiveFrom("");
     setActiveTo("");
     setPropertyAccountId("");
+    setDfl2(EMPTY_DFL2_DRAFT);
     onClose();
   };
 
@@ -110,6 +123,7 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
             ))}
           </select>
         </Field>
+        <RealEstateDfl2Fields value={dfl2} onChange={setDfl2} />
         {err ? <p className="error">{err}</p> : null}
         <div>
           <Button

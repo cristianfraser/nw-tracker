@@ -52,6 +52,7 @@ import {
   type CheckingIncomeKind,
   clearCheckingIncomeForceInclude,
   isCheckingIncomeKind,
+  loadRentPlaceSlugByMovementId,
   restoreCheckingIncomeMovement,
   upsertCheckingIncomeMovementOverride,
 } from "../flowsCheckingIncomeOverrides.js";
@@ -64,8 +65,11 @@ import {
   buildRealEstateExpensesPayload,
   createRealEstatePlace,
   listRealEstateLinkCandidates,
+  listRealEstatePlaces,
   listRealEstateUnlinkedPurchases,
+  setRealEstatePlaceDfl2,
 } from "../flowsRealEstateExpenses.js";
+import type { IncomeRentPlacesResponse } from "nw-tracker-contracts/dto/flows";
 import {
   assignPurchaseToRealEstateExpense,
   deleteRealEstateExpenseEntry,
@@ -201,10 +205,15 @@ app.patch("/api/income/movements/:movement_id", linkSyncingWrite((req, res) => {
   }
   const body = req.body as {
     income_kind?: CheckingIncomeKind;
+    rent_place_slug?: string;
     excluded?: boolean;
     force_include?: boolean;
     note?: string | null;
   };
+  if (body.rent_place_slug !== undefined && typeof body.rent_place_slug !== "string") {
+    res.status(400).json({ error: "rent_place_slug must be a place slug" });
+    return;
+  }
   if (body.income_kind != null && !isCheckingIncomeKind(body.income_kind)) {
     res.status(400).json({
       error: `income_kind must be one of ${CHECKING_INCOME_KINDS.join(", ")}`,
@@ -244,6 +253,7 @@ app.patch("/api/income/movements/:movement_id", linkSyncingWrite((req, res) => {
   }
   const row = upsertCheckingIncomeMovementOverride(movementId, {
     income_kind: body.income_kind,
+    rent_place_slug: body.rent_place_slug,
     excluded: body.excluded,
     force_include: body.force_include,
     note: body.note,
@@ -256,6 +266,15 @@ app.patch("/api/income/movements/:movement_id", linkSyncingWrite((req, res) => {
     note: row.note,
   });
 }));
+
+/** The places a rent credit can name (the income page's type select) and the place each rent line names. */
+app.get("/api/income/rent-places", (_req, res) => {
+  const body: IncomeRentPlacesResponse = {
+    places: listRealEstatePlaces().map((p) => ({ slug: p.slug, label: p.label, dfl2: p.dfl2 })),
+    place_by_movement_id: loadRentPlaceSlugByMovementId(),
+  };
+  res.json(body);
+});
 
 app.post("/api/income/movements/:movement_id/force-include", linkSyncingWrite((req, res) => {
   const movementId = Number(req.params.movement_id);
@@ -471,6 +490,9 @@ app.post("/api/flows/expenses/real-estate/places", writeHandler((req, res) => {
     active_from?: string | null;
     active_to?: string | null;
     property_account_id?: number | null;
+    dfl2?: boolean;
+    dfl2_built_m2?: number | null;
+    dfl2_reception_year?: number | null;
   };
   const place = createRealEstatePlace({
     slug: String(body.slug ?? ""),
@@ -478,8 +500,34 @@ app.post("/api/flows/expenses/real-estate/places", writeHandler((req, res) => {
     activeFrom: body.active_from ?? null,
     activeTo: body.active_to ?? null,
     propertyAccountId: body.property_account_id ?? null,
+    dfl2: {
+      dfl2: body.dfl2 === true,
+      builtM2: body.dfl2_built_m2 ?? null,
+      receptionYear: body.dfl2_reception_year ?? null,
+    },
   });
   res.status(201).json(place);
+}));
+
+/** A place's DFL-2 declaration: the flag with the built area and the reception year, or none. */
+app.patch("/api/flows/expenses/real-estate/places/:slug/dfl2", writeHandler((req, res) => {
+  const body = req.body as { dfl2?: unknown; dfl2_built_m2?: unknown; dfl2_reception_year?: unknown };
+  if (typeof body.dfl2 !== "boolean") {
+    res.status(400).json({ error: "dfl2 must be a boolean" });
+    return;
+  }
+  const num = (v: unknown, name: string): number | null => {
+    if (v == null) return null;
+    if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${name} must be a number`);
+    return v;
+  };
+  res.json(
+    setRealEstatePlaceDfl2(String(req.params.slug), {
+      dfl2: body.dfl2,
+      builtM2: num(body.dfl2_built_m2, "dfl2_built_m2"),
+      receptionYear: num(body.dfl2_reception_year, "dfl2_reception_year"),
+    })
+  );
 }));
 
 /** Net-worth property masters (candidates for a place's property_account_id link). */

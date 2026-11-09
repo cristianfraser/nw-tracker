@@ -13,9 +13,12 @@ import {
   incomeManualAmount,
 } from "../../incomeAggregates";
 import { useIncomeRefundMutation, usePatchIncomeMovementMutation } from "../../queries/mutations";
+import { useIncomeRentPlaces } from "../../queries/hooks";
 
 /** The type select's «refund of spending» choice (not an income kind: it moves the credit to the expenses). */
 const REFUND_OPTION = "__refund";
+/** A rent choice names its place: `rent:<place slug>`. */
+const RENT_OPTION_PREFIX = "rent:";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
@@ -35,6 +38,7 @@ export function IncomeAllLinesTable({
   const { t } = useTranslation();
   const patchIncomeMovement = usePatchIncomeMovementMutation();
   const incomeRefund = useIncomeRefundMutation();
+  const rentPlaces = useIncomeRentPlaces();
   const [excludeTarget, setExcludeTarget] = useState<{
     movement_id: number;
     description: string;
@@ -101,11 +105,23 @@ export function IncomeAllLinesTable({
                   </td>
                   <td>
                     <select
-                      value={row.income_kind}
+                      value={
+                        row.income_kind === "rent"
+                          ? `${RENT_OPTION_PREFIX}${rentPlaces.data?.place_by_movement_id[row.movement_id] ?? ""}`
+                          : row.income_kind
+                      }
                       disabled={patchIncomeMovement.isPending || incomeRefund.isPending}
                       onChange={(e) => {
                         if (e.target.value === REFUND_OPTION) {
                           incomeRefund.mutate({ movement_id: row.movement_id, refund: true });
+                          return;
+                        }
+                        if (e.target.value.startsWith(RENT_OPTION_PREFIX)) {
+                          patchIncomeMovement.mutate({
+                            movement_id: row.movement_id,
+                            income_kind: "rent",
+                            rent_place_slug: e.target.value.slice(RENT_OPTION_PREFIX.length),
+                          });
                           return;
                         }
                         const income_kind = e.target.value as IncomeKind;
@@ -120,6 +136,22 @@ export function IncomeAllLinesTable({
                       {(["salary", "severance", "parent_gift", "other"] as const).map((kind) => (
                         <option key={kind} value={kind} disabled={DEMO_EDITS_LIMITED && kind !== row.income_kind}>
                           {t(`income.chart.${kind}`)}
+                        </option>
+                      ))}
+                      {/* A rent names its place; one choice per place (the server says which a line names). */}
+                      {rentPlaces.data == null && row.income_kind === "rent" ? (
+                        <option value={RENT_OPTION_PREFIX}>{t("income.chart.rent")}</option>
+                      ) : null}
+                      {(rentPlaces.data?.places ?? []).map((p) => (
+                        <option
+                          key={p.slug}
+                          value={`${RENT_OPTION_PREFIX}${p.slug}`}
+                          disabled={
+                            DEMO_EDITS_LIMITED &&
+                            !(row.income_kind === "rent" && rentPlaces.data?.place_by_movement_id[row.movement_id] === p.slug)
+                          }
+                        >
+                          {t(p.dfl2 ? "income.rentOptionDfl2" : "income.rentOption", { place: p.label })}
                         </option>
                       ))}
                       <option value={REFUND_OPTION}>{t("income.markRefund")}</option>

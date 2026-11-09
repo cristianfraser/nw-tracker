@@ -1179,8 +1179,11 @@
       "salary": "Salary",
       "severance": "Severance",
       "other": "Unclassified",
-      "parent_gift": "Dad"
+      "parent_gift": "Dad",
+      "rent": "Rent"
     },
+    "rentOption": "Rent · {{place}}",
+    "rentOptionDfl2": "Rent · {{place}} (DFL-2)",
     "colDate": "Date",
     "colPayrollPeriod": "payslip {{month}}",
     "colAmount": "Amount",
@@ -1347,6 +1350,14 @@
   },
   "expenses": {
     "realEstate": {
+      "dfl2Field": "DFL-2 «vivienda económica»",
+      "dfl2Explain": "Up to 140 m² built, certified at the building's reception. Its rent is not declared in the F22 (up to two such places), and its contribuciones are halved for 20, 15 or 10 years from the reception by built area.",
+      "dfl2BuiltM2Field": "Built area (m²)",
+      "dfl2ReceptionYearField": "Reception year",
+      "dfl2ModalTitle": "DFL-2 · {{place}}",
+      "dfl2Save": "Save",
+      "dfl2Action": "DFL-2…",
+      "dfl2Summary": "DFL-2: {{m2}} m², reception {{year}}; contribuciones halved through {{through}}.",
       "colLinkedPurchase": "Linked expense",
       "colLinkedMerchant": "Merchant",
       "colLinkedDate": "Purchase date",
@@ -1959,10 +1970,12 @@
       "751": "Mortgage interest paid",
       "770": "Fees: voluntary pension savings (APV, régimen B)",
       "900": "Pension contributions charged on fees",
+      "955": "Effective income without full accounting (line 5)",
       "1018": "Credit for taxes paid abroad",
       "1032": "Other Chilean-source income (crypto assets)",
       "1098": "Salaries and similar income (Chilean source)",
       "1104": "Other foreign-source income",
+      "1637": "Credit for contribuciones on rented property (art. 56 N°5)",
       "1809": "Shares: gain or loss (art. 107 N°1)",
       "1813": "Fund units: gain or loss (art. 107 N°2)",
       "1814": "Net result under art. 107",
@@ -1970,6 +1983,7 @@
       "1816": "Taxable base or loss under art. 107",
       "1829": "Art. 107 base (line 66)",
       "1830": "10% single tax on the art. 107 base (line 66)",
+      "1849": "Rent determined by contract (art. 20 N°1 b))",
       "1869": "Of which: funds and shares (art. 17 N°8)",
       "1878": "Art. 57 income within the limits",
       "1901": "Income taxed under IDPC, art. 20 N°5 (exchange result on dollars; line 58 d)"
@@ -2022,6 +2036,20 @@
         "usd_31dic": "No reajuste (Oficio 3748)",
         "clp_ipc": "IPC reajuste (Oficio 750)"
       }
+    },
+    "rentals": {
+      "title": "Rents",
+      "explain": "The year's rent by place, reajustada to December. A DFL-2 place's rent is not declared (DFL N° 2 art. 15); any other place's is line 5 code 1849, and its contribuciones paid in the year credit the IGC (code 1637) up to the IGC on that rent, with no refund.",
+      "provisional": "The year has not closed: the reajuste uses the latest published IPC.",
+      "place": "Place",
+      "treatment": "Treatment",
+      "exempt": "DFL-2, not declared",
+      "taxable": "Taxable (1849)",
+      "credits": "Credits",
+      "rent": "Rent",
+      "propertyTax": "Contribuciones paid",
+      "totals": "Taxable rent {{taxable}} · exempt DFL-2 rent {{exempt}}.",
+      "credit": "Contribuciones credit: {{paid}} paid, capped at {{cap}} (the IGC on the rent) → {{credit}}."
     },
     "art107": {
       "title": "Art. 107 LIR: fund and share sales",

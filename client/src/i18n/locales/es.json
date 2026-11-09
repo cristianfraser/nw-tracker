@@ -1179,8 +1179,11 @@
       "salary": "Sueldo",
       "severance": "Finiquito",
       "other": "Sin clasificar",
-      "parent_gift": "Papá"
+      "parent_gift": "Papá",
+      "rent": "Arriendo"
     },
+    "rentOption": "Arriendo · {{place}}",
+    "rentOptionDfl2": "Arriendo · {{place}} (DFL-2)",
     "colDate": "Fecha",
     "colPayrollPeriod": "líq. {{month}}",
     "colAmount": "Monto",
@@ -1347,6 +1350,14 @@
   },
   "expenses": {
     "realEstate": {
+      "dfl2Field": "DFL-2 «vivienda económica»",
+      "dfl2Explain": "Hasta 140 m² construidos, certificada en la recepción del edificio. Su arriendo no se declara en el F22 (hasta dos viviendas así) y sus contribuciones se rebajan a la mitad por 20, 15 o 10 años desde la recepción, según la superficie.",
+      "dfl2BuiltM2Field": "Superficie construida (m²)",
+      "dfl2ReceptionYearField": "Año de recepción",
+      "dfl2ModalTitle": "DFL-2 · {{place}}",
+      "dfl2Save": "Guardar",
+      "dfl2Action": "DFL-2…",
+      "dfl2Summary": "DFL-2: {{m2}} m², recepción {{year}}; contribuciones a la mitad hasta {{through}}.",
       "colLinkedPurchase": "Gasto vinculado",
       "colLinkedMerchant": "Comercio",
       "colLinkedDate": "Fecha compra",
@@ -1959,10 +1970,12 @@
       "751": "Intereses pagados por créditos hipotecarios",
       "770": "Honorarios: ahorro previsional voluntario (APV, régimen B)",
       "900": "Cargo por cotizaciones previsionales",
+      "955": "Rentas efectivas sin contabilidad completa (línea 5)",
       "1018": "Crédito por impuestos soportados en el exterior",
       "1032": "Otras rentas de fuente chilena (criptoactivos)",
       "1098": "Sueldos, pensiones y otras rentas de fuente nacional",
       "1104": "Otras rentas de fuente extranjera",
+      "1637": "Crédito por impuesto territorial de bienes raíces arrendados (art. 56 N°5)",
       "1809": "Acciones: mayor o menor valor (art. 107 N°1)",
       "1813": "Cuotas de fondos mutuos y de inversión: mayor o menor valor (art. 107 N°2)",
       "1814": "Resultado neto art. 107",
@@ -1970,6 +1983,7 @@
       "1816": "Base imponible o pérdida art. 107",
       "1829": "Base art. 107 (línea 66)",
       "1830": "Impuesto único 10% sobre la base art. 107 (línea 66)",
+      "1849": "Arriendos determinados según contrato (art. 20 N°1 b))",
       "1869": "De ello: fondos mutuos, de inversión y acciones (art. 17 N°8)",
       "1878": "Rentas art. 57 dentro de los límites",
       "1901": "Rentas afectas al IDPC, art. 20 N°5 (diferencia de cambio en dólares; línea 58 d)"
@@ -2022,6 +2036,20 @@
         "usd_31dic": "Sin reajuste (Oficio 3748)",
         "clp_ipc": "Con reajuste IPC (Oficio 750)"
       }
+    },
+    "rentals": {
+      "title": "Arriendos",
+      "explain": "El arriendo del año por lugar, reajustado a diciembre. El arriendo de un lugar DFL-2 no se declara (DFL N° 2 art. 15); el de cualquier otro va a la línea 5, código 1849, y sus contribuciones pagadas en el año son crédito contra el IGC (código 1637) hasta el IGC de ese arriendo, sin devolución.",
+      "provisional": "El año no ha cerrado: el reajuste usa el último IPC publicado.",
+      "place": "Lugar",
+      "treatment": "Tratamiento",
+      "exempt": "DFL-2, no se declara",
+      "taxable": "Afecto (1849)",
+      "credits": "Abonos",
+      "rent": "Arriendo",
+      "propertyTax": "Contribuciones pagadas",
+      "totals": "Arriendo afecto {{taxable}} · arriendo DFL-2 exento {{exempt}}.",
+      "credit": "Crédito por contribuciones: {{paid}} pagadas, tope {{cap}} (el IGC del arriendo) → {{credit}}."
     },
     "art107": {
       "title": "Art. 107 LIR: ventas de fondos y acciones",
