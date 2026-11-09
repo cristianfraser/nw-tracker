@@ -44,6 +44,7 @@ import { runFlowEvidenceEstimateKind295 } from "./flows/flowEvidenceEstimate295.
 import { runMovementEvidenceKind291 } from "./flows/flowEvidenceKind291.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runSiiIssuedFeeReceipts296 } from "./siiIssuedFeeReceipts296.js";
+import { runPayrollJurisdiction297 } from "./payrollJurisdiction297.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
@@ -318,6 +319,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "294_retire_deposit_mirrors.sql": runRetireDepositMirrors294,
   "295_flow_evidence_estimate_kind.sql": runFlowEvidenceEstimateKind295,
   "296_sii_issued_fee_receipts.sql": runSiiIssuedFeeReceipts296,
+  "297_payroll_jurisdiction.sql": runPayrollJurisdiction297,
 };
 
 /**
