@@ -436,8 +436,45 @@ export function runMigrations() {
   const exec = dbInternal.exec.bind(dbInternal);
   dbInternal.exec = (sql: string) => {
     noteDbWrite();
+    transactionEpoch += 1; // an `exec` may open, release or roll back a transaction or savepoint by hand
     return exec(sql);
   };
+}
+
+// Transactions are counted (`dbTransactionEpoch`): better-sqlite3 runs BEGIN / COMMIT / ROLLBACK and
+// the nested SAVEPOINT / RELEASE / ROLLBACK TO through its own native statements, which no proxy
+// above sees, so a memo scoped to a transaction (`dbStateMemo`) could not tell a rolled-back
+// transaction from a committed one by the write count alone. The epoch moves when an outermost
+// transaction begins and when it ends, and when any transaction function exits by throwing (its
+// writes rolled back, to the savepoint or wholesale).
+let transactionEpoch = 0;
+{
+  type TxFn = (...args: unknown[]) => unknown;
+  const transaction = dbInternal.transaction.bind(dbInternal) as (fn: TxFn) => Database.Transaction<TxFn>;
+  const wrap = (run: TxFn): TxFn =>
+    function (this: unknown, ...args: unknown[]) {
+      const outer = !dbInternal.inTransaction;
+      if (outer) transactionEpoch += 1;
+      try {
+        return run.apply(this, args);
+      } catch (e) {
+        transactionEpoch += 1;
+        throw e;
+      } finally {
+        if (outer) transactionEpoch += 1;
+      }
+    };
+  (dbInternal as { transaction: unknown }).transaction = (fn: TxFn) => {
+    const tx = transaction(fn);
+    const modes = { default: wrap(tx.default), deferred: wrap(tx.deferred), immediate: wrap(tx.immediate), exclusive: wrap(tx.exclusive) };
+    for (const m of Object.values(modes)) Object.assign(m, modes, { database: dbInternal });
+    return modes.default;
+  };
+}
+
+/** Moves whenever a transaction begins or ends, or a transaction function rolls back (see above). */
+export function dbTransactionEpoch(): number {
+  return transactionEpoch;
 }
 
 const db = wrapDatabaseForVerboseLog(dbInternal);
