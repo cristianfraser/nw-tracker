@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@crfrsr/ui";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { PageGridTile } from "../components/layout/PageGridTile";
@@ -6,7 +7,8 @@ import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Pill } from "../components/ui/Pill";
 import { ColumnTable } from "../components/ui/ColumnTable";
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
-import { useTaxReturn } from "../queries/hooks";
+import { useTaxReturn, useUsTaxReturn } from "../queries/hooks";
+import { UsTaxReturnSections } from "../components/tax/UsTaxReturnSections";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 
@@ -615,22 +617,52 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
   );
 }
 
+type Jurisdiction = "cl" | "us";
+
+/** Chile / US tabs, for an año tributario whose income year also has a US return. */
+function JurisdictionTabs({ value, onChange, disabled }: { value: Jurisdiction; onChange: (j: Jurisdiction) => void; disabled: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div role="tablist" aria-label={t("taxReturn.us.tabsLabel")} style={{ display: "flex", gap: "0.5rem" }}>
+      {(["cl", "us"] as const).map((j) => (
+        <Button
+          key={j}
+          role="tab"
+          aria-selected={value === j}
+          disabled={disabled}
+          variant={value === j ? "secondary" : "ghost"}
+          onClick={() => onChange(j)}
+        >
+          {t(j === "cl" ? "taxReturn.us.tabChile" : "taxReturn.us.tabUs")}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export function TaxReturnPage() {
   const { t } = useTranslation();
   const [taxYear, setTaxYear] = useState<number | null>(null);
+  const [chosenJurisdiction, setJurisdiction] = useState<Jurisdiction>("cl");
   const q = useTaxReturn(taxYear);
   const data = q.data;
+  // The US tab only exists for a year with a 1040; another year shows the F22.
+  const usTaxYear = data?.us_tax_year ?? null;
+  const jurisdiction: Jurisdiction = usTaxYear != null ? chosenJurisdiction : "cl";
+  const usQ = useUsTaxReturn(jurisdiction === "us" ? usTaxYear : null);
   // First load, or the previous year's return held while the chosen year's loads.
   const loading = queryShowsLoading(q);
+  const usLoading = queryShowsLoading(usQ);
 
   return (
     <main>
       <h1>{t("taxReturn.title")}</h1>
       <p className="muted">{t("taxReturn.subtitle")}</p>
       {queryLoadError(q) ? <p className="error">{(q.error as Error).message}</p> : null}
+      {jurisdiction === "us" && queryLoadError(usQ) ? <p className="error">{(usQ.error as Error).message}</p> : null}
       {queryLoadError(q) ? null : (
         <Loadable loading={loading} className="page-grid">
-          <PageGridTile id="f22">
+          <PageGridTile id="tax-year">
             <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <span>{t("taxReturn.taxYearLabel")}</span>
               <select
@@ -645,41 +677,50 @@ export function TaxReturnPage() {
                 ))}
               </select>
             </label>
-            {data ? <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p> : null}
-            {data?.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
-            {data && data.salary.incomplete_months.length > 0 ? (
-              <p style={{ color: "var(--negative)" }}>
-                {t("taxReturn.salaryIncomplete", { months: data.salary.incomplete_months.join(", ") })}
-              </p>
-            ) : null}
-            <p>
-              {t("taxReturn.summaryFiled", { amount: money(data?.tax_filed ?? null) })} ·{" "}
-              {t("taxReturn.summaryDraft", { amount: money(data?.tax_draft ?? null) })}
-              {data && data.tax_filed != null && data.tax_draft != null
-                ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
-                : ""}
-            </p>
-            <F22Table rows={data?.rows ?? []} loading={loading} />
-            {data?.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
-            <p className="muted">{t("taxReturn.paymentNote")}</p>
+            {usTaxYear != null ? <JurisdictionTabs value={jurisdiction} onChange={setJurisdiction} disabled={loading} /> : null}
           </PageGridTile>
-          {/* The sections below are server-decided absences; they wait for the response so no
-              explanatory copy shows up for a year that has not loaded. */}
-          {data ? (
+          {jurisdiction === "us" ? (
+            queryLoadError(usQ) ? null : <UsTaxReturnSections data={usQ.data} loading={usLoading} />
+          ) : (
             <>
-              {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
-                <LossOffsetHint data={data} kind="pool" />
+              <PageGridTile id="f22">
+                {data ? <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p> : null}
+                {data?.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
+                {data && data.salary.incomplete_months.length > 0 ? (
+                  <p style={{ color: "var(--negative)" }}>
+                    {t("taxReturn.salaryIncomplete", { months: data.salary.incomplete_months.join(", ") })}
+                  </p>
+                ) : null}
+                <p>
+                  {t("taxReturn.summaryFiled", { amount: money(data?.tax_filed ?? null) })} ·{" "}
+                  {t("taxReturn.summaryDraft", { amount: money(data?.tax_draft ?? null) })}
+                  {data && data.tax_filed != null && data.tax_draft != null
+                    ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
+                    : ""}
+                </p>
+                <F22Table rows={data?.rows ?? []} loading={loading} />
+                {data?.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
+                <p className="muted">{t("taxReturn.paymentNote")}</p>
+              </PageGridTile>
+              {/* The sections below are server-decided absences; they wait for the response so no
+                  explanatory copy shows up for a year that has not loaded. */}
+              {data ? (
+                <>
+                  {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
+                    <LossOffsetHint data={data} kind="pool" />
+                  ) : null}
+                  <SettlementSection data={data} />
+                  <PayrollWithholdingSection data={data} />
+                  <CryptoSection data={data} />
+                  <DividendsSection data={data} />
+                  <ForeignSharesSection data={data} />
+                  <RentalsSection data={data} />
+                  <Art107Section data={data} />
+                  <UsdFxSection data={data} />
+                </>
               ) : null}
-              <SettlementSection data={data} />
-              <PayrollWithholdingSection data={data} />
-              <CryptoSection data={data} />
-              <DividendsSection data={data} />
-              <ForeignSharesSection data={data} />
-              <RentalsSection data={data} />
-              <Art107Section data={data} />
-              <UsdFxSection data={data} />
             </>
-          ) : null}
+          )}
         </Loadable>
       )}
     </main>

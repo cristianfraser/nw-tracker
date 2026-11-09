@@ -910,6 +910,16 @@ export function useTaxReturn(taxYear: number | null) {
   });
 }
 
+/** The 1040 of a US tax year; idle while `taxYear` is null (the año tributario has no US return). */
+export function useUsTaxReturn(taxYear: number | null) {
+  return useQuery({
+    queryKey: queryKeys.usTaxReturn(taxYear),
+    queryFn: () => api.usTaxReturn(taxYear!),
+    enabled: taxYear != null,
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useBenchmarks() {
   return useQuery({
     queryKey: queryKeys.benchmarks(),

@@ -841,6 +841,8 @@ export const api = {
     j<import("./types").TaxReturnResponse>(
       `/api/tax-return${taxYear != null ? `?tax_year=${taxYear}` : ""}`
     ),
+  usTaxReturn: (taxYear: number) =>
+    j<import("./types").UsTaxReturnResponse>(`/api/tax-return/us?tax_year=${taxYear}`),
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
   convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>

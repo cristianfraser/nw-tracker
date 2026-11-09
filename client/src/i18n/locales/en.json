@@ -1930,6 +1930,106 @@
     }
   },
   "taxReturn": {
+    "us": {
+      "tabsLabel": "Return",
+      "tabChile": "Chile (F22)",
+      "tabUs": "United States (1040)",
+      "title": "Form 1040 · tax year {{year}}",
+      "intro": "Federal return drafted from {{stubs}} pay stubs, filing status {{status}}. Whole dollars; line numbers of the 2024 form.",
+      "filingStatus": {
+        "single": "single",
+        "married_jointly": "married filing jointly"
+      },
+      "notes": {
+        "no_state_return": "No state withholding on the pay stubs (a job in a state without income tax): no state return is drafted.",
+        "first_year_full_resident": "First US year: a dual-status year, drafted as a full resident year.",
+        "open_year": "{{year}} has not ended: the pay stubs to date, not the year's total.",
+        "law_provisional": "The {{year}} figures are not in the law table yet: the {{lawYear}} ones stand in."
+      },
+      "summaryFiled": "Total tax filed: {{amount}}",
+      "summaryDraft": "drafted: {{amount}}",
+      "summaryDiff": "difference {{amount}}",
+      "refund": "Refund {{amount}}",
+      "owed": "Amount owed {{amount}}",
+      "even": "Neither a refund nor an amount owed",
+      "filedOn": "Filed on {{date}}",
+      "notFiled": "Not filed",
+      "table": {
+        "line": "Line",
+        "concept": "Concept",
+        "filed": "Filed",
+        "draft": "Draft",
+        "difference": "Difference"
+      },
+      "lineFallback": "Line {{line}}",
+      "lines": {
+        "9": "Total income",
+        "10": "Adjustments to income",
+        "11": "Adjusted gross income",
+        "12": "Standard deduction",
+        "13": "Qualified business income deduction",
+        "14": "Total deductions",
+        "15": "Taxable income",
+        "16": "Tax",
+        "17": "Schedule 2, part I",
+        "18": "Tax plus Schedule 2, part I",
+        "21": "Nonrefundable credits",
+        "22": "Tax after credits",
+        "23": "Other taxes (Schedule 2: additional Medicare tax)",
+        "24": "Total tax",
+        "26": "Estimated tax payments",
+        "27": "Earned income credit",
+        "28": "Additional child tax credit",
+        "29": "American opportunity credit",
+        "31": "Schedule 3 (excess Social Security withheld)",
+        "32": "Other payments and refundable credits",
+        "33": "Total payments",
+        "34": "Overpaid",
+        "36": "Applied to next year's estimated tax",
+        "37": "Amount owed",
+        "1a": "Wages (W-2 box 1)",
+        "1z": "Total wages",
+        "25a": "Federal tax withheld (W-2 box 2)",
+        "25b": "Federal tax withheld (Forms 1099)",
+        "25c": "Federal tax withheld (other forms: Form 8959)",
+        "25d": "Total federal tax withheld",
+        "35a": "Refund"
+      },
+      "w2": {
+        "title": "W-2s from the pay stubs",
+        "explain": "Rebuilt from the year's pay stubs: box 1 is gross pay less the pre-tax 401(k) and the medical, dental and HSA deductions; boxes 3 and 5 leave out only the latter.",
+        "employer": "Employer",
+        "stubs": "Stubs",
+        "box1": "Box 1 wages",
+        "box2": "Box 2 federal tax",
+        "box3": "Box 3 Social Security wages",
+        "box4": "Box 4 Social Security",
+        "box5": "Box 5 Medicare wages",
+        "box6": "Box 6 Medicare",
+        "box12d": "Box 12 D (401(k))",
+        "box12aa": "Box 12 AA (Roth 401(k))",
+        "box12w": "Box 12 W (HSA)"
+      },
+      "fica": {
+        "title": "Social Security and Medicare",
+        "explain": "Withheld on every pay stub (FICA) and reported beside the return: not part of the 1040's income tax.",
+        "summary": "Social Security {{socialSecurity}} · Medicare {{medicare}} · total {{total}}",
+        "additional": "Additional Medicare tax owed (Form 8959): {{amount}}"
+      },
+      "settlement": {
+        "title": "Settlement",
+        "expected": {
+          "refund": "Refund requested {{amount}}",
+          "payment": "Tax to pay {{amount}}"
+        },
+        "settled": {
+          "refund": "received {{amount}}",
+          "payment": "paid {{amount}}"
+        },
+        "difference": "difference {{amount}}",
+        "notLinked": "no bank movement linked yet"
+      }
+    },
     "title": "Tax return (Formulario 22)",
     "subtitle": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
     "paymentNote": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",

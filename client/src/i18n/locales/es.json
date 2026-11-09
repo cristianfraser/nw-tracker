@@ -1930,6 +1930,106 @@
     }
   },
   "taxReturn": {
+    "us": {
+      "tabsLabel": "Declaración",
+      "tabChile": "Chile (F22)",
+      "tabUs": "Estados Unidos (1040)",
+      "title": "Formulario 1040 · año fiscal {{year}}",
+      "intro": "Declaración federal preparada con {{stubs}} liquidaciones, estado civil tributario {{status}}. Dólares enteros; numeración de líneas del formulario 2024.",
+      "filingStatus": {
+        "single": "soltero",
+        "married_jointly": "casados, declaración conjunta"
+      },
+      "notes": {
+        "no_state_return": "Las liquidaciones no retienen impuesto estatal (un trabajo en un estado sin impuesto a la renta): no se prepara declaración estatal.",
+        "first_year_full_resident": "Primer año en EE.UU.: un año de doble estatus, preparado como residente todo el año.",
+        "open_year": "{{year}} no ha terminado: las liquidaciones a la fecha, no el total del año.",
+        "law_provisional": "Las cifras de {{year}} aún no están en la tabla legal: se usan las de {{lawYear}}."
+      },
+      "summaryFiled": "Impuesto total declarado: {{amount}}",
+      "summaryDraft": "borrador: {{amount}}",
+      "summaryDiff": "diferencia {{amount}}",
+      "refund": "Devolución {{amount}}",
+      "owed": "Monto a pagar {{amount}}",
+      "even": "Ni devolución ni monto a pagar",
+      "filedOn": "Presentada el {{date}}",
+      "notFiled": "No presentada",
+      "table": {
+        "line": "Línea",
+        "concept": "Concepto",
+        "filed": "Declarado",
+        "draft": "Borrador",
+        "difference": "Diferencia"
+      },
+      "lineFallback": "Línea {{line}}",
+      "lines": {
+        "9": "Ingreso total",
+        "10": "Ajustes al ingreso",
+        "11": "Ingreso bruto ajustado",
+        "12": "Deducción estándar",
+        "13": "Deducción por ingreso de negocio calificado",
+        "14": "Total deducciones",
+        "15": "Ingreso imponible",
+        "16": "Impuesto",
+        "17": "Anexo 2, parte I",
+        "18": "Impuesto más anexo 2, parte I",
+        "21": "Créditos no reembolsables",
+        "22": "Impuesto después de créditos",
+        "23": "Otros impuestos (anexo 2: Medicare adicional)",
+        "24": "Impuesto total",
+        "26": "Pagos de impuesto estimado",
+        "27": "Crédito por ingreso del trabajo",
+        "28": "Crédito adicional por hijos",
+        "29": "Crédito American Opportunity",
+        "31": "Anexo 3 (exceso de Seguridad Social retenido)",
+        "32": "Otros pagos y créditos reembolsables",
+        "33": "Total pagos",
+        "34": "Pagado en exceso",
+        "36": "Aplicado al impuesto estimado del año siguiente",
+        "37": "Monto a pagar",
+        "1a": "Sueldos (casilla 1 del W-2)",
+        "1z": "Total sueldos",
+        "25a": "Impuesto federal retenido (casilla 2 del W-2)",
+        "25b": "Impuesto federal retenido (formularios 1099)",
+        "25c": "Impuesto federal retenido (otros formularios: 8959)",
+        "25d": "Total impuesto federal retenido",
+        "35a": "Devolución"
+      },
+      "w2": {
+        "title": "W-2 a partir de las liquidaciones",
+        "explain": "Reconstruidos con las liquidaciones del año: la casilla 1 es el bruto menos el 401(k) antes de impuestos y los descuentos de salud, dental y HSA; las casillas 3 y 5 solo descuentan estos últimos.",
+        "employer": "Empleador",
+        "stubs": "Liquidaciones",
+        "box1": "Casilla 1 sueldos",
+        "box2": "Casilla 2 impuesto federal",
+        "box3": "Casilla 3 sueldos Seguridad Social",
+        "box4": "Casilla 4 Seguridad Social",
+        "box5": "Casilla 5 sueldos Medicare",
+        "box6": "Casilla 6 Medicare",
+        "box12d": "Casilla 12 D (401(k))",
+        "box12aa": "Casilla 12 AA (Roth 401(k))",
+        "box12w": "Casilla 12 W (HSA)"
+      },
+      "fica": {
+        "title": "Seguridad Social y Medicare",
+        "explain": "Retenidos en cada liquidación (FICA) e informados junto a la declaración: no son parte del impuesto a la renta del 1040.",
+        "summary": "Seguridad Social {{socialSecurity}} · Medicare {{medicare}} · total {{total}}",
+        "additional": "Impuesto Medicare adicional (formulario 8959): {{amount}}"
+      },
+      "settlement": {
+        "title": "Liquidación del 1040",
+        "expected": {
+          "refund": "Devolución solicitada {{amount}}",
+          "payment": "Impuesto a pagar {{amount}}"
+        },
+        "settled": {
+          "refund": "recibida {{amount}}",
+          "payment": "pagado {{amount}}"
+        },
+        "difference": "diferencia {{amount}}",
+        "notLinked": "sin movimiento bancario enlazado"
+      }
+    },
     "title": "Declaración de renta (Formulario 22)",
     "subtitle": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada.",
     "paymentNote": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento.",

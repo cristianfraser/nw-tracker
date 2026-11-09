@@ -6667,6 +6667,346 @@
     }
   },
   "taxReturn": {
+    "us": {
+      "tabsLabel": {
+        "en": "Return",
+        "es": "Declaración"
+      },
+      "tabChile": {
+        "en": "Chile (F22)",
+        "es": "Chile (F22)"
+      },
+      "tabUs": {
+        "en": "United States (1040)",
+        "es": "Estados Unidos (1040)"
+      },
+      "title": {
+        "en": "Form 1040 · tax year {{year}}",
+        "es": "Formulario 1040 · año fiscal {{year}}"
+      },
+      "intro": {
+        "en": "Federal return drafted from {{stubs}} pay stubs, filing status {{status}}. Whole dollars; line numbers of the 2024 form.",
+        "es": "Declaración federal preparada con {{stubs}} liquidaciones, estado civil tributario {{status}}. Dólares enteros; numeración de líneas del formulario 2024."
+      },
+      "filingStatus": {
+        "single": {
+          "en": "single",
+          "es": "soltero"
+        },
+        "married_jointly": {
+          "en": "married filing jointly",
+          "es": "casados, declaración conjunta"
+        }
+      },
+      "notes": {
+        "no_state_return": {
+          "en": "No state withholding on the pay stubs (a job in a state without income tax): no state return is drafted.",
+          "es": "Las liquidaciones no retienen impuesto estatal (un trabajo en un estado sin impuesto a la renta): no se prepara declaración estatal."
+        },
+        "first_year_full_resident": {
+          "en": "First US year: a dual-status year, drafted as a full resident year.",
+          "es": "Primer año en EE.UU.: un año de doble estatus, preparado como residente todo el año."
+        },
+        "open_year": {
+          "en": "{{year}} has not ended: the pay stubs to date, not the year's total.",
+          "es": "{{year}} no ha terminado: las liquidaciones a la fecha, no el total del año."
+        },
+        "law_provisional": {
+          "en": "The {{year}} figures are not in the law table yet: the {{lawYear}} ones stand in.",
+          "es": "Las cifras de {{year}} aún no están en la tabla legal: se usan las de {{lawYear}}."
+        }
+      },
+      "summaryFiled": {
+        "en": "Total tax filed: {{amount}}",
+        "es": "Impuesto total declarado: {{amount}}"
+      },
+      "summaryDraft": {
+        "en": "drafted: {{amount}}",
+        "es": "borrador: {{amount}}"
+      },
+      "summaryDiff": {
+        "en": "difference {{amount}}",
+        "es": "diferencia {{amount}}"
+      },
+      "refund": {
+        "en": "Refund {{amount}}",
+        "es": "Devolución {{amount}}"
+      },
+      "owed": {
+        "en": "Amount owed {{amount}}",
+        "es": "Monto a pagar {{amount}}"
+      },
+      "even": {
+        "en": "Neither a refund nor an amount owed",
+        "es": "Ni devolución ni monto a pagar"
+      },
+      "filedOn": {
+        "en": "Filed on {{date}}",
+        "es": "Presentada el {{date}}"
+      },
+      "notFiled": {
+        "en": "Not filed",
+        "es": "No presentada"
+      },
+      "table": {
+        "line": {
+          "en": "Line",
+          "es": "Línea"
+        },
+        "concept": {
+          "en": "Concept",
+          "es": "Concepto"
+        },
+        "filed": {
+          "en": "Filed",
+          "es": "Declarado"
+        },
+        "draft": {
+          "en": "Draft",
+          "es": "Borrador"
+        },
+        "difference": {
+          "en": "Difference",
+          "es": "Diferencia"
+        }
+      },
+      "lineFallback": {
+        "en": "Line {{line}}",
+        "es": "Línea {{line}}"
+      },
+      "lines": {
+        "1a": {
+          "en": "Wages (W-2 box 1)",
+          "es": "Sueldos (casilla 1 del W-2)"
+        },
+        "1z": {
+          "en": "Total wages",
+          "es": "Total sueldos"
+        },
+        "9": {
+          "en": "Total income",
+          "es": "Ingreso total"
+        },
+        "10": {
+          "en": "Adjustments to income",
+          "es": "Ajustes al ingreso"
+        },
+        "11": {
+          "en": "Adjusted gross income",
+          "es": "Ingreso bruto ajustado"
+        },
+        "12": {
+          "en": "Standard deduction",
+          "es": "Deducción estándar"
+        },
+        "13": {
+          "en": "Qualified business income deduction",
+          "es": "Deducción por ingreso de negocio calificado"
+        },
+        "14": {
+          "en": "Total deductions",
+          "es": "Total deducciones"
+        },
+        "15": {
+          "en": "Taxable income",
+          "es": "Ingreso imponible"
+        },
+        "16": {
+          "en": "Tax",
+          "es": "Impuesto"
+        },
+        "17": {
+          "en": "Schedule 2, part I",
+          "es": "Anexo 2, parte I"
+        },
+        "18": {
+          "en": "Tax plus Schedule 2, part I",
+          "es": "Impuesto más anexo 2, parte I"
+        },
+        "21": {
+          "en": "Nonrefundable credits",
+          "es": "Créditos no reembolsables"
+        },
+        "22": {
+          "en": "Tax after credits",
+          "es": "Impuesto después de créditos"
+        },
+        "23": {
+          "en": "Other taxes (Schedule 2: additional Medicare tax)",
+          "es": "Otros impuestos (anexo 2: Medicare adicional)"
+        },
+        "24": {
+          "en": "Total tax",
+          "es": "Impuesto total"
+        },
+        "25a": {
+          "en": "Federal tax withheld (W-2 box 2)",
+          "es": "Impuesto federal retenido (casilla 2 del W-2)"
+        },
+        "25b": {
+          "en": "Federal tax withheld (Forms 1099)",
+          "es": "Impuesto federal retenido (formularios 1099)"
+        },
+        "25c": {
+          "en": "Federal tax withheld (other forms: Form 8959)",
+          "es": "Impuesto federal retenido (otros formularios: 8959)"
+        },
+        "25d": {
+          "en": "Total federal tax withheld",
+          "es": "Total impuesto federal retenido"
+        },
+        "26": {
+          "en": "Estimated tax payments",
+          "es": "Pagos de impuesto estimado"
+        },
+        "27": {
+          "en": "Earned income credit",
+          "es": "Crédito por ingreso del trabajo"
+        },
+        "28": {
+          "en": "Additional child tax credit",
+          "es": "Crédito adicional por hijos"
+        },
+        "29": {
+          "en": "American opportunity credit",
+          "es": "Crédito American Opportunity"
+        },
+        "31": {
+          "en": "Schedule 3 (excess Social Security withheld)",
+          "es": "Anexo 3 (exceso de Seguridad Social retenido)"
+        },
+        "32": {
+          "en": "Other payments and refundable credits",
+          "es": "Otros pagos y créditos reembolsables"
+        },
+        "33": {
+          "en": "Total payments",
+          "es": "Total pagos"
+        },
+        "34": {
+          "en": "Overpaid",
+          "es": "Pagado en exceso"
+        },
+        "35a": {
+          "en": "Refund",
+          "es": "Devolución"
+        },
+        "36": {
+          "en": "Applied to next year's estimated tax",
+          "es": "Aplicado al impuesto estimado del año siguiente"
+        },
+        "37": {
+          "en": "Amount owed",
+          "es": "Monto a pagar"
+        }
+      },
+      "w2": {
+        "title": {
+          "en": "W-2s from the pay stubs",
+          "es": "W-2 a partir de las liquidaciones"
+        },
+        "explain": {
+          "en": "Rebuilt from the year's pay stubs: box 1 is gross pay less the pre-tax 401(k) and the medical, dental and HSA deductions; boxes 3 and 5 leave out only the latter.",
+          "es": "Reconstruidos con las liquidaciones del año: la casilla 1 es el bruto menos el 401(k) antes de impuestos y los descuentos de salud, dental y HSA; las casillas 3 y 5 solo descuentan estos últimos."
+        },
+        "employer": {
+          "en": "Employer",
+          "es": "Empleador"
+        },
+        "stubs": {
+          "en": "Stubs",
+          "es": "Liquidaciones"
+        },
+        "box1": {
+          "en": "Box 1 wages",
+          "es": "Casilla 1 sueldos"
+        },
+        "box2": {
+          "en": "Box 2 federal tax",
+          "es": "Casilla 2 impuesto federal"
+        },
+        "box3": {
+          "en": "Box 3 Social Security wages",
+          "es": "Casilla 3 sueldos Seguridad Social"
+        },
+        "box4": {
+          "en": "Box 4 Social Security",
+          "es": "Casilla 4 Seguridad Social"
+        },
+        "box5": {
+          "en": "Box 5 Medicare wages",
+          "es": "Casilla 5 sueldos Medicare"
+        },
+        "box6": {
+          "en": "Box 6 Medicare",
+          "es": "Casilla 6 Medicare"
+        },
+        "box12d": {
+          "en": "Box 12 D (401(k))",
+          "es": "Casilla 12 D (401(k))"
+        },
+        "box12aa": {
+          "en": "Box 12 AA (Roth 401(k))",
+          "es": "Casilla 12 AA (Roth 401(k))"
+        },
+        "box12w": {
+          "en": "Box 12 W (HSA)",
+          "es": "Casilla 12 W (HSA)"
+        }
+      },
+      "fica": {
+        "title": {
+          "en": "Social Security and Medicare",
+          "es": "Seguridad Social y Medicare"
+        },
+        "explain": {
+          "en": "Withheld on every pay stub (FICA) and reported beside the return: not part of the 1040's income tax.",
+          "es": "Retenidos en cada liquidación (FICA) e informados junto a la declaración: no son parte del impuesto a la renta del 1040."
+        },
+        "summary": {
+          "en": "Social Security {{socialSecurity}} · Medicare {{medicare}} · total {{total}}",
+          "es": "Seguridad Social {{socialSecurity}} · Medicare {{medicare}} · total {{total}}"
+        },
+        "additional": {
+          "en": "Additional Medicare tax owed (Form 8959): {{amount}}",
+          "es": "Impuesto Medicare adicional (formulario 8959): {{amount}}"
+        }
+      },
+      "settlement": {
+        "title": {
+          "en": "Settlement",
+          "es": "Liquidación del 1040"
+        },
+        "expected": {
+          "refund": {
+            "en": "Refund requested {{amount}}",
+            "es": "Devolución solicitada {{amount}}"
+          },
+          "payment": {
+            "en": "Tax to pay {{amount}}",
+            "es": "Impuesto a pagar {{amount}}"
+          }
+        },
+        "settled": {
+          "refund": {
+            "en": "received {{amount}}",
+            "es": "recibida {{amount}}"
+          },
+          "payment": {
+            "en": "paid {{amount}}",
+            "es": "pagado {{amount}}"
+          }
+        },
+        "difference": {
+          "en": "difference {{amount}}",
+          "es": "diferencia {{amount}}"
+        },
+        "notLinked": {
+          "en": "no bank movement linked yet",
+          "es": "sin movimiento bancario enlazado"
+        }
+      }
+    },
     "title": {
       "en": "Tax return (Formulario 22)",
       "es": "Declaración de renta (Formulario 22)"
