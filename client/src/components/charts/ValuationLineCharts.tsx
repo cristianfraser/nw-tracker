@@ -318,10 +318,10 @@ function lineSeriesTooltipRenderContent({
 function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boolean): LineSeriesColorInput[] {
   const raw: LineSeriesColorInput[] = [];
   if (block.accounts?.length) {
-    block.accounts.forEach((a, i) => {
+    block.accounts.forEach((a: (typeof block.accounts)[number] & { name_i18n_params?: Record<string, string> }, i) => {
       raw.push({
         dataKey: a.dataKey,
-        name: a.name_i18n_key ? i18n.t(a.name_i18n_key) : a.name,
+        name: a.name_i18n_key ? i18n.t(a.name_i18n_key, a.name_i18n_params) : a.name,
         colorIndex: i,
         color_rgb: a.color_rgb,
       });

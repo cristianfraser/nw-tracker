@@ -220,9 +220,11 @@ export const api = {
     j<import("./types").PortfolioGroupCcLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-ledger`
     ),
-  portfolioGroupMortgageLedger: (slug: string) =>
+  portfolioGroupMortgageLedger: (slug: string, loanAccountId: number | null) =>
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
-      `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger${
+        loanAccountId != null ? `?account_id=${loanAccountId}` : ""
+      }`
     ),
   creditCardConfig: (id: string | number) =>
     j<{ config: import("./types").CreditCardAccountConfigDto }>(

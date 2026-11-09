@@ -319,11 +319,19 @@ export type ValueSeriesType = "data" | "reference";
  */
 export type OverviewChartLineI18nKey = "charts.overview.invested";
 
+/**
+ * Label keys of a property's «hipoteca» / «valor» overlay lines when a chart carries several
+ * properties' pairs (`name_i18n_params`: `{ property }`); registered here like the ones above.
+ */
+export type DeptoOverlayLineI18nKey = "realEstate.mortgageOfProperty" | "realEstate.propertyValueOfProperty";
+
 export interface TimeseriesAccountLine {
   account_id: number;
   name: string;
   /** i18n key for server-grouped bucket lines; client resolves at render (falls back to `name`). */
   name_i18n_key?: string | null;
+  /** Params of `name_i18n_key` (a property's «hipoteca» / «valor» overlay names its property). */
+  name_i18n_params?: Record<string, string>;
   dataKey: string;
   /** Set on every chart line: `data` = clip trailing zeros; `reference` = totals / overlays (not clipped). */
   valueSeriesType: ValueSeriesType;

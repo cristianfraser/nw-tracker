@@ -38,6 +38,8 @@ import {
 import { dailyPayloadPending, queryLoadError } from "../queries/pageShapeReady";
 import { usePortfolioPageData } from "./usePortfolioPageData";
 import { DASHBOARD_PATH } from "../dashboardPath";
+import type { DisplayUnit } from "../queries/keys";
+import type { DashboardAccountRow } from "../types";
 
 /** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
 export function LiabilitiesGroupPage() {
@@ -126,11 +128,8 @@ export function LiabilitiesGroupPage() {
     ccLedgerSlug,
     shapeEnabled && ccLedgerSlug != null
   );
-  const { data: mortgageLedger, isPending: mortgageLedgerQueryPending } =
-    usePortfolioGroupMortgageLedger(mortgageLedgerSlug, shapeEnabled && mortgageLedgerSlug != null);
   // A section mounts while its ledger loads (empty ledger, dimmed); a failed fetch leaves it out.
   const ccLedgerPending = ccLedgerSlug != null && ccLedgerQueryPending;
-  const mortgageLedgerPending = mortgageLedgerSlug != null && mortgageLedgerQueryPending;
 
   const tableAccountsForPerf = useMemo(
     () =>
@@ -255,59 +254,22 @@ export function LiabilitiesGroupPage() {
     chartCtx?.liabilitiesGrouped,
   ]);
 
-  const mortgageAccount = useMemo(() => {
-    if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return null;
-    return (
-      accounts.find((a) => {
+  // One mortgage section per loan on the page (each its own ledger, performance and colour).
+  // With one loan (or before the page's accounts are known) one section asks for the group's one
+  // loan (`ledgerAccountId` null), so the section is not refetched when the accounts arrive.
+  const mortgageLoans = useMemo((): { ledgerAccountId: number | null; accountId: number | null }[] => {
+    if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return [];
+    const ids = accounts
+      .filter((a) => {
         const cat = a.category_slug ?? a.bucket_slug ?? "";
         return cat.includes("mortgage") || cat === "mortgage";
-      }) ?? null
-    );
+      })
+      .map((a) => a.id);
+    if (ids.length > 1) return ids.map((id) => ({ ledgerAccountId: id, accountId: id }));
+    return [{ ledgerAccountId: null, accountId: ids[0] ?? null }];
   }, [accounts, pageKind]);
-
-  const mortgageOperationalId = useMemo(() => {
-    if (mortgageAccount) {
-      return String(mortgageAccount.id);
-    }
-    if (mortgageLedger?.account_id) return String(mortgageLedger.account_id);
-    return undefined;
-  }, [mortgageAccount, mortgageLedger?.account_id]);
-
-  const {
-    data: mortgagePerf,
-    isPending: mortgagePerfPending,
-    isPlaceholderData: mortgagePerfHeld,
-  } = useAccountMonthlyPerformance(mortgageOperationalId, displayUnit);
-  // No id yet only while the ledger that would name it loads; after that, no id = no mortgage.
-  const mortgagePerfLoading = mortgageOperationalId
-    ? mortgagePerfPending || mortgagePerfHeld
-    : mortgageLedgerPending;
-
-  const mortgageDashRow = useMemo(() => {
-    if (!mortgageOperationalId) return null;
-    const id = Number(mortgageOperationalId);
-    const rows = navCtx?.accounts ?? navSnapshot?.accounts ?? [];
-    return rows.find((a) => a.account_id === id) ?? null;
-  }, [mortgageOperationalId, navCtx?.accounts, navSnapshot?.accounts]);
-
-  const mortgageSummary = useMemo(
-    () => ({
-      account_id: mortgageDashRow?.account_id ?? mortgageLedger?.account_id ?? 0,
-      latest_valuation_clp: mortgageDashRow?.current_value_clp ?? null,
-    }),
-    [mortgageDashRow, mortgageLedger?.account_id]
-  );
-
-  const mortgageColorRgb = useMemo(() => {
-    if (!mortgageAccount) return navMatchNode?.color_rgb ?? null;
-    return (
-      ts?.accounts_in_group?.accounts?.find(
-        (a) => a.account_id === mortgageAccount.id
-      )?.color_rgb ??
-      navMatchNode?.color_rgb ??
-      null
-    );
-  }, [mortgageAccount, ts?.accounts_in_group?.accounts, navMatchNode?.color_rgb]);
+  const accountRows = navCtx?.accounts ?? navSnapshot?.accounts ?? [];
+  const tsAccounts = ts?.accounts_in_group?.accounts;
 
   const proportionalLoading = contentLoading || proportionalDailyPending;
 
@@ -390,20 +352,21 @@ export function LiabilitiesGroupPage() {
         />
       ) : null}
 
-      {pageKind === "pasivos_root" && (mortgageLedger || mortgageLedgerPending) ? (
-        <LiabilitiesMortgageGroupSection
-          mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
-          displayUnit={displayUnit}
-          monthlyPerfRows={mortgagePerf?.monthly ?? []}
-          monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
-          summary={mortgageSummary}
-          accountDashRow={mortgageDashRow}
-          accountColorRgb={mortgageColorRgb}
-          linkTo="/liabilities/mortgage"
-          loading={mortgageLedgerPending}
-          perfLoading={mortgagePerfLoading}
-        />
-      ) : null}
+      {pageKind === "pasivos_root" && mortgageLedgerSlug != null && shapeEnabled
+        ? mortgageLoans.map((loan) => (
+            <MortgageLoanSection
+              key={loan.ledgerAccountId ?? "group"}
+              slug={mortgageLedgerSlug}
+              ledgerAccountId={loan.ledgerAccountId}
+              accountId={loan.accountId}
+              displayUnit={displayUnit}
+              accountRows={accountRows}
+              tsAccounts={tsAccounts}
+              fallbackColorRgb={navMatchNode?.color_rgb ?? null}
+              linkTo="/liabilities/mortgage"
+            />
+          ))
+        : null}
 
       {pageKind === "credit_card" && (ccLedger || ccLedgerPending) ? (
         <LiabilitiesCreditCardGroupSection
@@ -413,19 +376,20 @@ export function LiabilitiesGroupPage() {
         />
       ) : null}
 
-      {pageKind === "mortgage" && (mortgageLedger || mortgageLedgerPending) ? (
-        <LiabilitiesMortgageGroupSection
-          mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
-          displayUnit={displayUnit}
-          monthlyPerfRows={mortgagePerf?.monthly ?? []}
-          monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
-          summary={mortgageSummary}
-          accountDashRow={mortgageDashRow}
-          accountColorRgb={mortgageColorRgb}
-          loading={mortgageLedgerPending}
-          perfLoading={mortgagePerfLoading}
-        />
-      ) : null}
+      {pageKind === "mortgage" && mortgageLedgerSlug != null && shapeEnabled
+        ? mortgageLoans.map((loan) => (
+            <MortgageLoanSection
+              key={loan.ledgerAccountId ?? "group"}
+              slug={mortgageLedgerSlug}
+              ledgerAccountId={loan.ledgerAccountId}
+              accountId={loan.accountId}
+              displayUnit={displayUnit}
+              accountRows={accountRows}
+              tsAccounts={tsAccounts}
+              fallbackColorRgb={navMatchNode?.color_rgb ?? null}
+            />
+          ))
+        : null}
     </>
   );
 
@@ -479,6 +443,82 @@ export function LiabilitiesGroupPage() {
           />
         ) : null
       }
+    />
+  );
+}
+
+/**
+ * One loan's mortgage section on a Pasivos page: its ledger (`/mortgage-ledger?account_id=`),
+ * its monthly performance, its dashboard row and its chart colour. `ledgerAccountId` null asks the
+ * server for the group's one loan; `accountId` is the loan when the page's accounts name it.
+ */
+function MortgageLoanSection({
+  slug,
+  ledgerAccountId,
+  accountId,
+  displayUnit,
+  accountRows,
+  tsAccounts,
+  fallbackColorRgb,
+  linkTo,
+}: {
+  slug: string;
+  ledgerAccountId: number | null;
+  accountId: number | null;
+  displayUnit: DisplayUnit;
+  accountRows: readonly DashboardAccountRow[];
+  tsAccounts: readonly { account_id: number; color_rgb?: string }[] | undefined;
+  fallbackColorRgb: string | null;
+  linkTo?: string;
+}) {
+  const { data: mortgageLedger, isPending: mortgageLedgerPending } = usePortfolioGroupMortgageLedger(
+    slug,
+    ledgerAccountId
+  );
+  const mortgageOperationalId =
+    accountId != null
+      ? String(accountId)
+      : mortgageLedger?.account_id
+        ? String(mortgageLedger.account_id)
+        : undefined;
+  const {
+    data: mortgagePerf,
+    isPending: mortgagePerfPending,
+    isPlaceholderData: mortgagePerfHeld,
+  } = useAccountMonthlyPerformance(mortgageOperationalId, displayUnit);
+  // No id yet only while the ledger that would name it loads; after that, no id = no mortgage.
+  const mortgagePerfLoading = mortgageOperationalId
+    ? mortgagePerfPending || mortgagePerfHeld
+    : mortgageLedgerPending;
+  const mortgageDashRow = useMemo(() => {
+    if (!mortgageOperationalId) return null;
+    const id = Number(mortgageOperationalId);
+    return accountRows.find((a) => a.account_id === id) ?? null;
+  }, [mortgageOperationalId, accountRows]);
+  const mortgageSummary = useMemo(
+    () => ({
+      account_id: mortgageDashRow?.account_id ?? mortgageLedger?.account_id ?? 0,
+      latest_valuation_clp: mortgageDashRow?.current_value_clp ?? null,
+    }),
+    [mortgageDashRow, mortgageLedger?.account_id]
+  );
+  const mortgageColorRgb = useMemo(() => {
+    if (accountId == null) return fallbackColorRgb;
+    return tsAccounts?.find((a) => a.account_id === accountId)?.color_rgb ?? fallbackColorRgb;
+  }, [accountId, tsAccounts, fallbackColorRgb]);
+  if (!mortgageLedger && !mortgageLedgerPending) return null;
+  return (
+    <LiabilitiesMortgageGroupSection
+      mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
+      displayUnit={displayUnit}
+      monthlyPerfRows={mortgagePerf?.monthly ?? []}
+      monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
+      summary={mortgageSummary}
+      accountDashRow={mortgageDashRow}
+      accountColorRgb={mortgageColorRgb}
+      {...(linkTo != null ? { linkTo } : {})}
+      loading={mortgageLedgerPending}
+      perfLoading={mortgagePerfLoading}
     />
   );
 }
