@@ -48,8 +48,8 @@ import { ScheduledJob, atStartThen, nextAlignedMs } from "./schedulerKernel.js";
  * The server's side of the run protocol (docs/ingest-split-plan.md, Phase 2; through the job
  * queue since docs/job-queue-plan.md, phase 2): every tick reads the wall clock, `ingest_runs` and
  * the queue, lets `decideIngestRun` pick the slot that is due, and queues it; the executor
- * dispatches it to the ingest service (`dispatchIngestJob`). A fixed-interval tick, not a timer set for 22:00: timers stall while
- * the machine sleeps, the wall clock does not, so the first tick after a wake sees the missed
+ * dispatches it to the ingest service (`dispatchIngestJob`). A fixed-interval tick, not a timer
+ * set for 22:00: timers stall while the machine sleeps, the wall clock does not, so the first tick after a wake sees the missed
  * slot. Off unless `INGEST_SCHEDULER_ENABLED=1`, which only the primary instance's LaunchAgent
  * sets (never the root `.env`, which every dev server loads).
  */
@@ -265,7 +265,7 @@ export type IngestDispatchOutcome = "started" | "superseded" | "released" | "not
 
 /**
  * Start queue job `job` (an ingest run `pickNextJobs` let start): claim it, write its run (the
- * request extras — Santander catch-up / payday, AFP, AFC, payslips, mortgage sheet — decided now,
+ * request extras — Santander balance poll, AFP, AFC, payslips, mortgage sheet — decided now,
  * at start, from the state as it is now) and hand it to the ingest service. A service that is busy
  * or does not answer gets it back in the queue, offered again shortly.
  */

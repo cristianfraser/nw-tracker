@@ -1,8 +1,7 @@
 /**
  * What a dashboard account row says about its account beyond the figures (docs/untangle-plan.md
  * F12): its short card label, whether it has a Rentabilidad table, and the loan of a property. The
- * client used to derive each one (`navAccountLabels.ts`, `mayHavePeriodReturns`, a mortgage
- * matched by name); it now picks these fields. Pure: the row builder passes the account facts.
+ * client picks these fields; it derives none of them. Pure: the row builder passes the account facts.
  */
 
 export type AccountRowProfileFields = {

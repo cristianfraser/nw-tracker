@@ -49,7 +49,7 @@ type CcIssuerDef = {
   first_cuota: { cuota_comercio: CcFirstCuotaTiming; precio_contado: CcFirstCuotaTiming };
   /**
    * The statement parser's layouts that only this issuer prints (prefix): how a parsed statement
-   * names its issuer before it has an account (`issuerForParserLayout`).
+   * names its issuer before it has an account (`ccIssuerForParserLayout`).
    */
   parser_layout_prefixes: readonly string[];
   /**
@@ -60,7 +60,7 @@ type CcIssuerDef = {
   monto_facturado_tolerance_pct: number;
   /**
    * The merchant renderings the issuer adds that cross-source matching strips: BCI's statement
-   * appends « (T)» and its web table «,CITY» (`stripIssuerMerchantSuffixes`).
+   * appends « (T)» and its web table «,CITY».
    */
   merchant_suffixes: "bci_terminal_and_city" | null;
 };

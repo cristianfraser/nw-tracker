@@ -179,7 +179,7 @@ type PostCloseLineRow = RevolvingLineRow & {
 
 /**
  * Section-3 bank charge (interés, comisión, impuesto) rather than consumption or a payment —
- * the same test `statementSection3ChargesClpForBillingMonth` sums for the monthly financing
+ * the same test `ccSection3FinancingClpByDate` sums for the financing
  * cost (at the same FX date), so the flow-based P/L and the monthly sum agree by construction. Refunds (NOTA DE
  * CREDITO, negative amounts) match the section-3 merchant patterns but are negative
  * consumption, not cost, hence the positive-amount guard on both currencies.

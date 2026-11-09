@@ -1,7 +1,6 @@
 /**
  * The facturación module (docs/untangle-plan.md F10): which month a card's money belongs to and
- * when that month closes. One place for the cycle rules that were spread over
- * `ccBillingMonth` / `ccManualBillingMonth` / `ccBillingCloses` / `ccInstallmentStatementMonth`:
+ * when that month closes. One place for the cycle rules:
  *
  * - closes, from the bank's own evidence ({@link closeEvidenceForBillingMonth}: statement → feed
  *   SALDO INICIAL → announced next period → estimate), and the cycle bounds they give
@@ -54,7 +53,7 @@ import { addCalendarMonths, ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker
  * into the month (the config cycle only for a card with no close on record). Only the estimate is
  * a guess, and callers that decide a month has closed refuse to act on it.
  *
- * Leaf module (no billing-view imports) so `ccManualBillingMonth` can depend on it.
+ * Leaf module: no billing-view imports.
  */
 export type CcCloseSource = "statement" | "feed" | "announced" | "estimated";
 

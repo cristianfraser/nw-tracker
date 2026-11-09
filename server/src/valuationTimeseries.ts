@@ -1795,8 +1795,7 @@ function addNullable(
 /**
  * Sum per-account lines of an **unclipped** group block into synthetic per-bucket lines, copying the
  * `__group_val_total` / `__group_dep_total` rows and the Total line VERBATIM (aggregates are never
- * display-derived). The display clip runs on the result afterwards. Mirrors the retired client
- * `aggregateValuationByBucket`, but reads uncorrupted data.
+ * display-derived). The display clip runs on the result afterwards.
  */
 function aggregateBlockByBuckets(
   base: GroupTabValuationBlock,

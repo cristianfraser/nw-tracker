@@ -184,7 +184,7 @@ export type MortgageUpcomingInput = {
   /** Projected minimum (amortization at the remaining balance) and the bank's posted máxima, in UF. */
   minUf: number;
   maxUf: number;
-  /** The UF module's best pay date for the cuota of `bestPayMonth` (null = the 11th is best). */
+  /** The UF module's best pay date for the cuota of `bestPay.month` (null = the 11th is best). */
   bestPay: { month: string; date: string } | null;
 };
 
