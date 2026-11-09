@@ -14,6 +14,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# The remote `demo` is pushed to: origin on a laptop; on the home server, whose origin is a
+# read-only deploy key, a remote with a write credential (scripts/server-deploy.sh).
+PUSH_REMOTE="${RELEASE_DEMO_PUSH_REMOTE:-origin}"
+
 YES=0
 ROLLBACK=0
 TARGET=""
@@ -66,16 +70,25 @@ else
   git log --oneline "$demo..$sha"
 fi
 
-# The demo's Santiago closes are a committed snapshot (Render cannot reach the Bolsa's API), and
-# the build refuses one older than a week: refuse the release first, with the fix.
-snapshot=server/data/demo/santiago-closes.csv
-snapshot_last="$(git show "$sha:$snapshot" | tail -n 1 | cut -d';' -f2)"
-snapshot_min="$(date -v-7d +%F 2>/dev/null || date -d '7 days ago' +%F)"
-if [[ "$snapshot_last" < "$snapshot_min" ]]; then
-  echo "$snapshot ends $snapshot_last, older than a week: the Render build would refuse it. Refresh, commit and push main first:" >&2
-  echo "  npm run demo:refresh-santiago-snapshot -w nw-tracker-server" >&2
+# The Render build reads the demo's market from the asset the home server publishes every night
+# (docs/demo-market-publish-plan.md) and refuses one complete through more than three days before
+# its yesterday: refuse the release first, with the fix. The header is a small public asset.
+meta_url="https://github.com/cristianfraser/nw-tracker/releases/download/demo-market/demo-market.meta.json"
+if ! meta="$(curl -fsSL -m 30 "$meta_url")"; then
+  echo "Could not read the demo market asset's header ($meta_url); the Render build would not find the asset." >&2
+  echo "Check the home server's nightly publish (cfraser/server.log, «demo-market-publish»), or run it there by hand:" >&2
+  echo "  npm run demo:publish-market -w nw-tracker-server -- --upload" >&2
   exit 1
 fi
+market_through="$(/usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["complete_through"])' <<<"$meta")"
+market_min="$(date -v-4d +%F 2>/dev/null || date -d '4 days ago' +%F)"
+if [[ "$market_through" < "$market_min" ]]; then
+  echo "The demo market asset is complete through $market_through, older than $market_min: the Render build would refuse it." >&2
+  echo "Check the home server's nightly publish (cfraser/server.log, «demo-market-publish»), or run it there by hand:" >&2
+  echo "  npm run demo:publish-market -w nw-tracker-server -- --upload" >&2
+  exit 1
+fi
+echo "Demo market asset: complete through $market_through."
 
 # The link-preview image (client/public/og-image.png) is a screenshot of the dashboard. Say so when
 # the client changed after it was last rendered; never block the release over it.
@@ -103,8 +116,8 @@ if ((!YES)); then
 fi
 
 if ((ROLLBACK)); then
-  git push --force-with-lease="demo:$demo" origin "$sha:refs/heads/demo"
+  git push --force-with-lease="demo:$demo" "$PUSH_REMOTE" "$sha:refs/heads/demo"
 else
-  git push origin "$sha:refs/heads/demo"
+  git push "$PUSH_REMOTE" "$sha:refs/heads/demo"
 fi
 echo "demo is at $short; Render deploys it. Check https://nw-tracker-demo.onrender.com/api/health once the build is done."
