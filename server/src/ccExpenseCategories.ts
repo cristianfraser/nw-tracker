@@ -13,11 +13,6 @@ import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants
 import { parseDdMmYyToIso, normalizeMerchantText, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
 import { buildExpenseKey, parseExpenseKey } from "./expenseKeys.js";
 
-/** Asset group slug for `GET /api/flows/expenses/credit-card` (every card). */
-export function primaryCreditCardExpensesGroupSlug(): string {
-  return "credit_cards";
-}
-
 export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
 /** Where a charge a document shows is a subscription's lands when nothing else categorizes it. */
 export const SUBSCRIPTIONS_CC_EXPENSE_SLUG = "subscriptions";
@@ -51,10 +46,6 @@ export function isCcExpenseTotalsExcludedSlug(categorySlug: string): boolean {
   return CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(categorySlug);
 }
 
-export function countsTowardCcExpenseTotals(categorySlug: string): boolean {
-  return !isCcExpenseTotalsExcludedSlug(categorySlug);
-}
-
 /** Installment schedule row with cuota index 0 (contract summary, not a billed cuota). */
 export function isInstallmentCuotaZeroLine(line: {
   installment_flag: number;
@@ -68,7 +59,7 @@ export function countsTowardCcExpenseGastosMes(
   categorySlug: string,
   line: { installment_flag: number; nro_cuota_current: number | null }
 ): boolean {
-  if (!countsTowardCcExpenseTotals(categorySlug)) return false;
+  if (isCcExpenseTotalsExcludedSlug(categorySlug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;
   return true;
 }
@@ -608,7 +599,7 @@ function installmentLedgerTotalForCtx(
  * 1. the line's own ledger payment row (`cc_installment_payments.parser_row_id`, written when the
  *    statement was matched to the ledger) — exact;
  * 2. identity, when every plan that matches carries one total
- *    ({@link installmentLedgerTotalForIdentity}) — twin plans of identical purchases share it;
+ *    (by identity: date, merchant, cuota count) — twin plans of identical purchases share it;
  * 3. among same-identity twins, the unique plan whose monthly cuota (total ÷ cuotas) is the
  *    line's printed `valor_cuota_mensual_clp` (within 1 peso of rounding).
  *
@@ -708,30 +699,6 @@ function installmentLedgerTotalsForIdentity(
         .map((r) => Math.round(r.total_amount_clp))
     ),
   ];
-}
-
-/**
- * Ledger `total_amount_clp` for an installment identity (account/date/cuotas/merchant), or null
- * unless the matching plans carry exactly one total (twin plans of identical purchases share
- * theirs). Tier 2 of {@link installmentLedgerTotalForStatementLine}; on its own it cannot tell
- * same-identity plans with DIFFERENT totals apart (a statement line has the payment row and the
- * printed cuota for that).
- */
-export function installmentLedgerTotalForIdentity(
-  accountId: number,
-  purchaseDateIso: string,
-  cuotasTotales: number,
-  merchant: string | null | undefined
-): number | null {
-  const merchantKey = normalizeCcExpenseMerchantKey(merchant);
-  if (!purchaseDateIso || !merchantKey || cuotasTotales <= 0) return null;
-  const totals = installmentLedgerTotalsForIdentity(
-    accountId,
-    purchaseDateIso,
-    cuotasTotales,
-    merchantKey
-  );
-  return totals.length === 1 ? totals[0]! : null;
 }
 
 /** Statement line ids that share one installment purchase (cuotas 1..N). */

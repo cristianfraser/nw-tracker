@@ -44,13 +44,6 @@ export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
   return rows;
 }
 
-export function loadCheckingExpenseRefundMovementIds(): Set<number> {
-  const rows = db
-    .prepare(`SELECT m.id AS movement_id FROM flow_refunds r JOIN movements m ON m.flow_id = r.flow_id`)
-    .all() as { movement_id: number }[];
-  return new Set(rows.map((r) => r.movement_id));
-}
-
 export function isCheckingExpenseRefund(movementId: number): boolean {
   return (
     db.prepare(`SELECT 1 FROM flow_refunds r JOIN movements m ON m.flow_id = r.flow_id WHERE m.id = ?`).get(movementId) != null

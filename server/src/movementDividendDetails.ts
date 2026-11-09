@@ -140,12 +140,6 @@ export function getMovementDividendDetail(movementId: number): MovementDividendD
   return (stmtGet.get(movementId) as MovementDividendDetailRow | undefined) ?? null;
 }
 
-export function listMovementDividendDetails(): MovementDividendDetailRow[] {
-  return db
-    .prepare(`SELECT * FROM movement_dividend_details ORDER BY movement_id`)
-    .all() as MovementDividendDetailRow[];
-}
-
 function normalized(input: MovementDividendDetailInput): Omit<MovementDividendDetailRow, "created_at" | "updated_at"> {
   return {
     movement_id: input.movement_id,

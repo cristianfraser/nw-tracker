@@ -304,8 +304,7 @@ export function netDepositFlowWindows(
  * Net capital flow for one account in the current calendar month through Chile today. The
  * events are display-dated, so a movement the bank posts later is already in today's
  * bucket — the same place the live balance counts it. Same event source as
- * `flowsDepositsNetInPeriodByAccount("month")`, so live current-month P/L reconciles with
- * the dashboard deposits column.
+ * the dashboard deposits column, so live current-month P/L reconciles with it.
  */
 export function netDepositFlowCurrentMonthThroughToday(
   accountId: number,
@@ -313,18 +312,6 @@ export function netDepositFlowCurrentMonthThroughToday(
 ): number {
   const today = chileCalendarTodayYmd();
   return netDepositFlowBetween(accountId, priorPeriodEndYmd("mtd", today), today, unit);
-}
-
-/** Net deposits in the current calendar month or year (flows-page accounts only). */
-export function flowsDepositsNetInPeriodByAccount(period: "month" | "year"): {
-  clp: Map<number, number>;
-  usd: Map<number, number>;
-} {
-  const opts = { period, includeExcludedFromGroupTotals: true };
-  return {
-    clp: flowsDepositsNetTotalsByAccount("clp", opts),
-    usd: flowsDepositsNetTotalsByAccount("usd", opts),
-  };
 }
 
 /** Net capital (deposits − withdrawals) per account — same accounts as the flows deposits page. */
