@@ -73,6 +73,14 @@
         "en": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
         "es": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato."
       },
+      "story": {
+        "en": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and Roth IRA). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
+        "es": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y Roth IRA). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno."
+      },
+      "storyTax": {
+        "en": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year.",
+        "es": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente."
+      },
       "openDashboard": {
         "en": "Open the dashboard",
         "es": "Abrir el dashboard"
@@ -242,6 +250,26 @@
           "body": {
             "en": "The Flows panel sums last month and the last 12 months: income, expenses, savings, deposits and investment P/L. The Flows pages show the detailed breakdown, month by month and by category.",
             "es": "El panel Flujos suma el último mes y los últimos 12 meses: ingresos, gastos, ahorro, depósitos y P/L de inversiones. Las páginas de Flujos muestran el detalle, mes a mes y por categoría."
+          }
+        },
+        "retirement": {
+          "title": {
+            "en": "Retirement, Chile and US",
+            "es": "Jubilación, Chile y EE. UU."
+          },
+          "body": {
+            "en": "Retirement splits by country: the AFP, unemployment fund and APV in Chile, and the 401(k), HSA and Roth IRA in the US, each valued daily from its own price series.",
+            "es": "La jubilación se divide por país: AFP, seguro de cesantía y APV en Chile, y 401(k), HSA y Roth IRA en EE. UU., cada uno valorizado a diario con su propia serie de precios."
+          }
+        },
+        "taxes": {
+          "title": {
+            "en": "Two returns each April",
+            "es": "Dos declaraciones cada abril"
+          },
+          "body": {
+            "en": "The US tab holds the 1040 for the US salary; the Chile tab the F22, which declares that salary again with the treaty credit for the US tax, plus the rent of the apartment that is not DFL-2.",
+            "es": "La pestaña US tiene el 1040 del sueldo en EE. UU.; la pestaña Chile, el F22, que declara ese sueldo de nuevo con el crédito del tratado por el impuesto de EE. UU., y el arriendo del departamento que no es DFL-2."
           }
         },
         "end": {

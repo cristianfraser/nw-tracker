@@ -27,8 +27,8 @@ const TARGET_RING_CLASS = "demo-tour-ring";
 const TARGET_WAIT_MS = 3000;
 
 type TourStep = {
-  id: "welcome" | "cards" | "chart" | "sidebar" | "flows" | "end";
-  /** Route the step is about; the tour navigates there when the step opens (every step is on the dashboard). */
+  id: "welcome" | "cards" | "chart" | "sidebar" | "flows" | "retirement" | "taxes" | "end";
+  /** Route the step is about; the tour navigates there when the step opens. */
   route?: string;
   /** Elements the step points at (all outlined; the first scrolled into view), when on screen. */
   targets?: readonly TourTarget[];
@@ -46,6 +46,8 @@ const STEPS: readonly TourStep[] = [
   { id: "chart", route: DASHBOARD_PATH, targets: ['[data-tile="net-worth-chart"]'] },
   { id: "sidebar", route: DASHBOARD_PATH, targets: ['[data-tour="nav-groups"]'] },
   { id: "flows", route: DASHBOARD_PATH, targets: [{ selector: '[data-tile="flows-periods"]', fit: "content" }, '[data-tour="nav-flows"]'] },
+  { id: "retirement", route: "/inversiones/retiro", targets: [".cards-strip"] },
+  { id: "taxes", route: "/tax-return", targets: ['[role="tablist"]'] },
   { id: "end" },
 ];
 

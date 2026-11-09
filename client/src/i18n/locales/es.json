@@ -31,6 +31,8 @@
       "title": "Bienvenido a NW Tracker",
       "lead": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado.",
       "fictional": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato.",
+      "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y Roth IRA). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno.",
+      "storyTax": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente.",
       "openDashboard": "Abrir el dashboard",
       "howTitle": "Cómo funciona",
       "youAreHere": "Estás aquí",
@@ -90,6 +92,14 @@
         "flows": {
           "title": "A dónde fue la plata",
           "body": "El panel Flujos suma el último mes y los últimos 12 meses: ingresos, gastos, ahorro, depósitos y P/L de inversiones. Las páginas de Flujos muestran el detalle, mes a mes y por categoría."
+        },
+        "retirement": {
+          "title": "Jubilación, Chile y EE. UU.",
+          "body": "La jubilación se divide por país: AFP, seguro de cesantía y APV en Chile, y 401(k), HSA y Roth IRA en EE. UU., cada uno valorizado a diario con su propia serie de precios."
+        },
+        "taxes": {
+          "title": "Dos declaraciones cada abril",
+          "body": "La pestaña US tiene el 1040 del sueldo en EE. UU.; la pestaña Chile, el F22, que declara ese sueldo de nuevo con el crédito del tratado por el impuesto de EE. UU., y el arriendo del departamento que no es DFL-2."
         },
         "end": {
           "title": "Recorrido completo",
