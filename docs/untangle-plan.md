@@ -1669,7 +1669,10 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
   `cfraser/mortgage-sheet.json` on the server needs the 11 `accepted_differences` entries (laptop copy updated,
   backup in `~/Documents/backups/nw-tracker/`). `can_make_installment` is back to open-cycle or bank-tagged lines.
   The deposits reconciliation no longer has `linked_synthetic` / `resolved_family_funded` statuses. The ingest
-  service and the server deploy together (unchanged contracts since wave 4, but the same commit).
+  service and the server deploy together (unchanged contracts since wave 4, but the same commit). Migration 277
+  seeds no owner row any more (the owner's name was a literal in a public migration): on the live database run
+  `npx tsx scripts/set-owner-identity.ts --name-pattern=<as the bank prints the owner>` once after the first boot,
+  or the checking own-transfer rules match nothing.
 
 ## Open decisions
 
