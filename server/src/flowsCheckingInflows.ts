@@ -395,7 +395,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
 
   // A tax refund the Tesorería paid outside checking (e.g. cashed at BancoEstado and deposited into
   // the savings account) is income too; one paid into checking is already a credit above.
-  const checkingAccountIds = new Set([...accountIds, ...dollarAccountIds]);
+  const checkingAccountIds = new Set(accountIds);
   const outsideRefunds = loadF22RefundMovements().filter((r) => !checkingAccountIds.has(r.account_id));
   const refundAccountLabels = loadAccountLabels([...new Set(outsideRefunds.map((r) => r.account_id))]);
   for (const r of outsideRefunds) {
