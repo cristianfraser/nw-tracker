@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { aggregationCacheKeysForTest, clearAggregationCache } from "./cacheRegistry.js";
-import { planVisitedWarm, warmVisitedPages } from "./visitedPagesWarm.js";
+import { usageDb } from "./usageDb.js";
+import { planVisitedWarm, visitedWarmPlanFromUsageLog, warmVisitedPages } from "./visitedPagesWarm.js";
 
 afterAll(() => clearAggregationCache());
 
@@ -74,4 +75,28 @@ describe("warmVisitedPages", () => {
     expect(keys).toContain("daily.series|response|group|liabilities|clp|90|plain");
     expect(keys).toContain("dashboard.page_bundle|sidebar_nav");
   }, 120_000);
+});
+
+describe("visitedWarmPlanFromUsageLog", () => {
+  it("plans only the group pages the nav strip serves", () => {
+    const usage = usageDb();
+    const now = new Date();
+    const ins = usage.prepare(
+      `INSERT INTO usage_page_views (viewed_at, route, path, visitor, initial, outcome, settle_ms, fetched_queries)
+       VALUES (?, ?, ?, 'vitest-visited-warm', 1, 'settled', 100, 1)`
+    );
+    const ids: number[] = [];
+    for (const path of ["/flows/expenses", "/flows/expenses", "/inversiones/brokerage"]) {
+      ids.push(Number(ins.run(now.toISOString(), path, path).lastInsertRowid));
+    }
+    try {
+      const plan = visitedWarmPlanFromUsageLog(now);
+      expect(plan.groups.map((g) => g.slug)).toContain("brokerage");
+      expect(plan.groups.map((g) => g.slug)).not.toContain("flows_expenses");
+      expect(plan.navContexts.map((c) => c.root)).toContain("brokerage");
+      expect(plan.navContexts.map((c) => c.root)).not.toContain("flows_expenses");
+    } finally {
+      usage.prepare(`DELETE FROM usage_page_views WHERE id IN (${ids.map(() => "?").join(",")})`).run(...ids);
+    }
+  });
 });

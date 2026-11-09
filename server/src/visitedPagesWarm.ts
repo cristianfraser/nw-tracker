@@ -9,7 +9,7 @@ import {
   groupMonthlyPlSeriesResponse,
   groupValuationTsResponse,
 } from "./groupPagePayloads.js";
-import { isResolvablePortfolioGroupSlug } from "./portfolioGroupTree.js";
+import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode, type NavTreeNodeDto } from "./navTree.js";
 import { cachedSidebarNavPayload } from "./sidebarNavChartBuckets.js";
 import { usageDb } from "./usageDb.js";
 import type { TsUnit } from "./valuationTimeseries.js";
@@ -135,6 +135,20 @@ export function planVisitedWarm(
   return { groups, accounts, navContexts };
 }
 
+/**
+ * The group pages the nav strip serves, by route: every group node of the Pasivos and net-worth
+ * trees (the trees `navContextScope` searches), the home page left out (it is the page bundle's).
+ */
+function navStripGroupSlugByRoute(): Map<string, string> {
+  const out = new Map<string, string>();
+  const walk = (n: NavTreeNodeDto) => {
+    if (n.account_id == null && n.expense_account_id == null && n.route_path !== "/") out.set(n.route_path, n.slug);
+    for (const c of n.children ?? []) walk(c);
+  };
+  for (const root of [getLiabilitiesNavRootNode(), getNetWorthNavGroupNode()]) if (root) walk(root);
+  return out;
+}
+
 export function visitedWarmPlanFromUsageLog(now = new Date()): VisitedWarmPlan {
   const since = new Date(now.getTime() - VISITED_WARM_WINDOW_DAYS * 86_400_000).toISOString();
   const usage = usageDb();
@@ -149,18 +163,16 @@ export function visitedWarmPlanFromUsageLog(now = new Date()): VisitedWarmPlan {
        GROUP BY route, params`
     )
     .all(since) as EndpointCount[];
-  const routes = db
-    .prepare(
-      `SELECT route_path, slug FROM portfolio_groups WHERE route_path IS NOT NULL
-       UNION SELECT route_path, slug FROM liability_groups WHERE route_path IS NOT NULL`
-    )
-    .all() as { route_path: string; slug: string }[];
+  const groupSlugByRoute = navStripGroupSlugByRoute();
+  const navSlugs = new Set(groupSlugByRoute.values());
   const knownAccounts = new Set((db.prepare(`SELECT id FROM accounts`).all() as { id: number }[]).map((r) => r.id));
-  const plan = planVisitedWarm(pageViews, endpoints, new Map(routes.map((r) => [r.route_path, r.slug])));
+  const plan = planVisitedWarm(pageViews, endpoints, groupSlugByRoute);
   return {
     ...plan,
-    // Only what the routes accept (a slug the log kept from an older nav tree is skipped).
-    groups: plan.groups.filter((g) => g.slug === "inversiones" || isResolvablePortfolioGroupSlug(g.slug)),
+    // Only the group pages the nav strip serves: a flows page's route, or a slug the log kept from
+    // an older nav tree, names a page the warm cannot build (the nav context throws on it).
+    groups: plan.groups.filter((g) => navSlugs.has(g.slug)),
+    navContexts: plan.navContexts.filter((c) => navSlugs.has(c.root)),
     accounts: plan.accounts.filter((a) => knownAccounts.has(a.id)),
   };
 }
