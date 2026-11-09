@@ -466,7 +466,7 @@ export async function openMovements(
 
   // Dividends first, from the API the page already loaded: the record carries the canonical id
   // (its route id), the paying instrument and the gross / withholding behind the credited net —
-  // everything the detail click used to be opened for, plus the tax the click never gave.
+  // everything a detail click would give, plus the tax the click never showed.
   const apiDividends = apiDividendsFromRecorder(recorder);
   if (apiDividends) {
     let matched = 0;

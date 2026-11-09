@@ -1,6 +1,5 @@
 /**
- * Inbox pipeline for new files dropped under `cfraser/inbox/` (an ingest command since Phase 4;
- * it was the server script `import-cfraser-inbox.ts`). Every step is an ingest command that reads
+ * Inbox pipeline for new files dropped under `cfraser/inbox/` (an ingest command). Every step is an ingest command that reads
  * documents and sends them to the server, or a server task it asks for over the API — this
  * process never opens the database.
  *

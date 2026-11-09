@@ -6,8 +6,7 @@ import { APP_BASE } from "./routes.js";
  * in-page; from anywhere else the app is loaded with the route in its hash.
  *
  * Deliberately no wait of its own: the SPA keeps analytics traffic flowing, so `networkidle` never
- * arrives and the settle this used to carry (`gotoRoute`, until 2026-10-10) only ever ran to its
- * timeout. Every caller waits for the view's own data call instead (`waitForNewApiCalls`), which is
+ * arrives and a settle here only ever ran to its timeout (2026-10-10). Every caller waits for the view's own data call instead (`waitForNewApiCalls`), which is
  * both faster and the proof that the view loaded.
  */
 export async function openRoute(page: Page, route: string): Promise<void> {

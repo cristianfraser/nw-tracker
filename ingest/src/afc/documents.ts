@@ -1,6 +1,6 @@
 /**
  * AFC (Fondo de Cesantía) documents from the AFC sucursal virtual, read as `pdftotext -layout`
- * text (moved from the server's `afcCertImport.ts`, which applies what they print):
+ * text (the server's `afcCertImport.ts` applies what they print):
  *
  * 1. **Certificado de cotizaciones previsionales acreditadas** — every cotización with período,
  *    empleador, renta imponible, monto and the exact fecha de pago, two legs per período, closed

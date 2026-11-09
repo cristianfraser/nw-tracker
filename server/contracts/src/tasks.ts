@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Server tasks a feeder run asks for (Phase 4): work on the server's own data that belongs in a
+ * Server tasks a feeder run asks for: work on the server's own data that belongs in a
  * run's sequence — after the card feed lands, after the receipts are sent — and that only the
  * server may do, since it is the one process that writes the database.
  *

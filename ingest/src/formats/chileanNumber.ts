@@ -1,5 +1,5 @@
-// Copy of server/src/chileanNumber.ts for the parsers that moved to ingest
-// (docs/ingest-split-plan.md); the server's copy goes with its last parser (Phase 4). Both are
+// Copy of server/src/chileanNumber.ts for the parsers that live in ingest
+// (docs/ingest-split-plan.md); the server's copy goes with its last parser. Both are
 // pinned by the same cases (server/src/test/chileanDecimalCases.json, read by the tests here).
 
 /**
