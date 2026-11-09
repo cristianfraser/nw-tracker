@@ -56,7 +56,7 @@ export function parsePartialMovementNote(note: string): ParsedPartialMovementNot
 /**
  * The two sources render the same movement differently: the "últimos movimientos" web view
  * UPPERCASES, the cartola may prefix an asterisk-slash marker ("Giro Nacional VD"), either side truncates the tail
- * ("…ADMINISTRADORA GENERAL DE FONDO" vs "…ADMINISTRADORA G", "…Fraser" vs "…PEREZ SOTO"),
+ * ("…ADMINISTRADORA GENERAL DE FONDO" vs "…ADMINISTRADORA G", "…Perez" vs "…PEREZ SOTO"),
  * and mojibake for accents diverges ("SEBASTIÃ,N" vs "SebastiÃ¡n"). Reduce to the A-Z0-9 skeleton
  * so only the stable characters compare.
  */

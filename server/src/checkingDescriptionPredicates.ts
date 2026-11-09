@@ -290,7 +290,7 @@ export function checkingWithdrawalFundsInvestmentCapital(note: string | null): b
 
 /**
  * Only generic cartola abonos may auto-filter as net-worth capital return (checking-outflow path).
- * Named person transfers (e.g. "… Transf. Juan Alejandro Perez") stay in income.
+ * Named person transfers (e.g. "… Transf. <a person's name>") stay in income.
  */
 export function checkingCreditMayAutoMatchNetWorthCapitalReturn(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();

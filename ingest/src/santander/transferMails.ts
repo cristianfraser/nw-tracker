@@ -101,7 +101,7 @@ function labelKey(label: string): keyof TransferParty | "comment" | "skip" {
   throw new Error(`unknown label «${label}»`);
 }
 
-/** Two values printed after two labels («Cuenta Nro.: Rut: 0-000-… 76.413.921-6»), split by what each looks like. */
+/** Two values printed after two labels («Cuenta Nro.: Rut: 0-000-… 76.543.210-9»), split by what each looks like. */
 function splitPair(a: string, b: string, value: string): Record<string, string> {
   const v = value.trim();
   const keys = [a, b].join("+");
