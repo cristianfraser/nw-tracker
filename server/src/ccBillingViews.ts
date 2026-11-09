@@ -18,6 +18,7 @@ import {
 } from "./ccFacturacionUsdRate.js";
 import { withCcOneShotScanCache, planCount } from "./cards/purchases.js";
 import {
+  primaryStatementOfSlot,
   statementSlotsByBillingMonth,
   type CcStatementSlotByCurrency,
 } from "./ccBillingStatementSlots.js";
@@ -267,9 +268,9 @@ function slotFacturado(
   accountId: number,
   slot: CcStatementSlotByCurrency
 ): { clpDerived: DerivedFacturado; usdDerived: DerivedFacturado } {
-  const derive = (st: CcStatementSlotByCurrency["clp"]): DerivedFacturado =>
+  const derive = (st: CcStatementRow | undefined): DerivedFacturado =>
     st ? facturadoFromStatement(accountId, st.statement_date, st, st.statement_date_iso) : { facturado_clp: null, facturado_usd: null };
-  return { clpDerived: derive(slot.clp), usdDerived: derive(slot.usd) };
+  return { clpDerived: derive(slot.get("clp")), usdDerived: derive(slot.get("usd")) };
 }
 
 /** CLP and USD facturado headers for a billing-month statement slot (matches buildFacturaciones). */
@@ -287,7 +288,7 @@ function facturadoTotalClpForStatementSlot(
   accountId: number,
   slot: CcStatementSlotByCurrency
 ): number | null {
-  const primary = slot.clp ?? slot.usd;
+  const primary = primaryStatementOfSlot(accountId, slot);
   if (!primary) return null;
 
   const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
@@ -626,7 +627,7 @@ function buildBillingDetailByMonthInner(
   const out: CcBillingDetailStatementRow[] = [];
   for (const billingMonth of months) {
     const slot = slots.get(billingMonth);
-    const primary = slot?.clp ?? slot?.usd;
+    const primary = slot ? primaryStatementOfSlot(accountId, slot) : null;
     if (inactive) {
       if (!primary) continue;
       if (
@@ -861,7 +862,7 @@ function resolveFacturacionPayBy(
   slot: CcStatementSlotByCurrency,
   primary: CcStatementRow
 ): { pay_by: string | null; pay_by_iso: string | null; pay_by_source: CcFacturacionRow["pay_by_source"] } {
-  for (const st of [slot.clp, slot.usd]) {
+  for (const st of [primary, ...slot.values()]) {
     if (!st) continue;
     const explicit = String(st.pay_by ?? "").trim();
     if (explicit) {
@@ -990,7 +991,7 @@ function buildFacturacionesInner(
 
   const out: CcFacturacionRow[] = [];
   for (const [billingMonth, slot] of byMonth) {
-    const primary = slot.clp ?? slot.usd;
+    const primary = primaryStatementOfSlot(accountId, slot);
     if (!primary) continue;
 
     const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
