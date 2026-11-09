@@ -66,6 +66,17 @@ else
   git log --oneline "$demo..$sha"
 fi
 
+# The demo's Santiago closes are a committed snapshot (Render cannot reach the Bolsa's API), and
+# the build refuses one older than a week: refuse the release first, with the fix.
+snapshot=server/data/demo/santiago-closes.csv
+snapshot_last="$(git show "$sha:$snapshot" | tail -n 1 | cut -d';' -f2)"
+snapshot_min="$(date -v-7d +%F 2>/dev/null || date -d '7 days ago' +%F)"
+if [[ "$snapshot_last" < "$snapshot_min" ]]; then
+  echo "$snapshot ends $snapshot_last, older than a week: the Render build would refuse it. Refresh, commit and push main first:" >&2
+  echo "  npm run demo:refresh-santiago-snapshot -w nw-tracker-server" >&2
+  exit 1
+fi
+
 # The link-preview image (client/public/og-image.png) is a screenshot of the dashboard. Say so when
 # the client changed after it was last rendered; never block the release over it.
 if ((!ROLLBACK)); then
