@@ -422,3 +422,79 @@ Not merged to `main`.
   worth one check too. The real-market generation (`--real-market`) was not rehearsed on the
   laptop (no Banco Central credentials); the ETF's pre-Yahoo closes come from the committed
   `server/data/demo/cfietfipsa-sn-2025-2026.csv`.
+
+### Wave 2 status (2026-11-09): merged into the integration branch, green
+
+Three streams landed on top of wave 1 — `us-card-issuer` (4cb75219, reworked in 5ec66161 after the
+user flagged `accountStatementsAreUsdOnly`: a USD-only switch is not currency-agnostic and stood in
+for two unrelated issuer facts), `us-rentals-app` (617615ff), `us-chapter-gen` (72f28b0c) — no merge
+conflicts. On the merged tree: `npm run typecheck` ok (conventions + check-deps ok), server
+487 files / 3233 tests on a fresh test DB, client 474, contracts 126, ingest 481, Python ok; both people
+generate on the synthetic market with the invariants passing — the demo person US$397.292 (365,3 M
+CLP; 3.907 movements; 67 US stubs, all paired and clean; 3 tax passes; ~45 s), the test person
+US$28.302 (no US chapter; 7 s). Not merged to `main`. AGENTS.md gained the wave's conventions
+(issuer data, dollar checking lines, DFL-2 + rent + the F22 rent codes, the US chapter).
+
+### Notes from wave 2 (for waves 3–4)
+
+- **Issuer data replaced the USD-only switch.** `CC_ISSUERS` rows carry `statement_currencies:
+  {primary, secondary[]}`, `installments` and `unbilled_listing`; the close rule is
+  `closedBillingMonthsFromStatements` (pure) over `requiredStatementCurrenciesForAccount`; the
+  statement slot is a `Map<currency, statement>` and `primaryStatementOfSlot` picks the primary.
+  No `"clp" | "usd"` union was added; the DTO fields that are peso / dollar by definition
+  (`facturado_clp`, `facturado_usd`, `saldo_total_usd`) still read those two entries.
+- **For `us-rentals-gen` (wave 3) — the US card (phase 7 generator):** master
+  `credit_card_master|lonestar|<last4>` + a `credit_card_account_config` row (`issuer='lonestar'`,
+  `card_last4`); statements as the demo's USD rows (`parser_layout "international_usd"`, `currency
+  "usd"`, `card_group "A"`, only `amount_usd`, no CLP statement); headers:
+  `statement_compras_cargos` = purchases, `statement_monto_facturado` = purchases + interest/fees
+  (new charges, not the balance), `statement_deuda_total` = saldo + abono + monto_facturado,
+  `pay_by` = close + 25, `next_period_*`; the previous payment a negative «PAYMENT - THANK YOU» /
+  «AUTOPAY PAYMENT» line, interest/fees positive «INTEREST CHARGE …» / «LATE FEE» / «ANNUAL
+  MEMBERSHIP FEE»; no open-cycle listing (do not render `renderOpenCycle` for it); the
+  checking-side payment (US checking → card, a `pago_tarjeta` in dollars) is untested — check
+  `convertCcPaymentMirrors` / the dollar payment path pairs it, and that «Próximos pagos» lists it in
+  dollars (the fixture test asserts the card side only).
+- **For `us-rentals-gen` — the rentals (phase 4b generator):** places through
+  `createRealEstatePlace({slug, label, activeFrom, activeTo, propertyAccountId, dfl2: {dfl2: true,
+  builtM2: 55, receptionYear}})` (Centro; Vitacura without `dfl2`); the halving window from
+  `dfl2ContribucionesHalvedThroughYear` or the place's `dfl2_contribuciones_halved_through`; each
+  rent credit on checking → `upsertCheckingIncomeMovementOverride(movementId, {income_kind: "rent",
+  rent_place_slug})` (a single-leg peso credit on a checking-list account); contribuciones as bill
+  rows (`expense_entries`, `category = 'contribuciones'`, `expense_account_id` = the place, by
+  `spent_on` year — the real-estate assign path), so the taxable place's 1637 credit appears; the
+  April loop picks 1849 / 955 / 1637 up by itself. The second property / loan keys are in the wave 1
+  notes. **Fix the mortgage link while there:** the demo's mortgage card line (`MUTUARIA ANDES
+  HIPOTECARIO`, every cuota) has no `funded_deposit` row in `flow_links` — the sync
+  (`syncExpenseDepositLinksFromGastosLines`, or `syncMortgageExpenseDepositLinksFromSheet`) runs only
+  from `expenseAssignmentWrites.ts`, which the generator never calls — so the whole cuota counts as a
+  gasto while the dividendo deposit also counts, and the flows overview's «sin explicar» reads
+  exactly one cuota (~1,3–1,5 M) every month from 2024-04. Pre-existing (the pre-plan tree shows
+  it); call the sync after the card statements and the mortgage payments are written, for both
+  loans, and make `invariants.ts` assert `cash_unexplained` within noise every month (the original
+  generator plan's invariant, never enforced). Also from the generator stream: the wire sizing
+  reads the Chilean trailing spend plus known needs — rents and the second mortgage move it; the US
+  surplus is tight (net ≈ US$8,2k/month against ≈ US$4,2k of US spend; IBKR ends with ~US$2k cash
+  plus the SGOV reserve); the Roth's SPY earns no dividends (the dividend loop pays broker cash
+  accounts only) and two accounts now carry `equity_ticker` SPY, so `accountIdForEquityTicker("SPY")`
+  throws (only the Fintual mail import calls it).
+- **For `us-1040` (wave 3):** the stubs are `payroll_work_earnings` with `jurisdiction = 'us'`,
+  `pay_period = 'biweekly'`, `pay_date`, `w4_filing_status = 'single'`, the EIN in `employer_rut`,
+  lines in `payslip_lines` (US kinds; the employer match a `memo` side). W-2s are not stored: the
+  generator derives them (`usW2sFromStubs`: boxes 1–6, 12D, 12W) and checks them against the stored
+  lines — a filed-1040 table is the stream's to add, and a W-2 record beside it if the 1040 needs
+  one. The US law is `usLegalParameters.ts` (2025 Pub. 15-T as published, 2026 figures
+  `// provisional`). Roth contributions: US$7.000 each October from 2025 (MAGI check: the salary is
+  under the phase-out).
+- **For `us-f22-border` (wave 4):** the US salary is not in the F22 (`payrollTaxYear` keeps US
+  stubs out). A listed single-leg `withdrawal_usd` debit is now a «used» dollar lot in
+  `usdCashTaxLotEvents.ts` (realized under both oficios), so the US spending's fx results enter
+  the F22's «Diferencias de cambio» from 2024 — decide whether a US resident's dollar spending
+  belongs there at all. The flows overview counts `rent` through its `other` income bucket; the
+  income chart has no `rent` bucket yet (small, `flowsOverview.ts` + the client chart).
+- **Left as notes by the streams:** `ccExpensePurchaseNotes.ts`, `checkingExpenseRefunds.ts`,
+  `flowsDepositsReconciliation.ts` and `movementMirrorPairs.ts` still read
+  `listMovementBalanceCashAccountIds()` only, so notes and refund marking on US lines and the
+  reconciliation of IBKR deposits from US checking are untested or refused; the DAP account has no
+  import-key builder and IBKR's `broker_cash` role is written as data; `.pretax` files the generator
+  leaves beside a DB are not covered by `server/data/*.db` in `.gitignore`.
