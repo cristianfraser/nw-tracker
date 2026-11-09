@@ -107,6 +107,7 @@ export type {
   CcInstallmentGastosMode,
 } from "./ccExpensePeriodMonth.js";
 import { buildCheckingGastosLinesForAccounts } from "./flowsCheckingGastos.js";
+import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
 
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
@@ -803,7 +804,8 @@ export function buildCcExpenseLines(
 }
 
 function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
-  const accountIds = listMovementBalanceCashAccountIds();
+  // The peso checking members and the dollar checking accounts (a US bank account's debits).
+  const accountIds = [...listMovementBalanceCashAccountIds(), ...listDollarCheckingAccountIds()];
   if (accountIds.length === 0) return [];
 
   const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } =

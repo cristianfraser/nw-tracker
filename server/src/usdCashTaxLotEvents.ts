@@ -86,6 +86,9 @@ function classifyOutflow(o: UsdWalkOutflow, scope: ReadonlySet<number>, posture:
     return posture === "none" ? "deferred" : "realized";
   }
   if (!transfer && row.account_id === o.accountId && row.flow_kind === "cash_fee") return "fee";
+  // Dollars spent from the account (a purchase or a bill a bank statement lists: a single-leg
+  // debit): used, like a payment to a non-dollar account (Oficio 2573's «utilizarlos»).
+  if (!transfer && row.account_id === o.accountId && row.flow_kind === "withdrawal_usd") return posture === "none" ? "deferred" : "realized";
   throw new Error(
     `USD lots: account ${o.accountId} movement ${row.id} (${row.flow_kind ?? "no flow kind"}) is not a known way dollars leave`
   );

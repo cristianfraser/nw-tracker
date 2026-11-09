@@ -25,7 +25,10 @@ import {
 } from "./checkingDescriptionPredicates.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { fxRowOnOrBefore } from "./fxRates.js";
+import { isUsdCashAccount, signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import {
+  accountIdsUnderCheckingAccounts,
   cartolaCashAccountIdOptional,
   isMovementBalanceCashCategory,
   listMovementBalanceCashAccountIds,
@@ -165,6 +168,52 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
     if (!parsed) throw new Error(`checking movement ${row.id}: unreadable daily-feed note ${row.note}`);
     return !partialMovementSupersededByCartola(accountId, parsed);
   });
+}
+
+/**
+ * The dollar checking accounts: dollar ledgers (`usd` kind) filed under Checking accounts — the
+ * Chilean bank's dollar cuenta corriente and a US bank account. Their bank-listed rows are read by
+ * {@link listDollarCheckingMovements}; a dollar account whose rows no bank document lists (the
+ * Chilean one: every row there is a transfer or written from another document) reads empty.
+ */
+export function listDollarCheckingAccountIds(): number[] {
+  return accountIdsUnderCheckingAccounts().filter((id) => isUsdCashAccount(id));
+}
+
+/** A dollar checking account's bank-listed movement: its dollars, and its pesos at the day's rate. */
+export type DollarCheckingMovementRow = CheckingMovementRow & {
+  /** Dollars, positive (the direction is the list asked for). */
+  amount_usd: number;
+};
+
+/**
+ * {@link listCheckingMovements} for a dollar checking account: the single-leg rows its bank
+ * documents list (the same evidence kinds), inflows or outflows by their dollar direction, oldest
+ * first. `amount_clp` is the dollars at the day's `fx_daily` rate on or before the movement's day
+ * (signed like the peso lists: credits positive, debits negative) — how the peso views price them.
+ * A listed row that moves no dollars, or a day with no rate, throws.
+ */
+export function listDollarCheckingMovements(accountId: number, direction: "in" | "out"): DollarCheckingMovementRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
+              occurred_on, note, units_delta, flow_kind
+       FROM movements
+       WHERE account_id = ?
+         AND ${movementSourceKindInSql("movements", CHECKING_LISTED_SOURCE_KINDS)}
+       ORDER BY occurred_on, id`
+    )
+    .all(accountId) as (MovementTransferRow & { id: number; occurred_on: string; note: string | null })[];
+  const out: DollarCheckingMovementRow[] = [];
+  for (const r of rows) {
+    const usd = signedUsdDeltaForAccountMovement(r, accountId);
+    if (!(Math.abs(usd) >= 0.005)) throw new Error(`dollar checking movement ${r.id}: a listed row that moves no dollars`);
+    if (direction === "in" ? usd < 0 : usd > 0) continue;
+    const fx = fxRowOnOrBefore(r.occurred_on);
+    if (!fx || !(fx.clp_per_usd > 0)) throw new Error(`dollar checking movement ${r.id}: no fx on or before ${r.occurred_on}`);
+    out.push({ id: r.id, occurred_on: r.occurred_on, amount_clp: Math.round(usd * fx.clp_per_usd), amount_usd: Math.abs(usd), note: r.note });
+  }
+  return out;
 }
 
 /** Whether a movement is a credit the bank listed on a checking account (see `listCheckingMovements`). */

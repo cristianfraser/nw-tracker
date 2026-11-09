@@ -41,3 +41,12 @@ export const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 export function afpAccountImportKey(afp: string, fund: string): string {
   return `import:afp|afp=${afp}|fund=${fund}`;
 }
+
+/**
+ * A US retirement account: a 401(k) or an HSA (a cuota ledger in a fund's units) or a Roth IRA
+ * (shares), at a plan `provider` slug. One per kind and provider: `import:us-retirement|kind=<kind>|provider=<slug>`.
+ */
+export function usRetirementAccountImportKey(kind: "us_401k" | "hsa" | "roth_ira", provider: string): string {
+  if (!/^[a-z0-9_]+$/.test(provider)) throw new Error(`US retirement provider «${provider}»: use lowercase letters, digits and _`);
+  return `import:us-retirement|kind=${kind}|provider=${provider}`;
+}

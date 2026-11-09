@@ -93,6 +93,16 @@ describe("usdCashTaxDisposalsFromRows", () => {
     expect(d).toMatchObject({ units: 100, proceeds: 98_000, cost: 94_000, gain: 4_000, tag });
   });
 
+  it.each([
+    ["oficio_2573", "realized"],
+    ["oficio_2390", "realized"],
+    ["none", "deferred"],
+  ] as const)("dollars spent from the account (a single-leg debit) under %s are %s at the observado of their day", (posture, tag) => {
+    const spent = row({ id: 9, occurred_on: "2026-07-01", account_id: USD, flow_kind: "withdrawal_usd", amount: 100, currency: "usd" });
+    const { disposals } = run([...ROWS, spent], { posture });
+    expect(disposals.find((x) => x.movementId === 9)).toMatchObject({ units: 100, proceeds: 98_000, cost: 94_000, gain: 4_000, tag });
+  });
+
   it("a fee leaves at zero proceeds, tagged fee, with the cost it consumed", () => {
     const fee = row({ id: 5, occurred_on: "2026-07-01", account_id: USD, flow_kind: "cash_fee", amount: 10, currency: "usd" });
     const { disposals } = run([...ROWS, fee]);

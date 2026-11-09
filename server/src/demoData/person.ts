@@ -105,9 +105,108 @@ const CONTRACT_JOBS: ContractJob[] = [
 ];
 
 const CONTRACTOR_JOBS: ContractorJob[] = [
-  { kind: "contractor", id: "job3", employer: "Northwind Labs Inc.", platform: "DEEL", from: "2022-10", to: "2024-09", monthlyUsd: 6_000, transferFeeUsd: 15, dcaUsd: 1_500 },
-  { kind: "contractor", id: "job4", employer: "Bluepeak Software LLC", platform: "DEEL", from: "2024-10", to: null, monthlyUsd: 8_000, transferFeeUsd: 15, dcaUsd: 2_000 },
+  // Eighteen months as a contractor, then the same company brings him to the US (`US_JOBS`).
+  { kind: "contractor", id: "job3", employer: "Northwind Labs Inc.", platform: "DEEL", from: "2022-10", to: "2024-03", monthlyUsd: 6_000, transferFeeUsd: 15, dcaUsd: 1_500 },
 ];
+
+/**
+ * A US W-2 job: a yearly salary paid every other Friday, federal withholding by Pub. 15-T's
+ * percentage method for the W-4 posture, FICA, a pre-tax 401(k) with the employer's match, a
+ * medical, dental/vision and HSA deduction per pay period (pre-tax, cafeteria plan). Dollars.
+ */
+export type UsW2Job = {
+  kind: "us_w2";
+  id: string;
+  employer: string;
+  /** The employer's EIN as the stub prints it (fictional: the 89 prefix is never issued). */
+  ein: string;
+  /** What the bank prints on the payroll credit. */
+  bankName: string;
+  from: Month;
+  to: Month | null;
+  /** The first pay date (a Friday); then every 14 days. */
+  firstPayDate: Ymd;
+  annualSalaryUsd: number;
+  /** Raise applied every `raiseMonth` once the first year is done (fraction). */
+  yearlyRaise: number;
+  raiseMonth: number;
+  /** A yearly bonus (a fraction of the salary) paid with the first check of `month`, from the second year. */
+  bonus: { month: number; fraction: number } | null;
+  payFrequency: "biweekly";
+  /** Pre-tax 401(k) deferral on every check (fraction of gross). */
+  retirement401kRate: number;
+  /** The employer matches dollar for dollar up to this fraction of gross. */
+  employerMatchRate: number;
+  /** Per pay period, pre-tax. */
+  medicalUsd: number;
+  dentalVisionUsd: number;
+  hsaUsd: number;
+  w4FilingStatus: "single";
+};
+
+const US_JOBS: UsW2Job[] = [
+  {
+    kind: "us_w2",
+    id: "job4",
+    employer: "Northwind Labs Inc.",
+    ein: "89-4417203",
+    bankName: "NORTHWIND LABS INC PAYROLL",
+    from: "2024-04",
+    to: null,
+    firstPayDate: "2024-04-19",
+    annualSalaryUsd: 150_000,
+    yearlyRaise: 0.04,
+    raiseMonth: 4,
+    bonus: { month: 3, fraction: 0.08 },
+    payFrequency: "biweekly",
+    retirement401kRate: 0.06,
+    employerMatchRate: 0.04,
+    medicalUsd: 112,
+    dentalVisionUsd: 14,
+    hsaUsd: 60,
+    w4FilingStatus: "single",
+  },
+];
+
+/**
+ * Life in the US (Austin, Texas), in dollars: the US checking account the salary lands in, the
+ * rent, a car bought in cash, the dollar lifestyle (all debit), a Roth IRA in SPY, and what goes
+ * home to Chile every month.
+ */
+export type UsLife = {
+  /** He moves this month: the Chilean lifestyle stops, the US one starts. */
+  moveMonth: Month;
+  bank: { name: string; number: string; branch: string };
+  /** Dollars the Chilean broker sends to the US account before the move (selling SPY as needed). */
+  seed: { date: Ymd; usd: number };
+  rent: { landlord: string; usd: number; fromMonth: Month; yearlyIncrease: number };
+  car: { date: Ymd; merchant: string; usd: number } | null;
+  /** The monthly lifestyle at the move (nominal dollars, growing `inflation` a year). */
+  monthlyUsd: number;
+  inflation: number;
+  /** A Roth IRA contribution each `month` from `fromYear`, bought straight into SPY. */
+  roth: { fromYear: number; month: number; usd: number } | null;
+  /** The US checking balance kept: months of US spending (the rest goes to the US broker). */
+  cashBand: { low: number; target: number; high: number };
+  /** The bank's fee on each wire to Chile. */
+  wireFeeUsd: number;
+  /** A flight home every December. */
+  decemberTripUsd: number;
+};
+
+const US_LIFE: UsLife = {
+  moveMonth: "2024-04",
+  bank: { name: "DEMO BANK TEXAS", number: "4021987653", branch: "Austin" },
+  seed: { date: "2024-03-27", usd: 8_000 },
+  rent: { landlord: "LAKESHORE APARTMENTS", usd: 1_750, fromMonth: "2024-04", yearlyIncrease: 0.035 },
+  car: { date: "2025-03-14", merchant: "HILL COUNTRY AUTO SALES", usd: 16_500 },
+  monthlyUsd: 2_150,
+  inflation: 0.03,
+  roth: { fromYear: 2025, month: 10, usd: 7_000 },
+  cashBand: { low: 1, target: 2, high: 3 },
+  wireFeeUsd: 25,
+  decemberTripUsd: 1_350,
+};
 
 /** Dad's monthly allowance while studying (to the cuenta vista). */
 const ALLOWANCE = { from: "2016-02" as Month, to: "2019-03" as Month, clp: 250_000 };
@@ -161,8 +260,8 @@ const HOUSE: House = {
   /** Enough above the minimum that the balance falls faster than the UF rises. */
   monthlyExtraUf: 12,
   prepayments: [
-    { date: "2025-07-22", uf: 150 },
-    { date: "2026-05-20", uf: 120 },
+    { date: "2025-07-22", uf: 90 },
+    { date: "2026-05-20", uf: 70 },
   ],
   gcClp: 150_000,
   /** Contribuciones paid in these months (real CLP). */
@@ -181,7 +280,8 @@ export type Car = { id: string; from: Month; to: Month | null; priceClp: number;
 
 const CARS: Car[] = [
   { id: "car1", from: "2019-03", to: "2022-12", priceClp: 6_500_000, tradeInClp: 0, permisoClp: 140_000, insuranceClp: 0 },
-  { id: "car2", from: "2023-01", to: null, priceClp: 17_000_000, tradeInClp: 4_200_000, permisoClp: 360_000, insuranceClp: 38_000 },
+  // Left with his parents when he moves to the US (no sale: no money changes hands).
+  { id: "car2", from: "2023-01", to: "2024-03", priceClp: 17_000_000, tradeInClp: 4_200_000, permisoClp: 360_000, insuranceClp: 38_000 },
 ];
 
 /** One-off purchases: trips, tech, furniture. `cuotas` > 1 bills as an installment plan. */
@@ -255,7 +355,7 @@ const PLAYS: Play[] = [
   { kind: "sell", date: "2024-02-15", ticker: "SPY", fraction: 0.3 },
   { kind: "buy", date: "2025-04-09", ticker: "NVDA", usd: 4_000 },
   // The Chilean IPSA ETF (an art. 107 fund), bought in pesos and partly sold at a gain.
-  { kind: "buy_clp", date: "2025-06-17", ticker: "CFIETFIPSA.SN", clp: 6_000_000 },
+  { kind: "buy_clp", date: "2025-06-17", ticker: "CFIETFIPSA.SN", clp: 3_500_000 },
   { kind: "sell", date: "2026-03-10", ticker: "CFIETFIPSA.SN", fraction: 0.4 },
   { kind: "buy", date: "2026-05-12", ticker: "OILK", usd: 5_000 },
   { kind: "buy", date: "2026-05-12", ticker: "LNG", usd: 5_000 },
@@ -341,6 +441,9 @@ export type Person = {
   internships: Internship[];
   contractJobs: ContractJob[];
   contractorJobs: ContractorJob[];
+  usJobs: UsW2Job[];
+  /** The US chapter (null: he never moves). */
+  us: UsLife | null;
   housing: Housing[];
   house: House | null;
   cars: Car[];
@@ -383,6 +486,8 @@ export const DEMO_PERSON: Person = {
   internships: INTERNSHIPS,
   contractJobs: CONTRACT_JOBS,
   contractorJobs: CONTRACTOR_JOBS,
+  usJobs: US_JOBS,
+  us: US_LIFE,
   housing: HOUSING,
   house: HOUSE,
   cars: CARS,
@@ -445,6 +550,9 @@ export function testPerson(today: Ymd): Person {
     contractorJobs: [
       { kind: "contractor", id: "testjob2", employer: "Remote Test Inc.", platform: "DEEL", from: back(7), to: null, monthlyUsd: 5_000, transferFeeUsd: 15, dcaUsd: 1_000 },
     ],
+    // No US chapter: the suite's person stays in Chile (the US engine is unit-tested on its own).
+    usJobs: [],
+    us: null,
     housing: [{ kind: "rent", id: "testapt", from: first, to: "9999-12", rentClp: 600_000, gcClp: 90_000, landlord: "ARRENDADOR PRUEBA" }],
     house: null,
     cars: [],
