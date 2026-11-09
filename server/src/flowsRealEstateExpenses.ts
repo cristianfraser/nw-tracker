@@ -1,6 +1,7 @@
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
+import { assertLoanPaymentPartsCurrent, loanPaymentPartsByFlow } from "./flows/loanPaymentParts.js";
 import type {
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
@@ -492,12 +493,13 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
   const linked = places.filter((p) => p.property_account_id != null);
   if (linked.length === 0) return [];
 
+  // The parts are the ledger's statement of each dividendo (`flows/loanPaymentParts.ts`); a part
+  // set a writer left stale against `loan_payments` is refused, never read around.
+  assertLoanPaymentPartsCurrent();
+  const partsByFlow = loanPaymentPartsByFlow();
   const slots: RealEstateBillSlot[] = [];
   const stmt = db.prepare(
-    `SELECT m.occurred_on, p.cuota, p.payment_currency,
-            COALESCE(p.principal, 0) AS amortization_clp,
-            COALESCE(p.extra_principal, 0) AS extra_amortization_clp,
-            COALESCE(p.interest, 0) + COALESCE(p.insurance_fire, 0) + COALESCE(p.insurance_life, 0) AS carrying_clp
+    `SELECT m.occurred_on, p.cuota, p.payment_currency, m.flow_id
      FROM movements m
      JOIN loan_payments p ON p.movement_id = m.id
      WHERE m.account_id = ?
@@ -511,16 +513,22 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
       occurred_on: string;
       cuota: string;
       payment_currency: string;
-      amortization_clp: number;
-      extra_amortization_clp: number;
-      carrying_clp: number;
+      flow_id: number | null;
     }[];
-    for (const r of fetched) {
+    const rows = fetched.map((r) => {
       if (r.payment_currency !== "clp") {
         throw new Error(`mortgage cuota ${r.cuota} (${r.occurred_on}): parts in ${r.payment_currency}, expected pesos`);
       }
-    }
-    const rows = fetched.filter((r) => r.amortization_clp + r.extra_amortization_clp + r.carrying_clp > 0);
+      if (r.flow_id == null) throw new Error(`mortgage cuota ${r.cuota} (${r.occurred_on}): the property leg has no flow`);
+      const parts = partsByFlow.get(r.flow_id) ?? {};
+      return {
+        occurred_on: r.occurred_on,
+        cuota: r.cuota,
+        amortization_clp: parts.principal ?? 0,
+        extra_amortization_clp: parts.extra_principal ?? 0,
+        carrying_clp: (parts.interest ?? 0) + (parts.insurance_fire ?? 0) + (parts.insurance_life ?? 0),
+      };
+    }).filter((r) => r.amortization_clp + r.extra_amortization_clp + r.carrying_clp > 0);
     const billMonths = mortgageCuotaBillMonths(rows);
     rows.forEach((r, i) => {
       const amortization = Math.round(r.amortization_clp);

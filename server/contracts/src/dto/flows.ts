@@ -481,8 +481,6 @@ export type FlowCcExpenseCategoryChartPoint = {
 
 export type DepositReconciliationStatus =
   | "linked"
-  | "linked_synthetic"
-  | "resolved_family_funded"
   | "resolved_tax_refund"
   | "resolved_internal_transfer"
   | "unlinked_no_checking_source"
@@ -508,8 +506,6 @@ export interface DepositReconciliationStatusTotals {
 export interface DepositReconciliationByMonth {
   month: string;
   linked_clp: number;
-  linked_synthetic_clp: number;
-  resolved_family_funded_clp: number;
   resolved_tax_refund_clp: number;
   resolved_internal_transfer_clp: number;
   unlinked_no_checking_source_clp: number;

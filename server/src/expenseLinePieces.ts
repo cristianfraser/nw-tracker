@@ -122,8 +122,8 @@ export function replaceExpenseLinePieces(
       deleteFlowNote(accountId, pieceKey(old.seq));
     }
     const upsert = db.prepare(
-      `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, spent_on)
-       VALUES (${lineFlowSql(source)}, ?, ?, ?, ?)
+      `INSERT INTO flow_parts (flow_id, seq, kind, category_id, amount_clp, spent_on)
+       VALUES (${lineFlowSql(source)}, ?, 'piece', ?, ?, ?)
        ON CONFLICT(flow_id, seq) DO UPDATE SET
          category_id = excluded.category_id,
          amount_clp = excluded.amount_clp,

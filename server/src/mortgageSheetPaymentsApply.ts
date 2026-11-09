@@ -39,6 +39,7 @@ import { IngestConflict } from "./ingestReceiver.js";
 import { commitMortgagePayment, deptoMortgageAccountId } from "./mortgagePaymentCreate.js";
 import { computeMortgagePaymentRow } from "./mortgagePaymentCompute.js";
 import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
+import { syncLoanPaymentFlowParts } from "./flows/loanPaymentParts.js";
 
 /** 4-decimal UF figures on both sides; 0,0002 is the CLP→UF rounding noise, never a real gap. */
 export const UF_TOLERANCE = 0.0002;
@@ -209,6 +210,9 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
         details
       );
     }
+    // Every payment's parts on its property-leg flow, from the rows as they stand now (the
+    // declared differences — `parts_sum` — let a lender's row that is short of its total through).
+    syncLoanPaymentFlowParts(payload.accepted);
     db.prepare(
       `INSERT INTO mortgage_sheet_imports (document_name, sha256, document_size, document_modified_at, rows_written, rows_checked)
        VALUES (?, ?, ?, ?, ?, ?)`

@@ -1,0 +1,8 @@
+-- The cuenta de ahorro's synthetic mirrors and funding splits go (docs/untangle-flow-model.md B;
+-- user decision 2026-11-08: do not recreate history). `checking_gap_deposit_mirrors` fabricated a
+-- checking debit for every deposit no cartola debit explained, and `cuenta_ahorro_deposit_splits`
+-- said how much of each month's deposit was the family's. A deposit whose source is unknown stays an
+-- unlinked deposit from the «unknown» party; the seven whose BancoEstado transfer notices name
+-- their debit are linked by `scripts/retire-cuenta-ahorro-mirrors.ts`. The hook
+-- (`flows/retireDepositMirrors294.ts`) removes the mirror flows with their evidence and links,
+-- proves nothing else hangs off them, and drops both tables.

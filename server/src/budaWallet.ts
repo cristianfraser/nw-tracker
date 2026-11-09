@@ -1,6 +1,5 @@
 import { db } from "./db.js";
 import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
-import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import {
   NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP,
   ledgerCapitalReturnMatchesTiming,
@@ -13,17 +12,10 @@ import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
 import { accountWithRoleOptional } from "./accountRoles.js";
-import {
-  MOVEMENT_AMOUNT_COLUMNS_SQL,
-  MOVEMENT_CLP_LEG_SQL,
-  movementClpLegOrZero,
-  type MovementAmountFields,
-} from "./movementAmounts.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
 
 /** Human provenance on the mirror row (never read back). */
-const BUDA_ABONO_MIRROR_NOTE = "buda-abono|self_funded";
-
 /** The Buda CLP buffer account (crypto bucket cash hub), or null if the Buda ledger isn't imported. */
 export function loadBudaBufferAccountId(): number | null {
   return accountWithRoleOptional("buda_wallet");
@@ -74,62 +66,6 @@ export function listBudaAbonosWithoutRealOutflowLink(): Set<number> {
   return new Set(rows.map((r) => r.id));
 }
 
-/**
- * Materialize a synthetic checking outflow (cuenta_corriente → Buda) for each `abono` deposit into
- * the Buda buffer that no real checking outflow explains — turning it into `linked_synthetic` like
- * the checking-gap deposits. An abono already linked to its real cartola debit gets no mirror (it
- * would be linked twice). Existing mirror rows are kept in place (same id) when still needed, so a
- * re-sync does not churn the ids the mirror lines' purchase keys are built from. Scoped to Buda abono
- * movements, so it never touches other checking_gap_deposit_mirrors rows.
- */
-export function syncBudaAbonoDepositMirrors(): void {
-  const budaId = loadBudaBufferAccountId();
-  if (budaId == null) return;
-  const abonos = db
-    .prepare(
-      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on FROM movements
-       WHERE account_id = ? AND note = 'import:buda|abono' AND ${MOVEMENT_CLP_LEG_SQL} > 0`
-    )
-    .all(budaId) as ({ id: number; occurred_on: string } & MovementAmountFields)[];
-  if (abonos.length === 0) return;
-  const needsMirror = listBudaAbonosWithoutRealOutflowLink();
-
-  const corrienteId = cartolaCashAccountId("cuenta_corriente");
-  const existing = db.prepare(
-    `SELECT account_id, amount_clp, occurred_on FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`
-  );
-  const del = db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`);
-  const upd = db.prepare(
-    `UPDATE checking_gap_deposit_mirrors SET account_id = ?, amount_clp = ?, occurred_on = ?, note = ?
-     WHERE deposit_movement_id = ?`
-  );
-  const ins = db.prepare(
-    `INSERT INTO checking_gap_deposit_mirrors (account_id, deposit_movement_id, amount_clp, occurred_on, note)
-     VALUES (?, ?, ?, ?, ?)`
-  );
-  const tx = db.transaction(() => {
-    for (const a of abonos) {
-      if (!needsMirror.has(a.id)) {
-        del.run(a.id);
-        continue;
-      }
-      const amount = Math.round(movementClpLegOrZero(a));
-      const row = existing.get(a.id) as
-        | { account_id: number; amount_clp: number; occurred_on: string }
-        | undefined;
-      if (row == null) {
-        ins.run(corrienteId, a.id, amount, a.occurred_on, BUDA_ABONO_MIRROR_NOTE);
-      } else if (
-        row.account_id !== corrienteId ||
-        row.amount_clp !== amount ||
-        row.occurred_on !== a.occurred_on
-      ) {
-        upd.run(corrienteId, amount, a.occurred_on, BUDA_ABONO_MIRROR_NOTE, a.id);
-      }
-    }
-  });
-  tx();
-}
 
 /**
  * Checking inflow that is a Buda buffer withdrawal (retiro) returning to checking. Buda pays out

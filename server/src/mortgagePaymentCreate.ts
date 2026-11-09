@@ -19,6 +19,7 @@ import {
   type MortgagePaymentInput,
   type MortgagePaymentComputeResult,
 } from "./mortgagePaymentCompute.js";
+import { syncLoanPaymentFlowParts } from "./flows/loanPaymentParts.js";
 
 export type MortgagePaymentCreateSchema = {
   next_cuota: string;
@@ -167,6 +168,8 @@ export function commitMortgagePayment(
       origin: opts.origin,
       ...paymentCols,
     });
+    // The new cuota's parts on its property-leg flow (the compute makes them add up to the payment).
+    syncLoanPaymentFlowParts([]);
     return {
       sheet_row: sheet,
       mortgage_movement_id: Number(mortgageMov.lastInsertRowid),

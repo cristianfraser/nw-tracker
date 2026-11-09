@@ -8,17 +8,24 @@ import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
 import { expenseKeySql } from "../expenseKeys.js";
 import { keyTarget, TARGET_WHERE, targetParams } from "./flowKeyedAssignments.js";
+import { loanCarryingPartsSql, loanPrincipalPartsSql } from "./loanPaymentParts.js";
 
 /**
  * The deposit links as `expense_deposit_links` held them (migration 285): the purchase's key, the
  * deposit movement (the movement on the counterpart flow), the figures and the source, plus
  * `link_order` (insertion order — the old table's row order; read with `ORDER BY link_order`).
+ * A link to a mortgage payment also carries the payment's parts (`flows/loanPaymentParts.ts`):
+ * `parts_amortization_clp` (principal + extra principal) and `parts_carrying_clp` (interest +
+ * insurances) — the ledger's statement of the dividendo, which the readers split the card line by;
+ * NULL on a deposit with no parts.
  */
 export const EXPENSE_DEPOSIT_LINKS_SQL = `(
   SELECT l.rowid AS link_order, l.account_id,
          ${expenseKeySql("f.legacy_key", "l.portion", "NULLIF(l.piece_seq, -1)")} AS purchase_key,
          (SELECT MIN(m.id) FROM movements m WHERE m.flow_id = l.counterpart_flow_id) AS deposit_movement_id,
-         l.payment_clp, l.amortization_clp, l.depto_cuota, l.depto_occurred_on, l.link_source, l.created_at
+         l.payment_clp, l.amortization_clp, l.depto_cuota, l.depto_occurred_on, l.link_source, l.created_at,
+         ${loanPrincipalPartsSql("l.counterpart_flow_id")} AS parts_amortization_clp,
+         ${loanCarryingPartsSql("l.counterpart_flow_id")} AS parts_carrying_clp
   FROM flow_links l JOIN flows f ON f.id = l.flow_id
   WHERE l.kind = 'funded_deposit'
 )`;

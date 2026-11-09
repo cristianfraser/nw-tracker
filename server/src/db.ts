@@ -38,6 +38,9 @@ import {
   runFlowRefunds280,
 } from "./flows/flowAssignments280.js";
 import { runFlowRetirement290 } from "./flows/flowRetirement290.js";
+import { runFlowPartKinds293 } from "./flows/flowParts293.js";
+import { runRetireDepositMirrors294 } from "./flows/retireDepositMirrors294.js";
+import { runFlowEvidenceEstimateKind295 } from "./flows/flowEvidenceEstimate295.js";
 import { runMovementEvidenceKind291 } from "./flows/flowEvidenceKind291.js";
 import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
@@ -310,6 +313,9 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "290_flow_retirement.sql": runFlowRetirement290,
   "291_movement_evidence_kind.sql": runMovementEvidenceKind291,
   "292_cc_statement_canonical_fingerprint.sql": runCardStatementFingerprint292,
+  "293_flow_part_kinds.sql": runFlowPartKinds293,
+  "294_retire_deposit_mirrors.sql": runRetireDepositMirrors294,
+  "295_flow_evidence_estimate_kind.sql": runFlowEvidenceEstimateKind295,
 };
 
 /**

@@ -121,7 +121,6 @@ export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
-import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 import { withExpenseLineFlowIds } from "./flows/flowIdentity.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
@@ -1058,13 +1057,12 @@ export function runExpenseLineSteps(
   return lines;
 }
 
-/** Every expense-line draft: card lines (none without cards), checking, manual, mirror, payslip. */
+/** Every expense-line draft: card lines (none without cards), checking, manual, payslip. */
 function expenseLineDrafts(accountIds: readonly number[]): FlowCcExpenseLineRowDraft[] {
   return [
     ...(accountIds.length > 0 ? buildCcExpenseLines([...accountIds]) : []),
     ...loadCheckingGastosLinesForExpenses(),
     ...loadManualExpenseGastosLineDrafts(),
-    ...loadCheckingGapDepositMirrorGastosLineDrafts(),
     ...loadPayslipExpenseLineDrafts(),
   ];
 }

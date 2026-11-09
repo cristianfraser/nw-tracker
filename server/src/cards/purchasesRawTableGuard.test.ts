@@ -15,6 +15,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   // Writers and migrations: they own the rows.
   "ccStatementsImport.ts": "raw: the line importer (writes lines, owns dedupe keys and fingerprints)",
   "cardLineKind276.ts": "raw: migration 276 hook (fills the stored kind)",
+  "flows/flowEvidenceEstimate295.ts": "raw: migration 295 hook (re-kinds the estimate statements' lines' evidence)",
   "expenseKeyLegacyRewrite273.ts": "raw: migration 273 hook (frozen)",
   "ccInstallmentLedgerMerge.ts": "raw: plan writer (canonical_row_id, twin_index)",
   "ccInstallmentManual.ts": "raw: manual plan CRUD and line → plan conversion",

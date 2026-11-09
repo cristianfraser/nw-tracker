@@ -138,6 +138,12 @@ function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
           label={colLabel("interes")}
           value={cellUfClpPair(row.interes_uf, row.interes_clp)}
         />
+        {row.prepayment_charge_clp != null ? (
+          <TableMobileCardRow
+            label={colLabel("prepaymentCharge")}
+            value={cellUfClpPair(row.prepayment_charge_uf, row.prepayment_charge_clp)}
+          />
+        ) : null}
       </TableMobileCardSection>
       <TableMobileCardSection>
         <TableMobileCardRow
@@ -177,6 +183,9 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
           ufClpLine("incendio", row.incendio_uf, row.incendio_clp),
           ufClpLine("desgravamen", row.desgravamen_uf, row.desgravamen_clp),
           ufClpLine("interes", row.interes_uf, row.interes_clp),
+          ...(row.prepayment_charge_clp != null
+            ? [ufClpLine("prepaymentCharge", row.prepayment_charge_uf, row.prepayment_charge_clp)]
+            : []),
           ufClpTotalLine(row.seguros_interes_uf, row.seguros_interes_clp),
         ])}
       </td>

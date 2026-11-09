@@ -20,13 +20,159 @@ in the first version of the script), so every difference below comes from the ch
 
 | # | Change | Status |
 |---|--------|--------|
-| 1 | Parts generalised | **not landed** — two of its three mechanisms cannot fold without a data or design decision (below) |
+| 1 | Parts generalised | **landed for the loan payments (second pass, A2–A3 below)**: the mortgage dividendo's and the prepagos' split are parts on the property-leg flow, read by every reader; the splittable reserva pool stays a links rule |
 | 2 | Links generalised | **mortgage pairing landed** (one stored link); the claim rule decided; card lines in the deposit pool, refund → purchase links not done |
-| 3 | Cuenta de ahorro surgery | **not landed** — 28 of the 33 mirrored months need a human pairing decision |
-| 4 | Instrument events | not started — the share-count readers it must change sit outside this stream's files |
-| 5–8 | Cost, pre-tax account, card-day capital flows, opening balances | not started (the stream stops where a change could not be rehearsed cleanly) |
+| 3 | Cuenta de ahorro surgery | **decided otherwise and landed (second pass, B below)**: the mirrors and splits go; seven deposits get their real debit; the rest stay unlinked |
+| 4 | Instrument events | not started (second pass: the data work A–C used the stream's budget; the readers it must change sit outside its files) |
+| 5–8 | Cost, pre-tax account, card-day capital flows, opening balances | not started; the second pass stored the first cost parts (`prepayment_charge`, `bank_fee`) that D5 will read |
 
-## Change 1 — parts (not landed)
+## Second pass (wave 5, stream `flow-model-2`, 2026-11-08)
+
+The user's data decisions of 2026-11-08 unblocked the first pass. Each item below was rehearsed on
+a fresh copy of the real database with the dump of «Rehearsal method» taken before and after (50
+payloads; the dump script was rewritten, it is not committed).
+
+### A1 — the lender's dividend history against the ledger
+
+`scripts/cross-check-loan-payment-history.ts` (pure logic in `loanPaymentHistoryCrossCheck.ts`,
+tested on synthetic rows) reads the lender's history (SheetJS, Chilean amounts), compares every
+regular cuota field by field (date, total, principal, extra principal, interest, the two
+insurances) and applies the user's plan: the bank's figure (`set_field`), the bank's date
+(`set_date`), the residual of a total above its printed parts stored as interest
+(`set_interest_residual`), and the declared differences (`accept`). Report-first, one IMMEDIATE
+transaction rolled back without `--apply`; inside it the balance chain is checked unchanged, Σ parts
+= payment ± 1 on every row but the accepted ones, and the card pairing must still match every cuota
+it matched before. Real copy: 29 cuotas compared, 24 agreeing on every field; 6 differences on 5
+cuotas, all in the plan (four of one peso, one of eleven pesos, one date six days off); one cuota's
+unprinted first-month interest written from the residual; three accepted differences (the first
+dividendo's interest against the bank's printed 0, one cuota the card paid a few hundred pesos above
+the lender's total, one lender row short of its own total). After the apply a re-run reports one
+difference (the accepted interest) and writes nothing. The hardcoded exception for that card-paid
+cuota in `expenseDepositLinks.ts` went: the check it bypassed holds without it.
+
+### A2 — parts on the property-leg flow
+
+Migration 293: `flow_parts` gains `kind` (every row on file a `piece`; a category only a piece
+must carry) — `piece`, `principal`, `extra_principal`, `interest`, `insurance_fire`,
+`insurance_life`, `prepayment_charge`, `bank_fee`, each with its flow class (`flows/flowParts.ts`).
+`flows/loanPaymentParts.ts` writes every loan payment's parts from `loan_payments` on the property
+leg's flow (the pie carries none) and is called by the sheet import, the payment form and the
+cross-check script; Σ parts = payment ± 1, fail fast, unless the config's `accepted_differences`
+names the row with field `parts_sum`. Readers: the real-estate page's `mortgage_parts` and the
+deposit links' `amortization_clp` / `carrying_clp` (so the Expenses page, the carrying list, the
+flows overview and the P/L page) read the parts; a stale part set against `loan_payments` is refused
+on read. Payload differences on the real copy, all from A1's corrections: the real-estate slots of
+the corrected cuotas (one to eleven pesos), the mortgage ledger rows (the interest cumulatives, the
+amortization cumulatives, the two new `prepayment_charge_*` fields), the deposits page (one cuota's
+day), and the carrying of two cuotas whose card payment exceeded the ledger's parts — the card paid
+0.03 % above the lender's total on one, the lender's own row is 0.03 % short on the other. That
+excess used to be counted as carrying (spending); it is now neither amortization nor carrying, so
+the Expenses totals read 0.0006 % lower, the overview's deposits and expenses move by the same
+pesos in those two months (`cash_unexplained` unchanged), and the two are declared differences.
+
+### A3 — prepagos
+
+A prepago's pesos above its principal were stored whole as interest. `loan_payments` gains
+`prepayment_charge` (the lender's COMISIÓN DE PREPAGO + INTERÉS PENAL: a cost, never art. 55 bis
+interest; a `prepayment_charge` part on the flow). The split comes from the liquidation the prepago
+paid, read from the lender's mails (`parsePrepagoLiquidation`, either digit grouping): the one whose
+TOTAL A PAGAR equals the payment, every line as printed (one of three on the real copy); when a
+round figure was paid instead, the liquidation calculated closest before the payment, with the
+principal the ledger's balance drop × its parity, the accrued interest the printed one scaled to the
+principal actually prepaid, and the charge the remainder (two of three). The 2025 certificate
+confirms the scaled interest to the peso. On the third prepago the remainder is 13 % above the
+scaled printed comisión (0.08 % of the payment); the ledger's principal moved by 0.04 % to the
+liquidation's. Each prepago's cash leg (the checking debit that bought the vale vista) was already
+linked by hand; the script checks the link's amount and writes the debit's excess over the prepago
+(the bank's document fee) as a `bank_fee` part on the debit's flow — no reader shows cost parts yet
+(D5). `f22AppEstimates.ts` (code 751) reads `loan_payments.interest`, which now excludes the charge
+on the loan leg too: its 2025 figure moves by the three prepagos' charges without a code change.
+
+### A4 — the 2025 certificate
+
+With `--certificate`, the script reads the art. 55 bis certificate (`pdftotext -layout`) and compares
+Σ interest by payment month over the loan leg (cuotas + prepagos' accrued interest). Real copy: 12 of
+12 months agree after A1 and A3 (the February figure is what fixed the scaling rule above).
+
+### B — the cuenta de ahorro: mirrors and splits retired, seven deposits linked
+
+User decision (2026-11-08): history is not recreated. Migration 294 drops
+`checking_gap_deposit_mirrors` (the fabricated checking debit a cartola-less month got for every
+deposit no debit explained) and `cuenta_ahorro_deposit_splits` (how much of a month's deposit was
+the family's), with the mirror flows, their evidence and their `synthetic` links; the mirror line
+drafts, the mirror link sync, the Buda-abono mirror writer and the splits module are gone, and the
+reconciliation lost `linked_synthetic` and `resolved_family_funded` (a deposit no debit explains is
+`unlinked_checking_present` / `unlinked_no_checking_source`, whoever funded it — the DTO and the
+page follow). `scripts/retire-cuenta-ahorro-mirrors.ts` (report-first, IMMEDIATE) writes the
+coordinator's plan: a `manual` `funded_deposit` link from each named checking debit (its deposit
+portion) to the ahorro deposit of the month that covers it — the debit a month or so before the
+month-end-dated deposit — and categorises the debit as the matcher categorises a linked debit;
+inside the transaction the movements table must be untouched (so every balance on every date is)
+and the reconciliation may move only the linked deposits, to `linked`. Real copy: 33 mirrors and 45
+splits retired; 8 plan items, 7 links written (two debits funding one deposit, one partial), 1
+already made by the matcher; linked deposits 57 → 63, nothing else moved, movements untouched; a
+re-run writes nothing. Payloads: the reconciliation (38 rows re-classified: 33 synthetic → 6 linked
++ 27 unlinked, 5 family → unlinked), the Expenses lines (the 33 mirror lines gone), the gastos
+cumulatives (the mirror lines never counted; the shift is the linked debits' category), and one
+overview month whose `cash_unexplained` now reads the linked debit's pesos: the debit left checking
+in the month after the deposit's month-end date, so the two months no longer cancel — the honest
+reading of a sheet that recorded the month the money was credited. Not done: the `gap_mirror` key
+kind in `expenseKeys.ts` (no row produces it; `flowKeyResolve` answers «names nothing»).
+
+### C — card lines estimated from receipts
+
+User decision (2026-11-08): a receipt no card line pairs with, in a month the card has no statement
+for, is the only record of that purchase. `scripts/estimate-card-lines-from-receipts.ts`
+(report-first, IMMEDIATE; pure logic in `cardLinesFromReceipts.ts`, tested) takes the receipt
+matcher's own result (`matchPaymentReceiptsToExpenseLines`, `deriveMerchantChargeLinks`) and, for
+each receipt it left unpaired, finds the card that carried the merchant in the nearest statement
+months — a tie is reported; a receipt whose nearest card has a statement for that month is a
+purchase that statement does not show (paid by other means, or unmatched) and is reported, never
+written on a card created later; an App Store receipt naming a plastic the registry knows names its
+card. A receipt in a gap month (`gapBillingMonths`: from `--since`, the card's start no document
+states, to the first statement; the holes between statements; the mail-rebuilt months) becomes a
+line — the receipt's day, the payee as merchant, the amount in the receipt's currency, a peso
+receipt of a sender the matcher knows charged in dollars as a dollar line at the day's rate when the
+card's nearest lines of that merchant were dollar lines — on an `import:estimate|receipts|<clp|usd>|
+<month>` statement (one document per currency; `ccStatementSourceKind` already files it with the
+other non-PDF sources) through `replaceStatementLines`, or into the rebuilt month's statement
+inside one framed card-line write (`cardLineWrite`, `storedLineColumns`): its estimated weekly
+lumps shrink by what the receipts itemize, each item against a lump of its own month on the same
+side of the previous close (`shrinkLumpsByItems`), so the billed total and every month-end anchor
+stay; a receipt with no such lump is left out and reported. Migration 295 gives `flow_evidence` the
+`estimate` kind: the line insert trigger stamps it on an estimate statement's lines and on a
+receipt line itemized into a rebuilt statement (line id `estimate:…`). Checks inside the
+transaction: the month-end anchors of every month with a statement unchanged, each itemized
+statement adding up as before, the mailed-balance anchor (`--anchor`) not exceeded by the month's
+dollar lines, and every written line pairing back with its receipt when the expense lines are
+rebuilt (`--exclude` leaves out one the matcher will not take back).
+
+Real copy (`--since` the first month of 2016): 217 unpaired candidates (95 order summaries, 9 parts
+of paired orders, 19 receipts in other currencies and 1 without an amount set aside); 101 attributed
+to the old master and 1 to the retired CMR card, 105 whose nearest card has a statement for the month
+(reported), 6 before `since`, 1 merchant on no card. Written: 15 new statements (79 lines, 2016 →
+early 2017) and 4 rebuilt 2019 statements itemized (7 lines); 7 dollar receipts of three rebuilt
+months whose dollar statement has no lump, 8 receipts with no lump on their side of the close, and 2
+receipts the matcher would not pair back (twins of paired charges) were left out and reported. The
+estimated dollar lines of the anchor month come to about 3 % of the mailed debt. Every month-end
+anchor of a month with a statement is unchanged; the 84 lines all pair with their receipts; a re-run
+writes nothing. 98 App Store receipts name a plastic the registry does not know (the matcher treats
+such a receipt as any card's; 69 of them fall in months with a statement) — the coordinator decides
+whether that plastic joins the registry. Payloads (same-day baseline): the Expenses lines gain the
+84 estimated lines with their receipts (0.95 % more lines), the gastos views and the overview's
+months of 2016 → 2017 gain that spending, the old master's ledger extends to its first estimated
+month; nothing else moves.
+
+### D — not reached
+
+The second pass ended with C. What it leaves for D5 (cost out of P/L and spending): the first cost
+parts are stored — a prepago's `prepayment_charge` and the `bank_fee` on its cash leg
+(`FLOW_PART_KINDS` carries each part's class) — and no reader shows them yet; the kernel
+(`perfKernel.ts`) still takes a period's flow as one number, so the cost rule needs it to receive
+capital and cost apart before any account gets a `cost` figure. D6–D8 and D4 stand as the first pass
+left them (below).
+
+## Change 1 — parts (first pass, not landed)
 
 `flow_parts` (migration 283) already holds a user's pieces of a line. The other two mechanisms:
 

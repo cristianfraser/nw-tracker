@@ -471,6 +471,8 @@ const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
   "real_estate_expense_link_rejections",
   "cc_expense_purchase_notes",
   "cc_expense_unique_purchases",
+  "checking_gap_deposit_mirrors",
+  "cuenta_ahorro_deposit_splits",
 ]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [
@@ -573,7 +575,12 @@ export function runMarkInputChangeTriggers270(dbi: DatabaseType): void {
   const watchByTable = new Map(SPECS_270.map((s) => [s.table, s.watch]));
   for (const table of WRITE_LOGGED_TABLES_270) {
     const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
-    if (columns.length === 0) throw new Error(`migration 270: table ${table} does not exist`);
+    if (columns.length === 0) {
+      // A fresh database never gets a table a later migration dropped (the baseline no longer
+      // creates it); an existing one still has it here and drops it, triggers included, later.
+      if (DROPPED_LOGGED_TABLES.has(table)) continue;
+      throw new Error(`migration 270: table ${table} does not exist`);
+    }
     for (const sql of writeLogTriggerSql(table, columns, watchByTable.get(table) ?? null)) dbi.exec(sql);
   }
 }

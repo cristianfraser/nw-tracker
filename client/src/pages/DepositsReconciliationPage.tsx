@@ -19,9 +19,7 @@ const STATUS_ORDER: DepositReconciliationStatus[] = [
   "unlinked_checking_present",
   "unlinked_no_checking_source",
   "resolved_internal_transfer",
-  "resolved_family_funded",
   "resolved_tax_refund",
-  "linked_synthetic",
   "linked",
 ];
 
@@ -29,10 +27,6 @@ function statusSectionKey(status: DepositReconciliationStatus): string {
   switch (status) {
     case "linked":
       return "depositsReconciliation.sectionLinked";
-    case "linked_synthetic":
-      return "depositsReconciliation.sectionLinkedSynthetic";
-    case "resolved_family_funded":
-      return "depositsReconciliation.sectionResolvedFamilyFunded";
     case "resolved_tax_refund":
       return "depositsReconciliation.sectionResolvedTaxRefund";
     case "resolved_internal_transfer":
@@ -48,10 +42,6 @@ function statusEmptyKey(status: DepositReconciliationStatus): string {
   switch (status) {
     case "linked":
       return "depositsReconciliation.emptyLinked";
-    case "linked_synthetic":
-      return "depositsReconciliation.emptyLinkedSynthetic";
-    case "resolved_family_funded":
-      return "depositsReconciliation.emptyResolvedFamilyFunded";
     case "resolved_tax_refund":
       return "depositsReconciliation.emptyResolvedTaxRefund";
     case "resolved_internal_transfer":
@@ -371,8 +361,6 @@ export function DepositsReconciliationPage() {
               <tr>
                 <th>{t("depositsReconciliation.colMonth")}</th>
                 <th>{t("depositsReconciliation.colLinked")}</th>
-                <th>{t("depositsReconciliation.colLinkedSynthetic")}</th>
-                <th>{t("depositsReconciliation.colResolvedFamilyFunded")}</th>
                 <th>{t("depositsReconciliation.colResolvedTaxRefund")}</th>
                 <th>{t("depositsReconciliation.colResolvedInternalTransfer")}</th>
                 <th>{t("depositsReconciliation.colNoChecking")}</th>
@@ -386,8 +374,6 @@ export function DepositsReconciliationPage() {
             <tr key={pt.month}>
               <td className="mono">{pt.month}</td>
               <td className="mono">{formatFlowMoney(pt.linked_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.linked_synthetic_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.resolved_family_funded_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.resolved_tax_refund_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.resolved_internal_transfer_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.unlinked_no_checking_source_clp, displayUnit)}</td>

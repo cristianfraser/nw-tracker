@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { listBudaAbonosWithoutRealOutflowLink, syncBudaAbonoDepositMirrors } from "./budaWallet.js";
+import { listBudaAbonosWithoutRealOutflowLink } from "./budaWallet.js";
 import { buildExpenseKey } from "./expenseKeys.js";
 import { loadDepositMatchCandidates } from "./checkingCartolaLoaders.js";
 import { db } from "./db.js";
@@ -13,12 +13,6 @@ let createdBuda = false;
 let abonoId: number | null = null;
 let corrienteId: number | null = null;
 let coinId: number | null = null;
-
-function mirrorFor(depositId: number): { id: number; amount_clp: number } | undefined {
-  return db
-    .prepare(`SELECT id, amount_clp FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`)
-    .get(depositId) as { id: number; amount_clp: number } | undefined;
-}
 
 function insertLink(purchaseKey: string): void {
   insertDepositLink({
@@ -89,7 +83,6 @@ beforeAll(() => {
 afterAll(() => {
   if (abonoId != null) {
     deleteDepositLinks("deposit_movement_id = ?", abonoId);
-    db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`).run(abonoId);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(abonoId);
   }
   if (realDebitId != null) db.prepare(`DELETE FROM movements WHERE id = ?`).run(realDebitId);
@@ -100,31 +93,13 @@ afterAll(() => {
   if (createdBuda && budaId != null) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(budaId);
 });
 
-describe("syncBudaAbonoDepositMirrors", () => {
-  it("mirrors an abono no real outflow explains, and keeps the mirror's id across syncs", () => {
+describe("listBudaAbonosWithoutRealOutflowLink", () => {
+  it("names an abono until a real checking debit is linked to it", () => {
     if (abonoId == null) return;
-    syncBudaAbonoDepositMirrors();
-    const first = mirrorFor(abonoId);
-    expect(first?.amount_clp).toBe(123456);
-    syncBudaAbonoDepositMirrors();
-    expect(mirrorFor(abonoId)?.id).toBe(first?.id);
-  });
-
-  it("a link from a mirror line is not a real outflow", () => {
-    if (abonoId == null) return;
-    insertLink(buildExpenseKey({ kind: "gap_mirror", mirrorId: mirrorFor(abonoId)!.id }));
     expect(listBudaAbonosWithoutRealOutflowLink().has(abonoId)).toBe(true);
-    syncBudaAbonoDepositMirrors();
-    expect(mirrorFor(abonoId)).toBeDefined();
-    deleteDepositLinks("deposit_movement_id = ?", abonoId);
-  });
-
-  it("drops the mirror once the abono is linked to its real cartola debit", () => {
-    if (abonoId == null) return;
     insertLink(realDebitKey());
     expect(listBudaAbonosWithoutRealOutflowLink().has(abonoId)).toBe(false);
-    syncBudaAbonoDepositMirrors();
-    expect(mirrorFor(abonoId)).toBeUndefined();
+    deleteDepositLinks("deposit_movement_id = ?", abonoId);
   });
 });
 

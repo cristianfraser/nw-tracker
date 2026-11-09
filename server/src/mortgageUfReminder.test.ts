@@ -260,6 +260,7 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
       interest: null,
       insurance_fire: null,
       insurance_life: null,
+      prepayment_charge: null,
     });
     expect(buildMortgageUfReminder("2099-06-11").reason).not.toBe("already_paid");
 
@@ -284,6 +285,7 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
       interest: null,
       insurance_fire: null,
       insurance_life: null,
+      prepayment_charge: null,
     });
 
     // Cycle 2099-06 is now paid; today 2099-06-11 looks ahead to 2099-07 (no UF) → uf_unavailable.

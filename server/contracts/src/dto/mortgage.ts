@@ -52,6 +52,9 @@ export interface DeptoMortgageSheetRow {
   amortizacion_total_clp: number | null;
   interes_clp: number | null;
   interes_uf: number | null;
+  /** A prepago's prepayment charge (the lender's comisión, a cost beside its accrued interest); null on a cuota. */
+  prepayment_charge_clp: number | null;
+  prepayment_charge_uf: number | null;
   delta_credito_amort_clp: number | null;
   interes_oculto_clp: number | null;
   interes_oculto_b_clp: number | null;

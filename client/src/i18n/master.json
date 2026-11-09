@@ -2469,6 +2469,10 @@
           "en": "Interest",
           "es": "Interés"
         },
+        "prepaymentCharge": {
+          "en": "Prepayment charge",
+          "es": "Comisión de prepago"
+        },
         "min": {
           "en": "Min",
           "es": "Mín"
@@ -4149,14 +4153,6 @@
       "en": "Linked to an expense",
       "es": "Vinculados a gasto"
     },
-    "sectionLinkedSynthetic": {
-      "en": "Linked (synthetic mirror — missing bank statement)",
-      "es": "Vinculados (mirror sintético — cartola faltante)"
-    },
-    "sectionResolvedFamilyFunded": {
-      "en": "Family contributions (no own outflow)",
-      "es": "Aportes de familia (sin flujo propio)"
-    },
     "sectionResolvedTaxRefund": {
       "en": "Tax refunds paid into the account (no own outflow)",
       "es": "Devoluciones de impuestos pagadas en la cuenta (sin flujo propio)"
@@ -4176,14 +4172,6 @@
     "emptyLinked": {
       "en": "No linked deposits.",
       "es": "No hay depósitos vinculados."
-    },
-    "emptyLinkedSynthetic": {
-      "en": "No synthetic mirrors generated.",
-      "es": "No hay mirrors sintéticos generados."
-    },
-    "emptyResolvedFamilyFunded": {
-      "en": "No deposits marked as family contributions.",
-      "es": "No hay depósitos marcados como aporte familiar."
     },
     "emptyResolvedTaxRefund": {
       "en": "No deposits are tax refunds.",
@@ -4232,14 +4220,6 @@
     "colLinked": {
       "en": "Linked",
       "es": "Vinculado"
-    },
-    "colLinkedSynthetic": {
-      "en": "Linked (synthetic)",
-      "es": "Vinculado (sintético)"
-    },
-    "colResolvedFamilyFunded": {
-      "en": "Family contribution",
-      "es": "Aporte familiar"
     },
     "colResolvedTaxRefund": {
       "en": "Tax refund",

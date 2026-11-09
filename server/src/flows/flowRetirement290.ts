@@ -24,7 +24,6 @@ const ID_KEY_PREFIX: Partial<Record<SourceSpec["table"], string>> = {
   cc_statement_lines: "line:",
   cc_installment_purchases: "installment:",
   expense_entries: "manual:",
-  checking_gap_deposit_mirrors: "synthetic-checking-gap-mirror:",
 };
 
 function holdsSomethingSql(flow: string): string {

@@ -62,6 +62,8 @@ function basePrior(overrides: Partial<DeptoMortgageSheetRow> = {}): DeptoMortgag
     pago_acumulado_clp: 100,
     amort_acum_clp: 50,
     interes_acum_clp: 40,
+    prepayment_charge_clp: null,
+    prepayment_charge_uf: null,
     ...overrides,
   };
 }

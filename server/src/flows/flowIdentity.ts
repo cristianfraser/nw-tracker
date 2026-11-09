@@ -49,12 +49,6 @@ export function movementIdOnFlowOfKey(key: string, accountId: number, dbHandle: 
 }
 
 function rowFlowId(row: FlowSourceRow, dbHandle: Database): number | null {
-  if (row.table === "checking_gap_deposit_mirrors") {
-    const e = dbHandle
-      .prepare(`SELECT flow_id FROM flow_evidence WHERE source_table = ? AND source_row_id = ?`)
-      .get(row.table, row.id) as { flow_id: number } | undefined;
-    return e?.flow_id ?? null;
-  }
   const r = dbHandle.prepare(`SELECT flow_id FROM ${row.table} WHERE id = ?`).get(row.id) as { flow_id: number | null } | undefined;
   return r?.flow_id ?? null;
 }
@@ -104,9 +98,7 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
 }
 
 function repointRow(row: FlowSourceRow, flowId: number, dbHandle: Database): void {
-  if (row.table !== "checking_gap_deposit_mirrors") {
-    dbHandle.prepare(`UPDATE ${row.table} SET flow_id = ? WHERE id = ?`).run(flowId, row.id);
-  }
+  dbHandle.prepare(`UPDATE ${row.table} SET flow_id = ? WHERE id = ?`).run(flowId, row.id);
   dbHandle.prepare(`UPDATE flow_evidence SET flow_id = ? WHERE source_table = ? AND source_row_id = ?`).run(flowId, row.table, row.id);
 }
 
@@ -221,13 +213,6 @@ export function withExpenseLineFlowIds<
   const movements = rowFlows("movements");
   const plans = rowFlows("cc_installment_purchases");
   const entries = rowFlows("expense_entries");
-  const mirrors = new Map(
-    (
-      dbHandle
-        .prepare(`SELECT source_row_id AS id, flow_id FROM flow_evidence WHERE source_table = 'checking_gap_deposit_mirrors'`)
-        .all() as { id: number; flow_id: number }[]
-    ).map((r) => [r.id, r.flow_id])
-  );
   return lines.map((l) => {
     const keyed = byKey.get(expenseKeyParts(l.purchase_key)?.flowKey ?? "");
     let flowId = keyed;
@@ -235,7 +220,7 @@ export function withExpenseLineFlowIds<
       if (l.source === "cc") {
         flowId = l.statement_line_id > 0 ? lines_.get(l.statement_line_id) : plans.get(l.installment_purchase_id ?? -1);
       } else if (l.source === "checking") {
-        flowId = l.statement_line_id > 0 ? movements.get(l.statement_line_id) : mirrors.get(-l.statement_line_id);
+        flowId = movements.get(l.statement_line_id);
       } else if (l.source === "manual") {
         flowId = entries.get(l.statement_line_id);
       }
