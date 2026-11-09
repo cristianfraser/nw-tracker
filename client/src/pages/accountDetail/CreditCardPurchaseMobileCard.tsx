@@ -1,5 +1,5 @@
 import type { CcInstallmentPurchaseComputed } from "../../types";
-import { formatClp, formatGroupedDecimal } from "../../format";
+import { formatClp } from "../../format";
 import { useTranslation } from "../../i18n";
 import {
   TableMobileCard,
@@ -13,7 +13,6 @@ import { CreditCardPurchaseVendor } from "./CreditCardPurchaseVendor";
 export function CreditCardPurchaseMobileCard({
   purchase,
   accountId,
-  hasLedger,
   dueColumn,
   manualBusy,
   onDeleteManual,
@@ -21,7 +20,6 @@ export function CreditCardPurchaseMobileCard({
 }: {
   purchase: CcInstallmentPurchaseComputed;
   accountId: number;
-  hasLedger: boolean;
   dueColumn: "last" | "none";
   manualBusy: boolean;
   onDeleteManual?: () => void;
@@ -72,12 +70,6 @@ export function CreditCardPurchaseMobileCard({
       </TableMobileCardSection>
 
       <TableMobileCardSection>
-        {!hasLedger ? (
-          <TableMobileCardRow
-            label={t("account.creditCard.colAnnualRate")}
-            value={formatGroupedDecimal(purchase.annual_interest_pct, 2)}
-          />
-        ) : null}
         <TableMobileCardRow label={t("account.creditCard.colPurchaseDate")} value={purchase.purchase_date ?? "—"} />
         <TableMobileCardRow
           label={t("account.creditCard.colPurchaseBillingMonth")}
@@ -89,12 +81,6 @@ export function CreditCardPurchaseMobileCard({
         />
       </TableMobileCardSection>
 
-      {!hasLedger ? (
-        <TableMobileCardSection>
-          <TableMobileCardRow label={t("account.creditCard.colOffsetCsv")} value={String(purchase.schedule_offset_months)} />
-        </TableMobileCardSection>
-      ) : null}
-
       <TableMobileCardSection>
         <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
       </TableMobileCardSection>
@@ -102,14 +88,11 @@ export function CreditCardPurchaseMobileCard({
   );
 }
 
-export function purchaseTableColSpan(
-  hasLedger: boolean,
-  dueColumn: "last" | "none"
-): number {
+export function purchaseTableColSpan(dueColumn: "last" | "none"): number {
   // "none" (active): Compra (date · cuota over the vendor), Cuotas (the progress bar).
   // "last" (completed): Compra (the vendor with its note), Cuotas, Principal, Fecha, Mes facturación,
-  // Cuota CLP, Mes último pago — without a ledger the Tasa + Offset CSV columns are added.
+  // Cuota CLP, Mes último pago.
   // +1 = the mobile-only cell.
-  const desktop = dueColumn === "none" ? 2 : 7 + (hasLedger ? 0 : 2);
+  const desktop = dueColumn === "none" ? 2 : 7;
   return desktop + 1;
 }

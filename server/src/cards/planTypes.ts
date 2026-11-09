@@ -13,11 +13,8 @@ export type CcInstallmentPurchaseRow = {
   installment_count: number;
   installments_paid: number;
   cuota_clp: number;
-  annual_interest_pct: number;
   /** Calendar month (YYYY-MM) of installment index 0 (first cuota of the contract). */
   first_due_month: string;
-  /** Extra months added to every installment index (persistent in CSV; e.g. +1 if statement slipped a month). */
-  schedule_offset_months: number;
   purchase_month: string | null;
 };
 

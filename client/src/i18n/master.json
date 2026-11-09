@@ -5338,10 +5338,6 @@
         "en": "Principal",
         "es": "Principal"
       },
-      "colAnnualRate": {
-        "en": "Annual rate %",
-        "es": "Tasa % anual"
-      },
       "colPurchaseDate": {
         "en": "Date",
         "es": "Fecha"
@@ -5349,10 +5345,6 @@
       "colPurchaseBillingMonth": {
         "en": "Billing month",
         "es": "Mes facturación"
-      },
-      "colOffsetCsv": {
-        "en": "CSV offset (months)",
-        "es": "Offset CSV (meses)"
       },
       "colCuotaClp": {
         "en": "Installment CLP",

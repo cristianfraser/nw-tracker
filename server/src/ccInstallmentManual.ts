@@ -25,7 +25,6 @@ export type ManualCcPurchaseInput = {
   cuotas_totales: number;
   merchant?: string;
   description?: string;
-  annual_interest_pct?: number;
   card_group?: string;
 };
 

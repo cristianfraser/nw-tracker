@@ -8,7 +8,7 @@ import type {
   CcInstallmentMonthBreakdown,
   CcInstallmentPurchaseComputed,
 } from "../../types";
-import { formatClp, formatGroupedDecimal } from "../../format";
+import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { Trans, useTranslation } from "../../i18n";
 import { formatYearMonthLabel } from "../../formatDateLabel";
@@ -161,7 +161,6 @@ function CreditCardInstallmentsSection({
           <CreditCardPurchaseMobileCard
             purchase={p}
             accountId={accountId}
-            hasLedger={hasLedger}
             dueColumn="none"
             manualBusy={manualBusy}
             onDeleteManual={deleteManual(p)}
@@ -177,10 +176,8 @@ function CreditCardInstallmentsSection({
         <th className="desktop-only">{t("account.creditCard.colPurchase")}</th>
         <th className="desktop-only">{t("account.creditCard.colInstallments")}</th>
         <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th>
-        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colAnnualRate")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colPurchaseDate")}</th>
         <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
-        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
         <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th>
         <th className="mobile-only" aria-hidden="true" />
@@ -196,12 +193,8 @@ function CreditCardInstallmentsSection({
         </td>
         <td className="mono desktop-only">{p.installment_count}</td>
         <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
-        {!hasLedger ? (
-          <td className="mono desktop-only">{formatGroupedDecimal(p.annual_interest_pct, 2)}</td>
-        ) : null}
         <td className="mono desktop-only">{p.purchase_date ?? "—"}</td>
         <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
-        {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
         <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
         <td className="mono desktop-only">
           {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}
@@ -210,7 +203,6 @@ function CreditCardInstallmentsSection({
           <CreditCardPurchaseMobileCard
             purchase={p}
             accountId={accountId}
-            hasLedger={hasLedger}
             dueColumn="last"
             manualBusy={manualBusy}
             onDeleteManual={deleteManual(p)}
@@ -294,7 +286,7 @@ function CreditCardInstallmentsSection({
               {ledger.purchases.length === 0 ? (
                 loading ? null : (
                   <tr>
-                    <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
+                    <td colSpan={purchaseTableColSpan("none")} className="muted">
                       {t("account.creditCard.activePurchasesEmpty")}
                     </td>
                   </tr>
@@ -321,7 +313,7 @@ function CreditCardInstallmentsSection({
                 {purchasesCompletedSorted.length === 0 ? (
                   loading ? null : (
                     <tr>
-                      <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
+                      <td colSpan={purchaseTableColSpan("last")} className="muted">
                         {t("account.creditCard.completedPurchasesEmpty")}
                       </td>
                     </tr>
