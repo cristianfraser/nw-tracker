@@ -9,9 +9,9 @@
  * Works without cookies/auth; requires a normal browser User-Agent.
  */
 
-import { equityQuoteCurrency } from "../../src/equityQuote.js";
-import type { EodCloseSeries } from "../../src/equityYahooEod.js";
-import { BROWSER_USER_AGENT, fetchOutboundText } from "../../src/outboundFetch.js";
+import { equityQuoteCurrency } from "./equityQuote.js";
+import type { EodCloseSeries } from "./equityYahooEod.js";
+import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 
 type BolsaPointHistRow = {
   DATE?: string;

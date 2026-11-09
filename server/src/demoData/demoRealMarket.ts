@@ -4,9 +4,10 @@
  * instance syncs from, so the demo's holdings are valued at real prices and the wake-on-visit
  * syncs (`demoMarketActivity.ts`) only ever append the days since:
  *
- * - `equity_daily`: Yahoo daily closes of every ticker the demo holds (BTC-USD included); the IPSA
- *   ETF's closes before Yahoo carries them (2026-07-02) from the committed snapshot of the Bolsa de
- *   Santiago's (`DEMO_SANTIAGO_SNAPSHOT_CSV_PATH`: a closed past never changes);
+ * - `equity_daily`: Yahoo daily closes of every ticker the demo holds (BTC-USD included); a `.SN`
+ *   ticker's from the Bolsa de Santiago's own point history (Yahoo keeps no past bars for them),
+ *   with the committed snapshot spliced before the live source's first day
+ *   (`DEMO_SANTIAGO_SNAPSHOT_CSV_PATH`: a closed past never changes);
  * - `fx_daily`: Yahoo CLP=X (write-once, like the live frame);
  * - `fx_daily_bcentral` / `eur_daily` / `uf_daily` / `utm_daily` / `ipc_daily`: Banco Central
  *   (`BCENTRAL_EMAIL` / `BCENTRAL_PASSWORD` are required — a Render secret on the demo);
@@ -46,6 +47,8 @@ import {
   fetchYahooDailyClosesAndDividends,
   type EodCloseSeries,
 } from "../equityYahooEod.js";
+import { fetchBolsaSantiagoDailyCloses } from "../equityBolsaSantiagoEod.js";
+import { equityQuoteCurrency } from "../equityQuote.js";
 import { fetchYahooFxUsdDailyCloses } from "../fxYahooEodSync.js";
 import {
   insertFxRowsIfMissing,
@@ -125,7 +128,7 @@ export function parseDemoSantiagoSnapshotCsv(text: string): Map<string, EodClose
 }
 
 /**
- * A ticker's closes: the snapshot's before Yahoo's first day, then Yahoo's. Throws when the two
+ * A ticker's closes: the snapshot's before the live source's first day, then the live source's. Throws when the two
  * leave a gap of more than a week (the snapshot must reach Yahoo's start).
  */
 export function spliceSnapshotBeforeYahoo(snapshot: EodCloseSeries, yahoo: EodCloseSeries): EodCloseSeries {
@@ -292,10 +295,18 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
   for (const { ticker, firstUse } of tickers) {
     const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
     const withDividends = benchmarkTickers.has(ticker);
-    const { series, divs } = await withDemoMarketRetries(`Yahoo ${ticker}`, async () => {
+    // A Bolsa de Santiago instrument's history comes from the exchange's own point history:
+    // Yahoo keeps no past bars for the thin `.SN` tickers (on 2026-11-09 it answered one bar,
+    // today's, for CFIETFIPSA.SN, and the Render build failed on the snapshot splice).
+    const santiago = equityQuoteCurrency(ticker) === "clp";
+    const sourceLabel = santiago ? `Bolsa de Santiago ${ticker}` : `Yahoo ${ticker}`;
+    const { series, divs } = await withDemoMarketRetries(sourceLabel, async () => {
       let raw: EodCloseSeries;
       let divs: { ex_date: string; amount: number }[] = [];
-      if (withDividends) {
+      if (santiago) {
+        if (withDividends) throw new Error(`demo market: ${ticker} cannot be a dividend benchmark (no dividend source)`);
+        raw = await fetchBolsaSantiagoDailyCloses(ticker);
+      } else if (withDividends) {
         const r = await fetchYahooDailyClosesAndDividends(ticker, unixSeconds(from), p2);
         raw = r.series;
         divs = r.dividends.filter((d) => d.ex_date <= last);
