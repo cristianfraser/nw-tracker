@@ -301,6 +301,8 @@ export type Person = {
   apv: { from: number; utm: number; bonusRate: number; bonusCapUtm: number; depositDay: number };
   /** Where net worth should land today (USD), for the build's sanity check; null: no target. */
   netWorthTargetUsd: number | null;
+  /** Days of generated ingest history (scheduler runs, run messages, bank checks) before today. */
+  ingestHistoryDays: number;
 };
 
 /** The hosted demo's person: born 1995, a decade of documents from university to his own apartment. */
@@ -332,6 +334,7 @@ export const DEMO_PERSON: Person = {
   cashBand: CASH_BAND,
   apv: APV,
   netWorthTargetUsd: 400_000,
+  ingestHistoryDays: 45,
 };
 
 /**
@@ -396,6 +399,8 @@ export function testPerson(today: Ymd): Person {
     cashBand: CASH_BAND,
     apv: APV,
     netWorthTargetUsd: null,
+    // A few nights only: the suite exercises the writer without paying for weeks of runs.
+    ingestHistoryDays: 3,
   };
 }
 

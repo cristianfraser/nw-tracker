@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -70,18 +71,20 @@ export function IncomeExcludedLinesTable({
               </td>
               <td className="muted">{row.note ?? "—"}</td>
               <td>
-                <Button variant="secondary"
-                  disabled={restoreIncomeMovement.isPending}
-                  onClick={() =>
-                    setRestoreTarget({
-                      movement_id: row.movement_id,
-                      description: row.description,
-                      received_on: row.received_on,
-                    })
-                  }
-                >
-                  {t("income.restoreLine")}
-                </Button>
+                {DEMO_EDITS_LIMITED ? null : (
+                  <Button variant="secondary"
+                    disabled={restoreIncomeMovement.isPending}
+                    onClick={() =>
+                      setRestoreTarget({
+                        movement_id: row.movement_id,
+                        description: row.description,
+                        received_on: row.received_on,
+                      })
+                    }
+                  >
+                    {t("income.restoreLine")}
+                  </Button>
+                )}
               </td>
             </tr>
           ))}

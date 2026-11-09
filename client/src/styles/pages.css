@@ -150,3 +150,9 @@ h2.flow-section-title {
   color: #74a4d9;
   font-weight: 600;
 }
+
+/* Demo privacy note: prose, kept to a readable measure. */
+.privacy-page p {
+  max-width: 42rem;
+  line-height: 1.5;
+}

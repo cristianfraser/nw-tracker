@@ -54,6 +54,7 @@ import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../componen
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
 import { PageGridTile } from "../components/layout/PageGridTile";
+import { useDashboardFoldOnly } from "../dashboardFold";
 import { dashboardTileOrder, dashboardTileWide } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
@@ -97,6 +98,7 @@ const COMBINED_PERF_YEARLY = {
 };
 
 export function DashboardPage() {
+  const foldOnly = useDashboardFoldOnly();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { displayUnit } = useDisplayPreferences();
@@ -672,6 +674,7 @@ export function DashboardPage() {
         ),
         tileOrder: dashboardTileOrder,
         tileWide: dashboardTileWide,
+        foldOnly,
       }}
       accountsTree={
         accountsTreeRoot ? (

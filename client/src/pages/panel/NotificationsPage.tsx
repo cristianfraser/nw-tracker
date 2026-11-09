@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { MessagesTable } from "../../components/messages/MessagesTable";
 import { useMarkMessagesReadMutation, useMessages } from "../../queries/hooks";
+import { DEMO_BUILD } from "../../dashboardPath";
 
 export function NotificationsPage() {
   const { t } = useTranslation();
@@ -13,6 +14,8 @@ export function NotificationsPage() {
   } = useMessages("notification");
 
   useEffect(() => {
+    // The demo's messages are shared by every visitor and its database is read-only: nothing to mark.
+    if (DEMO_BUILD) return;
     markRead.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mark read once on mount
   }, []);

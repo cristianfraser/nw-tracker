@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
@@ -413,19 +414,23 @@ function ExpenseLineRow({
   const canSelect = selectable && selection != null && !fixedCategory;
   const selected = canSelect && selection.isSelected(ln);
 
-  // What the row may do is the server's call (`can_*`, `expenseLineShapes.ts`).
-  const canDelete = ln.can_delete === true;
+  // What the row may do is the server's call (`can_*`, `expenseLineShapes.ts`); the demo keeps
+  // deletions closed on top of it.
+  const canDelete = !DEMO_EDITS_LIMITED && ln.can_delete === true;
   const canMakeInstallment = ln.can_make_installment === true;
   const canEditInstallment = ln.can_edit_installment === true;
   const canEditPieces = ln.can_edit_pieces === true;
   const hasPieces = ln.piece_seq != null || ln.pieces_remainder === true;
   const canEditManual = actions.onEditManual != null && ln.source === "manual" && ln.statement_line_id > 0;
   const showNoteInput =
+    !DEMO_EDITS_LIMITED &&
     Boolean(ln.purchase_key) &&
     (ln.source === "cc" || (actions.enableCheckingNotes && ln.source === "checking"));
   const noteStatementLineId =
     ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
-  const needsAction = ln.cuota_purchase_kind != null || ln.branch_choices != null;
+  // The demo leaves branch picks closed (they write a catalog row every visitor would see).
+  const branchChoices = DEMO_EDITS_LIMITED ? null : ln.branch_choices;
+  const needsAction = ln.cuota_purchase_kind != null || branchChoices != null;
   // A big group shows on the row once set; until then its picker lives in the row's extras.
   const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
@@ -521,7 +526,7 @@ function ExpenseLineRow({
           ) : null}
           {canMakeInstallment && !ln.cuota_purchase_kind ? <CuotasInline line={ln} /> : null}
           {canEditInstallment ? <PlanCuotasControls line={ln} /> : null}
-          {ln.branch_choices ? <BranchChoice choices={ln.branch_choices} /> : null}
+          {branchChoices ? <BranchChoice choices={branchChoices} /> : null}
           {bigGroupInPanel ? (
             <div className={styles.panelBigGroup}>
               <span className="muted">{t("expenses.creditCard.lineRow.bigGroupLabel")}</span>

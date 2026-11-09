@@ -7,6 +7,7 @@ import {
 } from "../../queries/hooks";
 import type { CcExpenseBigGroupDto } from "../../types";
 import { PillPicker } from "../ui/PillPicker";
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 
 /** Big groups carry no colour of their own: one neutral pill for all. */
 const BIG_GROUP_PILL_COLOR = "#475569";
@@ -64,9 +65,12 @@ export function ExpenseBigGroupPicker({
       })}
       pending={pending}
       footer={
-        <Button variant="ghost" size="sm" onClick={() => void onCreate()}>
-          {t("expenses.creditCard.bigGroups.createOption")}
-        </Button>
+        // The demo opens assigning a big group, not naming a new one (free text).
+        DEMO_EDITS_LIMITED ? undefined : (
+          <Button variant="ghost" size="sm" onClick={() => void onCreate()}>
+            {t("expenses.creditCard.bigGroups.createOption")}
+          </Button>
+        )
       }
     />
   );

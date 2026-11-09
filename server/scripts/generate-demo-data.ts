@@ -20,6 +20,7 @@ import { generateDemoDb } from "../src/demoData/generate.js";
 import { demoMarketSpec } from "../src/demoData/market.js";
 import { DEMO_PERSON, testPerson } from "../src/demoData/person.js";
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
+import { saveDemoPristineCopy } from "../src/demoWritable.js";
 
 if (!process.env.NW_TRACKER_TEST_DB?.trim()) throw new Error("set NW_TRACKER_TEST_DB to a fresh DB file");
 const test = process.argv.includes("--test");
@@ -31,3 +32,8 @@ const r = generateDemoDb({ person, market: real ? "real" : "synthetic" });
 const { byAccount, ...summary } = r;
 console.log(`synthetic data (${test ? "test" : "demo"}): ${JSON.stringify(summary)}`);
 for (const a of byAccount) console.log(`  ${a.name.padEnd(24)} ${a.clp}`);
+// The hosted demo resets to this copy when visitors' edits pile up (src/demoWritable.ts).
+if (!test) {
+  saveDemoPristineCopy();
+  console.log("saved the generated state beside the DB (.pristine)");
+}

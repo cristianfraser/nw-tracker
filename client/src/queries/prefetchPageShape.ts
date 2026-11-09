@@ -11,6 +11,7 @@ import {
   prefetchDashboardNavSnapshot,
 } from "./displayUnitQueries";
 import type { DisplayUnit } from "./keys";
+import { isDashboardPathname } from "../dashboardPath";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
 
@@ -57,7 +58,7 @@ export function prefetchPageShapeForPath(
     return;
   }
 
-  if (path === "/") {
+  if (path === "/" || isDashboardPathname(path)) {
     void prefetchDashboardNavSnapshot(queryClient, unit);
     void prefetchAccountsByPortfolioGroup(queryClient, NET_WORTH_PORTFOLIO_GROUP, unit);
     return;

@@ -7,13 +7,16 @@ const API_HINT =
   "Start the API in another terminal: cd server && npm run dev (port 3001).";
 
 /**
- * The hosted demo serves reads only (server: `demoReadOnlyMiddleware`). Turn its 403
- * sentinel into a sentence instead of letting the raw JSON body surface as the error.
- * Translated at call time — never cache the result (the language can change at runtime).
+ * The hosted demo serves reads plus a few counted edits (server: `demoReadOnlyMiddleware`,
+ * `demoWriteQuotaMiddleware`). Turn its sentinels — 403 `demo_read_only` for a closed edit, 429
+ * `demo_write_limit` once a visitor's daily edits are spent — into a sentence instead of letting
+ * the raw JSON body surface as the error. Translated at call time — never cache the result (the
+ * language can change at runtime).
  */
 function demoReadOnlyMessage(status: number, body: string): string | null {
-  if (status !== 403 || !body.includes("demo_read_only")) return null;
-  return i18n.t("demo.readOnly");
+  if (status === 403 && body.includes("demo_read_only")) return i18n.t("demo.readOnly");
+  if (status === 429 && body.includes("demo_write_limit")) return i18n.t("demo.writable.limitReached");
+  return null;
 }
 
 /**

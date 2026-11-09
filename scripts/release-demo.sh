@@ -66,6 +66,26 @@ else
   git log --oneline "$demo..$sha"
 fi
 
+# The link-preview image (client/public/og-image.png) is a screenshot of the dashboard. Say so when
+# the client changed after it was last rendered; never block the release over it.
+if ((!ROLLBACK)); then
+  og=client/public/og-image.png
+  og_sha="$(git log -1 --format=%H "$sha" -- "$og" || true)"
+  if [[ -z "$og_sha" ]]; then
+    echo
+    echo "Note: $og is not in $short; render it with:"
+    echo "  node scripts/render-og-image.mjs --url=https://nw-tracker-demo.onrender.com"
+  else
+    ui_changes="$(git rev-list --count "$og_sha..$sha" -- client/src client/index.html ':!client/src/**/*.test.ts' ':!client/src/**/*.test.tsx')"
+    if ((ui_changes > 0)); then
+      echo
+      echo "Note: $og was rendered at $(git rev-parse --short=8 "$og_sha") ($(git log -1 --format=%cs "$og_sha")); $ui_changes client commit(s) since."
+      echo "Once this release is live, re-render it against the demo and commit it to main:"
+      echo "  node scripts/render-og-image.mjs --url=https://nw-tracker-demo.onrender.com"
+    fi
+  fi
+fi
+
 if ((!YES)); then
   read -r -p "Push to demo? [y/N] " answer
   [[ "$answer" == [yY] ]] || { echo "Not released."; exit 1; }

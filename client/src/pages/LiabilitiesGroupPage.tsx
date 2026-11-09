@@ -37,6 +37,7 @@ import {
 } from "../queries/hooks";
 import { dailyPayloadPending, queryLoadError } from "../queries/pageShapeReady";
 import { usePortfolioPageData } from "./usePortfolioPageData";
+import { DASHBOARD_PATH } from "../dashboardPath";
 
 /** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
 export function LiabilitiesGroupPage() {
@@ -437,7 +438,7 @@ export function LiabilitiesGroupPage() {
   }
 
   if (!navMatchNode && navSettled) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={DASHBOARD_PATH} replace />;
   }
 
   if (err) {

@@ -228,3 +228,26 @@
   line-height: 1.15rem;
   text-align: center;
 }
+
+/* Hosted demo only: «Demo tour» · «Privacy» under the panel link. */
+.demoLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  padding: 0.5rem 0 0.25rem var(--sidebar-text-x);
+}
+
+.demoLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-caption);
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.demoLink:hover {
+  color: var(--text);
+}

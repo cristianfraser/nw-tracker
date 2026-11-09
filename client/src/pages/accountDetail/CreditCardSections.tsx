@@ -1,3 +1,4 @@
+import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
 import { Loadable } from "../../components/ui/Loadable";
@@ -112,7 +113,7 @@ function CreditCardInstallmentsSection({
 
   // Only a hand-entered plan can be deleted (a statement plan comes back with the next import).
   const deleteManual = (p: CcInstallmentPurchaseComputed) =>
-    hasLedger && p.origin === "manual" && p.purchase_db_id != null
+    !DEMO_EDITS_LIMITED && hasLedger && p.origin === "manual" && p.purchase_db_id != null
       ? () => deletePurchase.mutate(p.purchase_db_id!)
       : undefined;
 

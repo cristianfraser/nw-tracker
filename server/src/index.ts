@@ -16,6 +16,7 @@ import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
 import { describeServerConfig, initServerConfig } from "./config.js";
 import { requestContext } from "./requestContext.js";
 import { demoOwnerCookieMiddleware, demoVisitLogMiddleware } from "./demoAnalytics.js";
+import { demoWriteQuotaMiddleware, startDemoResetScheduler } from "./demoWritable.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { ensureCacheFresh } from "./cacheRegistry.js";
@@ -80,9 +81,13 @@ if (config.profile.readOnlyApi) {
   // analytics visitor hash would collapse to a single id.
   app.set("trust proxy", 1);
   app.use(demoReadOnlyMiddleware());
+  app.use(demoWriteQuotaMiddleware());
   app.use(demoOwnerCookieMiddleware());
   app.use(demoVisitLogMiddleware());
-  console.log("demo: /api is read-only, anonymous visit analytics + usage log in DEMO_ANALYTICS_DB (DEMO_MODE=1)");
+  console.log(
+    "demo: /api is read-only but for a few counted edits, reset to the generated state when idle and nightly; " +
+      "anonymous visit analytics + usage log in DEMO_ANALYTICS_DB (DEMO_MODE=1)"
+  );
 }
 const jsonBody = express.json({ limit: "2mb" });
 // An ingest payload can carry a whole document set (every parsed card statement is ~4 MB as
@@ -139,6 +144,7 @@ app.use(
 app.listen(PORT, HOST, () => {
   console.log(`nw-tracker API http://${HOST}:${PORT}`);
   startGlobalSyncScheduler();
+  startDemoResetScheduler();
   startLiveMarketQuotesScheduler();
   startDbBackupScheduler();
   startDashboardCacheWarmer();

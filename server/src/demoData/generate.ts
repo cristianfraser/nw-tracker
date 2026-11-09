@@ -13,7 +13,8 @@
  *    liquidaciones; then the card-payment mirrors are paired as the nightly run pairs them;
  * 6. what the app keeps beside the documents: contractor payslips, contribution periods, the
  *    mortgage ledger, book valuations (property, mortgage, AFC);
- * 7. category rules, colors, sync sources, the invariants.
+ * 7. category rules, colors, sync sources, the invariants;
+ * 8. the ingest history the scheduler would have recorded (`ingestHistory.ts`).
  */
 import { setExpenseCategoryRule } from "../expenseCategoryRules.js";
 import { readFileSync } from "node:fs";
@@ -68,6 +69,7 @@ import {
 } from "./render.js";
 import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, MORTGAGE_DESGRAVAMEN_CLP, MORTGAGE_INCENDIO_CLP, MORTGAGE_MERCHANT, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
+import { writeIngestHistory } from "./ingestHistory.js";
 
 export type GenerateDemoDbOptions = { person: Person; market: "synthetic" | "real"; today?: Ymd };
 
@@ -504,5 +506,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   seedNavTree();
   applyColors(ids);
 
-  return assertDemoInvariants(ledger, ids, market, today, { payslips: payslipResult });
+  const report = assertDemoInvariants(ledger, ids, market, today, { payslips: payslipResult });
+  // Last: the history reads the finished ledger (the bank checks state what it holds).
+  writeIngestHistory(ledger, ids, person, today);
+  return report;
 }

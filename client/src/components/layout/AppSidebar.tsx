@@ -8,7 +8,7 @@ import {
   type MouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { prefetchPageShapeForPath } from "../../queries/prefetchPageShape";
 import { useMessagesUnreadCount, useSidebarNav } from "../../queries/hooks";
@@ -26,6 +26,8 @@ import { useChartStyle } from "../charts/chartStyle";
 // load and swapped them when its chunk arrived (the sketch code ships with the first load anyway).
 import SketchMarker from "../charts/SketchMarker";
 import { VISIBLE_PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
+import { DEMO_TOUR_ENABLED, startDemoTour } from "./DemoTour";
+import { DASHBOARD_PATH, DEMO_BUILD } from "../../dashboardPath";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
 
@@ -96,6 +98,7 @@ function SidebarNavItem({
   navPayload,
   displayUnit,
   onPrefetchShape,
+  tourTarget,
 }: {
   node: SidebarNavNode;
   depth: number;
@@ -105,6 +108,8 @@ function SidebarNavItem({
   navPayload: SidebarNavResponse | null;
   displayUnit: "clp" | "usd";
   onPrefetchShape: (targetPath: string) => void;
+  /** `data-tour` name the demo tour points at (DemoTour.tsx). */
+  tourTarget?: string;
 }) {
   const { t } = useTranslation();
   const hasChildren = (node.children?.length ?? 0) > 0;
@@ -129,6 +134,7 @@ function SidebarNavItem({
     <li
       className={cn(styles.item, depth === 0 && node.marker?.shape === "square" && styles.itemSection)}
       style={{ "--depth": depth } as CSSProperties}
+      data-tour={tourTarget}
     >
       <div className={cn(styles.row, isActive && styles.rowActive)}>
         {node.marker ? <RowMarker marker={node.marker} swap={hasChildren} /> : null}
@@ -225,7 +231,7 @@ export function AppSidebar() {
     (): SidebarNavNode => ({
       id: "dashboard",
       label: t("sidebar.dashboard"),
-      to: "/",
+      to: DASHBOARD_PATH,
       end: true,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,7 +263,15 @@ export function AppSidebar() {
     });
   }, []);
 
-  const dashboardNode = tree?.find((n) => n.id === "dashboard");
+  const serverDashboardNode = tree?.find((n) => n.id === "dashboard");
+  // The server's node points at `/`; on the demo that is the About page.
+  const dashboardNode = serverDashboardNode ? { ...serverDashboardNode, to: DASHBOARD_PATH } : undefined;
+  const aboutNode = useMemo(
+    (): SidebarNavNode | null =>
+      DEMO_BUILD ? { id: "about", label: t("demo.about.navLabel"), to: "/", end: true } : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [language]
+  );
   const mainNavNodes =
     tree?.filter(
       (n) =>
@@ -336,6 +350,18 @@ export function AppSidebar() {
             {!tree ? (
               <>
                 <ul className={styles.list}>
+                  {aboutNode ? (
+                    <SidebarNavItem
+                      node={aboutNode}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                      navPayload={null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
+                    />
+                  ) : null}
                   <SidebarNavItem
                     node={coldDashboardNode}
                     depth={0}
@@ -351,6 +377,18 @@ export function AppSidebar() {
             ) : (
               <>
                 <ul className={styles.list}>
+                  {aboutNode ? (
+                    <SidebarNavItem
+                      node={aboutNode}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                      navPayload={navPayload ?? null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
+                    />
+                  ) : null}
                   {dashboardNode ? (
                     <SidebarNavItem
                       key={dashboardNode.id}
@@ -365,7 +403,7 @@ export function AppSidebar() {
                     />
                   ) : null}
                 </ul>
-                <ul className={styles.list}>
+                <ul className={styles.list} data-tour="nav-groups">
                   {mainNavNodes.map((node) => (
                     <SidebarNavItem
                       key={node.id}
@@ -421,6 +459,7 @@ export function AppSidebar() {
                   {flowsNode ? (
                     <SidebarNavItem
                       node={flowsNode}
+                      tourTarget="nav-flows"
                       depth={0}
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
@@ -465,6 +504,16 @@ export function AppSidebar() {
                 onPrefetchShape={onPrefetchShape}
               />
             </ul>
+            {DEMO_TOUR_ENABLED ? (
+              <div className={styles.demoLinks}>
+                <button type="button" className={styles.demoLink} onClick={startDemoTour}>
+                  {t("demo.footer.tour")}
+                </button>
+                <Link to="/privacy" className={styles.demoLink}>
+                  {t("demo.footer.privacy")}
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
       </nav>

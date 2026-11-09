@@ -46,9 +46,279 @@
     }
   },
   "demo": {
+    "writable": {
+      "limitReached": {
+        "en": "You've reached today's limit of edits on the demo. Edits reset to the original data after a while.",
+        "es": "Llegaste al límite de ediciones de hoy en la demo. Las ediciones vuelven a los datos originales después de un rato."
+      },
+      "manualExpenseHint": {
+        "en": "On the demo the description is picked from a list. Edits are shared with other visitors and reset after a while.",
+        "es": "En la demo la descripción se elige de una lista. Las ediciones se comparten con otros visitantes y se restablecen después de un rato."
+      }
+    },
+    "about": {
+      "navLabel": {
+        "en": "About",
+        "es": "Acerca de"
+      },
+      "title": {
+        "en": "NW Tracker",
+        "es": "NW Tracker"
+      },
+      "lead": {
+        "en": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
+        "es": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado."
+      },
+      "fictional": {
+        "en": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
+        "es": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato."
+      },
+      "openDashboard": {
+        "en": "Open the dashboard",
+        "es": "Abrir el dashboard"
+      },
+      "howTitle": {
+        "en": "How it works",
+        "es": "Cómo funciona"
+      },
+      "youAreHere": {
+        "en": "You are here",
+        "es": "Estás aquí"
+      },
+      "pipeline": {
+        "sources": {
+          "title": {
+            "en": "Sources",
+            "es": "Fuentes"
+          },
+          "body": {
+            "en": "Banks (statements, daily movements), card issuers, brokers, pension and unemployment funds, mailboxes (receipts, transfer notices, payslips) and market data (prices, exchange rates, UF).",
+            "es": "Bancos (cartolas, movimientos diarios), emisores de tarjetas, corredoras, fondos de pensiones y de cesantía, casillas de correo (comprobantes, avisos de transferencia, liquidaciones) y datos de mercado (precios, tipos de cambio, UF)."
+          },
+          "link": {
+            "en": "Documents on record",
+            "es": "Documentos registrados"
+          }
+        },
+        "ingest": {
+          "title": {
+            "en": "Ingest service",
+            "es": "Servicio de ingesta"
+          },
+          "body": {
+            "en": "Signs in, fetches, reads PDFs and spreadsheets and sends typed payloads to the server. Runs nightly at 22:00 and polls hourly.",
+            "es": "Inicia sesión, descarga, lee PDFs y planillas y envía datos tipados al servidor. Corre cada noche a las 22:00 y revisa cada hora."
+          },
+          "link": {
+            "en": "Run history",
+            "es": "Historial de corridas"
+          }
+        },
+        "server": {
+          "title": {
+            "en": "Server",
+            "es": "Servidor"
+          },
+          "body": {
+            "en": "The only writer of the database. Checks each import against the bank's own totals and balances, values every account daily and raises a notification when something disagrees.",
+            "es": "El único que escribe en la base de datos. Cuadra cada importación con los totales y saldos del propio banco, valoriza cada cuenta a diario y avisa cuando algo no calza."
+          },
+          "link": {
+            "en": "Notifications",
+            "es": "Notificaciones"
+          }
+        },
+        "client": {
+          "title": {
+            "en": "Client",
+            "es": "Cliente"
+          },
+          "body": {
+            "en": "The client: it shows what the server computed and never recalculates it.",
+            "es": "El cliente: muestra lo que calculó el servidor y nunca lo recalcula."
+          },
+          "link": {
+            "en": "Open the dashboard",
+            "es": "Abrir el dashboard"
+          }
+        }
+      },
+      "pipelineNote": {
+        "en": "On the demo the ingest service and bank sessions do not run; the history shown is generated from the same fictional documents.",
+        "es": "En la demo no corren el servicio de ingesta ni las sesiones bancarias; el historial que se muestra se genera a partir de los mismos documentos ficticios."
+      },
+      "source": {
+        "en": "Source on GitHub",
+        "es": "Código en GitHub"
+      },
+      "contact": {
+        "en": "Questions: <mail>{{email}}</mail>",
+        "es": "Preguntas: <mail>{{email}}</mail>"
+      }
+    },
     "readOnly": {
       "en": "This is a read-only demo — changes can't be saved.",
       "es": "Esta es una demo de solo lectura: los cambios no se pueden guardar."
+    },
+    "tour": {
+      "stepCount": {
+        "en": "{{n}} of {{total}}",
+        "es": "{{n}} de {{total}}"
+      },
+      "start": {
+        "en": "Start tour",
+        "es": "Iniciar recorrido"
+      },
+      "contact": {
+        "en": "For any questions, feel free to write to <mail>cristian.fraser@gmail.com</mail>.",
+        "es": "Para cualquier pregunta, puedes escribir a <mail>cristian.fraser@gmail.com</mail>."
+      },
+      "dismiss": {
+        "en": "Dismiss",
+        "es": "Cerrar"
+      },
+      "next": {
+        "en": "Next",
+        "es": "Siguiente"
+      },
+      "back": {
+        "en": "Back",
+        "es": "Atrás"
+      },
+      "finish": {
+        "en": "Finish",
+        "es": "Terminar"
+      },
+      "privacy": {
+        "en": "Privacy policy",
+        "es": "Política de privacidad"
+      },
+      "steps": {
+        "welcome": {
+          "title": {
+            "en": "Welcome to NW Tracker",
+            "es": "Bienvenido a NW Tracker"
+          },
+          "body": {
+            "en": "An automated net-worth and expense tracker: it connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, and values every account daily. Shown here with a fictional person's finances, generated as documents and imported the way real ones are, at real market prices.",
+            "es": "Un tracker automatizado de patrimonio y gastos: se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega y valoriza cada cuenta a diario. Mostrado aquí con las finanzas de una persona ficticia, generadas como documentos e importadas como las reales, a precios de mercado reales."
+          }
+        },
+        "cards": {
+          "title": {
+            "en": "Net worth at a glance",
+            "es": "El patrimonio de un vistazo"
+          },
+          "body": {
+            "en": "Each card is a part of net worth: today's balance with the day's P/L beside it, then this month's, this year's and the all-time deposits and P/L. Balances update by themselves as the sources report, and move during the day with live prices.",
+            "es": "Cada tarjeta es una parte del patrimonio: el saldo de hoy con el P/L del día al lado, y luego los depósitos y el P/L del mes, del año y del total. Los saldos se actualizan solos a medida que reportan las fuentes, y se mueven durante el día con los precios en vivo."
+          }
+        },
+        "chart": {
+          "title": {
+            "en": "Every chart has its own controls",
+            "es": "Cada gráfico tiene sus propios controles"
+          },
+          "body": {
+            "en": "Pick the period and range per chart. Daily values every calendar day at that day's prices and exchange rate; switch CLP / USD at the bottom.",
+            "es": "Elige el período y el rango en cada gráfico. Diario valoriza cada día del calendario a los precios y al tipo de cambio de ese día; cambia CLP / USD abajo."
+          }
+        },
+        "sidebar": {
+          "title": {
+            "en": "A page for every group and account",
+            "es": "Una página por grupo y por cuenta"
+          },
+          "body": {
+            "en": "Investments, cash, the apartment and the mortgage under Liabilities: each group opens into its accounts, down to a single stock or credit card with its statements.",
+            "es": "Inversiones, efectivo, el departamento y la hipoteca en Pasivos: cada grupo se abre en sus cuentas, hasta una acción o una tarjeta de crédito con sus estados de cuenta."
+          }
+        },
+        "flows": {
+          "title": {
+            "en": "Where the money went",
+            "es": "A dónde fue la plata"
+          },
+          "body": {
+            "en": "The Flows panel sums last month and the last 12 months: income, expenses, savings, deposits and investment P/L. The Flows pages show the detailed breakdown, month by month and by category.",
+            "es": "El panel Flujos suma el último mes y los últimos 12 meses: ingresos, gastos, ahorro, depósitos y P/L de inversiones. Las páginas de Flujos muestran el detalle, mes a mes y por categoría."
+          }
+        },
+        "end": {
+          "title": {
+            "en": "Tour complete",
+            "es": "Recorrido completo"
+          },
+          "body": {
+            "en": "Code can be found on <repo>GitHub</repo>.",
+            "es": "El código está disponible en <repo>GitHub</repo>."
+          }
+        }
+      }
+    },
+    "footer": {
+      "tour": {
+        "en": "Demo tour",
+        "es": "Recorrido de la demo"
+      },
+      "privacy": {
+        "en": "Privacy",
+        "es": "Privacidad"
+      }
+    },
+    "privacy": {
+      "title": {
+        "en": "Privacy",
+        "es": "Privacidad"
+      },
+      "intro": {
+        "en": "This demo has no accounts and no sign-in, and every figure in it is synthetic. This note describes what is recorded about visits.",
+        "es": "Esta demo no tiene cuentas ni inicio de sesión, y todas sus cifras son sintéticas. Esta nota describe lo que se registra sobre las visitas."
+      },
+      "visitsTitle": {
+        "en": "Visits",
+        "es": "Visitas"
+      },
+      "visitsBody": {
+        "en": "For each visitor and day, the application stores an identifier derived by hashing the IP address and browser with a key that changes daily, so a visitor cannot be followed from one day to the next. The application does not store the IP address itself. Stored alongside the identifier: the browser's user-agent string, the country of the connection, the referring site (domain only), a campaign tag from the link if present, and the number of requests made.",
+        "es": "Por cada visitante y día, la aplicación guarda un identificador obtenido con un hash de la dirección IP y el navegador junto a una clave que cambia a diario, de modo que no es posible seguir a un visitante de un día al siguiente. La aplicación no guarda la dirección IP. Junto al identificador se guardan: el user-agent del navegador, el país de la conexión, el sitio de origen (solo el dominio), una etiqueta de campaña del enlace si la hay y el número de solicitudes."
+      },
+      "pagesTitle": {
+        "en": "Pages and timings",
+        "es": "Páginas y tiempos"
+      },
+      "pagesBody": {
+        "en": "Each page opened is recorded with its path and how long it took to load, tied to that day's visitor id. Server response times are kept per endpoint and hour, not per visitor, for 90 days.",
+        "es": "Cada página abierta se registra con su ruta y cuánto tardó en cargar, asociada al identificador de ese día. Los tiempos de respuesta del servidor se guardan por endpoint y hora, no por visitante, durante 90 días."
+      },
+      "cloudflareTitle": {
+        "en": "Cloudflare Web Analytics",
+        "es": "Cloudflare Web Analytics"
+      },
+      "cloudflareBody": {
+        "en": "The page loads Cloudflare's analytics script, which counts page views without cookies. Cloudflare's own privacy policy covers what it does with them.",
+        "es": "La página carga el script de analítica de Cloudflare, que cuenta visitas sin cookies. La política de privacidad de Cloudflare cubre lo que hace con ellas."
+      },
+      "browserTitle": {
+        "en": "Your browser",
+        "es": "Tu navegador"
+      },
+      "browserBody": {
+        "en": "No cookies are set for visitors. Display choices (currency, language, chart settings, whether you closed the tour) are kept in your browser's local storage and never sent anywhere.",
+        "es": "No se crean cookies para los visitantes. Las preferencias de visualización (moneda, idioma, gráficos, si cerraste el recorrido) se guardan en el almacenamiento local del navegador y no se envían a ninguna parte."
+      },
+      "hostingTitle": {
+        "en": "Hosting",
+        "es": "Alojamiento"
+      },
+      "hostingBody": {
+        "en": "The demo is hosted on Render, behind Cloudflare's network. Like any web host, both receive the IP address of each request in order to deliver the page, and may keep it in their own logs under their privacy policies.",
+        "es": "La demo está alojada en Render, detrás de la red de Cloudflare. Como cualquier servicio de alojamiento, ambos reciben la dirección IP de cada solicitud para entregar la página, y pueden conservarla en sus propios registros según sus políticas de privacidad."
+      },
+      "contact": {
+        "en": "Questions: cristian.fraser@gmail.com",
+        "es": "Preguntas: cristian.fraser@gmail.com"
+      }
     }
   },
   "reminders": {
@@ -1566,6 +1836,10 @@
       "es": "Corridas de banco y correo"
     },
     "ingest": {
+      "demoGenerated": {
+        "en": "On the demo the ingest service does not run: this history was generated from the demo's own documents.",
+        "es": "En la demo no corre el servicio de ingesta: este historial se generó a partir de los propios documentos de la demo."
+      },
       "schedulerOff": {
         "en": "The ingest scheduler is off on this server instance: runs can only be started from the primary one.",
         "es": "El programador de ingesta está apagado en esta instancia del servidor: las corridas solo se pueden iniciar desde la principal."

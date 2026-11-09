@@ -79,6 +79,11 @@ export type GroupInfoDashboardOptions = {
   tileOrder: (id: GroupInfoTileId) => number;
   /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
   tileWide: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
+  /**
+   * Render only the first screen — the strip, the main charts and the rail — and leave out every
+   * tile below it (the demo's About preview, dashboardFold.ts).
+   */
+  foldOnly?: boolean;
 };
 
 export type GroupInfoBaseProps = {
@@ -123,6 +128,7 @@ export function GroupInfoBase({
   const pairs = dashboard?.pairs;
   const tileOrder = dashboard?.tileOrder;
   const tileWide = dashboard?.tileWide;
+  const foldOnly = dashboard?.foldOnly ?? false;
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const { installmentMode } = useCcInstallmentGastosMode();
@@ -290,20 +296,20 @@ export function GroupInfoBase({
             <div className="page-main">
               {strip}
               {charts}
-              {returnsTile}
+              {foldOnly ? null : returnsTile}
             </div>
             <div className="page-rail">{rail}</div>
-            {pairs}
+            {foldOnly ? null : pairs}
           </>
         ) : (
           <>
             {strip}
             {charts}
-            {pairs}
-            {returnsTile}
+            {foldOnly ? null : pairs}
+            {foldOnly ? null : returnsTile}
           </>
         )}
-        {tablesEnabled ? (
+        {tablesEnabled && !foldOnly ? (
           <>
             <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
             <div className="chart-panel-title-row">
@@ -376,8 +382,8 @@ export function GroupInfoBase({
           </>
         ) : null}
         {/* The export row and the accounts tree close the page on every tier, rail or not. */}
-        {exportTile}
-        {accountsTile}
+        {foldOnly ? null : exportTile}
+        {foldOnly ? null : accountsTile}
       </Loadable>
     </main>
   );

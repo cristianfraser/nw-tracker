@@ -3,6 +3,7 @@ import { loadDemoRealMarket } from "./demoData/demoRealMarket.js";
 import { generateDemoDb } from "./demoData/generate.js";
 import { demoMarketSpec } from "./demoData/market.js";
 import { DEMO_PERSON } from "./demoData/person.js";
+import { ensureDemoPristineCopy } from "./demoWritable.js";
 
 /**
  * Hosted recruiter-demo mode (`DEMO_MODE=1`): the server owns a dedicated synthetic
@@ -34,6 +35,7 @@ export async function bootstrapDemoModeIfEnabled(): Promise<void> {
   const accounts = (db.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number }).c;
   if (accounts > 0) {
     console.log(`demo mode: DB already populated (${accounts} accounts) — skipping generation`);
+    ensureDemoPristineCopy();
     return;
   }
   const market = await loadDemoRealMarket(demoMarketSpec());
@@ -47,4 +49,5 @@ export async function bootstrapDemoModeIfEnabled(): Promise<void> {
     `demo mode: generated the demo DB — ${r.movements} movements, ${r.cartolas} cartolas, ` +
       `${r.statements} card statements, net worth US$${r.netWorthUsd}`
   );
+  ensureDemoPristineCopy();
 }

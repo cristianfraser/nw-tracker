@@ -57,6 +57,9 @@ function detail(t: TFunction, job: JobView): string | null {
   return job.error;
 }
 
+/** The hosted demo runs no queue: its history is generated, so there is nothing to cancel or retry. */
+const JOB_ACTIONS_SHOWN = import.meta.env.VITE_DEMO_MODE !== "1";
+
 /**
  * The job queue (docs/job-queue-plan.md): what runs, what waits and why, and the latest finished
  * jobs, with Cancel for a queued job and Retry for a failed or lost run. Everything shown is the
@@ -101,12 +104,12 @@ export function JobQueuePanel({ queue, loading }: { queue: JobQueueResponse | un
               <td className="muted">{formatWhen(job.finished_at ?? job.started_at ?? job.not_before ?? job.created_at)}</td>
               <td className={cn("muted", styles.lagDetail)}>{detail(t, job)}</td>
               <td className={styles.colActions}>
-                {job.can_cancel ? (
+                {JOB_ACTIONS_SHOWN && job.can_cancel ? (
                   <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, action: "cancel" })}>
                     {pending(job, "cancel") ? t("importSync.jobs.cancelPending") : t("importSync.jobs.cancel")}
                   </Button>
                 ) : null}
-                {job.can_retry ? (
+                {JOB_ACTIONS_SHOWN && job.can_retry ? (
                   <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, action: "retry" })}>
                     {pending(job, "retry") ? t("importSync.jobs.retryPending") : t("importSync.jobs.retry")}
                   </Button>

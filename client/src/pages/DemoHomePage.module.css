@@ -1,0 +1,186 @@
+/* The demo's About + Dashboard host (DemoHomePage.tsx). The host is a page root on the content
+   grid; the dashboard frame (`.page-grid.page-root`) keeps the content's full width in both modes,
+   so the dashboard lays out exactly as on /dashboard — the About view only transforms it. */
+.host {
+  position: relative;
+}
+
+.intro {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.modeDashboard .intro {
+  display: none;
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.lead {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.note {
+  margin: 0;
+  font-size: var(--font-size-prose);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ctaRow {
+  display: flex;
+}
+
+.cta {
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  background: #2b74c7;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 20%);
+}
+
+.cta:hover {
+  background: #2563a8;
+  color: #fff;
+  text-decoration: none;
+}
+
+.howTitle {
+  margin: 0.6rem 0 0;
+}
+
+/* Sources → Ingest service → Server → This page: a column of boxes on narrow widths. */
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.box {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
+.boxHere {
+  border-color: var(--accent);
+}
+
+.boxTitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.here {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.boxBody {
+  margin: 0.25rem 0 0.3rem;
+  font-size: var(--font-size-caption);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.boxLink {
+  font-size: var(--font-size-caption);
+}
+
+.arrow {
+  align-self: center;
+  color: var(--muted);
+  line-height: 1;
+  transform: rotate(90deg);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin: 0;
+  font-size: var(--font-size-prose);
+  color: var(--muted);
+}
+
+.frame {
+  transform-origin: top center;
+  transition:
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    border-radius 0.7s ease,
+    box-shadow 0.7s ease;
+}
+
+/* While only the first screen is rendered (About, and the move into place), the frame is one
+   screen tall, so nothing below the fold shows during the move. */
+.foldOnly .frame {
+  height: calc(100svh - var(--market-ticker-height) - 2rem);
+  overflow: clip;
+}
+
+/* About: a cropped "screen" of the dashboard below the text, flat on a phone. */
+.modeAbout .frame {
+  height: 80svh;
+  overflow: clip;
+  pointer-events: none;
+  border-radius: 14px;
+  transform: scale(0.82);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 55%), 0 0 0 1px var(--border);
+}
+
+@media (min-width: 880px) {
+  /* Text on the left columns, the tilted dashboard behind it on the right, one grid row. */
+  .modeAbout .intro {
+    grid-column: 1 / span 6;
+    grid-row: 1;
+    align-self: start;
+    padding-top: 1rem;
+  }
+
+  .modeAbout .frame {
+    grid-row: 1;
+    height: calc(100svh - var(--market-ticker-height) - 2rem);
+    transform-origin: right top;
+    transform: translateY(3.5rem) perspective(2400px) rotateY(-16deg) rotateX(5deg) scale(0.5);
+  }
+}
+
+@media (min-width: 1440px) {
+  /* The preview takes the last two thirds: as wide as the columns left of it allow. */
+  .modeAbout .intro {
+    grid-column: 1 / span 4;
+  }
+
+  .modeAbout .frame {
+    transform: translateY(3.5rem) perspective(2400px) rotateY(-16deg) rotateX(5deg) scale(0.64);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame {
+    transition: none;
+  }
+}

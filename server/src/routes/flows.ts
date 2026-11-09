@@ -1,4 +1,5 @@
 /** Flows: deposits, income, work earnings, expenses (manual, CC, real estate). Split verbatim from index.ts; paths unchanged. */
+import { assertDemoManualExpenseDescription } from "../demoWritePolicy.js";
 import express from "express";
 import { writeHandler } from "../inputError.js";
 import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "../expenseLinkSync.js";
@@ -362,10 +363,12 @@ app.put("/api/flows/expenses/line-pieces", linkSyncingWrite((req, res) => {
 }));
 
 app.post("/api/flows/expenses/manual", linkSyncingWrite((req, res) => {
+  assertDemoManualExpenseDescription((req.body as ManualExpenseInput | undefined)?.description);
   res.status(201).json(createManualExpense(req.body as ManualExpenseInput));
 }));
 
 app.patch("/api/flows/expenses/manual/:id", linkSyncingWrite((req, res) => {
+  assertDemoManualExpenseDescription((req.body as ManualExpenseInput | undefined)?.description);
   updateManualExpense(Number(req.params.id), req.body as ManualExpenseInput);
   res.json({ ok: true });
 }));

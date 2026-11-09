@@ -12,6 +12,7 @@ import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverIn
 import { useLiveQuotesStampInvalidation } from "./queries/useLiveQuotesStampInvalidation";
 import { useReloadOnNewClientBuild } from "./clientBuild";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
+import { useScrollMemory } from "./useScrollMemory";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
 import { VISIBLE_PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -22,6 +23,10 @@ import { FlowsLayout } from "./pages/FlowsLayout";
 import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
 // Eager: a «not found» view marks itself in the usage log while rendering (usagePageTiming.ts).
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { DemoHomePage } from "./pages/DemoHomePage";
+import { DASHBOARD_ALIAS_PATH, DEMO_BUILD } from "./dashboardPath";
+import { DemoTour, DEMO_TOUR_ENABLED } from "./components/layout/DemoTour";
 import { lazyChunk, lazyComponent, useIdleChunkPrefetch } from "./lazyChunks";
 
 // Code splitting. The pages a session opens first — dashboard, group, liabilities and account
@@ -96,6 +101,8 @@ function AppTree() {
   useDocumentTitleFromH1();
   // Tab icon follows the route (bucket/account color halves, flows/settings shapes).
   useFaviconFromRoute();
+  // A new route opens at the top; one visited earlier in this page load, where it was left.
+  useScrollMemory();
   // Usage log: route visits and how long their queries took to settle (the public demo's
   // anonymous pageviews too; the server ignores it on instances whose log is off).
   useUsagePageTiming();
@@ -115,6 +122,7 @@ function AppTree() {
         </MobileNavDrawer>
         <MarketTickerPanel />
         <MortgageUfReminderToast />
+        <DemoTour />
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
@@ -124,7 +132,10 @@ function AppTree() {
               page meanwhile, and once the idle prefetch has run nothing suspends at all. */}
           <Suspense fallback={null}>
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            {/* The demo's `/` (About) and `/dashboard` are one page that keeps the dashboard
+                mounted across both (DemoHomePage); elsewhere both addresses are the dashboard. */}
+            <Route path="/" element={DEMO_BUILD ? <DemoHomePage /> : <DashboardPage />} />
+            <Route path={DASHBOARD_ALIAS_PATH} element={DEMO_BUILD ? <DemoHomePage /> : <DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
@@ -157,6 +168,7 @@ function AppTree() {
               ))}
             </Route>
             <Route path="/account/:id" element={<AccountDetailPage />} />
+            {DEMO_TOUR_ENABLED ? <Route path="/privacy" element={<PrivacyPage />} /> : null}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </Suspense>
