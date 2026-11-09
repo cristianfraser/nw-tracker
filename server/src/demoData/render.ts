@@ -14,6 +14,7 @@ import type {
   BankAccountStatementsPayload,
   EmploymentPayslipsPayload,
   PayrollParametersPayload,
+  UsPayslip,
 } from "nw-tracker-contracts";
 import {
   CARD_PARSED_STATEMENT_COLUMNS,
@@ -25,6 +26,36 @@ import { AFC_RATES_PCT, afpEmployerRatePct, AFP_NAMES, afpWorkerRatePct, pension
 import type { MarketReader } from "./market.js";
 import { addMonths, daysInMonth, MONTH_NAMES_ES, monthOf, type CardDef, type Month, type Ymd, ymd } from "./person.js";
 import { BRANCH, type BankRow, type CardStatement, type Ledger } from "./simulate.js";
+
+/* ------------------------------ the US bank ------------------------------------ */
+
+/** The US checking account's number (fictional), as its statements print it. */
+export const DEMO_US_CHECKING_NUMBER = "4021987653";
+
+export type RenderedUsStatementRow = { date: Ymd; amount: number; note: string };
+
+/**
+ * The US checking account's monthly statements, row by row, in the bank-statement identity the
+ * app reads a checking account's movements by (`import:cartola|<month>|<branch>|<description>|doc|on|amt|idx`,
+ * so each row is a statement row: `listCheckingMovements`). A dollar account's `amt` tag carries
+ * the amount in cents (the tag is an identity, never read as money). There is no US statement
+ * importer (real US ingest is out of scope), so the generator writes these rows itself.
+ */
+export function renderUsStatementRows(ledger: Ledger): RenderedUsStatementRow[] {
+  const us = ledger.person.us;
+  if (!us) return [];
+  const rows = [...ledger.usBank].sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount);
+  const idxByMonth = new Map<string, number>();
+  let doc = 1;
+  return rows.map((r) => {
+    const m = monthOf(r.date);
+    const idx = idxByMonth.get(m) ?? 0;
+    idxByMonth.set(m, idx + 1);
+    const amtCents = Math.round(r.amount * 100);
+    const note = `import:cartola|${m}|${us.bank.branch}|${r.description}|doc:${String(doc++).padStart(9, "0")}|on:${r.date}|amt:${amtCents}|idx:${idx}`;
+    return { date: r.date, amount: r.amount, note };
+  });
+}
 
 function ddmmyyyy(day: Ymd): string {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
@@ -237,49 +268,73 @@ export function renderOpenCycle(ledger: Ledger): { card: CardDef; listing: CcLis
 /* --------------------------------- payroll --------------------------------------- */
 
 export function renderPayslips(ledger: Ledger): EmploymentPayslipsPayload | null {
-  if (ledger.payslips.length === 0) return null;
+  if (ledger.payslips.length === 0 && ledger.usPayslips.length === 0) return null;
   return {
     parser_version: "demo",
-    payslips: ledger.payslips.map((p) => {
-      const sum = (side: "haber" | "descuento", section?: string) =>
-        p.lines.filter((l) => l.side === side && (section == null || l.section === section)).reduce((a, l) => a + l.amount, 0);
-      const by = (label: string) => p.lines.find((l) => l.label === label)?.amount ?? null;
-      const haberes = sum("haber");
-      const descuentos = sum("descuento");
-      const [y, mo] = p.month.split("-").map(Number) as [number, number];
-      return {
-        jurisdiction: "cl" as const,
-        pay_period: "monthly" as const,
-        document: `liquidaciones/${p.job.id}/${p.month}${p.kind === "severance" ? "-finiquito" : ""}.pdf`,
-        period_month: p.month,
-        employer: { name: p.job.employer, rut: p.job.employerRut },
-        pay_period_label: `${MONTH_NAMES_ES[mo - 1]} ${y}`,
-        kind: p.kind,
-        pension_fund: p.pensionFund,
-        earnings: {
-          base_salary: by("Sueldo base"),
-          meal_allowance: by("Colación"),
-          transport_allowance: by("Movilización"),
-          bonus: by("Bono"),
-          taxable_total: p.kind === "salary" ? sum("haber", "imponible") : null,
-          non_taxable_total: sum("haber", "no_imponible"),
-          total: haberes,
-        },
-        deductions: {
-          pension: p.pension || null,
-          health: p.health || null,
-          income_tax: p.kind === "salary" ? p.tax : null,
-          unemployment_insurance: p.afc || null,
-          voluntary_pension: null,
-          other: null,
-          total: descuentos,
-        },
-        net_pay: haberes - descuentos,
-        lines: p.lines.map((l, i) => ({ position: i, side: l.side, section: l.section, label: l.label, amount: l.amount })),
-        indices: { uf: p.uf, utm: p.utm, pension_cap_uf: null, unemployment_cap_uf: null },
-      };
-    }),
+    payslips: [...renderClPayslips(ledger), ...renderUsPayslips(ledger)],
   };
+}
+
+/** The US W-2 job's pay stubs as the payroll provider's PDFs state them (`jurisdiction: "us"`). */
+function renderUsPayslips(ledger: Ledger): UsPayslip[] {
+  return ledger.usPayslips.map((s) => ({
+    jurisdiction: "us" as const,
+    pay_period: s.job.payFrequency,
+    document: `adp/${s.job.id}/${s.payDate}-earnings-statement.pdf`,
+    period_month: monthOf(s.payDate),
+    pay_date: s.payDate,
+    period_start: s.periodStart,
+    period_end: s.periodEnd,
+    employer: { name: s.job.employer, ein: s.job.ein },
+    kind: "salary" as const,
+    w4: { filing_status: s.job.w4FilingStatus },
+    gross_pay: s.gross,
+    total_deductions: s.deductions,
+    net_pay: s.net,
+    lines: s.lines.map((l, i) => ({ position: i, side: l.side, label: l.label, amount: l.amount })),
+  }));
+}
+
+function renderClPayslips(ledger: Ledger): EmploymentPayslipsPayload["payslips"] {
+  return ledger.payslips.map((p) => {
+    const sum = (side: "haber" | "descuento", section?: string) =>
+      p.lines.filter((l) => l.side === side && (section == null || l.section === section)).reduce((a, l) => a + l.amount, 0);
+    const by = (label: string) => p.lines.find((l) => l.label === label)?.amount ?? null;
+    const haberes = sum("haber");
+    const descuentos = sum("descuento");
+    const [y, mo] = p.month.split("-").map(Number) as [number, number];
+    return {
+      jurisdiction: "cl" as const,
+      pay_period: "monthly" as const,
+      document: `liquidaciones/${p.job.id}/${p.month}${p.kind === "severance" ? "-finiquito" : ""}.pdf`,
+      period_month: p.month,
+      employer: { name: p.job.employer, rut: p.job.employerRut },
+      pay_period_label: `${MONTH_NAMES_ES[mo - 1]} ${y}`,
+      kind: p.kind,
+      pension_fund: p.pensionFund,
+      earnings: {
+        base_salary: by("Sueldo base"),
+        meal_allowance: by("Colación"),
+        transport_allowance: by("Movilización"),
+        bonus: by("Bono"),
+        taxable_total: p.kind === "salary" ? sum("haber", "imponible") : null,
+        non_taxable_total: sum("haber", "no_imponible"),
+        total: haberes,
+      },
+      deductions: {
+        pension: p.pension || null,
+        health: p.health || null,
+        income_tax: p.kind === "salary" ? p.tax : null,
+        unemployment_insurance: p.afc || null,
+        voluntary_pension: null,
+        other: null,
+        total: descuentos,
+      },
+      net_pay: haberes - descuentos,
+      lines: p.lines.map((l, i) => ({ position: i, side: l.side, section: l.section, label: l.label, amount: l.amount })),
+      indices: { uf: p.uf, utm: p.utm, pension_cap_uf: null, unemployment_cap_uf: null },
+    };
+  });
 }
 
 /** Previred's monthly indicators for every month a liquidación prints. */

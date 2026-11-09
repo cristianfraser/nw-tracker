@@ -28,7 +28,7 @@ import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { ccIssuerBySlug } from "../ccIssuers.js";
 import { derivedPayByIso } from "../ccInstallmentPayBy.js";
 import { equityQuoteCurrency } from "../equityQuote.js";
-import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
+import { isChileBusinessDay, isNyseTradingDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
   addDays,
@@ -43,15 +43,17 @@ import {
   type House,
   type Month,
   type Person,
+  type UsW2Job,
   type Ymd,
 } from "./person.js";
 import { stream, type Rng } from "./rng.js";
+import { newUsPayrollYtd, usPayDates, usPayStub, usW2sFromStubs, type UsPayStub, type UsW2 } from "./usPayroll.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
-export type CashAcct = "vista" | "checking" | "checkingUsd" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "exchangeClp";
+export type CashAcct = "vista" | "checking" | "checkingUsd" | "usChecking" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "exchangeClp";
 /** The cash accounts that hold dollars. */
-const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "brokerUsd", "ibkrUsd"]);
+const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "usChecking", "brokerUsd", "ibkrUsd"]);
 /** The broker cash accounts a dollar stock trades against. */
 export type UsdBrokerCash = "brokerUsd" | "ibkrUsd";
 export type Acct =
@@ -65,11 +67,17 @@ export type Acct =
   | "afc"
   | "property"
   | "fund"
+  /** The US retirement accounts: a 401(k) and an HSA in a target-date fund's units, a Roth IRA in SPY. */
+  | "k401"
+  | "hsa"
+  | "rothIra"
   | `stock:${string}`
   | `card:${CardDef["key"]}`;
 
 /** A line a bank cartola prints (vista and the peso checking account). */
 export type BankRow = { account: "vista" | "checking"; date: Ymd; description: string; amount: number };
+/** A line the US bank's monthly statement prints (dollars, signed). */
+export type UsBankRow = { date: Ymd; description: string; amount: number };
 
 /** A ledger row written directly (transfers between own accounts, the broker's own records, funds). */
 export type DirectMovement =
@@ -197,6 +205,12 @@ export type Ledger = {
   plans: InstallmentPlan[];
   payslips: ContractPayslip[];
   contractorPayslips: ContractorPayslip[];
+  /** The US W-2 job's pay stubs, and each year's W-2 from them. */
+  usPayslips: UsPayStub[];
+  usW2s: UsW2[];
+  /** The US checking account's statement lines, and its balance today (statement rows and transfers). */
+  usBank: UsBankRow[];
+  usCheckingBalanceUsd: number;
   mortgage: { cuotas: MortgageCuota[]; pieClp: number; principalUf: number; pieDate: Ymd } | null;
   /** AFC book account: contributions (the writer grows and marks it). */
   afcContributions: { date: Ymd; clp: number; month: Month }[];
@@ -205,6 +219,8 @@ export type Ledger = {
   /** Names the category rules need (description / merchant → category slug). */
   categoryByCheckingDescription: Map<string, string>;
   categoryByMerchant: Map<string, string>;
+  /** The US statement descriptions' categories. */
+  categoryByUsDescription: Map<string, string>;
   /** The boletas de honorarios issued (internships: the payer withholds; contractor: the issuer pays in F29). */
   feeReceipts: FeeReceipt[];
   /** APV régimen B deposits (the AFP's DJ 1899). */
@@ -238,6 +254,64 @@ export const MORTGAGE_MERCHANT = "MUTUARIA ANDES HIPOTECARIO";
 const MORTGAGE_INCENDIO_CLP = 18_000;
 const MORTGAGE_DESGRAVAMEN_CLP = 4_500;
 export const APV_FUND_SERIES_KEY = "demo_apv_fondo";
+/**
+ * The US retirement accounts' fund: a 2060 target-date fund (≈ 90 % equities), valued daily in
+ * dollars (the 401(k) and the HSA hold its units).
+ */
+export const US_RETIREMENT_FUND_SERIES_KEY = "demo_us_target_2060";
+
+/** US discretionary spend shares by category (the debit card, Austin). */
+const US_CATEGORY_WEIGHTS: Record<string, number> = {
+  supermarket: 0.3,
+  food: 0.24,
+  transportation: 0.12,
+  fun: 0.1,
+  clothes: 0.07,
+  others: 0.12,
+  healthcare: 0.05,
+};
+/** US merchants with a typical ticket (dollars at the move). */
+const US_MERCHANTS: Record<string, { name: string; ticket: number }[]> = {
+  supermarket: [
+    { name: "HEB AUSTIN TX", ticket: 62 },
+    { name: "WHOLE FOODS MARKET AUSTIN", ticket: 48 },
+    { name: "TRADER JOE'S AUSTIN TX", ticket: 41 },
+    { name: "COSTCO WHSE AUSTIN", ticket: 135 },
+  ],
+  food: [
+    { name: "STARBUCKS AUSTIN TX", ticket: 7 },
+    { name: "TORCHYS TACOS AUSTIN", ticket: 18 },
+    { name: "UBER EATS", ticket: 31 },
+    { name: "FRANKLIN BARBECUE AUSTIN", ticket: 46 },
+    { name: "CHUYS AUSTIN TX", ticket: 38 },
+  ],
+  transportation: [
+    { name: "SHELL OIL AUSTIN TX", ticket: 44 },
+    { name: "EXXONMOBIL AUSTIN TX", ticket: 41 },
+    { name: "TXTAG TOLLS", ticket: 16 },
+    { name: "UBER TRIP", ticket: 19 },
+  ],
+  fun: [
+    { name: "ALAMO DRAFTHOUSE", ticket: 26 },
+    { name: "ACL LIVE MOODY THEATER", ticket: 74 },
+    { name: "BARTON SPRINGS POOL", ticket: 9 },
+  ],
+  clothes: [
+    { name: "TARGET AUSTIN TX", ticket: 39 },
+    { name: "UNIQLO AUSTIN", ticket: 55 },
+    { name: "REI AUSTIN", ticket: 88 },
+  ],
+  others: [
+    { name: "AMAZON.COM", ticket: 36 },
+    { name: "HOME DEPOT AUSTIN", ticket: 52 },
+    { name: "GREAT CLIPS AUSTIN", ticket: 24 },
+  ],
+  healthcare: [
+    { name: "CVS PHARMACY AUSTIN", ticket: 21 },
+    { name: "WALGREENS AUSTIN TX", ticket: 18 },
+  ],
+};
+
 /** The mutual fund's valor cuota series (a person with `fund`). */
 export const MUTUAL_FUND_SERIES_KEY = "demo_fondo";
 
@@ -332,12 +406,12 @@ const MERCHANTS: Record<string, { name: string; ticket: number }[]> = {
 };
 
 /** Fixed monthly card charges (real CLP) and their windows. */
-const CARD_SUBSCRIPTIONS: { merchant: string; category: string; clp: number; from: Month; to?: Month; card?: CardDef["key"] }[] = [
+const CARD_SUBSCRIPTIONS: { merchant: string; category: string; clp: number; from: Month; to?: Month; card?: CardDef["key"]; keptAbroad?: true }[] = [
   { merchant: "SPOTIFY", category: "subscriptions", clp: 5_000, from: "2018-05" },
   { merchant: "NETFLIX.COM", category: "subscriptions", clp: 6_500, from: "2018-05" },
-  { merchant: "ENTEL PLAN MOVIL", category: "bills", clp: 14_000, from: "2018-05" },
+  { merchant: "ENTEL PLAN MOVIL", category: "bills", clp: 14_000, from: "2018-05", keptAbroad: true },
   { merchant: "SMARTFIT", category: "hobbies", clp: 16_000, from: "2018-07" },
-  { merchant: "DISNEY PLUS", category: "subscriptions", clp: 5_500, from: "2021-01", card: "second" },
+  { merchant: "DISNEY PLUS", category: "subscriptions", clp: 5_500, from: "2021-01", card: "second", keptAbroad: true },
 ];
 const USD_SUBSCRIPTIONS: { merchant: string; usd: number; from: Month; to?: Month; card: CardDef["key"] }[] = [
   { merchant: "APPLE.COM/BILL", usd: 0.99, from: "2018-05", to: "2020-12", card: "main" },
@@ -409,9 +483,10 @@ export const AFP_SWITCH_MONTH: Month = "2020-02";
 /* ------------------------------------ book -------------------------------------- */
 
 class Book {
-  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, exchangeClp: 0 };
+  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, usChecking: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, exchangeClp: 0 };
   units = new Map<string, number>();
   bank: BankRow[] = [];
+  usBank: UsBankRow[] = [];
   direct: DirectMovement[] = [];
 
   /** Daily deltas of every cash account, so balances are checked in calendar order. */
@@ -419,6 +494,7 @@ class Book {
     vista: new Map(),
     checking: new Map(),
     checkingUsd: new Map(),
+    usChecking: new Map(),
     brokerClp: new Map(),
     brokerUsd: new Map(),
     ibkrUsd: new Map(),
@@ -461,6 +537,13 @@ class Book {
     if (amount === 0) return;
     this.add(account, amount, date);
     this.bank.push({ account, date, description, amount });
+  }
+  /** A line of the US bank's statement with no counterpart in the ledger (salary, rent, a purchase). */
+  usBankRow(date: Ymd, description: string, usd: number) {
+    usd = cents(usd);
+    if (usd === 0) return;
+    this.add("usChecking", usd, date);
+    this.usBank.push({ date, description, amount: usd });
   }
   /** A transfer between own accounts; the bank side (if any) prints `bankDescription`. */
   transfer(
@@ -513,7 +596,7 @@ class Book {
 }
 
 function isCash(a: Acct): a is CashAcct {
-  return ["vista", "checking", "checkingUsd", "brokerClp", "brokerUsd", "ibkrUsd", "exchangeClp"].includes(a);
+  return ["vista", "checking", "checkingUsd", "usChecking", "brokerClp", "brokerUsd", "ibkrUsd", "exchangeClp"].includes(a);
 }
 
 /* -------------------------------- simulation ------------------------------------ */
@@ -551,6 +634,10 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   const contractJobFor = (month: Month): ContractJob | null => CONTRACT_JOBS.find((j) => month >= j.from && month <= j.to) ?? null;
   const contractorJobFor = (month: Month): ContractorJob | null =>
     CONTRACTOR_JOBS.find((j) => month >= j.from && (j.to == null || month <= j.to)) ?? null;
+  const usJobFor = (month: Month): UsW2Job | null => person.usJobs.find((j) => month >= j.from && (j.to == null || month <= j.to)) ?? null;
+  const US = person.us;
+  /** Living in the US: the Chilean lifestyle has stopped. */
+  const abroad = (month: Month) => US != null && month >= US.moveMonth;
   const housingFor = (month: Month) => {
     const h = [...HOUSING].reverse().find((x) => month >= x.from);
     if (!h) throw new Error(`demo: no housing for ${month}`);
@@ -570,6 +657,11 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   const apvBDeposits: Ledger["apvBDeposits"] = [];
   const aprilSettlements: Ledger["aprilSettlements"] = new Map();
   const months: Ledger["months"] = [];
+  const usPayslips: UsPayStub[] = [];
+  const catByUsDesc = new Map<string, string>();
+  const usExpenseByMonth = new Map<Month, number>();
+  const usPayDatesByJob = new Map(person.usJobs.map((j) => [j.id, usPayDates(j, today)]));
+  const usYtdByJob = new Map(person.usJobs.map((j) => [j.id, newUsPayrollYtd()]));
   const catByDesc = new Map<string, string>();
   const catByMerchant = new Map<string, string>();
   const cards = new Map<CardDef["key"], CardCycleState>();
@@ -901,7 +993,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const contractor = contractorJobFor(month);
     const housing = housingFor(month);
     const car = carFor(month);
-    const working = contract != null || contractor != null;
+    const usJob = usJobFor(month);
+    const working = contract != null || contractor != null || usJob != null;
     const hasChecking = month >= person.checkingFrom;
 
     for (const d of deferred.filter((x) => monthOf(x.day) === month).sort((a, b) => a.day.localeCompare(b.day))) d.run();
@@ -1064,7 +1157,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       bankBill("checking", ymd(month, 10), "PAGO GASTOS COMUNES EDIFICIO", "bills", round(nominal(HOUSE.gcClp, ymd(month, 10)) * r("gc").jitter(1, 0.08)));
       if (HOUSE.contribucionesMonths.includes(mo)) bankBill("checking", ymd(month, 20), "TGR CONTRIBUCIONES", "bills", round(nominal(HOUSE.contribucionesClp, ymd(month, 20))));
     }
-    if (housing.kind !== "parents") {
+    // Abroad, the Chilean home's utilities stop once it is no longer lived in (two months after the move).
+    if (housing.kind !== "parents" && !(US != null && month >= addMonths(US.moveMonth, 2))) {
       const winter = mo >= 6 && mo <= 8;
       bankBill("checking", ymd(month, 14), "PAGO EN LINEA ENEL", "bills", round(nominal(24_000 * (winter ? 1.3 : 1), ymd(month, 14)) * r("enel").jitter(1, 0.15)));
       bankBill("checking", ymd(month, 16), "PAGO EN LINEA METROGAS", "bills", round(nominal(14_000 * (winter ? 2.2 : 1), ymd(month, 16)) * r("gas").jitter(1, 0.2)));
@@ -1138,7 +1232,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     }
 
     /* ---------- discretionary spend ---------- */
-    {
+    if (!abroad(month)) {
       const rr = r("spend");
       const cardsNow = activeCards(month);
       const monthMult = rr.chance(0.12) ? rr.range(1.4, 1.8) : rr.chance(0.2) ? rr.range(0.7, 0.85) : rr.range(0.9, 1.12);
@@ -1168,13 +1262,6 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           }
         }
       }
-      for (const s of CARD_SUBSCRIPTIONS) {
-        if (month < s.from || (s.to && month > s.to)) continue;
-        const card = s.card && cardsNow.some((c) => c.key === s.card) ? s.card : "main";
-        if (!cardsNow.some((c) => c.key === card)) continue;
-        const day = ymd(month, 3 + (s.merchant.length % 20));
-        cardPurchase({ card, date: day, merchant: s.merchant, category: s.category, currency: "clp", amount: round(nominal(s.clp, day) / 10) * 10 });
-      }
       for (const s of USD_SUBSCRIPTIONS) {
         if (month < s.from || (s.to && month > s.to)) continue;
         if (!cardsNow.some((c) => c.key === s.card)) continue;
@@ -1185,6 +1272,19 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         cardPurchase({ card: cardsNow.length > 1 ? "second" : "main", date: day, merchant: "AMAZON.COM", category: "others", currency: "usd", amount: cents(rr.range(25, 140) * Math.pow(lifestyleReal / 300_000, 0.4)) });
       }
       if (cardsNow.length === 0 && month > FIRST_MONTH) bankBill(hasChecking ? "checking" : "vista", ymd(month, 4), "COMPRA NAC SPOTIFY", "subscriptions", round(nominal(4_000, ymd(month, 4))));
+    }
+    // Peso subscriptions on the Chilean cards (abroad only the ones he keeps: his Chilean phone line,
+    // the family's streaming plan — they keep each card billing every month).
+    {
+      const cardsNow = activeCards(month);
+      for (const s of CARD_SUBSCRIPTIONS) {
+        if (month < s.from || (s.to && month > s.to)) continue;
+        if (abroad(month) && !s.keptAbroad) continue;
+        const card = s.card && cardsNow.some((c) => c.key === s.card) ? s.card : "main";
+        if (!cardsNow.some((c) => c.key === card)) continue;
+        const day = ymd(month, 3 + (s.merchant.length % 20));
+        cardPurchase({ card, date: day, merchant: s.merchant, category: s.category, currency: "clp", amount: round(nominal(s.clp, day) / 10) * 10 });
+      }
     }
     for (const o of ONE_OFFS) {
       if (o.month !== month) continue;
@@ -1259,6 +1359,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         st.paid[currency] = null;
       }
     }
+
+    /* ---------- the US chapter (after the month's Chilean card payments: the wire covers them) ---------- */
+    if (US) runUsMonth(month, r);
 
     /* ---------- contractor dollars → pesos ---------- */
     if (book.bal.checkingUsd > 0) {
@@ -1383,7 +1486,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
       // Plays this month: deposit what the broker lacks, then trade.
       const playsNow = PLAYS.filter((p) => monthOf(p.date) === month && p.date <= today).map((p) => {
-        if (p.kind !== "buy") return { ...p };
+        if (p.kind !== "buy" || abroad(month)) return { ...p };
         const usdOk = usdFree(p.date) + brokerFree(p.date) >= p.usd;
         const clpNeed = (p.usd - brokerFree(p.date) - usdFree(p.date)) * market.fx(p.date) * 1.02;
         // Not enough pesos yet on the play's day: it waits for payday.
@@ -1396,7 +1499,21 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         }
         if (p.kind === "sell") {
           if (isClpTicker(p.ticker)) sellStockClp(p.date, p.ticker, p.fraction);
-          else sellStock(p.date, p.ticker, p.fraction);
+          // A dollar ticker is sold wherever he holds it (the plays move to the US broker abroad).
+          else for (const cash of ["brokerUsd", "ibkrUsd"] as const) if (heldUnits(p.ticker, cash) > 0) sellStock(p.date, p.ticker, p.fraction, cash);
+          continue;
+        }
+        if (p.kind === "buy" && abroad(month)) {
+          // Living in the US he trades at the US broker: its idle dollars first, the rest from US checking.
+          if (!ibkrOpen(month)) throw new Error(`demo: play ${p.ticker} on ${p.date} abroad before the US broker opens`);
+          const ibkrFree = Math.max(0, book.lowestFrom("ibkrUsd", p.date));
+          const usFree = Math.max(0, book.lowestFrom("usChecking", p.date) - US!.cashBand.low * usTrailingExpense());
+          const reach = Math.floor((ibkrFree + usFree) / 50) * 50;
+          const usd = Math.min(p.usd, reach);
+          if (usd < 200) continue;
+          const lack = Math.ceil((usd - ibkrFree) / 100) * 100;
+          if (lack > 0) book.transfer({ from: "usChecking", to: "ibkrUsd", date: p.date, usd: lack, flowKind: null, note: "IBKR|depósito USD (ACH)" });
+          buyStock(p.date, p.ticker, usd, "ibkrUsd");
           continue;
         }
         if (p.kind === "buy_clp") {
@@ -1479,7 +1596,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
       // Sweep: cash above the band's top goes to the broker.
       const cashAfter = totalCashClp(brokerDay);
-      if (!holdForHouse && working && cashAfter > CASH_BAND.high * avgExpense + reserved) {
+      if (!holdForHouse && (contract != null || contractor != null) && cashAfter > CASH_BAND.high * avgExpense + reserved) {
         const excess = cashAfter - CASH_BAND.target * avgExpense - reserved;
         if (usdFree(brokerDay) * market.fx(brokerDay) > excess * 0.5 && contractor) {
           depositBrokerUsd(brokerDay, Math.min(usdFree(brokerDay), excess / market.fx(brokerDay)), dollarBroker(month));
@@ -1506,7 +1623,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     }
     if (process.env.DEMO_V2_TRACE) {
       console.log(
-        `${month} exp=${Math.round(expenses / 1000)}k life=${Math.round(lifestyleReal / 1000)}k vista=${Math.round(book.bal.vista / 1000)}k chk=${Math.round(book.bal.checking / 1000)}k usd=${Math.round(book.bal.checkingUsd)} bClp=${Math.round(book.bal.brokerClp)} bUsd=${Math.round(book.bal.brokerUsd)}`
+        `${month} exp=${Math.round(expenses / 1000)}k life=${Math.round(lifestyleReal / 1000)}k vista=${Math.round(book.bal.vista / 1000)}k chk=${Math.round(book.bal.checking / 1000)}k usd=${Math.round(book.bal.checkingUsd)} bClp=${Math.round(book.bal.brokerClp)} bUsd=${Math.round(book.bal.brokerUsd)} us=${Math.round(book.bal.usChecking)} ibkr=${Math.round(book.bal.ibkrUsd)}`
       );
     }
     months.push({ month, expensesClp: round(expenses), cashClp: round(totalCashClp(ymd(month, daysInMonth(month)) <= today ? ymd(month, daysInMonth(month)) : today)), band: [round(CASH_BAND.low * avgExpense), round(CASH_BAND.high * avgExpense)] });
@@ -1538,11 +1655,16 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     plans,
     payslips,
     contractorPayslips,
+    usPayslips,
+    usW2s: usW2sFromStubs(usPayslips),
+    usBank: book.usBank,
+    usCheckingBalanceUsd: book.bal.usChecking,
     mortgage,
     afcContributions,
     months,
     categoryByCheckingDescription: catByDesc,
     categoryByMerchant: catByMerchant,
+    categoryByUsDescription: catByUsDesc,
     feeReceipts,
     apvBDeposits,
     termDeposits,
@@ -1550,6 +1672,193 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   };
 
   /* ------------------------------ closures ------------------------------ */
+  /**
+   * One month of the US chapter. Before the move only the seed (dollars the Chilean broker sends
+   * to the new US account); from the move: the biweekly pay (its stubs, the net credited to US
+   * checking, the 401(k) and HSA contributions bought on the pay date), the rent, the dollar
+   * lifestyle (debit), the car, the Roth IRA, a December flight home, the monthly wire to Chile
+   * that keeps the Chilean accounts funded, and the US cash above its band to the US broker.
+   */
+  function runUsMonth(month: Month, r: (label: string) => Rng): void {
+    const us = US!;
+    const mo = Number(month.slice(5, 7));
+    const year = Number(month.slice(0, 4));
+    if (monthOf(us.seed.date) === month && us.seed.date <= today) {
+      const day = us.seed.date;
+      const need = us.seed.usd - brokerFree(day);
+      if (need > 0) {
+        const spy = heldUnits("SPY", "brokerUsd") * heldClose("SPY", day);
+        if (spy < need + 50) throw new Error(`demo: the broker holds US$${Math.round(spy)} of SPY, the move needs US$${Math.round(need)}`);
+        sellStock(day, "SPY", (need + 50) / spy);
+      }
+      book.transfer({ from: "brokerUsd", to: "usChecking", date: day, usd: us.seed.usd, flowKind: null, note: "Broker|retiro a cuenta en EE.UU." });
+    }
+    if (month < us.moveMonth) return;
+    /** A debit; a one-off (the car, the deposit, a flight) stays out of the running average the band reads. */
+    const usBill = (day: Ymd, desc: string, category: string, usd: number, oneOff = false) => {
+      if (day > today) return;
+      usd = cents(usd);
+      if (usd <= 0) return;
+      catByUsDesc.set(desc, category);
+      book.usBankRow(day, desc, -usd);
+      if (!oneOff) usExpenseByMonth.set(month, cents((usExpenseByMonth.get(month) ?? 0) + usd));
+    };
+    const usBusinessDayOnOrAfter = (d: Ymd) => {
+      let x = d;
+      while (!isNyseTradingDay(x)) x = addDays(x, 1);
+      return x;
+    };
+    const grown = (usd: number, day: Ymd) => usd * Math.pow(1 + us.inflation, monthsBetween(us.moveMonth, monthOf(day)) / 12);
+
+    /* pay */
+    for (const job of person.usJobs) {
+      for (const date of usPayDatesByJob.get(job.id)!) {
+        if (monthOf(date.paid) !== month || date.paid > today) continue;
+        const stub = usPayStub(job, date, usYtdByJob.get(job.id)!);
+        usPayslips.push(stub);
+        book.usBankRow(date.paid, job.bankName, stub.net);
+        const fundBuy = (account: "k401" | "hsa", usd: number, note: string) => {
+          if (usd <= 0) return;
+          const units = Math.round((usd / market.fundUnit(US_RETIREMENT_FUND_SERIES_KEY, date.paid)) * 1e4) / 1e4;
+          book.addUnits(account, units, 4);
+          book.single({ type: "single", account, date: date.paid, amount: cents(usd), currency: "usd", note, units });
+        };
+        fundBuy("k401", stub.k401 + stub.match, `401(k) ${job.employer} — employee deferral + employer match`);
+        fundBuy("hsa", stub.hsa, `HSA ${job.employer} — payroll contribution`);
+      }
+    }
+
+    /* home */
+    const rentYears = Math.floor(monthsBetween(us.rent.fromMonth, month) / 12);
+    const rent = Math.round((us.rent.usd * Math.pow(1 + us.rent.yearlyIncrease, rentYears)) / 5) * 5;
+    if (month === us.rent.fromMonth) usBill(ymd(month, 1), `${us.rent.landlord} SECURITY DEPOSIT`, "bills", us.rent.usd, true);
+    usBill(ymd(month, 1), `${us.rent.landlord} ACH RENT`, "bills", rent);
+    const summer = mo >= 6 && mo <= 9;
+    const winter = mo === 12 || mo <= 2;
+    const rr = r("us");
+    usBill(ymd(month, 12), "AUSTIN ENERGY UTILITY", "bills", grown(88 * (summer ? 1.7 : 1), ymd(month, 12)) * rr.jitter(1, 0.12));
+    usBill(ymd(month, 14), "TEXAS GAS SERVICE", "bills", grown(28 * (winter ? 1.9 : 1), ymd(month, 14)) * rr.jitter(1, 0.15));
+    usBill(ymd(month, 16), "GOOGLE FIBER", "bills", 70);
+    usBill(ymd(month, 18), "T-MOBILE AUTOPAY", "bills", 65);
+    usBill(ymd(month, 3), "LIFETIME FITNESS", "hobbies", grown(89, ymd(month, 3)));
+    for (const [desc, usd, day] of [
+      ["NETFLIX.COM", 15.49, 6],
+      ["SPOTIFY USA", 11.99, 9],
+      ["APPLE.COM/BILL", 2.99, 11],
+      ["OPENAI *CHATGPT SUBSCR", 20, 13],
+      ["GITHUB, INC.", 4, 15],
+      ["NOTION LABS", 8, 17],
+    ] as const) {
+      usBill(ymd(month, day), desc, "subscriptions", usd);
+    }
+
+    /* the car */
+    if (us.car) {
+      if (month === monthOf(us.car.date)) usBill(us.car.date, us.car.merchant, "transportation", us.car.usd, true);
+      if (month > monthOf(us.car.date)) usBill(ymd(month, 8), "GEICO AUTO INSURANCE", "transportation", grown(132, ymd(month, 8)));
+      if (month > monthOf(us.car.date) && mo === Number(us.car.date.slice(5, 7))) usBill(ymd(month, 20), "TX DMV REGISTRATION", "transportation", 78.25);
+    }
+
+    /* variable spending (debit card): the month's budget at the average ticket */
+    const fixed = 88 + 28 + 70 + 65 + 89 + 62.47 + (us.car && month > monthOf(us.car.date) ? 132 : 0);
+    const budget = grown(us.monthlyUsd - fixed, ymd(month, 15)) * (rr.chance(0.15) ? rr.range(1.3, 1.6) : rr.range(0.88, 1.12));
+    for (const [cat, w] of Object.entries(US_CATEGORY_WEIGHTS)) {
+      if (cat === "transportation" && !(us.car && month >= monthOf(us.car.date))) continue;
+      const pool = US_MERCHANTS[cat]!;
+      const mean = pool.reduce((a, m) => a + m.ticket, 0) / pool.length;
+      const count = Math.floor((budget * w * (mo === 12 && (cat === "others" || cat === "clothes") ? 1.8 : 1)) / mean + rr.next());
+      for (let k = 0; k < count; k++) {
+        const m = rr.pick(pool);
+        usBill(ymd(month, rr.int(1, daysInMonth(month))), m.name, cat, Math.max(3, grown(m.ticket, ymd(month, 15)) * rr.jitter(1, 0.45)));
+      }
+    }
+    if (mo === 12) usBill(ymd(month, 5), "UNITED AIRLINES", "fun", grown(us.decemberTripUsd, ymd(month, 5)), true);
+
+    /* the Roth IRA: the year's contribution, bought straight into SPY */
+    if (us.roth && mo === us.roth.month && year >= us.roth.fromYear) {
+      const day = usBusinessDayOnOrAfter(ymd(month, 10));
+      if (day <= today) {
+        const usd = us.roth.usd;
+        const units = Math.round((usd / heldClose("SPY", day)) * 1e6) / 1e6;
+        book.addUnits("rothIra", units, 6);
+        book.transfer({ from: "usChecking", to: "rothIra", date: day, usd, units, flowKind: "stock_buy", note: `Roth IRA ${year} contribution|compra SPY` });
+      }
+    }
+
+    /* the wire to Chile, after the month's first pay: what the Chilean accounts need until the next one */
+    {
+      const day = usBusinessDayOnOrAfter(ymd(month, 20));
+      if (day <= today) {
+        const fx = market.fx(day);
+        const needClp = 2 * trailingExpense() + chileUpcomingNeeds(month);
+        const haveClp = Math.max(0, book.lowestFrom("checking", day)) + Math.max(0, book.lowestFrom("checkingUsd", day)) * fx;
+        const wanted = Math.ceil((needClp - haveClp) / fx / 100) * 100;
+        // Chile comes first: the US reserve for known needs (the car) only holds back the broker sweep.
+        const spare = book.lowestFrom("usChecking", day) - us.cashBand.low * usTrailingExpense() - us.wireFeeUsd;
+        const usd = Math.min(wanted, Math.floor(spare / 100) * 100);
+        if (process.env.DEMO_V2_TRACE) console.log(`wire ${day} need=${Math.round(needClp)} have=${Math.round(haveClp)} wanted=${wanted} spare=${Math.round(spare)} usExp=${Math.round(usTrailingExpense())}`);
+        if (usd >= 500) {
+          book.transfer({ from: "usChecking", to: "checkingUsd", date: day, usd, flowKind: null, note: "Wire transfer to Chile (Santander USD)" });
+          usBill(day, "OUTGOING WIRE FEE", "bills", us.wireFeeUsd);
+          // The dollars become pesos the same day (the Chilean bills and the mortgage are in pesos).
+          sellUsd(day, book.lowestFrom("checkingUsd", day));
+        }
+      }
+    }
+
+    /* US cash above the band goes to the US broker (payday, once it is open) */
+    const day = lastBusinessDay(month);
+    if (ibkrOpen(month) && day <= today) {
+      const monthly = usTrailingExpense();
+      const free = book.lowestFrom("usChecking", day) - usUpcomingNeeds(month);
+      if (free > us.cashBand.high * monthly) {
+        const usd = Math.floor((free - us.cashBand.target * monthly) / 100) * 100;
+        if (usd >= 100) book.transfer({ from: "usChecking", to: "ibkrUsd", date: day, usd, flowKind: null, note: "IBKR|depósito USD (ACH)" });
+      }
+    }
+  }
+  /** Average US spending of the months since the move (at least the rent and the lifestyle). */
+  function usTrailingExpense(): number {
+    const us = US!;
+    const xs = [...usExpenseByMonth.values()].slice(-6);
+    const floor = us.rent.usd + us.monthlyUsd;
+    if (xs.length === 0) return floor;
+    return Math.max(floor, xs.reduce((a, b) => a + b, 0) / xs.length);
+  }
+  /** Known US outflows of the next three months (the car, the Roth contribution, the December flight). */
+  function usUpcomingNeeds(month: Month): number {
+    const us = US!;
+    let need = 0;
+    for (let k = 1; k <= 3; k++) {
+      const m = addMonths(month, k);
+      if (us.car && monthOf(us.car.date) === m) need += us.car.usd;
+      if (us.roth && Number(m.slice(5, 7)) === us.roth.month && Number(m.slice(0, 4)) >= us.roth.fromYear) need += us.roth.usd;
+      if (m.endsWith("-12")) need += us.decemberTripUsd * 1.2;
+    }
+    return need;
+  }
+  /** Known Chilean peso needs of this month and the next two (abroad: what the wire must cover). */
+  function chileUpcomingNeeds(month: Month): number {
+    let need = 0;
+    for (let k = 0; k <= 2; k++) {
+      const m = addMonths(month, k);
+      const y = Number(m.slice(0, 4));
+      if (m.endsWith("-12") && y >= APV.from) need += APV.utm * market.utm(month);
+      if (HOUSE) for (const pp of HOUSE.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1)) * 1.02;
+      for (const p of PLAYS) if (p.kind === "buy_clp" && monthOf(p.date) === m) need += p.clp + 200_000;
+      if (m.endsWith("-04") && (taxYears.has(y - 1) || settlementOverrides.has(y - 1))) {
+        need += Math.max(0, settlementOverrides.get(y - 1) ?? annualTax(y - 1).result);
+      }
+      // A card purchase is paid with the next month's statement (its cuotas, one a month).
+      for (const o of ONE_OFFS) {
+        if (addMonths(o.month, 1) !== m) continue;
+        if (o.clp != null) need += o.cuotas && o.cuotas > 1 ? o.clp / o.cuotas : o.clp;
+        // A dollar charge on a Chilean card is paid with dollars bought from the peso account.
+        if (o.usd) need += o.usd * market.fx(ymd(month, 1)) * 1.02;
+      }
+    }
+    return need;
+  }
   /** What he earns in his first month (real pesos): the lifestyle starts there when no allowance does. */
   function firstMonthIncomeReal(): number {
     const job = contractJobFor(FIRST_MONTH);
@@ -1576,7 +1885,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       // Moving in: the deposit (garantía) and the first rent.
       for (const h of HOUSING) if (h.kind === "rent" && h.from === m) need += 2.2 * h.rentClp;
       // A month without income (between jobs) is lived on savings.
-      if (m >= person.checkingFrom && !contractJobFor(m) && !contractorJobFor(m)) need += 1.5 * trailingExpense();
+      if (m >= person.checkingFrom && !contractJobFor(m) && !contractorJobFor(m) && !usJobFor(m)) need += 1.5 * trailingExpense();
     }
     return need;
   }

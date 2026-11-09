@@ -24,7 +24,9 @@ import { setExpenseCategoryRule } from "../expenseCategoryRules.js";
 import { readFileSync } from "node:fs";
 import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
-import { seedNavTree } from "../seedNavTree.js";
+import { ensureRetirementCountrySplit, seedNavTree } from "../seedNavTree.js";
+import { writeFundUnitSeriesRows } from "../fundUnitDaily.js";
+import { employmentPayslipsKind } from "nw-tracker-contracts";
 import { ensureAccountSyncSourcesSeeded } from "../accountSyncSources.js";
 import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
 import { afpDisplaySeriesKey, AFP_UNO_CUOTA_SERIES_KEY } from "../afpUnoSeries.js";
@@ -54,8 +56,9 @@ import {
   BUDA_ACCOUNT_IMPORT_KEY,
   MORTGAGE_ACCOUNT_IMPORT_KEY,
   PROPERTY_ACCOUNT_IMPORT_KEY,
+  usRetirementAccountImportKey,
 } from "../accountIdentityKeys.js";
-import { isChileBusinessDay } from "../marketHolidays.js";
+import { isChileBusinessDay, isNyseTradingDay } from "../marketHolidays.js";
 import { recordEquitySplit } from "../equitySplits.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
 import { isMortgageCcExpenseMerchant } from "../expenseDepositLinks.js";
@@ -70,9 +73,11 @@ import {
   renderOpenCycle,
   renderPayrollParameters,
   renderPayslips,
+  renderUsStatementRows,
   DEMO_CHECKING_NUMBER,
+  DEMO_US_CHECKING_NUMBER,
 } from "./render.js";
-import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, MORTGAGE_DESGRAVAMEN_CLP, MORTGAGE_INCENDIO_CLP, MORTGAGE_MERCHANT, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, US_RETIREMENT_FUND_SERIES_KEY, MORTGAGE_DESGRAVAMEN_CLP, MORTGAGE_INCENDIO_CLP, MORTGAGE_MERCHANT, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
 import { aprilSettlementsFromTaxModule, settlementDifferences, writeDemoFiledReturns, writeDemoTaxDocuments } from "./taxDocuments.js";
@@ -158,12 +163,47 @@ function createAccounts(person: Person): Map<Acct, number> {
     ).run(id, c.key === "main" ? 8_000_000 : 12_000_000, c.key === "main" ? 3_000 : 6_000, c.last4, c.issuer);
     ids.set(`card:${c.key}` as Acct, id);
   }
+  if (person.us) {
+    // The US checking account: a dollar ledger under Checking accounts, whose bank statement lists its rows.
+    const us = createAccount(ensureAssetGroup("cash_eqs__cuenta_us__usd", "Checking (US)", "cash_eqs__checking_accounts"), "Checking (US)", {
+      key: buildPanelCashAccountNotes("usd", "us_checking"),
+    });
+    ids.set("usChecking", us);
+    db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'demo_bank_texas', ?, 'usd')`).run(us, DEMO_US_CHECKING_NUMBER);
+    if (person.us.bank.number !== DEMO_US_CHECKING_NUMBER) throw new Error("demo: the US bank number and the statement's differ");
+  }
+  if (person.usJobs.length > 0) {
+    // The US retirement accounts (the Retirement tree splits into Chile and US once they exist).
+    const provider = person.usJobs[0]!.id;
+    ids.set("k401", createAccount(g("retirement_us_401k__us_401k"), "401(k)", { key: usRetirementAccountImportKey("us_401k", provider), series: US_RETIREMENT_FUND_SERIES_KEY }));
+    ids.set("hsa", createAccount(g("retirement_us_hsa__hsa"), "HSA", { key: usRetirementAccountImportKey("hsa", provider), series: US_RETIREMENT_FUND_SERIES_KEY }));
+    if (person.us?.roth) {
+      ids.set("rothIra", createAccount(g("retirement_us_roth_ira__roth_ira"), "Roth IRA", { key: usRetirementAccountImportKey("roth_ira", provider), ticker: "SPY" }));
+    }
+  }
   db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(ids.get("checking")!, DEMO_CHECKING_NUMBER);
   db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', '5100234567', 'usd')`).run(ids.get("checkingUsd")!);
   return ids;
 }
 
 /* ------------------------------------- market -------------------------------------- */
+
+/**
+ * The US retirement fund (a 2060 target-date fund): 90 % SPY, 10 % a steady 3,5 %/yr bond sleeve,
+ * in dollars, valued every NYSE trading day from the stored SPY closes — the same rows on the
+ * synthetic and the real market (on `--real-market` SPY's closes are Yahoo's), no other source.
+ */
+function writeUsRetirementFundSeries(market: MarketReader, from: Ymd, today: Ymd): void {
+  const spy0 = market.close("SPY", from);
+  const rows: { day: string; unit_value: number; note: string }[] = [];
+  for (let d = from; d <= today; d = addDays(d, 1)) {
+    if (!isNyseTradingDay(d)) continue;
+    const years = (Date.parse(d) - Date.parse(from)) / (365.25 * 86_400_000);
+    const v = 25 * (0.9 * (market.close("SPY", d) / spy0) + 0.1 * Math.pow(1.035, years));
+    rows.push({ day: d, unit_value: Math.round(v * 1e4) / 1e4, note: "demo" });
+  }
+  db.transaction(() => writeFundUnitSeriesRows({ seriesKey: US_RETIREMENT_FUND_SERIES_KEY, currency: "usd", rows }))();
+}
 
 /** The APV fund: a balanced fund (65 % SPY in pesos, 35 % a steady 3 %/yr sleeve), valued daily. */
 function writeFundSeries(seriesKey: string, equityShare: number, market: MarketReader, from: Ymd, today: Ymd): void {
@@ -258,6 +298,23 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
         );
       }
     }
+  })();
+}
+
+/**
+ * The US checking account's statement rows (`renderUsStatementRows`): no US statement importer
+ * exists, so they are written as the cartola import writes a statement row — single-leg, the
+ * statement identity in the note, the bank's evidence kind from it.
+ */
+function writeUsStatementRows(ledger: Ledger, ids: Map<Acct, number>): void {
+  const rows = renderUsStatementRows(ledger);
+  if (rows.length === 0) return;
+  const id = ids.get("usChecking");
+  if (id == null) throw new Error("demo: US statement rows without a US checking account");
+  // A single-leg dollar row is positive, its direction in the flow kind (`signedUsdDeltaForAccountMovement`).
+  const ins = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'usd', ?, ?, ?)`);
+  db.transaction(() => {
+    for (const r of rows) ins.run(id, Math.abs(r.amount), r.date, r.note, r.amount > 0 ? "compra_usd" : "withdrawal_usd");
   })();
 }
 
@@ -463,6 +520,7 @@ function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
   if (ids.has("checking") || ids.has("vista")) {
     for (const [desc, slug] of ledger.categoryByCheckingDescription) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(desc), null, cat(slug));
   }
+  for (const [desc, slug] of ledger.categoryByUsDescription) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(desc), null, cat(slug));
   const generic = db.prepare(`INSERT OR IGNORE INTO cc_expense_generic_unique_merchants (merchant_key, sort_order) VALUES (?, ?)`);
   ["TRANSF A BROKER DEMO SPA", "TRANSF A CRYPTO EXCHANGE SPA", "TRANSF A AGF ANDES APV", "TRANSF A INMOBILIARIA LOS ALAMOS"].forEach((k, i) =>
     generic.run(normalizeCcExpenseMerchantKey(k), 1000 + i * 10)
@@ -492,6 +550,10 @@ function applyColors(ids: Map<Acct, number>): void {
   const colors: [Acct, string][] = [
     ["checking", "161,11,29"],
     ["checkingUsd", "90,90,150"],
+    ["usChecking", "60,110,200"],
+    ["k401", "59,130,246"],
+    ["hsa", "14,165,233"],
+    ["rothIra", "124,58,237"],
     ["ibkrUsd", "200,40,40"],
     ["dap", "120,160,200"],
     ["btc", "234,179,8"],
@@ -521,6 +583,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   // The owner as the bank prints its own transfers (`owner_identity`, migration 277).
   db.prepare(`INSERT INTO owner_identity (kind, value) VALUES ('name_pattern', ?)`).run(DEMO_OWNER_NAME_PATTERN);
   seedNavTree();
+  // With US retirement accounts the Retirement tree reads Chile / US (the personal instance never splits).
+  if (ids.has("k401")) ensureRetirementCountrySplit();
   renameTreesCategoryToHobbies();
 
   if (opts.market === "synthetic") {
@@ -536,6 +600,10 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   // The APV fund is balanced (65 % equities); the mutual fund is the risky one (90 %).
   writeFundSeries(APV_FUND_SERIES_KEY, 0.65, prices, fundFrom, today);
   if (person.fund) writeFundSeries(MUTUAL_FUND_SERIES_KEY, 0.9, prices, fundFrom, today);
+  if (person.usJobs.length > 0) {
+    const first = person.usJobs.map((j) => j.firstPayDate).sort()[0]!;
+    writeUsRetirementFundSeries(prices, addDays(first, -60), today);
+  }
   writeOfficialIpcFromUf(person.marketFromMonth(today));
   const market = dbMarketReader();
 
@@ -596,6 +664,7 @@ function writeLife(
 ): { ledger: Ledger; payslipResult: ReturnType<typeof applyEmploymentPayslips> | null } {
   const ledger = simulate(person, market, today, { aprilSettlements });
   writeDirect(ledger, ids);
+  writeUsStatementRows(ledger, ids);
   writeSplits(person, today);
 
   const cartolas = renderCartolas(ledger);
@@ -617,7 +686,8 @@ function writeLife(
   const params = renderPayrollParameters(ledger, market);
   if (params) applyPayrollParameters(params);
   const payslips = renderPayslips(ledger);
-  const payslipResult = payslips ? applyEmploymentPayslips(payslips) : null;
+  // Parsed as the ingest route parses it: the contract checks every stub's sums.
+  const payslipResult = payslips ? applyEmploymentPayslips(employmentPayslipsKind.payload.parse(payslips)) : null;
   writeContractorPayslips(ledger);
   writeMortgage(ledger, ids);
   writeFundValuations(ids, market, today);
