@@ -179,16 +179,6 @@ export function convertCurrency(
   return mid == null ? null : convertHop(mid, via, to, ymd, opts);
 }
 
-/** Units of `quote` per one unit of `base` on `ymd` at the side (an asset sells `base`). */
-export function rateAt(
-  base: CurrencyCode,
-  quote: CurrencyCode,
-  ymd: string,
-  opts: RateOpts
-): number | null {
-  return convertCurrency(1, base, quote, ymd, opts);
-}
-
 /**
  * A FLOW of `amount` `from` expressed in `to` on its own day `ymd` — never a value: pesos to
  * dollars at the buy rate on or before the day (what buying those dollars cost; the mid with a

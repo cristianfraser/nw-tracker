@@ -34,14 +34,6 @@ import { cardValueInUnit } from "./cardValueInUnit.js";
 export type AccountValueOpts = { now?: Date };
 
 /**
- * Which day is "today" for choosing the valuation stack: Chile today on the real clock, as
- * `accountMarkClpAtYmd` chooses it (`now` reaches the quote-driven pieces and the conversion).
- */
-function todayFor(_now: Date | undefined): string {
-  return chileCalendarTodayYmd();
-}
-
-/**
  * The currency an account's value is natively expressed in: dollars for a dollar ledger, a
  * dollar-quoted stock or a coin; pesos for everything else — peso ledgers, funds (cuotas priced
  * in pesos) and, until their own phases, the card and the depto ledger.
@@ -68,7 +60,7 @@ export function accountHoldingQtyAt(
   opts?: AccountValueOpts
 ): { qty: number; holding: Holding; as_of: string } | null {
   const now = opts?.now;
-  const today = todayFor(now);
+  const today = chileCalendarTodayYmd();
   if (ymd !== today) {
     const m: QtyMark | null = accountHistoricalQtyMark(accountId, ymd);
     return m ? { qty: m.qty, holding: m.asset, as_of: m.as_of_date } : null;
@@ -103,7 +95,7 @@ export function accountValueAt(
   opts?: AccountValueOpts
 ): { value: number; as_of_date: string } | null {
   const now = opts?.now;
-  if (ymd === todayFor(now)) {
+  if (ymd === chileCalendarTodayYmd()) {
     const v = accountTodayValue(accountId, { now });
     if (!v) return null;
     const value = todayValueInUnit(accountId, v, unit, now);

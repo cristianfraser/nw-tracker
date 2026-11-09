@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { convertCurrency, rateAt } from "./rates.js";
+import { convertCurrency } from "./rates.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
 const restoreTables = snapshotTables(["fx_daily", "fx_daily_bid_ask", "uf_daily", "eur_daily"]);
@@ -34,9 +34,9 @@ describe("convertCurrency", () => {
     db.prepare(
       `INSERT INTO fx_daily_bid_ask (date, buy_clp_per_usd, sell_clp_per_usd, source) VALUES (?, 1010, 990, 'manual')`
     ).run(D);
-    expect(rateAt("usd", "clp", D, { side: "asset", now: NOW })).toBe(990);
+    expect(convertCurrency(1, "usd", "clp", D, { side: "asset", now: NOW })).toBe(990);
     db.prepare(`INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES ('2099-09-02', 1000)`).run();
-    expect(rateAt("usd", "clp", "2099-09-02", { side: "asset", now: NOW })).toBe(998);
+    expect(convertCurrency(1, "usd", "clp", "2099-09-02", { side: "asset", now: NOW })).toBe(998);
     db.prepare(`DELETE FROM fx_daily WHERE date = '2099-09-02'`).run();
   });
 

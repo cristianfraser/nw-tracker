@@ -116,7 +116,6 @@ function chartValueInUnit(clp: number, d: string, unit: TsUnit, side: ValueSide 
  */
 function accountChartValueInUnit(
   accountId: number,
-  _kindSlug: string,
   clp: number,
   d: string,
   unit: TsUnit
@@ -928,7 +927,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       }
       if (raw != null) last.set(aid, raw);
       const v = last.get(aid);
-      row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, aidKind, v, d, unit);
+      row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, v, d, unit);
     }
     for (const t of topOut) {
       if (!t.depositDataKey) continue;
@@ -2091,7 +2090,7 @@ function buildDailyEquityPointsForAccount(
     if (clp == null) continue;
     points.push({
       as_of_date: r.trade_date,
-      [dk]: accountChartValueInUnit(accountId, "", clp, r.trade_date, unit),
+      [dk]: accountChartValueInUnit(accountId, clp, r.trade_date, unit),
     });
   }
   return { accounts: top, points };
