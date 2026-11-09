@@ -68,7 +68,8 @@ export function WorkEarningsTable({
       >
         {pageRows.map((row) => (
           <tr key={row.id}>
-            <td className="mono">{row.period_month}</td>
+            {/* A US pay stub is one of several in its month: its pay date tells them apart. */}
+            <td className="mono">{row.pay_date ?? row.period_month}</td>
             <td
               className="work-earnings-table__employer"
               title={row.employer_rut ? `${row.employer_name} · ${row.employer_rut}` : row.employer_name}
@@ -128,8 +129,8 @@ export function WorkEarningsTable({
                   .map((d) =>
                     t("workEarnings.checkDetail", {
                       check: t(`workEarnings.checks.${d.check}`),
-                      expected: formatFlowMoney(d.expected, "clp"),
-                      printed: formatFlowMoney(d.printed, "clp"),
+                      expected: formatFlowMoney(d.expected, c.currency),
+                      printed: formatFlowMoney(d.printed, c.currency),
                     })
                   )
                   .join("\n");

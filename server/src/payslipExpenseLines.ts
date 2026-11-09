@@ -7,6 +7,10 @@
  * accounts) and an advance nets an earlier deposit: none is an expense. A finiquito's combined
  * «cotizaciones de seguridad social» line cannot be split, so it is left out.
  *
+ * A US pay stub's federal withholding, Social Security and Medicare are «Impuestos» and its medical,
+ * dental and vision premiums «Salud»; its 401(k) and HSA deferrals are savings, and RSUs delivered
+ * as shares are pay, neither an expense. Its dollars are shown in pesos at its pay date's rate.
+ *
  * Each line is dated to its payslip's month (the month worked, paid on its last day): `expense_month`
  * is the payslip's period, `occurred_on` the day the pay reached the account (the paired deposit, else
  * a USD wire's day, else the month's last day). The category is the deduction's, never editable.
@@ -15,7 +19,8 @@ import { db } from "./db.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
-import { splitPensionLine, type PayslipLineKind } from "./payslipLineKinds.js";
+import { splitPensionLine, type PayrollJurisdiction, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
+import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
 
 /** `statement_line_id` of a payslip line: payslip id × this + the line's position (unique, positive). */
 export const PAYSLIP_EXPENSE_LINE_ID_FACTOR = 1000;
@@ -26,19 +31,26 @@ const CATEGORY_BY_KIND: Partial<Record<PayslipLineKind, string>> = {
   life_insurance: "healthcare",
   income_tax: "taxes",
   transfer_fee: "fees",
+  federal_income_tax: "taxes",
+  social_security_tax: "taxes",
+  medicare_tax: "taxes",
+  health_premium: "healthcare",
+  dental_vision: "healthcare",
 };
 
 type PayslipRow = {
   id: number;
   period_month: string;
   employer_name: string;
+  jurisdiction: PayrollJurisdiction;
+  pay_date: string | null;
   liquido_currency: "clp" | "usd";
   total_imponible_clp: number | null;
   total_haberes_clp: number | null;
   paid_on: string | null;
 };
 
-type LineRow = { payslip_id: number; position: number; side: "haber" | "descuento"; kind: PayslipLineKind | null; label: string; amount: number };
+type LineRow = { payslip_id: number; position: number; side: PayslipLineSide; kind: PayslipLineKind | null; label: string; amount: number };
 
 function monthEnd(periodMonth: string): string {
   const [y, m] = periodMonth.split("-").map(Number) as [number, number];
@@ -48,7 +60,7 @@ function monthEnd(periodMonth: string): string {
 export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
   const payslips = db
     .prepare(
-      `SELECT p.id, p.period_month, p.employer_name, p.liquido_currency, p.total_imponible_clp, p.total_haberes_clp,
+      `SELECT p.id, p.period_month, p.employer_name, p.jurisdiction, p.pay_date, p.liquido_currency, p.total_imponible_clp, p.total_haberes_clp,
               COALESCE(m.occurred_on, p.wire_received_on) AS paid_on
          FROM payroll_work_earnings p LEFT JOIN movements m ON m.id = p.movement_id
         ORDER BY p.period_month, p.id`
@@ -66,10 +78,14 @@ export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
   const out: FlowCcExpenseLineRowDraft[] = [];
   for (const p of payslips) {
     const lines = linesBy.get(p.id) ?? [];
-    const day = p.paid_on ?? monthEnd(p.period_month);
-    // A dollar payslip's lines are in dollars; its stored peso gross gives the rate it was paid at.
+    const day = p.paid_on ?? p.pay_date ?? monthEnd(p.period_month);
+    // A dollar payslip's lines are in dollars: a US pay stub at its pay date's rate, the Chilean
+    // USD contract at the rate its stored peso gross gives.
     let pesosPerUnit = 1;
-    if (p.liquido_currency === "usd") {
+    if (p.jurisdiction === "us") {
+      if (p.pay_date == null) throw new Error(`payslip ${p.id}: a US payslip without its pay date`);
+      pesosPerUnit = usPayslipClpPerUsd(p.pay_date, p.id);
+    } else if (p.liquido_currency === "usd") {
       const grossUsd = lines.filter((l) => l.side === "haber").reduce((s, l) => s + l.amount, 0);
       if (p.total_haberes_clp == null || !(grossUsd > 0)) throw new Error(`payslip ${p.id}: a dollar payslip without its peso gross`);
       pesosPerUnit = p.total_haberes_clp / grossUsd;

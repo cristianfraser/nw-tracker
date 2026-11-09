@@ -4223,6 +4223,22 @@
           "en": "Advances",
           "es": "Anticipos"
         },
+        "social_security_medicare": {
+          "en": "Social Security + Medicare",
+          "es": "Social Security + Medicare"
+        },
+        "retirement_401k": {
+          "en": "401(k)",
+          "es": "401(k)"
+        },
+        "hsa": {
+          "en": "HSA",
+          "es": "HSA"
+        },
+        "stock_paid": {
+          "en": "Paid in shares (RSU)",
+          "es": "Pagado en acciones (RSU)"
+        },
         "other_deductions": {
           "en": "Other deductions",
           "es": "Otros descuentos"
@@ -4234,6 +4250,10 @@
         "net": {
           "en": "Net pay",
           "es": "Líquido"
+        },
+        "employer_retirement": {
+          "en": "Employer 401(k) match",
+          "es": "Aporte del empleador al 401(k)"
         }
       }
     }
@@ -4353,6 +4373,22 @@
       "pension_credited": {
         "en": "AFP credited (10 % + employer)",
         "es": "AFP acreditada (10 % + empleador)"
+      },
+      "social_security_tax": {
+        "en": "Social Security (6.2 % up to the wage base)",
+        "es": "Social Security (6,2 % hasta el tope)"
+      },
+      "medicare_tax": {
+        "en": "Medicare (1.45 % + 0.9 % above $200,000)",
+        "es": "Medicare (1,45 % + 0,9 % sobre US$200.000)"
+      },
+      "federal_withholding": {
+        "en": "Federal withholding (Pub. 15-T)",
+        "es": "Retención federal (Pub. 15-T)"
+      },
+      "deferral_limit": {
+        "en": "401(k) yearly limit",
+        "es": "Límite anual del 401(k)"
       }
     },
     "checksPending": {

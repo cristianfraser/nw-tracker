@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
 
 export type PayrollEarningType = "salary" | "severance";
 
@@ -9,6 +10,11 @@ export type FlowWorkEarningRow = {
   employer_rut: string | null;
   pay_period_label: string | null;
   earning_type: PayrollEarningType;
+  /** `cl`: a liquidación; `us`: a W-2 pay stub (dollars; the Chilean `*_clp` breakdown is null). */
+  jurisdiction: "cl" | "us";
+  pay_period: "monthly" | "biweekly" | "semi_monthly";
+  /** A US pay stub's pay date; null for a liquidación. */
+  pay_date: string | null;
   base_salary_clp: number | null;
   colacion_clp: number | null;
   movilizacion_clp: number | null;
@@ -45,6 +51,11 @@ type DbPayrollRow = {
   employer_rut: string | null;
   pay_period_label: string | null;
   earning_type: PayrollEarningType;
+  /** `cl`: a liquidación; `us`: a W-2 pay stub (dollars; the Chilean `*_clp` breakdown is null). */
+  jurisdiction: "cl" | "us";
+  pay_period: "monthly" | "biweekly" | "semi_monthly";
+  /** A US pay stub's pay date; null for a liquidación. */
+  pay_date: string | null;
   base_salary_clp: number | null;
   colacion_clp: number | null;
   movilizacion_clp: number | null;
@@ -79,7 +90,7 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
     .prepare(
       `SELECT
          p.id, p.period_month, p.employer_name, p.employer_rut, p.pay_period_label,
-         p.earning_type,
+         p.earning_type, p.jurisdiction, p.pay_period, p.pay_date,
          p.base_salary_clp, p.colacion_clp, p.movilizacion_clp, p.gratificacion_clp,
          p.total_imponible_clp, p.total_no_imponible_clp, p.total_haberes_clp,
          p.desc_afp_clp, p.desc_health_clp, p.desc_tax_clp, p.desc_cesantia_clp,
@@ -105,7 +116,12 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
     const { liquido, liquido_currency, ...rest } = row;
     let liquido_clp: number;
     let liquido_usd: number | null;
-    if (liquido_currency === "clp") {
+    if (row.jurisdiction === "us") {
+      // A US pay stub: dollars, shown in pesos at its pay date's rate.
+      if (liquido_currency !== "usd" || row.pay_date == null) throw new Error(`work earning ${row.id}: a US payslip must be in dollars with a pay date`);
+      liquido_usd = liquido;
+      liquido_clp = Math.round(liquido * usPayslipClpPerUsd(row.pay_date, row.id));
+    } else if (liquido_currency === "clp") {
       liquido_clp = Math.round(liquido);
       liquido_usd = null;
     } else if (liquido_currency === "usd") {
@@ -126,8 +142,9 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
       ...rest,
       liquido_clp,
       liquido_usd,
+      // A US stub's deposit is dollars: no peso leg to show (the table shows the net pay instead).
       linked_amount_clp:
-        row.linked_amount_clp == null ? null : Math.round(row.linked_amount_clp),
+        row.jurisdiction === "us" || row.linked_amount_clp == null ? null : Math.round(row.linked_amount_clp),
     };
   });
 }

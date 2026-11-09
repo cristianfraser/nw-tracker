@@ -1,9 +1,12 @@
 /**
- * What a printed payslip line is (`payslip_lines.kind`), decided from its side and label at import.
+ * What a printed payslip line is (`payslip_lines.kind`), decided from its side, label and the
+ * payslip's jurisdiction at import.
  *
- * The rules are data: one regular expression per kind over the label without accents, lowercased
- * and without Talana's « (LQ)» suffix, first match wins. A label no rule covers fails the import,
- * so a new layout or a new line is looked at, never guessed.
+ * The rules are data, one set per jurisdiction: one regular expression per kind over the label
+ * without accents, lowercased and without Talana's « (LQ)» suffix, first match wins. A label no
+ * rule of its jurisdiction covers fails the import — a US label on a Chilean liquidación as much as
+ * an unknown one —, so a new layout or a new line is looked at, never guessed. The two
+ * jurisdictions' kinds are disjoint, so a reader can tell a line's jurisdiction by its kind.
  */
 import { LEGAL_HEALTH_RATE, MANDATORY_PENSION_RATE } from "./legalParameters.js";
 
@@ -42,11 +45,56 @@ export const PAYSLIP_DESCUENTO_KINDS = [
   "transfer_fee",
 ] as const;
 
-export type PayslipLineKind = (typeof PAYSLIP_HABER_KINDS)[number] | (typeof PAYSLIP_DESCUENTO_KINDS)[number];
+/** US W-2 pay-stub earnings. */
+export const US_PAYSLIP_HABER_KINDS = [
+  /** Regular pay: salary or hourly, PTO and holiday pay. */
+  "wages",
+  /** A bonus: supplemental wages, withheld at the flat rate. */
+  "supplemental_bonus",
+  /** The value of RSUs that vested: supplemental wages paid in shares (see `rsu_offset`). */
+  "rsu",
+] as const;
 
-type Rule = { side: "haber" | "descuento"; pattern: RegExp; kind: PayslipLineKind };
+/** US W-2 pay-stub deductions. */
+export const US_PAYSLIP_DESCUENTO_KINDS = [
+  "federal_income_tax",
+  /** Social Security (OASDI), the employee's 6,2 %. */
+  "social_security_tax",
+  /** Medicare, 1,45 % plus the additional 0,9 %. */
+  "medicare_tax",
+  /** 401(k) elective deferral before income tax (FICA still applies). */
+  "retirement_401k_pretax",
+  /** Roth 401(k) deferral, after tax. */
+  "retirement_401k_roth",
+  /** HSA contribution through the cafeteria plan (before income tax and FICA). */
+  "hsa",
+  /** Medical insurance premium through the cafeteria plan (before income tax and FICA). */
+  "health_premium",
+  /** Dental and vision premiums through the cafeteria plan (before income tax and FICA). */
+  "dental_vision",
+  /** The vested RSUs' value delivered as shares, not cash: it offsets `rsu` so net pay is cash. */
+  "rsu_offset",
+] as const;
 
-const RULES: readonly Rule[] = [
+/** US W-2 pay-stub memo lines: printed, neither paid nor withheld (side `memo`, outside the sums). */
+export const US_PAYSLIP_MEMO_KINDS = [
+  /** The employer's 401(k) match, deposited into the plan beside the employee's deferrals. */
+  "employer_401k_match",
+] as const;
+
+export type PayrollJurisdiction = "cl" | "us";
+export type PayslipLineSide = "haber" | "descuento" | "memo";
+
+export type ClPayslipLineKind = (typeof PAYSLIP_HABER_KINDS)[number] | (typeof PAYSLIP_DESCUENTO_KINDS)[number];
+export type UsPayslipLineKind =
+  | (typeof US_PAYSLIP_HABER_KINDS)[number]
+  | (typeof US_PAYSLIP_DESCUENTO_KINDS)[number]
+  | (typeof US_PAYSLIP_MEMO_KINDS)[number];
+export type PayslipLineKind = ClPayslipLineKind | UsPayslipLineKind;
+
+type Rule = { side: PayslipLineSide; pattern: RegExp; kind: PayslipLineKind };
+
+const CL_RULES: readonly Rule[] = [
   { side: "haber", pattern: /^sueldo (ganado|base|del mes|de \d+ dias)$|^remuneracion del ultimo mes/, kind: "base_salary" },
   { side: "haber", pattern: /gratif/, kind: "gratification" },
   { side: "haber", pattern: /^aguinaldo$|^bonos?$/, kind: "bonus" },
@@ -82,11 +130,42 @@ export function normalizePayslipLabel(label: string): string {
     .toLowerCase();
 }
 
-export function payslipLineKind(side: "haber" | "descuento", label: string): PayslipLineKind {
+/** US pay-stub labels (ADP / Gusto / Workday wording), lowercased. */
+const US_RULES: readonly Rule[] = [
+  { side: "haber", pattern: /^(regular( pay| earnings| salary)?|salary|wages|hourly|overtime|pto|holiday( pay)?|vacation( pay)?)$/, kind: "wages" },
+  { side: "haber", pattern: /^(annual |spot |sign[- ]on |performance )?bonus$/, kind: "supplemental_bonus" },
+  { side: "haber", pattern: /^rsu( vest| income| gain)?$/, kind: "rsu" },
+
+  { side: "descuento", pattern: /^(federal income tax|federal withholding|fed(eral)? (income )?tax|fit|fitw)$/, kind: "federal_income_tax" },
+  { side: "descuento", pattern: /^(social security( tax)?|oasdi|fica[ -]+(social security|oasdi))$/, kind: "social_security_tax" },
+  { side: "descuento", pattern: /^(medicare( tax)?|fica[ -]+medicare)$/, kind: "medicare_tax" },
+  { side: "descuento", pattern: /^(roth 401\(?k\)?|401\(?k\)? roth)$/, kind: "retirement_401k_roth" },
+  { side: "descuento", pattern: /^401\(?k\)?( pre-?tax)?$/, kind: "retirement_401k_pretax" },
+  { side: "descuento", pattern: /^hsa( contribution)?$/, kind: "hsa" },
+  { side: "descuento", pattern: /^(medical|health)( insurance)?( premium)?$/, kind: "health_premium" },
+  { side: "descuento", pattern: /^(dental|vision|dental and vision|dental & vision)( insurance)?( premium)?$/, kind: "dental_vision" },
+  { side: "descuento", pattern: /^rsu (offset|shares delivered|stock delivered)$/, kind: "rsu_offset" },
+
+  { side: "memo", pattern: /^(401\(?k\)? )?employer match$|^er 401\(?k\)? match$/, kind: "employer_401k_match" },
+];
+
+const RULES_BY_JURISDICTION: Record<PayrollJurisdiction, readonly Rule[]> = { cl: CL_RULES, us: US_RULES };
+
+export function payslipLineKind(side: PayslipLineSide, label: string, jurisdiction: PayrollJurisdiction): PayslipLineKind {
+  if (side === "memo" && jurisdiction === "cl") throw new Error(`payslip line: a memo line («${label}») on a Chilean payslip`);
   const norm = normalizePayslipLabel(label);
-  const rule = RULES.find((r) => r.side === side && r.pattern.test(norm));
-  if (!rule) throw new Error(`payslip line: no kind for the ${side} «${label}» — add a rule to payslipLineKinds.ts`);
+  const rule = RULES_BY_JURISDICTION[jurisdiction].find((r) => r.side === side && r.pattern.test(norm));
+  if (!rule) {
+    throw new Error(`payslip line: no ${jurisdiction} kind for the ${side} «${label}» — add a rule to payslipLineKinds.ts`);
+  }
   return rule.kind;
+}
+
+const US_KINDS: ReadonlySet<PayslipLineKind> = new Set([...US_PAYSLIP_HABER_KINDS, ...US_PAYSLIP_DESCUENTO_KINDS, ...US_PAYSLIP_MEMO_KINDS]);
+
+/** The jurisdiction a stored kind belongs to (the two sets are disjoint). */
+export function payslipLineKindJurisdiction(kind: PayslipLineKind): PayrollJurisdiction {
+  return US_KINDS.has(kind) ? "us" : "cl";
 }
 
 /** Haber kinds that are taxable pay when the payslip prints no section. */
@@ -96,7 +175,7 @@ const TAXABLE_HABER_KINDS = new Set<PayslipLineKind>(["base_salary", "gratificat
  * Whether a haber is taxable pay («imponible»): as the payslip prints its section (Talana's
  * teletrabajo allowance is taxable), else by its kind.
  */
-export function payslipHaberIsTaxable(l: { side: "haber" | "descuento"; section: string | null; kind: PayslipLineKind | null }): boolean {
+export function payslipHaberIsTaxable(l: { side: PayslipLineSide; section: string | null; kind: PayslipLineKind | null }): boolean {
   if (l.side !== "haber") return false;
   if (l.section === "imponible") return true;
   if (l.section === "no_imponible") return false;

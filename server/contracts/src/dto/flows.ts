@@ -738,7 +738,17 @@ export interface FlowsIncomeAggregates {
   total: number;
 }
 
-export type PayslipCheckName = "taxable_base" | "pension" | "health_minimum" | "unemployment" | "income_tax" | "pension_credited";
+export type PayslipCheckName =
+  | "taxable_base"
+  | "pension"
+  | "health_minimum"
+  | "unemployment"
+  | "income_tax"
+  | "pension_credited"
+  | "social_security_tax"
+  | "medicare_tax"
+  | "federal_withholding"
+  | "deferral_limit";
 export interface PayslipCheck {
   check: PayslipCheckName;
   expected: number;
@@ -748,10 +758,13 @@ export interface PayslipCheck {
 export interface PayslipChecksRow {
   payslip_id: number;
   period_month: string;
+  jurisdiction: PayrollJurisdiction;
+  /** The checks' amounts: pesos for a liquidación, dollars for a US pay stub. */
+  currency: "clp" | "usd";
   pension_fund: string | null;
   origin: "document" | "rebuilt";
   checks: PayslipCheck[];
-  /** The checks off by more than a peso. */
+  /** The checks off by more than their rounding. */
   differences: PayslipCheck[];
   /** The month's parameters are not published yet. */
   pending: boolean;
@@ -773,10 +786,20 @@ export const PAYROLL_BREAKDOWN_FIELDS = [
   "insurance",
   "fees",
   "advance",
-  /** Insurance + fees + a finiquito's combined contributions + advances: the deductions with no column of their own. */
+  /** US: Social Security + Medicare (FICA). */
+  "social_security_medicare",
+  /** US: 401(k) deferrals, pre-tax and Roth. */
+  "retirement_401k",
+  /** US: HSA contributions. */
+  "hsa",
+  /** US: vested RSUs delivered as shares. */
+  "stock_paid",
+  /** Insurance + fees + a finiquito's combined contributions + advances + shares paid: the deductions with no column of their own. */
   "other_deductions",
   "deductions",
   "net",
+  /** US: the employer's 401(k) match (a memo line, outside gross − deductions = net). */
+  "employer_retirement",
 ] as const;
 export type PayrollBreakdownField = (typeof PAYROLL_BREAKDOWN_FIELDS)[number];
 export type PayrollBreakdownValues = Record<PayrollBreakdownField, { clp: number; usd: number }>;
@@ -793,6 +816,7 @@ export interface PayrollBreakdownPayload {
     employer_name: string;
     earning_type: PayrollEarningType;
     origin: "document" | "rebuilt";
+    jurisdiction: PayrollJurisdiction;
     values: PayrollBreakdownValues;
   }[];
   months: PayrollBreakdownRow[];
@@ -800,6 +824,8 @@ export interface PayrollBreakdownPayload {
 }
 
 export type PayrollEarningType = "salary" | "severance";
+/** A payslip's law: a Chilean liquidación or a US W-2 pay stub. */
+export type PayrollJurisdiction = "cl" | "us";
 export type PayrollLinkSource = "auto" | "manual";
 
 export interface FlowWorkEarningRow {
@@ -809,6 +835,10 @@ export interface FlowWorkEarningRow {
   employer_rut: string | null;
   pay_period_label: string | null;
   earning_type: PayrollEarningType;
+  jurisdiction: PayrollJurisdiction;
+  pay_period: "monthly" | "biweekly" | "semi_monthly";
+  /** A US pay stub's pay date; null for a liquidación. */
+  pay_date: string | null;
   base_salary_clp: number | null;
   colacion_clp: number | null;
   movilizacion_clp: number | null;

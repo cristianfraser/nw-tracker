@@ -15,14 +15,47 @@
  *   whose only period is the month (a credit that pays several months cannot be split).
  *
  * Peso payslips of kind salary only (a finiquito and the USD contract have none of these).
+ *
+ * A US W-2 pay stub is checked against the federal law of its pay date's year (`usLegalParameters.ts`),
+ * in dollars, its year-to-date read from the stored stubs before it (by pay date):
+ * - `social_security_tax`: 6,2 % of the FICA wages (gross less the cafeteria-plan deductions:
+ *   medical, dental/vision, HSA) up to what the employer's year still leaves under the wage base.
+ * - `medicare_tax`: 1,45 % of the FICA wages plus 0,9 % on the employer's year above $200.000.
+ * - `federal_withholding`: Pub. 15-T's percentage method for the stub's W-4 filing status and pay
+ *   frequency on the regular wages (wages less the pre-tax 401(k) and the cafeteria-plan
+ *   deductions) plus the flat supplemental rate on bonuses and RSU vests; a difference of up to a
+ *   dollar is the employer rounding to the dollar, as Pub. 15-T allows.
+ * - `deferral_limit`: the stub's 401(k) deferrals (pre-tax + Roth) against what the year's
+ *   elective-deferral limit still leaves (catch-up not counted: the app does not know the age).
  */
 import { accountProfileOptional } from "./accountProfile.js";
 import { db } from "./db.js";
 import { iuscTax, MANDATORY_PENSION_RATE } from "./legalParameters.js";
 import { loadPayrollParameters } from "./payrollParametersApply.js";
-import { iuscTaxableClp, legalHealthClp, payslipHaberIsTaxable, type PayslipLineKind } from "./payslipLineKinds.js";
+import { iuscTaxableClp, legalHealthClp, payslipHaberIsTaxable, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
+import {
+  US_PAY_PERIODS_PER_YEAR,
+  usMedicareTax,
+  usPercentageMethodWithholding,
+  usSocialSecurityTax,
+  usSupplementalWithholding,
+  usTaxYear,
+  type UsFilingStatus,
+  type UsPayFrequency,
+} from "./usLegalParameters.js";
 
-export const PAYSLIP_CHECKS = ["taxable_base", "pension", "health_minimum", "unemployment", "income_tax", "pension_credited"] as const;
+export const PAYSLIP_CHECKS = [
+  "taxable_base",
+  "pension",
+  "health_minimum",
+  "unemployment",
+  "income_tax",
+  "pension_credited",
+  "social_security_tax",
+  "medicare_tax",
+  "federal_withholding",
+  "deferral_limit",
+] as const;
 export type PayslipCheckName = (typeof PAYSLIP_CHECKS)[number];
 
 export type PayslipCheck = { check: PayslipCheckName; expected: number; printed: number; difference: number };
@@ -30,10 +63,13 @@ export type PayslipCheck = { check: PayslipCheckName; expected: number; printed:
 export type PayslipChecksRow = {
   payslip_id: number;
   period_month: string;
+  jurisdiction: "cl" | "us";
+  /** The currency the checks' amounts are in: pesos for a liquidación, dollars for a US pay stub. */
+  currency: "clp" | "usd";
   pension_fund: string | null;
   origin: "document" | "rebuilt";
   checks: PayslipCheck[];
-  /** The checks off by more than a peso (rounding). */
+  /** The checks off by more than their rounding (a peso; a cent for FICA, a dollar for the US withholding). */
   differences: PayslipCheck[];
   /** The month's parameters are not published yet (Previred publishes early the next month). */
   pending: boolean;
@@ -48,23 +84,35 @@ type PayslipRow = {
   total_imponible_clp: number | null;
 };
 
-type LineRow = { payslip_id: number; side: "haber" | "descuento"; section: string | null; kind: PayslipLineKind | null; amount: number };
+type LineRow = { payslip_id: number; side: PayslipLineSide; section: string | null; kind: PayslipLineKind | null; amount: number };
 
-export function buildPayslipChecks(): PayslipChecksRow[] {
-  const params = loadPayrollParameters();
-  const latestParamsMonth = [...params.keys()].sort().at(-1) ?? "";
-  const payslips = db
-    .prepare(
-      `SELECT id, period_month, pension_fund, origin, total_imponible_clp FROM payroll_work_earnings
-        WHERE earning_type = 'salary' AND liquido_currency = 'clp' ORDER BY period_month, id`
-    )
-    .all() as PayslipRow[];
+function loadLinesByPayslip(): Map<number, LineRow[]> {
   const linesBy = new Map<number, LineRow[]>();
   for (const l of db.prepare(`SELECT payslip_id, side, section, kind, amount FROM payslip_lines`).all() as LineRow[]) {
     const list = linesBy.get(l.payslip_id) ?? [];
     list.push(l);
     linesBy.set(l.payslip_id, list);
   }
+  return linesBy;
+}
+
+/** Every payslip's checks, Chilean and US, by period then id. */
+export function buildPayslipChecks(): PayslipChecksRow[] {
+  const linesBy = loadLinesByPayslip();
+  return [...buildClPayslipChecks(linesBy), ...buildUsPayslipChecks(linesBy)].sort(
+    (a, b) => a.period_month.localeCompare(b.period_month) || a.payslip_id - b.payslip_id
+  );
+}
+
+function buildClPayslipChecks(linesBy: Map<number, LineRow[]>): PayslipChecksRow[] {
+  const params = loadPayrollParameters();
+  const latestParamsMonth = [...params.keys()].sort().at(-1) ?? "";
+  const payslips = db
+    .prepare(
+      `SELECT id, period_month, pension_fund, origin, total_imponible_clp FROM payroll_work_earnings
+        WHERE jurisdiction = 'cl' AND earning_type = 'salary' AND liquido_currency = 'clp' ORDER BY period_month, id`
+    )
+    .all() as PayslipRow[];
   const creditedByMonth = new Map<string, number>();
   for (const r of db
     .prepare(
@@ -83,7 +131,7 @@ export function buildPayslipChecks(): PayslipChecksRow[] {
       // Previred publishes a month's indicators early the next month: a payslip newer than the
       // newest published month waits; an older month without them is missing data.
       if (p.period_month > latestParamsMonth) {
-        out.push({ payslip_id: p.id, period_month: p.period_month, pension_fund: p.pension_fund, origin: p.origin, checks: [], differences: [], pending: true });
+        out.push({ payslip_id: p.id, period_month: p.period_month, jurisdiction: "cl", currency: "clp", pension_fund: p.pension_fund, origin: p.origin, checks: [], differences: [], pending: true });
         continue;
       }
       throw new Error(`payslip checks: no payroll parameters for ${p.period_month} — run import:previred-indicators`);
@@ -123,10 +171,101 @@ export function buildPayslipChecks(): PayslipChecksRow[] {
     out.push({
       payslip_id: p.id,
       period_month: p.period_month,
+      jurisdiction: "cl",
+      currency: "clp",
       pension_fund: p.pension_fund,
       origin: p.origin,
       checks,
       differences: checks.filter((c) => Math.abs(c.difference) > 1),
+      pending: false,
+    });
+  }
+  return out;
+}
+
+type UsPayslipRow = {
+  id: number;
+  period_month: string;
+  employer_name: string;
+  employer_rut: string | null;
+  pay_date: string | null;
+  pay_period: string;
+  w4_filing_status: UsFilingStatus | null;
+  origin: "document" | "rebuilt";
+};
+
+/** Rounding each US check allows: FICA to the cent, the withholding to the dollar (Pub. 15-T lets the employer round). */
+const US_TOLERANCE: Partial<Record<PayslipCheckName, number>> = {
+  social_security_tax: 0.005,
+  medicare_tax: 0.005,
+  federal_withholding: 1.005,
+  deferral_limit: 0.005,
+};
+
+function cents(x: number): number {
+  return Math.round(x * 100) / 100;
+}
+
+function buildUsPayslipChecks(linesBy: Map<number, LineRow[]>): PayslipChecksRow[] {
+  const payslips = db
+    .prepare(
+      `SELECT id, period_month, employer_name, employer_rut, pay_date, pay_period, w4_filing_status, origin
+         FROM payroll_work_earnings WHERE jurisdiction = 'us' ORDER BY pay_date, id`
+    )
+    .all() as UsPayslipRow[];
+  // Year-to-date before each stub: FICA wages and supplemental wages per employer, 401(k) deferrals per person.
+  const ficaYtd = new Map<string, number>();
+  const supplementalYtd = new Map<string, number>();
+  const deferralYtd = new Map<number, number>();
+  const out: PayslipChecksRow[] = [];
+  for (const p of payslips) {
+    if (p.pay_date == null || p.w4_filing_status == null) throw new Error(`payslip ${p.id}: a US payslip without its pay date or W-4 filing status`);
+    if (!(p.pay_period in US_PAY_PERIODS_PER_YEAR)) throw new Error(`payslip ${p.id}: a US payslip paid ${p.pay_period}`);
+    const year = Number(p.pay_date.slice(0, 4));
+    const employerYear = `${p.employer_rut ?? p.employer_name}|${year}`;
+    const lines = linesBy.get(p.id) ?? [];
+    const sum = (kinds: readonly PayslipLineKind[]) =>
+      cents(lines.filter((l) => l.side !== "memo" && l.kind != null && kinds.includes(l.kind)).reduce((s, l) => s + l.amount, 0));
+    const wages = sum(["wages"]);
+    const supplemental = sum(["supplemental_bonus", "rsu"]);
+    const cafeteria = sum(["health_premium", "dental_vision", "hsa"]);
+    const pretax401k = sum(["retirement_401k_pretax"]);
+    const deferrals = sum(["retirement_401k_pretax", "retirement_401k_roth"]);
+    const ficaWages = cents(wages + supplemental - cafeteria);
+    // Pre-tax deductions come out of regular wages first; what they exceed reduces the supplemental wages.
+    const regular = cents(wages - pretax401k - cafeteria);
+    const supplementalTaxable = cents(supplemental + Math.min(0, regular));
+
+    const checks: PayslipCheck[] = [];
+    const add = (check: PayslipCheckName, expected: number, printed: number) =>
+      checks.push({ check, expected: cents(expected), printed: cents(printed), difference: cents(printed - expected) });
+    const priorFica = ficaYtd.get(employerYear) ?? 0;
+    const priorSupplemental = supplementalYtd.get(employerYear) ?? 0;
+    add("social_security_tax", usSocialSecurityTax(ficaWages, priorFica, year), sum(["social_security_tax"]));
+    add("medicare_tax", usMedicareTax(ficaWages, priorFica, year), sum(["medicare_tax"]));
+    add(
+      "federal_withholding",
+      usPercentageMethodWithholding(Math.max(0, regular), p.pay_period as UsPayFrequency, p.w4_filing_status, year) +
+        usSupplementalWithholding(supplementalTaxable, priorSupplemental, year),
+      sum(["federal_income_tax"])
+    );
+    const priorDeferrals = deferralYtd.get(year) ?? 0;
+    if (deferrals > 0) {
+      add("deferral_limit", Math.min(deferrals, Math.max(0, usTaxYear(year).elective401kLimit - priorDeferrals)), deferrals);
+    }
+    ficaYtd.set(employerYear, priorFica + ficaWages);
+    supplementalYtd.set(employerYear, priorSupplemental + supplementalTaxable);
+    deferralYtd.set(year, priorDeferrals + deferrals);
+
+    out.push({
+      payslip_id: p.id,
+      period_month: p.period_month,
+      jurisdiction: "us",
+      currency: "usd",
+      pension_fund: null,
+      origin: p.origin,
+      checks,
+      differences: checks.filter((c) => Math.abs(c.difference) > (US_TOLERANCE[c.check] ?? 0.005)),
       pending: false,
     });
   }
@@ -153,19 +292,19 @@ export type PayrollWithholdingMonth = {
   difference: number;
 };
 
-/** One row per salary payslip of the year: the tax it withheld against the table's. */
+/** One row per Chilean salary payslip of the year: the impuesto único it withheld against the table's. */
 export function payrollWithholdingMonths(incomeYear: number, checks = buildPayslipChecks()): PayrollWithholdingMonth[] {
   return checks
-    .filter((c) => c.period_month.startsWith(`${incomeYear}-`) && !c.pending)
+    .filter((c) => c.jurisdiction === "cl" && c.period_month.startsWith(`${incomeYear}-`) && !c.pending)
     .map((c) => {
       const t = c.checks.find((x) => x.check === "income_tax")!;
       return { payslip_id: c.payslip_id, period_month: c.period_month, origin: c.origin, withheld: t.printed, by_table: t.expected, difference: t.difference };
     });
 }
 
-/** A year's withheld tax against the table, from the payslip checks. */
+/** A year's impuesto único withheld against the table, from the Chilean payslip checks. */
 export function payrollWithholdingYear(incomeYear: number, checks = buildPayslipChecks()): PayrollWithholdingYear {
-  const rows = checks.filter((c) => c.period_month.startsWith(`${incomeYear}-`));
+  const rows = checks.filter((c) => c.jurisdiction === "cl" && c.period_month.startsWith(`${incomeYear}-`));
   let withheld = 0;
   let byTable = 0;
   const months: string[] = [];

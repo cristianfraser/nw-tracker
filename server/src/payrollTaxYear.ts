@@ -8,7 +8,8 @@
  * from the month before to November, one decimal, never negative). Checked against the filed
  * returns: AT2023 and AT2026 to the peso, AT2021 / AT2025 within the factors' rounding.
  *
- * Only CLP salary liquidaciones count (a USD wire is fees, not art. 42 N°1). A month whose
+ * Only Chilean CLP salary liquidaciones count (a USD wire is fees, not art. 42 N°1; a US W-2 pay
+ * stub is US-source pay, filed on the 1040). A month whose
  * taxable base is printed but whose AFP or health contribution was not parsed is listed in
  * `incompleteMonths` — its taxable pay is overstated (the 2019 Dealsyte months) — and so is one
  * whose totals were not parsed at all (left out: the scanned 2018-08).
@@ -65,7 +66,7 @@ export function payrollTaxYear(incomeYear: number): PayrollTaxYear {
       `SELECT period_month, total_haberes_clp, total_imponible_clp, total_no_imponible_clp, colacion_clp,
               movilizacion_clp, desc_afp_clp, desc_health_clp, desc_cesantia_clp, desc_tax_clp
          FROM payroll_work_earnings
-        WHERE period_month LIKE ? AND earning_type = 'salary' AND liquido_currency = 'clp'
+        WHERE period_month LIKE ? AND jurisdiction = 'cl' AND earning_type = 'salary' AND liquido_currency = 'clp'
         ORDER BY period_month`
     )
     .all(`${incomeYear}-%`) as Row[];

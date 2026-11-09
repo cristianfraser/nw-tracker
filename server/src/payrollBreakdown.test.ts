@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { employmentPayslipsKind, type Payslip } from "nw-tracker-contracts";
+import { employmentPayslipsKind, type ClPayslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { buildPayrollBreakdown } from "./payrollBreakdown.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 
 const DOC = "vitest-payroll-breakdown/2099-01.pdf";
 
-const PAYSLIP: Payslip = {
+const PAYSLIP: ClPayslip = {
+  jurisdiction: "cl",
+  pay_period: "monthly",
   document: DOC,
   period_month: "2099-01",
   employer: { name: "VITEST EMPLEADOR SPA", rut: null },

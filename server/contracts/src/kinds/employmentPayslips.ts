@@ -1,12 +1,15 @@
 import { z } from "zod";
-import { yearMonthSchema } from "../formats/index.js";
+import { centsSchema, isoDateSchema, yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
- * Payslips (Chilean liquidaciones de sueldo): what an employer paid for a month and what it
- * withheld, as each payslip prints it. The feeder sends every payslip it read in one request,
+ * Payslips: what an employer paid and what it withheld, as each payslip prints it, under the law
+ * of its jurisdiction — a Chilean liquidación de sueldo (`cl`: monthly, pesos) or a US W-2 pay stub
+ * (`us`: biweekly or semi-monthly, dollars). The feeder sends every payslip it read in one request,
  * because the server pairs each one with the deposit that paid it, and a deposit can pay only one
  * payslip: the pairing is decided over the whole set.
+ *
+ * v4 (2026-11-09): every payslip names its `jurisdiction` and `pay_period`; the US pay stub.
  */
 
 const pesos = z.number().int();
@@ -28,8 +31,11 @@ export const payslipLineSchema = z
 
 export type PayslipLine = z.infer<typeof payslipLineSchema>;
 
-export const payslipSchema = z
+/** A Chilean liquidación. */
+export const clPayslipSchema = z
   .object({
+    jurisdiction: z.literal("cl"),
+    pay_period: z.literal("monthly"),
     /** The document it came from (its path under the feeder's archive): the payslip's identity. */
     document: z.string().min(1).max(512),
     period_month: yearMonthSchema,
@@ -100,12 +106,88 @@ export const payslipSchema = z
     }
   });
 
+export type ClPayslip = z.infer<typeof clPayslipSchema>;
+
+const dollars = centsSchema;
+
+/**
+ * One line of a US pay stub: an earning (`haber`), a deduction (`descuento`) or a memo line the
+ * stub prints that is neither paid nor withheld (the employer's 401(k) match), in dollars.
+ */
+export const usPayslipLineSchema = z
+  .object({
+    position: z.number().int().nonnegative(),
+    side: z.enum(["haber", "descuento", "memo"]),
+    label: z.string().min(1).max(200),
+    amount: dollars,
+  })
+  .strict();
+
+export type UsPayslipLine = z.infer<typeof usPayslipLineSchema>;
+
+/** A US W-2 pay stub (federal; no state withholding yet). Amounts in dollars, to the cent. */
+export const usPayslipSchema = z
+  .object({
+    jurisdiction: z.literal("us"),
+    pay_period: z.enum(["biweekly", "semi_monthly"]),
+    /** The document it came from: the payslip's identity (several stubs share a month). */
+    document: z.string().min(1).max(512),
+    /** The pay date's month. */
+    period_month: yearMonthSchema,
+    pay_date: isoDateSchema,
+    /** The period worked, as printed. */
+    period_start: isoDateSchema,
+    period_end: isoDateSchema,
+    employer: z.object({ name: z.string().min(1).max(200), ein: z.string().regex(/^\d{2}-\d{7}$/).nullable() }).strict(),
+    kind: z.literal("salary"),
+    /** The Form W-4 (2020 or later) the employer withholds with: Step 1(c) only. */
+    w4: z.object({ filing_status: z.enum(["single", "married_jointly"]) }).strict(),
+    /** Gross pay: the earnings lines' sum. */
+    gross_pay: dollars,
+    /** The deductions lines' sum. */
+    total_deductions: dollars,
+    /** Net pay: what reached the account. */
+    net_pay: dollars,
+    lines: z.array(usPayslipLineSchema).min(1),
+  })
+  .strict()
+  .superRefine((p, ctx) => {
+    const sum = (side: UsPayslipLine["side"]) =>
+      Math.round(p.lines.filter((l) => l.side === side).reduce((s, l) => s + l.amount * 100, 0)) / 100;
+    const gross = sum("haber");
+    const deductions = sum("descuento");
+    const same = (a: number, b: number) => Math.abs(a - b) < 0.005;
+    if (new Set(p.lines.map((l) => l.position)).size !== p.lines.length) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: a line position appears twice` });
+    }
+    if (p.pay_date.slice(0, 7) !== p.period_month) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: period_month ${p.period_month} is not the pay date's month (${p.pay_date})` });
+    }
+    if (p.period_end < p.period_start) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: the period ends (${p.period_end}) before it starts (${p.period_start})` });
+    }
+    if (!same(gross, p.gross_pay)) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: earnings lines add up to ${gross}, gross pay ${p.gross_pay}` });
+    }
+    if (!same(deductions, p.total_deductions)) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: deduction lines add up to ${deductions}, total ${p.total_deductions}` });
+    }
+    if (!same(gross - deductions, p.net_pay)) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: gross − deductions = ${gross - deductions}, net pay ${p.net_pay}` });
+    }
+  });
+
+export type UsPayslip = z.infer<typeof usPayslipSchema>;
+
+export const payslipSchema = z.discriminatedUnion("jurisdiction", [clPayslipSchema, usPayslipSchema]);
+
 export type Payslip = z.infer<typeof payslipSchema>;
 
 export const employmentPayslipsKind = defineIngestKind({
   kind: "employment.payslips",
-  schema_version: 3,
-  description: "Payslips (liquidaciones de sueldo): every printed line, earnings, deductions and net pay per month and employer.",
+  schema_version: 4,
+  description:
+    "Payslips per jurisdiction (Chilean liquidaciones, US W-2 pay stubs): every printed line, earnings, deductions and net pay per pay period and employer.",
   ref: "read",
   payload: z
     .object({

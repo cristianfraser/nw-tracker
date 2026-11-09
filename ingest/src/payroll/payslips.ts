@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { EmploymentPayslipsPayload, Payslip, PayslipLine } from "nw-tracker-contracts";
+import type { ClPayslip, EmploymentPayslipsPayload, PayslipLine } from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 
 /** One payslip as the parser writes it. */
@@ -55,9 +55,11 @@ export function readPayrollParseIndex(file = payrollParseIndexPath()): { parser_
   return { parser_version: raw.parser_version ?? "unknown", rows: raw.rows };
 }
 
-export function payslipFromParsedRow(r: ParsedPayrollRow): Payslip {
+export function payslipFromParsedRow(r: ParsedPayrollRow): ClPayslip {
   if (!r.lines?.length) throw new Error(`${r.source_pdf}: no lines in the parse — re-run parse:payroll-liquidaciones`);
   return {
+    jurisdiction: "cl",
+    pay_period: "monthly",
     document: r.source_pdf,
     period_month: r.period_month,
     employer: { name: r.employer_name, rut: r.employer_rut },

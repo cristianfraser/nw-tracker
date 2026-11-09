@@ -4,14 +4,21 @@
  *
  * Gross is split into taxable pay, non-taxable allowances, indemnities and contractor fees by the
  * lines' kinds; the printed AFP line into the mandatory 10 % of the taxable base and the AFP's
- * commission (`splitPensionLine`). Every value comes in pesos and dollars, converted per payslip:
- * a peso payslip at the buy rate on its pay day (the paired deposit's day, else the month's last
- * day), a dollar payslip (the 2021 contract) at the rate its stored peso breakdown used. A payslip's
- * deductions add up to gross − net, or the build throws.
+ * commission (`splitPensionLine`). A US pay stub's deductions fall into the same groups where they
+ * are the same thing (federal withholding → income tax, premiums → health) and into their own where
+ * not (Social Security + Medicare, the 401(k), the HSA, RSUs paid in shares — counted in «other
+ * deductions» so the stack still adds to gross); its employer 401(k) match is a memo line, shown
+ * apart (`employer_retirement`) and outside gross − deductions = net.
+ *
+ * Every value comes in pesos and dollars, converted per payslip: a peso payslip at the buy rate on
+ * its pay day (the paired deposit's day, else the month's last day), a Chilean dollar payslip (the
+ * 2021 contract) at the rate its stored peso breakdown used, a US pay stub at the mid on its pay
+ * date (`usPayslipClpPerUsd`). A payslip's deductions add up to gross − net, or the build throws.
  */
 import { db } from "./db.js";
 import { clpToUsdAtPayment } from "./fxRates.js";
-import { payslipHaberIsTaxable, splitPensionLine, type PayslipLineKind } from "./payslipLineKinds.js";
+import { payslipHaberIsTaxable, splitPensionLine, type PayrollJurisdiction, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
+import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
 
 export const PAYROLL_BREAKDOWN_FIELDS = [
   "gross",
@@ -29,10 +36,20 @@ export const PAYROLL_BREAKDOWN_FIELDS = [
   "insurance",
   "fees",
   "advance",
-  /** Insurance + fees + a finiquito's combined contributions + advances: the deductions with no column of their own. */
+  /** US: Social Security + Medicare (FICA), the employee's share. */
+  "social_security_medicare",
+  /** US: 401(k) deferrals, pre-tax and Roth. */
+  "retirement_401k",
+  /** US: HSA contributions. */
+  "hsa",
+  /** US: vested RSUs delivered as shares, not cash. */
+  "stock_paid",
+  /** Insurance + fees + a finiquito's combined contributions + advances + shares paid: the deductions with no column of their own. */
   "other_deductions",
   "deductions",
   "net",
+  /** US: the employer's 401(k) match (a memo line: not gross pay, not a deduction; outside gross − deductions = net). */
+  "employer_retirement",
 ] as const;
 
 export type PayrollBreakdownField = (typeof PAYROLL_BREAKDOWN_FIELDS)[number];
@@ -45,6 +62,7 @@ export type PayrollBreakdownPayslip = {
   employer_name: string;
   earning_type: "salary" | "severance";
   origin: "document" | "rebuilt";
+  jurisdiction: PayrollJurisdiction;
   values: PayrollBreakdownValues;
 };
 
@@ -70,6 +88,9 @@ const GROSS_GROUP: Partial<Record<PayslipLineKind, PayrollBreakdownField>> = {
   indemnity_years_of_service: "gross_indemnities",
   indemnity_voluntary: "gross_indemnities",
   contractor_fee: "gross_contractor",
+  wages: "gross_taxable",
+  supplemental_bonus: "gross_taxable",
+  rsu: "gross_taxable",
 };
 
 const DEDUCTION_GROUP: Partial<Record<PayslipLineKind, PayrollBreakdownField>> = {
@@ -82,6 +103,19 @@ const DEDUCTION_GROUP: Partial<Record<PayslipLineKind, PayrollBreakdownField>> =
   life_insurance: "insurance",
   transfer_fee: "fees",
   advance: "advance",
+  federal_income_tax: "income_tax",
+  social_security_tax: "social_security_medicare",
+  medicare_tax: "social_security_medicare",
+  retirement_401k_pretax: "retirement_401k",
+  retirement_401k_roth: "retirement_401k",
+  hsa: "hsa",
+  health_premium: "health",
+  dental_vision: "health",
+  rsu_offset: "stock_paid",
+};
+
+const MEMO_GROUP: Partial<Record<PayslipLineKind, PayrollBreakdownField>> = {
+  employer_401k_match: "employer_retirement",
 };
 
 type PayslipRow = {
@@ -90,6 +124,8 @@ type PayslipRow = {
   employer_name: string;
   earning_type: "salary" | "severance";
   origin: "document" | "rebuilt";
+  jurisdiction: PayrollJurisdiction;
+  pay_date: string | null;
   liquido: number;
   liquido_currency: "clp" | "usd";
   total_imponible_clp: number | null;
@@ -97,7 +133,7 @@ type PayslipRow = {
   paid_on: string | null;
 };
 
-type LineRow = { payslip_id: number; side: "haber" | "descuento"; section: string | null; kind: PayslipLineKind | null; amount: number };
+type LineRow = { payslip_id: number; side: PayslipLineSide; section: string | null; kind: PayslipLineKind | null; amount: number };
 
 function zero(): PayrollBreakdownValues {
   return Object.fromEntries(PAYROLL_BREAKDOWN_FIELDS.map((f) => [f, { clp: 0, usd: 0 }])) as PayrollBreakdownValues;
@@ -114,10 +150,16 @@ function nativeBreakdown(p: PayslipRow, lines: readonly LineRow[]): Record<Payro
   let pension = 0;
   for (const l of lines) {
     if (l.kind == null) throw new Error(`payslip ${p.id}: a line without a kind — re-run the payslip import`);
-    if (l.side === "haber") {
+    if (l.side === "memo") {
+      const g = MEMO_GROUP[l.kind];
+      if (!g) throw new Error(`payslip ${p.id}: the memo kind ${l.kind} has no group`);
+      v[g] += l.amount;
+    } else if (l.side === "haber") {
       let g = GROSS_GROUP[l.kind];
       if (!g) throw new Error(`payslip ${p.id}: the haber kind ${l.kind} has no gross group`);
-      if (g === "gross_taxable" || g === "gross_non_taxable") g = payslipHaberIsTaxable(l) ? "gross_taxable" : "gross_non_taxable";
+      if (p.jurisdiction === "cl" && (g === "gross_taxable" || g === "gross_non_taxable")) {
+        g = payslipHaberIsTaxable(l) ? "gross_taxable" : "gross_non_taxable";
+      }
       v[g] += l.amount;
       v.gross += l.amount;
     } else {
@@ -136,7 +178,7 @@ function nativeBreakdown(p: PayslipRow, lines: readonly LineRow[]): Record<Payro
     v.pension += split.mandatory;
     v.pension_commission += split.commission;
   }
-  v.other_deductions = v.insurance + v.fees + v.social_security + v.advance;
+  v.other_deductions = v.insurance + v.fees + v.social_security + v.advance + v.stock_paid;
   v.net = v.gross - v.deductions;
   if (Math.abs(v.net - p.liquido) > 0.005) {
     throw new Error(`payslip ${p.id}: gross − deductions = ${v.net}, net pay ${p.liquido}`);
@@ -147,7 +189,7 @@ function nativeBreakdown(p: PayslipRow, lines: readonly LineRow[]): Record<Payro
 export function buildPayrollBreakdown(): PayrollBreakdownPayload {
   const payslipRows = db
     .prepare(
-      `SELECT p.id, p.period_month, p.employer_name, p.earning_type, p.origin, p.liquido, p.liquido_currency,
+      `SELECT p.id, p.period_month, p.employer_name, p.earning_type, p.origin, p.jurisdiction, p.pay_date, p.liquido, p.liquido_currency,
               p.total_imponible_clp, p.total_haberes_clp, m.occurred_on AS paid_on
          FROM payroll_work_earnings p LEFT JOIN movements m ON m.id = p.movement_id
         ORDER BY p.period_month, p.id`
@@ -166,7 +208,11 @@ export function buildPayrollBreakdown(): PayrollBreakdownPayload {
     if (!lines?.length) throw new Error(`payslip ${p.id} (${p.period_month}) has no lines`);
     const native = nativeBreakdown(p, lines);
     const values = zero();
-    if (p.liquido_currency === "usd") {
+    if (p.jurisdiction === "us") {
+      if (p.liquido_currency !== "usd" || p.pay_date == null) throw new Error(`payslip ${p.id}: a US payslip must be in dollars with a pay date`);
+      const rate = usPayslipClpPerUsd(p.pay_date, p.id);
+      for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = { clp: native[f] * rate, usd: native[f] };
+    } else if (p.liquido_currency === "usd") {
       if (p.total_haberes_clp == null || !(native.gross > 0)) throw new Error(`payslip ${p.id}: a dollar payslip without its peso gross`);
       const rate = p.total_haberes_clp / native.gross;
       for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = { clp: native[f] * rate, usd: native[f] };
@@ -182,6 +228,7 @@ export function buildPayrollBreakdown(): PayrollBreakdownPayload {
       employer_name: p.employer_name,
       earning_type: p.earning_type,
       origin: p.origin,
+      jurisdiction: p.jurisdiction,
       values,
     });
   }

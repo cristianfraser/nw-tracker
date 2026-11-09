@@ -11,7 +11,14 @@ const EMPLOYER_TOKEN_STOPWORDS = new Set(["CHILE", "SPA", "LTDA", "LIMITADA", "C
 
 export type PayrollLinkCandidate = FlowCheckingIncomeLine & {
   cartola_note: string | null;
+  /** The movement's own amount and currency (a single-leg credit: what the bank credited). */
+  native_amount: number;
+  native_currency: string;
 };
+
+/** A US pay stub pairs with a dollar credit of its net pay landing this many days around the pay date. */
+export const US_PAYROLL_LINK_DAYS_BEFORE_PAY_DATE = 2;
+export const US_PAYROLL_LINK_DAYS_AFTER_PAY_DATE = 3;
 
 function addCalendarDaysYmd(ymd: string, deltaDays: number): string {
   const [ys, ms, ds] = ymd.split("-");
@@ -84,28 +91,29 @@ function inLinkDateWindow(receivedOn: string, periodMonth: string): boolean {
   return receivedOn >= windowStart && receivedOn <= windowEnd;
 }
 
-function loadCartolaNotesByMovementId(
-  movementIds: readonly number[]
-): Map<number, string | null> {
-  const out = new Map<number, string | null>();
+type MovementFacts = { note: string | null; amount: number; currency: string };
+
+function loadMovementFactsById(movementIds: readonly number[]): Map<number, MovementFacts> {
+  const out = new Map<number, MovementFacts>();
   if (movementIds.length === 0) return out;
   const placeholders = movementIds.map(() => "?").join(", ");
   const rows = db
-    .prepare(`SELECT id, note FROM movements WHERE id IN (${placeholders})`)
-    .all(...movementIds) as { id: number; note: string | null }[];
+    .prepare(`SELECT id, note, amount, currency FROM movements WHERE id IN (${placeholders})`)
+    .all(...movementIds) as ({ id: number } & MovementFacts)[];
   for (const row of rows) {
-    out.set(row.id, row.note);
+    out.set(row.id, { note: row.note, amount: row.amount, currency: row.currency });
   }
   return out;
 }
 
 export function listPayrollLinkCandidates(): PayrollLinkCandidate[] {
   const lines = buildFlowsCheckingIncomePayload().lines;
-  const notes = loadCartolaNotesByMovementId(lines.map((l) => l.movement_id));
-  return lines.map((line) => ({
-    ...line,
-    cartola_note: notes.get(line.movement_id) ?? null,
-  }));
+  const facts = loadMovementFactsById(lines.map((l) => l.movement_id));
+  return lines.map((line) => {
+    const f = facts.get(line.movement_id);
+    if (!f) throw new Error(`payroll link: income line movement ${line.movement_id} not found`);
+    return { ...line, cartola_note: f.note, native_amount: f.amount, native_currency: f.currency };
+  });
 }
 
 export type PayrollAutoLinkResult =
@@ -170,6 +178,36 @@ export function findPayrollAutoLinkMovement(
     return { kind: "ambiguous", movement_ids: ties.map((t) => t.c.movement_id) };
   }
   return { kind: "linked", movement_id: best.c.movement_id };
+}
+
+/**
+ * A US pay stub's deposit: the one dollar credit of exactly its net pay (to the cent) received from
+ * two days before the pay date (early direct deposit) to three days after; nearest day first, ties
+ * of distinct movements reported. Biweekly and semi-monthly pay dates are 13+ days apart, so two
+ * stubs of one month never compete for one window.
+ */
+export function findUsPayrollAutoLinkMovement(
+  netPayUsd: number,
+  payDate: string,
+  candidates: readonly PayrollLinkCandidate[],
+  takenMovementIds: ReadonlySet<number>
+): PayrollAutoLinkResult {
+  const from = addCalendarDaysYmd(payDate, -US_PAYROLL_LINK_DAYS_BEFORE_PAY_DATE);
+  const to = addCalendarDaysYmd(payDate, US_PAYROLL_LINK_DAYS_AFTER_PAY_DATE);
+  const eligible = candidates.filter(
+    (c) =>
+      !takenMovementIds.has(c.movement_id) &&
+      c.native_currency === "usd" &&
+      Math.abs(c.native_amount - netPayUsd) < 0.005 &&
+      c.received_on >= from &&
+      c.received_on <= to
+  );
+  if (eligible.length === 0) return { kind: "unmatched" };
+  const gap = (c: PayrollLinkCandidate) => Math.abs(signedDaysFromTo(payDate, c.received_on));
+  const best = Math.min(...eligible.map(gap));
+  const nearest = eligible.filter((c) => gap(c) === best);
+  if (nearest.length > 1) return { kind: "ambiguous", movement_ids: nearest.map((c) => c.movement_id) };
+  return { kind: "linked", movement_id: nearest[0]!.movement_id };
 }
 
 export function assertMovementEligibleForPayrollLink(

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { rolledBack } from "./ingestReceiver.js";
-import { employmentPayslipsKind, type Payslip } from "nw-tracker-contracts";
+import { employmentPayslipsKind, type ClPayslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 
 const DOC = "vitest-payslips/2099-01.pdf";
 
-const LINES: Payslip["lines"] = [
+const LINES: ClPayslip["lines"] = [
   { position: 0, side: "haber", section: "imponible", label: "Sueldo Base", amount: 1_000_000 },
   { position: 1, side: "haber", section: "no_imponible", label: "Colación", amount: 50_000 },
   { position: 2, side: "haber", section: "no_imponible", label: "Movilización", amount: 40_000 },
@@ -26,8 +26,10 @@ function lines() {
     .all(DOC);
 }
 
-function payslip(over: Partial<Payslip> = {}): Payslip {
+function payslip(over: Partial<ClPayslip> = {}): ClPayslip {
   return {
+    jurisdiction: "cl",
+    pay_period: "monthly",
     document: DOC,
     period_month: "2099-01",
     employer: { name: "VITEST EMPLEADOR SPA", rut: "11.111.111-1" },
@@ -43,7 +45,7 @@ function payslip(over: Partial<Payslip> = {}): Payslip {
   };
 }
 
-function apply(p: Payslip, write = true) {
+function apply(p: ClPayslip, write = true) {
   const send = () => applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "vitest", payslips: [p] }));
   return write ? send() : rolledBack(send);
 }
@@ -116,7 +118,7 @@ describe("employment.payslips apply", () => {
       .map((r) => (r as { kind: string }).kind);
     expect(kinds).toEqual(["base_salary", "allowance", "allowance", "pension", "health", "income_tax", "unemployment", "advance"]);
     const unknown = LINES.map((l) => (l.position === 7 ? { ...l, label: "Cuota sindical" } : l));
-    expect(() => apply(payslip({ pay_period_label: "Otro", lines: unknown }))).toThrow(/no kind for the descuento «Cuota sindical»/);
+    expect(() => apply(payslip({ pay_period_label: "Otro", lines: unknown }))).toThrow(/no cl kind for the descuento «Cuota sindical»/);
     expect(stored()).toMatchObject({ pay_period_label: "Enero 2099" });
     expect(lines()).toEqual(LINES);
   });

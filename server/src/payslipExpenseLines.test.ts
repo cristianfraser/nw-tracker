@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { employmentPayslipsKind, type Payslip } from "nw-tracker-contracts";
+import { employmentPayslipsKind, type ClPayslip } from "nw-tracker-contracts";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { db } from "./db.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
@@ -8,7 +8,9 @@ import { applyEmploymentPayslips } from "./payslipsApply.js";
 
 const DOC = "vitest-payslip-expenses/2099-02.pdf";
 
-const PAYSLIP: Payslip = {
+const PAYSLIP: ClPayslip = {
+  jurisdiction: "cl",
+  pay_period: "monthly",
   document: DOC,
   period_month: "2099-02",
   employer: { name: "VITEST EMPLEADOR SPA", rut: null },
