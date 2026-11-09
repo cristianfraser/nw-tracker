@@ -13,13 +13,13 @@ app.get("/api/health", (_req, res) => {
 
 /** Recursive portfolio groups (accounts + nested groups) with resolved colors. */
 /** Sidebar navigation tree (DB-driven; matches legacy layout). `main` nodes carry `chart_buckets`.
- * The hosted demo hides the wealth-percentile link (personal-context page; its API 404s there too). */
+ * The hosted demo hides the wealth-percentile link (personal-context page; its API 404s there too);
+ * the tax return shows, on the demo person's own documents. */
 app.get("/api/meta/sidebar-nav", (_req, res) => {
   const payload = cachedSidebarNavPayload();
   res.json({
     ...payload,
     wealth_percentile: demoModeEnabled() ? null : payload.wealth_percentile,
-    tax_return: demoModeEnabled() ? null : payload.tax_return,
   });
 });
 

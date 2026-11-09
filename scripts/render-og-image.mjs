@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Renders the Open Graph image (client/public/og-image.png, 1200×630) for link previews of the
- * hosted demo: a screenshot of the demo's dashboard, tilted in perspective, beside the app's
- * name and a line of what it does.
+ * hosted demo: a screenshot of the demo's dashboard (no sidebar), tilted in perspective,
+ * reaching behind the app's name and a line of what it does.
  *
  *   node scripts/render-og-image.mjs [--url=http://localhost:5210] [--out=client/public/og-image.png]
  *
@@ -47,6 +47,13 @@ try {
   // Let the queries settle and the number animations finish.
   await app.waitForFunction(() => !document.querySelector(".loadable.is-loading"), null, { timeout: 60_000 });
   await app.waitForTimeout(3_000);
+  // The card shows the dashboard alone: drop the sidebar and let the content take its track.
+  await app.addStyleTag({
+    content: `.app-sidebar, .nav-drawer-tab { display: none !important; }
+      .layout--with-sidebar { grid-template-columns: minmax(0, 1fr) !important; max-width: none !important; }
+      .layout-main { grid-column: 1 !important; }`,
+  });
+  await app.waitForTimeout(1_000);
   const shot = (await app.screenshot({ type: "png" })).toString("base64");
   await app.close();
 
@@ -62,7 +69,11 @@ try {
     background: radial-gradient(120% 120% at 85% 40%, #13202f 0%, #0c0f14 55%);
     font-family: "DM Sans", system-ui, sans-serif; color: #e8edf4;
   }
-  .text { position: absolute; left: 72px; top: 0; bottom: 0; width: 470px;
+  /* The text sits over the screenshot's left edge: a halo in the background colour keeps it legible. */
+  .text { z-index: 1; text-shadow: 0 1px 2px #0c0f14, 0 0 12px #0c0f14, 0 0 28px #0c0f14; }
+  .tag, .mark { text-shadow: none; box-shadow: 0 4px 18px rgba(12,15,20,0.9); }
+  .text { position: absolute; left: 48px; top: 50%; transform: translateY(-50%); width: 518px;
+    padding: 28px 24px; border-radius: 18px; background: rgba(12,15,20,0.82); backdrop-filter: blur(2px);
     display: flex; flex-direction: column; justify-content: center; gap: 22px; }
   .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 600; }
   .mark { width: 40px; height: 40px; border-radius: 9px; background: #000; border: 1px solid #2a3544; }
@@ -71,7 +82,7 @@ try {
   p { font-size: 22px; line-height: 1.4; color: #8b98a8; }
   .tag { align-self: flex-start; font-size: 18px; font-weight: 600; color: #0c0f14;
     background: #3d9cf9; padding: 10px 20px; border-radius: 999px; }
-  .stage { position: absolute; left: 560px; top: 60px; width: 900px; height: 562px; perspective: 1800px; }
+  .stage { position: absolute; left: 470px; top: 60px; width: 900px; height: 562px; perspective: 1800px; }
   .screen { width: 900px; height: 562px; border-radius: 14px; overflow: hidden;
     border: 1px solid #2a3544; background: #0c0f14 url(data:image/png;base64,${shot}) top left / cover no-repeat;
     transform: rotateY(-24deg) rotateX(8deg) rotateZ(-2deg); transform-origin: left center;

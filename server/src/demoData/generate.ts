@@ -13,6 +13,10 @@
  *    liquidaciones; then the card-payment mirrors are paired as the nightly run pairs them;
  * 6. what the app keeps beside the documents: contractor payslips, contribution periods, the
  *    mortgage ledger, book valuations (property, mortgage, AFC);
+ * 6b. the tax documents (boletas, dividend splits, the DJs) and each April from the tax module:
+ *    steps 3–6b run again, from a checkpoint taken before step 3, until every April settlement the
+ *    simulation booked is the one the tax module computes (`taxDocuments.ts`); then the past
+ *    years' returns are stored as filed;
  * 7. category rules, colors, sync sources, the invariants;
  * 8. the ingest history the scheduler would have recorded (`ingestHistory.ts`).
  */
@@ -70,6 +74,12 @@ import {
 import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, MORTGAGE_DESGRAVAMEN_CLP, MORTGAGE_INCENDIO_CLP, MORTGAGE_MERCHANT, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
+import { aprilSettlementsFromTaxModule, settlementDifferences, writeDemoFiledReturns, writeDemoTaxDocuments } from "./taxDocuments.js";
+import { resetDemoDatabaseToPristine, saveDemoPristineCopy } from "../demoWritable.js";
+import fs from "node:fs";
+
+/** Passes of the life simulation before the April settlements must agree with the tax module. */
+const MAX_TAX_PASSES = 6;
 
 export type GenerateDemoDbOptions = { person: Person; market: "synthetic" | "real"; today?: Ymd };
 
@@ -472,7 +482,62 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   writeOfficialIpcFromUf(person.marketFromMonth(today));
   const market = dbMarketReader();
 
-  const ledger = simulate(person, market, today);
+  // Steps 3–6b run from this checkpoint until the April settlements agree with the tax module.
+  const dbFile = (db as unknown as { name: string }).name;
+  if (!dbFile || dbFile === ":memory:") throw new Error("demo: the tax passes need a file-backed database");
+  const checkpoint = `${dbFile}.pretax`;
+  saveDemoPristineCopy(checkpoint);
+  let overrides = new Map<number, number>();
+  let ledger: Ledger | null = null;
+  let payslipResult: ReturnType<typeof applyEmploymentPayslips> | null = null;
+  try {
+    for (let pass = 1; ; pass++) {
+      const life = writeLife(person, market, ids, today, overrides);
+      const fromModule = aprilSettlementsFromTaxModule(life.ledger, today);
+      const diffs = settlementDifferences(life.ledger, fromModule);
+      if (diffs.length === 0) {
+        ledger = life.ledger;
+        payslipResult = life.payslipResult;
+        console.log(`demo: April settlements agree with the tax module after ${pass} pass(es)`);
+        break;
+      }
+      if (pass >= MAX_TAX_PASSES) {
+        throw new Error(
+          `demo: April settlements still differ from the tax module after ${pass} passes: ${diffs
+            .map((d) => `${d.year} booked ${d.booked} vs module ${d.module}`)
+            .join("; ")}`
+        );
+      }
+      console.log(`demo: pass ${pass}: ${diffs.map((d) => `${d.year} ${d.booked} → ${d.module}`).join(", ")}`);
+      overrides = fromModule;
+      resetDemoDatabaseToPristine({ force: true, pristinePath: checkpoint });
+    }
+  } finally {
+    fs.rmSync(checkpoint, { force: true });
+  }
+  writeDemoFiledReturns(ledger, today);
+
+  for (const c of person.cards) recomputeCcBillingMonthBalances(ids.get(`card:${c.key}` as Acct)!);
+  seedCategoryRules(ledger, ids);
+  ensureAccountSyncSourcesSeeded();
+  seedNavTree();
+  applyColors(ids);
+
+  const report = assertDemoInvariants(ledger, ids, market, today, { payslips: payslipResult });
+  // Last: the history reads the finished ledger (the bank checks state what it holds).
+  writeIngestHistory(ledger, ids, person, today);
+  return report;
+}
+
+/** Steps 3–6b: the life ledger and everything written from it, for one pass. */
+function writeLife(
+  person: Person,
+  market: MarketReader,
+  ids: Map<Acct, number>,
+  today: Ymd,
+  aprilSettlements: ReadonlyMap<number, number>
+): { ledger: Ledger; payslipResult: ReturnType<typeof applyEmploymentPayslips> | null } {
+  const ledger = simulate(person, market, today, { aprilSettlements });
   writeDirect(ledger, ids);
 
   const cartolas = renderCartolas(ledger);
@@ -499,15 +564,6 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   writeMortgage(ledger, ids);
   writeFundValuations(ids, market, today);
   writeAfc(ledger, ids.get("afc")!, today);
-
-  for (const c of person.cards) recomputeCcBillingMonthBalances(ids.get(`card:${c.key}` as Acct)!);
-  seedCategoryRules(ledger, ids);
-  ensureAccountSyncSourcesSeeded();
-  seedNavTree();
-  applyColors(ids);
-
-  const report = assertDemoInvariants(ledger, ids, market, today, { payslips: payslipResult });
-  // Last: the history reads the finished ledger (the bank checks state what it holds).
-  writeIngestHistory(ledger, ids, person, today);
-  return report;
+  writeDemoTaxDocuments(ledger, today);
+  return { ledger, payslipResult };
 }

@@ -12,6 +12,7 @@ import { Loadable } from "../ui/Loadable";
 import { PageGridTile } from "../layout/PageGridTile";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { cn } from "../../cn";
+import { BelowFoldHiddenContext, type DashboardFold } from "../../dashboardFold";
 import { PeriodReturnsWithBenchmark } from "../perf/PeriodReturnsTable";
 import { PlaceholderCardsStrip } from "../dashboard/PlaceholderCardsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
@@ -80,10 +81,11 @@ export type GroupInfoDashboardOptions = {
   /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
   tileWide: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
   /**
-   * Render only the first screen — the strip, the main charts and the rail — and leave out every
-   * tile below it (the demo's About preview, dashboardFold.ts).
+   * How much is drawn below the first screen (the strip, the main charts and the rail): `cut`
+   * leaves the tiles out, `hidden` renders them invisible and inert with their own queries off,
+   * `full` is the whole page (the demo's About preview, dashboardFold.ts).
    */
-  foldOnly?: boolean;
+  fold?: DashboardFold;
 };
 
 export type GroupInfoBaseProps = {
@@ -128,7 +130,7 @@ export function GroupInfoBase({
   const pairs = dashboard?.pairs;
   const tileOrder = dashboard?.tileOrder;
   const tileWide = dashboard?.tileWide;
-  const foldOnly = dashboard?.foldOnly ?? false;
+  const fold: DashboardFold = dashboard?.fold ?? "full";
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const { installmentMode } = useCcInstallmentGastosMode();
@@ -144,7 +146,8 @@ export function GroupInfoBase({
   const tablesEnabled = !hideConsolidatedTables;
   // Table queries start in parallel with the page bundle (not gated on `loading`);
   // placeholder rows hold the layout until the first page of data resolves.
-  const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug);
+  // Below the fold and not shown yet (dashboardFold.ts): the tables' own queries wait.
+  const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug) && fold === "full";
   const {
     consolidatedMonthlyPerf,
     consolidatedYearlyPerf,
@@ -287,6 +290,13 @@ export function GroupInfoBase({
       </PageGridTile>
     ) : null;
 
+  // Tiles below the first screen: left out (`cut`), or rendered hidden through the context (no DOM
+  // of its own, so the grid placement and the element identity survive the switch to `full`).
+  const belowFold = (node: ReactNode) =>
+    fold === "cut" ? null : (
+      <BelowFoldHiddenContext.Provider value={fold === "hidden"}>{node}</BelowFoldHiddenContext.Provider>
+    );
+
   return (
     <main className={dashboard?.mainClassName}>
       <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
@@ -296,21 +306,21 @@ export function GroupInfoBase({
             <div className="page-main">
               {strip}
               {charts}
-              {foldOnly ? null : returnsTile}
+              {belowFold(returnsTile)}
             </div>
             <div className="page-rail">{rail}</div>
-            {foldOnly ? null : pairs}
+            {belowFold(pairs)}
           </>
         ) : (
           <>
             {strip}
             {charts}
-            {foldOnly ? null : pairs}
-            {foldOnly ? null : returnsTile}
+            {belowFold(pairs)}
+            {belowFold(returnsTile)}
           </>
         )}
-        {tablesEnabled && !foldOnly ? (
-          <>
+        {tablesEnabled && fold !== "cut" ? (
+          <BelowFoldHiddenContext.Provider value={fold === "hidden"}>
             <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
             <div className="chart-panel-title-row">
               <h2>
@@ -379,11 +389,11 @@ export function GroupInfoBase({
                 />
               )}
             </PageGridTile>
-          </>
+          </BelowFoldHiddenContext.Provider>
         ) : null}
         {/* The export row and the accounts tree close the page on every tier, rail or not. */}
-        {foldOnly ? null : exportTile}
-        {foldOnly ? null : accountsTile}
+        {belowFold(exportTile)}
+        {belowFold(accountsTile)}
       </Loadable>
     </main>
   );

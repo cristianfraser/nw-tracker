@@ -1,5 +1,5 @@
 import { Suspense, type ComponentType, type ReactElement } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
@@ -26,6 +26,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { DemoHomePage } from "./pages/DemoHomePage";
 import { DASHBOARD_ALIAS_PATH, DEMO_BUILD } from "./dashboardPath";
+import { useDemoDashboardMovingIn } from "./demoTickerGate";
 import { DemoTour, DEMO_TOUR_ENABLED } from "./components/layout/DemoTour";
 import { lazyChunk, lazyComponent, useIdleChunkPrefetch } from "./lazyChunks";
 
@@ -114,17 +115,24 @@ function AppTree() {
   useReloadOnNewClientBuild();
   // Import the lazy chunks (charts first, then the other pages) once the browser is idle.
   useIdleChunkPrefetch();
+  // The demo's About page (`/`) shows no ticker; opening the dashboard from it mounts the ticker
+  // once the dashboard has moved into place (demoTickerGate.ts). Its strip stays reserved.
+  const { pathname } = useLocation();
+  const demoDashboardMovingIn = useDemoDashboardMovingIn();
+  const showTicker = !DEMO_BUILD || (pathname !== "/" && !demoDashboardMovingIn);
+  // The currency selector follows the same rule: About shows no dashboard controls.
+  const showDisplayPreferences = showTicker;
 
   return (
     <div className="layout layout--with-sidebar">
         <MobileNavDrawer>
           <AppSidebar />
         </MobileNavDrawer>
-        <MarketTickerPanel />
+        {showTicker ? <MarketTickerPanel /> : null}
         <MortgageUfReminderToast />
         <DemoTour />
         <div className="layout-main">
-          <AppDisplayPreferencesBar />
+          {showDisplayPreferences ? <AppDisplayPreferencesBar /> : null}
           <div className="content">
           <RouteErrorBoundary>
           {/* Blank, and reached only by a direct load of a lazy page's URL before its chunk arrives:

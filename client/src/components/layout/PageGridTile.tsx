@@ -1,5 +1,6 @@
-import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
+import { useContext, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../cn";
+import { BelowFoldHiddenContext } from "../../dashboardFold";
 
 /**
  * One section of a page on the column grid (styles/page-grid.css, docs/layout-grid-plan.md).
@@ -37,8 +38,23 @@ export function PageGridTile({
     ...(wide ? { "--tile-order-l": wide.order, "--tile-span-l": wide.span } : null),
     ...(smallSpan == null ? null : { "--tile-span-s": smallSpan }),
   } as CSSProperties;
+  // Rendered below the fold but not shown yet (dashboardFold.ts): laid out, not painted, inert.
+  const hidden = useContext(BelowFoldHiddenContext);
+  const hiddenAttrs = hidden ? ({ inert: "", "aria-hidden": true } as unknown as HTMLAttributes<HTMLElement>) : null;
   return (
-    <section data-tile={id} className={cn("page-tile", wide && "page-tile--wide", smallSpan != null && "page-tile--small-span", className)} style={vars} {...rest}>
+    <section
+      data-tile={id}
+      className={cn(
+        "page-tile",
+        wide && "page-tile--wide",
+        smallSpan != null && "page-tile--small-span",
+        hidden && "page-tile--fold-hidden",
+        className
+      )}
+      style={vars}
+      {...rest}
+      {...hiddenAttrs}
+    >
       {children}
     </section>
   );

@@ -14,6 +14,21 @@
   min-width: 0;
 }
 
+.modeAbout .intro,
+.modeDashboard.foldOnly .intro {
+  /* The dashboard runs behind the text on desktop: the column sits on a translucent panel of the
+     page colour, and a soft halo keeps the letters crisp over what shows through. (The second
+     selector keeps the panel while the text fades out during the move in, desktop only.) */
+  padding: 1rem 1.25rem 1.25rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(2px);
+  text-shadow:
+    0 1px 2px var(--bg),
+    0 0 10px var(--bg),
+    0 0 22px var(--bg);
+}
+
 .modeDashboard .intro {
   display: none;
 }
@@ -128,22 +143,54 @@
 
 .frame {
   transform-origin: top center;
+}
+
+/* Only About → Dashboard animates: a transition runs with the destination state's rules, so the
+   way back to About (no transition there) snaps at once. */
+/* Both ways animate. A transition runs with the destination state's rules: into the dashboard
+   only the move animates (the preview's rounded border and shadow are gone before it starts);
+   back to About they fade in while the frame tilts away. */
+.modeDashboard .frame {
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Its own compositor layer while tilted or moving, so the move runs off the main thread; dropped
+   once the dashboard is in place (a layer this large is not free to keep). */
+.modeAbout .frame,
+.modeDashboard.foldOnly .frame {
+  will-change: transform;
+}
+
+.modeAbout .frame {
   transition:
     transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
     border-radius 0.7s ease,
     box-shadow 0.7s ease;
 }
 
-/* While only the first screen is rendered (About, and the move into place), the frame is one
-   screen tall, so nothing below the fold shows during the move. */
-.foldOnly .frame {
-  height: calc(100svh - var(--market-ticker-height) - 2rem);
-  overflow: clip;
+/* Back on About the text fades in rather than popping over the moving preview. */
+.modeAbout .intro {
+  /* No fill: once over it leaves `opacity` to the rules below (the fade out when leaving). */
+  animation: demo-about-intro-in 0.35s ease;
 }
 
-/* About: a cropped "screen" of the dashboard below the text, flat on a phone. */
+/* Leaving a scrolled About: the text fades out before the page returns to the top. */
+.leaving .intro {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+@keyframes demo-about-intro-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* About: a "screen" of the dashboard down to the end of its net-worth chart
+   (`--about-preview-height`, measured by DemoHomePage), flat on a phone. */
 .modeAbout .frame {
-  height: 80svh;
+  height: var(--about-preview-height, 80svh);
   overflow: clip;
   pointer-events: none;
   border-radius: 14px;
@@ -152,35 +199,74 @@
 }
 
 @media (min-width: 880px) {
-  /* Text on the left columns, the tilted dashboard behind it on the right, one grid row. */
-  .modeAbout .intro {
-    grid-column: 1 / span 6;
+  /* The text on the first 45 % of the content, the tilted dashboard scaled to cover the last
+     60 %, so they overlap across the middle; one grid row. 45 % falls between columns, so the
+     text takes a width, not a span. */
+  .modeAbout .intro,
+  .modeDashboard.foldOnly .intro {
+    grid-column: 1 / -1;
+    width: 45%;
     grid-row: 1;
     align-self: start;
     padding-top: 1rem;
   }
 
-  .modeAbout .frame {
+  /* During the move in the text stays in place and fades out (0,2 s) instead of vanishing; it
+     is removed once the dashboard is in place (`foldOnly` ends). */
+  .modeDashboard.foldOnly .intro {
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    /* No blur while it fades over the moving dashboard: re-blurring a 3D layer every frame is costly. */
+    backdrop-filter: none;
+  }
+
+  /* `position: sticky` sticks to its nearest scroll container, and `.layout-main` is one
+     (`overflow: auto`, shell.css) that never scrolls itself: on About it only clips sideways (the tilted preview pokes past its edge) and the document is the scroller. */
+  :global(.layout-main):has(.modeAbout) {
+    overflow: visible;
+    overflow-x: clip;
+  }
+
+  /* The preview is pinned while the About text scrolls past it: its wrapper is sticky at the
+     preview's own resting offset (measured, `--about-frame-top`), so it looks the same at any
+     scroll and stays put while the page returns to the top before the move in (released only then). The
+     wrapper has no height, so it can travel the whole text column (a sticky box stops at the end
+     of its parent, and the untransformed preview is much taller than it looks); the preview hangs
+     below it. */
+  .modeAbout .pin,
+  .modeDashboard.foldOnly .pin {
     grid-row: 1;
-    height: calc(100svh - var(--market-ticker-height) - 2rem);
-    transform-origin: right top;
-    transform: translateY(3.5rem) perspective(2400px) rotateY(-16deg) rotateX(5deg) scale(0.5);
+    align-self: start;
   }
-}
 
-@media (min-width: 1440px) {
-  /* The preview takes the last two thirds: as wide as the columns left of it allow. */
-  .modeAbout .intro {
-    grid-column: 1 / span 4;
+  .modeAbout .pin {
+    position: sticky;
+    top: var(--about-frame-top, 0px);
+    height: 0;
   }
 
   .modeAbout .frame {
-    transform: translateY(3.5rem) perspective(2400px) rotateY(-16deg) rotateX(5deg) scale(0.64);
+    transform: translateY(3rem) perspective(2400px) rotateY(-16deg) rotateX(5deg) scale(0.67);
+  }
+
+  /* One pivot in both states: the tilt pivots on the frame's top right corner, and the pivot is
+     not animated, so a different one on the dashboard state jumped the preview sideways on the
+     first frame of the move. At full size the pivot changes nothing. */
+  .modeAbout .frame,
+  .modeDashboard .frame {
+    transform-origin: right top;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .frame {
+  .modeDashboard .frame,
+  .modeAbout .frame {
     transition: none;
+  }
+
+  .modeAbout .intro {
+    animation: none;
   }
 }

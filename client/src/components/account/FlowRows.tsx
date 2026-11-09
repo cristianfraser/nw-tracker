@@ -60,14 +60,20 @@ export function FlowRows({
   accountsLabel,
   emptyMessage,
   bothAccounts,
+  placeholderRows = 0,
 }: {
   rows: readonly FlowRowItem[];
   /** The rows name both accounts (a group's list): they need more room before wrapping. */
   bothAccounts: boolean;
   /** Header of the accounts column («Cuentas» with the row's account shown, «Cuenta contraparte» without). */
   accountsLabel: string;
-  /** Shown when there are no rows; null while loading (header only). */
+  /** Shown when there are no rows; null while loading. */
   emptyMessage: string | null;
+  /**
+   * Blank rows to draw while there are no rows yet (one page while loading): each has a real
+   * row's cells, so the list takes its loaded height and nothing below it moves when data lands.
+   */
+  placeholderRows?: number;
 }) {
   const { t } = useTranslation();
   return (
@@ -85,6 +91,19 @@ export function FlowRows({
             {emptyMessage}
           </div>
         ) : null}
+        {rows.length === 0
+          ? Array.from({ length: placeholderRows }, (_, i) => (
+              <div key={`placeholder-${i}`} role="listitem" aria-hidden="true" className={styles.row}>
+                <span className={cn("mono", styles.date)}>{"\u00a0"}</span>
+                <span className={styles.type}>
+                  <Pill size="small" uppercase={false} label={"\u00a0"} backgroundColor="transparent" textColor="transparent" />
+                </span>
+                <span className={styles.accounts}>{"\u00a0"}</span>
+                <span className={cn("mono", styles.amount)}>{"\u00a0"}</span>
+                <span className={styles.note}>{"\u00a0"}</span>
+              </div>
+            ))
+          : null}
         {rows.map((row) => (
           <div key={row.key} role="listitem" className={styles.row}>
             <span className={cn("mono", styles.date)}>{row.date}</span>

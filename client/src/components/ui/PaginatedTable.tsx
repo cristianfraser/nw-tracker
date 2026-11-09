@@ -74,16 +74,19 @@ export function PaginatedTable({
   const safePage = Math.min(Math.max(1, page), totalPages);
 
   const canPaginate = totalPages > 1;
+  // The first page still loading (no total yet): the pager is drawn disabled, so the table keeps
+  // its loaded height (the rows hold one page of placeholders meanwhile).
+  const pagerPending = loading && total === 0;
 
   return (
     <div className={wrapClassName} style={wrapStyle}>
       {filters ? <div className={styles.filters}>{filters}</div> : null}
-      {canPaginate ? (
+      {canPaginate || pagerPending ? (
         <div className={styles.pager}>
           <Button variant="ghost" size="icon"
             aria-label={t("table.paginationPrev")}
             title={t("table.paginationPrev")}
-            disabled={safePage <= 1}
+            disabled={pagerPending || safePage <= 1}
             onClick={() => onPageChange(safePage - 1)}
           >
             ‹
@@ -93,6 +96,7 @@ export function PaginatedTable({
             {t("table.paginationPageAria")}
             <select
               value={safePage}
+              disabled={pagerPending}
               onChange={(e) => onPageChange(Number(e.target.value))}
               className={styles.pageSelect}
             >
@@ -107,7 +111,7 @@ export function PaginatedTable({
           <Button variant="ghost" size="icon"
             aria-label={t("table.paginationNext")}
             title={t("table.paginationNext")}
-            disabled={safePage >= totalPages}
+            disabled={pagerPending || safePage >= totalPages}
             onClick={() => onPageChange(safePage + 1)}
           >
             ›

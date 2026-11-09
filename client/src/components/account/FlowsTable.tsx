@@ -118,17 +118,22 @@ export function FlowsTable({
       filterState.amount_exact || filterState.amount_min || filterState.amount_max
     : false;
 
+  // Before the first page arrives the bar is drawn with every select (each with only its «all»
+  // choice, disabled), so it takes its loaded height and the list below does not move.
+  const optionsPending = filterOptions == null && Boolean(loading);
+  const opts = filterOptions ?? { years: [], types: [], accounts: [], buckets: [] };
   const filterBar =
-    filterOptions && filterState && onFilterChange ? (
+    (filterOptions || optionsPending) && filterState && onFilterChange ? (
       <div className={styles.filterBar}>
-        {filterOptions.years.length > 0 ? (
+        {optionsPending || opts.years.length > 0 ? (
           <select
+            disabled={optionsPending}
             value={filterState.year}
             onChange={(e) => onFilterChange({ year: e.target.value, account_id: filterState.account_id })}
             aria-label={t("flows.filters.year")}
           >
             <option value="">{t("flows.filters.allYears")}</option>
-            {filterOptions.years.map((y) => (
+            {opts.years.map((y) => (
               <option key={y} value={y}>
                 {y}
               </option>
@@ -136,14 +141,15 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        {filterOptions.types.length > 0 ? (
+        {optionsPending || opts.types.length > 0 ? (
           <select
+            disabled={optionsPending}
             value={filterState.type}
             onChange={(e) => onFilterChange({ type: e.target.value })}
             aria-label={t("flows.filters.type")}
           >
             <option value="">{t("flows.filters.allTypes")}</option>
-            {filterOptions.types.map((tp) => (
+            {opts.types.map((tp) => (
               <option key={tp.value} value={tp.value}>
                 {tp.label}
               </option>
@@ -151,14 +157,15 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        {showAccountColumn && filterOptions.accounts.length > 0 ? (
+        {showAccountColumn && (optionsPending || opts.accounts.length > 0) ? (
           <select
+            disabled={optionsPending}
             value={filterState.account_id}
             onChange={(e) => onFilterChange({ account_id: e.target.value })}
             aria-label={t("flows.filters.account")}
           >
             <option value="">{t("flows.filters.allAccounts")}</option>
-            {filterOptions.accounts.map((a) => (
+            {opts.accounts.map((a) => (
               <option key={a.id} value={String(a.id)}>
                 {a.name}
               </option>
@@ -166,14 +173,15 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        {showAccountColumn && filterOptions.buckets.length > 0 ? (
+        {showAccountColumn && (optionsPending || opts.buckets.length > 0) ? (
           <select
+            disabled={optionsPending}
             value={filterState.bucket}
             onChange={(e) => onFilterChange({ bucket: e.target.value })}
             aria-label={t("flows.filters.bucket")}
           >
             <option value="">{t("flows.filters.allBuckets")}</option>
-            {filterOptions.buckets.map((b) => (
+            {opts.buckets.map((b) => (
               <option key={b.slug} value={b.slug}>
                 {resolveNavTreeLabel(b)}
               </option>
@@ -294,6 +302,7 @@ export function FlowsTable({
             : t("accountDetail.movements.counterpartAccount")
         }
         emptyMessage={loading ? null : emptyText}
+        placeholderRows={loading ? pageSize : 0}
       />
     </PaginatedTable>
   );

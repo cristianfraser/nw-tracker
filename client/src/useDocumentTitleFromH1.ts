@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { DASHBOARD_ALIAS_PATH, DEMO_BUILD } from "./dashboardPath";
 
 /** App name — the suffix, and the whole title when a page renders no `h1`. */
 export const BASE_DOCUMENT_TITLE = "NW Tracker";
@@ -15,7 +16,7 @@ export function documentTitleFromH1Text(raw: string | null | undefined): string 
 }
 
 /**
- * Heading selectors for a route, best first.
+ * Heading selectors for a route, best first (none: the tab reads the app name alone).
  *
  * Flows subpages share one `h1` ("Flujos") on their layout and carry their own name in the
  * `h2` section title, so keying on the `h1` alone made every one of them read "Flujos".
@@ -29,6 +30,11 @@ export function documentTitleFromH1Text(raw: string | null | undefined): string 
  */
 export function pageHeadingSelectors(pathname: string): string[] {
   const path = pathname.replace(/\/+$/, "");
+  // The demo's About page is the app's front door: its tab reads the bare app name, not
+  // «Welcome to NW Tracker · NW Tracker».
+  if (DEMO_BUILD && path === "") return [];
+  // The demo's dashboard shares its page with the hidden About section, whose `h1` comes first.
+  if (DEMO_BUILD && path === DASHBOARD_ALIAS_PATH) return ["h1:not(#demo-about-title)"];
   if (path.startsWith("/flows/")) return ["h2.flow-section-title", "h1"];
   if (path.startsWith("/panel/")) return ["nav.flow-subnav a.active", "h1"];
   return ["h1"];
