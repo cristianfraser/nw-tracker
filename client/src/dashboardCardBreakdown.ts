@@ -379,11 +379,3 @@ export function roundedMetricDelta(
   return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;
 }
 
-/** Total row: deposits + lifetime Δ (same rounding as the card UI). */
-export function cardMainBalanceFromMetrics(metrics: CardGroupMetrics, showUsd: boolean): number | null {
-  const deposited = roundedMetricDeposits(metrics, showUsd, "total");
-  const delta = roundedMetricDelta(metrics, showUsd, "total");
-  if (deposited == null || delta == null) return null;
-  return deposited + delta;
-}
-

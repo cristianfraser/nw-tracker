@@ -45,17 +45,3 @@ export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDt
   return [];
 }
 
-/** Portfolio / asset group slugs under a chart bucket node (group nodes only). */
-export function collectNavBucketCoverageKeys(node: NavTreeNodeDto): string[] {
-  const keys = new Set<string>();
-  const visit = (n: NavTreeNodeDto) => {
-    keys.add(n.slug);
-    const ag = n.asset_group_slug?.trim();
-    if (ag) keys.add(ag);
-    for (const c of n.children ?? []) {
-      if (c.account_id == null) visit(c);
-    }
-  };
-  visit(node);
-  return [...keys];
-}
