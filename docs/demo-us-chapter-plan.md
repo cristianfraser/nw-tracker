@@ -119,8 +119,20 @@ All of these the app supports today; the generator just never produced them.
 - **Roth IRA** (optional): US$7.000 a year from 2025, after-tax, invested in SPY at IBKR; the
   1040 shows nothing for it (that is the point), the MAGI check decides eligibility.
 - **HSA** (optional): pre-tax, small.
-- Cards and value map: the Retirement card reads AFP + AFC + APV + 401(k); the proxy/basket
-  logic is untouched (the 401(k) fund is a plain unit series).
+- **Retirement splits by country on the demo:** two new sub-buckets under Retirement —
+  **Chile** (`retirement_cl`, route `/inversiones/retiro/chile`), under which the whole existing
+  subtree moves with its shape kept (AFP + AFC → AFP, AFC; APV → APV A, APV B), and **US**
+  (`retirement_us`, `/inversiones/retiro/us`), where the new accounts live (401(k), Roth IRA, HSA
+  as leaf groups). Mechanics, like the IPSA / SOXX units (`linkBucketSubtree`, `brokerage_soxx`):
+  two `portfolio_groups` with `parent_slug: retirement` and their `asset_groups`, the Chilean
+  leaf asset groups reparented under `retirement_cl`'s (leaf slugs, and so every account's kind
+  slug, unchanged); `rebuildRetirementNav` links AFP + AFC and APV under `retirement_cl` when
+  that group exists and straight under `retirement` otherwise, so the personal instance keeps
+  its tree (`db.ts`'s asset-group seed and `chartColorRgb.ts`'s synthetic grouped ids gain the
+  two groups; colours on the groups). The Retirement card's breakdown then reads Chile / US,
+  the value map nests two frames, each country page shows its own children, and the
+  Inversiones perf series (keyed on `retirement`) is untouched; the proxy/basket logic too (the
+  401(k) fund is a plain unit series). Sidebar-nav and nav-snapshot caches bump a version.
 
 ### Phase 4a — Several loans and properties (app)
 
