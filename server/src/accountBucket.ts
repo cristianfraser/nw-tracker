@@ -17,7 +17,7 @@ export function accountBucketKindSlug(leafBucketSlug: string): string {
   return sep >= 0 ? leafBucketSlug.slice(sep + 2) : leafBucketSlug;
 }
 
-/** Leaf `asset_groups.slug` for an account (replaces legacy `categories.slug`). */
+/** Leaf `asset_groups.slug` for an account. */
 export function bucketSlugForAccountId(accountId: number): string | null {
   // Inside a build that shares one tree index (`withPortfolioGroupIndex`), read its snapshot.
   const idx = getPortfolioGroupIndex();

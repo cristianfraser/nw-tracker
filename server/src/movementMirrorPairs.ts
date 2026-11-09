@@ -257,7 +257,6 @@ function monthPrecisionPairAllowed(
     const outDay = Number(out.occurred_on.slice(8, 10));
     return outDay > lastDayOfMonth(outMk) - MIRROR_MONTH_PRECISION_BOUNDARY_DAYS;
   }
-  // outMonthPrecision
   if (inMk === outMk) return true;
   if (inMk !== nextMonthKey(outMk)) return false;
   return Number(inn.occurred_on.slice(8, 10)) <= MIRROR_MONTH_PRECISION_BOUNDARY_DAYS;

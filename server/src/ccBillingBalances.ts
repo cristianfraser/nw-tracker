@@ -224,13 +224,13 @@ export function postCloseLiveBalanceAdjustmentClp(
 /**
  * Normalized non-installment line stream for post-close windows (the line's date — transaction,
  * else posting — dedupe key, signed CLP), memoized in the account's `cc_billing_parts` cache
- * family — dropped with the card's billing detail by the change log. Daily owed-on-date evaluates one window per session, so the scan must not
- * re-run per date.
+ * family — dropped with the card's billing detail by the change log. Daily owed-on-date evaluates
+ * one window per session, so the scan must not re-run per date.
  *
  * `financing` marks section-3 bank charges (intereses, comisiones, impuestos) using the same
- * predicate as the monthly financing-cost metric. They are owed like any other charge — the
- * balance walk ignores the flag — but `ccOwedFlowEvents.ts` withholds them from the flow leg
- * so that a card's P/L is exactly its cost of financing.
+ * predicate as the financing-cost metric. They are owed like any other charge — the balance walk
+ * ignores the flag — but `ccFinancingCostDaily.ts` takes them out of the derived flow so that a
+ * card's P/L is exactly its cost of financing.
  */
 export type PostCloseStreamEntry = {
   iso: string;

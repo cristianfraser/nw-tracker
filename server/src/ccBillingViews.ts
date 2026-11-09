@@ -697,7 +697,7 @@ function buildBillingDetailByMonthInner(
   }
 
   // Roll the most-recently-closed month's balance into the open month.
-  // Balance = priorClosedBalance + (charges this cycle + cuota plans bought after its calendar
+  // Balance = the closed month's balance + (charges this cycle + cuota plans bought after its calendar
   // month-end − payments this cycle) — the same events the daily owed walk adds.
   // This means: before any PAGO row is imported, open month mirrors the closed balance.
   if (openBmRoll && !inactive) {

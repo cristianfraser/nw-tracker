@@ -353,7 +353,7 @@ function ymCompare(a: string, b: string): number {
  * cuota 1 (else the lowest printed cuota), else the statement after its last 00/N preamble, else —
  * for a manual plan — the stored pin or the purchase's own cycle, advanced past every facturación
  * already closed without billing it, else the stored pin, else the purchase month. A plan with
- * none of these (no readable purchase date) throws, naming the plan; it used to read «1970-01».
+ * none of these (no readable purchase date) throws, naming the plan.
  */
 export function purchaseFirstDueYm(
   pr: PlanFirstDueInput,
@@ -813,7 +813,7 @@ export function debtEventLines(accountId: number): DebtEventLine[] {
   for (const r of rows) {
     if (superseded.has(r.id)) continue;
     if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
-    // Transaction date, else posting date: a line printing only its posting date used to drop out here.
+    // Transaction date, else posting date: a line printing only its posting date still counts.
     let iso = statementLineDateIso(r);
     if (!iso) continue;
     const closeIso = parseDdMmYyToIso(r.statement_date);

@@ -3,8 +3,7 @@ import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from 
 import { DAILY_RUN_REPEAT_WINDOW_MINUTES } from "./dailyRunLog.js";
 
 /**
- * When the ingest service runs (docs/ingest-split-plan.md, Phase 2) — the rules the two timed
- * LaunchAgents and `daily-run.sh --scheduled` used to hold, as one pure decision:
+ * When the ingest service runs (docs/ingest-split-plan.md, Phase 2) — one pure decision:
  *
  * - The nightly run answers the 22:00 Chile slot. A slot the machine slept through runs on wake
  *   (the latest slot only — three nights asleep is one catch-up run, not three). A slot is

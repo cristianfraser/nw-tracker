@@ -286,7 +286,7 @@ export type NonAnchorClpFlowTotals = {
  * matches, so those rows vanished from the filter entirely), and the CLP leg is unsigned
  * so an outbound transfer would have counted as an inflow anyway. On the real cuenta
  * vista that was the whole ledger: 260 transfer legs summing −1x.xxx.xxx were invisible,
- * so the derived anchor came out −1x.xxx.xxx instead of +1.074 and the account's final
+ * so the derived anchor came out −1x.xxx.xxx instead of a small positive balance and the account's final
  * balance read −1x.xxx.xxx instead of 0. The month table had the same bug plus a
  * `note LIKE 'import:cartola|<month>|%'` filter that also hid mirror-converted transfers
  * (human notes), daily-xlsx rows (`import:cartola-partial|…`), and manual movements —

@@ -765,7 +765,6 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
       }
       incomeNominal += contractor.monthlyUsd * market.fx(ymd(month, 15)) * 0.83;
     }
-    // F29 payments due this month.
     for (const p of pendingF29.filter((x) => monthOf(x.day) === month)) {
       ensureClp(p.day, p.clp);
       bankBill("checking", p.day, "PAGO IMPUESTOS F29 SII", "taxes", p.clp);

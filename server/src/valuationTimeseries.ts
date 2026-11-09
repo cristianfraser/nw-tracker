@@ -544,8 +544,8 @@ function augmentChartDatesForCuotaLedgerAccounts(
 }
 
 /**
- * Month-end CLP series from `depto-dividendos.csv` (same as Numbers: **valor neto** + **pago acumulado**),
- * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the same amortization timeline as the sheet.
+ * Month-end CLP series from the depto ledger (**valor neto** + **pago acumulado**),
+ * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the ledger's amortization timeline.
  */
 function propertyDeptoClpSeriesBySnapshotDate(
   dateStrsAsc: string[],
@@ -1205,7 +1205,7 @@ const OVERVIEW_LINE_PORTFOLIO_SLUG: Record<string, string> = {
   retirement: "retirement",
   brokerage: "brokerage",
   // The invested line is the Inversiones hub (retirement + brokerage): its node's colour, the one
-  // its card pill shows — it had none, so the client drew a fixed gold.
+  // its card pill shows.
   invested: "inversiones",
   cash: "cash_eqs",
   liabilities: "liabilities",
@@ -1377,8 +1377,8 @@ function buildDashboardPortfolioGroupTotalsClp(): {
     const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(slug);
     const tabRows = listAccountsForGroupTab(groupSlug, tabSubgroup);
     accountsBySlug.set(slug, tabRows);
-    // Consolidated closing is read for DATE DISCOVERY only now (kept cached — it also feeds
-    // the P/L detalle tables); the values come from marks below.
+    // Consolidated closing is read for DATE DISCOVERY only (cached — it also feeds the P/L
+    // detalle tables); the values come from marks below.
     const raw = getAggregationCached(cacheKeyGroupClosingByDate(slug, "clp"), () => {
       const consolidated = getGroupConsolidatedMonthlyPerfForRows(tabRows, groupSlug, "clp");
       return consolidatedClosingRawByDate(consolidated);
@@ -1414,7 +1414,7 @@ function buildDashboardPortfolioGroupTotalsClp(): {
       rowsBySlug.set(slug, rows);
       continue;
     }
-    // "Cuentas principales" child lines: Σ the same marks the group-page / day-mode daily
+    // Child lines: Σ the same marks the group-page / day-mode daily
     // series sums, at the month-end dates. `getBucketDailySeries`'s value at date `d` is
     // exactly this Σ, so the monthly child line equals the daily one point-for-point — the
     // null-before-first-holding included (an unstarted child reads absent, not a flat 0).
@@ -2046,7 +2046,7 @@ function getGroupValuationTimeseriesInnerUncached(
       }
     }
   }
-  // Composition timeseries (pie replacement): shares of the pre-clip per-account lines.
+  // Composition timeseries: shares of the pre-clip per-account lines.
   const group_allocation_proportional = buildProportionalFromBlock(accounts_in_group);
 
   const synthColors = syntheticGroupColorRgbMapForValuationGroup(groupSlug);
@@ -2054,7 +2054,7 @@ function getGroupValuationTimeseriesInnerUncached(
     accounts_in_group = { ...accounts_in_group, synthetic_group_color_rgb: synthColors };
   }
 
-  // Server-side "Agrupado" blocks/pies built from the pre-clip consolidated block (grouped totals
+  // Server-side "Agrupado" blocks built from the pre-clip consolidated block (grouped totals
   // must equal the raw view); each grouped block is display-clipped inside the helper.
   const grouped = opts?.groupedBlocks
     ? buildGroupedChartPayload(groupSlug, accounts_in_group, unit)
@@ -2188,7 +2188,7 @@ export function getAccountValuationTimeseries(
 
   if (accounts.points.length > 0) {
     // The live last point, the group chart's dispatcher: the account's one today value. A
-    // card's points stay on its owed-on-date marks (Saldo pasivos convention) and today is its
+    // card's points stay on its owed-on-date marks and today is its
     // owed walk — billing-month closings are NOT merged over history: they subtract the
     // next-month payment before it happens, so they understate month-end debt (facturaciones
     // have their own views).

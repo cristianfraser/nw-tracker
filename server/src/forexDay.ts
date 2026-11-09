@@ -7,9 +7,9 @@
  * so the last prints land. Chile calendar day D is the fx day that ends at 17:05 New York on D —
  * New York and Chile share the calendar date at that hour in every DST combination. Weekends read
  * Friday's close: there is no Saturday or Sunday row, and the Sunday-evening reopen is never
- * stored (it used to be, as Yahoo's Sunday-dated week-open bar — migration 180 removed 607 rows).
- * Holidays play no part: forex trades through US and Chilean holidays, and the NYSE session that
- * used to gate the live rate (pinning it for whole US holidays) is not this market's calendar.
+ * stored (Yahoo's Sunday-dated week-open bar is not a Chile calendar day's close).
+ * Holidays play no part: forex trades through US and Chilean holidays, and the NYSE session calendar
+ * (which would pin the live rate for whole US holidays) is not this market's calendar.
  */
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { isWeekendYmd } from "./marketHolidays.js";

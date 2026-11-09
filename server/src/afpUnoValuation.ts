@@ -102,8 +102,8 @@ export function revalueAfpAccountFromCuotas(opts: {
   seriesKey?: string;
   dryRun: boolean;
   /**
-   * When true, only refresh `units_snapshot` from Σ cuotas; keep existing `value_clp` (e.g. Table 1-3 / Excel import).
-   * Use when `fund_unit_daily` is for reference or you want sheet month-ends as SoT.
+   * When true, only refresh `units_snapshot` from Σ cuotas; keep existing `value_clp`.
+   * Use when `fund_unit_daily` is for reference or the stored month-ends are the source of truth.
    */
   preserveExcelValues?: boolean;
 }): { updated: number; skipped: number; lines: string[] } {

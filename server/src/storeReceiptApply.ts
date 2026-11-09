@@ -456,7 +456,6 @@ function upsertReceiptItems(receiptId: number, chain: string, parsed: ParsedRece
   }
   deleteTailItems.run(receiptId, parsed.items.length);
 
-  // Resolve still-unclassified items through the alias table.
   const unclassified = db
     .prepare(
       `SELECT id, barcode, description FROM grocery_receipt_items

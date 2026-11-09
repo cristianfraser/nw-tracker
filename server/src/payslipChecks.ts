@@ -65,7 +65,6 @@ export function buildPayslipChecks(): PayslipChecksRow[] {
     list.push(l);
     linesBy.set(l.payslip_id, list);
   }
-  // AFP credits that pay exactly one month.
   const creditedByMonth = new Map<string, number>();
   for (const r of db
     .prepare(

@@ -7,7 +7,7 @@ export type CcExpenseLineRole = "purchase" | "installment_cuota" | "installment_
 /**
  * Per-line override of which installment mode(s) a line counts in. Default `both`.
  * `total_only` / `split_only` place a line in one mode only (facturado-financing projection);
- * `excluded` drops it from both. Keep in sync with client/src/ccExpensePeriodMonth.ts.
+ * `excluded` drops it from both.
  */
 export type CcExpenseGastosScope = "both" | "total_only" | "split_only" | "excluded";
 

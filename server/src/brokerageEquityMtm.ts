@@ -23,7 +23,7 @@ import { holdingPriceAt } from "./holdingPrices.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue } from "./valueConvert.js";
 
-/** Equity symbols loaded at `import:excel` into `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
+/** Equity symbols the EOD sync always keeps in `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
 
 const insEod = db.prepare(

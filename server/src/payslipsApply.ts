@@ -1,6 +1,6 @@
 /**
  * `employment.payslips` → `payroll_work_earnings`, each payslip paired with the checking deposit
- * that paid it (formerly `server/scripts/import-payroll-liquidaciones.ts`).
+ * that paid it.
  *
  * A payslip is keyed by its document (`source_pdf`): a re-import updates the printed fields and
  * keeps a hand-made pairing (`link_source = 'manual'`) and the earning type set with it. Pairing

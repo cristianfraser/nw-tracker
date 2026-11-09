@@ -281,7 +281,7 @@ function ccDerivedFlows(
 
 /**
  * Full-history cumulative personal deposits through each grid date, per account — the
- * "aportes acum." chart companion. Same event source as {@link sessionFlows} (merged display
+ * "aportes acum." chart companion. Same event source as {@link gridFlows} (merged display
  * deposit events — USD-cash included since 2026-08-04), so the line's step on a deposit day
  * equals that day's flow leg. Each event in the unit at its own date's rate (`flowEventInUnit`),
  * UF included — never the cumulative pesos at a later day's UF.
@@ -561,7 +561,7 @@ export function getBucketDailySeries(
     });
   }
 
-  // Per-account P/L: the same `wealth − prevWealth − flow` identity the bucket uses, on that
+  // Per-account P/L: the same `wealth(day) − wealth(prev day) − flow` identity the bucket uses, on that
   // account's own legs, so the day-mode P/L bars carry the monthly chart's per-account
   // breakdown and Σ over accounts reproduces the bucket's `pl`.
   if (perAccount && wealthByAccount) {
