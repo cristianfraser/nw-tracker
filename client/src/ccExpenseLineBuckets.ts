@@ -64,16 +64,8 @@ export function expenseLineMatchesCategoryPatch(
   return false;
 }
 
-/** All gastos lines for one purchase (cuotas, consolidated total, checking split). */
-export function expenseLineMatchesCategoryPurchaseKey(
-  ln: FlowCcExpenseLineRow,
-  accountId: number,
-  purchaseKey: string
-): boolean {
-  return ln.account_id === accountId && ln.purchase_key === purchaseKey;
-}
-
-export function expenseLineMatchesPurchaseNotePatch(
+/** The gastos lines of one purchase key on one account (cuotas, consolidated total, checking split). */
+export function expenseLineMatchesPurchaseKey(
   ln: FlowCcExpenseLineRow,
   accountId: number,
   purchaseKey: string

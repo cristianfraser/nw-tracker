@@ -10,7 +10,6 @@ import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { flowsOverviewRangeTotals, rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../flowsOverviewRows";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowPeriodLabel,
   flowTableGranularity,
   formatFlowMoney,
@@ -94,13 +93,13 @@ export function FlowsOverviewPage() {
       onRangeChange={chartPrefs.setRange}
     />
   );
-  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const chartGranularity = metricsPeriod;
   const isDaily = chartGranularity === "day";
   // The detail table owns its período (month/year — the chart is the day surface) and
   // always covers full history.
   const tablePrefs = useSurfacePrefs("flows.overview.table", "month", "total");
   const tableGranularity = flowTableGranularity(
-    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+    tablePrefs.period
   );
   const { installmentMode } = useCcInstallmentGastosMode();
 

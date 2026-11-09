@@ -16,7 +16,6 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
 import { useTranslation } from "../i18n";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
   formatFlowMoney,
   rollupChartPointsByYear,
@@ -57,7 +56,7 @@ export function ExpensesPage() {
   // The month-detail table owns its período (month/year) and always covers full history.
   const tablePrefs = useSurfacePrefs("flows.expenses.table", "month", "total");
   const tableGranularity = flowTableGranularity(
-    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+    tablePrefs.period
   );
   const { data, error } = useFlowsExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();

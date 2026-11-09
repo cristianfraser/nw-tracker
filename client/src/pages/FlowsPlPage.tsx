@@ -10,7 +10,6 @@ import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
   flowPeriodLabel,
   formatFlowMoney,
@@ -58,11 +57,11 @@ export function FlowsPlPage() {
       onRangeChange={chartPrefs.setRange}
     />
   );
-  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const chartGranularity = metricsPeriod;
   // The detail table owns its período (month/year) and always covers full history.
   const tablePrefs = useSurfacePrefs("flows.pl.table", "month", "total");
   const tableGranularity = flowTableGranularity(
-    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+    tablePrefs.period
   );
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.

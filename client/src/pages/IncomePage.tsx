@@ -20,7 +20,6 @@ import {
   rollupIncomeMonthRowsByYear,
 } from "../incomeAggregates";
 import {
-  flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
   formatFlowMoney,
   sumChartPointsField,
@@ -41,11 +40,11 @@ export function IncomePage() {
       onRangeChange={chartPrefs.setRange}
     />
   );
-  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const chartGranularity = metricsPeriod;
   // The month-detail table owns its período (month/year) and always covers full history.
   const tablePrefs = useSurfacePrefs("flows.income.table", "month", "total");
   const tableGranularity = flowTableGranularity(
-    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+    tablePrefs.period
   );
   const { data, error } = useIncome(displayUnit);
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
