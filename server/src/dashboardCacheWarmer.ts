@@ -1,3 +1,4 @@
+import { getHeapStatistics } from "node:v8";
 import { performance } from "node:perf_hooks";
 import { ensureCacheFresh, setAggregationInvalidationListener } from "./cacheRegistry.js";
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
@@ -53,6 +54,16 @@ let rewarmQueued = false;
 let rewarmQueuedDelayMs = INVALIDATION_DEBOUNCE_MS;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** The V8 heap in use, in MB — the figure to read when a small instance dies of «heap out of memory». */
+function heapMb(): number {
+  return Math.round(process.memoryUsage().heapUsed / 1_048_576);
+}
+
+/** V8's heap limit for this process (`--max-old-space-size`, or what V8 chose from the machine's memory). */
+function heapLimitMb(): number {
+  return Math.round(getHeapStatistics().heap_size_limit / 1_048_576);
+}
+
 async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Promise<void> {
   if (warming) {
     rewarmQueued = true;
@@ -90,7 +101,8 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     console.log(
       `cache-warm: dashboard caches warmed (${reason}) in ${(tBundles - t0).toFixed(0)}ms; ` +
         `${visited} visited page(s) in ${(tRentabilidad - tVisited).toFixed(0)}ms; ` +
-        `${scopes} Rentabilidad daily series in ${(performance.now() - tRentabilidad).toFixed(0)}ms`
+        `${scopes} Rentabilidad daily series in ${(performance.now() - tRentabilidad).toFixed(0)}ms; ` +
+        `heap ${heapMb()} MB used of ${heapLimitMb()} MB`
     );
   } catch (e) {
     console.error(`cache-warm: failed (${reason}) — ${e instanceof Error ? e.message : e}`);

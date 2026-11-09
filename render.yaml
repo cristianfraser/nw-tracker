@@ -87,6 +87,13 @@ services:
         value: nw-tracker.demo.db
       - key: DEMO_ANALYTICS_DB
         value: /var/data/demo-analytics.db
+      # V8 sizes its heap from the machine's memory: on the Starter instance (512 MB) that is a
+      # ~256 MB limit, and the boot warm of the US-chapter demo died there ("heap out of memory",
+      # 2026-11-09, a restart loop) until the %-chains stopped retaining whole daily payloads
+      # (server/src/dailyPctSeries.ts; ~200 MB after). 320 MB leaves the warm headroom and still
+      # fits the instance beside the process's own ~130 MB; the warm logs the heap it used.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=320
       # Streamed prices: at most one cache rebuild per 15 s on the small instance (the home
       # server writes every 5 s; server/src/yahooPriceStream.ts).
       - key: LIVE_QUOTES_FLUSH_GAP_MS

@@ -25,6 +25,7 @@ import { runningGrowth } from "./perfKernel.js";
 import { chainDailyPct, withDailyChainedMonthPct, type DailyPctPoint } from "./periodPctDailyChain.js";
 import { dailyPerfLevelsFromMonthly } from "./dailyPerfLevels.js";
 import type { BucketDailySeries } from "./dailySeries.js";
+import { groupDailyPctPoints } from "./dailyPctSeries.js";
 import { resolveGroupDailySeries } from "./groupDailySeries.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
@@ -79,7 +80,7 @@ function classDailyPoints(unit: TsUnit): {
   brokerage: readonly DailyPctPoint[];
   combined: readonly DailyPctPoint[];
 } {
-  const pointsOf = (slug: string) => resolveGroupDailySeries(slug, unit, 0)?.points ?? [];
+  const pointsOf = (slug: string) => groupDailyPctPoints(slug, unit) ?? [];
   return {
     retirement: pointsOf("retirement"),
     brokerage: pointsOf("brokerage"),

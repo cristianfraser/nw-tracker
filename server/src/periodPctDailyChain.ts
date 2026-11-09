@@ -2,10 +2,14 @@ import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import type { ChainedGroupPct } from "./dashboardNavCardMetrics.js";
-import { getBucketDailySeriesCached, type BucketDailySeries } from "./dailySeries.js";
 import { db } from "./db.js";
 import { compound } from "./perfKernel.js";
-import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
+import {
+  accountDailyPctPoints,
+  dailyPctPointsForScope,
+  groupDailyPctPoints,
+  type DailyPctPoint,
+} from "./dailyPctSeries.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -44,8 +48,8 @@ export function chainDailyPct(
   );
 }
 
-/** A daily point of a scope's own series: its date and its flow-adjusted return of the day. */
-export type DailyPctPoint = { as_of_date: string; pct: number | null };
+/** A daily point of a scope's own series: its date and its flow-adjusted return of the day (`dailyPctSeries.ts`). */
+export type { DailyPctPoint };
 
 /**
  * Detalle rows with `pct_month` replaced by the compound of the daily returns of the row's
@@ -78,18 +82,18 @@ export function isLiabilityOnlyScope(
   return accountIds.length > 0 && accountIds.every(isLiability);
 }
 
-/** Full-history daily series → chained % for one period, the input of the fillers below. */
-export type DailySeriesFor = (unit: TsUnit) => BucketDailySeries | null;
+/** Full-history daily returns → chained % for one period, the input of the fillers below. */
+export type DailyPctFor = (unit: TsUnit) => readonly DailyPctPoint[] | null;
 
 export function chainedPctFromSeries(
-  seriesFor: DailySeriesFor,
+  pointsFor: DailyPctFor,
   period: ChainPeriod,
   unit: TsUnit,
   todayYmd: string = chileCalendarTodayYmd()
 ): number | null {
-  const series = seriesFor(unit);
-  if (!series) return null;
-  return chainDailyPct(series.points, chainPeriodStartYmd(period, todayYmd), todayYmd);
+  const points = pointsFor(unit);
+  if (!points) return null;
+  return chainDailyPct(points, chainPeriodStartYmd(period, todayYmd), todayYmd);
 }
 
 const PCT_FIELDS: readonly { period: ChainPeriod; unit: "clp" | "usd"; pct: keyof DashboardAccountStats }[] = [
@@ -120,7 +124,7 @@ export function withDailyChainedAccountRowPcts(
     const importKey = (importKeyStmt.get(row.account_id) as { import_key: string | null } | undefined)
       ?.import_key ?? null;
     const ref = { account_id: row.account_id, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey };
-    const seriesFor: DailySeriesFor = (unit) => resolveAccountDailySeries(ref, unit, 0);
+    const seriesFor: DailyPctFor = (unit) => accountDailyPctPoints(ref, unit);
     const chained: Partial<DashboardAccountStats> = {
       pct_total_on_deposits_clp: row.pct_total_clp ?? null,
       ...(includeUsd ? { pct_total_on_deposits_usd: row.pct_total_usd ?? null } : {}),
@@ -151,7 +155,7 @@ export function chainedGroupPctResolver(
       const members = listAccountsForGroupTab(scope.slug).filter((r) => r.account_id > 0);
       if (isLiabilityOnlyScope(members.map((r) => r.account_id), isLiability)) return undefined;
       if (unit === "usd" && !includeUsd) return null;
-      return chainedPctFromSeries((u) => resolveGroupDailySeries(scope.slug, u, 0), period, unit, todayYmd);
+      return chainedPctFromSeries((u) => groupDailyPctPoints(scope.slug, u), period, unit, todayYmd);
     }
     if (scope.kind === "account") {
       if (isLiability(scope.accountId)) return undefined;
@@ -161,7 +165,7 @@ export function chainedGroupPctResolver(
       const importKey =
         (importKeyStmt.get(scope.accountId) as { import_key: string | null } | undefined)?.import_key ?? null;
       const ref = { account_id: scope.accountId, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey };
-      return chainedPctFromSeries((u) => resolveAccountDailySeries(ref, u, 0), period, unit, todayYmd);
+      return chainedPctFromSeries((u) => accountDailyPctPoints(ref, u), period, unit, todayYmd);
     }
     if (isLiabilityOnlyScope(scope.accountIds, isLiability)) return undefined;
     if (unit === "usd" && !includeUsd) return null;
@@ -173,7 +177,7 @@ export function chainedGroupPctResolver(
       return { account_id: id, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey };
     });
     return chainedPctFromSeries(
-      (u) => getBucketDailySeriesCached(`liquidated:${scope.parentSlug}`, refs, { unit: u, days: 0 }),
+      (u) => dailyPctPointsForScope(`liquidated:${scope.parentSlug}`, refs, u),
       period,
       unit,
       todayYmd

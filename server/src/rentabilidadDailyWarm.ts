@@ -1,15 +1,15 @@
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { db } from "./db.js";
-import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
+import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js";
 import { accountIsDebt } from "./accountProfile.js";
 
 /**
- * The full-history daily series every Rentabilidad table chains (`periodReturnsDaily.ts`), the
+ * The full-history daily RETURNS every Rentabilidad table chains (`periodReturnsDaily.ts`), the
  * own-portfolio benchmarks read and every period % compounds (`periodPctDailyChain.ts`: the
- * dashboard account rows and nav groups, the detalle tables): every portfolio group page, net
- * worth (the home page) and every account that is not a liability, in CLP
- * and USD (the per-account marks are shared by both units, so USD adds only its own sums and
- * conversions). Each scope waits until no API request is in flight (`apiRequestsInFlight.ts`), so
+ * dashboard account rows and nav groups, the detalle tables) — `dailyPctSeries.ts`, which keeps
+ * only each day's pct, never the full payload: every portfolio group page, net worth (the home
+ * page) and every account that is not a liability, in CLP and USD (the per-account marks are
+ * shared by both units, so USD adds only its own sums and conversions). Each scope waits until no API request is in flight (`apiRequestsInFlight.ts`), so
  * requests run ahead of the warm instead of waiting behind it. A scope already cached
  * costs nothing; after a live-quote tick only today's marks recompute.
  */
@@ -35,11 +35,11 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
   for (const unit of ["clp", "usd"] as const) {
     for (const slug of groups) {
       await yieldToRequests();
-      if (resolveGroupDailySeries(slug, unit, 0)) scopes += 1;
+      if (groupDailyPctPoints(slug, unit)) scopes += 1;
     }
     for (const a of accounts) {
       await yieldToRequests();
-      resolveAccountDailySeries(a, unit, 0);
+      accountDailyPctPoints(a, unit);
       scopes += 1;
     }
   }

@@ -1,7 +1,7 @@
 import { db } from "./db.js";
 import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { resolveEquityQuote } from "./equityQuote.js";
-import { resolveGroupDailySeries } from "./groupDailySeries.js";
+import { groupDailyPctPoints } from "./dailyPctSeries.js";
 import { runningGrowth } from "./perfKernel.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -273,8 +273,7 @@ export function chainDailyReturns(
 }
 
 function portfolioGroupLevels(b: BenchmarkRow, unit: TsUnit): BenchmarkLevelSeries {
-  const series = resolveGroupDailySeries(b.portfolio_group_slug!, unit, 0);
-  const { dates, levels } = chainDailyReturns(series?.points ?? []);
+  const { dates, levels } = chainDailyReturns(groupDailyPctPoints(b.portfolio_group_slug!, unit) ?? []);
   if (dates.length === 0) return { currency: unit, first_ymd: null, levelAt: () => null };
   return { currency: unit, first_ymd: dates[0]!, levelAt: stepSeries(b.slug, dates, levels) };
 }
