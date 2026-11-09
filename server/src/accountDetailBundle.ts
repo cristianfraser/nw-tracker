@@ -7,7 +7,8 @@ import {
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
 import { monthlyPerfForAccountDisplay } from "./detalleDailyChainedPct.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
+import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
@@ -198,12 +199,16 @@ export async function buildAccountDetailBundle(
     category_slug === "real_estate" ||
     category_slug === "mortgage"
   ) {
-    const sheetRowsAll = loadDeptoLedgerFromMovements();
+    // The account's own property ledger (a property's, or its loan's property's); the card
+    // pairing is the loan's.
+    const sheetRowsAll = deptoLedgerForAccount(accountId);
     const sheetRows =
       category_slug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
         : sheetRowsAll;
-    const matches = mortgageCardMatches();
+    const propertyId = deptoPropertyIdOfAccount(accountId);
+    const loanId = propertyId != null ? loanAccountIdOfProperty(propertyId) : null;
+    const matches = loanId != null ? mortgageCardMatches(loanId) : { payments: [], unmatched_lines: [] };
     mortgageLedger = {
       account_id: accountId,
       has_sheet_rows: sheetRowsAll.length > 0,

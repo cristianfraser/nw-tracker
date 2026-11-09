@@ -32,11 +32,12 @@ import type {
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
+import { accountHasRole, propertyLoanPairsWithLoan } from "./accountRoles.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 
 import { IngestConflict } from "./ingestReceiver.js";
-import { commitMortgagePayment, deptoMortgageAccountId } from "./mortgagePaymentCreate.js";
+import { commitMortgagePayment } from "./mortgagePaymentCreate.js";
 import { computeMortgagePaymentRow } from "./mortgagePaymentCompute.js";
 import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 import { syncLoanPaymentFlowParts } from "./flows/loanPaymentParts.js";
@@ -78,17 +79,43 @@ function compareStored(sheet: MortgageSheetPaymentRow, stored: DeptoMortgageShee
   return drift;
 }
 
-function fillMaxUf(cuota: string, maxUf: number): void {
+function fillMaxUf(loanAccountId: number, cuota: string, maxUf: number): void {
   db.prepare(
-    `UPDATE loan_payments SET max_payment = ? WHERE cuota = ? AND max_payment IS NULL`
-  ).run(maxUf, cuota);
+    `UPDATE loan_payments SET max_payment = ? WHERE loan_account_id = ? AND cuota = ? AND max_payment IS NULL`
+  ).run(maxUf, loanAccountId, cuota);
 }
 
-function mortgageMovementIdForCuota(cuota: string): number | null {
-  const row = db.prepare(`SELECT movement_id FROM loan_payments WHERE leg = 'loan' AND cuota = ?`).get(cuota) as
-    | { movement_id: number }
-    | undefined;
+function mortgageMovementIdForCuota(loanAccountId: number, cuota: string): number | null {
+  const row = db
+    .prepare(`SELECT movement_id FROM loan_payments WHERE leg = 'loan' AND loan_account_id = ? AND cuota = ?`)
+    .get(loanAccountId, cuota) as { movement_id: number } | undefined;
   return row?.movement_id ?? null;
+}
+
+/**
+ * The loan a mortgage sheet is of. The sheet names its lender (`lender`: one of the loan's
+ * `lender_pattern` params, as the card statements print it — the mortgage-sheet config) → the one
+ * loan holding that pattern; a sheet naming none → the one loan, when exactly one exists. No loan,
+ * a lender no loan (or several) holds, or several loans and no lender: throws.
+ */
+export function loanAccountIdForMortgageSheet(lender: string | undefined): number {
+  const loans = propertyLoanPairsWithLoan().map((p) => p.loanAccountId);
+  if (lender != null) {
+    const want = lender.trim().toUpperCase();
+    const matching = loans.filter((id) => accountHasRole(id, "lender_pattern", want));
+    if (matching.length !== 1) {
+      throw new Error(
+        `mortgage sheet: lender «${lender}» names ${matching.length} loan(s) (${matching.join(", ") || "none"}) — expected one (a lender_pattern row on the loan)`
+      );
+    }
+    return matching[0]!;
+  }
+  if (loans.length !== 1) {
+    throw new Error(
+      `mortgage sheet: ${loans.length} loans (${loans.join(", ") || "none"}) and the sheet names no lender — set "lender" in the mortgage sheet config`
+    );
+  }
+  return loans[0]!;
 }
 
 function paymentInputFromSheet(r: MortgageSheetPaymentRow): MortgagePaymentInput {
@@ -146,7 +173,10 @@ export function latestRegularMortgageCuotaPaidOn(): string | null {
   return row.d ?? null;
 }
 
-export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload): MortgageSheetPaymentsApplyDetails {
+/** The payload with the loan's lender (`lender`, optional in the contract since the several-loans change). */
+type MortgageSheetPayloadWithLender = MortgageSheetPaymentsPayload & { lender?: string };
+
+export function applyMortgageSheetPayments(payload: MortgageSheetPayloadWithLender): MortgageSheetPaymentsApplyDetails {
   const details: MortgageSheetPaymentsApplyDetails = {
     document: payload.document.name,
     rows: [],
@@ -155,11 +185,11 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
     accepted: [],
   };
   const acceptedReason = new Map(payload.accepted.map((a) => [`${a.label}|${a.field}`, a.reason]));
-  const mortgageId = deptoMortgageAccountId();
+  const mortgageId = loanAccountIdForMortgageSheet(payload.lender);
   const today = chileCalendarTodayYmd();
   const written: MortgageSheetRowOutcome[] = [];
   const run = db.transaction(() => {
-    let ledger = loadDeptoLedgerFromMovements();
+    let ledger = deptoLedgerForLoan(mortgageId);
     const byLabel = new Map(ledger.map((r) => [r.cuota, r]));
     for (const r of payload.rows) {
       const stored = byLabel.get(r.label);
@@ -173,10 +203,10 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
         details.drift.push(...d);
         const filled: string[] = [];
         if (d.length === 0 && stored.max_uf == null && r.max_uf != null) {
-          fillMaxUf(r.label, r.max_uf);
+          fillMaxUf(mortgageId, r.label, r.max_uf);
           filled.push("max_uf");
         }
-        details.rows.push({ label: r.label, paid_on: r.paid_on, status: "checked", filled, mortgage_movement_id: mortgageMovementIdForCuota(r.label) });
+        details.rows.push({ label: r.label, paid_on: r.paid_on, status: "checked", filled, mortgage_movement_id: mortgageMovementIdForCuota(mortgageId, r.label) });
         continue;
       }
       if (r.kind !== "cuota") {
@@ -196,7 +226,7 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
       const outcome: MortgageSheetRowOutcome = { label: r.label, paid_on: r.paid_on, status: "written", filled: [], mortgage_movement_id: committed.mortgage_movement_id };
       details.rows.push(outcome);
       written.push(outcome);
-      ledger = loadDeptoLedgerFromMovements();
+      ledger = deptoLedgerForLoan(mortgageId);
     }
     if (details.drift.length > 0) {
       const first = details.drift[0]!;
@@ -212,7 +242,7 @@ export function applyMortgageSheetPayments(payload: MortgageSheetPaymentsPayload
     }
     // Every payment's parts on its property-leg flow, from the rows as they stand now (the
     // declared differences — `parts_sum` — let a lender's row that is short of its total through).
-    syncLoanPaymentFlowParts(payload.accepted);
+    syncLoanPaymentFlowParts(payload.accepted, mortgageId);
     db.prepare(
       `INSERT INTO mortgage_sheet_imports (document_name, sha256, document_size, document_modified_at, rows_written, rows_checked)
        VALUES (?, ?, ?, ?, ?, ?)`

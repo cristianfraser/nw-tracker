@@ -10,9 +10,10 @@ import {
 import {
   DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
   deptoAccountMarkClpAtYmd,
-  loadDeptoLedgerFromMovements,
+  loadAllDeptoLedgers,
 } from "./deptoLedgerFromMovements.js";
 import { accountWithRoleOptional } from "./accountRoles.js";
+import { MORTGAGE_ACCOUNT_IMPORT_KEY } from "./accountIdentityKeys.js";
 /** The depto property and its loan (their roles). */
 const deptoPropertyId = (): number => accountWithRoleOptional("property") ?? -1;
 
@@ -47,7 +48,7 @@ function paymentRow(overrides: Partial<DeptoDividendosPaymentRow>): DeptoDividen
   };
 }
 
-describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
+describe("loadDeptoLedgerForProperty (synthetic fixture)", () => {
   let accountId: number | null = null;
   let loanAccountId: number | null = null;
   const insertedUfDates: string[] = [];
@@ -128,8 +129,8 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     );
     loanAccountId = Number(
       db
-        .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'Depto loan fixture', 'vitest')`)
-        .run(leaf("liabilities__mortgage")).lastInsertRowid
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'Depto loan fixture', 'vitest', ?)`)
+        .run(leaf("liabilities__mortgage"), MORTGAGE_ACCOUNT_IMPORT_KEY).lastInsertRowid
     );
     // The appraisal is stated once (at the pie); the ledger carries it to later rows.
     upsertPropertyAppraisalUf(accountId, "2099-01-10", 5400);
@@ -163,7 +164,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
 
   it("reconstructs ledger rows from movement notes (order, decode, derivations)", () => {
     if (preexistingProperty) return; // covered by the parity test below on such DBs
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
     expect(ledger.map((r) => r.cuota)).toEqual(["pie", "1", "2", "prepago 3"]);
 
     const c1 = ledger[1]!;
@@ -221,7 +222,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     // temporarily orphan the fixture account's notes
     db.prepare(`UPDATE accounts SET import_key = 'depto-fixture-parked' WHERE id = ?`).run(accountId);
     try {
-      expect(() => loadDeptoLedgerFromMovements()).toThrow(/loan_payments rows exist/);
+      expect(() => loadAllDeptoLedgers().flatMap((l) => l.rows)).toThrow(/loan_payments rows exist/);
     } finally {
       db.prepare(`UPDATE accounts SET import_key = ? WHERE id = ?`).run(
         DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,

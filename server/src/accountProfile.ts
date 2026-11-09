@@ -49,7 +49,7 @@ export type QuantitySource =
   /** Coin units × the coin's dollar close; no other value source (a missing close throws). */
   | { kind: "coin"; priceTicker: string }
   /** The depto ledger's net equity (pesos, until the loan phase of the holdings plan). */
-  | { kind: "depto_property" }
+  | { kind: "depto_property"; propertyAccountId: number }
   /** The depto ledger's balance of the loan of `propertyAccountId` (null: no property on file). */
   | { kind: "depto_loan"; propertyAccountId: number | null }
   /** The card's owed walk (`cardValueInUnit`). */
@@ -154,7 +154,8 @@ function rolesFromRows(rows: readonly { role: StoredAccountRole; param: string }
 function quantityFromFacts(f: AccountProfileFacts, roles: AccountRoles): QuantitySource {
   if (f.kind === "credit_card") return { kind: "card" };
   if (f.kind === "mortgage") return { kind: "depto_loan", propertyAccountId: roles.loanOf };
-  if (f.kind === "property") return { kind: "depto_property" };
+  // A property reads its own depto ledger (one per `property` role holder).
+  if (f.kind === "property") return { kind: "depto_property", propertyAccountId: f.id };
   if (f.coinPriceTicker && f.usesEquityMtm) {
     throw new Error(`account profile: account ${f.id} is valued both from coin units and from share units`);
   }

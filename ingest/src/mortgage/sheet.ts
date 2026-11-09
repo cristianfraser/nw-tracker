@@ -5,7 +5,9 @@
  * wrote against the contract and sends it.
  *
  * Config (gitignored, personal): `cfraser/mortgage-sheet.json`
- *   { "file": "~/Library/…/cfraser.numbers", "sheet": "depto", "table": "dividendos" }
+ *   { "file": "~/Library/…/cfraser.numbers", "sheet": "depto", "table": "dividendos", "lender"?: "MUTUARIA" }
+ * `lender` names the loan the sheet is of (one of its `lender_pattern` rows); required by the
+ * server only when it holds several loans.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -20,6 +22,8 @@ export type MortgageSheetConfig = {
   file: string;
   sheet: string;
   table: string;
+  /** The loan's lender as the card statements print it (one of its `lender_pattern` rows). */
+  lender?: string;
   /** Differences between the sheet and the ledger the user has declared (reported, never a conflict). */
   accepted_differences: MortgageSheetAcceptedDifference[];
 };
@@ -38,6 +42,9 @@ export function loadMortgageSheetConfig(file: string = resolveMortgageSheetConfi
     if (typeof cfg[k] !== "string" || !cfg[k]!.trim()) throw new Error(`${file}: "${k}" is required`);
   }
   const sheetFile = cfg.file!.trim();
+  if (cfg.lender !== undefined && (typeof cfg.lender !== "string" || !cfg.lender.trim())) {
+    throw new Error(`${file}: "lender" must be a non-empty string when given`);
+  }
   const accepted = (cfg.accepted_differences ?? []) as unknown[];
   if (!Array.isArray(accepted)) throw new Error(`${file}: "accepted_differences" must be a list`);
   for (const a of accepted) {
@@ -50,6 +57,7 @@ export function loadMortgageSheetConfig(file: string = resolveMortgageSheetConfi
     file: sheetFile.startsWith("~/") ? path.join(os.homedir(), sheetFile.slice(2)) : sheetFile,
     sheet: cfg.sheet!.trim(),
     table: cfg.table!.trim(),
+    ...(cfg.lender !== undefined ? { lender: cfg.lender.trim() } : {}),
     accepted_differences: accepted as MortgageSheetAcceptedDifference[],
   };
 }
@@ -84,13 +92,15 @@ export function readMortgageSheet(cfg: MortgageSheetConfig): MortgageSheetRead {
 /** The contract-checked payload; a row the reader got wrong fails here, before anything is sent. */
 export function mortgageSheetPayload(
   read: MortgageSheetRead,
-  accepted: MortgageSheetAcceptedDifference[] = []
+  accepted: MortgageSheetAcceptedDifference[] = [],
+  lender?: string
 ): MortgageSheetPaymentsPayload {
   const { path: _path, ...document } = read.document;
   return mortgageSheetPaymentsKind.payload.parse({
     document,
     sheet: read.sheet,
     table: read.table,
+    ...(lender !== undefined ? { lender } : {}),
     rows: read.rows,
     projected: read.projected,
     accepted,

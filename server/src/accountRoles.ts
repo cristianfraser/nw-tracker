@@ -7,7 +7,8 @@
  * - `broker_cash` param `<broker>|<currency>` — a broker's cash in a currency (`fintual|usd`).
  * - `buda_wallet` — the exchange's peso wallet the coin buys are funded from.
  * - `fintual_goal` param goal id — a Fintual goal's fund account.
- * - `property` — the depto property; `loan_of` param property id — the mortgage of that property.
+ * - `property` — a property (one depto ledger each); `loan_of` param property id — the mortgage of
+ *   that property (at most one per property).
  * - `lender_pattern` param words — on the loan: the merchant as its card statements name the
  *   lender, every word required (one row per pattern).
  *
@@ -69,12 +70,71 @@ export function loanAccountIdOfProperty(propertyAccountId: number): number | nul
   return accountWithRoleOptional("loan_of", String(propertyAccountId));
 }
 
+/** Every property account (its `property` role), ascending by id. */
+export function propertyAccountIds(): number[] {
+  return accountsWithRole("property");
+}
+
+/** One property and its loan (null when the property is owned outright). */
+export type PropertyLoanPair = { propertyAccountId: number; loanAccountId: number | null };
+
 /**
- * The depto property and its loan. Exactly one property may carry a loan for now (the depto
- * ledger is one ledger); null when no property is tracked.
+ * Every property with its loan, ascending by property id. Fails fast on a loan whose `loan_of`
+ * names an account that is not a property, a loan naming several properties, or two loans
+ * claiming one property — the ids are in the message.
  */
-export function deptoPropertyAccountId(): number | null {
-  return accountWithRoleOptional("property");
+export function propertyLoanPairs(): PropertyLoanPair[] {
+  const properties = propertyAccountIds();
+  const propertySet = new Set(properties);
+  const loanRows = dbStateMemo("account_role_rows", "loan_of", () =>
+    stmtByRole.all("loan_of") as { account_id: number; param: string }[]
+  );
+  const loanByProperty = new Map<number, number>();
+  const propertyByLoan = new Map<number, number>();
+  for (const r of loanRows) {
+    const propertyId = Number(r.param);
+    if (!Number.isInteger(propertyId) || !propertySet.has(propertyId)) {
+      throw new Error(
+        `account role loan_of: account ${r.account_id} is the loan of «${r.param}», which holds no property role`
+      );
+    }
+    const otherProperty = propertyByLoan.get(r.account_id);
+    if (otherProperty != null && otherProperty !== propertyId) {
+      throw new Error(
+        `account role loan_of: account ${r.account_id} is the loan of two properties (${otherProperty}, ${propertyId})`
+      );
+    }
+    propertyByLoan.set(r.account_id, propertyId);
+    const otherLoan = loanByProperty.get(propertyId);
+    if (otherLoan != null && otherLoan !== r.account_id) {
+      throw new Error(
+        `account role loan_of: property ${propertyId} is claimed by two loans (${otherLoan}, ${r.account_id})`
+      );
+    }
+    loanByProperty.set(propertyId, r.account_id);
+  }
+  return properties.map((propertyAccountId) => ({
+    propertyAccountId,
+    loanAccountId: loanByProperty.get(propertyAccountId) ?? null,
+  }));
+}
+
+/** Every property that carries a loan, with it (ascending by property id). */
+export function propertyLoanPairsWithLoan(): { propertyAccountId: number; loanAccountId: number }[] {
+  return propertyLoanPairs().flatMap((p) =>
+    p.loanAccountId != null ? [{ propertyAccountId: p.propertyAccountId, loanAccountId: p.loanAccountId }] : []
+  );
+}
+
+/**
+ * The property whose depto ledger an account reads: the property itself, or the property its
+ * loan is the loan of; null for any other account.
+ */
+export function deptoPropertyIdOfAccount(accountId: number): number | null {
+  for (const p of propertyLoanPairs()) {
+    if (p.propertyAccountId === accountId || p.loanAccountId === accountId) return p.propertyAccountId;
+  }
+  return null;
 }
 
 /** The merchant patterns of every lender (`lender_pattern` rows), each a list of required words. */
@@ -84,4 +144,11 @@ export function lenderMerchantPatterns(): string[][] {
       r.param.split(/\s+/).filter(Boolean)
     )
   );
+}
+
+/** The merchant patterns of one lender (`lender_pattern` rows on its loan), each a list of required words. */
+export function lenderMerchantPatternsOfLoan(loanAccountId: number): string[][] {
+  return storedRolesOfAccount(loanAccountId)
+    .filter((r) => r.role === "lender_pattern")
+    .map((r) => r.param.split(/\s+/).filter(Boolean));
 }

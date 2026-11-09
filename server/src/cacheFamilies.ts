@@ -215,7 +215,10 @@ export function cacheKeyDailyReferenceSource(sourceSlug: string, unit: CacheUnit
   return `daily.refsrc|${sourceSlug}|${unit}|${days}`;
 }
 
-export const CACHE_KEY_DEPTO_LEDGER = "depto.ledger|rows";
+/** One property's depto ledger (`deptoLedgerFromMovements.ts`): one entry per `property` role holder. */
+export function cacheKeyDeptoLedger(propertyAccountId: number): string {
+  return `depto.ledger|rows|${propertyAccountId}`;
+}
 
 export function cacheKeyFlowsOverview(rest: string): string {
   return `flows.overview|${rest}`;

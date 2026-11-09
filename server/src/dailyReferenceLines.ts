@@ -18,7 +18,7 @@ import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { cacheKeyDailyReferenceSource } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { accountProfile } from "./accountProfile.js";
-import { deptoPropertyAccountId, loanAccountIdOfProperty } from "./accountRoles.js";
+import { loanAccountIdOfProperty } from "./accountRoles.js";
 import { cashNetOfLinkedCreditCards, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
 import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
@@ -28,10 +28,10 @@ import {
   listReferenceGroupsForChartHost,
 } from "./portfolioGroupReference.js";
 import {
-  DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
   DEPTO_HIPOTECA_CHART_LINE_NAME,
-  DEPTO_VALOR_CHART_ACCOUNT_ID,
   DEPTO_VALOR_CHART_LINE_NAME,
+  deptoOverlayLineIds,
+  deptoOverlayPropertyIds,
   listAccountsForGroupTab,
   type TsUnit,
 } from "./valuationTimeseries.js";
@@ -100,18 +100,16 @@ function sourceGroupDailyValues(
  * the equity the payload's own property line plots, so valor = equity + hipoteca holds
  * point-for-point.
  *
- * Empty without the depto property and its loan (`property` / `loan_of` roles; the depto ledger
- * models one property with one loan — the monthly overlays rest on the same assumption).
+ * One pair per property among `propertyAccountIds` with a loan and ledger rows
+ * (`deptoOverlayPropertyIds`, the rule the monthly overlays follow), the first keeping the
+ * historical ids (`deptoOverlayLineIds`); a pair whose loan has no value on the grid is left out.
  */
 export function deptoPropertyChartOverlayDailyLines(
+  propertyAccountIds: readonly number[],
   datesAsc: readonly string[],
   unit: TsUnit
 ): DailySeriesAccountLine[] {
   if (!datesAsc.length) return [];
-  // The property and its loan, read through their roles (`accountRoles.ts`).
-  const propertyId = deptoPropertyAccountId();
-  const loanId = propertyId != null ? loanAccountIdOfProperty(propertyId) : null;
-  if (propertyId == null || loanId == null) return [];
   // Each account's own value in the unit per day (converted once at its side: the mortgage
   // as a debt), the same figures its line plots.
   const markValues = (accountId: number): (number | null)[] => {
@@ -122,25 +120,34 @@ export function deptoPropertyChartOverlayDailyLines(
       unit
     );
   };
+  const out: DailySeriesAccountLine[] = [];
+  deptoOverlayPropertyIds(propertyAccountIds).forEach((propertyId, i) => {
+    // The property and its loan, read through their roles (`accountRoles.ts`).
+    const loanId = loanAccountIdOfProperty(propertyId)!;
+    const hipoteca = markValues(loanId);
+    if (!hipoteca.some((v) => v != null)) return;
+    const equity = markValues(propertyId);
+    const ids = deptoOverlayLineIds(propertyId, i === 0);
+    out.push(
+      { account_id: ids.hipotecaId, name: DEPTO_HIPOTECA_CHART_LINE_NAME, values: hipoteca },
+      {
+        account_id: ids.valorId,
+        name: DEPTO_VALOR_CHART_LINE_NAME,
+        values: equity.map((eq, j) => {
+          const hip = hipoteca[j];
+          return eq != null && hip != null ? eq + hip : null;
+        }),
+      }
+    );
+  });
+  return out;
+}
 
-  const hipoteca = markValues(loanId);
-  if (!hipoteca.some((v) => v != null)) return [];
-  const equity = markValues(propertyId);
-  return [
-    {
-      account_id: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
-      name: DEPTO_HIPOTECA_CHART_LINE_NAME,
-      values: hipoteca,
-    },
-    {
-      account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
-      name: DEPTO_VALOR_CHART_LINE_NAME,
-      values: equity.map((eq, i) => {
-        const hip = hipoteca[i];
-        return eq != null && hip != null ? eq + hip : null;
-      }),
-    },
-  ];
+/** The property accounts of a group's chart (the overlays' scope on a group page). */
+export function propertyAccountIdsOfGroup(groupSlug: string): number[] {
+  return listAccountsForGroupTab(groupSlug)
+    .filter((r) => r.account_id > 0 && accountProfile(r.account_id).quantity.kind === "depto_property")
+    .map((r) => r.account_id);
 }
 
 /**

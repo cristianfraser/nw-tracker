@@ -53,7 +53,7 @@ import {
 } from "./portfolioGroupTree.js";
 import { bucketOfAccount, isNwBucketSlug } from "./navTreeModel.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { db, dbInTransaction } from "./db.js";
 
 /**
@@ -123,13 +123,14 @@ type MortgageCardDeposits = {
  * payment at its own date's rate (`flowEventInUnit`), like the performance table's flow.
  */
 function computeMortgageCardDeposits(
+  loanAccountId: number,
   includeUsd: boolean,
   todayYmd: string,
   priorMonthEnd: string,
   priorYearEnd: string,
   priorDayAnchor: string | null
 ): MortgageCardDeposits | null {
-  const ledger = loadDeptoLedgerFromMovements();
+  const ledger = deptoLedgerForAccount(loanAccountId);
   if (!ledger.length) return null;
   const events = mortgageSheetPaymentEventsThroughDate(ledger, todayYmd);
   if (!events.length) return null;
@@ -276,8 +277,8 @@ type DashboardAccountRowsContext = {
   priorMonthEnd: string;
   priorYearEnd: string;
   priorDayYmd: string;
-  /** The mortgage card's deposits, once per listing (the mortgage master appears in one summed scope). */
-  mortgageCardDeposits: () => MortgageCardDeposits | null;
+  /** A mortgage card's deposits (its own property's ledger), once per listing and loan. */
+  mortgageCardDeposits: (loanAccountId: number) => MortgageCardDeposits | null;
 };
 
 function dashboardAccountRowsContext(includeUsd: boolean): DashboardAccountRowsContext {
@@ -292,14 +293,21 @@ function dashboardAccountRowsContext(includeUsd: boolean): DashboardAccountRowsC
      * Day deltas are always balance-change net of flows (no perf series exists at day grain).
      */
     const priorDayYmd = chileCalendarAddDays(today, -1);
-    const computeMortgage = () =>
-      computeMortgageCardDeposits(includeUsd, today, priorMonthEnd, priorYearEnd, priorDayYmd);
-    // Its own entry, so the row that reads it records what it read; inside a transaction (this
-    // context is then not cached) a memo on the context.
-    let mortgageMemo: MortgageCardDeposits | null | undefined;
+    const computeMortgage = (loanAccountId: number) =>
+      computeMortgageCardDeposits(loanAccountId, includeUsd, today, priorMonthEnd, priorYearEnd, priorDayYmd);
+    // Its own entry per loan, so the row that reads it records what it read; inside a
+    // transaction (this context is then not cached) a memo on the context.
+    const mortgageMemo = new Map<number, MortgageCardDeposits | null>();
     const mortgageCardDeposits = dbInTransaction()
-      ? () => (mortgageMemo === undefined ? (mortgageMemo = computeMortgage()) : mortgageMemo)
-      : () => pageBundleCachedSync(`account_rows_mortgage_deposits|${unitKey(includeUsd)}`, computeMortgage);
+      ? (loanAccountId: number) => {
+          if (!mortgageMemo.has(loanAccountId)) mortgageMemo.set(loanAccountId, computeMortgage(loanAccountId));
+          return mortgageMemo.get(loanAccountId)!;
+        }
+      : (loanAccountId: number) =>
+          pageBundleCachedSync(
+            `account_rows_mortgage_deposits|${loanAccountId}|${unitKey(includeUsd)}`,
+            () => computeMortgage(loanAccountId)
+          );
     return {
       accounts,
       leafSlugByAccount: leafPortfolioGroupSlugByAccountIds(accounts.map((a) => a.id)),
@@ -354,7 +362,7 @@ function buildDashboardAccountRowFor(
   } = ctx;
   const leafSlug = a.bucket_slug;
   const kindSlug = accountBucketKindSlug(leafSlug);
-  const mortgagePayments = kindSlug === "mortgage" ? mortgageCardDeposits() : null;
+  const mortgagePayments = kindSlug === "mortgage" ? mortgageCardDeposits(a.id) : null;
   const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
   const dashboard_bucket_slug = bucketOfAccount(a.id);
   const metricGroup = dashboard_bucket_slug ?? leafSlug;

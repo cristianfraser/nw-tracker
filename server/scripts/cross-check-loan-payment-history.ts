@@ -25,7 +25,8 @@ import { parseChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
 import XLSX from "xlsx";
 import { db } from "../src/db.js";
 import { deptoLedgerChronoCompare, isDeptoPrepagoCuota } from "../src/deptoDividendosLedger.js";
-import { loadDeptoLedgerFromMovements } from "../src/deptoLedgerFromMovements.js";
+import { deptoLedgerForLoan } from "../src/deptoLedgerFromMovements.js";
+import { loanAccountIdForMortgageSheet } from "../src/mortgageSheetPaymentsApply.js";
 import { insertManualFundedDepositLink, linkedFundedDepositOf } from "../src/expenseDepositLinks.js";
 import { PARTS_SUM_FIELD, syncLoanPaymentFlowParts } from "../src/flows/loanPaymentParts.js";
 import {
@@ -71,6 +72,8 @@ const planItems: CorrectionPlanItem[] = [
   ...(plan.set_interest_residual ?? []).map((i) => ({ kind: "set_interest_residual" as const, cuota: i.cuota, reason: i.reason })),
   ...(plan.accept ?? []).map((i) => ({ kind: "accept" as const, cuota: i.cuota, field: i.field, reason: i.reason })),
 ];
+// The loan the history is of: the one loan on file (a second loan would need the sheet's lender).
+const loanId = loanAccountIdForMortgageSheet(undefined);
 const acceptedEntries = (plan.accept ?? []).map((a) => ({ label: a.cuota, field: a.field, reason: a.reason }));
 
 // --- the lender's history ---------------------------------------------------------------------
@@ -210,7 +213,7 @@ for (const c of planned.corrections) {
 for (const a of planned.accepted) console.log(`  accepted: cuota ${a.cuota} ${a.field} — ${a.reason}`);
 for (const d of planned.unplanned) console.log(`  UNPLANNED: cuota ${d.cuota} ${d.field}: bank ${d.bank}, ledger ${d.ledger}`);
 
-const pairingBefore = mortgageCardMatches();
+const pairingBefore = mortgageCardMatches(loanId);
 const matchedBefore = new Set(pairingBefore.payments.filter((p) => p.status === "matched").map((p) => p.cuota));
 
 const liquidations = arg("liquidations") ? readLiquidations(arg("liquidations")!) : null;
@@ -247,7 +250,7 @@ const run = db.transaction(() => {
 
   // 2. The prepagos: their split from the liquidation that was paid, and their cash legs.
   if (liquidations) {
-    const ledger = [...loadDeptoLedgerFromMovements()].sort(deptoLedgerChronoCompare);
+    const ledger = [...deptoLedgerForLoan(loanId)].sort(deptoLedgerChronoCompare);
     console.log(`\nPrepagos: ${liquidations.length} liquidation(s) read.`);
     for (let i = 0; i < ledger.length; i++) {
       const row = ledger[i]!;
@@ -327,11 +330,11 @@ const run = db.transaction(() => {
     for (const n of neededAccepted) console.log(`  { "label": "${n.label}", "field": "${n.field}", "reason": "${n.reason}" }`);
     throw new Error(`${neededAccepted.length} difference(s) need an accepted entry before anything is written`);
   }
-  syncLoanPaymentFlowParts(acceptedEntries);
+  syncLoanPaymentFlowParts(acceptedEntries, loanId);
   const parts = db.prepare(`SELECT COUNT(DISTINCT flow_id) AS flows, COUNT(*) AS n FROM flow_parts WHERE kind <> 'piece'`).get() as { flows: number; n: number };
   console.log(`\nParts: ${parts.n} part(s) on ${parts.flows} flow(s).`);
 
-  const pairingAfter = mortgageCardMatches();
+  const pairingAfter = mortgageCardMatches(loanId);
   const matchedAfter = new Set(pairingAfter.payments.filter((p) => p.status === "matched").map((p) => p.cuota));
   const lost = [...matchedBefore].filter((c) => !matchedAfter.has(c));
   if (lost.length) throw new Error(`card pairing lost cuota(s) ${lost.join(", ")}`);

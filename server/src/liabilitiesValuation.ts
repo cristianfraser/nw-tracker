@@ -1,10 +1,9 @@
 import {
   deptoMortgageCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
-  type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
@@ -50,10 +49,28 @@ function buildAccountCategoryMeta(): AccountCategoryMeta {
   );
 }
 
-// No module-level cache: the movement ledger is ~30 rows and a stale cache leaks
-// across requests (and across test files in the single vitest fork).
-function mortgageLedgerForLiabilitiesOverview(): DeptoMortgageSheetRow[] {
-  return loadDeptoLedgerFromMovements();
+/**
+ * Each loan's depto ledger view: the first day its property was owned and its balance (UF × UF
+ * día) on the dates asked. One entry per loan with ledger rows; a mortgage with none reads its
+ * stored valuations (account-type dispatch, not a fallback).
+ */
+type LoanLedgerView = { firstMortgageYmd: string | null; closeByDate: Map<string, number> };
+
+function loanLedgerViews(datesAsc: readonly string[]): Map<number, LoanLedgerView> {
+  const out = new Map<number, LoanLedgerView>();
+  const ufMap = datesAsc.length ? ufClpBySnapshotDatesAsc([...datesAsc]) : new Map<string, number>();
+  for (const { loanAccountId, rows } of loadAllDeptoLedgers()) {
+    if (loanAccountId == null || rows.length === 0) continue;
+    const firstMortgageYmd = firstDeptoPropertyOwnershipYmd(rows);
+    out.set(loanAccountId, {
+      firstMortgageYmd,
+      closeByDate:
+        firstMortgageYmd != null && datesAsc.length
+          ? deptoMortgageCloseClpBySnapshotDates([...datesAsc], rows, ufMap)
+          : new Map(),
+    });
+  }
+  return out;
 }
 
 /** Same membership as {@link listLiabilitiesTabAccountRows}. */
@@ -69,21 +86,15 @@ function liabilityValuationClpAt(
   asOfYmd: string,
   ctx: {
     meta: AccountCategoryMeta;
-    useSheet: boolean;
-    firstMortgageYmd: string | null;
-    mortgageClose: Map<string, number>;
+    loans: Map<number, LoanLedgerView>;
   }
 ): number | null {
   const m = ctx.meta.get(row.account_id);
   if (m?.exclude_from_group_totals) return null;
   let clp: number | null = null;
-  if (
-    ctx.useSheet &&
-    row.quantity === "depto_loan" &&
-    ctx.firstMortgageYmd != null &&
-    asOfYmd >= ctx.firstMortgageYmd
-  ) {
-    const fromSheet = ctx.mortgageClose.get(asOfYmd);
+  const loan = row.quantity === "depto_loan" ? ctx.loans.get(row.account_id) : undefined;
+  if (loan && loan.firstMortgageYmd != null && asOfYmd >= loan.firstMortgageYmd) {
+    const fromSheet = loan.closeByDate.get(asOfYmd);
     if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
   }
   if (clp == null) {
@@ -94,24 +105,12 @@ function liabilityValuationClpAt(
   return clp != null && Number.isFinite(clp) ? clp : null;
 }
 
-function liabilityValuationContext(asOfYmd?: string) {
-  // One case: the depto movement ledger is authoritative whenever it has rows; mortgages
+function liabilityValuationContext(asOfYmd: string) {
+  // One case: a loan's depto movement ledger is authoritative whenever it has rows; mortgages
   // without depto movements use stored valuations — account-type dispatch, not a fallback.
-  const ledger = mortgageLedgerForLiabilitiesOverview();
-  const useSheet = ledger.length > 0;
-  const firstMortgageYmd = useSheet ? firstDeptoPropertyOwnershipYmd(ledger) : null;
-  const mortgageClose =
-    useSheet &&
-    firstMortgageYmd != null &&
-    asOfYmd != null &&
-    asOfYmd >= firstMortgageYmd
-      ? deptoMortgageCloseClpBySnapshotDates([asOfYmd], ledger, ufClpBySnapshotDatesAsc([asOfYmd]))
-      : new Map<string, number>();
   return {
     meta: accountCategoryMetaById(),
-    useSheet,
-    firstMortgageYmd,
-    mortgageClose,
+    loans: loanLedgerViews([asOfYmd]),
   };
 }
 
@@ -179,24 +178,7 @@ export function liabilitiesBreakdownClpByDates(
   if (!datesAsc.length) return out;
 
   const accounts = liabilityAccountsForValuation();
-  const ledger = mortgageLedgerForLiabilitiesOverview();
-  const useSheet = ledger.length > 0;
-  const firstMortgageYmd = useSheet ? firstDeptoPropertyOwnershipYmd(ledger) : null;
-  const mortgageCloseByDate =
-    useSheet && ledger.length > 0 && firstMortgageYmd != null
-      ? deptoMortgageCloseClpBySnapshotDates([...datesAsc], ledger, ufClpBySnapshotDatesAsc([...datesAsc]))
-      : new Map<string, number>();
-  const meta = accountCategoryMetaById();
-
-  for (const d of datesAsc) {
-    const mortgageClose =
-      useSheet &&
-      firstMortgageYmd != null &&
-      d >= firstMortgageYmd
-        ? new Map<string, number>([[d, mortgageCloseByDate.get(d) ?? Number.NaN]])
-        : new Map<string, number>();
-    const ctx = { meta, useSheet, firstMortgageYmd, mortgageClose };
-    out.set(d, liabilityBreakdownForDate(accounts, d, ctx));
-  }
+  const ctx = { meta: accountCategoryMetaById(), loans: loanLedgerViews(datesAsc) };
+  for (const d of datesAsc) out.set(d, liabilityBreakdownForDate(accounts, d, ctx));
   return out;
 }
