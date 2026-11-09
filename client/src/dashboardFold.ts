@@ -32,3 +32,16 @@ export const DashboardAboutPreviewContext = createContext(false);
 export function useDashboardAboutPreview(): boolean {
   return useContext(DashboardAboutPreviewContext);
 }
+
+/**
+ * The demo's About page shows its preview only once the dashboard's cards carry real numbers (no
+ * placeholder card ever reaches the screen, and the preview's height is measured once, at its
+ * loaded size). The dashboard calls this when its strip first shows real data; null elsewhere.
+ */
+export const DashboardStripReadyContext = createContext<(() => void) | null>(null);
+
+/**
+ * False while the About preview is held back (its cards not in yet): the net-worth lines' slow
+ * draw-in waits for it to be shown. True everywhere else.
+ */
+export const DashboardPreviewShownContext = createContext(true);

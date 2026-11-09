@@ -48,6 +48,43 @@
         document.head.appendChild(s);
       })();
     </script>
+    <script>
+      // The dashboard's first calls start now, while the app's JavaScript downloads, instead of
+      // after it runs: the sidebar tree, the page bundle in the stored unit (CLP for a first
+      // visit) and — with no chart preference stored — the net-worth chart's default daily series
+      // (Diario, 3y = 1096 days), on the routes that open the dashboard (`/`, `/dashboard`). The
+      // URLs and credentials match what api.ts then requests, so the browser hands it these.
+      (function () {
+        var path = location.pathname.replace(/\/+$/, "") || "/";
+        if (path !== "/" && path !== "/dashboard") return;
+        var base = "%VITE_API_URL%";
+        if (base.charAt(0) === "%") base = "";
+        var unit = "clp";
+        var chartPrefsStored = false;
+        try {
+          if (localStorage.getItem("nw-tracker.displayUnit") === "usd") unit = "usd";
+          chartPrefsStored = localStorage.getItem("nw-tracker.surface.home.overview") != null;
+        } catch (e) {
+          // storage blocked: the defaults
+        }
+        var usd = unit === "usd";
+        var urls = [
+          base + "/api/meta/sidebar-nav",
+          base + "/api/dashboard/page-bundle" + (usd ? "?include_usd=true" : ""),
+        ];
+        if (!chartPrefsStored) {
+          urls.push(base + "/api/dashboard/overview-daily?" + (usd ? "include_usd=true&" : "") + "days=1096");
+        }
+        for (var i = 0; i < urls.length; i++) {
+          var link = document.createElement("link");
+          link.rel = "preload";
+          link.as = "fetch";
+          link.href = urls[i];
+          link.crossOrigin = "anonymous";
+          document.head.appendChild(link);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

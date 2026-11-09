@@ -168,6 +168,8 @@ interface BlockProps {
    * updates are not animated by it. Omitted: no draw-in.
    */
   drawInMs?: number;
+  /** The draw-in waits while true (the chart is not on screen yet: the demo's held-back preview). */
+  drawInHold?: boolean;
   /**
    * The block is a placeholder or held prior data: the panel dims itself and, with nothing to
    * plot, draws an empty chart box instead of the «no valuation series» copy.
@@ -446,6 +448,7 @@ export function LineChartPanel({
   controls,
   athMarker,
   drawInMs,
+  drawInHold = false,
   loading,
 }: BlockProps) {
   const timeRange = timeRangeProp ?? "total";
@@ -577,8 +580,8 @@ export function LineChartPanel({
 
   const hasPlot = chartData.length > 0 && visibleSeries.length > 0;
   useEffect(() => {
-    if (drawIn === "pending" && hasPlot && !loading) setDrawIn("running");
-  }, [drawIn, hasPlot, loading]);
+    if (drawIn === "pending" && hasPlot && !loading && !drawInHold) setDrawIn("running");
+  }, [drawIn, hasPlot, loading, drawInHold]);
   useEffect(() => {
     if (drawIn !== "running" || drawInMs == null) return;
     const done = window.setTimeout(() => setDrawIn("done"), drawInMs);

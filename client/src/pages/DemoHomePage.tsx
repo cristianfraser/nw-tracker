@@ -1,10 +1,16 @@
-import { Fragment, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type HTMLAttributes, type RefObject } from "react";
+import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type HTMLAttributes, type RefObject } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Trans } from "react-i18next";
 import { useTranslation } from "../i18n";
 import { cn } from "../cn";
 import { DashboardPage } from "./DashboardPage";
-import { DashboardAboutPreviewContext, DashboardFoldContext, type DashboardFold } from "../dashboardFold";
+import {
+  DashboardAboutPreviewContext,
+  DashboardFoldContext,
+  DashboardPreviewShownContext,
+  DashboardStripReadyContext,
+  type DashboardFold,
+} from "../dashboardFold";
 import { DASHBOARD_ALIAS_PATH } from "../dashboardPath";
 import { skipNextScrollRestore } from "../useScrollMemory";
 import { DEMO_REPO_URL } from "../components/layout/DemoTour";
@@ -72,15 +78,24 @@ function usePreviewHeight(frameRef: RefObject<HTMLDivElement>): number | null {
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    let observed: HTMLElement | null = null;
-    const measure = () => {
-      const tile = frame.querySelector<HTMLElement>('[data-tile="net-worth-chart"]');
-      if (!tile) return;
-      if (tile !== observed) {
-        if (observed) ro.unobserve(observed);
-        ro.observe(tile);
-        observed = tile;
+    // The chart tile's size, and everything above it: the cards strip grows when its real numbers
+    // replace the placeholders, which moves the chart down without resizing it.
+    const observed = new Map<string, HTMLElement>();
+    const watch = (selector: string): HTMLElement | null => {
+      const el = frame.querySelector<HTMLElement>(selector);
+      const prev = observed.get(selector);
+      if (el !== prev) {
+        if (prev) ro.unobserve(prev);
+        if (el) ro.observe(el);
+        if (el) observed.set(selector, el);
+        else observed.delete(selector);
       }
+      return el;
+    };
+    const measure = () => {
+      watch('[data-tile="strip"]');
+      const tile = watch('[data-tile="net-worth-chart"]');
+      if (!tile) return;
       setHeight(layoutTop(tile) + tile.offsetHeight - layoutTop(frame) + PREVIEW_BOTTOM_GAP_PX);
     };
     const ro = new ResizeObserver(measure);
@@ -142,6 +157,29 @@ export function DemoHomePage() {
   // One element for the page's life: the route change re-renders this host, never the dashboard
   // (which reads no route) — it only re-renders for its own data and the two contexts below.
   const dashboard = useMemo(() => <DashboardPage />, []);
+
+  // The preview stays invisible until the dashboard's cards carry real numbers (no zero
+  // placeholder, no growing height): then, once its height was measured at the loaded size, it
+  // fades in. Stays shown for the page's life.
+  const [stripReady, setStripReady] = useState(false);
+  const markStripReady = useCallback(() => setStripReady(true), []);
+  const [previewShown, setPreviewShown] = useState(false);
+  useEffect(() => {
+    if (!stripReady || previewShown) return;
+    // Two frames (the strip's resize re-measures the height before paint), or a short timer when
+    // frames do not run (a background tab), whichever comes first.
+    let second = 0;
+    const show = () => setPreviewShown(true);
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(show);
+    });
+    const fallback = window.setTimeout(show, 120);
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+      window.clearTimeout(fallback);
+    };
+  }, [stripReady, previewShown]);
   const movingIn = !about && !full;
   useLayoutEffect(() => {
     setDemoDashboardMovingIn(movingIn);
@@ -277,11 +315,19 @@ export function DemoHomePage() {
 
       {/* The pin holds the preview in place while About scrolls (sticky, zero height). */}
       <div className={cn("page-grid", styles.pin)}>
-        <div ref={frameRef} className={cn("page-grid page-root", styles.frame)} {...inertWhen(about)}>
+        <div
+          ref={frameRef}
+          className={cn("page-grid page-root", styles.frame, !previewShown && styles.framePending)}
+          {...inertWhen(about || !previewShown)}
+        >
           <DashboardFoldContext.Provider value={fold}>
-            {/* Still a preview while it moves in: the flag only matters on the first draw, and
-                flipping it at the click would re-render the dashboard while the move starts. */}
-            <DashboardAboutPreviewContext.Provider value={about || !full}>{dashboard}</DashboardAboutPreviewContext.Provider>
+            <DashboardStripReadyContext.Provider value={markStripReady}>
+              <DashboardPreviewShownContext.Provider value={previewShown}>
+                {/* Still a preview while it moves in: the flag only matters on the first draw, and
+                    flipping it at the click would re-render the dashboard while the move starts. */}
+                <DashboardAboutPreviewContext.Provider value={about || !full}>{dashboard}</DashboardAboutPreviewContext.Provider>
+              </DashboardPreviewShownContext.Provider>
+            </DashboardStripReadyContext.Provider>
           </DashboardFoldContext.Provider>
         </div>
       </div>

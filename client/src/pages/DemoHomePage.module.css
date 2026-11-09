@@ -145,13 +145,25 @@
   transform-origin: top center;
 }
 
-/* Only About → Dashboard animates: a transition runs with the destination state's rules, so the
-   way back to About (no transition there) snaps at once. */
 /* Both ways animate. A transition runs with the destination state's rules: into the dashboard
    only the move animates (the preview's rounded border and shadow are gone before it starts);
    back to About they fade in while the frame tilts away. */
 .modeDashboard .frame {
-  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition:
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.45s ease;
+}
+
+/* Until the dashboard's cards carry real numbers the frame is laid out (so its height is
+   measured) but not shown; then it fades in (DemoHomePage `previewShown`). */
+.framePending {
+  opacity: 0;
+}
+
+/* Nothing in the preview dims while it loads: the frame is only shown once its cards are real,
+   and a dimmed chart or panel under the tilt reads as a broken page. */
+.modeAbout .frame :global(.loadable.is-loading) {
+  opacity: 1;
 }
 
 /* Its own compositor layer while tilted or moving, so the move runs off the main thread; dropped
@@ -165,7 +177,8 @@
   transition:
     transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
     border-radius 0.7s ease,
-    box-shadow 0.7s ease;
+    box-shadow 0.7s ease,
+    opacity 0.45s ease;
 }
 
 /* Back on About the text fades in rather than popping over the moving preview. */
