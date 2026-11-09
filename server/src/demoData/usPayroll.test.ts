@@ -8,7 +8,7 @@ import {
   usTaxYear,
 } from "../usLegalParameters.js";
 import type { UsW2Job } from "./person.js";
-import { newUsPayrollYtd, usAnnualSalary, usPayDates, usPayStub, usW2sFromStubs } from "./usPayroll.js";
+import { newUsPayrollYtd, usAnnualSalary, usPayDates, usPayStub, usW2sOfStubs } from "./usPayroll.js";
 
 const JOB: UsW2Job = {
   kind: "us_w2",
@@ -97,7 +97,7 @@ describe("the demo's US payroll", () => {
   it("adds the year's stubs into its W-2", () => {
     const ytd = newUsPayrollYtd();
     const stubs = usPayDates(JOB, "2024-12-31").map((d) => usPayStub(JOB, d, ytd));
-    const [w] = usW2sFromStubs(stubs);
+    const [w] = usW2sOfStubs(stubs);
     expect(w).toMatchObject({ year: 2024, ein: JOB.ein });
     expect(w!.federalWithheld).toBe(sum(stubs.map((s) => s.federal)));
     expect(w!.box12D).toBe(sum(stubs.map((s) => s.k401)));

@@ -2054,7 +2054,7 @@
       "155": "Mayor valor en rescates de fondos y enajenación de acciones (art. 17 N°8)",
       "157": "IGC según tabla",
       "158": "Subtotal",
-      "161": "Renta art. 42 N°1",
+      "161": "Renta art. 42 N°1 (total línea 12)",
       "162": "Crédito por impuesto único retenido",
       "169": "Pérdidas en capitales mobiliarios y ganancias de capital",
       "170": "Base imponible anual del IGC",
@@ -2072,6 +2072,7 @@
       "900": "Cargo por cotizaciones previsionales",
       "955": "Rentas efectivas sin contabilidad completa (línea 5)",
       "1018": "Crédito por impuestos soportados en el exterior",
+      "1030": "Sueldos y otras rentas similares de fuente extranjera",
       "1032": "Otras rentas de fuente chilena (criptoactivos)",
       "1098": "Sueldos, pensiones y otras rentas de fuente nacional",
       "1104": "Otras rentas de fuente extranjera",
@@ -2150,6 +2151,18 @@
       "propertyTax": "Contribuciones pagadas",
       "totals": "Arriendo afecto {{taxable}} · arriendo DFL-2 exento {{exempt}}.",
       "credit": "Crédito por contribuciones: {{paid}} pagadas, tope {{cap}} (el IGC del arriendo) → {{credit}}."
+    },
+    "foreignIncome": {
+      "title": "Rentas de fuente extranjera",
+      "explain": "Un residente en Chile declara sus rentas de cualquier origen (art. 3 LIR). El sueldo en EE.UU. va a la línea 12, código 1030: el bruto de cada liquidación menos Social Security y Medicare, al dólar observado de su día de pago, reajustado a diciembre, menos el impuesto a la renta de EE.UU. (la línea 24 del Form 1040). Ese impuesto es crédito según el art. 41 A y el convenio Chile–EE.UU.: hasta el 35 % del bruto, sumado como incremento (748) y acreditado en 1018 hasta el IGC de esta renta, sin devolución.",
+      "provisional": "El año no ha cerrado: las liquidaciones a la fecha, el reajuste con el último IPC publicado.",
+      "salary": "{{stubs}} liquidaciones: US$ {{usd}} después de Social Security y Medicare → {{gross}}; impuesto en EE.UU. US$ {{taxUsd}} ({{source}}) → {{tax}}; declarado en 1030: {{net}}.",
+      "taxSource": {
+        "filed": "1040 presentado",
+        "draft": "borrador del 1040"
+      },
+      "credit": "Crédito: {{credit}} (el impuesto de EE.UU., hasta el 35 % del bruto), tope {{cap}} (el IGC de esta renta) → {{applied}} en 1018.",
+      "interest": "Intereses de un corredor extranjero: US$ {{usd}} al observado del 31 de diciembre → {{clp}}, en 1104 (sin impuesto retenido en EE.UU., sin crédito)."
     },
     "art107": {
       "title": "Art. 107 LIR: ventas de fondos y acciones",

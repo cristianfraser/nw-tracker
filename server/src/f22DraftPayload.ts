@@ -38,6 +38,7 @@ export type F22PayloadRow = {
 /** Display order of the codes this taxpayer's return uses; any other stored code is appended as `other`. */
 const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [1098, "income"],
+  [1030, "income"],
   [547, "memo"],
   [494, "memo"],
   [770, "memo"],
@@ -291,6 +292,26 @@ export function buildF22Payload(taxYear: number) {
             cap_clp: d.propertyTaxCredit.capClp,
             credit_clp: d.propertyTaxCredit.creditClp,
           },
+    },
+    foreign_income: {
+      salary: {
+        provisional: d.foreignSalary.provisional,
+        stubs: d.foreignSalary.stubs.length,
+        income_usd: d.foreignSalary.incomeUsd,
+        gross_clp: d.foreignSalary.grossClp,
+        us_tax_usd: d.foreignSalary.usTaxUsd,
+        us_tax_source: d.foreignSalary.usTaxSource,
+        us_tax_clp: d.foreignSalary.usTaxClp,
+        net_clp: d.foreignSalary.netClp,
+        credit_clp: d.foreignSalary.creditClp,
+        credit_cap_clp: d.foreignSalaryCredit?.capClp ?? null,
+        credit_applied_clp: d.foreignSalaryCredit?.appliedClp ?? null,
+      },
+      interest: {
+        lines: d.foreignInterest.lines.map((l) => ({ date: l.date, account_name: accountName(l.accountId), usd: l.usd })),
+        usd: d.foreignInterest.usd,
+        clp: d.foreignInterest.clp,
+      },
     },
     usd_fx: {
       route: d.usdFx.route,

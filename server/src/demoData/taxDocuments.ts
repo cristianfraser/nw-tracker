@@ -8,9 +8,13 @@
  *   liquidaciones, as `payrollTaxYear` rebuilds it), the AFP's 1899 (APV régimen B, in UF), the
  *   lender's 1898 (mortgage interest, actualizada) and the bank's 1890 (the real interest of the
  *   term deposits that matured in the year);
- * - in April, the return the tax module drafts (`buildF22Draft`): its 305 plus the pension
- *   contributions on fees the SII charges (code 900, which the module does not draft) is what the
- *   person pays or gets back, and the form is stored as filed once April has passed.
+ * - in April, first each US tax year's Form 1040 (`buildF1040Draft`): its line 37 is paid from US
+ *   checking on the 15th, its 35a refunded there about three weeks after filing, and the return is
+ *   stored as filed (`recordFiledF1040`) with its settlement linked (`linkF1040Settlement`);
+ * - then the F22 the tax module drafts (`buildF22Draft`), whose foreign-salary credit reads that
+ *   1040's tax: its 305 plus the pension contributions on fees the SII charges (code 900, which the
+ *   module does not draft) is what the person pays or gets back, and the form is stored as filed once
+ *   April has passed.
  *
  * The generator runs the simulation until every April settlement it booked is the tax module's
  * figure (`aprilSettlementsFromTaxModule`); see generate.ts.
@@ -18,10 +22,12 @@
 import { db } from "../db.js";
 import { buildF22Draft, type F22Codes } from "../f22Draft.js";
 import { mortgageInterestForYear } from "../f22AppEstimates.js";
+import { buildF1040Draft } from "../f1040Draft.js";
+import { linkF1040Settlement, recordFiledF1040 } from "../f1040Filed.js";
 import { payrollTaxYear } from "../payrollTaxYear.js";
 import { upsertMovementDividendDetail } from "../movementDividendDetails.js";
-import { accountsWithRole } from "../accountRoles.js";
-import { DIVIDEND_WITHHOLDING_RATE, type Ledger } from "./simulate.js";
+import { accountsWithRole, propertyLoanPairsWithLoan } from "../accountRoles.js";
+import { DIVIDEND_WITHHOLDING_RATE, US_IRS_PAYMENT, US_IRS_REFUND, type Ledger } from "./simulate.js";
 import type { Ymd } from "./person.js";
 
 /** «1.234.567» — how the SII's DJ summary prints pesos. */
@@ -144,10 +150,20 @@ function writeInformedDjs(ledger: Ledger, today: Ymd): void {
       ins.run(taxYear, 1890, "B: Intereses Reales / Positivo", chileanInteger(dap.positive), file);
       ins.run(taxYear, 1890, "C: Intereses Reales / Negativo", chileanInteger(dap.negative), file);
     }
-    const interest = mortgageInterestForYear(y);
-    if (interest > 0) {
-      ins.run(taxYear, 1898, "A: Monto Actualizado de los Intereses Pagados ($) en Dividendo", chileanInteger(interest), `demo/DJ_1898_${taxYear}.xlsx`);
-    }
+    // Each lender files its own DJ 1898; the summary prints one column per lender.
+    const lenders = propertyLoanPairsWithLoan()
+      .map((p) => ({ loan: p.loanAccountId, interest: mortgageInterestForYear(y, p.loanAccountId) }))
+      .filter((x) => x.interest > 0);
+    lenders.forEach((x, i) => {
+      const name = (db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(x.loan) as { name: string }).name;
+      ins.run(
+        taxYear,
+        1898,
+        `${String.fromCharCode(65 + i)}: ${name} / Monto Actualizado de los Intereses Pagados ($) en Dividendo`,
+        chileanInteger(x.interest),
+        `demo/DJ_1898_${taxYear}.xlsx`
+      );
+    });
   }
 }
 
@@ -179,6 +195,55 @@ export function aprilSettlementsFromTaxModule(ledger: Ledger, today: Ymd): Map<n
     if (total !== 0 || ledger.aprilSettlements.has(y)) out.set(y, total);
   }
   return out;
+}
+
+/** The US tax years whose April the simulation reached (it filed their 1040). */
+function usTaxYearsToFile(ledger: Ledger, today: Ymd): number[] {
+  return [...ledger.usAprilSettlements.entries()]
+    .filter(([, s]) => s.filedOn <= today)
+    .map(([y]) => y)
+    .sort((a, b) => a - b);
+}
+
+/** What the 1040 module says each US tax year settles: line 37 − line 35a, dollars. */
+export function usAprilSettlementsFromTaxModule(ledger: Ledger, today: Ymd): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const y of usTaxYearsToFile(ledger, today)) {
+    const lines = buildF1040Draft(y, today).lines;
+    out.set(y, (lines["37"] ?? 0) - (lines["35a"] ?? 0));
+  }
+  return out;
+}
+
+/** The US tax years whose booked 1040 settlement differs from the module's. */
+export function usSettlementDifferences(
+  ledger: Ledger,
+  module: ReadonlyMap<number, number>
+): { year: number; booked: number; module: number }[] {
+  const years = new Set([...usTaxYearsToFile(ledger, ledger.today), ...module.keys()]);
+  return [...years]
+    .sort((a, b) => a - b)
+    .map((year) => ({ year, booked: ledger.usAprilSettlements.get(year)?.usd ?? 0, module: module.get(year) ?? 0 }))
+    .filter((x) => x.booked !== x.module);
+}
+
+/**
+ * The 1040s as filed, with the US checking movement that settled each (the IRS payment or refund),
+ * before the F22s: the F22's foreign-salary credit reads the filed return's tax.
+ */
+export function writeDemoFiledUsReturns(ledger: Ledger, today: Ymd): void {
+  for (const y of usTaxYearsToFile(ledger, today)) {
+    const settlement = ledger.usAprilSettlements.get(y)!;
+    const draft = buildF1040Draft(y, today);
+    recordFiledF1040({ taxYear: y, filingStatus: draft.filingStatus, filedOn: settlement.filedOn, sourceFile: `demo/F1040_${y}.pdf`, lines: draft.lines });
+    if (settlement.usd === 0 || settlement.settledOn > today) continue;
+    const desc = settlement.usd > 0 ? US_IRS_PAYMENT : US_IRS_REFUND;
+    const rows = db
+      .prepare(`SELECT id FROM movements WHERE currency = 'usd' AND account_id IS NOT NULL AND note LIKE ? AND occurred_on = ? AND amount = ?`)
+      .all(`%|${desc}|%`, settlement.settledOn, Math.abs(settlement.usd)) as { id: number }[];
+    if (rows.length !== 1) throw new Error(`demo taxes: 1040 ${y} settlement of US$${settlement.usd} matches ${rows.length} movements`);
+    linkF1040Settlement({ taxYear: y, movementId: rows[0]!.id, description: desc });
+  }
 }
 
 /** The years whose booked settlement differs from the module's, with both figures. */

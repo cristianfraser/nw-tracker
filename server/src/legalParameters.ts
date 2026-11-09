@@ -64,6 +64,13 @@ export function iuscTax(taxableClp: number, utmClp: number, incomeYear: number):
 
 /** Foreign tax credit cap: 35% of the foreign income's gross amount (art. 41 A). */
 export const FOREIGN_TAX_CREDIT_CAP = 0.35;
+/**
+ * The first income year the Chile–US double-taxation treaty (signed 2010, in force 2024-02-01)
+ * applies to income taxes other than withholding: taxable periods beginning on or after 1 January
+ * 2024 (art. 30, as both tax administrations announced it). A US salary before it would need art.
+ * 41 A's non-treaty rules, which the F22 draft does not model.
+ */
+export const CHILE_US_TREATY_FIRST_INCOME_YEAR = 2024;
 /** Impuesto de primera categoría (régimen general). */
 export const IDPC_RATE = 0.25;
 /** Annual cap of the APV régimen B rebate, in UF at 31 December (art. 42 bis). */

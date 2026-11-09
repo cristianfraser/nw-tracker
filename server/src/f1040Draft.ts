@@ -149,40 +149,12 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
   const provisional = taxYear >= currentYear(todayYmd);
   if (taxYear > currentYear(todayYmd)) throw new Error(`1040 ${taxYear}: a year that has not started`);
   const lawYear = lawYearFor(taxYear, provisional);
-  const law = usTaxYear(lawYear);
   const { stubs, statuses, firstPayDate } = loadStubs(taxYear);
   if (statuses.size > 1) throw new Error(`1040 ${taxYear}: the stubs carry several W-4 filing statuses (${[...statuses].join(", ")})`);
   const filingStatus = statuses.size === 1 ? [...statuses][0]! : latestFilingStatusBefore(taxYear);
   const w2s = usW2sFromStubLines(stubs, (y) => (y === taxYear ? lawYear : y));
 
-  const sum = (f: (w: UsW2) => number) => cents(w2s.reduce((s, w) => s + f(w), 0));
-  const medicareWages = sum((w) => w.medicareWages);
-  const medicareWithheld = sum((w) => w.medicareTax);
-  const additionalMedicareTax = cents(Math.max(0, medicareWages - law.additionalMedicareThreshold[filingStatus]) * law.additionalMedicareRate);
-  // Form 8959 part V: Medicare withheld beyond the regular 1,45 % is the additional tax withheld.
-  const additionalWithheldRaw = Math.round(medicareWithheld - medicareWages * law.medicareRate);
-  const additionalWithheld = additionalWithheldRaw === 0 ? 0 : additionalWithheldRaw; // never −0
-  if (additionalWithheld < 0) {
-    throw new Error(`1040 ${taxYear}: Medicare withheld (${medicareWithheld}) is below 1,45 % of the Medicare wages (${medicareWages})`);
-  }
-  // Schedule 3 line 11: with two or more employers, Social Security withheld above the maximum.
-  const maxSocialSecurity = cents(law.socialSecurityWageBase * law.socialSecurityRate);
-  for (const w of w2s) {
-    if (w.socialSecurityTax > maxSocialSecurity + 0.005) {
-      throw new Error(`1040 ${taxYear}: ${w.employer} withheld ${w.socialSecurityTax} of Social Security, above the year's maximum ${maxSocialSecurity}`);
-    }
-  }
-  const excessSocialSecurity = w2s.length > 1 ? Math.round(Math.max(0, sum((w) => w.socialSecurityTax) - maxSocialSecurity)) : 0;
-
-  const lines = computeF1040Lines({
-    wages1a: Math.round(sum((w) => w.wages)),
-    standardDeduction12: law.standardDeduction[filingStatus],
-    taxOn: (taxable) => usForm1040Tax(taxable, filingStatus, lawYear),
-    otherTaxes23: Math.round(additionalMedicareTax),
-    withholdingW2_25a: Math.round(sum((w) => w.federalWithheld)),
-    withholdingOther25c: additionalWithheld,
-    schedule3Credits31: excessSocialSecurity,
-  });
+  const { lines, additionalMedicareTax, fica } = f1040LinesFromW2s(w2s, filingStatus, lawYear, `${taxYear}`);
 
   const notes: F1040Note[] = ["no_state_return"];
   const first = firstUsPayYear();
@@ -198,9 +170,52 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
     stubs: stubs.length,
     w2s,
     lines,
-    fica: { socialSecurity: sum((w) => w.socialSecurityTax), medicare: medicareWithheld },
+    fica,
     additionalMedicareTax,
     filed: filedF1040(taxYear),
     notes,
   };
+}
+
+/**
+ * The 1040's lines from a year's W-2s, for a filing status under `lawYear`'s law (pure: the draft
+ * above and the demo generator's April, which drafts the return from the stubs it wrote, share it).
+ */
+export function f1040LinesFromW2s(
+  w2s: readonly UsW2[],
+  filingStatus: UsFilingStatus,
+  lawYear: number,
+  label: string
+): { lines: ReturnType<typeof computeF1040Lines>; additionalMedicareTax: number; fica: { socialSecurity: number; medicare: number } } {
+  const law = usTaxYear(lawYear);
+  const sum = (f: (w: UsW2) => number) => cents(w2s.reduce((s, w) => s + f(w), 0));
+  const medicareWages = sum((w) => w.medicareWages);
+  const medicareWithheld = sum((w) => w.medicareTax);
+  const additionalMedicareTax = cents(Math.max(0, medicareWages - law.additionalMedicareThreshold[filingStatus]) * law.additionalMedicareRate);
+  // Form 8959 part V: Medicare withheld beyond the regular 1,45 % is the additional tax withheld.
+  const additionalWithheldRaw = Math.round(medicareWithheld - medicareWages * law.medicareRate);
+  const additionalWithheld = additionalWithheldRaw === 0 ? 0 : additionalWithheldRaw; // never −0
+  if (additionalWithheld < 0) {
+    throw new Error(`1040 ${label}: Medicare withheld (${medicareWithheld}) is below 1,45 % of the Medicare wages (${medicareWages})`);
+  }
+  // Schedule 3 line 11: with two or more employers, Social Security withheld above the maximum.
+  const maxSocialSecurity = cents(law.socialSecurityWageBase * law.socialSecurityRate);
+  for (const w of w2s) {
+    if (w.socialSecurityTax > maxSocialSecurity + 0.005) {
+      throw new Error(`1040 ${label}: ${w.employer} withheld ${w.socialSecurityTax} of Social Security, above the year's maximum ${maxSocialSecurity}`);
+    }
+  }
+  const excessSocialSecurity = w2s.length > 1 ? Math.round(Math.max(0, sum((w) => w.socialSecurityTax) - maxSocialSecurity)) : 0;
+
+  const lines = computeF1040Lines({
+    wages1a: Math.round(sum((w) => w.wages)),
+    standardDeduction12: law.standardDeduction[filingStatus],
+    taxOn: (taxable) => usForm1040Tax(taxable, filingStatus, lawYear),
+    otherTaxes23: Math.round(additionalMedicareTax),
+    withholdingW2_25a: Math.round(sum((w) => w.federalWithheld)),
+    withholdingOther25c: additionalWithheld,
+    schedule3Credits31: excessSocialSecurity,
+  });
+
+  return { lines, additionalMedicareTax, fica: { socialSecurity: sum((w) => w.socialSecurityTax), medicare: medicareWithheld } };
 }

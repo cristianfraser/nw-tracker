@@ -14,7 +14,8 @@
  * 6. what the app keeps beside the documents: contractor payslips, contribution periods, each
  *    house's mortgage ledger and its cuota card lines linked to the deposits they funded, the rents
  *    marked as their place's, the places' bills, book valuations (property, mortgage, AFC);
- * 6b. the tax documents (boletas, dividend splits, the DJs) and each April from the tax module:
+ * 6b. the tax documents (boletas, dividend splits, the DJs) and each April from the tax modules (the
+ *    1040 first, then the F22, whose credit for the US tax reads it):
  *    steps 3–6b run again, from a checkpoint taken before step 3, until every April settlement the
  *    simulation booked is the one the tax module computes (`taxDocuments.ts`); then the past
  *    years' returns are stored as filed;
@@ -86,7 +87,15 @@ import {
 import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, US_RETIREMENT_FUND_SERIES_KEY, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
-import { aprilSettlementsFromTaxModule, settlementDifferences, writeDemoFiledReturns, writeDemoTaxDocuments } from "./taxDocuments.js";
+import {
+  aprilSettlementsFromTaxModule,
+  settlementDifferences,
+  usAprilSettlementsFromTaxModule,
+  usSettlementDifferences,
+  writeDemoFiledReturns,
+  writeDemoFiledUsReturns,
+  writeDemoTaxDocuments,
+} from "./taxDocuments.js";
 import { resetDemoDatabaseToPristine, saveDemoPristineCopy } from "../demoWritable.js";
 import fs from "node:fs";
 
@@ -700,13 +709,19 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   const checkpoint = `${dbFile}.pretax`;
   saveDemoPristineCopy(checkpoint);
   let overrides = new Map<number, number>();
+  let usOverrides = new Map<number, number>();
   let ledger: Ledger | null = null;
   let payslipResult: ReturnType<typeof applyEmploymentPayslips> | null = null;
   try {
     for (let pass = 1; ; pass++) {
-      const life = writeLife(person, market, ids, today, overrides);
+      const life = writeLife(person, market, ids, today, overrides, usOverrides);
+      // The 1040 first: the F22's credit for the US tax on the salary reads its line 24.
+      const fromUsModule = usAprilSettlementsFromTaxModule(life.ledger, today);
       const fromModule = aprilSettlementsFromTaxModule(life.ledger, today);
-      const diffs = settlementDifferences(life.ledger, fromModule);
+      const diffs = [
+        ...usSettlementDifferences(life.ledger, fromUsModule).map((d) => ({ ...d, label: `1040 ${d.year}` })),
+        ...settlementDifferences(life.ledger, fromModule).map((d) => ({ ...d, label: `F22 ${d.year}` })),
+      ];
       if (diffs.length === 0) {
         ledger = life.ledger;
         payslipResult = life.payslipResult;
@@ -716,17 +731,19 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
       if (pass >= MAX_TAX_PASSES) {
         throw new Error(
           `demo: April settlements still differ from the tax module after ${pass} passes: ${diffs
-            .map((d) => `${d.year} booked ${d.booked} vs module ${d.module}`)
+            .map((d) => `${d.label} booked ${d.booked} vs module ${d.module}`)
             .join("; ")}`
         );
       }
-      console.log(`demo: pass ${pass}: ${diffs.map((d) => `${d.year} ${d.booked} → ${d.module}`).join(", ")}`);
+      console.log(`demo: pass ${pass}: ${diffs.map((d) => `${d.label} ${d.booked} → ${d.module}`).join(", ")}`);
       overrides = fromModule;
+      usOverrides = fromUsModule;
       resetDemoDatabaseToPristine({ force: true, pristinePath: checkpoint });
     }
   } finally {
     fs.rmSync(checkpoint, { force: true });
   }
+  writeDemoFiledUsReturns(ledger, today);
   writeDemoFiledReturns(ledger, today);
 
   for (const c of person.cards) recomputeCcBillingMonthBalances(ids.get(`card:${c.key}` as Acct)!);
@@ -747,9 +764,10 @@ function writeLife(
   market: MarketReader,
   ids: Map<Acct, number>,
   today: Ymd,
-  aprilSettlements: ReadonlyMap<number, number>
+  aprilSettlements: ReadonlyMap<number, number>,
+  usAprilSettlements: ReadonlyMap<number, number>
 ): { ledger: Ledger; payslipResult: ReturnType<typeof applyEmploymentPayslips> | null } {
-  const ledger = simulate(person, market, today, { aprilSettlements });
+  const ledger = simulate(person, market, today, { aprilSettlements, usAprilSettlements });
   writeDirect(ledger, ids);
   writeUsStatementRows(ledger, ids);
   writeSplits(person, today);
