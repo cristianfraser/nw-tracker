@@ -33,7 +33,12 @@ export function pruneDbSnapshots(dir: string | undefined, dailyDays: number, tod
   const snapshots = listDbSnapshots(dir);
   const plan = planSnapshotRetention(snapshots.map((s) => path.basename(s.path)), todayYmd, dailyDays);
   const byName = new Map(snapshots.map((s) => [path.basename(s.path), s.path]));
-  for (const name of plan.prune) fs.rmSync(byName.get(name)!);
+  for (const name of plan.prune) {
+    const file = byName.get(name)!;
+    fs.rmSync(file);
+    // A snapshot opened by a tool may have left its journal files beside it.
+    for (const sibling of [`${file}-wal`, `${file}-shm`]) if (fs.existsSync(sibling)) fs.rmSync(sibling);
+  }
   return plan.prune;
 }
 
