@@ -48,6 +48,7 @@ import {
   type Ymd,
 } from "./person.js";
 import { stream, type Rng } from "./rng.js";
+import { AUSTIN, SANTIAGO, drawnBasketTotal, drawnRows, santiagoBasketPerUnit } from "./costOfLiving.js";
 import { newUsPayrollYtd, usPayDates, usPayStub, usW2sOfStubs, type UsPayStub } from "./usPayroll.js";
 import type { UsW2 } from "../usW2.js";
 import { f1040LinesFromW2s } from "../f1040Draft.js";
@@ -289,57 +290,108 @@ export const APV_FUND_SERIES_KEY = "demo_apv_fondo";
  */
 export const US_RETIREMENT_FUND_SERIES_KEY = "demo_us_target_2060";
 
-/** US discretionary spend shares by category (the debit card, Austin). */
-const US_CATEGORY_WEIGHTS: Record<string, number> = {
-  supermarket: 0.3,
-  food: 0.24,
-  transportation: 0.12,
-  fun: 0.1,
-  clothes: 0.07,
-  others: 0.12,
-  healthcare: 0.05,
-};
-/** US merchants with a typical ticket (dollars at the move). */
+/**
+ * Austin's merchant pools, by the cost-of-living table's pool name, each with a typical ticket
+ * (dollars at the move). Groceries stay on the debit card; the rest goes on the US card once it
+ * opens. `transport_carless` is the months before the car (rideshare and the bus).
+ */
 const US_MERCHANTS: Record<string, { name: string; ticket: number }[]> = {
-  supermarket: [
+  groceries: [
     { name: "HEB AUSTIN TX", ticket: 62 },
     { name: "WHOLE FOODS MARKET AUSTIN", ticket: 48 },
     { name: "TRADER JOE'S AUSTIN TX", ticket: 41 },
     { name: "COSTCO WHSE AUSTIN", ticket: 135 },
+    { name: "FIESTA MART AUSTIN", ticket: 38 },
   ],
-  food: [
+  restaurants: [
     { name: "STARBUCKS AUSTIN TX", ticket: 7 },
     { name: "TORCHYS TACOS AUSTIN", ticket: 18 },
-    { name: "UBER EATS", ticket: 31 },
     { name: "FRANKLIN BARBECUE AUSTIN", ticket: 46 },
     { name: "CHUYS AUSTIN TX", ticket: 38 },
+    { name: "EASY TIGER BAKERY AUSTIN", ticket: 14 },
+    { name: "VERACRUZ ALL NATURAL", ticket: 13 },
+    { name: "MATT'S EL RANCHO AUSTIN", ticket: 44 },
   ],
-  transportation: [
+  delivery: [
+    { name: "UBER EATS", ticket: 31 },
+    { name: "DOORDASH", ticket: 34 },
+  ],
+  transport: [
     { name: "SHELL OIL AUSTIN TX", ticket: 44 },
     { name: "EXXONMOBIL AUSTIN TX", ticket: 41 },
+    { name: "BUC-EE'S NEW BRAUNFELS", ticket: 47 },
+    { name: "VALERO AUSTIN TX", ticket: 39 },
     { name: "TXTAG TOLLS", ticket: 16 },
     { name: "UBER TRIP", ticket: 19 },
+  ],
+  transport_carless: [
+    { name: "UBER TRIP", ticket: 19 },
+    { name: "LYFT RIDE", ticket: 17 },
+    { name: "CAPMETRO APP", ticket: 11.25 },
   ],
   fun: [
     { name: "ALAMO DRAFTHOUSE", ticket: 26 },
     { name: "ACL LIVE MOODY THEATER", ticket: 74 },
     { name: "BARTON SPRINGS POOL", ticket: 9 },
+    { name: "CONTINENTAL CLUB AUSTIN", ticket: 22 },
   ],
-  clothes: [
+  clothing: [
     { name: "TARGET AUSTIN TX", ticket: 39 },
     { name: "UNIQLO AUSTIN", ticket: 55 },
     { name: "REI AUSTIN", ticket: 88 },
   ],
-  others: [
-    { name: "AMAZON.COM", ticket: 36 },
-    { name: "HOME DEPOT AUSTIN", ticket: 52 },
+  personalCare: [
     { name: "GREAT CLIPS AUSTIN", ticket: 24 },
+    { name: "BIRDS BARBERSHOP AUSTIN", ticket: 32 },
   ],
   healthcare: [
     { name: "CVS PHARMACY AUSTIN", ticket: 21 },
     { name: "WALGREENS AUSTIN TX", ticket: 18 },
+    { name: "HEB PHARMACY AUSTIN", ticket: 15 },
+  ],
+  others: [
+    { name: "AMAZON.COM", ticket: 36 },
+    { name: "HOME DEPOT AUSTIN", ticket: 52 },
+    { name: "ACE HARDWARE AUSTIN", ticket: 19 },
   ],
 };
+/**
+ * The US subscriptions, at their list prices: the dollar ones that billed his Chilean cards move to
+ * the US account at the move; the rest start with the US card. None is a service he keeps in Chile.
+ */
+const US_SUBSCRIPTIONS: { merchant: string; usd: number; day: number; withCard?: true }[] = [
+  { merchant: "SPOTIFY USA", usd: 11.99, day: 9 },
+  { merchant: "APPLE.COM/BILL", usd: 2.99, day: 11 },
+  { merchant: "OPENAI *CHATGPT SUBSCR", usd: 20, day: 13 },
+  { merchant: "GITHUB, INC.", usd: 4, day: 15 },
+  { merchant: "NOTION LABS", usd: 8, day: 17 },
+  { merchant: "NETFLIX.COM", usd: 15.49, day: 6, withCard: true },
+  { merchant: "NYTIMES DIGITAL", usd: 17, day: 21, withCard: true },
+  { merchant: "HULU", usd: 9.99, day: 23, withCard: true },
+];
+/** The arrival in Austin: furnishing a bare apartment on the debit card in the move month. */
+const US_ARRIVAL: { day: number; merchant: string; category: string; usd: number }[] = [
+  { day: 4, merchant: "IKEA ROUND ROCK", category: "others", usd: 890 },
+  { day: 5, merchant: "WAYFAIR", category: "others", usd: 230 },
+  { day: 6, merchant: "HOME DEPOT AUSTIN", category: "others", usd: 120 },
+  { day: 11, merchant: "IKEA ROUND ROCK", category: "others", usd: 145 },
+];
+/** A long weekend abroad every May once the US card is open: charges abroad bill the card's 3 % fee. */
+const US_TRIP_ABROAD = {
+  month: 5,
+  flight: { merchant: "AEROMEXICO", usd: 410 },
+  abroad: [
+    { merchant: "HOTEL CONDESA DF CDMX", category: "fun", usd: 320 },
+    { merchant: "CONTRAMAR CIUDAD DE MEXICO", category: "food", usd: 68 },
+    { merchant: "UBER *TRIP CDMX", category: "transportation", usd: 9 },
+    { merchant: "UBER *TRIP CDMX", category: "transportation", usd: 11 },
+    { merchant: "OXXO CIUDAD DE MEXICO", category: "food", usd: 12 },
+    { merchant: "MUSEO FRIDA KAHLO CDMX", category: "fun", usd: 18 },
+  ],
+};
+/** What the US card bills on a charge made abroad. */
+export const US_FOREIGN_TRANSACTION_FEE = "FOREIGN TRANSACTION FEE";
+const US_FOREIGN_FEE_RATE = 0.03;
 
 /** The US card's yearly fee as its statement prints it (a section-3 charge: the card's cost). */
 export const US_CARD_ANNUAL_FEE = "ANNUAL MEMBERSHIP FEE";
@@ -367,20 +419,7 @@ function usdYieldPct(year: number): number {
   return hit[1];
 }
 
-/** Discretionary spend shares by category at the base lifestyle. */
-const CATEGORY_WEIGHTS: Record<string, number> = {
-  supermarket: 0.27,
-  food: 0.19,
-  fun: 0.13,
-  transportation: 0.07,
-  clothes: 0.08,
-  others: 0.11,
-  hobbies: 0.06,
-  healthcare: 0.06,
-  subscriptions: 0.03,
-};
-
-/** Merchants per category with a typical ticket (real CLP). */
+/** Santiago's merchant pools (the cost-of-living table's pool names) with a typical ticket (real CLP). */
 const MERCHANTS: Record<string, { name: string; ticket: number }[]> = {
   supermarket: [
     { name: "LIDER EXPRESS", ticket: 16_000 },
@@ -437,13 +476,20 @@ const MERCHANTS: Record<string, { name: string; ticket: number }[]> = {
   subscriptions: [{ name: "AUDIBLE", ticket: 9_000 }],
 };
 
-/** Fixed monthly card charges (real CLP) and their windows. */
-const CARD_SUBSCRIPTIONS: { merchant: string; category: string; clp: number; from: Month; to?: Month; card?: CardDef["key"]; keptAbroad?: true }[] = [
+/**
+ * Fixed monthly peso charges on the Chilean cards (real CLP). Abroad only `keptAbroad` ones bill
+ * (his Chilean phone line, the family's streaming plan; home news and the Chilean football he
+ * subscribes to when he leaves, `onlyAbroad`): they keep each Chilean card printing a statement
+ * every month, and none duplicates a US subscription.
+ */
+const CARD_SUBSCRIPTIONS: { merchant: string; category: string; clp: number; from: Month; to?: Month; card?: CardDef["key"]; keptAbroad?: true; onlyAbroad?: true }[] = [
   { merchant: "SPOTIFY", category: "subscriptions", clp: 5_000, from: "2018-05" },
   { merchant: "NETFLIX.COM", category: "subscriptions", clp: 6_500, from: "2018-05" },
   { merchant: "ENTEL PLAN MOVIL", category: "bills", clp: 14_000, from: "2018-05", keptAbroad: true },
   { merchant: "SMARTFIT", category: "hobbies", clp: 16_000, from: "2018-07" },
   { merchant: "DISNEY PLUS", category: "subscriptions", clp: 5_500, from: "2021-01", card: "second", keptAbroad: true },
+  { merchant: "EL MERCURIO DIGITAL", category: "subscriptions", clp: 6_500, from: "2016-01", keptAbroad: true, onlyAbroad: true },
+  { merchant: "ESTADIO TNT SPORTS", category: "subscriptions", clp: 8_000, from: "2016-01", card: "second", keptAbroad: true, onlyAbroad: true },
 ];
 const USD_SUBSCRIPTIONS: { merchant: string; usd: number; from: Month; to?: Month; card: CardDef["key"] }[] = [
   { merchant: "APPLE.COM/BILL", usd: 0.99, from: "2018-05", to: "2020-12", card: "main" },
@@ -715,6 +761,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   const ufBase = market.uf(`${REAL_BASE_MONTH}-01`);
   /** Real (early-2016) CLP → nominal CLP on `day`. */
   const nominal = (real: number, day: Ymd) => real * (market.uf(day) / ufBase);
+  /** Austin's price index on `day` (1 at the table's reference month, its yearly rate). */
+  const austinIndex = (day: Ymd) => Math.pow(1 + AUSTIN.yearlyInflation!, monthsBetween(AUSTIN.referenceMonth!, monthOf(day)) / 12);
 
   const expenseByMonth = new Map<Month, number>();
   const addExpense = (day: Ymd, clp: number) => {
@@ -778,11 +826,16 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   };
 
   /* ------------------------- lifestyle (the ratchet) ------------------------- */
-  // The lifestyle scale: 175k real pesos a month at a student's 250k income, concave in income.
+  // The lifestyle level, in units of Santiago's drawn basket (real pesos): the multiplier m of the
+  // cost-of-living table is level ÷ that basket's total (525k), so a category's budget in the city
+  // he lives in is level × the row's `perLevel` = m × the city's baseline. 175k a month (m = 1/3) at
+  // a student's 250k income, concave in income; it only ever rises.
   const LIFESTYLE_BASE_INCOME = 250_000;
   let smoothedIncomeReal = ALLOWANCE?.clp ?? LIFESTYLE_BASE_INCOME;
   const targetFor = (incomeReal: number) => 175_000 * Math.pow(Math.max(incomeReal, 150_000) / LIFESTYLE_BASE_INCOME, 0.52);
   let lifestyleReal = ALLOWANCE ? 175_000 : targetFor(firstMonthIncomeReal());
+  /** The lifestyle multiplier m (dimensionless) the cost-of-living baselines are scaled by. */
+  const lifestyleMultiplier = () => lifestyleReal / drawnBasketTotal(SANTIAGO);
 
   /* ------------------------- taxes and contributions ------------------------- */
   type YearTax = { contractTaxable: number; iuscWithheld: number; honorariosGross: number; honorariosRetention: number; apvB: number; independent: boolean };
@@ -1180,7 +1233,11 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     }
 
     /* ---------- lifestyle ---------- */
-    const incomeReal = incomeNominal / (market.uf(ymd(month, 15)) / ufBase);
+    // Abroad, last month's US net pay counts at what it buys in Austin against Santiago's basket.
+    const usNetLastMonth = usPayslips.filter((st) => monthOf(st.payDate) === addMonths(month, -1)).reduce((a, st) => a + st.net, 0);
+    const incomeReal =
+      incomeNominal / (market.uf(ymd(month, 15)) / ufBase) +
+      (usNetLastMonth > 0 ? (usNetLastMonth / austinIndex(ymd(addMonths(month, -1), 15))) * santiagoBasketPerUnit(AUSTIN) : 0);
     smoothedIncomeReal = smoothedIncomeReal * 0.85 + incomeReal * 0.15;
     const target = targetFor(smoothedIncomeReal);
     lifestyleReal = Math.max(lifestyleReal, lifestyleReal + 0.045 * (target - lifestyleReal));
@@ -1321,14 +1378,16 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const rr = r("spend");
       const cardsNow = activeCards(month);
       const monthMult = rr.chance(0.12) ? rr.range(1.4, 1.8) : rr.chance(0.2) ? rr.range(0.7, 0.85) : rr.range(0.9, 1.12);
-      for (const [cat, w] of Object.entries(CATEGORY_WEIGHTS)) {
+      // Santiago's drawn rows of the cost-of-living table: the level × each row's share.
+      for (const { row, perLevel } of drawnRows(SANTIAGO)) {
+        const cat = row.slug;
         let season = 1;
         if (mo === 12 && (cat === "others" || cat === "clothes")) season = 2.1;
         if (mo === 12 && cat === "food") season = 1.3;
         if (mo === 9 && (cat === "fun" || cat === "food")) season = 1.35;
         if (mo === 2 && cat === "fun") season = 1.25;
-        const budgetReal = lifestyleReal * w * season * monthMult * rr.jitter(1, 0.18);
-        const pool = MERCHANTS[cat]!;
+        const budgetReal = lifestyleReal * perLevel * season * monthMult * rr.jitter(1, 0.18);
+        const pool = MERCHANTS[row.pool!]!;
         const scale = Math.pow(lifestyleReal / 175_000, 0.25);
         const meanTicket = (pool.reduce((a, m) => a + m.ticket, 0) / pool.length) * scale;
         // As many purchases as the budget buys at the average ticket (never overshooting by design).
@@ -1358,13 +1417,13 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
       if (cardsNow.length === 0 && month > FIRST_MONTH) bankBill(hasChecking ? "checking" : "vista", ymd(month, 4), "COMPRA NAC SPOTIFY", "subscriptions", round(nominal(4_000, ymd(month, 4))));
     }
-    // Peso subscriptions on the Chilean cards (abroad only the ones he keeps: his Chilean phone line,
-    // the family's streaming plan — they keep each card billing every month).
+    // Peso subscriptions on the Chilean cards (abroad only the ones he keeps, see CARD_SUBSCRIPTIONS).
     {
       const cardsNow = activeCards(month);
       for (const s of CARD_SUBSCRIPTIONS) {
         if (month < s.from || (s.to && month > s.to)) continue;
         if (abroad(month) && !s.keptAbroad) continue;
+        if (s.onlyAbroad && !abroad(month)) continue;
         const card = s.card && cardsNow.some((c) => c.key === s.card) ? s.card : "main";
         if (!cardsNow.some((c) => c.key === card)) continue;
         const day = ymd(month, 3 + (s.merchant.length % 20));
@@ -1874,7 +1933,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       while (!isNyseTradingDay(x)) x = addDays(x, 1);
       return x;
     };
-    const grown = (usd: number, day: Ymd) => usd * Math.pow(1 + us.inflation, monthsBetween(us.moveMonth, monthOf(day)) / 12);
+    const grown = (usd: number, day: Ymd) => usd * austinIndex(day);
+    const m = lifestyleMultiplier();
 
     /* pay */
     for (const job of person.usJobs) {
@@ -1918,21 +1978,23 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const summer = mo >= 6 && mo <= 9;
     const winter = mo === 12 || mo <= 2;
     const rr = r("us");
-    usBill(ymd(month, 12), "AUSTIN ENERGY UTILITY", "bills", grown(88 * (summer ? 1.7 : 1), ymd(month, 12)) * rr.jitter(1, 0.12));
-    usBill(ymd(month, 14), "TEXAS GAS SERVICE", "bills", grown(28 * (winter ? 1.9 : 1), ymd(month, 14)) * rr.jitter(1, 0.15));
-    usBill(ymd(month, 16), "GOOGLE FIBER", "bills", 70);
-    usBill(ymd(month, 18), "T-MOBILE AUTOPAY", "bills", 65);
-    usSpend(ymd(month, 3), "LIFETIME FITNESS", "hobbies", grown(89, ymd(month, 3)));
-    for (const [desc, usd, day] of [
-      ["NETFLIX.COM", 15.49, 6],
-      ["SPOTIFY USA", 11.99, 9],
-      ["APPLE.COM/BILL", 2.99, 11],
-      ["OPENAI *CHATGPT SUBSCR", 20, 13],
-      ["GITHUB, INC.", 4, 15],
-      ["NOTION LABS", 8, 17],
-    ] as const) {
-      usSpend(ymd(month, day), desc, "subscriptions", usd);
+    // The household bills: the utilities row × m, each bill its share, the season on power and gas.
+    const utilities = AUSTIN.rows.utilities!;
+    for (const b of utilities.bills!) {
+      const day = ymd(month, b.day);
+      let usd = m * utilities.baseline * b.share * grown(1, day);
+      if (b.desc === "AUSTIN ENERGY UTILITY") usd *= (summer ? 1.7 : 1) * rr.jitter(1, 0.12);
+      if (b.desc === "TEXAS GAS SERVICE") usd *= (winter ? 1.9 : 1) * rr.jitter(1, 0.15);
+      usBill(day, b.desc, utilities.slug, usd);
     }
+    usSpend(ymd(month, 3), "LIFETIME FITNESS", "hobbies", grown(AUSTIN.rows.hobbies!.baseline, ymd(month, 3)));
+    for (const sub of US_SUBSCRIPTIONS) {
+      if (sub.withCard && !usCardOpen(month)) continue;
+      usSpend(ymd(month, sub.day), sub.merchant, "subscriptions", sub.usd);
+    }
+
+    /* the arrival: a bare apartment furnished on the debit card */
+    if (month === us.moveMonth) for (const a of US_ARRIVAL) usBill(ymd(month, a.day), a.merchant, a.category, a.usd, true);
 
     /* the car */
     if (us.car) {
@@ -1941,17 +2003,51 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       if (month > monthOf(us.car.date) && mo === Number(us.car.date.slice(5, 7))) usSpend(ymd(month, 20), "TX DMV REGISTRATION", "transportation", 78.25);
     }
 
-    /* variable spending (debit card): the month's budget at the average ticket */
-    const fixed = 88 + 28 + 70 + 65 + 89 + 62.47 + (us.car && month > monthOf(us.car.date) ? 132 : 0);
-    const budget = grown(us.monthlyUsd - fixed, ymd(month, 15)) * (rr.chance(0.15) ? rr.range(1.3, 1.6) : rr.range(0.88, 1.12));
-    for (const [cat, w] of Object.entries(US_CATEGORY_WEIGHTS)) {
-      if (cat === "transportation" && !(us.car && month >= monthOf(us.car.date))) continue;
-      const pool = US_MERCHANTS[cat]!;
-      const mean = pool.reduce((a, m) => a + m.ticket, 0) / pool.length;
-      const count = Math.floor((budget * w * (mo === 12 && (cat === "others" || cat === "clothes") ? 1.8 : 1)) / mean + rr.next());
+    /*
+     * Variable spending: Austin's drawn rows of the cost-of-living table, each m × baseline × the
+     * season × the index, at its pool's average ticket. Groceries on the debit card, the rest on
+     * the US card once it opens. Before the car, transport is rideshare and the bus.
+     */
+    const hasCar = us.car != null && month > monthOf(us.car.date);
+    const monthMult = rr.chance(0.15) ? rr.range(1.3, 1.6) : rr.range(0.88, 1.12);
+    for (const { row } of drawnRows(AUSTIN)) {
+      const carless = row.pool === "transport" && !hasCar;
+      const pool = US_MERCHANTS[carless ? "transport_carless" : row.pool!]!;
+      let season = carless ? 0.6 : 1;
+      if (mo === 12 && (row.pool === "others" || row.pool === "clothing")) season *= 1.8; // gifts
+      if (mo === 11 && row.pool === "groceries") season *= 1.35; // Thanksgiving
+      if (mo === 3 && row.pool === "fun") season *= 1.3; // SXSW
+      if (mo === 3 && row.pool === "restaurants") season *= 1.2;
+      if (mo === 10 && row.pool === "fun") season *= 1.25; // ACL Festival
+      const budget = m * row.baseline * grown(1, ymd(month, 15)) * season * monthMult;
+      const mean = pool.reduce((a, x) => a + x.ticket, 0) / pool.length;
+      const count = Math.floor(budget / grown(mean, ymd(month, 15)) + rr.next());
+      const pay = row.pay === "debit" ? usBill : usSpend;
       for (let k = 0; k < count; k++) {
-        const m = rr.pick(pool);
-        usSpend(ymd(month, rr.int(1, daysInMonth(month))), m.name, cat, Math.max(3, grown(m.ticket, ymd(month, 15)) * rr.jitter(1, 0.45)));
+        const x = rr.pick(pool);
+        pay(ymd(month, rr.int(1, daysInMonth(month))), x.name, row.slug, Math.max(3, grown(x.ticket, ymd(month, 15)) * rr.jitter(1, 0.45)));
+      }
+    }
+
+    /* Austin's year: SXSW in March, the ACL Festival in October, a long weekend abroad in May */
+    {
+      const rs = r("us-season");
+      if (mo === 3 && month > us.moveMonth) usSpend(ymd(month, rs.int(1, 6)), "SXSW MUSIC FESTIVAL WRISTBAND", "fun", grown(199, ymd(month, 1)), true);
+      if (mo === 10) usSpend(ymd(month, rs.int(2, 5)), "ACL MUSIC FESTIVAL", "fun", grown(360, ymd(month, 1)), true);
+      if (mo === US_TRIP_ABROAD.month && usCard && usCardOpen(month)) {
+        const start = rs.int(14, 18);
+        // The flight, booked at the start of the month on a US site (no foreign fee).
+        usSpend(ymd(month, 2), US_TRIP_ABROAD.flight.merchant, "fun", grown(US_TRIP_ABROAD.flight.usd, ymd(month, 1)) * rs.jitter(1, 0.15), true);
+        for (const [i, x] of US_TRIP_ABROAD.abroad.entries()) {
+          const day = ymd(month, start + Math.min(3, Math.floor(i / 2)));
+          if (day > today) continue;
+          const usd = cents(grown(x.usd, day) * rs.jitter(1, 0.25));
+          usSpend(day, x.merchant, x.category, usd, true);
+          // The card's fee on a charge abroad, printed as its own line: the issuer's charge (section 3).
+          const fee = cents(usd * US_FOREIGN_FEE_RATE);
+          cardPurchase({ card: usCard.key, date: day, merchant: US_FOREIGN_TRANSACTION_FEE, category: "fees", currency: "usd", amount: fee, fee: true });
+          usExpenseByMonth.set(month, cents((usExpenseByMonth.get(month) ?? 0) - fee));
+        }
       }
     }
     if (mo === 12) usSpend(ymd(month, 5), "UNITED AIRLINES", "fun", grown(us.decemberTripUsd, ymd(month, 5)), true);
@@ -2012,11 +2108,13 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const { lines } = f1040LinesFromW2s(usW2sOfStubs(stubs), stubs[0]!.job.w4FilingStatus, taxYear, `${taxYear} (demo)`);
     return (lines["37"] ?? 0) - (lines["35a"] ?? 0);
   }
-  /** Average US spending of the months since the move (at least the rent and the lifestyle). */
+  /** Average US spending of the months since the move (at least the rent and Austin's baseline × m). */
   function usTrailingExpense(): number {
     const us = US!;
     const xs = [...usExpenseByMonth.values()].slice(-6);
-    const floor = us.rent.usd + us.monthlyUsd;
+    const rows = Object.values(AUSTIN.rows);
+    const baseline = rows.reduce((a, r) => a + (r!.paidAs === "drawn" || r!.paidAs === "bills" ? lifestyleMultiplier() * r!.baseline : r!.paidAs === "list" ? r!.baseline : 0), 0);
+    const floor = us.rent.usd + baseline;
     if (xs.length === 0) return floor;
     return Math.max(floor, xs.reduce((a, b) => a + b, 0) / xs.length);
   }
@@ -2029,6 +2127,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       if (us.car && monthOf(us.car.date) === m) need += us.car.usd;
       if (us.roth && Number(m.slice(5, 7)) === us.roth.month && Number(m.slice(0, 4)) >= us.roth.fromYear) need += us.roth.usd;
       if (m.endsWith("-12")) need += us.decemberTripUsd * 1.2;
+      if (Number(m.slice(5, 7)) === US_TRIP_ABROAD.month && usCardOpen(m)) need += 1.2 * (US_TRIP_ABROAD.flight.usd + US_TRIP_ABROAD.abroad.reduce((a, x) => a + x.usd, 0));
       if (m.endsWith("-04")) need += Math.max(0, usF1040Settlement(Number(m.slice(0, 4)) - 1) ?? 0);
     }
     return need;

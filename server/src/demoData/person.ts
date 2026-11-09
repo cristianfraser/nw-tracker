@@ -170,8 +170,10 @@ const US_JOBS: UsW2Job[] = [
 
 /**
  * Life in the US (Austin, Texas), in dollars: the US checking account the salary lands in, the
- * rent, a car bought in cash, the dollar lifestyle (debit, then the US card once it opens: the rent, the utilities and the wires stay debits), a Roth IRA in SPY, and what goes
- * home to Chile every month.
+ * rent, a car bought in cash, a Roth IRA in SPY and what goes home to Chile every month. What he
+ * spends living there is Austin's row of the cost-of-living table (`costOfLiving.ts`) × his
+ * lifestyle multiplier: groceries, the rent, the utilities and the wires by debit, the rest on the
+ * US card once it opens.
  */
 export type UsLife = {
   /** He moves this month: the Chilean lifestyle stops, the US one starts. */
@@ -181,9 +183,6 @@ export type UsLife = {
   seed: { date: Ymd; usd: number };
   rent: { landlord: string; usd: number; fromMonth: Month; yearlyIncrease: number };
   car: { date: Ymd; merchant: string; usd: number } | null;
-  /** The monthly lifestyle at the move (nominal dollars, growing `inflation` a year). */
-  monthlyUsd: number;
-  inflation: number;
   /** A Roth IRA contribution each `month` from `fromYear`, bought straight into SPY. */
   roth: { fromYear: number; month: number; usd: number } | null;
   /** The US checking balance kept: months of US spending (the rest goes to the US broker). */
@@ -200,8 +199,6 @@ const US_LIFE: UsLife = {
   seed: { date: "2024-03-27", usd: 8_000 },
   rent: { landlord: "LAKESHORE APARTMENTS", usd: 1_750, fromMonth: "2024-04", yearlyIncrease: 0.035 },
   car: { date: "2025-03-14", merchant: "HILL COUNTRY AUTO SALES", usd: 16_500 },
-  monthlyUsd: 2_150,
-  inflation: 0.03,
   roth: { fromYear: 2025, month: 10, usd: 7_000 },
   cashBand: { low: 1, target: 2, high: 3 },
   wireFeeUsd: 25,
