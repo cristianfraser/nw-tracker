@@ -116,5 +116,16 @@
     "server/src/watchlistStats.ts"
   ],
   "forbidden_edges": [],
-  "aggregation_cache_imports": []
+  "aggregation_cache_imports": [
+    "server/src/cacheDependencies.ts",
+    "server/src/cacheFamilies.ts",
+    "server/src/chileDate.ts",
+    "server/src/db.ts",
+    "server/src/dbWriteCounter.ts",
+    "server/src/jsonResponse.ts",
+    "server/src/liveQuotesStamp.ts",
+    "server/src/markInputChanges.ts",
+    "server/src/markSeriesStore.ts",
+    "server/src/requestCacheStats.ts"
+  ]
 }

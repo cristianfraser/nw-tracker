@@ -6,7 +6,7 @@
  * 1. a file joins an import cycle that the baseline does not list (cycles may only shrink);
  * 2. a new edge crosses a forbidden boundary: server/contracts/src → server/src, client or ingest;
  *    client ↔ server/src; ingest ↔ server/src (contracts is the only shared code);
- * 3. `server/src/aggregationCache.ts` imports a module the baseline does not list (the cache must not
+ * 3. `server/src/cacheRegistry.ts` imports a module the baseline does not list (the cache registry must not
  *    learn about more domain modules).
  *
  * It prints the largest cycle, the total edge count against the baseline's, and the top fan-in,
@@ -23,7 +23,7 @@ const ROOT = process.cwd();
 const ROOTS = ["server/src", "client/src", "ingest/src", "server/contracts/src"];
 const BASELINE = path.join(ROOT, "scripts", "check-deps.baseline.json");
 const CONTRACTS_ENTRY = "server/contracts/src/index.ts";
-const AGGREGATION_CACHE = "server/src/aggregationCache.ts";
+const AGGREGATION_CACHE = "server/src/cacheRegistry.ts";
 
 function* walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -201,7 +201,7 @@ for (const f of cycleMembers) if (!baseCycle.has(f)) problems.push(`joins an imp
 const baseCross = new Set(baseline.forbidden_edges);
 for (const e of crossEdges) if (!baseCross.has(e)) problems.push(`crosses a forbidden boundary: ${e}`);
 const baseCache = new Set(baseline.aggregation_cache_imports);
-for (const t of cacheImports) if (!baseCache.has(t)) problems.push(`aggregationCache.ts imports a new module: ${t}`);
+for (const t of cacheImports) if (!baseCache.has(t)) problems.push(`cacheRegistry.ts imports a new module: ${t}`);
 
 const top = (pairs) =>
   pairs
