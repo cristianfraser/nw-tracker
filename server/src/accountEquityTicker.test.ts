@@ -7,23 +7,13 @@ import {
 } from "./accountEquityTicker.js";
 
 describe("accountEquityTicker", () => {
-  it("backfill sets equity_ticker on legacy excel SPY account", () => {
-    const row = db
-      .prepare(
-        `SELECT id, equity_ticker FROM accounts WHERE notes = 'import:excel|key=spy' LIMIT 1`
-      )
-      .get() as { id: number; equity_ticker: string | null } | undefined;
-    if (!row) return;
-    expect(row.equity_ticker).toBe("SPY");
+  it("reads a stock account's ticker from accounts.equity_ticker", () => {
+    const row = db.prepare(`SELECT id FROM accounts WHERE import_key = 'import:panel|ticker=SPY|key=demo_spy'`).get() as { id: number };
     expect(equityTickerForAccount(row.id)).toBe("SPY");
   });
 
-  it("listDistinctEquityTickersForSync includes built-in symbols when present on accounts", () => {
-    const tickers = listDistinctEquityTickersForSync();
-    const hasSpy = db
-      .prepare(`SELECT 1 FROM accounts WHERE equity_ticker = 'SPY' LIMIT 1`)
-      .get();
-    if (hasSpy) expect(tickers).toContain("SPY");
+  it("listDistinctEquityTickersForSync includes the tickers held on accounts", () => {
+    expect(listDistinctEquityTickersForSync()).toEqual(expect.arrayContaining(["SPY", "AAPL"]));
   });
 
   it("listNyseEquityTickersForEodSync excludes crypto symbols", () => {

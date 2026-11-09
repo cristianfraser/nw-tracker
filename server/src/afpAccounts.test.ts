@@ -49,7 +49,6 @@ afterEach(() => {
 describe("afpDisplaySeriesKey", () => {
   it("keys a fund's display series as afp_<afp>_cuota_<fund>", () => {
     expect(afpDisplaySeriesKey("uno", "A")).toBe("afp_uno_cuota_a");
-    expect(AFP_UNO_CUOTA_SERIES_KEY).toBe("afp_uno_cuota_a");
     expect(afpDisplaySeriesKey("PlanVital", "a")).toBe("afp_planvital_cuota_a");
     expect(afpDisplaySeriesKey("modelo", "E")).toBe("afp_modelo_cuota_e");
     expect(() => afpDisplaySeriesKey("plan vital", "A")).toThrow(/AFP slug/);

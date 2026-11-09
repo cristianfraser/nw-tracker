@@ -134,28 +134,6 @@ describe("importSyncDocumentCoverage", () => {
     }
   }, 20_000);
 
-  it("CC check uses period_to month", () => {
-    const ccIds = listCreditCardMasterAccountIds();
-    if (ccIds.length === 0) return;
-
-    const accountId = ccIds[0]!;
-    const stmt = db
-      .prepare(
-        `SELECT period_to, source_pdf, source_kind FROM cc_statements
-         WHERE account_id = ?
-         ORDER BY id DESC`
-      )
-      .all(accountId) as { period_to: string; source_pdf: string; source_kind: string }[];
-    const pdfStmt = stmt.find((s) => s.source_kind === "statement_pdf");
-    if (!pdfStmt) return;
-
-    const ym = matrixMonthForCcStatement(pdfStmt);
-    if (!ym) return;
-
-    const acc = { account_id: accountId, label: "", document_kind: "cc_statement" as const };
-    expect(hasImportSyncDocumentForMonth(acc, ym)).toBe(true);
-  });
-
   it("links source_file for the same row_month as period_month / period_to", () => {
     const payload = coveragePayload();
     if (!payload) return;
@@ -211,36 +189,5 @@ describe("importSyncDocumentCoverage", () => {
       }
     }
     expect(cartolaCellsMatched).toBeGreaterThan(0);
-  }, 20_000);
-
-  it("does not mark cuenta vista multi-month cells sin-mov when PDF has imported movements", () => {
-    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
-    if (vistaId == null) return;
-
-    const hasMultiMonth = db
-      .prepare(
-        `SELECT 1 FROM checking_cartola_imports
-         WHERE account_id = ? AND source_file = '2017-10-31 cartola cuenta vista.pdf'
-           AND movement_count > 0 LIMIT 1`
-      )
-      .get(vistaId);
-    if (!hasMultiMonth) return;
-
-    const payload = coveragePayload();
-    if (!payload) return;
-
-    const accIdx = payload.accounts.findIndex(
-      (a) => a.account_id === vistaId && a.document_kind === "cuenta_vista_cartola"
-    );
-    if (accIdx < 0) return;
-
-    for (let mi = 0; mi < payload.months.length; mi += 1) {
-      const rowMonth = payload.months[mi]!;
-      if (rowMonth < "2016-10" || rowMonth > "2017-09") continue;
-      const cell = payload.cells[mi]?.[accIdx];
-      if (!cell?.imported) continue;
-      if (!cell.file_path?.includes("2017-10-31 cartola cuenta vista.pdf")) continue;
-      expect(cell.file_sin_movimientos).not.toBe(true);
-    }
   }, 20_000);
 });

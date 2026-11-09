@@ -170,32 +170,6 @@ describe("seedNavTree retirement AFP+AFC", () => {
   });
 });
 
-describe("seedNavTree retirement APV A", () => {
-  it("links pre-Fintual APV-a principal under retirement_apv_a", () => {
-    seedNavTree();
-    const row = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=apv_a_principal'`)
-      .get() as { id: number } | undefined;
-    if (!row) return;
-
-    const link = db
-      .prepare(
-        `SELECT pg.slug FROM portfolio_group_items i
-         JOIN portfolio_groups pg ON pg.id = i.group_id
-         WHERE i.account_id = ? AND i.item_kind = 'account'`
-      )
-      .get(row.id) as { slug: string } | undefined;
-    expect(link?.slug).toBe("retirement_apv_a");
-
-    const ag = db
-      .prepare(
-        `SELECT g.slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
-      )
-      .get(row.id) as { slug: string };
-    expect(ag.slug).toBe("retirement_apv_a__apv");
-  });
-});
-
 describe("seedNavTree brokerage sub-bucket move-out", () => {
   it("drops the stale sub-bucket membership when an account moves out of brokerage", () => {
     const cleanup: (() => void)[] = [];

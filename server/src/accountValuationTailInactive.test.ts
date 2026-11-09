@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  CHART_TRAILING_ZERO_MONTHS_KEPT,
-  chartInactiveFromMonthlyClosingAsc,
-} from "./accountValuationTailInactive.js";
+import { chartInactiveFromMonthlyClosingAsc } from "./accountValuationTailInactive.js";
 
 describe("chartInactiveFromMonthlyClosingAsc", () => {
-  it("uses zero months kept by default", () => {
-    expect(CHART_TRAILING_ZERO_MONTHS_KEPT).toBe(0);
-  });
-
   it("stays active when the latest month-end is non-zero", () => {
     expect(chartInactiveFromMonthlyClosingAsc([100, 0, 50], 0)).toBe(false);
     expect(chartInactiveFromMonthlyClosingAsc([100, 50, 25], 0)).toBe(false);

@@ -20,11 +20,9 @@ describe("accountKindSlugForAccountId", () => {
     const row = db
       .prepare(
         `SELECT a.id FROM accounts a
-         WHERE a.notes LIKE 'import:excel|key=afp%'
-         LIMIT 1`
+         WHERE a.import_key = 'import:afp|afp=uno|fund=A'`
       )
-      .get() as { id: number } | undefined;
-    if (!row) return;
+      .get() as { id: number };
 
     expect(accountKindSlugForAccountId(row.id)).toBe("afp");
 

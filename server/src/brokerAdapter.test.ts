@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BROKER_SETTLEMENT_WINDOW_DAYS, brokerAdapter, brokerPlanRow } from "./brokerAdapter.js";
+import { brokerAdapter, brokerPlanRow } from "./brokerAdapter.js";
 
 describe("broker adapters", () => {
-  it("pair Fintual documents over the settlement window and Racional's on the Chile day ± 2", () => {
-    expect(brokerAdapter("fintual").dividendPairingWindowDays).toBe(BROKER_SETTLEMENT_WINDOW_DAYS);
-    expect(brokerAdapter("racional").dividendPairingWindowDays).toBe(2);
-  });
-
   it("look for a bank-listed deposit debit up to the window each broker's mail lags", () => {
     expect(brokerAdapter("fintual").depositFromMail.debitWindowEnd("2026-03-10")).toBe("2026-03-15");
     // Tuesday → the business day after Wednesday.

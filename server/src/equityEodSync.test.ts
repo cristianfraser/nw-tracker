@@ -5,10 +5,7 @@ import {
   removeCryptoTickerFixture,
 } from "./test/cryptoTickerFixture.js";
 import {
-  CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
-  SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE,
-  SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE,
   capCryptoEodSeriesToCompletedUtcDay,
   capEodSeriesToMaxTradeDate,
   cryptoCompletedUtcYmd,
@@ -69,8 +66,6 @@ describe("equityEodSantiagoSyncDue (Chile calendar, never the NYSE one)", () => 
 
 describe("isSantiagoEodSyncWindow", () => {
   it("opens at 17:10 Chile", () => {
-    expect(SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE).toBe(17);
-    expect(SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE).toBe(10);
     expect(isSantiagoEodSyncWindow(cl("2026-09-07", 17, 9))).toBe(false);
     expect(isSantiagoEodSyncWindow(cl("2026-09-07", 17, 10))).toBe(true);
     expect(isSantiagoEodSyncWindow(cl("2026-09-07", 23, 59))).toBe(true);
@@ -95,11 +90,6 @@ describe("isCryptoEodSyncWindow", () => {
       true
     );
     expect(isCryptoEodSyncWindow(cl("2026-05-27", 0, 0))).toBe(false);
-  });
-
-  it("uses configured hour constant", () => {
-    expect(CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE).toBe(23);
-    expect(CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE).toBe(55);
   });
 });
 

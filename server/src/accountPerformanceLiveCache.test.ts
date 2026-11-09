@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import * as todayValue from "./accountTodayValue.js";
@@ -11,25 +12,31 @@ describe("valuationSeriesMonthlyPerformance live patch vs cache", () => {
   });
 
   it("re-applies live close on each read when monthly perf cache is warm", () => {
-    const row = db
-      .prepare(`SELECT id FROM accounts WHERE equity_ticker = 'OILK' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!row) return;
+    const row = db.prepare(`SELECT id FROM accounts WHERE equity_ticker = 'SPY' LIMIT 1`).get() as { id: number };
+    const today = chileCalendarTodayYmd();
+    const live = (value: number) => ({
+      value_clp: value,
+      as_of_date: today,
+      priced_on: today,
+      native_value: value,
+      native_currency: "clp" as const,
+      side: "asset" as const,
+    });
 
-    const spy = vi.spyOn(todayValue, "accountTodayValue");
-    spy.mockReturnValueOnce({ value_clp: 3_004_764, as_of_date: "2026-06-03", priced_on: "2026-06-03", native_value: 3_004_764, native_currency: "clp", side: "asset" });
-    spy.mockReturnValueOnce({ value_clp: 3_051_857, as_of_date: "2026-06-03", priced_on: "2026-06-03", native_value: 3_051_857, native_currency: "clp", side: "asset" });
+    const real = todayValue.accountTodayValue;
+    let liveValue = 3_000_000;
+    vi.spyOn(todayValue, "accountTodayValue").mockImplementation((id, ...rest) =>
+      id === row.id ? live(liveValue) : real(id, ...rest)
+    );
 
-    const first = valuationSeriesMonthlyPerformance(row.id, "clp");
-    const second = valuationSeriesMonthlyPerformance(row.id, "clp");
-    if (!first?.monthly.length || !second?.monthly.length) return;
+    const first = valuationSeriesMonthlyPerformance(row.id, "clp")!.monthly[0]!;
+    liveValue = 3_050_000;
+    const second = valuationSeriesMonthlyPerformance(row.id, "clp")!.monthly[0]!;
 
-    const top1 = first.monthly[0];
-    const top2 = second.monthly[0];
-    if (top1?.as_of_date !== "2026-06-03" || top2?.as_of_date !== "2026-06-03") return;
-
-    expect(top2.closing_value).toBeGreaterThan(top1.closing_value ?? 0);
-    expect(top2.nominal_pl).toBeGreaterThan(top1.nominal_pl ?? 0);
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(first.as_of_date).toBe(today);
+    expect(second.as_of_date).toBe(today);
+    expect(first.closing_value).toBe(3_000_000);
+    expect(second.closing_value).toBe(3_050_000);
+    expect((second.nominal_pl ?? 0) - (first.nominal_pl ?? 0)).toBeCloseTo(50_000, 6);
   });
 });

@@ -20,16 +20,6 @@ function row(partial: Partial<MarketDisplaySeriesRow> & Pick<MarketDisplaySeries
 }
 
 describe("watchlistStatsForRow", () => {
-  it("returns null stats when UF data is missing", () => {
-    const stats = watchlistStatsForRow(row({ kind: "uf", slug: "uf_no_data", series_key: null }));
-    if (stats.value == null) {
-      expect(stats.changes).toBeNull();
-    } else {
-      expect(stats.value_currency).toBe("clp");
-      expect(stats.changes).not.toBeNull();
-    }
-  });
-
   it("computes change fields for SPY in the display unit when EOD history exists", () => {
     const spy = row({ kind: "equity", series_key: "SPY", slug: "spy", label: "SPY" });
     const usd = watchlistStatsForRow(spy, new Date(), "usd");

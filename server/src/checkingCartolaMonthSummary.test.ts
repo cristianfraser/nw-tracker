@@ -136,14 +136,7 @@ describe("getCheckingCartolaMonths", () => {
   });
 
   it("returns null for non-checking accounts", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug = 'fondo_reserva' OR g.slug LIKE '%__fondo_reserva' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
+    const row = db.prepare(`SELECT id FROM accounts WHERE equity_ticker = 'SPY' LIMIT 1`).get() as { id: number };
     expect(getCheckingCartolaMonths(row.id)).toBeNull();
   });
 });

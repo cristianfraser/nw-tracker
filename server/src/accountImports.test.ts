@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { CARD_PASTED_LISTING, type CardPastedListing } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { importCcWebPaste } from "./accountImports.js";
+import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
 
 const BCI_PASTE = `11/06/2026\tVITEST BCI WEB PASTE\t$9.999
 11/06/2026\tVITEST BCI WEB PASTE\t$9.999`;
@@ -22,8 +23,6 @@ const BCI_LISTING: CardPastedListing = {
 };
 
 describe("importCcWebPaste", () => {
-  let insertedLineIds: number[] = [];
-  let insertedStmtId: number | null = null;
   let stub: Server | null = null;
   let parsedTexts: string[] = [];
   const previousUrl = process.env.INGEST_URL;
@@ -50,17 +49,6 @@ describe("importCcWebPaste", () => {
 
   afterEach(() => {
     parsedTexts = [];
-    for (const id of insertedLineIds) db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
-    insertedLineIds = [];
-    if (insertedStmtId != null) {
-      const remaining = db
-        .prepare(`SELECT COUNT(*) AS c FROM cc_statement_lines WHERE statement_id = ?`)
-        .get(insertedStmtId) as { c: number };
-      if (remaining.c === 0) {
-        db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(insertedStmtId);
-      }
-      insertedStmtId = null;
-    }
   });
 
   it("rejects non credit-card master accounts", async () => {
@@ -68,48 +56,45 @@ describe("importCcWebPaste", () => {
       .prepare(
         `SELECT a.id FROM accounts a
          JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug = 'cuenta_corriente' LIMIT 1`
+         WHERE g.slug = 'cash_eqs__cuenta_corriente' LIMIT 1`
       )
-      .get() as { id: number } | undefined;
-    if (!checking) return;
-    await expect(importCcWebPaste(checking.id, "01/01/2026\tSHOP\t-$100")).rejects.toThrow(/not a credit card/i);
+      .get() as { id: number };
+    await expect(importCcWebPaste(checking.id, "01/01/2026\tSHOP\t-$100")).rejects.toThrow(/not a card master/i);
     // Refused before the paste ever reaches the service.
     expect(parsedTexts).toEqual([]);
   });
 
   it("imports web paste for BCI master account", async () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+    const master = { id: createTempCardMaster({ issuer: "bci", last4: "4343", key: "vitest-account-imports" }) };
+    try {
+      const result = await importCcWebPaste(master.id, BCI_PASTE);
+      expect(parsedTexts).toEqual([BCI_PASTE]);
+      // The paste is the complete unbilled list, so a line it shows twice is two charges: both
+      // import, the second as an occurrence-indexed twin (`#dup1`), each in the per-line outcome.
+      expect(result.inserted).toBe(2);
+      expect(result.skipped_flows).toEqual([]);
+      expect(result.inserted_flows.filter((f) => f.description === "VITEST BCI WEB PASTE")).toHaveLength(2);
 
-    const result = await importCcWebPaste(master.id, BCI_PASTE);
-    expect(parsedTexts).toEqual([BCI_PASTE]);
-    // The paste is the complete unbilled list, so a line it shows twice is two charges: both
-    // import, the second as an occurrence-indexed twin (`#dup1`), each in the per-line outcome.
-    expect(result.inserted).toBe(2);
-    expect(result.skipped_flows).toEqual([]);
-    expect(result.inserted_flows.filter((f) => f.description === "VITEST BCI WEB PASTE")).toHaveLength(2);
+      const lines = db
+        .prepare(
+          `SELECT l.id, l.amount_clp, l.dedupe_key, s.id AS statement_id, s.card_group
+           FROM cc_statement_lines l
+           JOIN cc_statements s ON s.id = l.statement_id
+           WHERE s.account_id = ? AND l.merchant = 'VITEST BCI WEB PASTE'
+           ORDER BY l.id`
+        )
+        .all(master.id) as { id: number; amount_clp: number; dedupe_key: string; statement_id: number; card_group: string }[];
+      expect(lines).toHaveLength(2);
+      expect(lines.map((l) => l.amount_clp)).toEqual([9999, 9999]);
+      expect(lines.every((l) => l.card_group === "BCI")).toBe(true);
+      expect(lines[1]!.dedupe_key).toBe(`${lines[0]!.dedupe_key}#dup1`);
 
-    const lines = db
-      .prepare(
-        `SELECT l.id, l.amount_clp, l.dedupe_key, s.id AS statement_id, s.card_group
-         FROM cc_statement_lines l
-         JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND l.merchant = 'VITEST BCI WEB PASTE'
-         ORDER BY l.id`
-      )
-      .all(master.id) as { id: number; amount_clp: number; dedupe_key: string; statement_id: number; card_group: string }[];
-    expect(lines).toHaveLength(2);
-    expect(lines.map((l) => l.amount_clp)).toEqual([9999, 9999]);
-    expect(lines.every((l) => l.card_group === "BCI")).toBe(true);
-    expect(lines[1]!.dedupe_key).toBe(`${lines[0]!.dedupe_key}#dup1`);
-    insertedLineIds = lines.map((l) => l.id);
-    insertedStmtId = lines[0]!.statement_id;
-
-    // Re-pasting the same table changes nothing: both twins are on file.
-    const again = await importCcWebPaste(master.id, BCI_PASTE);
-    expect(again.inserted).toBe(0);
-    expect(again.skipped_duplicate).toBe(2);
+      // Re-pasting the same table changes nothing: both twins are on file.
+      const again = await importCcWebPaste(master.id, BCI_PASTE);
+      expect(again.inserted).toBe(0);
+      expect(again.skipped_duplicate).toBe(2);
+    } finally {
+      deleteTempCardMaster(master.id);
+    }
   });
 });

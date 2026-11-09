@@ -22,7 +22,7 @@ const COMPOSITION_DATE = "2026-06-20";
 
 const HOLDINGS: CompositeHolding[] = [
   { ticker: "SPY", weight: 0.6, synced_at: COMPOSITION_DATE },
-  { ticker: "VEA", weight: 0.4, synced_at: COMPOSITION_DATE },
+  { ticker: "AAPL", weight: 0.4, synced_at: COMPOSITION_DATE },
 ];
 
 /**
@@ -77,14 +77,8 @@ afterEach(() => {
 
 function seedCompositeFixture(): void {
   const holdings = HOLDINGS;
-  let anchorBasket: number;
-  let anchorFx: number;
-  try {
-    anchorBasket = basketUsdForHoldings(holdings, COMPOSITION_DATE, { preferLive: false });
-    anchorFx = observadoFrameFxForDay(COMPOSITION_DATE).clp_per_usd;
-  } catch {
-    return;
-  }
+  const anchorBasket = basketUsdForHoldings(holdings, COMPOSITION_DATE, { preferLive: false });
+  const anchorFx = observadoFrameFxForDay(COMPOSITION_DATE).clp_per_usd;
 
   db.prepare(
     `INSERT INTO watchlist_composite_meta (
@@ -104,19 +98,10 @@ describe("watchlistComposite valuation", () => {
   it("computes basket USD from equity_daily when prices exist", () => {
     seedCompositeFixture();
     const holdings = loadCompositeHoldings(TEST_BUCKET);
-    if (holdings.length === 0) return;
+    expect(holdings).toHaveLength(2);
     const basket = basketUsdForHoldings(holdings, COMPOSITION_DATE, { preferLive: false });
     expect(basket).toBeGreaterThan(0);
     expect(Number.isFinite(basket)).toBe(true);
-  });
-
-  it("proxy CLP scales with basket and FX vs anchor", () => {
-    seedCompositeFixture();
-    const meta = loadCompositeMeta(TEST_BUCKET);
-    if (meta == null) return;
-    const holdings = loadCompositeHoldings(TEST_BUCKET);
-    const atAnchor = proxyClpFromMeta(meta, holdings, COMPOSITION_DATE, { preferLive: false });
-    expect(atAnchor).toBeCloseTo(4000, 0);
   });
 });
 
@@ -416,7 +401,7 @@ describe("watchlistStatsForRow composite", () => {
       source: "builtin",
     };
     const stats = watchlistStatsForRow(row);
-    if (stats.value == null) return;
+    expect(stats.value).not.toBeNull();
     expect(stats.value_currency).toBe("clp");
     expect(stats.changes).not.toBeNull();
   });

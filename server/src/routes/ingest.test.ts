@@ -4,7 +4,6 @@ import express from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  INGEST_KINDS,
   IngestRequestError,
   createIngestClient,
   defineIngestKind,
@@ -312,7 +311,6 @@ describe("registerIngestRoutes", () => {
 
   it("registers with the real contract kinds and handlers", () => {
     expect(() => registerIngestRoutes(express(), { auth: LOCAL_AUTH })).not.toThrow();
-    expect(Object.keys(ingestJsonSchemas().kinds)).toEqual((INGEST_KINDS as readonly IngestKindDefinition[]).map((k) => k.kind));
   });
 });
 

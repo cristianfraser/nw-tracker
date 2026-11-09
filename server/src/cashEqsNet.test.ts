@@ -20,19 +20,18 @@ describe("cash_eqs net in dashboard charts", () => {
     expect(pt.cash).toBeCloseTo(row.closing_value, 0);
   });
 
-  it("overview cash and cash_eqs class-tab Total match at today", () => {
+  it("overview cash and cash_eqs class-tab Total match on the live point", () => {
+    // The overview dates its live point today; the class tab dates the same live point at the
+    // current month's end.
     const asOf = chileCalendarTodayYmd();
-    const tsDash = getDashboardValuationTimeseries("clp");
-    const ovPt = tsDash.overview?.points.find((p) => String(p.as_of_date) === asOf);
-    if (!ovPt || typeof ovPt.cash !== "number" || !Number.isFinite(ovPt.cash)) return;
+    const ovPt = getDashboardValuationTimeseries("clp").overview?.points.at(-1);
+    expect(ovPt?.as_of_date).toBe(asOf);
+    expect(typeof ovPt?.cash).toBe("number");
 
-    const tsCash = getGroupValuationTimeseries("cash_eqs", "clp");
-    const cashPt = tsCash.accounts_in_group?.points.find((p) => String(p.as_of_date) === asOf);
-    if (!cashPt) return;
+    const cashPt = getGroupValuationTimeseries("cash_eqs", "clp").accounts_in_group?.points.at(-1);
+    expect(monthKeyFromYmd(String(cashPt?.as_of_date))).toBe(monthKeyFromYmd(asOf));
+    expect(typeof cashPt?.__group_val_total).toBe("number");
 
-    const tabTotal = cashPt.__group_val_total;
-    if (typeof tabTotal !== "number" || !Number.isFinite(tabTotal)) return;
-
-    expect(ovPt.cash).toBeCloseTo(tabTotal, 0);
+    expect(ovPt!.cash).toBeCloseTo(cashPt!.__group_val_total as number, 0);
   });
 });

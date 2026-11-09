@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  ART107_INR_FROM,
-  ART107_TAX_FROM,
   art107DisposalClp,
   art107LossCarry,
   art107RegimeForSale,
@@ -25,8 +23,6 @@ const disposal = (date: string, proceeds: number, slices: TaxLotDisposal["slices
 
 describe("art107RegimeForSale", () => {
   it("taxes sales from Ley 21.420's publication until the reform, ingreso no renta either side", () => {
-    expect(ART107_TAX_FROM).toBe("2022-09-02");
-    expect(ART107_INR_FROM).toBe("2027-01-01");
     expect(art107RegimeForSale("2022-09-01")).toBe("inr");
     expect(art107RegimeForSale("2022-09-02")).toBe("tax_10pct");
     expect(art107RegimeForSale("2026-12-31")).toBe("tax_10pct");

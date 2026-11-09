@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   FINTUAL_INFERRED_UNIT_MAX_REL_STEP,
-  FINTUAL_STAND_IN_NOTE_PREFIX,
   isFintualCarryForwardFundUnitNote,
   isFintualPublishedFundUnitNote,
   recordFintualGoalFundUnitDaily,
@@ -92,7 +91,6 @@ describe("fund unit note provenance", () => {
   });
 
   it("treats stand-in rows as placeholders, never as published bars", () => {
-    expect(FINTUAL_STAND_IN_NOTE_PREFIX).toBe("fintual:stand-in");
     expect(isFintualCarryForwardFundUnitNote("fintual:stand-in")).toBe(true);
     expect(isFintualCarryForwardFundUnitNote("fintual:stand-in|from=2026-10-18")).toBe(true);
     expect(isFintualCarryForwardFundUnitNote("fintual:stand-inx")).toBe(false);

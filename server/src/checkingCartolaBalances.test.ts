@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
-import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { checkingLedgerAnchorNote, checkingMovementBalanceAtMonthEnd, checkingMovementBalanceClpAt, checkingMovementBalanceClpAtCached, clearCheckingAccountValuations, clearCheckingLedgerAnchor, defaultCheckingLedgerAnchorDate, ensureCheckingLedgerAnchor, getCartolaDerivedAnchor, getCheckingLedgerAnchor, nonAnchorClpFlowTotals, upsertCheckingLedgerAnchor } from "./checkingCartolaBalances.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
@@ -77,75 +76,40 @@ function destroySyntheticAnchorAccount(accountId: number): void {
 }
 
 describe("checkingCartolaBalances", () => {
-  it("computes balance as movement cumsum", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug = 'cuenta_corriente' OR g.slug LIKE '%__cuenta_corriente' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-
-    const last = db
-      .prepare(
-        `SELECT occurred_on FROM movements
-         WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?
-         ORDER BY occurred_on DESC, id DESC LIMIT 1`
-      )
-      .get(row.id, row.id, row.id) as { occurred_on: string } | undefined;
-    if (!last) return;
-
-    // Balance = single-leg rows ± transfer legs (manual moves are from/to transfer rows).
-    const sqlSum = db
-      .prepare(
-        `SELECT COALESCE(SUM(CASE
-             WHEN account_id = @id THEN ${MOVEMENT_CLP_LEG_SQL}
-             WHEN to_account_id = @id THEN ${MOVEMENT_CLP_LEG_SQL}
-             WHEN from_account_id = @id THEN -${MOVEMENT_CLP_LEG_SQL}
-           END), 0) AS t
-         FROM movements
-         WHERE (account_id = @id OR from_account_id = @id OR to_account_id = @id)
-           AND occurred_on <= @d`
-      )
-      .get({ id: row.id, d: last.occurred_on }) as { t: number };
-    expect(checkingMovementBalanceClpAt(row.id, last.occurred_on)).toBe(Math.round(Number(sqlSum.t)));
-  });
-
-  it("cache returns same value until cleared", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug = 'cuenta_corriente' OR g.slug LIKE '%__cuenta_corriente' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-    const last = db
-      .prepare(`SELECT occurred_on FROM movements WHERE account_id = ? ORDER BY occurred_on DESC LIMIT 1`)
-      .get(row.id) as { occurred_on: string } | undefined;
-    if (!last) return;
-
-    const a = checkingMovementBalanceClpAtCached(row.id, last.occurred_on);
-    const b = checkingMovementBalanceClpAtCached(row.id, last.occurred_on);
-    expect(a).toBe(b);
+  it("computes balance as movement cumsum: single-leg rows plus both transfer legs", () => {
+    const accountId = createSyntheticAnchorAccount();
+    const other = db.prepare(`SELECT id FROM accounts WHERE id <> ? ORDER BY id LIMIT 1`).get(accountId) as { id: number };
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+       VALUES (?, ?, ?, ?, 'clp', ?, 'vitest checking cumsum')`
+    );
+    // Past dates: a read at today or later counts every movement already on file (displayLedgerCutoffYmd).
+    try {
+      ins.run(accountId, null, null, 1000, "2020-03-02");
+      ins.run(accountId, null, null, -150, "2020-03-03");
+      ins.run(null, accountId, other.id, 300, "2020-03-04");
+      ins.run(null, other.id, accountId, 200, "2020-03-05");
+      ins.run(accountId, null, null, 5000, "2020-03-09");
+      expect(checkingMovementBalanceClpAt(accountId, "2020-03-01")).toBe(0);
+      expect(checkingMovementBalanceClpAt(accountId, "2020-03-04")).toBe(550);
+      expect(checkingMovementBalanceClpAt(accountId, "2020-03-05")).toBe(750);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE note = 'vitest checking cumsum'`).run();
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    }
   });
 
   it("clearCheckingAccountValuations removes persisted rows", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug = 'cuenta_corriente' OR g.slug LIKE '%__cuenta_corriente' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-    const cleared = clearCheckingAccountValuations(row.id);
-    expect(cleared).toBeGreaterThanOrEqual(0);
-    const left = db
-      .prepare(`SELECT COUNT(*) AS c FROM valuations WHERE account_id = ?`)
-      .get(row.id) as { c: number };
-    expect(left.c).toBe(0);
+    const accountId = createSyntheticAnchorAccount();
+    try {
+      db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, '2099-03-31', 123, 'clp')`).run(accountId);
+      expect(clearCheckingAccountValuations(accountId)).toBe(1);
+      const left = db.prepare(`SELECT COUNT(*) AS c FROM valuations WHERE account_id = ?`).get(accountId) as { c: number };
+      expect(left.c).toBe(0);
+    } finally {
+      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    }
   });
 
   describe("ledger anchor", () => {

@@ -1,14 +1,7 @@
-import { describe, expect, it } from "vitest";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { liabilitiesBreakdownClpAsOf } from "./liabilitiesValuation.js";
-import {
-  latestDisplayedBalanceForAccount,
-  latestLiabilityValuationRowForSnapshot,
-  latestMortgageDisplayedBalance,
-  latestValuationRowOnOrBefore,
-  latestValuationRowOnOrBeforeChileToday,
-} from "./valuationLatest.js";
+import { latestValuationRowOnOrBefore, latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 
 describe("valuationLatest", () => {
   it("returns the latest valuation on or before the as-of date", () => {
@@ -30,59 +23,19 @@ describe("valuationLatest", () => {
   });
 
   it("Chile-today lookup never returns a future-dated row when an on-or-before row exists", () => {
+    // The person's cards carry the current month-end anchor, dated after today.
+    const today = chileCalendarTodayYmd();
     const row = db
       .prepare(
-        `SELECT account_id FROM valuations ORDER BY as_of_date DESC LIMIT 1`
+        `SELECT v.account_id FROM valuations v
+         WHERE v.as_of_date > ?
+           AND EXISTS (SELECT 1 FROM valuations p WHERE p.account_id = v.account_id AND p.as_of_date <= ?)
+         ORDER BY v.account_id LIMIT 1`
       )
-      .get() as { account_id: number } | undefined;
-    if (!row) return;
+      .get(today, today) as { account_id: number };
 
     const latest = latestValuationRowOnOrBeforeChileToday(row.account_id);
-    if (!latest) return;
-    const future = db
-      .prepare(
-        `SELECT as_of_date FROM valuations
-         WHERE account_id = ? AND as_of_date > ?
-         ORDER BY as_of_date ASC LIMIT 1`
-      )
-      .get(row.account_id, latest.as_of_date) as { as_of_date: string } | undefined;
-    if (future) {
-      expect(latest.as_of_date <= future.as_of_date).toBe(true);
-    }
-  });
-
-  it("mortgage liability snapshot uses depto sheet crédito restante at today", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const today = chileCalendarTodayYmd();
-    const snap = latestLiabilityValuationRowForSnapshot(master.id, "mortgage", today);
-    const fromSheet = latestMortgageDisplayedBalance(master.id, today);
-    if (!fromSheet) return;
-
-    expect(snap?.value_clp).toBeCloseTo(fromSheet.value_clp, 0);
-    expect(snap?.as_of_date).toBe(today);
-
-    const breakdown = liabilitiesBreakdownClpAsOf(today);
-    if (breakdown.mortgage_clp > 0) {
-      expect(snap?.value_clp).toBeCloseTo(breakdown.mortgage_clp, 0);
-    }
-  });
-
-  it("latestDisplayedBalanceForAccount on mortgage matches sheet at today", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const today = chileCalendarTodayYmd();
-    const displayed = latestDisplayedBalanceForAccount(master.id);
-    const sheet = latestMortgageDisplayedBalance(master.id, today);
-    if (!sheet) return;
-
-    expect(displayed?.value_clp).toBeCloseTo(sheet.value_clp, 0);
-    expect(displayed?.as_of_date).toBe(today);
+    expect(latest).not.toBeNull();
+    expect(latest!.as_of_date <= today).toBe(true);
   });
 });

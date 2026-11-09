@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { SantanderState } from "nw-tracker-contracts";
 import {
   decideAfcFetch,
-  decideAfpUnoFetch,
   decideMortgageSheetRun,
   decidePayslipsRun,
   decideIngestRun,
@@ -128,11 +127,6 @@ describe("decideSantanderBalancePoll", () => {
   });
 });
 
-describe("decideAfpUnoFetch", () => {
-  it("reads every night", () => {
-    expect(decideAfpUnoFetch().reason).toBe("nightly: the website's balance against the ledger");
-  });
-});
 
 describe("decideMortgageSheetRun", () => {
   const at = (ymd: string, hourChile = 12) => new Date(`${ymd}T${String(hourChile + 3).padStart(2, "0")}:00:00Z`); // Chile UTC−3

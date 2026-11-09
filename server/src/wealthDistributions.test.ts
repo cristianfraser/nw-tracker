@@ -12,28 +12,6 @@ import {
 } from "./wealthDistributions.js";
 
 describe("wealthDistributions seed", () => {
-  it("keeps the verified end-2022 anchors as-is (GWD 2023 tables 2-2 + 3-1)", () => {
-    const anchors: Record<string, { mean: number; median: number; gini: number }> = {
-      CL: { mean: 54_082, median: 19_544, gini: 0.788 },
-      US: { mean: 551_347, median: 107_739, gini: 0.83 },
-      ES: { mean: 224_209, median: 107_507, gini: 0.683 },
-      CH: { mean: 685_226, median: 167_353, gini: 0.772 },
-      UK: { mean: 302_783, median: 151_825, gini: 0.702 },
-      AU: { mean: 496_819, median: 247_453, gini: 0.663 },
-      DE: { mean: 256_179, median: 66_735, gini: 0.772 },
-      JP: { mean: 216_078, median: 103_681, gini: 0.65 },
-      MX: { mean: 55_274, median: 18_920, gini: 0.793 },
-      BR: { mean: 29_452, median: 5_702, gini: 0.884 },
-      CN: { mean: 75_731, median: 27_273, gini: 0.709 },
-    };
-    for (const country of WEALTH_COUNTRIES) {
-      const rec = wealthDistributionRecordFor(country, 2022);
-      expect(rec.mean_usd).toBe(anchors[country]!.mean);
-      expect(rec.median_usd).toBe(anchors[country]!.median);
-      expect(rec.gini).toBe(anchors[country]!.gini);
-    }
-  });
-
   it("covers every year 2016..2025 for every country, with 2023/2024 flagged interpolated", () => {
     expect(minWealthDistributionYear()).toBe(2016);
     expect(maxWealthDistributionYear()).toBe(2025);

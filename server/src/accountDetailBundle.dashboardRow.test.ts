@@ -4,18 +4,15 @@ import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { db } from "./db.js";
 
 describe("accountDetailBundle dashboard_account_row", () => {
-  it("includes fresh dashboard row aligned with buildDashboardAccountRows for OILK", async () => {
-    const row = db
-      .prepare(`SELECT id FROM accounts WHERE equity_ticker = 'OILK' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!row) return;
+  it("includes fresh dashboard row aligned with buildDashboardAccountRows for a stock (SPY)", async () => {
+    const row = db.prepare(`SELECT id FROM accounts WHERE equity_ticker = 'SPY' LIMIT 1`).get() as { id: number };
 
     const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
-    if (!bundle?.dashboard_account_row) return;
+    expect(bundle?.dashboard_account_row).toBeTruthy();
 
     const dashRows = await buildDashboardAccountRows(false);
     const expected = dashRows.find((r) => r.account_id === row.id);
-    if (!expected) return;
+    if (!expected || !bundle?.dashboard_account_row) throw new Error("SPY has no dashboard row");
 
     expect(bundle.dashboard_account_row.current_value_clp).toBeCloseTo(
       expected.current_value_clp ?? 0,

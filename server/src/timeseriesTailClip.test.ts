@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  TS_TRAILING_ZERO_MONTHS_KEPT,
-  applyTrailingZeroTailClipToBlock,
-  trailingZeroTailClipStartIndex,
-} from "./timeseriesTailClip.js";
+import { applyTrailingZeroTailClipToBlock, trailingZeroTailClipStartIndex } from "./timeseriesTailClip.js";
 
-describe("TS_TRAILING_ZERO_MONTHS_KEPT", () => {
-  it("keeps one trailing zero month (display only)", () => {
-    expect(TS_TRAILING_ZERO_MONTHS_KEPT).toBe(1);
-  });
-});
 
 describe("trailingZeroTailClipStartIndex", () => {
   const points = [

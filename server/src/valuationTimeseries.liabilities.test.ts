@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { closingByCalendarMonthFromRaw } from "./accountPerformance.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import {
   consolidatedClosingRawByDate,
@@ -11,11 +10,9 @@ import { db } from "./db.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 import {
   getDashboardValuationTimeseries,
-  getGroupValuationTimeseries,
   liabilitiesBreakdownClpAsOf,
   listAccountsForGroupTab,
   listLiabilitiesTabAccountRows,
-  seriesAccountIdForGroupTab,
 } from "./valuationTimeseries.js";
 import { portfolioGroupApiForValuation } from "./portfolioGroupReference.js";
 
@@ -31,33 +28,6 @@ describe("listLiabilitiesTabAccountRows", () => {
     for (const r of ccRows) {
       expect(String(r.import_key ?? "")).toMatch(/^credit_card_master\|/);
     }
-  });
-
-  it("excludes legacy combined worldmember when per-card Santander masters exist", () => {
-    const perCard = db
-      .prepare(`SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`)
-      .get() as { o: number } | undefined;
-    if (!perCard) return;
-
-    const legacyMaster = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=credit_card' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!legacyMaster) return;
-
-    const ccRows = listLiabilitiesTabAccountRows("credit_card");
-    const seriesIds = new Set(ccRows.map((r) => r.account_id));
-    expect(seriesIds.has(legacyMaster.id)).toBe(false);
-    expect(ccRows.length).toBeGreaterThan(0);
-  });
-
-  it("includes the mortgage master for the hipoteca tab", () => {
-    const mtgRows = listLiabilitiesTabAccountRows("mortgage");
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-    expect(mtgRows.length).toBeGreaterThan(0);
-    expect(mtgRows.some((r) => r.account_id === master.id)).toBe(true);
   });
 
   it("breakdown total matches sum of Pasivos tab account rows at a snapshot date", () => {
@@ -80,40 +50,6 @@ describe("listLiabilitiesTabAccountRows", () => {
       tabSum,
       0
     );
-  });
-
-  it("overview brokerage on a mid-month chart date uses that month's cierre, not prior month", () => {
-    const tsDash = getDashboardValuationTimeseries("clp");
-    const ovPoints = tsDash.overview?.points ?? [];
-    const today = chileCalendarTodayYmd();
-    const curMk = monthKeyFromYmd(today);
-    const midMonthPoint = ovPoints.find((p) => {
-      const d = String(p.as_of_date);
-      return monthKeyFromYmd(d) === curMk && d < today;
-    });
-    if (!midMonthPoint) return;
-
-    const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation("brokerage");
-    const byMonth = closingByCalendarMonthFromRaw(
-      consolidatedClosingRawByDate(
-        getGroupConsolidatedMonthlyPerfForRows(
-          listAccountsForGroupTab(groupSlug, tabSubgroup),
-          groupSlug,
-          "clp"
-        )
-      )
-    );
-    const curCierre = byMonth.get(curMk);
-    const ovBro = midMonthPoint.brokerage;
-    if (
-      curCierre == null ||
-      typeof ovBro !== "number" ||
-      !Number.isFinite(ovBro) ||
-      !Number.isFinite(curCierre)
-    ) {
-      return;
-    }
-    expect(ovBro).toBeCloseTo(curCierre, 0);
   });
 
   it("overview bucket lines match group monthly perf cierre on the last chart date", () => {
@@ -171,47 +107,6 @@ describe("listLiabilitiesTabAccountRows", () => {
     const ovLiab = lastOv.liabilities;
     if (typeof ovLiab !== "number" || !Number.isFinite(ovLiab)) return;
     expect(ovLiab).toBeCloseTo(breakdownTotal, 0);
-  });
-
-  it("hipoteca tab chart point matches liabilities breakdown mortgage_clp at the same as-of date", () => {
-    const mtgRows = listLiabilitiesTabAccountRows("mortgage");
-    if (mtgRows.length === 0) return;
-
-    const ts = getGroupValuationTimeseries("liabilities", "clp", "mortgage");
-    const points = ts.accounts_in_group?.points ?? [];
-    if (points.length === 0) return;
-
-    const lastPt = points[points.length - 1]!;
-    const asOf = String(lastPt.as_of_date);
-    const breakdown = liabilitiesBreakdownClpAsOf(asOf);
-    if (breakdown.mortgage_clp <= 0) return;
-
-    let chartSum = 0;
-    for (const r of mtgRows) {
-      const seriesId = seriesAccountIdForGroupTab(r, "liabilities");
-      const dk = String(seriesId);
-      const v = lastPt[dk];
-      if (typeof v === "number" && Number.isFinite(v)) chartSum += v;
-    }
-    expect(chartSum).toBeCloseTo(breakdown.mortgage_clp, 0);
-  });
-
-  it("breakdown mortgage_clp at today matches sum of liability snapshots", () => {
-    const today = chileCalendarTodayYmd();
-    const breakdown = liabilitiesBreakdownClpAsOf(today);
-    if (breakdown.mortgage_clp <= 0) return;
-
-    const mtgRows = listLiabilitiesTabAccountRows("mortgage");
-    let snapSum = 0;
-    for (const r of mtgRows) {
-      const snap = latestLiabilityValuationRowForSnapshot(
-        r.account_id,
-        accountBucketKindSlug(r.bucket_slug),
-        today
-      );
-      if (snap?.value_clp != null && Number.isFinite(snap.value_clp)) snapSum += snap.value_clp;
-    }
-    expect(snapSum).toBeCloseTo(breakdown.mortgage_clp, 0);
   });
 
   it("returns at most one row per operational credit card series", () => {

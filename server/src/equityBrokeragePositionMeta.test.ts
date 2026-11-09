@@ -3,12 +3,10 @@ import { db } from "./db.js";
 import { equityBrokeragePositionMeta } from "./accountPosition.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { clearLiveMarketQuotesForTest, insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
-import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
 
 afterEach(() => {
   clearLiveMarketQuotesForTest();
 });
-
 
 /** Values convert at the sell rate: the stored mid less the inferred half spread (`rates.ts`). */
 const SELL = (mid: number): number => mid - 2;
@@ -18,17 +16,9 @@ describe("equityBrokeragePositionMeta", () => {
     const row = db
       .prepare(
         `SELECT a.id, a.equity_ticker FROM accounts a
-         WHERE a.notes = 'import:excel|key=spy' LIMIT 1`
+         WHERE a.equity_ticker = 'SPY' LIMIT 1`
       )
-      .get() as { id: number; equity_ticker: string } | undefined;
-    if (!row?.equity_ticker) return;
-
-    const hasUnits = db
-      .prepare(
-        `SELECT 1 FROM movements WHERE account_id = ? AND flow_kind IN (${BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ")}) AND COALESCE(units_delta, 0) != 0 LIMIT 1`
-      )
-      .get(row.id, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS);
-    if (!hasUnits) return;
+      .get() as { id: number; equity_ticker: string };
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
@@ -54,11 +44,11 @@ describe("equityBrokeragePositionMeta", () => {
       });
 
       const meta = equityBrokeragePositionMeta(row.id, "SPY", "2026-05-19", new Date("2026-05-19T15:00:00.000Z"));
-      const units = meta?.units;
-      if (units == null || units <= 0) return;
+      const units = meta?.units ?? 0;
+      expect(units).toBeGreaterThan(0);
 
-      expect(meta!.afp_override_valor_cuota_clp).toBeCloseTo(600 * 900, 0);
-      expect(meta!.afp_override_value_clp).toBeCloseTo(units * 600 * 900, -2);
+      expect(meta!.afp_override_valor_cuota_clp).toBeCloseTo(600 * SELL(900), 0);
+      expect(meta!.afp_override_value_clp).toBeCloseTo(units * 600 * SELL(900), -2);
     } finally {
       vi.useRealTimers();
     }

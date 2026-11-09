@@ -1,83 +1,65 @@
-import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
-import { describe, expect, it } from "vitest";
+import { fixtureCardLine, fixtureMovement } from "./test/flowFixtures.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccStatementLineBelongsToCreditCardGroup } from "./ccExpenseCategories.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { checkingGastosMovementBelongs } from "./flowsCheckingGastos.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 
-describe("assignFlowExpenseLineCategory", () => {
-  it("disambiguates id collision between checking movement and cc statement line", () => {
-    const checking = checkingGastosMovementBelongs(999);
-    const cc = ccStatementLineBelongsToCreditCardGroup(999);
-    if (!checking.ok || !cc.ok) return;
+/** One id that is both a checking movement and a card line (two documents, two flows). */
+const SHARED_ID = 987_654_321;
 
-    const checkingResult = assignFlowExpenseLineCategory({
-      lineId: 999,
-      source: "checking",
-      unique: true,
-    });
-    expect(checkingResult.purchase_key).toMatch(/^checking-(mv:999|cartola:)/);
-    expect(checkingResult.merchant_key).not.toBe("OKM DEPTO");
+describe("assignFlowExpenseLineCategory", () => {
+  const cleanups: (() => void)[] = [];
+  beforeAll(() => {
+    cleanups.push(fixtureMovement(SHARED_ID, -4321, "2021-11-22"), fixtureCardLine(SHARED_ID));
+    // A cartola row, so the checking reader takes it as a withdrawal (the cartola identity is still its note).
+    db.prepare(`UPDATE movements SET note = ? WHERE id = ?`).run(
+      "import:cartola|2021-11|Agustinas|COMPRA VITEST FIXTURE|on:2021-11-22|amt:-4321|idx:0",
+      SHARED_ID
+    );
+    expect(checkingGastosMovementBelongs(SHARED_ID).ok).toBe(true);
+    expect(ccStatementLineBelongsToCreditCardGroup(SHARED_ID).ok).toBe(true);
+  });
+  afterAll(() => {
+    for (const c of cleanups.reverse()) c();
+  });
+
+  it("disambiguates id collision between checking movement and cc statement line", () => {
+    const checkingResult = assignFlowExpenseLineCategory({ lineId: SHARED_ID, source: "checking", unique: true });
+    expect(checkingResult.purchase_key).toMatch(new RegExp(`^checking-(mv:${SHARED_ID}|cartola:)`));
+    expect(checkingResult.merchant_key).not.toBe("VITEST FIXTURE LINE");
 
     const ccResult = assignFlowExpenseLineCategory({
-      lineId: 999,
+      lineId: SHARED_ID,
       source: "cc",
       unique: true,
       categorySlug: "supermarket",
     });
-    expect(ccResult.purchase_key).toMatch(/^line-pr:/);
-    expect(ccResult.merchant_key).toBe("OKM DEPTO");
+    expect(ccResult.purchase_key).not.toMatch(/^checking-/);
+    expect(ccResult.merchant_key).toBe("VITEST FIXTURE LINE");
 
-    db.prepare(
-      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
-    ).run(checking.account_id, checkingResult.purchase_key);
-    db.prepare(
-      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
-    ).run(cc.account_id!, ccResult.purchase_key);
+    assignFlowExpenseLineCategory({ lineId: SHARED_ID, source: "checking", unique: false, clearCategory: true });
+    assignFlowExpenseLineCategory({ lineId: SHARED_ID, source: "cc", unique: false, clearCategory: true });
   });
 
   it("throws when source is omitted and both checking and cc rows share the id", () => {
-    const checking = checkingGastosMovementBelongs(999);
-    const cc = ccStatementLineBelongsToCreditCardGroup(999);
-    if (!checking.ok || !cc.ok) return;
-
-    expect(() =>
-      assignFlowExpenseLineCategory({ lineId: 999, unique: true })
-    ).toThrow(/ambiguous/i);
+    expect(() => assignFlowExpenseLineCategory({ lineId: SHARED_ID, unique: true })).toThrow(/ambiguous/i);
   });
 
-  it("Mercado Capitales checking line shows unique after assign with source checking", () => {
-    const checking = checkingGastosMovementBelongs(999);
-    const cc = ccStatementLineBelongsToCreditCardGroup(999);
-    if (!checking.ok || !cc.ok) return;
-
-    assignFlowExpenseLineCategory({
-      lineId: 999,
-      source: "checking",
-      unique: true,
-      categorySlug: "deposits",
-    });
-
+  it("a checking line shows unique after assign with source checking, the card line with that id does not", () => {
+    assignFlowExpenseLineCategory({ lineId: SHARED_ID, source: "checking", unique: true, categorySlug: "deposits" });
     try {
       const payload = buildFlowsExpensesPayload();
-      const mc = payload.lines.find(
-        (ln) => ln.source === "checking" && ln.statement_line_id === 999
-      );
-      expect(mc?.category_unique).toBe(true);
-      expect(mc?.category_slug).toBe("deposits");
+      const checkingLine = payload.lines.find((ln) => ln.source === "checking" && ln.statement_line_id === SHARED_ID);
+      expect(checkingLine?.category_unique).toBe(true);
+      expect(checkingLine?.category_slug).toBe("deposits");
 
-      const okm = payload.lines.find(
-        (ln) => ln.source === "cc" && ln.statement_line_id === 999
-      );
-      expect(okm?.category_unique).not.toBe(true);
+      const cardLine = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === SHARED_ID);
+      expect(cardLine).toBeDefined();
+      expect(cardLine?.category_unique).not.toBe(true);
     } finally {
-      assignFlowExpenseLineCategory({
-        lineId: 999,
-        source: "checking",
-        unique: false,
-        clearCategory: true,
-      });
+      assignFlowExpenseLineCategory({ lineId: SHARED_ID, source: "checking", unique: false, clearCategory: true });
     }
   });
 });

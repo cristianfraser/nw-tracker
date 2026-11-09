@@ -5,9 +5,8 @@ import { updateAccountExcludeFromGroupTotals } from "./accountExcludeFromGroupTo
 describe("updateAccountExcludeFromGroupTotals", () => {
   it("toggles the flag on a CC master and restores it", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
     const prev = db
       .prepare(`SELECT exclude_from_group_totals FROM accounts WHERE id = ?`)

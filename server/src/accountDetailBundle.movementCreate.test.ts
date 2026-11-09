@@ -5,11 +5,8 @@ import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 
 describe("accountDetailBundle movement_create", () => {
-  it("exposes brokerage_flow_kinds for equity_ticker accounts (OILK)", async () => {
-    const row = db
-      .prepare(`SELECT id FROM accounts WHERE equity_ticker = 'OILK' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!row) return;
+  it("exposes brokerage_flow_kinds for equity_ticker accounts (SPY)", async () => {
+    const row = db.prepare(`SELECT id FROM accounts WHERE equity_ticker = 'SPY' LIMIT 1`).get() as { id: number };
 
     const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();

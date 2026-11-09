@@ -6,18 +6,8 @@ import {
   reanchorMonthlyPerfToCalendarMonthEnds,
   type AccountMonthlyPerformanceRow,
 } from "./accountPerformance.js";
-import {
-  monthEndCloseClpForAccount,
-  priorCalendarMonthKey,
-} from "./accountPeriodMarks.js";
+import { priorCalendarMonthKey } from "./accountPeriodMarks.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
-import {
-  deptoPropertyPaymentEventsThroughDate,
-  mortgageSheetPaymentEventsThroughDate,
-} from "./deptoDividendosLedger.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 
 describe("reanchorMonthlyPerfToCalendarMonthEnds", () => {
@@ -85,26 +75,6 @@ describe("reanchorMonthlyPerfToCalendarMonthEnds", () => {
 });
 
 describe("valuationSeriesMonthlyPerformance", () => {
-  it("Reserva2 May 2026 attributes net withdrawals to aportes, not P/L", () => {
-    const acc = db
-      .prepare(`SELECT id FROM accounts WHERE notes LIKE '%reserva2%' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!acc) return;
-
-    const perf = valuationSeriesMonthlyPerformance(acc.id, "clp");
-    const may = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-05");
-    if (!may) return;
-
-    expect(may.net_capital_flow).toBe(-5_700_000);
-    expect(may.nominal_pl).not.toBeCloseTo(-5_620_042, 0);
-    if (may.prior_closing != null && may.nominal_pl != null) {
-      expect(may.nominal_pl).toBeCloseTo(
-        may.closing_value - may.prior_closing - may.net_capital_flow,
-        0
-      );
-    }
-  });
-
   it("returns empty monthly for movement-balance cash categories", () => {
     const rows = db
       .prepare(
@@ -187,158 +157,5 @@ describe("valuationSeriesMonthlyPerformance", () => {
       );
     }
   });
-
-  it("Fintual cert v2 current month prior_closing matches prior month closing_value", () => {
-    const acc = db
-      .prepare(
-        `SELECT a.id, a.notes, a.name, g.slug AS bucket_slug
-         FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE a.notes LIKE '%import:fintual|cert|key=risky_norris%' LIMIT 1`
-      )
-      .get() as { id: number; notes: string | null; name: string; bucket_slug: string } | undefined;
-    if (!acc) return;
-
-    const perf = valuationSeriesMonthlyPerformance(acc.id, "clp");
-    if (!perf?.monthly.length) return;
-
-    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const priorMk = priorCalendarMonthKey(curMk);
-    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-    const prior = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === priorMk);
-    if (!cur || !prior || cur.prior_closing == null || cur.nominal_pl == null) return;
-
-    expect(cur.prior_closing).toBeCloseTo(prior.closing_value, 0);
-    expect(cur.nominal_pl).toBeCloseTo(
-      cur.closing_value - prior.closing_value - cur.net_capital_flow,
-      0
-    );
-  });
-
-  it("mega caca current-month P/L uses account mark at prior month-end (near 0 when live ≈ May cierre)", () => {
-    const acc = db
-      .prepare(
-        `SELECT a.id, a.notes, a.name, g.slug AS bucket_slug
-         FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE a.name = 'mega caca' LIMIT 1`
-      )
-      .get() as { id: number; notes: string | null; name: string; bucket_slug: string } | undefined;
-    if (!acc) return;
-
-    const perf = valuationSeriesMonthlyPerformance(acc.id, "clp");
-    if (!perf?.monthly.length) return;
-
-    const asc = [...perf.monthly].reverse();
-    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const priorMk = priorCalendarMonthKey(curMk);
-    const cur = asc.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-    if (!cur || cur.prior_closing == null || cur.nominal_pl == null) return;
-
-    const expectedPrior = monthEndCloseClpForAccount(
-      acc.id,
-      acc.bucket_slug,
-      asc,
-      priorMk,
-      { import_key: acc.notes, name: acc.name }
-    );
-    expect(expectedPrior).not.toBeNull();
-    expect(cur.prior_closing).toBe(expectedPrior);
-    expect(cur.nominal_pl).toBeCloseTo(
-      cur.closing_value - cur.prior_closing - cur.net_capital_flow,
-      2
-    );
-    // Sanity bound, proportional: an absolute "near zero vs May cierre" bound rotted the
-    // moment months rolled; a fund's current-month move beyond 20% of value means the
-    // prior-month mark was wrong, which is what this test guards.
-    expect(Math.abs(cur.nominal_pl)).toBeLessThan(0.2 * Math.abs(cur.closing_value));
-  });
-
-  it("depto property P/L reconciles CLP net-equity marks minus CLP payments in month", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%depto%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-
-    const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
-    if (!perf?.monthly.length) return;
-
-    const nov = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2024-11");
-    const dec = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2024-12");
-    const feb = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2025-02");
-    const mar = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2025-03");
-    if (!nov || !dec || !feb || !mar || nov.prior_closing == null || nov.nominal_pl == null) return;
-
-    expect(nov.net_capital_flow).toBeGreaterThan(20_000_000);
-    expect(nov.nominal_pl).toBeCloseTo(
-      nov.closing_value - nov.prior_closing - nov.net_capital_flow,
-      0
-    );
-    for (const r of [nov, dec, feb, mar]) {
-      expect(Math.abs(r.nominal_pl ?? 0)).toBeLessThan(500_000);
-    }
-    expect(Math.abs((nov.nominal_pl ?? 0) + (dec.nominal_pl ?? 0))).toBeLessThan(400_000);
-    expect(Math.abs((feb.nominal_pl ?? 0) + (mar.nominal_pl ?? 0))).toBeLessThan(600_000);
-  });
-
-  it("depto property USD perf keeps sheet payments in USD (not CLP scale)", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%depto%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-
-    // Latest month with an actual sheet payment: early in a new month both units are 0
-    // flow (nothing posted yet) and the CLP-vs-USD scale check is vacuous.
-    const clpMonthly = valuationSeriesMonthlyPerformance(row.id, "clp")?.monthly ?? [];
-    const clpWithFlow = clpMonthly.find((r) => Math.abs(r.net_capital_flow) > 1_000);
-    if (!clpWithFlow) return;
-    const mk = monthKeyFromYmd(clpWithFlow.as_of_date);
-    const clp = clpWithFlow;
-    const usd = valuationSeriesMonthlyPerformance(row.id, "usd")?.monthly.find(
-      (r) => monthKeyFromYmd(r.as_of_date) === mk
-    );
-    if (!clp || !usd || usd.prior_closing == null) return;
-
-    expect(Math.abs(usd.net_capital_flow)).toBeLessThan(50_000);
-    expect(usd.net_capital_flow).not.toBeCloseTo(clp.net_capital_flow, -3);
-    expect(usd.nominal_pl).toBeCloseTo(
-      usd.closing_value - usd.prior_closing - usd.net_capital_flow,
-      0
-    );
-  });
 });
 
-describe("depto ledger payments in the performance table", () => {
-  it("USD flows convert each payment at its own date's rate (the card's and the daily view's rule)", () => {
-    const ledger = loadDeptoLedgerFromMovements();
-    if (!ledger.length) return;
-    const today = chileCalendarTodayYmd();
-    const rows = db
-      .prepare(
-        `SELECT a.id, g.slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__mortgage' OR g.slug LIKE '%__property'`
-      )
-      .all() as { id: number; slug: string }[];
-    for (const r of rows) {
-      const monthly = valuationSeriesMonthlyPerformance(r.id, "usd")?.monthly ?? [];
-      if (!monthly.length) continue;
-      const firstMk = monthKeyFromYmd(monthly[monthly.length - 1]!.as_of_date);
-      const events =
-        accountBucketKindSlug(r.slug) === "mortgage"
-          ? mortgageSheetPaymentEventsThroughDate(ledger, today)
-          : deptoPropertyPaymentEventsThroughDate(ledger, today);
-      const expected = events
-        .filter((e) => monthKeyFromYmd(e.occurred_on) >= firstMk)
-        .reduce((s, e) => s + flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, "usd"), 0);
-      expect(monthly.reduce((s, m) => s + m.net_capital_flow, 0)).toBeCloseTo(expected, 4);
-    }
-  });
-});

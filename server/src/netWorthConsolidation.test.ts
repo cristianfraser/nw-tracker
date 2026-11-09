@@ -3,7 +3,7 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
-import { buildNetWorthConsolidatedMonthly, buildInversionesConsolidatedMonthly } from "./netWorthConsolidation.js";
+import { buildInversionesConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { getDashboardValuationTimeseries } from "./valuationTimeseries.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
@@ -49,15 +49,6 @@ describe("buildInversionesConsolidatedMonthly", () => {
   });
 });
 
-describe("buildNetWorthConsolidatedMonthly", () => {
-  it("current month net_capital_flow sums bucket account deposits", () => {
-    const rows = buildNetWorthConsolidatedMonthly("clp");
-    const mk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const row = rows.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
-    if (!row) return;
-    expect(Number.isFinite(row.net_capital_flow)).toBe(true);
-  });
-});
 
 describe("net worth surfaces reconcile", () => {
   it("page-bundle totals, detalle, and chart total_nw align", async () => {

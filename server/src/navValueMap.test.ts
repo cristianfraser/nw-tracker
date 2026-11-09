@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardMetricsAccountRow } from "./dashboardNavCardMetrics.js";
 import type { NavTreeNodeDto } from "./navTree.js";
-import { buildNavValueMap, NAV_VALUE_MAP_COLOR_BOUNDS, type NavValueMapNodeDto } from "./navValueMap.js";
+import { buildNavValueMap, type NavValueMapNodeDto } from "./navValueMap.js";
 import type { ProxyBasketBreakdown, ProxyHoldingBreakdown } from "./proxyBasketBreakdownTypes.js";
 
 function row(partial: Partial<CardMetricsAccountRow> & { account_id: number }): CardMetricsAccountRow {
@@ -146,7 +146,6 @@ describe("buildNavValueMap", () => {
     const ipsa = leaves(root).find((l) => l.slug === "ipsa")!;
     expect(ipsa.pct.day.clp).toBeCloseTo(3 / 297, 10);
     expect(ipsa.pl.day.clp).toBe(3);
-    expect(NAV_VALUE_MAP_COLOR_BOUNDS).toEqual({ day: 0.03, month: 0.08, year: 0.25 });
   });
 
   it("nets the linked credit cards into the savings tile only", () => {

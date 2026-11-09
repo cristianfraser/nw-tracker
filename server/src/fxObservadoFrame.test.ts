@@ -2,11 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { dateAtTimeZoneWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
-import {
-  INTERBANK_WINDOW_MIN_PRINTS,
-  interbankWindowAverageClpPerUsd,
-  observadoFrameFxForDay,
-} from "./fxObservadoFrame.js";
+import { interbankWindowAverageClpPerUsd, observadoFrameFxForDay } from "./fxObservadoFrame.js";
 
 // Far-future synthetic dates: nothing real is published there, so the series head and the
 // "first row after" lookups are exactly the rows this file seeds. Every row is removed in
@@ -101,7 +97,6 @@ describe("observadoFrameFxForDay — pending publication", () => {
     seedObservado({ [D_PUB_A]: 900, [D_PUB_B]: 910, [D_PUB_C]: 920 });
     seedPrint(D_PUB_C, 9, 30, 950);
     seedPrint(D_PUB_C, 10, 0, 960);
-    expect(INTERBANK_WINDOW_MIN_PRINTS).toBe(3);
     expect(interbankWindowAverageClpPerUsd(D_PUB_C, chileInstant(D_PUB_C, 10, 15))).toBeNull();
     expect(observadoFrameFxForDay(D_PUB_C, chileInstant(D_PUB_C, 10, 15))).toEqual({
       clp_per_usd: 920,
