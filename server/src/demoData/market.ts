@@ -11,7 +11,8 @@
  */
 import { db } from "../db.js";
 import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
-import { isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
+import { isChileBusinessDay, isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
+import { equityMarketKind, equityQuoteCurrency } from "../equityQuote.js";
 import { upsertSpAfpFundUnits, type SpAfpFundUnitRow } from "../spAfpFundUnits.js";
 import { stream } from "./rng.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
@@ -28,6 +29,8 @@ export const DEMO_TICKERS: { ticker: string; firstUse: Ymd }[] = [
   { ticker: "INTC", firstUse: "2021-04-01" },
   { ticker: "OILK", firstUse: "2026-05-01" },
   { ticker: "LNG", firstUse: "2026-05-01" },
+  { ticker: "SGOV", firstUse: "2024-05-01" },
+  { ticker: "CFIETFIPSA.SN", firstUse: "2025-06-01" },
   { ticker: BTC_TICKER, firstUse: "2018-06-01" },
 ];
 
@@ -46,6 +49,10 @@ const EQUITY_ANCHORS: Record<string, readonly Anchor[]> = {
   INTC: [["2015-01-01", 36], ["2016-02-11", 28], ["2018-04-30", 52], ["2020-01-24", 68], ["2021-04-20", 64], ["2022-10-13", 25], ["2023-12-27", 50], ["2024-08-05", 19.5], ["2025-04-08", 18.5], ["2025-09-30", 34], ["2026-12-31", 38]],
   OILK: [["2020-04-21", 18], ["2022-06-08", 52], ["2023-06-30", 42], ["2025-12-31", 38], ["2026-05-12", 61], ["2026-06-23", 42], ["2026-12-31", 41]],
   LNG: [["2015-01-01", 70], ["2016-02-11", 30], ["2020-03-18", 28], ["2022-10-14", 175], ["2024-12-31", 215], ["2026-05-12", 255], ["2026-12-31", 290]],
+  // A T-bill ETF: flat (its interest is paid out monthly).
+  SGOV: [["2020-05-26", 100.1], ["2026-12-31", 100.5]],
+  // The IPSA ETF in pesos (listed 2025-05; the Bolsa de Santiago's closes, rounded).
+  "CFIETFIPSA.SN": [["2025-05-12", 1_008], ["2025-06-18", 978], ["2025-09-01", 1_081], ["2025-12-19", 1_252], ["2026-01-28", 1_408], ["2026-03-04", 1_266], ["2026-05-15", 1_255], ["2026-09-02", 1_395], ["2026-11-06", 1_281], ["2026-12-31", 1_300]],
   [BTC_TICKER]: [["2015-01-01", 315], ["2016-01-01", 430], ["2017-12-17", 19_100], ["2018-12-15", 3_250], ["2019-06-26", 12_900], ["2020-03-12", 4_900], ["2021-04-14", 63_500], ["2021-07-20", 29_800], ["2021-11-08", 67_500], ["2022-11-21", 15_800], ["2024-03-14", 73_000], ["2024-12-17", 106_000], ["2025-04-08", 77_000], ["2025-10-06", 124_000], ["2026-12-31", 110_000]],
 };
 
@@ -58,6 +65,9 @@ const UF_ANCHORS: readonly Anchor[] = [
 const UTM_ANCHORS: readonly Anchor[] = [
   ["2015-01-01", 43_068], ["2016-01-01", 44_955], ["2017-01-01", 46_183], ["2018-01-01", 46_972], ["2019-01-01", 48_353], ["2020-01-01", 49_673], ["2021-01-01", 51_029], ["2022-01-01", 54_171], ["2023-01-01", 61_769], ["2024-01-01", 64_666], ["2025-01-01", 67_429], ["2026-01-01", 69_751], ["2027-01-01", 72_000],
 ];
+
+/** Daily noise of a ticker that does not move like a stock (default: 0,8 %, 2 % for a coin). */
+const TICKER_NOISE_SD: Record<string, number> = { SGOV: 0.0003 };
 
 function daysSinceEpoch(d: Ymd): number {
   return Date.parse(`${d}T00:00:00Z`) / 86_400_000;
@@ -93,7 +103,7 @@ export function writeSyntheticMarket(person: Person, fromMonth: Month, lastDay: 
   const insUf = db.prepare(`INSERT OR REPLACE INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`);
   const insUtm = db.prepare(`INSERT OR REPLACE INTO utm_daily (date, utm_clp) VALUES (?, ?)`);
   const insIpc = db.prepare(`INSERT OR REPLACE INTO ipc_daily (date, ipc_index) VALUES (?, ?)`);
-  const insEq = db.prepare(`INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'usd')`);
+  const insEq = db.prepare(`INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, ?)`);
   const fxNoise = stream(seed, "market|fx");
   const start: Ymd = `${fromMonth}-01`;
   const ufEnd = addDays(lastDay, 40);
@@ -113,11 +123,13 @@ export function writeSyntheticMarket(person: Person, fromMonth: Month, lastDay: 
       const anchors = EQUITY_ANCHORS[ticker];
       if (!anchors) throw new Error(`demo: no synthetic price anchors for ${ticker}`);
       const noise = stream(seed, `market|${ticker}`);
-      const crypto = ticker.endsWith("-USD");
+      const kind = equityMarketKind(ticker);
+      const currency = equityQuoteCurrency(ticker);
+      const sd = TICKER_NOISE_SD[ticker] ?? (kind === "crypto24" ? 0.02 : 0.008);
       for (let d = start < anchors[0]![0] ? anchors[0]![0] : start; d <= lastDay; d = addDays(d, 1)) {
-        if (!crypto && !isNyseTradingDay(d)) continue;
-        const sd = crypto ? 0.02 : 0.008;
-        insEq.run(ticker, d, Math.round(anchorValue(anchors, d) * (1 + noise.gauss() * sd) * 100) / 100);
+        if (kind === "nyse" && !isNyseTradingDay(d)) continue;
+        if (kind === "santiago" && !isChileBusinessDay(d)) continue;
+        insEq.run(ticker, d, Math.round(anchorValue(anchors, d) * (1 + noise.gauss() * sd) * 100) / 100, currency);
       }
     }
   })();

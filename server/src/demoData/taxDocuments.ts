@@ -2,10 +2,12 @@
  * The demo person's tax documents and returns, written the way a real year produces them:
  *
  * - the boletas de honorarios issued (`sii_issued_fee_receipts`, the SII's own record);
- * - each foreign dividend's gross and US withholding (a broker statement, `movement_dividend_details`);
+ * - each foreign dividend's gross and US withholding (a broker statement, `movement_dividend_details`):
+ *   15 % at the Chilean broker (W-8BEN), none at the US broker (W-9);
  * - in March, the third parties' DJs (`sii_informed_dj`): the employer's 1887 (from the imported
- *   liquidaciones, as `payrollTaxYear` rebuilds it), the AFP's 1899 (APV régimen B, in UF) and the
- *   lender's 1898 (mortgage interest, actualizada);
+ *   liquidaciones, as `payrollTaxYear` rebuilds it), the AFP's 1899 (APV régimen B, in UF), the
+ *   lender's 1898 (mortgage interest, actualizada) and the bank's 1890 (the real interest of the
+ *   term deposits that matured in the year);
  * - in April, the return the tax module drafts (`buildF22Draft`): its 305 plus the pension
  *   contributions on fees the SII charges (code 900, which the module does not draft) is what the
  *   person pays or gets back, and the form is stored as filed once April has passed.
@@ -18,11 +20,9 @@ import { buildF22Draft, type F22Codes } from "../f22Draft.js";
 import { mortgageInterestForYear } from "../f22AppEstimates.js";
 import { payrollTaxYear } from "../payrollTaxYear.js";
 import { upsertMovementDividendDetail } from "../movementDividendDetails.js";
-import type { Ledger } from "./simulate.js";
+import { accountsWithRole } from "../accountRoles.js";
+import { DIVIDEND_WITHHOLDING_RATE, type Ledger } from "./simulate.js";
 import type { Ymd } from "./person.js";
-
-/** US withholding on the demo's dividends (W-8BEN, no treaty: 15 % per the broker's statement). */
-const DIVIDEND_WITHHOLDING_RATE = 0.15;
 
 /** «1.234.567» — how the SII's DJ summary prints pesos. */
 function chileanInteger(n: number): string {
@@ -51,27 +51,54 @@ function writeFeeReceipts(ledger: Ledger): void {
   sorted.forEach((r, i) => ins.run(i + 1, r.issuedOn, r.payer, r.grossClp, r.retentionClp, r.retainedBy, `demo/boleta-${i + 1}.pdf`));
 }
 
-/** The broker statement's split of each dividend: gross = net ÷ (1 − 15 %), withholding = gross − net. */
+/**
+ * The broker statement's split of each dividend. At the Chilean broker gross = net ÷ (1 − 15 %),
+ * withholding = gross − net; the US broker (the account holding `broker_cash` `ibkr|usd`) pays it
+ * whole to a US person.
+ */
 function writeDividendDetails(): void {
+  const usBroker = new Set(accountsWithRole("broker_cash", "ibkr|usd"));
   const rows = db
-    .prepare(`SELECT id, amount, occurred_on FROM movements WHERE flow_kind = 'dividend_payout' AND currency = 'usd' ORDER BY occurred_on, id`)
-    .all() as { id: number; amount: number; occurred_on: string }[];
+    .prepare(
+      `SELECT id, amount, occurred_on, to_account_id FROM movements WHERE flow_kind = 'dividend_payout' AND currency = 'usd' ORDER BY occurred_on, id`
+    )
+    .all() as { id: number; amount: number; occurred_on: string; to_account_id: number | null }[];
   for (const r of rows) {
-    const gross = Math.round((r.amount / (1 - DIVIDEND_WITHHOLDING_RATE)) * 100) / 100;
+    const atUsBroker = r.to_account_id != null && usBroker.has(r.to_account_id);
+    const rate = atUsBroker ? 0 : DIVIDEND_WITHHOLDING_RATE;
+    const gross = Math.round((r.amount / (1 - rate)) * 100) / 100;
     const withholding = Math.round((gross - r.amount) * 100) / 100;
     upsertMovementDividendDetail({
       movement_id: r.id,
       gross_amount: gross,
       withholding_amount: withholding,
       currency: "usd",
-      withholding_rate_pct: DIVIDEND_WITHHOLDING_RATE * 100,
-      withholding_jurisdiction: "US",
-      tax_residency_country: "CHL",
+      withholding_rate_pct: rate * 100,
+      withholding_jurisdiction: atUsBroker ? null : "US",
+      tax_residency_country: atUsBroker ? "USA" : "CHL",
       pay_date: r.occurred_on,
       source: "ibkr_statement",
-      source_ref: `demo broker statement ${r.occurred_on.slice(0, 7)}`,
+      source_ref: `demo ${atUsBroker ? "US" : "Chilean"} broker statement ${r.occurred_on.slice(0, 7)}`,
     });
   }
+}
+
+/**
+ * The real interest of the term deposits that matured in `incomeYear` (art. 41 bis): the interest
+ * less the UF's move on the principal over each deposit, split as DJ 1890 reports it.
+ */
+export function termDepositRealInterest(ledger: Ledger, incomeYear: number): { positive: number; negative: number; deposits: number } {
+  let positive = 0;
+  let negative = 0;
+  let deposits = 0;
+  for (const t of ledger.termDeposits) {
+    if (!t.paid || !t.maturity.startsWith(`${incomeYear}-`)) continue;
+    const real = t.payout - t.principal - t.principal * (ufOn(t.maturity) / ufOn(t.open) - 1);
+    if (real >= 0) positive += real;
+    else negative -= real;
+    deposits += 1;
+  }
+  return { positive: Math.round(positive), negative: Math.round(negative), deposits };
 }
 
 /** The income years whose April settlement the simulation reached (the month loop got to April). */
@@ -110,6 +137,12 @@ function writeInformedDjs(ledger: Ledger, today: Ymd): void {
     if (apv.length > 0) {
       const uf = apv.reduce((s, d) => s + d.clp / ufOn(d.date), 0);
       ins.run(taxYear, 1899, "I: Ahorro previsional voluntario / Régimen B / Monto (UF)", chileanUf(uf), `demo/DJ_1899_${taxYear}.xlsx`);
+    }
+    const dap = termDepositRealInterest(ledger, y);
+    if (dap.deposits > 0) {
+      const file = `demo/DJ_1890_${taxYear}.xlsx`;
+      ins.run(taxYear, 1890, "B: Intereses Reales / Positivo", chileanInteger(dap.positive), file);
+      ins.run(taxYear, 1890, "C: Intereses Reales / Negativo", chileanInteger(dap.negative), file);
     }
     const interest = mortgageInterestForYear(y);
     if (interest > 0) {

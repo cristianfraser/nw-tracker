@@ -56,6 +56,7 @@ import {
   PROPERTY_ACCOUNT_IMPORT_KEY,
 } from "../accountIdentityKeys.js";
 import { isChileBusinessDay } from "../marketHolidays.js";
+import { recordEquitySplit } from "../equitySplits.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
 import { isMortgageCcExpenseMerchant } from "../expenseDepositLinks.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "../panelAccountNotes.js";
@@ -118,9 +119,20 @@ function createAccounts(person: Person): Map<Acct, number> {
     ids.set("btc", createAccount(g("brokerage_crypto__bitcoin"), "Bitcoin", { ticker: "BTC-USD" }));
   }
   for (const t of person.brokerTickers) {
-    const leaf = ensureAssetGroup(`brokerage_acciones__${t.toLowerCase()}`, t, "brokerage_acciones");
-    ids.set(`stock:${t}`, createAccount(leaf, t, { key: buildPanelAccountNotes(t, `demo_${t}`), ticker: t }));
+    // The exchange suffix is the market, not the name: «CFIETFIPSA.SN» is the CFIETFIPSA account.
+    const name = t.replace(/\.SN$/i, "");
+    const leaf = ensureAssetGroup(`brokerage_acciones__${name.toLowerCase()}`, name, "brokerage_acciones");
+    ids.set(`stock:${t}`, createAccount(leaf, name, { key: buildPanelAccountNotes(t, `demo_${t}`), ticker: t }));
   }
+  if (person.ibkr) {
+    const ibkr = createAccount(ensureAssetGroup("cash_eqs__cash_savings__ibkr_usd__usd", "IBKR USD", "cash_eqs__cash_savings"), "IBKR USD", {
+      key: buildPanelCashAccountNotes("usd", "ibkr_usd"),
+    });
+    // No identity seeds this broker's role (accountRoles271.ts): it is written as data.
+    db.prepare(`INSERT INTO account_roles (account_id, role, param) VALUES (?, 'broker_cash', 'ibkr|usd')`).run(ibkr);
+    ids.set("ibkrUsd", ibkr);
+  }
+  if (person.dap) ids.set("dap", createAccount(g("cash_eqs__dap"), "Depósito a plazo"));
   if (person.fund) {
     ids.set("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
   }
@@ -364,6 +376,40 @@ function writeFundValuations(ids: Map<Acct, number>, market: MarketReader, today
   }
 }
 
+/**
+ * The term-deposit account is a book account: each deposit's principal plus the interest accrued
+ * (simple, as the bank pays it), marked on every Chile business day from its opening; on a renewal
+ * day the new principal, after the last payout 0.
+ */
+function writeTermDepositValuations(ledger: Ledger, dapId: number, today: Ymd): void {
+  const deposits = ledger.termDeposits;
+  if (deposits.length === 0) return;
+  const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
+  db.transaction(() => {
+    for (const [i, t] of deposits.entries()) {
+      const days = (Date.parse(t.maturity) - Date.parse(t.open)) / 86_400_000;
+      for (let d = t.open; d < t.maturity && d <= today; d = addDays(d, 1)) {
+        if (!isChileBusinessDay(d)) continue;
+        const elapsed = (Date.parse(d) - Date.parse(t.open)) / 86_400_000;
+        insVal.run(dapId, d, Math.round(t.principal + ((t.payout - t.principal) * elapsed) / days));
+      }
+      const next = deposits[i + 1];
+      if (t.paid && !(next && next.open === t.maturity)) insVal.run(dapId, t.maturity, 0);
+    }
+  })();
+}
+
+/** Records the person's stock splits (and each holder's split row) through the app's own writer. */
+function writeSplits(person: Person, today: Ymd): void {
+  for (const sp of person.splits) {
+    if (sp.exDate > today) continue;
+    recordEquitySplit(
+      { ticker: sp.ticker, ex_date: sp.exDate, numerator: sp.numerator, denominator: sp.denominator, source: "yahoo" },
+      new Date(`${today}T18:00:00Z`)
+    );
+  }
+}
+
 /** The AFC book account: contributions grow at ~3,5 %/yr, marked on every Chile business day. */
 function writeAfc(ledger: Ledger, afcId: number, today: Ymd): void {
   if (ledger.afcContributions.length === 0) return;
@@ -446,6 +492,8 @@ function applyColors(ids: Map<Acct, number>): void {
   const colors: [Acct, string][] = [
     ["checking", "161,11,29"],
     ["checkingUsd", "90,90,150"],
+    ["ibkrUsd", "200,40,40"],
+    ["dap", "120,160,200"],
     ["btc", "234,179,8"],
     ["stock:NVDA", "118,185,0"],
     ["stock:SPY", "35,55,217"],
@@ -548,6 +596,7 @@ function writeLife(
 ): { ledger: Ledger; payslipResult: ReturnType<typeof applyEmploymentPayslips> | null } {
   const ledger = simulate(person, market, today, { aprilSettlements });
   writeDirect(ledger, ids);
+  writeSplits(person, today);
 
   const cartolas = renderCartolas(ledger);
   for (const p of cartolas.statements) {
@@ -573,6 +622,7 @@ function writeLife(
   writeMortgage(ledger, ids);
   writeFundValuations(ids, market, today);
   writeAfc(ledger, ids.get("afc")!, today);
+  if (ids.has("dap")) writeTermDepositValuations(ledger, ids.get("dap")!, today);
   writeDemoTaxDocuments(ledger, today);
   return { ledger, payslipResult };
 }
