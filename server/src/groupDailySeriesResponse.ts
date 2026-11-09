@@ -5,7 +5,11 @@ import { getAggregationCached } from "./cacheRegistry.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "./ccDailyHistorialBlock.js";
 import { dailyPerfLevelsForAccount, dailyPerfLevelsForGroup } from "./dailyPerfLevels.js";
-import { dailyReferenceLinesForChartHost, deptoPropertyChartOverlayDailyLines } from "./dailyReferenceLines.js";
+import {
+  dailyReferenceLinesForChartHost,
+  deptoPropertyChartOverlayDailyLines,
+  propertyAccountIdsOfGroup,
+} from "./dailyReferenceLines.js";
 import { groupDailySeriesAccounts } from "./dailySeries.js";
 import {
   type ChartBucketPlan,
@@ -139,7 +143,7 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
   // way, via the `valueSeriesType === "data"` filter).
   const groupOverlays =
     groupHasPropertyOverlay(portfolioGroup) && withRefs.accounts?.length
-      ? deptoPropertyChartOverlayDailyLines(dailyDates, unit)
+      ? deptoPropertyChartOverlayDailyLines(propertyAccountIdsOfGroup(portfolioGroup), dailyDates, unit)
       : [];
   // Pasivos root / credit-card group / issuer pages: the day-period CC historial lines
   // (owed, plan debt, plan tail) summed over the masters the merged monthly ledger sums, plus
@@ -212,6 +216,7 @@ function buildAccountDailySeriesResponse(
   // client's metadata borrow) or the overlays vanish in day mode.
   if (accountBucketKindSlug(row.bucket_slug) === "property" && accountSeriesPayload.accounts?.length) {
     const overlays = deptoPropertyChartOverlayDailyLines(
+      [accountId],
       series.points.map((p) => p.as_of_date),
       unit
     );

@@ -30,12 +30,12 @@ export type AcceptedPaymentDifference = { label: string; field: string };
 /** A payment's parts by kind, in pesos (a kind absent = 0). */
 export type LoanPaymentParts = Partial<Record<LoanPaymentPartKind, number>>;
 
-type PaymentRow = { flow_id: number; cuota: string; pago_clp: number };
+type PaymentRow = { flow_id: number; cuota: string; pago_clp: number; loan_account_id: number };
 
 function propertyPaymentRows(): PaymentRow[] {
   return db
     .prepare(
-      `SELECT m.flow_id, p.cuota, CAST(round(abs(m.amount)) AS INTEGER) AS pago_clp
+      `SELECT m.flow_id, p.cuota, CAST(round(abs(m.amount)) AS INTEGER) AS pago_clp, p.loan_account_id
        FROM loan_payments p JOIN movements m ON m.id = p.movement_id
        WHERE p.leg = 'property' AND lower(trim(p.cuota)) <> 'pie'
        ORDER BY m.occurred_on, p.cuota`
@@ -64,9 +64,16 @@ function statedPartsByFlow(): Map<number, { cuota: string; parts: { kind: LoanPa
 /**
  * Rewrites every loan payment's parts from `loan_payments`; a rewrite that changes nothing writes
  * nothing. Throws, naming the payment, when its parts do not add up to it (± 1 peso) and no accepted
- * difference names the row — nothing is written then.
+ * difference names the row — nothing is written then. The accepted differences are one loan's
+ * (`acceptedLoanAccountId`, the loan its sheet is of): two loans number their cuotas alike.
  */
-export function syncLoanPaymentFlowParts(accepted: readonly AcceptedPaymentDifference[]): void {
+export function syncLoanPaymentFlowParts(
+  accepted: readonly AcceptedPaymentDifference[],
+  acceptedLoanAccountId?: number
+): void {
+  if (accepted.length > 0 && acceptedLoanAccountId == null) {
+    throw new Error("loan payment parts: accepted differences need the loan they are of");
+  }
   const acceptedLabels = new Set(accepted.filter((a) => a.field === PARTS_SUM_FIELD).map((a) => a.label));
   const payments = propertyPaymentRows();
   const shared = db
@@ -79,9 +86,10 @@ export function syncLoanPaymentFlowParts(accepted: readonly AcceptedPaymentDiffe
   const stated = statedPartsByFlow();
   for (const p of payments) {
     const sum = (stated.get(p.flow_id)?.parts ?? []).reduce((s, x) => s + x.amount_clp, 0);
-    if (Math.abs(sum - p.pago_clp) > 1 && !acceptedLabels.has(p.cuota)) {
+    const accepted = p.loan_account_id === acceptedLoanAccountId && acceptedLabels.has(p.cuota);
+    if (Math.abs(sum - p.pago_clp) > 1 && !accepted) {
       throw new Error(
-        `loan payment parts: cuota ${p.cuota} states parts adding up to ${sum} against a payment of ${p.pago_clp} — fix loan_payments or declare the difference (accepted: ${p.cuota} / ${PARTS_SUM_FIELD})`
+        `loan payment parts: cuota ${p.cuota} of loan ${p.loan_account_id} states parts adding up to ${sum} against a payment of ${p.pago_clp} — fix loan_payments or declare the difference (accepted: ${p.cuota} / ${PARTS_SUM_FIELD})`
       );
     }
   }

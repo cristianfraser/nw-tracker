@@ -15,7 +15,8 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
+import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import {
   buildDeptoPaymentScenarioRows,
   firstMortgageScheduleYmd,
@@ -23,7 +24,6 @@ import {
 } from "./mortgageScenarioPayments.js";
 import { buildMortgageUfReminder } from "./mortgageUfReminder.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
-import { deptoMortgageAccountId, deptoPropertyAccountId } from "./mortgagePaymentCreate.js";
 import { utilityBillMonth } from "./utilityBillsApply.js";
 import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
@@ -174,6 +174,8 @@ export function groupUpcomingByMonth(
 // Mortgage
 
 export type MortgageUpcomingInput = {
+  /** The loan the cuotas are of (keys its items: two loans number their cuotas alike). */
+  loanAccountId: number;
   /** The tracked place whose property the mortgage pays for, else the mortgage account's name. */
   name: string;
   /** The mortgage account's page. */
@@ -210,7 +212,7 @@ export function mortgageUpcomingItems(
     const uf = ufOn(due);
     out.push(
       item({
-        key: `mortgage|${cuota}`,
+        key: `mortgage|${input.loanAccountId}|${cuota}`,
         kind: "mortgage",
         name: input.name,
         detail: { kind: "cuota", n: cuota, count: null },
@@ -362,8 +364,21 @@ export function contribucionesUpcomingItems(
 // Assembly from the database
 
 
-function mortgageInput(todayYmd: string): MortgageUpcomingInput | null {
-  const ledger = loadDeptoLedgerFromMovements();
+/** Every loan's input: one per property whose ledger has a next cuota (ascending by property id). */
+function mortgageInputs(todayYmd: string): MortgageUpcomingInput[] {
+  return loadAllDeptoLedgers().flatMap(({ propertyAccountId, loanAccountId, rows }) => {
+    if (loanAccountId == null) return [];
+    const input = mortgageInput(todayYmd, propertyAccountId, loanAccountId, rows);
+    return input ? [input] : [];
+  });
+}
+
+function mortgageInput(
+  todayYmd: string,
+  propertyAccountId: number,
+  mortgageId: number,
+  ledger: DeptoMortgageSheetRow[]
+): MortgageUpcomingInput | null {
   if (ledger.length === 0) return null;
   const next = buildDeptoPaymentScenarioRows(ledger).find((r) => r.is_next_payment);
   if (!next) return null;
@@ -377,18 +392,26 @@ function mortgageInput(todayYmd: string): MortgageUpcomingInput | null {
   const minUf = next.min_payment_uf;
   const maxUf = next.scenarios.find((s) => s.term === "max")?.payment_uf ?? null;
   if (minUf == null || maxUf == null) throw new Error(`Mortgage: cuota ${nextCuota} has no projected minimum or maximum`);
-  const reminder = buildMortgageUfReminder(todayYmd);
+  const reminder = buildMortgageUfReminder(todayYmd, mortgageId);
   const bestPay =
     reminder.show && reminder.cycle_month && reminder.best_pay_date
       ? { month: reminder.cycle_month, date: reminder.best_pay_date }
       : null;
-  const mortgageId = deptoMortgageAccountId();
   const account = db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(mortgageId) as { name: string } | undefined;
   if (!account) throw new Error(`Mortgage account ${mortgageId} not found`);
   const place = db
     .prepare(`SELECT label FROM expense_accounts WHERE property_account_id = ? ORDER BY active_to IS NOT NULL, id LIMIT 1`)
-    .get(deptoPropertyAccountId()) as { label: string } | undefined;
-  return { name: place?.label ?? account.name, route_path: accountRoutePath(mortgageId), nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
+    .get(propertyAccountId) as { label: string } | undefined;
+  return {
+    loanAccountId: mortgageId,
+    name: place?.label ?? account.name,
+    route_path: accountRoutePath(mortgageId),
+    nextCuota,
+    nextScheduleYmd,
+    minUf,
+    maxUf,
+    bestPay,
+  };
 }
 
 type PlaceRow = { id: number; label: string; slug: string };
@@ -565,8 +588,9 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
     }
   }
 
-  const mortgage = mortgageInput(todayYmd);
-  if (mortgage) items.push(...mortgageUpcomingItems(mortgage, todayYmd, horizonEnd, uf.ufOn));
+  for (const mortgage of mortgageInputs(todayYmd)) {
+    items.push(...mortgageUpcomingItems(mortgage, todayYmd, horizonEnd, uf.ufOn));
+  }
 
   for (const h of hoaPlaces()) items.push(...hoaUpcomingItems(h.place, h.statements, h.paid, todayYmd, horizonEnd));
 

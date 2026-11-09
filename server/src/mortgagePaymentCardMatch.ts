@@ -21,8 +21,9 @@ import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { accountProfile } from "./accountProfile.js";
 import { findLines } from "./cards/purchases.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
+import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
+import { deptoPropertyIdOfAccount, propertyLoanPairsWithLoan } from "./accountRoles.js";
+import { isLoanLenderMerchant, isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { addBusinessDaysIso } from "nw-tracker-contracts";
@@ -125,14 +126,20 @@ function cardLineFlows(lineIds: readonly number[]): Map<number, number> {
   return out;
 }
 
-/** Cuota → the flow of the card line its `funded_deposit` link hangs on (regular cuotas only). */
-function loadMortgageCuotaLinkedFlows(): Map<string, number> {
+/**
+ * Cuota → the flow of the card line its `funded_deposit` link hangs on (regular cuotas only), for
+ * the links whose deposit sits on property `propertyAccountId` (two loans number their cuotas alike).
+ */
+function loadMortgageCuotaLinkedFlows(propertyAccountId: number): Map<string, number> {
   const rows = db
     .prepare(
-      `SELECT DISTINCT depto_cuota, flow_id FROM flow_links
-       WHERE kind = 'funded_deposit' AND depto_cuota IS NOT NULL AND portion = 'gastos'`
+      `SELECT DISTINCT l.depto_cuota, l.flow_id FROM flow_links l
+       JOIN flow_evidence fe ON fe.flow_id = l.counterpart_flow_id AND fe.source_table = 'movements'
+       JOIN movements m ON m.id = fe.source_row_id
+       WHERE l.kind = 'funded_deposit' AND l.depto_cuota IS NOT NULL AND l.portion = 'gastos'
+         AND m.account_id = ?`
     )
-    .all() as { depto_cuota: string; flow_id: number }[];
+    .all(propertyAccountId) as { depto_cuota: string; flow_id: number }[];
   const out = new Map<string, number>();
   for (const r of rows) {
     if (numericCuota(r.depto_cuota) == null) continue;
@@ -142,22 +149,26 @@ function loadMortgageCuotaLinkedFlows(): Map<string, number> {
   return out;
 }
 
-/** The ledger's regular cuotas (numeric labels) against every mortgage card line, through the stored links. */
-export function mortgageCardMatches(): MortgageCardMatchResult {
+/**
+ * One loan's regular cuotas (numeric labels, from its property's ledger) against the card lines
+ * that name its lender (its own `lender_pattern` rows), through the stored links.
+ */
+export function mortgageCardMatches(loanAccountId: number): MortgageCardMatchResult {
   // The links are re-derived with the expense lines (cached; a write drops them), so building the
   // lines first is what keeps the pairing current with the card lines and the ledger.
   cachedFlowsExpenseLines();
-  const payments = loadDeptoLedgerFromMovements()
+  const propertyAccountId = deptoPropertyIdOfAccount(loanAccountId);
+  const payments = deptoLedgerForLoan(loanAccountId)
     .filter((r) => numericCuota(r.cuota) != null)
     .map((r) => ({ cuota: r.cuota, paid_on: r.occurred_on, pago_clp: r.pago_clp }));
-  const lines = loadMortgageCardLines();
+  const lines = loadMortgageCardLines().filter((l) => isLoanLenderMerchant(l.merchant, loanAccountId));
   const flowOfLine = cardLineFlows(lines.map((l) => l.line_id));
   const withFlows = lines.map((l) => {
     const flowId = flowOfLine.get(l.line_id);
     if (flowId == null) throw new Error(`mortgage card line ${l.line_id} has no flow`);
     return { ...l, flow_id: flowId };
   });
-  return mortgagePaymentCardMatchesFromLinks(payments, withFlows, loadMortgageCuotaLinkedFlows());
+  return mortgagePaymentCardMatchesFromLinks(payments, withFlows, loadMortgageCuotaLinkedFlows(propertyAccountId!));
 }
 
 const addChileBusinessDays = (ymd: string, n: number): string => addBusinessDaysIso(ymd, n, isChileBusinessDay);
@@ -170,7 +181,19 @@ export type MortgageCardMatchCheck = {
 /** The nightly verdict: recent unpaired sides past their deadline fail the step. */
 export function checkMortgageCardMatches(todayYmd: string = chileCalendarTodayYmd()): MortgageCardMatchCheck {
   const since = chileCalendarAddDays(todayYmd, -CHECK_WINDOW_DAYS);
-  const { payments, unmatched_lines } = mortgageCardMatches();
+  // Every loan's cuotas against its own lender's lines; a line no loan's lender names never reaches
+  // here (`loadMortgageCardLines` reads every lender's patterns).
+  const payments: MortgagePaymentCardMatch[] = [];
+  const unmatchedById = new Map<number, MortgageCardLine>();
+  for (const { loanAccountId } of propertyLoanPairsWithLoan()) {
+    const m = mortgageCardMatches(loanAccountId);
+    payments.push(...m.payments);
+    for (const l of m.unmatched_lines) unmatchedById.set(l.line_id, l);
+  }
+  const claimedLineIds = new Set(payments.flatMap((p) => (p.line ? [p.line.line_id] : [])));
+  const unmatched_lines = [...unmatchedById.values()]
+    .filter((l) => !claimedLineIds.has(l.line_id))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.line_id - b.line_id);
   const recent = payments.filter((p) => p.paid_on >= since);
   const report: string[] = [];
   let ok = true;

@@ -287,13 +287,34 @@ export function buildRealEstateCardBreakdown(
       to: mortgageTo,
     });
   } else if (props.length) {
+    // Several properties: each its own line, and under a property with a loan its valor and
+    // hipoteca (each property's row and its own loan's, `loan_account_id`).
     for (const r of props) {
+      const to = accountDetailPath(r.account_id);
       lines.push({
         label: r.name,
         clp: r.current_value_clp ?? 0,
         usd: r.current_value_usd ?? null,
         depth: 1,
-        to: accountDetailPath(r.account_id),
+        to,
+      });
+      const loan = mortgageAccountForPropertyRow(allAccounts ?? accounts, r);
+      if (loan?.current_value_clp == null || r.current_value_clp == null) continue;
+      const loanUsd = loan.current_value_usd ?? null;
+      const rUsd = r.current_value_usd ?? null;
+      lines.push({
+        label: i18n.t("realEstate.propertyValue"),
+        clp: r.current_value_clp + loan.current_value_clp,
+        usd: rUsd != null && loanUsd != null ? rUsd + loanUsd : null,
+        depth: 2,
+        to,
+      });
+      lines.push({
+        label: i18n.t("realEstate.mortgage"),
+        clp: loan.current_value_clp,
+        usd: loanUsd,
+        depth: 2,
+        to: accountDetailPath(loan.account_id),
       });
     }
   }

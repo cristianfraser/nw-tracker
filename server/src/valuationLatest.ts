@@ -1,7 +1,7 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
 import { kindIsDebt } from "./accountProfile.js";
 import { planCount } from "./cards/purchases.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { ccOwedClpAtYmd, ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -135,7 +135,7 @@ export function latestMortgageDisplayedBalance(
   if (!cat || accountBucketKindSlug(cat.bucket_slug) !== "mortgage") {
     return latestValuationRowOnOrBefore(accountId, asOfYmd);
   }
-  const ledger = loadDeptoLedgerFromMovements();
+  const ledger = deptoLedgerForAccount(accountId);
   if (ledger.length > 0) {
     const firstOwn = firstDeptoPropertyOwnershipYmd(ledger);
     if (firstOwn != null && asOfYmd >= firstOwn) {

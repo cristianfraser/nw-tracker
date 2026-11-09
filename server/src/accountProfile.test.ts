@@ -25,7 +25,7 @@ describe("profileFromFacts", () => {
       kind: "depto_loan",
       propertyAccountId: 7,
     });
-    expect(p({ kind: "property" }).quantity).toEqual({ kind: "depto_property" });
+    expect(p({ kind: "property" }).quantity).toEqual({ kind: "depto_property", propertyAccountId: 1 });
     expect(p({ kind: "btc", equityTicker: "BTC-USD", coinPriceTicker: "BTC-USD" }).quantity).toEqual({
       kind: "coin",
       priceTicker: "BTC-USD",

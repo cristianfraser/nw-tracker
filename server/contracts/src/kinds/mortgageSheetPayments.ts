@@ -90,6 +90,12 @@ export const mortgageSheetPaymentsKind = defineIngestKind({
         .strict(),
       sheet: z.string().trim().min(1),
       table: z.string().trim().min(1),
+      /**
+       * The loan the sheet is of, by its lender as the card statements print it (one of the loan's
+       * `lender_pattern` rows — `lender` in the config). Optional: with one loan on file the sheet
+       * is that loan's; with several the server refuses a sheet naming none.
+       */
+      lender: z.string().trim().min(1).optional(),
       rows: z.array(mortgageSheetPaymentRowSchema).min(1),
       /** Cuota numbers the sheet projects but has not posted (left out), for the report. */
       projected: z.array(z.string()),

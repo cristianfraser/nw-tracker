@@ -5,7 +5,7 @@ import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { ccFinancingCostByDateInUnit } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPaymentFlowsInUnit, flowEventInUnit } from "./flowsDeposits.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid, accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
@@ -238,15 +238,15 @@ function gridFlows(
   // Mortgage cuotas/prepagos: ledger truth, positive (capital into the debt) — the depto
   // ledger is the mortgage's payment history, the same source the dashboard cards use. Cards
   // have no cash ledger; their flows are derived from the balance in `ccDerivedFlows`.
-  if (mortgageIds.length > 0) {
-    for (const e of deptoPaymentFlowsInUnit(loadDeptoLedgerFromMovements(), last, "loan", flowUnit)) {
+  // Each loan reads its own property's ledger (`deptoLedgerForAccount`; [] for a debt account
+  // no depto ledger models).
+  for (const loanId of mortgageIds) {
+    for (const e of deptoPaymentFlowsInUnit(deptoLedgerForAccount(loanId), last, "loan", flowUnit)) {
       const row = windowIndexOf(sessions, e.occurred_on);
       if (row < 0) continue;
       const amt = e.amount;
       liabilityFlows[row] += amt;
-      // The depto ledger is one mortgage's payment history (the loop above is gated on there
-      // being any mortgage account), so attribute it to that account.
-      addFor(mortgageIds[0]!, row, amt);
+      addFor(loanId, row, amt);
     }
   }
 

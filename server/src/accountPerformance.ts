@@ -2,7 +2,7 @@ import { dbStateMemo } from "./dbStateMemo.js";
 import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
 import type { TsUnit } from "./rates.js";
 import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
@@ -161,7 +161,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   const isDeptoProperty = q === "depto_property";
   const isCreditCard = q === "card";
   const deptoLedger =
-    isMortgage || isDeptoProperty ? loadDeptoLedgerFromMovements() : [];
+    isMortgage || isDeptoProperty ? deptoLedgerForAccount(opts.accountId) : [];
 
   const out: AccountMonthlyPerformanceRow[] = [];
   for (const row of pickedAsc) {
@@ -341,7 +341,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     else return sortedAsc;
   }
 
-  const mortgageLedger = bucketKind === "mortgage" ? loadDeptoLedgerFromMovements() : null;
+  const mortgageLedger = bucketKind === "mortgage" ? deptoLedgerForAccount(accountId) : null;
   // Card: the month so far costs whatever it has been charged; the rest of the balance move
   // (purchases, PAGOs, anchor corrections) is flow — same identity as the closed months.
   const ccPerf =
@@ -351,7 +351,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const netFlow = (() => {
     if (ccPerf) return ccPerf.netFlow;
     if (bucketKind === "property") {
-      const ledger = loadDeptoLedgerFromMovements();
+      const ledger = deptoLedgerForAccount(accountId);
       if (ledger.length > 0) {
         return perfDeptoPropertyPaymentsInUnit(ledger, today, null, unit);
       }
@@ -622,7 +622,7 @@ function buildAccountMonthlyPerformanceUncached(
   const bucketKind = accountBucketKindSlug(bucketSlug);
   const deptoLedger =
     bucketKind === "mortgage" || bucketKind === "property"
-      ? loadDeptoLedgerFromMovements()
+      ? deptoLedgerForAccount(accountId)
       : null;
   const quantityKind = accountProfileOptional(accountId)?.quantity.kind;
   const isMortgage = quantityKind === "depto_loan";

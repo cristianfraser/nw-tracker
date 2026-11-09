@@ -8,7 +8,7 @@ import {
   upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
-import { DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
 import { receiveIngest } from "./ingestHandlers.js";
 
 /**
@@ -213,7 +213,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
     expect(movementCount()).toBe(before);
     expect((db.prepare(`SELECT max_payment FROM loan_payments WHERE cuota = '1' AND leg = 'loan'`).get() as { max_payment: number | null }).max_payment).toBeNull();
     // The memoized ledger must not keep the rolled-back row or the rolled-back max_uf fill.
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
     expect(ledger.map((x) => x.cuota)).toEqual(["pie", "1"]);
     expect(ledger.find((x) => x.cuota === "1")!.max_uf).toBeNull();
   });
@@ -255,7 +255,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
     const r = send(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE]), true);
     expect(r.status).toBe("applied");
     expect(movementCount()).toBe(before + 2);
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
     const c2 = ledger.find((x) => x.cuota === "2")!;
     expect(c2.occurred_on).toBe("1990-03-11");
     expect(c2.pago_clp).toBe(800_000);

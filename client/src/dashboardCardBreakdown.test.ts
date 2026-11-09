@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRealEstateCardBreakdown,
   cardMetricsByPeriodForAccountRow,
   roundedMetricDelta,
   roundedMetricDeposits,
@@ -66,5 +67,35 @@ describe("cardMetricsByPeriodForAccountRow", () => {
     expect(year.deposits_clp).toBe(0);
     expect(year.delta_total_clp).toBeNull();
     expect(year.deposits_usd).toBeNull();
+  });
+});
+
+describe("buildRealEstateCardBreakdown with several properties", () => {
+  const property = (id: number, name: string, value: number, loan: number) =>
+    baseRow({
+      account_id: id,
+      name,
+      group_slug: "real_estate",
+      category_slug: "property",
+      current_value_clp: value,
+      current_value_usd: null,
+      loan_account_id: loan,
+    });
+  const loan = (id: number, value: number) =>
+    baseRow({ account_id: id, name: `loan ${id}`, group_slug: "liabilities", category_slug: "mortgage", current_value_clp: value });
+
+  it("puts each property's own valor and hipoteca under it", () => {
+    const rows = [property(1, "Centro", 40, 11), property(2, "Vitacura", 100, 12)];
+    const all = [...rows, loan(11, 60), loan(12, 300)];
+    const lines = buildRealEstateCardBreakdown(rows, { clp: 140, usd: null }, "/real-estate", all);
+    expect(lines.map((l) => [l.depth, l.clp, l.to])).toEqual([
+      [0, 140, "/account/1"],
+      [1, 40, "/account/1"],
+      [2, 100, "/account/1"],
+      [2, 60, "/account/11"],
+      [1, 100, "/account/2"],
+      [2, 400, "/account/2"],
+      [2, 300, "/account/12"],
+    ]);
   });
 });

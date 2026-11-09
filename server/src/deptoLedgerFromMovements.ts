@@ -22,10 +22,15 @@
  * this loader needs mortgagePaymentAnalytics, which imports types from deptoDividendosLedger.
  */
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { CACHE_KEY_DEPTO_LEDGER } from "./cacheFamilies.js";
+import { cacheKeyDeptoLedger } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { db } from "./db.js";
-import { accountWithRoleOptional } from "./accountRoles.js";
+import {
+  accountHasRole,
+  deptoPropertyIdOfAccount,
+  propertyLoanPairs,
+  type PropertyLoanPair,
+} from "./accountRoles.js";
 import { accountProfileOptional } from "./accountProfile.js";
 import { declareAccountsTrimmedTogether } from "./markSeriesStore.js";
 import {
@@ -87,33 +92,100 @@ function clpToUf4(clp: number | null, ufDay: number | null): number | null {
 }
 
 /**
- * Rebuild the full dividendos ledger (sorted by occurred_on, cuota — snapshot fns and
- * `defaultIncendioClpFromLedger` rely on the order) from property-account movements.
- * Returns [] when no depto property is tracked; throws when depto payment rows exist
- * without a resolvable property master (data problem — fix data, not the loader).
- *
- * Memoized in the `depto_ledger` cache family — daily views price the property and mortgage
- * marks once per grid date, and the ledger rebuild dominated that cost. Dropped by every
- * valuation write the change log reports and at day rollover.
+ * Fails fast on `loan_payments` rows the roles cannot place: a property-leg row on an account
+ * holding no `property` role, a loan-leg row on an account holding no `loan_of` role, a row whose
+ * `loan_account_id` is not that property's loan (or not the loan its movement sits on).
  */
-export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
-  return getAggregationCached(CACHE_KEY_DEPTO_LEDGER, () => loadDeptoLedgerFromMovementsUncached());
+function assertLoanPaymentsPlaced(pairs: readonly PropertyLoanPair[]): void {
+  const loanOfProperty = new Map(pairs.map((p) => [p.propertyAccountId, p.loanAccountId]));
+  const propertyOfLoan = new Map<number, number>();
+  for (const p of pairs) if (p.loanAccountId != null) propertyOfLoan.set(p.loanAccountId, p.propertyAccountId);
+  const rows = db
+    .prepare(
+      `SELECT p.movement_id, p.leg, p.loan_account_id, m.account_id FROM loan_payments p
+       JOIN movements m ON m.id = p.movement_id`
+    )
+    .all() as { movement_id: number; leg: string; loan_account_id: number; account_id: number | null }[];
+  for (const r of rows) {
+    if (r.leg === "property") {
+      if (r.account_id == null || !loanOfProperty.has(r.account_id)) {
+        throw new Error(
+          `depto ledger: loan_payments row of movement ${r.movement_id} (property leg) sits on account ${r.account_id}, which holds no property role`
+        );
+      }
+      const loan = loanOfProperty.get(r.account_id);
+      if (loan !== r.loan_account_id) {
+        throw new Error(
+          `depto ledger: loan_payments row of movement ${r.movement_id} names loan ${r.loan_account_id}, but property ${r.account_id}'s loan is ${loan ?? "none"}`
+        );
+      }
+    } else {
+      if (r.account_id == null || !propertyOfLoan.has(r.account_id)) {
+        throw new Error(
+          `depto ledger: loan_payments row of movement ${r.movement_id} (loan leg) sits on account ${r.account_id}, which is the loan of no property`
+        );
+      }
+      if (r.account_id !== r.loan_account_id) {
+        throw new Error(
+          `depto ledger: loan_payments row of movement ${r.movement_id} sits on loan ${r.account_id} but names loan ${r.loan_account_id}`
+        );
+      }
+    }
+  }
 }
 
-function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
-  // The depto ledger is one ledger: exactly one property (its `property` role) for now.
-  const propertyId = accountWithRoleOptional("property");
-  if (propertyId == null) {
-    const stray = db
-      .prepare(`SELECT COUNT(*) AS c FROM loan_payments WHERE leg = 'property'`)
-      .get() as { c: number };
+/**
+ * Rebuild one property's dividendos ledger (sorted by occurred_on, cuota — snapshot fns and
+ * `defaultIncendioClpFromLedger` rely on the order) from the property account's movements: one
+ * ledger per `property` role holder, its loan the account whose `loan_of` names it. Throws when
+ * the account holds no property role, and when a `loan_payments` row anywhere sits on an account
+ * the roles cannot place (data problem — fix data, not the loader).
+ *
+ * Memoized per property in the `depto_ledger` cache family — daily views price the property and
+ * mortgage marks once per grid date, and the ledger rebuild dominated that cost. Dropped by every
+ * valuation write the change log reports and at day rollover.
+ */
+export function loadDeptoLedgerForProperty(propertyAccountId: number): DeptoMortgageSheetRow[] {
+  return getAggregationCached(cacheKeyDeptoLedger(propertyAccountId), () =>
+    loadDeptoLedgerForPropertyUncached(propertyAccountId)
+  );
+}
+
+/**
+ * The depto ledger an account reads: its own when it is a property, its property's when it is
+ * that property's loan; [] for any other account (no ledger models it).
+ */
+export function deptoLedgerForAccount(accountId: number): DeptoMortgageSheetRow[] {
+  const propertyId = deptoPropertyIdOfAccount(accountId);
+  return propertyId == null ? [] : loadDeptoLedgerForProperty(propertyId);
+}
+
+/** Every property's depto ledger with its pair (ascending by property id). */
+export function loadAllDeptoLedgers(): (PropertyLoanPair & { rows: DeptoMortgageSheetRow[] })[] {
+  const pairs = propertyLoanPairs();
+  if (pairs.length === 0) {
+    const stray = db.prepare(`SELECT COUNT(*) AS c FROM loan_payments`).get() as { c: number };
     if (stray.c > 0) {
-      throw new Error(
-        `depto ledger: ${stray.c} loan_payments rows exist but no account holds the property role`
-      );
+      throw new Error(`depto ledger: ${stray.c} loan_payments rows exist but no account holds the property role`);
     }
     return [];
   }
+  return pairs.map((p) => ({ ...p, rows: loadDeptoLedgerForProperty(p.propertyAccountId) }));
+}
+
+/** The depto ledger of the loan `loanAccountId` (its property's); throws when it is the loan of no property. */
+export function deptoLedgerForLoan(loanAccountId: number): DeptoMortgageSheetRow[] {
+  if (!accountHasRole(loanAccountId, "loan_of")) {
+    throw new Error(`depto ledger: account ${loanAccountId} is the loan of no property (no loan_of role)`);
+  }
+  return deptoLedgerForAccount(loanAccountId);
+}
+
+function loadDeptoLedgerForPropertyUncached(propertyId: number): DeptoMortgageSheetRow[] {
+  if (!accountHasRole(propertyId, "property")) {
+    throw new Error(`depto ledger: account ${propertyId} holds no property role`);
+  }
+  assertLoanPaymentsPlaced(propertyLoanPairs());
 
   const movements = db
     .prepare(
@@ -273,12 +345,15 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
  * says which side of the ledger it is; any other account has no depto mark.
  */
 export function deptoAccountMarkClpAtYmd(accountId: number, asOfYmd: string): DeptoAccountMarkAtYmd | null {
-  const q = accountProfileOptional(accountId)?.quantity.kind;
-  if (q !== "depto_property" && q !== "depto_loan") return null;
-  const categorySlug = q === "depto_property" ? "property" : "mortgage";
-  const ledger = loadDeptoLedgerFromMovements();
+  const q = accountProfileOptional(accountId)?.quantity;
+  if (q?.kind !== "depto_property" && q?.kind !== "depto_loan") return null;
+  const categorySlug = q.kind === "depto_property" ? "property" : "mortgage";
+  // The property whose ledger the account reads (its own, or the one its loan is of); a property
+  // or loan the roles do not place has no depto ledger.
+  const propertyId = q.propertyAccountId;
+  if (propertyId == null || !accountHasRole(propertyId, "property")) return null;
+  const ledger = loadDeptoLedgerForProperty(propertyId);
   if (!ledger.length) return null;
-
   const dates = [asOfYmd] as const;
   const ufMap = ufClpBySnapshotDatesAsc(dates);
   const closeBy =

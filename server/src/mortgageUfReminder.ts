@@ -17,7 +17,7 @@
  * once the post-cierre UF is known (~days 9–10), i.e. just before the 11th.
  */
 import { db } from "./db.js";
-import { isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
+import { isLoanLenderMerchant, isMortgageCcExpenseMerchant, mortgageLenderMerchantSqlPrefilter } from "./expenseDepositLinks.js";
 import { findLines } from "./cards/purchases.js";
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./cards/facturacion.js";
@@ -170,8 +170,13 @@ export function decideMortgageUfReminder(
   };
 }
 
-/** Resolve the operational CC master that pays the mortgage, from its statement lines. */
-function resolveMortgageCcMasterId(): number | null {
+/**
+ * Resolve the operational CC master that pays the mortgage, from its statement lines: any
+ * lender's, or loan `loanAccountId`'s own lender (its `lender_pattern` rows) when given.
+ */
+function resolveMortgageCcMasterId(loanAccountId?: number): number | null {
+  const namesLender = (merchant: string | null): boolean =>
+    loanAccountId != null ? isLoanLenderMerchant(merchant, loanAccountId) : isMortgageCcExpenseMerchant(merchant);
   // SQL prefilter is a safe superset of `isMortgageCcExpenseMerchant` (its patterns are all
   // ASCII substrings; the normalizer only trims/collapses/uppercases). Newest statement first
   // (id order tracks import recency; statement_date is DD/MM/YYYY, unsafe to sort as text).
@@ -179,7 +184,7 @@ function resolveMortgageCcMasterId(): number | null {
 
   let masterId: number | null = null;
   for (const r of rows) {
-    if (isMortgageCcExpenseMerchant(r.merchant)) {
+    if (namesLender(r.merchant)) {
       masterId = r.account_id;
       break;
     }
@@ -205,25 +210,31 @@ function cardLast4ForAccount(accountId: number): string | null {
   return l4 || null;
 }
 
-/** True if a regular (numeric-cuota) mortgage payment is logged with occurred_on in [from, to]. */
-function mortgagePaidInWindow(fromYmd: string, toYmd: string): boolean {
+/**
+ * True if a regular (numeric-cuota) mortgage payment is logged with occurred_on in [from, to] —
+ * on any loan, or on loan `loanAccountId` when given.
+ */
+function mortgagePaidInWindow(fromYmd: string, toYmd: string, loanAccountId?: number): boolean {
   const rows = db
     .prepare(
       `SELECT p.cuota AS cuota
        FROM loan_payments p
        JOIN movements m ON m.id = p.movement_id
-       WHERE p.leg = 'loan' AND m.occurred_on >= ? AND m.occurred_on <= ?`
+       WHERE p.leg = 'loan' AND m.occurred_on >= ? AND m.occurred_on <= ?
+         AND (? IS NULL OR p.loan_account_id = ?)`
     )
-    .all(fromYmd, toYmd) as { cuota: string }[];
+    .all(fromYmd, toYmd, loanAccountId ?? null, loanAccountId ?? null) as { cuota: string }[];
   // Prepagos / pie are capital events, not the scheduled cuota — exclude via numericCuota.
   return rows.some((r) => numericCuota(r.cuota) != null);
 }
 
 /** Assemble the reminder state from the DB (todayYmd injectable for tests). */
 export function buildMortgageUfReminder(
-  todayYmd: string = chileCalendarTodayYmd()
+  todayYmd: string = chileCalendarTodayYmd(),
+  /** One loan's reminder (its lender's card lines, its payments); any loan's when omitted. */
+  loanAccountId?: number
 ): MortgageUfReminderPayload {
-  const masterId = resolveMortgageCcMasterId();
+  const masterId = resolveMortgageCcMasterId(loanAccountId);
   const emptyWindow = {
     today_ymd: todayYmd,
     window_start: "",
@@ -250,11 +261,11 @@ export function buildMortgageUfReminder(
   const day = Number(todayYmd.slice(8, 10));
   const baseCycle = day >= MORTGAGE_CUOTA_DAY ? monthKeyFromYmd(todayYmd) : addCalendarMonths(monthKeyFromYmd(todayYmd), -1);
   const baseWindow = windowFor(baseCycle);
-  const basePaid = mortgagePaidInWindow(baseWindow.window_start, baseWindow.window_end);
+  const basePaid = mortgagePaidInWindow(baseWindow.window_start, baseWindow.window_end, loanAccountId);
 
   const cycle_month = basePaid ? addCalendarMonths(baseCycle, 1) : baseCycle;
   const { window_start, window_end } = basePaid ? windowFor(cycle_month) : baseWindow;
-  const paid = basePaid ? mortgagePaidInWindow(window_start, window_end) : basePaid;
+  const paid = basePaid ? mortgagePaidInWindow(window_start, window_end, loanAccountId) : basePaid;
 
   const bm = billingMonthContainingPurchase(masterId, window_start);
   const cierre_iso = closeDateForBillingMonth(masterId, bm).close_iso;

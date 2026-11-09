@@ -273,7 +273,16 @@ app.get("/api/portfolio-groups/:slug/mortgage-ledger", (req, res) => {
     res.status(404).json({ error: "portfolio group not found" });
     return;
   }
-  res.json(mortgageGroupLedgerResponse(slug));
+  const loanRaw = req.query.account_id;
+  let loanAccountId: number | undefined;
+  if (loanRaw != null) {
+    loanAccountId = Number(loanRaw);
+    if (!Number.isInteger(loanAccountId) || loanAccountId <= 0) {
+      res.status(400).json({ error: "invalid account_id" });
+      return;
+    }
+  }
+  res.json(mortgageGroupLedgerResponse(slug, loanAccountId));
 });
 
 app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {

@@ -1,6 +1,6 @@
 import { dayWithinWindow } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
-import { lenderMerchantPatterns } from "./accountRoles.js";
+import { lenderMerchantPatterns, lenderMerchantPatternsOfLoan } from "./accountRoles.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import {
@@ -32,7 +32,7 @@ import {
   isDeptoPieCuota,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
 import { keyTarget, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
@@ -140,6 +140,13 @@ export function isMortgageCcExpenseMerchant(merchant: string | null | undefined)
   const key = normalizeCcExpenseMerchantKey(merchant ?? "");
   if (!key) return false;
   return lenderMerchantPatterns().some((words) => words.every((w) => key.includes(w)));
+}
+
+/** True when `merchant` names loan `loanAccountId`'s lender (one of its own `lender_pattern` rows). */
+export function isLoanLenderMerchant(merchant: string | null | undefined, loanAccountId: number): boolean {
+  const key = normalizeCcExpenseMerchantKey(merchant ?? "");
+  if (!key) return false;
+  return lenderMerchantPatternsOfLoan(loanAccountId).some((words) => words.every((w) => key.includes(w)));
 }
 
 /**
@@ -266,12 +273,14 @@ function findDepositMovementForSegment(segment: ParsedDepositMatchSegment): Depo
 }
 
 function findPropertyDepositForSheetRow(
-  sheet: DeptoMortgageSheetRow
+  sheet: DeptoMortgageSheetRow,
+  propertyAccountId: number
 ): (DepositMovementRow & { account_id: number }) | null {
   const sheetPago = Math.round(sheet.pago_clp);
   let match: (DepositMovementRow & { account_id: number }) | null = null;
 
-  for (const accountId of listRealEstatePropertyAccountIds()) {
+  // The ledger's own property only: another property's cuota of the same day and pesos is not this one.
+  for (const accountId of listRealEstatePropertyAccountIds().filter((id) => id === propertyAccountId)) {
     const movement = findDepositMovement(accountId, sheet.occurred_on, sheetPago);
     if (movement == null) continue;
     const payment = loanPaymentRowForMovementId(movement.id);
@@ -531,10 +540,13 @@ export function syncMortgageExpenseDepositLinksFromSheet(
   const usedPurchaseKeys = new Set(manualKeys);
   const created: ExpenseDepositLinkRow[] = [];
 
-  for (const sheet of loadDeptoLedgerFromMovements()) {
+  const sheets = loadAllDeptoLedgers().flatMap(({ propertyAccountId, rows }) =>
+    rows.map((sheet) => ({ propertyAccountId, sheet }))
+  );
+  for (const { propertyAccountId, sheet } of sheets) {
     if (!isRegularMortgageCuotaSheetRow(sheet)) continue;
 
-    const deposit = findPropertyDepositForSheetRow(sheet);
+    const deposit = findPropertyDepositForSheetRow(sheet, propertyAccountId);
     if (deposit == null) continue;
 
     const ccLine = findUniqueCcLineForMortgageSheetRow(lines, sheet, usedPurchaseKeys);

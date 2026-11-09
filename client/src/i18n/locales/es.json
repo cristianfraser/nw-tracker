@@ -171,7 +171,9 @@
   },
   "realEstate": {
     "propertyValue": "valor",
-    "mortgage": "hipoteca"
+    "mortgage": "hipoteca",
+    "propertyValueOfProperty": "valor · {{property}}",
+    "mortgageOfProperty": "hipoteca · {{property}}"
   },
   "liabilities": {
     "mortgage": "hipoteca",

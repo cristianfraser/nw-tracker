@@ -756,12 +756,17 @@ export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = tr
   });
 }
 
-export function usePortfolioGroupMortgageLedger(slug: string | undefined, enabled = true) {
+/** One loan's ledger on a mortgage group page; `loanAccountId` null asks for the group's one loan. */
+export function usePortfolioGroupMortgageLedger(
+  slug: string | undefined,
+  loanAccountId: number | null,
+  enabled = true
+) {
   return useQuery({
-    queryKey: queryKeys.portfolioGroupMortgageLedger(slug ?? ""),
-    queryFn: () => api.portfolioGroupMortgageLedger(slug!),
+    queryKey: queryKeys.portfolioGroupMortgageLedger(slug ?? "", loanAccountId),
+    queryFn: () => api.portfolioGroupMortgageLedger(slug!, loanAccountId),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupMortgageLedger(slug ?? "")),
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupMortgageLedger(slug ?? "", loanAccountId)),
   });
 }
 

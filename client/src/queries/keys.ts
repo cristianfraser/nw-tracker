@@ -115,8 +115,9 @@ export const queryKeys = {
     withEntity(["accountMonthlyPerformance", id, unit] as const, 2),
   portfolioGroupCcLedger: (slug: string) =>
     withEntity(["portfolioGroupCcLedger", slug] as const, 2),
-  portfolioGroupMortgageLedger: (slug: string) =>
-    withEntity(["portfolioGroupMortgageLedger", slug] as const, 2),
+  /** One loan's ledger on a mortgage group page (`loanAccountId` null: the group's one loan). */
+  portfolioGroupMortgageLedger: (slug: string, loanAccountId: number | null) =>
+    withEntity(["portfolioGroupMortgageLedger", slug, loanAccountId] as const, 3),
   groupFlows: (slug: string, filtersKey: string) =>
     withEntity(["groupFlows", slug, filtersKey] as const, 2),
   accountFlowsAll: () => ["accountFlows"] as const,

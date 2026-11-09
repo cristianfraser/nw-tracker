@@ -1,5 +1,5 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
-import { accountIsDebt, accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
+import { accountIsDebt, accountProfile, accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
 import { accountValueAt } from "./accountValue.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import {
@@ -9,7 +9,8 @@ import {
   type DepositInflowEvent,
 } from "./accountDeposits.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
+import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
@@ -128,6 +129,8 @@ type AccountLine = {
   name: string;
   /** i18n key for grouped bucket lines (nav node `label_i18n_key`); client resolves at render. */
   name_i18n_key?: string | null;
+  /** Params of `name_i18n_key` (an overlay naming its property). */
+  name_i18n_params?: Record<string, string>;
   dataKey: string;
   /** Client tail-clip: `reference` for class totals (recomputed after clip). */
   valueSeriesType: "data" | "reference";
@@ -179,14 +182,78 @@ export const DEPTO_VALOR_CHART_ACCOUNT_ID = -5;
 export const DEPTO_VALOR_CHART_LINE_NAME = "Valor";
 export const DEPTO_VALOR_CHART_I18N_KEY = "realEstate.propertyValue";
 
+/** i18n keys of the overlay labels when a chart carries several properties' pairs (`{{property}}`). */
+export const DEPTO_HIPOTECA_OF_PROPERTY_I18N_KEY = "realEstate.mortgageOfProperty";
+export const DEPTO_VALOR_OF_PROPERTY_I18N_KEY = "realEstate.propertyValueOfProperty";
+
+/**
+ * The «hipoteca» / «valor» overlay lines of one property: account ids and data keys. The chart's
+ * first property (lowest id) keeps the historical ids -4 / -5 and keys (one pair is the common
+ * case, and the M↔D toggle matches the daily twins by id); another property's lines are
+ * -(10 000 + 2·id) / -(10 001 + 2·id) with the property id in the key.
+ */
+export function deptoOverlayLineIds(
+  propertyAccountId: number,
+  primary: boolean
+): { hipotecaId: number; valorId: number; hipotecaDk: string; valorDk: string } {
+  return primary
+    ? {
+        hipotecaId: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
+        valorId: DEPTO_VALOR_CHART_ACCOUNT_ID,
+        hipotecaDk: "depto_hipoteca_saldo_clp",
+        valorDk: "depto_valor_total_clp",
+      }
+    : {
+        hipotecaId: -(10_000 + 2 * propertyAccountId),
+        valorId: -(10_001 + 2 * propertyAccountId),
+        hipotecaDk: `depto_hipoteca_saldo_clp_${propertyAccountId}`,
+        valorDk: `depto_valor_total_clp_${propertyAccountId}`,
+      };
+}
+
+/**
+ * Labels of one property's overlay lines: the plain «Hipoteca» / «Valor» when the chart carries
+ * one pair, «Hipoteca · <property>» when it carries several (the client passes the params).
+ */
+function deptoOverlayLabels(propertyAccountId: number, several: boolean) {
+  if (!several) {
+    return {
+      hipoteca: { name: DEPTO_HIPOTECA_CHART_LINE_NAME, name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY },
+      valor: { name: DEPTO_VALOR_CHART_LINE_NAME, name_i18n_key: DEPTO_VALOR_CHART_I18N_KEY },
+    };
+  }
+  const property = accountProfile(propertyAccountId).name;
+  return {
+    hipoteca: {
+      name: `${DEPTO_HIPOTECA_CHART_LINE_NAME} · ${property}`,
+      name_i18n_key: DEPTO_HIPOTECA_OF_PROPERTY_I18N_KEY,
+      name_i18n_params: { property },
+    },
+    valor: {
+      name: `${DEPTO_VALOR_CHART_LINE_NAME} · ${property}`,
+      name_i18n_key: DEPTO_VALOR_OF_PROPERTY_I18N_KEY,
+      name_i18n_params: { property },
+    },
+  };
+}
+
+/**
+ * The properties whose «hipoteca» / «valor» overlays a chart of these accounts carries: each
+ * property among them whose depto ledger has rows and whose loan exists, ascending by id.
+ */
+export function deptoOverlayPropertyIds(propertyAccountIds: readonly number[]): number[] {
+  return [...new Set(propertyAccountIds)]
+    .sort((a, b) => a - b)
+    .filter((id) => loanAccountIdOfProperty(id) != null && deptoLedgerForAccount(id).length > 0);
+}
+
 /**
  * The «hipoteca» overlay draws in the mortgage account's own configured color (the same color
- * its Pasivos line uses), so the user controls it from that account's params. Undefined when
- * the mortgage is not exactly one account — the overlay itself is gated the same way.
+ * its Pasivos line uses), so the user controls it from that account's params.
  */
-function deptoHipotecaChartColorRgb(): string | undefined {
-  const rows = listLiabilitiesTabAccountRows("mortgage");
-  return rows.length === 1 ? getAccountColorRgb(rows[0]!.account_id) : undefined;
+function deptoHipotecaChartColorRgb(propertyAccountId: number): string | undefined {
+  const loanId = loanAccountIdOfProperty(propertyAccountId);
+  return loanId != null ? getAccountColorRgb(loanId) : undefined;
 }
 
 /** Per-row sum of all class-tab valuation lines and of all cumulative deposit lines. */
@@ -405,6 +472,19 @@ function augmentChartDatesForCreditCardAccounts(
  * property's appraisals; none for the mortgage since migration 261) give them no dates. Before
  * migrations 260 / 261 their peso month-end rows gave these dates.
  */
+/** The rows of every depto ledger the accounts read (each property's once). */
+function deptoLedgerRowsOfAccounts(accountIds: readonly number[]): DeptoMortgageSheetRow[] {
+  const seen = new Set<number>();
+  const out: DeptoMortgageSheetRow[] = [];
+  for (const id of accountIds) {
+    const propertyId = deptoPropertyIdOfAccount(id);
+    if (propertyId == null || seen.has(propertyId)) continue;
+    seen.add(propertyId);
+    out.push(...deptoLedgerForAccount(id));
+  }
+  return out;
+}
+
 function augmentChartDatesForDeptoAccounts(
   dateStrs: string[],
   allIds: number[],
@@ -415,7 +495,8 @@ function augmentChartDatesForDeptoAccounts(
     return valuationsAreAppraisals(kind) || kind === "mortgage";
   };
   if (!allIds.some(ledgerValued)) return dateStrs;
-  const ledger = loadDeptoLedgerFromMovements();
+  // The ledgers of the accounts in the chart (a property's own, a loan's property's).
+  const ledger = deptoLedgerRowsOfAccounts(allIds.filter(ledgerValued));
   let first: string | null = null;
   for (const r of ledger) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on) && (first == null || r.occurred_on < first)) first = r.occurred_on;
@@ -438,14 +519,14 @@ function augmentChartDatesForDeptoSheetAccounts(
   slugById: Map<number, string>
 ): string[] {
   if (dateStrs.length === 0) return dateStrs;
-  const hasDeptoAccount = allIds.some((id) => {
+  const deptoIds = allIds.filter((id) => {
     const kind = bucketKindFromSlugMap(slugById, id);
     return kind === "property" || kind === "mortgage";
   });
-  if (!hasDeptoAccount) return dateStrs;
+  if (deptoIds.length === 0) return dateStrs;
   const minD = dateStrs[0]!;
   const aug = new Set(dateStrs);
-  for (const r of loadDeptoLedgerFromMovements()) {
+  for (const r of deptoLedgerRowsOfAccounts(deptoIds)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
     if (r.occurred_on >= minD) aug.add(r.occurred_on);
   }
@@ -782,26 +863,18 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   dateStrs = augmentChartDatesForFintualCertAccounts(dateStrs, allIds, chartMetaById);
   dateStrs = augmentChartDatesForCuotaLedgerAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
-  const propertyAccountIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "property");
-  const propertyDeptoSheets =
-    propertyAccountIds.length === 1
-      ? (() => {
-        const ledger = loadDeptoLedgerFromMovements();
-        const sheetSeries = propertyDeptoClpSeriesBySnapshotDate(dateStrs, ledger);
-        const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
-        return {
-          closeByDate: deptoPropertyCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate),
-          pagoAcumuladoByDate: sheetSeries.pagoAcumuladoByDate,
-          mortgageClpByDate: deptoMortgageBalanceClpBySnapshotDates(dateStrs, ledger, ufClpByDate),
-        };
-      })()
-      : {
-        closeByDate: new Map<string, number>(),
-        pagoAcumuladoByDate: new Map<string, number>(),
-        mortgageClpByDate: new Map<string, number>(),
-      };
-  const { closeByDate: propertyDeptoCloseByDate, pagoAcumuladoByDate: propertyDeptoPagoAcumByDate } =
-    propertyDeptoSheets;
+  // Each property line reads its own depto ledger (one per `property` role holder).
+  const propertyDeptoSheetsById = new Map<number, { closeByDate: Map<string, number>; pagoAcumuladoByDate: Map<string, number> }>();
+  for (const id of allIds) {
+    if (bucketKindFromSlugMap(slugById, id) !== "property") continue;
+    const ledger = deptoLedgerForAccount(id);
+    const sheetSeries = propertyDeptoClpSeriesBySnapshotDate(dateStrs, ledger);
+    const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
+    propertyDeptoSheetsById.set(id, {
+      closeByDate: deptoPropertyCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate),
+      pagoAcumuladoByDate: sheetSeries.pagoAcumuladoByDate,
+    });
+  }
   const topOut = attachDepositSeriesKeys(top, displayDepMovs, slugById);
   const depClpByAccAndDate = new Map<number, Map<string, number>>();
   const depUfByAccAndDate = new Map<number, Map<string, number>>();
@@ -856,14 +929,13 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
 
   const mtgCloseByAccAndDate = new Map<number, Map<string, number>>();
   const mortgageChartIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "mortgage");
-  if (mortgageChartIds.length > 0 && dateStrs.length > 0) {
-    const ledger = loadDeptoLedgerFromMovements();
-    if (ledger.length > 0) {
+  if (dateStrs.length > 0) {
+    for (const id of mortgageChartIds) {
+      // The loan's own property ledger.
+      const ledger = deptoLedgerForAccount(id);
+      if (ledger.length === 0) continue;
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
-      const closeByDate = deptoMortgageCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate);
-      for (const id of mortgageChartIds) {
-        mtgCloseByAccAndDate.set(id, closeByDate);
-      }
+      mtgCloseByAccAndDate.set(id, deptoMortgageCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate));
     }
   }
 
@@ -917,10 +989,10 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
         if (mtgClose != null && Number.isFinite(mtgClose)) raw = mtgClose;
       }
-      if (propertyAccountIds.length === 1 && aidKind === "property") {
+      if (aidKind === "property") {
         // Sheet UF marks on every date including the trailing/today point: depto CLP is
         // (valor_neto_uf × UF(d)), the same daily re-mark as the Hipoteca line and the monthly table.
-        const fromDepto = propertyDeptoCloseByDate.get(d);
+        const fromDepto = propertyDeptoSheetsById.get(aid)?.closeByDate.get(d);
         if (fromDepto != null && Number.isFinite(fromDepto)) {
           raw = fromDepto;
         }
@@ -941,10 +1013,9 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
             : (depClpByAccAndDate.get(aid)?.get(d) ?? 0);
       if (
         unit === "clp" &&
-        propertyAccountIds.length === 1 &&
         bucketKindFromSlugMap(slugById, aid) === "property"
       ) {
-        const fromSheet = propertyDeptoPagoAcumByDate.get(d);
+        const fromSheet = propertyDeptoSheetsById.get(aid)?.pagoAcumuladoByDate.get(d);
         if (fromSheet != null && Number.isFinite(fromSheet)) depPlot = fromSheet;
       }
       if (!singleAccountDepSeen.get(aid)) {
@@ -1998,53 +2069,53 @@ function getGroupValuationTimeseriesInnerUncached(
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, chartHostSlug, unit);
     reference_coverage = liabilitiesCoverageFromBlock(accounts_in_group, rows, groupSlug, chartHostSlug);
   }
-  if (groupHasPropertyOverlay(groupSlug)) {
+  if (groupHasPropertyOverlay(groupSlug) && accounts_in_group.points.length > 0) {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");
-    if (propertyRows.length === 1 && accounts_in_group.points.length > 0) {
-      const ledger = loadDeptoLedgerFromMovements();
-      if (ledger.length > 0) {
-        const dateStrsAsc = accounts_in_group.points.map((p) => String(p.as_of_date));
-        const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
-        const mortgageClpByDate = deptoMortgageBalanceClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);
-        const dk = "depto_hipoteca_saldo_clp";
-        const valorDk = "depto_valor_total_clp";
-        // Gross value = the property line's own point (equity, live today included) + the
-        // mortgage balance — computed from the plotted values so the identity holds on every
-        // chart date regardless of how either side valued the day.
-        const propDk = String(seriesAccountIdForGroupTab(propertyRows[0]!, groupSlug));
-        accounts_in_group = {
-          accounts: [
-            ...accounts_in_group.accounts,
-            {
-              account_id: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
-              name: DEPTO_HIPOTECA_CHART_LINE_NAME,
-              name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY,
-              dataKey: dk,
-              valueSeriesType: "reference",
-              color_rgb: deptoHipotecaChartColorRgb(),
-            },
-            {
-              account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
-              name: DEPTO_VALOR_CHART_LINE_NAME,
-              name_i18n_key: DEPTO_VALOR_CHART_I18N_KEY,
-              dataKey: valorDk,
-              valueSeriesType: "reference",
-            },
-          ],
-          points: accounts_in_group.points.map((row) => {
-            const d = String(row.as_of_date);
-            const raw = mortgageClpByDate.get(d);
-            const hipoteca = raw != null && Number.isFinite(raw) ? chartValueInUnit(raw, d, unit, "debt") : null;
-            const eq = row[propDk];
-            return {
-              ...row,
-              [dk]: hipoteca,
-              [valorDk]: hipoteca != null && typeof eq === "number" ? eq + hipoteca : null,
-            };
-          }),
-        };
-      }
-    }
+    // One «hipoteca» / «valor» pair per property with a loan (`deptoOverlayPropertyIds`).
+    const overlayIds = deptoOverlayPropertyIds(propertyRows.map((r) => r.account_id));
+    const several = overlayIds.length > 1;
+    const dateStrsAsc = accounts_in_group.points.map((p) => String(p.as_of_date));
+    const ufClpByDate = overlayIds.length ? ufClpBySnapshotDatesAsc(dateStrsAsc) : new Map<string, number>();
+    overlayIds.forEach((propertyId, i) => {
+      const ledger = deptoLedgerForAccount(propertyId);
+      const mortgageClpByDate = deptoMortgageBalanceClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);
+      const ids = deptoOverlayLineIds(propertyId, i === 0);
+      const labels = deptoOverlayLabels(propertyId, several);
+      // Gross value = the property line's own point (equity, live today included) + the
+      // mortgage balance — computed from the plotted values so the identity holds on every
+      // chart date regardless of how either side valued the day.
+      const propertyRow = propertyRows.find((r) => r.account_id === propertyId)!;
+      const propDk = String(seriesAccountIdForGroupTab(propertyRow, groupSlug));
+      accounts_in_group = {
+        accounts: [
+          ...accounts_in_group.accounts,
+          {
+            account_id: ids.hipotecaId,
+            ...labels.hipoteca,
+            dataKey: ids.hipotecaDk,
+            valueSeriesType: "reference",
+            color_rgb: deptoHipotecaChartColorRgb(propertyId),
+          },
+          {
+            account_id: ids.valorId,
+            ...labels.valor,
+            dataKey: ids.valorDk,
+            valueSeriesType: "reference",
+          },
+        ],
+        points: accounts_in_group.points.map((row) => {
+          const d = String(row.as_of_date);
+          const raw = mortgageClpByDate.get(d);
+          const hipoteca = raw != null && Number.isFinite(raw) ? chartValueInUnit(raw, d, unit, "debt") : null;
+          const eq = row[propDk];
+          return {
+            ...row,
+            [ids.hipotecaDk]: hipoteca,
+            [ids.valorDk]: hipoteca != null && typeof eq === "number" ? eq + hipoteca : null,
+          };
+        }),
+      };
+    });
   }
   // Composition timeseries: shares of the pre-clip per-account lines.
   const group_allocation_proportional = buildProportionalFromBlock(accounts_in_group);
@@ -2132,7 +2203,7 @@ export function getAccountValuationTimeseries(
   const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : null;
 
   if (bucketKind === "mortgage" && accounts.points.length > 0) {
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = deptoLedgerForAccount(accountId);
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
@@ -2151,7 +2222,7 @@ export function getAccountValuationTimeseries(
   }
 
   if (bucketKind === "property" && accounts.points.length > 0) {
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = deptoLedgerForAccount(accountId);
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
@@ -2168,7 +2239,7 @@ export function getAccountValuationTimeseries(
             name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY,
             dataKey: hipotecaDk,
             valueSeriesType: "reference",
-            color_rgb: deptoHipotecaChartColorRgb(),
+            color_rgb: deptoHipotecaChartColorRgb(accountId),
           },
         ],
         points: accounts.points.map((pt) => {

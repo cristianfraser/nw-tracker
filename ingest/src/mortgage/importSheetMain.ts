@@ -36,7 +36,7 @@ async function main(): Promise<number> {
   }
   console.log(`=== Mortgage sheet${dryRun ? " (dry run)" : offline ? " (offline)" : ""} ===`);
   const read = readMortgageSheet(cfg);
-  const payload = mortgageSheetPayload(read, cfg.accepted_differences);
+  const payload = mortgageSheetPayload(read, cfg.accepted_differences, cfg.lender);
   console.log(`${read.document.name}: ${payload.rows.length} row(s), ${payload.projected.length} projected; sha256 ${payload.document.sha256.slice(0, 12)}`);
   if (offline) {
     for (const r of payload.rows) console.log(`  ${r.kind.padEnd(7)} ${r.label.padEnd(10)} ${r.paid_on} $${r.pago_clp} ${r.pago_uf} UF`);

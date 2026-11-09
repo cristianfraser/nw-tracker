@@ -14,7 +14,7 @@ import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import {
   DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
   deptoAccountMarkClpAtYmd,
-  loadDeptoLedgerFromMovements,
+  loadAllDeptoLedgers,
 } from "./deptoLedgerFromMovements.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
@@ -209,7 +209,7 @@ function propertyAccountRow(): { id: number } | undefined {
 
 describe("deptoAccountMarkClpAtYmd", () => {
   it("property mark at two dates differs when UF rates differ", () => {
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
     if (!ledger.length) return;
 
     const today = chileCalendarTodayYmd();
@@ -331,7 +331,7 @@ describe("depto mortgage live perf row", () => {
       )
       .get() as { id: number } | undefined;
     if (!row) return;
-    if (!loadDeptoLedgerFromMovements().length) return;
+    if (!loadAllDeptoLedgers().flatMap((l) => l.rows).length) return;
 
     const perf = monthlyPerfForAccountId(row.id, "clp");
     if (!perf?.monthly.length) return;
@@ -363,7 +363,7 @@ function mortgageMasterRow(): { id: number } | undefined {
 
 describe("mortgage P/L sign convention", () => {
   it("nominal_pl = prior − close − payments on every row; lifetime P/L is a loss", () => {
-    if (!loadDeptoLedgerFromMovements().length) return;
+    if (!loadAllDeptoLedgers().flatMap((l) => l.rows).length) return;
     const row = mortgageMasterRow();
     if (!row) return;
 
@@ -389,7 +389,7 @@ describe("mortgage P/L sign convention", () => {
 
 describe("mortgage dashboard card metrics", () => {
   it("deposits = ledger payments and deltas = perf financing-cost P/L (not balance − deposits)", async () => {
-    const ledger = loadDeptoLedgerFromMovements();
+    const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
     if (!ledger.length) return;
     const master = mortgageMasterRow();
     if (!master) return;
