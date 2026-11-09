@@ -25,10 +25,12 @@ import { db } from "../src/db.js";
 import {
   buildAdditionalCardsSummary,
   isAdditionalCardChargeLine,
+} from "../src/additionalCardReimbursements.js";
+import {
   matchCardReimbursements,
   type ReimbursementChargeInput,
   type ReimbursementCreditInput,
-} from "../src/additionalCardReimbursements.js";
+} from "./lib/cardReimbursementMatch.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import {
   loadCheckingExpenseRefunds,

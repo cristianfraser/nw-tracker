@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { matchCardReimbursements } from "../scripts/lib/cardReimbursementMatch.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import {
   buildAdditionalCardsSummary,
   isAdditionalCardChargeLine,
-  matchCardReimbursements,
   type AdditionalCardChargeLineInput,
 } from "./additionalCardReimbursements.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
