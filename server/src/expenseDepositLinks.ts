@@ -14,6 +14,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import { withoutChurn } from "./rederivation.js";
+import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 import {
   loadDepositMatchCandidates,
   type DepositMatchCandidate,
@@ -32,9 +33,6 @@ import {
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { syncCuentaAhorroDepositSplitMirrors } from "./cuentaAhorroDepositSplits.js";
-import { syncBudaAbonoDepositMirrors } from "./budaWallet.js";
-import { buildExpenseKey, EXPENSE_KEY_PREFIXES, expenseKeyKind } from "./expenseKeys.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
 import { keyTarget, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
@@ -47,7 +45,7 @@ export const MORTGAGE_CC_PURCHASE_DAY_GAP = MATCH_WINDOWS.mortgage_cuota_stored_
 
 /** Priority for conflict resolution when the same (purchase_key, deposit_movement_id) pair is
  *  written by more than one path: manual (user-curated) > auto (real checking/CC match) >
- *  synthetic (fabricated mirror for a confirmed cuenta_corriente cartola gap). */
+ *  synthetic (the retired fabricated mirrors, migration 294: nothing writes it any more). */
 export type ExpenseDepositLinkSource = "auto" | "manual" | "synthetic";
 
 export type ExpenseDepositLinkRow = {
@@ -471,18 +469,34 @@ export function insertManualFundedDepositLink(opts: {
   deptoCuota?: string | null;
   deptoOccurredOn?: string | null;
 }): void {
-  const outflow = db.prepare(`SELECT account_id FROM movements WHERE id = ?`).get(opts.outflowMovementId) as { account_id: number | null } | undefined;
-  if (!outflow?.account_id) throw new Error(`manual deposit link: movement ${opts.outflowMovementId} is not a single-leg row`);
-  upsertExpenseDepositLink({
-    account_id: outflow.account_id,
-    purchase_key: buildExpenseKey({ kind: "checking_mv", movementId: opts.outflowMovementId, portion: "deposit" }),
-    deposit_movement_id: opts.depositMovementId,
-    payment_clp: Math.round(opts.paymentClp),
-    amortization_clp: Math.round(opts.paymentClp),
-    depto_cuota: opts.deptoCuota ?? null,
-    depto_occurred_on: opts.deptoOccurredOn ?? null,
-    link_source: "manual",
-  });
+  const outflow = db.prepare(`SELECT account_id, flow_id FROM movements WHERE id = ?`).get(opts.outflowMovementId) as
+    | { account_id: number | null; flow_id: number | null }
+    | undefined;
+  if (!outflow?.account_id || outflow.flow_id == null) {
+    throw new Error(`manual deposit link: movement ${opts.outflowMovementId} is not a single-leg row with a flow`);
+  }
+  const counterpart = movementFlowId(opts.depositMovementId);
+  const existing = db
+    .prepare(
+      `SELECT link_source FROM flow_links WHERE kind = 'funded_deposit' AND flow_id = ? AND portion = 'deposit' AND piece_seq = -1 AND counterpart_flow_id = ?`
+    )
+    .get(outflow.flow_id, counterpart) as { link_source: ExpenseDepositLinkSource } | undefined;
+  if (existing) {
+    throw new Error(`manual deposit link: movement ${opts.outflowMovementId} already links deposit ${opts.depositMovementId} (${existing.link_source})`);
+  }
+  db.prepare(
+    `INSERT INTO flow_links (flow_id, portion, piece_seq, kind, counterpart_flow_id, account_id, payment_clp,
+       amortization_clp, depto_cuota, depto_occurred_on, link_source)
+     VALUES (?, 'deposit', -1, 'funded_deposit', ?, ?, ?, ?, ?, ?, 'manual')`
+  ).run(
+    outflow.flow_id,
+    counterpart,
+    outflow.account_id,
+    Math.round(opts.paymentClp),
+    Math.round(opts.paymentClp),
+    opts.deptoCuota ?? null,
+    opts.deptoOccurredOn ?? null
+  );
 }
 
 /** The `funded_deposit` link from a checking outflow (either portion) to a deposit, if any. */
@@ -498,34 +512,6 @@ export function linkedFundedDepositOf(
     )
     .get(outflowMovementId, depositMovementId) as { payment_clp: number; link_source: ExpenseDepositLinkSource } | undefined;
   return row ?? null;
-}
-
-function clearSyntheticExpenseDepositLinks(): void {
-  db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'synthetic'`).run();
-}
-
-/** Direct 1:1 link from a checking_gap_deposit_mirrors row to its target deposit movement —
- *  no fuzzy date/amount search, the movement id is already known. */
-function syncCheckingGapDepositMirrorLinks(): void {
-  clearSyntheticExpenseDepositLinks();
-  const rows = db
-    .prepare(
-      `SELECT id, account_id, deposit_movement_id, amount_clp FROM checking_gap_deposit_mirrors`
-    )
-    .all() as { id: number; account_id: number; deposit_movement_id: number; amount_clp: number }[];
-  for (const row of rows) {
-    const amt = Math.round(row.amount_clp);
-    upsertExpenseDepositLink({
-      account_id: row.account_id,
-      purchase_key: buildExpenseKey({ kind: "gap_mirror", mirrorId: row.id }),
-      deposit_movement_id: row.deposit_movement_id,
-      payment_clp: amt,
-      amortization_clp: amt,
-      depto_cuota: null,
-      depto_occurred_on: null,
-      link_source: "synthetic",
-    });
-  }
 }
 
 function clearAutoExpenseDepositLinks(): void {
@@ -700,10 +686,6 @@ function lineIsManualDepositAssertion(line: GastosLineForExpenseDepositLink): bo
   if (line.source !== "checking") return false;
   if (line.category_slug !== DEPOSITS_CC_EXPENSE_SLUG) return false;
   if (line.amount_clp <= 0) return false;
-  // A synthetic mirror line already has its direct 1:1 link to its own deposit
-  // (syncCheckingGapDepositMirrorLinks). Asserting it again linked the deposit twice, and because
-  // mirror ids are rebuilt on every sync the second link pointed at a mirror id that no longer existed.
-  if (expenseKeyKind(line.purchase_key) === "gap_mirror") return false;
   // Auto-matched lines carry the matcher's `deposit_match` and are handled by
   // tryAutoLinkExpenseDepositLine — only unmatched (user-asserted) lines take this pass.
   return (line.deposit_match?.length ?? 0) === 0;
@@ -857,7 +839,7 @@ export function syncExpenseDepositLinksFromGastosLines(
   lines: readonly GastosLineForExpenseDepositLink[]
 ): void {
   withoutChurn(
-    ["flow_links", "checking_gap_deposit_mirrors", "cc_expense_line_categories"],
+    ["flow_links", "cc_expense_line_categories"],
     ["created_at"],
     () => syncExpenseDepositLinksFromGastosLinesChurning(lines)
   );
@@ -873,12 +855,6 @@ function syncExpenseDepositLinksFromGastosLinesChurning(lines: readonly GastosLi
   // paired with its real outflow.
   syncManualDepositAssertionLinks(lines);
   assignBillsCategoryToMortgageLinkedLines();
-  // Materialize cuenta_ahorro self-funded split portions and Buda buffer abonos into
-  // checking_gap_deposit_mirrors first, so syncCheckingGapDepositMirrorLinks picks them up alongside
-  // the propose-script mirrors.
-  syncCuentaAhorroDepositSplitMirrors();
-  syncBudaAbonoDepositMirrors();
-  syncCheckingGapDepositMirrorLinks();
 }
 
 export function enrichFlowLinesWithExpenseDepositLinks<

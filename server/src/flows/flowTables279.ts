@@ -90,12 +90,6 @@ function incomeFlowValues(a: string): string {
     NULL, NULL, ${a}.source`;
 }
 
-function gapMirrorFlowValues(a: string): string {
-  const to = `(SELECT account_id FROM movements WHERE id = ${a}.deposit_movement_id)`;
-  return `'transfer', ${a}.account_id, ${to}, NULL, CASE WHEN ${to} IS NULL THEN ${UNKNOWN_PARTY} END,
-    ${a}.occurred_on, ${a}.amount_clp, 'clp', NULL, NULL, ${a}.note`;
-}
-
 const FLOW_COLUMNS = `kind, from_account_id, to_account_id, from_party_id, to_party_id, occurred_on, amount, currency,
   counter_amount, counter_currency, description`;
 
@@ -158,10 +152,6 @@ function incomeEvidenceValues(a: string): string {
   return `'manual', 'income_entries', ${a}.id, NULL, ${a}.received_on, ${a}.amount_clp, 'clp', ${a}.source, 1`;
 }
 
-function gapMirrorEvidenceValues(a: string): string {
-  return `'gap_mirror', 'checking_gap_deposit_mirrors', ${a}.id, NULL, ${a}.occurred_on, ${a}.amount_clp, 'clp', ${a}.note, 1`;
-}
-
 const EVIDENCE_COLUMNS = `source_kind, source_table, source_row_id, document_key, stated_on, stated_amount, stated_currency,
   stated_description, authority`;
 
@@ -187,12 +177,6 @@ export const FLOW_SOURCES: readonly SourceSpec[] = [
     hasFlowColumn: true,
   },
   { table: "income_entries", flowValues: incomeFlowValues, evidenceValues: incomeEvidenceValues, hasFlowColumn: true },
-  {
-    table: "checking_gap_deposit_mirrors",
-    flowValues: gapMirrorFlowValues,
-    evidenceValues: gapMirrorEvidenceValues,
-    hasFlowColumn: false,
-  },
 ];
 
 /** The insert trigger: a row written later gets its own flow and its evidence row. */

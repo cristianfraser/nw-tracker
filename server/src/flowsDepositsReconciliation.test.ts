@@ -1,4 +1,3 @@
-import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildDepositsReconciliationPayload,
@@ -10,7 +9,6 @@ import { loadBestLinkSourceByMovementId } from "./expenseDepositLinks.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSplits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 
@@ -18,7 +16,6 @@ describe("buildDepositsReconciliationPayload", () => {
   it("classifies every row into exactly one status consistent with the link table", () => {
     const payload = buildDepositsReconciliationPayload();
     const linkSourceByMovementId = loadBestLinkSourceByMovementId();
-    const pureFamilyAhorro = loadPureFamilyAhorroDepositMovementIds();
 
     // Coverage is decided by cuenta_corriente specifically (see
     // loadCuentaCorrienteMonthsWithData in flowsDepositsReconciliation.ts) — cuenta_vista having
@@ -35,11 +32,6 @@ describe("buildDepositsReconciliationPayload", () => {
       const linkSource = linkSourceByMovementId.get(row.movement_id);
       if (linkSource === "auto" || linkSource === "manual") {
         expect(row.status).toBe("linked");
-      } else if (pureFamilyAhorro.has(row.movement_id)) {
-        // Family (split self=0 or forensic funding=family) outranks synthetic mirrors.
-        expect(row.status).toBe("resolved_family_funded");
-      } else if (linkSource === "synthetic") {
-        expect(["linked_synthetic", "resolved_family_funded"]).toContain(row.status);
       } else {
         const month = monthKeyFromYmd(row.occurred_on);
         const expected =
@@ -57,8 +49,6 @@ describe("buildDepositsReconciliationPayload", () => {
     const payload = buildDepositsReconciliationPayload();
     const sums = {
       linked: 0,
-      linked_synthetic: 0,
-      resolved_family_funded: 0,
       resolved_tax_refund: 0,
       resolved_internal_transfer: 0,
       unlinked_no_checking_source: 0,
@@ -66,8 +56,6 @@ describe("buildDepositsReconciliationPayload", () => {
     };
     const counts = {
       linked: 0,
-      linked_synthetic: 0,
-      resolved_family_funded: 0,
       resolved_tax_refund: 0,
       resolved_internal_transfer: 0,
       unlinked_no_checking_source: 0,
@@ -86,8 +74,6 @@ describe("buildDepositsReconciliationPayload", () => {
   it("by_month rows sum to the same totals as by_status across all rows", () => {
     const payload = buildDepositsReconciliationPayload();
     const monthLinked = payload.by_month.reduce((s, m) => s + m.linked_clp, 0);
-    const monthLinkedSynthetic = payload.by_month.reduce((s, m) => s + m.linked_synthetic_clp, 0);
-    const monthFamily = payload.by_month.reduce((s, m) => s + m.resolved_family_funded_clp, 0);
     const monthInternal = payload.by_month.reduce((s, m) => s + m.resolved_internal_transfer_clp, 0);
     const monthNoChecking = payload.by_month.reduce(
       (s, m) => s + m.unlinked_no_checking_source_clp,
@@ -98,16 +84,12 @@ describe("buildDepositsReconciliationPayload", () => {
       0
     );
     expect(monthLinked).toBe(payload.by_status.linked.total_clp);
-    expect(monthLinkedSynthetic).toBe(payload.by_status.linked_synthetic.total_clp);
-    expect(monthFamily).toBe(payload.by_status.resolved_family_funded.total_clp);
     expect(monthInternal).toBe(payload.by_status.resolved_internal_transfer.total_clp);
     expect(monthNoChecking).toBe(payload.by_status.unlinked_no_checking_source.total_clp);
     expect(monthChecking).toBe(payload.by_status.unlinked_checking_present.total_clp);
     for (const m of payload.by_month) {
       expect(m.total_clp).toBe(
         m.linked_clp +
-          m.linked_synthetic_clp +
-          m.resolved_family_funded_clp +
           m.resolved_internal_transfer_clp +
           m.unlinked_no_checking_source_clp +
           m.unlinked_checking_present_clp
@@ -157,50 +139,6 @@ describe("buildDepositsReconciliationPayload", () => {
     });
   });
 
-  describe("synthetic checking-gap mirrors", () => {
-    afterEach(() => {
-      db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE note = ?`).run(
-        "vitest-fixture-mirror"
-      );
-      db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'synthetic'`).run();
-    });
-
-    it("classifies a mirrored unlinked_no_checking_source deposit as linked_synthetic", () => {
-      // Sync first: pick a deposit the link sync itself leaves unlinked, not one it is about to
-      // pair with a real checking debit that another suite's fixtures left in the DB.
-      syncExpenseLinksNow();
-      const before = buildDepositsReconciliationPayload();
-      const candidate = before.rows.find((r) => r.status === "unlinked_no_checking_source");
-      if (!candidate) return;
-
-      const corrienteAccount = db
-        .prepare(
-          `SELECT a.id FROM accounts a
-           JOIN asset_groups g ON g.id = a.asset_group_id
-           WHERE g.slug LIKE '%cuenta_corriente%' LIMIT 1`
-        )
-        .get() as { id: number } | undefined;
-      if (!corrienteAccount) return;
-
-      db.prepare(
-        `INSERT INTO checking_gap_deposit_mirrors (account_id, deposit_movement_id, amount_clp, occurred_on, note)
-         VALUES (?, ?, ?, ?, ?)`
-      ).run(
-        corrienteAccount.id,
-        candidate.movement_id,
-        candidate.amount_clp,
-        candidate.occurred_on,
-        "vitest-fixture-mirror"
-      );
-
-      syncExpenseLinksNow();
-
-      const after = buildDepositsReconciliationPayload();
-      const row = after.rows.find((r) => r.movement_id === candidate.movement_id);
-      expect(row?.status).toBe("linked_synthetic");
-    });
-  });
-
   describe("negative deposits (redemptions)", () => {
     it("every redemption classifies into exactly one status with a positive amount", () => {
       const payload = buildDepositsReconciliationPayload();
@@ -223,52 +161,6 @@ describe("buildDepositsReconciliationPayload", () => {
         expect(accountKindSlugForAccountId(r.account_id)).not.toBe("cuenta_corriente");
         expect(accountKindSlugForAccountId(r.account_id)).not.toBe("cuenta_vista");
       }
-    });
-  });
-
-  describe("cuenta_ahorro deposit splits", () => {
-    function findAhorroDeposit(): { movement_id: number; amount_clp: number } | null {
-      const rows = buildDepositsReconciliationPayload().rows;
-      for (const r of rows) {
-        if (accountKindSlugForAccountId(r.account_id) === "cuenta_ahorro_vivienda") {
-          return { movement_id: r.movement_id, amount_clp: r.amount_clp };
-        }
-      }
-      return null;
-    }
-
-    afterEach(() => {
-      db.prepare(`DELETE FROM cuenta_ahorro_deposit_splits WHERE note = ?`).run("vitest-fixture-split");
-      db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE note = ?`).run("ahorro-split|self_funded");
-      db.prepare(`DELETE FROM flow_links WHERE kind = 'funded_deposit' AND link_source = 'synthetic'`).run();
-      syncExpenseLinksNow();
-    });
-
-    it("marks a self-funded split as linked_synthetic and a pure-family split as resolved_family_funded", async () => {
-      const deposit = findAhorroDeposit();
-      if (!deposit) return;
-      const { upsertCuentaAhorroDepositSplit } = await import("./cuentaAhorroDepositSplits.js");
-
-      // Self-funded portion → partial mirror → linked_synthetic.
-      upsertCuentaAhorroDepositSplit(deposit.movement_id, Math.round(deposit.amount_clp / 2), "vitest-fixture-split");
-      syncExpenseLinksNow();
-      let row = buildDepositsReconciliationPayload().rows.find((r) => r.movement_id === deposit.movement_id);
-      expect(row?.status).toBe("linked_synthetic");
-
-      // Pure-family (self = 0) → no mirror → resolved_family_funded.
-      upsertCuentaAhorroDepositSplit(deposit.movement_id, 0, "vitest-fixture-split");
-      syncExpenseLinksNow();
-      row = buildDepositsReconciliationPayload().rows.find((r) => r.movement_id === deposit.movement_id);
-      expect(row?.status).toBe("resolved_family_funded");
-    });
-
-    it("rejects a self_funded_clp greater than the deposit amount", async () => {
-      const deposit = findAhorroDeposit();
-      if (!deposit) return;
-      const { upsertCuentaAhorroDepositSplit } = await import("./cuentaAhorroDepositSplits.js");
-      expect(() =>
-        upsertCuentaAhorroDepositSplit(deposit.movement_id, deposit.amount_clp + 1, "vitest-fixture-split")
-      ).toThrow(/out of range/);
     });
   });
 

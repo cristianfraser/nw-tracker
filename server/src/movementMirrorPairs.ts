@@ -130,8 +130,7 @@ type EligibleLegRow = {
 /**
  * Legs eligible for pairing: single-leg CLP rows, optionally carrying cuotas. Excludes
  * flow_kind / USD legs (brokerage and USD-cash semantics must not be rewritten), anchor/opening
- * calibration rows, rows already explained by a link (a `funded_deposit` flow link), a synthetic
- * mirror (checking_gap_deposit_mirrors), or a payroll liquidación (payroll_work_earnings —
+ * calibration rows, rows already explained by a link (a `funded_deposit` flow link), or a payroll liquidación (payroll_work_earnings —
  * income by construction, never a transfer leg), a credit the user classified as income, and
  * Buda buffer rows (budaWallet.ts).
  */
@@ -151,7 +150,6 @@ function loadEligibleLegs(): EligibleLegRow[] {
            AND m.note NOT LIKE 'buda-abono|%'
            AND m.note NOT LIKE 'ahorro-split|%'))
          AND NOT EXISTS (SELECT 1 FROM ${EXPENSE_DEPOSIT_LINKS_SQL} l WHERE l.deposit_movement_id = m.id)
-         AND NOT EXISTS (SELECT 1 FROM checking_gap_deposit_mirrors g WHERE g.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
          AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})
        ORDER BY m.occurred_on, m.id`

@@ -94,6 +94,31 @@ With `--certificate`, the script reads the art. 55 bis certificate (`pdftotext -
 Σ interest by payment month over the loan leg (cuotas + prepagos' accrued interest). Real copy: 12 of
 12 months agree after A1 and A3 (the February figure is what fixed the scaling rule above).
 
+### B — the cuenta de ahorro: mirrors and splits retired, seven deposits linked
+
+User decision (2026-11-08): history is not recreated. Migration 294 drops
+`checking_gap_deposit_mirrors` (the fabricated checking debit a cartola-less month got for every
+deposit no debit explained) and `cuenta_ahorro_deposit_splits` (how much of a month's deposit was
+the family's), with the mirror flows, their evidence and their `synthetic` links; the mirror line
+drafts, the mirror link sync, the Buda-abono mirror writer and the splits module are gone, and the
+reconciliation lost `linked_synthetic` and `resolved_family_funded` (a deposit no debit explains is
+`unlinked_checking_present` / `unlinked_no_checking_source`, whoever funded it — the DTO and the
+page follow). `scripts/retire-cuenta-ahorro-mirrors.ts` (report-first, IMMEDIATE) writes the
+coordinator's plan: a `manual` `funded_deposit` link from each named checking debit (its deposit
+portion) to the ahorro deposit of the month that covers it — the debit a month or so before the
+month-end-dated deposit — and categorises the debit as the matcher categorises a linked debit;
+inside the transaction the movements table must be untouched (so every balance on every date is)
+and the reconciliation may move only the linked deposits, to `linked`. Real copy: 33 mirrors and 45
+splits retired; 8 plan items, 7 links written (two debits funding one deposit, one partial), 1
+already made by the matcher; linked deposits 57 → 63, nothing else moved, movements untouched; a
+re-run writes nothing. Payloads: the reconciliation (38 rows re-classified: 33 synthetic → 6 linked
++ 27 unlinked, 5 family → unlinked), the Expenses lines (the 33 mirror lines gone), the gastos
+cumulatives (the mirror lines never counted; the shift is the linked debits' category), and one
+overview month whose `cash_unexplained` now reads the linked debit's pesos: the debit left checking
+in the month after the deposit's month-end date, so the two months no longer cancel — the honest
+reading of a sheet that recorded the month the money was credited. Not done: the `gap_mirror` key
+kind in `expenseKeys.ts` (no row produces it; `flowKeyResolve` answers «names nothing»).
+
 ## Change 1 — parts (first pass, not landed)
 
 `flow_parts` (migration 283) already holds a user's pieces of a line. The other two mechanisms:

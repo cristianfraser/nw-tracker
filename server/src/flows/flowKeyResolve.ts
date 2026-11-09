@@ -17,8 +17,7 @@ export type FlowSourceTable =
   | "movements"
   | "cc_statement_lines"
   | "cc_installment_purchases"
-  | "expense_entries"
-  | "checking_gap_deposit_mirrors";
+  | "expense_entries";
 
 export type FlowSourceRow = { table: FlowSourceTable; id: number };
 
@@ -141,9 +140,8 @@ function rowsForBaseKey(dbi: DatabaseType, key: ExpenseKey): FlowSourceRow[] {
       return [{ table: "movements", id: m.id }];
     }
     case "gap_mirror":
-      return (dbi.prepare(`SELECT id FROM checking_gap_deposit_mirrors WHERE id = ?`).all(key.mirrorId) as { id: number }[]).map(
-        (r) => ({ table: "checking_gap_deposit_mirrors", id: r.id })
-      );
+      // The synthetic mirrors were retired (migration 294): a mirror key names nothing.
+      return [];
     case "manual":
       return (
         dbi.prepare(`SELECT id FROM expense_entries WHERE id = ? AND expense_account_id IS NULL`).all(key.entryId) as { id: number }[]
