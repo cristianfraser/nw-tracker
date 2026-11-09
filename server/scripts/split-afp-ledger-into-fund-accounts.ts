@@ -12,8 +12,7 @@
  * 1. Every certificate row is located (its AFP and official day, `pensionCertificateChain.ts`)
  *    and the switches between fund managers are paired egreso → ingreso.
  * 2. Each earlier fund gets its own account («<AFP>-A», `import:afp|afp=<afp>|fund=A`, on
- *    the AFP asset group) holding its own rows in its own cuotas (`shapePensionLedgerRows`,
- *    factor 1), and its display series `afp_<afp>_cuota_a` from its first ledger day through
+ *    the AFP asset group) holding its own rows in its own cuotas (`shapePensionLedgerRows`), and its display series `afp_<afp>_cuota_a` from its first ledger day through
  *    the day its sale price showed (decision 2: an on-or-before read keeps the sold cuotas at
  *    the pesos that left while the money is in transit).
  * 3. Each switch is one transfer sender → receiver dated the day the receiving fund's credit
@@ -199,7 +198,7 @@ const accountIdByAfp = new Map<string, number>([[finalAfp, unoAccount.id]]);
 
 function stripLocated(r: LocatedCertificateRow): DatedCertificateRow {
   const { afp: _afp, official_day, ...rest } = r;
-  return { ...rest, factor: 1, day: visibleDayOfRow({ official_day }, LAG) };
+  return { ...rest, day: visibleDayOfRow({ official_day }, LAG) };
 }
 
 function insertLedgerRows(accountId: number, rows: ReturnType<typeof shapePensionLedgerRows>["rows"]): number {

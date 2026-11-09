@@ -157,7 +157,7 @@ export function planPensionCertificates(
   const shaped = shapePensionLedgerRows(
     payload.movements.rows.map((r) => {
       const w = certificateRowPriceWindow(r.period);
-      return { ...r, factor: 1, day: firstVisibleDayOfValue(series, r.valor_cuota, w.fromDay, w.beforeDay) };
+      return { ...r, day: firstVisibleDayOfValue(series, r.valor_cuota, w.fromDay, w.beforeDay) };
     })
   );
 

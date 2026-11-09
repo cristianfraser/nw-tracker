@@ -10,8 +10,7 @@
  *   of the cuota-bearing credits and debits (the money that entered or left the fund).
  * - A withdrawal (retiro) is its own row; its provisions (a debit and a credit of the same
  *   cuotas) cancel and are left out.
- * - A transfer between fund managers is not a ledger row: the caller converts the earlier
- *   fund's cuotas with the transfer's own ratio (`factor`).
+ * - A transfer between fund managers is not a ledger row (one account per fund manager).
  */
 import type { PensionMovement } from "nw-tracker-contracts";
 
@@ -33,8 +32,6 @@ const CUOTA_TOLERANCE = 0.005;
 export type DatedCertificateRow = PensionMovement & {
   /** The day the row's valor cuota became visible, or null while it has not. */
   day: string | null;
-  /** UNO cuotas per cuota of the row's fund (1 for UNO; a transfer's ratio for an earlier AFP). */
-  factor: number;
 };
 
 export type ShapedLedgerRow = {
@@ -96,7 +93,7 @@ export function shapePensionLedgerRows(rows: readonly DatedCertificateRow[]): {
         periods: [r.period],
         occurred_on: r.day,
         pesos: -r.pesos,
-        cuotas: round4(-r.cuotas * r.factor),
+        cuotas: round4(-r.cuotas),
       });
       continue;
     }
@@ -105,7 +102,7 @@ export function shapePensionLedgerRows(rows: readonly DatedCertificateRow[]): {
     byDay.set(r.day, list);
   }
   for (const [day, list] of byDay) {
-    const cuotas = round4(list.reduce((s, r) => s + signedCuotas(r) * r.factor, 0));
+    const cuotas = round4(list.reduce((s, r) => s + signedCuotas(r), 0));
     if (Math.abs(cuotas) < CUOTA_TOLERANCE) continue;
     const pesos = list.filter((r) => r.cuotas > 0).reduce((s, r) => s + signedPesos(r), 0);
     const codes = new Set(list.map((r) => r.code));
