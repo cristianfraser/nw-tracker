@@ -1,6 +1,6 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 5737,
+  "edge_count": 5736,
   "largest_cycle": 71,
   "cycle_members": [
     "ingest/src/config.ts",
