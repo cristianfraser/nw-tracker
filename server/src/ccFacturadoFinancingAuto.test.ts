@@ -5,9 +5,14 @@ const plantFinancingPayment = (accountId: number, parsed: CcListingParseResult) 
   insertLines(accountId, parsed, "cc_financing_payment");
 };
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { snapshotTables } from "./test/snapshotTables.js";
 import { db } from "./db.js";
 import { applyFacturadoFinancingLinks, planFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
 import { listCcFacturadoFinancingLinks, deleteCcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
+
+// Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
+const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+afterAll(() => restoreDerivedCardState());
 
 const TAG = "vitest-fin-auto";
 let financed = 0;

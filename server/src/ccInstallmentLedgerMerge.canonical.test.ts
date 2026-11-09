@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { snapshotTables } from "./test/snapshotTables.js";
 import { db } from "./db.js";
 import { mergeInstallmentLedgerFromStatements } from "./ccInstallmentLedgerMerge.js";
 import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+
+// Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
+const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+afterAll(() => restoreDerivedCardState());
 
 describe("mergeInstallmentLedgerFromStatements canonical fingerprint", () => {
   const purchaseIds: number[] = [];

@@ -21,6 +21,7 @@ const restoreTables = snapshotTables([
   "cc_planted_payment_lines",
   "cc_manual_payments",
   "valuations",
+  "cc_owed_anchors",
   "import_batches",
 ]);
 

@@ -33,6 +33,7 @@ const restoreCcTables = snapshotTables([
   "flow_notes",
   "cc_billing_month_balances",
   "valuations",
+  "cc_owed_anchors",
   "import_batches",
 ]);
 const FX = 1000;

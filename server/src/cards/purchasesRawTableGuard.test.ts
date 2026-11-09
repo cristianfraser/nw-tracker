@@ -48,6 +48,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "demoData/invariants.ts": "demo build check",
   "test/vitestDbSeed.ts": "test seed",
   "test/flowFixtures.ts": "test fixture lines",
+  "test/tempCardMaster.ts": "test fixture card cleanup",
 };
 
 const SRC = path.dirname(path.dirname(fileURLToPath(import.meta.url)));

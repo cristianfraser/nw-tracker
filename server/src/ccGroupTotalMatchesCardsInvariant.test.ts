@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 
 /**
@@ -12,25 +11,23 @@ import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
  * billing ledger — while the per-card lines used the live ledger. Result: Total ≠ Σ(cards) after a payment
  * that changed the ledger without a re-import of that account.
  *
- * Points dated up to Chile today: the current month's point after today is the live tail, whose
- * Total is today's consolidated row while a card line reads its walk to the month end — on a test
- * database generated around the real clock, synthetic lines dated after today made it flake.
+ * Every point, the current month's end included. It used to fail by file order: files that wrote
+ * through the card funnel left the cards' anchors and marks behind, and the Total and the lines then
+ * disagreed on months the leftovers touched (vitest.setup.ts now puts them back after each file).
  */
 describe("CC group total matches sum of per-card lines", () => {
   it("__group_val_total equals the sum of per-account data lines at every point", () => {
     const ts = getGroupValuationTimeseries("liabilities_credit_card", "clp");
     const accs = ts.accounts_in_group.accounts;
-    const total = accs.find((a) => a.dataKey === "__group_val_total");
-    if (!total) return; // fewer than 2 cards → no synthetic Total line
+    // The Vitest person has two cards, so the group draws a Total line.
+    expect(accs.some((a) => a.dataKey === "__group_val_total")).toBe(true);
     const cardKeys = accs
       .filter((a) => a.dataKey !== "__group_val_total" && a.valueSeriesType === "data")
       .map((a) => a.dataKey);
-    if (cardKeys.length === 0) return;
+    expect(cardKeys.length).toBeGreaterThanOrEqual(2);
 
     const mismatches: { as_of_date: string; total: number; sumCards: number; diff: number }[] = [];
-    const today = chileCalendarTodayYmd();
     for (const p of ts.accounts_in_group.points) {
-      if (String(p.as_of_date) > today) continue;
       const t = p["__group_val_total"];
       if (typeof t !== "number" || !Number.isFinite(t)) continue;
       let sum = 0;
