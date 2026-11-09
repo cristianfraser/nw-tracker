@@ -34,7 +34,7 @@ describe("accountDetailBundle credit-card ledger", () => {
   it("fails the bundle when the ledger cannot be built, instead of serving an empty ledger", async () => {
     const id = makeMaster("vitest-bundle-no-config", null);
     await expect(buildAccountDetailBundle(id, "clp", "monthly")).rejects.toThrow(
-      /credit_card_account_config\.card_last4/
+      /credit_card_account_config\.card_last4|not a card master \(no credit_card_account_config row\)/
     );
   });
 });

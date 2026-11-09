@@ -1,9 +1,9 @@
 {
-  "payment_merchants": ["PAGO", "MONTO CANCELADO", "ABONO"],
+  "payment_merchants": ["PAGO", "MONTO CANCELADO", "ABONO", "PAYMENT - THANK YOU", "AUTOPAY PAYMENT"],
   "usd_debt_abono_merchant": "ABONO DE DIVISAS",
   "traspaso_deuda_tokens": ["TRASPASO", "DEUDA"],
   "clp_section3_charge_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\\.|SERVICIO\\s+USO\\s+INTERNACIONAL|IVA\\s+USO\\s+INTERNACIONAL|SERVICIO\\s+ADMINISTRACION|IMPUESTO\\s+ITE|NOTA\\s+DE\\s+CREDITO|DCTO\\s+COM|ADM\\|MANTENCION",
-  "usd_section3_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|ABONO\\s+DE\\s+DIVISAS|SERVICIO|NOTA\\s+DE\\s+CREDITO",
+  "usd_section3_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|ABONO\\s+DE\\s+DIVISAS|SERVICIO|NOTA\\s+DE\\s+CREDITO|INTEREST\\s+CHARGE|LATE\\s+FEE|MEMBERSHIP\\s+FEE|FOREIGN\\s+TRANSACTION\\s+FEE",
   "usd_garbled_merchant_pattern": "\\bDE\\s+\\d+\\b",
   "usd_garbled_merchant_markers": ["MOVIMIENTOS TARJETA"],
   "mid_period_payment_layouts": ["compact_payment_abono", "ocr_payment"],

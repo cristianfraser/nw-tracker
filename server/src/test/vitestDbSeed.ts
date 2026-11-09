@@ -74,10 +74,10 @@ export function getVitestSantanderCcMasterAccountId(): number | null {
  * valuations, category rules). Call from `afterAll` in any file that writes to it —
  * leftover fixture data leaks into group totals and category lookups on later runs.
  */
-export function wipeVitestCcFixtureData(): void {
+export function wipeVitestCcFixtureData(importKey: string = VITEST_SANTANDER_CC_MASTER_NOTES): void {
   const account = db
     .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
-    .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+    .get(importKey) as { id: number } | undefined;
   if (!account) return;
   const id = account.id;
   db.prepare(
@@ -102,4 +102,35 @@ export function wipeVitestCcFixtureData(): void {
   db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(id);
+}
+
+/** Isolated US-issuer card master (synthetic last4, USD only). */
+export const VITEST_LONESTAR_CC_MASTER_NOTES = "credit_card_master|lonestar|vitest-fixture";
+export const VITEST_LONESTAR_CARD_LAST4 = "4876";
+
+/** Idempotent: one Lonestar (fictional US issuer) card master for the USD-only statement tests. */
+export function ensureVitestLonestarFixture(): number {
+  if (!process.env.NW_TRACKER_TEST_DB?.trim()) throw new Error("ensureVitestLonestarFixture: tests only");
+  ensureVitestCreditCardFixtures();
+  const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(VITEST_LONESTAR_CC_MASTER_NOTES) as
+    | { id: number }
+    | undefined;
+  if (existing) return existing.id;
+  const bucket = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`)
+    .get() as { id: number } | undefined;
+  if (!bucket) throw new Error("Vitest DB seed failed: expected credit_card asset group (run migrations).");
+  const id = Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · lonestar · fixture', ?, ?)`
+      )
+      .run(bucket.id, VITEST_LONESTAR_CC_MASTER_NOTES, VITEST_LONESTAR_CC_MASTER_NOTES).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+     VALUES (?, 1, 28, ?, 'lonestar')`
+  ).run(id, VITEST_LONESTAR_CARD_LAST4);
+  return id;
 }

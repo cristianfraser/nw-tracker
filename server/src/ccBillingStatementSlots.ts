@@ -40,9 +40,11 @@ function assignStatementToSlot(
  */
 export function hasEveryStatementTwinForBillingMonth(
   slot: CcStatementSlotByCurrency | undefined,
-  requiresUsd: boolean
+  requiresUsd: boolean,
+  usdOnly = false
 ): boolean {
   if (!slot) return false;
+  if (usdOnly) return slot.usd != null && isStatementSourceKind(slot.usd.source_kind);
   const clpPdf = slot.clp != null && isStatementSourceKind(slot.clp.source_kind);
   const usdPdf = slot.usd != null && isStatementSourceKind(slot.usd.source_kind);
   return clpPdf && (!requiresUsd || usdPdf);
