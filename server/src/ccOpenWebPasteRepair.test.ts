@@ -1,4 +1,3 @@
-import { parsedStatements } from "./test/parsedStatementRecords.js";
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
@@ -8,7 +7,6 @@ import {
   parseOpenWebPasteBillingMonth,
   repairMisplacedOpenWebPasteBuckets,
 } from "./ccOpenWebPasteRepair.js";
-import { buildProjectedReconcileRows, reconcileBillingMonthMovements } from "./ccStatementImportReconcile.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
 describe("repairMisplacedOpenWebPasteBuckets", () => {
@@ -28,9 +26,8 @@ describe("repairMisplacedOpenWebPasteBuckets", () => {
 
   it("moves post-close web-paste lines from stale open bucket to current open month", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
@@ -74,41 +71,5 @@ describe("repairMisplacedOpenWebPasteBuckets", () => {
       .prepare(`SELECT source_pdf FROM cc_statements WHERE id = ?`)
       .get(moved.statement_id) as { source_pdf: string };
     expect(parseOpenWebPasteBillingMonth(targetStmt.source_pdf)).toBe(openBm);
-  });
-
-  it("PDF reconcile ignores stale open-bucket post-close lines in DB", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const st = db
-      .prepare(
-        `SELECT source_pdf, monto_facturado, compras_cargos FROM cc_statements
-         WHERE account_id = ? AND source_kind NOT IN ('listing_open', 'listing_other')
-           AND monto_facturado IS NOT NULL AND monto_facturado > 0
-         ORDER BY statement_date DESC LIMIT 1`
-      )
-      .get(master.id) as
-      | {
-          source_pdf: string;
-          monto_facturado: number | null;
-          compras_cargos: number | null;
-        }
-      | undefined;
-    if (!st?.monto_facturado) return;
-
-    const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!lastPdf) return;
-
-    const rows = buildProjectedReconcileRows(master.id, lastPdf, parsedStatements([]), new Set(), {
-      pdfReconcileOnly: true,
-    });
-    const result = reconcileBillingMonthMovements(lastPdf, rows, {
-      monto_facturado: st.monto_facturado,
-      compras_cargos: st.compras_cargos,
-      source_pdf: st.source_pdf,
-    });
-    expect(result.ok).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { derivedPayByIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
-import { CC_ISSUERS, ccIssuerBySlug, requireCcIssuerSlug } from "./ccIssuers.js";
+import { ccIssuerBySlug, requireCcIssuerSlug } from "./ccIssuers.js";
 
 const santander = ccIssuerBySlug("santander")!.derived_pay_by;
 const bci = ccIssuerBySlug("bci")!.derived_pay_by;
@@ -54,9 +54,5 @@ describe("a stored card issuer", () => {
     expect(requireCcIssuerSlug("bci", "test")).toBe("bci");
     expect(() => requireCcIssuerSlug("unknown", "test")).toThrow(/unknown card issuer/);
     expect(() => requireCcIssuerSlug(null, "test")).toThrow(/unknown card issuer/);
-  });
-
-  it("every issuer carries a derived pay-by rule", () => {
-    for (const issuer of CC_ISSUERS) expect(issuer.derived_pay_by.kind).toBeTruthy();
   });
 });

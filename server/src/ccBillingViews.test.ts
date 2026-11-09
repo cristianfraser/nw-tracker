@@ -7,18 +7,14 @@ import {
   facturadoClpFromOpenMonthStatementLines,
   paymentAbonosClpForBillingMonth,
 } from "./ccBillingViews.js";
-import {
-  incrementalChargesClpForBillingMonth,
-  postCloseLiveBalanceAdjustmentClp,
-} from "./ccBillingBalances.js";
 import { cardStoppedBilling } from "./cards/lifecycle.js";
 import {
   ccInstallmentsDbApiPayload,
-  ccLedgerMonthEndIso,
   installmentRemainingClpByCalendarMonth,
   ledgerFacturadoClpForBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { latestCreditCardBillingBalanceTotalClp } from "./ccCreditCardValuations.js";
+import { accountTodayValue } from "./accountTodayValue.js";
 import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId,
@@ -37,7 +33,7 @@ import { addCalendarMonths } from "nw-tracker-contracts";
 // which upserts valuations (a today-dated row + restated month-ends) via
 // upsertCreditCardValuationsFromLedger. Deleting the purchase + recomputing balances doesn't
 // undo those valuation writes, so snapshot valuations and restore exact rows in afterAll.
-const restoreValuations = snapshotTables(["valuations"]);
+const restoreValuations = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
 afterAll(() => restoreValuations());
 
 describe("billingDetailBalanceClp", () => {
@@ -105,90 +101,47 @@ describe("projected future billing months", () => {
   });
 });
 
-type BillingDetailRowLike = {
-  billing_month: string;
-  as_of_date: string;
-  as_of_kind: "statement" | "manual";
-  balance_statement_clp: number;
-};
-
-function postCloseAdjForRow(accountId: number, row: BillingDetailRowLike): number {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.as_of_date)) return 0;
-  return postCloseLiveBalanceAdjustmentClp(
-    accountId,
-    row.as_of_date,
-    ccLedgerMonthEndIso(row.billing_month)
-  );
-}
-
-/** Open month balance = prior closed balance (pre post-close adj) + charges − payments this cycle. */
-function expectedOpenRolledBalanceClp(
-  accountId: number,
-  det: readonly BillingDetailRowLike[],
-  openBm: string
-): number | null {
-  const priorClosed = det
-    .filter((r) => r.billing_month < openBm && r.as_of_kind === "statement")
-    .sort((a, b) => b.billing_month.localeCompare(a.billing_month))[0];
-  if (!priorClosed) return null;
-  const netCharges =
-    incrementalChargesClpForBillingMonth(accountId, openBm) -
-    paymentAbonosClpForBillingMonth(accountId, openBm);
-  return Math.round(
-    priorClosed.balance_statement_clp - postCloseAdjForRow(accountId, priorClosed) + netCharges
-  );
-}
-
 describe("buildBillingDetailByMonth", () => {
   it("open month rolls prior closed balance into balance_total (facturado stays cycle-scoped)", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
-    if (!lastPdf || !openBm) return;
-    if (ymCompare(openBm, addCalendarMonths(lastPdf, 1)) < 0) return;
+    if (!lastPdf || !openBm) throw new Error("the Vitest person's card lacks the state this test reads");
+    if (ymCompare(openBm, addCalendarMonths(lastPdf, 1)) < 0) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const det = buildBillingDetailByMonth(master.id, payload.months);
     const may = det.find((d) => d.billing_month === lastPdf);
     const openRow = det.find((d) => d.billing_month === openBm);
-    if (!may?.total_facturado_clp || !openRow) return;
+    if (!may?.total_facturado_clp || !openRow) throw new Error("the Vitest person's card lacks the state this test reads");
 
     expect(openRow.as_of_kind).toBe("manual");
     expect(openRow.total_facturado_clp).toBeGreaterThan(0);
-    // Open month: live debt = prior closed balance rolled forward + this cycle's net charges.
-    expect(openRow.balance_statement_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
-    // Closed month: statement anchor + post-close activity through its calendar month-end.
-    expect(may.balance_statement_clp).toBe(
-      Math.round(
-        (may.total_facturado_clp ?? 0) +
-          may.cupo_statement_clp -
-          may.cuota_a_pagar_next_mes_clp +
-          postCloseAdjForRow(master.id, may)
-      )
-    );
+    // Open month: the live debt, the card's owed today (the Pasivos today point reads this row).
+    expect(openRow.balance_statement_clp).toBe(accountTodayValue(master.id)!.value_clp);
   });
 
   it("open month facturado is this cycle's charges plus cuota a pagar (not rolled)", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
+    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) throw new Error("the Vitest person's card lacks the state this test reads");
 
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const det = buildBillingDetailByMonth(master.id, payload.months);
     const openRow = det.find((d) => d.billing_month === openBm);
     const may = det.find((d) => d.billing_month === lastPdf);
-    if (!openRow || !may?.total_facturado_clp) return;
+    if (!openRow || !may?.total_facturado_clp) throw new Error("the Vitest person's card lacks the state this test reads");
 
     // Facturado for the open cycle = únicos billed this cycle + cuota a pagar; the prior
     // closed month's facturado is NOT rolled in (that lives in deuda/saldo).
@@ -198,29 +151,29 @@ describe("buildBillingDetailByMonth", () => {
     expect(openRow.total_facturado_clp).toBe(expected);
     // Open month did not roll the prior closed facturado into this cycle.
     expect(openRow.total_facturado_clp ?? 0).toBeLessThan(may.total_facturado_clp ?? 0);
-    // …but the balance does roll the prior closed month's debt forward.
-    expect(openRow.balance_statement_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
+    // …but the balance carries the prior closed month's debt forward: it is the card's owed today.
+    expect(openRow.balance_statement_clp).toBe(accountTodayValue(master.id)!.value_clp);
   });
 
   it("open month includes charges when PAGO and purchases share web-paste bucket", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
+    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const stmt = listCcStatementsForAccount(master.id).find((s) => s.billing_month === openBm);
-    if (!stmt) return;
+    if (!stmt) throw new Error("the Vitest person's card lacks the state this test reads");
 
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const before = buildBillingDetailByMonth(master.id, payload.months).find(
       (d) => d.billing_month === openBm
     );
-    if (!before) return;
+    if (!before) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const chargeA = 100_000;
     const chargeB = 50_000;
@@ -268,12 +221,8 @@ describe("buildBillingDetailByMonth", () => {
         (f) => f.billing_month === openBm
       );
       expect(factAfter?.facturado_total_clp).toBe(after!.total_facturado_clp);
-      // Balance, in contrast, DOES net the PAGO via the roll-forward.
-      const detAfter = buildBillingDetailByMonth(master.id, payload.months);
-      expect(after!.balance_statement_clp).toBe(
-        expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
-      );
-      expect(after!.balance_statement_clp).toBeLessThan(before.balance_statement_clp);
+      // Balance, in contrast, DOES net the PAGO: it moves by the charges less the payment.
+      expect(after!.balance_statement_clp - before.balance_statement_clp).toBe(chargeA + chargeB - pagoClp);
     } finally {
       for (const id of [insA.lastInsertRowid, insB.lastInsertRowid, insPago.lastInsertRowid]) {
         db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
@@ -283,23 +232,23 @@ describe("buildBillingDetailByMonth", () => {
 
   it("PAGO in open month reduces balance_total but leaves facturado unchanged", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
+    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const stmt = listCcStatementsForAccount(master.id).find((s) => s.billing_month === openBm);
-    if (!stmt) return;
+    if (!stmt) throw new Error("the Vitest person's card lacks the state this test reads");
 
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const before = buildBillingDetailByMonth(master.id, payload.months).find(
       (d) => d.billing_month === openBm
     );
-    if (!before) return;
+    if (!before) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const pagoClp = 50_000;
     const ins = db
@@ -321,12 +270,8 @@ describe("buildBillingDetailByMonth", () => {
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
       expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
       expect(after!.total_facturado_clp).toBe(before.total_facturado_clp);
-      const detAfter = buildBillingDetailByMonth(master.id, payload.months);
-      expect(after!.balance_statement_clp).toBe(
-        expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
-      );
-      // The PAGO reduces the rolled balance relative to the pre-insert detail.
-      expect(after!.balance_statement_clp).toBeLessThan(before.balance_statement_clp);
+      // The PAGO reduces the rolled balance by exactly its amount.
+      expect(after!.balance_statement_clp - before.balance_statement_clp).toBe(-pagoClp);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
     }
@@ -338,7 +283,7 @@ describe("buildBillingDetailByMonth", () => {
     const bucket = db
       .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%credit_card%' LIMIT 1`)
       .get() as { id: number } | undefined;
-    if (!bucket) return;
+    if (!bucket) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const importKey = `credit_card_master|santander|vitest-inactive-${Date.now()}`;
     const acctId = Number(
@@ -386,15 +331,15 @@ describe("buildBillingDetailByMonth", () => {
 describe("buildFacturaciones", () => {
   it("derives facturado from statement lines when header monto is empty (web paste)", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const fact = buildFacturaciones(master.id, payload.months);
     const withFacturado = fact.filter((f) => (f.facturado_total_clp ?? 0) > 0);
-    if (withFacturado.length === 0) return;
+    if (withFacturado.length === 0) throw new Error("the Vitest person's card lacks the state this test reads");
     const row = withFacturado[0]!;
     const det = buildBillingDetailByMonth(master.id, payload.months).find(
       (d) => d.billing_month === row.billing_month
@@ -407,18 +352,18 @@ describe("buildFacturaciones", () => {
 
   it("open month facturado_total equals uniquo statement lines plus cuota a pagar", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const openBm = billingMonthForManualLedgerPurchase(master.id);
-    if (!openBm) return;
+    if (!openBm) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const payload = ccInstallmentsDbApiPayload(master.id);
     const openRow = buildFacturaciones(master.id, payload.months).find(
       (f) => f.billing_month === openBm
     );
-    if (!openRow?.is_open_month) return;
+    if (!openRow?.is_open_month) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
     const cuota = openRow.cuota_a_pagar_clp ?? 0;
@@ -428,18 +373,18 @@ describe("buildFacturaciones", () => {
 
   it("open month facturado_total equals facturado_clp plus facturado_usd_clp", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const openBm = billingMonthForManualLedgerPurchase(master.id);
-    if (!openBm) return;
+    if (!openBm) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const payload = ccInstallmentsDbApiPayload(master.id);
     const openRow = buildFacturaciones(master.id, payload.months).find(
       (f) => f.billing_month === openBm
     );
-    if (!openRow?.facturado_total_clp) return;
+    if (!openRow?.facturado_total_clp) throw new Error("the Vitest person's card lacks the state this test reads");
 
     expect(openRow.facturado_total_clp).toBe(
       (openRow.facturado_clp ?? 0) + (openRow.facturado_usd_clp ?? 0)
@@ -464,9 +409,9 @@ describe("buildFacturaciones", () => {
 
     it("includes first cuota in open-bucket facturado for Apr 25 manual purchase", () => {
       const master = db
-        .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+        .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
         .get() as { id: number } | undefined;
-      if (!master) return;
+      if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
       accountId = master.id;
       const purchaseDate = "2026-04-25";
@@ -476,7 +421,7 @@ describe("buildFacturaciones", () => {
 
       const lastPdf = lastPdfBillingMonthForAccount(master.id);
       const openBm = billingMonthForManualLedgerPurchase(master.id);
-      if (!lastPdf || !openBm) return;
+      if (!lastPdf || !openBm) throw new Error("the Vitest person's card lacks the state this test reads");
       expect(ymCompare(openBm, addCalendarMonths(lastPdf, 1))).toBeGreaterThanOrEqual(0);
 
       const before = ledgerFacturadoClpForBillingMonth(master.id, openBm);
@@ -496,15 +441,15 @@ describe("buildFacturaciones", () => {
 
     it("includes Mar-dated manual purchase in open-bucket facturado", () => {
       const master = db
-        .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+        .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
         .get() as { id: number } | undefined;
-      if (!master) return;
+      if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
 
       accountId = master.id;
       const firstCuota = 15_000;
       const lastPdf = lastPdfBillingMonthForAccount(master.id);
       const openBm = billingMonthForManualLedgerPurchase(master.id);
-      if (!lastPdf || !openBm) return;
+      if (!lastPdf || !openBm) throw new Error("the Vitest person's card lacks the state this test reads");
       const before = ledgerFacturadoClpForBillingMonth(master.id, openBm);
 
       const created = createManualCcInstallmentPurchase(master.id, {

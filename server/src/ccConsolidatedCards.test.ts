@@ -6,6 +6,7 @@ import {
 } from "./ccConsolidatedCards.js";
 import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
 import { db } from "./db.js";
+import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
 
 describe("ccConsolidatedCards", () => {
   it("redirects predecessor and consolidated cards to successor masters", () => {
@@ -18,11 +19,14 @@ describe("ccConsolidatedCards", () => {
   });
 
   it("resolves import account id to 4242 master for redirected last4", () => {
-    const perCard = dbHasPerCardMasters();
-    if (!perCard) return;
-    const id4242 = resolveMasterAccountIdForCardLast4("4242");
-    expect(resolveMasterAccountIdForImportCardLast4("4111")).toBe(id4242);
-    expect(resolveMasterAccountIdForImportCardLast4("4112")).toBe(id4242);
+    const id4242 = createTempCardMaster({ issuer: "santander", last4: "4242", key: "vitest-consolidated-4242" });
+    try {
+      expect(resolveMasterAccountIdForCardLast4("4242")).toBe(id4242);
+      expect(resolveMasterAccountIdForImportCardLast4("4111")).toBe(id4242);
+      expect(resolveMasterAccountIdForImportCardLast4("4112")).toBe(id4242);
+    } finally {
+      deleteTempCardMaster(id4242);
+    }
   });
 });
 
@@ -63,7 +67,3 @@ describe("associatedCardLast4sForMaster", () => {
     expect(() => associatedCardLast4sForMaster(id)).toThrow(/credit_card_account_config\.card_last4/);
   });
 });
-
-function dbHasPerCardMasters(): boolean {
-  return resolveMasterAccountIdForCardLast4("4242") != null;
-}

@@ -1,24 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { snapshotTables } from "./test/snapshotTables.js";
 import { db } from "./db.js";
 import { deleteCcWebPasteStatementLine } from "./ccStatementLineDelete.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 
+// Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
+const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+afterAll(() => restoreDerivedCardState());
+
 describe("deleteCcWebPasteStatementLine", () => {
   it("deletes a web-paste line and rejects PDF lines", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
-    const webPasteStmt = listCcStatementsForAccount(master.id).find((s) =>
-      s.source_kind === "listing_open"
-    );
-    if (!webPasteStmt) return;
+    const webPasteStmt = listCcStatementsForAccount(master.id).find((s) => s.source_kind === "listing_open");
+    if (!webPasteStmt) throw new Error("the Vitest person's card has no open listing");
 
-    const line = db
-      .prepare(`SELECT id FROM cc_statement_lines WHERE statement_id = ? LIMIT 1`)
-      .get(webPasteStmt.id) as { id: number } | undefined;
-    if (!line) return;
+    // A line of our own in the open bucket: deleting one of the person's lines would change the
+    // card every later file reads.
+    const line = {
+      id: Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+             VALUES (?, ?, 'VITEST LINE DELETE', 1234, 0, 'vitest-line-delete')`
+          )
+          .run(webPasteStmt.id, webPasteStmt.statement_date).lastInsertRowid
+      ),
+    };
 
     const before = db
       .prepare(`SELECT COUNT(*) AS c FROM cc_statement_lines WHERE statement_id = ?`)
@@ -35,15 +45,9 @@ describe("deleteCcWebPasteStatementLine", () => {
     const pdfStmt = listCcStatementsForAccount(master.id).find(
       (s) => s.source_kind !== "listing_open"
     );
-    if (pdfStmt) {
-      const pdfLine = db
-        .prepare(`SELECT id FROM cc_statement_lines WHERE statement_id = ? LIMIT 1`)
-        .get(pdfStmt.id) as { id: number } | undefined;
-      if (pdfLine) {
-        expect(() => deleteCcWebPasteStatementLine(master.id, pdfLine.id)).toThrow(
-          /web-paste/
-        );
-      }
-    }
+    const pdfLine = db
+      .prepare(`SELECT id FROM cc_statement_lines WHERE statement_id = ? LIMIT 1`)
+      .get(pdfStmt!.id) as { id: number };
+    expect(() => deleteCcWebPasteStatementLine(master.id, pdfLine.id)).toThrow(/web-paste/);
   });
 });

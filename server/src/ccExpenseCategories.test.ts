@@ -3,6 +3,7 @@ import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { clearExpenseCategoryRule } from "./expenseCategoryRules.js";
 import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { afterAll, describe, expect, it } from "vitest";
+import { snapshotTables } from "./test/snapshotTables.js";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
   BILLS_CC_EXPENSE_SLUG,
@@ -32,6 +33,10 @@ import {
   deleteManualCcInstallmentPurchase,
 } from "./ccInstallmentManual.js";
 
+// Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
+const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+afterAll(() => restoreDerivedCardState());
+
 describe("ccExpenseCategories", () => {
   it("listCreditCardMasterAccountIds includes active masters from every issuer", () => {
     const gastos = new Set(listCreditCardMasterAccountIds());
@@ -40,12 +45,10 @@ describe("ccExpenseCategories", () => {
     for (const id of [...santander, ...bci]) {
       expect(gastos.has(id)).toBe(true);
     }
-    const id4242 = (
-      db
-        .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-        .get() as { id: number } | undefined
-    )?.id;
-    if (id4242) expect(gastos.has(id4242)).toBe(true);
+    const personCard = db
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
+    expect(gastos.has(personCard.id)).toBe(true);
   });
 
   it("countsTowardCcExpenseGastosMes excludes no_cuenta, deposits, and installment cuota 0", () => {
@@ -676,9 +679,8 @@ function createMerchantPropagationFixture(tag: string): {
 
   it("assignCcExpenseCategoryForManualLedgerInstallmentPurchase handles consolidated manual (-purchaseId)", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
     const stale = db
       .prepare(

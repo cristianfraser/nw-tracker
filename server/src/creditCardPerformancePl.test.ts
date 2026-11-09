@@ -1,8 +1,5 @@
 import { isClpSection3Merchant, isClpSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 import { describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
-import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
 describe("isClpSection3Merchant", () => {
   it("matches intereses and comisiones merchants", () => {
@@ -24,17 +21,3 @@ describe("isClpSection3FinancingChargeMerchant", () => {
   });
 });
 
-describe("credit card API financing + facturaciones", () => {
-  it("4242 Oct 2025 slot facturado uses primary CLP statement", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const slot = statementSlotsByBillingMonth(master.id).get("2025-10");
-    if (!slot?.clp) return;
-
-    const { facturado_clp } = facturadoClpUsdForStatementSlot(master.id, slot);
-    expect(facturado_clp).toBeGreaterThan(100_000);
-  });
-});

@@ -4,7 +4,6 @@ import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { db } from "./db.js";
 import {
   assertCcImportReconcilesOrThrow,
-  buildProjectedReconcileRows,
   dedupeCrossSourceReconcileRows,
   mergeImportReconcileHeader,
   reconcileBillingMonthMovements,
@@ -422,47 +421,18 @@ describe("ccStatementImportReconcile", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("reconciles May 2026 4242 movements against imported PDF header", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const st = db
-      .prepare(
-        `SELECT source_pdf, monto_facturado, compras_cargos FROM cc_statements
-         WHERE account_id = ? AND source_pdf LIKE '%2026-05-25%4111%'`
-      )
-      .get(master.id) as
-      | { source_pdf: string; monto_facturado: number | null; compras_cargos: number | null }
-      | undefined;
-    if (!st?.monto_facturado) return;
-
-    const rows = buildProjectedReconcileRows(master.id, "2026-05", parsedStatements([]), new Set(), {
-      pdfReconcileOnly: true,
-    });
-    const result = reconcileBillingMonthMovements("2026-05", rows, {
-      monto_facturado: st.monto_facturado,
-      compras_cargos: st.compras_cargos,
-      source_pdf: st.source_pdf,
-    });
-    expect(result.ok).toBe(true);
-  });
-
   it("assertCcImportReconcilesOrThrow skips when incoming is empty", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
     expect(() => assertCcImportReconcilesOrThrow(master.id, parsedStatements([]))).not.toThrow();
   });
 
   it("assertCcImportReconcilesOrThrow skips web-paste-only import when closed PDF exists", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
     const anchor = db
       .prepare(

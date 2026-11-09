@@ -54,7 +54,6 @@ describe("reconcilePurchaseRowsMatch", () => {
       from_web_paste: true,
     });
     expect(reconcilePurchaseRowsMatch(pdf, web)).toBe(true);
-    expect(reconcilePurchaseRowsMatch(pdf, web)).toBe(true);
   });
 
   it("does not match charges with different amounts", () => {

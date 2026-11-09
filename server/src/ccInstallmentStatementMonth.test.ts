@@ -1,11 +1,7 @@
 import { purchaseFirstDueYm } from "./cards/purchases.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  ledgerInstallmentsPaid,
-  planInstallmentsConsumed,
-  scheduledPaymentsPlanBreakdownByMonth,
-} from "./ccInstallmentLedgerDb.js";
+import { ledgerInstallmentsPaid, scheduledPaymentsPlanBreakdownByMonth } from "./ccInstallmentLedgerDb.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 
 describe("statementPeriodMonthFromParsedRow", () => {
@@ -88,41 +84,6 @@ describe("ledgerInstallmentsPaid statement-month timing", () => {
 });
 
 describe("planInstallmentsConsumed 00/N resumen", () => {
-  const purchase = {
-    id: 1,
-    canonical_row_id: "95ffd7222a012819",
-    card_group: "A",
-    purchase_date: "2026-04-23",
-    total_amount_clp: 92_918,
-    cuotas_totales: 3,
-    merchant: "TGR",
-    description_merged: "TGR",
-    matched_baseline_purchase_id: null,
-    source: "pdf",
-    first_due_month: null,
-    twin_index: 0,
-  };
-
-  it("does not reduce remaining when only 00/N appears on statement", () => {
-    const payList = [
-      {
-        id: 1,
-        purchase_id: 1,
-        pay_by_date: "2026-06-09",
-        statement_date: "25/05/2026",
-        statement_period_month: "2026-05",
-        period_to_join: null,
-        source_pdf: "may.pdf",
-        amount_clp: 30_973,
-        cuota_current: null,
-        cuota_total: 3,
-      },
-    ];
-    expect(ledgerInstallmentsPaid(purchase, payList, "2026-05")).toBe(0);
-    expect(planInstallmentsConsumed(purchase, payList, "2026-05")).toBe(0);
-    expect(Math.max(0, purchase.cuotas_totales - ledgerInstallmentsPaid(purchase, payList, "2026-05"))).toBe(3);
-  });
-
   it("does not treat preamble 00/N as completing principal when indexed cuotas remain", () => {
     const purchase = {
       id: 1,

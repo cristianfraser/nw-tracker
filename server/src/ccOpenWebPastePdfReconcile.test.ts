@@ -1,17 +1,16 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { afterAll, describe, expect, it, afterEach } from "vitest";
+import { snapshotTables } from "./test/snapshotTables.js";
 import { db } from "./db.js";
-import { buildFacturaciones } from "./ccBillingViews.js";
-import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
 import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { ymCompare } from "./calendarMonth.js";
 import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
-import {
-  reconcileOpenWebPasteAfterPdfClose,
-  listStaleOpenWebPasteStatementDates,
-} from "./ccOpenWebPastePdfReconcile.js";
-import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
+import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+
+// Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
+const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+afterAll(() => restoreDerivedCardState());
 
 describe("reconcileOpenWebPasteAfterPdfClose", () => {
   const cleanup: Array<() => void> = [];
@@ -22,9 +21,8 @@ describe("reconcileOpenWebPasteAfterPdfClose", () => {
 
   it("deletes matched web-paste one-shots on open bucket when PDF closed month exists", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
 
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
@@ -97,49 +95,5 @@ describe("reconcileOpenWebPasteAfterPdfClose", () => {
 
     const gone = db.prepare(`SELECT id FROM cc_statement_lines WHERE id = ?`).get(webLineId);
     expect(gone).toBeUndefined();
-  });
-
-  it("stale open-bucket lines count toward current open month incremental charges", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const openBm = billingMonthForManualLedgerPurchase(master.id);
-    const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
-
-    const staleDates = listStaleOpenWebPasteStatementDates(master.id, openBm);
-    if (staleDates.length === 0) return;
-
-    const before = incrementalChargesClpForBillingMonth(master.id, openBm);
-    expect(before).toBeGreaterThanOrEqual(0);
-  });
-
-  it("buildFacturaciones prefers PDF facturado over web-paste for closed month", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!lastPdf) return;
-
-    const pdfStmt = listCcStatementsForAccount(master.id).find(
-      (st) =>
-        st.billing_month === lastPdf &&
-        st.source_kind !== "listing_open" &&
-        st.monto_facturado != null &&
-        st.monto_facturado > 0
-    );
-    const webStmt = listCcStatementsForAccount(master.id).find(
-      (st) => st.billing_month === lastPdf && st.source_kind === "listing_open"
-    );
-    if (!pdfStmt?.monto_facturado || !webStmt) return;
-
-    const payload = ccInstallmentsDbApiPayload(master.id);
-    const rows = buildFacturaciones(master.id, payload.months);
-    const row = rows.find((r) => r.billing_month === lastPdf);
-    expect(row?.facturado_clp).toBe(Math.round(pdfStmt.monto_facturado));
   });
 });

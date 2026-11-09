@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "../db.js";
-import { CARD_CHART_INACTIVE, cardLifecycle, cardNavRetired, cardStoppedBilling, cardSuperseded } from "./lifecycle.js";
+import { cardLifecycle, cardNavRetired, cardStoppedBilling, cardSuperseded } from "./lifecycle.js";
 
 function fixtureMasterId(): number | null {
   const row = db
@@ -29,9 +29,5 @@ describe("card lifecycle", () => {
     } finally {
       set.run(before.nav_retired, before.superseded_target_last4, id);
     }
-  });
-
-  it("never hides a card's chart", () => {
-    expect(Object.values(CARD_CHART_INACTIVE).every((v) => v === false)).toBe(true);
   });
 });

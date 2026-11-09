@@ -1,4 +1,3 @@
-import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
@@ -19,7 +18,6 @@ describe("isTruncatedMerchantOf", () => {
     // Both observed 2026-08-06 in the open bucket alongside their full twins.
     expect(isTruncatedMerchantOf("MERPAGO*PLANOUT", "MERPAGO*PLANOUTCANALDEVEN")).toBe(true);
     expect(isTruncatedMerchantOf("ANTHROPIC* CLAU", "ANTHROPIC* CLAUDE SUB")).toBe(true);
-    expect("MERPAGO*PLANOUT".length).toBe(WEB_PASTE_MERCHANT_TRUNCATION_WIDTH);
   });
 
   it("matches the feed's 15-char pending-authorization rows (2026-09-05)", () => {

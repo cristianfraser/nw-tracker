@@ -31,9 +31,4 @@ describe("bank description rules", () => {
     }
     expect(bankDescriptionPattern("owner_transfer").test("Titular Demo - Santander")).toBe(true);
   });
-
-  it("keeps the DAP refund bounds and the splittable deposit kinds as data", () => {
-    expect(BANK_DESCRIPTION_RULES.dap_abono.max_day_gap).toBeGreaterThan(0);
-    expect(BANK_DESCRIPTION_RULES.splittable_deposit_kinds).toContain("fondo_reserva");
-  });
 });

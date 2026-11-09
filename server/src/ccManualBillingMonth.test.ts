@@ -132,11 +132,10 @@ describe("billingMonthContainingPurchase", () => {
 });
 
 describe("targetBillingMonthForManualImports", () => {
-  it("returns month after last PDF close for 4242 (any card_last4 on account)", () => {
+  it("returns month after last PDF close (any card_last4 on account)", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     if (!lastPdf) return;
     const target = targetBillingMonthForManualImports(master.id, "4242");
@@ -145,9 +144,8 @@ describe("targetBillingMonthForManualImports", () => {
 
   it("maps manual ledger purchases to open month regardless of purchase date", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     const open = billingMonthForManualLedgerPurchase(master.id);
     if (!lastPdf || !open) return;

@@ -43,9 +43,8 @@ function fixtureCardId(): number {
 describe("listingStatements", () => {
   it("assigns pasted lines to open billing month after last PDF", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
+      .get() as { id: number };
     const lines = pasted([["2026-05-19", "SHOP", -10000]]);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
@@ -84,27 +83,25 @@ describe("listingStatements", () => {
 
   it("maps BCI master to BCI card_group", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|bci|4343'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|bci|6605'`)
+      .get() as { id: number };
     expect(creditCardMasterMetaForAccount(master.id)).toEqual({
       cardGroup: "BCI",
-      cardLast4: "4343",
+      cardLast4: "6605",
     });
   });
 
   it("assigns BCI pasted lines to open bucket with BCI card_group", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|bci|4343'`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|bci|6605'`)
+      .get() as { id: number };
     const meta = creditCardMasterMetaForAccount(master.id);
     const lines = pasted([["2026-06-11", "ENTEL HOGAR", 21249]], meta.cardGroup);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
     const { statements } = listingStatements(master.id, meta.cardGroup, meta.cardLast4, lines);
     expect(statements[0]?.card_group).toBe("BCI");
-    expect(statements[0]?.card_last4).toBe("4343");
+    expect(statements[0]?.card_last4).toBe("6605");
     expect(statements[0]?.lines[0]?.amount).toBe(21249);
     expect(statements[0]?.document).toBe(openWebPasteSourcePdf(openBm!));
   });
