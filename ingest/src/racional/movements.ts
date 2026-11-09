@@ -280,7 +280,7 @@ export function parseRacionalDetail(detail: string | null | undefined): Racional
  * known: `<YYYY-MM-DD or dd/mm>|<movement-type class or title>|<printed amount>`, e.g.
  * `2026-09-22|buy|US$xxx,xx`. The crawl cursor (`crawlCursor.ts`) holds the key of the first row
  * of the newest read the server applied, and the crawl stops at the rendered row with the same
- * key (`rowKey` in steps.ts is this function). Until 2026-09-27 the crawl compared this key with
+ * key (steps.ts calls this function). Until 2026-09-27 the crawl compared this key with
  * a route id, which never matched — every crawl walked the whole rendered window as «new».
  */
 export function racionalListRowKey(row: RacionalScrapedRow): string {

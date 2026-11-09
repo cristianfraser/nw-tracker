@@ -236,18 +236,9 @@ async function readRenderedRows(page: Page): Promise<RacionalMovementRow[]> {
   })) as RacionalMovementRow[];
 }
 
-/**
- * Identity of a row as seen in the list, before its detail route is known — e.g.
- * `2026-09-22|buy|US$xxx,xx`; the crawl cursor holds one (see `racionalListRowKey`). The row's
- * state is not part of it: a `pending-withdrawal` and the `withdrawal` it becomes share a key.
- */
-export function rowKey(row: RacionalMovementRow): string {
-  return racionalListRowKey(row);
-}
-
 /** Whether a rendered row is the one a stored cursor names (the cursor may carry a `pending-` state). */
 function rowMatchesKey(row: RacionalMovementRow, storedKey: string): boolean {
-  return rowKey(row) === normalizeRacionalListRowKey(storedKey);
+  return racionalListRowKey(row) === normalizeRacionalListRowKey(storedKey);
 }
 
 /**
@@ -267,7 +258,7 @@ export function rowsAboveWatermark(
 export function nthRowIndex(rows: readonly RacionalMovementRow[], key: string, occurrence: number): number {
   let seen = 0;
   for (let i = 0; i < rows.length; i += 1) {
-    if (rowKey(rows[i]!) !== key) continue;
+    if (racionalListRowKey(rows[i]!) !== key) continue;
     if (seen === occurrence) return i;
     seen += 1;
   }
@@ -369,7 +360,7 @@ async function openRowDetail(
   row: RacionalMovementRow,
   occurrence: number,
 ): Promise<void> {
-  const key = rowKey(row);
+  const key = racionalListRowKey(row);
   let reason = "";
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const rendered = await readRenderedRows(page);
@@ -506,12 +497,12 @@ export async function openMovements(
       NEEDS_DETAIL.has(racionalRowKindClass(row.kind_class) ?? "") || /^(compra|venta|dividendo|retiro)\b/i.test(row.title);
     if (!needsDetail) continue;
     // `fresh` is a prefix of `rows`, so this is the row's occurrence among its key twins.
-    const occurrence = fresh.slice(0, i).filter((r) => rowKey(r) === rowKey(row)).length;
+    const occurrence = fresh.slice(0, i).filter((r) => racionalListRowKey(r) === racionalListRowKey(row)).length;
     try {
       await openRowDetail(page, recorder, row, occurrence);
     } catch (err) {
       const message = err instanceof Error ? err.message.split("\n")[0]! : String(err);
-      log(`  detail failed for ${rowKey(row)}: ${message}`);
+      log(`  detail failed for ${racionalListRowKey(row)}: ${message}`);
       if (row.detail_status !== "opened") {
         row.detail_status = "unopened";
         row.detail_error = message;
