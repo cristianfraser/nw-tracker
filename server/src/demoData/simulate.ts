@@ -1814,7 +1814,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
    * One month of the US chapter. Before the move only the seed (dollars the Chilean broker sends
    * to the new US account); from the move: the biweekly pay (its stubs, the net credited to US
    * checking, the 401(k) and HSA contributions bought on the pay date), the rent, the dollar
-   * lifestyle (debit), the car, the Roth IRA, a December flight home, the monthly wire to Chile
+   * lifestyle (debit, then the US card), the car, the Roth IRA, a December flight home, the monthly wire to Chile
    * that keeps the Chilean accounts funded, and the US cash above its band to the US broker.
    */
   function runUsMonth(month: Month, r: (label: string) => Rng): void {

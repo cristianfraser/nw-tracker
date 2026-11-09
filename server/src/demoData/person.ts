@@ -170,7 +170,7 @@ const US_JOBS: UsW2Job[] = [
 
 /**
  * Life in the US (Austin, Texas), in dollars: the US checking account the salary lands in, the
- * rent, a car bought in cash, the dollar lifestyle (all debit), a Roth IRA in SPY, and what goes
+ * rent, a car bought in cash, the dollar lifestyle (debit, then the US card once it opens: the rent, the utilities and the wires stay debits), a Roth IRA in SPY, and what goes
  * home to Chile every month.
  */
 export type UsLife = {

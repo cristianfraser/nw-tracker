@@ -2,7 +2,7 @@
  * The synthetic database generator (docs/demo-generator-plan.md), for the hosted demo's person
  * and the Vitest person (`person.ts`). Order:
  *
- * 1. accounts and the nav trees;
+ * 1. accounts and the nav trees, and the real-estate places (one per house; a DFL-2 house says so);
  * 2. market: the real tables (already loaded) or the synthetic ones, plus the series the person's
  *    own funds need (the AFP display frame, the APV fund);
  * 3. the life ledger (`simulate`);
@@ -11,8 +11,9 @@
  * 5. the documents, through the same import functions the ingest kinds call: cartolas, this
  *    month's checking listing, card statements and the open cycle, payroll parameters and
  *    liquidaciones; then the card-payment mirrors are paired as the nightly run pairs them;
- * 6. what the app keeps beside the documents: contractor payslips, contribution periods, the
- *    mortgage ledger, book valuations (property, mortgage, AFC);
+ * 6. what the app keeps beside the documents: contractor payslips, contribution periods, each
+ *    house's mortgage ledger and its cuota card lines linked to the deposits they funded, the rents
+ *    marked as their place's, the places' bills, book valuations (property, mortgage, AFC);
  * 6b. the tax documents (boletas, dividend splits, the DJs) and each April from the tax module:
  *    steps 3–6b run again, from a checkpoint taken before step 3, until every April settlement the
  *    simulation booked is the one the tax module computes (`taxDocuments.ts`); then the past
