@@ -129,10 +129,18 @@ function movementEvidenceValues(a: string): string {
     ${a}.currency, ${a}.note, ${movementEvidenceAuthoritySql(a)}`;
 }
 
+/** The document prefix of a card statement estimated from receipts (docs/untangle-flow-model.md C). */
+export const ESTIMATE_DOCUMENT_PREFIX = "import:estimate|";
+/** The line id prefix of a card line written from a receipt (into an estimate statement or a rebuilt one). */
+export const ESTIMATE_LINE_ID_PREFIX = "estimate:";
+
 function lineEvidenceValues(a: string): string {
   const sk = `(SELECT source_kind FROM cc_statements WHERE id = ${a}.statement_id)`;
+  const doc = `(SELECT source_pdf FROM cc_statements WHERE id = ${a}.statement_id)`;
   return `CASE ${sk} WHEN 'listing_open' THEN 'listing_open' WHEN 'statement_json' THEN 'statement_json'
-      WHEN 'statement_pdf' THEN 'statement_pdf' ELSE 'statement_other' END,
+      WHEN 'statement_pdf' THEN 'statement_pdf'
+      WHEN 'statement_other' THEN CASE WHEN ${doc} LIKE '${ESTIMATE_DOCUMENT_PREFIX}%' OR ${a}.parser_row_id LIKE '${ESTIMATE_LINE_ID_PREFIX}%' THEN 'estimate' ELSE 'statement_other' END
+      ELSE 'statement_other' END,
     'cc_statement_lines', ${a}.id, COALESCE(${a}.parser_row_id, ${a}.dedupe_key),
     COALESCE(${isoFromDdMmSql(`${a}.transaction_date`)}, ${isoFromDdMmSql(`${a}.posting_date`)}), ${lineAmountSql(a)},
     (SELECT currency FROM cc_statements WHERE id = ${a}.statement_id), ${a}.merchant,

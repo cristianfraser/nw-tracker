@@ -1,0 +1,5 @@
+-- An estimated card line is its own kind of evidence (docs/untangle-flow-model.md C): a line
+-- written from a receipt for a month the card has no statement for (`import:estimate|…`
+-- statements) says what a document other than the bank's recorded. `flow_evidence.source_kind`
+-- gains `estimate`; the lines of the estimate statements on file are re-kinded, and the card-line
+-- insert trigger learns it (`flows/flowEvidenceEstimate295.ts`).

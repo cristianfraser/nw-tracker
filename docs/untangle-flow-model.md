@@ -23,8 +23,8 @@ in the first version of the script), so every difference below comes from the ch
 | 1 | Parts generalised | **landed for the loan payments (second pass, A2–A3 below)**: the mortgage dividendo's and the prepagos' split are parts on the property-leg flow, read by every reader; the splittable reserva pool stays a links rule |
 | 2 | Links generalised | **mortgage pairing landed** (one stored link); the claim rule decided; card lines in the deposit pool, refund → purchase links not done |
 | 3 | Cuenta de ahorro surgery | **decided otherwise and landed (second pass, B below)**: the mirrors and splits go; seven deposits get their real debit; the rest stay unlinked |
-| 4 | Instrument events | not started — the share-count readers it must change sit outside this stream's files |
-| 5–8 | Cost, pre-tax account, card-day capital flows, opening balances | not started (the stream stops where a change could not be rehearsed cleanly) |
+| 4 | Instrument events | not started (second pass: the data work A–C used the stream's budget; the readers it must change sit outside its files) |
+| 5–8 | Cost, pre-tax account, card-day capital flows, opening balances | not started; the second pass stored the first cost parts (`prepayment_charge`, `bank_fee`) that D5 will read |
 
 ## Second pass (wave 5, stream `flow-model-2`, 2026-11-08)
 
@@ -118,6 +118,59 @@ overview month whose `cash_unexplained` now reads the linked debit's pesos: the 
 in the month after the deposit's month-end date, so the two months no longer cancel — the honest
 reading of a sheet that recorded the month the money was credited. Not done: the `gap_mirror` key
 kind in `expenseKeys.ts` (no row produces it; `flowKeyResolve` answers «names nothing»).
+
+### C — card lines estimated from receipts
+
+User decision (2026-11-08): a receipt no card line pairs with, in a month the card has no statement
+for, is the only record of that purchase. `scripts/estimate-card-lines-from-receipts.ts`
+(report-first, IMMEDIATE; pure logic in `cardLinesFromReceipts.ts`, tested) takes the receipt
+matcher's own result (`matchPaymentReceiptsToExpenseLines`, `deriveMerchantChargeLinks`) and, for
+each receipt it left unpaired, finds the card that carried the merchant in the nearest statement
+months — a tie is reported; a receipt whose nearest card has a statement for that month is a
+purchase that statement does not show (paid by other means, or unmatched) and is reported, never
+written on a card created later; an App Store receipt naming a plastic the registry knows names its
+card. A receipt in a gap month (`gapBillingMonths`: from `--since`, the card's start no document
+states, to the first statement; the holes between statements; the mail-rebuilt months) becomes a
+line — the receipt's day, the payee as merchant, the amount in the receipt's currency, a peso
+receipt of a sender the matcher knows charged in dollars as a dollar line at the day's rate when the
+card's nearest lines of that merchant were dollar lines — on an `import:estimate|receipts|<clp|usd>|
+<month>` statement (one document per currency; `ccStatementSourceKind` already files it with the
+other non-PDF sources) through `replaceStatementLines`, or into the rebuilt month's statement
+inside one framed card-line write (`cardLineWrite`, `storedLineColumns`): its estimated weekly
+lumps shrink by what the receipts itemize, each item against a lump of its own month on the same
+side of the previous close (`shrinkLumpsByItems`), so the billed total and every month-end anchor
+stay; a receipt with no such lump is left out and reported. Migration 295 gives `flow_evidence` the
+`estimate` kind: the line insert trigger stamps it on an estimate statement's lines and on a
+receipt line itemized into a rebuilt statement (line id `estimate:…`). Checks inside the
+transaction: the month-end anchors of every month with a statement unchanged, each itemized
+statement adding up as before, the mailed-balance anchor (`--anchor`) not exceeded by the month's
+dollar lines, and every written line pairing back with its receipt when the expense lines are
+rebuilt (`--exclude` leaves out one the matcher will not take back).
+
+Real copy (`--since` the first month of 2016): 217 unpaired candidates (95 order summaries, 9 parts
+of paired orders, 19 receipts in other currencies and 1 without an amount set aside); 101 attributed
+to the old master and 1 to the retired CMR card, 105 whose nearest card has a statement for the month
+(reported), 6 before `since`, 1 merchant on no card. Written: 15 new statements (79 lines, 2016 →
+early 2017) and 4 rebuilt 2019 statements itemized (7 lines); 7 dollar receipts of three rebuilt
+months whose dollar statement has no lump, 8 receipts with no lump on their side of the close, and 2
+receipts the matcher would not pair back (twins of paired charges) were left out and reported. The
+estimated dollar lines of the anchor month come to about 3 % of the mailed debt. Every month-end
+anchor of a month with a statement is unchanged; the 84 lines all pair with their receipts; a re-run
+writes nothing. 98 App Store receipts name a plastic the registry does not know (the matcher treats
+such a receipt as any card's; 69 of them fall in months with a statement) — the coordinator decides
+whether that plastic joins the registry. Payloads (same-day baseline): the Expenses lines gain the
+84 estimated lines with their receipts (0.95 % more lines), the gastos views and the overview's
+months of 2016 → 2017 gain that spending, the old master's ledger extends to its first estimated
+month; nothing else moves.
+
+### D — not reached
+
+The second pass ended with C. What it leaves for D5 (cost out of P/L and spending): the first cost
+parts are stored — a prepago's `prepayment_charge` and the `bank_fee` on its cash leg
+(`FLOW_PART_KINDS` carries each part's class) — and no reader shows them yet; the kernel
+(`perfKernel.ts`) still takes a period's flow as one number, so the cost rule needs it to receive
+capital and cost apart before any account gets a `cost` figure. D6–D8 and D4 stand as the first pass
+left them (below).
 
 ## Change 1 — parts (first pass, not landed)
 

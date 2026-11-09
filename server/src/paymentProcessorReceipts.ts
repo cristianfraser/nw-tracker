@@ -272,6 +272,11 @@ export type ReceiptCandidateLine = {
   principal_clp?: number | null;
 };
 
+/** How a processor's charges read on a statement (`PROCESSOR_MERCHANT_HINT`); null when the matcher has no hint for it. */
+export function processorMerchantHint(processor: string): RegExp | null {
+  return PROCESSOR_MERCHANT_HINT[processor] ?? null;
+}
+
 /** How a processor's charges read on a statement; prefers such a line when several fit. */
 const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   flow: /FLOW/i,
@@ -349,6 +354,11 @@ const PESO_RECEIPT_CHARGED_IN_DOLLARS: Record<string, RegExp> = {
 } satisfies Partial<Record<PaymentProcessorSlug, RegExp>>;
 const PESO_RECEIPT_IN_DOLLARS_TOLERANCE = MATCH_WINDOWS.receipt.toleranceFraction;
 
+/** A peso receipt of a sender that charged the card in dollars (`PESO_RECEIPT_CHARGED_IN_DOLLARS`). */
+export function pesoReceiptMayBeChargedInDollars(processor: string): boolean {
+  return PESO_RECEIPT_CHARGED_IN_DOLLARS[processor] != null;
+}
+
 /**
  * Whether a line carries a charge of the receipt: `exact` — the same pesos, or for a dollar receipt
  * the same dollars to the cent; `at_rate` — a peso receipt of a sender that charged in dollars, on a
@@ -387,6 +397,11 @@ const ORDER_SUMMARY_OF: Record<string, { of: string; daysAfter: number }> = {
   uber_trip_summary: { of: "uber", daysAfter: 5 },
   uber_eats_summary: { of: "uber_eats", daysAfter: 5 },
 } satisfies Partial<Record<PaymentProcessorSlug, { of: string; daysAfter: number }>>;
+
+/** A document that summarizes an order whose charges another source states one by one (`ORDER_SUMMARY_OF`). */
+export function isOrderSummaryProcessor(processor: string): boolean {
+  return ORDER_SUMMARY_OF[processor] != null;
+}
 
 /**
  * Senders that mail the same order more than once, and which of its mails is paired (the others
