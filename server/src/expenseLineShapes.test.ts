@@ -103,8 +103,11 @@ describe("expense line shapes: row capabilities", () => {
     expect(shape({ source: "checking", web_paste: true }).can_delete).toBe(false);
   });
 
-  it("a plain one-shot card purchase can become a plan; a cuota, a piece or a nota cannot", () => {
-    expect(shape({}).can_make_installment).toBe(true);
+  it("an open-cycle or bank-tagged plain purchase can become a plan; a statement line, a cuota, a piece or a nota cannot", () => {
+    expect(shape({ web_paste: true }).can_make_installment).toBe(true);
+    expect(shape({ cuota_purchase_kind: "cuota_comercio" }).can_make_installment).toBe(true);
+    expect(shape({}).can_make_installment).toBe(false);
+    expect(cuota({ web_paste: true }).can_make_installment).toBe(false);
     expect(cuota({}).can_make_installment).toBe(false);
     expect(shape({ piece_seq: 1 }).can_make_installment).toBe(false);
     expect(shape({ nota_credito_role: "annulled_purchase" }).can_make_installment).toBe(false);
