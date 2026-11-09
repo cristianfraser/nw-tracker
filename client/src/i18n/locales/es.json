@@ -1244,9 +1244,14 @@
         "insurance": "Seguro de vida",
         "fees": "Comisiones",
         "advance": "Anticipos",
+        "social_security_medicare": "Social Security + Medicare",
+        "retirement_401k": "401(k)",
+        "hsa": "HSA",
+        "stock_paid": "Pagado en acciones (RSU)",
         "other_deductions": "Otros descuentos",
         "deductions": "Descuentos",
-        "net": "Líquido"
+        "net": "Líquido",
+        "employer_retirement": "Aporte del empleador al 401(k)"
       }
     }
   },
@@ -1281,7 +1286,11 @@
       "health_minimum": "Salud (≥ 7 %)",
       "unemployment": "Cesantía",
       "income_tax": "Impuesto (tabla mensual)",
-      "pension_credited": "AFP acreditada (10 % + empleador)"
+      "pension_credited": "AFP acreditada (10 % + empleador)",
+      "social_security_tax": "Social Security (6,2 % hasta el tope)",
+      "medicare_tax": "Medicare (1,45 % + 0,9 % sobre US$200.000)",
+      "federal_withholding": "Retención federal (Pub. 15-T)",
+      "deferral_limit": "Límite anual del 401(k)"
     },
     "checksPending": "pendiente (parámetros aún no publicados)"
   },

@@ -1244,9 +1244,14 @@
         "insurance": "Life insurance",
         "fees": "Fees",
         "advance": "Advances",
+        "social_security_medicare": "Social Security + Medicare",
+        "retirement_401k": "401(k)",
+        "hsa": "HSA",
+        "stock_paid": "Paid in shares (RSU)",
         "other_deductions": "Other deductions",
         "deductions": "Deductions",
-        "net": "Net pay"
+        "net": "Net pay",
+        "employer_retirement": "Employer 401(k) match"
       }
     }
   },
@@ -1281,7 +1286,11 @@
       "health_minimum": "Health (≥ 7 %)",
       "unemployment": "Unemployment insurance",
       "income_tax": "Income tax (monthly table)",
-      "pension_credited": "AFP credited (10 % + employer)"
+      "pension_credited": "AFP credited (10 % + employer)",
+      "social_security_tax": "Social Security (6.2 % up to the wage base)",
+      "medicare_tax": "Medicare (1.45 % + 0.9 % above $200,000)",
+      "federal_withholding": "Federal withholding (Pub. 15-T)",
+      "deferral_limit": "401(k) yearly limit"
     },
     "checksPending": "pending (parameters not published yet)"
   },

@@ -142,8 +142,9 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
       ...rest,
       liquido_clp,
       liquido_usd,
+      // A US stub's deposit is dollars: no peso leg to show (the table shows the net pay instead).
       linked_amount_clp:
-        row.linked_amount_clp == null ? null : Math.round(row.linked_amount_clp),
+        row.jurisdiction === "us" || row.linked_amount_clp == null ? null : Math.round(row.linked_amount_clp),
     };
   });
 }

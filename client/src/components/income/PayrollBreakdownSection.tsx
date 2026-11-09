@@ -31,18 +31,26 @@ const PAGE_SIZE = 12;
 /** Stands in for the server payload while it loads: the frame renders with no rows. */
 const EMPTY_BREAKDOWN: PayrollBreakdownPayload = { payslips: [], months: [], years: [] };
 
-/** Stacked bottom to top: what reached the account, then what was taken from gross pay. */
+/**
+ * Stacked bottom to top: what reached the account, then what was taken from gross pay. Chilean
+ * groups and US ones (FICA, 401(k), HSA) add up to gross either way; a group no payslip uses is
+ * not drawn.
+ */
 const STACK: readonly { field: PayrollBreakdownField; color: string }[] = [
   { field: "net", color: "#22c55e" },
   { field: "pension", color: "#3b82f6" },
+  { field: "retirement_401k", color: "#2563eb" },
   { field: "voluntary_pension", color: "#60a5fa" },
+  { field: "hsa", color: "#0ea5e9" },
   { field: "unemployment", color: "#818cf8" },
   { field: "pension_commission", color: "#f59e0b" },
   { field: "health", color: "#14b8a6" },
+  { field: "social_security_medicare", color: "#f97316" },
   { field: "income_tax", color: "#ef4444" },
   { field: "other_deductions", color: "#64748b" },
 ];
 
+/** Gross and net always; a deduction group only when a payslip uses it. The employer match is shown, outside the sum. */
 const TABLE_COLUMNS: readonly PayrollBreakdownField[] = [
   "gross",
   "net",
@@ -51,9 +59,24 @@ const TABLE_COLUMNS: readonly PayrollBreakdownField[] = [
   "health",
   "unemployment",
   "income_tax",
+  "social_security_medicare",
   "voluntary_pension",
+  "retirement_401k",
+  "hsa",
   "other_deductions",
+  "employer_retirement",
 ];
+
+const ALWAYS_SHOWN: ReadonlySet<PayrollBreakdownField> = new Set(["gross", "net"]);
+
+/** The fields some period of the payload carries (the server's figures, only picked here). */
+function fieldsInUse(breakdown: PayrollBreakdownPayload): Set<PayrollBreakdownField> {
+  const used = new Set<PayrollBreakdownField>(ALWAYS_SHOWN);
+  for (const row of breakdown.years) {
+    for (const f of TABLE_COLUMNS) if (row.values[f].clp !== 0 || row.values[f].usd !== 0) used.add(f);
+  }
+  return used;
+}
 
 function pick(row: PayrollBreakdownRow, field: PayrollBreakdownField, unit: DisplayUnit): number {
   return unit === "usd" ? row.values[field].usd : row.values[field].clp;
@@ -88,12 +111,15 @@ export function PayrollBreakdownSection({
   const chartGranularity = chartPrefs.period === "year" ? "year" : "month";
   const tableGranularity = tablePrefs.period === "year" ? "year" : "month";
   const label = (f: PayrollBreakdownField) => t(`income.payroll.fields.${f}`);
+  const used = useMemo(() => fieldsInUse(breakdown), [breakdown]);
+  const stack = useMemo(() => STACK.filter((s) => used.has(s.field)), [used]);
+  const columns = useMemo(() => TABLE_COLUMNS.filter((f) => used.has(f)), [used]);
 
   const points = useMemo(() => {
     const rows = chartGranularity === "year" ? breakdown.years : breakdown.months;
     const all = rows.map((r) => {
       const point: Record<string, string | number> = { as_of_date: periodEndYmd(r.period) };
-      for (const s of STACK) point[s.field] = pick(r, s.field, displayUnit);
+      for (const s of stack) point[s.field] = pick(r, s.field, displayUnit);
       point.gross = pick(r, "gross", displayUnit);
       return point as { as_of_date: string } & Record<string, number | string>;
     });
@@ -101,10 +127,10 @@ export function PayrollBreakdownSection({
     const dense = densifyRecordsByCalendarPeriod(all as Record<string, string | number | null>[], {
       granularity: chartGranularity,
       dateKey: "as_of_date",
-      fillMissing: { zeroKeys: [...STACK.map((s) => s.field), "gross"] },
+      fillMissing: { zeroKeys: [...stack.map((s) => s.field), "gross"] },
     }) as typeof all;
     return clipPointsToTimeRange(dense, chartPrefs.range);
-  }, [breakdown, chartGranularity, chartPrefs.range, displayUnit]);
+  }, [breakdown, chartGranularity, chartPrefs.range, displayUnit, stack]);
 
   const yScale = useMemo(() => buildNiceYAxis(0, Math.max(0, ...points.map((p) => Number(p.gross)))), [points]);
   const xAxis = useMemo(
@@ -167,7 +193,7 @@ export function PayrollBreakdownSection({
                   <span style={{ color: "var(--muted, #94a3b8)" }}>{label(String(value) as PayrollBreakdownField)}</span>
                 )}
               />
-              {STACK.map((s) => (
+              {stack.map((s) => (
                 <Bar
                   key={s.field}
                   dataKey={s.field}
@@ -207,7 +233,7 @@ export function PayrollBreakdownSection({
               <thead>
                 <tr>
                   <th>{t("income.payroll.colPeriod")}</th>
-                  {TABLE_COLUMNS.map((f) => (
+                  {columns.map((f) => (
                     <th key={f}>{label(f)}</th>
                   ))}
                 </tr>
@@ -217,7 +243,7 @@ export function PayrollBreakdownSection({
             {pageRows.map((row) => (
               <tr key={row.period}>
                 <td className="mono">{flowPeriodLabel(row.period, tableGranularity)}</td>
-                {TABLE_COLUMNS.map((f) => (
+                {columns.map((f) => (
                   <td key={f} className={f === "gross" || f === "net" ? "mono" : "mono muted"}>
                     {formatFlowMoney(pick(row, f, displayUnit), displayUnit)}
                   </td>
