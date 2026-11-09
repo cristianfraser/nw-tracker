@@ -25,8 +25,10 @@ import { db } from "../db.js";
 import { dbStateMemo } from "../dbStateMemo.js";
 import { resolveMasterAccountIdForCardLast4 } from "./config.js";
 import { planCount } from "./purchases.js";
+import { ccIssuerSlugForMasterAccount } from "../ccIssuerForAccount.js";
+import { ccIssuerBySlug } from "../ccIssuers.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
-import { accountStatementsAreUsdOnly, billingMonthContainingPurchase } from "./facturacion.js";
+import { billingMonthContainingPurchase } from "./facturacion.js";
 
 export type CardLifecycle = "active" | "billing_stopped" | "retired" | "superseded";
 
@@ -97,10 +99,11 @@ export function cardStoppedBilling(accountId: number): boolean {
 
     // The facturación today belongs to (the bank's cycle), not the calendar month.
     const todayMonth = billingMonthContainingPurchase(accountId, chileCalendarTodayYmd());
-    // A card with a feed or a paste shows the current cycle as an open bucket, so a statement dated
-    // before today's cycle means it stopped. A dollar-only (US) card has neither: its current
-    // cycle's statement simply has not closed yet, so it gets that one cycle of grace.
-    const lastExpected = accountStatementsAreUsdOnly(accountId) ? addCalendarMonths(lastStatementMonth, 1) : lastStatementMonth;
+    // An issuer with a feed or a paste (`unbilled_listing`) shows the current cycle as an open
+    // bucket, so a statement dated before today's cycle means the card stopped. An issuer without
+    // one shows nothing of the current cycle: its statement simply has not closed yet, so the card
+    // gets that one cycle of grace.
+    const lastExpected = !ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.unbilled_listing ? addCalendarMonths(lastStatementMonth, 1) : lastStatementMonth;
     if (!todayMonth || todayMonth.localeCompare(lastExpected) <= 0) return false;
 
     const live = liveCreditCardOutstandingClp(accountId);

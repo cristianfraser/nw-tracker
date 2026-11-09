@@ -38,17 +38,24 @@ export type CcWebPasteSign = "charges_negative" | "charges_positive";
 export type CcFirstCuotaTiming = "purchase_cycle" | "next_cycle";
 
 /**
- * Which currency statements a facturación of the issuer's card is made of: a peso statement and,
- * when the card's history carries one, its dollar twin (`clp_and_usd`: the Chilean issuers), or a
- * dollar statement alone (`usd_only`: a US card has no peso side, so its months close on the
- * dollar statement and never wait for a peso one).
+ * The currencies an issuer's statements are printed in (lowercase ISO codes): the `primary` is the
+ * one every facturación prints (a facturación closes on its statement); the `secondary` ones are
+ * printed only in cycles with activity in them (a Chilean card's dollar statement), so a month
+ * waits for one only while the imported stream carries it (`requiredStatementCurrenciesForAccount`).
  */
-export type CcStatementCurrencies = "clp_and_usd" | "usd_only";
+export type CcStatementCurrencies = { primary: string; secondary: readonly string[] };
 
 type CcIssuerDef = {
   slug: string;
   sort_order: number;
   statement_currencies: CcStatementCurrencies;
+  /** The issuer offers cuota products: a card of an issuer without them has its statements as the whole evidence. */
+  installments: boolean;
+  /**
+   * A feed or a web paste lists the open cycle before its statement closes (Santander, BCI); an
+   * issuer without one shows nothing of the current cycle until its statement.
+   */
+  unbilled_listing: boolean;
   derived_pay_by: CcDerivedPayByRule;
   /** The bucket card_group a pasted or fed line is stored under, and how its web table signs it. */
   web_paste: { card_group: string; sign: CcWebPasteSign };
@@ -81,7 +88,9 @@ type CcIssuerDef = {
 export const CC_ISSUERS = [
   {
     slug: "santander",
-    statement_currencies: "clp_and_usd",
+    statement_currencies: { primary: "clp", secondary: ["usd"] },
+    installments: true,
+    unbilled_listing: true,
     sort_order: 0,
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: true },
     web_paste: { card_group: "santander", sign: "charges_negative" },
@@ -93,7 +102,9 @@ export const CC_ISSUERS = [
   },
   {
     slug: "bci",
-    statement_currencies: "clp_and_usd",
+    statement_currencies: { primary: "clp", secondary: ["usd"] },
+    installments: true,
+    unbilled_listing: true,
     sort_order: 10,
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: false },
     web_paste: { card_group: "BCI", sign: "charges_positive" },
@@ -105,7 +116,9 @@ export const CC_ISSUERS = [
   },
   {
     slug: "cmr",
-    statement_currencies: "clp_and_usd",
+    statement_currencies: { primary: "clp", secondary: ["usd"] },
+    installments: true,
+    unbilled_listing: false,
     sort_order: 20,
     derived_pay_by: { kind: "close_plus_days", days: 16 },
     web_paste: { card_group: "CMR", sign: "charges_positive" },
@@ -120,7 +133,9 @@ export const CC_ISSUERS = [
     // fixed day of the month, the next cycle starting the day after, due 25 days after the close.
     // No cuotas (a US card has none), no feed, no paste.
     slug: "lonestar",
-    statement_currencies: "usd_only",
+    statement_currencies: { primary: "usd", secondary: [] },
+    installments: false,
+    unbilled_listing: false,
     sort_order: 30,
     derived_pay_by: { kind: "close_plus_days", days: 25 },
     web_paste: { card_group: "LONESTAR", sign: "charges_positive" },

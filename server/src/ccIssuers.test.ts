@@ -8,6 +8,12 @@ import {
 } from "./ccIssuers.js";
 import { listingLineStoredAmount, webPasteLinesFromPastedListing } from "./ccWebPasteParse.js";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
+import { closedBillingMonthsFromStatements } from "./cards/facturacion.js";
+import type { CcStatementRow } from "./ccStatementsDb.js";
+
+function stmt(billingMonth: string, currency: string, close: string, kind = "statement_pdf"): CcStatementRow {
+  return { billing_month: billingMonth, currency, period_to: close, statement_date: close, source_kind: kind } as unknown as CcStatementRow;
+}
 
 describe("card issuers as data", () => {
   it("every issuer pastes under its own card group", () => {
@@ -49,5 +55,33 @@ describe("card issuers as data", () => {
     expect(ccCardGroupsCompatible("A", "A", "santander")).toBe(true);
     expect(ccCardGroupsCompatible("santander", "INTL", "santander")).toBe(true);
     expect(ccCardGroupsCompatible("B", "A", "santander")).toBe(false);
+  });
+
+  it("every issuer states its statement currencies, cuota products and listing", () => {
+    for (const i of CC_ISSUERS) {
+      expect(i.statement_currencies.primary).toMatch(/^[a-z]{3}$/);
+      expect(i.statement_currencies.secondary).not.toContain(i.statement_currencies.primary);
+    }
+  });
+
+  describe("the close rule reads the issuer's primary currency", () => {
+    it("a primary-only issuer closes on its one statement", () => {
+      const closed = closedBillingMonthsFromStatements([stmt("2026-01", "usd", "2026-01-20")], "usd", new Set(["usd"]), null);
+      expect([...closed]).toEqual(["2026-01"]);
+    });
+    it("a month with only a secondary statement never closes", () => {
+      expect(closedBillingMonthsFromStatements([stmt("2026-01", "usd", "2026-01-20")], "clp", new Set(["clp", "usd"]), "2026-03-01").size).toBe(0);
+    });
+    it("waits for a required secondary until a later bank close proves it is not coming", () => {
+      const rows = [stmt("2026-01", "clp", "2026-01-20")];
+      const required = new Set(["clp", "usd"]);
+      expect(closedBillingMonthsFromStatements(rows, "clp", required, null).size).toBe(0);
+      expect(closedBillingMonthsFromStatements(rows, "clp", required, "2026-01-20").size).toBe(0);
+      expect([...closedBillingMonthsFromStatements(rows, "clp", required, "2026-02-20")]).toEqual(["2026-01"]);
+      expect([...closedBillingMonthsFromStatements([...rows, stmt("2026-01", "usd", "2026-01-20")], "clp", required, null)]).toEqual(["2026-01"]);
+    });
+    it("a web-paste listing closes nothing", () => {
+      expect(closedBillingMonthsFromStatements([stmt("2026-01", "usd", "2026-01-20", "listing_open")], "usd", new Set(["usd"]), null).size).toBe(0);
+    });
   });
 });

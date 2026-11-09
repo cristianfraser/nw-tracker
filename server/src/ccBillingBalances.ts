@@ -35,7 +35,7 @@ import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
-import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
+import { primaryStatementOfSlot, statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant, isCcTraspasoDeudaMerchant, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 
 export type CcBillingMonthBalanceRow = {
@@ -768,12 +768,12 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
   db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
 
   for (const [billingMonth, slot] of statementSlotsByBillingMonth(accountId)) {
-    const primary = slot.clp ?? slot.usd;
+    const primary = primaryStatementOfSlot(accountId, slot);
     if (!primary?.statement_date_iso) continue;
     const asOfIso = primary.statement_date_iso;
     const { facturado_clp, facturado_usd } = facturadoClpUsdForStatementSlot(accountId, slot);
     const saldo_total_usd =
-      slot.usd?.deuda_total != null && slot.usd.deuda_total > 0 ? slot.usd.deuda_total : 0;
+      slot.get("usd")?.deuda_total != null && slot.get("usd")!.deuda_total! > 0 ? slot.get("usd")!.deuda_total! : 0;
 
     upsertBalance.run({
       account_id: accountId,

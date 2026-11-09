@@ -8,7 +8,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
 import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from "./ccBillingViews.js";
 import { planCount } from "./cards/purchases.js";
-import { accountStatementsAreUsdOnly } from "./cards/facturacion.js";
+import { ccIssuerBySlug } from "./ccIssuers.js";
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import {
   ccLedgerMonthEndIso,
   liveCreditCardOutstandingClp,
@@ -17,12 +18,12 @@ import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
  * Whether month-end anchors can be written from the billing detail: the card has a plan ledger, or
- * its issuer bills in dollars alone (a US card has no cuotas, so its statements are the whole
- * evidence). Any other statements-only master (the retired CMR card) keeps its script-written
+ * its issuer has no cuota products (`CC_ISSUERS[…].installments`), so its statements are the
+ * whole evidence. Any other statements-only master (the retired CMR card) keeps its script-written
  * anchors.
  */
 function hasBillingLedger(accountId: number): boolean {
-  return planCount(accountId) > 0 || accountStatementsAreUsdOnly(accountId);
+  return planCount(accountId) > 0 || !ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.installments;
 }
 
 const deleteNativeAnchor = db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ? AND as_of_date = ?`);

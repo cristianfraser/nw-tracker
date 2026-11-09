@@ -313,29 +313,26 @@ export function billingPeriodIsoRange(
 // Months: closed, provisional, open; purchase → month
 // ---------------------------------------------------------------------------------------------
 
-/** The card's issuer bills in dollars alone (`CC_ISSUERS[…].statement_currencies`): no peso statement ever closes a month. */
-export function accountStatementsAreUsdOnly(accountId: number): boolean {
-  return ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.statement_currencies === "usd_only";
-}
-
 /**
- * True when this account's imported PDF history carries a USD statement stream — closing a
- * facturación then waits for the USD twin too, until the bank closes a later facturación
- * ({@link pdfClosedBillingMonthsForAccount}). The requirement follows the imported stream,
- * not the card's nominal facilities: a card with a dormant, never-billed USD side keeps
- * closing on CLP alone until its first USD statement lands.
+ * The currencies a facturación of this account waits for before it closes: the issuer's primary
+ * (`CC_ISSUERS[…].statement_currencies`, printed every cycle) plus every secondary currency the
+ * imported statement stream carries — closing then waits for that twin too, until the bank closes
+ * a later facturación ({@link pdfClosedBillingMonthsForAccount}). The requirement follows the
+ * imported stream, not the card's nominal facilities: a card with a dormant, never-billed
+ * secondary side keeps closing on its primary statement alone until the first secondary one lands.
  */
-export function accountRequiresUsdStatementClose(accountId: number): boolean {
-  if (accountStatementsAreUsdOnly(accountId)) return true;
+export function requiredStatementCurrenciesForAccount(accountId: number): Set<string> {
+  const { primary, secondary } = ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.statement_currencies;
+  const required = new Set<string>([primary]);
   for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.currency === "usd" && isStatementSourceKind(st.source_kind)) return true;
+    if ((secondary as readonly string[]).includes(st.currency) && isStatementSourceKind(st.source_kind)) required.add(st.currency);
   }
-  return false;
+  return required;
 }
 
 /**
  * Latest facturación month (YYYY-MM) an imported statement closed on this master account (the
- * currency rule of {@link pdfClosedBillingMonthsForAccount}: one twin arriving alone must not
+ * currency rule of {@link closedBillingMonthsFromStatements}: one twin arriving alone must not
  * advance the open month).
  */
 export function lastPdfBillingMonthForAccount(accountId: number): string | null {
@@ -347,47 +344,54 @@ export function lastPdfBillingMonthForAccount(accountId: number): string | null 
 }
 
 /**
- * Every facturación month an imported statement closed. CLP always; the USD twin too when the
- * account carries a USD stream ({@link accountRequiresUsdStatementClose}) — the two are mailed the
- * same day, and one arriving alone must not close the month. But a twin still missing once the
- * bank has closed a LATER facturación (a later statement in either currency, a feed-observed close,
- * or an announced close that has passed) is not coming: that cycle billed nothing in dollars, and
- * the month closes on CLP alone. Without it every USD-quiet cycle stayed «open» for good — the
- * retired ·0161's CLP-only 2025 months, which flagged those months open on the group pages too.
+ * Which billing months a set of statements closes: a month closes when the primary currency's
+ * imported statement is in and so is each other required currency's (they are mailed the same
+ * day, and one arriving alone must not close the month) — or that twin is proven not coming:
+ * once the bank has closed a LATER facturación (`latestBankClose`: a later statement in any
+ * currency, a feed-observed close, or an announced close that has passed) a twin still missing
+ * was never issued, because the cycle had no activity in that currency, and the month closes on
+ * the rest. Without it every secondary-quiet cycle stayed «open» for good — the retired ·0161's
+ * peso-only 2025 months, which flagged those months open on the group pages too. A month with no
+ * primary statement never closes.
  */
-export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string> {
-  const statements = listCcStatementsForAccount(accountId);
-  const requiresUsd = accountRequiresUsdStatementClose(accountId);
-  const usdOnly = accountStatementsAreUsdOnly(accountId);
-  const latestBankClose = requiresUsd
-    ? latestKnownCloseIso(accountId, statements, chileCalendarTodayYmd())
-    : null;
-  const byMonth = new Map<string, { currencies: Set<string>; clpCloseIso: string | null }>();
+export function closedBillingMonthsFromStatements(
+  statements: readonly CcStatementRow[],
+  primary: string,
+  required: ReadonlySet<string>,
+  latestBankClose: string | null
+): Set<string> {
+  const byMonth = new Map<string, { currencies: Set<string>; primaryCloseIso: string | null }>();
   for (const st of statements) {
     if (!isStatementSourceKind(st.source_kind)) continue;
     const bm = st.billing_month;
     if (!bm) continue;
     let month = byMonth.get(bm);
-    if (!month) byMonth.set(bm, (month = { currencies: new Set(), clpCloseIso: null }));
+    if (!month) byMonth.set(bm, (month = { currencies: new Set(), primaryCloseIso: null }));
     month.currencies.add(st.currency);
-    if (st.currency !== "usd") month.clpCloseIso = statementOwnCloseIso(st);
+    if (st.currency === primary) month.primaryCloseIso = statementOwnCloseIso(st);
   }
   const closed = new Set<string>();
-  for (const [bm, { currencies, clpCloseIso }] of byMonth) {
-    // A dollar-only card closes on its dollar statement; the others need the peso one.
-    if (!currencies.has(usdOnly ? "usd" : "clp")) continue;
-    if (usdOnly) {
-      closed.add(bm);
-      continue;
+  for (const [bm, { currencies, primaryCloseIso }] of byMonth) {
+    if (!currencies.has(primary)) continue;
+    const twinsNotComing =
+      primaryCloseIso != null && latestBankClose != null && latestBankClose > primaryCloseIso;
+    let pending = false;
+    for (const currency of required) {
+      if (!currencies.has(currency) && !twinsNotComing) pending = true;
     }
-    const twinPending =
-      requiresUsd &&
-      !currencies.has("usd") &&
-      !(clpCloseIso != null && latestBankClose != null && latestBankClose > clpCloseIso);
-    if (twinPending) continue;
-    closed.add(bm);
+    if (!pending) closed.add(bm);
   }
   return closed;
+}
+
+/** Every facturación month an imported statement closed ({@link closedBillingMonthsFromStatements}). */
+export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string> {
+  const statements = listCcStatementsForAccount(accountId);
+  const required = requiredStatementCurrenciesForAccount(accountId);
+  const { primary } = ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.statement_currencies;
+  const latestBankClose =
+    required.size > 1 ? latestKnownCloseIso(accountId, statements, chileCalendarTodayYmd()) : null;
+  return closedBillingMonthsFromStatements(statements, primary, required, latestBankClose);
 }
 
 /**

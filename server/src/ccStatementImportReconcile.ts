@@ -385,7 +385,7 @@ export function reconcileBillingMonthMovements(
       const traspaso = parsed.parsed_traspaso_nacional;
       const expected = saldo + abono + compras + traspaso;
       const delta = expected - deuda;
-      // A US card bills its interest and fees (section 3) on top of the purchases.
+      // A card can bill interest and fees (section 3) on top of the purchases.
       const ok =
         closeEnough(expected, deuda, TOL_USD) || closeEnough(expected + parsed.parsed_cargos_abonos, deuda, TOL_USD);
       checks.push({
@@ -438,7 +438,7 @@ export function reconcileBillingMonthMovements(
       comprasForMonto + saldo + abono,
       comprasForMonto + traspaso,
       comprasForMonto + saldo + abono + traspaso,
-      // A US card bills its interest and fees (section 3) on top of the purchases.
+      // A card can bill interest and fees (section 3) on top of the purchases.
       comprasForMonto + parsed.parsed_cargos_abonos,
       comprasForMonto + parsed.parsed_cargos_abonos + saldo + abono,
     ];
