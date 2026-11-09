@@ -1,0 +1,5 @@
+-- The roles of a property and its loan beyond the depto pair (docs/demo-us-chapter-plan.md
+-- «Phase 4a»): a property created under `import:property|key=<key>` holds the `property` role,
+-- its loan under `import:loan|property=<key>` holds `loan_of` that property. The hook
+-- (`accountRoles299.ts`) installs the triggers that keep the roles in step with
+-- `accounts.import_key` and seeds the existing accounts; migration 271's depto pair is unchanged.
