@@ -242,11 +242,14 @@ function seedSidebarChildPage(
   linkGroup(g.parent_slug, g.slug, g.sort_order);
 }
 
-/** Link accounts on leaf asset groups under `bucketSlug` (handles reparented sub-buckets). */
-function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortStart = 0) {
+/**
+ * Link accounts on leaf asset groups under `bucketSlug` (handles reparented sub-buckets). Returns
+ * how many it linked.
+ */
+function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortStart = 0): number {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
   const leafIds = leafAssetGroupIdsUnder(bucketSlug);
-  if (leafIds.length === 0) return;
+  if (leafIds.length === 0) return 0;
   const ph = leafIds.map(() => "?").join(",");
   const rows = db
     .prepare(
@@ -258,6 +261,7 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
     )
     .all(...leafIds, NOTE_STOCKS_LEGACY) as { id: number }[];
   rows.forEach((r, i) => addAccountChild(pid, r.id, sortStart + i * 10));
+  return rows.length;
 }
 
 /** Links every tracked place (`expense_accounts`) under the real-estate expenses node. */
@@ -273,30 +277,178 @@ function linkExpenseAccounts(parentSlug: string) {
   rows.forEach((row, i) => insertExpenseChild.run(pid, row.id, i * 10));
 }
 
+/** The Chilean retirement sub-buckets (their shape is the same with or without the country split). */
+const RETIREMENT_CL_GROUPS = ["retirement_afp_afc", "retirement_apv", "retirement_apv_a", "retirement_apv_b"] as const;
+
+/** The US retirement leaves, in sidebar order: each holds the accounts on its own leaf asset group. */
+const RETIREMENT_US_LEAVES = ["retirement_us_401k", "retirement_us_roth_ira", "retirement_us_hsa"] as const;
+
+/**
+ * Links the Chilean subtree (AFP + AFC → its accounts; APV → APV A, APV B → theirs) under `parentSlug`.
+ */
+function linkRetirementChile(parentSlug: string): void {
+  linkGroup(parentSlug, "retirement_afp_afc", 0);
+  linkAccountsByAssetGroup("retirement_afp_afc", "retirement_afp_afc", 0);
+
+  linkGroup(parentSlug, "retirement_apv", 20);
+  linkGroup("retirement_apv", "retirement_apv_a", 0);
+  linkGroup("retirement_apv", "retirement_apv_b", 10);
+  linkAccountsByAssetGroup("retirement_apv_a", "retirement_apv_a", 0);
+  linkAccountsByAssetGroup("retirement_apv_b", "retirement_apv_b", 0);
+}
+
+/**
+ * Retirement links by what exists: with the country split (`retirement_cl` present, created by
+ * {@link ensureRetirementCountrySplit}) Retirement holds Chile and US, Chile the existing subtree
+ * and US its leaves that hold accounts (an empty leaf is left out, and US with it when all are);
+ * without it, the Chilean subtree straight under Retirement, as it always was.
+ */
 function rebuildRetirementNav() {
   const retId = (groupIdBySlug.get("retirement") as { id: number }).id;
   placeItemsOf(retId);
 
-  const groups = [
-    "retirement_afp_afc",
-    "retirement_apv",
-    "retirement_apv_a",
-    "retirement_apv_b",
-  ] as const;
+  const split = groupIdBySlug.get("retirement_cl") != null;
+  const groups = split
+    ? (["retirement_cl", "retirement_us", ...RETIREMENT_CL_GROUPS, ...RETIREMENT_US_LEAVES] as const)
+    : RETIREMENT_CL_GROUPS;
   for (const slug of groups) {
     const gid = (groupIdBySlug.get(slug) as { id: number } | undefined)?.id;
     if (gid != null) placeItemsOf(gid);
   }
 
-  linkGroup("retirement", "retirement_afp_afc", 0);
-  linkAccountsByAssetGroup("retirement_afp_afc", "retirement_afp_afc", 0);
+  if (!split) {
+    linkRetirementChile("retirement");
+    return;
+  }
 
-  linkGroup("retirement", "retirement_apv", 20);
-  linkGroup("retirement_apv", "retirement_apv_a", 0);
-  linkGroup("retirement_apv", "retirement_apv_b", 10);
-  linkAccountsByAssetGroup("retirement_apv_a", "retirement_apv_a", 0);
-  linkAccountsByAssetGroup("retirement_apv_b", "retirement_apv_b", 0);
+  linkGroup("retirement", "retirement_cl", 0);
+  linkRetirementChile("retirement_cl");
 
+  let usLinked = 0;
+  RETIREMENT_US_LEAVES.forEach((slug, i) => {
+    if (groupIdBySlug.get(slug) == null) {
+      throw new Error(`seedNavTree: retirement_cl exists but the US leaf ${slug} does not (ensureRetirementCountrySplit)`);
+    }
+    if (linkAccountsByAssetGroup(slug, slug, 0) === 0) return;
+    linkGroup("retirement_us", slug, i * 10);
+    usLinked += 1;
+  });
+  if (usLinked > 0) linkGroup("retirement", "retirement_us", 10);
+}
+
+/** The country split's portfolio groups (created by {@link ensureRetirementCountrySplit}). */
+const RETIREMENT_COUNTRY_GROUPS: readonly (GroupUpsert & { parent_slug: string })[] = [
+  {
+    slug: "retirement_cl",
+    label: "Chile",
+    label_i18n_key: "retirement.chile",
+    parent_slug: "retirement",
+    sort_order: 0,
+    route_path: "/inversiones/retiro/chile",
+    active_prefix: "/inversiones/retiro/chile",
+    api_group: "retirement",
+    api_subgroup: "cl",
+    asset_group_slug: "retirement_cl",
+    group_kind: "bucket",
+    color_rgb: "220,38,38",
+  },
+  {
+    slug: "retirement_us",
+    label: "US",
+    label_i18n_key: "retirement.us",
+    parent_slug: "retirement",
+    sort_order: 10,
+    route_path: "/inversiones/retiro/us",
+    active_prefix: "/inversiones/retiro/us",
+    api_group: "retirement",
+    api_subgroup: "us",
+    asset_group_slug: "retirement_us",
+    group_kind: "bucket",
+    color_rgb: "37,99,235",
+  },
+  {
+    slug: "retirement_us_401k",
+    label: "401(k)",
+    label_i18n_key: "retirement.us401k",
+    parent_slug: "retirement_us",
+    sort_order: 0,
+    route_path: "/inversiones/retiro/us/401k",
+    active_prefix: "/inversiones/retiro/us/401k",
+    api_group: "retirement",
+    api_subgroup: "us_401k",
+    asset_group_slug: "retirement_us_401k",
+    kind_slug: "us_401k",
+    group_kind: "bucket",
+    color_rgb: "59,130,246",
+  },
+  {
+    slug: "retirement_us_roth_ira",
+    label: "Roth IRA",
+    label_i18n_key: "retirement.rothIra",
+    parent_slug: "retirement_us",
+    sort_order: 10,
+    route_path: "/inversiones/retiro/us/roth-ira",
+    active_prefix: "/inversiones/retiro/us/roth-ira",
+    api_group: "retirement",
+    api_subgroup: "roth_ira",
+    asset_group_slug: "retirement_us_roth_ira",
+    kind_slug: "roth_ira",
+    group_kind: "bucket",
+    color_rgb: "124,58,237",
+  },
+  {
+    slug: "retirement_us_hsa",
+    label: "HSA",
+    label_i18n_key: "retirement.hsa",
+    parent_slug: "retirement_us",
+    sort_order: 20,
+    route_path: "/inversiones/retiro/us/hsa",
+    active_prefix: "/inversiones/retiro/us/hsa",
+    api_group: "retirement",
+    api_subgroup: "hsa",
+    asset_group_slug: "retirement_us_hsa",
+    kind_slug: "hsa",
+    group_kind: "bucket",
+    color_rgb: "13,148,136",
+  },
+];
+
+/**
+ * Splits Retirement by country (docs/demo-us-chapter-plan.md, phase 3) — the demo generator calls
+ * it; the personal instance never does, so its tree stays as it is. Creates the Chile and US
+ * portfolio groups and the US leaves (their asset groups are seeded by `db.ts` on every
+ * database), moves the Chilean sub-buckets under Chile — their asset groups too (leaf slugs, and so
+ * every account's behaviour kind, unchanged) — and re-seeds the nav tree. Idempotent; call it
+ * once the US accounts exist (or seed the nav tree again after creating them): a US leaf with no
+ * account is left out of the tree.
+ *
+ * A US account goes on its leaf asset group: `retirement_us_401k__us_401k` (a 401(k): a cuota
+ * ledger on its own `accounts.fund_series_key`, priced in the series' currency),
+ * `retirement_us_hsa__hsa` (the same), `retirement_us_roth_ira__roth_ira` (shares, `equity_ticker`).
+ */
+export function ensureRetirementCountrySplit(): void {
+  // The Chilean sub-buckets and Retirement itself must exist before they move.
+  seedNavTree();
+  db.transaction(() => {
+    const assetId = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`);
+    const clAsset = assetId.get("retirement_cl") as { id: number } | undefined;
+    if (!clAsset) throw new Error("ensureRetirementCountrySplit: asset group retirement_cl is missing (db.ts seeds it)");
+    for (const slug of ["retirement_afp_afc", "retirement_apv"]) {
+      const r = db.prepare(`UPDATE asset_groups SET parent_id = ? WHERE slug = ? AND parent_id IS NOT ?`).run(clAsset.id, slug, clAsset.id);
+      if (r.changes === 0 && assetId.get(slug) == null) {
+        throw new Error(`ensureRetirementCountrySplit: asset group ${slug} is missing`);
+      }
+    }
+    for (const g of RETIREMENT_COUNTRY_GROUPS) upsert(g);
+    const clId = (groupIdBySlug.get("retirement_cl") as { id: number }).id;
+    for (const slug of ["retirement_afp_afc", "retirement_apv"]) {
+      const r = db.prepare(`UPDATE portfolio_groups SET parent_id = ? WHERE slug = ? AND parent_id IS NOT ?`).run(clId, slug, clId);
+      if (r.changes === 0 && groupIdBySlug.get(slug) == null) {
+        throw new Error(`ensureRetirementCountrySplit: portfolio group ${slug} is missing (seedNavTree first)`);
+      }
+    }
+  })();
+  seedNavTree();
 }
 
 /**

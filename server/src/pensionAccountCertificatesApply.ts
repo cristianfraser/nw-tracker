@@ -5,6 +5,7 @@ import type {
   PensionAccountCertificatesPayload,
   PensionExpectedRow,
 } from "nw-tracker-contracts";
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { liveAfpUnoAccountId } from "./afpAccounts.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
@@ -250,6 +251,7 @@ export function loadPensionLedger(accountId: number): PensionLedgerRow[] {
 }
 
 function loadSeries(fromPeriod: string): PensionSeriesRow[] {
+  assertFundSeriesClp(AFP_UNO_CUOTA_SERIES_KEY, "pensionAccountCertificatesApply");
   return db
     .prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
     .all(AFP_UNO_CUOTA_SERIES_KEY, certificateRowPriceWindow(fromPeriod).fromDay) as PensionSeriesRow[];
@@ -346,6 +348,7 @@ export function applyPensionAccountBalance(payload: PensionAccountBalancePayload
     };
   }
   const today = chileCalendarTodayYmd();
+  assertFundSeriesClp(AFP_UNO_CUOTA_SERIES_KEY, "pensionAccountCertificatesApply");
   const series = db
     .prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
     .all(AFP_UNO_CUOTA_SERIES_KEY, chileCalendarAddDays(today, -60)) as PensionSeriesRow[];

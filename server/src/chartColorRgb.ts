@@ -208,7 +208,7 @@ export function syntheticGroupColorRgbMapForValuationGroup(groupSlug: string): R
         : groupSlug === "inversiones"
           ? accountId >= -615 && accountId <= -601
           : groupSlug === "retirement"
-            ? accountId >= -704 && accountId <= -701
+            ? accountId >= -709 && accountId <= -701
             : false;
     if (belongs) add(accountId, portfolioSlug);
   }
@@ -239,6 +239,11 @@ export const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, str
   [-702]: "retirement_apv",
   [-703]: "retirement_apv_a",
   [-704]: "retirement_apv_b",
+  [-705]: "retirement_cl",
+  [-706]: "retirement_us",
+  [-707]: "retirement_us_401k",
+  [-708]: "retirement_us_roth_ira",
+  [-709]: "retirement_us_hsa",
   [-9101]: "retirement_afp_afc",
   [-9102]: "retirement_apv",
   [-9201]: "cash_savings",

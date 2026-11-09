@@ -1,5 +1,8 @@
+import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
+import { holdingPriceAt } from "./holdingPrices.js";
 import {
   getAccountPositionMeta,
+  hasCuotaLedgerUnitsEvents,
   liveCuotaLedgerDisplayValueClp,
   liveFintualCertDisplayValueClp,
   positionMarkFromMeta,
@@ -213,6 +216,19 @@ function accountTodayValueFor(
     // The coins × today's dollar price, the figure the position card prints converted.
     const crypto = cryptoTodayNativeValue(accountId, now);
     if (crypto) return done({ value: crypto.value, currency: "usd", as_of_date: crypto.as_of_date, market: true });
+  }
+  if (p.quantity.kind === "cuota_ledger" && p.holding.kind === "fund" && p.holding.quote !== "clp") {
+    // A fund on a series in another currency (a 401(k)'s dollar fund): its cuotas × today's valor
+    // cuota in that currency, converted once (`done`), never through pesos.
+    const cuotas = afpCuotasCumulativeThroughDate(accountId, today);
+    if (!(cuotas > 1e-9)) {
+      return hasCuotaLedgerUnitsEvents(accountId)
+        ? done({ value: 0, currency: p.holding.quote, as_of_date: today, market: true })
+        : null;
+    }
+    const px = holdingPriceAt(p.holding, today, now ? { now } : undefined);
+    if (!px) return null;
+    return done({ value: Math.round(cuotas * px.price * 100) / 100, currency: px.currency, as_of_date: px.as_of, market: true });
   }
   if (p.quantity.kind === "cuota_ledger" || p.quantity.kind === "fintual_goal") {
     // The position as of TODAY, never as of the mark's date: an AFC whose valor cuota lags

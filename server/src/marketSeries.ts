@@ -96,8 +96,10 @@ export function getMarketSeriesPayload(): {
       `SELECT ticker, trade_date AS date, close FROM equity_daily WHERE currency != 'none' ORDER BY ticker, trade_date ASC`
     )
     .all() as EqR[];
+  // The rates page shows peso fund series: a series quoted in another currency (a 401(k)'s dollar
+  // fund) is not one of its series yet, as an index level is not an equity price above.
   const fuRows = db
-    .prepare(`SELECT series_key, day, unit_value FROM fund_unit_daily ORDER BY series_key, day ASC`)
+    .prepare(`SELECT series_key, day, unit_value FROM fund_unit_daily WHERE currency = 'clp' ORDER BY series_key, day ASC`)
     .all() as FuR[];
 
   const equityTickers = sortEquityTickers(eqRows.map((r) => r.ticker));

@@ -1804,7 +1804,12 @@
   },
   "retirement": {
     "afpAfc": "AFP + AFC",
-    "apv": "APV"
+    "apv": "APV",
+    "chile": "Chile",
+    "us": "EE. UU.",
+    "us401k": "401(k)",
+    "rothIra": "Roth IRA",
+    "hsa": "HSA"
   },
   "groceries": {
     "title": "Supermercado",

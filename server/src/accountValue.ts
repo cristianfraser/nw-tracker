@@ -35,8 +35,8 @@ export type AccountValueOpts = { now?: Date };
 
 /**
  * The currency an account's value is natively expressed in: dollars for a dollar ledger, a
- * dollar-quoted stock or a coin; pesos for everything else — peso ledgers, funds (cuotas priced
- * in pesos) and, until their own phases, the card and the depto ledger.
+ * dollar-quoted stock, a coin or a fund on a dollar series; pesos for everything else — peso
+ * ledgers, peso funds and, until their own phases, the card and the depto ledger.
  */
 export function accountValueCurrency(accountId: number): CurrencyCode {
   // An id with no account row behind it (a synthetic chart line) holds pesos.
@@ -45,6 +45,7 @@ export function accountValueCurrency(accountId: number): CurrencyCode {
   if (h.kind === "currency") return h.code === "usd" || h.code === "eur" ? h.code : "clp";
   if (h.kind === "stock") return h.quote;
   if (h.kind === "coin") return h.quote;
+  if (h.kind === "fund") return h.quote;
   return "clp";
 }
 

@@ -1,8 +1,9 @@
 /**
  * Accounts valued as a **cuota ledger**: Σ `movements.units_delta` (plus transfer legs) × a
- * `fund_unit_daily` series at the date. AFP fund accounts (one per AFP and fund, each on its own
- * display series `afp_<afp>_cuota_<fund>`) and AFC (Fondo de Cesantía CIC, `afc_cic`). Both
- * declare their series per account on `accounts.fund_series_key`. One predicate so every
+ * `fund_unit_daily` series at the date, in the series' currency. AFP fund accounts (one per AFP
+ * and fund, each on its own display series `afp_<afp>_cuota_<fund>`), AFC (Fondo de Cesantía CIC,
+ * `afc_cic`) and the US fund accounts (401(k), HSA — a dollar series). All declare their series
+ * per account on `accounts.fund_series_key`. One predicate so every
  * reader — marks, position meta, live last points, perf cuota inflows — agrees on the set.
  *
  * A fund switch is a transfer between two fund accounts. The fund the chain left has its display
@@ -32,10 +33,15 @@ export function cuotaLedgerSeriesKeyForAccount(accountId: number): string | null
 
 /**
  * Display ticker for the position card of a cuota-ledger account: `<AFP>-<FUND>` from the
- * account's display series (`PLANVITAL-A`, `MODELO-A`, `UNO-A`); AFC is «AFC CIC».
+ * account's display series (`PLANVITAL-A`, `MODELO-A`, `UNO-A`); AFC is «AFC CIC»; a US fund
+ * account (401(k), HSA) shows its series key.
  */
 export function cuotaLedgerDisplayTicker(kindSlug: string, seriesKey: string | null): string {
-  if (kindSlug !== "afp") return "AFC CIC";
+  if (kindSlug === "afc") return "AFC CIC";
+  if (kindSlug !== "afp") {
+    if (!seriesKey) throw new Error(`cuota ledger: ${kindSlug} account has no series key`);
+    return seriesKey.toUpperCase();
+  }
   const parsed = parseAfpDisplaySeriesKey(seriesKey ?? AFP_UNO_CUOTA_SERIES_KEY);
   if (!parsed) throw new Error(`cuota ledger: AFP series key «${seriesKey}» is not afp_<afp>_cuota_<fund>`);
   return `${parsed.afp.toUpperCase()}-${parsed.fund}`;

@@ -5,6 +5,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { AFP_CERT_FUND_UNIT_SCRATCH, assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 
 /**
  * Cumulative AFP cuotas: Σ `movements.units_delta` on the account plus manual transfer legs.
@@ -28,6 +29,7 @@ export function latestFundUnitRowOnOrBefore(
   seriesKey: string,
   asOfYmd: string
 ): { day: string; unit_value: number } | null {
+  assertFundSeriesClp(seriesKey, "latestFundUnitRowOnOrBefore");
   const r = db
     .prepare(
       `SELECT day, unit_value FROM fund_unit_daily
@@ -40,33 +42,17 @@ export function latestFundUnitRowOnOrBefore(
   return { day: r.day, unit_value: v };
 }
 
-const AFP_CERT_FUND_UNIT_SCRATCH = "afp-cert:monto/cuotas_delta";
-
 /**
  * Prefer a **quoted** valor cuota (the official series) over certificate scratch rows
- * (`monto/cuotas` per movement line can be wrong for display).
+ * (`monto/cuotas` per movement line can be wrong for display). A peso series only.
  */
 export function latestAfpUnoFundUnitRowOnOrBeforeForDisplay(
   seriesKey: string,
   asOfYmd: string
 ): { day: string; unit_value: number } | null {
-  const rows = db
-    .prepare(
-      `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily
-       WHERE series_key = ? AND day <= ?
-       ORDER BY day DESC
-       LIMIT 60`
-    )
-    .all(seriesKey, asOfYmd) as { day: string; unit_value: number; note: string }[];
-  for (const r of rows) {
-    if (!r.note.includes(AFP_CERT_FUND_UNIT_SCRATCH)) {
-      const v = r.unit_value;
-      if (v != null && Number.isFinite(v) && v > 0 && r.day) {
-        return { day: r.day, unit_value: v };
-      }
-    }
-  }
-  return latestFundUnitRowOnOrBefore(seriesKey, asOfYmd);
+  assertFundSeriesClp(seriesKey, "latestAfpUnoFundUnitRowOnOrBeforeForDisplay");
+  const r = fundUnitRowOnOrBeforeForDisplay(seriesKey, asOfYmd);
+  return r ? { day: r.day, unit_value: r.unit_value } : null;
 }
 
 /** Prior reputable valor cuota strictly before `beforeDay` (skips cert scratch rows). */
@@ -74,6 +60,7 @@ export function priorAfpUnoFundUnitRowBeforeForDisplay(
   seriesKey: string,
   beforeDay: string
 ): { day: string; unit_value: number } | null {
+  assertFundSeriesClp(seriesKey, "priorAfpUnoFundUnitRowBeforeForDisplay");
   const rows = db
     .prepare(
       `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily

@@ -1,3 +1,4 @@
+import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { FINTUAL_GOALS } from "./fintualGoals.js";
 import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
@@ -269,6 +270,7 @@ function publishedFundUnitOnDay(
   ymd: string
 ): { series_key: string; unit_value: number } | null {
   for (const seriesKey of seriesKeys) {
+    assertFundSeriesClp(seriesKey, "fintualRiskyNorrisComposition");
     const row = stmtFundUnitOnDate.get(seriesKey, ymd) as FundUnitRow | undefined;
     if (row == null || !Number.isFinite(row.unit_value) || row.unit_value <= 0) continue;
     if (isFintualCarryForwardFundUnitNote(row.note)) continue;

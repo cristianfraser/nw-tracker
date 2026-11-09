@@ -13,7 +13,6 @@
  *   (`cacheDependencies.ts`).
  */
 import { historyTierMemo } from "./cacheRegistry.js";
-import { latestAfpUnoFundUnitRowOnOrBeforeForDisplay } from "./afpUnoValuation.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -25,6 +24,7 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { equityAsTradedClose } from "./equitySplits.js";
+import { assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 import type { Holding } from "./holdings.js";
 import type { CurrencyCode } from "./rates.js";
 import {
@@ -57,17 +57,22 @@ function validPrice(p: number | null | undefined): p is number {
   return p != null && Number.isFinite(p) && p > 0;
 }
 
-/** A fund's valor cuota on a day: the proxy on a held day, else the display-frame row. */
+/**
+ * A fund's valor cuota on a day, in its series' currency (`fund_unit_daily.currency`): the proxy
+ * on a held day (a Fintual peso fund only), else the display-frame row.
+ */
 function fundPriceAt(seriesKey: string, ymd: string, isToday: boolean, now: Date): HoldingPrice | null {
   const proxyApplies =
     isRiskyNorrisProxyMtmSeries(seriesKey) &&
     (isToday ? shouldUseRiskyNorrisProxyMtm(now) : riskyNorrisProxyAppliesOnYmd(ymd));
   if (proxyApplies) {
+    // The basket proxy is built in pesos (the observado frame): only for a peso series.
+    assertFundSeriesClp(seriesKey, "holdingPrices (Risky Norris proxy)");
     const px = riskyNorrisProxyCuotaForMtm(seriesKey, now, isToday ? undefined : ymd);
     return validPrice(px) ? { price: px, currency: "clp", as_of: ymd } : null;
   }
-  const fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(seriesKey, ymd);
-  return fu && validPrice(fu.unit_value) ? { price: fu.unit_value, currency: "clp", as_of: fu.day } : null;
+  const fu = fundUnitRowOnOrBeforeForDisplay(seriesKey, ymd);
+  return fu && validPrice(fu.unit_value) ? { price: fu.unit_value, currency: fu.currency, as_of: fu.day } : null;
 }
 
 /** A stored day's price (no live input). */

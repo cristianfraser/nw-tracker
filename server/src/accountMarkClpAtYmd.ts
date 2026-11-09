@@ -52,8 +52,16 @@ const currency = (code: CurrencyCode, qty: number, as_of_date: string): QtyMark 
   as_of_date,
 });
 
-function fundMark(seriesKey: string, ymd: string, cuotas: number | null): QtyMark | "zero_needs_events" | null {
-  const asset: InstrumentHolding = { kind: "fund", seriesKey, quote: "clp" };
+/** The fund an account holds, priced in its series' currency (the profile's holding). */
+function fundAsset(profile: AccountProfile, seriesKey: string): InstrumentHolding {
+  const h = profile.holding;
+  if (h.kind !== "fund" || h.seriesKey !== seriesKey) {
+    throw new Error(`account ${profile.id}: holding is not the fund ${seriesKey}`);
+  }
+  return h;
+}
+
+function fundMark(asset: InstrumentHolding, ymd: string, cuotas: number | null): QtyMark | "zero_needs_events" | null {
   if (cuotas == null || !(cuotas > 1e-9) || !Number.isFinite(cuotas)) return "zero_needs_events";
   const px = holdingPriceAt(asset, ymd);
   if (!px) return null;
@@ -72,10 +80,11 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
     case "cuota_ledger": {
       // Σ cuotas × the series' valor cuota on or before the date. Emptied (or switched out of)
       // after holding cuotas: an explicit 0 dated the day asked.
-      const m = fundMark(q.seriesKey, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "ledger"));
+      const asset = fundAsset(profile, q.seriesKey);
+      const m = fundMark(asset, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "ledger"));
       if (m === "zero_needs_events") {
         if (hasCuotaLedgerUnitsEvents(accountId)) {
-          return { qty: 0, asset: { kind: "fund", seriesKey: q.seriesKey, quote: "clp" }, as_of_date: asOfYmd };
+          return { qty: 0, asset, as_of_date: asOfYmd };
         }
       } else if (m) {
         return m;
@@ -83,13 +92,14 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       return bookMark(profile, asOfYmd);
     }
     case "fintual_goal": {
-      const m = fundMark(q.seriesKey, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "fintual"));
+      const asset = fundAsset(profile, q.seriesKey);
+      const m = fundMark(asset, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "fintual"));
       if (m === "zero_needs_events") {
         // Fully withdrawn (or never funded): an explicit 0, dated on the price day.
-        const px = holdingPriceAt({ kind: "fund", seriesKey: q.seriesKey, quote: "clp" }, asOfYmd);
+        const px = holdingPriceAt(asset, asOfYmd);
         return {
           qty: 0,
-          asset: { kind: "fund", seriesKey: q.seriesKey, quote: "clp" },
+          asset,
           as_of_date: px?.as_of ?? chileCalendarTodayYmd(),
         };
       }

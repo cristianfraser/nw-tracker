@@ -21,6 +21,7 @@ import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
 import { isFintualGoalImportKey } from "./fintualGoals.js";
+import { fundSeriesCurrency } from "./fundUnitDaily.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 import type { CurrencyCode } from "./rates.js";
@@ -111,6 +112,8 @@ export type AccountProfileFacts = {
   fundSeriesKey: string | null;
   /** The quote currency of a ticker (read only for a stock). */
   quoteCurrencyOf: (ticker: string) => CurrencyCode;
+  /** The quote currency of a fund series (read only for a fund): pesos while it has no row. */
+  fundQuoteCurrencyOf: (seriesKey: string) => CurrencyCode;
   roles: readonly { role: StoredAccountRole; param: string }[];
   /** A demo or test database: an AFP account without a series prices with UNO Fondo A. */
   demoOrTest: boolean;
@@ -123,8 +126,12 @@ export function kindIsDebt(kind: string | null | undefined): boolean {
   return kind != null && DEBT_KINDS.has(kind);
 }
 
-/** Kinds valued from a cuota ledger (with a series). */
-export const CUOTA_LEDGER_KINDS: ReadonlySet<string> = new Set(["afp", "afc"]);
+/**
+ * Kinds valued from a cuota ledger (with a series): the AFP and the AFC, and the US accounts that
+ * hold a fund (a 401(k), an HSA; docs/demo-us-chapter-plan.md phase 3), priced in their series'
+ * currency.
+ */
+export const CUOTA_LEDGER_KINDS: ReadonlySet<string> = new Set(["afp", "afc", "us_401k", "hsa"]);
 
 /**
  * Pension kinds funded from payroll (pre-tax cotizaciones): their inflows come from the employer,
@@ -167,6 +174,9 @@ function quantityFromFacts(f: AccountProfileFacts, roles: AccountRoles): Quantit
     if (f.fundSeriesKey) return { kind: "cuota_ledger", seriesKey: f.fundSeriesKey };
     // An AFC without a series is not modeled in cuotas: its stored marks are its value.
     if (f.kind === "afc") return { kind: "book_mark" };
+    if (f.kind !== "afp") {
+      throw new Error(`account profile: ${f.kind} account ${f.id} has no fund_series_key (accounts.fund_series_key)`);
+    }
     if (!f.demoOrTest) {
       throw new Error(`account profile: AFP account ${f.id} has no fund_series_key (accounts.fund_series_key)`);
     }
@@ -192,7 +202,8 @@ function holdingFromQuantity(f: AccountProfileFacts, q: QuantitySource): Holding
       return { kind: "stock", ticker: q.ticker, quote: f.quoteCurrencyOf(q.ticker) };
     case "cuota_ledger":
     case "fintual_goal":
-      return { kind: "fund", seriesKey: q.seriesKey, quote: "clp" };
+      // Priced in its series' currency (`fund_unit_daily.currency`).
+      return { kind: "fund", seriesKey: q.seriesKey, quote: f.fundQuoteCurrencyOf(q.seriesKey) };
     case "usd_ledger":
       return { kind: "currency", code: "usd" };
     case "depto_property":
@@ -317,6 +328,7 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
       usesEquityMtm,
       fundSeriesKey: row.fund_series_key?.trim() || null,
       quoteCurrencyOf: (t) => equityQuoteCurrency(t),
+      fundQuoteCurrencyOf: (k) => fundSeriesCurrency(k) ?? "clp",
       roles: storedRolesOfAccount(accountId),
       demoOrTest: isDemoOrTest(),
     });
