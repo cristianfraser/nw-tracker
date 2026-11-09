@@ -22,6 +22,7 @@ import {
   PRESUMED_EXPENSES_RATE,
   unemploymentCapUf,
 } from "../legalParameters.js";
+import { dfl2ContribucionesHalvedThroughYear } from "../legalParameters.js";
 import { legalHealthClp } from "../payslipLineKinds.js";
 import { MORTGAGE_CUOTA_DAY } from "../mortgageCuotaDay.js";
 import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
@@ -65,7 +66,9 @@ export type Acct =
   | "afpModelo"
   | "afpUno"
   | "afc"
-  | "property"
+  /** A house's property account and its loan (`House.key`). */
+  | `property:${string}`
+  | `loan:${string}`
   | "fund"
   /** The US retirement accounts: a 401(k) and an HSA in a target-date fund's units, a Roth IRA in SPY. */
   | "k401"
@@ -121,6 +124,8 @@ export type CardLine = {
   currency: "clp" | "usd";
   amount: number;
   cuotas?: number;
+  /** The issuer's own charge (a yearly fee): the statement bills it apart from the purchases. */
+  fee?: true;
 };
 
 export type InstallmentPlan = {
@@ -194,6 +199,12 @@ export type MortgageCuota = {
   balanceAfterUf: number;
 };
 
+export type Mortgage = { house: House; cuotas: MortgageCuota[]; pieClp: number; principalUf: number; pieDate: Ymd };
+/** A rent credited to checking: the bank prints `description` on `date` for `clp`. */
+export type RentCredit = { house: string; date: Ymd; clp: number; description: string };
+/** A place's bill paid from checking; a DFL-2 property's contribuciones say whether they were halved. */
+export type PlaceBill = { house: string; kind: "gastos_comunes" | "contribuciones"; date: Ymd; clp: number; description: string; halved?: boolean };
+
 export type Ledger = {
   person: Person;
   today: Ymd;
@@ -211,7 +222,12 @@ export type Ledger = {
   /** The US checking account's statement lines, and its balance today (statement rows and transfers). */
   usBank: UsBankRow[];
   usCheckingBalanceUsd: number;
-  mortgage: { cuotas: MortgageCuota[]; pieClp: number; principalUf: number; pieDate: Ymd } | null;
+  /** Each house's mortgage, in purchase order. */
+  mortgages: Mortgage[];
+  /** The rents the agency forwarded to checking (the income overrides name the place). */
+  rents: RentCredit[];
+  /** The places' bills paid from checking (the real-estate page's bill rows). */
+  placeBills: PlaceBill[];
   /** AFC book account: contributions (the writer grows and marks it). */
   afcContributions: { date: Ymd; clp: number; month: Month }[];
   /** Month-end summary, for the build report and the invariants. */
@@ -250,9 +266,6 @@ export type SimulateOptions = {
 /* --------------------------------- constants ------------------------------------ */
 
 const BRANCH = "Oficina Central";
-export const MORTGAGE_MERCHANT = "MUTUARIA ANDES HIPOTECARIO";
-const MORTGAGE_INCENDIO_CLP = 18_000;
-const MORTGAGE_DESGRAVAMEN_CLP = 4_500;
 export const APV_FUND_SERIES_KEY = "demo_apv_fondo";
 /**
  * The US retirement accounts' fund: a 2060 target-date fund (≈ 90 % equities), valued daily in
@@ -311,6 +324,9 @@ const US_MERCHANTS: Record<string, { name: string; ticket: number }[]> = {
     { name: "WALGREENS AUSTIN TX", ticket: 18 },
   ],
 };
+
+/** The US card's yearly fee as its statement prints it (a section-3 charge: the card's cost). */
+export const US_CARD_ANNUAL_FEE = "ANNUAL MEMBERSHIP FEE";
 
 /** The mutual fund's valor cuota series (a person with `fund`). */
 export const MUTUAL_FUND_SERIES_KEY = "demo_fondo";
@@ -620,7 +636,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     contractJobs: CONTRACT_JOBS,
     contractorJobs: CONTRACTOR_JOBS,
     housing: HOUSING,
-    house: HOUSE,
+    houses: HOUSES,
     cars: CARS,
     oneOffs: ONE_OFFS,
     cards: CARDS,
@@ -644,7 +660,12 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     return h;
   };
   const carFor = (month: Month) => CARS.find((c) => month >= c.from && (c.to == null || month <= c.to)) ?? null;
-  const activeCards = (month: Month): CardDef[] => CARDS.filter((c) => month >= c.from);
+  /** The Chilean cards open in `month` (the US card is the US chapter's: `usCard`). */
+  const activeCards = (month: Month): CardDef[] => CARDS.filter((c) => month >= c.from && c.issuer !== "lonestar");
+  const usCard = CARDS.find((c) => c.issuer === "lonestar") ?? null;
+  const usCardOpen = (month: Month) => usCard != null && month >= usCard.from;
+  const lenderMerchants = new Set(HOUSES.map((h) => h.lender.merchant));
+  const housesOwned = (month: Month) => HOUSES.filter((h) => month >= h.month);
   const hasCheckingOn = (day: Ymd) => monthOf(day) >= person.checkingFrom;
   const book = new Book();
   const lastMonth = monthOf(today);
@@ -691,24 +712,33 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   };
 
   const cardOf = (key: CardDef["key"]) => CARDS.find((c) => c.key === key)!;
-  /** The close whose cycle a purchase on `day` belongs to (a purchase on the close day bills next). */
+  /**
+   * The close whose cycle a purchase on `day` belongs to: a purchase on the close day bills next,
+   * except at an issuer whose next cycle starts the day after the close (the US card).
+   */
   const closeForPurchase = (card: CardDef, day: Ymd): Ymd => {
     const m = monthOf(day);
     const c = cardClose(card, m);
-    return day < c ? c : cardClose(card, addMonths(m, 1));
+    const closeDayBillsThis = card.issuer === "lonestar";
+    return day < c || (closeDayBillsThis && day === c) ? c : cardClose(card, addMonths(m, 1));
   };
   const cardPurchase = (line: CardLine) => {
     if (line.date > today) return;
     const card = cardOf(line.card);
     if (monthOf(line.date) < card.from) throw new Error(`demo: ${line.merchant} on card ${card.key} before it opens`);
-    // The mortgage's card line is split by the app itself (carrying cost vs amortización).
-    if (line.merchant !== MORTGAGE_MERCHANT) catByMerchant.set(line.merchant, line.category);
+    // A mortgage's card line is split by the app itself (carrying cost vs amortización).
+    if (!lenderMerchants.has(line.merchant)) catByMerchant.set(line.merchant, line.category);
     const st = cards.get(line.card)!;
     const close = closeForPurchase(card, line.date);
     const list = st.pendingByClose.get(close) ?? [];
     list.push(line);
     st.pendingByClose.set(close, list);
-    addExpense(line.date, line.currency === "usd" ? line.amount * market.fx(line.date) : line.amount);
+    // The US card's spending is the US chapter's (its band, its wire), never the Chilean months'.
+    if (card.issuer === "lonestar") {
+      if (line.currency !== "usd") throw new Error(`demo: ${line.merchant} in pesos on the US card`);
+      const m = monthOf(line.date);
+      usExpenseByMonth.set(m, cents((usExpenseByMonth.get(m) ?? 0) + line.amount));
+    } else addExpense(line.date, line.currency === "usd" ? line.amount * market.fx(line.date) : line.amount);
   };
   const cardPlan = (card: CardDef["key"], day: Ymd, merchant: string, category: string, totalClp: number, cuotas: number) => {
     if (day > today) return;
@@ -928,7 +958,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   };
 
   /* --------------------------------- mortgage -------------------------------- */
-  let mortgage: Ledger["mortgage"] = null;
+  const mortgages = new Map<string, Mortgage>();
+  const rents: RentCredit[] = [];
+  const placeBills: PlaceBill[] = [];
 
   /* ------------------------------ term deposits ------------------------------ */
   const termDeposits: TermDeposit[] = [];
@@ -1153,9 +1185,25 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           catByDesc.set(`DEVOLUCION GARANTIA ${housing.landlord}`, "bills");
         }
       }
-    } else if (HOUSE) {
-      bankBill("checking", ymd(month, 10), "PAGO GASTOS COMUNES EDIFICIO", "bills", round(nominal(HOUSE.gcClp, ymd(month, 10)) * r("gc").jitter(1, 0.08)));
-      if (HOUSE.contribucionesMonths.includes(mo)) bankBill("checking", ymd(month, 20), "TGR CONTRIBUCIONES", "bills", round(nominal(HOUSE.contribucionesClp, ymd(month, 20))));
+    }
+    // Every property he owns: the building's gastos comunes and the contribuciones, paid by the owner
+    // whether he lives there or rents it out (a DFL-2 property's contribuciones halved while it lasts).
+    for (const h of housesOwned(month)) {
+      const gcDay = ymd(month, h.key === HOUSES[0]?.key ? 10 : 12);
+      const gc = round(nominal(h.gcClp, gcDay) * r(`gc|${h.key}`).jitter(1, 0.08));
+      if (gcDay <= today) {
+        bankBill("checking", gcDay, h.gcDescription, "bills", gc);
+        placeBills.push({ house: h.key, kind: "gastos_comunes", date: gcDay, clp: gc, description: h.gcDescription });
+      }
+      if (h.contribucionesMonths.includes(mo) && month > h.month) {
+        const day = ymd(month, h.key === HOUSES[0]?.key ? 20 : 21);
+        const halved = h.dfl2 != null && year <= dfl2ContribucionesHalvedThroughYear(h.dfl2.builtM2, h.dfl2.receptionYear);
+        const clp = round(nominal(h.contribucionesClp, day) * (halved ? 0.5 : 1));
+        if (day <= today) {
+          bankBill("checking", day, h.contribucionesDescription, "bills", clp);
+          placeBills.push({ house: h.key, kind: "contribuciones", date: day, clp, description: h.contribucionesDescription, halved });
+        }
+      }
     }
     // Abroad, the Chilean home's utilities stop once it is no longer lived in (two months after the move).
     if (housing.kind !== "parents" && !(US != null && month >= addMonths(US.moveMonth, 2))) {
@@ -1166,44 +1214,63 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       bankBill("checking", ymd(month, 18), "PAGO EN LINEA VTR", "bills", round(nominal(21_000, ymd(month, 18))));
     }
 
-    /* ---------- the house ---------- */
-    if (HOUSE && month === monthOf(HOUSE.dadGift.date) && HOUSE.dadGift.date <= today) {
-      book.bankRow("checking", HOUSE.dadGift.date, `TRANSF. DE ${DAD_NAME}`, HOUSE.dadGift.clp);
-    }
-    if (HOUSE && month === HOUSE.month && HOUSE.pieDate <= today) {
-      const ufPie = market.uf(HOUSE.pieDate);
-      const pieClp = round(HOUSE.pieUf * ufPie);
-      ensureClp(HOUSE.pieDate, pieClp);
-      catByDesc.set("TRANSF A INMOBILIARIA LOS ALAMOS", "deposits");
-      book.bankRow("checking", HOUSE.pieDate, "TRANSF A INMOBILIARIA LOS ALAMOS", -pieClp);
-      const gastos = round(HOUSE.gastosOperacionalesUf * market.uf(HOUSE.gastosDate));
-      ensureClp(HOUSE.gastosDate, gastos);
-      bankBill("checking", HOUSE.gastosDate, "TRANSF NOTARIA Y CBR GASTOS OPERACIONALES", "others", gastos);
-      mortgage = { cuotas: [], pieClp, principalUf: HOUSE.valueUf - HOUSE.pieUf, pieDate: HOUSE.pieDate };
-    }
-    if (mortgage && HOUSE && month > HOUSE.month) {
-      const day = ymd(month, MORTGAGE_CUOTA_DAY);
-      if (day <= today) {
-        const n = mortgage.cuotas.filter((c) => c.n != null).length + 1;
-        const balanceUf = mortgageBalanceUf(mortgage);
-        const s = mortgageCuotaUf(HOUSE, balanceUf, HOUSE.termMonths - (n - 1));
-        const extUf = Math.min(HOUSE.monthlyExtraUf, s.balanceAfterUf);
-        const ufDay = market.uf(day);
-        const clp = round((s.pmtUf + extUf) * ufDay) + MORTGAGE_INCENDIO_CLP + MORTGAGE_DESGRAVAMEN_CLP;
-        mortgage.cuotas.push({ n, label: String(n), date: day, clp, ufDay, ...s, extUf, balanceAfterUf: s.balanceAfterUf - extUf });
-        cardPurchase({ card: "main", date: day, merchant: MORTGAGE_MERCHANT, category: "bills", currency: "clp", amount: clp });
+    /* ---------- the houses ---------- */
+    for (const h of HOUSES) {
+      if (h.dadGift && month === monthOf(h.dadGift.date) && h.dadGift.date <= today) {
+        book.bankRow("checking", h.dadGift.date, `TRANSF. DE ${DAD_NAME}`, h.dadGift.clp);
       }
-      for (const pp of HOUSE.prepayments) {
-        if (monthOf(pp.date) !== month || pp.date > today) continue;
-        const ufDay = market.uf(pp.date);
-        const balanceUf = mortgageBalanceUf(mortgage);
-        const extUf = Math.min(pp.uf, balanceUf);
-        const clp = round(extUf * ufDay);
-        ensureClp(pp.date, clp);
-        catByDesc.set("TRANSF A MUTUARIA ANDES PREPAGO", "deposits");
-        book.bankRow("checking", pp.date, "TRANSF A MUTUARIA ANDES PREPAGO", -clp);
-        const k = mortgage.cuotas.filter((c) => c.n == null).length + 1;
-        mortgage.cuotas.push({ n: null, label: `prepago ${k}`, date: pp.date, clp, ufDay, pmtUf: 0, interestUf: 0, amortUf: 0, extUf, balanceAfterUf: balanceUf - extUf });
+      if (month === h.month && h.pieDate <= today) {
+        const pieClp = round(h.pieUf * market.uf(h.pieDate));
+        ensureClp(h.pieDate, pieClp);
+        catByDesc.set(h.pieDescription, "deposits");
+        book.bankRow("checking", h.pieDate, h.pieDescription, -pieClp);
+        const gastos = round(h.gastosOperacionalesUf * market.uf(h.gastosDate));
+        ensureClp(h.gastosDate, gastos);
+        bankBill("checking", h.gastosDate, "TRANSF NOTARIA Y CBR GASTOS OPERACIONALES", "others", gastos);
+        mortgages.set(h.key, { house: h, cuotas: [], pieClp, principalUf: h.valueUf - h.pieUf, pieDate: h.pieDate });
+      }
+      const mortgage = mortgages.get(h.key);
+      if (mortgage && month > h.month) {
+        const day = ymd(month, MORTGAGE_CUOTA_DAY);
+        if (day <= today) {
+          const n = mortgage.cuotas.filter((c) => c.n != null).length + 1;
+          const balanceUf = mortgageBalanceUf(mortgage);
+          const s = mortgageCuotaUf(h, balanceUf, h.termMonths - (n - 1));
+          const extUf = Math.min(h.monthlyExtraUf, s.balanceAfterUf);
+          const ufDay = market.uf(day);
+          const clp = round((s.pmtUf + extUf) * ufDay) + h.lender.incendioClp + h.lender.desgravamenClp;
+          mortgage.cuotas.push({ n, label: String(n), date: day, clp, ufDay, ...s, extUf, balanceAfterUf: s.balanceAfterUf - extUf });
+          cardPurchase({ card: "main", date: day, merchant: h.lender.merchant, category: "bills", currency: "clp", amount: clp });
+        }
+        for (const pp of h.prepayments) {
+          if (monthOf(pp.date) !== month || pp.date > today) continue;
+          const ufDay = market.uf(pp.date);
+          const balanceUf = mortgageBalanceUf(mortgage);
+          const extUf = Math.min(pp.uf, balanceUf);
+          const clp = round(extUf * ufDay);
+          ensureClp(pp.date, clp);
+          catByDesc.set(h.lender.prepagoDescription, "deposits");
+          book.bankRow("checking", pp.date, h.lender.prepagoDescription, -clp);
+          const k = mortgage.cuotas.filter((c) => c.n == null).length + 1;
+          mortgage.cuotas.push({ n: null, label: `prepago ${k}`, date: pp.date, clp, ufDay, pmtUf: 0, interestUf: 0, amortUf: 0, extUf, balanceAfterUf: balanceUf - extUf });
+        }
+      }
+      // Renting it out: the agency forwards the rent whole and charges its commission the same day;
+      // each lease year starts at the UF of its anniversary, and every later anniversary month is a
+      // vacancy (no rent, no commission).
+      const rental = h.rental;
+      if (rental && month >= rental.from) {
+        const leaseYear = Math.floor(monthsBetween(rental.from, month) / 12);
+        const vacant = leaseYear >= 1 && monthsBetween(rental.from, month) % 12 === 0;
+        const day = firstBusinessDayOnOrAfter(ymd(month, rental.creditDay));
+        if (!vacant && day <= today) {
+          const anniversary = addMonths(rental.from, leaseYear * 12);
+          const rent = round((rental.rentClp * market.uf(ymd(anniversary, 1))) / market.uf(ymd(rental.from, 1)) / 1000) * 1000;
+          const description = `TRANSF. DE ${rental.agency}`;
+          book.bankRow("checking", day, description, rent);
+          rents.push({ house: h.key, date: day, clp: rent, description });
+          bankBill("checking", day, `PAGO COMISION ADMINISTRACION ${rental.agency}`, "bills", round(rent * rental.feeRate));
+        }
       }
     }
 
@@ -1299,69 +1366,16 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
 
     /* ---------- card closes and payments ---------- */
     for (const card of activeCards(month)) {
-      const st = cards.get(card.key)!;
-      const close = cardClose(card, month);
-      // Pay last month's statement first (its pay-by falls in this month, before this close).
-      const prev = statements.filter((s) => s.card === card.key && monthOf(s.close) === addMonths(month, -1));
-      for (const s of prev) {
-        if (s.facturado <= 0) continue;
-        const payDay = businessDayOnOrBefore(addDays(s.payBy, -2));
-        if (payDay > today) continue;
-        if (s.currency === "clp") {
-          ensureClp(payDay, s.facturado);
-          book.bankRow("checking", payDay, `PAGO TARJETA CREDITO ${card.last4}`, -s.facturado);
-          st.paid.clp = { amount: s.facturado, date: payDay };
-        } else if (book.lowestFrom("checkingUsd", payDay) >= s.facturado + 1) {
-          // A dollar account pays the dollar debt directly.
-          book.transfer({ from: "checkingUsd", to: `card:${card.key}`, date: payDay, usd: s.facturado, flowKind: "pago_tarjeta", note: `Pago tarjeta ${card.last4} USD` });
-          st.paid.usd = { amount: s.facturado, date: payDay, viaDivisas: false };
-        } else {
-          // Dollars bought for the purpose: «Compra de divisas» out of the peso account.
-          const clp = round(s.facturado * market.fx(payDay) * 1.018);
-          ensureClp(payDay, clp);
-          book.bankRow("checking", payDay, "EGRESO POR COMPRA DE DIVISAS", -clp);
-          st.paid.usd = { amount: s.facturado, date: payDay, viaDivisas: true };
-        }
-      }
-      if (close > today) continue;
-      const periodFrom = cardClose(card, addMonths(month, -1));
-      const lines = st.pendingByClose.get(close) ?? [];
-      st.pendingByClose.delete(close);
-      const cuotas = plans
-        .filter((p) => p.card === card.key && p.firstClose <= close)
-        .map((p) => ({ plan: p, n: monthsBetween(monthOf(p.firstClose), month) + 1 }))
-        .filter((x) => x.n >= 1 && x.n <= x.plan.cuotas);
-      for (const currency of ["clp", "usd"] as const) {
-        const ls = lines.filter((l) => l.currency === currency);
-        const cs = currency === "clp" ? cuotas : [];
-        const facturado =
-          currency === "clp"
-            ? ls.reduce((a, l) => a + l.amount, 0) + cs.reduce((a, c) => a + c.plan.cuotaClp, 0)
-            : cents(ls.reduce((a, l) => a + l.amount, 0));
-        if (ls.length === 0 && cs.length === 0 && st.prevFacturado[currency] === 0) continue;
-        const paid = st.paid[currency];
-        statements.push({
-          card: card.key,
-          currency,
-          close,
-          periodFrom,
-          payBy: cardPayBy(card, close),
-          nextClose: cardClose(card, addMonths(month, 1)),
-          lines: ls,
-          cuotas: cs,
-          saldoAnterior: st.prevFacturado[currency],
-          paidPrevious: paid?.amount ?? 0,
-          paidPreviousDate: paid?.date ?? null,
-          paidPreviousViaDivisas: paid != null && "viaDivisas" in paid ? paid.viaDivisas : false,
-          facturado,
-        });
-        st.prevFacturado[currency] = facturado;
-        st.paid[currency] = null;
-      }
+      payPreviousStatements(card, month);
+      closeCycle(card, month);
     }
 
     /* ---------- the US chapter (after the month's Chilean card payments: the wire covers them) ---------- */
+    // The US card's autopay runs before the month's US spending; its close after it (the spending
+    // dated before the close is on the statement).
+    if (usCard && usCardOpen(month)) payPreviousStatements(usCard, month);
     if (US) runUsMonth(month, r);
+    if (usCard && usCardOpen(month)) closeCycle(usCard, month);
 
     /* ---------- contractor dollars → pesos ---------- */
     if (book.bal.checkingUsd > 0) {
@@ -1453,7 +1467,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     // Known cash outflows of the next six months (a car paid in cash, the December APV) stay put.
     const reserved = upcomingCashNeeds(month);
     if (brokerDay <= today) {
-      const holdForHouse = HOUSE != null && month >= HOUSE.holdFromMonth && month <= HOUSE.month;
+      const holdForHouse = HOUSES.some((h) => month >= h.holdFromMonth && month <= h.month);
       // Dividends (quarterly): the Chilean broker withholds the 15 % US tax (W-8BEN), the US one
       // nothing (W-9).
       if (mo % 3 === 0) {
@@ -1544,12 +1558,34 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         }
         buyStock(p.date, p.ticker, p.usd);
       }
-      // The house: the sale's dollars come home to pay the pie.
-      if (HOUSE && month === monthOf(HOUSE.saleTransferDate)) {
-        const day = HOUSE.saleTransferDate;
-        const usd = Math.floor(brokerFree(day) - 50);
+      // A house's pie: the broker's dollars come home (pesos the next day).
+      for (const h of HOUSES) {
+        const f = h.brokerFunding;
+        if (month !== monthOf(f.date) || f.date > today) continue;
+        const day = f.date;
+        let usd: number;
+        if (f.mode === "free") {
+          usd = Math.floor(brokerFree(day) - 50);
+        } else {
+          // What checking lacks for the pie, the purchase costs, a cushion and the next months' known needs.
+          const fx = market.fx(day);
+          const needClp =
+            h.pieUf * market.uf(h.pieDate) +
+            h.gastosOperacionalesUf * market.uf(h.gastosDate) +
+            Math.max(2_000_000, 2.5 * trailingExpense()) +
+            upcomingCashNeeds(month) -
+            Math.max(0, book.lowestFrom("checking", day));
+          usd = Math.ceil(needClp / (fx * 0.99) / 100) * 100;
+          if (usd <= 0) continue;
+          const lack = usd - brokerFree(day);
+          if (lack > 0) {
+            const spy = heldUnits("SPY", "brokerUsd") * heldClose("SPY", day);
+            if (spy < lack + 20) throw new Error(`demo: the ${h.key} pie needs US$${Math.round(lack)} of SPY, the broker holds US$${Math.round(spy)}`);
+            sellStock(day, "SPY", (lack + 20) / spy);
+          }
+        }
         book.transfer({ from: "brokerUsd", to: "checkingUsd", date: day, usd, flowKind: null, note: "Broker|retiro a cuenta USD" });
-        sellUsd(addDays(day, 1), usdFree(addDays(day, 1)) - 500);
+        sellUsd(addDays(day, 1), usdFree(addDays(day, 1)) - (f.mode === "free" ? 500 : 0));
       }
       // DCA + Bitcoin.
       const cashNow = totalCashClp(brokerDay);
@@ -1659,7 +1695,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     usW2s: usW2sFromStubs(usPayslips),
     usBank: book.usBank,
     usCheckingBalanceUsd: book.bal.usChecking,
-    mortgage,
+    mortgages: [...mortgages.values()],
+    rents,
+    placeBills,
     afcContributions,
     months,
     categoryByCheckingDescription: catByDesc,
@@ -1673,10 +1711,110 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
 
   /* ------------------------------ closures ------------------------------ */
   /**
+   * Pays last month's statements of `card` (their pay-by falls in this month, before this close):
+   * pesos from checking; dollars from the dollar account when it holds them, else bought from the
+   * peso account; the US card by autopay from US checking on its due date.
+   */
+  function payPreviousStatements(card: CardDef, month: Month): void {
+    const st = cards.get(card.key)!;
+    const prev = statements.filter((s) => s.card === card.key && monthOf(s.close) === addMonths(month, -1));
+    for (const s of prev) {
+      if (s.facturado <= 0) continue;
+      if (card.issuer === "lonestar") {
+        let payDay = s.payBy;
+        while (!isNyseTradingDay(payDay)) payDay = addDays(payDay, -1);
+        if (payDay > today) continue;
+        book.transfer({ from: "usChecking", to: `card:${card.key}`, date: payDay, usd: s.facturado, flowKind: "pago_tarjeta", note: `Autopay ${card.displayName}` });
+        st.paid.usd = { amount: s.facturado, date: payDay, viaDivisas: false };
+        continue;
+      }
+      const payDay = businessDayOnOrBefore(addDays(s.payBy, -2));
+      if (payDay > today) continue;
+      if (s.currency === "clp") {
+        ensureClp(payDay, s.facturado);
+        book.bankRow("checking", payDay, `PAGO TARJETA CREDITO ${card.last4}`, -s.facturado);
+        st.paid.clp = { amount: s.facturado, date: payDay };
+      } else if (book.lowestFrom("checkingUsd", payDay) >= s.facturado + 1) {
+        // A dollar account pays the dollar debt directly.
+        book.transfer({ from: "checkingUsd", to: `card:${card.key}`, date: payDay, usd: s.facturado, flowKind: "pago_tarjeta", note: `Pago tarjeta ${card.last4} USD` });
+        st.paid.usd = { amount: s.facturado, date: payDay, viaDivisas: false };
+      } else {
+        // Dollars bought for the purpose: «Compra de divisas» out of the peso account.
+        const clp = round(s.facturado * market.fx(payDay) * 1.018);
+        ensureClp(payDay, clp);
+        book.bankRow("checking", payDay, "EGRESO POR COMPRA DE DIVISAS", -clp);
+        st.paid.usd = { amount: s.facturado, date: payDay, viaDivisas: true };
+      }
+    }
+  }
+  /** Closes `card`'s cycle of `month`: one statement per currency it carries (the US card: dollars). */
+  function closeCycle(card: CardDef, month: Month): void {
+    const st = cards.get(card.key)!;
+    const close = cardClose(card, month);
+    if (close > today) return;
+    // The US card's yearly fee, billed in the cycle of the month it opened.
+    if (card.annualFeeUsd && month > card.from && Number(month.slice(5, 7)) === Number(card.from.slice(5, 7))) {
+      const day = addDays(close, -1);
+      catByMerchant.set(US_CARD_ANNUAL_FEE, "bills");
+      const list = st.pendingByClose.get(close) ?? [];
+      list.push({ card: card.key, date: day, merchant: US_CARD_ANNUAL_FEE, category: "bills", currency: "usd", amount: card.annualFeeUsd, fee: true });
+      st.pendingByClose.set(close, list);
+      usExpenseByMonth.set(month, cents((usExpenseByMonth.get(month) ?? 0) + card.annualFeeUsd));
+    }
+    const periodFrom = cardClose(card, addMonths(month, -1));
+    const lines = st.pendingByClose.get(close) ?? [];
+    st.pendingByClose.delete(close);
+    const cuotas = plans
+      .filter((p) => p.card === card.key && p.firstClose <= close)
+      .map((p) => ({ plan: p, n: monthsBetween(monthOf(p.firstClose), month) + 1 }))
+      .filter((x) => x.n >= 1 && x.n <= x.plan.cuotas);
+    for (const currency of ["clp", "usd"] as const) {
+      const ls = lines.filter((l) => l.currency === currency);
+      const cs = currency === "clp" ? cuotas : [];
+      if (card.issuer === "lonestar" && currency === "clp") {
+        if (ls.length + cs.length > 0) throw new Error(`demo: peso lines on the US card ${card.last4}`);
+        continue;
+      }
+      const facturado =
+        currency === "clp"
+          ? ls.reduce((a, l) => a + l.amount, 0) + cs.reduce((a, c) => a + c.plan.cuotaClp, 0)
+          : cents(ls.reduce((a, l) => a + l.amount, 0));
+      if (ls.length === 0 && cs.length === 0 && st.prevFacturado[currency] === 0) continue;
+      const paid = st.paid[currency];
+      statements.push({
+        card: card.key,
+        currency,
+        close,
+        periodFrom,
+        payBy: cardPayBy(card, close),
+        nextClose: cardClose(card, addMonths(month, 1)),
+        lines: ls,
+        cuotas: cs,
+        saldoAnterior: st.prevFacturado[currency],
+        paidPrevious: paid?.amount ?? 0,
+        paidPreviousDate: paid?.date ?? null,
+        paidPreviousViaDivisas: paid != null && "viaDivisas" in paid ? paid.viaDivisas : false,
+        facturado,
+      });
+      st.prevFacturado[currency] = facturado;
+      st.paid[currency] = null;
+    }
+  }
+  /**
+   * What the US card will take from US checking that the book does not hold yet: the purchases not
+   * billed (inside the month's US chapter the cycle closing this month is still open, and last
+   * month's statement is already paid).
+   */
+  function usCardOwedUsd(month: Month): number {
+    if (!usCard || !usCardOpen(month)) return 0;
+    return cents([...cards.get(usCard.key)!.pendingByClose.values()].flat().reduce((a, l) => a + l.amount, 0));
+  }
+
+  /**
    * One month of the US chapter. Before the move only the seed (dollars the Chilean broker sends
    * to the new US account); from the move: the biweekly pay (its stubs, the net credited to US
    * checking, the 401(k) and HSA contributions bought on the pay date), the rent, the dollar
-   * lifestyle (debit), the car, the Roth IRA, a December flight home, the monthly wire to Chile
+   * lifestyle (debit, then the US card), the car, the Roth IRA, a December flight home, the monthly wire to Chile
    * that keeps the Chilean accounts funded, and the US cash above its band to the US broker.
    */
   function runUsMonth(month: Month, r: (label: string) => Rng): void {
@@ -1702,6 +1840,15 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       catByUsDesc.set(desc, category);
       book.usBankRow(day, desc, -usd);
       if (!oneOff) usExpenseByMonth.set(month, cents((usExpenseByMonth.get(month) ?? 0) + usd));
+    };
+    /** A purchase: on the US card once it is open (the debit card before), a one-off kept out of the band's average. */
+    const usSpend = (day: Ymd, desc: string, category: string, usd: number, oneOff = false) => {
+      if (!usCard || !usCardOpen(month)) return usBill(day, desc, category, usd, oneOff);
+      if (day > today) return;
+      usd = cents(usd);
+      if (usd <= 0) return;
+      cardPurchase({ card: usCard.key, date: day, merchant: desc, category, currency: "usd", amount: usd });
+      if (oneOff) usExpenseByMonth.set(month, cents((usExpenseByMonth.get(month) ?? 0) - usd));
     };
     const usBusinessDayOnOrAfter = (d: Ymd) => {
       let x = d;
@@ -1740,7 +1887,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     usBill(ymd(month, 14), "TEXAS GAS SERVICE", "bills", grown(28 * (winter ? 1.9 : 1), ymd(month, 14)) * rr.jitter(1, 0.15));
     usBill(ymd(month, 16), "GOOGLE FIBER", "bills", 70);
     usBill(ymd(month, 18), "T-MOBILE AUTOPAY", "bills", 65);
-    usBill(ymd(month, 3), "LIFETIME FITNESS", "hobbies", grown(89, ymd(month, 3)));
+    usSpend(ymd(month, 3), "LIFETIME FITNESS", "hobbies", grown(89, ymd(month, 3)));
     for (const [desc, usd, day] of [
       ["NETFLIX.COM", 15.49, 6],
       ["SPOTIFY USA", 11.99, 9],
@@ -1749,14 +1896,14 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       ["GITHUB, INC.", 4, 15],
       ["NOTION LABS", 8, 17],
     ] as const) {
-      usBill(ymd(month, day), desc, "subscriptions", usd);
+      usSpend(ymd(month, day), desc, "subscriptions", usd);
     }
 
     /* the car */
     if (us.car) {
       if (month === monthOf(us.car.date)) usBill(us.car.date, us.car.merchant, "transportation", us.car.usd, true);
-      if (month > monthOf(us.car.date)) usBill(ymd(month, 8), "GEICO AUTO INSURANCE", "transportation", grown(132, ymd(month, 8)));
-      if (month > monthOf(us.car.date) && mo === Number(us.car.date.slice(5, 7))) usBill(ymd(month, 20), "TX DMV REGISTRATION", "transportation", 78.25);
+      if (month > monthOf(us.car.date)) usSpend(ymd(month, 8), "GEICO AUTO INSURANCE", "transportation", grown(132, ymd(month, 8)));
+      if (month > monthOf(us.car.date) && mo === Number(us.car.date.slice(5, 7))) usSpend(ymd(month, 20), "TX DMV REGISTRATION", "transportation", 78.25);
     }
 
     /* variable spending (debit card): the month's budget at the average ticket */
@@ -1769,10 +1916,10 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const count = Math.floor((budget * w * (mo === 12 && (cat === "others" || cat === "clothes") ? 1.8 : 1)) / mean + rr.next());
       for (let k = 0; k < count; k++) {
         const m = rr.pick(pool);
-        usBill(ymd(month, rr.int(1, daysInMonth(month))), m.name, cat, Math.max(3, grown(m.ticket, ymd(month, 15)) * rr.jitter(1, 0.45)));
+        usSpend(ymd(month, rr.int(1, daysInMonth(month))), m.name, cat, Math.max(3, grown(m.ticket, ymd(month, 15)) * rr.jitter(1, 0.45)));
       }
     }
-    if (mo === 12) usBill(ymd(month, 5), "UNITED AIRLINES", "fun", grown(us.decemberTripUsd, ymd(month, 5)), true);
+    if (mo === 12) usSpend(ymd(month, 5), "UNITED AIRLINES", "fun", grown(us.decemberTripUsd, ymd(month, 5)), true);
 
     /* the Roth IRA: the year's contribution, bought straight into SPY */
     if (us.roth && mo === us.roth.month && year >= us.roth.fromYear) {
@@ -1794,7 +1941,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         const haveClp = Math.max(0, book.lowestFrom("checking", day)) + Math.max(0, book.lowestFrom("checkingUsd", day)) * fx;
         const wanted = Math.ceil((needClp - haveClp) / fx / 100) * 100;
         // Chile comes first: the US reserve for known needs (the car) only holds back the broker sweep.
-        const spare = book.lowestFrom("usChecking", day) - us.cashBand.low * usTrailingExpense() - us.wireFeeUsd;
+        const spare = book.lowestFrom("usChecking", day) - usCardOwedUsd(month) - us.cashBand.low * usTrailingExpense() - us.wireFeeUsd;
         const usd = Math.min(wanted, Math.floor(spare / 100) * 100);
         if (process.env.DEMO_V2_TRACE) console.log(`wire ${day} need=${Math.round(needClp)} have=${Math.round(haveClp)} wanted=${wanted} spare=${Math.round(spare)} usExp=${Math.round(usTrailingExpense())}`);
         if (usd >= 500) {
@@ -1810,7 +1957,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const day = lastBusinessDay(month);
     if (ibkrOpen(month) && day <= today) {
       const monthly = usTrailingExpense();
-      const free = book.lowestFrom("usChecking", day) - usUpcomingNeeds(month);
+      const free = book.lowestFrom("usChecking", day) - usCardOwedUsd(month) - usUpcomingNeeds(month);
       if (free > us.cashBand.high * monthly) {
         const usd = Math.floor((free - us.cashBand.target * monthly) / 100) * 100;
         if (usd >= 100) book.transfer({ from: "usChecking", to: "ibkrUsd", date: day, usd, flowKind: null, note: "IBKR|depósito USD (ACH)" });
@@ -1844,7 +1991,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const m = addMonths(month, k);
       const y = Number(m.slice(0, 4));
       if (m.endsWith("-12") && y >= APV.from) need += APV.utm * market.utm(month);
-      if (HOUSE) for (const pp of HOUSE.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1)) * 1.02;
+      for (const h of HOUSES) for (const pp of h.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1)) * 1.02;
       for (const p of PLAYS) if (p.kind === "buy_clp" && monthOf(p.date) === m) need += p.clp + 200_000;
       if (m.endsWith("-04") && (taxYears.has(y - 1) || settlementOverrides.has(y - 1))) {
         need += Math.max(0, settlementOverrides.get(y - 1) ?? annualTax(y - 1).result);
@@ -1880,7 +2027,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       for (const c of CARS) if (c.from === m) need += c.priceClp - c.tradeInClp - (c.id === "car1" ? 2_500_000 : 0);
       if (m.endsWith("-12") && Number(m.slice(0, 4)) >= APV.from && !apvMonthlyIn(m)) need += APV.utm * market.utm(month);
       if (apvMonthlyIn(m)) need += APV.monthly!.uf * market.uf(ymd(month, 1));
-      if (HOUSE) for (const pp of HOUSE.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1));
+      for (const h of HOUSES) for (const pp of h.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1));
       if (includePlays && k <= 3) for (const p of PLAYS) if (p.kind === "buy" && monthOf(p.date) === m) need += p.usd * market.fx(ymd(month, 1));
       // Moving in: the deposit (garantía) and the first rent.
       for (const h of HOUSING) if (h.kind === "rent" && h.from === m) need += 2.2 * h.rentClp;
@@ -2006,9 +2153,9 @@ export function mortgageCuotaUf(house: House, balanceUf: number, monthsLeft: num
 }
 
 /** The UF balance after the last cuota or prepago. */
-export function mortgageBalanceUf(m: NonNullable<Ledger["mortgage"]>, through?: Ymd): number {
+export function mortgageBalanceUf(m: Mortgage, through?: Ymd): number {
   let bal = m.principalUf;
   for (const c of m.cuotas) if (through == null || c.date <= through) bal = c.balanceAfterUf;
   return bal;
 }
-export { MORTGAGE_INCENDIO_CLP, MORTGAGE_DESGRAVAMEN_CLP, BRANCH };
+export { BRANCH };

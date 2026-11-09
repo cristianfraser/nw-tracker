@@ -170,7 +170,7 @@ const US_JOBS: UsW2Job[] = [
 
 /**
  * Life in the US (Austin, Texas), in dollars: the US checking account the salary lands in, the
- * rent, a car bought in cash, the dollar lifestyle (all debit), a Roth IRA in SPY, and what goes
+ * rent, a car bought in cash, the dollar lifestyle (debit, then the US card once it opens: the rent, the utilities and the wires stay debits), a Roth IRA in SPY, and what goes
  * home to Chile every month.
  */
 export type UsLife = {
@@ -211,20 +211,52 @@ const US_LIFE: UsLife = {
 /** Dad's monthly allowance while studying (to the cuenta vista). */
 const ALLOWANCE = { from: "2016-02" as Month, to: "2019-03" as Month, clp: 250_000 };
 
-/** Where he lives: parents, a first apartment (from the second job), an expensive one, his own. */
+/** Where he lives: parents, a first apartment (from the second job), an expensive one, his own (`house` = its key). */
 export type Housing =
   | { kind: "parents"; from: Month; to: Month; aporteClp: number }
   | { kind: "rent"; id: string; from: Month; to: Month; rentClp: number; gcClp: number; landlord: string }
-  | { kind: "own"; from: Month };
+  | { kind: "own"; from: Month; house: string };
 
 const HOUSING: Housing[] = [
   { kind: "parents", from: "2016-02", to: "2020-07", aporteClp: 80_000 },
   { kind: "rent", id: "apt1", from: "2020-08", to: "2023-01", rentClp: 550_000, gcClp: 75_000, landlord: "MARIA GONZALEZ" },
   { kind: "rent", id: "apt2", from: "2023-02", to: "2024-02", rentClp: 820_000, gcClp: 130_000, landlord: "INMOBILIARIA VISTA ALTA" },
-  { kind: "own", from: "2024-03" },
+  { kind: "own", from: "2024-03", house: "vitacura" },
 ];
 
+/** A mortgage lender as the card statement prints the cuota it charges (fictional names). */
+export type Lender = {
+  /** The card line of every cuota. */
+  merchant: string;
+  /** Its `lender_pattern` role: the words the app recognizes the lender by. */
+  pattern: string;
+  /** What checking prints on a prepago by transfer. */
+  prepagoDescription: string;
+  /** The insurance the cuota carries every month (pesos). */
+  incendioClp: number;
+  desgravamenClp: number;
+};
+
+/**
+ * Renting a property out through an agency: the agency collects the tenant's rent and forwards it
+ * whole on `creditDay`, then charges its commission (`feeRate` of the rent) the same day. The rent
+ * is re-indexed by the UF at each lease anniversary, and the anniversary month of every later year
+ * is a vacancy (the tenant changes: no rent, no commission).
+ */
+export type RentalPlan = {
+  /** The first month a rent is credited. */
+  from: Month;
+  /** The rent at `from` (nominal pesos). */
+  rentClp: number;
+  creditDay: number;
+  agency: string;
+  feeRate: number;
+};
+
 export type House = {
+  /** The property's key (`propertyAccountImportKey`, the real-estate place's slug). */
+  key: string;
+  label: string;
   month: Month;
   valueUf: number;
   pieUf: number;
@@ -238,18 +270,76 @@ export type House = {
   gcClp: number;
   contribucionesMonths: number[];
   contribucionesClp: number;
-  dadGift: { date: Ymd; clp: number };
+  /** What checking prints on the building's gastos comunes and the property's contribuciones. */
+  gcDescription: string;
+  contribucionesDescription: string;
+  /** What checking prints on the pie (the seller). */
+  pieDescription: string;
+  dadGift: { date: Ymd; clp: number } | null;
   pieDate: Ymd;
   gastosDate: Ymd;
   monthlyAppreciation: number;
   /** From this month investing pauses: the cash is the pie. */
   holdFromMonth: Month;
-  /** The broker sale's dollars come home to the dollar account on this day (pesos the next). */
-  saleTransferDate: Ymd;
+  /**
+   * The broker pays its part: on `date` dollars come home to the dollar account (pesos the next
+   * day) — `free`: every free dollar at the broker (a sale planned in `PLAYS`); `shortfall`: SPY sold
+   * for what checking lacks for the pie, the costs and the months' known needs.
+   */
+  brokerFunding: { date: Ymd; mode: "free" | "shortfall" };
+  lender: Lender;
+  rental: RentalPlan | null;
+  /** A «vivienda económica» (DFL N° 2): its rent exempt, its contribuciones halved for years. */
+  dfl2: { builtM2: number; receptionYear: number } | null;
 };
 
-/** His own apartment: dad's gift + an NVDA (and some SPY) sale pay the pie. */
-const HOUSE: House = {
+/** The agency both rentals go through (fictional). */
+const AGENCY = "PROPIEDADES ANDINAS LTDA";
+
+/**
+ * A first rental, bought as an investment while living with his parents: a ~55 m² DFL-2 apartment
+ * in Santiago Centro, 20 % pie from the first job's savings (the SPY he had bought them into is
+ * sold for the rest), a 25-year mortgage, rented through an agency from the first month.
+ */
+const CENTRO: House = {
+  key: "centro",
+  label: "Centro",
+  month: "2020-03",
+  valueUf: 1_800,
+  pieUf: 360,
+  gastosOperacionalesUf: 45,
+  termMonths: 300,
+  /** ≈ 2,5 %/yr. */
+  monthlyRate: 0.00206,
+  monthlyExtraUf: 0,
+  prepayments: [],
+  gcClp: 32_000,
+  contribucionesMonths: [4, 6, 9, 11],
+  contribucionesClp: 16_000,
+  gcDescription: "PAGO GASTOS COMUNES EDIFICIO SAN DIEGO",
+  contribucionesDescription: "TGR CONTRIBUCIONES ROL 00521-044",
+  pieDescription: "TRANSF A INMOBILIARIA SAN DIEGO",
+  dadGift: null,
+  pieDate: "2020-03-05",
+  gastosDate: "2020-03-09",
+  monthlyAppreciation: 0.0009,
+  holdFromMonth: "2019-05",
+  brokerFunding: { date: "2020-02-19", mode: "shortfall" },
+  lender: {
+    merchant: "HIPOTECARIA PACIFICO DIVIDENDO",
+    pattern: "HIPOTECARIA PACIFICO",
+    prepagoDescription: "TRANSF A HIPOTECARIA PACIFICO PREPAGO",
+    incendioClp: 6_000,
+    desgravamenClp: 2_100,
+  },
+  rental: { from: "2020-04", rentClp: 380_000, creditDay: 6, agency: AGENCY, feeRate: 0.07 },
+  dfl2: { builtM2: 55, receptionYear: 2016 },
+};
+
+/** His own apartment: dad's gift + an NVDA (and some SPY) sale pay the pie; rented out once he lives in the US. */
+const VITACURA: House = {
+  key: "vitacura",
+  label: "Vitacura",
   month: "2024-03",
   valueUf: 5_500,
   pieUf: 1_100,
@@ -267,19 +357,32 @@ const HOUSE: House = {
   /** Contribuciones paid in these months (real CLP). */
   contribucionesMonths: [4, 6, 9, 11],
   contribucionesClp: 70_000,
+  gcDescription: "PAGO GASTOS COMUNES EDIFICIO LOS ALAMOS",
+  contribucionesDescription: "TGR CONTRIBUCIONES ROL 03177-210",
+  pieDescription: "TRANSF A INMOBILIARIA LOS ALAMOS",
   dadGift: { date: "2024-02-26", clp: 25_000_000 },
   pieDate: "2024-03-06",
   gastosDate: "2024-03-08",
   /** Property value growth per month (UF terms). */
   monthlyAppreciation: 0.0012,
   holdFromMonth: "2023-11",
-  saleTransferDate: "2024-02-19",
+  brokerFunding: { date: "2024-02-19", mode: "free" },
+  lender: {
+    merchant: "MUTUARIA ANDES HIPOTECARIO",
+    pattern: "MUTUARIA",
+    prepagoDescription: "TRANSF A MUTUARIA ANDES PREPAGO",
+    incendioClp: 18_000,
+    desgravamenClp: 4_500,
+  },
+  rental: { from: "2024-06", rentClp: 1_150_000, creditDay: 8, agency: AGENCY, feeRate: 0.07 },
+  dfl2: null,
 };
 
 export type Car = { id: string; from: Month; to: Month | null; priceClp: number; tradeInClp: number; permisoClp: number; insuranceClp: number };
 
 const CARS: Car[] = [
-  { id: "car1", from: "2019-03", to: "2022-12", priceClp: 6_500_000, tradeInClp: 0, permisoClp: 140_000, insuranceClp: 0 },
+  // Bought once the first rental is paid for, with the second job.
+  { id: "car1", from: "2020-11", to: "2022-12", priceClp: 6_500_000, tradeInClp: 0, permisoClp: 140_000, insuranceClp: 0 },
   // Left with his parents when he moves to the US (no sale: no money changes hands).
   { id: "car2", from: "2023-01", to: "2024-03", priceClp: 17_000_000, tradeInClp: 4_200_000, permisoClp: 360_000, insuranceClp: 38_000 },
 ];
@@ -323,12 +426,24 @@ const ONE_OFFS: OneOff[] = [
   { month: "2026-01", day: 21, label: "MARRIOTT NEW YORK", category: "fun", clp: null, usd: 3_400, card: "second" },
 ];
 
-/** The cards: a main card with the first contract, a second one with the first dollar job. */
-export type CardDef = { key: "main" | "second"; issuer: "santander" | "bci"; last4: string; displayName: string; from: Month; closeDay: number };
+/**
+ * The cards: a main card with the first contract, a second one with the first dollar job, and a US
+ * card a few months after the move (dollars only, its yearly fee billed in the month it opened).
+ */
+export type CardDef = {
+  key: "main" | "second" | "us";
+  issuer: "santander" | "bci" | "lonestar";
+  last4: string;
+  displayName: string;
+  from: Month;
+  closeDay: number;
+  annualFeeUsd?: number;
+};
 
 const CARDS: CardDef[] = [
   { key: "main", issuer: "santander", last4: "4417", displayName: "Visa Platinum 4417", from: "2018-05", closeDay: 22 },
   { key: "second", issuer: "bci", last4: "8823", displayName: "Mastercard Black 8823", from: "2022-11", closeDay: 25 },
+  { key: "us", issuer: "lonestar", last4: "7316", displayName: "Lonestar Rewards 7316", from: "2024-07", closeDay: 15, annualFeeUsd: 95 },
 ];
 
 /**
@@ -422,7 +537,7 @@ export type ApvPlan = {
   depositDay: number;
   monthly: { from: Month; to: Month; uf: number } | null;
 };
-const APV: ApvPlan = { from: 2019, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18, monthly: { from: "2022-10", to: "2024-03", uf: 30 } };
+const APV: ApvPlan = { from: 2020, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18, monthly: { from: "2022-10", to: "2024-03", uf: 30 } };
 
 export type Person = {
   /** Seeds every random stream. */
@@ -445,7 +560,8 @@ export type Person = {
   /** The US chapter (null: he never moves). */
   us: UsLife | null;
   housing: Housing[];
-  house: House | null;
+  /** The properties he buys, in purchase order (each with its mortgage). */
+  houses: House[];
   cars: Car[];
   oneOffs: OneOff[];
   cards: CardDef[];
@@ -489,7 +605,7 @@ export const DEMO_PERSON: Person = {
   usJobs: US_JOBS,
   us: US_LIFE,
   housing: HOUSING,
-  house: HOUSE,
+  houses: [CENTRO, VITACURA],
   cars: CARS,
   oneOffs: ONE_OFFS,
   cards: CARDS,
@@ -554,7 +670,7 @@ export function testPerson(today: Ymd): Person {
     usJobs: [],
     us: null,
     housing: [{ kind: "rent", id: "testapt", from: first, to: "9999-12", rentClp: 600_000, gcClp: 90_000, landlord: "ARRENDADOR PRUEBA" }],
-    house: null,
+    houses: [],
     cars: [],
     oneOffs: [
       { month: back(14), day: 9, label: "MAC STORE PRUEBA", category: "others", clp: 1_200_000, cuotas: 6 },

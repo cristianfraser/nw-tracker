@@ -5,7 +5,9 @@ import { db } from "./db.js";
 import { runExpenseConsumptionBackfill161 } from "./legacyNoteBackfills.js";
 import {
   assignPurchaseToRealEstateExpense,
+  assignPurchasesToRealEstateExpenses,
   deleteRealEstateExpenseEntry,
+  loadGastosLinesForRealEstateMatching,
   updateRealEstateExpenseBillMonth,
   updateRealEstateExpenseConsumption,
 } from "./realEstateExpenseMatching.js";
@@ -243,5 +245,39 @@ describe("listRealEstateUnlinkedPurchases", () => {
         }
       }
     }
+  });
+});
+
+describe("assignPurchasesToRealEstateExpenses", () => {
+  it("writes one bill per purchase, each from its purchase, all or none", () => {
+    const accountId = ensureFixtureExpenseAccount();
+    const linked = new Set((db.prepare(`SELECT purchase_key FROM ${BILL_LINKS_SQL}`).all() as { purchase_key: string }[]).map((r) => r.purchase_key));
+    const [a, b] = loadGastosLinesForRealEstateMatching().filter((l) => !linked.has(l.purchase_key));
+    expect(a && b).toBeTruthy();
+    const count = () => (db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ?`).get(accountId) as { n: number }).n;
+    const before = count();
+
+    // A purchase named twice is refused, and nothing of the batch is written.
+    expect(() =>
+      assignPurchasesToRealEstateExpenses([
+        { purchaseKey: a!.purchase_key, accountSlug: FIXTURE_ACCOUNT_SLUG, kind: "gas" },
+        { purchaseKey: a!.purchase_key, accountSlug: FIXTURE_ACCOUNT_SLUG, kind: "gas" },
+      ])
+    ).toThrow(/already linked/);
+    expect(count()).toBe(before);
+
+    const out = assignPurchasesToRealEstateExpenses([
+      { purchaseKey: a!.purchase_key, accountSlug: FIXTURE_ACCOUNT_SLUG, kind: "gas" },
+      { purchaseKey: b!.purchase_key, accountSlug: FIXTURE_ACCOUNT_SLUG, kind: "gastos_comunes" },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(count()).toBe(before + 2);
+    for (const [i, line] of [a!, b!].entries()) {
+      const row = db.prepare(`SELECT amount_clp, category FROM expense_entries WHERE id = ?`).get(out[i]!.expense_entry_id) as { amount_clp: number; category: string };
+      expect(row.amount_clp).toBe(line.amount_clp);
+      expect(row.category).toBe(i === 0 ? "gas" : "gastos_comunes");
+      expect(billLinkPurchaseKey(out[i]!.expense_entry_id)).toBe(line.purchase_key);
+    }
+    for (const r of out) deleteRealEstateExpenseEntry(r.expense_entry_id);
   });
 });

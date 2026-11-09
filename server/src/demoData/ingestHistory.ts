@@ -310,7 +310,7 @@ export function writeIngestHistory(ledger: Ledger, ids: Map<Acct, number>, perso
   const firstDay = chileCalendarAddDays(today, -days);
   const arrivals = mailArrivals(ledger, person, firstDay, lastNight);
   const payslipNights = new Set(ledger.payslips.map((p) => p.payDate));
-  const hasMortgage = ledger.mortgage != null;
+  const hasMortgage = ledger.mortgages.length > 0;
 
   const seenSlots = new Set<number>();
   db.transaction(() => {
