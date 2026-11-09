@@ -498,3 +498,55 @@ US$28.302 (no US chapter; 7 s). Not merged to `main`. AGENTS.md gained the wave'
   reconciliation of IBKR deposits from US checking are untested or refused; the DAP account has no
   import-key builder and IBKR's `broker_cash` role is written as data; `.pretax` files the generator
   leaves beside a DB are not covered by `server/data/*.db` in `.gitignore`.
+
+### Wave 3 status (2026-11-09): merged into the integration branch, green
+
+Two streams landed on top of wave 2 — `us-1040` (a8b54791) and `us-rentals-gen` (1628e704) — no merge
+conflicts. On the merged tree: `npm run typecheck` ok (conventions + check-deps ok), server
+488 files / 3243 tests on a fresh test DB, client 474, contracts 126, ingest 481; both people generate on
+the synthetic market with the invariants passing — the demo person US$471.636 (433,6 M CLP; 2.903
+movements; two properties with every cuota's card line linked; the US card's 28 statements and 28
+autopays paired; `cash_unexplained` worst month 47.680 after the dollar-checking fx; 3 tax passes;
+~55 s), the test person US$28.302 (7 s). Not merged to `main`. AGENTS.md gained the 1040 module and
+the rentals / US card / link-fix facts. Both streams saw `merchantExpenseNotes.test.ts` fail once in
+its `afterAll` restore (`flow_notes.flow_id` NOT NULL, `snapshotTables.ts` re-inserting rows another
+file left behind) and pass on the next fresh run; it did not fail in the integrator's runs — an
+order-dependent flake in a file no stream touched, worth a look by whoever owns the flow fixtures.
+
+### Notes from wave 3 (for wave 4)
+
+- **For `us-f22-border`:** the April loop (`taxDocuments.ts`, `generate.ts`) must now settle both
+  returns: draft the 1040 first with `buildF1040Draft(y, today)` (`f1040Draft.ts`), book the IRS
+  refund (late April) or the payment on US checking, then `recordFiledF1040({taxYear, filingStatus,
+  filedOn, sourceFile, lines: draft.lines})` and `linkF1040Settlement({taxYear, movementId,
+  description})` (`f1040Filed.ts`; the movement is a single-leg dollar row whose direction must match
+  35a / 37; both writers are idempotent). The F22's treaty credit reads the 1040's total tax,
+  `draft.lines["24"]`, converted at the rate the Suplemento prescribes (check: the US tax paid, the
+  credit capped by the Chilean tax on the same income, art. 41 A / the treaty). The US salary itself
+  is still out of the F22 (`payrollTaxYear` keeps US stubs out): decide the code for foreign
+  employment income (línea 8 / 1035 or the one the AT2025 Suplemento names for rentas del art. 42
+  N°1 obtained abroad) and add it through `f22Identities.ts`. Switch the generator's W-2 derivation
+  (`demoData/usPayroll.ts` `usW2sFromStubs`) onto the server's `usW2.ts` (`usW2sFromStubLines`; the
+  two agree box for box by test — convert stubs to `{ref, payDate, employer, ein, lines:[{side,
+  kind, amount}]}`). The DJ 1898 sums both lenders' interest into one row — each lender should file
+  its own (the art. 55 bis cap applies across both). IBKR dividends and the SGOV / sweep interest
+  as foreign income (1104 / 748 / 1018 already exist for dividends; interest needs its code). After
+  2024-07 most US spending is on the Lonestar card, so far fewer «used» dollar lots reach the F22's
+  «Diferencias de cambio»; decide whether a US resident's dollar spending belongs there at all.
+- **For `us-finish`:** net worth reads US$471k (+18 % on the target; wave 2 read 397k — the Centro
+  rental, the car moved to 2020-11 and more sweep did it); the invariants allow ±25 %, so either tune
+  the story (the plan's own sanity table said ~400k) or restate the target in `person.ts` with the
+  reason. «Próximos pagos» lists the US card from its 15th close to its ~9th due date (empty on a
+  due date itself, as today); the US card has no open-cycle listing, so the app never sees its open
+  cycle (by design, phase 7). The test person has no houses, no US chapter and no US card. The
+  About page and the tour must mention the US chapter, the two rentals (one DFL-2), the two returns
+  and the dual-status simplification. The flows overview has no fx leg for dollars held in the
+  checking accounts (and for the spread on each dollar sale between them), which is what the
+  remaining «sin explicar» (≤ 50k a month) is — an app change beyond this plan, or a note on the
+  demo page.
+- **App notes from the streams (outside this plan unless wave 4 wants them):**
+  `syncExpenseLinksNow()` inside a transaction takes ~46 s on the demo DB (`withoutChurn` bypasses
+  `dbStateMemo`, so `listRealEstatePropertyAccountIds` rebuilds the nav model on every call) and
+  every category write in the app runs that sync; the 2025 Form 1040 may renumber the deduction
+  lines (the module uses the 2024 numbering for every year and says so on the page); the batch
+  assign `assignPurchasesToRealEstateExpenses` is what a bulk tool should call.
