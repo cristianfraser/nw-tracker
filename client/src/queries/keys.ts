@@ -135,6 +135,7 @@ export const queryKeys = {
     ["benchmarkComparison", scope, benchmark, unit] as const,
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,
   taxReturnAll: () => ["tax-return"] as const,
+  usTaxReturn: (taxYear: number | null) => ["tax-return", "us", taxYear] as const,
   dashboardAll: () => ["dashboard"] as const,
   portfolioGroupAll: () => ["portfolioGroup"] as const,
   accountMonthlyPerformanceAll: () => ["accountMonthlyPerformance"] as const,

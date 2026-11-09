@@ -1,6 +1,9 @@
-/** Local Formulario 22 (/tax-return page). */
+/** Local Formulario 22 and Form 1040 (/tax-return page). */
 import express from "express";
 import { availableF22TaxYears, buildF22Payload, filedTaxYears } from "../f22DraftPayload.js";
+import { availableUsTaxYears } from "../f1040Draft.js";
+import { filedF1040TaxYears } from "../f1040Filed.js";
+import { buildF1040Payload } from "../f1040Payload.js";
 
 export function registerTaxReturnRoutes(app: express.Express): void {
   app.get("/api/tax-return", (req, res) => {
@@ -13,6 +16,27 @@ export function registerTaxReturnRoutes(app: express.Express): void {
       res.status(400).json({ error: `tax_year must be one of ${years.join(", ")}` });
       return;
     }
-    res.json(buildF22Payload(taxYear));
+    const payload = buildF22Payload(taxYear);
+    // The año tributario declares the previous calendar year: the US tab is that year's 1040.
+    const usTaxYear = availableUsTaxYears().includes(payload.income_year) ? payload.income_year : null;
+    res.json({ ...payload, us_tax_year: usTaxYear });
+  });
+
+  app.get("/api/tax-return/us", (req, res) => {
+    const years = availableUsTaxYears();
+    if (years.length === 0) {
+      res.status(404).json({ error: "no_us_tax_year" });
+      return;
+    }
+    const raw = req.query.tax_year;
+    // Default: the latest year with a filed return, else the latest year.
+    const filed = filedF1040TaxYears();
+    const fallback = years.find((y) => filed.includes(y)) ?? years[0]!;
+    const taxYear = raw == null || raw === "" ? fallback : Number(raw);
+    if (!years.includes(taxYear)) {
+      res.status(400).json({ error: `tax_year must be one of ${years.join(", ")}` });
+      return;
+    }
+    res.json(buildF1040Payload(taxYear));
   });
 }

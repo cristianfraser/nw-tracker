@@ -42,6 +42,8 @@ export type UsTaxYearParameters = {
   additionalMedicareRate: number;
   /** The employer withholds the additional Medicare tax on wages it pays above this in the year, whatever the filing status. */
   additionalMedicareWithholdingThreshold: number;
+  /** Form 8959: the additional Medicare tax is owed on the year's Medicare wages above this, by filing status (not indexed). */
+  additionalMedicareThreshold: Record<UsFilingStatus, number>;
   /** 401(k) elective deferrals (pre-tax + Roth) a person may make in the year. */
   elective401kLimit: number;
   /** The catch-up deferral allowed from age 50. */
@@ -74,6 +76,7 @@ const SHARED_FICA = {
   medicareRate: 0.0145,
   additionalMedicareRate: 0.009,
   additionalMedicareWithholdingThreshold: 200_000,
+  additionalMedicareThreshold: { single: 200_000, married_jointly: 250_000 },
   supplementalRate: 0.22,
   supplementalRateAboveMillion: 0.37,
 } as const;
@@ -156,6 +159,32 @@ export function usBracketTax(taxable: number, table: readonly UsBracket[]): numb
 /** The 1040's regular income tax on taxable income (after the deduction), unrounded. */
 export function usIncomeTax(taxableIncome: number, status: UsFilingStatus, year: number): number {
   return usBracketTax(taxableIncome, usTaxYear(year).brackets[status]);
+}
+
+/** The 1040 instructions' Tax Table covers taxable income below this; above it, the Tax Computation Worksheet. */
+export const US_TAX_TABLE_CEILING = 100_000;
+/** The Tax Table's rows are $25 wide below this and $50 wide from it (the first rows: 0–5, 5–15, 15–25). */
+const US_TAX_TABLE_NARROW_ROWS_BELOW = 3_000;
+
+/**
+ * Line 16 of the 1040 on taxable income (line 15, whole dollars), as the instructions compute it:
+ * below {@link US_TAX_TABLE_CEILING} the Tax Table — the brackets' tax on the midpoint of the
+ * income's row, rounded to the dollar — and from it the Tax Computation Worksheet (the brackets
+ * on the exact amount), rounded to the dollar. 0 for 0 or less.
+ */
+export function usForm1040Tax(taxableIncome: number, status: UsFilingStatus, year: number): number {
+  const table = usTaxYear(year).brackets[status];
+  if (taxableIncome <= 0) return 0;
+  if (taxableIncome >= US_TAX_TABLE_CEILING) return Math.round(usBracketTax(taxableIncome, table));
+  let midpoint: number;
+  if (taxableIncome < 5) return 0;
+  else if (taxableIncome < 15) midpoint = 10;
+  else if (taxableIncome < 25) midpoint = 20;
+  else {
+    const width = taxableIncome < US_TAX_TABLE_NARROW_ROWS_BELOW ? 25 : 50;
+    midpoint = Math.floor(taxableIncome / width) * width + width / 2;
+  }
+  return Math.round(usBracketTax(midpoint, table));
 }
 
 /** Pay periods a year. */

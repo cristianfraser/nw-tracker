@@ -492,6 +492,9 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "flow_notes",
   "flow_categories",
   "sii_issued_fee_receipts",
+  "us_f1040_returns",
+  "us_f1040_filed_lines",
+  "us_f1040_settlements",
 ];
 
 /**

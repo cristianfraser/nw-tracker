@@ -18,6 +18,7 @@ const ROW_ID_REFERENCES: Record<string, string> = {
   crypto_movement_kinds: "a coin row's kind (structured state of that row)",
   crypto_trade_details: "the exchange's record of that trade",
   f22_settlements: "the bank row a tax settlement was paid with (evidence)",
+  us_f1040_settlements: "the bank row a 1040 refund or payment landed on (evidence)",
   fintual_synthetic_retiro_transfers: "the transfer a retiro mail wrote",
   grocery_branch_merchants: "the card line a branch name was learned from (provenance)",
   incoming_wire_bookings: "the transfer and fee a wire booking wrote",
