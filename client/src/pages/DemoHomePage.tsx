@@ -230,6 +230,8 @@ export function DemoHomePage() {
         </h1>
         <p className={styles.lead}>{t("demo.about.lead")}</p>
         <p className={styles.note}>{t("demo.about.fictional")}</p>
+        <p className={styles.note}>{t("demo.about.story")}</p>
+        <p className={styles.note}>{t("demo.about.storyTax")}</p>
         <div className={styles.ctaRow}>
           <Link to={DASHBOARD_ALIAS_PATH} className={styles.cta}>
             {t("demo.about.openDashboard")}

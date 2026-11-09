@@ -16,6 +16,7 @@ import { listRealEstatePlaces } from "../flowsRealEstateExpenses.js";
 import { f1040Settlement, filedF1040 } from "../f1040Filed.js";
 import { buildF22Draft } from "../f22Draft.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR } from "../legalParameters.js";
+import { accountIdsInPortfolioGroup } from "../portfolioGroupTree.js";
 import { mortgageBalanceUf } from "./simulate.js";
 import type { MarketReader } from "./market.js";
 import { addDays, type Ymd } from "./person.js";
@@ -235,6 +236,22 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
   if (ids.has("k401")) {
     const groups = db.prepare(`SELECT slug FROM portfolio_groups WHERE slug IN ('retirement_cl', 'retirement_us')`).all() as { slug: string }[];
     if (groups.length !== 2) problems.push(`the Retirement tree does not split into Chile and US (${groups.map((g) => g.slug).join(", ")})`);
+    else {
+      // Each retirement account sits on its own side of the split, and no account on both.
+      const side = (slug: string) => new Set(accountIdsInPortfolioGroup(slug));
+      const us = side("retirement_us");
+      const cl = side("retirement_cl");
+      for (const key of ["k401", "hsa", "rothIra"] as const) {
+        const id = ids.get(key);
+        if (id != null && !us.has(id)) problems.push(`${key} is not under Retirement › US`);
+        if (id != null && cl.has(id)) problems.push(`${key} is under Retirement › Chile`);
+      }
+      for (const key of ["afpModelo", "afpUno", "afc", "apvA", "apvB"] as const) {
+        const id = ids.get(key);
+        if (id != null && !cl.has(id)) problems.push(`${key} is not under Retirement › Chile`);
+        if (id != null && us.has(id)) problems.push(`${key} is under Retirement › US`);
+      }
+    }
   }
   return { statementRows: ledger.usBank.length, gastosLines: lines.length, balanceUsd: actual };
 }
@@ -246,6 +263,11 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
  */
 function checkReturnsAcrossTheBorder(ledger: Ledger, today: Ymd, problems: string[]): DemoDbReport["returns"] {
   const f1040: DemoDbReport["returns"]["f1040"] = [];
+  // Every US payroll year whose April has passed was filed in the story (the loop below then checks the stored return).
+  for (const year of new Set(ledger.usPayslips.map((p) => Number(p.payDate.slice(0, 4))))) {
+    const filedOn = ledger.usAprilSettlements.get(year)?.filedOn;
+    if (today >= `${year + 1}-04-30` && filedOn == null) problems.push(`1040 ${year}: US pay stubs in the year, no return filed in the story`);
+  }
   for (const [year, s] of [...ledger.usAprilSettlements].sort((a, b) => a[0] - b[0])) {
     if (s.filedOn > today) continue;
     const filed = filedF1040(year);

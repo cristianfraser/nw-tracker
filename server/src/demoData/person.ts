@@ -620,7 +620,11 @@ export const DEMO_PERSON: Person = {
   fund: null,
   cashBand: CASH_BAND,
   apv: APV,
-  netWorthTargetUsd: 400_000,
+  // US$445k, not the 400k the plan's first sanity table guessed: two and a half years of a US$150k salary
+  // saved against a modest Austin lifestyle, and the two rented apartments' equity make this the honest figure on the
+  // synthetic market (US$445.296 at 2026-11-09). On the real market the plays move it by tens of
+  // thousands; the ±25 % tolerance (US$334k–556k) leaves room on both sides.
+  netWorthTargetUsd: 445_000,
   ingestHistoryDays: 45,
 };
 
