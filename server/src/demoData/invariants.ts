@@ -13,6 +13,9 @@ import { buildPayslipChecks } from "../payslipChecks.js";
 import { usdCashBalanceUsdAt } from "../usdCashAccounts.js";
 import { buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { listRealEstatePlaces } from "../flowsRealEstateExpenses.js";
+import { f1040Settlement, filedF1040 } from "../f1040Filed.js";
+import { buildF22Draft } from "../f22Draft.js";
+import { CHILE_US_TREATY_FIRST_INCOME_YEAR } from "../legalParameters.js";
 import { mortgageBalanceUf } from "./simulate.js";
 import type { MarketReader } from "./market.js";
 import { addDays, type Ymd } from "./person.js";
@@ -34,6 +37,14 @@ export type DemoDbReport = {
   cashUnexplainedWorstClp: number;
   /** The US chapter: the US checking account's statement rows and its gastos lines. */
   us: { statementRows: number; gastosLines: number; balanceUsd: number } | null;
+  /**
+   * The returns across the border: each filed 1040 (lines 24 / 35a / 37 and the movement that
+   * settled it) and each filed F22 with a US salary (1030, 748, 1018, 304, 305).
+   */
+  returns: {
+    f1040: { taxYear: number; line24: number; line35a: number; line37: number; settlementMovementId: number | null }[];
+    f22: { taxYear: number; c1030: number; c748: number; c1018: number; c304: number; c305: number; creditApplied: number }[];
+  };
   netWorthClp: number;
   netWorthUsd: number;
   byAccount: { name: string; clp: number }[];
@@ -91,6 +102,7 @@ export function assertDemoInvariants(
   const properties = checkProperties(ledger, ids, market, today, problems);
   const usCard = checkUsCard(ledger, ids, problems);
   const cashUnexplainedWorstClp = checkCashExplained(ids, market, today, problems);
+  const returns = checkReturnsAcrossTheBorder(ledger, today, problems);
 
   // Net worth near the target.
   const byAccount: DemoDbReport["byAccount"] = [];
@@ -135,6 +147,7 @@ export function assertDemoInvariants(
     properties,
     usCard,
     cashUnexplainedWorstClp,
+    returns,
   };
   if (problems.length > 0) {
     throw new Error(`demo invariants failed:\n  - ${problems.join("\n  - ")}\n${JSON.stringify(report, null, 1)}`);
@@ -224,6 +237,64 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
     if (groups.length !== 2) problems.push(`the Retirement tree does not split into Chile and US (${groups.map((g) => g.slug).join(", ")})`);
   }
   return { statementRows: ledger.usBank.length, gastosLines: lines.length, balanceUsd: actual };
+}
+
+/**
+ * Every US tax year whose April has passed has its 1040 filed and its refund or payment linked to the
+ * US checking movement (to the dollar); every filed F22 of a year with a US salary declares it in
+ * 1030 with its credit in 748 and 1018 — and the credit is the draft's (the filed 1040's tax).
+ */
+function checkReturnsAcrossTheBorder(ledger: Ledger, today: Ymd, problems: string[]): DemoDbReport["returns"] {
+  const f1040: DemoDbReport["returns"]["f1040"] = [];
+  for (const [year, s] of [...ledger.usAprilSettlements].sort((a, b) => a[0] - b[0])) {
+    if (s.filedOn > today) continue;
+    const filed = filedF1040(year);
+    if (!filed) {
+      problems.push(`1040 ${year}: filed on ${s.filedOn} in the story, not stored`);
+      continue;
+    }
+    const settlement = f1040Settlement(year)!;
+    const owed = (filed.lines["37"] ?? 0) - (filed.lines["35a"] ?? 0);
+    if (owed !== s.usd) problems.push(`1040 ${year}: the filed return settles US$${owed}, the story booked US$${s.usd}`);
+    if (settlement.expected && s.settledOn <= today) {
+      if (settlement.links.length !== 1 || settlement.difference !== 0) {
+        problems.push(`1040 ${year}: settlement links ${settlement.links.length}, difference ${settlement.difference}`);
+      }
+    }
+    f1040.push({
+      taxYear: year,
+      line24: filed.lines["24"] ?? 0,
+      line35a: filed.lines["35a"] ?? 0,
+      line37: filed.lines["37"] ?? 0,
+      settlementMovementId: settlement.links[0]?.movement_id ?? null,
+    });
+  }
+  const f22: DemoDbReport["returns"]["f22"] = [];
+  const usYears = new Set(ledger.usPayslips.map((p) => Number(p.payDate.slice(0, 4))));
+  for (const year of [...usYears].sort()) {
+    const taxYear = year + 1;
+    const filedRows = db.prepare(`SELECT code, amount FROM sii_f22_filed WHERE tax_year = ?`).all(taxYear) as { code: number; amount: number }[];
+    if (filedRows.length === 0) continue;
+    const filed = new Map(filedRows.map((r) => [r.code, r.amount]));
+    if (year < CHILE_US_TREATY_FIRST_INCOME_YEAR) problems.push(`F22 AT${taxYear}: a US salary before the treaty`);
+    const d = buildF22Draft(taxYear, today);
+    const applied = d.foreignSalaryCredit?.appliedClp ?? 0;
+    if (!((filed.get(1030) ?? 0) > 0)) problems.push(`F22 AT${taxYear}: a US salary in ${year} but no code 1030`);
+    if (!(applied > 0)) problems.push(`F22 AT${taxYear}: no credit for the US tax on the salary`);
+    if ((filed.get(1018) ?? 0) < applied) problems.push(`F22 AT${taxYear}: 1018 ${filed.get(1018)} below the salary credit ${applied}`);
+    if (d.foreignSalary.usTaxSource !== "filed") problems.push(`F22 AT${taxYear}: the credit reads the ${d.foreignSalary.usTaxSource} 1040, not the filed one`);
+    if ((filed.get(1030) ?? 0) !== (d.draft[1030] ?? 0)) problems.push(`F22 AT${taxYear}: filed 1030 ${filed.get(1030)} vs draft ${d.draft[1030]}`);
+    f22.push({
+      taxYear,
+      c1030: filed.get(1030) ?? 0,
+      c748: filed.get(748) ?? 0,
+      c1018: filed.get(1018) ?? 0,
+      c304: filed.get(304) ?? 0,
+      c305: filed.get(305) ?? 0,
+      creditApplied: applied,
+    });
+  }
+  return { f1040, f22 };
 }
 
 /**

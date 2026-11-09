@@ -78,15 +78,20 @@ export function fundRedemptionGainsForYear(incomeYear: number): FundRedemptionEs
   return { redemptionsClp: Math.round(redemptions), gainClp: Math.round(gain), lossClp: Math.round(loss) };
 }
 
-export function mortgageInterestForYear(incomeYear: number): number {
+/**
+ * The mortgage interest paid in the year, reajustada to December: every loan's, or one loan's when
+ * `loanAccountId` is given (each lender files its own DJ 1898; the art. 55 bis cap applies to the sum).
+ */
+export function mortgageInterestForYear(incomeYear: number, loanAccountId?: number): number {
   const { pct, toMonth } = yearEndPct();
   const rows = db
     .prepare(
       `SELECT m.occurred_on, p.interest AS interes_clp, p.payment_currency
          FROM loan_payments p JOIN movements m ON m.id = p.movement_id
-        WHERE p.leg = 'loan' AND p.interest IS NOT NULL AND m.occurred_on LIKE ?`
+        WHERE p.leg = 'loan' AND p.interest IS NOT NULL AND m.occurred_on LIKE ?
+          AND (? IS NULL OR p.loan_account_id = ?)`
     )
-    .all(`${incomeYear}-%`) as { occurred_on: string; interes_clp: number; payment_currency: string }[];
+    .all(`${incomeYear}-%`, loanAccountId ?? null, loanAccountId ?? null) as { occurred_on: string; interes_clp: number; payment_currency: string }[];
   for (const r of rows) {
     if (r.payment_currency !== "clp") {
       throw new Error(`mortgage interest ${r.occurred_on}: paid in ${r.payment_currency}, expected pesos`);

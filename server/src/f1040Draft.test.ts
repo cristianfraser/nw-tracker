@@ -17,7 +17,7 @@ import { applyEmploymentPayslips } from "./payslipsApply.js";
 import { registerTaxReturnRoutes } from "./routes/taxReturn.js";
 import { usBracketTax, usForm1040Tax, usTaxYear } from "./usLegalParameters.js";
 import { usW2sFromStubLines, type UsW2Stub } from "./usW2.js";
-import { usPayDates, usPayStub, usW2sFromStubs, newUsPayrollYtd, type UsPayStub } from "./demoData/usPayroll.js";
+import { usPayDates, usPayStub, usW2StubOf, usW2sOfStubs, newUsPayrollYtd, type UsPayStub } from "./demoData/usPayroll.js";
 import type { UsW2Job } from "./demoData/person.js";
 
 const PREFIX = "vitest-f1040/";
@@ -109,26 +109,12 @@ function cleanup() {
 }
 
 describe("W-2 boxes from the stub lines", () => {
-  it("are the generator's W-2s, box for box", () => {
+  it("read the generator's stubs with the kinds the import gives their labels", () => {
     const stubs = generatedStubs("2026-12-31");
-    const fromLines = usW2sFromStubLines(stubs.map(asW2Stub));
-    const fromGenerator = usW2sFromStubs(stubs);
-    expect(fromLines.map((w) => w.year)).toEqual([2024, 2025, 2026]);
-    expect(
-      fromLines.map((w) => ({
-        year: w.year,
-        employer: w.employer,
-        ein: w.ein,
-        wages: w.wages,
-        federalWithheld: w.federalWithheld,
-        socialSecurityWages: w.socialSecurityWages,
-        socialSecurityTax: w.socialSecurityTax,
-        medicareWages: w.medicareWages,
-        medicareTax: w.medicareTax,
-        box12D: w.box12D,
-        box12W: w.box12W,
-      }))
-    ).toEqual(fromGenerator);
+    expect(stubs.map(usW2StubOf)).toEqual(stubs.map(asW2Stub).map((w) => ({ ...w, ref: expect.any(String) })));
+    const w2s = usW2sOfStubs(stubs);
+    expect(w2s.map((w) => w.year)).toEqual([2024, 2025, 2026]);
+    expect(w2s).toEqual(usW2sFromStubLines(stubs.map(asW2Stub)));
   });
 
   it("keep a Roth deferral and an RSU vest in box 1, cap box 3 at the wage base, leave the match out", () => {
@@ -208,7 +194,7 @@ describe("the 1040 draft", () => {
     const stubs = generatedStubs("2025-12-31");
     applyStubs(stubs);
     const d = buildF1040Draft(2025, TODAY);
-    const w2 = usW2sFromStubs(stubs).find((w) => w.year === 2025)!;
+    const w2 = usW2sOfStubs(stubs).find((w) => w.year === 2025)!;
     const deduction = usTaxYear(2025).standardDeduction.single;
     const taxable = Math.round(w2.wages) - deduction;
     expect(d).toMatchObject({ taxYear: 2025, provisional: false, lawYear: 2025, filingStatus: "single", stubs: 26, filed: null });

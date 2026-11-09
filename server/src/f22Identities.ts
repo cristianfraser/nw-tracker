@@ -5,8 +5,9 @@
  *
  *   955 = 1849 + 1852 + 1857 + 1862 + 1873 + 1865   (línea 5: rentas efectivas sin contabilidad
  *                                         completa; 1849 = rents determined by contract, art. 20 N°1 b))
- *   158 = 1098 + 110 + 105 + 955 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169
- *                                        (lines 1–14 less line 17)
+ *   158 = 1098 + 1030 + 110 + 105 + 955 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169
+ *                                        (lines 1–14 less line 17; 1030 = salary of foreign source,
+ *                                         línea 12 beside 1098)
  *   170 = 158 − 750 − 765                (the net taxable base before the IGC table)
  *   304 = 157 − 136 − 1637 − 162 − 1018 − 610
  *                                        (1637: contribuciones on rented property, art. 56 N°5,
@@ -38,7 +39,7 @@ export function f22Code158(codes: F22CodeAmounts): number {
   const v = (c: number) => reader(codes)(c) ?? 0;
   if (v(152) < 0) throw new Error(`F22: code 152 (exempt income) is negative (${v(152)}) — a negative real interest goes to 169`);
   return (
-    v(1098) + v(110) + v(105) + v(955) + v(155) + v(152) + v(1032) + v(1104) + v(748) + v(1901) - v(169)
+    v(1098) + v(1030) + v(110) + v(105) + v(955) + v(155) + v(152) + v(1032) + v(1104) + v(748) + v(1901) - v(169)
   );
 }
 
@@ -56,6 +57,16 @@ export function f22PropertyTaxCreditCap(codes: F22CodeAmounts): number {
   if (v(170) <= 0 || v(1849) <= 0) return 0;
   const factor = Math.round((v(157) / v(170)) * 1000) / 1000;
   return Math.round(v(1849) * factor);
+}
+
+/**
+ * The cap of a foreign salary's credit in 1018 (art. 41 A, no refund): the IGC proportional to that
+ * income — 157 × `foreignIncomeClp` / 158, where the income is its 1030 plus its incremento in 748.
+ */
+export function f22ForeignSalaryCreditCap(codes: F22CodeAmounts, foreignIncomeClp: number): number {
+  const v = (c: number) => reader(codes)(c) ?? 0;
+  if (v(158) <= 0 || foreignIncomeClp <= 0) return 0;
+  return Math.max(0, Math.round((v(157) * Math.min(foreignIncomeClp, v(158))) / v(158)));
 }
 
 /** 170 before the floor at zero the draft applies. */

@@ -183,6 +183,40 @@ export type TaxReturnRentals = {
   property_tax_credit: { paid_clp: number; cap_clp: number; credit_clp: number } | null;
 };
 
+/**
+ * GET /api/tax-return `foreign_income` (server: f22ForeignIncome.ts): a salary earned abroad (US pay
+ * stubs → code 1030, its credit 748 / 1018 under art. 41 A and the Chile–US treaty) and a foreign
+ * broker's interest (in 1104).
+ */
+export type TaxReturnForeignIncome = {
+  salary: {
+    /** The December reajuste used the latest published month. */
+    provisional: boolean;
+    stubs: number;
+    /** Gross pay less Social Security and Medicare, dollars. */
+    income_usd: number;
+    /** The same in pesos (each stub at its pay day's observado), reajustada to December. */
+    gross_clp: number;
+    /** The 1040's line 24 (total tax): the filed return's, or the draft's. */
+    us_tax_usd: number;
+    us_tax_source: "filed" | "draft" | null;
+    us_tax_clp: number;
+    /** Code 1030: gross less the US tax. */
+    net_clp: number;
+    /** min(US tax, 35 % of the gross): the incremento in 748 and the credit before its cap. */
+    credit_clp: number;
+    /** The IGC on this income (the credit's cap, no refund) and what 1018 took; null without a credit. */
+    credit_cap_clp: number | null;
+    credit_applied_clp: number | null;
+  };
+  interest: {
+    lines: { date: string; account_name: string; usd: number }[];
+    usd: number;
+    /** At the 31-December observado, in 1104. */
+    clp: number;
+  };
+};
+
 export type TaxReturnResponse = {
   tax_year: number;
   income_year: number;
@@ -264,6 +298,7 @@ export type TaxReturnResponse = {
   };
   art107: TaxReturnArt107;
   rentals: TaxReturnRentals;
+  foreign_income: TaxReturnForeignIncome;
   usd_fx: TaxReturnUsdFx;
 };
 

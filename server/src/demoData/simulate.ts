@@ -48,7 +48,9 @@ import {
   type Ymd,
 } from "./person.js";
 import { stream, type Rng } from "./rng.js";
-import { newUsPayrollYtd, usPayDates, usPayStub, usW2sFromStubs, type UsPayStub, type UsW2 } from "./usPayroll.js";
+import { newUsPayrollYtd, usPayDates, usPayStub, usW2sOfStubs, type UsPayStub } from "./usPayroll.js";
+import type { UsW2 } from "../usW2.js";
+import { f1040LinesFromW2s } from "../f1040Draft.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
@@ -248,6 +250,11 @@ export type Ledger = {
    * contributions on fees the SII charged inside it (code 900).
    */
   aprilSettlements: Map<number, { clp: number; contributionsClp: number }>;
+  /**
+   * Each US tax year's Form 1040, filed in April of the next year: what it settled (dollars,
+   * positive paid, negative refunded) and the days it was filed and settled (US checking).
+   */
+  usAprilSettlements: Map<number, { usd: number; filedOn: Ymd; settledOn: Ymd }>;
 };
 
 /** A peso term deposit (DAP): opened from checking, paid back to it with the interest at maturity. */
@@ -261,11 +268,20 @@ export type SimulateOptions = {
    * module computed it on a previous pass; a year not listed takes the simulator's own estimate.
    */
   aprilSettlements?: ReadonlyMap<number, number>;
+  /**
+   * The 1040 settlement of each US tax year (dollars: 37 owed positive, 35a refunded negative), as
+   * the tax module drafted it on a previous pass; a year not listed takes the simulator's own
+   * draft of its stubs (the same rule, `f1040LinesFromW2s`).
+   */
+  usAprilSettlements?: ReadonlyMap<number, number>;
 };
 
 /* --------------------------------- constants ------------------------------------ */
 
 const BRANCH = "Oficina Central";
+/** How the US checking statement prints the IRS's debit and refund. */
+export const US_IRS_PAYMENT = "IRS USATAXPYMT";
+export const US_IRS_REFUND = "IRS TREAS 310 TAX REF";
 export const APV_FUND_SERIES_KEY = "demo_apv_fondo";
 /**
  * The US retirement accounts' fund: a 2060 target-date fund (≈ 90 % equities), valued daily in
@@ -626,6 +642,7 @@ type CardCycleState = {
 
 export function simulate(person: Person, market: MarketReader, today: Ymd, options: SimulateOptions = {}): Ledger {
   const settlementOverrides = options.aprilSettlements ?? new Map<number, number>();
+  const usSettlementOverrides = options.usAprilSettlements ?? new Map<number, number>();
   const {
     seed: SEED,
     firstMonth: FIRST_MONTH,
@@ -677,6 +694,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   const feeReceipts: FeeReceipt[] = [];
   const apvBDeposits: Ledger["apvBDeposits"] = [];
   const aprilSettlements: Ledger["aprilSettlements"] = new Map();
+  const usAprilSettlements: Ledger["usAprilSettlements"] = new Map();
   const months: Ledger["months"] = [];
   const usPayslips: UsPayStub[] = [];
   const catByUsDesc = new Map<string, string>();
@@ -1692,7 +1710,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     payslips,
     contractorPayslips,
     usPayslips,
-    usW2s: usW2sFromStubs(usPayslips),
+    usW2s: usW2sOfStubs(usPayslips),
     usBank: book.usBank,
     usCheckingBalanceUsd: book.bal.usChecking,
     mortgages: [...mortgages.values()],
@@ -1707,6 +1725,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     apvBDeposits,
     termDeposits,
     aprilSettlements,
+    usAprilSettlements,
   };
 
   /* ------------------------------ closures ------------------------------ */
@@ -1875,6 +1894,22 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
     }
 
+    /* last year's 1040: filed in April; the IRS refund about three weeks later, or the payment on the 15th */
+    if (mo === 4) {
+      const taxYear = year - 1;
+      const result = usF1040Settlement(taxYear);
+      if (result != null) {
+        const filedOn = usBusinessDayOnOrAfter(ymd(month, 8));
+        const settledOn = result > 0 ? usBusinessDayOnOrAfter(ymd(month, 15)) : usBusinessDayOnOrAfter(addDays(filedOn, 21));
+        usAprilSettlements.set(taxYear, { usd: result, filedOn, settledOn });
+        if (result > 0) usBill(settledOn, US_IRS_PAYMENT, "taxes", result, true);
+        else if (result < 0 && settledOn <= today) {
+          book.usBankRow(settledOn, US_IRS_REFUND, -result);
+          catByUsDesc.set(US_IRS_REFUND, "taxes");
+        }
+      }
+    }
+
     /* home */
     const rentYears = Math.floor(monthsBetween(us.rent.fromMonth, month) / 12);
     const rent = Math.round((us.rent.usd * Math.pow(1 + us.rent.yearlyIncrease, rentYears)) / 5) * 5;
@@ -1964,6 +1999,19 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
     }
   }
+  /**
+   * A US tax year's 1040 settlement in dollars (positive owed, negative refunded): the tax module's
+   * figure from a previous pass, else the simulator's own draft of the year's stubs; null without
+   * stubs.
+   */
+  function usF1040Settlement(taxYear: number): number | null {
+    const override = usSettlementOverrides.get(taxYear);
+    if (override != null) return override;
+    const stubs = usPayslips.filter((st) => st.payDate.startsWith(`${taxYear}-`));
+    if (stubs.length === 0) return null;
+    const { lines } = f1040LinesFromW2s(usW2sOfStubs(stubs), stubs[0]!.job.w4FilingStatus, taxYear, `${taxYear} (demo)`);
+    return (lines["37"] ?? 0) - (lines["35a"] ?? 0);
+  }
   /** Average US spending of the months since the move (at least the rent and the lifestyle). */
   function usTrailingExpense(): number {
     const us = US!;
@@ -1981,6 +2029,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       if (us.car && monthOf(us.car.date) === m) need += us.car.usd;
       if (us.roth && Number(m.slice(5, 7)) === us.roth.month && Number(m.slice(0, 4)) >= us.roth.fromYear) need += us.roth.usd;
       if (m.endsWith("-12")) need += us.decemberTripUsd * 1.2;
+      if (m.endsWith("-04")) need += Math.max(0, usF1040Settlement(Number(m.slice(0, 4)) - 1) ?? 0);
     }
     return need;
   }

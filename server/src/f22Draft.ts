@@ -8,7 +8,7 @@
  * already declared them (AT2022 filed 1032) shows the correction, not a double count; then it
  * recomputes the tax with the same chain the filed form shows:
  *
- *   158 = 1098 + 110 + 105 + 955 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169   (lines 1–14 less line 17; 110 = fees; 955 = rent)
+ *   158 = 1098 + 1030 + 110 + 105 + 955 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169   (lines 1–14 less line 17; 1030 = foreign salary; 110 = fees; 955 = rent)
  *   170 = 158 − 750 − 765                                  (mortgage interest art. 55 bis; APV art. 42 bis)
  *   157 = IGC table on 170, in UTA of December of the income year
  *   136 = 157 × 152 / 158                                  (exempt income, art. 56 N°2)
@@ -62,8 +62,15 @@ import {
   f22Code304,
   f22Code305,
   f22Code955,
+  f22ForeignSalaryCreditCap,
   f22PropertyTaxCreditCap,
 } from "./f22Identities.js";
+import {
+  foreignInterestForYear,
+  foreignSalaryForYear,
+  type F22ForeignInterest,
+  type F22ForeignSalary,
+} from "./f22ForeignIncome.js";
 import { rentalsForYear, type F22Rentals } from "./f22Rentals.js";
 import {
   APV_ANNUAL_CAP_UF,
@@ -116,6 +123,12 @@ export type F22TaxOptions = {
    * from the codes (a filed form).
    */
   propertyTaxPaidClp?: number;
+  /**
+   * A foreign salary's credit before its IGC cap and the income it was earned on (1030 + its 748):
+   * the chain adds min(credit, {@link f22ForeignSalaryCreditCap}) to the 1018 in the codes (the
+   * dividends' credit). Absent, 1018 is read from the codes.
+   */
+  foreignSalaryCredit?: { creditClp: number; incomeClp: number };
 };
 
 /** The chain above, from income codes to 304; everything rounded to whole pesos as the form does. */
@@ -130,6 +143,10 @@ export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number, 
     const credit = Math.min(Math.round(options.propertyTaxPaidClp), f22PropertyTaxCreditCap(out));
     if (credit > 0) out[1637] = credit;
     else delete out[1637];
+  }
+  if (options.foreignSalaryCredit != null) {
+    const applied = Math.min(options.foreignSalaryCredit.creditClp, f22ForeignSalaryCreditCap(out, options.foreignSalaryCredit.incomeClp));
+    if (applied > 0) out[1018] = v(1018) + applied;
   }
   out[304] = f22Code304(out);
   return out;
@@ -257,6 +274,12 @@ export type F22Draft = {
   rentals: F22Rentals;
   /** 1637 before its cap (the contribuciones on the taxable places) and the cap; null when no taxable rent. */
   propertyTaxCredit: { paidClp: number; capClp: number; creditClp: number } | null;
+  /** A salary earned abroad (US pay stubs): 1030, its credit (748 / 1018), `f22ForeignIncome`. */
+  foreignSalary: F22ForeignSalary;
+  /** The foreign salary's credit: before the IGC cap, the cap and what 1018 took; null without one. */
+  foreignSalaryCredit: { creditClp: number; capClp: number; appliedClp: number } | null;
+  /** A foreign broker's interest, in 1104. */
+  foreignInterest: F22ForeignInterest;
 };
 
 /** What {@link buildF22Draft} may be told beyond the year: the dollars' exchange-result parameters and its loader (tests). */
@@ -355,6 +378,16 @@ function apvRegimeBDeductionClp(dj: Map<number, InformedDjField[]>, incomeYear: 
   return uf > 0 ? Math.round(Math.min(uf, APV_ANNUAL_CAP_UF) * ufOn(`${incomeYear}-12-31`)) : null;
 }
 
+/** DJ 1898's interest column; with several lenders the summary prints it once per lender. */
+const DJ1898_INTEREST = "Monto Actualizado de los Intereses Pagados ($) en Dividendo";
+
+/** Σ of every field whose header path ends with `label` (a DJ several informants filed); throws on none. */
+function informedDjSum(fields: readonly InformedDjField[], label: string): number {
+  const hits = fields.filter((f) => f.field.endsWith(` / ${label}`) || f.field.endsWith(`: ${label}`));
+  if (hits.length === 0) throw new Error(`DJ summary: no field matches «${label}»`);
+  return hits.reduce((s, f) => s + informedDjAmount([f], label), 0);
+}
+
 /** DJ 1922 section B1: the difference on cuotas of funds that meet art. 107 (actualizada). */
 const DJ1922_ART107_DIFFERENCE =
   "Diferencia Obtenida en el Rescate o Enajenación de Cuotas de Fondos de Inversión que cumplen requisitos Art.107 LIR (Actualizada)";
@@ -418,8 +451,9 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
   const apv = apvRegimeBDeductionClp(dj, incomeYear);
   if (apv != null && f1887) out[765] = apv;
   const f1898 = dj.get(1898);
-  // The interest paid (751); the deduction (750) is drafted from it (art. 55 bis).
-  if (f1898) out[751] = informedDjAmount(f1898, "Monto Actualizado de los Intereses Pagados ($) en Dividendo");
+  // The interest paid (751): every lender's DJ 1898 summed (one column per lender when there are
+  // several); the deduction (750) is drafted from the sum (art. 55 bis caps the total, not each loan).
+  if (f1898) out[751] = informedDjSum(f1898, DJ1898_INTEREST);
   const f1922 = dj.get(1922);
   if (f1922) Object.assign(out, informedDj1922Codes(f1922));
   // A zero a third party reports says nothing the form needs (no redemptions, no withholding).
@@ -521,9 +555,15 @@ export function buildF22Draft(
   const usdFxLoss = usdFx.codes.loss169 ?? 0;
   const usdFxIdpcClp = usdFx.codes.idpcClp ?? 0;
   const rentals = rentalsForYear(incomeYear);
+  const foreignSalary = foreignSalaryForYear(incomeYear, todayYmd);
+  const foreignInterest = foreignInterestForYear(incomeYear, yearEndObservado);
+  const foreignSalaryIncomeClp = foreignSalary.netClp + foreignSalary.creditClp;
   // With taxable rent the app states 1849 / 955 and derives 1637; without, a filed form keeps its own.
-  const taxOptions: F22TaxOptions =
-    rentals.taxableRentClp > 0 ? { propertyTaxPaidClp: rentals.propertyTaxPaidClp } : {};
+  // A foreign salary's credit enters 1018 capped by the chain (no refund).
+  const taxOptions: F22TaxOptions = {
+    ...(rentals.taxableRentClp > 0 ? { propertyTaxPaidClp: rentals.propertyTaxPaidClp } : {}),
+    ...(foreignSalary.creditClp > 0 ? { foreignSalaryCredit: { creditClp: foreignSalary.creditClp, incomeClp: foreignSalaryIncomeClp } } : {}),
+  };
 
   const draftInput: F22Codes =
     base === "filed"
@@ -570,8 +610,9 @@ export function buildF22Draft(
   const dividendsNetClp = Math.round(grossClp - taxClp);
   const appCodes: F22Codes = {
     1032: Math.max(0, cryptoGain) + usdFx1032,
-    1104: dividendsNetClp + foreignGain,
-    748: Math.round(taxClp),
+    1104: dividendsNetClp + foreignGain + foreignInterest.clp,
+    // The gross-up: the dividends' foreign tax and the foreign salary's credit (art. 41 A).
+    748: Math.round(taxClp) + foreignSalary.creditClp,
     1018: Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp)),
     1901: usdFx1901,
     ...art107.codes,
@@ -579,6 +620,11 @@ export function buildF22Draft(
   for (const [c, v] of Object.entries(appCodes)) {
     // A year with no base shows only what the app has; zeros would read as a declared zero.
     if (base !== "none" || v !== 0) draftInput[Number(c)] = v;
+  }
+  if (foreignSalary.grossClp > 0) {
+    // Línea 12: 1030 beside 1098, and 161 their total.
+    draftInput[1030] = foreignSalary.netClp;
+    draftInput[161] = (draftInput[1098] ?? 0) + foreignSalary.netClp;
   }
   if (rentals.taxableRentClp > 0) {
     draftInput[1849] = rentals.taxableRentClp;
@@ -640,7 +686,8 @@ export function buildF22Draft(
     return out;
   };
   const tax = (input: F22Codes) => computeF22Tax(input, utaClp, taxYear, taxOptions);
-  const taxComputed = base !== "none" || estimatedCodes.length > 0 || rentals.taxableRentClp > 0;
+  const taxComputed =
+    base !== "none" || estimatedCodes.length > 0 || rentals.taxableRentClp > 0 || foreignSalary.grossClp > 0 || foreignInterest.clp > 0;
   const draft = taxComputed ? tax(finish(draftInput)) : finish(draftInput);
   if (taxComputed) {
     draft[305] = f22Code305(draft);
@@ -754,5 +801,15 @@ export function buildF22Draft(
             creditClp: draft[1637] ?? 0,
           }
         : null,
+    foreignSalary,
+    foreignSalaryCredit:
+      taxComputed && foreignSalary.creditClp > 0
+        ? {
+            creditClp: foreignSalary.creditClp,
+            capClp: f22ForeignSalaryCreditCap(draft, foreignSalaryIncomeClp),
+            appliedClp: Math.min(foreignSalary.creditClp, f22ForeignSalaryCreditCap(draft, foreignSalaryIncomeClp)),
+          }
+        : null,
+    foreignInterest,
   };
 }

@@ -15,6 +15,8 @@ import {
   usSupplementalWithholding,
   usTaxYear,
 } from "../usLegalParameters.js";
+import { payslipLineKind } from "../payslipLineKinds.js";
+import { usW2sFromStubLines, type UsW2, type UsW2Stub } from "../usW2.js";
 import { addDays, monthOf, monthsBetween, type UsW2Job, type Ymd } from "./person.js";
 
 function cents(x: number): number {
@@ -158,46 +160,21 @@ export function usPayStub(job: UsW2Job, date: UsPayDate, ytd: UsPayrollYtd): UsP
   };
 }
 
-/** A year's W-2, from its stubs: the boxes the 1040 reads. */
-export type UsW2 = {
-  year: number;
-  employer: string;
-  ein: string;
-  /** Box 1: wages less the pre-tax 401(k) and the cafeteria deductions. */
-  wages: number;
-  /** Box 2. */
-  federalWithheld: number;
-  /** Box 3 (capped at the wage base) and box 5. */
-  socialSecurityWages: number;
-  /** Box 4. */
-  socialSecurityTax: number;
-  medicareWages: number;
-  /** Box 6. */
-  medicareTax: number;
-  /** Box 12 code D (401(k) deferrals) and code W (HSA through the cafeteria plan). */
-  box12D: number;
-  box12W: number;
-};
+/**
+ * A stub as the W-2 rule reads it (`usW2.ts` `usW2sFromStubLines`, the app's one W-2 rule): each line
+ * with the kind the US classifier gives its label, as the import stores it.
+ */
+export function usW2StubOf(s: UsPayStub): UsW2Stub {
+  return {
+    ref: `${s.job.id}/${s.payDate}`,
+    payDate: s.payDate,
+    employer: s.job.employer,
+    ein: s.job.ein,
+    lines: s.lines.map((l) => ({ side: l.side, kind: payslipLineKind(l.side, l.label, "us"), amount: l.amount })),
+  };
+}
 
-export function usW2sFromStubs(stubs: readonly UsPayStub[]): UsW2[] {
-  const byKey = new Map<string, UsW2>();
-  for (const s of stubs) {
-    const year = Number(s.payDate.slice(0, 4));
-    const key = `${s.job.ein}|${year}`;
-    let w = byKey.get(key);
-    if (!w) {
-      w = { year, employer: s.job.employer, ein: s.job.ein, wages: 0, federalWithheld: 0, socialSecurityWages: 0, socialSecurityTax: 0, medicareWages: 0, medicareTax: 0, box12D: 0, box12W: 0 };
-      byKey.set(key, w);
-    }
-    const cafeteria = cents(s.medical + s.dentalVision + s.hsa);
-    w.wages = cents(w.wages + s.gross - s.k401 - cafeteria);
-    w.federalWithheld = cents(w.federalWithheld + s.federal);
-    w.socialSecurityWages = cents(Math.min(usTaxYear(year).socialSecurityWageBase, w.socialSecurityWages + s.gross - cafeteria));
-    w.socialSecurityTax = cents(w.socialSecurityTax + s.socialSecurity);
-    w.medicareWages = cents(w.medicareWages + s.gross - cafeteria);
-    w.medicareTax = cents(w.medicareTax + s.medicare);
-    w.box12D = cents(w.box12D + s.k401);
-    w.box12W = cents(w.box12W + s.hsa);
-  }
-  return [...byKey.values()].sort((a, b) => a.year - b.year);
+/** The year's W-2s of the stubs, by the app's rule. */
+export function usW2sOfStubs(stubs: readonly UsPayStub[]): UsW2[] {
+  return usW2sFromStubLines(stubs.map(usW2StubOf));
 }
