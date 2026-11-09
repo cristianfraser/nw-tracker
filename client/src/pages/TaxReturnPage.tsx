@@ -291,6 +291,53 @@ function RentalsSection({ data }: { data: TaxReturnResponse }) {
 }
 
 /**
+ * Foreign-source income (server: f22ForeignIncome.ts): the US salary in code 1030 with its credit
+ * for the US tax (748 / 1018, art. 41 A and the Chile–US treaty), and a foreign broker's interest in
+ * 1104. The figures are the server's; the page only formats them.
+ */
+function ForeignIncomeSection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const { salary, interest } = data.foreign_income;
+  if (salary.stubs === 0 && interest.lines.length === 0) return null;
+  return (
+    <PageGridTile id="foreign-income">
+      <h2>{t("taxReturn.foreignIncome.title")}</h2>
+      <p className="muted">
+        {t("taxReturn.foreignIncome.explain")}
+        {salary.provisional ? ` ${t("taxReturn.foreignIncome.provisional")}` : ""}
+      </p>
+      {salary.stubs > 0 ? (
+        <p>
+          {t("taxReturn.foreignIncome.salary", {
+            stubs: salary.stubs,
+            usd: formatUsdFine(salary.income_usd),
+            gross: formatClp(salary.gross_clp),
+            taxUsd: formatUsdFine(salary.us_tax_usd),
+            source: salary.us_tax_source ? t(`taxReturn.foreignIncome.taxSource.${salary.us_tax_source}`) : "—",
+            tax: formatClp(salary.us_tax_clp),
+            net: formatClp(salary.net_clp),
+          })}
+        </p>
+      ) : null}
+      {salary.credit_cap_clp != null && salary.credit_applied_clp != null ? (
+        <p className="muted">
+          {t("taxReturn.foreignIncome.credit", {
+            credit: formatClp(salary.credit_clp),
+            cap: formatClp(salary.credit_cap_clp),
+            applied: formatClp(salary.credit_applied_clp),
+          })}
+        </p>
+      ) : null}
+      {interest.lines.length > 0 ? (
+        <p className="muted">
+          {t("taxReturn.foreignIncome.interest", { usd: formatUsdFine(interest.usd), clp: formatClp(interest.clp) })}
+        </p>
+      ) : null}
+    </PageGridTile>
+  );
+}
+
+/**
  * Art. 107 LIR: fund units and shares sold on the exchange. Sales through 2026 pay a flat 10%
  * single tax on the mayor valor (codes 1809 / 1813 → 1814, carried loss 1815, base 1816, line 66
  * 1829 / 1830); from 2027 they are ingreso no renta and only listed. The fund's distributions are
@@ -715,6 +762,7 @@ export function TaxReturnPage() {
                   <DividendsSection data={data} />
                   <ForeignSharesSection data={data} />
                   <RentalsSection data={data} />
+                  <ForeignIncomeSection data={data} />
                   <Art107Section data={data} />
                   <UsdFxSection data={data} />
                 </>
