@@ -215,27 +215,16 @@ export function computeLatestDisplayedEquityClp(
 }
 
 /** Merge timeline keys with month-ends covered by `equity_daily` for MTM brokerage accounts. */
-export function expandSnapshotDatesForEquityMtm(
-  baseDates: string[],
-  allIds: number[],
-  merge: { spyId?: number; veaId?: number } | undefined
-): string[] {
+export function expandSnapshotDatesForEquityMtm(baseDates: string[], allIds: number[]): string[] {
   const s = new Set(baseDates);
-  const addTickerMonths = (accountId: number | undefined, ticker: string) => {
-    if (accountId == null || !accountUsesEquityMtm(accountId)) return;
+  for (const id of allIds) {
+    const ticker = equityTickerForAccount(id);
+    if (!ticker || !accountUsesEquityMtm(id)) continue;
     const r = db
       .prepare(`SELECT min(trade_date) AS a, max(trade_date) AS b FROM equity_daily WHERE ticker = ?`)
       .get(ticker) as { a: string | null; b: string | null } | undefined;
-    if (!r?.a || !r.b) return;
+    if (!r?.a || !r.b) continue;
     for (const me of monthEndsBetweenInclusive(r.a, r.b)) s.add(me);
-  };
-  if (merge?.spyId) addTickerMonths(merge.spyId, "SPY");
-  if (merge?.veaId) addTickerMonths(merge.veaId, "VEA");
-  if (!merge) {
-    for (const id of allIds) {
-      const t = equityTickerForAccount(id);
-      if (t) addTickerMonths(id, t);
-    }
   }
   return [...s].sort();
 }
