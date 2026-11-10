@@ -501,6 +501,42 @@ build; where it contradicts a bullet above, this list wins.
     income, dollar lots) as modules under `f22/`, the draft a composition. Byte-parity on every
     filed year is the test, as for the earlier untangle streams.
 
+### R2 readings as researched (2026-11-10; `docs/us-1040-readings.md` is the spec)
+
+The research step read the primary sources; its document carries every citation and wins over
+the bullets and the review above. What it settles, and the reading R2 builds where no source does:
+
+- **1042-S withholding is line 25c** (not 25b), a US payment, never Form 1116. Before 2024-02-01
+  (the convention's effective date for withholding) a Chilean resident's US dividends were
+  withheld at 30 %, 15 % from then: the generator's flat 15 % is wrong for 2019–2023 and is
+  corrected by date in `taxDocuments.ts` (the F22's 748 / 1018 of those years move; its 35 % cap
+  already exists).
+- **The 2024 nonresident statement is not empty:** US-source dividends of Jan 1 → Apr 14 are
+  taxed there at the withheld rate; foreign income splits by receipt date.
+- **Chile's Adicional on the rent is creditable by treaty** (Art. 23(1) with Reg.
+  §1.901-2(a)(1)(iii); the Notice 2023-55 / 2023-80 relief also covers 2024 and 2025); Form 8833
+  flagged in the notes. **The 10 % único on a Chilean ETF sale is not creditable** (Art. 13
+  leaves the gain to the residence State; the gain is US-source under §865). No foreign tax
+  credit against the NIIT; mark-to-market inclusions are net investment income; no QBI on the
+  rentals (13a = 0).
+- **Form 8621:** basis on arrival is the GREATER of market value and adjusted basis on the first
+  day of the taxable year (read literally: 2024-01-01); an MTM-elected holding always files (the
+  US$25.000 exception is §1291's). Built: Part IV. Flagged, not computed: Part V's first-year
+  §1291 coordination for the fund held since 2020 («possible», the largest open risk), and the
+  assumptions that both funds are foreign corporations, marketable, and the Bolsa de Santiago a
+  qualified exchange.
+- **Pensions:** Art. 18(4) defers a plan's undistributed earnings; the AFP is covered, the APV is
+  ASSUMED covered (no IRS position found) — one constant, stated on the return; Reg.
+  §1.1298-1(c)(4) switches off 8621 reporting for funds held through a covered plan.
+- **Centro's depreciation** has no authority either way: built as «allowable from the 2020
+  placed-in-service date, historic dollar cost» behind one constant, the alternative (a fresh
+  placing in service on arrival at the lesser of adjusted basis and value) named beside it.
+- **Law figures:** the 2025 standard deduction is US$15.750; the 0 % / 15 % capital-gain edges
+  for a single filer are US$47.025 / 518.900 (2024) and US$48.350 / 533.400 (2025); the 2025
+  form's lines are 7a, 11a / 11b, 12e (dual-status box 12c), 13a / 13b; Schedules 1–3 and lines
+  16–25 did not move. Wash sales apply to the stocks and ETFs (not modelled, stated), not to
+  crypto.
+
 ### Waves (continued)
 
 - **Wave T0 (one Opus agent, no behaviour change)** — review items 13 and 15: the `taxFacts/`
