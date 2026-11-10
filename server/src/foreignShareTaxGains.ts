@@ -15,6 +15,7 @@
  * both are published SII positions; the other is always reported beside it.
  */
 import { art107InstrumentKind } from "./art107Instruments.js";
+import { equityMarketKind } from "./equityQuote.js";
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
@@ -90,11 +91,11 @@ function latestObservadoDate(): string {
 function foreignEquityAccounts(): { id: number; name: string }[] {
   const rows = db
     .prepare(
-      `SELECT id, name, equity_ticker FROM accounts
-        WHERE COALESCE(equity_ticker, '') <> '' AND equity_ticker NOT LIKE '%-USD'`
+      `SELECT id, name, equity_ticker FROM accounts WHERE COALESCE(equity_ticker, '') <> ''`
     )
     .all() as { id: number; name: string; equity_ticker: string }[];
   return rows
+    .filter((a) => equityMarketKind(a.equity_ticker) !== "crypto24")
     .filter((a) => art107InstrumentKind(a.equity_ticker) == null && loadEquityTaxLotEvents(a.id).currency === "usd")
     .map(({ id, name }) => ({ id, name }));
 }

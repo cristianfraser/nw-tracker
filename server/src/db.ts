@@ -20,6 +20,7 @@ import {
   runMarkInputChangeTriggers303,
 } from "./markInputTriggers.js";
 import { runLoanPayments258 } from "./loanPayments258.js";
+import { runInstrumentRegistry305 } from "./instrumentRegistry305.js";
 import { runAccountRoles271 } from "./accountRoles271.js";
 import { runAccountRoles298 } from "./accountRoles299.js";
 import { runNavTreeRoles272 } from "./navTreeRoles272.js";
@@ -336,6 +337,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "265_equity_splits.sql": runMarkInputChangeTriggers265,
   "270_cache_write_log.sql": runMarkInputChangeTriggers270,
   "303_market_kind_london.sql": runMarkInputChangeTriggers303,
+  "305_instrument_registry.sql": runInstrumentRegistry305,
   "271_account_roles.sql": runAccountRoles271,
   "299_property_loan_identity_roles.sql": runAccountRoles298,
   "272_nav_tree_roles.sql": runNavTreeRoles272,

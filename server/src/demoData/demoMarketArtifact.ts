@@ -37,10 +37,12 @@ export const DEMO_MARKET_TABLES = [
 ] as const;
 
 /**
- * Tables a load writes into as a side effect, never exported: the change log the caches read, and
- * the Yahoo fx bars the loader refused (a diagnostics list for the sync panel, not market data).
+ * Tables a load writes into as a side effect, never exported: the change log the caches read, the
+ * Yahoo fx bars the loader refused (a diagnostics list for the sync panel, not market data), and the
+ * instrument registry — the loader declares the demo's instruments to price them, and the generator
+ * declares the same facts again (`declareDemoInstruments`) on the database it builds from the asset.
  */
-export const DEMO_MARKET_SIDE_EFFECT_TABLES: readonly string[] = ["mark_input_changes", "fx_daily_yahoo_rejected"];
+export const DEMO_MARKET_SIDE_EFFECT_TABLES: readonly string[] = ["mark_input_changes", "fx_daily_yahoo_rejected", "market_symbols"];
 
 /**
  * How many days before the build's yesterday (Chile) the asset may be complete through. The

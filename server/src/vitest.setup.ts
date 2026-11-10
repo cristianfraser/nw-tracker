@@ -6,9 +6,11 @@ import { afterAll, beforeAll, beforeEach, expect } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { ensureVitestCreditCardFixtures } from "./test/vitestDbSeed.js";
+import { ensureVitestInstrumentFixtures } from "./test/instrumentFixtures.js";
 import { registerExpenseLinkSync } from "./expenseLinkSync.js";
 
 ensureVitestCreditCardFixtures();
+ensureVitestInstrumentFixtures();
 
 /**
  * The card-line funnel registers its frame when it loads, so a test that writes card lines through

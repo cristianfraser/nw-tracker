@@ -26,10 +26,10 @@ import {
   londonWallClock,
 } from "./londonSession.js";
 import { isLondonTradingDay, londonSessionsBack, priorLondonSessionYmd } from "./marketHolidays.js";
-import { registerMarketSymbol } from "./marketSymbols.js";
+import { registerInstrument, requireMarketSymbol } from "./marketSymbols.js";
 import { displayDayPct, equityTickerDayCalendar, tickerMarketOpenOnYmd } from "./tickerDayDisplay.js";
 import { inferSyncSourcesForAccount } from "./accountSyncSources.js";
-import { classifyYahooSymbol } from "./yahooSymbols.js";
+import { classifyYahooSymbol } from "./priceProviders/yahoo.js";
 import { LONDON_FIXTURE_TICKER, installLondonTickerFixture, removeLondonTickerFixture } from "./test/londonTickerFixture.js";
 
 /** The instant the Europe/London wall clock reads `ymd` HH:mm. */
@@ -50,40 +50,38 @@ afterEach(() => {
   db.prepare(`DELETE FROM equity_daily WHERE ticker = ? AND trade_date < '2050-01-01'`).run(TEST_TICKER);
 });
 
-describe("equityMarketKind: an exchange suffix must be known", () => {
-  it("maps .SN to Santiago, .L to London, bare symbols to NYSE, coins to crypto", () => {
+describe("equityMarketKind: the registry decides, never the suffix", () => {
+  it("reads the registered market of every listing", () => {
     expect(equityMarketKind("CFIETFIPSA.SN")).toBe("santiago");
     expect(equityMarketKind("CSPX.L")).toBe("london");
     expect(equityMarketKind("vwra.l")).toBe("london");
     expect(equityMarketKind("SPY")).toBe("nyse");
-    expect(equityMarketKind("BRK-B")).toBe("nyse");
     expect(equityMarketKind("BTC-USD")).toBe("crypto24");
   });
 
-  it("throws on a suffix nothing knows (Paris) instead of falling back to NYSE", () => {
-    expect(() => equityMarketKind("XYZ.PA")).toThrow(/unknown exchange suffix \.PA/);
-    expect(() => equityMarketKind("ABC.DE")).toThrow(/unknown exchange suffix \.DE/);
-    expect(equityMarketKind("DX-Y.NYB")).toBe("nyse");
+  it("throws on an unregistered ticker whatever its spelling", () => {
+    expect(() => equityMarketKind("XYZ.PA")).toThrow(/not registered/);
+    expect(() => equityMarketKind("ZZNOREG")).toThrow(/not registered/);
+    expect(() => equityMarketKind("ZZNOREG.L")).toThrow(/not registered/);
+    expect(() => equityQuoteCurrency("ZZNOREG.SN")).toThrow(/not registered/);
   });
 
-  it("lets a market_symbols row win over the suffix", () => {
-    registerMarketSymbol({
-      ticker: "VITESTREG.PA",
-      quote_currency: "usd",
-      market_kind: "nyse",
-      name: null,
-      exchange: null,
-      instrument_type: null,
-      verified_at: "2026-11-10T00:00:00.000Z",
-    });
+  it("a registered row decides market and currency, whatever the suffix says", () => {
+    registerInstrument(
+      "VITESTREG.PA",
+      { quote_currency: "clp", market_kind: "santiago", mic: null, exchange: null, name: null, instrument_type: null, display_symbol: "VITESTREG" },
+      "declared"
+    );
     try {
-      expect(equityMarketKind("VITESTREG.PA")).toBe("nyse");
+      expect(equityMarketKind("VITESTREG.PA")).toBe("santiago");
+      expect(equityQuoteCurrency("VITESTREG.PA")).toBe("clp");
+      expect(requireMarketSymbol("VITESTREG.PA")).toMatchObject({ source: "declared", display_symbol: "VITESTREG" });
     } finally {
       db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run("VITESTREG.PA");
     }
   });
 
-  it("a .L line is valued in USD by the suffix rule (Yahoo's currency is checked at every write)", () => {
+  it("a .L line is valued in USD because its row says so (Yahoo's currency is checked at every write)", () => {
     expect(equityQuoteCurrency("CSPX.L")).toBe("usd");
   });
 });
@@ -184,12 +182,13 @@ describe("the London session gates at fixed instants", () => {
 });
 
 describe("classifyYahooSymbol: Europe/London in USD only", () => {
-  it("reads a USD LSE line as london / usd and refuses a pence line", () => {
+  it("reads a USD LSE line as london / usd on XLON and refuses a pence line", () => {
     const meta = { regularMarketPrice: 810.47, currency: "USD", instrumentType: "ETF", exchangeTimezoneName: "Europe/London", fullExchangeName: "LSE" };
-    expect(classifyYahooSymbol("CSPX.L", meta, new Date("2026-11-10T12:00:00Z"))).toMatchObject({
-      ticker: "CSPX.L",
+    expect(classifyYahooSymbol("CSPX.L", meta)).toMatchObject({
       quote_currency: "usd",
       market_kind: "london",
+      mic: "XLON",
+      display_symbol: "CSPX",
     });
     expect(() => classifyYahooSymbol("VWRL.L", { ...meta, currency: "GBp" })).toThrow(/quoted in GBp/);
   });

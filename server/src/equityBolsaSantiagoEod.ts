@@ -9,7 +9,7 @@
  * Works without cookies/auth; requires a normal browser User-Agent.
  */
 
-import { equityQuoteCurrency } from "./equityQuote.js";
+import { requireMarketSymbol } from "./marketSymbols.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
 import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 
@@ -22,15 +22,18 @@ type BolsaPointHistJson = {
   listaResult?: BolsaPointHistRow[];
 };
 
-/** Bolsa de Santiago nemo for a Yahoo `.SN` symbol (CFIETFIPSA.SN → CFIETFIPSA). */
+/**
+ * Bolsa de Santiago nemo of a registered Santiago instrument: its display symbol
+ * (CFIETFIPSA.SN → CFIETFIPSA), read from the instrument registry, never from the ticker's spelling.
+ */
 export function bolsaSantiagoNemoForTicker(ticker: string): string {
-  const sym = ticker.trim().toUpperCase();
-  if (!sym.endsWith(".SN") || equityQuoteCurrency(sym) !== "clp") {
-    throw new Error(`bolsaSantiagoNemoForTicker: ${ticker} is not a Bolsa de Santiago .SN symbol`);
+  const row = requireMarketSymbol(ticker);
+  if (row.market_kind !== "santiago" || row.quote_currency !== "clp") {
+    throw new Error(`bolsaSantiagoNemoForTicker: ${ticker} is registered as ${row.market_kind}/${row.quote_currency}, not a Bolsa de Santiago peso instrument`);
   }
-  const nemo = sym.slice(0, -".SN".length);
+  const nemo = row.display_symbol;
   if (!/^[A-Z0-9]+$/.test(nemo)) {
-    throw new Error(`bolsaSantiagoNemoForTicker: invalid nemo '${nemo}' from ${ticker}`);
+    throw new Error(`bolsaSantiagoNemoForTicker: invalid nemo '${nemo}' for ${ticker}`);
   }
   return nemo;
 }

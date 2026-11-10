@@ -13,29 +13,92 @@ import { db } from "../db.js";
 import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
 import { equityMarketKind, equityQuoteCurrency, unknownEquityMarketKind } from "../equityQuote.js";
+import { registerInstrument, type InstrumentFacts, type MarketQuoteCurrency, type MarketSymbolKind } from "../marketSymbols.js";
 import { upsertSpAfpFundUnits, type SpAfpFundUnitRow } from "../spAfpFundUnits.js";
 import { stream } from "./rng.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { addDays, addMonths, BTC_TICKER, DEMO_PERSON, type Month, type Person, type Ymd } from "./person.js";
 
-/** Every ticker the person holds, with the first day the story needs its price. */
-export const DEMO_TICKERS: { ticker: string; firstUse: Ymd }[] = [
-  { ticker: "SPY", firstUse: "2018-05-01" },
-  { ticker: "AAPL", firstUse: "2019-03-01" },
-  { ticker: "AMD", firstUse: "2019-07-01" },
-  { ticker: "MSFT", firstUse: "2020-04-01" },
-  { ticker: "ZM", firstUse: "2020-10-01" },
-  { ticker: "NVDA", firstUse: "2021-03-01" },
-  { ticker: "INTC", firstUse: "2021-04-01" },
-  { ticker: "OILK", firstUse: "2026-05-01" },
-  { ticker: "LNG", firstUse: "2026-05-01" },
-  { ticker: "SGOV", firstUse: "2024-05-01" },
-  { ticker: "CFIETFIPSA.SN", firstUse: "2025-06-01" },
+/**
+ * An instrument the synthetic databases hold, with the facts the generator declares for it
+ * (`market_symbols`, source `declared`): the synthetic path never asks a provider, and the
+ * real-market loader cross-checks each declaration against Yahoo's statement (`demoRealMarket.ts`).
+ */
+export type DemoInstrument = {
+  ticker: string;
+  firstUse: Ymd;
+  market_kind: MarketSymbolKind;
+  quote_currency: MarketQuoteCurrency;
+  display_symbol: string;
+  /** ISO 10383; null for a coin. */
+  mic: string | null;
+  name: string;
+  instrument_type: string;
+};
+
+const us = (ticker: string, firstUse: Ymd, mic: string, name: string, instrument_type: "EQUITY" | "ETF"): DemoInstrument => ({
+  ticker,
+  firstUse,
+  market_kind: "nyse",
+  quote_currency: "usd",
+  display_symbol: ticker,
+  mic,
+  name,
+  instrument_type,
+});
+
+/** Every ticker the person holds, with the first day the story needs its price and its declared facts. */
+export const DEMO_TICKERS: DemoInstrument[] = [
+  us("SPY", "2018-05-01", "ARCX", "SPDR S&P 500 ETF Trust", "ETF"),
+  us("AAPL", "2019-03-01", "XNAS", "Apple Inc.", "EQUITY"),
+  us("AMD", "2019-07-01", "XNAS", "Advanced Micro Devices, Inc.", "EQUITY"),
+  us("MSFT", "2020-04-01", "XNAS", "Microsoft Corporation", "EQUITY"),
+  us("ZM", "2020-10-01", "XNAS", "Zoom Communications, Inc.", "EQUITY"),
+  us("NVDA", "2021-03-01", "XNAS", "NVIDIA Corporation", "EQUITY"),
+  us("INTC", "2021-04-01", "XNAS", "Intel Corporation", "EQUITY"),
+  us("OILK", "2026-05-01", "BATS", "ProShares K-1 Free Crude Oil ETF", "ETF"),
+  us("LNG", "2026-05-01", "XASE", "Cheniere Energy, Inc.", "EQUITY"),
+  us("SGOV", "2024-05-01", "ARCX", "iShares 0-3 Month Treasury Bond ETF", "ETF"),
+  {
+    ticker: "CFIETFIPSA.SN",
+    firstUse: "2025-06-01",
+    market_kind: "santiago",
+    quote_currency: "clp",
+    display_symbol: "CFIETFIPSA",
+    mic: "XSGO",
+    name: "ETF IPSA",
+    instrument_type: "ETF",
+  },
   // The Irish UCITS ETFs on the LSE's USD lines, held at IBKR as a Chilean resident (2023-05 → 2024-03).
-  { ticker: "CSPX.L", firstUse: "2023-05-01" },
-  { ticker: "VWRA.L", firstUse: "2023-05-01" },
-  { ticker: BTC_TICKER, firstUse: "2018-06-01" },
+  { ticker: "CSPX.L", firstUse: "2023-05-01", market_kind: "london", quote_currency: "usd", display_symbol: "CSPX", mic: "XLON", name: "iShares Core S&P 500 UCITS ETF USD (Acc)", instrument_type: "ETF" },
+  { ticker: "VWRA.L", firstUse: "2023-05-01", market_kind: "london", quote_currency: "usd", display_symbol: "VWRA", mic: "XLON", name: "Vanguard FTSE All-World UCITS ETF USD Accumulation", instrument_type: "ETF" },
+  { ticker: BTC_TICKER, firstUse: "2018-06-01", market_kind: "crypto24", quote_currency: "usd", display_symbol: BTC_TICKER, mic: null, name: "Bitcoin USD", instrument_type: "CRYPTOCURRENCY" },
 ];
+
+/** The declared facts of a demo instrument, as `registerInstrument` takes them. */
+export function demoInstrumentFacts(i: DemoInstrument): InstrumentFacts {
+  return {
+    quote_currency: i.quote_currency,
+    market_kind: i.market_kind,
+    mic: i.mic,
+    exchange: null,
+    name: i.name,
+    instrument_type: i.instrument_type,
+    display_symbol: i.display_symbol,
+  };
+}
+
+/**
+ * Registers the declared facts of `tickers` (default: every demo instrument), source `declared`.
+ * A ticker without a declaration throws: the synthetic databases hold nothing undeclared.
+ */
+export function declareDemoInstruments(tickers: readonly string[] = DEMO_TICKERS.map((t) => t.ticker)): void {
+  for (const ticker of tickers) {
+    const i = DEMO_TICKERS.find((t) => t.ticker === ticker);
+    if (!i) throw new Error(`demo: ${ticker} has no declared instrument facts (DEMO_TICKERS in demoData/market.ts)`);
+    registerInstrument(ticker, demoInstrumentFacts(i), "declared");
+  }
+}
 
 /* ------------------------------- synthetic -------------------------------------- */
 

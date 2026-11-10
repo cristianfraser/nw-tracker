@@ -4,7 +4,7 @@
  */
 
 import { chileWallClockAt } from "./chileDate.js";
-import { equityMarketKind, unknownEquityMarketKind } from "./equityQuote.js";
+import { equityMarketKind, unknownEquityMarketKind, type EquityMarketKind } from "./equityQuote.js";
 import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 import { isWeekendYmd } from "./marketHolidays.js";
 import { nyseYmdFromUnix } from "./nyseSession.js";
@@ -33,6 +33,8 @@ export type YahooChartMeta = {
   /** `EQUITY`, `ETF`, `INDEX`, `CRYPTOCURRENCY`, `FUTURE`, … */
   instrumentType?: string;
   exchangeTimezoneName?: string;
+  /** Yahoo's short exchange code (`PCX`, `NMS`, `LSE`, `SGO`, …). */
+  exchangeName?: string;
   fullExchangeName?: string;
   longName?: string;
   shortName?: string;
@@ -127,6 +129,18 @@ export function yahooChartPeriodSeconds(firstMk: string, lastMk: string): { peri
   return { period1: p1, period2: p2 };
 }
 
+/** Yahoo's USD/CLP pair: the live dollar and the `fx_daily` source, not an instrument the app holds. */
+export const YAHOO_USD_CLP_SYMBOL = "CLP=X";
+
+/**
+ * The calendar a Yahoo chart is dated on: an instrument's registered market (`market_symbols`), or
+ * the forex day (New York) for the USD/CLP pair — the one Yahoo symbol the app reads that is not
+ * in the instrument registry.
+ */
+function yahooSymbolCalendar(symbol: string): EquityMarketKind {
+  return symbol === YAHOO_USD_CLP_SYMBOL ? "nyse" : equityMarketKind(symbol);
+}
+
 /**
  * Bar timestamp → exchange calendar day, explicit per market kind (crypto: UTC, Santiago: Chile,
  * London: Europe/London — Yahoo stamps an LSE daily bar at its 08:00 open —, NYSE and forex `=X`
@@ -134,7 +148,7 @@ export function yahooChartPeriodSeconds(firstMk: string, lastMk: string): { peri
  * `forexDay.ts` builds on).
  */
 export function yahooBarYmdFromUnix(symbol: string, sec: number): string {
-  const kind = equityMarketKind(symbol);
+  const kind = yahooSymbolCalendar(symbol);
   switch (kind) {
     case "crypto24":
       return new Date(sec * 1000).toISOString().slice(0, 10);
@@ -163,7 +177,7 @@ export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartRes
   }
   const dates: string[] = [];
   const closes: number[] = [];
-  const kind = equityMarketKind(symbol);
+  const kind = yahooSymbolCalendar(symbol);
   const weekdayCalendar = kind === "nyse" || kind === "london";
   for (let i = 0; i < ts.length; i++) {
     const c = close[i];

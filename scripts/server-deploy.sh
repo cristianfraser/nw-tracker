@@ -8,7 +8,8 @@
 # (docs/job-queue-plan.md) and claim it — the queue grants it only when nothing else runs (the
 # `server-restart` resource: an ingest run in flight finishes first, and nothing new starts while
 # the deploy waits or runs). Once granted: snapshot the database, fast-forward, `npm ci` only when
-# a package file changed, rebuild the client beside the served one and swap it in, restart the server (and the ingest service when its
+# a package file changed, rebuild the client beside the served one and swap it in, register the
+# instruments the registry lacks (the script also applies pending migrations), restart the server (and the ingest service when its
 # code changed), wait for /api/health to report the new commit, and complete the job. A deploy
 # whose server does not come back healthy is rolled back to the previous commit. Pushes made while
 # a deploy waits are deployed together: the queued job moves to the newest commit. Outcomes go to
@@ -210,6 +211,15 @@ install_and_build() {
   mv client/dist.next client/dist
 }
 
+# Register the instruments the registry lacks (docs/demo-app-features-plan.md §4). Runs from the
+# new checkout while the old server keeps serving: opening the database applies pending migrations
+# (305's ADD COLUMNs, which the old code does not read), then every ticker in use gets its row from
+# its price provider. A failure fails the deploy (the rollback path) with the script's output in the log.
+register_instruments() {
+  log "register market symbols"
+  npm run -s register:market-symbols -w nw-tracker-server -- --apply >>"$LOG" 2>&1 || { log "register:market-symbols failed"; return 1; }
+}
+
 restart() {
   launchctl kickstart -k "$DOMAIN/$SERVER_AGENT" || return 1
   if ingest_changed "$1" && launchctl print "$DOMAIN/$INGEST_AGENT" >/dev/null 2>&1; then
@@ -260,7 +270,7 @@ echo "$commits" | sed 's/^/    /' | tee -a "$LOG"
 (cd server && npm run -s db:snapshot -- --label="before-deploy-$short") >>"$LOG" 2>&1
 git merge --ff-only --quiet "$new"
 
-if job_heartbeat && install_and_build "$changed" && job_heartbeat && restart "$changed" && healthy_at "$new"; then
+if job_heartbeat && install_and_build "$changed" && job_heartbeat && register_instruments && job_heartbeat && restart "$changed" && healthy_at "$new"; then
   STAGE=finished
   log "Deployed $short"
   message log "Deploy $short" "$(printf 'Deployed %s.\n%s' "$short" "$commits")"

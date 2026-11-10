@@ -24,7 +24,7 @@ describe("stockAccountFormTypes", () => {
       unitsDelta: "1",
       counterpartAccountId: 90 as const,
     };
-    const body = buildBrokerageMovementPostBody(row, "LIN");
+    const body = buildBrokerageMovementPostBody(row, "usd");
     expect(body?.counterpart_role).toBe("from");
     expect(body?.counterpart_account_id).toBe(90);
     expect(body?.amount).toBe(100);
@@ -40,14 +40,14 @@ describe("stockAccountFormTypes", () => {
       unitsDelta: "9", // stale hidden-field value must not be sent
       counterpartAccountId: 90 as const,
     };
-    const body = buildBrokerageMovementPostBody(row, "VEA");
+    const body = buildBrokerageMovementPostBody(row, "usd");
     expect(body?.counterpart_role).toBe("to");
     expect(body?.amount).toBe(0.54);
     expect(body?.currency).toBe("usd");
     expect(body).not.toHaveProperty("units_delta");
   });
 
-  it("stock_buy for a .SN (CLP-quoted) stock sends a CLP amount and never a USD leg", () => {
+  it("stock_buy for a CLP-quoted stock (the server says clp) sends a CLP amount and never a USD leg", () => {
     const row = {
       ...emptyMovementRow("stock_buy"),
       occurredOn: "2026-07-03",
@@ -56,7 +56,7 @@ describe("stockAccountFormTypes", () => {
       unitsDelta: "2282",
       counterpartAccountId: 96 as const,
     };
-    const body = buildBrokerageMovementPostBody(row, "CFIETFIPSA.SN");
+    const body = buildBrokerageMovementPostBody(row, "clp");
     expect(body?.amount).toBe(2_985_000);
     expect(body?.currency).toBe("clp");
     expect(body).not.toHaveProperty("counter_amount");
@@ -73,9 +73,9 @@ describe("stockAccountFormTypes", () => {
       unitsDelta: "0,25",
       counterpartAccountId: 90 as const,
     };
-    expect(buildBrokerageMovementPostBody(row, "LIN")?.amount).toBe(1500);
+    expect(buildBrokerageMovementPostBody(row, "usd")?.amount).toBe(1500);
     setDecimalSeparatorForFormatting("period");
-    const body = buildBrokerageMovementPostBody(row, "LIN");
+    const body = buildBrokerageMovementPostBody(row, "usd");
     expect(body?.amount).toBe(1.5);
     // Unambiguous input reads the same under either setting.
     expect(body?.units_delta).toBe(0.25);
@@ -89,6 +89,6 @@ describe("stockAccountFormTypes", () => {
       unitsDelta: "1",
       counterpartAccountId: 90 as const,
     };
-    expect(() => buildBrokerageMovementPostBody(row, "LIN")).toThrow("1.50.000");
+    expect(() => buildBrokerageMovementPostBody(row, "usd")).toThrow("1.50.000");
   });
 });

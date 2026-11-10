@@ -1,4 +1,4 @@
-import { upsertEquityDailySeries, EQUITY_DAILY_IMPORT_TICKERS } from "./brokerageEquityMtm.js";
+import { upsertEquityDailySeries } from "./brokerageEquityMtm.js";
 import {
   listWatchlistCryptoTickersForEodSync,
   listWatchlistLondonTickersForEodSync,
@@ -12,9 +12,9 @@ import {
   type ChileWallClock,
 } from "./chileDate.js";
 import { db } from "./db.js";
-import { equityMarketKind, marketQuoteCurrency, unknownEquityMarketKind } from "./equityQuote.js";
+import { equityMarketKind, unknownEquityMarketKind } from "./equityQuote.js";
 import { insertEquityDividendsIfMissing } from "./equityDividends.js";
-import { fetchCoinGeckoRecentDailyCloses } from "./equityCoinGeckoEod.js";
+import { COINGECKO_CRYPTO_TICKERS, fetchCoinGeckoRecentDailyCloses } from "./equityCoinGeckoEod.js";
 import {
   fetchYahooNyseEodForSync,
   fetchYahooRecentDailyCloses,
@@ -23,6 +23,7 @@ import {
   type EodCloseSeries,
 } from "./equityYahooEod.js";
 import { recordYahooSplits } from "./equitySplitsSync.js";
+import { checkYahooSeriesCurrency } from "./priceProviders/yahoo.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, priorChileBusinessDayYmd, priorLondonSessionYmd } from "./marketHolidays.js";
 import { londonWallClock, type LondonWallClock } from "./londonSession.js";
 import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock, utcTodayYmd } from "./nyseSession.js";
@@ -36,9 +37,8 @@ const stmtLatestEodTradeDate = db.prepare(
   `SELECT trade_date FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
 );
 
-export const EQUITY_CRYPTO_TICKERS = EQUITY_DAILY_IMPORT_TICKERS.filter(
-  (t) => equityMarketKind(t) === "crypto24"
-);
+/** The coins the crypto EOD source prices (CoinGecko's adapter knows them by their Yahoo-style ticker). */
+export const EQUITY_CRYPTO_TICKERS: readonly string[] = COINGECKO_CRYPTO_TICKERS;
 
 export function latestEquityEodTradeDate(ticker: string): string | null {
   const row = stmtLatestEodTradeDate.get(ticker) as { trade_date: string } | undefined;
@@ -222,23 +222,6 @@ export type EquityEodSyncResult = {
   dividendError?: string;
 };
 
-/**
- * A London bar is stored only when Yahoo prices the line in the currency the app values it in:
- * the LSE quotes the same fund in pence (`GBp`), dollars and euros under different tickers, and
- * `marketQuoteCurrency` assumes USD for an unregistered `.L` ticker — so a pence line must fail
- * here, at the write, never sit valued as dollars.
- */
-export function assertYahooMetaCurrencyMatches(ticker: string, meta: { currency?: string | null } | undefined): void {
-  const expected = marketQuoteCurrency(ticker);
-  const printed = meta?.currency ?? null;
-  if (printed == null) throw new Error(`Yahoo prints no currency for ${ticker}; expected ${expected.toUpperCase()}`);
-  if (printed.toLowerCase() !== expected) {
-    throw new Error(
-      `${ticker} is quoted in ${printed} on Yahoo, the app values it in ${expected.toUpperCase()}: register its real currency in market_symbols, or hold the ${expected.toUpperCase()} line`
-    );
-  }
-}
-
 /** Sync-log note when NYSE EOD fetch did not fully catch up. */
 export function describeEquityNyseEodSyncNote(r: EquityEodSyncResult): string | null {
   if (r.skipped) return `${r.ticker}: skip (${r.skipped})`;
@@ -372,7 +355,7 @@ export async function syncEquityEodFromYahoo(
       }
       try {
         const fetched = await fetchYahooRecentDailyClosesWithDividends(ticker, 21);
-        assertYahooMetaCurrencyMatches(ticker, fetched.meta);
+        checkYahooSeriesCurrency(ticker, fetched.meta);
         if (!dryRun) recordYahooSplits(ticker, fetched.splits, now);
         const series = capEodSeriesToMaxTradeDate(fetched.series, dueSessionYmd);
         const rows = dryRun ? series.dates.length : upsertEquityDailySeries(ticker, series);

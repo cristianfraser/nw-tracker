@@ -5,6 +5,8 @@ import { assetGroupBySlug, ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { isClpCashKindSlug } from "./clpCashAccounts.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
+import { marketSymbol } from "./marketSymbols.js";
+import { ensureRegisteredInstrument } from "./priceProviders/index.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "./panelAccountNotes.js";
 import {
   portfolioGroupBySlug,
@@ -85,6 +87,35 @@ function fail(status: number, error: string): never {
   throw err;
 }
 
+/**
+ * A ticker an account is created on must be in the instrument registry: its calendar and currency
+ * are the registry's facts. The HTTP route registers it first ({@link registerPanelAccountInstrument});
+ * any other caller (an importer creating a position from a mail) must find it registered.
+ */
+function requireRegisteredTicker(ticker: string, what: string): void {
+  if (marketSymbol(ticker) == null) {
+    fail(400, `${what} ${ticker} is not registered in market_symbols; run \`npm run register:market-symbols -w nw-tracker-server\``);
+  }
+}
+
+/**
+ * The door a panel account goes through before it is written: the ticker of a stock or coin
+ * account, or an option contract's underlying, is registered from its price provider (Yahoo for a
+ * listing, CoinGecko for a coin) when the registry has no row. A provider that cannot value the
+ * symbol is the request's error (400).
+ */
+export async function registerPanelAccountInstrument(body: PanelAccountCreateBody): Promise<void> {
+  const acc = body.account;
+  const raw = acc.account_type === "option" ? acc.option?.underlying : acc.account_type === "equity" || acc.account_type === "crypto" ? acc.ticker : null;
+  const ticker = (raw ?? "").trim().toUpperCase();
+  if (!ticker || !/^[A-Z0-9.-]+$/.test(ticker)) return; // createPanelAccount refuses it with its own message
+  try {
+    await ensureRegisteredInstrument(ticker, acc.account_type === "crypto" ? "coingecko" : "yahoo");
+  } catch (e) {
+    fail(400, e instanceof Error ? e.message : String(e));
+  }
+}
+
 /** Bucket (portfolio nav leaf) → backing asset-group parent slug; throws 400 on liability/unknown. */
 function resolveBucketParentAssetSlug(bucketSlug: string, verb: "create" | "move"): string {
   const pg = portfolioGroupBySlug(bucketSlug);
@@ -125,6 +156,7 @@ function createOptionContractAccount(acc: PanelAccountCreateBody["account"]): Pa
   if (!o) fail(400, "account.option is required for an option contract");
   const underlying = (o.underlying ?? "").trim().toUpperCase();
   if (!underlying || !/^[A-Z0-9.-]+$/.test(underlying)) fail(400, "account.option.underlying is invalid");
+  requireRegisteredTicker(underlying, "the underlying");
   if (equityMarketKind(underlying) === "crypto24") fail(400, "an option's underlying is a listed stock or ETF, not a coin");
   if (equityQuoteCurrency(underlying) !== "usd") fail(400, `the underlying ${underlying} is not quoted in USD (USD options only)`);
   if (o.right !== "C" && o.right !== "P") fail(400, "account.option.right must be C or P");
@@ -195,6 +227,7 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
   if (isEquity) {
     ticker = (acc.ticker ?? "").trim().toUpperCase();
     if (!ticker || !/^[A-Z0-9.-]+$/.test(ticker)) fail(400, "account.ticker is invalid");
+    requireRegisteredTicker(ticker, "the ticker");
     if (type === "crypto") {
       if (!["BTC-USD", "ETH-USD"].includes(ticker)) {
         fail(400, "crypto accounts only support BTC-USD or ETH-USD tickers");

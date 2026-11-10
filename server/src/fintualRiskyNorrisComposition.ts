@@ -1,3 +1,4 @@
+import { ensureRegisteredInstrument } from "./priceProviders/index.js";
 import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { FINTUAL_GOALS } from "./fintualGoals.js";
 import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
@@ -435,6 +436,9 @@ export async function syncRiskyNorrisComposition(
   const tickers = holdings.map((h) => h.ticker);
   const statedHoldings = holdingsAsStated(api.etf_positions);
 
+  // An ETF that enters the basket is priced like any held ticker: registered first (the registry
+  // decides its calendar and currency), from Yahoo when it has no row.
+  for (const ticker of tickers) await ensureRegisteredInstrument(ticker, "yahoo");
   await ensureEquityDailyHistoryForWatchlistTickers(tickers, cl.ymd);
 
   // The anchor serie publishes day D on D+1 through the official public prices only, so refresh

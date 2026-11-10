@@ -7,10 +7,11 @@ import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchl
 import { equityMarketKind } from "./equityQuote.js";
 import {
   latestMarketSymbolFetchError,
-  registerMarketSymbol,
+  registerInstrument,
   reloadMarketSymbols,
+  type InstrumentFacts,
+  type InstrumentSource,
   type MarketSymbolFetchError,
-  type MarketSymbolRow,
 } from "./marketSymbols.js";
 import { notifyGlobalSyncScheduler } from "./globalSyncScheduler.js";
 import {
@@ -23,7 +24,7 @@ import {
   type WatchlistDisplayUnit,
   type WatchlistRowStats,
 } from "./watchlistStats.js";
-import { searchYahooSymbols, verifyYahooSymbol, type YahooSymbolSearchResult } from "./yahooSymbols.js";
+import { describeSymbol, priceProvider, type ProviderSymbolSearchResult } from "./priceProviders/index.js";
 import {
   listCompositeConstituentTickers,
   loadCompositeHoldings,
@@ -383,12 +384,16 @@ function assertNotOnWatchlist(ticker: string): void {
 }
 
 /**
- * Adds a symbol Yahoo has already been asked about ({@link verifyYahooSymbol}): its quote
- * currency and market are recorded in `market_symbols`, so the sync stores its prices and the
- * watchlist reads them on the right calendar and in the right currency (or none, for an index).
+ * Adds a symbol a price provider has already been asked about ({@link describeSymbol}): its facts
+ * are registered in the instrument registry (`market_symbols`), so the sync stores its prices and
+ * the watchlist reads them on the right calendar and in the right currency (or none, for an index).
  */
-export function addManualWatchlistTicker(symbol: MarketSymbolRow): WatchlistRow {
-  const ticker = normalizeManualWatchlistTicker(symbol.ticker);
+export function addManualWatchlistTicker(
+  rawTicker: string,
+  facts: InstrumentFacts,
+  source: InstrumentSource = "yahoo"
+): WatchlistRow {
+  const ticker = normalizeManualWatchlistTicker(rawTicker);
   const slug = equitySlug(ticker);
   db.transaction(() => {
     assertNotOnWatchlist(ticker);
@@ -398,7 +403,7 @@ export function addManualWatchlistTicker(symbol: MarketSymbolRow): WatchlistRow 
           `SELECT COALESCE(MAX(sort_order), 0) AS m FROM market_display_series WHERE source = 'manual'`
         )
         .get() as { m: number }).m ?? 0;
-    registerMarketSymbol({ ...symbol, ticker });
+    registerInstrument(ticker, facts, source);
     stmtInsert.run(slug, ticker, null, maxSort + 10, "equity", ticker, 1, ticker, "manual");
   })();
   // Missing EOD for new tickers surfaces as natural stocks_nyse / crypto_eod stale — no userForcedStale pin.
@@ -413,22 +418,28 @@ export function addManualWatchlistTicker(symbol: MarketSymbolRow): WatchlistRow 
   return rowToWatchlist(row, new Date());
 }
 
-/** The add box's path: refuse a symbol already listed before asking Yahoo, then add what Yahoo confirms. */
+/** The add box's path: refuse a symbol already listed before asking Yahoo, then add what Yahoo states. */
 export async function addManualWatchlistTickerFromYahoo(
   raw: string,
-  verify: (ticker: string) => Promise<MarketSymbolRow> = verifyYahooSymbol
+  describe: (ticker: string) => Promise<InstrumentFacts> = (t) => describeSymbol(t, "yahoo")
 ): Promise<WatchlistRow> {
   const ticker = normalizeManualWatchlistTicker(raw);
   assertNotOnWatchlist(ticker);
-  return addManualWatchlistTicker(await verify(ticker));
+  return addManualWatchlistTicker(ticker, await describe(ticker), "yahoo");
 }
 
-export type WatchlistSymbolSearchResult = YahooSymbolSearchResult & { on_watchlist: boolean };
+export type WatchlistSymbolSearchResult = ProviderSymbolSearchResult & { on_watchlist: boolean };
+
+function yahooSearch(q: string): Promise<ProviderSymbolSearchResult[]> {
+  const search = priceProvider("yahoo").search;
+  if (!search) throw new Error("the yahoo price provider has no search");
+  return search(q);
+}
 
 /** Yahoo's matches for what the user typed, each marked when it is already on the watchlist. */
 export async function searchWatchlistSymbols(
   query: string,
-  search: (q: string) => Promise<YahooSymbolSearchResult[]> = searchYahooSymbols
+  search: (q: string) => Promise<ProviderSymbolSearchResult[]> = yahooSearch
 ): Promise<WatchlistSymbolSearchResult[]> {
   const results = await search(query);
   return results.map((r) => ({
