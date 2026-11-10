@@ -25,6 +25,7 @@
 import { setExpenseCategoryRule } from "../expenseCategoryRules.js";
 import { readFileSync } from "node:fs";
 import { db } from "../db.js";
+import { declareTaxResidency } from "../taxResidency.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { ensureRetirementCountrySplit, seedNavTree } from "../seedNavTree.js";
 import { writeFundUnitSeriesRows } from "../fundUnitDaily.js";
@@ -747,6 +748,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   writePlaces(person, ids);
   // The owner as the bank prints its own transfers (`owner_identity`, migration 277).
   db.prepare(`INSERT INTO owner_identity (kind, value) VALUES ('name_pattern', ?)`).run(DEMO_OWNER_NAME_PATTERN);
+  // The tax residency he declares, before the April loop: the F22 of every year reads it.
+  for (const d of person.taxResidency) declareTaxResidency({ jurisdiction: d.jurisdiction, fromDate: d.from, note: d.note });
   seedNavTree();
   // With US retirement accounts the Retirement tree reads Chile / US (the personal instance never splits).
   if (ids.has("k401")) ensureRetirementCountrySplit();

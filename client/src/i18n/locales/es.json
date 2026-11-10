@@ -2087,7 +2087,10 @@
     },
     "codes": {
       "31": "Impuesto global complementario",
+      "32": "Base del Impuesto Adicional: el subtotal de un no residente (línea 72, arts. 58 N°1–2 y 60 inc. 1°)",
+      "34": "Impuesto Adicional determinado (35 % del código 32 menos el código 76)",
       "39": "Reajuste art. 72",
+      "76": "Rebajas al Impuesto Adicional (IDPC, art. 41 A)",
       "90": "Impuesto adeudado",
       "91": "Total a pagar",
       "105": "Dividendos afectos al IGC (línea 2)",
@@ -2113,7 +2116,10 @@
       "750": "Intereses de créditos hipotecarios (art. 55 bis)",
       "751": "Intereses pagados por créditos hipotecarios",
       "770": "Honorarios: ahorro previsional voluntario (APV, régimen B)",
+      "833": "Retenciones por rentas declaradas en códigos 955, 32, 951 y 1829 (línea 95)",
       "900": "Cargo por cotizaciones previsionales",
+      "951": "Cuotas de fondos enajenadas por un no residente: mayor valor según art. 82 Ley 20.712 (línea 69)",
+      "952": "Impuesto único de 10 % sobre el código 951",
       "955": "Rentas efectivas sin contabilidad completa (línea 5)",
       "1018": "Crédito por impuestos soportados en el exterior (rentas propias, línea 45)",
       "1030": "Sueldos y otras rentas similares de fuente extranjera",
@@ -2132,6 +2138,43 @@
       "1869": "De ello: fondos mutuos, de inversión y acciones (art. 17 N°8)",
       "1878": "Rentas art. 57 dentro de los límites",
       "1901": "Rentas afectas al IDPC, art. 20 N°5 (diferencia de cambio en dólares; línea 58 d)"
+    },
+    "residency": {
+      "undeclared": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año, como siempre.",
+      "regime": {
+        "resident": "Declarada: residente tributario en Chile todo el año ({{period}}).",
+        "nonresident": "Declarada: sin residencia tributaria en Chile en {{year}} — residente en EE. UU. desde {{from}} ({{period}}). Solo entran las rentas de fuente chilena, con Impuesto Adicional (art. 60 inc. 1° LIR, línea 72 del F22).",
+        "split": "Declarada: el año de la partida — residente en Chile hasta el {{through}}, residente en EE. UU. desde el {{from}}. Renta mundial hasta el día declarado (IGC), rentas de fuente chilena después (Impuesto Adicional)."
+      },
+      "assumption": "Declarada, no inferida. Chile puede sostener que el domicilio continuó mientras el asiento principal de los negocios siguió en Chile (art. 4 LIR); esta declaración asume la fecha declarada.",
+      "art103": "La declaración de salida del art. 103 LIR (el IGC devengado hasta la partida, tramos y créditos proporcionales) se anota, no se construye: la parte residente usa la tabla anual.",
+      "yearlyDj": "Una cifra anual de DJ (1887, 1890, 1894, 1899) no se puede partir por día y queda entera en la parte residente; la DJ 1898 del acreedor se reemplaza por los intereses pagados hasta el día declarado.",
+      "nonresidentPart": "Parte no residente ({{from}} → {{through}}): arriendo afecto {{rent}}, arriendo DFL-2 exento {{exempt}} (art. 15 DFL N° 2: «ni Adicional»); base del Impuesto Adicional (32) {{base}}, impuesto (34) {{tax}}.",
+      "nonresidentArt107": "Ventas art. 107 en la parte no residente: {{sales}}, resultado {{result}}, impuesto único 10 % {{tax}} — al costo de las normas generales (art. 107 N°7), retenido por el corredor (N°6; no hay registro de la retención).",
+      "excludedTitle": "No declarado (no residente)",
+      "excludedExplain": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón. No desaparecen: es lo que Chile no alcanza.",
+      "excludedItem": "{{kind}}: {{clp}} — {{reason}}",
+      "kind": {
+        "us_salary": "Sueldo en EE. UU. (bruto)",
+        "foreign_dividends": "Dividendos extranjeros (netos)",
+        "foreign_interest": "Intereses extranjeros",
+        "foreign_shares": "Mayor valor en acciones extranjeras",
+        "usd_fx": "Diferencia de cambio en dólares",
+        "crypto": "Mayor valor en criptomonedas",
+        "fund_redemptions": "Rescates de fondos chilenos",
+        "fund_distributions": "Repartos de fondos chilenos",
+        "chile_interest": "Intereses bancarios chilenos (DJ 1890)",
+        "mortgage_interest": "Intereses hipotecarios (750 / 751)",
+        "apv": "Rebaja APV (765)",
+        "property_tax_credit": "Crédito por contribuciones (1637)"
+      },
+      "reason": {
+        "nonresident": "renta de fuente extranjera de un no residente, fuera del alcance de Chile (art. 3 LIR)",
+        "treaty_art13_8": "tributable solo en el Estado de residencia según el art. 13(8) del convenio Chile–EE. UU.",
+        "fund_unico_withheld": "impuesto único de 10 % retenido por la administradora (art. 82 B Ley 20.712); no se declara aquí",
+        "withheld_at_source": "retenido por el pagador (arts. 59 N°1 y 74 N°4 LIR); no va en la declaración anual",
+        "no_igc": "rebaja o crédito del IGC; un no residente paga el Impuesto Adicional, que no los tiene"
+      }
     },
     "crypto": {
       "title": "Ventas de cripto",
@@ -2428,5 +2471,25 @@
     "colErrors": "Errores 5xx / 4xx",
     "colSize": "Tamaño (KB)",
     "colDay": "Día"
+  },
+  "panelSettings": {
+    "taxResidency": {
+      "title": "Residencia tributaria",
+      "explain": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Nada se infiere; sin períodos declarados eres residente tributario en Chile.",
+      "none": "Sin períodos declarados.",
+      "jurisdiction": "Jurisdicción",
+      "jurisdictions": {
+        "cl": "Chile",
+        "us": "Estados Unidos"
+      },
+      "from": "Desde",
+      "to": "Hasta",
+      "open": "abierto",
+      "note": "Nota",
+      "declare": "Declarar",
+      "deleteLatest": "Borrar el último período",
+      "deleteConfirm": "¿Borrar el período desde {{from}}? El anterior vuelve a quedar abierto.",
+      "readOnlyDemo": "La residencia de la demo es parte de su historia; no se cambia aquí."
+    }
   }
 }

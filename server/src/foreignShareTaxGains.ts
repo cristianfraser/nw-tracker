@@ -17,6 +17,7 @@
 import { art107InstrumentKind } from "./art107Instruments.js";
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
@@ -101,9 +102,13 @@ function foreignEquityAccounts(): { id: number; name: string }[] {
 export function foreignShareGainsForYear(
   year: number,
   lotMethod: TaxLotMethod,
-  todayYmd: string = chileWallClockNow().ymd
+  todayYmd: string = chileWallClockNow().ymd,
+  window: DateWindow = wholeYearWindow(year)
 ): ForeignShareYearResult {
   const yearEnd = `${year}-12-31`;
+  if (!window.fromYmd.startsWith(`${year}-`) || !window.throughYmd.startsWith(`${year}-`)) {
+    throw new Error(`foreign shares ${year}: window ${window.fromYmd}→${window.throughYmd} is outside the year`);
+  }
   const provisional = todayYmd <= yearEnd;
   const yearEndObservadoDate = provisional ? latestObservadoDate() : yearEnd;
   const yearEndObservado = observadoOnOrBefore(yearEndObservadoDate);
@@ -112,7 +117,7 @@ export function foreignShareGainsForYear(
   for (const a of foreignEquityAccounts()) {
     const { events } = loadEquityTaxLotEvents(a.id);
     for (const d of realizeTaxLots(events, lotMethod).disposals) {
-      if (!d.date.startsWith(`${year}-`)) continue;
+      if (!inDateWindow(d.date, window)) continue;
       disposals.push({
         accountId: a.id,
         accountName: a.name,

@@ -585,6 +585,9 @@ export type ApvPlan = {
 };
 const APV: ApvPlan = { from: 2020, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18, monthly: { from: "2022-10", to: "2024-03", uf: 30 } };
 
+/** A declared tax residency from a day (`tax_residency_periods`); the generator declares them in order before the April loop. */
+export type TaxResidencyDeclaration = { jurisdiction: "cl" | "us"; from: Ymd; note: string };
+
 export type Person = {
   /** Seeds every random stream. */
   seed: number;
@@ -633,6 +636,12 @@ export type Person = {
   netWorthTargetUsd: number | null;
   /** Days of generated ingest history (scheduler runs, run messages, bank checks) before today. */
   ingestHistoryDays: number;
+  /**
+   * The tax residency he declares, oldest first (docs/demo-app-features-plan.md §1): the F22 reads it
+   * — Chile the whole year, a non-resident year under the Impuesto Adicional, or the departure year
+   * split at the declared day. Empty: a Chilean tax resident throughout, undeclared.
+   */
+  taxResidency: TaxResidencyDeclaration[];
 };
 
 /** The hosted demo's person: born 1995, a decade of documents from university to his own apartment. */
@@ -680,6 +689,13 @@ export const DEMO_PERSON: Person = {
   // (US$345k–575k) leaves room on both sides.
   netWorthTargetUsd: 460_000,
   ingestHistoryDays: 45,
+  // Born in Chile; the move to Austin is the declared change (the first US stub is 2024-04-19). The
+  // PFIC side of the story (the money-market fund, the IPSA ETF) stays as it is: Form 8621
+  // mark-to-market is wave R2's work.
+  taxResidency: [
+    { jurisdiction: "cl", from: "1995-04-17", note: "Born and raised in Santiago." },
+    { jurisdiction: "us", from: "2024-04-15", note: "Moved to Austin, TX with the Northwind Labs offer; permanent home and job in the US from this day." },
+  ],
 };
 
 /**
@@ -756,6 +772,8 @@ export function testPerson(today: Ymd): Person {
     netWorthTargetUsd: null,
     // A few nights only: the suite exercises the writer without paying for weeks of runs.
     ingestHistoryDays: 3,
+    // Undeclared: a Chilean tax resident, as every F22 fixture of the suite assumes.
+    taxResidency: [],
   };
 }
 

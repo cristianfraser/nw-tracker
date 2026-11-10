@@ -2087,7 +2087,10 @@
     },
     "codes": {
       "31": "Global complementary tax",
+      "32": "Impuesto Adicional base: the sub total of a non-resident (line 72, arts. 58 N°1–2 and 60 inc. 1)",
+      "34": "Impuesto Adicional determined (35 % of code 32 less code 76)",
       "39": "Reajuste (art. 72)",
+      "76": "Credits against the Impuesto Adicional (IDPC, art. 41 A)",
       "90": "Tax owed",
       "91": "Total to pay",
       "105": "Dividends taxable under the IGC (line 2)",
@@ -2113,7 +2116,10 @@
       "750": "Mortgage interest (art. 55 bis)",
       "751": "Mortgage interest paid",
       "770": "Fees: voluntary pension savings (APV, régimen B)",
+      "833": "Withholdings on the incomes of codes 955, 32, 951 and 1829 (line 95)",
       "900": "Pension contributions charged on fees",
+      "951": "Fund units sold by a non-resident: gain under Ley 20.712 art. 82 (line 69)",
+      "952": "10 % single tax on code 951",
       "955": "Effective income without full accounting (line 5)",
       "1018": "Credit for taxes paid abroad (own foreign income, line 45)",
       "1030": "Salaries and similar income (foreign source)",
@@ -2132,6 +2138,43 @@
       "1869": "Of which: funds and shares (art. 17 N°8)",
       "1878": "Art. 57 income within the limits",
       "1901": "Income taxed under IDPC, art. 20 N°5 (exchange result on dollars; line 58 d)"
+    },
+    "residency": {
+      "undeclared": "No tax residency declared: the return assumes a Chilean tax resident the whole year, as always.",
+      "regime": {
+        "resident": "Declared: Chilean tax resident the whole year ({{period}}).",
+        "nonresident": "Declared: not a Chilean tax resident in {{year}} — US resident from {{from}} ({{period}}). Only Chilean-source income enters, under the Impuesto Adicional (LIR art. 60 inc. 1, F22 line 72).",
+        "split": "Declared: the departure year — Chilean tax resident through {{through}}, US resident from {{from}}. Worldwide income through the declared day (IGC), Chilean-source income after it (Impuesto Adicional)."
+      },
+      "assumption": "Declared, not inferred. Chile may hold that domicile continued while the main seat of business stayed in Chile (LIR art. 4); this return assumes the declared date.",
+      "art103": "LIR art. 103's departure return (the IGC accrued through the departure, brackets and credits prorated) is noted, not built: the resident part uses the full-year table.",
+      "yearlyDj": "A yearly DJ figure (1887, 1890, 1894, 1899) cannot be split by day and stays whole in the resident part; the lender's DJ 1898 is replaced by the interest paid through the declared day.",
+      "nonresidentPart": "Non-resident part ({{from}} → {{through}}): taxable rent {{rent}}, DFL-2 rent exempt {{exempt}} (DFL N° 2 art. 15: «ni Adicional»); Impuesto Adicional base (32) {{base}}, tax (34) {{tax}}.",
+      "nonresidentArt107": "Art. 107 sales in the non-resident part: {{sales}}, result {{result}}, 10 % single tax {{tax}} — at the general-rule cost (art. 107 N°7), withheld by the broker (N°6; no withholding record is on file).",
+      "excludedTitle": "Not declared (non-resident)",
+      "excludedExplain": "Items of the non-resident window the return does not declare, each with its reason. They are not gone: this is what Chile does not reach.",
+      "excludedItem": "{{kind}}: {{clp}} — {{reason}}",
+      "kind": {
+        "us_salary": "US salary (gross)",
+        "foreign_dividends": "Foreign dividends (net)",
+        "foreign_interest": "Foreign interest",
+        "foreign_shares": "Foreign share gains",
+        "usd_fx": "Exchange result on dollars",
+        "crypto": "Crypto gain",
+        "fund_redemptions": "Chilean fund redemptions",
+        "fund_distributions": "Chilean fund distributions",
+        "chile_interest": "Chilean bank interest (DJ 1890)",
+        "mortgage_interest": "Mortgage interest (750 / 751)",
+        "apv": "APV rebate (765)",
+        "property_tax_credit": "Contribuciones credit (1637)"
+      },
+      "reason": {
+        "nonresident": "foreign-source income of a non-resident is outside Chile's reach (LIR art. 3)",
+        "treaty_art13_8": "taxable only in the residence State under the Chile–US convention art. 13(8)",
+        "fund_unico_withheld": "10 % single tax withheld by the fund administrator (Ley 20.712 art. 82 B); not declared here",
+        "withheld_at_source": "withheld by the payer (LIR arts. 59 N°1 and 74 N°4); not in the annual return",
+        "no_igc": "an IGC deduction or credit; a non-resident pays the Impuesto Adicional, which has none"
+      }
     },
     "crypto": {
       "title": "Crypto sales",
@@ -2428,5 +2471,25 @@
     "colErrors": "Errors 5xx / 4xx",
     "colSize": "Size (KB)",
     "colDay": "Day"
+  },
+  "panelSettings": {
+    "taxResidency": {
+      "title": "Tax residency",
+      "explain": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). Nothing is inferred; with no period declared you are a Chilean tax resident.",
+      "none": "No period declared.",
+      "jurisdiction": "Jurisdiction",
+      "jurisdictions": {
+        "cl": "Chile",
+        "us": "United States"
+      },
+      "from": "From",
+      "to": "To",
+      "open": "open",
+      "note": "Note",
+      "declare": "Declare",
+      "deleteLatest": "Delete the latest period",
+      "deleteConfirm": "Delete the period from {{from}}? The one before it reopens.",
+      "readOnlyDemo": "The demo's residency is part of its story; it cannot be changed here."
+    }
   }
 }

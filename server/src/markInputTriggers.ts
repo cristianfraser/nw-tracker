@@ -512,6 +512,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "us_f1040_settlements",
   "option_contracts",
   "option_assignments",
+  "tax_residency_periods",
 ];
 
 /**

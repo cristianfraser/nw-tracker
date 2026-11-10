@@ -78,6 +78,7 @@
  * Converted like the dividends: at the 31-December observado.
  */
 import { db } from "./db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { buildF1040Draft } from "./f1040Draft.js";
 import { US_BANK_ISSUERS } from "./usBankAccounts.js";
 import { filedF1040 } from "./f1040Filed.js";
@@ -142,13 +143,21 @@ type StubRow = { id: number; pay_date: string | null; employer_name: string; sou
 const cents = (x: number) => Math.round(x * 100) / 100;
 
 /** The US salary of `incomeYear` for the F22 at the year-end rate, or zeros without US pay stubs. */
-export function foreignSalaryForYear(incomeYear: number, todayYmd: string, yearEnd: F22ForeignYearEnd): F22ForeignSalary {
-  const heads = db
-    .prepare(
-      `SELECT id, pay_date, employer_name, source_pdf FROM payroll_work_earnings
+export function foreignSalaryForYear(
+  incomeYear: number,
+  todayYmd: string,
+  yearEnd: F22ForeignYearEnd,
+  window: DateWindow = wholeYearWindow(incomeYear)
+): F22ForeignSalary {
+  // The stubs counted: the whole year, or one part of a departure year, by pay date (`taxResidency.ts`).
+  const heads = (
+    db
+      .prepare(
+        `SELECT id, pay_date, employer_name, source_pdf FROM payroll_work_earnings
         WHERE jurisdiction = 'us' AND pay_date LIKE ? ORDER BY pay_date, id`
-    )
-    .all(`${incomeYear}-%`) as StubRow[];
+      )
+      .all(`${incomeYear}-%`) as StubRow[]
+  ).filter((h) => h.pay_date != null && inDateWindow(h.pay_date, window));
   if (heads.length === 0) return EMPTY_SALARY;
   if (incomeYear < CHILE_US_TREATY_FIRST_INCOME_YEAR) {
     throw new Error(`F22 ${incomeYear}: a US salary before the Chile–US treaty applies (${CHILE_US_TREATY_FIRST_INCOME_YEAR}) — not modelled`);
@@ -194,7 +203,11 @@ export function foreignSalaryForYear(incomeYear: number, todayYmd: string, yearE
 }
 
 /** The interest the foreign brokers' dollar cash and the US bank accounts earned in `incomeYear`, at the year-end observado. */
-export function foreignInterestForYear(incomeYear: number, yearEndObservado: number): F22ForeignInterest {
+export function foreignInterestForYear(
+  incomeYear: number,
+  yearEndObservado: number,
+  window: DateWindow = wholeYearWindow(incomeYear)
+): F22ForeignInterest {
   const brokerMatch = FOREIGN_BROKERS.map(() => `r.param LIKE ?`).join(" OR ");
   const bankMatch = US_BANK_ISSUERS.map(() => "?").join(", ");
   const rows = db
@@ -212,7 +225,7 @@ export function foreignInterestForYear(incomeYear: number, yearEndObservado: num
     amount: number;
     currency: string;
   }[];
-  const lines = rows.map((r): F22ForeignInterestLine => {
+  const lines = rows.filter((r) => inDateWindow(r.occurred_on, window)).map((r): F22ForeignInterestLine => {
     if (r.currency !== "usd") throw new Error(`F22 ${incomeYear}: foreign interest movement ${r.id} is in ${r.currency}, expected dollars`);
     return { date: r.occurred_on, movementId: r.id, accountId: r.account_id, usd: r.amount };
   });

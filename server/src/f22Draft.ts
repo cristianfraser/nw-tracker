@@ -56,18 +56,86 @@
  * «Pérdida en operaciones de capitales mobiliarios», letter B), and art. 41 B excludes foreign
  * investments from art. 17 N°8. It nets only against the year's other foreign share gains, and a
  * negative total is declared as zero (as Fintual and Racional instruct); {@link F22OffsetBalance}.
+ *
+ * **Residency (2026-11-10; `taxResidency.ts`, docs/demo-app-features-plan.md §1).** The regime of an
+ * income year follows the DECLARED tax residency, never an inference: `resident` (the whole year,
+ * everything above), `nonresident` (no day of it; the Impuesto Adicional) or `split` (the departure
+ * year: Chile through the declared day, the US after). Readings, each quoted in `taxResidency.ts`'s
+ * or this header, the sources read 2026-11-10:
+ *
+ * - **A non-resident declares Chilean-source income only** (LIR art. 3) under the **Impuesto
+ *   Adicional of art. 60 inc. 1 at 35 %** — the rent of a non-DFL-2 apartment is art. 20 N°1 b)
+ *   income no payer withholds — on **línea 72 of the AT2026 F22, «IA según arts. 58 N° 1 y 2 y 60
+ *   inc. 1° LIR»** (Instrucciones 72.2: «Al código 32 se debe trasladar la cantidad positiva
+ *   registrada en el código 158 de la línea 19 del F-22 (SUB TOTAL), que constituye la base
+ *   imponible del IA»; «El monto del IA … se determina aplicando sobre la cantidad registrada en el
+ *   código 32, la tasa de 35%»; code 76 the credits — IDPC, ex-art. 21, IPE of art. 41 A —, code 34
+ *   the tax less them; «las partidas (rentas y deducciones) que conforman la base imponible del IA …
+ *   deben detallarse previamente en las líneas que correspondan de las secciones "Rentas brutas
+ *   afectas" o "Rebajas a la renta"»). So the rent still goes through 1849 → 955 → 158, and 158 is
+ *   the base: the rebajas of líneas 20–23 (750 / 765, IGC deductions of arts. 55 bis and 42 bis)
+ *   never reach code 32, and the IGC credits (1637, línea 39; 136; 162) have no IGC to credit. The
+ *   chain: 32 = max(0, 158), 34 = max(0, round(35 % × 32) − 76), 305 = 304 + 34 + 952 + 1830 − 198 −
+ *   833 + 900 (`f22Identities.ts`). A non-resident's DFL-2 rent is exempt too: DFL N° 2 art. 15,
+ *   «Las rentas que produzcan las "viviendas económicas" no se considerarán para los efectos del
+ *   Impuesto Global Complementario ni Adicional» (the plan's doubt resolved by the text).
+ * - **What does not enter, and why — kept in the payload as {@link F22ExcludedItem}s, never silently
+ *   gone:** the US salary, foreign dividends, foreign interest, foreign share gains and the dollar
+ *   lots' exchange result are foreign-source (`nonresident`, art. 3); the crypto gain at a Chilean
+ *   exchange would be art. 20 N°5 income at 35 % under art. 60 inc. 1 by domestic law (the SII's
+ *   position on a non-resident's digital assets was NOT found: UNVERIFIED), but the Chile–US
+ *   convention art. 13(8) — «Gains from the alienation of any property other than property referred
+ *   to in paragraphs 1 through 7 shall be taxable only in the Contracting State of which the
+ *   alienator is a resident» — leaves it to the US (`treaty_art13_8`); a Chilean fund's redemption
+ *   gain and distributions bear Ley 20.712 art. 82 letra B)'s 10 % impuesto único, withheld by the
+ *   administradora (i: «estará afecta a un impuesto único a la renta del 10%»; ii: «el mayor valor
+ *   obtenido estará también afecto al impuesto único del literal i) anterior … será retenido por la
+ *   sociedad administradora», 5 % provisional on the price until the gain is known; F22 línea 69,
+ *   951 / 952, only when the gain «no se pueda determinar en forma definitiva», the retention
+ *   credited in 833) — whether art. 13(8) of the convention reaches fund cuotas (a fund is no
+ *   «company» of 13(5)) is UNVERIFIED, so the item is shown withheld, not declared
+ *   (`fund_unico_withheld`); Chilean bank interest is withheld by the payer (art. 59 N°1 — 4 % on
+ *   deposits of letter a) and, through letter g), «emitidos o expresados en moneda nacional» —,
+ *   art. 74 N°4; convention art. 11(2) caps it at 10 %), never in the annual return
+ *   (`withheld_at_source`); the residents' deductions and credits 750 / 751, 765, 1637 go
+ *   (`no_igc`). A Chilean salary or boleta after the departure (art. 60 inc. 2, 20 %) throws: not
+ *   modelled.
+ * - **Art. 107 for a non-resident is the same 10 % único, not an ingreso no renta** (the plan's
+ *   reading corrected from the text): N°6 «El adquirente o corredor de bolsa o agente de valores que
+ *   actúa por cuenta del vendedor sin domicilio ni residencia en Chile deberá retener el monto del
+ *   impuesto único al momento en que el precio de enajenación sea pagado» (10 %, or 1 % provisional
+ *   on the price) and the seller «quedará liberado de presentar la referida declaración anual» only
+ *   when the retention covers the tax; N°7 «los contribuyentes sin domicilio ni residencia en Chile
+ *   … deberán considerar el valor de adquisición y/o aporte conforme a la letra b) anterior» (the
+ *   general-rule cost; the Dec-31 close is the residents' option). The draft keeps línea 66 with
+ *   `costChoice: "cost_paid"` and no retention record (833 is never drafted).
+ * - **The departure year is two parts** (`split`): the resident part is this module's computation
+ *   restricted to the items dated through the declared day (every loader takes a {@link DateWindow};
+ *   a yearly DJ figure — 1887, 1890, 1894, 1899 — cannot be split and stays whole in the resident
+ *   part, except the lender's DJ 1898, replaced by the ledger's interest paid through the day), the
+ *   non-resident part the Impuesto Adicional on the Chilean-source items after it. One form cannot
+ *   carry two bases, so the combined codes are the resident part's plus 32 / 34 from the non-resident
+ *   part (its 1849 / 955 / 158 stay in `nonresident.codes`), art. 107 summed with one carry, and
+ *   305 over both. LIR art. 103's departure return — «declarar y pagar la parte del impuesto
+ *   devengado … antes de ausentarse del país», the arts. 56 N°1–2 credits and the UTA of arts. 52
+ *   and 57 «en forma proporcional» — is noted, not built: the resident part uses the full-year
+ *   table.
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
+import { wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import {
   f22Code158,
   f22Code170,
   f22Code304,
   f22Code305,
+  f22Code32,
+  f22Code34,
   f22Code955,
   f22ForeignSalaryCreditCap,
   f22PropertyTaxCreditCap,
 } from "./f22Identities.js";
+import { F22_RESIDENCY_ASSUMPTION, residencyForIncomeYear, type YearResidency } from "./taxResidency.js";
 import {
   foreignInterestForYear,
   foreignSalaryForYear,
@@ -84,6 +152,7 @@ import {
   igcTax,
 } from "./legalParameters.js";
 import {
+  ART107_RATE,
   art107DistributionsForYear,
   art107ForTaxYear,
   type Art107Distribution,
@@ -135,11 +204,29 @@ export type F22TaxOptions = {
   foreignSalaryCredit?: { creditClp: number; incomeClp: number };
 };
 
-/** The chain above, from income codes to 304; everything rounded to whole pesos as the form does. */
-export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number, options: F22TaxOptions = {}): F22Codes {
+/** The regime of an income year under the declared residency (`taxResidency.ts`). */
+export type F22Regime = "resident" | "nonresident" | "split";
+
+/**
+ * The chain above, from income codes to 304; everything rounded to whole pesos as the form does.
+ * For a non-resident (`regime: "nonresident"`) the chain is línea 72's instead: 158 → 32 → 34 at
+ * 35 % less code 76; no 170 / 157 / 136 / 304 (there is no IGC).
+ */
+export function computeF22Tax(
+  codes: F22Codes,
+  utaClp: number,
+  taxYear: number,
+  options: F22TaxOptions = {},
+  regime: Exclude<F22Regime, "split"> = "resident"
+): F22Codes {
   const v = (c: number) => codes[c] ?? 0;
   const out: F22Codes = { ...codes };
   out[158] = Math.round(f22Code158(out));
+  if (regime === "nonresident") {
+    out[32] = f22Code32(out);
+    out[34] = f22Code34(out);
+    return out;
+  }
   out[170] = Math.max(0, f22Code170(out));
   out[157] = Math.round(igcTax(out[170], utaClp, taxYear));
   out[136] = out[158] > 0 ? Math.round((out[157] * v(152)) / out[158]) : 0;
@@ -233,12 +320,70 @@ export type F22FeesBox = {
   retentionClp: number;
 };
 
+/** Why an item of a non-resident window enters no code (see the header's «Residency»). */
+export type F22ExcludedReason = "nonresident" | "treaty_art13_8" | "fund_unico_withheld" | "withheld_at_source" | "no_igc";
+
+export type F22ExcludedKind =
+  | "us_salary"
+  | "foreign_dividends"
+  | "foreign_interest"
+  | "foreign_shares"
+  | "usd_fx"
+  | "crypto"
+  | "fund_redemptions"
+  | "fund_distributions"
+  | "chile_interest"
+  | "mortgage_interest"
+  | "apv"
+  | "property_tax_credit";
+
+/** An item of a non-resident window the return does not declare: what it is, why, and how much (pesos, as the resident chain would have read it). */
+export type F22ExcludedItem = {
+  kind: F22ExcludedKind;
+  reason: F22ExcludedReason;
+  clp: number;
+  /** Lines, sales, stubs… behind the amount (0 for a yearly DJ figure). */
+  count: number;
+  window: DateWindow;
+};
+
+/** The non-resident part of a year: the Impuesto Adicional on the Chilean-source items of its window. */
+export type F22NonresidentPart = {
+  window: DateWindow;
+  rentals: F22Rentals;
+  /** Art. 107 sales of the window at the general-rule cost (N°7), the 10 % único withheld by the broker (N°6). */
+  art107: Art107TaxYear;
+  /** 1849 / 955 / 158 / 32 / 34 and the art. 107 codes of this part. */
+  codes: F22Codes;
+  excluded: F22ExcludedItem[];
+  /** Whether anything of the window enters a code (rent, an art. 107 sale). */
+  taxComputed: boolean;
+};
+
+/** The declared residency the draft was built on. */
+export type F22Residency = {
+  regime: F22Regime;
+  /** The declared residency of the income year (`residencyForIncomeYear`). */
+  year: YearResidency;
+  /** The assumption the return states when a residency is declared; null when nothing is (Chile, as always). */
+  assumption: string | null;
+  /** The resident part's window (the whole year, or through the declared day); null for a non-resident year. */
+  residentWindow: DateWindow | null;
+};
+
 export type F22Draft = {
   taxYear: number;
   incomeYear: number;
   /** The income year has not closed: 31-December rates and the December reajuste are the latest published. */
   provisional: boolean;
   base: F22DraftBase;
+  /** Resident, non-resident or the departure year (`taxResidency.ts`). */
+  regime: F22Regime;
+  residency: F22Residency;
+  /** The non-resident part (a non-resident year, or the departure year's second part); null for a resident year. */
+  nonresident: F22NonresidentPart | null;
+  /** What the non-resident part does not declare (`nonresident.excluded`, or empty). */
+  excluded: F22ExcludedItem[];
   /** Whether the tax chain ran (it needs a base). */
   taxComputed: boolean;
   utaClp: number;
@@ -355,14 +500,14 @@ function informedWithDetailCodes(informed: Record<number, number>): F22Codes {
   return out;
 }
 
-/** The boletas de honorarios issued in the income year: count, gross and retention. */
-function loadFeeReceipts(incomeYear: number): { receipts: number; grossClp: number; retentionClp: number } {
+/** The boletas de honorarios issued in the window: count, gross and retention. */
+function loadFeeReceipts(incomeYear: number, window: DateWindow): { receipts: number; grossClp: number; retentionClp: number } {
   const r = db
     .prepare(
       `SELECT COUNT(*) AS n, COALESCE(SUM(gross_clp), 0) AS gross, COALESCE(SUM(retention_clp), 0) AS retention
-         FROM sii_issued_fee_receipts WHERE issued_on LIKE ?`
+         FROM sii_issued_fee_receipts WHERE issued_on LIKE ? AND issued_on >= ? AND issued_on <= ?`
     )
-    .get(`${incomeYear}-%`) as { n: number; gross: number; retention: number };
+    .get(`${incomeYear}-%`, window.fromYmd, window.throughYmd) as { n: number; gross: number; retention: number };
   return { receipts: r.n, grossClp: r.gross, retentionClp: r.retention };
 }
 
@@ -469,8 +614,9 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
  * The year's foreign dividends: every dollar `dividend_payout` but a Roth IRA's. Growth inside a
  * Roth is not income to either return (the IRA's identity, `usRetirementAccountIds`, never its
  * name), so its dividends — paid into the IRA's sweep and reinvested — stay out of 1104 / 748 / 1018.
+ * `window`: one part of a departure year (`taxResidency.ts`), else the whole year.
  */
-export function loadF22Dividends(incomeYear: number): F22DividendLine[] {
+export function loadF22Dividends(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): F22DividendLine[] {
   const roth = usRetirementAccountIds("roth_ira");
   const rows = db
     .prepare(
@@ -478,10 +624,11 @@ export function loadF22Dividends(incomeYear: number): F22DividendLine[] {
          FROM movements m
          LEFT JOIN movement_dividend_details d ON d.movement_id = m.id
         WHERE m.flow_kind = 'dividend_payout' AND m.currency = 'usd' AND m.occurred_on LIKE ?
+          AND m.occurred_on >= ? AND m.occurred_on <= ?
           AND (m.from_account_id IS NULL OR m.from_account_id NOT IN (${roth.map(() => "?").join(", ") || "NULL"}))
         ORDER BY m.occurred_on, m.id`
     )
-    .all(`${incomeYear}-%`, ...roth) as {
+    .all(`${incomeYear}-%`, window.fromYmd, window.throughYmd, ...roth) as {
     id: number;
     occurred_on: string;
     amount: number;
@@ -497,15 +644,168 @@ export function loadF22Dividends(incomeYear: number): F22DividendLine[] {
   }));
 }
 
+/** Every item of one window the two regimes read: the resident chain codes them, the non-resident part excludes or taxes them. */
+type F22WindowBlocks = {
+  window: DateWindow;
+  salary: PayrollTaxYear;
+  feeReceipts: { receipts: number; grossClp: number; retentionClp: number };
+  crypto: CryptoYearTaxResult;
+  dividends: F22DividendLine[];
+  foreignShares: ForeignShareYearResult;
+  art107: Art107TaxYear;
+  art107Distributions: Art107Distribution[];
+  usdFx: UsdFxYearTaxResult;
+  rentals: F22Rentals;
+  foreignSalary: F22ForeignSalary;
+  foreignInterest: F22ForeignInterest;
+};
+
+type F22YearContext = {
+  taxYear: number;
+  incomeYear: number;
+  todayYmd: string;
+  provisional: boolean;
+  yearEndObservado: number;
+  usdFx: { route: UsdFxRoute; posture: UsdFxPosture; purchaseCost: UsdPurchaseCost; load: UsdFxDisposalLoader | undefined };
+};
+
+function loadWindowBlocks(ctx: F22YearContext, window: DateWindow, nonresident: boolean): F22WindowBlocks {
+  const { incomeYear, taxYear, todayYmd } = ctx;
+  return {
+    window,
+    salary: payrollTaxYear(incomeYear, window),
+    feeReceipts: loadFeeReceipts(incomeYear, window),
+    crypto: cryptoTaxGainsForYear(incomeYear, { window }),
+    dividends: loadF22Dividends(incomeYear, window),
+    foreignShares: foreignShareGainsForYear(incomeYear, "fifo", todayYmd, window),
+    // A non-resident prices art. 107 sales at the general-rule cost (N°7); the departure year's
+    // second part carries no loss of its own forward (the resident part keeps the one carry).
+    art107: art107ForTaxYear(taxYear, "fifo", todayYmd, loadFiled, {
+      window,
+      ...(nonresident ? { costChoice: "cost_paid" as const } : {}),
+      ...(nonresident && window.fromYmd !== `${incomeYear}-01-01` ? { carry: false as const } : {}),
+    }),
+    art107Distributions: art107DistributionsForYear(incomeYear, window),
+    usdFx: usdFxTaxGainsForYear(
+      incomeYear,
+      { posture: ctx.usdFx.posture, purchaseCost: ctx.usdFx.purchaseCost, route: ctx.usdFx.route, window },
+      ctx.usdFx.load
+    ),
+    rentals: rentalsForYear(incomeYear, window),
+    foreignSalary: foreignSalaryForYear(incomeYear, todayYmd, { observado: ctx.yearEndObservado, provisional: ctx.provisional }, window),
+    foreignInterest: foreignInterestForYear(incomeYear, ctx.yearEndObservado, window),
+  };
+}
+
+/** The dividends' net in pesos at the year-end observado, every line (detail or not): what a non-resident does not declare. */
+function dividendsNetAllClp(dividends: readonly F22DividendLine[], observado: number): number {
+  return Math.round(dividends.reduce((s, d) => s + d.netUsd, 0) * observado);
+}
+
+/**
+ * The non-resident part of a year: the Impuesto Adicional on its window's Chilean-source items —
+ * the taxable rents (1849 → 955 → 158 → 32 → 34) and the art. 107 sales (línea 66) — and the list
+ * of what the window holds that enters no code, each with its reason (see the header). `whole`:
+ * the window is the whole year, so the yearly DJ figures belong to this part too.
+ */
+function nonresidentPart(
+  ctx: F22YearContext,
+  blocks: F22WindowBlocks,
+  informed: Record<number, number>,
+  utaClp: number,
+  whole: boolean
+): F22NonresidentPart {
+  const { incomeYear, taxYear } = ctx;
+  const { window } = blocks;
+  if (blocks.salary.months > 0) {
+    throw new Error(
+      `F22 ${incomeYear}: ${blocks.salary.months} Chilean salary payslip(s) inside the non-resident window ${window.fromYmd}→${window.throughYmd} — art. 60 inc. 2 (20 % Impuesto Adicional on remuneraciones) is not modelled`
+    );
+  }
+  if (blocks.feeReceipts.receipts > 0) {
+    throw new Error(
+      `F22 ${incomeYear}: ${blocks.feeReceipts.receipts} boleta(s) de honorarios issued inside the non-resident window ${window.fromYmd}→${window.throughYmd} — art. 60 inc. 2 is not modelled`
+    );
+  }
+  if (whole && (informed[1098] != null || informed[162] != null)) {
+    throw new Error(`F22 ${incomeYear}: a Chilean employer informed a salary (DJ 1887) for a non-resident year — art. 60 inc. 2 is not modelled`);
+  }
+  const codes: F22Codes = { ...blocks.art107.codes };
+  if (blocks.rentals.taxableRentClp > 0) {
+    codes[1849] = blocks.rentals.taxableRentClp;
+    codes[955] = f22Code955(codes);
+  }
+  const taxComputed = blocks.rentals.taxableRentClp > 0 || blocks.art107.codes[1816] !== 0;
+  const taxed = taxComputed ? computeF22Tax(codes, utaClp, taxYear, {}, "nonresident") : codes;
+
+  const excluded: F22ExcludedItem[] = [];
+  const add = (kind: F22ExcludedKind, reason: F22ExcludedReason, clp: number, count: number) => {
+    if (clp !== 0 || count > 0) excluded.push({ kind, reason, clp: Math.round(clp), count, window });
+  };
+  if (blocks.foreignSalary.stubs.length > 0) add("us_salary", "nonresident", blocks.foreignSalary.grossClp, blocks.foreignSalary.stubs.length);
+  if (blocks.dividends.length > 0) add("foreign_dividends", "nonresident", dividendsNetAllClp(blocks.dividends, ctx.yearEndObservado), blocks.dividends.length);
+  if (blocks.foreignInterest.lines.length > 0) add("foreign_interest", "nonresident", blocks.foreignInterest.clp, blocks.foreignInterest.lines.length);
+  if (blocks.foreignShares.disposals.length > 0) {
+    add("foreign_shares", "nonresident", blocks.foreignShares.totalClp[blocks.foreignShares.defaultMode], blocks.foreignShares.disposals.length);
+  }
+  if (blocks.usdFx.disposals.length > 0) add("usd_fx", "nonresident", blocks.usdFx.resultDecemberClp, blocks.usdFx.disposals.length);
+  if (blocks.crypto.sales.length > 0) add("crypto", "treaty_art13_8", blocks.crypto.gainDecemberClp, blocks.crypto.sales.length);
+  // A Chilean fund's redemptions: the lender-style DJ 1894 of a whole non-resident year, else the ledger's estimate.
+  const funds = fundRedemptionGainsForYear(incomeYear, window);
+  if (whole && (informed[155] != null || (informed[169] != null && informed[1890] == null))) {
+    add("fund_redemptions", "fund_unico_withheld", (informed[155] ?? 0) - (informed[169] ?? 0), 0);
+  } else if (funds.redemptionsClp > 0) {
+    add("fund_redemptions", "fund_unico_withheld", funds.gainClp - funds.lossClp, 1);
+  }
+  const distributionsClp = Math.round(blocks.art107Distributions.reduce((s, x) => s + x.amountClp, 0));
+  if (whole && informed[105] != null) add("fund_distributions", "fund_unico_withheld", informed[105], 0);
+  else if (blocks.art107Distributions.length > 0) add("fund_distributions", "fund_unico_withheld", distributionsClp, blocks.art107Distributions.length);
+  if (whole && informed[152] != null) add("chile_interest", "withheld_at_source", informed[152], 0);
+  if (whole && informed[751] != null) add("mortgage_interest", "no_igc", informed[751], 0);
+  else {
+    const interest = mortgageInterestForYear(incomeYear, undefined, window);
+    if (interest > 0) add("mortgage_interest", "no_igc", interest, 1);
+  }
+  if (whole && informed[765] != null) add("apv", "no_igc", informed[765], 0);
+  if (blocks.rentals.propertyTaxPaidClp > 0) add("property_tax_credit", "no_igc", blocks.rentals.propertyTaxPaidClp, 1);
+  return { window, rentals: blocks.rentals, art107: blocks.art107, codes: taxed, excluded, taxComputed };
+}
+
+/** A resident year's filed form must reproduce under the IGC chain; a non-resident's under línea 72's; a departure year's under both. */
+function assertFiledReproduces(taxYear: number, filed: F22Codes, utaClp: number, regime: F22Regime): void {
+  const mismatch = (c: number, recomputed: number) => {
+    // A code the form does not print is zero.
+    if (recomputed !== (filed[c] ?? 0)) {
+      throw new Error(`F22 AT${taxYear}: the chain gives ${c} = ${recomputed} but the filed form says ${filed[c]}`);
+    }
+  };
+  if (regime !== "nonresident") {
+    const recomputed = computeF22Tax(filed, utaClp, taxYear);
+    for (const c of [158, 170, 157, 136, 304]) mismatch(c, recomputed[c]!);
+  }
+  if (regime === "nonresident") {
+    const recomputed = computeF22Tax(filed, utaClp, taxYear, {}, "nonresident");
+    for (const c of [158, 32, 34]) mismatch(c, recomputed[c]!);
+  }
+  if (regime === "split") mismatch(34, f22Code34(filed));
+}
+
+const EMPTY_OFFSET: F22OffsetBalance = { gainsClp: 0, lossesClp: 0, deductedClp: 0, unusedLossClp: 0, taxedGainClp: 0, taxEffectClp: null };
+
 export function buildF22Draft(
   taxYear: number,
   todayYmd: string = chileWallClockNow().ymd,
   options: F22DraftOptions = {}
 ): F22Draft {
   const incomeYear = taxYear - 1;
-  const usdFxRoute = options.usdFx?.route ?? USD_FX_DEFAULT_ROUTE;
-  const usdFxPosture = options.usdFx?.posture ?? USD_FX_DEFAULT_POSTURE;
-  const usdFxPurchaseCost = options.usdFx?.purchaseCost ?? USD_FX_DEFAULT_PURCHASE_COST;
+  const year = residencyForIncomeYear(incomeYear);
+  const regime: F22Regime = year.cl === "full" ? "resident" : year.cl === "none" ? "nonresident" : "split";
+  const residentWindow: DateWindow | null =
+    year.cl === "full" ? wholeYearWindow(incomeYear) : year.cl === "none" ? null : { fromYmd: `${incomeYear}-01-01`, throughYmd: year.cl.through };
+  const nonresidentWindow: DateWindow | null =
+    year.us === "full" ? wholeYearWindow(incomeYear) : year.us === "none" ? null : { fromYmd: year.us.from, throughYmd: `${incomeYear}-12-31` };
+  const residency: F22Residency = { regime, year, assumption: year.declared ? F22_RESIDENCY_ASSUMPTION : null, residentWindow };
+
   const provisional = todayYmd <= `${incomeYear}-12-31`;
   const decemberUta = utaDecember(incomeYear);
   const utaProvisional = decemberUta == null;
@@ -513,16 +813,93 @@ export function buildF22Draft(
   const filed = loadFiled(taxYear);
   if (filed) {
     if (utaProvisional) throw new Error(`F22 AT${taxYear}: a filed form but no December ${incomeYear} UTM — sync sbif_utm`);
-    const recomputed = computeF22Tax(filed, utaClp, taxYear);
-    for (const c of [158, 170, 157, 136, 304]) {
-      // A code the form does not print is zero.
-      if (recomputed[c] !== (filed[c] ?? 0)) {
-        throw new Error(`F22 AT${taxYear}: the chain gives ${c} = ${recomputed[c]} but the filed form says ${filed[c]}`);
-      }
-    }
+    assertFiledReproduces(taxYear, filed, utaClp, regime);
   }
   const dj = loadInformed(taxYear);
   const informed = informedCodes(dj, incomeYear);
+  const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
+  const ctx: F22YearContext = {
+    taxYear,
+    incomeYear,
+    todayYmd,
+    provisional,
+    yearEndObservado,
+    usdFx: {
+      route: options.usdFx?.route ?? USD_FX_DEFAULT_ROUTE,
+      posture: options.usdFx?.posture ?? USD_FX_DEFAULT_POSTURE,
+      purchaseCost: options.usdFx?.purchaseCost ?? USD_FX_DEFAULT_PURCHASE_COST,
+      load: options.usdFx?.load,
+    },
+  };
+
+  const nonresidentBlocks = nonresidentWindow ? loadWindowBlocks(ctx, nonresidentWindow, true) : null;
+  const nonresident = nonresidentBlocks ? nonresidentPart(ctx, nonresidentBlocks, informed, utaClp, regime === "nonresident") : null;
+
+  // The display blocks: the resident window's when there is one, else the non-resident year's own.
+  const blocks = residentWindow ? loadWindowBlocks(ctx, residentWindow, false) : nonresidentBlocks!;
+  const { salary, crypto, dividends, foreignShares, art107, art107Distributions, usdFx, rentals, foreignSalary, foreignInterest } = blocks;
+  const art107DistributionsClp = Math.round(art107Distributions.reduce((s, x) => s + x.amountClp, 0));
+  const f1964 = dj.get(1964);
+  const f1891 = dj.get(1891);
+  const f1922 = dj.get(1922);
+  const common = {
+    taxYear,
+    incomeYear,
+    provisional,
+    regime,
+    residency,
+    nonresident,
+    excluded: nonresident?.excluded ?? [],
+    utaClp,
+    utaProvisional,
+    yearEndObservado,
+    filed,
+    salary,
+    informed,
+    crypto,
+    cryptoInformedSalesClp: f1964 ? informedDjAmount(f1964, "MONTO", "A") : null,
+    dividends,
+    foreignShares,
+    art107,
+    art107Distributions,
+    art107DistributionsClp,
+    // A zero a third party reports says nothing (no sales, no difference): null, like informedCodes.
+    art107InformedSalesClp: f1891 ? zeroToNull(informedDjAmount(f1891, "Monto Total Ventas")) : null,
+    art107InformedResultClp: f1922 ? zeroToNull(informedDjAmount(f1922, DJ1922_ART107_DIFFERENCE)) : null,
+    usdFx,
+    rentals,
+    foreignSalary,
+    foreignInterest,
+  };
+
+  if (!residentWindow) {
+    // A non-resident year: the Impuesto Adicional part is the whole return.
+    const part = nonresident!;
+    const base: F22DraftBase = filed ? "filed" : Object.keys(informed).length > 0 ? "informed" : "none";
+    const draft: F22Codes = { ...part.codes };
+    if (part.taxComputed) {
+      // No IGC: 304 is 0 on the form, and 305 is the Impuesto Adicional plus the únicos.
+      draft[304] = 0;
+      draft[305] = f22Code305(draft);
+    }
+    return {
+      ...common,
+      base,
+      taxComputed: part.taxComputed,
+      fees: null,
+      draft,
+      foreignSharesIdpcClp: 0,
+      estimatedCodes: [],
+      lossOffset: { ...EMPTY_OFFSET, parts: [] },
+      foreignShareOffset: EMPTY_OFFSET,
+      usdFxIdpcClp: 0,
+      propertyTaxCredit: null,
+      foreignSalaryCredit: null,
+    };
+  }
+
+  // The resident part: the computation this module always made, over the resident window's items.
+  const split = regime === "split";
   // A return that already declared the APV as a worker independiente (code 770, AT2022) must not
   // get it again as an employee's rebate.
   // A year with fee income declares the APV as a worker independiente (code 770, in the fees box,
@@ -530,8 +907,7 @@ export function buildF22Draft(
   // ~2,1 M short. The draft states 770 in pesos and moves the fees' net (110) by the difference.
   const apvIndependiente = filed?.[770] != null ? apvRegimeBDeductionClp(dj, incomeYear) : null;
   if (filed?.[770] != null) delete informed[765];
-  const salary = payrollTaxYear(incomeYear);
-  const feeReceipts = filed ? null : loadFeeReceipts(incomeYear);
+  const feeReceipts = filed ? null : blocks.feeReceipts;
   const hasFees = feeReceipts != null && feeReceipts.receipts > 0;
   const base: F22DraftBase = filed
     ? "filed"
@@ -543,31 +919,18 @@ export function buildF22Draft(
           ? "fees"
           : "none";
   // The lender's DJ 1898 states the interest paid; the deduction (750) is the art. 55 bis share of
-  // it, decided below on the gross income like the ledger estimate.
-  const informedMortgageInterest = informed[751] ?? null;
-  const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
+  // it, decided below on the gross income like the ledger estimate. In a departure year the DJ's
+  // yearly figure covers months a non-resident cannot deduct: the ledger's interest through the
+  // declared day stands in (estimated).
+  const informedMortgageInterest = split ? null : informed[751] ?? null;
 
-  const crypto = cryptoTaxGainsForYear(incomeYear);
-  const dividends = loadF22Dividends(incomeYear);
-  const foreignShares = foreignShareGainsForYear(incomeYear, "fifo", todayYmd);
   const foreignResult = Math.round(foreignShares.totalClp[foreignShares.defaultMode]);
   const foreignGain = Math.max(0, foreignResult);
-  const art107 = art107ForTaxYear(taxYear, "fifo", todayYmd, loadFiled);
-  const art107Distributions = art107DistributionsForYear(incomeYear);
-  const art107DistributionsClp = Math.round(art107Distributions.reduce((s, x) => s + x.amountClp, 0));
-  const usdFx = usdFxTaxGainsForYear(
-    incomeYear,
-    { posture: usdFxPosture, purchaseCost: usdFxPurchaseCost, route: usdFxRoute },
-    options.usdFx?.load
-  );
   // The route decides the codes: 1901 (+ IDPC beside) or the crypto's 1032 / 169.
   const usdFx1901 = usdFx.codes[1901] ?? 0;
   const usdFx1032 = usdFx.codes[1032] ?? 0;
   const usdFxLoss = usdFx.codes.loss169 ?? 0;
   const usdFxIdpcClp = usdFx.codes.idpcClp ?? 0;
-  const rentals = rentalsForYear(incomeYear);
-  const foreignSalary = foreignSalaryForYear(incomeYear, todayYmd, { observado: yearEndObservado, provisional });
-  const foreignInterest = foreignInterestForYear(incomeYear, yearEndObservado);
   const foreignSalaryIncomeClp = foreignSalary.netClp + foreignSalary.creditClp;
   // With taxable rent the app states 1849 / 955 and derives 1637; without, a filed form keeps its own.
   // A foreign salary's credit enters 1018 capped by the chain (no refund).
@@ -657,13 +1020,14 @@ export function buildF22Draft(
   if (usdFxLoss > 0) estimatedCodes.push(169);
   let fundLossClp = 0;
   let mortgageInterest = informedMortgageInterest ?? 0;
-  // Over a filed form the lender's figure replaces the filed 751, and 750 is drafted from it.
-  if (base === "filed" && informedMortgageInterest != null) {
+  // Over a filed form the lender's figure replaces the filed 751, and 750 is drafted from it; in a
+  // departure year the ledger's part-year figure does.
+  if ((base === "filed" && informedMortgageInterest != null) || split) {
     delete draftInput[750];
     delete draftInput[751];
   }
   if (base === "payroll" || base === "fees" || base === "none") {
-    const funds = fundRedemptionGainsForYear(incomeYear);
+    const funds = fundRedemptionGainsForYear(incomeYear, residentWindow);
     if (funds.gainClp > 0) {
       draftInput[155] = funds.gainClp;
       draftInput[1869] = funds.gainClp;
@@ -674,10 +1038,10 @@ export function buildF22Draft(
       addLoss(funds.lossClp);
       estimatedCodes.push(169);
     }
-    if (informedMortgageInterest == null) {
-      mortgageInterest = mortgageInterestForYear(incomeYear);
-      if (mortgageInterest > 0) estimatedCodes.push(750, 751);
-    }
+  }
+  if (informedMortgageInterest == null && (split || base === "payroll" || base === "fees" || base === "none")) {
+    mortgageInterest = mortgageInterestForYear(incomeYear, undefined, residentWindow);
+    if (mortgageInterest > 0) estimatedCodes.push(750, 751);
   }
   // An art. 107 fund's distributions are dividends afectos al IGC (línea 2, code 105): the DJ 1922
   // figure (or the filed one) when there is one, else the cash credited as an estimate — the IDPC
@@ -697,13 +1061,24 @@ export function buildF22Draft(
     return out;
   };
   const tax = (input: F22Codes) => computeF22Tax(input, utaClp, taxYear, taxOptions);
-  const taxComputed =
+  const residentTaxComputed =
     base !== "none" || estimatedCodes.length > 0 || rentals.taxableRentClp > 0 || foreignSalary.grossClp > 0 || foreignInterest.clp > 0;
-  const draft = taxComputed ? tax(finish(draftInput)) : finish(draftInput);
+  const taxComputed = residentTaxComputed || (nonresident?.taxComputed ?? false);
+  const draft = residentTaxComputed ? tax(finish(draftInput)) : finish(draftInput);
+  if (nonresident) {
+    // The departure year's second part: its Impuesto Adicional beside the resident IGC, art. 107 summed with one carry.
+    const nr = nonresident.codes;
+    if (nr[32] != null) draft[32] = nr[32];
+    if (nr[34] != null) draft[34] = nr[34];
+    for (const c of [1809, 1813, 1814] as const) draft[c] = (draft[c] ?? 0) + (nr[c] ?? 0);
+    draft[1816] = (draft[1814] ?? 0) + (draft[1815] ?? 0);
+    draft[1829] = Math.max(0, draft[1816]);
+    draft[1830] = Math.round(ART107_RATE * draft[1829]);
+  }
   if (taxComputed) {
     draft[305] = f22Code305(draft);
     // Code 31 is the IGC to pay; a return with a refund does not print it.
-    if (draft[304]! > 0) draft[31] = draft[304]!;
+    if ((draft[304] ?? 0) > 0) draft[31] = draft[304]!;
   }
 
   const gainsClp = capitalLossPoolClp(draftInput);
@@ -713,10 +1088,10 @@ export function buildF22Draft(
   const taxedGainClp = gainsClp - deductedClp;
   const taxOf = (input: F22Codes) => tax(finish(input))[304]!;
   let taxEffectClp: number | null = null;
-  if (taxComputed && unusedLossClp > 0) {
+  if (residentTaxComputed && unusedLossClp > 0) {
     const withGain = { ...draftInput, 1032: (draftInput[1032] ?? 0) + unusedLossClp };
     taxEffectClp = taxOf({ ...withGain, 169: deductedClp }) - taxOf(withGain);
-  } else if (taxComputed && taxedGainClp > 0) {
+  } else if (residentTaxComputed && taxedGainClp > 0) {
     taxEffectClp = draft[304]! - taxOf({ ...draftInput, 169: lossesClp + taxedGainClp });
   }
   const lossOffset: F22LossOffset = {
@@ -751,10 +1126,10 @@ export function buildF22Draft(
   const foreignUnusedLossClp = foreignLossesClp - foreignDeductedClp;
   const foreignTaxedGainClp = foreignGainsClp - foreignDeductedClp;
   let foreignTaxEffectClp: number | null = null;
-  if (taxComputed && foreignUnusedLossClp > 0) {
+  if (residentTaxComputed && foreignUnusedLossClp > 0) {
     foreignTaxEffectClp =
       taxOf({ ...draftInput, 1104: (draftInput[1104] ?? 0) + foreignUnusedLossClp }) - draft[304]!;
-  } else if (taxComputed && foreignTaxedGainClp > 0) {
+  } else if (residentTaxComputed && foreignTaxedGainClp > 0) {
     foreignTaxEffectClp =
       draft[304]! - taxOf({ ...draftInput, 1104: (draftInput[1104] ?? 0) - foreignTaxedGainClp });
   }
@@ -770,57 +1145,32 @@ export function buildF22Draft(
   // rectification is paid; the SII computes it then.
   for (const c of PAYMENT_SECTION_CODES) delete draft[c];
 
-  const f1964 = dj.get(1964);
-  const f1891 = dj.get(1891);
-  const f1922 = dj.get(1922);
   return {
-    taxYear,
-    incomeYear,
-    provisional,
+    ...common,
     base,
     taxComputed,
-    utaClp,
-    utaProvisional,
-    yearEndObservado,
-    filed,
-    salary,
     fees,
-    informed,
     draft,
-    crypto,
-    cryptoInformedSalesClp: f1964 ? informedDjAmount(f1964, "MONTO", "A") : null,
-    dividends,
-    foreignShares,
     foreignSharesIdpcClp: Math.round(foreignGain * IDPC_RATE),
     estimatedCodes,
     lossOffset,
     foreignShareOffset,
-    art107,
-    art107Distributions,
-    art107DistributionsClp,
-    // A zero a third party reports says nothing (no sales, no difference): null, like informedCodes.
-    art107InformedSalesClp: f1891 ? zeroToNull(informedDjAmount(f1891, "Monto Total Ventas")) : null,
-    art107InformedResultClp: f1922 ? zeroToNull(informedDjAmount(f1922, DJ1922_ART107_DIFFERENCE)) : null,
-    usdFx,
     usdFxIdpcClp,
-    rentals,
     propertyTaxCredit:
-      taxComputed && rentals.taxableRentClp > 0
+      residentTaxComputed && rentals.taxableRentClp > 0
         ? {
             paidClp: rentals.propertyTaxPaidClp,
             capClp: f22PropertyTaxCreditCap(draft),
             creditClp: draft[1637] ?? 0,
           }
         : null,
-    foreignSalary,
     foreignSalaryCredit:
-      taxComputed && foreignSalary.creditClp > 0
+      residentTaxComputed && foreignSalary.creditClp > 0
         ? {
             creditClp: foreignSalary.creditClp,
             capClp: f22ForeignSalaryCreditCap(draft, foreignSalaryIncomeClp),
             appliedClp: Math.min(foreignSalary.creditClp, f22ForeignSalaryCreditCap(draft, foreignSalaryIncomeClp)),
           }
         : null,
-    foreignInterest,
   };
 }

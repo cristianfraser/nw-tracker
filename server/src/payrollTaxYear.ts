@@ -15,6 +15,7 @@
  * whose totals were not parsed at all (left out: the scanned 2018-08).
  */
 import { db } from "./db.js";
+import { wholeYearWindow, windowMonths, type DateWindow } from "./dateWindow.js";
 import { iuscTaxableClp } from "./payslipLineKinds.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 
@@ -60,16 +61,22 @@ export function monthTaxablePay(r: Row): number | null {
   return contributions.taxablePay - contributions.pension - (r.desc_health_clp ?? 0) - contributions.unemployment;
 }
 
-export function payrollTaxYear(incomeYear: number): PayrollTaxYear {
+/**
+ * The year's Chilean salary payslips (`jurisdiction = 'cl'`), or those of one part of a departure
+ * year: a payslip belongs to the window holding its period month (`taxResidency.ts`).
+ */
+export function payrollTaxYear(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): PayrollTaxYear {
+  const { fromMonth, throughMonth } = windowMonths(window);
   const rows = db
     .prepare(
       `SELECT period_month, total_haberes_clp, total_imponible_clp, total_no_imponible_clp, colacion_clp,
               movilizacion_clp, desc_afp_clp, desc_health_clp, desc_cesantia_clp, desc_tax_clp
          FROM payroll_work_earnings
-        WHERE period_month LIKE ? AND jurisdiction = 'cl' AND earning_type = 'salary' AND liquido_currency = 'clp'
+        WHERE period_month LIKE ? AND period_month >= ? AND period_month <= ?
+          AND jurisdiction = 'cl' AND earning_type = 'salary' AND liquido_currency = 'clp'
         ORDER BY period_month`
     )
-    .all(`${incomeYear}-%`) as Row[];
+    .all(`${incomeYear}-%`, fromMonth, throughMonth) as Row[];
   const ipc = ipcReajuste({ round: true, floorAtZero: true });
   const { toMonth, provisional } = ipc.december(incomeYear);
   let taxable = 0;

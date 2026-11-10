@@ -89,7 +89,7 @@ describe("F22 identities", () => {
     expect(f22Code305(Object.fromEntries(codes))).toBe(450);
     expect(f22IdentityViolations(codes, "test")).toEqual([]);
     codes.set(305, 451);
-    expect(f22IdentityViolations(codes, "test")).toEqual(["305 = 304 + 1830 − 198 + 900 (451 vs 450)"]);
+    expect(f22IdentityViolations(codes, "test")).toEqual(["305 = 304 + 34 + 952 + 1830 − 198 − 833 + 900 (451 vs 450)"]);
     codes.delete(304);
     expect(() => f22IdentityViolations(codes, "test")).toThrow(/code 304 missing/);
   });

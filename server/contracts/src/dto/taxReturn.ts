@@ -217,6 +217,77 @@ export type TaxReturnForeignIncome = {
   };
 };
 
+export type TaxJurisdiction = "cl" | "us";
+
+/** A declared tax residency period (server: taxResidency.ts; GET|POST /api/tax-residency). */
+export type TaxResidencyPeriodDto = {
+  id: number;
+  jurisdiction: TaxJurisdiction;
+  from: string;
+  /** Null: the open period. */
+  to: string | null;
+  note: string | null;
+};
+
+/** The regime of an income year under the declared residency: Chile the whole year, none of it, or the departure year. */
+export type TaxReturnRegime = "resident" | "nonresident" | "split";
+
+export type TaxReturnDateWindow = { from: string; through: string };
+
+/** Why an item of a non-resident window enters no code (server: f22Draft.ts, «Residency»). */
+export type TaxReturnExcludedReason = "nonresident" | "treaty_art13_8" | "fund_unico_withheld" | "withheld_at_source" | "no_igc";
+
+export type TaxReturnExcludedKind =
+  | "us_salary"
+  | "foreign_dividends"
+  | "foreign_interest"
+  | "foreign_shares"
+  | "usd_fx"
+  | "crypto"
+  | "fund_redemptions"
+  | "fund_distributions"
+  | "chile_interest"
+  | "mortgage_interest"
+  | "apv"
+  | "property_tax_credit";
+
+/** An item the non-resident part does not declare, kept in the payload with its amount and reason. */
+export type TaxReturnExcludedItem = {
+  kind: TaxReturnExcludedKind;
+  reason: TaxReturnExcludedReason;
+  clp: number;
+  /** Lines, sales, stubs… behind the amount (0 for a yearly DJ figure). */
+  count: number;
+  window: TaxReturnDateWindow;
+};
+
+/** The declared residency the draft was built on. */
+export type TaxReturnResidency = {
+  regime: TaxReturnRegime;
+  /** A declared period covers the year (false: Chile, the undeclared default). */
+  declared: boolean;
+  cl: "full" | "none" | { through: string };
+  us: "full" | "none" | { from: string };
+  /** The assumption the return states when a residency is declared (the client shows its own translation); null otherwise. */
+  assumption: string | null;
+  periods: TaxResidencyPeriodDto[];
+  resident_window: TaxReturnDateWindow | null;
+  art103_departure_return_built: false;
+};
+
+/** The non-resident part: the Impuesto Adicional (línea 72, codes 32 / 34) on the Chilean-source items of its window. */
+export type TaxReturnNonresidentPart = {
+  window: TaxReturnDateWindow;
+  tax_computed: boolean;
+  /** 1849 / 955 / 158 / 32 / 34 and the art. 107 codes of this part (zeros left out). */
+  codes: Record<string, number>;
+  taxable_rent_clp: number;
+  exempt_rent_clp: number;
+  places: { slug: string; label: string; dfl2: boolean; credits: number; rent_clp: number }[];
+  /** Art. 107 sales of the window at the general-rule cost, the 10 % único (withheld by the broker, art. 107 N°6). */
+  art107: { sales: number; result_clp: number; tax_clp: number };
+};
+
 export type TaxReturnResponse = {
   tax_year: number;
   income_year: number;
@@ -225,6 +296,11 @@ export type TaxReturnResponse = {
   us_tax_year: number | null;
   provisional: boolean;
   base: "filed" | "informed" | "payroll" | "fees" | "none";
+  regime: TaxReturnRegime;
+  residency: TaxReturnResidency;
+  /** The non-resident part (a non-resident year, or the departure year's second part); null for a resident year. */
+  nonresident: TaxReturnNonresidentPart | null;
+  excluded: TaxReturnExcludedItem[];
   tax_computed: boolean;
   uta_clp: number;
   uta_provisional: boolean;
@@ -273,6 +349,7 @@ export type TaxReturnResponse = {
     months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number }[];
   };
   rows: TaxReturnRow[];
+  /** The income tax determined as filed / as drafted: the IGC (304) plus the Impuesto Adicional (34). */
   tax_filed: number | null;
   tax_draft: number | null;
   crypto: {

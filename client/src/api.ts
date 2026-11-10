@@ -837,6 +837,10 @@ export const api = {
       `/api/benchmark-comparison?${qs.toString()}`
     );
   },
+  taxResidency: () => j<{ periods: import("./types").TaxResidencyPeriodDto[] }>("/api/tax-residency"),
+  declareTaxResidency: (body: { jurisdiction: import("./types").TaxJurisdiction; from: string; note: string | null }) =>
+    j<import("./types").TaxResidencyPeriodDto>("/api/tax-residency", { method: "POST", body: JSON.stringify(body) }),
+  deleteTaxResidency: (id: number) => j<void>(`/api/tax-residency/${id}`, { method: "DELETE" }),
   taxReturn: (taxYear: number | null) =>
     j<import("./types").TaxReturnResponse>(
       `/api/tax-return${taxYear != null ? `?tax_year=${taxYear}` : ""}`

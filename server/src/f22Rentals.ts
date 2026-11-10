@@ -22,6 +22,7 @@
  * row exists only when a purchase backs it, so it is what was paid).
  */
 import { db } from "./db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { DFL2_MAX_EXEMPT_RENTALS } from "./legalParameters.js";
 import { loadRentCreditsForYear } from "./flowsCheckingIncomeOverrides.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
@@ -51,8 +52,9 @@ export type F22Rentals = {
 
 type PlaceRow = { id: number; slug: string; label: string; dfl2: number };
 
-export function rentalsForYear(incomeYear: number): F22Rentals {
-  const credits = loadRentCreditsForYear(incomeYear);
+/** The year's rents, or one part of a departure year's (credits received and contribuciones paid inside `window`). */
+export function rentalsForYear(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): F22Rentals {
+  const credits = loadRentCreditsForYear(incomeYear).filter((c) => inDateWindow(c.receivedOn, window));
   const empty: F22Rentals = { places: [], taxableRentClp: 0, exemptRentClp: 0, propertyTaxPaidClp: 0, provisional: false };
   if (credits.length === 0) return empty;
   const ipc = ipcReajuste({ round: true, floorAtZero: true });
@@ -69,7 +71,9 @@ export function rentalsForYear(incomeYear: number): F22Rentals {
     const p = placeStmt.get(id) as PlaceRow | undefined;
     if (!p) throw new Error(`rent names place ${id}, which does not exist`);
     const mine = credits.filter((c) => c.placeId === id);
-    const taxRows = taxStmt.all(id, `${incomeYear}-%`) as { spent_on: string; amount_clp: number }[];
+    const taxRows = (taxStmt.all(id, `${incomeYear}-%`) as { spent_on: string; amount_clp: number }[]).filter((r) =>
+      inDateWindow(r.spent_on, window)
+    );
     return {
       slug: p.slug,
       label: p.label,

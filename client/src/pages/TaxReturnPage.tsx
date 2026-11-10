@@ -125,6 +125,79 @@ function LossOffsetHint({ data, kind }: { data: TaxReturnResponse; kind: "pool" 
   );
 }
 
+/** The declared residency the draft was built on, its assumption, and the non-resident part when there is one. */
+function ResidencySection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const r = data.residency;
+  const period = r.periods.map((p) => `${t(`panelSettings.taxResidency.jurisdictions.${p.jurisdiction}`)} ${p.from} → ${p.to ?? t("panelSettings.taxResidency.open")}`).join("; ");
+  const nr = data.nonresident;
+  return (
+    <>
+      {!r.declared ? (
+        <p className="muted">{t("taxReturn.residency.undeclared")}</p>
+      ) : (
+        <>
+          <p className="muted">
+            {r.regime === "resident"
+              ? t("taxReturn.residency.regime.resident", { period })
+              : r.regime === "nonresident"
+                ? t("taxReturn.residency.regime.nonresident", { year: data.income_year, from: typeof r.us === "object" ? r.us.from : r.periods.find((p) => p.jurisdiction === "us")?.from ?? "", period })
+                : t("taxReturn.residency.regime.split", {
+                    through: typeof r.cl === "object" ? r.cl.through : "",
+                    from: typeof r.us === "object" ? r.us.from : "",
+                  })}
+          </p>
+          <p className="muted">{t("taxReturn.residency.assumption")}</p>
+          {r.regime === "split" ? (
+            <>
+              <p className="muted">{t("taxReturn.residency.art103")}</p>
+              <p className="muted">{t("taxReturn.residency.yearlyDj")}</p>
+            </>
+          ) : null}
+          {nr ? (
+            <p>
+              {t("taxReturn.residency.nonresidentPart", {
+                from: nr.window.from,
+                through: nr.window.through,
+                rent: formatClp(nr.taxable_rent_clp),
+                exempt: formatClp(nr.exempt_rent_clp),
+                base: formatClp(nr.codes["32"] ?? 0),
+                tax: formatClp(nr.codes["34"] ?? 0),
+              })}
+              {nr.art107.sales > 0
+                ? ` ${t("taxReturn.residency.nonresidentArt107", { sales: nr.art107.sales, result: formatClp(nr.art107.result_clp), tax: formatClp(nr.art107.tax_clp) })}`
+                : ""}
+            </p>
+          ) : null}
+        </>
+      )}
+    </>
+  );
+}
+
+/** What the non-resident part does not declare, each item with its amount and reason. */
+function ExcludedSection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  if (data.excluded.length === 0) return null;
+  return (
+    <PageGridTile id="excluded">
+      <h2>{t("taxReturn.residency.excludedTitle")}</h2>
+      <p className="muted">{t("taxReturn.residency.excludedExplain")}</p>
+      <ul>
+        {data.excluded.map((x) => (
+          <li key={`${x.kind}-${x.window.from}`}>
+            {t("taxReturn.residency.excludedItem", {
+              kind: t(`taxReturn.residency.kind.${x.kind}`),
+              clp: formatClp(x.clp),
+              reason: t(`taxReturn.residency.reason.${x.reason}`),
+            })}
+          </li>
+        ))}
+      </ul>
+    </PageGridTile>
+  );
+}
+
 function CryptoSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const c = data.crypto;
@@ -732,6 +805,7 @@ export function TaxReturnPage() {
             <>
               <PageGridTile id="f22">
                 {data ? <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p> : null}
+                {data ? <ResidencySection data={data} /> : null}
                 {data?.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
                 {data && data.salary.incomplete_months.length > 0 ? (
                   <p style={{ color: "var(--negative)" }}>
@@ -756,6 +830,7 @@ export function TaxReturnPage() {
                   {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
                     <LossOffsetHint data={data} kind="pool" />
                   ) : null}
+                  <ExcludedSection data={data} />
                   <SettlementSection data={data} />
                   <PayrollWithholdingSection data={data} />
                   <CryptoSection data={data} />
