@@ -94,7 +94,7 @@ triages what is left into three waves of agent work and says what is dropped. Fa
 - Checks on the merged tree: typecheck, client 85 / 475, server 499 / 3298, the demo generation
   (US$460.994), the row on the local demo's overview.
 
-## Wave C status (2026-11-10): built, checked, not merged
+## Wave C status (2026-11-10): built, checked, merged into the integration branch
 
 Sources read, not remembered: the SII's AT2026 form (`f22_at2026.pdf`) and per-line instructions
 (`sii.cl/servicios_online/renta/2026/archivos/l<N>_instruccion.pdf`), Circular 31/2021, observation
