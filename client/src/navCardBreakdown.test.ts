@@ -41,7 +41,6 @@ function dashRow(
   return {
     account_id: id,
     name,
-    nav_label: name,
     category_slug: kind,
     category_label: kind,
     group_slug: "retirement",

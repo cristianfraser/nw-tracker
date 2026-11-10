@@ -9,7 +9,6 @@ import {
   hasMaterialDashboardBalance,
   isChartActiveAccount,
 } from "./accountGroupTotals";
-import { accountNavLabel } from "./accountRowFields";
 import { navAccountIdSet, requireNavCardMetrics } from "./navCardMetrics";
 import { mixedNavChildren, stripChartBucketNavNodes } from "./navChartBuckets";
 import {
@@ -45,7 +44,7 @@ function accountLines(
 ): CardBreakdownLine[] {
   return sortByClpDesc(
     rows.map((r) => ({
-      label: accountNavLabel(r),
+      label: r.name,
       clp: r.current_value_clp ?? 0,
       usd: r.current_value_usd ?? null,
       depth,

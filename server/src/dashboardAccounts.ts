@@ -7,7 +7,7 @@ import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAccio
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountIsDebt } from "./accountProfile.js";
-import { accountNavLabel, isPropertyKind } from "./accountRowProfileFields.js";
+import { isPropertyKind } from "./accountRowProfileFields.js";
 import { loanAccountIdOfProperty } from "./accountRoles.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import {
@@ -549,13 +549,7 @@ function buildDashboardAccountRowFor(
     position,
     // Placeholder: the listing sets it (see buildDashboardAccountRowsInner).
     sync_stale: false,
-    // What the row is (label, Rentabilidad, a property's loan): the client picks these (F12).
-    nav_label: accountNavLabel({
-      name: a.name,
-      notes: a.notes ?? null,
-      kind: kindSlug,
-      dashboardBucket: dashboard_bucket_slug ?? null,
-    }),
+    // What the row is (Rentabilidad, a property's loan): the client picks these (F12).
     has_period_returns: isInvestmentPerformanceAccount(a.id),
     loan_account_id: isPropertyKind(kindSlug) ? loanAccountIdOfProperty(a.id) : null,
   };

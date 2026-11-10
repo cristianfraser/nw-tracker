@@ -83,7 +83,6 @@ function dashRow(
   return {
     account_id: id,
     name,
-    nav_label: name,
     category_slug: kind,
     category_label: kind,
     group_slug: bucketSlug,
@@ -156,7 +155,6 @@ describe("breakdownForNavChild real_estate", () => {
   const propertyRow: DashboardAccountRow = {
     account_id: 10,
     name: "depto",
-    nav_label: "depto",
     category_slug: "property",
     category_label: "property",
     group_slug: "real_estate",
@@ -187,7 +185,6 @@ describe("breakdownForNavChild real_estate", () => {
       ...propertyRow,
       account_id: 12,
       name: "Casa propia · Demo",
-      nav_label: "Casa propia · Demo",
       category_slug: undefined,
       bucket_slug: "real_estate__property",
       current_value_clp: 27_110_948,
@@ -197,7 +194,6 @@ describe("breakdownForNavChild real_estate", () => {
     const demoMortgage = {
       account_id: 13,
       name: "Casa propia · Demo",
-      nav_label: "Casa propia · Demo",
       group_slug: "liabilities__mortgage",
       group_label: "Mortgage",
       bucket_slug: "liabilities__mortgage",

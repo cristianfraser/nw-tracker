@@ -14,7 +14,6 @@ function cashRow(
     deposits_clp: 0,
     exclude_from_group_totals: 0,
     ...partial,
-    nav_label: partial.nav_label ?? partial.name ?? "Account",
   } as DashboardAccountRow;
 }
 
@@ -22,7 +21,6 @@ describe("cash card breakdown", () => {
   const reserva = cashRow({
     account_id: 1,
     name: "Reserva",
-    nav_label: "Reserva",
     category_slug: "fondo_reserva",
     bucket_slug: "cash_eqs__fondo_reserva",
     current_value_clp: 2_000_000,
