@@ -60,7 +60,7 @@ export function UsTaxReturnSections({ data, loading }: { data: UsTaxReturnRespon
         {data ? (
           <>
             <p className="muted">
-              {t("taxReturn.us.intro", { stubs: data.stubs, status: t(`taxReturn.us.filingStatus.${data.filing_status}`) })}
+              {t("taxReturn.us.intro", { stubs: data.stubs, status: t(`taxReturn.us.filingStatus.${data.filing_status}`), year: data.tax_year })}
             </p>
             {data.notes.map((n) => (
               <p key={n} className="muted">

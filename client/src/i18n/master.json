@@ -6717,8 +6717,8 @@
         "es": "Formulario 1040 · año fiscal {{year}}"
       },
       "intro": {
-        "en": "Federal return drafted from {{stubs}} pay stubs, filing status {{status}}. Whole dollars; line numbers of the 2024 form.",
-        "es": "Declaración federal preparada con {{stubs}} liquidaciones, estado civil tributario {{status}}. Dólares enteros; numeración de líneas del formulario 2024."
+        "en": "Federal return drafted from {{stubs}} pay stubs, filing status {{status}}. Whole dollars; line numbers of the {{year}} form.",
+        "es": "Declaración federal preparada con {{stubs}} liquidaciones, estado civil tributario {{status}}. Dólares enteros; numeración de líneas del formulario {{year}}."
       },
       "filingStatus": {
         "single": {
@@ -7499,8 +7499,8 @@
         "es": "El año no ha cerrado: las liquidaciones a la fecha, al último dólar observado."
       },
       "salary": {
-        "en": "{{stubs}} pay stubs: US$ {{usd}} gross → {{gross}}; US tax US$ {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
-        "es": "{{stubs}} liquidaciones: US$ {{usd}} bruto → {{gross}}; impuesto en EE.UU. US$ {{taxUsd}} ({{source}}) → {{tax}}; declarado en 1030: {{net}}."
+        "en": "{{stubs}} pay stubs: {{usd}} gross → {{gross}}; US tax {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
+        "es": "{{stubs}} liquidaciones: {{usd}} bruto → {{gross}}; impuesto en EE.UU. {{taxUsd}} ({{source}}) → {{tax}}; declarado en 1030: {{net}}."
       },
       "taxSource": {
         "filed": {
@@ -7517,8 +7517,8 @@
         "es": "Crédito: {{credit}} (el impuesto de EE.UU., hasta el 35 % del bruto), tope {{cap}} (el IGC de esta renta, por su proporción de la base con un decimal) → {{applied}} en 1018."
       },
       "interest": {
-        "en": "Interest from a foreign broker: US$ {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit).",
-        "es": "Intereses de un corredor extranjero: US$ {{usd}} al observado del 31 de diciembre → {{clp}}, en 1104 (sin impuesto retenido en EE.UU., sin crédito)."
+        "en": "Interest from a foreign broker: {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit).",
+        "es": "Intereses de un corredor extranjero: {{usd}} al observado del 31 de diciembre → {{clp}}, en 1104 (sin impuesto retenido en EE.UU., sin crédito)."
       }
     },
     "art107": {

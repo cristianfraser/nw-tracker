@@ -1946,7 +1946,7 @@
       "tabChile": "Chile (F22)",
       "tabUs": "United States (1040)",
       "title": "Form 1040 · tax year {{year}}",
-      "intro": "Federal return drafted from {{stubs}} pay stubs, filing status {{status}}. Whole dollars; line numbers of the 2024 form.",
+      "intro": "Federal return drafted from {{stubs}} pay stubs, filing status {{status}}. Whole dollars; line numbers of the {{year}} form.",
       "filingStatus": {
         "single": "single",
         "married_jointly": "married filing jointly"
@@ -2170,13 +2170,13 @@
       "title": "Foreign income",
       "explain": "A Chilean resident declares worldwide income (art. 3 LIR). The US salary is line 13, code 1030: the gross pay at the dólar observado of December 31 (art. 41 A N°7, Circular 31/2021: no reajuste), less the US income tax (the Form 1040's line 24). Social Security and Medicare are not deducted: only Chilean-law contributions are (Circular 31/2021). That tax is credited under art. 41 A and the Chile–US treaty: at most 35 % of the gross, added back as the gross-up (748, line 14) and credited in 1018 (line 45) up to the IGC on this income, with no refund.",
       "provisional": "The year has not closed: the stubs to date, at the latest dólar observado.",
-      "salary": "{{stubs}} pay stubs: US$ {{usd}} gross → {{gross}}; US tax US$ {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
+      "salary": "{{stubs}} pay stubs: {{usd}} gross → {{gross}}; US tax {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
       "taxSource": {
         "filed": "filed 1040",
         "draft": "1040 draft"
       },
       "credit": "Credit: {{credit}} (the US tax, at most 35 % of the gross), capped at {{cap}} (the IGC on this income, by its one-decimal share of the base) → {{applied}} in 1018.",
-      "interest": "Interest from a foreign broker: US$ {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit)."
+      "interest": "Interest from a foreign broker: {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit)."
     },
     "art107": {
       "title": "Art. 107 LIR: fund and share sales",
