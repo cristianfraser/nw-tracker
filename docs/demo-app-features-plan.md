@@ -313,7 +313,7 @@ carries the premiums; a Chilean-resident year with an option event throws.
   tests; the demo regenerated (AT2025 split: resident part 158 22.572.983 incl. the UCITS gain,
   non-resident part 32 8.139.700 / 34 2.848.895, 305 3.271.365; AT2026 non-resident 32 13.136.220
   / 34 4.597.677; 1040 2025 line 24 US$27.453, owed US$282; `stocks_london` ok; CSPX / VWRA in
-  the nav; the opciones group answers). Server suite: see below.
+  the nav; the opciones group answers); server suite on a regenerated Vitest database 503 files / 3342 tests.
 - **Before the push to main:** one query on the home server for a dot-suffixed ticker other than
   `.SN` / `.L` / `.NYB` (`accounts.equity_ticker`, `market_symbols`, the watchlist, the proxy
   basket) — the suffix rule throws on the first read of an unknown one. The documented primary
