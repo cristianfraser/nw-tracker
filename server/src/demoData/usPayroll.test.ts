@@ -49,6 +49,22 @@ describe("the demo's US payroll", () => {
     expect(usAnnualSalary(JOB, "2026-04-10")).toBe(Math.round(130_000 * 1.05 * 1.05));
   });
 
+  it("adds a review's market adjustment on top of the fraction, compounded by later raises", () => {
+    const job: UsW2Job = { ...JOB, raiseExtraUsd: { 2025: 10_000 } };
+    expect(usAnnualSalary(job, "2025-03-28")).toBe(130_000);
+    expect(usAnnualSalary(job, "2025-04-11")).toBe(146_500);
+    expect(usAnnualSalary(job, "2026-04-10")).toBe(Math.round(146_500 * 1.05));
+  });
+
+  it("pays a year's bonus at its own fraction when the job names one", () => {
+    const job: UsW2Job = { ...JOB, bonus: { month: 3, fraction: 0.1, fractionByYear: { 2026: 0.15 } } };
+    const ytd = newUsPayrollYtd();
+    const stubs = usPayDates(job, "2026-03-31").map((d) => usPayStub(job, d, ytd));
+    const march = (y: string) => stubs.filter((s) => s.payDate.startsWith(`${y}-03`)).map((s) => s.bonus);
+    expect(march("2025")).toEqual([13_000, 0]);
+    expect(march("2026")).toEqual([Math.round(136_500 * 0.15 * 100) / 100, 0]);
+  });
+
   it("computes a stub the way the payslip checks read it, its lines adding up", () => {
     const ytd = newUsPayrollYtd();
     const s = usPayStub(JOB, { nominal: "2024-04-19", paid: "2024-04-19" }, ytd);

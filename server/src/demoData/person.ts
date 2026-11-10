@@ -127,11 +127,16 @@ export type UsW2Job = {
   /** The first pay date (a Friday); then every 14 days. */
   firstPayDate: Ymd;
   annualSalaryUsd: number;
-  /** Raise applied every `raiseMonth` once the first year is done (fraction). */
+  /** The yearly review: a raise every `raiseMonth` once the first year is done (fraction of the salary). */
   yearlyRaise: number;
   raiseMonth: number;
-  /** A yearly bonus (a fraction of the salary) paid with the first check of `month`, from the second year. */
-  bonus: { month: number; fraction: number } | null;
+  /** Dollars a review adds on top of the fraction, by the review's year (a market adjustment); later raises compound on them. */
+  raiseExtraUsd?: Readonly<Record<number, number>>;
+  /**
+   * A yearly bonus (a fraction of the salary) paid with the first check of `month`, from the second
+   * year; `fractionByYear` names the payout years paid at another fraction.
+   */
+  bonus: { month: number; fraction: number; fractionByYear?: Readonly<Record<number, number>> } | null;
   payFrequency: "biweekly";
   /** Pre-tax 401(k) deferral on every check (fraction of gross). */
   retirement401kRate: number;
@@ -157,7 +162,11 @@ const US_JOBS: UsW2Job[] = [
     annualSalaryUsd: 150_000,
     yearlyRaise: 0.04,
     raiseMonth: 4,
-    bonus: { month: 3, fraction: 0.08 },
+    // The 2025 review brings a US$10k market adjustment on top of the 4 % and the 2026 bonus is paid
+    // at 12 %: without them the car, the Roth, the Chilean April F22 and the wires to Chile took the
+    // whole US surplus and IBKR received ~US$2k in two and a half years abroad (2026-11-10).
+    raiseExtraUsd: { 2025: 10_000 },
+    bonus: { month: 3, fraction: 0.08, fractionByYear: { 2026: 0.12 } },
     payFrequency: "biweekly",
     retirement401kRate: 0.06,
     employerMatchRate: 0.04,
@@ -642,11 +651,12 @@ export const DEMO_PERSON: Person = {
   // account at the US bank with the move.
   savings: { clp: { fundName: "Fondo Mutuo Money Market", from: CONTRACT_JOBS[1]!.from }, usd: { bankLabel: "DEMO BANK TEXAS SAVINGS" } },
   apv: APV,
-  // US$445k, not the 400k the plan's first sanity table guessed: two and a half years of a US$150k salary
-  // saved against a modest Austin lifestyle, and the two rented apartments' equity make this the honest figure on the
-  // synthetic market (US$445.296 at 2026-11-09). On the real market the plays move it by tens of
-  // thousands; the ±25 % tolerance (US$334k–556k) leaves room on both sides.
-  netWorthTargetUsd: 445_000,
+  // US$460k (445k until 2026-11-10, 400k before the F22 taxed the US salary): two and a half years of a
+  // US$150k salary — US$166k from the 2025 review — saved against a modest Austin lifestyle, and the two
+  // rented apartments' equity make this the honest figure on the synthetic market (US$460.994 at
+  // 2026-11-10). On the real market the plays move it by tens of thousands; the ±25 % tolerance
+  // (US$345k–575k) leaves room on both sides.
+  netWorthTargetUsd: 460_000,
   ingestHistoryDays: 45,
 };
 

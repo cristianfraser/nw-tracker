@@ -66,15 +66,18 @@ export function usPayDates(job: UsW2Job, through: Ymd): UsPayDate[] {
   return out;
 }
 
-/** The annual salary in effect on `payDate`: a raise every `raiseMonth` once a year has passed. */
+/**
+ * The annual salary in effect on `payDate`: a raise every `raiseMonth` once a year has passed — the
+ * fraction, plus the dollars that review's year adds (`raiseExtraUsd`), which later raises compound on.
+ */
 export function usAnnualSalary(job: UsW2Job, payDate: Ymd): number {
   const month = monthOf(payDate);
   const mm = String(job.raiseMonth).padStart(2, "0");
-  let raises = 0;
+  let salary = job.annualSalaryUsd;
   for (let y = Number(job.from.slice(0, 4)); `${y}-${mm}` <= month; y++) {
-    if (monthsBetween(job.from, `${y}-${mm}`) >= 12) raises += 1;
+    if (monthsBetween(job.from, `${y}-${mm}`) >= 12) salary = salary * (1 + job.yearlyRaise) + (job.raiseExtraUsd?.[y] ?? 0);
   }
-  return Math.round(job.annualSalaryUsd * Math.pow(1 + job.yearlyRaise, raises));
+  return Math.round(salary);
 }
 
 /** Year-to-date state the next stub needs (per calendar year of the pay date). */
@@ -99,7 +102,7 @@ export function usPayStub(job: UsW2Job, date: UsPayDate, ytd: UsPayrollYtd): UsP
     Number(payDate.slice(5, 7)) === job.bonus.month &&
     Number(date.nominal.slice(8, 10)) <= 14 &&
     monthsBetween(job.from, monthOf(payDate)) >= 11;
-  const bonus = bonusDue ? cents(salary * job.bonus!.fraction) : 0;
+  const bonus = bonusDue ? cents(salary * (job.bonus!.fractionByYear?.[year] ?? job.bonus!.fraction)) : 0;
   const gross = cents(regular + bonus);
   const k401 = cents(Math.min(gross * job.retirement401kRate, Math.max(0, usTaxYear(year).elective401kLimit - ytd.deferrals)));
   const match = k401 > 0 ? cents(gross * job.employerMatchRate) : 0;
