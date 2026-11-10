@@ -11,7 +11,7 @@ import { loanPaymentFacts } from "./loans.js";
 import { DEMO_US_BANK_ISSUER, brokerCountry, loadAccountPayers } from "./payers.js";
 import { rentalFacts } from "./rentals.js";
 import { feeReceiptFacts, usPayStubFacts } from "./salaries.js";
-import { fundHoldingFacts, holdingTransactionFacts } from "./fundHoldings.js";
+import { bookMarkedFundSeriesKey, fundHoldingFacts, holdingPositionsOn, holdingTransactionFacts } from "./fundHoldings.js";
 import { propertyAppraisalOn, propertyFacts } from "./properties.js";
 
 const PREFIX = "vitest-tax-facts";
@@ -288,6 +288,11 @@ describe("tax facts", () => {
 });
 
 describe("fund holdings", () => {
+  afterAll(() => {
+    for (const id of movements.splice(0)) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+    for (const id of accounts.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  });
+
   it("states each fund account's cuotas and value in the fund's currency when a window opens and ends", () => {
     const today = new Date().toISOString().slice(0, 10);
     const year = Number(today.slice(0, 4)) - 1;
@@ -297,5 +302,18 @@ describe("fund holdings", () => {
       expect(f.positions.map((p) => p.date)).toEqual([`${year}-04-14`, `${year}-12-31`]);
       for (const p of f.positions) if (p.cuotas) expect(p.value).not.toBeNull();
     }
+  });
+
+  it("reads a book-marked fund fully redeemed as empty, not as the floating-point residue of its cuotas", () => {
+    const id = account("cash_eqs__cash_savings", `${PREFIX}|book-fund`, null, "vitest_tax_facts_book_fund");
+    expect(bookMarkedFundSeriesKey(id)).toBe("vitest_tax_facts_book_fund");
+    const cash = account("cash_eqs__cash_savings", `${PREFIX}|book-fund-cash`);
+    movement({ from: cash, to: id, amount: 10_000, currency: "clp", day: `${YEAR}-01-10`, kind: null, units: 0.1 });
+    movement({ from: cash, to: id, amount: 20_000, currency: "clp", day: `${YEAR}-02-10`, kind: null, units: 0.2 });
+    movement({ from: id, to: cash, amount: 31_000, currency: "clp", day: `${YEAR}-03-10`, kind: null, units: 0.3 });
+    // 0.1 + 0.2 − 0.3 is 5.55e-17 in floating point: the reader states 0.
+    expect(0.1 + 0.2 - 0.3).not.toBe(0);
+    const pos = holdingPositionsOn(id, [`${YEAR}-02-20`, `${YEAR}-03-20`])!;
+    expect(pos.positions.map((p) => p.cuotas)).toEqual([0.30000000000000004, 0]);
   });
 });
