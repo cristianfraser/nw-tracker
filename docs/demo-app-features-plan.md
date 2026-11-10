@@ -244,6 +244,84 @@ with no event; an assignment's three legs reconcile (contracts 0, shares −100 
 × 100 n) and the aportes identity holds on every account and the bucket; the 1040's Schedule D
 carries the premiums; a Chilean-resident year with an option event throws.
 
+## 4. L2 — the instrument registry: exchange and currency are registered facts, not a suffix
+
+### Why (the user's question, 2026-11-10)
+
+Wave L decides a ticker's market from its Yahoo suffix (`.SN`, `.L`, `.NYB`) when it has no
+`market_symbols` row, and `marketQuoteCurrency` reads the currency the same way. The user asked
+for the exchange to be a stored fact about the instrument, and for the app to be price-provider
+agnostic. Both are right: the suffix is Yahoo's spelling, not an exchange; the real identifiers
+are the ISIN and the MIC (CSPX is IE00B5BMR087 on XLON). Today the registry exists (migration 210
++ 303: `ticker`, `quote_currency`, `market_kind`, `name`, `exchange`, `instrument_type`,
+`verified_at`) but only the watchlist writes it; every stock account created before 2026-10-04,
+the proxy basket, the benchmarks, the demo's accounts and the two coins fall through to the
+suffix table (`EXCHANGE_SUFFIX_MARKET`) and the hard-coded `TICKER_MARKET`.
+
+### The model
+
+- **The registry is the one source of an instrument's facts.** `market_symbols` (name kept —
+  22 modules read the currency and 16 the market through two functions; the table is "the
+  instrument registry" in the docs) gains, in migration 305: `mic` (ISO 10383, nullable: XNYS,
+  XNAS, ARCX, XLON, XSGO; null for a coin or an index), `isin` (nullable), `display_symbol`
+  (the symbol without a provider's exchange suffix: CSPX, CFIETFIPSA, SPY — what the leaf name
+  and the position show), `source` (`yahoo` | `coingecko` | `bolsa_santiago` | `declared`: who
+  stated the facts) beside `verified_at`. `market_kind` stays the calendar/session key the
+  readers need (`nyse`, `santiago`, `london`, `crypto24`); `exchange` keeps the provider's own
+  exchange name as provenance.
+- **The ticker stays the app's instrument key**, spelled today as Yahoo's symbol in every row
+  (`equity_daily`, `live_market_quotes`, `accounts.equity_ticker`, `option_contracts.
+  underlying_ticker`, the benchmarks, the proxy basket's `price_ticker`). Decoupling the key
+  from the provider's symbol (a `market_symbol_provider_ids(ticker, provider, provider_symbol)`
+  map, an ISIN+MIC key) is a later plan: Yahoo is the only equity provider, every key equals its
+  Yahoo symbol, and renaming the key across the price tables is a big-bang the facts do not need.
+- **Readers never parse a ticker.** `equityMarketKind(ticker)` and `marketQuoteCurrency(ticker)`
+  return the registered row's fields or THROW («<ticker> is not registered; run
+  `register:market-symbols`»). `EXCHANGE_SUFFIX_MARKET`, `TICKER_MARKET` and the `.SN → clp` rule
+  are deleted; `generate.ts` names a leaf from `display_symbol`, not by stripping `.SN` / `.L`.
+  `check:conventions` flags `endsWith(".` and `lastIndexOf(".")` on a ticker outside the
+  provider adapters.
+- **Price providers are adapters behind one interface** (`server/src/priceProviders/`):
+  `describeSymbol(symbol) → InstrumentFacts {quote_currency, market_kind, mic, exchange, name,
+  instrument_type, display_symbol}`, `dailyCloses(symbol, range)`, `liveQuote`, `search`. The
+  Yahoo adapter wraps `yahooSymbols.ts` / `equityYahooEod.ts` / the stream: the
+  `exchangeTimezoneName → market_kind` and `exchangeName → mic` tables, the pence refusal and the
+  suffix stripping live INSIDE it — the only code that knows a Yahoo symbol's shape. The
+  CoinGecko and Bolsa de Santiago fetchers stay where they are and are declared as the adapters
+  of what they already do (EOD only), not forced into every method; the interface's optional
+  methods say so. Nothing outside the adapters imports a `yahoo*` module for a fact about an
+  instrument (an audit of the 64 modules naming Yahoo: most name it in a comment or a sync
+  source label — those stay; the imports of `classifyYahooSymbol` / `verifyYahooSymbol` and the
+  meta-currency assertion in `equityEodSync.ts` go through the adapter).
+- **Registration is the only door.** `registerInstrument(ticker, {provider})` asks the adapter
+  and writes the row; called by the stock account creation (`createPanelAccount.ts`, which
+  verifies the symbol today only for the watchlist), the option underlying (O1), the watchlist
+  add (already), the benchmark seed, the proxy composition sync (`price_ticker`), the EOD and
+  live syncs refusing an unregistered ticker in their lists (they read the registry for the
+  list, so none can be). The demo generator **declares** its instruments (`DEMO_TICKERS` gains
+  `market_kind`, `quote_currency`, `display_symbol`, `mic`; rows written with `source:
+  "declared"` before any account) — the synthetic path never calls a provider; the real-market
+  loader cross-checks the declared facts against the provider's (a mismatch fails the build).
+- **The backfill is a report-first script that fails loudly**, `server/scripts/register-market-
+  symbols.ts [--apply]`: every ticker in use (`accounts.equity_ticker`, `option_contracts.
+  underlying_ticker`, `watchlist_items`, `benchmarks.ticker`, the proxy basket holdings' price
+  tickers, `market_display_series`, distinct `equity_daily` tickers) without a row, asked of the
+  provider, printed with the facts, written with `--apply`; a ticker the provider cannot classify
+  (an unknown timezone, a currency outside USD / CLP, no meta) fails the script. The deploy runs
+  it with `--apply` BEFORE restarting the server (`scripts/server-deploy.sh`; the script applies
+  pending migrations as every `db.ts` import does — intended here, it needs 305), so a ticker the
+  rule would throw on fails the deploy and rolls back instead of taking the first request down.
+  This replaces the ssh check of the suffix rule: the script finds the odd ticker itself. On the
+  demo the generator's declarations make it a no-op.
+
+### Checks
+
+Every ticker on both generated databases has a row (`register-market-symbols.ts` reports none
+missing); `equityMarketKind("XYZ.PA")` and `marketQuoteCurrency("ANY")` throw without a row,
+whatever the suffix; a Yahoo meta with `Europe/London` + USD registers london / usd / XLON, with
+`GBp` is refused; the adapter audit (`check:conventions`) passes; the London and Santiago
+session tests still pass reading registered rows; the demo and Vitest generations, both suites.
+
 ## Waves
 
 - **Wave R1 — residency, Chile (one agent, research first):** the sources above read and quoted
@@ -260,13 +338,17 @@ carries the premiums; a Chilean-resident year with an option event throws.
   the 2024-03 sale.
 - **Wave O1 — options, model and valuation (one agent):** migrations 304, the holding, the
   flow kinds, the capital rule, the position meta, the client forms.
+- **Wave L2 — the instrument registry (one agent; after L, before the push to main):** §4 —
+  migration 305, the provider adapters, registration at every door, the deleted suffix rules,
+  the report-first backfill script wired into the deploy, the generator's declared instruments.
 - **Wave O2 — options, tax and story (one agent):** the lot events, Schedule D, the demo events,
   the invariants.
 - Each wave: `cd server && npm run test`, both generations, the local demo pair; merge to `main`
   on the user's word; one demo release after R2 (the tax story) and one after O2. R1 before R2
   (R2 reads the Adicional); L and O1 independent of both and of each other; O2 after R2 and O1.
   Started 2026-11-10: R1, L and O1 in parallel (worktrees `us-r1-residency`, `us-l-london`,
-  `us-o1-options`, deps from `us-deps`), decisions 2–4 at their proposed values.
+  `us-o1-options`, deps from `us-deps`), decisions 2–4 at their proposed values; L2 planned the
+  same day after the user's question on the suffix rule, to land before the three go to main.
 
 ## Decisions for the user
 
