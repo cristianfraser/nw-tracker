@@ -23,6 +23,12 @@
  *    dims on `queryShowsLoading(q)` (queries/pageShapeReady.ts: `isPending || isPlaceholderData`),
  *    never on a background refetch (the live-quotes stamp refetches every query on each tick).
  *
+ * 7. No ticker-suffix parsing outside server/src/priceProviders/ (server/src, client/src,
+ *    ingest/src): an instrument's market, currency and display symbol are registered facts
+ *    (market_symbols, requireMarketSymbol), never read from `.SN` / `.L` / `-USD`. Flags
+ *    `.endsWith(".XX")` / `.endsWith("-USD")`, `lastIndexOf(".")` on a ticker or symbol, a
+ *    `\.SN$`-style regex, and `LIKE '%.SN'` / `'%.L'` / `'%-USD'` in SQL strings.
+ *
  * Escape hatch: append `// convention-ok: <reason>` to a line to exempt it.
  * Run: `npm run check:conventions` (root) — part of `npm run typecheck`.
  */
@@ -93,6 +99,34 @@ for (const file of walk(CLIENT_SRC)) {
       }
     }
   });
+}
+
+/** Ticker-suffix parsing (rule 7); the provider adapters are the one place that knows a symbol's shape. */
+const TICKER_SUFFIX_ROOTS = ["server", "client", "ingest"].map((d) => path.join(process.cwd(), d, "src"));
+const PRICE_PROVIDERS_DIR = path.join(process.cwd(), "server", "src", "priceProviders");
+const TICKER_SUFFIX_PATTERNS = [
+  [/\.endsWith\(\s*["'`]\.[A-Z]{1,4}["'`]/, "endsWith on an exchange suffix"],
+  [/\.endsWith\(\s*["'`]-USD["'`]/, "endsWith on -USD"],
+  [/\b\w*(ticker|symbol|sym)\w*\.lastIndexOf\(\s*["']\.["']/i, "lastIndexOf(\".\") on a ticker"],
+  [/\/[^/\n]*\\\.(SN|L|NYB)\$\//, "regex on an exchange suffix"],
+  [/LIKE\s+'%(\.(SN|L|NYB)|-USD)'/i, "SQL LIKE on a ticker suffix"],
+];
+for (const root of TICKER_SUFFIX_ROOTS) {
+  if (!fs.existsSync(root)) continue;
+  for (const file of walk(root)) {
+    if (file.startsWith(PRICE_PROVIDERS_DIR + path.sep)) continue;
+    const rel = path.relative(process.cwd(), file);
+    const raw = fs.readFileSync(file, "utf8");
+    const rawLines = raw.split("\n");
+    stripComments(raw).split("\n").forEach((line, i) => {
+      if (/\/\/ convention-ok/.test(rawLines[i] ?? "")) return;
+      for (const [re, what] of TICKER_SUFFIX_PATTERNS) {
+        if (re.test(line)) {
+          problems.push(`${rel}:${i + 1}: ${what} — an instrument's market and currency come from the registry (requireMarketSymbol), not its spelling\n    ${line.trim().slice(0, 100)}`);
+        }
+      }
+    });
+  }
 }
 
 /**
