@@ -130,10 +130,29 @@ name.
 
 ## Execution
 
-- **Wave 1 (small, one agent, no generator change):** items 2 and 3, each with its test;
-  typecheck, the client and server suites.
-- **Wave 2 (generator):** item 1 — `person.ts` + `simulate.ts` + `generate.ts` + `render.ts` +
-  invariants + the 1040 interest line + AGENTS; both generations and the server suite; the
-  local demo pair checked on the Cash card and the US statement.
-- Release to the demo (`npm run release:demo`) on the user's word, after both waves are on
-  `main` and the home server has deployed.
+The immediate fixes first, in two waves, one «go» each; the leftovers of the US-chapter plan
+come after, in their own plan.
+
+- **Wave 1 — the two card fixes (small, one agent, no generator change):** items 2 and 3, each
+  with its test; typecheck, the client and server suites; checked on the local demo pair
+  (`server-demo-us` / `client-demo-us`): the Real estate card lists Centro and Vitacura at the
+  first level, the Brokerage card reads SPY.
+- **Wave 2 — cash in savings (generator):** item 1 — `person.ts` + `simulate.ts` +
+  `generate.ts` + `render.ts` + invariants + the 1040 interest line + AGENTS; both generations
+  and the server suite; the local pair checked on the Cash card, the US statement's transfer
+  rows and «Flujos de patrimonio».
+- Each wave is merged to `main` on the user's word (the home server deploys from it); the demo
+  release (`npm run release:demo`) once both are on `main`, on the user's word.
+
+## Circle back afterwards (from `docs/demo-us-chapter-plan.md`, not scheduled here)
+
+Phase 8 (optional, app features first): a non-resident F22 mode, UCITS ETFs at IBKR (a London
+calendar and pricing), options as an instrument kind, a return to Chile. And the «Open after the
+plan» leftovers: the flows overview's missing fx leg on checking dollars; the F22's medium-
+confidence readings (the foreign dividends' credit in 1018 vs 746, the foreign salary base, dollar
+spending abroad as lot disposals); `syncExpenseLinksNow()` at ~46 s inside a transaction; a
+`rent` bucket for the income chart; the modules still reading the peso checking list only; the
+DAP import key; the Roth's SPY dividends and `accountIdForEquityTicker("SPY")` throwing with two
+SPY holders; DJ 1898's columns named after the loans; the About / tour copy unseen in a browser;
+the order-dependent `merchantExpenseNotes.test.ts` flake; the merged `us-*` worktrees. Each is
+picked, or dropped, in a plan of its own once the waves above are on the demo.
