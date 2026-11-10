@@ -31,7 +31,7 @@
       "title": "Welcome to NW Tracker",
       "lead": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
       "fictional": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
-      "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and Roth IRA). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
+      "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
       "storyTax": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year.",
       "openDashboard": "Open the dashboard",
       "howTitle": "How it works",
@@ -87,7 +87,7 @@
         },
         "sidebar": {
           "title": "A page for every group and account",
-          "body": "Investments, cash, the apartment and the mortgage under Liabilities: each group opens into its accounts, down to a single stock or credit card with its statements."
+          "body": "Investments, cash (a money-market fund in Chile, a savings account in the US), the two rented apartments and their mortgages under Liabilities, the Chilean and US credit cards: each group opens into its accounts, down to a single stock or a card with its statements."
         },
         "flows": {
           "title": "Where the money went",
@@ -95,7 +95,7 @@
         },
         "retirement": {
           "title": "Retirement, Chile and US",
-          "body": "Retirement splits by country: the AFP, unemployment fund and APV in Chile, and the 401(k), HSA and Roth IRA in the US, each valued daily from its own price series."
+          "body": "Retirement splits by country: the AFP, unemployment fund and APV in Chile, and the 401(k), HSA and Roth IRA in the US, each valued daily from its own price series. The Roth holds SPY and reinvests its dividends; growth inside it is income to neither return."
         },
         "taxes": {
           "title": "Two returns each April",

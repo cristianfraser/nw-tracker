@@ -31,7 +31,7 @@
       "title": "Bienvenido a NW Tracker",
       "lead": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado.",
       "fictional": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato.",
-      "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y Roth IRA). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno.",
+      "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno.",
       "storyTax": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente.",
       "openDashboard": "Abrir el dashboard",
       "howTitle": "Cómo funciona",
@@ -87,15 +87,15 @@
         },
         "sidebar": {
           "title": "Una página por grupo y por cuenta",
-          "body": "Inversiones, efectivo, el departamento y la hipoteca en Pasivos: cada grupo se abre en sus cuentas, hasta una acción o una tarjeta de crédito con sus estados de cuenta."
+          "body": "Inversiones, efectivo (un fondo money market en Chile, una cuenta de ahorro en EE. UU.), los dos departamentos arrendados y sus hipotecas en Pasivos, las tarjetas chilenas y la de EE. UU.: cada grupo se abre en sus cuentas, hasta una acción o una tarjeta con sus estados de cuenta."
         },
         "flows": {
           "title": "A dónde fue la plata",
           "body": "El panel Flujos suma el último mes y los últimos 12 meses: ingresos, gastos, ahorro, depósitos y P/L de inversiones. Las páginas de Flujos muestran el detalle, mes a mes y por categoría."
         },
         "retirement": {
-          "title": "Jubilación, Chile y EE. UU.",
-          "body": "La jubilación se divide por país: AFP, seguro de cesantía y APV en Chile, y 401(k), HSA y Roth IRA en EE. UU., cada uno valorizado a diario con su propia serie de precios."
+          "title": "Retiro, Chile y EE. UU.",
+          "body": "El retiro se divide por país: AFP, seguro de cesantía y APV en Chile, y 401(k), HSA y Roth IRA en EE. UU., cada uno valorizado a diario con su propia serie de precios. La Roth tiene SPY y reinvierte sus dividendos; lo que crece dentro no es renta para ninguna de las dos declaraciones."
         },
         "taxes": {
           "title": "Dos declaraciones cada abril",
