@@ -11,8 +11,8 @@
  */
 import { db } from "../db.js";
 import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
-import { isChileBusinessDay, isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
-import { equityMarketKind, equityQuoteCurrency } from "../equityQuote.js";
+import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
+import { equityMarketKind, equityQuoteCurrency, unknownEquityMarketKind } from "../equityQuote.js";
 import { upsertSpAfpFundUnits, type SpAfpFundUnitRow } from "../spAfpFundUnits.js";
 import { stream } from "./rng.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
@@ -31,6 +31,9 @@ export const DEMO_TICKERS: { ticker: string; firstUse: Ymd }[] = [
   { ticker: "LNG", firstUse: "2026-05-01" },
   { ticker: "SGOV", firstUse: "2024-05-01" },
   { ticker: "CFIETFIPSA.SN", firstUse: "2025-06-01" },
+  // The Irish UCITS ETFs on the LSE's USD lines, held at IBKR as a Chilean resident (2023-05 → 2024-03).
+  { ticker: "CSPX.L", firstUse: "2023-05-01" },
+  { ticker: "VWRA.L", firstUse: "2023-05-01" },
   { ticker: BTC_TICKER, firstUse: "2018-06-01" },
 ];
 
@@ -51,6 +54,9 @@ const EQUITY_ANCHORS: Record<string, readonly Anchor[]> = {
   LNG: [["2015-01-01", 70], ["2016-02-11", 30], ["2020-03-18", 28], ["2022-10-14", 175], ["2024-12-31", 215], ["2026-05-12", 255], ["2026-12-31", 290]],
   // A T-bill ETF: flat (its interest is paid out monthly).
   SGOV: [["2020-05-26", 100.1], ["2026-12-31", 100.5]],
+  // The LSE's USD lines of the Irish UCITS ETFs (accumulating; Yahoo's closes, rounded): the S&P 500 and the all-world.
+  "CSPX.L": [["2023-01-03", 400], ["2023-05-02", 425], ["2023-10-27", 420], ["2023-12-29", 475], ["2024-03-12", 542], ["2024-12-31", 629], ["2025-04-08", 530], ["2025-12-31", 739], ["2026-11-10", 810], ["2026-12-31", 815]],
+  "VWRA.L": [["2023-01-03", 97], ["2023-05-02", 104], ["2023-10-27", 100], ["2023-12-29", 112], ["2024-03-12", 126], ["2024-12-31", 139], ["2025-04-08", 120], ["2025-12-31", 171], ["2026-11-10", 187], ["2026-12-31", 189]],
   // The IPSA ETF in pesos (listed 2025-05; the Bolsa de Santiago's closes, rounded).
   "CFIETFIPSA.SN": [["2025-05-12", 1_008], ["2025-06-18", 978], ["2025-09-01", 1_081], ["2025-12-19", 1_252], ["2026-01-28", 1_408], ["2026-03-04", 1_266], ["2026-05-15", 1_255], ["2026-09-02", 1_395], ["2026-11-06", 1_281], ["2026-12-31", 1_300]],
   [BTC_TICKER]: [["2015-01-01", 315], ["2016-01-01", 430], ["2017-12-17", 19_100], ["2018-12-15", 3_250], ["2019-06-26", 12_900], ["2020-03-12", 4_900], ["2021-04-14", 63_500], ["2021-07-20", 29_800], ["2021-11-08", 67_500], ["2022-11-21", 15_800], ["2024-03-14", 73_000], ["2024-12-17", 106_000], ["2025-04-08", 77_000], ["2025-10-06", 124_000], ["2026-12-31", 110_000]],
@@ -126,9 +132,23 @@ export function writeSyntheticMarket(person: Person, fromMonth: Month, lastDay: 
       const kind = equityMarketKind(ticker);
       const currency = equityQuoteCurrency(ticker);
       const sd = TICKER_NOISE_SD[ticker] ?? (kind === "crypto24" ? 0.02 : 0.008);
+      // Each market's own trading days (a coin every day).
+      const tradesOn = (d: Ymd): boolean => {
+        switch (kind) {
+          case "nyse":
+            return isNyseTradingDay(d);
+          case "santiago":
+            return isChileBusinessDay(d);
+          case "london":
+            return isLondonTradingDay(d);
+          case "crypto24":
+            return true;
+          default:
+            return unknownEquityMarketKind(kind);
+        }
+      };
       for (let d = start < anchors[0]![0] ? anchors[0]![0] : start; d <= lastDay; d = addDays(d, 1)) {
-        if (kind === "nyse" && !isNyseTradingDay(d)) continue;
-        if (kind === "santiago" && !isChileBusinessDay(d)) continue;
+        if (!tradesOn(d)) continue;
         insEq.run(ticker, d, Math.round(anchorValue(anchors, d) * (1 + noise.gauss() * sd) * 100) / 100, currency);
       }
     }

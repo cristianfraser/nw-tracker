@@ -29,7 +29,7 @@ import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { ccIssuerBySlug } from "../ccIssuers.js";
 import { derivedPayByIso } from "../ccInstallmentPayBy.js";
 import { equityQuoteCurrency } from "../equityQuote.js";
-import { isChileBusinessDay, isNyseTradingDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
+import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd, priorLondonSessionYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
   addDays,
@@ -437,6 +437,7 @@ export const DIVIDEND_WITHHOLDING_RATE = 0.15;
  * SGOV's distributions and the US broker's interest.
  */
 const USD_YIELD_PCT_FROM_YEAR: readonly [number, number][] = [
+  [2023, 5.0],
   [2024, 5.2],
   [2025, 4.3],
   [2026, 3.8],
@@ -546,6 +547,10 @@ function businessDayOnOrBefore(d: Ymd): Ymd {
 }
 function lastBusinessDay(month: Month): Ymd {
   return businessDayOnOrBefore(ymd(month, daysInMonth(month)));
+}
+/** The LSE trading day on or before `d` (a `.L` line trades on London's calendar, not Chile's). */
+function londonTradingDayOnOrBefore(d: Ymd): Ymd {
+  return isLondonTradingDay(d) ? d : priorLondonSessionYmd(d)!;
 }
 
 /** Close date of `card` in `month`. */
@@ -1084,6 +1089,11 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   };
   /** Where new dollars are invested this month: the second broker once it opens. */
   const ibkrOpen = (m: Month) => person.ibkr != null && m >= person.ibkr.from;
+  /** The UCITS phase: monthly buys of the LSE lines until the month before the sell-all. */
+  const ibkrUcitsBuying = (m: Month) =>
+    person.ibkr?.ucits != null && m >= person.ibkr.from && m < monthOf(person.ibkr.ucits.sellAllOn);
+  /** The US-domiciled phase: SGOV as the reserve, SPY with the rest. */
+  const ibkrUsPhase = (m: Month) => person.ibkr != null && m >= person.ibkr.usFrom;
   const dollarBroker = (m: Month): UsdBrokerCash => (ibkrOpen(m) ? "ibkrUsd" : "brokerUsd");
   const sellUsd = (day: Ymd, usd: number, from: "checkingUsd" = "checkingUsd") => {
     usd = cents(Math.floor(usd / 10) * 10);
@@ -1697,6 +1707,13 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           buyRothSpy(day, rothNet, "Roth IRA|reinversión de dividendo SPY");
         }
       }
+      // The UCITS lines are sold whole before the move: a UCITS fund is a PFIC in a US resident's
+      // hands. The proceeds stay in the sweep until the US-domiciled phase invests them.
+      const ucits = person.ibkr?.ucits;
+      if (ucits && monthOf(ucits.sellAllOn) === month && ucits.sellAllOn <= today) {
+        if (!isLondonTradingDay(ucits.sellAllOn)) throw new Error(`demo: the UCITS sell-all ${ucits.sellAllOn} is not an LSE trading day`);
+        for (const ticker of ucits.tickers) if (heldUnits(ticker, "ibkrUsd") > 0) sellStock(ucits.sellAllOn, ticker, 1, "ibkrUsd");
+      }
       // SGOV pays its T-bill interest monthly (a distribution, no withholding at the US broker).
       if (ibkrOpen(month)) {
         const held = heldUnits("SGOV", "ibkrUsd");
@@ -1828,6 +1845,12 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         if (contract) depositBrokerClp(brokerDay, contract.dcaClp);
         if (contractor) depositBrokerUsd(brokerDay, Math.min(contractor.dcaUsd, usdFree(brokerDay)), dollarBroker(month));
       }
+      // The UCITS standing order: a fixed monthly wire to the US broker while he is a Chilean
+      // resident, outside the peso cushion's gates (the pie reserve and the house hold stop the
+      // DCA for most of 2023; this is the contractor's own dollars, a small automatic order).
+      if (ibkrUcitsBuying(month) && contractor) {
+        depositBrokerUsd(brokerDay, Math.min(person.ibkr!.ucits!.monthlyUsd, usdFree(brokerDay)), "ibkrUsd");
+      }
       if (BTC && month >= BTC.from && month <= BTC.to && hasChecking) {
         const lump = BTC.lump && monthOf(BTC.lump.date) === month ? BTC.lump.clp : 0;
         const clp = BTC.monthlyClp + lump;
@@ -1889,12 +1912,19 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       // Lump sum: broker cash above US$ 2.500 buys SPY.
       if (brokerFree(brokerDay) > 2_500 && !holdForHouse) buyStock(brokerDay, "SPY", Math.floor(brokerFree(brokerDay) - 100));
       else if (brokerFree(brokerDay) >= 20 && !holdForHouse) buyStock(brokerDay, "SPY", Math.floor(brokerFree(brokerDay) * 100) / 100 - 5);
-      // The US broker: dollars above the idle cushion fill the SGOV reserve (half of each month's
-      // money) and buy SPY.
+      // The US broker: dollars above the idle cushion buy the UCITS lines in equal parts while he is
+      // a Chilean resident; abroad they fill the SGOV reserve (half of each month's money) and buy
+      // SPY. Between the sell-all and the US phase (the move) they sit in the sweep.
       if (ibkrOpen(month)) {
         const free = Math.max(0, book.lowestFrom("ibkrUsd", brokerDay));
-        const invest = Math.floor(free - person.ibkr!.idleUsd);
-        if (invest >= 100) {
+        if (ibkrUcitsBuying(month)) {
+          // The whole standing order goes into the two lines; the idle cushion is the US phase's rule.
+          const lines = person.ibkr!.ucits!.tickers;
+          const londonDay = londonTradingDayOnOrBefore(brokerDay);
+          const each = Math.floor(free / lines.length);
+          if (each >= 50) for (const ticker of lines) buyStock(londonDay, ticker, each, "ibkrUsd");
+        } else if (ibkrUsPhase(month) && Math.floor(free - person.ibkr!.idleUsd) >= 100) {
+          const invest = Math.floor(free - person.ibkr!.idleUsd);
           const reserveGap = person.ibkr!.sgovReserveUsd - heldUnits("SGOV", "ibkrUsd") * heldClose("SGOV", brokerDay);
           const toSgov = reserveGap > 0 ? Math.floor(Math.min(reserveGap, invest * 0.5)) : 0;
           if (toSgov >= 100) buyStock(brokerDay, "SGOV", toSgov, "ibkrUsd");

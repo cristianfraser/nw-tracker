@@ -43,7 +43,7 @@ import {
 import { upsertEquityDailySeries } from "../brokerageEquityMtm.js";
 import { chileCalendarAddDays, chileWallClockAt } from "../chileDate.js";
 import { db } from "../db.js";
-import { cryptoCompletedUtcYmd } from "../equityEodSync.js";
+import { assertYahooMetaCurrencyMatches, cryptoCompletedUtcYmd } from "../equityEodSync.js";
 import { listBenchmarkEquityTickers } from "../benchmarkLevels.js";
 import { insertEquityDividendsIfMissing } from "../equityDividends.js";
 import { fetchBolsaSantiagoDailyCloses } from "../equityBolsaSantiagoEod.js";
@@ -56,11 +56,11 @@ import {
   loadDemoMarketArtifactIntoDb,
 } from "./demoMarketArtifact.js";
 import {
-  fetchYahooDailyCloses,
   fetchYahooDailyClosesAndDividends,
   type EodCloseSeries,
+  fetchYahooDailyClosesWithMeta,
 } from "../equityYahooEod.js";
-import { equityQuoteCurrency } from "../equityQuote.js";
+import { equityMarketKind, equityQuoteCurrency } from "../equityQuote.js";
 import { fetchYahooFxUsdDailyCloses } from "../fxYahooEodSync.js";
 import {
   insertFxRowsIfMissing,
@@ -389,7 +389,11 @@ export async function loadDemoRealMarket(
         divs = r.dividends.filter((d) => d.ex_date <= last);
         if (divs.length === 0) throw new Error(`no dividends for benchmark ticker ${ticker}`);
       } else {
-        raw = await fetchYahooDailyCloses(ticker, unixSeconds(from), p2);
+        const fetched = await fetchYahooDailyClosesWithMeta(ticker, unixSeconds(from), p2);
+        // A London line is stored only in the currency the app values it in (the LSE also quotes
+        // in pence): the same check the stocks_london sync makes at every write.
+        if (equityMarketKind(ticker) === "london") assertYahooMetaCurrencyMatches(ticker, fetched.meta);
+        raw = fetched.series;
       }
       const s = closesThrough(santiagoSnapshot ? spliceSantiagoSnapshotWithLiveBars(santiagoSnapshot, raw, yesterday) : raw, last);
       if (s.dates.length === 0) throw new Error(`no closes for ${ticker}`);

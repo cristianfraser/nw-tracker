@@ -277,11 +277,20 @@ export async function fetchYahooDailyCloses(
   period1Sec: number,
   period2Sec: number
 ): Promise<EodCloseSeries> {
+  return (await fetchYahooDailyClosesWithMeta(symbol, period1Sec, period2Sec)).series;
+}
+
+/** Daily closes over [period1, period2] plus the chart `meta` (the quote currency, among others). */
+export async function fetchYahooDailyClosesWithMeta(
+  symbol: string,
+  period1Sec: number,
+  period2Sec: number
+): Promise<{ series: EodCloseSeries; meta: YahooChartMeta | undefined }> {
   const result = await fetchYahooChart(
     symbol,
     `interval=1d&period1=${period1Sec}&period2=${period2Sec}`
   );
-  return parseYahooDailyCloseSeries(symbol, result).series;
+  return { series: parseYahooDailyCloseSeries(symbol, result).series, meta: result.meta };
 }
 
 /** NYSE EOD sync: one chart fetch, meta fallback when the due session bar has no daily close yet. */
