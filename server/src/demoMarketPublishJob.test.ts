@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseServerConfig } from "./config.js";
 import {
   DEMO_MARKET_PUBLISH_STALE_MS,
+  demoMarketPublishSuccessMessage,
   demoMarketPublishToken,
   firstDemoMarketPublishMs,
   nextNightlyDemoMarketPublishMs,
@@ -31,5 +32,15 @@ describe("demo market publish schedule", () => {
     expect(parseServerConfig({ BACKGROUND_JOBS_ENABLED: "0" }).demoMarketPublish).toBe(false);
     expect(parseServerConfig({ DEMO_MODE: "1", DEMO_MARKET_PUBLISH_ENABLED: "1" }).demoMarketPublish).toBe(false);
     expect(parseServerConfig({ DEMO_MARKET_PUBLISH_ENABLED: "0" }).demoMarketPublish).toBe(false);
+  });
+
+  it("notifies the first success after a failure, logs the others", () => {
+    const outcome = { complete_through: "2026-11-08", bytes: 300_000, url: "https://example.test/a" };
+    const clean = { last_success_at: null, last_complete_through: null, last_attempt_at: null, last_error: null };
+    expect(demoMarketPublishSuccessMessage(clean, outcome).kind).toBe("log");
+    const failed = { ...clean, last_attempt_at: "2026-11-09T00:21:00Z", last_error: "the script printed no result line" };
+    const m = demoMarketPublishSuccessMessage(failed, outcome);
+    expect(m.kind).toBe("notification");
+    expect(m.body).toContain("Recovered: the previous attempt (2026-11-09T00:21:00Z) had failed: the script printed no result line");
   });
 });

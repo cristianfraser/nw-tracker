@@ -20,7 +20,8 @@ import { ScheduledJob, type KernelRunResult } from "./schedulerKernel.js";
  * Enabled on the primary only: `DEMO_MARKET_PUBLISH_ENABLED` (default on; off with
  * `BACKGROUND_JOBS_ENABLED=0`, never on the demo) and a `DEMO_MARKET_PUBLISH_TOKEN` at boot —
  * without the token the job is «not configured» and never arms. A failure is a notification; a
- * success a log row. The last outcome is kept in `server/data/.demo-market-publish-state.json`.
+ * success a log row, except the first success after a failure, which is a notification too (the
+ * notifications tab lists notifications only, so a resolved failure would otherwise read as open). The last outcome is kept in `server/data/.demo-market-publish-state.json`.
  */
 
 export const DEMO_MARKET_PUBLISH_HOUR = 1;
@@ -150,10 +151,24 @@ async function publishOnce(): Promise<KernelRunResult> {
     return "failed";
   }
   writeState({ last_success_at: new Date().toISOString(), last_complete_through: outcome.complete_through, last_attempt_at: startedAt, last_error: null });
-  const mib = (outcome.bytes / 1024 / 1024).toFixed(2);
-  console.log(`demo-market-publish: complete through ${outcome.complete_through}, ${mib} MiB → ${outcome.url}`);
-  insertAppMessage("log", SUCCESS_TITLE, `Complete through ${outcome.complete_through}, ${mib} MiB, uploaded to ${outcome.url}.`);
+  const message = demoMarketPublishSuccessMessage(state, outcome);
+  console.log(`demo-market-publish: ${message.body}`);
+  insertAppMessage(message.kind, SUCCESS_TITLE, message.body);
   return "ok";
+}
+
+/** A success is a log row, unless the attempt before it failed: then a notification saying so. */
+export function demoMarketPublishSuccessMessage(
+  previous: DemoMarketPublishState,
+  outcome: Pick<DemoMarketPublishOutcome, "complete_through" | "bytes" | "url">
+): { kind: "log" | "notification"; body: string } {
+  const mib = (outcome.bytes / 1024 / 1024).toFixed(2);
+  const body = `Complete through ${outcome.complete_through}, ${mib} MiB, uploaded to ${outcome.url}.`;
+  if (previous.last_error == null) return { kind: "log", body };
+  return {
+    kind: "notification",
+    body: `${body}\nRecovered: the previous attempt (${previous.last_attempt_at ?? "—"}) had failed: ${previous.last_error}`,
+  };
 }
 
 let started = false;
