@@ -19,13 +19,12 @@
  * The browser never talks to Yahoo. The hosted demo connects only while a visitor is browsing.
  */
 import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
-import { equityMarketKind, isSantiagoRegularSessionOpen } from "./equityQuote.js";
+import { equityMarketKind, isEquityRegularSessionOpen } from "./equityQuote.js";
 import { yahooBarYmdFromUnix } from "./equityYahooEod.js";
 import { LIVE_FX_YAHOO_SYMBOL, shouldUseLiveFxQuote } from "./fxLive.js";
 import { liveQuotesFlushGapMs, liveQuotesStreamEnabled, liveQuotesStreamUrl } from "./liveMarketQuotesConfig.js";
 import { writeStreamQuotes } from "./liveMarketQuotesSync.js";
 import { nextUnitDueAtMs, pickNextFlush, type StreamPrice, type WrittenPrice } from "./liveQuotesFlushPolicy.js";
-import { isNyseRegularSessionOpen } from "./nyseSession.js";
 import { listWatchlistEquitySeriesKeys } from "./watchlist.js";
 import { listCompositeConstituentTickers, RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
 import { decodeYahooStreamFrame, type YahooPricingTick } from "./yahooPricingData.js";
@@ -67,8 +66,7 @@ export function streamTickInSession(tick: YahooPricingTick, now: Date): boolean 
   if (tick.symbol === LIVE_FX_YAHOO_SYMBOL) return shouldUseLiveFxQuote(now);
   const kind = equityMarketKind(tick.symbol);
   if (kind === "crypto24") return true;
-  const open = kind === "santiago" ? isSantiagoRegularSessionOpen(now) : isNyseRegularSessionOpen(now);
-  if (!open) return false;
+  if (!isEquityRegularSessionOpen(kind, now)) return false;
   // A print from an earlier session (the subscribe snapshot of a symbol that has not traded
   // today) is not today's price.
   return (
@@ -201,9 +199,7 @@ function subscribedMarketOpen(now: Date): boolean {
       if (shouldUseLiveFxQuote(now)) return true;
       continue;
     }
-    const kind = equityMarketKind(symbol);
-    if (kind === "crypto24") return true;
-    if (kind === "santiago" ? isSantiagoRegularSessionOpen(now) : isNyseRegularSessionOpen(now)) return true;
+    if (isEquityRegularSessionOpen(equityMarketKind(symbol), now)) return true;
   }
   return false;
 }

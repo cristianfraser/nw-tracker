@@ -32,7 +32,7 @@
       "lead": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado.",
       "fictional": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato.",
       "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno.",
-      "storyTax": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente.",
+      "storyTax": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente. Mientras aún residía en Chile tuvo ETF UCITS irlandeses (CSPX, VWRA en las líneas en dólares de la Bolsa de Londres) en un bróker de EE. UU. — sin exposición al impuesto a la herencia de EE. UU. — y los vendió antes de mudarse: en manos de un residente de EE. UU. serían PFIC, así que su ganancia es una ganancia de acciones extranjeras en el F22, no una línea del 1040.",
       "openDashboard": "Abrir el dashboard",
       "howTitle": "Cómo funciona",
       "youAreHere": "Estás aquí",
@@ -598,6 +598,7 @@
         "sbif_ipc": "Banco Central — IPC",
         "stocks_nyse": "Acciones — NYSE",
         "stocks_santiago": "Acciones — Bolsa de Santiago",
+        "stocks_london": "Acciones — Bolsa de Londres",
         "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
         "crypto_eod": "Cripto"
       },

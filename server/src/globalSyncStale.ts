@@ -22,8 +22,10 @@ import { AFC_CIC_PUBLISHER, afcCicAccountIds, isAfcCicStale, latestAfcCicRow } f
 import {
   cryptoEodDueUtcYmd,
   equityCryptoEodCaughtUp,
+  equityEodLondonSyncDue,
   equityEodNyseSyncDue,
   equityEodSantiagoSyncDue,
+  equityLondonEodCaughtUp,
   equityNyseEodCaughtUp,
   equitySantiagoEodCaughtUp,
 } from "./equityEodSync.js";
@@ -36,12 +38,14 @@ import {
   fintualNextSync,
   forexDayKind,
   isFintualRnCompositionDueDay,
+  londonDayKindAt,
   nyseDayKindAt,
   officialSerieNextSync,
   publisherNextSync,
   rnCompositionNextSync,
   sbifMonthlyNextSync,
   sbifObservedNextSync,
+  stocksLondonNextSync,
   stocksNyseNextSync,
   stocksSantiagoNextSync,
   yahooFxNextSync,
@@ -265,6 +269,20 @@ export function isStocksSantiagoStale(
   const now = opts?.now ?? new Date();
   const due = equityEodSantiagoSyncDue(now);
   return due != null && !equitySantiagoEodCaughtUp(due);
+}
+
+/**
+ * London Stock Exchange EOD missing for the due LSE session (`equityEodLondonSyncDue`: today
+ * from 16:40 London, else the last closed LSE session — carries over until the bar lands).
+ */
+export function isStocksLondonStale(
+  _state: GlobalSyncStateFile,
+  opts?: { force?: boolean; now?: Date }
+): boolean {
+  if (opts?.force) return true;
+  const now = opts?.now ?? new Date();
+  const due = equityEodLondonSyncDue(now);
+  return due != null && !equityLondonEodCaughtUp(due);
 }
 
 /** Crypto daily EOD missing for the UTC day due at 23:55 Chile (carries over until caught up). */
@@ -547,6 +565,14 @@ export const SYNC_SOURCES: { readonly [S in GlobalSyncSource]: SyncSourceDefinit
     dayKind: (cl) => chileDayKind(cl.ymd),
     nextSync: (c) => stocksSantiagoNextSync(c.cl),
   },
+  stocks_london: {
+    label: "London stocks",
+    configured: always,
+    stale: (c) => isStocksLondonStale(c.state, { force: c.force }),
+    keepsForcedWhileStale: true,
+    dayKind: londonDayKindAt,
+    nextSync: (c) => stocksLondonNextSync(c.cl),
+  },
   yahoo_fx_usd: {
     label: "Yahoo USD/CLP",
     configured: always,
@@ -582,13 +608,9 @@ export type SyncSourceStatusRow = {
 function scheduleMeta(source: GlobalSyncSource, ctx: SyncSourceContext, stale: boolean, disabled: boolean): SyncSourceScheduleMeta {
   if (disabled) return { next_sync: null, next_sync_imminent: false, today_day_kind: "open" };
   const def = SYNC_SOURCES[source];
-  if (stale) {
-    return {
-      next_sync: null,
-      next_sync_imminent: true,
-      today_day_kind: source === "stocks_nyse" ? def.dayKind(ctx.cl) : chileDayKind(ctx.cl.ymd),
-    };
-  }
+  // The day kind is the source's own calendar whether or not it is stale: a market on another
+  // clock (NYSE, London) reads its holiday on its own day, and the fx day every weekday.
+  if (stale) return { next_sync: null, next_sync_imminent: true, today_day_kind: def.dayKind(ctx.cl) };
   return { next_sync: def.nextSync(ctx), next_sync_imminent: false, today_day_kind: def.dayKind(ctx.cl) };
 }
 

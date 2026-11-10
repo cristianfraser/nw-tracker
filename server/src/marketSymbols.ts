@@ -12,7 +12,7 @@ import { db } from "./db.js";
  * a symbol another process added.
  */
 export type MarketQuoteCurrency = "usd" | "clp" | "none";
-export type MarketSymbolKind = "nyse" | "santiago" | "crypto24";
+export type MarketSymbolKind = "nyse" | "santiago" | "london" | "crypto24";
 
 export type MarketSymbolRow = {
   ticker: string;

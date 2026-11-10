@@ -199,6 +199,12 @@ export function listWatchlistSantiagoTickersForEodSync(): string[] {
   return listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) === "santiago");
 }
 
+/** London Stock Exchange tickers — drives the stocks_london caught-up/stale state (LSE calendar). */
+export function listWatchlistLondonTickersForEodSync(): string[] {
+  syncWatchlistFromApp();
+  return listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) === "london");
+}
+
 export function listWatchlistCryptoTickersForEodSync(): string[] {
   syncWatchlistFromApp();
   return listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) === "crypto24");

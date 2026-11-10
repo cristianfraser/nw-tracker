@@ -5,7 +5,7 @@ import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
 import { fetchYahooLiveQuote, yahooBarYmdFromUnix } from "./equityYahooEod.js";
 import { fetchYahooLiveUsdClpPerUsd, LIVE_FX_YAHOO_SYMBOL, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
-import { priorNyseSessionYmd } from "./marketHolidays.js";
+import { priorLondonSessionYmd, priorNyseSessionYmd } from "./marketHolidays.js";
 import { publishLiveInputChange } from "./cacheRegistry.js";
 import { recordYahooSplits } from "./equitySplitsSync.js";
 import { listEquitySplits, splitLikeMoveError } from "./equitySplits.js";
@@ -57,15 +57,20 @@ function equityTickersForLiveSync(): string[] {
   return listWatchlistEquitySeriesKeys();
 }
 
-function priorCloseForLiveNyse(
+/**
+ * The previous close of a market with a session calendar (NYSE, London): the source's figure,
+ * else the stored bar of the prior session, else the last stored bar before the session.
+ */
+function priorCloseForLiveSession(
   ticker: string,
   sessionYmd: string,
-  yahooPrior: number | null
+  yahooPrior: number | null,
+  priorSessionYmd: (ymd: string) => string | null
 ): number | null {
   if (yahooPrior != null && Number.isFinite(yahooPrior) && yahooPrior > 0) {
     return yahooPrior;
   }
-  const priorYmd = priorNyseSessionYmd(sessionYmd);
+  const priorYmd = priorSessionYmd(sessionYmd);
   if (priorYmd == null) return null;
   const row = stmtEodOnDate.get(ticker, priorYmd) as { close: number } | undefined;
   if (row != null && Number.isFinite(row.close)) return row.close;
@@ -111,8 +116,10 @@ function writeEquityLiveQuote(ticker: string, live: LiveEquityObservation, fetch
   const yahooPrior = listEquitySplits(ticker).some((s) => s.ex_date === live.session_ymd) ? null : live.previous_close;
   const prior =
     kind === "nyse"
-      ? priorCloseForLiveNyse(ticker, live.session_ymd, yahooPrior)
-      : priorCloseForLiveNonSession(ticker, live.session_ymd, yahooPrior);
+      ? priorCloseForLiveSession(ticker, live.session_ymd, yahooPrior, priorNyseSessionYmd)
+      : kind === "london"
+        ? priorCloseForLiveSession(ticker, live.session_ymd, yahooPrior, priorLondonSessionYmd)
+        : priorCloseForLiveNonSession(ticker, live.session_ymd, yahooPrior);
   const changed = quoteValueChanged(getLatestLiveEquityQuoteRow(ticker), live.price);
   insertLiveMarketQuote({
     symbol: ticker.toUpperCase(),

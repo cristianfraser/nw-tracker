@@ -1,6 +1,12 @@
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
-import { isChileBusinessDay, priorNyseSessionYmd } from "./marketHolidays.js";
+import { isChileBusinessDay, priorLondonSessionYmd, priorNyseSessionYmd } from "./marketHolidays.js";
+import {
+  isAfterLondonRegularClose,
+  isLondonRegularSessionOpen,
+  londonDisplaySessionYmd,
+  londonSessionYmd,
+} from "./londonSession.js";
 import {
   isAfterNyseRegularClose,
   isNyseRegularSessionOpen,
@@ -13,7 +19,25 @@ import { getLatestLiveEquityQuoteRow, type LiveMarketQuoteRow } from "./liveMark
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 import { marketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
 
-export type EquityMarketKind = "nyse" | "santiago" | "crypto24";
+export type EquityMarketKind = "nyse" | "santiago" | "london" | "crypto24";
+
+/**
+ * The exchange suffixes the app knows, each on its own calendar. A suffix outside this table is
+ * refused by {@link equityMarketKind} unless `market_symbols` names the symbol (the Yahoo check a
+ * watchlist add runs): a ticker priced on the wrong market's sessions would be valued on the wrong
+ * days without a word, which is exactly what `CSPX.L` did while every suffix fell back to NYSE.
+ */
+const EXCHANGE_SUFFIX_MARKET: Record<string, EquityMarketKind> = {
+  ".SN": "santiago",
+  ".L": "london",
+  // ICE Futures US (the dollar index `DX-Y.NYB`): priced on the New York calendar, as it always was.
+  ".NYB": "nyse",
+};
+
+/** Throws at a `kind` no branch handles: every per-market branch ends here, never in a default. */
+export function unknownEquityMarketKind(kind: never): never {
+  throw new Error(`Unhandled equity market kind ${String(kind)}`);
+}
 
 const TICKER_MARKET: Record<string, EquityMarketKind> = {
   SPY: "nyse",
@@ -29,7 +53,9 @@ export type EquityQuoteCurrency = "usd" | "clp";
  * Quote currency for a Yahoo symbol — the currency the exchange prints the price in, or `none`
  * for an index level. A symbol checked against Yahoo when it was added to the watchlist reads
  * its `market_symbols` row; any other ticker keeps the suffix rule: `.SN` (Bolsa de Santiago)
- * quotes in CLP, everything else in USD. Single source of truth: sync writers stamp this into
+ * quotes in CLP, everything else in USD — a `.L` line too (the LSE also quotes in pence and euros,
+ * so every London EOD write checks Yahoo's currency against this before storing a bar,
+ * `equityEodSync.ts`). Single source of truth: sync writers stamp this into
  * `equity_daily.currency` / `live_market_quotes.currency`, and readers fail fast on a stored
  * mismatch.
  */
@@ -178,11 +204,45 @@ function resolveCryptoEodQuote(ticker: string, now: Date): ResolvedEquityQuote |
   return sessionPairEodQuote(ticker, displayYmd, priorYmd);
 }
 
+/**
+ * The market whose calendar a ticker trades on: its `market_symbols` row first, then the exchange
+ * suffix (`EXCHANGE_SUFFIX_MARKET`); a bare symbol is NYSE (`TICKER_MARKET` names the coins).
+ * A symbol with a suffix the table does not list throws — `XYZ.PA` is Paris, and nothing here
+ * knows when Paris trades.
+ */
 export function equityMarketKind(ticker: string): EquityMarketKind {
   const registered = marketSymbol(ticker);
   if (registered != null) return registered.market_kind;
-  if (ticker.toUpperCase().endsWith(".SN")) return "santiago";
+  const upper = ticker.toUpperCase();
+  const dot = upper.lastIndexOf(".");
+  if (dot > 0) {
+    const suffix = upper.slice(dot);
+    const kind = EXCHANGE_SUFFIX_MARKET[suffix];
+    if (kind == null) {
+      throw new Error(
+        `${ticker}: unknown exchange suffix ${suffix} (known: ${Object.keys(EXCHANGE_SUFFIX_MARKET).join(", ")}); ` +
+          `register the symbol in market_symbols (add it through the watchlist's Yahoo check) or add its market`
+      );
+    }
+    return kind;
+  }
   return TICKER_MARKET[ticker] ?? "nyse";
+}
+
+/** The market kind's regular session is open at `now` (crypto trades around the clock). */
+export function isEquityRegularSessionOpen(kind: EquityMarketKind, now: Date): boolean {
+  switch (kind) {
+    case "crypto24":
+      return true;
+    case "santiago":
+      return isSantiagoRegularSessionOpen(now);
+    case "london":
+      return isLondonRegularSessionOpen(now);
+    case "nyse":
+      return isNyseRegularSessionOpen(now);
+    default:
+      return unknownEquityMarketKind(kind);
+  }
 }
 
 /**
@@ -206,14 +266,23 @@ function isAfterSantiagoRegularClose(now: Date): boolean {
 
 /**
  * The ticker's session for today has already closed (NYSE after 16:05 New York, Santiago after
- * 17:05 Chile, both on their own trading days). Never true before the open, on the exchange's
- * closed days, or for crypto (24/7 — its live window never ends).
+ * 17:05 Chile, London after 16:30 London, each on its own trading days). Never true before the
+ * open, on the exchange's closed days, or for crypto (24/7 — its live window never ends).
  */
 export function equitySessionClosedForDay(ticker: string, now = new Date()): boolean {
   const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") return false;
-  if (kind === "santiago") return isAfterSantiagoRegularClose(now);
-  return isAfterNyseRegularClose(now);
+  switch (kind) {
+    case "crypto24":
+      return false;
+    case "santiago":
+      return isAfterSantiagoRegularClose(now);
+    case "london":
+      return isAfterLondonRegularClose(now);
+    case "nyse":
+      return isAfterNyseRegularClose(now);
+    default:
+      return unknownEquityMarketKind(kind);
+  }
 }
 
 /**
@@ -222,6 +291,13 @@ export function equitySessionClosedForDay(ticker: string, now = new Date()): boo
  */
 function resolveSantiagoEodQuote(ticker: string, now: Date): ResolvedEquityQuote | null {
   return eodQuote(ticker, chileWallClockAt(now).ymd);
+}
+
+/** London EOD display: the LSE display session's bar against the prior LSE session's (the NYSE shape). */
+function resolveLondonEodQuote(ticker: string, now: Date): ResolvedEquityQuote | null {
+  const displayYmd = londonDisplaySessionYmd(now);
+  const priorYmd = priorLondonSessionYmd(displayYmd);
+  return sessionPairEodQuote(ticker, displayYmd, priorYmd);
 }
 
 function liveRowToQuote(ticker: string, row: LiveMarketQuoteRow): ResolvedEquityQuote {
@@ -277,28 +353,41 @@ export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = 
   // before the open must go when the session's first tick moves the price (`cacheDependencies.ts`).
   noteLiveTickerRead(ticker);
   const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") {
-    const today = utcTodayYmd(now);
-    return asOfYmd >= today;
+  switch (kind) {
+    case "crypto24":
+      return asOfYmd >= utcTodayYmd(now);
+    case "santiago":
+      if (asOfYmd < chileWallClockAt(now).ymd) return false;
+      return isSantiagoRegularSessionOpen(now);
+    case "london":
+      if (asOfYmd < londonSessionYmd(now)) return false;
+      return isLondonRegularSessionOpen(now);
+    case "nyse":
+      if (asOfYmd < nyseSessionYmd(now)) return false;
+      return isNyseRegularSessionOpen(now);
+    default:
+      return unknownEquityMarketKind(kind);
   }
-  if (kind === "santiago") {
-    const session = chileWallClockAt(now).ymd;
-    if (asOfYmd < session) return false;
-    return isSantiagoRegularSessionOpen(now);
-  }
-  const session = nyseSessionYmd(now);
-  if (asOfYmd < session) return false;
-  return isNyseRegularSessionOpen(now);
 }
 
 /**
- * Session date used for “today” pricing (NYSE session, Chile calendar day for Santiago, UTC day for crypto).
+ * Session date used for “today” pricing (NYSE session, Chile calendar day for Santiago, the LSE
+ * session for London, UTC day for crypto).
  */
 export function equitySessionYmdForTicker(ticker: string, now = new Date()): string {
   const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") return utcTodayYmd(now);
-  if (kind === "santiago") return chileWallClockAt(now).ymd;
-  return nyseSessionYmd(now);
+  switch (kind) {
+    case "crypto24":
+      return utcTodayYmd(now);
+    case "santiago":
+      return chileWallClockAt(now).ymd;
+    case "london":
+      return londonSessionYmd(now);
+    case "nyse":
+      return nyseSessionYmd(now);
+    default:
+      return unknownEquityMarketKind(kind);
+  }
 }
 
 /**
@@ -309,9 +398,18 @@ export function equitySessionYmdForTicker(ticker: string, now = new Date()): str
  */
 export function equityDisplaySessionYmd(ticker: string, now = new Date()): string {
   const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") return cryptoDisplaySessionYmd(ticker, now);
-  if (kind === "santiago") return chileWallClockAt(now).ymd;
-  return nyseDisplaySessionYmd(now);
+  switch (kind) {
+    case "crypto24":
+      return cryptoDisplaySessionYmd(ticker, now);
+    case "santiago":
+      return chileWallClockAt(now).ymd;
+    case "london":
+      return londonDisplaySessionYmd(now);
+    case "nyse":
+      return nyseDisplaySessionYmd(now);
+    default:
+      return unknownEquityMarketKind(kind);
+  }
 }
 
 /**
@@ -338,13 +436,18 @@ export function resolveEquityQuote(
   }
 
   const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") {
-    return resolveCryptoEodQuote(ticker, now);
+  switch (kind) {
+    case "crypto24":
+      return resolveCryptoEodQuote(ticker, now);
+    case "santiago":
+      return resolveSantiagoEodQuote(ticker, now);
+    case "london":
+      return resolveLondonEodQuote(ticker, now);
+    case "nyse":
+      return resolveNyseEodQuote(ticker, now);
+    default:
+      return unknownEquityMarketKind(kind);
   }
-  if (kind === "santiago") {
-    return resolveSantiagoEodQuote(ticker, now);
-  }
-  return resolveNyseEodQuote(ticker, now);
 }
 
 /** Synchronous EOD-only close in the ticker's quote currency (historical month-ends). */

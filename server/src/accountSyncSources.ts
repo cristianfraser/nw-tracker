@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { equityMarketKind } from "./equityQuote.js";
+import { equityMarketKind, unknownEquityMarketKind } from "./equityQuote.js";
 import {
   fintualCertV2SeriesKeyFromImportNotes,
   isFintualCertV2AccountNotes,
@@ -55,7 +55,9 @@ export function inferSyncSourcesForAccount(row: AccountSyncSourceRow): GlobalSyn
     const kind = equityMarketKind(ticker);
     if (kind === "nyse") out.push("stocks_nyse");
     else if (kind === "santiago") out.push("stocks_santiago");
+    else if (kind === "london") out.push("stocks_london");
     else if (kind === "crypto24") out.push("crypto_eod");
+    else unknownEquityMarketKind(kind);
   }
   return out;
 }

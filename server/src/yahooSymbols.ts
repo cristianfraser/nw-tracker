@@ -48,9 +48,11 @@ export async function searchYahooSymbols(query: string): Promise<YahooSymbolSear
 
 /**
  * What a chart `meta` says about `symbol`, or why it cannot go on the watchlist. The app
- * values on three calendars (NYSE, Bolsa de Santiago, crypto around the clock) and in two
- * currencies, so a listing on another exchange or quoted in another currency is refused
- * rather than valued on the wrong calendar or at the wrong rate. An index has no currency.
+ * values on four calendars (NYSE, Bolsa de Santiago, the London Stock Exchange, crypto around
+ * the clock) and in two currencies, so a listing on another exchange or quoted in another
+ * currency is refused rather than valued on the wrong calendar or at the wrong rate — an LSE
+ * line quoted in pence (`GBp`) included: only its USD lines (CSPX.L, VWRA.L) can be valued.
+ * An index has no currency.
  */
 export function classifyYahooSymbol(
   symbol: string,
@@ -68,9 +70,10 @@ export function classifyYahooSymbol(
   if (type === "CRYPTOCURRENCY") marketKind = "crypto24";
   else if (tz === "America/Santiago") marketKind = "santiago";
   else if (tz === "America/New_York") marketKind = "nyse";
+  else if (tz === "Europe/London") marketKind = "london";
   else {
     throw new Error(
-      `${symbol} trades on ${meta.fullExchangeName ?? "an exchange"} (${tz || "unknown time zone"}); only US, Santiago and crypto markets are supported`
+      `${symbol} trades on ${meta.fullExchangeName ?? "an exchange"} (${tz || "unknown time zone"}); only US, Santiago, London and crypto markets are supported`
     );
   }
 

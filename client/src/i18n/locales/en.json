@@ -32,7 +32,7 @@
       "lead": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
       "fictional": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
       "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
-      "storyTax": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year.",
+      "storyTax": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
       "openDashboard": "Open the dashboard",
       "howTitle": "How it works",
       "youAreHere": "You are here",
@@ -598,6 +598,7 @@
         "sbif_ipc": "Banco Central — CPI",
         "stocks_nyse": "Stocks — NYSE",
         "stocks_santiago": "Stocks — Bolsa de Santiago",
+        "stocks_london": "Stocks — London Stock Exchange",
         "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
         "crypto_eod": "Crypto"
       },

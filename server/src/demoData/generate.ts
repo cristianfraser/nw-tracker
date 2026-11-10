@@ -155,8 +155,8 @@ function createAccounts(person: Person): Map<Acct, number> {
     ids.set("btc", createAccount(g("brokerage_crypto__bitcoin"), "Bitcoin", { ticker: "BTC-USD" }));
   }
   for (const t of person.brokerTickers) {
-    // The exchange suffix is the market, not the name: «CFIETFIPSA.SN» is the CFIETFIPSA account.
-    const name = t.replace(/\.SN$/i, "");
+    // The exchange suffix is the market, not the name: «CFIETFIPSA.SN» is the CFIETFIPSA account, «CSPX.L» CSPX.
+    const name = t.replace(/\.(SN|L)$/i, "");
     const leaf = ensureAssetGroup(`brokerage_acciones__${name.toLowerCase()}`, name, "brokerage_acciones");
     ids.set(`stock:${t}`, createAccount(leaf, name, { key: buildPanelAccountNotes(t, `demo_${t}`), ticker: t }));
   }

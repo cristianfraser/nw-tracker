@@ -2,7 +2,8 @@
  * In-process scheduler for external syncs, on the scheduler kernel (`schedulerKernel.ts`).
  *
  * - While any source is stale: poll on an interval (default 15 min), sync immediately on start.
- * - When `stocks_nyse` is stale after the NYSE close window, or `stocks_santiago` on the evening of
+ * - When `stocks_nyse` is stale after the NYSE close window, `stocks_london` on the evening of the
+ *   LSE close, or `stocks_santiago` on the evening of
  *   its Chile close: poll every 3 min until caught up.
  * - While polling, a fresh source falling due before the next poll gets its own run: a stock EOD
  *   due at 16:05 New York does not wait for the next 15-minute poll (2026-10-06: AFP/AFC stale all
@@ -23,7 +24,8 @@ import { chileWallClockAt, chileWallClockNow } from "./chileDate.js";
 import { serverConfig } from "./config.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
 import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
-import { equityEodNyseSyncDue, equityEodSantiagoSyncDue } from "./equityEodSync.js";
+import { equityEodLondonSyncDue, equityEodNyseSyncDue, equityEodSantiagoSyncDue } from "./equityEodSync.js";
+import { londonWallClock } from "./londonSession.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { ScheduledJob, type KernelRunResult } from "./schedulerKernel.js";
@@ -53,6 +55,10 @@ export function pollIntervalMsForStaleSources(stale: readonly GlobalSyncSource[]
   // Santiago: fast only on the evening of the close. Its due carries over to the last closed
   // session, so an unlisted Chilean holiday would otherwise hit Yahoo every 3 minutes all day.
   if (stale.includes("stocks_santiago") && equityEodSantiagoSyncDue(now) === chileWallClockAt(now).ymd) {
+    return nyseStaleIntervalMs;
+  }
+  // London: the same rule on the LSE's own day — fast on the evening of its close, never all day.
+  if (stale.includes("stocks_london") && equityEodLondonSyncDue(now) === londonWallClock(now).ymd) {
     return nyseStaleIntervalMs;
   }
   return intervalMs;

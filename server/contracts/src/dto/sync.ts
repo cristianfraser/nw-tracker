@@ -12,6 +12,7 @@ export type SyncSourceId =
   | "sbif_ipc"
   | "stocks_nyse"
   | "stocks_santiago"
+  | "stocks_london"
   | "yahoo_fx_usd"
   | "crypto_eod";
 
@@ -23,7 +24,7 @@ export interface SyncSourceWallTime {
   ymd: string;
   hour: number;
   minute: number;
-  timeZone: "America/Santiago" | "America/New_York";
+  timeZone: "America/Santiago" | "America/New_York" | "Europe/London";
 }
 
 /** A stale source that holds everything its publisher has: the publisher is the one behind. */

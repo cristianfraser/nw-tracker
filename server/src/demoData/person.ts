@@ -503,7 +503,7 @@ const PLAYS: Play[] = [
   { kind: "sell", date: "2026-06-23", ticker: "OILK", fraction: 1 },
 ];
 
-const BROKER_TICKERS = ["SPY", "AAPL", "AMD", "MSFT", "ZM", "NVDA", "INTC", "OILK", "LNG", "SGOV", "CFIETFIPSA.SN"];
+const BROKER_TICKERS = ["SPY", "AAPL", "AMD", "MSFT", "ZM", "NVDA", "INTC", "OILK", "LNG", "SGOV", "CFIETFIPSA.SN", "CSPX.L", "VWRA.L"];
 
 /** A stock split as the exchange states it (shares × numerator / denominator from the ex-date). */
 export type StockSplit = { ticker: string; exDate: Ymd; numerator: number; denominator: number };
@@ -529,15 +529,37 @@ export type TermDeposits = {
 };
 const DAP: TermDeposits = { from: "2021-03", to: "2023-12", termDays: 90, openingClp: 5_000_000, topUpClp: 2_000_000 };
 
-/** A second US broker (Interactive Brokers): dollars, SGOV as the reserve, new SPY buys. */
+/**
+ * A second US broker (Interactive Brokers), opened while he is a Chilean resident. Two phases:
+ * the UCITS phase from `from` — Irish UCITS ETFs on the London Stock Exchange's USD lines
+ * (CSPX.L, VWRA.L), bought monthly with the dollars wired from the dollar checking account,
+ * the estate-tax-safe choice for a non-resident alien — sold whole on `ucits.sellAllOn`, before
+ * the move (an adviser's PFIC warning: a UCITS fund in a US resident's hands); then from
+ * `usFrom` the US-domiciled funds, SGOV as the reserve and SPY with the rest. The two months
+ * between leave the proceeds idle in the sweep.
+ */
 export type SecondBroker = {
   from: Month;
+  /**
+   * The UCITS lines bought monthly from `from` — a standing order of `monthlyUsd` wired from the
+   * dollar checking account each month, whatever the peso cushion does (the broker's dollars are
+   * the contractor's pay) and invested in full — sold whole on `sellAllOn` (null: no such phase).
+   */
+  ucits: { tickers: string[]; monthlyUsd: number; sellAllOn: Ymd } | null;
+  /** The month the US-domiciled phase (SGOV reserve + SPY) starts. */
+  usFrom: Month;
   /** Dollars left uninvested (they earn the sweep interest). */
   idleUsd: number;
   /** SGOV held as the dollar reserve before new money goes to SPY. */
   sgovReserveUsd: number;
 };
-const IBKR: SecondBroker = { from: "2024-05", idleUsd: 2_000, sgovReserveUsd: 15_000 };
+const IBKR: SecondBroker = {
+  from: "2023-05",
+  ucits: { tickers: ["CSPX.L", "VWRA.L"], monthlyUsd: 1_000, sellAllOn: "2024-03-12" },
+  usFrom: "2024-05",
+  idleUsd: 2_000,
+  sgovReserveUsd: 15_000,
+};
 export const BTC_TICKER = "BTC-USD";
 
 /** Quarterly dividend per share (USD), by ticker; paid in Mar/Jun/Sep/Dec, 15 % withheld. */

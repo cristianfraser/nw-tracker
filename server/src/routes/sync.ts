@@ -70,6 +70,7 @@ app.post("/api/sync/force-stale", (req, res) => {
   if (isLegacyEquityEodSyncSource(source)) {
     forceSyncSourceStale("stocks_nyse");
     forceSyncSourceStale("stocks_santiago");
+    forceSyncSourceStale("stocks_london");
     forceSyncSourceStale("crypto_eod");
   } else if (!isGlobalSyncSource(source)) {
     res.status(400).json({ error: "invalid_source" });

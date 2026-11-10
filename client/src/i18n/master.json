@@ -78,8 +78,8 @@
         "es": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno."
       },
       "storyTax": {
-        "en": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year.",
-        "es": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente."
+        "en": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
+        "es": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente. Mientras aún residía en Chile tuvo ETF UCITS irlandeses (CSPX, VWRA en las líneas en dólares de la Bolsa de Londres) en un bróker de EE. UU. — sin exposición al impuesto a la herencia de EE. UU. — y los vendió antes de mudarse: en manos de un residente de EE. UU. serían PFIC, así que su ganancia es una ganancia de acciones extranjeras en el F22, no una línea del 1040."
       },
       "openDashboard": {
         "en": "Open the dashboard",
@@ -1926,6 +1926,10 @@
         "stocks_santiago": {
           "en": "Stocks — Bolsa de Santiago",
           "es": "Acciones — Bolsa de Santiago"
+        },
+        "stocks_london": {
+          "en": "Stocks — London Stock Exchange",
+          "es": "Acciones — Bolsa de Londres"
         },
         "yahoo_fx_usd": {
           "en": "Yahoo — USD/CLP (CLP=X EOD)",

@@ -24,8 +24,7 @@ import { checkSyncDimmingChanged } from "./syncDimmingWatch.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { liveQuotesIntervalMs, liveQuotesSessionIntervalMs, liveQuotesSyncEnabled } from "./liveMarketQuotesConfig.js";
 import { syncAllLiveMarketQuotes } from "./liveMarketQuotesSync.js";
-import { equityMarketKind, isSantiagoRegularSessionOpen } from "./equityQuote.js";
-import { isNyseRegularSessionOpen } from "./nyseSession.js";
+import { equityMarketKind, isEquityRegularSessionOpen } from "./equityQuote.js";
 import { nextLiveQuotesTickAtMs, tickFailedWholesale } from "./liveMarketQuotesSchedulerPolicy.js";
 import { ScheduledJob, atStartThen, nextAlignedMs, type ScheduledJobSpec } from "./schedulerKernel.js";
 import { ensureWatchlistEquityHistoryDepth, listWatchlistEquitySeriesKeys } from "./watchlist.js";
@@ -43,10 +42,8 @@ export const LIVE_QUOTES_RETRY_DELAYS_MS: readonly number[] = [15_000, 45_000];
  * crypto trades around the clock and keeps the base cadence.
  */
 function pricedSessionOpenPredicate(): (at: Date) => boolean {
-  const kinds = new Set(listWatchlistEquitySeriesKeys().map((t) => equityMarketKind(t)));
-  return (at) =>
-    (kinds.has("nyse") && isNyseRegularSessionOpen(at)) ||
-    (kinds.has("santiago") && isSantiagoRegularSessionOpen(at));
+  const kinds = [...new Set(listWatchlistEquitySeriesKeys().map((t) => equityMarketKind(t)))].filter((k) => k !== "crypto24");
+  return (at) => kinds.some((kind) => isEquityRegularSessionOpen(kind, at));
 }
 
 /** The common gates of the three jobs: on with the live quotes, asleep with the demo. */

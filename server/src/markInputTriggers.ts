@@ -616,3 +616,26 @@ export function runMarkInputChangeTriggers270(dbi: DatabaseType): void {
     for (const sql of writeLogTriggerSql(table, columns, watchByTable.get(table) ?? null)) dbi.exec(sql);
   }
 }
+
+/**
+ * Migration 303 hook: `market_symbols` and `account_sync_sources` were rebuilt for the `london` /
+ * `stocks_london` CHECKs, and a dropped table takes its triggers with it — the mark trigger on
+ * `market_symbols` (a symbol's quote currency or market kind re-prices its whole history) and the
+ * write-log triggers of both. Re-created from the same specs the write log reads.
+ */
+export function runMarkInputChangeTriggers303(dbi: DatabaseType): void {
+  // Only the rebuilt table's mark triggers, not a reinstall of every mark trigger: SQLite fires the
+  // triggers of one event newest first, and the flows-era triggers (279 →) must keep firing before
+  // the mark triggers created by 270 — `markInputChanges.test.ts` reads the log in that order.
+  const marketSymbolsSpec = SPECS_270.find((s) => s.table === "market_symbols");
+  if (!marketSymbolsSpec) throw new Error("migration 303: no mark-input spec for market_symbols");
+  for (const suffix of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_market_symbols_${suffix}"`);
+  for (const sql of markInputTriggerSql(marketSymbolsSpec)) dbi.exec(sql);
+  const watchByTable = new Map(SPECS_270.map((s) => [s.table, s.watch]));
+  for (const table of ["market_symbols", "account_sync_sources"] as const) {
+    for (const suffix of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "write_log_${table}_${suffix}"`);
+    const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
+    if (columns.length === 0) throw new Error(`migration 303: table ${table} does not exist`);
+    for (const sql of writeLogTriggerSql(table, columns, watchByTable.get(table) ?? null)) dbi.exec(sql);
+  }
+}
