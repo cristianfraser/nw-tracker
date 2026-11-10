@@ -12,6 +12,8 @@ import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../ch
 import { isFiniteNumber, isYmdString } from "../requestValidation.js";
 import { accountIdFromReq } from "./shared.js";
 import { cryptoEquityTickerForAccount } from "../cryptoValuation.js";
+import { assignOptionContract } from "../optionAssignment.js";
+import { isOptionContractAccount } from "../optionContracts.js";
 
 export function registerMovementsRoutes(app: express.Express): void {
 app.post("/api/accounts/:id/movements", (req, res) => {
@@ -104,6 +106,35 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
   }
   res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
+});
+
+/**
+ * An option assignment or exercise on contract account `:id`: the `option_assign` row and the
+ * share leg at the strike, written together (`optionAssignment.ts`).
+ */
+app.post("/api/accounts/:id/option-assignments", (req, res) => {
+  const accountId = accountIdFromReq(req);
+  if (!isOptionContractAccount(accountId)) {
+    res.status(404).json({ error: "Account is not an option contract." });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === "number" ? v : Number(v));
+  try {
+    const result = assignOptionContract({
+      contract_account_id: accountId,
+      stock_account_id: num(body.stock_account_id),
+      cash_account_id: num(body.cash_account_id),
+      occurred_on: typeof body.occurred_on === "string" ? body.occurred_on.trim() : "",
+      contracts: num(body.contracts),
+      note: typeof body.note === "string" ? body.note : null,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+    res.status(status).json({ error: err.message || "option assignment failed" });
+  }
 });
 
 app.get("/api/accounts/:id/valuations", (req, res) => {

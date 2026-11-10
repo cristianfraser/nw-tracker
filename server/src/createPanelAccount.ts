@@ -14,6 +14,15 @@ import {
 import { prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { reseedAccountSyncSources } from "./accountSyncSources.js";
 import { seedNavTree } from "./seedNavTree.js";
+import { equityQuoteCurrency } from "./equityQuote.js";
+import {
+  isOptionContractAccount,
+  occSymbol,
+  occSymbolSlug,
+  optionContractAccountIdForOcc,
+  optionContractDisplayName,
+  type OptionRight,
+} from "./optionContracts.js";
 
 /**
  * Unified Panel → Accounts create. The account's *behavior* is carried by its leaf category
@@ -21,18 +30,32 @@ import { seedNavTree } from "./seedNavTree.js";
  * any non-liability leaf bucket. Accounts are created empty — flows are added afterwards via the
  * per-account movement forms (which do auto-mirror parity), so there are no `initial_movements`.
  */
-export type PanelAccountType = "equity" | "crypto" | "clp_cash" | "usd_cash";
+export type PanelAccountType = "equity" | "crypto" | "clp_cash" | "usd_cash" | "option";
+
+/** The terms of an option contract account (`option_contracts`); the server derives the OCC symbol and the name. */
+export type PanelOptionContractInput = {
+  underlying: string;
+  right: OptionRight;
+  strike: number;
+  /** YYYY-MM-DD */
+  expiry: string;
+  /** Shares per contract; 100 when absent. */
+  multiplier?: number;
+};
 
 export type PanelAccountCreateBody = {
   account: {
     account_type: PanelAccountType;
+    /** The display name; an option contract may leave it empty and takes «SPY 2025-06-20 C 600». */
     name: string;
-    /** Leaf bucket slug from the nav tree, e.g. `brokerage_acciones`, `cash_savings`, `real_estate`. */
+    /** Leaf bucket slug from the nav tree, e.g. `brokerage_acciones`, `cash_savings`, `real_estate`. An option contract always sits under `brokerage_opciones`. */
     bucket_slug: string;
     /** Leaf category key under the bucket (defaults from ticker or name). */
     category_slug?: string;
     /** Required for equity/crypto. */
     ticker?: string;
+    /** Required for an option contract. */
+    option?: PanelOptionContractInput;
     exclude_from_group_totals: boolean;
   };
 };
@@ -50,7 +73,11 @@ const PANEL_ACCOUNT_TYPES = new Set<PanelAccountType>([
   "crypto",
   "clp_cash",
   "usd_cash",
+  "option",
 ]);
+
+/** The asset group (and nav bucket) every option contract account sits under (migration 304). */
+export const OPTION_CONTRACTS_BUCKET_SLUG = "brokerage_opciones";
 
 function fail(status: number, error: string): never {
   const err = new Error(error) as Error & { status: number };
@@ -88,12 +115,70 @@ function slugify(raw: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
+/**
+ * An option contract account: one leaf under `brokerage_opciones` named by the OCC symbol, the
+ * terms in `option_contracts`, `equity_ticker` NULL (the mark reads the underlying's series
+ * through the terms — `accountProfile.ts`). The underlying must be a dollar-quoted ticker.
+ */
+function createOptionContractAccount(acc: PanelAccountCreateBody["account"]): PanelAccountCreateResult {
+  const o = acc.option;
+  if (!o) fail(400, "account.option is required for an option contract");
+  const underlying = (o.underlying ?? "").trim().toUpperCase();
+  if (!underlying || !/^[A-Z0-9.-]+$/.test(underlying)) fail(400, "account.option.underlying is invalid");
+  if (equityMarketKind(underlying) === "crypto24") fail(400, "an option's underlying is a listed stock or ETF, not a coin");
+  if (equityQuoteCurrency(underlying) !== "usd") fail(400, `the underlying ${underlying} is not quoted in USD (USD options only)`);
+  if (o.right !== "C" && o.right !== "P") fail(400, "account.option.right must be C or P");
+  const strike = typeof o.strike === "number" ? o.strike : Number(o.strike);
+  if (!(strike > 0) || !Number.isFinite(strike)) fail(400, "account.option.strike must be a positive number");
+  if (typeof o.expiry !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(o.expiry)) fail(400, "account.option.expiry must be YYYY-MM-DD");
+  const multiplier = o.multiplier == null ? 100 : typeof o.multiplier === "number" ? o.multiplier : Number(o.multiplier);
+  if (!Number.isInteger(multiplier) || !(multiplier > 0)) fail(400, "account.option.multiplier must be a positive whole number");
+  const terms = { underlying_ticker: underlying, right: o.right, strike, expiry: o.expiry };
+  let occ: string;
+  try {
+    occ = occSymbol(terms);
+  } catch (e) {
+    fail(400, e instanceof Error ? e.message : String(e));
+  }
+  const existing = optionContractAccountIdForOcc(occ);
+  if (existing != null) fail(409, `an account already holds the contract ${occ} (id ${existing})`);
+  const name = acc.name?.trim() || optionContractDisplayName(terms);
+  const childSlug = occSymbolSlug(occ);
+  const importKey = `import:panel|option=${occ}|key=${childSlug}`;
+  if (!assetGroupBySlug(OPTION_CONTRACTS_BUCKET_SLUG)) fail(500, `asset group ${OPTION_CONTRACTS_BUCKET_SLUG} is missing (migration 304)`);
+  const { id: assetGroupId, created: createdLeafBucket } = ensureChildAssetGroupId(OPTION_CONTRACTS_BUCKET_SLUG, childSlug, name);
+
+  let accountId = 0;
+  db.transaction(() => {
+    const ins = db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key, exclude_from_group_totals, equity_ticker)
+         VALUES (?, ?, ?, ?, ?, NULL)`
+      )
+      .run(assetGroupId, name, importKey, importKey, acc.exclude_from_group_totals ? 1 : 0);
+    accountId = Number(ins.lastInsertRowid);
+    db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(accountId), accountId);
+    db.prepare(
+      `INSERT INTO option_contracts (account_id, underlying_ticker, "right", strike, expiry, multiplier, occ_symbol)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(accountId, underlying, o.right, strike, o.expiry, multiplier, occ);
+    // Fail fast: the account must dispatch to the contract valuation (no inert accounts).
+    if (!isOptionContractAccount(accountId)) fail(500, "created option contract account does not resolve to a contract");
+  })();
+
+  seedNavTree();
+  reseedAccountSyncSources(accountId);
+  // The underlying's series is what the contract is marked from: the route syncs its EOD bars.
+  return { account_id: accountId, asset_group_id: assetGroupId, created_leaf_bucket: createdLeafBucket, ticker: underlying };
+}
+
 export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCreateResult {
   const acc = body.account;
   const type = acc.account_type;
   const name = acc.name?.trim() ?? "";
 
   if (!PANEL_ACCOUNT_TYPES.has(type)) fail(400, `unsupported account_type ${type}`);
+  if (type === "option") return createOptionContractAccount(acc);
   if (!name) fail(400, "account.name is required");
 
   // Resolve the chosen bucket (portfolio nav slug) to its asset-group parent.
@@ -297,6 +382,10 @@ export function updatePanelAccount(
     const currentKind = accountBucketKindSlug(acc.leaf_slug);
     if (currentKind === "credit_card") {
       fail(400, "credit-card accounts cannot move between buckets");
+    }
+    // A contract's leaf is under `brokerage_opciones` by construction (migration 304).
+    if (isOptionContractAccount(accountId)) {
+      fail(400, "option contract accounts cannot move between buckets");
     }
 
     const categoryKey = leafCategoryKey(acc.leaf_slug, acc.leaf_parent_id);
