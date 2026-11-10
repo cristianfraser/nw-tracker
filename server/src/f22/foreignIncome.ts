@@ -78,8 +78,8 @@
  * Converted like the dividends: at the 31-December observado.
  */
 import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
-import { buildF1040Draft } from "../f1040Draft.js";
-import { filedF1040 } from "../f1040Filed.js";
+import { buildF1040Draft } from "../us1040/draft.js";
+import { filedF1040 } from "../us1040/filed.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
 import { interestFacts } from "../taxFacts/interest.js";
 import type { AccountPayer } from "../taxFacts/payers.js";

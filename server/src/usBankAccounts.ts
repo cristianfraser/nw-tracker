@@ -2,7 +2,7 @@
  * The client's accounts at a US bank, read as data: a dollar account declared in
  * `bank_account_numbers` under an issuer listed in `US_BANK_ISSUERS` (`taxFacts/payers.ts`, beside
  * the brokers domiciled abroad). Their interest (`savings_earnings` rows) is US-source interest:
- * line 2b of the 1040 (`f1040Draft.ts`) and «otras rentas de fuente extranjera» on the F22
+ * line 2b of the 1040 (`us1040/draft.ts`) and «otras rentas de fuente extranjera» on the F22
  * (`f22/foreignIncome.ts`). Never a name match.
  */
 import { db } from "./db.js";

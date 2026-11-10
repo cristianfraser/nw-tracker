@@ -53,7 +53,7 @@ import { stream, type Rng } from "./rng.js";
 import { AUSTIN, SANTIAGO, drawnBasketTotal, drawnRows, santiagoBasketPerUnit } from "./costOfLiving.js";
 import { newUsPayrollYtd, usPayDates, usPayStub, usW2sOfStubs, type UsPayStub } from "./usPayroll.js";
 import type { UsW2 } from "../usW2.js";
-import { f1040LinesFromW2s } from "../f1040Draft.js";
+import { f1040LinesFromW2s } from "../us1040/draft.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 

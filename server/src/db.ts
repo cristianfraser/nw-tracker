@@ -49,7 +49,7 @@ import { runOwnerIdentity277 } from "./ownerIdentity277.js";
 import { runSiiIssuedFeeReceipts296 } from "./siiIssuedFeeReceipts296.js";
 import { runFacturadoPaymentCharges297 } from "./ccFacturadoPaymentCharges297.js";
 import { runRentalPlaces299 } from "./rentalPlaces300.js";
-import { runF1040Filed300 } from "./f1040Filed301.js";
+import { runF1040Filed300 } from "./us1040/filed301.js";
 import { runTaxResidency302 } from "./taxResidency302.js";
 import { runOptionContracts304 } from "./optionContracts304.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";

@@ -11,7 +11,7 @@
  *   31   Schedule 3: Social Security withheld above the year's maximum by two or more employers
  *   34 / 35a refund, or 37 amount owed
  *
- * and the rest by the form's arithmetic (`f1040Identities.ts`; the numbers above are the line
+ * and the rest by the form's arithmetic (`us1040/identities.ts`; the numbers above are the line
  * ROLES in the 2024 numbering — the 2025 form prints 11a, 12e, 13a and adds 13b, which v1 never
  * drafts; the payload prints the year's numbers). Social Security and Medicare (boxes
  * 4 and 6) are reported beside the return, not part of its tax. No itemized deductions, no other
@@ -21,14 +21,14 @@
  * not list throws; the open year (provisional: the stubs to date) uses its own figures when listed,
  * else the latest year's (`lawYear`).
  */
-import { chileWallClockNow } from "./chileDate.js";
-import { db } from "./db.js";
-import { computeF1040Lines, type F1040Lines } from "./f1040Identities.js";
-import { filedF1040, filedF1040TaxYears, type FiledF1040 } from "./f1040Filed.js";
-import type { PayslipLineKind, PayslipLineSide } from "./payslipLineKinds.js";
-import { US_TAX_YEARS, usForm1040Tax, usTaxYear, type UsFilingStatus } from "./usLegalParameters.js";
-import { usBankInterestForYear, type UsBankInterest } from "./usBankAccounts.js";
-import { usW2sFromStubLines, type UsW2, type UsW2Stub } from "./usW2.js";
+import { chileWallClockNow } from "../chileDate.js";
+import { db } from "../db.js";
+import { computeF1040Lines, type F1040Lines } from "./identities.js";
+import { filedF1040, filedF1040TaxYears, type FiledF1040 } from "./filed.js";
+import type { PayslipLineKind, PayslipLineSide } from "../payslipLineKinds.js";
+import { US_TAX_YEARS, usForm1040Tax, usTaxYear, type UsFilingStatus } from "../usLegalParameters.js";
+import { usBankInterestForYear, type UsBankInterest } from "../usBankAccounts.js";
+import { usW2sFromStubLines, type UsW2, type UsW2Stub } from "../usW2.js";
 
 export type F1040Note =
   /** The stubs carry no state withholding: no state return is drafted. */

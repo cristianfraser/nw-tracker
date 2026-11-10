@@ -1,6 +1,6 @@
 /**
- * The arithmetic Form 1040 prints between its lines, in one place: the draft (`f1040Draft.ts`)
- * computes its lines with it and a filed return (`f1040Filed.ts`) is checked against it, so the two
+ * The arithmetic Form 1040 prints between its lines, in one place: the draft (`us1040/draft.ts`)
+ * computes its lines with it and a filed return (`us1040/filed.ts`) is checked against it, so the two
  * cannot disagree. A leaf: no imports. Whole dollars throughout (the form's rounding: each amount to
  * the dollar, a sum of several rounded only at the total).
  *

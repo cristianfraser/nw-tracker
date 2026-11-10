@@ -6,10 +6,10 @@
  * (`recordFiledF1040`, `linkF1040Settlement`); the 1040 page reads `filedF1040` and
  * `f1040Settlement`.
  */
-import { db } from "./db.js";
-import { assertF1040Identities, isF1040Line, type F1040Lines } from "./f1040Identities.js";
-import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
-import { US_FILING_STATUSES, type UsFilingStatus } from "./usLegalParameters.js";
+import { db } from "../db.js";
+import { assertF1040Identities, isF1040Line, type F1040Lines } from "./identities.js";
+import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
+import { US_FILING_STATUSES, type UsFilingStatus } from "../usLegalParameters.js";
 
 export type FiledF1040 = {
   taxYear: number;

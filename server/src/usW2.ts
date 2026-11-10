@@ -1,6 +1,6 @@
 /**
  * A year's Form W-2 per employer, from the pay stubs' lines: the boxes the 1040 reads. One rule for
- * the app (the 1040 draft, `f1040Draft.ts`) and the demo generator, which builds the same boxes from
+ * the app (the 1040 draft, `us1040/draft.ts`) and the demo generator, which builds the same boxes from
  * the stubs it writes (`demoData/usPayroll.ts` `usW2sFromStubs`, to be switched onto this module).
  * Pure: stubs in, W-2s out; only the year's law (`usLegalParameters.ts`) is read.
  *

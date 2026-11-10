@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
-import { writeLogTriggerSql } from "./markInputTriggers.js";
+import { writeLogTriggerSql } from "../markInputTriggers.js";
 
 /**
  * Migration 300 hook: the write-log triggers of the filed-1040 tables (F2 — a new table's writes
