@@ -17,7 +17,7 @@
  * e-mail-dated row and a certificado-dated one for the same event recognise each other.
  */
 import { addDaysIso } from "nw-tracker-contracts";
-import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
+import { accountIdForEquityTicker, accountsWithEquityTicker, accountsWithEquityTickerAtBroker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -186,7 +186,9 @@ export function planFintualEmailMovement(
       if (!event.ticker) throw new Error(`Fintual dividend without a ticker: ${event.subject}`);
       return {
         ...base,
-        from_account_id: accountIdForEquityTicker(event.ticker),
+        // Two accounts may hold the ticker (a Roth IRA's SPY beside the brokerage's): the one
+        // that trades against Fintual's dollar wallet is Fintual's.
+        from_account_id: accountIdForEquityTicker(event.ticker, { brokerCashAccountId: fintualUsdAccountId() }),
         to_account_id: fintualUsdAccountId(),
         flow_kind: "dividend_payout",
       };
@@ -218,7 +220,16 @@ export function planFintualEmailMovement(
       const buyBase = { ...base, from_account_id: fintualUsdAccountId(), units_delta: event.units, flow_kind: "stock_buy" };
       const holders = accountsWithEquityTicker(ticker);
       if (holders.length > 1) {
-        return { ...buyBase, requires_manual: `ticker ${ticker} matches ${holders.length} accounts — resolve first` };
+        // Several accounts hold the ticker: the one whose shares trade against Fintual's dollar
+        // wallet is Fintual's; none or several of them is for a human.
+        const atFintual = accountsWithEquityTickerAtBroker(ticker, fintualUsdAccountId());
+        if (atFintual.length !== 1) {
+          return {
+            ...buyBase,
+            requires_manual: `ticker ${ticker} matches ${holders.length} accounts, ${atFintual.length} of them traded against Fintual USD — resolve first`,
+          };
+        }
+        return { ...buyBase, to_account_id: atFintual[0]! };
       }
       if (holders.length === 1) return { ...buyBase, to_account_id: holders[0]! };
       const bucket = fintualEquityBucketSlug();
