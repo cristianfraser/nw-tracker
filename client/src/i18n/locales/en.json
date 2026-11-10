@@ -1983,7 +1983,20 @@
       },
       "notes": {
         "no_state_return": "No state withholding on the pay stubs (a job in a state without income tax): no state return is drafted.",
-        "first_year_full_resident": "First US year: a dual-status year, drafted as a full resident year.",
+        "residency_undeclared": "No tax residency is declared: the year is drafted as a full-year resident from the W-2s and the US bank interest only. Declare the residency in Settings to draft the worldwide return.",
+        "dual_status": "Dual-status year (Pub. 519): this return covers the resident part from the residency day (worldwide income received or realized from then); no standard deduction (box 12c on the 2025 form); the nonresident part's US-source dividends are on the attached statement.",
+        "dual_status_statement_tax_line_16": "The nonresident statement's tax is added to line 16 (a reading the sources read do not quote; the alternative is Schedule 2).",
+        "withholding_1042s_line_25c": "US tax withheld on dividends by a broker abroad (Form 1042-S) is a payment on line 25c, never a foreign tax.",
+        "qualified_holding_period_not_tested": "Qualified dividends: the holding period (more than 60 days of the 121 around the ex-dividend date) is not tested — no ex-dividend dates are on file.",
+        "wash_sales_not_modelled": "Wash sales (§1091) are not applied to the stocks and ETFs; they do not reach the coins.",
+        "no_step_up_on_residency": "Basis is the historic cost in dollars at each purchase day: becoming a resident does not step it up.",
+        "pfic_outside_schedule_d": "Foreign funds (the Chilean fund and ETF, a UCITS line) are PFICs: Form 8621 owns their gains, not Schedule D.",
+        "treaty_pensions_deferred": "The AFP, AFC and APV are read as treaty pensions (Art. 18(4); the APV assumed): their earnings are not income until paid out.",
+        "fx_daily_spot": "Every peso amount converts at the USD/CLP rate of its own day: cost at the purchase day, proceeds at the sale day, income at its receipt day.",
+        "section_988_not_modelled": "Exchange gains and losses on pesos (§988) are not modelled.",
+        "form_2210_not_modelled": "The underpayment penalty (Form 2210) is not modelled.",
+        "schedules_not_wired": "Schedule E, Form 8582, Form 8621 and Form 1116 are not composed into this draft yet: their lines read 0.",
+        "foreign_accounts_month_end": "FBAR and Form 8938: the foreign accounts are valued at month ends (a peak between two is not seen); coins at an exchange are left out.",
         "open_year": "{{year}} has not ended: the pay stubs to date, not the year's total.",
         "law_provisional": "The {{year}} figures are not in the law table yet: the {{lawYear}} ones stand in."
       },
@@ -2004,16 +2017,20 @@
       },
       "lineFallback": "Line {{line}}",
       "lines": {
+        "7": "Capital gain or (loss) (Schedule D)",
+        "8": "Additional income (Schedule 1, line 10)",
         "9": "Total income",
         "10": "Adjustments to income",
         "11": "Adjusted gross income",
-        "12": "Standard deduction",
+        "12": "Standard deduction (0 on a dual-status return)",
         "13": "Qualified business income deduction",
         "14": "Total deductions",
         "15": "Taxable income",
         "16": "Tax",
         "17": "Schedule 2, part I",
         "18": "Tax plus Schedule 2, part I",
+        "19": "Child tax credit",
+        "20": "Schedule 3, line 8 (foreign tax credit)",
         "21": "Nonrefundable credits",
         "22": "Tax after credits",
         "23": "Other taxes (Schedule 2: additional Medicare tax)",
@@ -2030,11 +2047,14 @@
         "37": "Amount owed",
         "1a": "Wages (W-2 box 1)",
         "1z": "Total wages",
+        "2a": "Tax-exempt interest",
         "2b": "Taxable interest",
+        "3a": "Qualified dividends",
+        "3b": "Ordinary dividends",
         "13b": "Additional deductions (Schedule 1-A)",
         "25a": "Federal tax withheld (W-2 box 2)",
         "25b": "Federal tax withheld (Forms 1099)",
-        "25c": "Federal tax withheld (other forms: Form 8959)",
+        "25c": "Federal tax withheld (other forms: Form 8959, Form 1042-S)",
         "25d": "Total federal tax withheld",
         "35a": "Refund"
       },
@@ -2058,6 +2078,134 @@
         "explain": "Withheld on every pay stub (FICA) and reported beside the return: not part of the 1040's income tax.",
         "summary": "Social Security {{socialSecurity}} · Medicare {{medicare}} · total {{total}}",
         "additional": "Additional Medicare tax owed (Form 8959): {{amount}}"
+      },
+      "residency": {
+        "full": "US tax resident all year.",
+        "dual_status": "Dual-status year: US tax resident from {{from}}.",
+        "nonresident": "Not a US tax resident in {{year}}.",
+        "undeclared": "No tax residency declared."
+      },
+      "notDrafted": {
+        "nonresident_alien": "A nonresident alien with US wages files Form 1040-NR, which the app does not draft. The W-2s below are what the year's pay stubs report."
+      },
+      "schedules": {
+        "title": "Schedules and worksheets",
+        "explain": "The lines behind the return, as each form numbers them; whole dollars (the worksheet's 15 % and 20 % lines to the cent).",
+        "amount": "Amount",
+        "forms": {
+          "schedule_b": "Schedule B · interest and ordinary dividends",
+          "schedule_d": "Schedule D · capital gains and losses",
+          "schedule_1": "Schedule 1 · additional income",
+          "schedule_2": "Schedule 2 · additional taxes",
+          "qdcg_worksheet": "Qualified Dividends and Capital Gain Tax Worksheet",
+          "form_8960": "Form 8960 · net investment income tax"
+        },
+        "lines": {
+          "schedule_b": {
+            "2": "Total interest",
+            "4": "Taxable interest → 1040 line 2b",
+            "6": "Ordinary dividends → 1040 line 3b"
+          },
+          "schedule_d": {
+            "2": "Short-term, basis not reported (box B)",
+            "3": "Short-term, no 1099-B (box C / I)",
+            "6": "Short-term loss carried from last year",
+            "7": "Net short-term gain or (loss)",
+            "9": "Long-term, basis not reported (box E)",
+            "10": "Long-term, no 1099-B (box F / L)",
+            "13": "Capital gain distributions",
+            "14": "Long-term loss carried from last year",
+            "15": "Net long-term gain or (loss)",
+            "16": "Net gain or (loss)",
+            "21": "Loss allowed this year",
+            "1b": "Short-term, basis reported (box A)",
+            "8b": "Long-term, basis reported (box D)"
+          },
+          "schedule_1": {
+            "5": "Rental real estate (Schedule E)",
+            "9": "Total other income",
+            "10": "Additional income → 1040 line 8",
+            "26": "Adjustments to income → 1040 line 10",
+            "8z": "Other income (Form 8621 mark-to-market)"
+          },
+          "schedule_2": {
+            "3": "Part I → 1040 line 17",
+            "11": "Additional Medicare tax (Form 8959)",
+            "12": "Net investment income tax (Form 8960)",
+            "21": "Other taxes → 1040 line 23"
+          },
+          "qdcg_worksheet": {
+            "1": "Taxable income",
+            "2": "Qualified dividends",
+            "3": "Net capital gain",
+            "5": "Ordinary part",
+            "6": "0 % edge",
+            "9": "Taxed at 0 %",
+            "13": "15 % edge",
+            "17": "Taxed at 15 %",
+            "18": "Tax at 15 %",
+            "20": "Taxed at 20 %",
+            "21": "Tax at 20 %",
+            "22": "Tax on the ordinary part",
+            "23": "Tax with the preferential rates",
+            "24": "Ordinary tax on all of it",
+            "25": "Line 16 tax (the smaller)"
+          },
+          "form_8960": {
+            "1": "Taxable interest",
+            "2": "Ordinary dividends",
+            "8": "Total investment income",
+            "12": "Net investment income",
+            "13": "Modified adjusted gross income",
+            "14": "Threshold",
+            "15": "MAGI above the threshold",
+            "16": "The smaller",
+            "17": "Tax (3,8 %)",
+            "4a": "Rental income (Schedule E)",
+            "5a": "Net gain (incl. §1296 inclusions)"
+          }
+        }
+      },
+      "scheduleB": {
+        "title": "Schedule B · payers",
+        "interest": "Interest (Part I)",
+        "dividends": "Dividends (Part II) · qualified {{qualified}}",
+        "payer": "Payer",
+        "items": "Payments"
+      },
+      "form8949": {
+        "title": "Form 8949 · sales",
+        "carryover": "Capital loss carried in: {{inShort}} short-term, {{inLong}} long-term · carried to next year: {{outShort}} short-term, {{outLong}} long-term.",
+        "box": "Box",
+        "description": "Description",
+        "acquired": "Acquired",
+        "sold": "Sold",
+        "proceeds": "Proceeds",
+        "cost": "Cost",
+        "gain": "Gain or (loss)",
+        "term": {
+          "short_term": "short",
+          "long_term": "long"
+        }
+      },
+      "dualStatus": {
+        "title": "Dual-status statement · January 1 to the day before {{from}}",
+        "explain": "US-source dividends of the nonresident part, taxed at the rate withheld (30 % before 2024-02-01, the convention's 15 % from then) with no deductions: tax {{tax}}, withheld {{withheld}}.",
+        "date": "Paid",
+        "instrument": "Instrument",
+        "gross": "Gross",
+        "rate": "Rate",
+        "tax": "Tax",
+        "withheld": "Withheld"
+      },
+      "foreignAccounts": {
+        "title": "Foreign accounts · Schedule B Part III, FBAR, Form 8938",
+        "summary": "Aggregate at year end {{yearEnd}}, highest month end {{peak}}. FBAR (over US$10.000 at any time): {{fbar}}. Form 8938 (over US$50.000 at year end or US$75.000 at any time): {{f8938}}. The app files neither.",
+        "required": "required",
+        "notRequired": "not required",
+        "account": "Account",
+        "yearEnd": "Year end",
+        "peak": "Highest month end"
       },
       "settlement": {
         "title": "Settlement",

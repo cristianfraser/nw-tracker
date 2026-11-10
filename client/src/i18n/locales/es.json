@@ -1983,7 +1983,20 @@
       },
       "notes": {
         "no_state_return": "Las liquidaciones no retienen impuesto estatal (un trabajo en un estado sin impuesto a la renta): no se prepara declaración estatal.",
-        "first_year_full_resident": "Primer año en EE.UU.: un año de doble estatus, preparado como residente todo el año.",
+        "residency_undeclared": "No hay residencia tributaria declarada: el año se prepara como residente todo el año, solo con los W-2 y los intereses de bancos de EE.UU. Declara la residencia en Configuración para preparar la declaración mundial.",
+        "dual_status": "Año de doble estatus (Pub. 519): esta declaración cubre la parte residente desde el día de la residencia (ingresos mundiales recibidos o realizados desde entonces); sin deducción estándar (casilla 12c en el formulario 2025); los dividendos de fuente estadounidense de la parte no residente van en el anexo.",
+        "dual_status_statement_tax_line_16": "El impuesto del anexo de no residente se suma a la línea 16 (una lectura que las fuentes leídas no citan; la alternativa es el anexo 2).",
+        "withholding_1042s_line_25c": "El impuesto de EE.UU. retenido sobre dividendos por un corredor extranjero (formulario 1042-S) es un pago en la línea 25c, nunca un impuesto extranjero.",
+        "qualified_holding_period_not_tested": "Dividendos calificados: no se verifica el período de tenencia (más de 60 de los 121 días en torno a la fecha ex-dividendo) — no hay fechas ex-dividendo registradas.",
+        "wash_sales_not_modelled": "No se aplican las ventas ficticias (wash sales, §1091) a las acciones y ETF; no alcanzan a las criptomonedas.",
+        "no_step_up_on_residency": "La base es el costo histórico en dólares de cada día de compra: hacerse residente no la revalúa.",
+        "pfic_outside_schedule_d": "Los fondos extranjeros (el fondo y el ETF chilenos, una línea UCITS) son PFIC: sus ganancias van en el formulario 8621, no en el anexo D.",
+        "treaty_pensions_deferred": "La AFP, la AFC y el APV se leen como pensiones del convenio (art. 18(4); el APV se supone): sus rentas no son ingreso hasta que se pagan.",
+        "fx_daily_spot": "Cada monto en pesos se convierte al tipo USD/CLP de su propio día: el costo al día de compra, el producto al día de venta, el ingreso al día en que se recibe.",
+        "section_988_not_modelled": "No se modelan las ganancias y pérdidas cambiarias sobre pesos (§988).",
+        "form_2210_not_modelled": "No se modela la multa por pago insuficiente (formulario 2210).",
+        "schedules_not_wired": "El anexo E y los formularios 8582, 8621 y 1116 aún no se integran a este borrador: sus líneas valen 0.",
+        "foreign_accounts_month_end": "FBAR y formulario 8938: las cuentas extranjeras se valoran a fin de mes (no se ve un máximo entre dos); las criptomonedas en un exchange quedan fuera.",
         "open_year": "{{year}} no ha terminado: las liquidaciones a la fecha, no el total del año.",
         "law_provisional": "Las cifras de {{year}} aún no están en la tabla legal: se usan las de {{lawYear}}."
       },
@@ -2004,16 +2017,20 @@
       },
       "lineFallback": "Línea {{line}}",
       "lines": {
+        "7": "Ganancia o (pérdida) de capital (anexo D)",
+        "8": "Ingreso adicional (anexo 1, línea 10)",
         "9": "Ingreso total",
         "10": "Ajustes al ingreso",
         "11": "Ingreso bruto ajustado",
-        "12": "Deducción estándar",
+        "12": "Deducción estándar (0 en una declaración de doble estatus)",
         "13": "Deducción por ingreso de negocio calificado",
         "14": "Total deducciones",
         "15": "Ingreso imponible",
         "16": "Impuesto",
         "17": "Anexo 2, parte I",
         "18": "Impuesto más anexo 2, parte I",
+        "19": "Crédito por hijos",
+        "20": "Anexo 3, línea 8 (crédito por impuestos extranjeros)",
         "21": "Créditos no reembolsables",
         "22": "Impuesto después de créditos",
         "23": "Otros impuestos (anexo 2: Medicare adicional)",
@@ -2030,11 +2047,14 @@
         "37": "Monto a pagar",
         "1a": "Sueldos (casilla 1 del W-2)",
         "1z": "Total sueldos",
+        "2a": "Intereses exentos",
         "2b": "Intereses gravados",
+        "3a": "Dividendos calificados",
+        "3b": "Dividendos ordinarios",
         "13b": "Deducciones adicionales (anexo 1-A)",
         "25a": "Impuesto federal retenido (casilla 2 del W-2)",
         "25b": "Impuesto federal retenido (formularios 1099)",
-        "25c": "Impuesto federal retenido (otros formularios: 8959)",
+        "25c": "Impuesto federal retenido (otros formularios: 8959, 1042-S)",
         "25d": "Total impuesto federal retenido",
         "35a": "Devolución"
       },
@@ -2058,6 +2078,134 @@
         "explain": "Retenidos en cada liquidación (FICA) e informados junto a la declaración: no son parte del impuesto a la renta del 1040.",
         "summary": "Seguridad Social {{socialSecurity}} · Medicare {{medicare}} · total {{total}}",
         "additional": "Impuesto Medicare adicional (formulario 8959): {{amount}}"
+      },
+      "residency": {
+        "full": "Residente tributario en EE.UU. todo el año.",
+        "dual_status": "Año de doble estatus: residente tributario en EE.UU. desde el {{from}}.",
+        "nonresident": "No residente tributario en EE.UU. en {{year}}.",
+        "undeclared": "Sin residencia tributaria declarada."
+      },
+      "notDrafted": {
+        "nonresident_alien": "Un extranjero no residente con sueldos de EE.UU. presenta el formulario 1040-NR, que la aplicación no prepara. Los W-2 de abajo son lo que reportan las liquidaciones del año."
+      },
+      "schedules": {
+        "title": "Anexos y hojas de cálculo",
+        "explain": "Las líneas detrás de la declaración, con la numeración de cada formulario; dólares enteros (las líneas al 15 % y al 20 % de la hoja, al centavo).",
+        "amount": "Monto",
+        "forms": {
+          "schedule_b": "Anexo B · intereses y dividendos ordinarios",
+          "schedule_d": "Anexo D · ganancias y pérdidas de capital",
+          "schedule_1": "Anexo 1 · ingreso adicional",
+          "schedule_2": "Anexo 2 · impuestos adicionales",
+          "qdcg_worksheet": "Hoja de impuesto sobre dividendos calificados y ganancias de capital",
+          "form_8960": "Formulario 8960 · impuesto sobre el ingreso neto de inversiones"
+        },
+        "lines": {
+          "schedule_b": {
+            "2": "Total intereses",
+            "4": "Intereses gravados → línea 2b del 1040",
+            "6": "Dividendos ordinarios → línea 3b del 1040"
+          },
+          "schedule_d": {
+            "2": "Corto plazo, base no informada (casilla B)",
+            "3": "Corto plazo, sin 1099-B (casilla C / I)",
+            "6": "Pérdida de corto plazo arrastrada del año anterior",
+            "7": "Ganancia o (pérdida) neta de corto plazo",
+            "9": "Largo plazo, base no informada (casilla E)",
+            "10": "Largo plazo, sin 1099-B (casilla F / L)",
+            "13": "Distribuciones de ganancias de capital",
+            "14": "Pérdida de largo plazo arrastrada del año anterior",
+            "15": "Ganancia o (pérdida) neta de largo plazo",
+            "16": "Ganancia o (pérdida) neta",
+            "21": "Pérdida admitida este año",
+            "1b": "Corto plazo, base informada (casilla A)",
+            "8b": "Largo plazo, base informada (casilla D)"
+          },
+          "schedule_1": {
+            "5": "Bienes raíces arrendados (anexo E)",
+            "9": "Total otros ingresos",
+            "10": "Ingreso adicional → línea 8 del 1040",
+            "26": "Ajustes al ingreso → línea 10 del 1040",
+            "8z": "Otros ingresos (marca a mercado del formulario 8621)"
+          },
+          "schedule_2": {
+            "3": "Parte I → línea 17 del 1040",
+            "11": "Impuesto adicional de Medicare (formulario 8959)",
+            "12": "Impuesto sobre el ingreso neto de inversiones (formulario 8960)",
+            "21": "Otros impuestos → línea 23 del 1040"
+          },
+          "qdcg_worksheet": {
+            "1": "Ingreso imponible",
+            "2": "Dividendos calificados",
+            "3": "Ganancia neta de capital",
+            "5": "Parte ordinaria",
+            "6": "Tope del 0 %",
+            "9": "Gravado al 0 %",
+            "13": "Tope del 15 %",
+            "17": "Gravado al 15 %",
+            "18": "Impuesto al 15 %",
+            "20": "Gravado al 20 %",
+            "21": "Impuesto al 20 %",
+            "22": "Impuesto sobre la parte ordinaria",
+            "23": "Impuesto con las tasas preferentes",
+            "24": "Impuesto ordinario sobre todo",
+            "25": "Impuesto de la línea 16 (el menor)"
+          },
+          "form_8960": {
+            "1": "Intereses gravados",
+            "2": "Dividendos ordinarios",
+            "8": "Total ingreso de inversiones",
+            "12": "Ingreso neto de inversiones",
+            "13": "Ingreso bruto ajustado modificado",
+            "14": "Umbral",
+            "15": "MAGI sobre el umbral",
+            "16": "El menor",
+            "17": "Impuesto (3,8 %)",
+            "4a": "Ingreso por arriendos (anexo E)",
+            "5a": "Ganancia neta (incl. inclusiones del §1296)"
+          }
+        }
+      },
+      "scheduleB": {
+        "title": "Anexo B · pagadores",
+        "interest": "Intereses (parte I)",
+        "dividends": "Dividendos (parte II) · calificados {{qualified}}",
+        "payer": "Pagador",
+        "items": "Pagos"
+      },
+      "form8949": {
+        "title": "Formulario 8949 · ventas",
+        "carryover": "Pérdida de capital arrastrada: {{inShort}} de corto plazo, {{inLong}} de largo plazo · al año siguiente: {{outShort}} de corto plazo, {{outLong}} de largo plazo.",
+        "box": "Casilla",
+        "description": "Descripción",
+        "acquired": "Adquirido",
+        "sold": "Vendido",
+        "proceeds": "Producto",
+        "cost": "Costo",
+        "gain": "Ganancia o (pérdida)",
+        "term": {
+          "short_term": "corto",
+          "long_term": "largo"
+        }
+      },
+      "dualStatus": {
+        "title": "Anexo de doble estatus · 1 de enero al día anterior al {{from}}",
+        "explain": "Dividendos de fuente estadounidense de la parte no residente, gravados a la tasa retenida (30 % antes del 2024-02-01, el 15 % del convenio desde entonces) sin deducciones: impuesto {{tax}}, retenido {{withheld}}.",
+        "date": "Pagado",
+        "instrument": "Instrumento",
+        "gross": "Bruto",
+        "rate": "Tasa",
+        "tax": "Impuesto",
+        "withheld": "Retenido"
+      },
+      "foreignAccounts": {
+        "title": "Cuentas extranjeras · anexo B parte III, FBAR, formulario 8938",
+        "summary": "Total al cierre del año {{yearEnd}}, mayor fin de mes {{peak}}. FBAR (más de US$10.000 en algún momento): {{fbar}}. Formulario 8938 (más de US$50.000 al cierre o US$75.000 en algún momento): {{f8938}}. La aplicación no presenta ninguno.",
+        "required": "requerido",
+        "notRequired": "no requerido",
+        "account": "Cuenta",
+        "yearEnd": "Cierre del año",
+        "peak": "Mayor fin de mes"
       },
       "settlement": {
         "title": "Liquidación del 1040",
