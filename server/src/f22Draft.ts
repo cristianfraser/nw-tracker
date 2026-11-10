@@ -566,7 +566,7 @@ export function buildF22Draft(
   const usdFxLoss = usdFx.codes.loss169 ?? 0;
   const usdFxIdpcClp = usdFx.codes.idpcClp ?? 0;
   const rentals = rentalsForYear(incomeYear);
-  const foreignSalary = foreignSalaryForYear(incomeYear, todayYmd);
+  const foreignSalary = foreignSalaryForYear(incomeYear, todayYmd, { observado: yearEndObservado, provisional });
   const foreignInterest = foreignInterestForYear(incomeYear, yearEndObservado);
   const foreignSalaryIncomeClp = foreignSalary.netClp + foreignSalary.creditClp;
   // With taxable rent the app states 1849 / 955 and derives 1637; without, a filed form keeps its own.

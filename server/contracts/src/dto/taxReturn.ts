@@ -190,12 +190,12 @@ export type TaxReturnRentals = {
  */
 export type TaxReturnForeignIncome = {
   salary: {
-    /** The December reajuste used the latest published month. */
+    /** The year is open: the latest observado stood in for the year end's. */
     provisional: boolean;
     stubs: number;
-    /** Gross pay less Social Security and Medicare, dollars. */
+    /** Gross pay, dollars (nothing deducted: FICA is not a Chilean-law contribution, Circular 31/2021). */
     income_usd: number;
-    /** The same in pesos (each stub at its pay day's observado), reajustada to December. */
+    /** The same in pesos at the 31-December observado (art. 41 A N°7 letra a), no reajuste). */
     gross_clp: number;
     /** The 1040's line 24 (total tax): the filed return's, or the draft's. */
     us_tax_usd: number;

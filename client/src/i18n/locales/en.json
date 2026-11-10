@@ -2167,14 +2167,14 @@
     },
     "foreignIncome": {
       "title": "Foreign income",
-      "explain": "A Chilean resident declares worldwide income (art. 3 LIR). The US salary is line 12, code 1030: each pay stub's gross less Social Security and Medicare, at its pay day's dólar observado, reajustado to December, less the US income tax (the Form 1040's line 24). That tax is credited under art. 41 A and the Chile–US treaty: at most 35 % of the gross, added back as the gross-up (748) and credited in 1018 up to the IGC on this income, with no refund.",
-      "provisional": "The year has not closed: the stubs to date, the reajuste with the latest published IPC.",
-      "salary": "{{stubs}} pay stubs: US$ {{usd}} after Social Security and Medicare → {{gross}}; US tax US$ {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
+      "explain": "A Chilean resident declares worldwide income (art. 3 LIR). The US salary is line 13, code 1030: the gross pay at the dólar observado of December 31 (art. 41 A N°7, Circular 31/2021: no reajuste), less the US income tax (the Form 1040's line 24). Social Security and Medicare are not deducted: only Chilean-law contributions are (Circular 31/2021). That tax is credited under art. 41 A and the Chile–US treaty: at most 35 % of the gross, added back as the gross-up (748, line 14) and credited in 1018 (line 45) up to the IGC on this income, with no refund.",
+      "provisional": "The year has not closed: the stubs to date, at the latest dólar observado.",
+      "salary": "{{stubs}} pay stubs: US$ {{usd}} gross → {{gross}}; US tax US$ {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
       "taxSource": {
         "filed": "filed 1040",
         "draft": "1040 draft"
       },
-      "credit": "Credit: {{credit}} (the US tax, at most 35 % of the gross), capped at {{cap}} (the IGC on this income) → {{applied}} in 1018.",
+      "credit": "Credit: {{credit}} (the US tax, at most 35 % of the gross), capped at {{cap}} (the IGC on this income, by its one-decimal share of the base) → {{applied}} in 1018.",
       "interest": "Interest from a foreign broker: US$ {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit)."
     },
     "art107": {

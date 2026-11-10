@@ -72,13 +72,18 @@ export function f22PropertyTaxCreditCap(codes: F22CodeAmounts): number {
 }
 
 /**
- * The cap of a foreign salary's credit in 1018 (art. 41 A, no refund): the IGC proportional to that
- * income — 157 × `foreignIncomeClp` / 158, where the income is its 1030 plus its incremento in 748.
+ * The cap of a foreign salary's credit in 1018 (art. 41 A N°5 letra b), no refund): the IGC on the
+ * Renta Imponible — Circular 31/2021 §1.2.2.2.1 b): «la proporción que resulte de dividir el monto
+ * de la Renta Imponible por el total rentas afectas a IGC del ejercicio comercial, expresándose
+ * dicho porcentaje con un solo decimal, desestimándose toda centésima inferior a cinco» (its annex
+ * 3: «$6.243.165 x 22,0% [$12.391.313/$56.391.313]»). `foreignIncomeClp` is the Renta Imponible
+ * (1030 plus its incremento in 748), the total 158, the IGC 157.
  */
 export function f22ForeignSalaryCreditCap(codes: F22CodeAmounts, foreignIncomeClp: number): number {
   const v = (c: number) => reader(codes)(c) ?? 0;
   if (v(158) <= 0 || foreignIncomeClp <= 0) return 0;
-  return Math.max(0, Math.round((v(157) * Math.min(foreignIncomeClp, v(158))) / v(158)));
+  const pct = Math.round((Math.min(foreignIncomeClp, v(158)) / v(158)) * 1000) / 10;
+  return Math.max(0, Math.round((v(157) * pct) / 100));
 }
 
 /** 170 before the floor at zero the draft applies. */

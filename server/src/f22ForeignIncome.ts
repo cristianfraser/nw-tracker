@@ -4,43 +4,84 @@
  * broker pays. Chile taxes a resident on worldwide income (art. 3 LIR) and credits the tax paid
  * abroad (art. 41 A, with the Chile–US treaty from income year 2024, art. 23 of the treaty).
  *
+ * Sources (read 2026-11-10): the SII's AT2026 Formulario 22 (`f22_at2026.pdf`,
+ * sii.cl/ayudas/formularios) and its line-by-line instructions — the Suplemento's text per line,
+ * `sii.cl/servicios_online/renta/2026/archivos/l<N>_instruccion.pdf` —, Circular N° 31 de 2021
+ * (art. 41 A after Ley 21.210, the instructions every line delegates the credit to), the SII's
+ * observation G08 (AT2026) and the Chile–US convention (`sii.cl/pagina/jurisprudencia/convenios/
+ * chile_usa_ing.pdf`).
+ *
  * **A US salary** (the `jurisdiction = 'us'` pay stubs) is an art. 42 N°1 income obtained abroad:
  *
- * - **Code 1030**, línea 12 «Sueldos y otras rentas similares de fuente extranjera» (the AT2023 form
- *   prints it beside 1098; observation G08 of AT2026 still names 1030 with 748 and 1018). Línea 12's
- *   total, 161, is then 1098 + 1030. The income is the stub's gross pay less the US social-security
- *   contributions withheld (Social Security and Medicare: compulsory contributions, read like the
- *   Chilean «leyes sociales» an art. 42 N°1 base excludes — this module's reading; the 401(k),
- *   HSA and the health premiums are voluntary or cafeteria choices and stay in), less the US income
- *   tax, as art. 41 A declares a foreign income net of the tax it bore. Each stub converts at the
- *   dólar observado of its pay date and is reajustado to December by the SII's one-decimal IPC (as
- *   the rents are, `f22Rentals`) — confidence: medium; the Suplemento's conversion rule for art.
- *   41 A incomes is «la fecha de percepción».
+ * - **Code 1030, línea 13** «Sueldos y otras rentas similares de fuente extranjera» (líneas 12 and
+ *   13 of the AT2026 form; this module once named them 11 and 12). Instrucciones 13.3: «Cuando sean
+ *   de FE, se deberán declarar en el código 1030 de esta línea, hayan soportado o no impuestos en el
+ *   extranjero», and 161 = 1098 + 1030. **The amount is the Renta Neta of art. 41 A N°3: the gross
+ *   pay less the US income tax, nothing else deducted.** Circular 31 §1.2.2.2.2 a) i): «las rentas
+ *   líquidas percibidas del N° 1 del artículo 42 no admiten deducción de gasto alguno … salvo las
+ *   cotizaciones obligatorias destinadas a la formación de los fondos de previsión y retiro y las
+ *   cotizaciones que se destinen para financiar las prestaciones de salud, establecidas en la
+ *   legislación chilena» — Social Security and Medicare are US contributions, not Chilean ones, so
+ *   they are not deducted (until 2026-11-10 this module read them like the AFP and health of a
+ *   Chilean payslip and took them off); the 401(k) deferral, the HSA and the health premiums are
+ *   not deductible either and stay in. «Líquida» is net of the US income tax (the 1040's line 24,
+ *   see the credit), which the incremento in 748 adds back.
+ * - **Conversion: the dólar observado at the end of the year, no IPC reajuste.** Instrucciones
+ *   13.3: «De tener aplicación el artículo 41 A de la LIR, las rentas de FE se convertirán a su
+ *   equivalente en pesos chilenos conforme lo dispuesto en la letra a) del N° 7 de dicho
+ *   artículo»; Circular 31 §1.3.2.2: the parity of the day the amounts were received, «salvo
+ *   tratándose de contribuyentes no obligados a aplicar normas sobre corrección monetaria, en cuyo
+ *   caso se aplicará la paridad cambiaria vigente al término del ejercicio respectivo» — a person
+ *   keeps no books, so the year end; §1.2.2.2.1 b) i)–ii) says the same for the art. 42 incomes
+ *   and the taxes on them, and annex 3 converts a June salary «según tipo de cambio vigente al
+ *   término del ejercicio» with no reajuste. The dividends in 1104 already convert that way. Until
+ *   2026-11-10 each stub converted at its pay day's observado and was reajustado to December. For
+ *   an open year the latest observado stands in (`provisional`).
  * - **The credit** is the US federal income tax of the year: the 1040's line 24 (total tax, the
- *   filed return when one is stored, else the draft — v1 has no income but wages, so all of it is
- *   on the salary), converted at the salary's own average rate (each stub's withholding was paid on
- *   its day; the April settlement takes the same weight — a simplification). Art. 41 A caps it
- *   individually at 35 % of the gross foreign income (net + tax, {@link FOREIGN_TAX_CREDIT_CAP});
- *   the credited amount is the gross-up (incremento, code 748, línea 14, beside the dividends') and
- *   the credit itself is code 1018 (línea 43, «Crédito al IUSC o IGC por impuestos soportados en el
- *   exterior, según art. 41 A N°4 letra B) o N°5»). The credit has no refund: `computeF22Tax` caps
- *   it at the IGC proportional to this income (157 × (1030 + its 748) / 158); what the cap leaves
- *   is lost (confidence: medium — the Suplemento's «crédito total disponible» worksheet is not
- *   reproduced line by line).
+ *   filed return when one is stored, else the draft — v1 has no income but wages and a little bank
+ *   interest, so all of it is read as the salary's: an assumption kept), converted at the same
+ *   year-end rate (Circular 31 §1.2.2.2.1 b) ii)). FICA is not a creditable tax: the convention's
+ *   art. 2(3)(a) covers «the Federal income taxes imposed by the Internal Revenue Code (but
+ *   excluding social security taxes)». **Crédito Total Disponible = the tope individual only**
+ *   (Circular 31 §1.2.2.2.2 a) ii) and footnote 22: for art. 42 N°1 incomes «solo se aplicará el
+ *   tope individual», no tope global): the lesser of the tax and 35 % of the Renta Bruta
+ *   ({@link FOREIGN_TAX_CREDIT_CAP}; the gross pay, which the W-2 states, so the 35/65 formula for
+ *   a gross that cannot be proven is not needed). It is the incremento in **748, línea 14**
+ *   (Instrucciones 14.2: «los contribuyentes que declaren rentas en el código 1104 de la línea 12 y
+ *   código 1030 de la línea 13 del F-22 deben registrar el aludido incremento por IPE en el código
+ *   748, para luego anotar con los límites establecidos en la ley el crédito por dicho concepto en
+ *   el código 1018 de la línea 45») and the credit in **1018, línea 45** («Crédito al IUSC o IGC
+ *   por impuestos soportados en el exterior, según arts. 41 A N°4 letra B) o N° 5 LIR»;
+ *   Instrucciones 45.1 c): art. 42 N°1 incomes declared in 1030). No refund (45.1: «El remanente …
+ *   no dará derecho a devolución o imputación a otros impuestos, ni podrá recuperarse en los años
+ *   posteriores»): `computeF22Tax` caps it at the IGC on the Renta Imponible (1030 + its 748) by
+ *   the one-decimal proportion of Circular 31 §1.2.2.2.1 b) (`f22ForeignSalaryCreditCap`), taken
+ *   after every other credit («con posterioridad a cualquier otro crédito autorizado por la ley» —
+ *   the chain's 304 is a sum, so the order changes nothing). Remaining assumptions: line 24 as the
+ *   salary's whole tax; the April settlement's part of it converts at the same year-end rate.
+ *
+ * **Code 746 is not this credit.** Observation G08 names both because it covers both: 746 is
+ * línea 49, «Crédito al IGC por impuestos soportados en el exterior, según art. 41 A N° 4 letra A)
+ * letra b) LIR» — Instrucciones 49.1: the credit «asociado a los retiros y dividendos que
+ * percibieron … en su calidad de propietarias de empresas domiciliadas o residentes en el país …
+ * informado … mediante los Certificados Modelos N° 43, 44, 70 y 71», a Chilean company's
+ * pass-through; a natural person's own foreign dividends go in 1104 with their credit in 1018
+ * (Instrucciones 12.3: «El crédito por IPE a que dan derecho las rentas que se declaren en esta
+ * línea … se deberá registrar como incremento en el código 748 de la línea 14 del F-22 y luego
+ * trasladarse a la línea 45»; 45.1 a)). The chain subtracts a filed 746 in 304 (`f22Code304`) and
+ * never drafts it.
  *
  * **A foreign broker's or a US bank's interest** (`savings_earnings` on the dollar cash of a broker
  * listed in {@link FOREIGN_BROKERS}: IBKR's sweep interest; or on a dollar account at a US bank,
- * `usBankAccounts.ts`) is «otras rentas de fuente extranjera» (línea 11,
- * code 1104, with the dividends). No US tax is withheld from a US resident's interest, so it carries
- * no credit. Converted like the dividends: at the 31-December observado.
+ * `usBankAccounts.ts`) is «otras rentas de fuente extranjera» (línea 12, code 1104, with the
+ * dividends). No US tax is withheld from a US resident's interest, so it carries no credit.
+ * Converted like the dividends: at the 31-December observado.
  */
 import { db } from "./db.js";
 import { buildF1040Draft } from "./f1040Draft.js";
 import { US_BANK_ISSUERS } from "./usBankAccounts.js";
 import { filedF1040 } from "./f1040Filed.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "./legalParameters.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
-import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
 
 /** Brokers domiciled abroad: the interest their cash earns is foreign-source (the `broker_cash` role's broker). */
 export const FOREIGN_BROKERS: readonly string[] = ["ibkr"];
@@ -48,29 +89,35 @@ export const FOREIGN_BROKERS: readonly string[] = ["ibkr"];
 export type F22ForeignSalaryStub = {
   payDate: string;
   employer: string;
+  /** Every haber of the stub: the Renta Bruta before the US tax. */
   grossUsd: number;
+  /** Social Security and Medicare withheld — reported, not deductible (Circular 31 §1.2.2.2.2 a) i)). */
   ficaUsd: number;
+  /** The year-end observado every stub converts at. */
   observado: number;
-  /** (gross − FICA) × observado, reajustado to December. */
+  /** grossUsd × observado. */
   incomeClp: number;
 };
 
+/** The year-end rate the salary and its tax convert at (art. 41 A N°7 letra a): the latest observado while the year is open. */
+export type F22ForeignYearEnd = { observado: number; provisional: boolean };
+
 export type F22ForeignSalary = {
   stubs: F22ForeignSalaryStub[];
-  /** Σ (gross − FICA), dollars. */
+  /** Σ gross pay, dollars (the Renta Bruta). */
   incomeUsd: number;
-  /** Σ (gross − FICA) in pesos, reajustado: the income before the US tax. */
+  /** The same in pesos at the year-end observado: the income before the US tax. */
   grossClp: number;
   /** The 1040's line 24 and where it came from. */
   usTaxUsd: number;
   usTaxSource: "filed" | "draft" | null;
-  /** The US tax in pesos at the salary's average rate. */
+  /** The US tax in pesos at the year-end observado. */
   usTaxClp: number;
-  /** 1030: grossClp − usTaxClp. */
+  /** 1030: grossClp − usTaxClp (the Renta Neta). */
   netClp: number;
-  /** min(US tax, 35 % of the gross): the credit before the IGC cap, and the incremento (748). */
+  /** min(US tax, 35 % of the gross): the Crédito Total Disponible before the IGC cap, and the incremento (748). */
   creditClp: number;
-  /** The December reajuste used the latest published month (open year). */
+  /** The year is open: the latest observado stood in for the year end's. */
   provisional: boolean;
 };
 
@@ -92,8 +139,10 @@ const EMPTY_SALARY: F22ForeignSalary = {
 
 type StubRow = { id: number; pay_date: string | null; employer_name: string; source_pdf: string };
 
-/** The US salary of `incomeYear` for the F22, or zeros without US pay stubs. */
-export function foreignSalaryForYear(incomeYear: number, todayYmd: string): F22ForeignSalary {
+const cents = (x: number) => Math.round(x * 100) / 100;
+
+/** The US salary of `incomeYear` for the F22 at the year-end rate, or zeros without US pay stubs. */
+export function foreignSalaryForYear(incomeYear: number, todayYmd: string, yearEnd: F22ForeignYearEnd): F22ForeignSalary {
   const heads = db
     .prepare(
       `SELECT id, pay_date, employer_name, source_pdf FROM payroll_work_earnings
@@ -104,26 +153,32 @@ export function foreignSalaryForYear(incomeYear: number, todayYmd: string): F22F
   if (incomeYear < CHILE_US_TREATY_FIRST_INCOME_YEAR) {
     throw new Error(`F22 ${incomeYear}: a US salary before the Chile–US treaty applies (${CHILE_US_TREATY_FIRST_INCOME_YEAR}) — not modelled`);
   }
+  if (!(yearEnd.observado > 0)) throw new Error(`F22 ${incomeYear}: no year-end dólar observado for the US salary`);
   const lineStmt = db.prepare(`SELECT side, kind, amount FROM payslip_lines WHERE payslip_id = ?`);
-  const ipc = ipcReajuste({ round: true, floorAtZero: true });
-  const { toMonth, provisional } = ipc.december(incomeYear);
   const stubs = heads.map((h): F22ForeignSalaryStub => {
     if (h.pay_date == null) throw new Error(`F22 ${incomeYear}: US payslip ${h.source_pdf} has no pay date`);
     const lines = lineStmt.all(h.id) as { side: string; kind: string | null; amount: number }[];
     if (lines.length === 0) throw new Error(`F22 ${incomeYear}: US payslip ${h.source_pdf} has no lines`);
-    const grossUsd = lines.filter((l) => l.side === "haber").reduce((s, l) => s + l.amount, 0);
-    const ficaUsd = lines
-      .filter((l) => l.side === "descuento" && (l.kind === "social_security_tax" || l.kind === "medicare_tax"))
-      .reduce((s, l) => s + l.amount, 0);
-    const observado = observadoOnOrBefore(h.pay_date);
-    const incomeClp = (grossUsd - ficaUsd) * observado * (1 + ipc.pct(monthBeforeYmd(h.pay_date), toMonth) / 100);
-    return { payDate: h.pay_date, employer: h.employer_name, grossUsd, ficaUsd, observado, incomeClp };
+    const grossUsd = cents(lines.filter((l) => l.side === "haber").reduce((s, l) => s + l.amount, 0));
+    const ficaUsd = cents(
+      lines
+        .filter((l) => l.side === "descuento" && (l.kind === "social_security_tax" || l.kind === "medicare_tax"))
+        .reduce((s, l) => s + l.amount, 0)
+    );
+    return {
+      payDate: h.pay_date,
+      employer: h.employer_name,
+      grossUsd,
+      ficaUsd,
+      observado: yearEnd.observado,
+      incomeClp: grossUsd * yearEnd.observado,
+    };
   });
-  const incomeUsd = Math.round(stubs.reduce((s, x) => s + x.grossUsd - x.ficaUsd, 0) * 100) / 100;
-  const grossClp = Math.round(stubs.reduce((s, x) => s + x.incomeClp, 0));
+  const incomeUsd = cents(stubs.reduce((s, x) => s + x.grossUsd, 0));
+  const grossClp = Math.round(incomeUsd * yearEnd.observado);
   const filed = filedF1040(incomeYear);
   const usTaxUsd = filed ? (filed.lines["24"] ?? 0) : (buildF1040Draft(incomeYear, todayYmd).lines["24"] ?? 0);
-  const usTaxClp = incomeUsd > 0 ? Math.round((usTaxUsd * grossClp) / incomeUsd) : 0;
+  const usTaxClp = Math.round(usTaxUsd * yearEnd.observado);
   const creditClp = Math.round(Math.min(usTaxClp, FOREIGN_TAX_CREDIT_CAP * grossClp));
   return {
     stubs,
@@ -134,7 +189,7 @@ export function foreignSalaryForYear(incomeYear: number, todayYmd: string): F22F
     usTaxClp,
     netClp: grossClp - usTaxClp,
     creditClp,
-    provisional,
+    provisional: yearEnd.provisional,
   };
 }
 

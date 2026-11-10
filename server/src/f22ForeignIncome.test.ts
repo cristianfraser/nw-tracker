@@ -66,8 +66,12 @@ describe("the F22 chain with a foreign salary", () => {
     const salary = { 1030: 80_000_000, 748: 15_000_000, 161: 90_000_000 };
     const out = computeF22Tax({ ...base, ...salary }, UTA, 2030, { foreignSalaryCredit: { creditClp: 15_000_000, incomeClp: 95_000_000 } });
     expect(out[158]! - plain[158]!).toBe(95_000_000);
+    // Circular 31/2021 §1.2.2.2.1 b): the IGC × the income's share of the base, the share a percentage with one decimal.
     const cap = f22ForeignSalaryCreditCap(out, 95_000_000);
-    expect(cap).toBe(Math.round((out[157]! * 95_000_000) / out[158]!));
+    const sharePct = Math.round((95_000_000 / out[158]!) * 1000) / 10;
+    expect(cap).toBe(Math.round((out[157]! * sharePct) / 100));
+    // The annex's own example: $6.243.165 × 22,0 % [$12.391.313 / $56.391.313] = 1.373.496.
+    expect(f22ForeignSalaryCreditCap({ 157: 6_243_165, 158: 56_391_313 }, 12_391_313)).toBe(1_373_496);
     expect(out[1018]).toBe(Math.min(15_000_000, cap));
     expect(out[304]).toBe(out[157]! - out[1018]! - 200_000);
     // A credit above the IGC on the income is capped there: the excess is lost, never refunded.
@@ -108,17 +112,24 @@ describe("foreign income in the F22 draft", () => {
 
   afterAll(cleanup);
 
-  it("declares the salary net of FICA and the US tax, at each pay day's observado, the tax at line 24", () => {
-    const s = foreignSalaryForYear(INCOME_YEAR, TODAY);
+  it("declares the gross salary less the US tax only (FICA stays in), at the year-end observado, the tax at line 24", () => {
+    const yearEnd = { observado: OBSERVADO + 50, provisional: true };
+    const s = foreignSalaryForYear(INCOME_YEAR, TODAY, yearEnd);
     expect(s.stubs).toHaveLength(3);
-    expect(s.incomeUsd).toBe(3 * (20_000 - 1_240 - 290));
-    expect(s.grossClp).toBe(Math.round(s.incomeUsd * OBSERVADO));
+    // Circular 31/2021 §1.2.2.2.2 a) i): only Chilean-law contributions come off an art. 42 N°1 income.
+    expect(s.incomeUsd).toBe(3 * 20_000);
+    expect(s.stubs.map((x) => x.ficaUsd)).toEqual([1_530, 1_530, 1_530]);
+    // Art. 41 A N°7 letra a) (Circular 31 §1.3.2.2): the year-end parity for a person, no reajuste.
+    expect(s.stubs.every((x) => x.observado === yearEnd.observado)).toBe(true);
+    expect(s.grossClp).toBe(Math.round(s.incomeUsd * yearEnd.observado));
     const line24 = buildF1040Draft(INCOME_YEAR, TODAY).lines["24"]!;
     expect(s.usTaxUsd).toBe(line24);
     expect(s.usTaxSource).toBe("draft");
-    expect(s.usTaxClp).toBe(Math.round(line24 * OBSERVADO));
+    expect(s.usTaxClp).toBe(Math.round(line24 * yearEnd.observado));
     expect(s.netClp).toBe(s.grossClp - s.usTaxClp);
     expect(s.creditClp).toBe(Math.round(Math.min(s.usTaxClp, FOREIGN_TAX_CREDIT_CAP * s.grossClp)));
+    expect(s.provisional).toBe(true);
+    expect(() => foreignSalaryForYear(INCOME_YEAR, TODAY, { observado: 0, provisional: false })).toThrow(/observado/);
   });
 
   it("sums the foreign broker's interest at the year-end observado", () => {
@@ -128,10 +139,12 @@ describe("foreign income in the F22 draft", () => {
     expect(i.clp).toBe(20 * OBSERVADO);
   });
 
-  it("drafts 1030 in línea 12 (161 = 1098 + 1030), the credit in 748 / 1018, the interest in 1104", () => {
+  it("drafts 1030 in línea 13 (161 = 1098 + 1030), the credit in 748 / 1018, the interest in 1104, all at one year-end rate", () => {
     const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { usdFx: { load: noUsd } });
     const s = d.foreignSalary;
     expect(d.taxComputed).toBe(true);
+    expect(s.grossClp).toBe(Math.round(3 * 20_000 * OBSERVADO));
+    expect(s.stubs[0]!.observado).toBe(OBSERVADO);
     expect(d.draft[1030]).toBe(s.netClp);
     expect(d.draft[161]).toBe((d.draft[1098] ?? 0) + s.netClp);
     expect(d.draft[748]).toBe(s.creditClp);
