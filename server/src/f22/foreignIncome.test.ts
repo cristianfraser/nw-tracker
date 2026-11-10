@@ -5,7 +5,7 @@ import { computeF22Tax } from "./chain.js";
 import { buildF22Draft } from "./draft.js";
 import { foreignInterestForYear, foreignSalaryForYear } from "./foreignIncome.js";
 import { f22ForeignSalaryCreditCap } from "./identities.js";
-import { buildF1040Draft } from "../f1040Draft.js";
+import { buildF1040Draft } from "../us1040/draft.js";
 import { FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
 import { applyEmploymentPayslips } from "../payslipsApply.js";
 import type { UsdFxDisposalLoader } from "./usdFx.js";

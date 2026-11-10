@@ -7,7 +7,7 @@
  * Writes nothing. The MAGI defaults to the 1040 draft's line 9 of each year (wages + interest + dividends, taking
  * the draft's lines as the demo has them); `--magi=` overrides it.
  */
-import { buildF1040Draft } from "../src/f1040Draft.js";
+import { buildF1040Draft } from "../src/us1040/draft.js";
 import { convertCurrency, isCurrencyCode } from "../src/rates.js";
 import { form8582 } from "../src/us1040/form8582.js";
 import { form8621Inputs, form8621RollForward } from "../src/us1040/form8621.js";

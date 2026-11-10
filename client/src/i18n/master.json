@@ -6841,9 +6841,61 @@
           "en": "No state withholding on the pay stubs (a job in a state without income tax): no state return is drafted.",
           "es": "Las liquidaciones no retienen impuesto estatal (un trabajo en un estado sin impuesto a la renta): no se prepara declaración estatal."
         },
-        "first_year_full_resident": {
-          "en": "First US year: a dual-status year, drafted as a full resident year.",
-          "es": "Primer año en EE.UU.: un año de doble estatus, preparado como residente todo el año."
+        "residency_undeclared": {
+          "en": "No tax residency is declared: the year is drafted as a full-year resident from the W-2s and the US bank interest only. Declare the residency in Settings to draft the worldwide return.",
+          "es": "No hay residencia tributaria declarada: el año se prepara como residente todo el año, solo con los W-2 y los intereses de bancos de EE.UU. Declara la residencia en Configuración para preparar la declaración mundial."
+        },
+        "dual_status": {
+          "en": "Dual-status year (Pub. 519): this return covers the resident part from the residency day (worldwide income received or realized from then); no standard deduction (box 12c on the 2025 form); the nonresident part's US-source dividends are on the attached statement.",
+          "es": "Año de doble estatus (Pub. 519): esta declaración cubre la parte residente desde el día de la residencia (ingresos mundiales recibidos o realizados desde entonces); sin deducción estándar (casilla 12c en el formulario 2025); los dividendos de fuente estadounidense de la parte no residente van en el anexo."
+        },
+        "dual_status_statement_tax_line_16": {
+          "en": "The nonresident statement's tax is added to line 16 (a reading the sources read do not quote; the alternative is Schedule 2).",
+          "es": "El impuesto del anexo de no residente se suma a la línea 16 (una lectura que las fuentes leídas no citan; la alternativa es el anexo 2)."
+        },
+        "withholding_1042s_line_25c": {
+          "en": "US tax withheld on dividends by a broker abroad (Form 1042-S) is a payment on line 25c, never a foreign tax.",
+          "es": "El impuesto de EE.UU. retenido sobre dividendos por un corredor extranjero (formulario 1042-S) es un pago en la línea 25c, nunca un impuesto extranjero."
+        },
+        "qualified_holding_period_not_tested": {
+          "en": "Qualified dividends: the holding period (more than 60 days of the 121 around the ex-dividend date) is not tested — no ex-dividend dates are on file.",
+          "es": "Dividendos calificados: no se verifica el período de tenencia (más de 60 de los 121 días en torno a la fecha ex-dividendo) — no hay fechas ex-dividendo registradas."
+        },
+        "wash_sales_not_modelled": {
+          "en": "Wash sales (§1091) are not applied to the stocks and ETFs; they do not reach the coins.",
+          "es": "No se aplican las ventas ficticias (wash sales, §1091) a las acciones y ETF; no alcanzan a las criptomonedas."
+        },
+        "no_step_up_on_residency": {
+          "en": "Basis is the historic cost in dollars at each purchase day: becoming a resident does not step it up.",
+          "es": "La base es el costo histórico en dólares de cada día de compra: hacerse residente no la revalúa."
+        },
+        "pfic_outside_schedule_d": {
+          "en": "Foreign funds (the Chilean fund and ETF, a UCITS line) are PFICs: Form 8621 owns their gains, not Schedule D.",
+          "es": "Los fondos extranjeros (el fondo y el ETF chilenos, una línea UCITS) son PFIC: sus ganancias van en el formulario 8621, no en el anexo D."
+        },
+        "treaty_pensions_deferred": {
+          "en": "The AFP, AFC and APV are read as treaty pensions (Art. 18(4); the APV assumed): their earnings are not income until paid out.",
+          "es": "La AFP, la AFC y el APV se leen como pensiones del convenio (art. 18(4); el APV se supone): sus rentas no son ingreso hasta que se pagan."
+        },
+        "fx_daily_spot": {
+          "en": "Every peso amount converts at the USD/CLP rate of its own day: cost at the purchase day, proceeds at the sale day, income at its receipt day.",
+          "es": "Cada monto en pesos se convierte al tipo USD/CLP de su propio día: el costo al día de compra, el producto al día de venta, el ingreso al día en que se recibe."
+        },
+        "section_988_not_modelled": {
+          "en": "Exchange gains and losses on pesos (§988) are not modelled.",
+          "es": "No se modelan las ganancias y pérdidas cambiarias sobre pesos (§988)."
+        },
+        "form_2210_not_modelled": {
+          "en": "The underpayment penalty (Form 2210) is not modelled.",
+          "es": "No se modela la multa por pago insuficiente (formulario 2210)."
+        },
+        "schedules_not_wired": {
+          "en": "Schedule E, Form 8582, Form 8621 and Form 1116 are not composed into this draft yet: their lines read 0.",
+          "es": "El anexo E y los formularios 8582, 8621 y 1116 aún no se integran a este borrador: sus líneas valen 0."
+        },
+        "foreign_accounts_month_end": {
+          "en": "FBAR and Form 8938: the foreign accounts are valued at month ends (a peak between two is not seen); coins at an exchange are left out.",
+          "es": "FBAR y formulario 8938: las cuentas extranjeras se valoran a fin de mes (no se ve un máximo entre dos); las criptomonedas en un exchange quedan fuera."
         },
         "open_year": {
           "en": "{{year}} has not ended: the pay stubs to date, not the year's total.",
@@ -6921,9 +6973,37 @@
           "en": "Total wages",
           "es": "Total sueldos"
         },
+        "2a": {
+          "en": "Tax-exempt interest",
+          "es": "Intereses exentos"
+        },
         "2b": {
           "en": "Taxable interest",
           "es": "Intereses gravados"
+        },
+        "3a": {
+          "en": "Qualified dividends",
+          "es": "Dividendos calificados"
+        },
+        "3b": {
+          "en": "Ordinary dividends",
+          "es": "Dividendos ordinarios"
+        },
+        "7": {
+          "en": "Capital gain or (loss) (Schedule D)",
+          "es": "Ganancia o (pérdida) de capital (anexo D)"
+        },
+        "8": {
+          "en": "Additional income (Schedule 1, line 10)",
+          "es": "Ingreso adicional (anexo 1, línea 10)"
+        },
+        "19": {
+          "en": "Child tax credit",
+          "es": "Crédito por hijos"
+        },
+        "20": {
+          "en": "Schedule 3, line 8 (foreign tax credit)",
+          "es": "Anexo 3, línea 8 (crédito por impuestos extranjeros)"
         },
         "9": {
           "en": "Total income",
@@ -6938,8 +7018,8 @@
           "es": "Ingreso bruto ajustado"
         },
         "12": {
-          "en": "Standard deduction",
-          "es": "Deducción estándar"
+          "en": "Standard deduction (0 on a dual-status return)",
+          "es": "Deducción estándar (0 en una declaración de doble estatus)"
         },
         "13": {
           "en": "Qualified business income deduction",
@@ -6994,8 +7074,8 @@
           "es": "Impuesto federal retenido (formularios 1099)"
         },
         "25c": {
-          "en": "Federal tax withheld (other forms: Form 8959)",
-          "es": "Impuesto federal retenido (otros formularios: 8959)"
+          "en": "Federal tax withheld (other forms: Form 8959, Form 1042-S)",
+          "es": "Impuesto federal retenido (otros formularios: 8959, 1042-S)"
         },
         "25d": {
           "en": "Total federal tax withheld",
@@ -7117,6 +7197,149 @@
           "en": "Additional Medicare tax owed (Form 8959): {{amount}}",
           "es": "Impuesto Medicare adicional (formulario 8959): {{amount}}"
         }
+      },
+      "residency": {
+        "full": { "en": "US tax resident all year.", "es": "Residente tributario en EE.UU. todo el año." },
+        "dual_status": { "en": "Dual-status year: US tax resident from {{from}}.", "es": "Año de doble estatus: residente tributario en EE.UU. desde el {{from}}." },
+        "nonresident": { "en": "Not a US tax resident in {{year}}.", "es": "No residente tributario en EE.UU. en {{year}}." },
+        "undeclared": { "en": "No tax residency declared.", "es": "Sin residencia tributaria declarada." }
+      },
+      "notDrafted": {
+        "nonresident_alien": {
+          "en": "A nonresident alien with US wages files Form 1040-NR, which the app does not draft. The W-2s below are what the year's pay stubs report.",
+          "es": "Un extranjero no residente con sueldos de EE.UU. presenta el formulario 1040-NR, que la aplicación no prepara. Los W-2 de abajo son lo que reportan las liquidaciones del año."
+        }
+      },
+      "schedules": {
+        "title": { "en": "Schedules and worksheets", "es": "Anexos y hojas de cálculo" },
+        "explain": {
+          "en": "The lines behind the return, as each form numbers them; whole dollars (the worksheet's 15 % and 20 % lines to the cent).",
+          "es": "Las líneas detrás de la declaración, con la numeración de cada formulario; dólares enteros (las líneas al 15 % y al 20 % de la hoja, al centavo)."
+        },
+        "amount": { "en": "Amount", "es": "Monto" },
+        "forms": {
+          "schedule_b": { "en": "Schedule B · interest and ordinary dividends", "es": "Anexo B · intereses y dividendos ordinarios" },
+          "schedule_d": { "en": "Schedule D · capital gains and losses", "es": "Anexo D · ganancias y pérdidas de capital" },
+          "schedule_1": { "en": "Schedule 1 · additional income", "es": "Anexo 1 · ingreso adicional" },
+          "schedule_2": { "en": "Schedule 2 · additional taxes", "es": "Anexo 2 · impuestos adicionales" },
+          "qdcg_worksheet": { "en": "Qualified Dividends and Capital Gain Tax Worksheet", "es": "Hoja de impuesto sobre dividendos calificados y ganancias de capital" },
+          "form_8960": { "en": "Form 8960 · net investment income tax", "es": "Formulario 8960 · impuesto sobre el ingreso neto de inversiones" }
+        },
+        "lines": {
+          "schedule_b": {
+            "2": { "en": "Total interest", "es": "Total intereses" },
+            "4": { "en": "Taxable interest → 1040 line 2b", "es": "Intereses gravados → línea 2b del 1040" },
+            "6": { "en": "Ordinary dividends → 1040 line 3b", "es": "Dividendos ordinarios → línea 3b del 1040" }
+          },
+          "schedule_d": {
+            "1b": { "en": "Short-term, basis reported (box A)", "es": "Corto plazo, base informada (casilla A)" },
+            "2": { "en": "Short-term, basis not reported (box B)", "es": "Corto plazo, base no informada (casilla B)" },
+            "3": { "en": "Short-term, no 1099-B (box C / I)", "es": "Corto plazo, sin 1099-B (casilla C / I)" },
+            "6": { "en": "Short-term loss carried from last year", "es": "Pérdida de corto plazo arrastrada del año anterior" },
+            "7": { "en": "Net short-term gain or (loss)", "es": "Ganancia o (pérdida) neta de corto plazo" },
+            "8b": { "en": "Long-term, basis reported (box D)", "es": "Largo plazo, base informada (casilla D)" },
+            "9": { "en": "Long-term, basis not reported (box E)", "es": "Largo plazo, base no informada (casilla E)" },
+            "10": { "en": "Long-term, no 1099-B (box F / L)", "es": "Largo plazo, sin 1099-B (casilla F / L)" },
+            "13": { "en": "Capital gain distributions", "es": "Distribuciones de ganancias de capital" },
+            "14": { "en": "Long-term loss carried from last year", "es": "Pérdida de largo plazo arrastrada del año anterior" },
+            "15": { "en": "Net long-term gain or (loss)", "es": "Ganancia o (pérdida) neta de largo plazo" },
+            "16": { "en": "Net gain or (loss)", "es": "Ganancia o (pérdida) neta" },
+            "21": { "en": "Loss allowed this year", "es": "Pérdida admitida este año" }
+          },
+          "schedule_1": {
+            "5": { "en": "Rental real estate (Schedule E)", "es": "Bienes raíces arrendados (anexo E)" },
+            "8z": { "en": "Other income (Form 8621 mark-to-market)", "es": "Otros ingresos (marca a mercado del formulario 8621)" },
+            "9": { "en": "Total other income", "es": "Total otros ingresos" },
+            "10": { "en": "Additional income → 1040 line 8", "es": "Ingreso adicional → línea 8 del 1040" },
+            "26": { "en": "Adjustments to income → 1040 line 10", "es": "Ajustes al ingreso → línea 10 del 1040" }
+          },
+          "schedule_2": {
+            "3": { "en": "Part I → 1040 line 17", "es": "Parte I → línea 17 del 1040" },
+            "11": { "en": "Additional Medicare tax (Form 8959)", "es": "Impuesto adicional de Medicare (formulario 8959)" },
+            "12": { "en": "Net investment income tax (Form 8960)", "es": "Impuesto sobre el ingreso neto de inversiones (formulario 8960)" },
+            "21": { "en": "Other taxes → 1040 line 23", "es": "Otros impuestos → línea 23 del 1040" }
+          },
+          "qdcg_worksheet": {
+            "1": { "en": "Taxable income", "es": "Ingreso imponible" },
+            "2": { "en": "Qualified dividends", "es": "Dividendos calificados" },
+            "3": { "en": "Net capital gain", "es": "Ganancia neta de capital" },
+            "5": { "en": "Ordinary part", "es": "Parte ordinaria" },
+            "6": { "en": "0 % edge", "es": "Tope del 0 %" },
+            "9": { "en": "Taxed at 0 %", "es": "Gravado al 0 %" },
+            "13": { "en": "15 % edge", "es": "Tope del 15 %" },
+            "17": { "en": "Taxed at 15 %", "es": "Gravado al 15 %" },
+            "18": { "en": "Tax at 15 %", "es": "Impuesto al 15 %" },
+            "20": { "en": "Taxed at 20 %", "es": "Gravado al 20 %" },
+            "21": { "en": "Tax at 20 %", "es": "Impuesto al 20 %" },
+            "22": { "en": "Tax on the ordinary part", "es": "Impuesto sobre la parte ordinaria" },
+            "23": { "en": "Tax with the preferential rates", "es": "Impuesto con las tasas preferentes" },
+            "24": { "en": "Ordinary tax on all of it", "es": "Impuesto ordinario sobre todo" },
+            "25": { "en": "Line 16 tax (the smaller)", "es": "Impuesto de la línea 16 (el menor)" }
+          },
+          "form_8960": {
+            "1": { "en": "Taxable interest", "es": "Intereses gravados" },
+            "2": { "en": "Ordinary dividends", "es": "Dividendos ordinarios" },
+            "4a": { "en": "Rental income (Schedule E)", "es": "Ingreso por arriendos (anexo E)" },
+            "5a": { "en": "Net gain (incl. §1296 inclusions)", "es": "Ganancia neta (incl. inclusiones del §1296)" },
+            "8": { "en": "Total investment income", "es": "Total ingreso de inversiones" },
+            "12": { "en": "Net investment income", "es": "Ingreso neto de inversiones" },
+            "13": { "en": "Modified adjusted gross income", "es": "Ingreso bruto ajustado modificado" },
+            "14": { "en": "Threshold", "es": "Umbral" },
+            "15": { "en": "MAGI above the threshold", "es": "MAGI sobre el umbral" },
+            "16": { "en": "The smaller", "es": "El menor" },
+            "17": { "en": "Tax (3,8 %)", "es": "Impuesto (3,8 %)" }
+          }
+        }
+      },
+      "scheduleB": {
+        "title": { "en": "Schedule B · payers", "es": "Anexo B · pagadores" },
+        "interest": { "en": "Interest (Part I)", "es": "Intereses (parte I)" },
+        "dividends": { "en": "Dividends (Part II) · qualified {{qualified}}", "es": "Dividendos (parte II) · calificados {{qualified}}" },
+        "payer": { "en": "Payer", "es": "Pagador" },
+        "items": { "en": "Payments", "es": "Pagos" }
+      },
+      "form8949": {
+        "title": { "en": "Form 8949 · sales", "es": "Formulario 8949 · ventas" },
+        "carryover": {
+          "en": "Capital loss carried in: {{inShort}} short-term, {{inLong}} long-term · carried to next year: {{outShort}} short-term, {{outLong}} long-term.",
+          "es": "Pérdida de capital arrastrada: {{inShort}} de corto plazo, {{inLong}} de largo plazo · al año siguiente: {{outShort}} de corto plazo, {{outLong}} de largo plazo."
+        },
+        "box": { "en": "Box", "es": "Casilla" },
+        "description": { "en": "Description", "es": "Descripción" },
+        "acquired": { "en": "Acquired", "es": "Adquirido" },
+        "sold": { "en": "Sold", "es": "Vendido" },
+        "proceeds": { "en": "Proceeds", "es": "Producto" },
+        "cost": { "en": "Cost", "es": "Costo" },
+        "gain": { "en": "Gain or (loss)", "es": "Ganancia o (pérdida)" },
+        "term": {
+          "short_term": { "en": "short", "es": "corto" },
+          "long_term": { "en": "long", "es": "largo" }
+        }
+      },
+      "dualStatus": {
+        "title": { "en": "Dual-status statement · January 1 to the day before {{from}}", "es": "Anexo de doble estatus · 1 de enero al día anterior al {{from}}" },
+        "explain": {
+          "en": "US-source dividends of the nonresident part, taxed at the rate withheld (30 % before 2024-02-01, the convention's 15 % from then) with no deductions: tax {{tax}}, withheld {{withheld}}.",
+          "es": "Dividendos de fuente estadounidense de la parte no residente, gravados a la tasa retenida (30 % antes del 2024-02-01, el 15 % del convenio desde entonces) sin deducciones: impuesto {{tax}}, retenido {{withheld}}."
+        },
+        "date": { "en": "Paid", "es": "Pagado" },
+        "instrument": { "en": "Instrument", "es": "Instrumento" },
+        "gross": { "en": "Gross", "es": "Bruto" },
+        "rate": { "en": "Rate", "es": "Tasa" },
+        "tax": { "en": "Tax", "es": "Impuesto" },
+        "withheld": { "en": "Withheld", "es": "Retenido" }
+      },
+      "foreignAccounts": {
+        "title": { "en": "Foreign accounts · Schedule B Part III, FBAR, Form 8938", "es": "Cuentas extranjeras · anexo B parte III, FBAR, formulario 8938" },
+        "summary": {
+          "en": "Aggregate at year end {{yearEnd}}, highest month end {{peak}}. FBAR (over US$10.000 at any time): {{fbar}}. Form 8938 (over US$50.000 at year end or US$75.000 at any time): {{f8938}}. The app files neither.",
+          "es": "Total al cierre del año {{yearEnd}}, mayor fin de mes {{peak}}. FBAR (más de US$10.000 en algún momento): {{fbar}}. Formulario 8938 (más de US$50.000 al cierre o US$75.000 en algún momento): {{f8938}}. La aplicación no presenta ninguno."
+        },
+        "required": { "en": "required", "es": "requerido" },
+        "notRequired": { "en": "not required", "es": "no requerido" },
+        "account": { "en": "Account", "es": "Cuenta" },
+        "yearEnd": { "en": "Year end", "es": "Cierre del año" },
+        "peak": { "en": "Highest month end", "es": "Mayor fin de mes" }
       },
       "settlement": {
         "title": {

@@ -27,6 +27,9 @@
  * Married filing jointly $250,000). The 2025 Pub. 15-T withholding deduction (15,000) was not
  * re-read then and stands as entered.
  *
+ * The capital-gain edges, the capital-loss limit and the NIIT figures follow
+ * `docs/us-1040-readings.md` §9–§10 (Rev. Procs. 2023-34 / 2024-40 §3.12, §1211(b), §1411(b)).
+ *
  * Amounts are dollars; rates are fractions (0.062 = 6,2 %).
  */
 
@@ -73,6 +76,17 @@ export type UsTaxYearParameters = {
   supplementalRate: number;
   /** … and the mandatory one on what exceeds it. */
   supplementalRateAboveMillion: number;
+  /**
+   * The Qualified Dividends and Capital Gain Tax Worksheet's edges on taxable income: qualified
+   * dividends and net capital gain are taxed at 0 % up to `zeroUpTo`, 15 % up to `fifteenUpTo`,
+   * 20 % above (worksheet lines 6 and 13).
+   */
+  capitalGainBrackets: Record<UsFilingStatus, { zeroUpTo: number; fifteenUpTo: number }>;
+  /** Schedule D line 21: a net capital loss is deducted up to this a year (§1211(b); not indexed), the rest carried. */
+  capitalLossLimit: number;
+  /** Form 8960: the net investment income tax rate and its MAGI threshold by filing status (§1411(b); not indexed). */
+  niitRate: number;
+  niitThreshold: Record<UsFilingStatus, number>;
 };
 
 const TCJA_RATES = [0.1, 0.12, 0.22, 0.24, 0.32, 0.35, 0.37] as const;
@@ -93,6 +107,9 @@ const SHARED_FICA = {
   additionalMedicareThreshold: { single: 200_000, married_jointly: 250_000 },
   supplementalRate: 0.22,
   supplementalRateAboveMillion: 0.37,
+  capitalLossLimit: 3_000,
+  niitRate: 0.038,
+  niitThreshold: { single: 200_000, married_jointly: 250_000 },
 } as const;
 
 export const US_TAX_YEARS: Readonly<Record<number, UsTaxYearParameters>> = {
@@ -112,6 +129,8 @@ export const US_TAX_YEARS: Readonly<Record<number, UsTaxYearParameters>> = {
     iraLimit: 7_000,
     iraCatchUp: 1_000,
     rothIraPhaseOut: { single: { from: 146_000, to: 161_000 }, married_jointly: { from: 230_000, to: 240_000 } },
+    // Rev. Proc. 2023-34 §3.12 (docs/us-1040-readings.md §9).
+    capitalGainBrackets: { single: { zeroUpTo: 47_025, fifteenUpTo: 518_900 }, married_jointly: { zeroUpTo: 94_050, fifteenUpTo: 583_750 } },
   },
   2025: {
     brackets: {
@@ -129,6 +148,8 @@ export const US_TAX_YEARS: Readonly<Record<number, UsTaxYearParameters>> = {
     iraLimit: 7_000,
     iraCatchUp: 1_000,
     rothIraPhaseOut: { single: { from: 150_000, to: 165_000 }, married_jointly: { from: 236_000, to: 246_000 } },
+    // Rev. Proc. 2024-40 §3.12; the 2025 worksheet prints lines 6 and 13 (docs/us-1040-readings.md §9).
+    capitalGainBrackets: { single: { zeroUpTo: 48_350, fifteenUpTo: 533_400 }, married_jointly: { zeroUpTo: 96_700, fifteenUpTo: 600_050 } },
   },
   2026: {
     brackets: {
@@ -147,6 +168,8 @@ export const US_TAX_YEARS: Readonly<Record<number, UsTaxYearParameters>> = {
     iraLimit: 7_500,
     iraCatchUp: 1_100,
     rothIraPhaseOut: { single: { from: 153_000, to: 168_000 }, married_jointly: { from: 242_000, to: 252_000 } },
+    // provisional: Rev. Proc. 2025-32 as entered, not re-read against the 2026 worksheet.
+    capitalGainBrackets: { single: { zeroUpTo: 49_450, fifteenUpTo: 545_500 }, married_jointly: { zeroUpTo: 98_900, fifteenUpTo: 613_700 } },
   },
 };
 
@@ -246,4 +269,20 @@ export function usMedicareTax(wages: number, priorWagesInYear: number, year: num
   const p = usTaxYear(year);
   const above = Math.max(0, priorWagesInYear + wages - Math.max(p.additionalMedicareWithholdingThreshold, priorWagesInYear));
   return cents(wages * p.medicareRate + above * p.additionalMedicareRate);
+}
+
+/**
+ * The Chile–US income tax convention's withholding rule on US dividends paid to a Chilean resident
+ * (docs/us-1040-readings.md §2): Treasury's entry-into-force announcement applies the treaty's
+ * withholding «for amounts paid or credited on or after February 1, 2024»; before that the statutory
+ * 30 % of §871(a)(1) applied (no treaty), from then Art. 10(2)(b)'s 15 %.
+ */
+export const CHILE_US_TREATY_WITHHOLDING_FROM = "2024-02-01";
+export const US_NRA_DIVIDEND_RATE_NO_TREATY = 0.3;
+export const CHILE_US_TREATY_DIVIDEND_RATE = 0.15;
+
+/** The US withholding rate on a US dividend paid to a Chilean resident on `payDay` (ISO). */
+export function usDividendWithholdingRateForChileanResident(payDay: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payDay)) throw new Error(`US withholding: pay day «${payDay}» is not YYYY-MM-DD`);
+  return payDay >= CHILE_US_TREATY_WITHHOLDING_FROM ? CHILE_US_TREATY_DIVIDEND_RATE : US_NRA_DIVIDEND_RATE_NO_TREATY;
 }

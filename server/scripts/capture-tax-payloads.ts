@@ -16,8 +16,8 @@ import fs from "node:fs";
 import { chileWallClockNow } from "../src/chileDate.js";
 import { buildF22Draft } from "../src/f22/draft.js";
 import { availableF22TaxYears, buildF22Payload } from "../src/f22/payload.js";
-import { availableUsTaxYears } from "../src/f1040Draft.js";
-import { buildF1040Payload } from "../src/f1040Payload.js";
+import { availableUsTaxYears } from "../src/us1040/draft.js";
+import { buildF1040Payload } from "../src/us1040/payload.js";
 
 if (!process.env.NW_TRACKER_TEST_DB?.trim()) throw new Error("set NW_TRACKER_TEST_DB to the database to capture");
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);

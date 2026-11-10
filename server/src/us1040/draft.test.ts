@@ -8,21 +8,46 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
-import { db } from "./db.js";
-import { availableUsTaxYears, buildF1040Draft } from "./f1040Draft.js";
-import { f1040Settlement, filedF1040, linkF1040Settlement, recordFiledF1040 } from "./f1040Filed.js";
-import { assertF1040Identities, computeF1040Lines, f1040PrintedLine, f1040RoleOfPrintedLine, type F1040Lines } from "./f1040Identities.js";
-import { buildF1040Payload } from "./f1040Payload.js";
-import { applyEmploymentPayslips } from "./payslipsApply.js";
-import { registerTaxReturnRoutes } from "./routes/taxReturn.js";
-import { usBracketTax, usForm1040Tax, usTaxYear } from "./usLegalParameters.js";
-import { DEMO_US_BANK_ISSUER } from "./taxFacts/payers.js";
-import { usBankInterestForYear } from "./usBankAccounts.js";
-import { usW2sFromStubLines, type UsW2Stub } from "./usW2.js";
-import { usPayDates, usPayStub, usW2StubOf, usW2sOfStubs, newUsPayrollYtd, type UsPayStub } from "./demoData/usPayroll.js";
-import type { UsW2Job } from "./demoData/person.js";
+import { db } from "../db.js";
+import { availableUsTaxYears, buildF1040Draft } from "./draft.js";
+import { f1040Settlement, filedF1040, linkF1040Settlement, recordFiledF1040 } from "./filed.js";
+import { assertF1040Identities, computeF1040Lines, f1040PrintedLine, f1040RoleOfPrintedLine, type F1040Inputs, type F1040Lines } from "./identities.js";
+import { buildF1040Payload } from "./payload.js";
+import { applyEmploymentPayslips } from "../payslipsApply.js";
+import { registerTaxReturnRoutes } from "../routes/taxReturn.js";
+import { usBracketTax, usForm1040Tax, usTaxYear } from "../usLegalParameters.js";
+import { declareTaxResidency } from "../taxResidency.js";
+import { DEMO_US_BANK_ISSUER } from "../taxFacts/payers.js";
+import { usBankInterestForYear } from "../usBankAccounts.js";
+import { usW2sFromStubLines, type UsW2Stub } from "../usW2.js";
+import { usPayDates, usPayStub, usW2StubOf, usW2sOfStubs, newUsPayrollYtd, type UsPayStub } from "../demoData/usPayroll.js";
+import type { UsW2Job } from "../demoData/person.js";
 
 const PREFIX = "vitest-f1040/";
+
+/** Every input at zero (the ordinary tax on nothing): a test sets what it reads. */
+const ZERO_INPUTS: F1040Inputs = {
+  wages1a: 0,
+  taxExemptInterest2a: 0,
+  interest2b: 0,
+  qualifiedDividends3a: 0,
+  ordinaryDividends3b: 0,
+  capitalGain7: 0,
+  additionalIncome8: 0,
+  adjustments10: 0,
+  deduction12: 0,
+  qbiDeduction13: 0,
+  additionalDeductions13b: 0,
+  taxOn: () => 0,
+  schedule2Part1_17: 0,
+  childTaxCredit19: 0,
+  schedule3Nonrefundable20: 0,
+  otherTaxes23: 0,
+  withholdingW2_25a: 0,
+  withholding1099_25b: 0,
+  withholdingOther25c: 0,
+  schedule3Credits31: 0,
+};
 const TODAY = "2026-06-15";
 
 /** A synthetic W-2 job (test employer; the 89 EIN prefix is never issued). */
@@ -176,14 +201,11 @@ describe("W-2 boxes from the stub lines", () => {
 describe("Form 1040 arithmetic and tax", () => {
   it("computes the chain and checks a return against it", () => {
     const inputs = {
+      ...ZERO_INPUTS,
       wages1a: 120_000,
-      interest2b: 0,
-      standardDeduction12: 15_750,
+      deduction12: 15_750,
       taxOn: (t: number) => usForm1040Tax(t, "single", 2025),
-      otherTaxes23: 0,
       withholdingW2_25a: 20_000,
-      withholdingOther25c: 0,
-      schedule3Credits31: 0,
     };
     const lines = computeF1040Lines(inputs);
     expect(lines["15"]).toBe(104_250);
@@ -251,7 +273,7 @@ describe("the 1040 draft", () => {
     const deduction = usTaxYear(2025).standardDeduction.single;
     const taxable = Math.round(w2.wages) - deduction;
     expect(d).toMatchObject({ taxYear: 2025, provisional: false, lawYear: 2025, filingStatus: "single", stubs: 26, filed: null });
-    expect(d.notes).toEqual(["no_state_return"]);
+    expect(d.notes).toEqual(["no_state_return", "residency_undeclared"]);
     expect(d.lines).toMatchObject({
       "1a": Math.round(w2.wages),
       "11": Math.round(w2.wages),
@@ -263,12 +285,12 @@ describe("the 1040 draft", () => {
       "25c": 0,
     });
     expect(d.fica).toEqual({ socialSecurity: w2.socialSecurityTax, medicare: w2.medicareTax });
-    expect(d.interest).toEqual({ lines: [], usd: 0 });
+    expect(d.interest).toEqual([]);
     expect(d.lines["2b"]).toBe(0);
     const refund = Math.round(w2.federalWithheld) - (d.lines["24"] ?? 0);
     expect(refund > 0 ? d.lines["35a"] : d.lines["37"]).toBe(Math.abs(refund));
-    // The first US year starts in April: a dual-status year drafted as a full resident year.
-    expect(buildF1040Draft(2024, TODAY).notes).toEqual(["no_state_return", "first_year_full_resident"]);
+    // No residency declared: every year is drafted as before (a full-year resident, W-2s and US bank interest).
+    expect(buildF1040Draft(2024, TODAY).notes).toEqual(["no_state_return", "residency_undeclared"]);
     expect(availableUsTaxYears(TODAY)).toEqual([2026, 2025, 2024]);
   });
 
@@ -291,7 +313,7 @@ describe("the 1040 draft", () => {
     ]);
     const d = buildF1040Draft(2025, TODAY);
     const plain = buildF1040Draft(2024, TODAY);
-    expect(d.interest.usd).toBe(100.6);
+    expect(d.interest.reduce((s, i) => s + i.usd, 0)).toBeCloseTo(100.6, 6);
     expect(d.lines["2b"]).toBe(101);
     expect(d.lines["9"]).toBe(d.lines["1a"]! + 101);
     expect(() => assertF1040Identities(d.lines, "2025")).not.toThrow();
@@ -303,7 +325,7 @@ describe("the 1040 draft", () => {
     applyStubs(generatedStubs("2025-12-31"));
     const open = buildF1040Draft(2027, "2027-02-01");
     expect(open).toMatchObject({ provisional: true, lawYear: 2026, stubs: 0, filingStatus: "single" });
-    expect(open.notes).toEqual(["no_state_return", "open_year", "law_provisional"]);
+    expect(open.notes).toEqual(["no_state_return", "residency_undeclared", "open_year", "law_provisional"]);
     expect(() => buildF1040Draft(2027, TODAY)).toThrow(/not started/);
   });
 
@@ -312,14 +334,11 @@ describe("the 1040 draft", () => {
     const d = buildF1040Draft(2025, TODAY);
     // Filed with $200 less tax than the draft computes (the draft owes a little: the bonus is withheld at 22 %).
     const filedLines = computeF1040Lines({
+      ...ZERO_INPUTS,
       wages1a: d.lines["1a"]!,
-      interest2b: 0,
-      standardDeduction12: d.lines["12"]!,
+      deduction12: d.lines["12"]!,
       taxOn: (t) => usForm1040Tax(t, "single", 2025) - 200,
-      otherTaxes23: 0,
       withholdingW2_25a: d.lines["25a"]!,
-      withholdingOther25c: 0,
-      schedule3Credits31: 0,
     });
     recordFiledF1040({ taxYear: 2025, filingStatus: "single", filedOn: "2026-04-10", sourceFile: "vitest/1040-2025.pdf", lines: filedLines });
     // The same return again is a no-op; another one throws.
@@ -370,6 +389,62 @@ describe("the 1040 draft", () => {
       links: [{ kind: "refund", account_id: accountId, movement_id: credit, occurred_on: "2026-04-28", amount: refund }],
     });
     db.prepare(`DELETE FROM us_f1040_settlements`).run();
+  });
+});
+
+describe("the 1040 by declared residency", () => {
+  afterEach(() => {
+    db.prepare(`DELETE FROM tax_residency_periods`).run();
+    cleanup();
+  });
+
+  /** A Chilean resident until the day before `usFrom`, a US resident from it. */
+  function declareMove(usFrom: string) {
+    declareTaxResidency({ jurisdiction: "cl", fromDate: "1990-01-01" });
+    declareTaxResidency({ jurisdiction: "us", fromDate: usFrom });
+  }
+
+  it("drafts a dual-status year: the resident part on the 1040, no standard deduction, the nonresident statement's US dividends at the withheld rate", () => {
+    applyStubs(generatedStubs("2026-12-31"));
+    declareMove("2026-07-01");
+    const d = buildF1040Draft(2026, "2026-12-31");
+    expect(d.residency).toEqual({ kind: "dual_status", from: "2026-07-01" });
+    expect(d.residentWindow).toEqual({ fromYmd: "2026-07-01", throughYmd: "2026-12-31" });
+    expect(d.lines["12"]).toBe(0);
+    expect(d.notes).toEqual(expect.arrayContaining(["dual_status", "dual_status_statement_tax_line_16", "no_step_up_on_residency", "schedules_not_wired"]));
+    // Every resident-part item falls on or after the residency day; the statement's before it.
+    for (const x of [...d.interest, ...d.dividends]) expect(x.date >= "2026-07-01").toBe(true);
+    const s = d.dualStatusStatement!;
+    expect(s.rows.length).toBeGreaterThan(0);
+    for (const r of s.rows) {
+      expect(r.date < "2026-07-01").toBe(true);
+      expect(r.ratePct).toBe(15);
+    }
+    expect(s.tax).toBe(Math.round(s.rows.reduce((a, r) => a + r.taxUsd, 0)));
+    // Line 16 carries the statement's tax; 25c its withholding with the resident part's 1042-S.
+    const ordinary = d.qdcgWorksheet ? d.qdcgWorksheet["25"] : usForm1040Tax(d.lines["15"]!, "single", 2026);
+    expect(d.lines["16"]).toBe(ordinary + s.tax);
+    expect(d.lines["25c"]).toBe(d.withholding1042S + s.withheld);
+    expect(() => assertF1040Identities(d.lines, "dual", 2026)).not.toThrow();
+    const p = buildF1040Payload(2026, "2026-12-31");
+    expect(p).toMatchObject({ drafted: true, residency: { kind: "dual_status", from: "2026-07-01" } });
+    expect(p.dual_status_statement?.rows.length).toBe(s.rows.length);
+    expect(p.schedules.map((x) => x.form)).toEqual(expect.arrayContaining(["schedule_b", "schedule_d", "schedule_1", "schedule_2", "form_8960"]));
+  });
+
+  it("drafts a full resident year with its standard deduction, and no 1040 for a nonresident year (a Form 1040-NR filer)", () => {
+    applyStubs(generatedStubs("2025-12-31"));
+    declareMove("2025-01-01");
+    const full = buildF1040Draft(2025, TODAY);
+    expect(full.residency.kind).toBe("full");
+    expect(full.lines["12"]).toBe(usTaxYear(2025).standardDeduction.single);
+    expect(full.dualStatusStatement).toBeNull();
+    // 2024: a Chilean resident all year with US stubs on file.
+    expect(() => buildF1040Draft(2024, TODAY)).toThrow(/Form 1040-NR/);
+    const p = buildF1040Payload(2024, TODAY);
+    expect(p).toMatchObject({ drafted: false, not_drafted_reason: "nonresident_alien", rows: [], residency: { kind: "nonresident" } });
+    expect(p.w2s).toHaveLength(1);
+    expect(availableUsTaxYears(TODAY)).toEqual([2026, 2025, 2024]);
   });
 });
 
