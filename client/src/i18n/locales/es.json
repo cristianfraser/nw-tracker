@@ -1640,6 +1640,7 @@
       "kwh": "kWh (lectura)",
       "water": "Agua",
       "rent": "Arriendo",
+      "management_fee": "Comisión de administración",
       "mortgage": "Dividendo hipotecario",
       "mortgage_amortization": "Dividendo — amortización",
       "mortgage_extra_amortization": "Dividendo — amortización extra",

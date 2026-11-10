@@ -19,6 +19,7 @@ const KIND_COLORS: Record<RealEstateChartSeriesDto["kind"], string> = {
   internet: "#22c55e",
   gas: "#ef4444",
   contribuciones: "#f97316",
+  management_fee: "#14b8a6",
 };
 
 const ALTERNATE_SATURATION = 0.7;

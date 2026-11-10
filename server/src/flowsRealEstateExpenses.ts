@@ -119,6 +119,7 @@ export const REAL_ESTATE_CHART_KINDS = [
   "internet",
   "gas",
   "contribuciones",
+  "management_fee",
   "mortgage_extra_amortization",
 ] as const;
 

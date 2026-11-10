@@ -1640,6 +1640,7 @@
       "kwh": "kWh (reading)",
       "water": "Water",
       "rent": "Rent",
+      "management_fee": "Management fee",
       "mortgage": "Mortgage",
       "mortgage_amortization": "Mortgage — amortization",
       "mortgage_extra_amortization": "Mortgage — extra amortization",

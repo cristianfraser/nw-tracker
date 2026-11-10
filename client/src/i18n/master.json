@@ -5672,6 +5672,10 @@
         "en": "Rent",
         "es": "Arriendo"
       },
+      "management_fee": {
+        "en": "Management fee",
+        "es": "Comisión de administración"
+      },
       "mortgage": {
         "en": "Mortgage",
         "es": "Dividendo hipotecario"

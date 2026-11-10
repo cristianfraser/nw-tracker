@@ -8,7 +8,9 @@ export type RealEstateBillKind =
   | "contribuciones"
   | "kwh"
   | "water"
-  | "rent";
+  | "rent"
+  /** The agency's commission for renting the place out (a bill of the place the owner pays). */
+  | "management_fee";
 
 /**
  * Kinds a purchase can be assigned/linked to. Excludes `kwh` (meter readings, no bill
@@ -22,6 +24,7 @@ export const REAL_ESTATE_LINKABLE_KINDS: readonly RealEstateBillKind[] = [
   "contribuciones",
   "water",
   "rent",
+  "management_fee",
 ];
 
 /**
