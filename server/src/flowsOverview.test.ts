@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { checkingCashByDay } from "./flowsOverviewCash.js";
+import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
+import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { convertValue } from "./valueConvert.js";
 import { buildFlowsDepositsPayload } from "./flowsDeposits.js";
 import { cachedMortgageCarryingEvents } from "./flowsMortgageCarrying.js";
 import { buildFlowsPlPayload } from "./flowsPl.js";
@@ -16,6 +22,7 @@ import {
   type FlowsOverviewMonthInputs,
 } from "./flowsOverview.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import { monthEndUtcYmd } from "./calendarMonth.js";
 
 const TODAY = "2024-04-15";
 const CHECKING_ID = 20;
@@ -104,7 +111,8 @@ function depositRow(overrides: Partial<FlowsOverviewDepositRow> = {}): FlowsOver
   };
 }
 
-const DAY_EXTRA = { checkingAccountIds: CHECKING, cardPayments: [], checkingValueByDay: checkingValue() };
+const NO_FX: ReadonlyMap<string, number> = new Map();
+const DAY_EXTRA = { checkingAccountIds: CHECKING, cardPayments: [], checkingValueByDay: checkingValue(), cashFxByDay: NO_FX };
 
 const marchDeposits = [depositRow(), depositRow({ kind_slug: "spy", amount_clp: 500_000 })];
 
@@ -129,6 +137,7 @@ function months(
       checkingAccountIds: CHECKING,
       cardPayments: [],
       checkingValueByDay: checkingValue(),
+      cashFxByDay: NO_FX,
       ...overrides,
     },
     mode,
@@ -647,6 +656,32 @@ describe("cash model", () => {
   it("throws when the checking value map misses a month boundary", () => {
     expect(() => months({ checkingValueByDay: checkingValue({}, "2024-03-01") })).toThrow(/checking value not computed/);
   });
+
+  it("the cash fx leg: a month is its days' Σ, the day rows carry each day's, and it enters the identities", () => {
+    // Dollars held in checking across a rate move: the ledger value rose 30.000 with no flow.
+    const value = checkingValue({ "2024-01-01": 1_000_000, "2024-03-07": 1_020_000, "2024-03-20": 1_030_000 });
+    const fx = new Map([
+      ["2024-03-07", 20_000],
+      ["2024-03-20", 10_000],
+      ["2024-03-21", 0],
+    ]);
+    const m = march(months({ income: NO_INCOME, deposits: [], checkingValueByDay: value, cashFxByDay: fx }));
+    expect(m.cash_fx).toBe(30_000);
+    expect(m.cash_change).toBe(30_000);
+    expect(m.cash_unexplained).toBe(0);
+    expect(m.net_worth_change).toBe(30_000);
+    expect(m.investments_change).toBe(0);
+    const days = aggregateFlowsOverviewDays(
+      { income: NO_INCOME, lines: [], cuotaPayByIso: {}, deposits: [], plDaily: [], ...DAY_EXTRA, checkingValueByDay: value, cashFxByDay: fx },
+      "split",
+      "clp"
+    );
+    expect(days.find((r) => r.as_of_date === "2024-03-07")).toMatchObject({ cash_fx: 20_000, cash_change: 20_000, cash_unexplained: 0 });
+    expect(days.find((r) => r.as_of_date === "2024-03-20")).toMatchObject({ cash_fx: 10_000, cash_unexplained: 0 });
+    // A day the rate did not move opens no row.
+    expect(days.find((r) => r.as_of_date === "2024-03-21")).toBeUndefined();
+    expect(flowsOverviewTotals(days.filter((r) => r.period_month.startsWith("2024-03"))).cash_fx).toBe(m.cash_fx);
+  });
 });
 
 describe("buildFlowsOverviewPayload", () => {
@@ -689,12 +724,52 @@ describe("buildFlowsOverviewPayload", () => {
     expect(p.closed.last_12_months.period_month).toBe(lastYm);
     for (const r of [...p.months, ...p.days!]) {
       expect(r.savings).toBe(r.income - r.expenses);
-      expect(r.cash_unexplained).toBe(r.cash_change - (r.savings - r.deposits + r.card_spent - r.card_paid));
+      expect(r.cash_unexplained).toBe(r.cash_change - (r.savings - r.deposits + r.card_spent - r.card_paid + r.cash_fx));
       expect(r.investments_change).toBe(r.deposits + r.deposits_pre_tax + r.pl);
-      expect(r.net_worth_change).toBe(r.savings + r.deposits_pre_tax + r.pl);
+      expect(r.net_worth_change).toBe(r.savings + r.deposits_pre_tax + r.pl + r.cash_fx);
     }
     const windowStart = chileCalendarAddDays(today, -29);
     for (const r of p.days!) expect(r.as_of_date >= windowStart).toBe(true);
     expect(buildFlowsOverviewPayload("clp", "split", null).days).toBeNull();
+  });
+
+  it("the cash fx leg is the holdings in the other currency × the rate's move, by the asset-side rate, days adding up to months", () => {
+    const today = chileCalendarTodayYmd();
+    const checking = accountIdsUnderCheckingAccounts();
+    const dollar = listDollarCheckingAccountIds();
+    const peso = checking.filter((id) => !dollar.includes(id));
+    expect(dollar.length).toBeGreaterThan(0);
+    const usdInClp = (d: string) => convertValue(1, "usd", "clp", d, "asset")!;
+    const clpInUsd = (d: string) => convertValue(1, "clp", "usd", d, "asset")!;
+    const pesosAt = (id: number, d: string) => accountMarkClpAtYmd(id, d)?.value_clp ?? 0;
+
+    // Pesos: the dollar accounts' dollars at the end of the previous day × the sell rate's move.
+    const clp = buildFlowsOverviewPayload("clp", "split", 0);
+    let moved = 0;
+    for (const r of clp.days!) {
+      if (r.as_of_date >= today) continue; // today's rate may be live; the past is pinned
+      const prev = chileCalendarAddDays(r.as_of_date, -1);
+      let expected = 0;
+      for (const id of dollar) expected += usdCashBalanceUsdAt(id, prev) * (usdInClp(r.as_of_date) - usdInClp(prev));
+      expect(r.cash_fx).toBe(Math.round(expected));
+      if (r.cash_fx !== 0) moved++;
+    }
+    expect(moved).toBeGreaterThan(0);
+    // Dollars: the symmetric leg on the peso accounts (pesos held × the move of a peso's dollar value).
+    const usd = buildFlowsOverviewPayload("usd", "split", 0);
+    for (const r of usd.days!) {
+      if (r.as_of_date >= today) continue;
+      const prev = chileCalendarAddDays(r.as_of_date, -1);
+      let expected = 0;
+      for (const id of peso) expected += pesosAt(id, prev) * (clpInUsd(r.as_of_date) - clpInUsd(prev));
+      expect(r.cash_fx).toBeCloseTo(expected, 6);
+    }
+    // A month's leg is the Σ of its days' (the day rows round apart; the unrounded days add up).
+    const start = monthEndUtcYmd(addCalendarMonths(clp.months[0]!.period_month, -1));
+    const cash = checkingCashByDay(checking, start, today, "clp");
+    const byMonth = new Map<string, number>();
+    for (const [day, fx] of cash.fx) byMonth.set(day.slice(0, 7), (byMonth.get(day.slice(0, 7)) ?? 0) + fx);
+    for (const r of clp.months) expect(r.cash_fx).toBe(Math.round(byMonth.get(r.period_month) ?? 0));
+    expect(clp.totals.cash_fx).toBe(clp.months.reduce((s, r) => s + r.cash_fx, 0));
   });
 });

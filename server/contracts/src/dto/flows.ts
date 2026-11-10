@@ -108,13 +108,19 @@ export interface FlowsOverviewRow {
   card_net: number;
   /** The checking ledger's change over the period. */
   cash_change: number;
-  /** cash_change − (savings − deposits + card_spent − card_paid). */
+  /**
+   * The fx result on what the checking accounts hold in another currency than the unit (in pesos
+   * the dollar accounts): Σ over the days of the holding at the end of the previous day × the
+   * day's change of its rate. The checking accounts' own P/L, which `pl` leaves out.
+   */
+  cash_fx: number;
+  /** cash_change − (savings − deposits + card_spent − card_paid + cash_fx). */
   cash_unexplained: number;
   /** Market P/L of the deposit accounts outside checking. */
   pl: number;
   /** deposits + deposits_pre_tax + pl. */
   investments_change: number;
-  /** savings + deposits_pre_tax + pl. */
+  /** savings + deposits_pre_tax + pl + cash_fx. */
   net_worth_change: number;
 }
 

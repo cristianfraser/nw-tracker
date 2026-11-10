@@ -1,8 +1,15 @@
 /**
  * The cash legs of the flows overview («caja» = the accounts under Checking accounts):
- * - {@link checkingValueByDay}: the combined ledger value of those accounts per Chile calendar
- *   day (`accountMarkClpAtYmd` through the shared per-account mark cache — the balances the app
- *   displays), each day converted to the unit at that day's rate;
+ * - {@link checkingCashByDay}: the combined value of those accounts per Chile calendar day in the
+ *   unit — each account's quantity of what it holds (its ledger pesos, its ledger dollars; the
+ *   balances the app displays, through the shared per-account mark cache) × that day's rate into
+ *   the unit at the account's side (a dollar account's pesos at the sell rate, live today) — and,
+ *   beside it, the day's fx leg: what the quantities held at the end of the previous day gained
+ *   or lost from the rate's move, Σ qty(d − 1) × (rate(d) − rate(d − 1)) over the accounts whose
+ *   currency is not the unit (in pesos the dollar accounts, in dollars the peso accounts) — the
+ *   card's revaluation rule (`ccRevaluationCostByDate`) on the asset side. Value and leg share
+ *   one quantity and one rate per account and day, so Δvalue = fx leg + the day's flows at the
+ *   day's rate, and the days of a month add up to the month;
  * - {@link loadCardPaymentsFromChecking}: what the cards were paid out of those accounts —
  *   every transfer from a checking account into a card master (`pago_tarjeta`, the divisas
  *   payments at the pesos that left checking, a payment from the dollar account at its dollars),
@@ -10,12 +17,14 @@
  *   paying another card moves no cash and is not here.
  */
 import { bucketSlugForAccountId } from "./accountBucket.js";
-import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
-import { chileCalendarAddDays } from "./chileDate.js";
+import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
+import { accountValueSide } from "./accountMarkClpAtYmd.js";
+import { accountValueCurrency } from "./accountValue.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
-import { accountValueInUnitFromClp } from "./accountValue.js";
 import { convertFlow } from "./rates.js";
+import { convertValue, pastValueRateLookup } from "./valueConvert.js";
 import type { GastosUnit } from "./flowsExpensesGastos.js";
 
 /** Ascending contiguous Chile calendar days `fromYmd..toYmd` inclusive. */
@@ -26,42 +35,82 @@ export function calendarDaysBetween(fromYmd: string, toYmd: string): string[] {
   return out;
 }
 
+/** The checking accounts' value and fx leg per Chile day, in the unit (see the module comment). */
+export type CheckingCashByDay = {
+  /** Every day of the grid: Σ of the accounts' values. */
+  value: Map<string, number>;
+  /** Every day of the grid but the first: Σ qty(d − 1) × (rate(d) − rate(d − 1)); 0 on a day the rate did not move. */
+  fx: Map<string, number>;
+};
+
 /**
  * @heavy The checking accounts' combined value in the unit for every day of `fromYmd..toYmd`
- * (the mark cache absorbs repeats). An account with no mark yet (not opened) counts 0.
+ * and the day's fx leg (the mark cache absorbs repeats). An account with no mark yet (not
+ * opened) counts 0. A day whose rate is not on file throws, unless nothing was held.
  */
-export function checkingValueByDay(
+export function checkingCashByDay(
   checkingAccountIds: readonly number[],
   fromYmd: string,
   toYmd: string,
   unit: GastosUnit,
   now: Date = new Date()
-): Map<string, number> {
+): CheckingCashByDay {
   const grid = calendarDaysBetween(fromYmd, toYmd);
+  const today = chileCalendarTodayYmd();
   // Σ of each account's value in the unit (a USD cash account: its ledger dollars), never
   // Σ pesos ÷ one rate.
-  const inUnit = new Array<number>(grid.length).fill(0);
+  const value = new Array<number>(grid.length).fill(0);
+  const fx = new Array<number>(grid.length).fill(0);
   const accountRow = db.prepare(`SELECT import_key, name FROM accounts WHERE id = ?`);
   for (const accountId of checkingAccountIds) {
     const bucketSlug = bucketSlugForAccountId(accountId);
     if (!bucketSlug) throw new Error(`checking account ${accountId} has no asset-group bucket`);
     const row = accountRow.get(accountId) as { import_key: string | null; name: string | null } | undefined;
     if (!row) throw new Error(`checking account ${accountId} not found`);
-    const series = accountMarkClpSeriesOnGrid(
+    const currency = accountValueCurrency(accountId);
+    // The quantity held each day, in the account's own currency.
+    const qty = accountValueSeriesOnGrid(
       { account_id: accountId, bucket_slug: bucketSlug, import_key: row.import_key, name: row.name },
-      grid
+      grid,
+      currency
     );
+    if (currency === unit) {
+      for (let i = 0; i < grid.length; i++) value[i]! += qty[i] ?? 0;
+      continue;
+    }
+    const side = accountValueSide(accountId);
+    const pastRate = pastValueRateLookup(currency, unit, side);
+    // A past day's stored rate (memoized in the history tier); today's rate live (`fxForLiveMtm`
+    // through `rates.ts`, which reports the live read to the cache dependency node).
+    const rateOn = (ymd: string): number | null =>
+      ymd < today ? pastRate(ymd) : convertValue(1, currency, unit, ymd, side, now);
+    let prevQty = 0;
+    let prevRate: number | null = null;
     for (let i = 0; i < grid.length; i++) {
-      const clp = series[i] ?? 0;
-      const v = accountValueInUnitFromClp(accountId, clp, grid[i]!, unit, { now });
-      if (v == null || !Number.isFinite(v)) {
-        throw new Error(`checking account ${accountId}: no ${unit} rate on or before ${grid[i]}`);
+      const ymd = grid[i]!;
+      const q = qty[i] ?? 0;
+      const rate = rateOn(ymd);
+      if (q !== 0) {
+        if (rate == null || !Number.isFinite(rate)) {
+          throw new Error(`checking account ${accountId}: no ${unit} rate on or before ${ymd}`);
+        }
+        value[i]! += q * rate;
       }
-      inUnit[i]! += v;
+      if (i > 0 && prevQty !== 0) {
+        if (prevRate == null || rate == null) {
+          throw new Error(`checking account ${accountId}: no ${unit} rate for the fx leg on ${ymd}`);
+        }
+        fx[i]! += prevQty * (rate - prevRate);
+      }
+      prevQty = q;
+      prevRate = rate;
     }
   }
-  const out = new Map<string, number>();
-  for (let i = 0; i < grid.length; i++) out.set(grid[i]!, inUnit[i]!);
+  const out: CheckingCashByDay = { value: new Map(), fx: new Map() };
+  for (let i = 0; i < grid.length; i++) {
+    out.value.set(grid[i]!, value[i]!);
+    if (i > 0) out.fx.set(grid[i]!, fx[i]!);
+  }
   return out;
 }
 

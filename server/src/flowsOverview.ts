@@ -20,13 +20,18 @@
  *   of card top-ups into it (`flowsOverviewCash.ts`). Cash leaves when a card is paid, not when
  *   it is used: the card line is card_spent − card_paid;
  * - cash_change: the checking ledger's change over the period (the balances the app shows);
- * - cash_unexplained = cash_change − (savings − deposits + card_spent − card_paid): what the
- *   other legs do not account for (a dollar card payment's spread over the pesos the card billed,
- *   a movement in no leg). Shown, never forced to zero;
+ * - cash_fx: what the checking accounts' holdings in another currency than the unit gained or
+ *   lost from the rate's move — Σ over the days of (what was held at the end of the previous day
+ *   × the day's change of its rate into the unit), the card's revaluation rule on the asset side
+ *   (`flowsOverviewCash.ts`): in pesos the dollar checking accounts at the sell rate, in dollars
+ *   the peso ones. It is the checking accounts' own P/L, which `pl` leaves out by design;
+ * - cash_unexplained = cash_change − (savings − deposits + card_spent − card_paid + cash_fx): what
+ *   the other legs do not account for (the spread between a dollar flow's mid rate and the sell
+ *   rate the dollars are held at, a movement in no leg). Shown, never forced to zero;
  * - pl: market P/L of the deposit accounts outside checking (`flowsOverviewPl.ts`), with the
  *   property's mortgage carrying added back (it is in expenses already);
  * - investments_change = deposits + deposits_pre_tax + pl;
- * - net_worth_change = savings + deposits_pre_tax + pl.
+ * - net_worth_change = savings + deposits_pre_tax + pl + cash_fx.
  */
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
@@ -57,7 +62,7 @@ import { getAggregationCached } from "./cacheRegistry.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import {
   cardPaymentInUnit,
-  checkingValueByDay,
+  checkingCashByDay,
   loadCardPaymentsFromChecking,
   type CardPaymentFromChecking,
 } from "./flowsOverviewCash.js";
@@ -91,12 +96,14 @@ export type FlowsOverviewRow = {
   card_net: number;
   /** The checking ledger's change over the period. */
   cash_change: number;
-  /** cash_change − (savings − deposits + card_spent − card_paid). */
+  /** The fx result on the checking accounts' holdings in another currency than the unit (see the module comment). */
+  cash_fx: number;
+  /** cash_change − (savings − deposits + card_spent − card_paid + cash_fx). */
   cash_unexplained: number;
   pl: number;
   /** deposits + deposits_pre_tax + pl. */
   investments_change: number;
-  /** savings + deposits_pre_tax + pl. */
+  /** savings + deposits_pre_tax + pl + cash_fx. */
   net_worth_change: number;
 };
 
@@ -153,11 +160,12 @@ type Bucket = {
   cardSpent: number;
   cardPaid: number;
   cashChange: number;
+  cashFx: number;
   pl: number;
 };
 
 function emptyBucket(): Bucket {
-  return { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0, cardSpent: 0, cardPaid: 0, cashChange: 0, pl: 0 };
+  return { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0, cardSpent: 0, cardPaid: 0, cashChange: 0, cashFx: 0, pl: 0 };
 }
 
 function bucketMap(): { map: Map<string, Bucket>; touch: (key: string) => Bucket } {
@@ -515,6 +523,7 @@ export function derivedFlowsOverviewFields(p: {
   card_spent: number;
   card_paid: number;
   cash_change: number;
+  cash_fx: number;
   pl: number;
 }): FlowsOverviewTotals {
   const savings = p.income - p.expenses;
@@ -528,10 +537,11 @@ export function derivedFlowsOverviewFields(p: {
     card_paid: p.card_paid,
     card_net: p.card_spent - p.card_paid,
     cash_change: p.cash_change,
-    cash_unexplained: p.cash_change - (savings - p.deposits + p.card_spent - p.card_paid),
+    cash_fx: p.cash_fx,
+    cash_unexplained: p.cash_change - (savings - p.deposits + p.card_spent - p.card_paid + p.cash_fx),
     pl: p.pl,
     investments_change: p.deposits + p.deposits_pre_tax + p.pl,
-    net_worth_change: savings + p.deposits_pre_tax + p.pl,
+    net_worth_change: savings + p.deposits_pre_tax + p.pl + p.cash_fx,
   };
 }
 
@@ -548,6 +558,7 @@ function rowFromBucket(periodKey: string, asOfDate: string, b: Bucket, unit: Gas
       card_spent: round(b.cardSpent),
       card_paid: round(b.cardPaid),
       cash_change: round(b.cashChange),
+      cash_fx: round(b.cashFx),
       pl: round(b.pl),
     }),
   };
@@ -576,6 +587,8 @@ export type FlowsOverviewMonthInputs = {
    * month before the first row through the last, and today.
    */
   checkingValueByDay: ReadonlyMap<string, number>;
+  /** The checking accounts' fx leg per Chile day in the unit (`checkingCashByDay`); a day not listed moved nothing. */
+  cashFxByDay: ReadonlyMap<string, number>;
 };
 
 /** Month rows, oldest first, through Chile today (future cuota months stay on the expenses page). */
@@ -633,6 +646,8 @@ export function aggregateFlowsOverviewMonths(
   for (const p of inputs.cardPayments) touch(p.occurred_on.slice(0, 7)).cardPaid += p.amount;
 
   for (const point of inputs.plMonthly) touch(point.as_of_date.slice(0, 7)).pl += point.total;
+  // The month's fx leg is its days' (the day map ends today, like the cash change's window).
+  for (const [day, fx] of inputs.cashFxByDay) if (fx !== 0) touch(day.slice(0, 7)).cashFx += fx;
 
   const months = [...byMonth.keys()].sort(ymCompare);
   if (months.length === 0) return [];
@@ -679,6 +694,8 @@ export type FlowsOverviewDayInputs = {
   cardPayments: readonly FlowsOverviewCardPayment[];
   /** The checking accounts' value in the unit per Chile day, contiguous: each day after the first carries its change. */
   checkingValueByDay: ReadonlyMap<string, number>;
+  /** The checking accounts' fx leg per Chile day in the unit (`checkingCashByDay`); a day not listed moved nothing. */
+  cashFxByDay: ReadonlyMap<string, number>;
 };
 
 /**
@@ -722,6 +739,7 @@ export function aggregateFlowsOverviewDays(
   for (const p of inputs.cardPayments) touch(p.occurred_on.slice(0, 10)).cardPaid += p.amount;
 
   for (const point of inputs.plDaily) touch(point.as_of_date).pl += point.total;
+  for (const [day, fx] of inputs.cashFxByDay) if (fx !== 0) touch(day).cashFx += fx;
 
   let prevDay: string | null = null;
   for (const day of [...inputs.checkingValueByDay.keys()].sort()) {
@@ -742,7 +760,7 @@ export function aggregateFlowsOverviewDays(
 
 /** Σ of rows (unrounded beyond the rows' own rounding); the derived fields re-derived from the sums. */
 export function flowsOverviewTotals(rows: readonly FlowsOverviewRow[]): FlowsOverviewTotals {
-  const t = { income: 0, expenses: 0, deposits: 0, deposits_pre_tax: 0, card_spent: 0, card_paid: 0, cash_change: 0, pl: 0 };
+  const t = { income: 0, expenses: 0, deposits: 0, deposits_pre_tax: 0, card_spent: 0, card_paid: 0, cash_change: 0, cash_fx: 0, pl: 0 };
   for (const row of rows) {
     t.income += row.income;
     t.expenses += row.expenses;
@@ -751,6 +769,7 @@ export function flowsOverviewTotals(rows: readonly FlowsOverviewRow[]): FlowsOve
     t.card_spent += row.card_spent;
     t.card_paid += row.card_paid;
     t.cash_change += row.cash_change;
+    t.cash_fx += row.cash_fx;
     t.pl += row.pl;
   }
   return derivedFlowsOverviewFields(t);
@@ -880,7 +899,7 @@ export function buildFlowsOverviewPayload(
     const checkingAccountIds = new Set(src.checkingAccountIds);
     const carrying = cachedMortgageCarryingEvents(unit);
     const plMonthly = buildFlowsPlChartMonthly(unit, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total }));
-    const checkingValues = checkingValueByDay(
+    const cash = checkingCashByDay(
       src.checkingAccountIds,
       checkingGridStart(src, gastosMonths, plMonthly, today),
       today,
@@ -896,7 +915,8 @@ export function buildFlowsOverviewPayload(
         plMonthly,
         checkingAccountIds,
         cardPayments,
-        checkingValueByDay: checkingValues,
+        checkingValueByDay: cash.value,
+        cashFxByDay: cash.fx,
       },
       installmentMode,
       unit,
@@ -913,7 +933,8 @@ export function buildFlowsOverviewPayload(
           plDaily: buildFlowsPlDailyChartSeries(unit, days, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total })),
           checkingAccountIds,
           cardPayments,
-          checkingValueByDay: checkingValues,
+          checkingValueByDay: cash.value,
+          cashFxByDay: cash.fx,
         },
         installmentMode,
         unit

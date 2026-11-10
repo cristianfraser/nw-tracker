@@ -22,8 +22,8 @@ export const DTO_SCHEMA_VERSIONS = {
   upcoming_payments: 4,
   /** `GET /api/dashboard/latest-expenses` («Últimos gastos»); v3 adds the line shapes and row capabilities. */
   latest_expenses: 3,
-  /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block). */
-  flows_overview: 1,
+  /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
+  flows_overview: 2,
 } as const;
 
 export type DtoSchemaVersionName = keyof typeof DTO_SCHEMA_VERSIONS;
