@@ -379,7 +379,7 @@ export type TaxReturnResponse = {
   usd_fx: TaxReturnUsdFx;
 };
 
-/** GET /api/tax-return/us — the local Form 1040, v1 (server: f1040Payload.ts). */
+/** GET /api/tax-return/us — the local Form 1040 (server: us1040/payload.ts). */
 export type UsTaxReturnRowSection = "income" | "subtotal" | "deduction" | "tax" | "credit" | "payment" | "result";
 
 /** One 1040 line; whole dollars. `line` is the role (the 2024 form's numbering: «1a», «12», «35a»), `printed_line` the year's number («12e» on the 2025 form). */
@@ -413,13 +413,81 @@ export type UsTaxReturnW2 = {
   box12_w: number;
 };
 
-export type UsTaxReturnNote = "no_state_return" | "first_year_full_resident" | "open_year" | "law_provisional";
+export type UsTaxReturnNote =
+  | "no_state_return"
+  | "open_year"
+  | "law_provisional"
+  | "residency_undeclared"
+  | "dual_status"
+  | "dual_status_statement_tax_line_16"
+  | "withholding_1042s_line_25c"
+  | "qualified_holding_period_not_tested"
+  | "wash_sales_not_modelled"
+  | "no_step_up_on_residency"
+  | "pfic_outside_schedule_d"
+  | "treaty_pensions_deferred"
+  | "fx_daily_spot"
+  | "section_988_not_modelled"
+  | "form_2210_not_modelled"
+  | "schedules_not_wired"
+  | "foreign_accounts_month_end";
+
+/** How the US treats the person in the year (from the declared tax residency). */
+export type UsTaxReturnResidency = { kind: "full" | "dual_status" | "nonresident" | "undeclared"; from: string | null };
+
+/** A schedule or worksheet of the return: its lines as the form numbers them, whole dollars (the worksheet's 15 % / 20 % lines to the cent). */
+export type UsTaxReturnScheduleForm = "schedule_1" | "schedule_2" | "schedule_b" | "schedule_d" | "qdcg_worksheet" | "form_8960";
+export type UsTaxReturnSchedule = { form: UsTaxReturnScheduleForm; lines: { line: string; amount: number }[] };
+
+/** One Schedule B payer row (Part I interest or Part II dividends). */
+export type UsTaxReturnPayerRow = { payer: string; items: number; usd: number };
+
+/** One Form 8949 row; whole dollars. */
+export type UsTaxReturnForm8949Row = {
+  box: string;
+  term: "short_term" | "long_term";
+  description: string;
+  acquired: string;
+  sold: string;
+  proceeds: number;
+  cost: number;
+  adjustment_code: string | null;
+  adjustment: number;
+  gain: number;
+  source: string;
+};
+
+export type UsTaxReturnDualStatusStatement = {
+  /** The residency starting day; the statement covers January 1 through the day before. */
+  from: string;
+  rows: { date: string; instrument: string; gross_usd: number; rate_pct: number; tax_usd: number; withheld_usd: number }[];
+  gross_usd: number;
+  /** Whole dollars, added to line 16. */
+  tax: number;
+  /** Whole dollars, in line 25c. */
+  withheld: number;
+};
+
+/** Schedule B Part III and the FBAR / Form 8938 flags (month-end values in dollars; the app files neither). */
+export type UsTaxReturnForeignAccounts = {
+  accounts: { name: string; year_end_usd: number; peak_month_end_usd: number }[];
+  year_end_usd: number;
+  peak_month_end_usd: number;
+  fbar_required: boolean;
+  form8938_required: boolean;
+};
 
 export type UsTaxReturnResponse = {
   jurisdiction: "us";
   /** The calendar tax year. */
   tax_year: number;
   available_tax_years: number[];
+  /** False for a nonresident year with US pay stubs: a Form 1040-NR filer, not drafted (rows empty). */
+  drafted: boolean;
+  not_drafted_reason: "nonresident_alien" | null;
+  residency: UsTaxReturnResidency;
+  /** The window whose worldwide income the return declares; null when not drafted. */
+  resident_window: { from: string; through: string } | null;
   /** The year has not ended: the stubs to date. */
   provisional: boolean;
   /** Whose law the draft applied: the tax year, or the latest listed year for an open year. */
@@ -431,6 +499,16 @@ export type UsTaxReturnResponse = {
   /** Social Security and Medicare withheld (W-2 boxes 4 and 6): reported, not part of the 1040's tax. */
   fica: { social_security: number; medicare: number; total: number; additional_medicare_tax: number };
   rows: UsTaxReturnRow[];
+  /** The schedules and worksheets behind the lines (empty when not drafted). */
+  schedules: UsTaxReturnSchedule[];
+  schedule_b: { interest: UsTaxReturnPayerRow[]; dividends: UsTaxReturnPayerRow[]; qualified_dividends: number } | null;
+  form_8949: UsTaxReturnForm8949Row[];
+  /** Capital loss carried in from last year and out to next year (positive losses). */
+  capital_loss_carryover: { in: { short_term: number; long_term: number }; out: { short_term: number; long_term: number } } | null;
+  dual_status_statement: UsTaxReturnDualStatusStatement | null;
+  foreign_accounts: UsTaxReturnForeignAccounts | null;
+  /** Tax another country withheld on dividends (a Form 1116 input), dollars. */
+  foreign_tax_withheld_usd: number;
   /** Line 24 (total tax) as filed / as drafted. */
   tax_filed: number | null;
   tax_draft: number;
