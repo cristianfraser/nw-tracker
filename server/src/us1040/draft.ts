@@ -21,20 +21,29 @@
  *       payer, in dollars at each item's day (`facts.ts`, `fx.ts`)
  *   7   Schedule D (`scheduleD.ts`) over Form 8949 (`form8949.ts`): the window's disposals (FIFO,
  *       historic cost, PFICs left to Form 8621), the loss limited and carried
- *   8   Schedule 1 line 10 (`schedule1.ts`): Schedule E and Form 8621 (typed inputs until wired)
+ *   8   Schedule 1 line 10 (`schedule1.ts`): line 5 Schedule E after Form 8582's passive limit,
+ *       line 8z Form 8621 Part IV's mark-to-market result (`wired.ts`)
  *   12  the standard deduction, 0 on a dual-status return
  *   13  0: no QBI deduction (§199A(c)(3)(A)(i): a foreign rental is not a US trade or business)
  *   16  the Qualified Dividends and Capital Gain Tax Worksheet (`qualifiedDividendsWorksheet.ts`)
  *       with qualified dividends or a net gain, else the Tax Table / Tax Computation Worksheet; plus
  *       the dual-status statement's tax
- *   20  Schedule 3 line 1, the foreign tax credit (Form 1116; a typed input until wired)
+ *   20  Schedule 3 line 1, the foreign tax credit (Form 1116 on Chile's taxes of the US-resident
+ *       months, read from the F22, which `taxReturnOrder` computes first; `wired.ts`)
  *   23  Schedule 2 line 21 (`schedule2.ts`): Form 8959 and Form 8960 (`form8960.ts`)
  *   25a W-2 box 2   25b 1099 withholding   25c Form 8959's withheld and every Form 1042-S
  *   31  Schedule 3: Social Security withheld above the maximum by two or more employers
  *
+ * Carryovers (the capital loss, Form 8582's suspended loss, Form 1116's excess taxes, Form 8621's
+ * basis and unreversed inclusions) come from the prior year's draft, itself fully composed: one call
+ * drafts each year back to the first US year once (`draftYear`'s memo), and stops at a year before
+ * it (no US stubs, a nonresident year, an undeclared one).
+ *
  * Not modelled (stated on the return): the qualified-dividend holding period; wash sales on the
- * stocks and ETFs; §988 exchange gains and losses on pesos; Form 2210; the Form 8833 positions; the
- * state return (no state withholding on the stubs: a job in a state without income tax).
+ * stocks and ETFs; §988 exchange gains and losses on pesos (the UF-indexed loan included); Form
+ * 2210; the FTC carryback; the straddle rules on covered calls; Form 8621 Part V; the Form 8833
+ * positions (flagged); the state return (no state withholding on the stubs: a job in a state
+ * without income tax).
  */
 import { chileWallClockNow } from "../chileDate.js";
 import { db } from "../db.js";
@@ -62,13 +71,28 @@ import {
   usInterestItems,
   type ForeignAccountsReport,
   type UsDividendItem,
+  type UsInterestItem,
 } from "./facts.js";
-import { assertForm8949Row, form8949Rows, type Form8949Row } from "./form8949.js";
+import { form8949Rows, type Form8949Row } from "./form8949.js";
+import type { Form8621Result } from "./form8621.js";
+import {
+  chileTaxesUsWindow,
+  chileanTaxForF1040,
+  foreignTaxCredit,
+  form8621ForYear,
+  optionRowsForWindow,
+  pficCapitalLossRows,
+  rentalsAfterPassiveLimit,
+  scheduleEForWindow,
+  type F1040ForeignTaxCredit,
+  type F1040OptionLot,
+  type F1040Rentals,
+} from "./wired.js";
 import { form8960, type Form8960 } from "./form8960.js";
 import { qualifiedDividendsWorksheet, type QdcgWorksheet } from "./qualifiedDividendsWorksheet.js";
 import { schedule1, type Schedule1 } from "./schedule1.js";
 import { schedule2, type Schedule2 } from "./schedule2.js";
-import { scheduleB, type ScheduleB, type ScheduleBInterestItem } from "./scheduleB.js";
+import { scheduleB, type ScheduleB } from "./scheduleB.js";
 import {
   capitalLossCarryoverOut,
   scheduleD,
@@ -102,20 +126,48 @@ export type F1040Note =
   | "pfic_outside_schedule_d"
   /** The AFP, AFC and APV are read as Art. 18(4) treaty pensions (the APV assumed): their earnings are no income until paid. */
   | "treaty_pensions_deferred"
-  /** Every peso amount converts at fx_daily of its own day (Pub. 514). */
+  /** Every peso amount converts at fx_daily of its own day (Pub. 514); UF through that day's pesos. */
   | "fx_daily_spot"
-  /** Exchange gains and losses on pesos (§988) are not modelled. */
+  /** Exchange gains and losses on pesos (§988) are not modelled — the repayments of the UF-indexed loans included. */
   | "section_988_not_modelled"
   /** The underpayment penalty (Form 2210) is not modelled. */
   | "form_2210_not_modelled"
-  /** Schedule E, Form 8582, Form 8621 and Form 1116 are not composed into this draft yet (their lines read 0). */
-  | "schedules_not_wired"
   /** FBAR / Form 8938: valued at month ends (a peak between two is not seen); coins at an exchange left out. */
-  | "foreign_accounts_month_end";
+  | "foreign_accounts_month_end"
+  /** Schedule E: a rental placed in service before the residency keeps its date and historic dollar cost (allowable depreciation since); UNVERIFIED, the alternative a fresh placing in service on arrival. */
+  | "depreciation_pre_residency_allowable"
+  /** Schedule E: the land share of the purchase price is an assumed 20 % (not depreciable). */
+  | "depreciation_land_share_assumed"
+  /** Schedule E: the loan's life (desgravamen) insurance is not a rental expense; only the fire insurance is deducted. */
+  | "life_insurance_not_deducted"
+  /** Form 8582: the rental loss above the special allowance is suspended and carried to next year. */
+  | "passive_loss_suspended"
+  /** Form 8621 Part IV (mark to market) is computed for each PFIC; the election and the filing are the user's; marketable stock, a foreign corporation and a qualified exchange are assumed (UNVERIFIED). */
+  | "pfic_mark_to_market"
+  /** Form 8621 Part V (the first mark-to-market year of a fund held earlier, §1291) may apply: flagged, not computed. */
+  | "pfic_part_v_possible"
+  /** A PFIC sale's capital loss is read as long-term (Form 8621's basis is pro rata: no lot dates). */
+  | "pfic_capital_loss_term_assumed"
+  /** Form 1116: Chile's accrued taxes translate at the year's average fx_daily rate (Pub. 514, §986(a)(1)). */
+  | "ftc_accrued_yearly_average"
+  /** Form 1116: the one-year carryback of excess taxes is not modelled (only the ten-year carryforward). */
+  | "ftc_carryback_not_modelled"
+  /** Form 1116: the Impuesto Adicional is creditable by treaty Art. 23(1) — a position Form 8833 may have to disclose. */
+  | "form_8833_treaty_credit"
+  /** Form 1116: the 10 % único on an art. 107 sale is not creditable (treaty Art. 13; a US-source gain). */
+  | "unico_art107_not_creditable"
+  /** No foreign tax credit applies against the net investment income tax (Reg. §1.1411-1(e)). */
+  | "no_ftc_against_niit"
+  /** Tax another country withheld on dividends is shown, not credited: the readings do not settle it. */
+  | "foreign_dividend_withholding_not_credited"
+  /** A written option's result is short-term (§1234(b)); a long option's by its holding period. */
+  | "options_written_short_term"
+  /** The straddle rules on covered calls (§1092: loss deferral, the stock's holding period suspended) are not modelled. */
+  | "covered_call_straddle_not_modelled";
 
 /**
- * The figures the schedules built in another module bring (whole dollars; 0 until wired): the
- * wiring step codes against these names.
+ * The figures the schedules computed in `wired.ts` bring to the lines (whole dollars): what the
+ * draft passes on, kept on the draft for the payload and the identities.
  */
 export type F1040WiredInputs = {
   /** Schedule 1 line 5: Schedule E's net rental income or loss after Form 8582's passive limit. */
@@ -132,15 +184,6 @@ export type F1040WiredInputs = {
   nii: { rentalNet: number; pficInclusions: number; other: number };
 };
 
-export const NO_WIRED_INPUTS: F1040WiredInputs = {
-  scheduleENet: 0,
-  pficMarkToMarket: 0,
-  otherIncome: 0,
-  foreignTaxCredit: 0,
-  extraForm8949Rows: [],
-  nii: { rentalNet: 0, pficInclusions: 0, other: 0 },
-};
-
 export type F1040Draft = {
   taxYear: number;
   provisional: boolean;
@@ -153,7 +196,7 @@ export type F1040Draft = {
   stubs: number;
   w2s: UsW2[];
   /** Schedule B's items (dollars at each day) and its lines. */
-  interest: ScheduleBInterestItem[];
+  interest: UsInterestItem[];
   dividends: UsDividendItem[];
   scheduleB: ScheduleB;
   form8949: Form8949Row[];
@@ -179,6 +222,20 @@ export type F1040Draft = {
   additionalMedicareTax: number;
   filed: FiledF1040 | null;
   notes: F1040Note[];
+  /** The first year of the US residency this year belongs to (Form 8621's arrival year); null when undeclared. */
+  firstUsYear: number | null;
+  /** Schedule E per place and Form 8582; null when undeclared. */
+  rentals: F1040Rentals | null;
+  /** Form 8621 Part IV per PFIC holding. */
+  form8621: Form8621Result[];
+  /** The option lots closed in the year (their rows are in `form8949`, assigned ones excepted). */
+  optionLots: F1040OptionLot[];
+  /** Form 1116 (passive category); null without Chilean taxes or carryovers. */
+  foreignTaxCredit: F1040ForeignTaxCredit | null;
+  /** What the schedules passed to the lines. */
+  wired: F1040WiredInputs;
+  /** Schedule 3: line 1 (foreign tax credit), 8 (total nonrefundable), 11 (excess Social Security), 15. */
+  schedule3: { "1": number; "8": number; "11": number; "15": number };
 };
 
 export type UsReturnStatus = { drafted: true; residency: UsResidencyOfYear } | { drafted: false; residency: UsResidencyOfYear; reason: "nonresident_alien" };
@@ -321,44 +378,35 @@ function w2Figures(w2s: readonly UsW2[], filingStatus: UsFilingStatus, law: UsTa
 }
 
 /**
- * The prior year's capital loss carryover, from its own draft: none before the first drafted year,
- * and none when the prior year sold nothing and carried nothing in (then its draft — and its year's
- * law — is not needed). The prior year is drafted with no wired inputs: an extra Form 8949 row of
- * that year (an option) reaches this year's carryover once the wiring step passes it here too.
+ * The prior year's draft, for the carryovers: null before the first drafted year of a declared US
+ * residency (not an available year, a nonresident year, an undeclared one).
  */
-function carryoverInto(taxYear: number, todayYmd: string): CapitalLossCarryover {
-  const none = { shortTerm: 0, longTerm: 0 };
+function priorDraft(taxYear: number, todayYmd: string, memo: Map<number, F1040Draft>): F1040Draft | null {
   const prior = taxYear - 1;
-  if (!availableUsTaxYears(todayYmd).includes(prior)) return none;
+  if (!availableUsTaxYears(todayYmd).includes(prior)) return null;
   const status = usReturnStatusForYear(prior);
-  if (!status.drafted || status.residency.kind === "undeclared") return none;
-  const window: DateWindow = {
-    fromYmd: status.residency.kind === "dual_status" ? status.residency.from! : `${prior}-01-01`,
-    throughYmd: `${prior}-12-31`,
-  };
-  const before = carryoverInto(prior, todayYmd);
-  if (usDisposalLots(window).length === 0 && before.shortTerm === 0 && before.longTerm === 0) return none;
-  return buildF1040Draft(prior, todayYmd).capitalLossCarryoverOut;
+  if (!status.drafted || status.residency.kind === "undeclared") return null;
+  return draftYear(prior, todayYmd, memo);
 }
 
-/** Throws unless every wired figure is whole dollars and every extra 8949 row adds up. */
-function assertWired(w: F1040WiredInputs): void {
-  for (const [k, v] of Object.entries({ ...w, ...Object.fromEntries(Object.entries(w.nii).map(([a, b]) => [`nii.${a}`, b])) })) {
-    if (typeof v === "number" && !Number.isInteger(v)) throw new Error(`1040: wired input ${k} = ${v} is not whole dollars`);
-  }
-  if (w.foreignTaxCredit < 0) throw new Error(`1040: a foreign tax credit of ${w.foreignTaxCredit}`);
-  for (const r of w.extraForm8949Rows) assertForm8949Row(r);
+/** The year's draft, every schedule composed (`wired.ts`), the carryovers from the prior years' drafts. */
+export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClockNow().ymd): F1040Draft {
+  return draftYear(taxYear, todayYmd, new Map());
 }
 
-/**
- * The year's draft. `wired`: the figures of the schedules composed elsewhere (Schedule E, Form 8582,
- * Form 8621, Form 1116); every one 0 until the wiring step passes them.
- */
-export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClockNow().ymd, wired: F1040WiredInputs = NO_WIRED_INPUTS): F1040Draft {
+/** One year of a {@link buildF1040Draft} call: each year drafted once per call (`memo`), so the walk back is linear. */
+function draftYear(taxYear: number, todayYmd: string, memo: Map<number, F1040Draft>): F1040Draft {
+  const hit = memo.get(taxYear);
+  if (hit) return hit;
+  const d = composeDraft(taxYear, todayYmd, memo);
+  memo.set(taxYear, d);
+  return d;
+}
+
+function composeDraft(taxYear: number, todayYmd: string, memo: Map<number, F1040Draft>): F1040Draft {
   if (!Number.isInteger(taxYear)) throw new Error(`1040: tax year ${taxYear}`);
   const provisional = taxYear >= currentYear(todayYmd);
   if (taxYear > currentYear(todayYmd)) throw new Error(`1040 ${taxYear}: a year that has not started`);
-  assertWired(wired);
   const status = usReturnStatusForYear(taxYear);
   if (!status.drafted) {
     throw new Error(`1040 ${taxYear}: a nonresident alien files Form 1040-NR, which is not drafted (no US tax residency declared for the year)`);
@@ -380,18 +428,34 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
   const residentWindow: DateWindow = { fromYmd: dual ? residency.from! : `${taxYear}-01-01`, throughYmd: yearEnd };
   const undeclared = residency.kind === "undeclared";
   // Income received to date for an open year; the facts loaders read the ledger, which ends today.
-  const interest: ScheduleBInterestItem[] = undeclared
-    ? usBankInterestForYear(taxYear).lines.map((l) => ({ payer: `#${l.accountId}`, date: l.date, movementId: l.movementId, usd: l.usd }))
+  const interest: UsInterestItem[] = undeclared
+    ? usBankInterestForYear(taxYear).lines.map((l) => ({ payer: `#${l.accountId}`, date: l.date, movementId: l.movementId, usd: l.usd, usSource: true }))
     : usInterestItems(residentWindow);
   const dividends = undeclared ? [] : usDividendItems(residentWindow);
   const lastDay = provisional ? (todayYmd < yearEnd ? todayYmd : yearEnd) : yearEnd;
   const foreignAccounts = undeclared ? null : foreignAccountsReport(residentWindow, lastDay);
   const b = scheduleB({ interest, dividends, foreignAccount: foreignAccounts != null && foreignAccounts.accounts.length > 0 });
 
-  const rows = [...(undeclared ? [] : form8949Rows(usDisposalLots(residentWindow), taxYear)), ...wired.extraForm8949Rows];
-  const carryIn = undeclared ? { shortTerm: 0, longTerm: 0 } : carryoverInto(taxYear, todayYmd);
+  // The schedules of a declared residency (`wired.ts`); an undeclared year drafts the W-2s and the US bank interest only.
+  const prior = undeclared ? null : priorDraft(taxYear, todayYmd, memo);
+  // The window the schedules read: an open year's ends today (a bill dated at its month's end, a holding's year-end mark are yet to come).
+  const readWindow: DateWindow = { fromYmd: residentWindow.fromYmd, throughYmd: lastDayRead(todayYmd, yearEnd) };
+  const firstUsYear = undeclared ? null : (prior?.firstUsYear ?? taxYear);
+  const options = undeclared ? { lots: [], rows: [] } : optionRowsForWindow(readWindow, taxYear);
+  const pfic = undeclared
+    ? []
+    : form8621ForYear(
+        taxYear,
+        readWindow,
+        firstUsYear!,
+        prior ? new Map(prior.form8621.map((r) => [r.accountId, r.stateOut])) : null
+      );
+  const pficOrdinary = Math.round(pfic.reduce((a, r) => a + r.ordinaryIncomeUsd, 0));
+  const pficRows = pficCapitalLossRows(pfic, taxYear);
+  const rows = [...(undeclared ? [] : form8949Rows(usDisposalLots(residentWindow), taxYear)), ...options.rows, ...pficRows];
+  const carryIn = prior?.capitalLossCarryoverOut ?? { shortTerm: 0, longTerm: 0 };
   const d = scheduleD(rows, carryIn, law.capitalLossLimit);
-  const s1 = schedule1({ rentalRealEstate: wired.scheduleENet, pficMarkToMarket: wired.pficMarkToMarket, otherIncome: wired.otherIncome });
+  const schedE = undeclared ? null : scheduleEForWindow(readWindow);
 
   const statement = dual
     ? dualStatusStatement(
@@ -423,7 +487,7 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
     }
     return tax + (statement?.tax ?? 0);
   };
-  const inputs = (otherTaxes23: number): F1040Inputs => ({
+  const inputs = (s1: Schedule1, otherTaxes23: number, foreignTaxCredit20: number): F1040Inputs => ({
     wages1a: w2.wages,
     taxExemptInterest2a: 0,
     interest2b: b.line4,
@@ -438,30 +502,64 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
     taxOn,
     schedule2Part1_17: 0,
     childTaxCredit19: 0,
-    schedule3Nonrefundable20: wired.foreignTaxCredit,
+    schedule3Nonrefundable20: foreignTaxCredit20,
     otherTaxes23,
     withholdingW2_25a: w2.federalWithheld,
     withholding1099_25b: withholding1099,
     withholdingOther25c: w2.additionalMedicareWithheld + withholding1042S + (statement?.withheld ?? 0),
     schedule3Credits31: w2.excessSocialSecurity,
   });
+  // Form 8582 reads the AGI without the passive loss (a net rental income is in it, a loss is not).
+  const noRental = schedule1({ rentalRealEstate: 0, pficMarkToMarket: pficOrdinary, otherIncome: 0 });
+  const magiForPassive = computeF1040Lines(inputs(noRental, 0, 0))["11"]! + Math.max(0, Math.round(schedE?.scheduleE.netUsd ?? 0));
+  const rentals = schedE
+    ? rentalsAfterPassiveLimit(schedE, filingStatus, magiForPassive, prior?.rentals?.form8582?.suspendedLossUsd ?? 0)
+    : null;
+  const s1 = schedule1({ rentalRealEstate: rentals?.line5 ?? 0, pficMarkToMarket: pficOrdinary, otherIncome: 0 });
   // Form 8960 reads AGI (line 11), which no tax line feeds: a first pass gives it.
-  const agi = computeF1040Lines(inputs(0))["11"];
+  const agi = computeF1040Lines(inputs(s1, 0, 0))["11"];
   const niit = form8960({
     taxableInterest: b.line4,
     ordinaryDividends: b.line6,
-    rentalNet: wired.nii.rentalNet,
+    rentalNet: s1["5"],
     capitalGain: d.form1040Line7,
-    pficInclusions: wired.nii.pficInclusions,
-    other: wired.nii.other,
+    pficInclusions: pficOrdinary,
+    other: 0,
     magi: agi,
     threshold: law.niitThreshold[filingStatus],
     rate: law.niitRate,
   });
   const s2 = schedule2({ additionalMedicareTax: Math.round(w2.additionalMedicareTax), netInvestmentIncomeTax: niit["17"] });
-  const computed: F1040Lines = computeF1040Lines(inputs(s2["21"]));
+  const beforeCredit = computeF1040Lines(inputs(s1, s2["21"], 0));
+  // Form 1116: Chile's taxes on the US-resident months (the F22 is read only when Chile taxed something there).
+  const chile = schedE && chileTaxesUsWindow(readWindow, schedE) ? chileanTaxForF1040(taxYear, todayYmd) : null;
+  const rentsUsd = rentals ? rentals.scheduleE.places.reduce((a, p) => a + p.lines.l3, 0) : 0;
+  const rentalIncluded = rentals?.form8582?.includedInIncomeUsd ?? 0;
+  const ftc = undeclared
+    ? null
+    : foreignTaxCredit({
+        taxYear,
+        rateThroughYmd: lastDayRead(todayYmd, yearEnd),
+        chile,
+        foreignPassiveGrossUsd:
+          rentsUsd + dividends.filter((x) => !x.usSource).reduce((a, x) => a + x.usd, 0) + interest.filter((x) => !x.usSource).reduce((a, x) => a + x.usd, 0),
+        foreignPassiveDeductionsUsd: Math.max(0, rentsUsd - rentalIncluded),
+        taxableIncomeUsd: beforeCredit["15"] ?? 0,
+        usTaxBeforeCreditsUsd: (beforeCredit["16"] ?? 0) - (statement?.tax ?? 0),
+        carryoversIn: prior?.foreignTaxCredit?.result.carryoversOut ?? [],
+      });
+  const computed: F1040Lines = computeF1040Lines(inputs(s1, s2["21"], ftc?.credit ?? 0));
   // A line the year's form does not print (13b before 2025) is left out (it is 0: no Schedule 1-A is drafted).
   const lines: F1040Lines = Object.fromEntries(Object.entries(computed).filter(([l]) => f1040YearHasLine(l as F1040Line, taxYear)));
+  const wired: F1040WiredInputs = {
+    scheduleENet: s1["5"],
+    pficMarkToMarket: pficOrdinary,
+    otherIncome: 0,
+    foreignTaxCredit: ftc?.credit ?? 0,
+    extraForm8949Rows: [...options.rows, ...pficRows],
+    nii: { rentalNet: s1["5"], pficInclusions: pficOrdinary, other: 0 },
+  };
+  const foreignTaxWithheldUsd = cents(dividends.reduce((s, x) => s + x.foreignTaxUsd, 0));
 
   const notes: F1040Note[] = ["no_state_return"];
   if (undeclared) notes.push("residency_undeclared");
@@ -469,7 +567,24 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
     if (dual) notes.push("dual_status", "dual_status_statement_tax_line_16");
     if (withholding1042S > 0 || (statement?.withheld ?? 0) > 0) notes.push("withholding_1042s_line_25c");
     if (b.qualifiedDividends > 0) notes.push("qualified_holding_period_not_tested");
-    notes.push("no_step_up_on_residency", "wash_sales_not_modelled", "pfic_outside_schedule_d", "treaty_pensions_deferred", "fx_daily_spot", "section_988_not_modelled", "form_2210_not_modelled", "schedules_not_wired", "foreign_accounts_month_end");
+    notes.push("no_step_up_on_residency", "wash_sales_not_modelled", "pfic_outside_schedule_d", "treaty_pensions_deferred", "fx_daily_spot", "section_988_not_modelled", "form_2210_not_modelled", "foreign_accounts_month_end");
+    if (rentals && rentals.scheduleE.places.length > 0) {
+      if (rentals.scheduleE.places.some((p) => p.depreciation.reading === "from_placed_in_service")) notes.push("depreciation_pre_residency_allowable");
+      notes.push("depreciation_land_share_assumed", "life_insurance_not_deducted");
+    }
+    if ((rentals?.form8582?.suspendedLossUsd ?? 0) > 0) notes.push("passive_loss_suspended");
+    if (pfic.length > 0) notes.push("pfic_mark_to_market");
+    if (pfic.some((r) => r.flags.partVPossible)) notes.push("pfic_part_v_possible");
+    if (pficRows.length > 0) notes.push("pfic_capital_loss_term_assumed");
+    if (ftc) {
+      notes.push("ftc_accrued_yearly_average", "ftc_carryback_not_modelled");
+      if (ftc.classified.some((c) => c.form8833)) notes.push("form_8833_treaty_credit");
+      if (ftc.classified.some((c) => !c.creditable)) notes.push("unico_art107_not_creditable");
+      if (niit["17"] > 0) notes.push("no_ftc_against_niit");
+    }
+    if (foreignTaxWithheldUsd > 0) notes.push("foreign_dividend_withholding_not_credited");
+    if (options.rows.some((r) => r.source === "option")) notes.push("options_written_short_term");
+    if (options.lots.length > 0) notes.push("covered_call_straddle_not_modelled");
   }
   if (provisional) notes.push("open_year");
   if (lawYear !== taxYear) notes.push("law_provisional");
@@ -496,14 +611,26 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
     form8960: niit,
     dualStatusStatement: statement,
     withholding1042S,
-    foreignTaxWithheldUsd: cents(dividends.reduce((s, x) => s + x.foreignTaxUsd, 0)),
+    foreignTaxWithheldUsd,
     foreignAccounts,
     lines,
     fica: w2.fica,
     additionalMedicareTax: w2.additionalMedicareTax,
     filed: filedF1040(taxYear),
     notes,
+    firstUsYear,
+    rentals,
+    form8621: pfic,
+    optionLots: options.lots,
+    foreignTaxCredit: ftc,
+    wired,
+    schedule3: { "1": ftc?.credit ?? 0, "8": ftc?.credit ?? 0, "11": w2.excessSocialSecurity, "15": w2.excessSocialSecurity },
   };
+}
+
+/** The last day the year's rates are read through: the year's end, or today in an open year. */
+function lastDayRead(todayYmd: string, yearEnd: string): string {
+  return todayYmd < yearEnd ? todayYmd : yearEnd;
 }
 
 function addDays(ymd: string, n: number): string {

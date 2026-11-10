@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { computeF22Tax } from "./chain.js";
-import { buildF22Draft } from "./draft.js";
+import { buildF22Draft, f1040TaxForF22 } from "./draft.js";
+import { wholeYearWindow } from "../dateWindow.js";
 import { foreignInterestForYear, foreignSalaryForYear } from "./foreignIncome.js";
 import { f22ForeignSalaryCreditCap } from "./identities.js";
 import { buildF1040Draft } from "../us1040/draft.js";
@@ -115,7 +116,7 @@ describe("foreign income in the F22 draft", () => {
 
   it("declares the gross salary less the US tax only (FICA stays in), at the year-end observado, the tax at line 24", () => {
     const yearEnd = { observado: OBSERVADO + 50, provisional: true };
-    const s = foreignSalaryForYear(INCOME_YEAR, TODAY, yearEnd);
+    const s = foreignSalaryForYear(INCOME_YEAR, yearEnd, wholeYearWindow(INCOME_YEAR), (y) => f1040TaxForF22(y, TODAY));
     expect(s.stubs).toHaveLength(3);
     // Circular 31/2021 §1.2.2.2.2 a) i): only Chilean-law contributions come off an art. 42 N°1 income.
     expect(s.incomeUsd).toBe(3 * 20_000);
@@ -130,7 +131,37 @@ describe("foreign income in the F22 draft", () => {
     expect(s.netClp).toBe(s.grossClp - s.usTaxClp);
     expect(s.creditClp).toBe(Math.round(Math.min(s.usTaxClp, FOREIGN_TAX_CREDIT_CAP * s.grossClp)));
     expect(s.provisional).toBe(true);
-    expect(() => foreignSalaryForYear(INCOME_YEAR, TODAY, { observado: 0, provisional: false })).toThrow(/observado/);
+    expect(() => foreignSalaryForYear(INCOME_YEAR, { observado: 0, provisional: false }, wholeYearWindow(INCOME_YEAR), null)).toThrow(/observado/);
+    // A non-resident window reads no 1040: the salary is only shown, with no tax and no credit.
+    const nr = foreignSalaryForYear(INCOME_YEAR, yearEnd, wholeYearWindow(INCOME_YEAR), null);
+    expect(nr.grossClp).toBe(s.grossClp);
+    expect([nr.usTaxSource, nr.usTaxUsd, nr.creditClp]).toEqual([null, 0, 0]);
+  });
+
+  it("reads a declared Chilean resident's year with US stubs as a 1040-NR not drafted: no credit, said so", () => {
+    db.prepare(`INSERT INTO tax_residency_periods (jurisdiction, from_date, to_date, note) VALUES ('cl', ?, ?, 'vitest-f22-foreign')`).run(
+      `${INCOME_YEAR}-01-01`,
+      `${INCOME_YEAR}-12-31`
+    );
+    try {
+      expect(f1040TaxForF22(INCOME_YEAR, TODAY)).toEqual({ usd: 0, source: "nonresident_alien_not_drafted" });
+      const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { usdFx: { load: noUsd } });
+      expect(d.foreignSalary.usTaxSource).toBe("nonresident_alien_not_drafted");
+      expect(d.foreignSalary.creditClp).toBe(0);
+      expect(d.draft[1030]).toBe(d.foreignSalary.grossClp);
+      expect(d.draft[748] ?? 0).toBe(0);
+    } finally {
+      db.prepare(`DELETE FROM tax_residency_periods WHERE note = 'vitest-f22-foreign'`).run();
+    }
+  });
+
+  it("refuses to read the 1040 of a year whose 1040 comes after the F22 (a US-resident year)", () => {
+    db.prepare(`INSERT INTO tax_residency_periods (jurisdiction, from_date, to_date, note) VALUES ('us', ?, NULL, 'vitest-f22-foreign')`).run(`${INCOME_YEAR}-01-01`);
+    try {
+      expect(() => f1040TaxForF22(INCOME_YEAR, TODAY)).toThrow(/F22 2096 reads the 1040 of the same year, which comes after it/);
+    } finally {
+      db.prepare(`DELETE FROM tax_residency_periods WHERE note = 'vitest-f22-foreign'`).run();
+    }
   });
 
   it("sums the foreign broker's interest at the year-end observado", () => {

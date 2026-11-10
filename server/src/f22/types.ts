@@ -94,6 +94,8 @@ export type F22ExcludedKind =
   | "foreign_dividends"
   | "foreign_interest"
   | "foreign_shares"
+  /** US-listed option premiums (net received), foreign-source. */
+  | "options"
   | "usd_fx"
   | "crypto"
   | "fund_redemptions"

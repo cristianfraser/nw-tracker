@@ -228,31 +228,54 @@ export function form8621Inputs(taxYear: number, residencyWindow: DateWindow, usd
     let arrival: Form8621Arrival | null = null;
     if (first && heldAtStart) {
       const startUnits = beforeResidency!.cuotas!;
-      // Historic cost of the units held the day before: every purchase before the residency at its own day's rate, less the cost of units sold (lots walked pro rata by average cost).
-      const before = holdingTransactionFacts({ fromYmd: "0001-01-01", throughYmd: dayBefore(residencyWindow.fromYmd) }, id);
-      const cur = before.currency ?? currency;
-      let units = 0;
-      let cost = 0;
-      const all = [
-        ...before.acquisitions.map((a) => ({ k: "a" as const, date: a.date, id: a.movementId, units: a.units, usd: usdAt(a.cost, cur, a.date) })),
-        ...before.dispositions.map((d) => ({ k: "d" as const, date: d.date, id: d.movementId, units: d.units, usd: 0 })),
-      ].sort((a, b) => a.date.localeCompare(b.date) || (a.k === b.k ? a.id - b.id : a.k === "a" ? -1 : 1));
-      for (const e of all) {
-        if (e.k === "a") {
-          units += e.units;
-          cost += e.usd;
-        } else {
-          const share = units > 0 ? e.units / units : 0;
-          cost -= cost * share;
-          units -= e.units;
+      // Historic cost of the units held on a day: every purchase at its own day's rate, less the cost of units sold (pro rata, by average cost).
+      const all = holdingTransactionFacts({ fromYmd: "0001-01-01", throughYmd: dayBefore(residencyWindow.fromYmd) }, id);
+      const cur = all.currency ?? currency;
+      const walk = (through: string) => {
+        let units = 0;
+        let cost = 0;
+        const ev = [
+          ...all.acquisitions.map((a) => ({ k: "a" as const, date: a.date, id: a.movementId, units: a.units, usd: usdAt(a.cost, cur, a.date) })),
+          ...all.dispositions.map((d) => ({ k: "d" as const, date: d.date, id: d.movementId, units: d.units, usd: 0 })),
+        ]
+          .filter((e) => e.date <= through)
+          .sort((a, b) => a.date.localeCompare(b.date) || (a.k === b.k ? a.id - b.id : a.k === "a" ? -1 : 1));
+        for (const e of ev) {
+          if (e.k === "a") {
+            units += e.units;
+            cost += e.usd;
+          } else {
+            const share = units > 0 ? e.units / units : 0;
+            cost -= cost * share;
+            units -= e.units;
+          }
+        }
+        return { units, cost };
+      };
+      const atArrival = walk(dayBefore(residencyWindow.fromYmd));
+      if (Math.abs(atArrival.units - startUnits) > 1e-6 * Math.max(1, startUnits)) {
+        throw new Error(`Form 8621: ${profile.name} cost walk holds ${atArrival.units} units before the residency, the ledger ${startUnits}`);
+      }
+      // The greater-of rule reaches the units owned on the basis day; units bought after it (before the
+      // residency) keep their cost. A sale in between would need a lot split: not modelled.
+      const unitsAtBasis = atBasisDay!.cuotas ?? 0;
+      if (basisDay < residencyWindow.fromYmd) {
+        const between = { fromYmd: addDaysIso(basisDay, 1), throughYmd: dayBefore(residencyWindow.fromYmd) };
+        if (all.dispositions.some((d) => d.date >= between.fromYmd && d.date <= between.throughYmd)) {
+          throw new Error(`Form 8621: ${profile.name} was sold between the arrival basis day ${basisDay} and the residency — not modelled`);
         }
       }
-      if (Math.abs(units - startUnits) > 1e-6 * Math.max(1, startUnits)) {
-        throw new Error(`Form 8621: ${profile.name} cost walk holds ${units} units before the residency, the ledger ${startUnits}`);
+      const atBasis = basisDay < residencyWindow.fromYmd ? walk(basisDay) : atArrival;
+      if (Math.abs(atBasis.units - unitsAtBasis) > 1e-6 * Math.max(1, unitsAtBasis)) {
+        throw new Error(`Form 8621: ${profile.name} cost walk holds ${atBasis.units} units on ${basisDay}, the ledger ${unitsAtBasis}`);
       }
-      const perUnitAtBasisDay = atBasisDay!.cuotas && atBasisDay!.value != null ? atBasisDay!.value / atBasisDay!.cuotas : null;
-      if (perUnitAtBasisDay == null) throw new Error(`Form 8621: ${profile.name} has no value on ${basisDay}`);
-      arrival = { startUnits, startCostBasisUsd: cost, startFmvUsd: usdAt(perUnitAtBasisDay * startUnits, currency, basisDay) };
+      const laterCost = atArrival.cost - atBasis.cost;
+      let fmvAtBasis = 0;
+      if (unitsAtBasis > 0) {
+        if (atBasisDay!.value == null) throw new Error(`Form 8621: ${profile.name} has no value on ${basisDay}`);
+        fmvAtBasis = usdAt(atBasisDay!.value, currency, basisDay);
+      }
+      arrival = { startUnits, startCostBasisUsd: atArrival.cost, startFmvUsd: fmvAtBasis + laterCost };
     }
     if (atEnd!.value == null && heldAtEnd) throw new Error(`Form 8621: ${profile.name} has no value on ${residencyWindow.throughYmd}`);
     out.push({

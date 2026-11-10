@@ -554,6 +554,61 @@ the bullets and the review above. What it settles, and the reading R2 builds whe
 - Each wave: `cd server && npm run test`, both generations, the local demo pair; merge to `main`
   on the user's word; the market asset republished and one demo release after O2b.
 
+### Status (2026-11-10): T0, R2 and O2 built
+
+Built on the integration branch, wired on `us-r2-wire`:
+
+- **T0**: the jurisdiction-neutral `taxFacts/` layer, the F22 split into `f22/` (a composition over
+  `f22/year.ts`'s setup, the blocks and the regimes), signed lots in `taxLots.ts`.
+- **R2**: `us1040/` one module per form — Schedules B, D, E, 1, 2, 3, Form 8949, the QDCG
+  worksheet, Forms 8582, 8621 (Part IV), 1116 (passive), 8960, the dual-status statement — composed
+  by `draft.ts` with `wired.ts`; the carryovers from the prior year's fully composed draft (one draft
+  per year per call). `taxReturnOrder` is enforced by readers (`assertReadsEarlierReturn`): the 1040
+  reads the F22's non-resident part (code 34, 1830) for Form 1116, the F22 of a Chilean-resident
+  year reads the 1040's line 24 (a nonresident alien's year: `nonresident_alien_not_drafted`, no
+  credit). `f22/foreignIncome.ts` no longer imports the 1040: no import cycle.
+- **O2**: option lots on the signed engine (`optionTaxLotEvents.ts`), the demo's INTC put wheel at
+  IBKR from 2025, the 1040's Form 8949 rows (an assignment's premium in the share walk), the F22's
+  resident-window throw and non-resident `excluded` item.
+
+The demo's returns (synthetic market, 3 passes, net worth US$479.895):
+
+| Line | 2024 (dual-status from 04-15) | 2025 | 2026 (open, to 11-10) |
+|---|---|---|---|
+| 1a wages | 99.505 | 159.013 | 150.508 |
+| 2b interest | 437 | 960 | 617 |
+| 3a / 3b dividends | 129 / 281 | 195 / 492 | 356 / 831 |
+| 7 capital gain | 0 | 124 (four expired puts) | −1.416 (a stock loss, three expired puts +138) |
+| Sch. 1 line 5 (Schedule E after 8582) | −350 (allowed) | 0 (2.251 suspended) | 0 (394 absorbed, 1.857 suspended) |
+| Sch. 1 line 8z (Form 8621) | 0 | 1.555 (IPSA ETF 1.305 + fund sale 250) | −208 |
+| 11 AGI | 99.873 | 162.144 | 150.332 |
+| 12 deduction | 0 (dual-status) | 15.750 | 16.100 |
+| 15 taxable | 99.873 | 146.394 | 134.232 |
+| 16 tax | 17.017 (incl. the statement's 5) | 27.964 | 24.781 |
+| 20 FTC | 0 | 0 | 0 |
+| 23 other taxes | 0 | 0 | 0 |
+| 24 total | 17.017 | 27.964 | 24.781 |
+| 25a / 25c | 16.236 / 18 | 27.171 / 16 | 26.192 / 12 |
+| owed (37) / refund (35a) | owes 763 | owes 777 | refund 1.423 |
+
+Schedule E (rents − expenses incl. depreciation = net): 2024 Centro 4.202 − 2.787 = 1.415,
+Vitacura 8.472 − 10.237 = −1.765; 2025 Centro 5.843 − 3.942 = 1.901, Vitacura 13.432 − 17.584 =
+−4.152. Form 8582: 2024 MAGI 100.223, allowance 24.889, the 350 allowed; 2025 MAGI 162.144,
+allowance 0, 2.251 suspended. Form 1116: Chile's Adicional 2.848.895 CLP (2024) and 4.597.677 CLP
+(2025), the filed F22s', at the yearly averages 929,66 and 963,89 → US$3.064 and 4.770; the rental
+nets to a loss, so the passive limit is 0, nothing is credited and both carry forward. Form 8621: the
+money-market fund was emptied on 2024-02-29 (before the move, for the Vitacura pie) and re-bought
+from 2024-04-30, so it has no arrival basis and no Part V flag — 2024 a US$91 decline disallowed,
+2025 sold out with US$250 ordinary gain; the IPSA ETF (bought 2025) includes US$1.305 in 2025.
+The F22 codes of every year are unchanged; its non-resident years now list the options as excluded
+and read no 1040.
+
+Still open: Form 8621 Part V (the §1291 first-year coordination) and the PFIC assumptions; the FTC
+carryback; the covered-call straddle rules and no assignment has happened on the demo yet (the
+assignment path is tested on fixtures only); the dividend tax another country withheld (shown,
+not credited); a Chilean fund's distribution único, not on file; §988 on the UF loans; Form 2210;
+a 1040-NR for a nonresident alien year.
+
 ## Waves
 
 - **Wave R1 — residency, Chile (one agent, research first):** the sources above read and quoted

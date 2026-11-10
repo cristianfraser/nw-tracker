@@ -6,7 +6,7 @@
 import express from "express";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { availableUsTaxYears, buildF1040Draft } from "./draft.js";
@@ -407,11 +407,15 @@ describe("the 1040 by declared residency", () => {
   it("drafts a dual-status year: the resident part on the 1040, no standard deduction, the nonresident statement's US dividends at the withheld rate", () => {
     applyStubs(generatedStubs("2026-12-31"));
     declareMove("2026-07-01");
+    // The test's «today» is the year's last day, past the stored rates: a rate for it (Form 8621 marks the holdings that day).
+    const lastFx = db.prepare(`SELECT clp_per_usd FROM fx_daily ORDER BY date DESC LIMIT 1`).get() as { clp_per_usd: number };
+    db.prepare(`INSERT OR IGNORE INTO fx_daily (date, clp_per_usd) VALUES ('2026-12-31', ?)`).run(lastFx.clp_per_usd);
+    onTestFinished(() => void db.prepare(`DELETE FROM fx_daily WHERE date = '2026-12-31'`).run());
     const d = buildF1040Draft(2026, "2026-12-31");
     expect(d.residency).toEqual({ kind: "dual_status", from: "2026-07-01" });
     expect(d.residentWindow).toEqual({ fromYmd: "2026-07-01", throughYmd: "2026-12-31" });
     expect(d.lines["12"]).toBe(0);
-    expect(d.notes).toEqual(expect.arrayContaining(["dual_status", "dual_status_statement_tax_line_16", "no_step_up_on_residency", "schedules_not_wired"]));
+    expect(d.notes).toEqual(expect.arrayContaining(["dual_status", "dual_status_statement_tax_line_16", "no_step_up_on_residency"]));
     // Every resident-part item falls on or after the residency day; the statement's before it.
     for (const x of [...d.interest, ...d.dividends]) expect(x.date >= "2026-07-01").toBe(true);
     const s = d.dualStatusStatement!;
@@ -426,6 +430,13 @@ describe("the 1040 by declared residency", () => {
     expect(d.lines["16"]).toBe(ordinary + s.tax);
     expect(d.lines["25c"]).toBe(d.withholding1042S + s.withheld);
     expect(() => assertF1040Identities(d.lines, "dual", 2026)).not.toThrow();
+    // The schedules reach their lines: 7 = Schedule D, 8 = Schedule 1 line 10, 20 = Schedule 3 line 1 ≤ 16.
+    expect(d.lines["7"]).toBe(d.scheduleD.form1040Line7);
+    expect(d.lines["8"]).toBe(d.schedule1["10"]);
+    expect(d.lines["8"]).toBe(d.wired.scheduleENet + d.wired.pficMarkToMarket);
+    expect(d.lines["20"] ?? 0).toBe(d.schedule3["1"]);
+    expect(d.lines["20"] ?? 0).toBeLessThanOrEqual(d.lines["16"]!);
+    expect(d.firstUsYear).toBe(2026);
     const p = buildF1040Payload(2026, "2026-12-31");
     expect(p).toMatchObject({ drafted: true, residency: { kind: "dual_status", from: "2026-07-01" } });
     expect(p.dual_status_statement?.rows.length).toBe(s.rows.length);

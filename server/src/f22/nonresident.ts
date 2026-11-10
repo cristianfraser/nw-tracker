@@ -7,6 +7,7 @@ import { dividendsNetAllClp } from "./dividends.js";
 import { fundRedemptionGainsForYear, mortgageInterestForYear } from "./estimates.js";
 import { f22Code955 } from "./identities.js";
 import type { F22WindowBlocks, F22YearContext } from "./blocks.js";
+import { optionMovementFacts } from "../taxFacts/options.js";
 import type { F22Codes, F22ExcludedItem, F22ExcludedKind, F22ExcludedReason, F22NonresidentPart } from "./types.js";
 
 /**
@@ -56,6 +57,12 @@ export function nonresidentPart(
     add("foreign_shares", "nonresident", blocks.foreignShares.totalClp[blocks.foreignShares.defaultMode], blocks.foreignShares.disposals.length);
   }
   if (blocks.usdFx.disposals.length > 0) add("usd_fx", "nonresident", blocks.usdFx.resultDecemberClp, blocks.usdFx.disposals.length);
+  // A US-listed option's premiums are foreign-source for a non-resident (art. 3): shown, not declared.
+  const options = optionMovementFacts(window);
+  if (options.movements > 0) {
+    if (options.currency != null && options.currency !== "usd") throw new Error(`F22 ${incomeYear}: option premiums in ${options.currency}, expected dollars`);
+    add("options", "nonresident", options.netPremium * ctx.yearEndObservado, options.movements);
+  }
   if (blocks.crypto.sales.length > 0) add("crypto", "treaty_art13_8", blocks.crypto.gainDecemberClp, blocks.crypto.sales.length);
   // A Chilean fund's redemptions: the lender-style DJ 1894 of a whole non-resident year, else the ledger's estimate.
   const funds = fundRedemptionGainsForYear(incomeYear, window);

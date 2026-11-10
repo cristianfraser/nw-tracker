@@ -32,7 +32,7 @@
       "lead": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
       "fictional": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
       "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
-      "storyTax": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
+      "storyTax": "A Chilean resident until 2024-04-14, a US resident from 2024-04-15 (declared, not inferred). 2024 is split on both sides: the F22 declares the Chilean months as a resident and the rents after the move under the Impuesto Adicional; the 1040 is a dual-status return. From 2025 Chile taxes only the rents, and the 1040 carries the worldwide side: Schedule E for both apartments (the loss above the passive allowance carried forward), Form 8621 for the Chilean funds, the INTC options on Form 8949, and Form 1116 crediting Chile's Impuesto Adicional — capped near zero by the rental loss, so it carries forward. Each April the F22 comes first and the 1040 reads its tax. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
       "openDashboard": "Open the dashboard",
       "howTitle": "How it works",
       "youAreHere": "You are here",
@@ -99,7 +99,7 @@
         },
         "taxes": {
           "title": "Two returns each April",
-          "body": "The US tab holds the 1040 for the US salary; the Chile tab the F22, which declares that salary again with the treaty credit for the US tax, plus the rent of the apartment that is not DFL-2."
+          "body": "Two returns each year, in order: the Chile tab's F22 first (the Impuesto Adicional on the rents since the move), then the US tab's 1040, whose Form 1116 credits that Chilean tax beside Schedule E, Form 8621 and the options."
         },
         "end": {
           "title": "Tour complete",
@@ -1993,13 +1993,27 @@
         "no_step_up_on_residency": "Basis is the historic cost in dollars at each purchase day: becoming a resident does not step it up.",
         "pfic_outside_schedule_d": "Foreign funds (the Chilean fund and ETF, a UCITS line) are PFICs: Form 8621 owns their gains, not Schedule D.",
         "treaty_pensions_deferred": "The AFP, AFC and APV are read as treaty pensions (Art. 18(4); the APV assumed): their earnings are not income until paid out.",
-        "fx_daily_spot": "Every peso amount converts at the USD/CLP rate of its own day: cost at the purchase day, proceeds at the sale day, income at its receipt day.",
-        "section_988_not_modelled": "Exchange gains and losses on pesos (§988) are not modelled.",
+        "fx_daily_spot": "Every peso amount converts at the USD/CLP rate of its own day: cost at the purchase day, proceeds at the sale day, income at its receipt day; an amount in UF through that day's pesos.",
+        "section_988_not_modelled": "Exchange gains and losses on pesos (§988) are not modelled, the repayments of the UF-indexed mortgages included.",
         "form_2210_not_modelled": "The underpayment penalty (Form 2210) is not modelled.",
-        "schedules_not_wired": "Schedule E, Form 8582, Form 8621 and Form 1116 are not composed into this draft yet: their lines read 0.",
         "foreign_accounts_month_end": "FBAR and Form 8938: the foreign accounts are valued at month ends (a peak between two is not seen); coins at an exchange are left out.",
         "open_year": "{{year}} has not ended: the pay stubs to date, not the year's total.",
-        "law_provisional": "The {{year}} figures are not in the law table yet: the {{lawYear}} ones stand in."
+        "law_provisional": "The {{year}} figures are not in the law table yet: the {{lawYear}} ones stand in.",
+        "depreciation_pre_residency_allowable": "Schedule E: a rental placed in service before the residency keeps its 2020 date and its historic dollar cost, the depreciation allowable since then reducing the basis. No authority settles it (the alternative: a fresh placing in service on arrival at the lesser of adjusted basis and value).",
+        "depreciation_land_share_assumed": "Schedule E: the land is an assumed 20 % of each purchase price (not depreciable); the building is depreciated over 30 years, ADS, straight line, mid-month.",
+        "life_insurance_not_deducted": "Schedule E: the loan's life insurance (desgravamen) is not a rental expense; only the fire insurance is deducted.",
+        "passive_loss_suspended": "Form 8582: the rental loss the special allowance does not cover (it phases out between US$100.000 and US$150.000 of modified AGI) is suspended and carried to next year.",
+        "pfic_mark_to_market": "Form 8621 Part IV (mark to market) is computed for each PFIC; making the election and filing the form are yours. Assumed, not settled: each fund is a foreign corporation and marketable stock, and the Bolsa de Santiago a qualified exchange.",
+        "pfic_part_v_possible": "Form 8621 Part V may apply (a fund held before the first mark-to-market year: §1291 on the first year's gain). Flagged, not computed.",
+        "pfic_capital_loss_term_assumed": "A PFIC sale's capital loss is read as long-term: Form 8621's basis is pro rata, so the units sold carry no purchase day.",
+        "ftc_accrued_yearly_average": "Form 1116 on the accrued method: Chile's tax of the same income year (the F22's Impuesto Adicional), translated at the year's average fx_daily rate (Pub. 514, §986(a)(1)).",
+        "ftc_carryback_not_modelled": "Form 1116: excess foreign taxes carry forward ten years here; the one-year carryback is not modelled.",
+        "form_8833_treaty_credit": "The Impuesto Adicional is credited under the treaty's Art. 23(1): a treaty position Form 8833 may have to disclose (not filed by the app).",
+        "unico_art107_not_creditable": "The 10 % único Chile withheld on an art. 107 sale is not credited: the treaty (Art. 13) leaves the gain to the US, and it is US-source.",
+        "no_ftc_against_niit": "No foreign tax credit applies against the net investment income tax (Reg. §1.1411-1(e)).",
+        "foreign_dividend_withholding_not_credited": "Tax another country withheld on dividends is shown, not credited: the readings do not settle whether it is creditable.",
+        "options_written_short_term": "A written option's result is short-term whatever its length (§1234(b)); a bought option's follows its holding period. An assigned option has no row: its premium is in the shares' basis or the sale's proceeds.",
+        "covered_call_straddle_not_modelled": "The straddle rules on covered calls (§1092: loss deferral, the stock's holding period suspended) are not modelled."
       },
       "summaryFiled": "Total tax filed: {{amount}}",
       "summaryDraft": "drafted: {{amount}}",
@@ -2099,7 +2113,8 @@
           "schedule_1": "Schedule 1 · additional income",
           "schedule_2": "Schedule 2 · additional taxes",
           "qdcg_worksheet": "Qualified Dividends and Capital Gain Tax Worksheet",
-          "form_8960": "Form 8960 · net investment income tax"
+          "form_8960": "Form 8960 · net investment income tax",
+          "schedule_3": "Schedule 3 · credits and payments"
         },
         "lines": {
           "schedule_b": {
@@ -2164,6 +2179,12 @@
             "17": "Tax (3,8 %)",
             "4a": "Rental income (Schedule E)",
             "5a": "Net gain (incl. §1296 inclusions)"
+          },
+          "schedule_3": {
+            "1": "Foreign tax credit (Form 1116)",
+            "8": "Total nonrefundable credits → Form 1040 line 20",
+            "11": "Excess Social Security withheld",
+            "15": "Total other payments → Form 1040 line 31"
           }
         }
       },
@@ -2220,6 +2241,71 @@
         },
         "difference": "difference {{amount}}",
         "notLinked": "no bank movement linked yet"
+      },
+      "scheduleE": {
+        "title": "Schedule E · rental real estate",
+        "explain": "Each rented place in dollars at each day's rate: the rents, the agency's commission, the mortgage interest and fire insurance, contribuciones, gastos comunes and the 30-year ADS depreciation of the building. Net before the passive-loss limit: {{net}}.",
+        "depreciation": "Depreciation: basis {{basis}} ({{origin}}), building {{building}}, from {{start}} ({{reading}}), {{months}} months in the year → {{amount}}.",
+        "origin": {
+          "purchase_cost": "purchase cost",
+          "lesser_of_cost_and_value_at_conversion": "lesser of cost and value when converted to a rental"
+        },
+        "reading": {
+          "from_placed_in_service": "placed in service before the residency",
+          "fresh_on_arrival": "placed in service on arrival",
+          "placed_in_window": "placed in service this year"
+        },
+        "lines": {
+          "3": "Rents received",
+          "9": "Insurance",
+          "11": "Management fees",
+          "12": "Mortgage interest",
+          "16": "Taxes (contribuciones)",
+          "17": "Utilities",
+          "18": "Depreciation",
+          "19": "Other (gastos comunes)",
+          "20": "Total expenses",
+          "21": "Income or loss"
+        }
+      },
+      "form8582": {
+        "title": "Form 8582 · passive activity loss",
+        "summary": "Modified AGI {{magi}}: special allowance {{allowance}} (of {{before}}). Loss to limit {{limited}} (carried in {{prior}}, absorbed {{absorbed}}) → allowed {{allowed}}, suspended to next year {{suspended}}. Schedule 1 line 5: {{included}}."
+      },
+      "form1116": {
+        "title": "Form 1116 · foreign tax credit (passive)",
+        "chile": "Chile's taxes on the US-resident months, from the F22 AT{{taxYear}} ({{source}}): Impuesto Adicional {{adicional}}, art. 107 único {{unico}}; translated at {{rate}} CLP per US$ (the year's average).",
+        "noChile": "Chile taxed nothing in the US-resident months: only the carryovers.",
+        "source": {
+          "filed": "filed",
+          "draft": "draft"
+        },
+        "item": {
+          "adicional_on_rent": "Impuesto Adicional on rent",
+          "unico_on_etf_sale": "10 % único on an art. 107 sale",
+          "unico_on_fund_redemption": "10 % único on a fund redemption",
+          "unico_on_fund_distribution": "10 % único on a fund distribution"
+        },
+        "creditable": "creditable",
+        "notCreditable": "not creditable",
+        "unverified": "unverified",
+        "limit": "Foreign passive income {{gross}} less {{deductions}} = {{net}}; taxable income {{taxable}}, US tax {{tax}} → limit {{limit}} ({{fraction}}). Taxes {{accrued}} + carried in {{carriedIn}} → credit {{credit}} (Schedule 3 line 1); carried forward {{carriedOut}}.",
+        "carryover": "{{year}}: {{amount}}"
+      },
+      "form8621": {
+        "title": "Form 8621 · PFIC mark to market (Part IV)",
+        "explain": "Each PFIC at its December 31 value against its adjusted basis: an excess is ordinary income, a decline deductible only up to earlier inclusions; the result goes to Schedule 1 line 8z. The first US year starts from the greater of value and cost on January 1.",
+        "holding": "Holding",
+        "start": "Start basis",
+        "beforeMark": "Basis before mark",
+        "fmv": "Value Dec 31",
+        "inclusion": "Inclusion",
+        "deduction": "Deduction",
+        "ordinary": "To line 8z",
+        "endBasis": "End basis",
+        "unreversed": "Unreversed",
+        "sales": "{{label}}: {{count}} sale(s), ordinary {{ordinary}}, capital loss {{capital}}.",
+        "partV": "{{label}}: Part V may apply (held before the first mark-to-market year)."
       }
     },
     "title": "Tax return (Formulario 22)",
@@ -2315,7 +2401,8 @@
         "chile_interest": "Chilean bank interest (DJ 1890)",
         "mortgage_interest": "Mortgage interest (750 / 751)",
         "apv": "APV rebate (765)",
-        "property_tax_credit": "Contribuciones credit (1637)"
+        "property_tax_credit": "Contribuciones credit (1637)",
+        "options": "Options (US-listed, net premium)"
       },
       "reason": {
         "nonresident": "foreign-source income of a non-resident is outside Chile's reach (LIR art. 3)",
@@ -2395,7 +2482,8 @@
       "salary": "{{stubs}} pay stubs: {{usd}} gross → {{gross}}; US tax {{taxUsd}} ({{source}}) → {{tax}}; declared in 1030: {{net}}.",
       "taxSource": {
         "filed": "filed 1040",
-        "draft": "1040 draft"
+        "draft": "1040 draft",
+        "nonresident_alien_not_drafted": "a nonresident alien's 1040-NR, not drafted: no credit until the filed return is stored"
       },
       "credit": "Credit: {{credit}} (the US tax, at most 35 % of the gross), capped at {{cap}} (the IGC on this income, by its one-decimal share of the base) → {{applied}} in 1018.",
       "interest": "Interest from a foreign broker: {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit)."

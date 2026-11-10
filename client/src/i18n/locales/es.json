@@ -32,7 +32,7 @@
       "lead": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado.",
       "fictional": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato.",
       "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno.",
-      "storyTax": "Residente en Chile: el sueldo de EE. UU. se declara en el F22 con el crédito del tratado por el impuesto pagado en EE. UU.; el 1040 se presenta primero cada abril. La demo simplifica el primer año en EE. UU. (2024) a un año completo de residente. Mientras aún residía en Chile tuvo ETF UCITS irlandeses (CSPX, VWRA en las líneas en dólares de la Bolsa de Londres) en un bróker de EE. UU. — sin exposición al impuesto a la herencia de EE. UU. — y los vendió antes de mudarse: en manos de un residente de EE. UU. serían PFIC, así que su ganancia es una ganancia de acciones extranjeras en el F22, no una línea del 1040.",
+      "storyTax": "Residente en Chile hasta el 2024-04-14, residente en EE. UU. desde el 2024-04-15 (declarado, no inferido). 2024 se divide en ambos lados: el F22 declara los meses en Chile como residente y los arriendos posteriores con el Impuesto Adicional; el 1040 es una declaración de doble estatus. Desde 2025 Chile grava solo los arriendos, y el 1040 lleva el lado mundial: el anexo E de ambos departamentos (la pérdida sobre la asignación pasiva se arrastra), el formulario 8621 de los fondos chilenos, las opciones de INTC en el formulario 8949, y el formulario 1116 que acredita el Impuesto Adicional chileno — con un tope cercano a cero por la pérdida de arriendo, así que se arrastra. Cada abril el F22 va primero y el 1040 lee su impuesto. Mientras aún residía en Chile tuvo ETF UCITS irlandeses (CSPX, VWRA en las líneas en dólares de la Bolsa de Londres) en un bróker de EE. UU. — sin exposición al impuesto a la herencia de EE. UU. — y los vendió antes de mudarse: en manos de un residente de EE. UU. serían PFIC, así que su ganancia es una ganancia de acciones extranjeras en el F22, no una línea del 1040.",
       "openDashboard": "Abrir el dashboard",
       "howTitle": "Cómo funciona",
       "youAreHere": "Estás aquí",
@@ -99,7 +99,7 @@
         },
         "taxes": {
           "title": "Dos declaraciones cada abril",
-          "body": "La pestaña US tiene el 1040 del sueldo en EE. UU.; la pestaña Chile, el F22, que declara ese sueldo de nuevo con el crédito del tratado por el impuesto de EE. UU., y el arriendo del departamento que no es DFL-2."
+          "body": "Dos declaraciones cada año, en orden: primero el F22 de la pestaña Chile (el Impuesto Adicional sobre los arriendos desde la mudanza), luego el 1040 de la pestaña US, cuyo formulario 1116 acredita ese impuesto chileno junto al anexo E, el formulario 8621 y las opciones."
         },
         "end": {
           "title": "Recorrido completo",
@@ -1993,13 +1993,27 @@
         "no_step_up_on_residency": "La base es el costo histórico en dólares de cada día de compra: hacerse residente no la revalúa.",
         "pfic_outside_schedule_d": "Los fondos extranjeros (el fondo y el ETF chilenos, una línea UCITS) son PFIC: sus ganancias van en el formulario 8621, no en el anexo D.",
         "treaty_pensions_deferred": "La AFP, la AFC y el APV se leen como pensiones del convenio (art. 18(4); el APV se supone): sus rentas no son ingreso hasta que se pagan.",
-        "fx_daily_spot": "Cada monto en pesos se convierte al tipo USD/CLP de su propio día: el costo al día de compra, el producto al día de venta, el ingreso al día en que se recibe.",
-        "section_988_not_modelled": "No se modelan las ganancias y pérdidas cambiarias sobre pesos (§988).",
+        "fx_daily_spot": "Cada monto en pesos se convierte al tipo USD/CLP de su propio día: el costo al día de compra, el producto al día de venta, el ingreso al día en que se recibe; un monto en UF, a través de los pesos de ese día.",
+        "section_988_not_modelled": "No se modelan las ganancias y pérdidas cambiarias sobre pesos (§988), incluidos los pagos de los créditos hipotecarios en UF.",
         "form_2210_not_modelled": "No se modela la multa por pago insuficiente (formulario 2210).",
-        "schedules_not_wired": "El anexo E y los formularios 8582, 8621 y 1116 aún no se integran a este borrador: sus líneas valen 0.",
         "foreign_accounts_month_end": "FBAR y formulario 8938: las cuentas extranjeras se valoran a fin de mes (no se ve un máximo entre dos); las criptomonedas en un exchange quedan fuera.",
         "open_year": "{{year}} no ha terminado: las liquidaciones a la fecha, no el total del año.",
-        "law_provisional": "Las cifras de {{year}} aún no están en la tabla legal: se usan las de {{lawYear}}."
+        "law_provisional": "Las cifras de {{year}} aún no están en la tabla legal: se usan las de {{lawYear}}.",
+        "depreciation_pre_residency_allowable": "Anexo E: un arriendo puesto en servicio antes de la residencia conserva su fecha de 2020 y su costo histórico en dólares, y la depreciación admisible desde entonces reduce la base. Ninguna fuente lo resuelve (la alternativa: una nueva puesta en servicio al llegar, al menor entre base ajustada y valor).",
+        "depreciation_land_share_assumed": "Anexo E: el terreno se supone el 20 % de cada precio de compra (no depreciable); la construcción se deprecia en 30 años, ADS, lineal, a mitad de mes.",
+        "life_insurance_not_deducted": "Anexo E: el seguro de desgravamen del crédito no es un gasto del arriendo; solo se deduce el seguro de incendio.",
+        "passive_loss_suspended": "Formulario 8582: la pérdida de arriendo que la asignación especial no cubre (se reduce entre US$100.000 y US$150.000 de AGI modificado) queda suspendida y pasa al año siguiente.",
+        "pfic_mark_to_market": "La parte IV del formulario 8621 (valor de mercado) se calcula para cada PFIC; hacer la elección y presentar el formulario es tuyo. Se supone, sin fuente que lo resuelva: cada fondo es una sociedad extranjera y acciones negociables, y la Bolsa de Santiago una bolsa calificada.",
+        "pfic_part_v_possible": "Puede aplicar la parte V del formulario 8621 (un fondo tenido antes del primer año a valor de mercado: §1291 sobre la ganancia del primer año). Se señala, no se calcula.",
+        "pfic_capital_loss_term_assumed": "La pérdida de capital de la venta de un PFIC se lee de largo plazo: la base del formulario 8621 es a prorrata, y las unidades vendidas no tienen fecha de compra propia.",
+        "ftc_accrued_yearly_average": "Formulario 1116 por el método devengado: el impuesto chileno del mismo año (el Impuesto Adicional del F22), convertido al tipo de cambio promedio del año en fx_daily (Pub. 514, §986(a)(1)).",
+        "ftc_carryback_not_modelled": "Formulario 1116: el exceso de impuestos extranjeros se arrastra diez años; no se modela el traspaso de un año hacia atrás.",
+        "form_8833_treaty_credit": "El Impuesto Adicional se acredita por el art. 23(1) del convenio: una posición basada en el tratado que el formulario 8833 podría tener que declarar (la app no lo presenta).",
+        "unico_art107_not_creditable": "El impuesto único del 10 % retenido en Chile sobre una venta del art. 107 no se acredita: el convenio (art. 13) deja la ganancia a EE.UU., y es de fuente estadounidense.",
+        "no_ftc_against_niit": "Ningún crédito por impuestos extranjeros se aplica contra el impuesto sobre la renta neta de inversiones (Reg. §1.1411-1(e)).",
+        "foreign_dividend_withholding_not_credited": "El impuesto retenido por otro país sobre dividendos se muestra, no se acredita: las fuentes revisadas no resuelven si es acreditable.",
+        "options_written_short_term": "El resultado de una opción vendida es de corto plazo sea cual sea su duración (§1234(b)); el de una opción comprada sigue su plazo de tenencia. Una opción asignada no tiene fila: su prima está en la base de las acciones o en el precio de venta.",
+        "covered_call_straddle_not_modelled": "No se modelan las reglas de straddle de las opciones de compra cubiertas (§1092: diferimiento de pérdidas, suspensión del plazo de tenencia de la acción)."
       },
       "summaryFiled": "Impuesto total declarado: {{amount}}",
       "summaryDraft": "borrador: {{amount}}",
@@ -2099,7 +2113,8 @@
           "schedule_1": "Anexo 1 · ingreso adicional",
           "schedule_2": "Anexo 2 · impuestos adicionales",
           "qdcg_worksheet": "Hoja de impuesto sobre dividendos calificados y ganancias de capital",
-          "form_8960": "Formulario 8960 · impuesto sobre el ingreso neto de inversiones"
+          "form_8960": "Formulario 8960 · impuesto sobre el ingreso neto de inversiones",
+          "schedule_3": "Anexo 3 · créditos y pagos"
         },
         "lines": {
           "schedule_b": {
@@ -2164,6 +2179,12 @@
             "17": "Impuesto (3,8 %)",
             "4a": "Ingreso por arriendos (anexo E)",
             "5a": "Ganancia neta (incl. inclusiones del §1296)"
+          },
+          "schedule_3": {
+            "1": "Crédito por impuestos extranjeros (formulario 1116)",
+            "8": "Total de créditos no reembolsables → línea 20 del Form 1040",
+            "11": "Social Security retenido en exceso",
+            "15": "Total de otros pagos → línea 31 del Form 1040"
           }
         }
       },
@@ -2220,6 +2241,71 @@
         },
         "difference": "diferencia {{amount}}",
         "notLinked": "sin movimiento bancario enlazado"
+      },
+      "scheduleE": {
+        "title": "Anexo E · arriendos",
+        "explain": "Cada lugar arrendado en dólares al tipo de cambio de cada día: los arriendos, la comisión de la corredora, los intereses y el seguro de incendio del crédito, las contribuciones, los gastos comunes y la depreciación ADS a 30 años de la construcción. Neto antes del límite de pérdidas pasivas: {{net}}.",
+        "depreciation": "Depreciación: base {{basis}} ({{origin}}), construcción {{building}}, desde {{start}} ({{reading}}), {{months}} meses en el año → {{amount}}.",
+        "origin": {
+          "purchase_cost": "costo de compra",
+          "lesser_of_cost_and_value_at_conversion": "menor entre costo y valor al pasar a arriendo"
+        },
+        "reading": {
+          "from_placed_in_service": "puesto en servicio antes de la residencia",
+          "fresh_on_arrival": "puesto en servicio al llegar",
+          "placed_in_window": "puesto en servicio este año"
+        },
+        "lines": {
+          "3": "Arriendos recibidos",
+          "9": "Seguros",
+          "11": "Comisión de administración",
+          "12": "Intereses hipotecarios",
+          "16": "Impuestos (contribuciones)",
+          "17": "Servicios básicos",
+          "18": "Depreciación",
+          "19": "Otros (gastos comunes)",
+          "20": "Total de gastos",
+          "21": "Ingreso o pérdida"
+        }
+      },
+      "form8582": {
+        "title": "Formulario 8582 · pérdidas de actividades pasivas",
+        "summary": "AGI modificado {{magi}}: asignación especial {{allowance}} (de {{before}}). Pérdida a limitar {{limited}} (arrastrada {{prior}}, absorbida {{absorbed}}) → permitida {{allowed}}, suspendida al año siguiente {{suspended}}. Anexo 1 línea 5: {{included}}."
+      },
+      "form1116": {
+        "title": "Formulario 1116 · crédito por impuestos extranjeros (pasivo)",
+        "chile": "Impuestos chilenos de los meses como residente en EE.UU., del F22 AT{{taxYear}} ({{source}}): Impuesto Adicional {{adicional}}, impuesto único del art. 107 {{unico}}; convertidos a {{rate}} CLP por US$ (promedio del año).",
+        "noChile": "Chile no gravó nada en los meses como residente en EE.UU.: solo los arrastres.",
+        "source": {
+          "filed": "presentado",
+          "draft": "borrador"
+        },
+        "item": {
+          "adicional_on_rent": "Impuesto Adicional sobre arriendos",
+          "unico_on_etf_sale": "Impuesto único del 10 % en una venta del art. 107",
+          "unico_on_fund_redemption": "Impuesto único del 10 % en un rescate de fondo",
+          "unico_on_fund_distribution": "Impuesto único del 10 % en un reparto de fondo"
+        },
+        "creditable": "acreditable",
+        "notCreditable": "no acreditable",
+        "unverified": "sin verificar",
+        "limit": "Renta pasiva extranjera {{gross}} menos {{deductions}} = {{net}}; renta imponible {{taxable}}, impuesto de EE.UU. {{tax}} → tope {{limit}} ({{fraction}}). Impuestos {{accrued}} + arrastrados {{carriedIn}} → crédito {{credit}} (anexo 3 línea 1); se arrastra {{carriedOut}}.",
+        "carryover": "{{year}}: {{amount}}"
+      },
+      "form8621": {
+        "title": "Formulario 8621 · PFIC a valor de mercado (parte IV)",
+        "explain": "Cada PFIC a su valor al 31 de diciembre contra su base ajustada: el exceso es renta ordinaria, una baja se deduce solo hasta las inclusiones anteriores; el resultado va al anexo 1 línea 8z. El primer año en EE.UU. parte del mayor entre valor y costo al 1 de enero.",
+        "holding": "Inversión",
+        "start": "Base inicial",
+        "beforeMark": "Base antes de valorar",
+        "fmv": "Valor 31 dic",
+        "inclusion": "Inclusión",
+        "deduction": "Deducción",
+        "ordinary": "A la línea 8z",
+        "endBasis": "Base final",
+        "unreversed": "No revertidas",
+        "sales": "{{label}}: {{count}} venta(s), ordinario {{ordinary}}, pérdida de capital {{capital}}.",
+        "partV": "{{label}}: puede aplicar la parte V (tenido antes del primer año a valor de mercado)."
       }
     },
     "title": "Declaración de renta (Formulario 22)",
@@ -2315,7 +2401,8 @@
         "chile_interest": "Intereses bancarios chilenos (DJ 1890)",
         "mortgage_interest": "Intereses hipotecarios (750 / 751)",
         "apv": "Rebaja APV (765)",
-        "property_tax_credit": "Crédito por contribuciones (1637)"
+        "property_tax_credit": "Crédito por contribuciones (1637)",
+        "options": "Opciones (listadas en EE.UU., prima neta)"
       },
       "reason": {
         "nonresident": "renta de fuente extranjera de un no residente, fuera del alcance de Chile (art. 3 LIR)",
@@ -2395,7 +2482,8 @@
       "salary": "{{stubs}} liquidaciones: {{usd}} bruto → {{gross}}; impuesto en EE.UU. {{taxUsd}} ({{source}}) → {{tax}}; declarado en 1030: {{net}}.",
       "taxSource": {
         "filed": "1040 presentado",
-        "draft": "borrador del 1040"
+        "draft": "borrador del 1040",
+        "nonresident_alien_not_drafted": "1040-NR de un no residente, sin borrador: sin crédito hasta guardar la declaración presentada"
       },
       "credit": "Crédito: {{credit}} (el impuesto de EE.UU., hasta el 35 % del bruto), tope {{cap}} (el IGC de esta renta, por su proporción de la base con un decimal) → {{applied}} en 1018.",
       "interest": "Intereses de un corredor extranjero: {{usd}} al observado del 31 de diciembre → {{clp}}, en 1104 (sin impuesto retenido en EE.UU., sin crédito)."

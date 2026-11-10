@@ -51,6 +51,16 @@ export function bookMarkedFundSeriesKey(accountId: number): string | null {
   return r?.fund_series_key ?? null;
 }
 
+/**
+ * A position the movements leave at less than this many units is empty: summing the cuotas of every
+ * subscription and redemption in floating point leaves a residue (≈ 1e-12) after a full redemption,
+ * which a reader asking «is anything held?» must not read as a holding (it made Form 8621 see the
+ * money-market fund held on arrival with ~0 cuotas). Cuotas are stored to 4 decimals.
+ */
+export const EMPTY_POSITION_UNITS = 1e-6;
+
+const snapEmpty = (units: number): number => (Math.abs(units) < EMPTY_POSITION_UNITS ? 0 : units);
+
 /** A fund's or a stock's position on each of `dates` (null for any other account). */
 export function holdingPositionsOn(accountId: number, dates: readonly string[]): FundHoldingFact | null {
   const profile = accountProfileOptional(accountId);
@@ -65,7 +75,7 @@ export function holdingPositionsOn(accountId: number, dates: readonly string[]):
       seriesKey: bookSeries,
       currency: quote,
       positions: dates.map((date) => {
-        const cuotas = events.reduce((a, e) => (e.date > date ? a : e.kind === "acquire" ? a + e.units : e.kind === "dispose" ? a - e.units : a), 0);
+        const cuotas = snapEmpty(events.reduce((a, e) => (e.date > date ? a : e.kind === "acquire" ? a + e.units : e.kind === "dispose" ? a - e.units : a), 0));
         const value = accountValueAt(accountId, date, quote);
         return { date, cuotas, value: value?.value ?? null, asOf: value?.as_of_date ?? null };
       }),
@@ -84,7 +94,7 @@ export function holdingPositionsOn(accountId: number, dates: readonly string[]):
       const value = accountValueAt(accountId, date, holding.quote);
       return {
         date,
-        cuotas: qty != null && qty.holding.kind === holding.kind ? qty.qty : null,
+        cuotas: qty != null && qty.holding.kind === holding.kind ? snapEmpty(qty.qty) : null,
         value: value?.value ?? null,
         asOf: value?.as_of_date ?? null,
       };

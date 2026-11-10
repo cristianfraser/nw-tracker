@@ -78,8 +78,6 @@
  * Converted like the dividends: at the 31-December observado.
  */
 import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
-import { buildF1040Draft } from "../us1040/draft.js";
-import { filedF1040 } from "../us1040/filed.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
 import { interestFacts } from "../taxFacts/interest.js";
 import type { AccountPayer } from "../taxFacts/payers.js";
@@ -92,6 +90,16 @@ import { usPayStubFacts } from "../taxFacts/salaries.js";
 export function isForeignInterestPayerForChile(p: AccountPayer): boolean {
   return p.kind === "broker" ? p.country !== "CL" : p.country === "US" && p.currency === "usd";
 }
+
+/**
+ * How the F22 reads the year's US income tax (the 1040's line 24): the filed return when stored,
+ * else the draft; a nonresident alien's year has no draft (a Form 1040-NR is not drafted) and reads
+ * as that — no credit until the filed return is stored. The F22's composition (`f22/draft.ts`)
+ * provides it; this module never reads the 1040 itself (the 1040 reads the F22 back, so the two
+ * draft modules meet only through this parameter).
+ */
+export type F22UsTaxRead = { usd: number; source: "filed" | "draft" } | { usd: 0; source: "nonresident_alien_not_drafted" };
+export type F22UsTaxReader = (incomeYear: number) => F22UsTaxRead;
 
 export type F22ForeignSalaryStub = {
   payDate: string;
@@ -115,9 +123,14 @@ export type F22ForeignSalary = {
   incomeUsd: number;
   /** The same in pesos at the year-end observado: the income before the US tax. */
   grossClp: number;
-  /** The 1040's line 24 and where it came from. */
+  /**
+   * The 1040's line 24 and where it came from; null without stubs or in a non-resident window (no
+   * credit there: the salary is not declared). `nonresident_alien_not_drafted`: the person was a
+   * nonresident alien of the US, whose Form 1040-NR the app does not draft — 0 and no credit until
+   * the filed return is stored (`recordFiledF1040`).
+   */
   usTaxUsd: number;
-  usTaxSource: "filed" | "draft" | null;
+  usTaxSource: F22UsTaxRead["source"] | null;
   /** The US tax in pesos at the year-end observado. */
   usTaxClp: number;
   /** 1030: grossClp − usTaxClp (the Renta Neta). */
@@ -146,12 +159,17 @@ const EMPTY_SALARY: F22ForeignSalary = {
 
 const cents = (x: number) => Math.round(x * 100) / 100;
 
-/** The US salary of `incomeYear` for the F22 at the year-end rate, or zeros without US pay stubs. */
+/**
+ * The US salary of `incomeYear` for the F22 at the year-end rate, or zeros without US pay stubs.
+ * `usTax`: how the year's US tax is read (the resident chain's credit); null for a non-resident
+ * window, whose salary is only shown as excluded — it reads no 1040 (the 1040 of such a year reads
+ * this F22, `taxReturnOrder`).
+ */
 export function foreignSalaryForYear(
   incomeYear: number,
-  todayYmd: string,
   yearEnd: F22ForeignYearEnd,
-  window: DateWindow = wholeYearWindow(incomeYear)
+  window: DateWindow,
+  usTax: F22UsTaxReader | null
 ): F22ForeignSalary {
   // The stubs counted: the whole year, or one part of a departure year, by pay date (`taxResidency.ts`).
   const inYear = windowWithinYear(incomeYear, window);
@@ -181,8 +199,8 @@ export function foreignSalaryForYear(
   });
   const incomeUsd = cents(stubs.reduce((s, x) => s + x.grossUsd, 0));
   const grossClp = Math.round(incomeUsd * yearEnd.observado);
-  const filed = filedF1040(incomeYear);
-  const usTaxUsd = filed ? (filed.lines["24"] ?? 0) : (buildF1040Draft(incomeYear, todayYmd).lines["24"] ?? 0);
+  const read = usTax ? usTax(incomeYear) : null;
+  const usTaxUsd = read?.usd ?? 0;
   const usTaxClp = Math.round(usTaxUsd * yearEnd.observado);
   const creditClp = Math.round(Math.min(usTaxClp, FOREIGN_TAX_CREDIT_CAP * grossClp));
   return {
@@ -190,7 +208,7 @@ export function foreignSalaryForYear(
     incomeUsd,
     grossClp,
     usTaxUsd,
-    usTaxSource: filed ? "filed" : "draft",
+    usTaxSource: read?.source ?? null,
     usTaxClp,
     netClp: grossClp - usTaxClp,
     creditClp,
