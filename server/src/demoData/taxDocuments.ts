@@ -26,6 +26,7 @@ import { buildF1040Draft } from "../f1040Draft.js";
 import { linkF1040Settlement, recordFiledF1040 } from "../f1040Filed.js";
 import { payrollTaxYear } from "../payrollTaxYear.js";
 import { upsertMovementDividendDetail } from "../movementDividendDetails.js";
+import { usRetirementAccountIds } from "../usRetirementAccounts.js";
 import { accountsWithRole, propertyLoanPairsWithLoan } from "../accountRoles.js";
 import { DIVIDEND_WITHHOLDING_RATE, US_IRS_PAYMENT, US_IRS_REFUND, type Ledger } from "./simulate.js";
 import type { Ymd } from "./person.js";
@@ -60,16 +61,19 @@ function writeFeeReceipts(ledger: Ledger): void {
 /**
  * The broker statement's split of each dividend. At the Chilean broker gross = net ÷ (1 − 15 %),
  * withholding = gross − net; the US broker (the account holding `broker_cash` `ibkr|usd`) pays it
- * whole to a US person.
+ * whole to a US person. A Roth IRA's dividend is no document: the custodian issues no 1099-DIV for
+ * growth inside the IRA, and no return declares it (`usRetirementAccountIds`).
  */
 function writeDividendDetails(): void {
   const usBroker = new Set(accountsWithRole("broker_cash", "ibkr|usd"));
+  const roth = new Set(usRetirementAccountIds("roth_ira"));
   const rows = db
     .prepare(
-      `SELECT id, amount, occurred_on, to_account_id FROM movements WHERE flow_kind = 'dividend_payout' AND currency = 'usd' ORDER BY occurred_on, id`
+      `SELECT id, amount, occurred_on, from_account_id, to_account_id FROM movements WHERE flow_kind = 'dividend_payout' AND currency = 'usd' ORDER BY occurred_on, id`
     )
-    .all() as { id: number; amount: number; occurred_on: string; to_account_id: number | null }[];
+    .all() as { id: number; amount: number; occurred_on: string; from_account_id: number | null; to_account_id: number | null }[];
   for (const r of rows) {
+    if (r.from_account_id != null && roth.has(r.from_account_id)) continue;
     const atUsBroker = r.to_account_id != null && usBroker.has(r.to_account_id);
     const rate = atUsBroker ? 0 : DIVIDEND_WITHHOLDING_RATE;
     const gross = Math.round((r.amount / (1 - rate)) * 100) / 100;

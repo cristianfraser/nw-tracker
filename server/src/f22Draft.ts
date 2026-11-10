@@ -88,6 +88,7 @@ import {
 } from "./art107TaxGains.js";
 import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./cryptoTaxGains.js";
 import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShareTaxGains.js";
+import { usRetirementAccountIds } from "./usRetirementAccounts.js";
 import { informedDjAmount, informedDjSectionAmounts, type InformedDjField } from "./siiInformedDj.js";
 import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterestForYear } from "./f22AppEstimates.js";
 import { payrollTaxYear, type PayrollTaxYear } from "./payrollTaxYear.js";
@@ -461,16 +462,23 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
   return out;
 }
 
-function loadDividends(incomeYear: number): F22DividendLine[] {
+/**
+ * The year's foreign dividends: every dollar `dividend_payout` but a Roth IRA's. Growth inside a
+ * Roth is not income to either return (the IRA's identity, `usRetirementAccountIds`, never its
+ * name), so its dividends — paid into the IRA's sweep and reinvested — stay out of 1104 / 748 / 1018.
+ */
+export function loadF22Dividends(incomeYear: number): F22DividendLine[] {
+  const roth = usRetirementAccountIds("roth_ira");
   const rows = db
     .prepare(
       `SELECT m.id, m.occurred_on, m.amount, d.gross_amount, d.withholding_amount
          FROM movements m
          LEFT JOIN movement_dividend_details d ON d.movement_id = m.id
         WHERE m.flow_kind = 'dividend_payout' AND m.currency = 'usd' AND m.occurred_on LIKE ?
+          AND (m.from_account_id IS NULL OR m.from_account_id NOT IN (${roth.map(() => "?").join(", ") || "NULL"}))
         ORDER BY m.occurred_on, m.id`
     )
-    .all(`${incomeYear}-%`) as {
+    .all(`${incomeYear}-%`, ...roth) as {
     id: number;
     occurred_on: string;
     amount: number;
@@ -537,7 +545,7 @@ export function buildF22Draft(
   const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
 
   const crypto = cryptoTaxGainsForYear(incomeYear);
-  const dividends = loadDividends(incomeYear);
+  const dividends = loadF22Dividends(incomeYear);
   const foreignShares = foreignShareGainsForYear(incomeYear, "fifo", todayYmd);
   const foreignResult = Math.round(foreignShares.totalClp[foreignShares.defaultMode]);
   const foreignGain = Math.max(0, foreignResult);

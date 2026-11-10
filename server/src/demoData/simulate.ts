@@ -55,9 +55,9 @@ import { f1040LinesFromW2s } from "../f1040Draft.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
-export type CashAcct = "vista" | "checking" | "checkingUsd" | "usChecking" | "usSavings" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "exchangeClp";
+export type CashAcct = "vista" | "checking" | "checkingUsd" | "usChecking" | "usSavings" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "rothCash" | "exchangeClp";
 /** The cash accounts that hold dollars. */
-const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "usChecking", "usSavings", "brokerUsd", "ibkrUsd"]);
+const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "usChecking", "usSavings", "brokerUsd", "ibkrUsd", "rothCash"]);
 /** The broker cash accounts a dollar stock trades against. */
 export type UsdBrokerCash = "brokerUsd" | "ibkrUsd";
 export type Acct =
@@ -75,7 +75,11 @@ export type Acct =
   | "fund"
   /** The money-market fund the Chilean cushion sits in (cuotas, `Person.savings.clp`). */
   | "savingsClp"
-  /** The US retirement accounts: a 401(k) and an HSA in a target-date fund's units, a Roth IRA in SPY. */
+  /**
+   * The US retirement accounts: a 401(k) and an HSA in a target-date fund's units, a Roth IRA in SPY
+   * with its cash sweep (`rothCash`: a contribution lands there before the buy, a dividend before its
+   * reinvestment; it ends every day at zero).
+   */
   | "k401"
   | "hsa"
   | "rothIra"
@@ -598,7 +602,7 @@ export const AFP_SWITCH_MONTH: Month = "2020-02";
 /* ------------------------------------ book -------------------------------------- */
 
 class Book {
-  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, usChecking: 0, usSavings: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, exchangeClp: 0 };
+  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, usChecking: 0, usSavings: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, rothCash: 0, exchangeClp: 0 };
   units = new Map<string, number>();
   bank: BankRow[] = [];
   usBank: UsBankRow[] = [];
@@ -614,6 +618,7 @@ class Book {
     brokerClp: new Map(),
     brokerUsd: new Map(),
     ibkrUsd: new Map(),
+    rothCash: new Map(),
     exchangeClp: new Map(),
   };
 
@@ -720,7 +725,7 @@ class Book {
 }
 
 function isCash(a: Acct): a is CashAcct {
-  return ["vista", "checking", "checkingUsd", "usChecking", "usSavings", "brokerClp", "brokerUsd", "ibkrUsd", "exchangeClp"].includes(a);
+  return ["vista", "checking", "checkingUsd", "usChecking", "usSavings", "brokerClp", "brokerUsd", "ibkrUsd", "rothCash", "exchangeClp"].includes(a);
 }
 
 /* -------------------------------- simulation ------------------------------------ */
@@ -1025,6 +1030,14 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const units = Math.round((usd / heldClose(ticker, day)) * 1e6) / 1e6;
     addHeld(ticker, cash, units);
     book.transfer({ from: cash, to: `stock:${ticker}`, date: day, usd, units, flowKind: "stock_buy", note: `${brokerLabel(cash)}|compra ${ticker}` });
+  };
+  /** SPY bought inside the Roth IRA from its cash sweep (a contribution, a dividend reinvested). */
+  const buyRothSpy = (day: Ymd, usd: number, note: string) => {
+    usd = cents(usd);
+    if (usd <= 0) return;
+    const units = Math.round((usd / heldClose("SPY", day)) * 1e6) / 1e6;
+    book.addUnits("rothIra", units, 6);
+    book.transfer({ from: "rothCash", to: "rothIra", date: day, usd, units, flowKind: "stock_buy", note });
   };
   const sellStock = (day: Ymd, ticker: string, fraction: number, cash: UsdBrokerCash = "brokerUsd"): number => {
     const units = Math.round(heldUnits(ticker, cash) * fraction * 1e6) / 1e6;
@@ -1675,6 +1688,14 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
             book.transfer({ from: `stock:${ticker}`, to: cash, date: day, usd: net, flowKind: "dividend_payout", note: `Dividendo ${ticker}` });
           }
         }
+        // The Roth IRA's SPY: paid whole into the IRA's sweep (a US person, no withholding; tax-free,
+        // so the tax modules leave it out by the account's identity) and reinvested the same day.
+        const rothNet = cents(book.unitsOf("rothIra") * DIVIDEND_PER_SHARE_USD.SPY!);
+        if (rothNet >= 0.01) {
+          const day = firstBusinessDayOnOrAfter(ymd(month, 8));
+          book.transfer({ from: "rothIra", to: "rothCash", date: day, usd: rothNet, flowKind: "dividend_payout", note: "Dividendo SPY|Roth IRA" });
+          buyRothSpy(day, rothNet, "Roth IRA|reinversión de dividendo SPY");
+        }
       }
       // SGOV pays its T-bill interest monthly (a distribution, no withholding at the US broker).
       if (ibkrOpen(month)) {
@@ -2219,9 +2240,10 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const day = usBusinessDayOnOrAfter(ymd(month, 10));
       if (day <= today) {
         const usd = us.roth.usd;
-        const units = Math.round((usd / heldClose("SPY", day)) * 1e6) / 1e6;
-        book.addUnits("rothIra", units, 6);
-        book.transfer({ from: "usChecking", to: "rothIra", date: day, usd, units, flowKind: "stock_buy", note: `Roth IRA ${year} contribution|compra SPY` });
+        // The contribution funds the IRA's cash sweep; the buy is the sweep's, so the Roth's shares
+        // have one cash leg (the dividends' reinvestment buys from the same sweep).
+        book.transfer({ from: "usChecking", to: "rothCash", date: day, usd, flowKind: null, note: `Roth IRA ${year} contribution` });
+        buyRothSpy(day, usd, `Roth IRA ${year} contribution|compra SPY`);
       }
     }
 

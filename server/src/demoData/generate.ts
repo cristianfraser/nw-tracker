@@ -229,6 +229,12 @@ function createAccounts(person: Person): Map<Acct, number> {
     ids.set("hsa", createAccount(g("retirement_us_hsa__hsa"), "HSA", { key: usRetirementAccountImportKey("hsa", provider), series: US_RETIREMENT_FUND_SERIES_KEY }));
     if (person.us?.roth) {
       ids.set("rothIra", createAccount(g("retirement_us_roth_ira__roth_ira"), "Roth IRA", { key: usRetirementAccountImportKey("roth_ira", provider), ticker: "SPY" }));
+      // The IRA's cash sweep: a dollar ledger on its own leaf under the Roth bucket (kind `usd`, the
+      // leaf's suffix), so a contribution and a dividend land as cash and the SPY buy is a
+      // `stock_buy` from it — the shape every reader (deposits, tax lots, broker holdings) knows.
+      // It ends every day at zero, so it is chart-inactive and out of the nav.
+      const sweep = ensureAssetGroup("retirement_us_roth_ira__roth_ira_cash__usd", "Roth IRA cash", "retirement_us_roth_ira");
+      ids.set("rothCash", createAccount(sweep, "Roth IRA cash", { key: buildPanelCashAccountNotes("usd", "roth_ira_cash") }));
     }
   }
   db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(ids.get("checking")!, DEMO_CHECKING_NUMBER);
@@ -709,6 +715,7 @@ function applyColors(ids: Map<Acct, number>): void {
     ["k401", "59,130,246"],
     ["hsa", "14,165,233"],
     ["rothIra", "124,58,237"],
+    ["rothCash", "168,130,240"],
     ["ibkrUsd", "200,40,40"],
     ["dap", "120,160,200"],
     ["btc", "234,179,8"],

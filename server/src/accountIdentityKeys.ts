@@ -46,7 +46,12 @@ export function afpAccountImportKey(afp: string, fund: string): string {
  * A US retirement account: a 401(k) or an HSA (a cuota ledger in a fund's units) or a Roth IRA
  * (shares), at a plan `provider` slug. One per kind and provider: `import:us-retirement|kind=<kind>|provider=<slug>`.
  */
-export function usRetirementAccountImportKey(kind: "us_401k" | "hsa" | "roth_ira", provider: string): string {
+export type UsRetirementAccountKind = "us_401k" | "hsa" | "roth_ira";
+export function usRetirementAccountImportKey(kind: UsRetirementAccountKind, provider: string): string {
   if (!/^[a-z0-9_]+$/.test(provider)) throw new Error(`US retirement provider «${provider}»: use lowercase letters, digits and _`);
-  return `import:us-retirement|kind=${kind}|provider=${provider}`;
+  return `${usRetirementAccountImportKeyPrefix(kind)}provider=${provider}`;
+}
+/** What every US retirement account of `kind` starts its import key with, whatever its provider. */
+export function usRetirementAccountImportKeyPrefix(kind: UsRetirementAccountKind): string {
+  return `import:us-retirement|kind=${kind}|`;
 }
