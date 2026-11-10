@@ -1,6 +1,6 @@
 /**
  * The identities the Formulario 22 prints between its codes, in one place: the compact-form reader
- * (`siiF22Compacto`) checks a filed return against them and the draft (`f22Draft`) computes its
+ * (`siiF22Compacto`) checks a filed return against them and the draft (`f22/draft`) computes its
  * codes with them, so the two cannot disagree. Imports only the dated law (`legalParameters`, a
  * leaf). Line numbers are the AT2026
  * form's (`f22_at2026.pdf`, sii.cl/ayudas/formularios): línea 7 = 110 (honorarios), 8 = 155,
@@ -43,9 +43,9 @@
  *    91 = 90 + 39                        (the payment section, when printed)
  *
  * A departure year's form carries both bases (the resident part's 157 and the non-resident part's
- * 32): the 32 = 158 identity is checked only on a form without 157 (`f22Draft.ts`, «split»).
+ * 32): the 32 = 158 identity is checked only on a form without 157 (`f22/draft.ts`, «split»).
  */
-import { IMPUESTO_ADICIONAL_RATE } from "./legalParameters.js";
+import { IMPUESTO_ADICIONAL_RATE } from "../legalParameters.js";
 export type F22CodeAmounts = ReadonlyMap<number, number> | Readonly<Record<number, number>>;
 
 function reader(codes: F22CodeAmounts): (code: number) => number | undefined {

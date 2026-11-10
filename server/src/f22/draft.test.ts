@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "./db.js";
+import { db } from "../db.js";
 import {
   buildF22Draft,
   capCapitalLosses,
@@ -7,9 +7,9 @@ import {
   computeF22Tax,
   informedDj1922Codes,
   type F22Codes,
-} from "./f22Draft.js";
-import { IDPC_RATE, igcTax } from "./legalParameters.js";
-import type { UsdFxDisposalLoader } from "./usdFxTaxGains.js";
+} from "./draft.js";
+import { IDPC_RATE, igcTax } from "../legalParameters.js";
+import type { UsdFxDisposalLoader } from "./usdFx.js";
 
 const UTA = 800_000;
 

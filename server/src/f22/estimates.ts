@@ -13,10 +13,10 @@
  * Mortgage interest (codes 750 / 751): every `loan_payments` loan row's interest, prepayments
  * included (interest effectively paid). 2025: 4.892.161 vs 4.799.108 reported by the lender (+1,9%).
  */
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotEvent } from "./taxLots.js";
+import { db } from "../db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
+import { realizeTaxLots, type TaxLotEvent } from "../taxLots.js";
 
 type Pct = (fromMonth: string, toMonth: string) => number;
 

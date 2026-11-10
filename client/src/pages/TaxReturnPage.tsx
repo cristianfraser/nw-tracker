@@ -309,7 +309,7 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
 }
 
 /**
- * The year's rents by place (server: f22Rentals.ts): a non-DFL-2 place's rent is línea 5 letra a)
+ * The year's rents by place (server: f22/rentals.ts): a non-DFL-2 place's rent is línea 5 letra a)
  * (code 1849 → 955), its contribuciones the línea-39 credit (1637) up to the IGC on the rent; a
  * DFL-2 place's rent is shown and enters no code (DFL N° 2 art. 15).
  */
@@ -364,7 +364,7 @@ function RentalsSection({ data }: { data: TaxReturnResponse }) {
 }
 
 /**
- * Foreign-source income (server: f22ForeignIncome.ts): the US salary in code 1030 with its credit
+ * Foreign-source income (server: f22/foreignIncome.ts): the US salary in code 1030 with its credit
  * for the US tax (748 / 1018, art. 41 A and the Chile–US treaty), and a foreign broker's interest in
  * 1104. The figures are the server's; the page only formats them.
  */
@@ -414,7 +414,7 @@ function ForeignIncomeSection({ data }: { data: TaxReturnResponse }) {
  * Art. 107 LIR: fund units and shares sold on the exchange. Sales through 2026 pay a flat 10%
  * single tax on the mayor valor (codes 1809 / 1813 → 1814, carried loss 1815, base 1816, line 66
  * 1829 / 1830); from 2027 they are ingreso no renta and only listed. The fund's distributions are
- * dividends afectos al IGC (codes 105 / 610). Server: art107TaxGains.ts, f22Draft.ts.
+ * dividends afectos al IGC (codes 105 / 610). Server: f22/art107.ts, f22/draft.ts.
  */
 function Art107Section({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
@@ -542,7 +542,7 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
  * lots' purchase dates, proceeds and cost at the dólar observado, result and its December
  * reajuste), the fees whose cost is lost, the deferred total, the posture and the route, and the
  * codes the route gives (1901 + IDPC credited back, or 1032 / 169). Report-only. Server:
- * usdFxTaxGains.ts, f22Draft.ts.
+ * f22/usdFx.ts, f22/draft.ts.
  */
 function UsdFxSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();

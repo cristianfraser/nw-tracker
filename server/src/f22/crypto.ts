@@ -13,12 +13,12 @@
  *   December 0,0%), never negative.
  * The SII prints its percentages with one decimal; `roundPct` (default true) does the same.
  */
-import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "./cryptoTaxLotEvents.js";
-import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotMethod } from "./taxLots.js";
+import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "../cryptoTaxLotEvents.js";
+import { loadCryptoCoinAccountIdsFundedByBuda } from "../budaWallet.js";
+import { db } from "../db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
+import { realizeTaxLots, type TaxLotMethod } from "../taxLots.js";
 
 export type CryptoSaleTaxResult = {
   accountId: number;

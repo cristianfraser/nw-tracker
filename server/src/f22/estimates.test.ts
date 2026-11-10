@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mortgageInterestDeduction } from "./f22AppEstimates.js";
+import { mortgageInterestDeduction } from "./estimates.js";
 
 const UTA = 800_000;
 

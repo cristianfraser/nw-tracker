@@ -29,14 +29,14 @@
  * A fund's distributions are not art. 107 income: for a resident a reparto is a dividend afecto
  * al IGC (F22 línea 2, code 105) — {@link art107DistributionsForYear}.
  */
-import { listArt107Accounts, type Art107Kind } from "./art107Instruments.js";
-import { chileWallClockNow } from "./chileDate.js";
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { equityCloseEod, equityQuoteCurrency } from "./equityQuote.js";
-import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
+import { listArt107Accounts, type Art107Kind } from "../art107Instruments.js";
+import { chileWallClockNow } from "../chileDate.js";
+import { db } from "../db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { equityCloseEod, equityQuoteCurrency } from "../equityQuote.js";
+import { loadEquityTaxLotEvents } from "../equityTaxLotEvents.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
+import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "../taxLots.js";
 
 export type Art107CostOption = "cost_paid" | "close_dec31";
 export type Art107Regime = "tax_10pct" | "inr";

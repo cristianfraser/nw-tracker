@@ -14,15 +14,15 @@
  * A year's default is the frame with the lower result (a smaller gain, or a larger loss) —
  * both are published SII positions; the other is always reported beside it.
  */
-import { art107InstrumentKind } from "./art107Instruments.js";
-import { equityMarketKind } from "./equityQuote.js";
-import { chileWallClockNow } from "./chileDate.js";
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
-import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
+import { art107InstrumentKind } from "../art107Instruments.js";
+import { equityMarketKind } from "../equityQuote.js";
+import { chileWallClockNow } from "../chileDate.js";
+import { db } from "../db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { loadEquityTaxLotEvents } from "../equityTaxLotEvents.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
+import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "../taxLots.js";
+import { observadoOnOrBefore } from "../usdCashTaxLotEvents.js";
 
 export type ForeignShareGainMode = "usd_31dic" | "clp_ipc";
 
@@ -86,7 +86,7 @@ function latestObservadoDate(): string {
 /**
  * Foreign equity accounts: a ticker, not a crypto pair, trading in dollars. An art. 107 instrument
  * (a Chilean fund or share, `art107Instruments`) never is, whatever it trades in: its sales are
- * taxed apart (`art107TaxGains`).
+ * taxed apart (`f22/art107`).
  */
 function foreignEquityAccounts(): { id: number; name: string }[] {
   const rows = db

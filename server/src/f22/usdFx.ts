@@ -16,7 +16,7 @@
  *   natural sin contabilidad the deduction of such expenses, and Oficio 2208/2022 restates that the
  *   final-tax bases «no contemplan la deducción de estos gastos». Listed apart, never in the result;
  * - the RESULT is «reajustado por variación del IPC a diciembre» exactly as the crypto gain
- *   (`cryptoTaxGains`): from the month before the disposal to November, the SII's year-end factors
+ *   (`f22/crypto`): from the month before the disposal to November, the SII's year-end factors
  *   (official IPC, `ipc_official_monthly`), never negative; an open year reajusts only to the
  *   latest published month and is flagged an estimate (`reajusteIsEstimate`). A negative result is
  *   reajusted the same way.
@@ -24,23 +24,23 @@
  * Where it goes ({@link UsdFxRoute}): the exchange difference of a persona natural is art. 20 N°5
  * income (Oficio 2390/2021, 2573/2022) — first-category tax, then IGC with the credit. The AT2026
  * instructions put it in line 58 d), code 1901 («Rentas afectas al IDPC … art. 20 N°5»), with IDPC
- * at the rate of `f22Draft.ts` and its credit in line 5, as the foreign share gains' 1914 path
+ * at the rate of `f22/draft.ts` and its credit in line 5, as the foreign share gains' 1914 path
  * (`idpc_1901`, the default); a loss on this route offsets only the year's other art. 20 N°5 income
  * and is otherwise lost — never a 169 candidate. The alternative `igc_1032` reuses the crypto path:
  * the gain added to code 1032, a loss a 169 candidate. `codes` states the pesos each route puts in
  * each code so the F22 draft only picks.
  */
-import { IDPC_RATE } from "./legalParameters.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { ipcReajuste, monthBeforeYmd, type OfficialIpcLookup } from "./siiOfficialIpc.js";
-import type { TaxLotDisposal, TaxLotSlice } from "./taxLots.js";
+import { IDPC_RATE } from "../legalParameters.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { ipcReajuste, monthBeforeYmd, type OfficialIpcLookup } from "../siiOfficialIpc.js";
+import type { TaxLotDisposal, TaxLotSlice } from "../taxLots.js";
 import {
   usdCashTaxDisposals,
   type UsdFxDisposal,
   type UsdFxDisposalTag,
   type UsdFxPosture,
   type UsdPurchaseCost,
-} from "./usdCashTaxLotEvents.js";
+} from "../usdCashTaxLotEvents.js";
 
 export type { UsdFxDisposal, UsdFxDisposalTag };
 

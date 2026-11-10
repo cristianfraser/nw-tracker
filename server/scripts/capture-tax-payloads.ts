@@ -14,8 +14,8 @@
  */
 import fs from "node:fs";
 import { chileWallClockNow } from "../src/chileDate.js";
-import { buildF22Draft } from "../src/f22Draft.js";
-import { availableF22TaxYears, buildF22Payload } from "../src/f22DraftPayload.js";
+import { buildF22Draft } from "../src/f22/draft.js";
+import { availableF22TaxYears, buildF22Payload } from "../src/f22/payload.js";
 import { availableUsTaxYears } from "../src/f1040Draft.js";
 import { buildF1040Payload } from "../src/f1040Payload.js";
 

@@ -8,7 +8,7 @@ import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { loadPayrollWorkEarnings } from "./flowsPayrollWorkEarnings.js";
 import { buildPayrollBreakdown } from "./payrollBreakdown.js";
-import { payrollTaxYear } from "./payrollTaxYear.js";
+import { payrollTaxYear } from "./f22/salary.js";
 import { buildPayslipChecks, payrollWithholdingYear } from "./payslipChecks.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { applyEmploymentPayslips, latestPayslip, latestSalaryPayslipPeriod } from "./payslipsApply.js";

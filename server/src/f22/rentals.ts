@@ -21,11 +21,11 @@
  * Contribuciones are the place's `contribuciones` bill rows whose month falls in the year (a bill
  * row exists only when a purchase backs it, so it is what was paid).
  */
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { DFL2_MAX_EXEMPT_RENTALS } from "./legalParameters.js";
-import { loadRentCreditsForYear } from "./flowsCheckingIncomeOverrides.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
+import { db } from "../db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { DFL2_MAX_EXEMPT_RENTALS } from "../legalParameters.js";
+import { loadRentCreditsForYear } from "../flowsCheckingIncomeOverrides.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
 
 export type F22RentalPlace = {
   slug: string;

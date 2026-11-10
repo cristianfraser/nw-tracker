@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { art107DistributionsForYear, art107GainsForYear } from "./art107TaxGains.js";
-import { db } from "./db.js";
-import { buildF22Draft } from "./f22Draft.js";
-import { buildF22Payload } from "./f22DraftPayload.js";
-import { foreignShareGainsForYear } from "./foreignShareTaxGains.js";
-import { loadOfficialIpcLookup, officialIpcVariationPctBetween } from "./siiOfficialIpc.js";
+import { art107DistributionsForYear, art107GainsForYear } from "./art107.js";
+import { db } from "../db.js";
+import { buildF22Draft } from "./draft.js";
+import { buildF22Payload } from "./payload.js";
+import { foreignShareGainsForYear } from "./foreignShares.js";
+import { loadOfficialIpcLookup, officialIpcVariationPctBetween } from "../siiOfficialIpc.js";
 
 /**
  * An art. 107 fund (a synthetic `.SN` ticker listed in `art107_instruments`) bought twice and

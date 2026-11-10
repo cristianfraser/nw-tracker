@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
-import { db } from "./db.js";
-import { buildF22Draft, computeF22Tax } from "./f22Draft.js";
-import { foreignInterestForYear, foreignSalaryForYear } from "./f22ForeignIncome.js";
-import { f22ForeignSalaryCreditCap } from "./f22Identities.js";
-import { buildF1040Draft } from "./f1040Draft.js";
-import { FOREIGN_TAX_CREDIT_CAP } from "./legalParameters.js";
-import { applyEmploymentPayslips } from "./payslipsApply.js";
-import type { UsdFxDisposalLoader } from "./usdFxTaxGains.js";
+import { db } from "../db.js";
+import { buildF22Draft, computeF22Tax } from "./draft.js";
+import { foreignInterestForYear, foreignSalaryForYear } from "./foreignIncome.js";
+import { f22ForeignSalaryCreditCap } from "./identities.js";
+import { buildF1040Draft } from "../f1040Draft.js";
+import { FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
+import { applyEmploymentPayslips } from "../payslipsApply.js";
+import type { UsdFxDisposalLoader } from "./usdFx.js";
 
 const UTA = 800_000;
 // A synthetic open year the Vitest person does not reach: the IPC reajuste is zero past the latest

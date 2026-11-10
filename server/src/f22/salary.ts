@@ -14,10 +14,10 @@
  * `incompleteMonths` — its taxable pay is overstated (the 2019 Dealsyte months) — and so is one
  * whose totals were not parsed at all (left out: the scanned 2018-08).
  */
-import { db } from "./db.js";
-import { wholeYearWindow, windowMonths, type DateWindow } from "./dateWindow.js";
-import { iuscTaxableClp } from "./payslipLineKinds.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
+import { db } from "../db.js";
+import { wholeYearWindow, windowMonths, type DateWindow } from "../dateWindow.js";
+import { iuscTaxableClp } from "../payslipLineKinds.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
 
 export type PayrollTaxYear = {
   incomeYear: number;

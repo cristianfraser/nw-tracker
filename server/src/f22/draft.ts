@@ -5,9 +5,9 @@
  * dividends (1104 net, 748 the foreign tax as gross-up, 1018 its credit — línea 45 of the AT2026
  * form, the art. 41 A N°4 letra B) credit on a natural person's own foreign incomes; the SII's
  * observation G08 also names 746, but that is línea 49, the credit a Chilean company passes
- * through with its dividends, see `f22ForeignIncome.ts`), foreign share / ETF
+ * through with its dividends, see `f22/foreignIncome.ts`), foreign share / ETF
  * sales (added to 1104, taxed under the régimen general) and the art. 107 instruments' sales
- * (recuadro N°4: 1809 / 1813 → 1816, línea 66: 1829 / 1830, `art107TaxGains`) — so a year that
+ * (recuadro N°4: 1809 / 1813 → 1816, línea 66: 1829 / 1830, `f22/art107`) — so a year that
  * already declared them (AT2022 filed 1032) shows the correction, not a double count; then it
  * recomputes the tax with the same chain the filed form shows:
  *
@@ -28,7 +28,7 @@
  * Mortgage interest (art. 55 bis) is the interest paid (751: the lender's DJ 1898, else the ledger
  * estimate) and its deduction (750: at most 8 UTA, reduced between 90 and 150 UTA of gross income).
  *
- * Rents (`f22Rentals`): a non-DFL-2 place's rent is línea 5 letra a), code 1849 → 955 (art. 20 N°1
+ * Rents (`f22/rentals`): a non-DFL-2 place's rent is línea 5 letra a), code 1849 → 955 (art. 20 N°1
  * b)), its contribuciones the línea-39 credit 1637; a DFL-2 place's rent is not declared (shown).
  *
  * Real interest (DJ 1890) is the exempt income of línea 9 (152, art. 57 / art. 54 N°3): positive
@@ -43,7 +43,7 @@
  * what makes its additions trustworthy. Foreign share gains also bear first-category tax (line 58,
  * IDPC 25%) credited back against IGC with refund (code 1914), so they change 304 only through
  * IGC; the draft reports the IDPC lines beside it. The exchange result on the dollars bought with
- * pesos (`usdFxTaxGains`) takes the same path under its default route: art. 20 N°5 income in line
+ * pesos (`f22/usdFx`) takes the same path under its default route: art. 20 N°5 income in line
  * 58 d), code 1901, with IDPC at {@link IDPC_RATE} credited back in line 5 (`usdFxIdpcClp`,
  * reported beside, net zero), so it changes 304 only through 158; a loss on that route offsets
  * nothing here and is reported. The alternative route adds it to 1032 and a loss to 169 like the
@@ -76,7 +76,7 @@
  *   the base: the rebajas of líneas 20–23 (750 / 765, IGC deductions of arts. 55 bis and 42 bis)
  *   never reach code 32, and the IGC credits (1637, línea 39; 136; 162) have no IGC to credit. The
  *   chain: 32 = max(0, 158), 34 = max(0, round(35 % × 32) − 76), 305 = 304 + 34 + 952 + 1830 − 198 −
- *   833 + 900 (`f22Identities.ts`). A non-resident's DFL-2 rent is exempt too: DFL N° 2 art. 15,
+ *   833 + 900 (`f22/identities.ts`). A non-resident's DFL-2 rent is exempt too: DFL N° 2 art. 15,
  *   «Las rentas que produzcan las "viviendas económicas" no se considerarán para los efectos del
  *   Impuesto Global Complementario ni Adicional» (the plan's doubt resolved by the text).
  * - **What does not enter, and why — kept in the payload as {@link F22ExcludedItem}s, never silently
@@ -121,9 +121,9 @@
  *   and 57 «en forma proporcional» — is noted, not built: the resident part uses the full-year
  *   table.
  */
-import { chileWallClockNow } from "./chileDate.js";
-import { db } from "./db.js";
-import { wholeYearWindow, type DateWindow } from "./dateWindow.js";
+import { chileWallClockNow } from "../chileDate.js";
+import { db } from "../db.js";
+import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
 import {
   f22Code158,
   f22Code170,
@@ -134,15 +134,15 @@ import {
   f22Code955,
   f22ForeignSalaryCreditCap,
   f22PropertyTaxCreditCap,
-} from "./f22Identities.js";
-import { F22_RESIDENCY_ASSUMPTION, residencyForIncomeYear, type YearResidency } from "./taxResidency.js";
+} from "./identities.js";
+import { F22_RESIDENCY_ASSUMPTION, residencyForIncomeYear, type YearResidency } from "../taxResidency.js";
 import {
   foreignInterestForYear,
   foreignSalaryForYear,
   type F22ForeignInterest,
   type F22ForeignSalary,
-} from "./f22ForeignIncome.js";
-import { rentalsForYear, type F22Rentals } from "./f22Rentals.js";
+} from "./foreignIncome.js";
+import { rentalsForYear, type F22Rentals } from "./rentals.js";
 import {
   APV_ANNUAL_CAP_UF,
   FOREIGN_TAX_CREDIT_CAP,
@@ -150,30 +150,30 @@ import {
   PRESUMED_EXPENSES_CAP_UTA,
   PRESUMED_EXPENSES_RATE,
   igcTax,
-} from "./legalParameters.js";
+} from "../legalParameters.js";
 import {
   ART107_RATE,
   art107DistributionsForYear,
   art107ForTaxYear,
   type Art107Distribution,
   type Art107TaxYear,
-} from "./art107TaxGains.js";
-import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./cryptoTaxGains.js";
-import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShareTaxGains.js";
-import { usRetirementAccountIds } from "./usRetirementAccounts.js";
-import { informedDjAmount, informedDjSectionAmounts, type InformedDjField } from "./siiInformedDj.js";
-import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterestForYear } from "./f22AppEstimates.js";
-import { payrollTaxYear, type PayrollTaxYear } from "./payrollTaxYear.js";
-import { observadoOnOrBefore, type UsdFxPosture, type UsdPurchaseCost } from "./usdCashTaxLotEvents.js";
+} from "./art107.js";
+import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./crypto.js";
+import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShares.js";
+import { usRetirementAccountIds } from "../usRetirementAccounts.js";
+import { informedDjAmount, informedDjSectionAmounts, type InformedDjField } from "../siiInformedDj.js";
+import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterestForYear } from "./estimates.js";
+import { payrollTaxYear, type PayrollTaxYear } from "./salary.js";
+import { observadoOnOrBefore, type UsdFxPosture, type UsdPurchaseCost } from "../usdCashTaxLotEvents.js";
 import {
   usdFxTaxGainsForYear,
   type UsdFxDisposalLoader,
   type UsdFxRoute,
   type UsdFxYearTaxResult,
-} from "./usdFxTaxGains.js";
+} from "./usdFx.js";
 
 /**
- * How the exchange result on dollars bought with pesos is drafted (`usdFxTaxGains`): the route it
+ * How the exchange result on dollars bought with pesos is drafted (`f22/usdFx`): the route it
  * takes on the form (art. 20 N°5 income in line 58 d), code 1901, IDPC credited back — the AT2026
  * instructions' line for it; `igc_1032` would reuse the crypto codes), when a dollar is sold
  * (Oficio 2573/2022: spending dollars on an instrument sells them) and what a purchase cost
@@ -423,7 +423,7 @@ export type F22Draft = {
   rentals: F22Rentals;
   /** 1637 before its cap (the contribuciones on the taxable places) and the cap; null when no taxable rent. */
   propertyTaxCredit: { paidClp: number; capClp: number; creditClp: number } | null;
-  /** A salary earned abroad (US pay stubs): 1030 (línea 13), its credit (748 / 1018, líneas 14 / 45), `f22ForeignIncome`. */
+  /** A salary earned abroad (US pay stubs): 1030 (línea 13), its credit (748 / 1018, líneas 14 / 45), `f22/foreignIncome`. */
   foreignSalary: F22ForeignSalary;
   /** The foreign salary's credit: before the IGC cap, the cap and what 1018 took; null without one. */
   foreignSalaryCredit: { creditClp: number; capClp: number; appliedClp: number } | null;
@@ -1012,7 +1012,7 @@ export function buildF22Draft(
   addLoss(usdFxLoss);
 
   // Without a filed form or informed DJs, the codes third parties report in March come from the
-  // ledger too (f22AppEstimates): fund redemptions and mortgage interest.
+  // ledger too (f22/estimates): fund redemptions and mortgage interest.
   const estimatedCodes: number[] = [];
   // The dollars' exchange result is the app's own reading of the lots, not yet filed anywhere.
   if (usdFx1901 > 0) estimatedCodes.push(1901);

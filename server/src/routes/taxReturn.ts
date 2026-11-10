@@ -1,6 +1,6 @@
 /** Local Formulario 22 and Form 1040 (/tax-return page). */
 import express from "express";
-import { availableF22TaxYears, buildF22Payload, filedTaxYears } from "../f22DraftPayload.js";
+import { availableF22TaxYears, buildF22Payload, filedTaxYears } from "../f22/payload.js";
 import { availableUsTaxYears } from "../f1040Draft.js";
 import { filedF1040TaxYears } from "../f1040Filed.js";
 import { buildF1040Payload } from "../f1040Payload.js";

@@ -1,6 +1,6 @@
 /**
  * Foreign-source income a Chilean tax resident declares in the F22 besides the foreign dividends
- * and share sales `f22Draft` already reads: a salary earned abroad, and the interest a foreign
+ * and share sales `f22/draft` already reads: a salary earned abroad, and the interest a foreign
  * broker pays. Chile taxes a resident on worldwide income (art. 3 LIR) and credits the tax paid
  * abroad (art. 41 A, with the Chile–US treaty from income year 2024, art. 23 of the treaty).
  *
@@ -77,12 +77,12 @@
  * dividends). No US tax is withheld from a US resident's interest, so it carries no credit.
  * Converted like the dividends: at the 31-December observado.
  */
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { buildF1040Draft } from "./f1040Draft.js";
-import { US_BANK_ISSUERS } from "./usBankAccounts.js";
-import { filedF1040 } from "./f1040Filed.js";
-import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "./legalParameters.js";
+import { db } from "../db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { buildF1040Draft } from "../f1040Draft.js";
+import { US_BANK_ISSUERS } from "../usBankAccounts.js";
+import { filedF1040 } from "../f1040Filed.js";
+import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
 
 /** Brokers domiciled abroad: the interest their cash earns is foreign-source (the `broker_cash` role's broker). */
 export const FOREIGN_BROKERS: readonly string[] = ["ibkr"];

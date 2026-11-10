@@ -2,14 +2,14 @@
  * The /tax-return page payload: the local F22 for one año tributario as ordered rows (the client
  * only labels and formats them), plus the detail behind the draft's additions.
  */
-import { chileWallClockNow } from "./chileDate.js";
-import { buildPayslipChecks, payrollWithholdingMonths, payrollWithholdingYear } from "./payslipChecks.js";
-import { f22Settlement } from "./f22Settlements.js";
-import { db } from "./db.js";
-import { portfolioStartYmd } from "./portfolioStart.js";
-import { ART107_INR_FROM } from "./art107TaxGains.js";
-import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./f22Draft.js";
-import type { TaxResidencyPeriod } from "./taxResidency.js";
+import { chileWallClockNow } from "../chileDate.js";
+import { buildPayslipChecks, payrollWithholdingMonths, payrollWithholdingYear } from "../payslipChecks.js";
+import { f22Settlement } from "../f22Settlements.js";
+import { db } from "../db.js";
+import { portfolioStartYmd } from "../portfolioStart.js";
+import { ART107_INR_FROM } from "./art107.js";
+import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./draft.js";
+import type { TaxResidencyPeriod } from "../taxResidency.js";
 
 export type F22RowSection =
   | "income"

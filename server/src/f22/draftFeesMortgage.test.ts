@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { buildF22Draft } from "./f22Draft.js";
-import { igcTax } from "./legalParameters.js";
-import { mortgageInterestDeduction } from "./f22AppEstimates.js";
-import type { UsdFxDisposalLoader } from "./usdFxTaxGains.js";
+import { db } from "../db.js";
+import { buildF22Draft } from "./draft.js";
+import { igcTax } from "../legalParameters.js";
+import { mortgageInterestDeduction } from "./estimates.js";
+import type { UsdFxDisposalLoader } from "./usdFx.js";
 
 // Two synthetic years the Vitest person does not reach: fees alone (income 2018) and a salary with
 // the lender's DJ 1898 (income 2019).

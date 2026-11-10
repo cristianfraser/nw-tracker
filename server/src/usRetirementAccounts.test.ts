@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { usRetirementAccountImportKey } from "./accountIdentityKeys.js";
 import { usRetirementAccountIds } from "./usRetirementAccounts.js";
-import { loadF22Dividends } from "./f22Draft.js";
+import { loadF22Dividends } from "./f22/draft.js";
 
 const PREFIX = "vitest-roth-dividends";
 /** A year no fixture person has dividends in. */

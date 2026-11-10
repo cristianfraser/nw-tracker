@@ -3,7 +3,7 @@
  * `bank_account_numbers` under an issuer listed in {@link US_BANK_ISSUERS} (the way the F22 names
  * its foreign brokers, `FOREIGN_BROKERS`). Their interest (`savings_earnings` rows) is US-source
  * interest: line 2b of the 1040 (`f1040Draft.ts`) and «otras rentas de fuente extranjera» on the
- * F22 (`f22ForeignIncome.ts`). Never a name match. A leaf: database reads only.
+ * F22 (`f22/foreignIncome.ts`). Never a name match. A leaf: database reads only.
  */
 import { db } from "./db.js";
 

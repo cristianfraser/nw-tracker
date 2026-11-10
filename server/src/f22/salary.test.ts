@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthTaxablePay } from "./payrollTaxYear.js";
+import { monthTaxablePay } from "./salary.js";
 
 const row = {
   period_month: "2030-01",
