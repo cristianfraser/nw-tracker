@@ -93,3 +93,38 @@ triages what is left into three waves of agent work and says what is dropped. Fa
   the demo, 1 on the Vitest person (was a 150k tolerance against an estimate).
 - Checks on the merged tree: typecheck, client 85 / 475, server 499 / 3298, the demo generation
   (US$460.994), the row on the local demo's overview.
+
+## Wave C status (2026-11-10): built, checked, not merged
+
+Sources read, not remembered: the SII's AT2026 form (`f22_at2026.pdf`) and per-line instructions
+(`sii.cl/servicios_online/renta/2026/archivos/l<N>_instruccion.pdf`), Circular 31/2021, observation
+G08, the Chile–US convention, the IRS's final 2025 Form 1040, its instructions and the 2025 Form
+8959 instructions; each quoted where the reading lives (`f22ForeignIncome.ts`, `f22Identities.ts`,
+`f1040Identities.ts`, `usLegalParameters.ts`).
+
+- **746 vs 1018: the module was right, the plan's premise was not.** Línea 45 (1018, «arts. 41 A
+  N°4 letra B) o N° 5») is a natural person's own foreign incomes — 1104 (instructions 12.3 and
+  45.1 a), 1030 (45.1 c), 110 —; línea 49 (746, «art. 41 A N°4 letra A) letra b)») is the credit
+  a Chilean company passes through with its dividends (49.1: Certificados 43 / 44 / 70 / 71). G08
+  names both because it covers both. The dividends' credit stays in 1018; `f22Code304` subtracts a
+  filed 746 too (never drafted), so a form carrying either reproduces; `taxReturn.codes.746`.
+- **The 1030 base and the credit, two readings corrected.** (1) Nothing but Chilean-law pension and
+  health contributions comes off an art. 42 N°1 income (Circular 31 §1.2.2.2.2 a) i)): Social
+  Security and Medicare stay in — 1030 = gross less the US income tax. (2) The salary and its tax
+  convert at the year-end observado, no IPC reajuste (art. 41 A N°7 letra a) for a person without
+  books, Circular 31 §1.3.2.2 and annex 3; the dividends already did). Confirmed: tope individual
+  only (min of the tax and 35 % of the gross; FICA no creditable tax, convention art. 2), 748 →
+  1018, no refund; the IGC cap now uses Circular 31's one-decimal proportion (annex 3's
+  «22,0 %»). Kept as assumptions, stated in the header: line 24 as the salary's whole tax.
+- **The 2025 Form 1040 renumbered the deduction lines** (11 → 11a / 11b, 12 → 12e, 13 → 13a, new
+  13b from Schedule 1-A; 14 = 12e + 13a + 13b; 16–37 unchanged): `F1040_LINES` are roles in the
+  2024 numbering (plus «13b», which a 2024 return may not carry), `f1040PrintedLine` /
+  `f1040RoleOfPrintedLine` map a year's numbers, the payload carries `printed_line` and the page
+  prints it. $15.750 / $31.500, the 2025 brackets and the $200.000 / $250.000 Medicare thresholds
+  are the final ones; Pub. 15-T's 2025 withholding deduction was not re-read.
+- **Demo (synthetic market, 3 April passes before and after):** AT2025 1030 84.112.575 →
+  95.946.982, 748 = 1018 13.248.958 → 13.832.141, 304 = 305 12.040.984 → 15.803.957; AT2026 1030
+  131.480.824 → 137.288.247, 748 = 1018 26.924.159 → 25.602.246, 304 = 305 13.546.018 →
+  16.448.761; 1040 2024 refund US$2.444 unchanged, 2025 owed US$235 → 207 (line 2b follows the
+  wires the bigger F22 payments resize); net worth US$460.994 → 453.582, invariants green.
+- Not touched: the dollar-lot posture on spending abroad (the user's decision).
