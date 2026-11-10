@@ -368,9 +368,10 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     }
   }
 
-  // A dollar checking account's bank-listed credits (a US salary, a refund) are income at their
-  // dollars, priced in pesos at the day's rate. None of the peso matchers applies: a transfer
-  // between own accounts is a transfer row there, never a listed credit.
+  // A dollar checking account's bank-listed credits (a US salary) are income at their dollars,
+  // priced in pesos at the day's rate; one the user marked a refund of spending is listed apart,
+  // like a peso refund. None of the peso matchers applies: a transfer between own accounts is a
+  // transfer row there, never a listed credit.
   const dollarAccountIds = listDollarCheckingAccountIds();
   const dollarLabels = loadAccountLabels(dollarAccountIds);
   for (const accountId of dollarAccountIds) {
@@ -385,6 +386,11 @@ function computeCheckingIncome(): CheckingIncomeComputation {
         amount_usd: m.amount_usd,
         description: cartolaDescriptionFromNote(m.note),
       };
+      const refundCategory = refundCategoryByMovementId.get(m.id);
+      if (refundCategory != null) {
+        refund_lines.push({ ...base, source: "checking", category_slug: refundCategory });
+        continue;
+      }
       if (!forceIncludedMovementIds.has(m.id) && isExcludedCheckingInflow(base.description)) {
         filtered_lines.push({ ...base, filter_reason: "excluded_description" });
         continue;

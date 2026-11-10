@@ -133,6 +133,13 @@ type EligibleLegRow = {
  * calibration rows, rows already explained by a link (a `funded_deposit` flow link), or a payroll liquidación (payroll_work_earnings —
  * income by construction, never a transfer leg), a credit the user classified as income, and
  * Buda buffer rows (budaWallet.ts).
+ *
+ * Peso-only by nature (2026-11-10), the dollar checking accounts included: a dollar single-leg
+ * row carries its direction in `flow_kind` (`compra_usd` / `withdrawal_usd`, the USD-cash
+ * convention) and the pairing reads `flow_kind IS NULL` rows; the conversion writes a peso
+ * transfer and `movement_mirror_merges` keeps peso legs; and a dollar transfer between own
+ * accounts (US checking ↔ US savings, the broker's wallet) arrives as a transfer row from its
+ * document, never as two listed legs. There is nothing to pair in dollars.
  */
 function loadEligibleLegs(): EligibleLegRow[] {
   return db
