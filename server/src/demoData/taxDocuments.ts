@@ -20,7 +20,8 @@
  * figure (`aprilSettlementsFromTaxModule`); see generate.ts.
  */
 import { db } from "../db.js";
-import { buildF22Draft, type F22Codes } from "../f22/draft.js";
+import { buildF22Draft } from "../f22/draft.js";
+import type { F22Codes } from "../f22/types.js";
 import { mortgageInterestForYear } from "../f22/estimates.js";
 import { buildF1040Draft } from "../f1040Draft.js";
 import { linkF1040Settlement, recordFiledF1040 } from "../f1040Filed.js";

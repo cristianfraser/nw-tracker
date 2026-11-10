@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../db.js";
 import { checkingAccountId } from "../checkingCartolaImport.js";
-import { buildF22Draft, computeF22Tax } from "./draft.js";
+import { computeF22Tax } from "./chain.js";
+import { buildF22Draft } from "./draft.js";
 import { f22PropertyTaxCreditCap } from "./identities.js";
 import { rentalsForYear } from "./rentals.js";
 import {

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
 import { db } from "../db.js";
-import { buildF22Draft, computeF22Tax } from "./draft.js";
+import { computeF22Tax } from "./chain.js";
+import { buildF22Draft } from "./draft.js";
 import { foreignInterestForYear, foreignSalaryForYear } from "./foreignIncome.js";
 import { f22ForeignSalaryCreditCap } from "./identities.js";
 import { buildF1040Draft } from "../f1040Draft.js";

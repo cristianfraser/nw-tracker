@@ -8,7 +8,9 @@ import { f22Settlement } from "../f22Settlements.js";
 import { db } from "../db.js";
 import { portfolioStartYmd } from "../portfolioStart.js";
 import { ART107_INR_FROM } from "./art107.js";
-import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./draft.js";
+import { buildF22Draft } from "./draft.js";
+import { PAYMENT_SECTION_CODES } from "./resident.js";
+import type { F22OffsetBalance } from "./types.js";
 import type { TaxResidencyPeriod } from "../taxResidency.js";
 
 export type F22RowSection =
