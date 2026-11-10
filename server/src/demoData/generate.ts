@@ -83,8 +83,23 @@ import {
   renderUsStatementRows,
   DEMO_CHECKING_NUMBER,
   DEMO_US_CHECKING_NUMBER,
+  DEMO_US_SAVINGS_NUMBER,
 } from "./render.js";
-import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, US_RETIREMENT_FUND_SERIES_KEY, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import {
+  AFP_SWITCH_MONTH,
+  APV_FUND_SERIES_KEY,
+  MONEY_MARKET_DEPOSIT_DESCRIPTION,
+  MONEY_MARKET_FEE_PCT,
+  MONEY_MARKET_REDEMPTION_DESCRIPTION,
+  MONEY_MARKET_SERIES_KEY,
+  US_RETIREMENT_FUND_SERIES_KEY,
+  MUTUAL_FUND_SERIES_KEY,
+  moneyMarketAnnualRatePct,
+  simulate,
+  type Acct,
+  type Ledger,
+} from "./simulate.js";
+import { DEMO_US_BANK_ISSUER } from "../usBankAccounts.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
 import {
@@ -156,6 +171,11 @@ function createAccounts(person: Person): Map<Acct, number> {
   if (person.fund) {
     ids.set("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
   }
+  if (person.savings.clp) {
+    // The money-market fund the Chilean cushion sits in: a book account under Cash savings (cuotas × its series).
+    const leaf = ensureAssetGroup("cash_eqs__cash_savings__fm_money_market__fund", person.savings.clp.fundName, "cash_eqs__cash_savings");
+    ids.set("savingsClp", createAccount(leaf, person.savings.clp.fundName, { key: "import:panel|kind=fund|key=demo_fm_money_market", series: MONEY_MARKET_SERIES_KEY }));
+  }
   ids.set("apvA", createAccount(g("retirement_apv_a__apv"), "APV A", { series: APV_FUND_SERIES_KEY }));
   ids.set("apvB", createAccount(g("retirement_apv_b__apv"), "APV B", { series: APV_FUND_SERIES_KEY }));
   const afp = (slug: string, name: string) => {
@@ -189,8 +209,18 @@ function createAccounts(person: Person): Map<Acct, number> {
       key: buildPanelCashAccountNotes("usd", "us_checking"),
     });
     ids.set("usChecking", us);
-    db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'demo_bank_texas', ?, 'usd')`).run(us, DEMO_US_CHECKING_NUMBER);
+    const declare = db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, ?, ?, 'usd')`);
+    declare.run(us, DEMO_US_BANK_ISSUER, DEMO_US_CHECKING_NUMBER);
     if (person.us.bank.number !== DEMO_US_CHECKING_NUMBER) throw new Error("demo: the US bank number and the statement's differ");
+    if (person.savings.usd) {
+      // The savings account at the same bank: a dollar ledger under Cash savings; its number declared
+      // beside the checking one is what makes its interest the 1040's line 2b (`usBankAccounts.ts`).
+      const savings = createAccount(ensureAssetGroup("cash_eqs__cash_savings__us_savings__usd", person.savings.usd.bankLabel, "cash_eqs__cash_savings"), person.savings.usd.bankLabel, {
+        key: buildPanelCashAccountNotes("usd", "us_savings"),
+      });
+      ids.set("usSavings", savings);
+      declare.run(savings, DEMO_US_BANK_ISSUER, DEMO_US_SAVINGS_NUMBER);
+    }
   }
   if (person.usJobs.length > 0) {
     // The US retirement accounts (the Retirement tree splits into Chile and US once they exist).
@@ -225,16 +255,33 @@ function writeUsRetirementFundSeries(market: MarketReader, from: Ymd, today: Ymd
   db.transaction(() => writeFundUnitSeriesRows({ seriesKey: US_RETIREMENT_FUND_SERIES_KEY, currency: "usd", rows }))();
 }
 
-/** The APV fund: a balanced fund (65 % SPY in pesos, 35 % a steady 3 %/yr sleeve), valued daily. */
-function writeFundSeries(seriesKey: string, equityShare: number, market: MarketReader, from: Ymd, today: Ymd): void {
+/**
+ * A peso fund's valor cuota, valued on every Chile business day: a mix of SPY in pesos and a steady
+ * 3 %/yr sleeve (`equityShare`: the APV fund 65 %, the mutual fund 90 %), or a money-market fund
+ * accruing a yearly rate curve day by day (`annualRatePct`, no equity).
+ */
+function writeFundSeries(
+  seriesKey: string,
+  mix: { equityShare: number } | { annualRatePct: (day: Ymd) => number },
+  market: MarketReader,
+  from: Ymd,
+  today: Ymd
+): void {
   const ins = db.prepare(`INSERT OR REPLACE INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'demo')`);
-  const spy0 = market.close("SPY", from) * market.fx(from);
+  const spy0 = "equityShare" in mix ? market.close("SPY", from) * market.fx(from) : 0;
+  let accrued = 1_000;
   db.transaction(() => {
     for (let d = from; d <= today; d = addDays(d, 1)) {
+      // The money market accrues every calendar day; a value is written on business days only.
+      if ("annualRatePct" in mix && d > from) accrued *= Math.pow(1 + mix.annualRatePct(d) / 100, 1 / 365);
       if (!isChileBusinessDay(d)) continue;
       const years = (Date.parse(d) - Date.parse(from)) / (365.25 * 86_400_000);
-      const v = 10_000 * (equityShare * ((market.close("SPY", d) * market.fx(d)) / spy0) + (1 - equityShare) * Math.pow(1.03, years));
-      ins.run(seriesKey, d, Math.round(v * 100) / 100);
+      const v =
+        "equityShare" in mix
+          ? 10_000 * (mix.equityShare * ((market.close("SPY", d) * market.fx(d)) / spy0) + (1 - mix.equityShare) * Math.pow(1.03, years))
+          : accrued;
+      // The mixes keep their two decimals (the suite's fixtures); the money market's small daily steps need four.
+      ins.run(seriesKey, d, "equityShare" in mix ? Math.round(v * 100) / 100 : Math.round(v * 10_000) / 10_000);
     }
   })();
 }
@@ -324,10 +371,11 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
 /**
  * The US checking account's statement rows (`renderUsStatementRows`): no US statement importer
  * exists, so they are written as the cartola import writes a statement row — single-leg, the
- * statement identity in the note, the bank's evidence kind from it.
+ * statement identity in the note, the bank's evidence kind from it. A row a transfer explains
+ * (checking ↔ savings) is skipped, as the import keeps the transfer leg for a cartola row.
  */
 function writeUsStatementRows(ledger: Ledger, ids: Map<Acct, number>): void {
-  const rows = renderUsStatementRows(ledger);
+  const rows = renderUsStatementRows(ledger).filter((r) => !r.transfer);
   if (rows.length === 0) return;
   const id = ids.get("usChecking");
   if (id == null) throw new Error("demo: US statement rows without a US checking account");
@@ -500,17 +548,21 @@ function writeMortgageCardLinks(ledger: Ledger): void {
   if (made.length !== regular) throw new Error(`demo: ${made.length} mortgage card lines linked, ${regular} regular cuotas`);
 }
 
-/** APV and mutual fund accounts are book accounts: units × the fund's value, marked every business day. */
+/**
+ * APV, mutual fund and money-market accounts are book accounts: units × the fund's value, marked
+ * every business day (a transfer out of the fund — a redemption — sells its units).
+ */
 function writeFundValuations(ids: Map<Acct, number>, market: MarketReader, today: Ymd): void {
   const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
-  for (const [key, series] of [["apvA", APV_FUND_SERIES_KEY], ["apvB", APV_FUND_SERIES_KEY], ["fund", MUTUAL_FUND_SERIES_KEY]] as const) {
+  for (const [key, series] of [["apvA", APV_FUND_SERIES_KEY], ["apvB", APV_FUND_SERIES_KEY], ["fund", MUTUAL_FUND_SERIES_KEY], ["savingsClp", MONEY_MARKET_SERIES_KEY]] as const) {
     const id = ids.get(key);
     if (id == null) continue;
     const rows = db
       .prepare(
-        `SELECT occurred_on, units_delta FROM movements WHERE (account_id = ? OR to_account_id = ?) AND units_delta IS NOT NULL ORDER BY occurred_on`
+        `SELECT occurred_on, CASE WHEN from_account_id = ? THEN -units_delta ELSE units_delta END AS units_delta
+           FROM movements WHERE (account_id = ? OR to_account_id = ? OR from_account_id = ?) AND units_delta IS NOT NULL ORDER BY occurred_on`
       )
-      .all(id, id) as { occurred_on: string; units_delta: number }[];
+      .all(id, id, id, id) as { occurred_on: string; units_delta: number }[];
     if (rows.length === 0) continue;
     let units = 0;
     let i = 0;
@@ -616,7 +668,14 @@ function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
   // (its carrying cost; the amortización is split off by the link) — the rule says the same.
   for (const h of ledger.person.houses) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(h.lender.merchant), null, cat("bills"));
   const generic = db.prepare(`INSERT OR IGNORE INTO cc_expense_generic_unique_merchants (merchant_key, sort_order) VALUES (?, ?)`);
-  ["TRANSF A BROKER DEMO SPA", "TRANSF A CRYPTO EXCHANGE SPA", "TRANSF A AGF ANDES APV", ...ledger.person.houses.map((h) => h.pieDescription)].forEach((k, i) =>
+  [
+    "TRANSF A BROKER DEMO SPA",
+    "TRANSF A CRYPTO EXCHANGE SPA",
+    "TRANSF A AGF ANDES APV",
+    MONEY_MARKET_DEPOSIT_DESCRIPTION,
+    MONEY_MARKET_REDEMPTION_DESCRIPTION,
+    ...ledger.person.houses.map((h) => h.pieDescription),
+  ].forEach((k, i) =>
     generic.run(normalizeCcExpenseMerchantKey(k), 1000 + i * 10)
   );
   invalidateExpenseGenericUniqueMerchantCache();
@@ -645,6 +704,8 @@ function applyColors(ids: Map<Acct, number>): void {
     ["checking", "161,11,29"],
     ["checkingUsd", "90,90,150"],
     ["usChecking", "60,110,200"],
+    ["usSavings", "40,160,120"],
+    ["savingsClp", "120,190,160"],
     ["k401", "59,130,246"],
     ["hsa", "14,165,233"],
     ["rothIra", "124,58,237"],
@@ -693,9 +754,14 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   ) as { d: string | null }).d;
   if (!spyFrom) throw new Error("demo: no SPY closes for the APV fund");
   const fundFrom = spyFrom > "2019-01-02" ? spyFrom : "2019-01-02";
-  // The APV fund is balanced (65 % equities); the mutual fund is the risky one (90 %).
-  writeFundSeries(APV_FUND_SERIES_KEY, 0.65, prices, fundFrom, today);
-  if (person.fund) writeFundSeries(MUTUAL_FUND_SERIES_KEY, 0.9, prices, fundFrom, today);
+  // The APV fund is balanced (65 % equities); the mutual fund is the risky one (90 %); the money
+  // market accrues the story's term-deposit curve less its fee.
+  writeFundSeries(APV_FUND_SERIES_KEY, { equityShare: 0.65 }, prices, fundFrom, today);
+  if (person.fund) writeFundSeries(MUTUAL_FUND_SERIES_KEY, { equityShare: 0.9 }, prices, fundFrom, today);
+  if (person.savings.clp) {
+    if (`${person.savings.clp.from}-01` < fundFrom) throw new Error(`demo: the money-market fund starts ${person.savings.clp.from}, before its series (${fundFrom})`);
+    writeFundSeries(MONEY_MARKET_SERIES_KEY, { annualRatePct: (d) => moneyMarketAnnualRatePct(d) - MONEY_MARKET_FEE_PCT }, prices, fundFrom, today);
+  }
   if (person.usJobs.length > 0) {
     const first = person.usJobs.map((j) => j.firstPayDate).sort()[0]!;
     writeUsRetirementFundSeries(prices, addDays(first, -60), today);

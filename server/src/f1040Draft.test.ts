@@ -16,6 +16,7 @@ import { buildF1040Payload } from "./f1040Payload.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 import { registerTaxReturnRoutes } from "./routes/taxReturn.js";
 import { usBracketTax, usForm1040Tax, usTaxYear } from "./usLegalParameters.js";
+import { DEMO_US_BANK_ISSUER, usBankInterestForYear } from "./usBankAccounts.js";
 import { usW2sFromStubLines, type UsW2Stub } from "./usW2.js";
 import { usPayDates, usPayStub, usW2StubOf, usW2sOfStubs, newUsPayrollYtd, type UsPayStub } from "./demoData/usPayroll.js";
 import type { UsW2Job } from "./demoData/person.js";
@@ -104,8 +105,24 @@ function cleanup() {
   db.prepare(`DELETE FROM payroll_work_earnings WHERE source_pdf LIKE '${PREFIX}%'`).run();
   for (const id of createdAccounts.splice(0)) {
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(id);
+    db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ?`).run(id);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   }
+}
+
+/** A dollar account declared at the US bank (an issuer `US_BANK_ISSUERS` lists), with its interest rows. */
+function usBankSavingsAccount(interest: { day: string; usd: number }[]): number {
+  const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+  const n = createdAccounts.length + 1;
+  const id = Number(
+    db.prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`).run(group.id, `Vitest · US savings ${n}`, `${PREFIX}savings-${n}`).lastInsertRowid
+  );
+  createdAccounts.push(id);
+  db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, ?, ?, 'usd')`).run(id, DEMO_US_BANK_ISSUER, `990000000${n}`);
+  for (const i of interest) {
+    db.prepare(`INSERT INTO movements (account_id, occurred_on, amount, currency, flow_kind, note) VALUES (?, ?, ?, 'usd', 'savings_earnings', 'vitest interest')`).run(id, i.day, i.usd);
+  }
+  return id;
 }
 
 describe("W-2 boxes from the stub lines", () => {
@@ -157,15 +174,17 @@ describe("W-2 boxes from the stub lines", () => {
 
 describe("Form 1040 arithmetic and tax", () => {
   it("computes the chain and checks a return against it", () => {
-    const lines = computeF1040Lines({
+    const inputs = {
       wages1a: 120_000,
+      interest2b: 0,
       standardDeduction12: 15_750,
-      taxOn: (t) => usForm1040Tax(t, "single", 2025),
+      taxOn: (t: number) => usForm1040Tax(t, "single", 2025),
       otherTaxes23: 0,
       withholdingW2_25a: 20_000,
       withholdingOther25c: 0,
       schedule3Credits31: 0,
-    });
+    };
+    const lines = computeF1040Lines(inputs);
     expect(lines["15"]).toBe(104_250);
     expect(lines["16"]).toBe(Math.round(usBracketTax(104_250, usTaxYear(2025).brackets.single)));
     expect(lines["24"]).toBe(lines["16"]);
@@ -175,6 +194,12 @@ describe("Form 1040 arithmetic and tax", () => {
     expect(() => assertF1040Identities(lines, "ok")).not.toThrow();
     expect(() => assertF1040Identities({ ...lines, "15": lines["15"] + 1 }, "bad")).toThrow(/line 15 is/);
     expect(() => assertF1040Identities({ ...lines, "99": 1 } as F1040Lines, "bad")).toThrow(/unknown line 99/);
+    // Taxable interest (2b) joins the wages in total income (9) and flows down the chain.
+    const withInterest = computeF1040Lines({ ...inputs, interest2b: 1_000 });
+    expect(withInterest).toMatchObject({ "1z": 120_000, "2b": 1_000, "9": 121_000, "11": 121_000, "15": 105_250 });
+    expect(withInterest["16"]).toBe(usForm1040Tax(105_250, "single", 2025));
+    expect(() => assertF1040Identities(withInterest, "interest")).not.toThrow();
+    expect(() => assertF1040Identities({ ...withInterest, "9": 120_000 }, "bad")).toThrow(/line 9 is/);
   });
 
   it("takes the Tax Table's row midpoint below $100.000 and the exact amount above", () => {
@@ -210,11 +235,39 @@ describe("the 1040 draft", () => {
       "25c": 0,
     });
     expect(d.fica).toEqual({ socialSecurity: w2.socialSecurityTax, medicare: w2.medicareTax });
+    expect(d.interest).toEqual({ lines: [], usd: 0 });
+    expect(d.lines["2b"]).toBe(0);
     const refund = Math.round(w2.federalWithheld) - (d.lines["24"] ?? 0);
     expect(refund > 0 ? d.lines["35a"] : d.lines["37"]).toBe(Math.abs(refund));
     // The first US year starts in April: a dual-status year drafted as a full resident year.
     expect(buildF1040Draft(2024, TODAY).notes).toEqual(["no_state_return", "first_year_full_resident"]);
     expect(availableUsTaxYears(TODAY)).toEqual([2026, 2025, 2024]);
+  });
+
+  it("reads a US bank account's interest into line 2b (the year's savings_earnings on a dollar account declared at a US bank)", () => {
+    applyStubs(generatedStubs("2025-12-31"));
+    const savings = usBankSavingsAccount([
+      { day: "2025-03-31", usd: 40.4 },
+      { day: "2025-12-31", usd: 60.2 },
+      { day: "2026-01-31", usd: 55 },
+    ]);
+    // Interest at a broker, or on an account declared at a Chilean bank, is not a US bank account's.
+    const other = usBankSavingsAccount([]);
+    db.prepare(`UPDATE bank_account_numbers SET issuer = 'santander' WHERE account_id = ?`).run(other);
+    db.prepare(`INSERT INTO movements (account_id, occurred_on, amount, currency, flow_kind, note) VALUES (?, '2025-06-30', 99, 'usd', 'savings_earnings', 'x')`).run(other);
+    const interest = usBankInterestForYear(2025);
+    expect(interest.usd).toBe(100.6);
+    expect(interest.lines.map((l) => [l.accountId, l.date, l.usd])).toEqual([
+      [savings, "2025-03-31", 40.4],
+      [savings, "2025-12-31", 60.2],
+    ]);
+    const d = buildF1040Draft(2025, TODAY);
+    const plain = buildF1040Draft(2024, TODAY);
+    expect(d.interest.usd).toBe(100.6);
+    expect(d.lines["2b"]).toBe(101);
+    expect(d.lines["9"]).toBe(d.lines["1a"]! + 101);
+    expect(() => assertF1040Identities(d.lines, "2025")).not.toThrow();
+    expect(plain.lines["2b"]).toBe(0);
   });
 
   it("throws for a closed year the law table does not list; an open one takes the latest year's law", () => {
@@ -232,6 +285,7 @@ describe("the 1040 draft", () => {
     // Filed with $200 less tax than the draft computes (the draft owes a little: the bonus is withheld at 22 %).
     const filedLines = computeF1040Lines({
       wages1a: d.lines["1a"]!,
+      interest2b: 0,
       standardDeduction12: d.lines["12"]!,
       taxOn: (t) => usForm1040Tax(t, "single", 2025) - 200,
       otherTaxes23: 0,

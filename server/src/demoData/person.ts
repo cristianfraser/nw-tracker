@@ -168,6 +168,26 @@ const US_JOBS: UsW2Job[] = [
   },
 ];
 
+/** Months of trailing expenses an account group keeps: below `low` it is topped up to `target`, above `high` trimmed to it. */
+export type CashBand = { low: number; target: number; high: number; trailingMonths: number };
+/**
+ * Checking keeps one to two months of spending; the cushion — three to six months plus the known
+ * needs of the coming months — sits in the savings vehicles (`Person.savings`). A person with no
+ * savings vehicle keeps the savings band on checking itself: one rule, the band an account group keeps.
+ */
+export const CHECKING_BAND: CashBand = { low: 1, target: 1.5, high: 2, trailingMonths: 6 };
+export const SAVINGS_BAND: CashBand = { low: 3, target: 4.5, high: 6, trailingMonths: 6 };
+
+/**
+ * Where the cash cushion lives: in Chile a money-market fondo mutuo (cuotas, from `from`), in the
+ * US a high-yield savings account at the US bank (dollars, from the move). Null: the cushion stays
+ * on checking.
+ */
+export type SavingsVehicles = {
+  clp: { fundName: string; from: Month } | null;
+  usd: { bankLabel: string } | null;
+};
+
 /**
  * Life in the US (Austin, Texas), in dollars: the US checking account the salary lands in, the
  * rent, a car bought in cash, a Roth IRA in SPY and what goes home to Chile every month. What he
@@ -185,8 +205,8 @@ export type UsLife = {
   car: { date: Ymd; merchant: string; usd: number } | null;
   /** A Roth IRA contribution each `month` from `fromYear`, bought straight into SPY. */
   roth: { fromYear: number; month: number; usd: number } | null;
-  /** The US checking balance kept: months of US spending (the rest goes to the US broker). */
-  cashBand: { low: number; target: number; high: number };
+  /** The US checking balance kept: months of US spending (the checking band; the cushion sits in savings). */
+  cashBand: CashBand;
   /** The bank's fee on each wire to Chile. */
   wireFeeUsd: number;
   /** A flight home every December. */
@@ -200,7 +220,7 @@ const US_LIFE: UsLife = {
   rent: { landlord: "LAKESHORE APARTMENTS", usd: 1_750, fromMonth: "2024-04", yearlyIncrease: 0.035 },
   car: { date: "2025-03-14", merchant: "HILL COUNTRY AUTO SALES", usd: 16_500 },
   roth: { fromYear: 2025, month: 10, usd: 7_000 },
-  cashBand: { low: 1, target: 2, high: 3 },
+  cashBand: CHECKING_BAND,
   wireFeeUsd: 25,
   decemberTripUsd: 1_350,
 };
@@ -517,8 +537,6 @@ const DIVIDEND_PER_SHARE_USD: Record<string, number> = { SPY: 1.55, AAPL: 0.23, 
 /** Bitcoin: monthly DCA through the exchange plus a lump at the 2018 bottom. */
 const BTC = { from: "2018-06" as Month, to: "2019-12" as Month, monthlyClp: 50_000, lump: { date: "2018-12-14" as Ymd, clp: 400_000 } };
 
-/** Cash band on checking CLP + USD (months of trailing expenses). */
-const CASH_BAND = { low: 3, target: 4.5, high: 6, trailingMonths: 6 };
 
 /**
  * APV: 40 UTM every December; in the `monthly` window a deposit of `uf` every month instead (up to
@@ -575,7 +593,10 @@ export type Person = {
   btc: { from: Month; to: Month; monthlyClp: number; lump: { date: Ymd; clp: number } | null } | null;
   /** A Fintual-style mutual fund: a monthly deposit from checking buys its cuotas (null: none). */
   fund: { name: string; from: Month; monthlyClp: number } | null;
-  cashBand: { low: number; target: number; high: number; trailingMonths: number };
+  /** The band checking keeps, and the one the savings vehicles keep (on checking when there is none). */
+  checkingBand: CashBand;
+  savingsBand: CashBand;
+  savings: SavingsVehicles;
   apv: ApvPlan;
   /** Where net worth should land today (USD), for the build's sanity check; null: no target. */
   netWorthTargetUsd: number | null;
@@ -615,7 +636,11 @@ export const DEMO_PERSON: Person = {
   dividendPerShareUsd: DIVIDEND_PER_SHARE_USD,
   btc: BTC,
   fund: null,
-  cashBand: CASH_BAND,
+  checkingBand: CHECKING_BAND,
+  savingsBand: SAVINGS_BAND,
+  // The cushion moves into a money-market fund with the second contrato job, and into a savings
+  // account at the US bank with the move.
+  savings: { clp: { fundName: "Fondo Mutuo Money Market", from: CONTRACT_JOBS[1]!.from }, usd: { bankLabel: "DEMO BANK TEXAS SAVINGS" } },
   apv: APV,
   // US$445k, not the 400k the plan's first sanity table guessed: two and a half years of a US$150k salary
   // saved against a modest Austin lifestyle, and the two rented apartments' equity make this the honest figure on the
@@ -691,7 +716,10 @@ export function testPerson(today: Ymd): Person {
     dividendPerShareUsd: { SPY: 1.55, AAPL: 0.23 },
     btc: null,
     fund: { name: "Fondo Moderado", from: back(16), monthlyClp: 120_000 },
-    cashBand: CASH_BAND,
+    checkingBand: CHECKING_BAND,
+    savingsBand: SAVINGS_BAND,
+    // No savings vehicle: checking keeps the savings band, as the suite's fixtures were built.
+    savings: { clp: null, usd: null },
     apv: { ...APV, monthly: null },
     netWorthTargetUsd: null,
     // A few nights only: the suite exercises the writer without paying for weeks of runs.

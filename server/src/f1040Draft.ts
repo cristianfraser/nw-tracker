@@ -3,7 +3,8 @@
  * W-2 pay stubs (`payroll_work_earnings.jurisdiction = 'us'` and their `payslip_lines`): the W-2s
  * (`usW2.ts`), then
  *
- *   1a   wages: Σ W-2 box 1                     12   the standard deduction for the filing status
+ *   1a   wages: Σ W-2 box 1                     2b   taxable interest: the US bank accounts' `savings_earnings`
+ *   12   the standard deduction for the filing status
  *   15   taxable income                          16   the tax on it (Tax Table / worksheet)
  *   23   Form 8959's additional Medicare tax (Medicare wages above the status threshold)
  *   25a  Σ W-2 box 2                             25c  the additional Medicare tax withheld
@@ -24,6 +25,7 @@ import { computeF1040Lines, type F1040Lines } from "./f1040Identities.js";
 import { filedF1040, filedF1040TaxYears, type FiledF1040 } from "./f1040Filed.js";
 import type { PayslipLineKind, PayslipLineSide } from "./payslipLineKinds.js";
 import { US_TAX_YEARS, usForm1040Tax, usTaxYear, type UsFilingStatus } from "./usLegalParameters.js";
+import { usBankInterestForYear, type UsBankInterest } from "./usBankAccounts.js";
 import { usW2sFromStubLines, type UsW2, type UsW2Stub } from "./usW2.js";
 
 export type F1040Note =
@@ -44,6 +46,8 @@ export type F1040Draft = {
   filingStatus: UsFilingStatus;
   stubs: number;
   w2s: UsW2[];
+  /** Line 2b's source: the interest the US bank accounts paid in the year (`usBankAccounts.ts`). */
+  interest: UsBankInterest;
   lines: F1040Lines;
   /** Boxes 4 and 6: withheld and reported, not part of the 1040's tax. */
   fica: { socialSecurity: number; medicare: number };
@@ -154,7 +158,8 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
   const filingStatus = statuses.size === 1 ? [...statuses][0]! : latestFilingStatusBefore(taxYear);
   const w2s = usW2sFromStubLines(stubs, (y) => (y === taxYear ? lawYear : y));
 
-  const { lines, additionalMedicareTax, fica } = f1040LinesFromW2s(w2s, filingStatus, lawYear, `${taxYear}`);
+  const interest = usBankInterestForYear(taxYear);
+  const { lines, additionalMedicareTax, fica } = f1040LinesFromW2s(w2s, filingStatus, lawYear, `${taxYear}`, { interestUsd: interest.usd });
 
   const notes: F1040Note[] = ["no_state_return"];
   const first = firstUsPayYear();
@@ -169,6 +174,7 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
     filingStatus,
     stubs: stubs.length,
     w2s,
+    interest,
     lines,
     fica,
     additionalMedicareTax,
@@ -178,14 +184,16 @@ export function buildF1040Draft(taxYear: number, todayYmd: string = chileWallClo
 }
 
 /**
- * The 1040's lines from a year's W-2s, for a filing status under `lawYear`'s law (pure: the draft
- * above and the demo generator's April, which drafts the return from the stubs it wrote, share it).
+ * The 1040's lines from a year's W-2s and its taxable interest (`interestUsd`, line 2b; 0 when
+ * absent), for a filing status under `lawYear`'s law (pure: the draft above and the demo generator's
+ * April, which drafts the return from the stubs and the interest it wrote, share it).
  */
 export function f1040LinesFromW2s(
   w2s: readonly UsW2[],
   filingStatus: UsFilingStatus,
   lawYear: number,
-  label: string
+  label: string,
+  other: { interestUsd?: number } = {}
 ): { lines: ReturnType<typeof computeF1040Lines>; additionalMedicareTax: number; fica: { socialSecurity: number; medicare: number } } {
   const law = usTaxYear(lawYear);
   const sum = (f: (w: UsW2) => number) => cents(w2s.reduce((s, w) => s + f(w), 0));
@@ -207,8 +215,11 @@ export function f1040LinesFromW2s(
   }
   const excessSocialSecurity = w2s.length > 1 ? Math.round(Math.max(0, sum((w) => w.socialSecurityTax) - maxSocialSecurity)) : 0;
 
+  const interestUsd = other.interestUsd ?? 0;
+  if (!(interestUsd >= 0)) throw new Error(`1040 ${label}: taxable interest ${interestUsd} is not a non-negative amount`);
   const lines = computeF1040Lines({
     wages1a: Math.round(sum((w) => w.wages)),
+    interest2b: Math.round(interestUsd),
     standardDeduction12: law.standardDeduction[filingStatus],
     taxOn: (taxable) => usForm1040Tax(taxable, filingStatus, lawYear),
     otherTaxes23: Math.round(additionalMedicareTax),

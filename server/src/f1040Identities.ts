@@ -5,7 +5,8 @@
  * rounding: each amount to the dollar, a sum of several rounded only at the total).
  *
  *    1z = 1a + 1b + … + 1h                    (wages; v1 drafts 1a, the W-2s' box 1)
- *     9 = 1z                                   (total income; v1 has no other income lines)
+ *     9 = 1z + 2b                              (total income; 2b the taxable interest — a US bank
+ *                                               account's; no other income lines)
  *    11 = 9 − 10                               (AGI; 10 = Schedule 1 adjustments)
  *    14 = 12 + 13                              (12 the standard deduction, 13 the QBI deduction)
  *    15 = max(0, 11 − 14)                      (taxable income)
@@ -22,7 +23,7 @@
 
 /** The 1040 lines the app drafts or reads from a filed return. */
 export const F1040_LINES = [
-  "1a", "1z", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "21", "22", "23", "24",
+  "1a", "1z", "2b", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "21", "22", "23", "24",
   "25a", "25b", "25c", "25d", "26", "27", "28", "29", "31", "32", "33", "34", "35a", "36", "37",
 ] as const;
 export type F1040Line = (typeof F1040_LINES)[number];
@@ -35,6 +36,8 @@ export function isF1040Line(line: string): line is F1040Line {
 /** The inputs a draft supplies; every other line follows from them. */
 export type F1040Inputs = {
   wages1a: number;
+  /** Taxable interest (a US bank account's). */
+  interest2b: number;
   standardDeduction12: number;
   /** Line 16 on line 15 (the Tax Table or the worksheet). */
   taxOn: (taxableIncome15: number) => number;
@@ -46,12 +49,12 @@ export type F1040Inputs = {
 };
 
 /** Every line the draft states, from its inputs. */
-export function computeF1040Lines(i: F1040Inputs): Required<Pick<F1040Lines, "1a" | "1z" | "9" | "11" | "12" | "14" | "15" | "16" | "18" | "22" | "23" | "24" | "25a" | "25c" | "25d" | "31" | "32" | "33" | "34" | "35a" | "37">> {
+export function computeF1040Lines(i: F1040Inputs): Required<Pick<F1040Lines, "1a" | "1z" | "2b" | "9" | "11" | "12" | "14" | "15" | "16" | "18" | "22" | "23" | "24" | "25a" | "25c" | "25d" | "31" | "32" | "33" | "34" | "35a" | "37">> {
   for (const [k, v] of Object.entries(i)) {
     if (typeof v === "number" && !Number.isInteger(v)) throw new Error(`1040: input ${k} = ${v} is not whole dollars`);
   }
   const l1z = i.wages1a;
-  const l9 = l1z;
+  const l9 = l1z + i.interest2b;
   const l11 = l9;
   const l14 = i.standardDeduction12;
   const l15 = Math.max(0, l11 - l14);
@@ -67,6 +70,7 @@ export function computeF1040Lines(i: F1040Inputs): Required<Pick<F1040Lines, "1a
   return {
     "1a": i.wages1a,
     "1z": l1z,
+    "2b": i.interest2b,
     "9": l9,
     "11": l11,
     "12": i.standardDeduction12,
@@ -98,7 +102,7 @@ export function assertF1040Identities(lines: F1040Lines, label: string): void {
   }
   const checks: [F1040Line, number][] = [
     ["1z", v("1a")],
-    ["9", v("1z")],
+    ["9", v("1z") + v("2b")],
     ["11", v("9") - v("10")],
     ["14", v("12") + v("13")],
     ["15", Math.max(0, v("11") - v("14"))],

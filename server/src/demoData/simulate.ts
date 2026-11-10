@@ -55,9 +55,9 @@ import { f1040LinesFromW2s } from "../f1040Draft.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
-export type CashAcct = "vista" | "checking" | "checkingUsd" | "usChecking" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "exchangeClp";
+export type CashAcct = "vista" | "checking" | "checkingUsd" | "usChecking" | "usSavings" | "brokerClp" | "brokerUsd" | "ibkrUsd" | "exchangeClp";
 /** The cash accounts that hold dollars. */
-const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "usChecking", "brokerUsd", "ibkrUsd"]);
+const USD_CASH: ReadonlySet<CashAcct> = new Set(["checkingUsd", "usChecking", "usSavings", "brokerUsd", "ibkrUsd"]);
 /** The broker cash accounts a dollar stock trades against. */
 export type UsdBrokerCash = "brokerUsd" | "ibkrUsd";
 export type Acct =
@@ -73,6 +73,8 @@ export type Acct =
   | `property:${string}`
   | `loan:${string}`
   | "fund"
+  /** The money-market fund the Chilean cushion sits in (cuotas, `Person.savings.clp`). */
+  | "savingsClp"
   /** The US retirement accounts: a 401(k) and an HSA in a target-date fund's units, a Roth IRA in SPY. */
   | "k401"
   | "hsa"
@@ -82,8 +84,12 @@ export type Acct =
 
 /** A line a bank cartola prints (vista and the peso checking account). */
 export type BankRow = { account: "vista" | "checking"; date: Ymd; description: string; amount: number };
-/** A line the US bank's monthly statement prints (dollars, signed). */
-export type UsBankRow = { date: Ymd; description: string; amount: number };
+/**
+ * A line the US bank's monthly statement prints (dollars, signed). A `transfer` row is one a
+ * transfer between own accounts explains (checking ↔ savings): the statement prints it, the app
+ * holds the transfer.
+ */
+export type UsBankRow = { date: Ymd; description: string; amount: number; transfer?: true };
 
 /** A ledger row written directly (transfers between own accounts, the broker's own records, funds). */
 export type DirectMovement =
@@ -225,6 +231,10 @@ export type Ledger = {
   /** The US checking account's statement lines, and its balance today (statement rows and transfers). */
   usBank: UsBankRow[];
   usCheckingBalanceUsd: number;
+  /** The US savings account's balance today (null without one). */
+  usSavingsBalanceUsd: number | null;
+  /** The cuotas held in the Chilean money-market fund today (null without one). */
+  savingsClpUnits: number | null;
   /** Each house's mortgage, in purchase order. */
   mortgages: Mortgage[];
   /** The rents the agency forwarded to checking (the income overrides name the place). */
@@ -233,8 +243,12 @@ export type Ledger = {
   placeBills: PlaceBill[];
   /** AFC book account: contributions (the writer grows and marks it). */
   afcContributions: { date: Ymd; clp: number; month: Month }[];
-  /** Month-end summary, for the build report and the invariants. */
-  months: { month: Month; expensesClp: number; cashClp: number; band: [number, number] }[];
+  /**
+   * Month-end summary, for the build report and the invariants: the Chilean cash (checking, the
+   * dollar account and the fund), the fund alone, what the savings band is measured on (the fund
+   * when there is one, else the cash) and that band's bounds.
+   */
+  months: { month: Month; expensesClp: number; cashClp: number; savingsClp: number; cushionClp: number; band: [number, number] }[];
   /** Names the category rules need (description / merchant → category slug). */
   categoryByCheckingDescription: Map<string, string>;
   categoryByMerchant: Map<string, string>;
@@ -398,6 +412,18 @@ export const US_CARD_ANNUAL_FEE = "ANNUAL MEMBERSHIP FEE";
 
 /** The mutual fund's valor cuota series (a person with `fund`). */
 export const MUTUAL_FUND_SERIES_KEY = "demo_fondo";
+/** The money-market fund the Chilean cushion sits in (`Person.savings.clp`): its valor cuota series, in pesos. */
+export const MONEY_MARKET_SERIES_KEY = "demo_fm_money_market";
+/** The money-market fund's yearly fee (percentage points off the term-deposit curve it accrues). */
+export const MONEY_MARKET_FEE_PCT = 0.3;
+/** What the checking cartola prints on a fund deposit and a redemption. */
+export const MONEY_MARKET_DEPOSIT_DESCRIPTION = "TRANSF A AGF ANDES FM MONEY MARKET";
+export const MONEY_MARKET_REDEMPTION_DESCRIPTION = "RESCATE AGF ANDES FM MONEY MARKET";
+/** What the US bank statement prints on a transfer to and from the savings account. */
+export const US_SAVINGS_TRANSFER_OUT_DESCRIPTION = "ONLINE TRANSFER TO SAVINGS";
+export const US_SAVINGS_TRANSFER_IN_DESCRIPTION = "ONLINE TRANSFER FROM SAVINGS";
+/** The US savings account pays the benchmark rate less this on its balance. */
+const US_SAVINGS_SPREAD_PCT = 0.3;
 
 /** The 15 % US tax the Chilean broker withholds from dividends (W-8BEN, no treaty). */
 export const DIVIDEND_WITHHOLDING_RATE = 0.15;
@@ -537,10 +563,14 @@ const AFP_WITHDRAWAL_FLOOR_UF = 35;
 const AFP_WITHDRAWAL_CAP_UF = 150;
 
 /**
- * The story's 30-day peso term-deposit rate (%), from each month on: low in 2021, high with the
- * 2022 policy rate, easing in 2023.
+ * The story's 30-day peso term-deposit rate (%), from each month on: a steady 2016–2019, low in
+ * 2020–2021, high with the 2022 policy rate, easing in 2023 and on. The term deposits (2021–2023)
+ * and the money-market fund (from the second job) both accrue it.
  */
 const DAP_RATE_PCT_30D_FROM: readonly [Month, number][] = [
+  ["2016-01", 0.28],
+  ["2019-07", 0.2],
+  ["2020-04", 0.08],
   ["2021-01", 0.12],
   ["2021-08", 0.3],
   ["2021-11", 0.55],
@@ -548,11 +578,18 @@ const DAP_RATE_PCT_30D_FROM: readonly [Month, number][] = [
   ["2022-08", 0.95],
   ["2023-06", 0.85],
   ["2023-09", 0.7],
+  ["2024-03", 0.55],
+  ["2024-09", 0.47],
+  ["2025-04", 0.42],
 ];
 function dapRate30dPct(day: Ymd): number {
   const hit = [...DAP_RATE_PCT_30D_FROM].reverse().find(([from]) => monthOf(day) >= from);
   if (!hit) throw new Error(`demo: no term-deposit rate for ${day}`);
   return hit[1];
+}
+/** The money-market fund's gross yearly rate (%) on `day`: the story's 30-day curve annualized. */
+export function moneyMarketAnnualRatePct(day: Ymd): number {
+  return (dapRate30dPct(day) * 365) / 30;
 }
 
 /** When the AFP switch credits UNO (Modelo until then). */
@@ -561,7 +598,7 @@ export const AFP_SWITCH_MONTH: Month = "2020-02";
 /* ------------------------------------ book -------------------------------------- */
 
 class Book {
-  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, usChecking: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, exchangeClp: 0 };
+  bal: Record<CashAcct, number> = { vista: 0, checking: 0, checkingUsd: 0, usChecking: 0, usSavings: 0, brokerClp: 0, brokerUsd: 0, ibkrUsd: 0, exchangeClp: 0 };
   units = new Map<string, number>();
   bank: BankRow[] = [];
   usBank: UsBankRow[] = [];
@@ -573,6 +610,7 @@ class Book {
     checking: new Map(),
     checkingUsd: new Map(),
     usChecking: new Map(),
+    usSavings: new Map(),
     brokerClp: new Map(),
     brokerUsd: new Map(),
     ibkrUsd: new Map(),
@@ -623,10 +661,14 @@ class Book {
     this.add("usChecking", usd, date);
     this.usBank.push({ date, description, amount: usd });
   }
-  /** A transfer between own accounts; the bank side (if any) prints `bankDescription`. */
+  /**
+   * A transfer between own accounts; the bank side (if any) prints `bank.description` on its cartola,
+   * `usBank.description` on the US checking statement (a row the transfer explains).
+   */
   transfer(
     t: { from: Acct; to: Acct; date: Ymd; clp?: number; usd?: number; units?: number; flowKind?: string | null; note: string },
-    bank?: { account: "vista" | "checking"; description: string; side: "from" | "to" }
+    bank?: { account: "vista" | "checking"; description: string; side: "from" | "to" },
+    usBank?: { description: string; side: "from" | "to" }
   ) {
     const clp = t.clp != null ? round(t.clp) : undefined;
     const usd = t.usd != null ? cents(t.usd) : undefined;
@@ -659,6 +701,10 @@ class Book {
       // The bank prints it; the importer finds this transfer and keeps it (superseded_by_transfer).
       this.bank.push({ account: bank.account, date: t.date, description: bank.description, amount: signed });
     }
+    if (usBank) {
+      if (usd == null) throw new Error(`demo: the US statement row of ${t.note} needs a dollar amount`);
+      this.usBank.push({ date: t.date, description: usBank.description, amount: usBank.side === "from" ? -usd : usd, transfer: true });
+    }
   }
   single(m: Extract<DirectMovement, { type: "single" }>) {
     if (isCash(m.account)) this.add(m.account as CashAcct, m.amount, m.date);
@@ -674,7 +720,7 @@ class Book {
 }
 
 function isCash(a: Acct): a is CashAcct {
-  return ["vista", "checking", "checkingUsd", "usChecking", "brokerClp", "brokerUsd", "ibkrUsd", "exchangeClp"].includes(a);
+  return ["vista", "checking", "checkingUsd", "usChecking", "usSavings", "brokerClp", "brokerUsd", "ibkrUsd", "exchangeClp"].includes(a);
 }
 
 /* -------------------------------- simulation ------------------------------------ */
@@ -706,10 +752,18 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     plays: PLAYS,
     dividendPerShareUsd: DIVIDEND_PER_SHARE_USD,
     btc: BTC,
-    cashBand: CASH_BAND,
+    checkingBand: CHECKING_BAND,
+    savingsBand: SAVINGS_BAND,
     apv: APV,
     dap: DAP,
   } = person;
+  /** The Chilean cushion sits in the money-market fund from this month (null: on checking). */
+  const savingsClpFrom = person.savings.clp?.from ?? null;
+  const savingsClpOn = (month: Month) => savingsClpFrom != null && month >= savingsClpFrom;
+  /** The US cushion sits in the savings account from the move (null: on US checking). */
+  const usSavingsOn = (month: Month) => person.us != null && person.savings.usd != null && month >= person.us.moveMonth;
+  /** The interest the US savings account paid, by year (the 1040's line 2b). */
+  const usSavingsInterestByYear = new Map<number, number>();
   const contractJobFor = (month: Month): ContractJob | null => CONTRACT_JOBS.find((j) => month >= j.from && month <= j.to) ?? null;
   const contractorJobFor = (month: Month): ContractorJob | null =>
     CONTRACTOR_JOBS.find((j) => month >= j.from && (j.to == null || month <= j.to)) ?? null;
@@ -1028,6 +1082,58 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     );
   };
 
+  /* ------------------------------ the savings fund ------------------------------ */
+  const fundPrice = (day: Ymd) => market.fundUnit(MONEY_MARKET_SERIES_KEY, day);
+  /** What the money-market cuotas are worth on `day` (0 without the fund, or before its first cuota — the series may not exist yet). */
+  const savingsValue = (day: Ymd) => {
+    const units = savingsClpFrom == null ? 0 : book.unitsOf("savingsClp");
+    return units === 0 ? 0 : units * fundPrice(day);
+  };
+  /** Pesos from checking into the fund, in thousands (cuotas bought at the day's value); what was moved. */
+  const depositSavings = (day: Ymd, clp: number): number => {
+    clp = Math.floor(clp / 1000) * 1000;
+    if (day > today || clp <= 0 || !savingsClpOn(monthOf(day))) return 0;
+    const units = Math.round((clp / fundPrice(day)) * 1e4) / 1e4;
+    book.addUnits("savingsClp", units, 4);
+    book.transfer(
+      { from: "checking", to: "savingsClp", date: day, clp, units, flowKind: null, note: `${person.savings.clp!.fundName}|aporte` },
+      { account: "checking", description: MONEY_MARKET_DEPOSIT_DESCRIPTION, side: "from" }
+    );
+    return clp;
+  };
+  /** Cuotas sold for `clp` pesos (at most what is held), credited to checking the same day; what came back. */
+  const redeemSavings = (day: Ymd, clp: number): number => {
+    if (day > today || clp <= 0 || savingsClpFrom == null) return 0;
+    const held = book.unitsOf("savingsClp");
+    if (held <= 0) return 0;
+    const px = fundPrice(day);
+    const units = Math.min(held, Math.ceil((clp / px) * 1e4) / 1e4);
+    const pesos = round(units * px);
+    if (pesos <= 0) return 0;
+    book.addUnits("savingsClp", -units, 4);
+    book.transfer(
+      { from: "savingsClp", to: "checking", date: day, clp: pesos, units, flowKind: null, note: `${person.savings.clp!.fundName}|rescate` },
+      { account: "checking", description: MONEY_MARKET_REDEMPTION_DESCRIPTION, side: "to" }
+    );
+    return pesos;
+  };
+  /** Dollars between US checking and the savings account (to the ten); the statement prints the row. */
+  const moveUsSavings = (day: Ymd, side: "to" | "from", usd: number): number => {
+    if (day > today || !usSavingsOn(monthOf(day))) return 0;
+    usd = side === "to" ? Math.floor(usd / 10) * 10 : Math.ceil(usd / 10) * 10;
+    if (side === "from") usd = Math.min(usd, Math.floor(Math.max(0, book.lowestFrom("usSavings", day)) / 10) * 10);
+    if (usd <= 0) return 0;
+    const label = person.savings.usd!.bankLabel;
+    book.transfer(
+      side === "to"
+        ? { from: "usChecking", to: "usSavings", date: day, usd, flowKind: null, note: `${label}|transfer to savings` }
+        : { from: "usSavings", to: "usChecking", date: day, usd, flowKind: null, note: `${label}|transfer from savings` },
+      undefined,
+      { description: side === "to" ? US_SAVINGS_TRANSFER_OUT_DESCRIPTION : US_SAVINGS_TRANSFER_IN_DESCRIPTION, side: side === "to" ? "from" : "to" }
+    );
+    return usd;
+  };
+
   /* --------------------------------- mortgage -------------------------------- */
   const mortgages = new Map<string, Mortgage>();
   const rents: RentCredit[] = [];
@@ -1047,18 +1153,23 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   const runTermDeposits = (month: Month) => {
     const cfg = DAP!;
     const cushion = () => Math.max(2_000_000, 2.5 * trailingExpense());
-    // Pesos plus the dollars a dollar earner would sell for it, less the cushion and the known needs.
-    const available = (day: Ymd) =>
-      book.lowestFrom("checking", day) +
-      Math.max(0, book.lowestFrom("checkingUsd", day)) * market.fx(day) * 0.99 -
-      cushion() -
-      upcomingCashNeeds(month);
+    // With the fund holding the cushion, the deposit draws on the fund above the savings band's low
+    // (and checking above its target); without it, on checking above the cushion. Plus the dollars a
+    // dollar earner would sell for it, less the known needs.
+    const onHand = (day: Ymd) =>
+      savingsClpOn(month)
+        ? savingsValue(day) + Math.max(0, book.lowestFrom("checking", day) - CHECKING_BAND.target * trailingExpense()) - SAVINGS_BAND.low * trailingExpense()
+        : book.lowestFrom("checking", day) - cushion();
+    const available = (day: Ymd) => onHand(day) + Math.max(0, book.lowestFrom("checkingUsd", day)) * market.fx(day) * 0.99 - upcomingCashNeeds(month);
     const halfMillions = (clp: number) => Math.floor(clp / 500_000) * 500_000;
     const place = (day: Ymd, wanted: number, note: string) => {
       const maturity = firstBusinessDayOnOrAfter(addDays(day, cfg.termDays));
       if (monthOf(maturity) > cfg.to || wanted < 1_000_000) return;
-      ensureClp(day, wanted + cushion());
-      const principal = halfMillions(Math.min(wanted, book.lowestFrom("checking", day) - cushion()));
+      // What checking keeps beside the deposit: its own band with the fund, the cushion without.
+      const keep = savingsClpOn(month) ? CHECKING_BAND.low * trailingExpense() : cushion();
+      if (savingsClpOn(month)) redeemSavings(day, wanted + keep - book.lowestFrom("checking", day));
+      else ensureClp(day, wanted + keep);
+      const principal = halfMillions(Math.min(wanted, book.lowestFrom("checking", day) - keep));
       if (principal < 1_000_000) return;
       const days = (Date.parse(maturity) - Date.parse(day)) / 86_400_000;
       const payout = round(principal * (1 + (dapRate30dPct(day) / 100) * (days / 30)));
@@ -1267,6 +1378,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const gcDay = ymd(month, h.key === HOUSES[0]?.key ? 10 : 12);
       const gc = round(nominal(h.gcClp, gcDay) * r(`gc|${h.key}`).jitter(1, 0.08));
       if (gcDay <= today) {
+        ensureClp(gcDay, gc);
         bankBill("checking", gcDay, h.gcDescription, "bills", gc);
         placeBills.push({ house: h.key, kind: "gastos_comunes", date: gcDay, clp: gc, description: h.gcDescription });
       }
@@ -1275,6 +1387,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         const halved = h.dfl2 != null && year <= dfl2ContribucionesHalvedThroughYear(h.dfl2.builtM2, h.dfl2.receptionYear);
         const clp = round(nominal(h.contribucionesClp, day) * (halved ? 0.5 : 1));
         if (day <= today) {
+          ensureClp(day, clp);
           bankBill("checking", day, h.contribucionesDescription, "bills", clp);
           placeBills.push({ house: h.key, kind: "contribuciones", date: day, clp, description: h.contribucionesDescription, halved });
         }
@@ -1539,10 +1652,13 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     // Investing runs on payday (the last business day), after the salary lands.
     const brokerDay = lastBusinessDay(month);
     const expenses = expenseByMonth.get(month) ?? 0;
-    lastAgeMonthsExpense = [...lastAgeMonthsExpense, expenses].slice(-CASH_BAND.trailingMonths);
+    lastAgeMonthsExpense = [...lastAgeMonthsExpense, expenses].slice(-SAVINGS_BAND.trailingMonths);
     const avgExpense = trailingExpense();
-    // Known cash outflows of the next six months (a car paid in cash, the December APV) stay put.
+    // Known cash outflows of the next six months (a car paid in cash, the December APV) stay put —
+    // in the fund when there is one, and next month's move to checking at this payday.
     const reserved = upcomingCashNeeds(month);
+    // Abroad the wire brings the next two months' needs, so checking keeps them too.
+    const nextNeeds = !savingsClpOn(month) ? 0 : abroad(month) ? chileNeedsInMonth(month, 1) + chileNeedsInMonth(month, 2) : cashNeedsInMonth(month, 1);
     if (brokerDay <= today) {
       const holdForHouse = HOUSES.some((h) => month >= h.holdFromMonth && month <= h.month);
       // Dividends (quarterly): the Chilean broker withholds the 15 % US tax (W-8BEN), the US one
@@ -1595,15 +1711,20 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           continue;
         }
         if (p.kind === "buy" && abroad(month)) {
-          // Living in the US he trades at the US broker: its idle dollars first, the rest from US checking.
+          // Living in the US he trades at the US broker: its idle dollars first, then US checking
+          // above its band's low, then the savings account above its own.
           if (!ibkrOpen(month)) throw new Error(`demo: play ${p.ticker} on ${p.date} abroad before the US broker opens`);
           const ibkrFree = Math.max(0, book.lowestFrom("ibkrUsd", p.date));
           const usFree = Math.max(0, book.lowestFrom("usChecking", p.date) - US!.cashBand.low * usTrailingExpense());
-          const reach = Math.floor((ibkrFree + usFree) / 50) * 50;
+          const savingsFree = usSavingsOn(month) ? Math.max(0, book.lowestFrom("usSavings", p.date) - SAVINGS_BAND.low * usTrailingExpense()) : 0;
+          const reach = Math.floor((ibkrFree + usFree + savingsFree) / 50) * 50;
           const usd = Math.min(p.usd, reach);
           if (usd < 200) continue;
-          const lack = Math.ceil((usd - ibkrFree) / 100) * 100;
-          if (lack > 0) book.transfer({ from: "usChecking", to: "ibkrUsd", date: p.date, usd: lack, flowKind: null, note: "IBKR|depósito USD (ACH)" });
+          const lack = Math.max(0, usd - ibkrFree);
+          const fromChecking = Math.ceil(Math.min(lack, usFree) / 100) * 100;
+          const fromSavings = Math.ceil(Math.max(0, lack - fromChecking) / 100) * 100;
+          if (fromChecking > 0) book.transfer({ from: "usChecking", to: "ibkrUsd", date: p.date, usd: fromChecking, flowKind: null, note: "IBKR|depósito USD (ACH)" });
+          if (fromSavings > 0) book.transfer({ from: "usSavings", to: "ibkrUsd", date: p.date, usd: fromSavings, flowKind: null, note: "IBKR|depósito USD (ACH)" });
           buyStock(p.date, p.ticker, usd, "ibkrUsd");
           continue;
         }
@@ -1613,8 +1734,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           continue;
         }
         // A play is never bigger than what the accounts can spare that day.
-        // Plays come out of savings above a 2,5-month cushion (the band's reserves are for the sweep).
-        const floorClp = Math.max(400_000, 2.5 * avgExpense);
+        // Plays come out of the pesos above the cushion checking keeps (its band's low with the fund,
+        // 2,5 months without one; the band's reserves are for the sweep).
+        const floorClp = Math.max(400_000, (savingsClpOn(month) ? CHECKING_BAND.low : 2.5) * avgExpense);
         const spareUsd =
           brokerFree(p.date) + usdFree(p.date) + Math.max(0, book.lowestFrom("checking", p.date) - floorClp) / (market.fx(p.date) * 1.02);
         if (spareUsd < p.usd) {
@@ -1650,8 +1772,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
             h.pieUf * market.uf(h.pieDate) +
             h.gastosOperacionalesUf * market.uf(h.gastosDate) +
             Math.max(2_000_000, 2.5 * trailingExpense()) +
-            upcomingCashNeeds(month) -
-            Math.max(0, book.lowestFrom("checking", day));
+            upcomingCashNeeds(month, true, h.key) -
+            Math.max(0, book.lowestFrom("checking", day)) -
+            savingsValue(day);
           usd = Math.ceil(needClp / (fx * 0.99) / 100) * 100;
           if (usd <= 0) continue;
           const lack = usd - brokerFree(day);
@@ -1664,9 +1787,22 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         book.transfer({ from: "brokerUsd", to: "checkingUsd", date: day, usd, flowKind: null, note: "Broker|retiro a cuenta USD" });
         sellUsd(addDays(day, 1), usdFree(addDays(day, 1)) - (f.mode === "free" ? 500 : 0));
       }
+      // The cushion band. With the fund: next month's known needs leave it for checking, checking is
+      // topped up to its target when below its low and trimmed to it when above its high (the excess
+      // to the fund); the fund is then measured against the savings band plus the later needs.
+      // Without the fund the savings band is checking's own (`cushion` below is the whole cash).
+      if (savingsClpOn(month)) {
+        const monthly = abroad(month) ? chileFixedCosts(month) : avgExpense;
+        const pesoCash = book.bal.vista + book.bal.checking;
+        if (pesoCash < CHECKING_BAND.low * monthly + nextNeeds) redeemSavings(brokerDay, CHECKING_BAND.target * monthly + nextNeeds - pesoCash);
+        else if (pesoCash > CHECKING_BAND.high * monthly + nextNeeds) {
+          const excess = Math.min(pesoCash - CHECKING_BAND.target * monthly - nextNeeds, book.lowestFrom("checking", brokerDay) - CHECKING_BAND.low * monthly - nextNeeds);
+          depositSavings(brokerDay, excess);
+        }
+      }
       // DCA + Bitcoin.
       const cashNow = totalCashClp(brokerDay);
-      const allowDca = cashNow > CASH_BAND.low * avgExpense + reserved && !holdForHouse;
+      const allowDca = cashNow > SAVINGS_BAND.low * avgExpense + reserved && !holdForHouse;
       if (allowDca) {
         if (contract) depositBrokerClp(brokerDay, contract.dcaClp);
         if (contractor) depositBrokerUsd(brokerDay, Math.min(contractor.dcaUsd, usdFree(brokerDay)), dollarBroker(month));
@@ -1707,16 +1843,27 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           { account: "checking", description: "TRANSF A FINTUAL AGF", side: "from" }
         );
       }
-      // Sweep: cash above the band's top goes to the broker.
-      const cashAfter = totalCashClp(brokerDay);
-      if (!holdForHouse && (contract != null || contractor != null) && cashAfter > CASH_BAND.high * avgExpense + reserved) {
-        const excess = cashAfter - CASH_BAND.target * avgExpense - reserved;
+      // Sweep: the cushion above the savings band's top goes to the broker — the fund (plus the
+      // dollars not yet sold) when there is one, the whole cash otherwise.
+      const cushion = savingsClpOn(month) ? savingsValue(brokerDay) + book.bal.checkingUsd * market.fx(brokerDay) : totalCashClp(brokerDay);
+      const cushionReserve = reserved - nextNeeds;
+      if (!holdForHouse && (contract != null || contractor != null) && cushion > SAVINGS_BAND.high * avgExpense + cushionReserve) {
+        const excess = cushion - SAVINGS_BAND.target * avgExpense - cushionReserve;
         if (usdFree(brokerDay) * market.fx(brokerDay) > excess * 0.5 && contractor) {
           depositBrokerUsd(brokerDay, Math.min(usdFree(brokerDay), excess / market.fx(brokerDay)), dollarBroker(month));
+        } else if (savingsClpOn(month)) {
+          depositBrokerClp(brokerDay, redeemSavings(brokerDay, excess));
         } else {
           const clpRoom = book.bal.checking - avgExpense * 1.5 - reserved;
           if (clpRoom > 200_000) depositBrokerClp(brokerDay, Math.min(clpRoom, excess));
         }
+      }
+      // The move: the fund keeps about three months of the Chilean fixed costs (plus the known
+      // needs); the rest goes to the broker before the US chapter starts.
+      if (US && month === US.moveMonth && savingsClpOn(month)) {
+        const keep = SAVINGS_BAND.low * chileFixedCosts(month) + chileUpcomingNeeds(month);
+        const excess = savingsValue(brokerDay) - keep;
+        if (excess > 500_000) depositBrokerClp(brokerDay, redeemSavings(brokerDay, excess));
       }
       // Lump sum: broker cash above US$ 2.500 buys SPY.
       if (brokerFree(brokerDay) > 2_500 && !holdForHouse) buyStock(brokerDay, "SPY", Math.floor(brokerFree(brokerDay) - 100));
@@ -1736,10 +1883,22 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     }
     if (process.env.DEMO_V2_TRACE) {
       console.log(
-        `${month} exp=${Math.round(expenses / 1000)}k life=${Math.round(lifestyleReal / 1000)}k vista=${Math.round(book.bal.vista / 1000)}k chk=${Math.round(book.bal.checking / 1000)}k usd=${Math.round(book.bal.checkingUsd)} bClp=${Math.round(book.bal.brokerClp)} bUsd=${Math.round(book.bal.brokerUsd)} us=${Math.round(book.bal.usChecking)} ibkr=${Math.round(book.bal.ibkrUsd)}`
+        `${month} exp=${Math.round(expenses / 1000)}k life=${Math.round(lifestyleReal / 1000)}k vista=${Math.round(book.bal.vista / 1000)}k chk=${Math.round(book.bal.checking / 1000)}k fund=${Math.round(savingsValue(brokerDay) / 1000)}k usd=${Math.round(book.bal.checkingUsd)} bClp=${Math.round(book.bal.brokerClp)} bUsd=${Math.round(book.bal.brokerUsd)} us=${Math.round(book.bal.usChecking)} usSav=${Math.round(book.bal.usSavings)} ibkr=${Math.round(book.bal.ibkrUsd)}`
       );
     }
-    months.push({ month, expensesClp: round(expenses), cashClp: round(totalCashClp(ymd(month, daysInMonth(month)) <= today ? ymd(month, daysInMonth(month)) : today)), band: [round(CASH_BAND.low * avgExpense), round(CASH_BAND.high * avgExpense)] });
+    {
+      const monthEnd = ymd(month, daysInMonth(month)) <= today ? ymd(month, daysInMonth(month)) : today;
+      const cashClp = round(totalCashClp(monthEnd));
+      const savingsClp = round(savingsValue(monthEnd));
+      months.push({
+        month,
+        expensesClp: round(expenses),
+        cashClp,
+        savingsClp,
+        cushionClp: savingsClpOn(month) ? savingsClp : cashClp,
+        band: [round(SAVINGS_BAND.low * avgExpense), round(SAVINGS_BAND.high * avgExpense)],
+      });
+    }
   }
 
   if (DAP && `${DAP.from}-28` < today && termDeposits.length === 0) throw new Error("demo: the term-deposit window passed without a deposit");
@@ -1772,6 +1931,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     usW2s: usW2sOfStubs(usPayslips),
     usBank: book.usBank,
     usCheckingBalanceUsd: book.bal.usChecking,
+    usSavingsBalanceUsd: person.savings.usd && person.us ? book.bal.usSavings : null,
+    savingsClpUnits: savingsClpFrom != null ? book.unitsOf("savingsClp") : null,
     mortgages: [...mortgages.values()],
     rents,
     placeBills,
@@ -1893,7 +2054,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
    * to the new US account); from the move: the biweekly pay (its stubs, the net credited to US
    * checking, the 401(k) and HSA contributions bought on the pay date), the rent, the dollar
    * lifestyle (debit, then the US card), the car, the Roth IRA, a December flight home, the monthly wire to Chile
-   * that keeps the Chilean accounts funded, and the US cash above its band to the US broker.
+   * that keeps the Chilean accounts funded, the savings account's interest, and the cushion band:
+   * checking keeps its band, the savings account the cushion, the savings above it go to the US broker.
    */
   function runUsMonth(month: Month, r: (label: string) => Rng): void {
     const us = US!;
@@ -2068,14 +2230,21 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const day = usBusinessDayOnOrAfter(ymd(month, 20));
       if (day <= today) {
         const fx = market.fx(day);
-        const needClp = 2 * trailingExpense() + chileUpcomingNeeds(month);
+        // What Chile needs until the next wire: checking's band on the fixed costs plus the next two
+        // months' known needs (this month's came with the earlier wires), against the lowest balance
+        // from the wire day on — a debit already dated later this month (April's F22) is netted, so
+        // checking lands on its band once it clears; the Chilean fund covers a shortfall before then.
+        const needClp = us.cashBand.target * chileFixedCosts(month) + chileNeedsInMonth(month, 1) + chileNeedsInMonth(month, 2);
         const haveClp = Math.max(0, book.lowestFrom("checking", day)) + Math.max(0, book.lowestFrom("checkingUsd", day)) * fx;
         const wanted = Math.ceil((needClp - haveClp) / fx / 100) * 100;
-        // Chile comes first: the US reserve for known needs (the car) only holds back the broker sweep.
-        const spare = book.lowestFrom("usChecking", day) - usCardOwedUsd(month) - us.cashBand.low * usTrailingExpense() - us.wireFeeUsd;
-        const usd = Math.min(wanted, Math.floor(spare / 100) * 100);
-        if (process.env.DEMO_V2_TRACE) console.log(`wire ${day} need=${Math.round(needClp)} have=${Math.round(haveClp)} wanted=${wanted} spare=${Math.round(spare)} usExp=${Math.round(usTrailingExpense())}`);
+        // Chile comes first: checking above its band's low, then the savings account (the US reserve
+        // for known needs only holds back the broker sweep).
+        const checkingSpare = book.lowestFrom("usChecking", day) - usCardOwedUsd(month) - us.cashBand.low * usTrailingExpense() - us.wireFeeUsd;
+        const savingsSpare = usSavingsOn(month) ? Math.max(0, book.lowestFrom("usSavings", day)) : 0;
+        const usd = Math.min(wanted, Math.floor((checkingSpare + savingsSpare) / 100) * 100);
+        if (process.env.DEMO_V2_TRACE) console.log(`wire ${day} need=${Math.round(needClp)} have=${Math.round(haveClp)} wanted=${wanted} spare=${Math.round(checkingSpare)}+${Math.round(savingsSpare)} usExp=${Math.round(usTrailingExpense())}`);
         if (usd >= 500) {
+          if (usd > checkingSpare) moveUsSavings(day, "from", usd - checkingSpare);
           book.transfer({ from: "usChecking", to: "checkingUsd", date: day, usd, flowKind: null, note: "Wire transfer to Chile (Santander USD)" });
           usBill(day, "OUTGOING WIRE FEE", "bills", us.wireFeeUsd);
           // The dollars become pesos the same day (the Chilean bills and the mortgage are in pesos).
@@ -2084,14 +2253,40 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
     }
 
-    /* US cash above the band goes to the US broker (payday, once it is open) */
+    /* the savings account's interest: the benchmark rate less the bank's spread on the month's balance, on its last day */
+    if (usSavingsOn(month) && month > us.moveMonth) {
+      const last = ymd(month, daysInMonth(month));
+      const idle = Math.max(0, book.lowestFrom("usSavings", ymd(month, 1)));
+      const interest = cents((idle * (usdYieldPct(year) - US_SAVINGS_SPREAD_PCT)) / 100 / 12);
+      if (interest >= 0.01 && last <= today) {
+        book.single({ type: "single", account: "usSavings", date: last, amount: interest, currency: "usd", note: `${person.savings.usd!.bankLabel}|interest`, flowKind: "savings_earnings" });
+        usSavingsInterestByYear.set(year, cents((usSavingsInterestByYear.get(year) ?? 0) + interest));
+      }
+    }
+
+    /*
+     * The cushion band (payday): with the savings account, next month's known needs come back to
+     * checking, checking is topped up to its target when below its low and trimmed to it when above
+     * its high (the excess to savings), and the savings above the savings band plus the later needs
+     * go to the US broker. Without one, US checking keeps the savings band itself.
+     */
     const day = lastBusinessDay(month);
-    if (ibkrOpen(month) && day <= today) {
+    if (day <= today) {
       const monthly = usTrailingExpense();
-      const free = book.lowestFrom("usChecking", day) - usCardOwedUsd(month) - usUpcomingNeeds(month);
-      if (free > us.cashBand.high * monthly) {
-        const usd = Math.floor((free - us.cashBand.target * monthly) / 100) * 100;
-        if (usd >= 100) book.transfer({ from: "usChecking", to: "ibkrUsd", date: day, usd, flowKind: null, note: "IBKR|depósito USD (ACH)" });
+      const savingsOn = usSavingsOn(month);
+      const nextNeeds = savingsOn ? usNeedsInMonth(month, 1) : 0;
+      const free = () => book.lowestFrom("usChecking", day) - usCardOwedUsd(month);
+      if (savingsOn) {
+        if (free() < us.cashBand.low * monthly + nextNeeds) moveUsSavings(day, "from", us.cashBand.target * monthly + nextNeeds - free());
+        else if (free() > us.cashBand.high * monthly + nextNeeds) moveUsSavings(day, "to", free() - us.cashBand.target * monthly - nextNeeds);
+      }
+      if (ibkrOpen(month)) {
+        const cushion = savingsOn ? Math.max(0, book.lowestFrom("usSavings", day)) : free();
+        const cushionReserve = usUpcomingNeeds(month) - nextNeeds;
+        if (cushion > SAVINGS_BAND.high * monthly + cushionReserve) {
+          const usd = Math.floor((cushion - SAVINGS_BAND.target * monthly - cushionReserve) / 100) * 100;
+          if (usd >= 100) book.transfer({ from: savingsOn ? "usSavings" : "usChecking", to: "ibkrUsd", date: day, usd, flowKind: null, note: "IBKR|depósito USD (ACH)" });
+        }
       }
     }
   }
@@ -2105,7 +2300,9 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     if (override != null) return override;
     const stubs = usPayslips.filter((st) => st.payDate.startsWith(`${taxYear}-`));
     if (stubs.length === 0) return null;
-    const { lines } = f1040LinesFromW2s(usW2sOfStubs(stubs), stubs[0]!.job.w4FilingStatus, taxYear, `${taxYear} (demo)`);
+    const { lines } = f1040LinesFromW2s(usW2sOfStubs(stubs), stubs[0]!.job.w4FilingStatus, taxYear, `${taxYear} (demo)`, {
+      interestUsd: usSavingsInterestByYear.get(taxYear) ?? 0,
+    });
     return (lines["37"] ?? 0) - (lines["35a"] ?? 0);
   }
   /** Average US spending of the months since the move (at least the rent and Austin's baseline × m). */
@@ -2120,37 +2317,45 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   }
   /** Known US outflows of the next three months (the car, the Roth contribution, the December flight). */
   function usUpcomingNeeds(month: Month): number {
-    const us = US!;
     let need = 0;
-    for (let k = 1; k <= 3; k++) {
-      const m = addMonths(month, k);
-      if (us.car && monthOf(us.car.date) === m) need += us.car.usd;
-      if (us.roth && Number(m.slice(5, 7)) === us.roth.month && Number(m.slice(0, 4)) >= us.roth.fromYear) need += us.roth.usd;
-      if (m.endsWith("-12")) need += us.decemberTripUsd * 1.2;
-      if (Number(m.slice(5, 7)) === US_TRIP_ABROAD.month && usCardOpen(m)) need += 1.2 * (US_TRIP_ABROAD.flight.usd + US_TRIP_ABROAD.abroad.reduce((a, x) => a + x.usd, 0));
-      if (m.endsWith("-04")) need += Math.max(0, usF1040Settlement(Number(m.slice(0, 4)) - 1) ?? 0);
-    }
+    for (let k = 1; k <= 3; k++) need += usNeedsInMonth(month, k);
+    return need;
+  }
+  /** The known US outflows due `k` months after `month`, and the Chilean needs the wire will carry then (in dollars). */
+  function usNeedsInMonth(month: Month, k: number): number {
+    const us = US!;
+    const m = addMonths(month, k);
+    let need = m >= us.moveMonth ? chileNeedsInMonth(month, k) / market.fx(ymd(month, 1)) : 0;
+    if (us.car && monthOf(us.car.date) === m) need += us.car.usd;
+    if (us.roth && Number(m.slice(5, 7)) === us.roth.month && Number(m.slice(0, 4)) >= us.roth.fromYear) need += us.roth.usd;
+    if (m.endsWith("-12")) need += us.decemberTripUsd * 1.2;
+    if (Number(m.slice(5, 7)) === US_TRIP_ABROAD.month && usCardOpen(m)) need += 1.2 * (US_TRIP_ABROAD.flight.usd + US_TRIP_ABROAD.abroad.reduce((a, x) => a + x.usd, 0));
+    if (m.endsWith("-04")) need += Math.max(0, usF1040Settlement(Number(m.slice(0, 4)) - 1) ?? 0);
     return need;
   }
   /** Known Chilean peso needs of this month and the next two (abroad: what the wire must cover). */
   function chileUpcomingNeeds(month: Month): number {
     let need = 0;
-    for (let k = 0; k <= 2; k++) {
-      const m = addMonths(month, k);
-      const y = Number(m.slice(0, 4));
-      if (m.endsWith("-12") && y >= APV.from) need += APV.utm * market.utm(month);
-      for (const h of HOUSES) for (const pp of h.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1)) * 1.02;
-      for (const p of PLAYS) if (p.kind === "buy_clp" && monthOf(p.date) === m) need += p.clp + 200_000;
-      if (m.endsWith("-04") && (taxYears.has(y - 1) || settlementOverrides.has(y - 1))) {
-        need += Math.max(0, settlementOverrides.get(y - 1) ?? annualTax(y - 1).result);
-      }
-      // A card purchase is paid with the next month's statement (its cuotas, one a month).
-      for (const o of ONE_OFFS) {
-        if (addMonths(o.month, 1) !== m) continue;
-        if (o.clp != null) need += o.cuotas && o.cuotas > 1 ? o.clp / o.cuotas : o.clp;
-        // A dollar charge on a Chilean card is paid with dollars bought from the peso account.
-        if (o.usd) need += o.usd * market.fx(ymd(month, 1)) * 1.02;
-      }
+    for (let k = 0; k <= 2; k++) need += chileNeedsInMonth(month, k);
+    return need;
+  }
+  /** The known Chilean peso needs due `k` months after `month` (the wire's list), priced at `month`'s UF / UTM / fx. */
+  function chileNeedsInMonth(month: Month, k: number): number {
+    const m = addMonths(month, k);
+    const y = Number(m.slice(0, 4));
+    let need = 0;
+    if (m.endsWith("-12") && y >= APV.from) need += APV.utm * market.utm(month);
+    for (const h of HOUSES) for (const pp of h.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1)) * 1.02;
+    for (const p of PLAYS) if (p.kind === "buy_clp" && monthOf(p.date) === m) need += p.clp + 200_000;
+    if (m.endsWith("-04") && (taxYears.has(y - 1) || settlementOverrides.has(y - 1))) {
+      need += Math.max(0, settlementOverrides.get(y - 1) ?? annualTax(y - 1).result);
+    }
+    // A card purchase is paid with the next month's statement (its cuotas, one a month).
+    for (const o of ONE_OFFS) {
+      if (addMonths(o.month, 1) !== m) continue;
+      if (o.clp != null) need += o.cuotas && o.cuotas > 1 ? o.clp / o.cuotas : o.clp;
+      // A dollar charge on a Chilean card is paid with dollars bought from the peso account.
+      if (o.usd) need += o.usd * market.fx(ymd(month, 1)) * 1.02;
     }
     return need;
   }
@@ -2168,38 +2373,76 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   function brokerFree(day: Ymd): number {
     return Math.max(0, book.lowestFrom("brokerUsd", day));
   }
-  function upcomingCashNeeds(month: Month, includePlays = true): number {
+  /**
+   * Known cash outflows of the next six months (a car paid in cash, the December APV, a pie…);
+   * `exceptHouseKey` leaves one house's pie out (the broker funding that pie counts it itself).
+   */
+  function upcomingCashNeeds(month: Month, includePlays = true, exceptHouseKey?: string): number {
     let need = 0;
-    for (let k = 1; k <= 6; k++) {
-      const m = addMonths(month, k);
-      for (const c of CARS) if (c.from === m) need += c.priceClp - c.tradeInClp - (c.id === "car1" ? 2_500_000 : 0);
-      if (m.endsWith("-12") && Number(m.slice(0, 4)) >= APV.from && !apvMonthlyIn(m)) need += APV.utm * market.utm(month);
-      if (apvMonthlyIn(m)) need += APV.monthly!.uf * market.uf(ymd(month, 1));
-      for (const h of HOUSES) for (const pp of h.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1));
-      if (includePlays && k <= 3) for (const p of PLAYS) if (p.kind === "buy" && monthOf(p.date) === m) need += p.usd * market.fx(ymd(month, 1));
-      // Moving in: the deposit (garantía) and the first rent.
-      for (const h of HOUSING) if (h.kind === "rent" && h.from === m) need += 2.2 * h.rentClp;
-      // A month without income (between jobs) is lived on savings.
-      if (m >= person.checkingFrom && !contractJobFor(m) && !contractorJobFor(m) && !usJobFor(m)) need += 1.5 * trailingExpense();
-    }
+    for (let k = 1; k <= 6; k++) need += cashNeedsInMonth(month, k, includePlays, exceptHouseKey);
     return need;
+  }
+  /** The known peso needs due `k` months after `month`, priced at `month`'s UF / UTM / fx. */
+  function cashNeedsInMonth(month: Month, k: number, includePlays = true, exceptHouseKey?: string): number {
+    const m = addMonths(month, k);
+    let need = 0;
+    for (const c of CARS) if (c.from === m) need += c.priceClp - c.tradeInClp - (c.id === "car1" ? 2_500_000 : 0);
+    if (m.endsWith("-12") && Number(m.slice(0, 4)) >= APV.from && !apvMonthlyIn(m)) need += APV.utm * market.utm(month);
+    if (apvMonthlyIn(m)) need += APV.monthly!.uf * market.uf(ymd(month, 1));
+    for (const h of HOUSES) {
+      for (const pp of h.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1));
+      // The pie and the purchase costs of a house bought that month.
+      if (h.month === m && h.key !== exceptHouseKey) need += (h.pieUf + h.gastosOperacionalesUf) * market.uf(ymd(month, 1));
+    }
+    if (includePlays && k <= 3) for (const p of PLAYS) if (p.kind === "buy" && monthOf(p.date) === m) need += p.usd * market.fx(ymd(month, 1));
+    // Moving in: the deposit (garantía) and the first rent.
+    for (const h of HOUSING) if (h.kind === "rent" && h.from === m) need += 2.2 * h.rentClp;
+    // A month without income (between jobs) is lived on savings.
+    if (m >= person.checkingFrom && !contractJobFor(m) && !contractorJobFor(m) && !usJobFor(m)) need += 1.5 * trailingExpense();
+    return need;
+  }
+  /**
+   * What Chile costs every month once he lives abroad: each property's cuota (as the card charges
+   * it), gastos comunes, contribuciones (a year's over twelve months) and the agency's commission,
+   * plus the Chilean subscriptions he keeps. Gross of the rents: they land in checking before the
+   * wire and so reduce what it sends, while the bills they pay for fall due through the month. The
+   * wire and the Chilean bands are sized on it.
+   */
+  function chileFixedCosts(month: Month): number {
+    const first = ymd(month, 1);
+    let clp = 0;
+    for (const h of housesOwned(month)) {
+      const last = mortgages.get(h.key)?.cuotas.filter((c) => c.n != null).at(-1);
+      if (last) clp += last.clp;
+      clp += nominal(h.gcClp, first) + (nominal(h.contribucionesClp, first) * h.contribucionesMonths.length) / 12;
+      if (h.rental && month >= h.rental.from) clp += (rents.filter((r) => r.house === h.key).at(-1)?.clp ?? h.rental.rentClp) * h.rental.feeRate;
+    }
+    for (const sub of CARD_SUBSCRIPTIONS) {
+      if (!(sub.keptAbroad || sub.onlyAbroad) || month < sub.from || (sub.to && month > sub.to)) continue;
+      clp += nominal(sub.clp, first);
+    }
+    return Math.max(0, clp);
   }
   function trailingExpense(): number {
     const xs = lastAgeMonthsExpense.length ? lastAgeMonthsExpense : [0];
     return xs.reduce((a, b) => a + b, 0) / xs.length;
   }
+  /** The Chilean cash: the peso accounts, the dollar account at the day's rate and the money-market fund. */
   function totalCashClp(day: Ymd): number {
-    return book.bal.vista + book.bal.checking + book.bal.checkingUsd * market.fx(day);
+    return book.bal.vista + book.bal.checking + book.bal.checkingUsd * market.fx(day) + savingsValue(day);
   }
-  /** Before a peso outflow: sell dollars when the peso account would not cover it. */
+  /** Before a peso outflow: sell dollars, then redeem from the fund, when the peso account would not cover it. */
   function ensureClp(day: Ymd, clp: number) {
     if (day > today) return;
     const avail = book.lowestFrom("checking", day);
     if (avail >= clp + 50_000) return;
     const usdAvail = book.lowestFrom("checkingUsd", day);
-    if (usdAvail <= 0) return;
-    const need = (clp + 300_000 - avail) / (market.fx(day) * 0.99);
-    sellUsd(day, Math.min(usdAvail, Math.ceil(need / 10) * 10));
+    if (usdAvail > 0) {
+      const need = (clp + 300_000 - avail) / (market.fx(day) * 0.99);
+      sellUsd(day, Math.min(usdAvail, Math.ceil(need / 10) * 10));
+    }
+    const still = book.lowestFrom("checking", day);
+    if (still < clp + 50_000) redeemSavings(day, clp + 300_000 - still);
   }
 }
 /* ------------------------------- payroll math ------------------------------------ */
