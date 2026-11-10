@@ -11,7 +11,8 @@ import { loanPaymentFacts } from "./loans.js";
 import { DEMO_US_BANK_ISSUER, brokerCountry, loadAccountPayers } from "./payers.js";
 import { rentalFacts } from "./rentals.js";
 import { feeReceiptFacts, usPayStubFacts } from "./salaries.js";
-import { fundHoldingFacts } from "./fundHoldings.js";
+import { fundHoldingFacts, holdingTransactionFacts } from "./fundHoldings.js";
+import { propertyAppraisalOn, propertyFacts } from "./properties.js";
 
 const PREFIX = "vitest-tax-facts";
 /** A year no fixture person reaches. */
@@ -141,6 +142,7 @@ describe("tax facts", () => {
     const bill = db.prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, expense_account_id) VALUES (?, ?, ?, ?)`);
     bill.run(30_000, `${YEAR}-04-30`, "contribuciones", place.id);
     bill.run(80_000, `${YEAR}-03-31`, "gastos_comunes", place.id);
+    bill.run(28_000, `${YEAR}-03-31`, "management_fee", place.id);
   });
 
   afterAll(() => {
@@ -254,7 +256,34 @@ describe("tax facts", () => {
     expect(p!.bills.map((b) => [b.category, b.amountClp])).toEqual([
       ["contribuciones", 30_000],
       ["gastos_comunes", 80_000],
+      ["management_fee", 28_000],
     ]);
+  });
+
+  it("states a property's purchase, loan, places, first rent and the home converted to a rental", () => {
+    const p = propertyFacts().find((x) => x.propertyAccountId === property)!;
+    expect(p).toMatchObject({
+      loanAccountId: loan,
+      purchase: { date: `${YEAR - 4}-03-05`, value: 1800, currency: "uf" },
+      placedInServiceDate: `${YEAR}-03-05`,
+    });
+    expect(p.places.map((x) => [x.slug, x.firstRentDate])).toEqual([["vitest_tax_facts_place", `${YEAR}-03-05`]]);
+    // Four years between the purchase and the first rent: a home before it was rented, valued by the appraisal in force.
+    expect(p.conversion).toEqual({ date: `${YEAR}-03-05`, appraisal: { date: `${YEAR - 4}-03-05`, value: 1800, currency: "uf" } });
+    expect(propertyAppraisalOn(property, `${YEAR - 5}-01-01`)).toBeNull();
+    expect(propertyAppraisalOn(property, `${YEAR}-01-01`)).toEqual({ date: `${YEAR - 4}-03-05`, value: 1800, currency: "uf" });
+  });
+
+  it("states a fund's purchases and sales in a window with their cost and proceeds", () => {
+    expect(holdingTransactionFacts(WINDOW, fund)).toEqual({
+      accountId: fund,
+      currency: "clp",
+      acquisitions: [],
+      dispositions: [{ date: `${YEAR}-02-01`, movementId: expect.any(Number), units: 50, proceeds: 300_000 }],
+    });
+    const earlier = holdingTransactionFacts({ fromYmd: `${YEAR - 1}-01-01`, throughYmd: `${YEAR - 1}-12-31` }, fund);
+    expect(earlier.acquisitions).toEqual([{ date: `${YEAR - 1}-02-01`, movementId: expect.any(Number), units: 100, cost: 500_000 }]);
+    expect(() => holdingTransactionFacts(WINDOW, usBank)).toThrow(/neither a fund nor a stock/);
   });
 });
 
@@ -266,7 +295,7 @@ describe("fund holdings", () => {
     expect(facts.length).toBeGreaterThan(0);
     for (const f of facts) {
       expect(f.positions.map((p) => p.date)).toEqual([`${year}-04-14`, `${year}-12-31`]);
-      for (const p of f.positions) if (p.cuotas != null) expect(p.value).not.toBeNull();
+      for (const p of f.positions) if (p.cuotas) expect(p.value).not.toBeNull();
     }
   });
 });
