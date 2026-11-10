@@ -70,7 +70,7 @@ describe("cardMetricsByPeriodForAccountRow", () => {
   });
 });
 
-describe("buildRealEstateCardBreakdown with several properties", () => {
+describe("buildRealEstateCardBreakdown", () => {
   const property = (id: number, name: string, value: number, loan: number) =>
     baseRow({
       account_id: id,
@@ -83,19 +83,31 @@ describe("buildRealEstateCardBreakdown with several properties", () => {
     });
   const loan = (id: number, value: number) =>
     baseRow({ account_id: id, name: `loan ${id}`, group_slug: "liabilities", category_slug: "mortgage", current_value_clp: value });
+  const shape = (lines: ReturnType<typeof buildRealEstateCardBreakdown>) =>
+    lines.map((l) => [l.depth, l.label, l.clp, l.to]);
+  // Vitest renders i18n in Spanish: «valor» / «hipoteca» are `realEstate.propertyValue` / `.mortgage`.
 
-  it("puts each property's own valor and hipoteca under it", () => {
+  it("one property: the head line is the property (lowercase card label), valor and hipoteca under it", () => {
+    const rows = [property(1, "Casa propia", 40, 11)];
+    const lines = buildRealEstateCardBreakdown(rows, { clp: 40, usd: null }, "/real-estate", [...rows, loan(11, 60)]);
+    expect(shape(lines)).toEqual([
+      [0, "casa propia", 40, "/account/1"],
+      [1, "valor", 100, "/account/1"],
+      [1, "hipoteca", 60, "/account/11"],
+    ]);
+  });
+
+  it("several properties: no head line, each property at the first level with its own valor and hipoteca", () => {
     const rows = [property(1, "Centro", 40, 11), property(2, "Vitacura", 100, 12)];
     const all = [...rows, loan(11, 60), loan(12, 300)];
     const lines = buildRealEstateCardBreakdown(rows, { clp: 140, usd: null }, "/real-estate", all);
-    expect(lines.map((l) => [l.depth, l.clp, l.to])).toEqual([
-      [0, 140, "/account/1"],
-      [1, 40, "/account/1"],
-      [2, 100, "/account/1"],
-      [2, 60, "/account/11"],
-      [1, 100, "/account/2"],
-      [2, 400, "/account/2"],
-      [2, 300, "/account/12"],
+    expect(shape(lines)).toEqual([
+      [0, "Centro", 40, "/account/1"],
+      [1, "valor", 100, "/account/1"],
+      [1, "hipoteca", 60, "/account/11"],
+      [0, "Vitacura", 100, "/account/2"],
+      [1, "valor", 400, "/account/2"],
+      [1, "hipoteca", 300, "/account/12"],
     ]);
   });
 });

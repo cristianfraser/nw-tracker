@@ -245,78 +245,72 @@ export function buildRealEstateCardBreakdown(
   if (props.length === 0) return [];
 
   const lines: CardBreakdownLine[] = [];
-  const propertyRow = props.find(
-    (a) => a.category_slug === "property" || a.bucket_slug === "real_estate__property"
-  );
-  const mortgageRow = mortgageAccountForPropertyRow(allAccounts ?? accounts, propertyRow);
-  const propertyName = props[0]!.name.trim().toLowerCase();
-  const netClp = total.clp;
-  const groupUsd = total.usd;
-  const propertyTo = propertyRow != null ? accountDetailPath(propertyRow.account_id) : nodeRoute;
+  const rows = allAccounts ?? accounts;
 
-  lines.push({
-    label: propertyName,
-    clp: netClp,
-    usd: groupUsd,
-    depth: 0,
-    to: propertyTo,
-  });
-
-  if (
-    props.length === 1 &&
-    propertyRow != null &&
-    mortgageRow?.current_value_clp != null
-  ) {
-    // The single card path: property rows store equity (net of the linked hipoteca), so
-    // gross valor = equity + outstanding mortgage — both straight from account values.
-    const mortgageClp = mortgageRow.current_value_clp;
-    const mortgageTo = accountDetailPath(mortgageRow.account_id);
-    const mortgageUsd = mortgageRow.current_value_usd ?? null;
-    lines.push({
-      label: i18n.t("realEstate.propertyValue"),
-      clp: netClp + mortgageClp,
-      usd: groupUsd != null && mortgageUsd != null ? groupUsd + mortgageUsd : null,
-      depth: 1,
-      to: propertyTo,
-    });
-    lines.push({
-      label: i18n.t("realEstate.mortgage"),
-      clp: mortgageClp,
-      usd: mortgageUsd,
-      depth: 1,
-      to: mortgageTo,
-    });
-  } else if (props.length) {
-    // Several properties: each its own line, and under a property with a loan its valor and
-    // hipoteca (each property's row and its own loan's, `loan_account_id`).
-    for (const r of props) {
-      const to = accountDetailPath(r.account_id);
-      lines.push({
-        label: r.name,
-        clp: r.current_value_clp ?? 0,
-        usd: r.current_value_usd ?? null,
-        depth: 1,
-        to,
-      });
-      const loan = mortgageAccountForPropertyRow(allAccounts ?? accounts, r);
-      if (loan?.current_value_clp == null || r.current_value_clp == null) continue;
-      const loanUsd = loan.current_value_usd ?? null;
-      const rUsd = r.current_value_usd ?? null;
+  if (props.length === 1) {
+    // One property: the head line IS the property (the group total, net of its loan), with its
+    // valor and hipoteca under it. Property rows store equity (net of the linked hipoteca), so
+    // gross valor = equity + outstanding mortgage, both straight from account values. The head
+    // line keeps the old lowercase card label (portfolioNavDashboardCards.test.ts pins it).
+    const propertyRow = props.find(
+      (a) => a.category_slug === "property" || a.bucket_slug === "real_estate__property"
+    );
+    const mortgageRow = mortgageAccountForPropertyRow(rows, propertyRow);
+    const netClp = total.clp;
+    const groupUsd = total.usd;
+    const propertyTo = propertyRow != null ? accountDetailPath(propertyRow.account_id) : nodeRoute;
+    lines.push({ label: props[0]!.name.trim().toLowerCase(), clp: netClp, usd: groupUsd, depth: 0, to: propertyTo });
+    if (propertyRow != null && mortgageRow?.current_value_clp != null) {
+      const mortgageClp = mortgageRow.current_value_clp;
+      const mortgageUsd = mortgageRow.current_value_usd ?? null;
       lines.push({
         label: i18n.t("realEstate.propertyValue"),
-        clp: r.current_value_clp + loan.current_value_clp,
-        usd: rUsd != null && loanUsd != null ? rUsd + loanUsd : null,
-        depth: 2,
-        to,
+        clp: netClp + mortgageClp,
+        usd: groupUsd != null && mortgageUsd != null ? groupUsd + mortgageUsd : null,
+        depth: 1,
+        to: propertyTo,
       });
       lines.push({
         label: i18n.t("realEstate.mortgage"),
-        clp: loan.current_value_clp,
-        usd: loanUsd,
-        depth: 2,
-        to: accountDetailPath(loan.account_id),
+        clp: mortgageClp,
+        usd: mortgageUsd,
+        depth: 1,
+        to: accountDetailPath(mortgageRow.account_id),
       });
     }
+    return lines;
+  }
+
+  // Several properties: no head line (the card's title carries the group total) — each
+  // property at the first level with the name the server gives, and under one with a loan its
+  // valor and hipoteca (the property's row and its own loan's, `loan_account_id`).
+  for (const r of props) {
+    const to = accountDetailPath(r.account_id);
+    lines.push({
+      label: r.name,
+      clp: r.current_value_clp ?? 0,
+      usd: r.current_value_usd ?? null,
+      depth: 0,
+      to,
+    });
+    const loan = mortgageAccountForPropertyRow(rows, r);
+    if (loan?.current_value_clp == null || r.current_value_clp == null) continue;
+    const loanUsd = loan.current_value_usd ?? null;
+    const rUsd = r.current_value_usd ?? null;
+    lines.push({
+      label: i18n.t("realEstate.propertyValue"),
+      clp: r.current_value_clp + loan.current_value_clp,
+      usd: rUsd != null && loanUsd != null ? rUsd + loanUsd : null,
+      depth: 1,
+      to,
+    });
+    lines.push({
+      label: i18n.t("realEstate.mortgage"),
+      clp: loan.current_value_clp,
+      usd: loanUsd,
+      depth: 1,
+      to: accountDetailPath(loan.account_id),
+    });
   }
   return lines;
 }
