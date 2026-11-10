@@ -156,3 +156,26 @@ DAP import key; the Roth's SPY dividends and `accountIdForEquityTicker("SPY")` t
 SPY holders; DJ 1898's columns named after the loans; the About / tour copy unseen in a browser;
 the order-dependent `merchantExpenseNotes.test.ts` flake; the merged `us-*` worktrees. Each is
 picked, or dropped, in a plan of its own once the waves above are on the demo.
+
+## Status (2026-11-09): both waves built, merged into the integration branch
+
+- **Wave 1** (`us-cards`, 4e473aee + 175b30f7, plus d287ca65 on the integration branch): the
+  real-estate card lists several properties at the first level, and the one-property head line
+  reads the name as given; `nav_label` is gone end to end (nav-snapshot cache v19) — a card
+  line's label is the account's name.
+- **Wave 2** (`us-cash`, 3d5e79f7 + 7c9e7e38 + 792056fe): `Person.savings` (a money-market fund
+  from the second contrato job, 2020-08, and «DEMO BANK TEXAS SAVINGS» from the move),
+  `CHECKING_BAND` {1, 1,5, 2} / `SAVINGS_BAND` {3, 4,5, 6} (the test person, with no savings,
+  keeps the savings band on checking: its database is byte-identical), the reserves in savings
+  and moved to checking the month before, the wire sized on `chileFixedCosts` (gross of the
+  rents, which land in checking before the wire), the US savings interest as 1040 line 2b
+  (`usBankAccounts.ts`: a dollar account declared under a US issuer in `bank_account_numbers`)
+  and F22 1104. Demo today: Checking (US) US$4,9k, cuenta corriente CLP 5,7 M (1,5 × the fixed
+  costs plus the December APV reserve), savings US$19,8k + the fund CLP 8,4 M; net worth
+  US$445.980 against the 445k target; the April loop converges in 3 passes.
+- Checks on the merged tree: typecheck, client 85 files / 475 tests, server 495 files / 3283
+  tests, both generations; the local demo pair checked on the dashboard (the Cash, Real estate
+  and Brokerage cards).
+- Noted by the wave-2 build, not acted on: IBKR USD receives little abroad (US$2,1k) because the
+  car, the Roth, the Chilean April F22 and the Chilean deficit now take the US surplus — the
+  story's arithmetic; revisit the US salary or the F22 size if IBKR should grow.
