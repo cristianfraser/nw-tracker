@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { realizeTaxLots, type TaxLotEvent } from "./taxLots.js";
+import { realizeTaxLots, taxLotTerm, type TaxLotEvent } from "./taxLots.js";
 
 const buy = (date: string, movementId: number, units: number, cost: number): TaxLotEvent => ({
   kind: "acquire",
@@ -97,5 +97,67 @@ describe("realizeTaxLots", () => {
   it("throws on events out of date order and on non-positive units", () => {
     expect(() => realizeTaxLots([buy("2026-02-01", 1, 1, 1), buy("2026-01-01", 2, 1, 1)], "fifo")).toThrow(/comes after/);
     expect(() => realizeTaxLots([buy("2026-01-01", 1, 0, 1)], "fifo")).toThrow(/0 units/);
+  });
+});
+
+describe("short lots", () => {
+  const open = (date: string, id: number, units: number, proceeds: number): TaxLotEvent => ({ kind: "open_short", date, movementId: id, units, proceeds });
+  const close = (date: string, id: number, units: number, cost: number, assigned?: boolean): TaxLotEvent => ({
+    kind: "close_short",
+    date,
+    movementId: id,
+    units,
+    cost,
+    ...(assigned ? { assigned: true } : {}),
+  });
+
+  it("realizes proceeds at open less cost at close, partly and in FIFO order", () => {
+    const events = [open("2026-01-05", 1, 2, 200), open("2026-01-20", 2, 2, 300), close("2026-02-01", 3, 3, 90), close("2026-02-10", 4, 1, 0)];
+    const { shortCloses, openShortLots, disposals, openLots } = realizeTaxLots(events, "fifo");
+    expect(disposals).toEqual([]);
+    expect(openLots).toEqual([]);
+    expect(shortCloses[0]).toMatchObject({ units: 3, proceeds: 200 + 150, cost: 90, gain: 260 });
+    expect(shortCloses[0]!.slices).toEqual([
+      { openedOn: "2026-01-05", openMovementId: 1, units: 2, proceeds: 200 },
+      { openedOn: "2026-01-20", openMovementId: 2, units: 1, proceeds: 150 },
+    ]);
+    expect(shortCloses[1]).toMatchObject({ units: 1, proceeds: 150, cost: 0, gain: 150 });
+    expect(openShortLots).toEqual([]);
+  });
+
+  it("closes the newest short first under LIFO and leaves the rest open", () => {
+    const { shortCloses, openShortLots } = realizeTaxLots([open("2026-01-05", 1, 2, 200), open("2026-01-20", 2, 2, 300), close("2026-02-01", 3, 1, 10)], "lifo");
+    expect(shortCloses[0]!.slices).toEqual([{ openedOn: "2026-01-20", openMovementId: 2, units: 1, proceeds: 150 }]);
+    expect(openShortLots).toEqual([
+      { openedOn: "2026-01-05", openMovementId: 1, units: 2, proceeds: 200 },
+      { openedOn: "2026-01-20", openMovementId: 2, units: 1, proceeds: 150 },
+    ]);
+  });
+
+  it("an assigned closing realizes no gain of its own and must cost nothing", () => {
+    const { shortCloses } = realizeTaxLots([open("2026-01-05", 1, 1, 120), close("2026-03-01", 2, 1, 0, true)], "fifo");
+    expect(shortCloses[0]).toMatchObject({ gain: 0, proceeds: 120, assigned: true });
+    expect(() => realizeTaxLots([open("2026-01-05", 1, 1, 120), close("2026-03-01", 2, 1, 5, true)], "fifo")).toThrow(/must cost 0/);
+  });
+
+  it("throws on a closing with nothing open and never lets a sale go short", () => {
+    expect(() => realizeTaxLots([close("2026-02-01", 1, 1, 10)], "fifo")).toThrow(/0 are open/);
+    expect(() => realizeTaxLots([open("2026-01-05", 1, 1, 100), close("2026-02-01", 2, 2, 10)], "fifo")).toThrow(/closes 2 short units but 1 are open/);
+    expect(() => realizeTaxLots([open("2026-01-05", 1, 1, 100), buy("2026-01-06", 2, 1, 10), sell("2026-02-01", 3, 2, 10)], "fifo")).toThrow(/but 1 are held/);
+    expect(() => realizeTaxLots([open("2026-01-05", 1, 1, 100), sell("2026-02-01", 3, 1, 10)], "fifo")).toThrow(/but 0 are held/);
+  });
+
+  it("an exercised long disposal realizes nothing and keeps its premium as cost", () => {
+    const { disposals } = realizeTaxLots(
+      [buy("2026-01-01", 1, 1, 80), { kind: "dispose", date: "2026-03-01", movementId: 2, units: 1, proceeds: 0, exercised: true }],
+      "fifo"
+    );
+    expect(disposals[0]).toMatchObject({ gain: 0, cost: 80, exercised: true });
+  });
+
+  it("terms: shorts are always short-term, longs need more than a year", () => {
+    expect(taxLotTerm("2024-01-01", "2030-01-01", "short")).toBe("short_term");
+    expect(taxLotTerm("2025-03-10", "2026-03-10", "long")).toBe("short_term");
+    expect(taxLotTerm("2025-03-10", "2026-03-11", "long")).toBe("long_term");
   });
 });
