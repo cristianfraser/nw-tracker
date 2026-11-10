@@ -2,7 +2,10 @@
  * A local Formulario 22 for one año tributario: the return as filed (`sii_f22_filed`), what third
  * parties informed (`sii_informed_dj`), and a draft in which the codes the app can state itself
  * REPLACE what was filed — the crypto gain (code 1032, or a loss added to the filed 169), foreign
- * dividends (1104 net, 748 the foreign tax as gross-up, 1018 its credit), foreign share / ETF
+ * dividends (1104 net, 748 the foreign tax as gross-up, 1018 its credit — línea 45 of the AT2026
+ * form, the art. 41 A N°4 letra B) credit on a natural person's own foreign incomes; the SII's
+ * observation G08 also names 746, but that is línea 49, the credit a Chilean company passes
+ * through with its dividends, see `f22ForeignIncome.ts`), foreign share / ETF
  * sales (added to 1104, taxed under the régimen general) and the art. 107 instruments' sales
  * (recuadro N°4: 1809 / 1813 → 1816, línea 66: 1829 / 1830, `art107TaxGains`) — so a year that
  * already declared them (AT2022 filed 1032) shows the correction, not a double count; then it
@@ -12,7 +15,7 @@
  *   170 = 158 − 750 − 765                                  (mortgage interest art. 55 bis; APV art. 42 bis)
  *   157 = IGC table on 170, in UTA of December of the income year
  *   136 = 157 × 152 / 158                                  (exempt income, art. 56 N°2)
- *   304 = 157 − 136 − 1637 − 162 − 1018 − 610              (1637: contribuciones on rented property; 162: IUSC withheld; 610: IDPC credit)
+ *   304 = 157 − 136 − 1637 − 162 − 1018 − 610 − 746        (1637: contribuciones on rented property; 162: IUSC withheld; 610: IDPC credit; 746: a Chilean company's pass-through art. 41 A credit, línea 49, never drafted)
  *   305 = 304 + 1830 − 198 + 900                           (1830: art. 107's 10% impuesto único, outside IGC)
  *
  * Fees (art. 42 N°2, línea 2) come from the boletas de honorarios issued (`sii_issued_fee_receipts`)
@@ -275,7 +278,7 @@ export type F22Draft = {
   rentals: F22Rentals;
   /** 1637 before its cap (the contribuciones on the taxable places) and the cap; null when no taxable rent. */
   propertyTaxCredit: { paidClp: number; capClp: number; creditClp: number } | null;
-  /** A salary earned abroad (US pay stubs): 1030, its credit (748 / 1018), `f22ForeignIncome`. */
+  /** A salary earned abroad (US pay stubs): 1030 (línea 13), its credit (748 / 1018, líneas 14 / 45), `f22ForeignIncome`. */
   foreignSalary: F22ForeignSalary;
   /** The foreign salary's credit: before the IGC cap, the cap and what 1018 took; null without one. */
   foreignSalaryCredit: { creditClp: number; capClp: number; appliedClp: number } | null;
@@ -630,7 +633,7 @@ export function buildF22Draft(
     if (base !== "none" || v !== 0) draftInput[Number(c)] = v;
   }
   if (foreignSalary.grossClp > 0) {
-    // Línea 12: 1030 beside 1098, and 161 their total.
+    // Línea 13: 1030 beside 1098, and 161 their total.
     draftInput[1030] = foreignSalary.netClp;
     draftInput[161] = (draftInput[1098] ?? 0) + foreignSalary.netClp;
   }

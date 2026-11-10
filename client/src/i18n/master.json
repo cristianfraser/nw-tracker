@@ -7107,8 +7107,8 @@
         "es": "Sueldos y otras rentas similares de fuente extranjera"
       },
       "161": {
-        "en": "Art. 42 N°1 income (line 12 total)",
-        "es": "Renta art. 42 N°1 (total línea 12)"
+        "en": "Art. 42 N°1 income (line 13 total)",
+        "es": "Renta art. 42 N°1 (total línea 13)"
       },
       "155": {
         "en": "Gains on fund redemptions and shares (art. 17 N°8)",
@@ -7171,8 +7171,12 @@
         "es": "Crédito por impuesto único retenido"
       },
       "1018": {
-        "en": "Credit for taxes paid abroad",
-        "es": "Crédito por impuestos soportados en el exterior"
+        "en": "Credit for taxes paid abroad (own foreign income, line 45)",
+        "es": "Crédito por impuestos soportados en el exterior (rentas propias, línea 45)"
+      },
+      "746": {
+        "en": "Credit for taxes paid abroad passed through by a Chilean company (line 49)",
+        "es": "Crédito por impuestos soportados en el exterior traspasado por una empresa (línea 49)"
       },
       "547": {
         "en": "Fees: gross income",

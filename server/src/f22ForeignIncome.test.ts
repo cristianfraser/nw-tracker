@@ -77,6 +77,15 @@ describe("the F22 chain with a foreign salary", () => {
     const both = computeF22Tax({ ...base, ...salary, 1018: 50_000 }, UTA, 2030, { foreignSalaryCredit: { creditClp: 15_000_000, incomeClp: 95_000_000 } });
     expect(both[1018]).toBe(out[1018]! + 50_000);
   });
+
+  it("reads a filed 746 (línea 49, a company's pass-through art. 41 A credit) as a credit in 304 and never drafts it", () => {
+    const base = { 1098: 10_000_000, 162: 200_000, 1104: 500_000, 748: 75_000, 1018: 75_000 };
+    const plain = computeF22Tax(base, UTA, 2030);
+    const filed746 = computeF22Tax({ ...base, 746: 40_000 }, UTA, 2030);
+    expect(filed746[304]).toBe(plain[304]! - 40_000);
+    expect(filed746[1018]).toBe(75_000);
+    expect(plain[746]).toBeUndefined();
+  });
 });
 
 describe("foreign income in the F22 draft", () => {

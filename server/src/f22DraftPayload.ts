@@ -72,6 +72,7 @@ const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [1637, "credit"],
   [162, "credit"],
   [1018, "credit"],
+  [746, "credit"],
   [610, "credit"],
   [198, "credit"],
   [304, "result"],

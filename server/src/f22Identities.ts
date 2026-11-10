@@ -1,17 +1,29 @@
 /**
  * The identities the Formulario 22 prints between its codes, in one place: the compact-form reader
  * (`siiF22Compacto`) checks a filed return against them and the draft (`f22Draft`) computes its
- * codes with them, so the two cannot disagree. A leaf: no imports.
+ * codes with them, so the two cannot disagree. A leaf: no imports. Line numbers are the AT2026
+ * form's (`f22_at2026.pdf`, sii.cl/ayudas/formularios): línea 7 = 110 (honorarios), 8 = 155,
+ * 9 = 152, 10 = 1032, 12 = 1104 («Otras rentas de fuente extranjera»), 13 = 1098 / 1030 / 161
+ * (sueldos, fuente nacional / extranjera), 14 = 159 / 748 / 749 (incrementos), 17 = 169, 19 = 158,
+ * 21 = 750 / 751, 23 = 765, 24 = 170, 25 = 157, 34 = 136, 39 = 1637, 45 = 1018, 46 = 162, 48 = 610,
+ * 49 = 746, 52 = 304.
  *
  *   955 = 1849 + 1852 + 1857 + 1862 + 1873 + 1865   (línea 5: rentas efectivas sin contabilidad
  *                                         completa; 1849 = rents determined by contract, art. 20 N°1 b))
  *   158 = 1098 + 1030 + 110 + 105 + 955 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169
  *                                        (lines 1–14 less line 17; 1030 = salary of foreign source,
- *                                         línea 12 beside 1098)
+ *                                         línea 13 beside 1098)
  *   170 = 158 − 750 − 765                (the net taxable base before the IGC table)
- *   304 = 157 − 136 − 1637 − 162 − 1018 − 610
- *                                        (1637: contribuciones on rented property, art. 56 N°5,
- *                                         línea 39, at most f22PropertyTaxCreditCap)
+ *   304 = 157 − 136 − 1637 − 162 − 1018 − 610 − 746
+ *                                        (líneas 31–51 are credits against 157; the ones this
+ *                                         taxpayer's returns carry: 1637 contribuciones on rented
+ *                                         property, art. 56 N°5, línea 39, at most
+ *                                         f22PropertyTaxCreditCap; 1018 línea 45, the art. 41 A
+ *                                         credit on a natural person's own foreign incomes — 1104,
+ *                                         1030, 110; 746 línea 49, the art. 41 A N°4 letra A) letra b)
+ *                                         credit a Chilean company passes through with its dividends
+ *                                         or retiros, Certificados 43 / 44 / 70 / 71 — never drafted,
+ *                                         read from a filed form)
  *   305 = 304 + 1830 − 198 + 900         (1830: art. 107's 10% impuesto único, outside IGC; 198:
  *                                         retentions on fees credited; 900: the pension
  *                                         contributions charged on them)
@@ -45,7 +57,7 @@ export function f22Code158(codes: F22CodeAmounts): number {
 
 export function f22Code304(codes: F22CodeAmounts): number {
   const v = (c: number) => reader(codes)(c) ?? 0;
-  return v(157) - v(136) - v(1637) - v(162) - v(1018) - v(610);
+  return v(157) - v(136) - v(1637) - v(162) - v(1018) - v(610) - v(746);
 }
 
 /**
