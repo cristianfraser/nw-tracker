@@ -6878,20 +6878,16 @@
           "es": "La AFP, la AFC y el APV se leen como pensiones del convenio (art. 18(4); el APV se supone): sus rentas no son ingreso hasta que se pagan."
         },
         "fx_daily_spot": {
-          "en": "Every peso amount converts at the USD/CLP rate of its own day: cost at the purchase day, proceeds at the sale day, income at its receipt day.",
-          "es": "Cada monto en pesos se convierte al tipo USD/CLP de su propio día: el costo al día de compra, el producto al día de venta, el ingreso al día en que se recibe."
+          "en": "Every peso amount converts at the USD/CLP rate of its own day: cost at the purchase day, proceeds at the sale day, income at its receipt day; an amount in UF through that day's pesos.",
+          "es": "Cada monto en pesos se convierte al tipo USD/CLP de su propio día: el costo al día de compra, el producto al día de venta, el ingreso al día en que se recibe; un monto en UF, a través de los pesos de ese día."
         },
         "section_988_not_modelled": {
-          "en": "Exchange gains and losses on pesos (§988) are not modelled.",
-          "es": "No se modelan las ganancias y pérdidas cambiarias sobre pesos (§988)."
+          "en": "Exchange gains and losses on pesos (§988) are not modelled, the repayments of the UF-indexed mortgages included.",
+          "es": "No se modelan las ganancias y pérdidas cambiarias sobre pesos (§988), incluidos los pagos de los créditos hipotecarios en UF."
         },
         "form_2210_not_modelled": {
           "en": "The underpayment penalty (Form 2210) is not modelled.",
           "es": "No se modela la multa por pago insuficiente (formulario 2210)."
-        },
-        "schedules_not_wired": {
-          "en": "Schedule E, Form 8582, Form 8621 and Form 1116 are not composed into this draft yet: their lines read 0.",
-          "es": "El anexo E y los formularios 8582, 8621 y 1116 aún no se integran a este borrador: sus líneas valen 0."
         },
         "foreign_accounts_month_end": {
           "en": "FBAR and Form 8938: the foreign accounts are valued at month ends (a peak between two is not seen); coins at an exchange are left out.",
@@ -6904,6 +6900,66 @@
         "law_provisional": {
           "en": "The {{year}} figures are not in the law table yet: the {{lawYear}} ones stand in.",
           "es": "Las cifras de {{year}} aún no están en la tabla legal: se usan las de {{lawYear}}."
+        },
+        "depreciation_pre_residency_allowable": {
+          "en": "Schedule E: a rental placed in service before the residency keeps its 2020 date and its historic dollar cost, the depreciation allowable since then reducing the basis. No authority settles it (the alternative: a fresh placing in service on arrival at the lesser of adjusted basis and value).",
+          "es": "Anexo E: un arriendo puesto en servicio antes de la residencia conserva su fecha de 2020 y su costo histórico en dólares, y la depreciación admisible desde entonces reduce la base. Ninguna fuente lo resuelve (la alternativa: una nueva puesta en servicio al llegar, al menor entre base ajustada y valor)."
+        },
+        "depreciation_land_share_assumed": {
+          "en": "Schedule E: the land is an assumed 20 % of each purchase price (not depreciable); the building is depreciated over 30 years, ADS, straight line, mid-month.",
+          "es": "Anexo E: el terreno se supone el 20 % de cada precio de compra (no depreciable); la construcción se deprecia en 30 años, ADS, lineal, a mitad de mes."
+        },
+        "life_insurance_not_deducted": {
+          "en": "Schedule E: the loan's life insurance (desgravamen) is not a rental expense; only the fire insurance is deducted.",
+          "es": "Anexo E: el seguro de desgravamen del crédito no es un gasto del arriendo; solo se deduce el seguro de incendio."
+        },
+        "passive_loss_suspended": {
+          "en": "Form 8582: the rental loss the special allowance does not cover (it phases out between US$100.000 and US$150.000 of modified AGI) is suspended and carried to next year.",
+          "es": "Formulario 8582: la pérdida de arriendo que la asignación especial no cubre (se reduce entre US$100.000 y US$150.000 de AGI modificado) queda suspendida y pasa al año siguiente."
+        },
+        "pfic_mark_to_market": {
+          "en": "Form 8621 Part IV (mark to market) is computed for each PFIC; making the election and filing the form are yours. Assumed, not settled: each fund is a foreign corporation and marketable stock, and the Bolsa de Santiago a qualified exchange.",
+          "es": "La parte IV del formulario 8621 (valor de mercado) se calcula para cada PFIC; hacer la elección y presentar el formulario es tuyo. Se supone, sin fuente que lo resuelva: cada fondo es una sociedad extranjera y acciones negociables, y la Bolsa de Santiago una bolsa calificada."
+        },
+        "pfic_part_v_possible": {
+          "en": "Form 8621 Part V may apply (a fund held before the first mark-to-market year: §1291 on the first year's gain). Flagged, not computed.",
+          "es": "Puede aplicar la parte V del formulario 8621 (un fondo tenido antes del primer año a valor de mercado: §1291 sobre la ganancia del primer año). Se señala, no se calcula."
+        },
+        "pfic_capital_loss_term_assumed": {
+          "en": "A PFIC sale's capital loss is read as long-term: Form 8621's basis is pro rata, so the units sold carry no purchase day.",
+          "es": "La pérdida de capital de la venta de un PFIC se lee de largo plazo: la base del formulario 8621 es a prorrata, y las unidades vendidas no tienen fecha de compra propia."
+        },
+        "ftc_accrued_yearly_average": {
+          "en": "Form 1116 on the accrued method: Chile's tax of the same income year (the F22's Impuesto Adicional), translated at the year's average fx_daily rate (Pub. 514, §986(a)(1)).",
+          "es": "Formulario 1116 por el método devengado: el impuesto chileno del mismo año (el Impuesto Adicional del F22), convertido al tipo de cambio promedio del año en fx_daily (Pub. 514, §986(a)(1))."
+        },
+        "ftc_carryback_not_modelled": {
+          "en": "Form 1116: excess foreign taxes carry forward ten years here; the one-year carryback is not modelled.",
+          "es": "Formulario 1116: el exceso de impuestos extranjeros se arrastra diez años; no se modela el traspaso de un año hacia atrás."
+        },
+        "form_8833_treaty_credit": {
+          "en": "The Impuesto Adicional is credited under the treaty's Art. 23(1): a treaty position Form 8833 may have to disclose (not filed by the app).",
+          "es": "El Impuesto Adicional se acredita por el art. 23(1) del convenio: una posición basada en el tratado que el formulario 8833 podría tener que declarar (la app no lo presenta)."
+        },
+        "unico_art107_not_creditable": {
+          "en": "The 10 % único Chile withheld on an art. 107 sale is not credited: the treaty (Art. 13) leaves the gain to the US, and it is US-source.",
+          "es": "El impuesto único del 10 % retenido en Chile sobre una venta del art. 107 no se acredita: el convenio (art. 13) deja la ganancia a EE.UU., y es de fuente estadounidense."
+        },
+        "no_ftc_against_niit": {
+          "en": "No foreign tax credit applies against the net investment income tax (Reg. §1.1411-1(e)).",
+          "es": "Ningún crédito por impuestos extranjeros se aplica contra el impuesto sobre la renta neta de inversiones (Reg. §1.1411-1(e))."
+        },
+        "foreign_dividend_withholding_not_credited": {
+          "en": "Tax another country withheld on dividends is shown, not credited: the readings do not settle whether it is creditable.",
+          "es": "El impuesto retenido por otro país sobre dividendos se muestra, no se acredita: las fuentes revisadas no resuelven si es acreditable."
+        },
+        "options_written_short_term": {
+          "en": "A written option's result is short-term whatever its length (§1234(b)); a bought option's follows its holding period. An assigned option has no row: its premium is in the shares' basis or the sale's proceeds.",
+          "es": "El resultado de una opción vendida es de corto plazo sea cual sea su duración (§1234(b)); el de una opción comprada sigue su plazo de tenencia. Una opción asignada no tiene fila: su prima está en la base de las acciones o en el precio de venta."
+        },
+        "covered_call_straddle_not_modelled": {
+          "en": "The straddle rules on covered calls (§1092: loss deferral, the stock's holding period suspended) are not modelled.",
+          "es": "No se modelan las reglas de straddle de las opciones de compra cubiertas (§1092: diferimiento de pérdidas, suspensión del plazo de tenencia de la acción)."
         }
       },
       "summaryFiled": {
@@ -7223,7 +7279,11 @@
           "schedule_1": { "en": "Schedule 1 · additional income", "es": "Anexo 1 · ingreso adicional" },
           "schedule_2": { "en": "Schedule 2 · additional taxes", "es": "Anexo 2 · impuestos adicionales" },
           "qdcg_worksheet": { "en": "Qualified Dividends and Capital Gain Tax Worksheet", "es": "Hoja de impuesto sobre dividendos calificados y ganancias de capital" },
-          "form_8960": { "en": "Form 8960 · net investment income tax", "es": "Formulario 8960 · impuesto sobre el ingreso neto de inversiones" }
+          "form_8960": { "en": "Form 8960 · net investment income tax", "es": "Formulario 8960 · impuesto sobre el ingreso neto de inversiones" },
+          "schedule_3": {
+            "en": "Schedule 3 · credits and payments",
+            "es": "Anexo 3 · créditos y pagos"
+          }
         },
         "lines": {
           "schedule_b": {
@@ -7288,6 +7348,24 @@
             "15": { "en": "MAGI above the threshold", "es": "MAGI sobre el umbral" },
             "16": { "en": "The smaller", "es": "El menor" },
             "17": { "en": "Tax (3,8 %)", "es": "Impuesto (3,8 %)" }
+          },
+          "schedule_3": {
+            "1": {
+              "en": "Foreign tax credit (Form 1116)",
+              "es": "Crédito por impuestos extranjeros (formulario 1116)"
+            },
+            "8": {
+              "en": "Total nonrefundable credits → Form 1040 line 20",
+              "es": "Total de créditos no reembolsables → línea 20 del Form 1040"
+            },
+            "11": {
+              "en": "Excess Social Security withheld",
+              "es": "Social Security retenido en exceso"
+            },
+            "15": {
+              "en": "Total other payments → Form 1040 line 31",
+              "es": "Total de otros pagos → línea 31 del Form 1040"
+            }
           }
         }
       },
@@ -7373,6 +7451,212 @@
         "notLinked": {
           "en": "no bank movement linked yet",
           "es": "sin movimiento bancario enlazado"
+        }
+      },
+      "scheduleE": {
+        "title": {
+          "en": "Schedule E · rental real estate",
+          "es": "Anexo E · arriendos"
+        },
+        "explain": {
+          "en": "Each rented place in dollars at each day's rate: the rents, the agency's commission, the mortgage interest and fire insurance, contribuciones, gastos comunes and the 30-year ADS depreciation of the building. Net before the passive-loss limit: {{net}}.",
+          "es": "Cada lugar arrendado en dólares al tipo de cambio de cada día: los arriendos, la comisión de la corredora, los intereses y el seguro de incendio del crédito, las contribuciones, los gastos comunes y la depreciación ADS a 30 años de la construcción. Neto antes del límite de pérdidas pasivas: {{net}}."
+        },
+        "depreciation": {
+          "en": "Depreciation: basis {{basis}} ({{origin}}), building {{building}}, from {{start}} ({{reading}}), {{months}} months in the year → {{amount}}.",
+          "es": "Depreciación: base {{basis}} ({{origin}}), construcción {{building}}, desde {{start}} ({{reading}}), {{months}} meses en el año → {{amount}}."
+        },
+        "origin": {
+          "purchase_cost": {
+            "en": "purchase cost",
+            "es": "costo de compra"
+          },
+          "lesser_of_cost_and_value_at_conversion": {
+            "en": "lesser of cost and value when converted to a rental",
+            "es": "menor entre costo y valor al pasar a arriendo"
+          }
+        },
+        "reading": {
+          "from_placed_in_service": {
+            "en": "placed in service before the residency",
+            "es": "puesto en servicio antes de la residencia"
+          },
+          "fresh_on_arrival": {
+            "en": "placed in service on arrival",
+            "es": "puesto en servicio al llegar"
+          },
+          "placed_in_window": {
+            "en": "placed in service this year",
+            "es": "puesto en servicio este año"
+          }
+        },
+        "lines": {
+          "3": {
+            "en": "Rents received",
+            "es": "Arriendos recibidos"
+          },
+          "9": {
+            "en": "Insurance",
+            "es": "Seguros"
+          },
+          "11": {
+            "en": "Management fees",
+            "es": "Comisión de administración"
+          },
+          "12": {
+            "en": "Mortgage interest",
+            "es": "Intereses hipotecarios"
+          },
+          "16": {
+            "en": "Taxes (contribuciones)",
+            "es": "Impuestos (contribuciones)"
+          },
+          "17": {
+            "en": "Utilities",
+            "es": "Servicios básicos"
+          },
+          "18": {
+            "en": "Depreciation",
+            "es": "Depreciación"
+          },
+          "19": {
+            "en": "Other (gastos comunes)",
+            "es": "Otros (gastos comunes)"
+          },
+          "20": {
+            "en": "Total expenses",
+            "es": "Total de gastos"
+          },
+          "21": {
+            "en": "Income or loss",
+            "es": "Ingreso o pérdida"
+          }
+        }
+      },
+      "form8582": {
+        "title": {
+          "en": "Form 8582 · passive activity loss",
+          "es": "Formulario 8582 · pérdidas de actividades pasivas"
+        },
+        "summary": {
+          "en": "Modified AGI {{magi}}: special allowance {{allowance}} (of {{before}}). Loss to limit {{limited}} (carried in {{prior}}, absorbed {{absorbed}}) → allowed {{allowed}}, suspended to next year {{suspended}}. Schedule 1 line 5: {{included}}.",
+          "es": "AGI modificado {{magi}}: asignación especial {{allowance}} (de {{before}}). Pérdida a limitar {{limited}} (arrastrada {{prior}}, absorbida {{absorbed}}) → permitida {{allowed}}, suspendida al año siguiente {{suspended}}. Anexo 1 línea 5: {{included}}."
+        }
+      },
+      "form1116": {
+        "title": {
+          "en": "Form 1116 · foreign tax credit (passive)",
+          "es": "Formulario 1116 · crédito por impuestos extranjeros (pasivo)"
+        },
+        "chile": {
+          "en": "Chile's taxes on the US-resident months, from the F22 AT{{taxYear}} ({{source}}): Impuesto Adicional {{adicional}}, art. 107 único {{unico}}; translated at {{rate}} CLP per US$ (the year's average).",
+          "es": "Impuestos chilenos de los meses como residente en EE.UU., del F22 AT{{taxYear}} ({{source}}): Impuesto Adicional {{adicional}}, impuesto único del art. 107 {{unico}}; convertidos a {{rate}} CLP por US$ (promedio del año)."
+        },
+        "noChile": {
+          "en": "Chile taxed nothing in the US-resident months: only the carryovers.",
+          "es": "Chile no gravó nada en los meses como residente en EE.UU.: solo los arrastres."
+        },
+        "source": {
+          "filed": {
+            "en": "filed",
+            "es": "presentado"
+          },
+          "draft": {
+            "en": "draft",
+            "es": "borrador"
+          }
+        },
+        "item": {
+          "adicional_on_rent": {
+            "en": "Impuesto Adicional on rent",
+            "es": "Impuesto Adicional sobre arriendos"
+          },
+          "unico_on_etf_sale": {
+            "en": "10 % único on an art. 107 sale",
+            "es": "Impuesto único del 10 % en una venta del art. 107"
+          },
+          "unico_on_fund_redemption": {
+            "en": "10 % único on a fund redemption",
+            "es": "Impuesto único del 10 % en un rescate de fondo"
+          },
+          "unico_on_fund_distribution": {
+            "en": "10 % único on a fund distribution",
+            "es": "Impuesto único del 10 % en un reparto de fondo"
+          }
+        },
+        "creditable": {
+          "en": "creditable",
+          "es": "acreditable"
+        },
+        "notCreditable": {
+          "en": "not creditable",
+          "es": "no acreditable"
+        },
+        "unverified": {
+          "en": "unverified",
+          "es": "sin verificar"
+        },
+        "limit": {
+          "en": "Foreign passive income {{gross}} less {{deductions}} = {{net}}; taxable income {{taxable}}, US tax {{tax}} → limit {{limit}} ({{fraction}}). Taxes {{accrued}} + carried in {{carriedIn}} → credit {{credit}} (Schedule 3 line 1); carried forward {{carriedOut}}.",
+          "es": "Renta pasiva extranjera {{gross}} menos {{deductions}} = {{net}}; renta imponible {{taxable}}, impuesto de EE.UU. {{tax}} → tope {{limit}} ({{fraction}}). Impuestos {{accrued}} + arrastrados {{carriedIn}} → crédito {{credit}} (anexo 3 línea 1); se arrastra {{carriedOut}}."
+        },
+        "carryover": {
+          "en": "{{year}}: {{amount}}",
+          "es": "{{year}}: {{amount}}"
+        }
+      },
+      "form8621": {
+        "title": {
+          "en": "Form 8621 · PFIC mark to market (Part IV)",
+          "es": "Formulario 8621 · PFIC a valor de mercado (parte IV)"
+        },
+        "explain": {
+          "en": "Each PFIC at its December 31 value against its adjusted basis: an excess is ordinary income, a decline deductible only up to earlier inclusions; the result goes to Schedule 1 line 8z. The first US year starts from the greater of value and cost on January 1.",
+          "es": "Cada PFIC a su valor al 31 de diciembre contra su base ajustada: el exceso es renta ordinaria, una baja se deduce solo hasta las inclusiones anteriores; el resultado va al anexo 1 línea 8z. El primer año en EE.UU. parte del mayor entre valor y costo al 1 de enero."
+        },
+        "holding": {
+          "en": "Holding",
+          "es": "Inversión"
+        },
+        "start": {
+          "en": "Start basis",
+          "es": "Base inicial"
+        },
+        "beforeMark": {
+          "en": "Basis before mark",
+          "es": "Base antes de valorar"
+        },
+        "fmv": {
+          "en": "Value Dec 31",
+          "es": "Valor 31 dic"
+        },
+        "inclusion": {
+          "en": "Inclusion",
+          "es": "Inclusión"
+        },
+        "deduction": {
+          "en": "Deduction",
+          "es": "Deducción"
+        },
+        "ordinary": {
+          "en": "To line 8z",
+          "es": "A la línea 8z"
+        },
+        "endBasis": {
+          "en": "End basis",
+          "es": "Base final"
+        },
+        "unreversed": {
+          "en": "Unreversed",
+          "es": "No revertidas"
+        },
+        "sales": {
+          "en": "{{label}}: {{count}} sale(s), ordinary {{ordinary}}, capital loss {{capital}}.",
+          "es": "{{label}}: {{count}} venta(s), ordinario {{ordinary}}, pérdida de capital {{capital}}."
+        },
+        "partV": {
+          "en": "{{label}}: Part V may apply (held before the first mark-to-market year).",
+          "es": "{{label}}: puede aplicar la parte V (tenido antes del primer año a valor de mercado)."
         }
       }
     },
@@ -7727,6 +8011,10 @@
         "property_tax_credit": {
           "en": "Contribuciones credit (1637)",
           "es": "Crédito por contribuciones (1637)"
+        },
+        "options": {
+          "en": "Options (US-listed, net premium)",
+          "es": "Opciones (listadas en EE.UU., prima neta)"
         }
       },
       "reason": {
@@ -7987,6 +8275,10 @@
         "draft": {
           "en": "1040 draft",
           "es": "borrador del 1040"
+        },
+        "nonresident_alien_not_drafted": {
+          "en": "a nonresident alien's 1040-NR, not drafted: no credit until the filed return is stored",
+          "es": "1040-NR de un no residente, sin borrador: sin crédito hasta guardar la declaración presentada"
         }
       },
       "credit": {

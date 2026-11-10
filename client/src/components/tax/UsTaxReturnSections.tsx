@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { PageGridTile } from "../layout/PageGridTile";
 import { ColumnTable } from "../ui/ColumnTable";
 import { loadableClass } from "../ui/Loadable";
-import { formatPct, formatUsd, formatUsdFine } from "../../format";
+import { formatClp, formatGroupedDecimal, formatPct, formatUsd, formatUsdFine } from "../../format";
 import type { UsTaxReturnResponse, UsTaxReturnRow, UsTaxReturnSchedule } from "../../types";
 
 const dollars = (n: number | null) => (n == null ? "—" : formatUsd(n));
@@ -135,6 +135,9 @@ export function UsTaxReturnSections({ data, loading }: { data: UsTaxReturnRespon
           {data.drafted ? <UsSchedulesSection data={data} /> : null}
           {data.drafted ? <UsScheduleBSection data={data} /> : null}
           {data.drafted ? <UsForm8949Section data={data} /> : null}
+          {data.schedule_e || data.form_8582 ? <UsScheduleESection data={data} /> : null}
+          {data.form_8621.length > 0 ? <UsForm8621Section data={data} /> : null}
+          {data.form_1116 ? <UsForm1116Section data={data} /> : null}
           {data.dual_status_statement ? <UsDualStatusSection data={data} /> : null}
           {data.foreign_accounts ? <UsForeignAccountsSection data={data} /> : null}
           <UsSettlementSection data={data} />
@@ -362,6 +365,159 @@ function UsSettlementSection({ data }: { data: UsTaxReturnResponse }) {
           ]}
         />
       ) : null}
+    </PageGridTile>
+  );
+}
+
+function UsScheduleESection({ data }: { data: UsTaxReturnResponse }) {
+  const { t, i18n } = useTranslation();
+  const e = data.schedule_e;
+  const f = data.form_8582;
+  const label = (line: string) => (i18n.exists(`taxReturn.us.scheduleE.lines.${line}`) ? t(`taxReturn.us.scheduleE.lines.${line}`) : t("taxReturn.us.lineFallback", { line }));
+  return (
+    <PageGridTile id="f1040-schedule-e">
+      <h2>{t("taxReturn.us.scheduleE.title")}</h2>
+      {e ? <p className="muted">{t("taxReturn.us.scheduleE.explain", { net: formatUsd(e.net_usd) })}</p> : null}
+      {e?.places.map((p) => (
+        <div key={p.label}>
+          <h3>{p.label}</h3>
+          <ColumnTable
+            rows={p.lines.filter((l) => l.amount !== 0 || l.line === "21")}
+            rowKey={(l) => l.line}
+            cardLayout="flat"
+            rowProps={(l) => ({ style: { fontWeight: l.line === "20" || l.line === "21" ? 600 : undefined } })}
+            columns={[
+              { key: "line", header: t("taxReturn.us.table.line"), className: "mono", cell: (l) => l.line, title: (l) => `${l.line} · ${label(l.line)}` },
+              { key: "concept", header: t("taxReturn.us.table.concept"), cell: (l) => label(l.line), desktopOnly: true },
+              { key: "amount", header: t("taxReturn.us.schedules.amount"), headerClassName: "num", className: "num", cell: (l) => formatUsd(l.amount) },
+            ]}
+          />
+          <p className="muted">
+            {t("taxReturn.us.scheduleE.depreciation", {
+              basis: formatUsd(p.depreciation.basis_usd),
+              origin: t(`taxReturn.us.scheduleE.origin.${p.depreciation.basis_origin}`),
+              building: formatUsd(p.depreciation.building_basis_usd),
+              start: p.depreciation.start_date,
+              reading: t(`taxReturn.us.scheduleE.reading.${p.depreciation.reading}`),
+              months: p.depreciation.months_in_window,
+              amount: formatUsd(p.depreciation.amount_usd),
+            })}
+          </p>
+        </div>
+      ))}
+      {f ? (
+        <>
+          <h3>{t("taxReturn.us.form8582.title")}</h3>
+          <p>
+            {t("taxReturn.us.form8582.summary", {
+              magi: formatUsd(f.magi_usd),
+              allowance: formatUsd(f.allowance_usd),
+              before: formatUsd(f.allowance_before_phase_out_usd),
+              limited: formatUsd(f.limited_loss_usd),
+              prior: formatUsd(f.prior_suspended_loss_usd),
+              absorbed: formatUsd(f.prior_loss_absorbed_usd),
+              allowed: formatUsd(f.allowed_loss_usd),
+              suspended: formatUsd(f.suspended_loss_usd),
+              included: formatUsd(f.included_in_income_usd),
+            })}
+          </p>
+        </>
+      ) : null}
+    </PageGridTile>
+  );
+}
+
+function UsForm8621Section({ data }: { data: UsTaxReturnResponse }) {
+  const { t } = useTranslation();
+  const rows = data.form_8621;
+  return (
+    <PageGridTile id="f1040-8621">
+      <h2>{t("taxReturn.us.form8621.title")}</h2>
+      <p className="muted">{t("taxReturn.us.form8621.explain")}</p>
+      <ColumnTable
+        rows={rows}
+        rowKey={(r) => r.label}
+        cardLayout="flat"
+        columns={[
+          { key: "holding", header: t("taxReturn.us.form8621.holding"), cell: (r) => r.label, title: (r) => r.label },
+          { key: "start", header: t("taxReturn.us.form8621.start"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.start_basis_usd) },
+          { key: "beforeMark", header: t("taxReturn.us.form8621.beforeMark"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.basis_before_mark_usd) },
+          { key: "fmv", header: t("taxReturn.us.form8621.fmv"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.fmv_year_end_usd) },
+          { key: "inclusion", header: t("taxReturn.us.form8621.inclusion"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.inclusion_usd) },
+          { key: "deduction", header: t("taxReturn.us.form8621.deduction"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.deduction_usd) },
+          { key: "ordinary", header: t("taxReturn.us.form8621.ordinary"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.ordinary_income_usd) },
+          { key: "endBasis", header: t("taxReturn.us.form8621.endBasis"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.end_basis_usd) },
+          { key: "unreversed", header: t("taxReturn.us.form8621.unreversed"), headerClassName: "num", className: "num", cell: (r) => formatUsd(r.unreversed_inclusions_usd) },
+        ]}
+      />
+      {rows
+        .filter((r) => r.disposals.length > 0)
+        .map((r) => (
+          <p key={`sales-${r.label}`} className="muted">
+            {t("taxReturn.us.form8621.sales", {
+              label: r.label,
+              count: r.disposals.length,
+              ordinary: formatUsd(r.disposals.reduce((a, d) => a + d.ordinary_gain_usd - d.ordinary_loss_usd, 0)),
+              capital: formatUsd(r.capital_loss_usd),
+            })}
+          </p>
+        ))}
+      {rows
+        .filter((r) => r.part_v_possible)
+        .map((r) => (
+          <p key={`partv-${r.label}`} style={{ color: "var(--negative)" }}>
+            {t("taxReturn.us.form8621.partV", { label: r.label })}
+          </p>
+        ))}
+    </PageGridTile>
+  );
+}
+
+function UsForm1116Section({ data }: { data: UsTaxReturnResponse }) {
+  const { t } = useTranslation();
+  const f = data.form_1116!;
+  const carried = (list: { tax_year: number; amount_usd: number }[]) =>
+    list.length === 0 ? formatUsd(0) : list.map((c) => t("taxReturn.us.form1116.carryover", { year: c.tax_year, amount: formatUsd(c.amount_usd) })).join(", ");
+  return (
+    <PageGridTile id="f1040-1116">
+      <h2>{t("taxReturn.us.form1116.title")}</h2>
+      <p className="muted">
+        {f.chile
+          ? t("taxReturn.us.form1116.chile", {
+              taxYear: f.chile.tax_year,
+              source: t(`taxReturn.us.form1116.source.${f.chile.adicional_source}`),
+              adicional: formatClp(f.chile.adicional_clp),
+              unico: formatClp(f.chile.unico_art107_clp),
+              rate: formatGroupedDecimal(f.rate_clp_per_usd, 2),
+            })
+          : t("taxReturn.us.form1116.noChile")}
+      </p>
+      {f.taxes.length > 0 ? (
+        <ul>
+          {f.taxes.map((x) => (
+            <li key={x.item}>
+              {t(`taxReturn.us.form1116.item.${x.item}`)}: {formatUsd(x.amount_usd)} ·{" "}
+              {t(x.creditable ? "taxReturn.us.form1116.creditable" : "taxReturn.us.form1116.notCreditable")}
+              {x.unverified ? ` · ${t("taxReturn.us.form1116.unverified")}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p>
+        {t("taxReturn.us.form1116.limit", {
+          gross: formatUsd(f.foreign_passive_gross_usd),
+          deductions: formatUsd(f.foreign_passive_deductions_usd),
+          net: formatUsd(f.foreign_passive_taxable_income_usd),
+          taxable: formatUsd(f.taxable_income_usd),
+          tax: formatUsd(f.us_tax_before_credits_usd),
+          limit: formatUsd(f.limit_usd),
+          fraction: formatPct(f.limit_fraction * 100, 2),
+          accrued: formatUsd(f.taxes_accrued_usd),
+          carriedIn: carried(f.carryovers_in),
+          credit: formatUsd(f.credit_usd),
+          carriedOut: carried(f.carryovers_out),
+        })}
+      </p>
     </PageGridTile>
   );
 }
