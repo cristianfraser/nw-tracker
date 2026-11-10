@@ -7,7 +7,7 @@ import { ccFinancingCostByDateInUnit } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPaymentFlowsInUnit, flowEventInUnit } from "./flowsDeposits.js";
-import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
+import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid, accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
 import {
@@ -385,7 +385,8 @@ function buildDailySeriesPast(
     unitByAccount,
     flows: gridFlows(accounts, grid, flowUnit),
     depositCums: withAccounts ? accountDepositCumsOnGrid(included, grid, flowUnit) : null,
-    marketDay: grid.map((ymd) => isNyseTradingDay(ymd) || isChileBusinessDay(ymd)),
+    // A day any priced market trades on (NYSE, Santiago, London); false = weekend / shared holiday.
+    marketDay: grid.map((ymd) => isNyseTradingDay(ymd) || isChileBusinessDay(ymd) || isLondonTradingDay(ymd)),
   };
 }
 

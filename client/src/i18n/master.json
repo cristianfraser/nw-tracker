@@ -1829,6 +1829,10 @@
           "en": "Stocks — Bolsa de Santiago",
           "es": "Acciones — Bolsa de Santiago"
         },
+        "stocks_london": {
+          "en": "Stocks — London Stock Exchange",
+          "es": "Acciones — Bolsa de Londres"
+        },
         "yahoo_fx_usd": {
           "en": "Yahoo — USD/CLP (CLP=X EOD)",
           "es": "Yahoo — USD/CLP (CLP=X EOD)"

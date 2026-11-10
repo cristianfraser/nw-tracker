@@ -12,9 +12,11 @@ import {
   marketQuoteCurrency,
   equitySessionYmdForTicker,
   resolveEquityQuote,
+  unknownEquityMarketKind,
+  type EquityMarketKind,
 } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
-import { nyseSessionsBack } from "./marketHolidays.js";
+import { londonSessionsBack, nyseSessionsBack } from "./marketHolidays.js";
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
 import {
   WATCHLIST_ANCHOR_KEYS,
@@ -196,14 +198,31 @@ function toDisplayUnit(
   };
 }
 
+/**
+ * The 1W anchor: five sessions back on a market with a session calendar (NYSE, London), seven
+ * calendar days back where the series moves on calendar days (Santiago, crypto).
+ */
+function weekAnchorYmd(kind: EquityMarketKind, asOf: string): string | null {
+  switch (kind) {
+    case "nyse":
+      return nyseSessionsBack(asOf, 5);
+    case "london":
+      return londonSessionsBack(asOf, 5);
+    case "santiago":
+    case "crypto24":
+      return chileCalendarAddDays(asOf, -7);
+    default:
+      return unknownEquityMarketKind(kind);
+  }
+}
+
 function nativeForEquity(row: MarketDisplaySeriesRow, today: string, now: Date): NativeRowStats | null {
   const ticker = row.series_key!.trim().toUpperCase();
   const q = resolveEquityQuote(ticker, equitySessionYmdForTicker(ticker, now), { preferLive: true, now });
   if (q == null || !Number.isFinite(q.price) || q.price <= 0) return null;
 
   const asOf = q.trade_date;
-  const weekYmd =
-    equityMarketKind(ticker) === "nyse" ? nyseSessionsBack(asOf, 5) : chileCalendarAddDays(asOf, -7);
+  const weekYmd = weekAnchorYmd(equityMarketKind(ticker), asOf);
   return {
     quote_currency: marketQuoteCurrency(ticker),
     value: q.price,

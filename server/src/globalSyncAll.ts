@@ -11,6 +11,7 @@ import { invalidateMarketDataAggregations } from "./cacheRegistry.js";
  *   17:05 New York on weekdays, write-once (`yahoo_fx_usd`; `forexDay.ts`).
  * - NYSE stocks (SPY, VEA): Yahoo EOD after 16:05 ET on NYSE trading days (`stocks_nyse`).
  * - Bolsa de Santiago stocks (`.SN`): Yahoo EOD from 17:10 Chile on Chile business days (`stocks_santiago`).
+ * - London Stock Exchange lines (`.L`): Yahoo EOD from 16:40 London on LSE trading days (`stocks_london`).
  * - Crypto (BTC, ETH): CoinGecko daily USD from 23:55 Chile (`crypto_eod`).
  * - UF / UTM / IPC (BDE GetSeries + SII UF gap-fill): from the 9th when DB lacks forward publication through end of next month.
  *
@@ -36,6 +37,7 @@ import { fetchSiiOfficialIpcYear, writeOfficialIpcMonths } from "./siiOfficialIp
 import {
   isCryptoEodStale,
   isSbifMonthlyStale,
+  isStocksLondonStale,
   isStocksNyseStale,
   isStocksSantiagoStale,
   isUserForcedSyncSourceStale,
@@ -148,6 +150,7 @@ import {
   writeVerifiedIpcRows,
 } from "./sbifSyncDb.js";
 import {
+  listWatchlistLondonTickersForEodSync,
   listWatchlistNyseTickersForEodSync,
   listWatchlistSantiagoTickersForEodSync,
 } from "./watchlist.js";
@@ -158,6 +161,7 @@ import {
   cryptoEodChangeLogDates,
   cryptoEodDueUtcYmd,
   syncCryptoEodFromCoinGecko,
+  syncStocksLondonFromYahoo,
   syncStocksNyseFromYahoo,
   syncStocksSantiagoFromYahoo,
   describeEquityNyseEodSyncNote,
@@ -840,7 +844,7 @@ function applyEquityEodResultsToChanges(
   results: EquityEodSyncResult[],
   eodBefore: Map<string, { trade_date: string; close: number } | null>,
   changes: SyncFieldChange[],
-  group: Extract<SyncChangeGroup, "stocks_nyse" | "stocks_santiago" | "crypto_eod">,
+  group: Extract<SyncChangeGroup, "stocks_nyse" | "stocks_santiago" | "stocks_london" | "crypto_eod">,
   logPrefix: string,
   opts?: { cryptoDueUtcYmd?: string | null; notes?: SyncStepNote[] }
 ): void {
@@ -926,6 +930,22 @@ async function runStocksSantiago(
   applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_santiago", "Santiago stocks", {
     notes,
   });
+}
+
+async function runStocksLondon(
+  state: GlobalSyncStateFile,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  const now = new Date();
+  if (!FORCE && !isStocksLondonStale(state, { force: false, now })) {
+    console.log("sync: London stocks — skip (session EOD already in DB).");
+    return;
+  }
+  const tickers = listWatchlistLondonTickersForEodSync();
+  const eodBefore = snapshotEodBefore(tickers);
+  const results = await syncStocksLondonFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
+  applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_london", "London stocks", { notes });
 }
 
 async function runCryptoEod(
@@ -1341,6 +1361,9 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     });
     await runSyncStepIfStale("stocks_santiago", stale, stepErrors, state!, cl, async () => {
       await runStocksSantiago(state!, syncChanges, stepNotes);
+    });
+    await runSyncStepIfStale("stocks_london", stale, stepErrors, state!, cl, async () => {
+      await runStocksLondon(state!, syncChanges, stepNotes);
     });
     await runSyncStepIfStale("crypto_eod", stale, stepErrors, state!, cl, async () => {
       await runCryptoEod(cl, state!, syncChanges);

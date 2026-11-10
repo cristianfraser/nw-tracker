@@ -4,9 +4,12 @@ import { fintualOfficialSerieNextDue } from "./fintualPublicSeriePrice.js";
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
+  LONDON_EOD_SYNC_AFTER_HOUR_LONDON,
+  LONDON_EOD_SYNC_AFTER_MINUTE_LONDON,
   SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE,
   SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE,
   isCryptoEodSyncWindow,
+  isLondonEodSyncWindow,
   isSantiagoEodSyncWindow,
 } from "./equityEodSync.js";
 import { FX_DAY_END_HOUR_NY, FX_DAY_END_MINUTE_NY, fxDayEndInstant, nextWeekdayYmd } from "./forexDay.js";
@@ -15,10 +18,13 @@ import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import {
   isChileBusinessDay,
   isChileHoliday,
+  isLondonTradingDay,
+  isLseHoliday,
   isNyseHoliday,
   isNyseTradingDay,
   isWeekendYmd,
 } from "./marketHolidays.js";
+import { londonWallClock } from "./londonSession.js";
 import { isAfterNyseRegularClose, nyseWallClock } from "./nyseSession.js";
 import { EVENING_PUBLISH_HOUR_CHILE, nextPublishDue, type PublisherSchedule } from "./publisherSchedule.js";
 
@@ -60,8 +66,8 @@ export type SyncWallTime = {
   ymd: string;
   hour: number;
   minute: number;
-  /** IANA zone for display (`America/Santiago` or `America/New_York`). */
-  timeZone: "America/Santiago" | "America/New_York";
+  /** IANA zone for display (`America/Santiago`, `America/New_York` or `Europe/London`). */
+  timeZone: "America/Santiago" | "America/New_York" | "Europe/London";
 };
 
 /** UTC epoch ms for a scheduled sync wall time. */
@@ -128,6 +134,21 @@ export function nyDayKind(ymd: string): SyncSourceDayKind {
   if (isNyseHoliday(ymd)) return "holiday";
   if (!isNyseTradingDay(ymd)) return "weekend";
   return "open";
+}
+
+export function londonDayKind(ymd: string): SyncSourceDayKind {
+  if (isLseHoliday(ymd)) return "holiday";
+  if (!isLondonTradingDay(ymd)) return "weekend";
+  return "open";
+}
+
+function nextLondonTradingDayYmd(fromYmd: string, maxSteps = 14): string | null {
+  let cur = fromYmd;
+  for (let i = 0; i < maxSteps; i++) {
+    if (isLondonTradingDay(cur)) return cur;
+    cur = chileCalendarAddDays(cur, 1);
+  }
+  return null;
 }
 
 function nextChileBusinessTime(cl: ChileWallClock, hour: number, minute: number): SyncWallTime {
@@ -206,6 +227,27 @@ export function stocksNyseNextSync(cl: ChileWallClock): SyncWallTime | null {
 /** The NYSE day kind of the injected clock's instant. */
 export function nyseDayKindAt(cl: ChileWallClock): SyncSourceDayKind {
   return nyDayKind(nyseWallClock(scheduleInstant(cl)).ymd);
+}
+
+/** The LSE day kind of the injected clock's instant (London's calendar day, not Chile's). */
+export function londonDayKindAt(cl: ChileWallClock): SyncSourceDayKind {
+  return londonDayKind(londonWallClock(scheduleInstant(cl)).ymd);
+}
+
+/**
+ * London Stock Exchange EOD — London calendar only: today 16:40 London while the session is
+ * still open or closing, else the next LSE trading day; UK bank holidays and weekends skip,
+ * Chilean and US holidays do not.
+ */
+export function stocksLondonNextSync(cl: ChileWallClock): SyncWallTime | null {
+  const lon = londonWallClock(scheduleInstant(cl));
+  if (isLondonTradingDay(lon.ymd) && !isLondonEodSyncWindow(lon)) {
+    return { ymd: lon.ymd, hour: LONDON_EOD_SYNC_AFTER_HOUR_LONDON, minute: LONDON_EOD_SYNC_AFTER_MINUTE_LONDON, timeZone: "Europe/London" };
+  }
+  const next = nextLondonTradingDayYmd(chileCalendarAddDays(lon.ymd, 1));
+  return next
+    ? { ymd: next, hour: LONDON_EOD_SYNC_AFTER_HOUR_LONDON, minute: LONDON_EOD_SYNC_AFTER_MINUTE_LONDON, timeZone: "Europe/London" }
+    : null;
 }
 
 /**

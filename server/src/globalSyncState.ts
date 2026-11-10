@@ -64,6 +64,7 @@ function migrateUserForcedStaleSources(list: string[] | undefined): string[] | u
     if (s === "equity_eod") {
       out.add("stocks_nyse");
       out.add("stocks_santiago");
+      out.add("stocks_london");
       out.add("crypto_eod");
     } else {
       out.add(s);

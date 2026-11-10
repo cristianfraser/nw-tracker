@@ -1,5 +1,5 @@
-import { equityMarketKind } from "./equityQuote.js";
-import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
+import { equityMarketKind, unknownEquityMarketKind } from "./equityQuote.js";
+import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay } from "./marketHolidays.js";
 
 /**
  * displayPL for per-instrument day changes (marquee, watchlist 1D): the underlying delta is
@@ -11,13 +11,23 @@ import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
  * flat on closed days, so those land at 0 naturally and any residue (e.g. fx drift on a US
  * holiday) is real CLP P/L.
  */
-export type TickerDayCalendar = "nyse" | "chile" | "weekday" | "always";
+export type TickerDayCalendar = "nyse" | "chile" | "london" | "weekday" | "always";
 
 /** Which calendar governs an equity/crypto ticker's day-change display. */
 export function equityTickerDayCalendar(ticker: string): TickerDayCalendar {
   const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") return "always";
-  return kind === "santiago" ? "chile" : "nyse";
+  switch (kind) {
+    case "crypto24":
+      return "always";
+    case "santiago":
+      return "chile";
+    case "london":
+      return "london";
+    case "nyse":
+      return "nyse";
+    default:
+      return unknownEquityMarketKind(kind);
+  }
 }
 
 function isWeekendYmd(ymd: string): boolean {
@@ -35,6 +45,8 @@ export function tickerMarketOpenOnYmd(calendar: TickerDayCalendar, ymd: string):
       return !isWeekendYmd(ymd);
     case "chile":
       return isChileBusinessDay(ymd);
+    case "london":
+      return isLondonTradingDay(ymd);
     case "nyse":
       return isNyseTradingDay(ymd);
   }

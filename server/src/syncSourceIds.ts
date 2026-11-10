@@ -17,6 +17,7 @@ export const GLOBAL_SYNC_SOURCES = [
   "sbif_ipc",
   "stocks_nyse",
   "stocks_santiago",
+  "stocks_london",
   "yahoo_fx_usd",
   "crypto_eod",
 ] as const;

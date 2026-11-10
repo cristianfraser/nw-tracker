@@ -1,6 +1,7 @@
 /**
- * Exchange holiday calendars (static lists). NYSE for SPY/VEA; Chile for SBIF context.
- * Extend `NYSE_CLOSED_YMD` / `CHILE_CLOSED_YMD` when scheduling future years.
+ * Exchange holiday calendars (static lists). NYSE for SPY/VEA; Chile for SBIF context; the
+ * London Stock Exchange for the `.L` lines. Extend `NYSE_CLOSED_YMD` / `CHILE_CLOSED_YMD` /
+ * `LSE_CLOSED_YMD` when scheduling future years.
  */
 
 const NYSE_CLOSED_YMD = new Set([
@@ -86,6 +87,64 @@ const CHILE_CLOSED_YMD = new Set([
   "2026-12-25",
 ]);
 
+/**
+ * London Stock Exchange closures 2023–2027: the England and Wales bank holidays as gov.uk lists
+ * them (https://www.gov.uk/bank-holidays, read 2026-11-10), substitute days included (New Year's
+ * Day 2023 on Monday the 2nd; Boxing Day 2026 on Monday the 28th; Christmas and Boxing Day 2027
+ * on the 27th and 28th) and the 2023-05-08 coronation holiday. The LSE closes at 12:30 on 24 and
+ * 31 December when they fall on a weekday: those half days are modelled as FULL sessions here —
+ * the bar exists (Yahoo prints it at the 08:00 open like every other), the day is a trading
+ * day, and the live window simply sees no new prints after 12:30.
+ */
+const LSE_CLOSED_YMD = new Set([
+  // 2023
+  "2023-01-02",
+  "2023-04-07",
+  "2023-04-10",
+  "2023-05-01",
+  "2023-05-08",
+  "2023-05-29",
+  "2023-08-28",
+  "2023-12-25",
+  "2023-12-26",
+  // 2024
+  "2024-01-01",
+  "2024-03-29",
+  "2024-04-01",
+  "2024-05-06",
+  "2024-05-27",
+  "2024-08-26",
+  "2024-12-25",
+  "2024-12-26",
+  // 2025
+  "2025-01-01",
+  "2025-04-18",
+  "2025-04-21",
+  "2025-05-05",
+  "2025-05-26",
+  "2025-08-25",
+  "2025-12-25",
+  "2025-12-26",
+  // 2026
+  "2026-01-01",
+  "2026-04-03",
+  "2026-04-06",
+  "2026-05-04",
+  "2026-05-25",
+  "2026-08-31",
+  "2026-12-25",
+  "2026-12-28",
+  // 2027
+  "2027-01-01",
+  "2027-03-26",
+  "2027-03-29",
+  "2027-05-03",
+  "2027-05-31",
+  "2027-08-30",
+  "2027-12-27",
+  "2027-12-28",
+]);
+
 function utcWeekday(ymd: string): number {
   const [y, m, d] = ymd.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
@@ -102,6 +161,15 @@ export function isNyseHoliday(ymd: string): boolean {
 
 export function isChileHoliday(ymd: string): boolean {
   return CHILE_CLOSED_YMD.has(ymd);
+}
+
+export function isLseHoliday(ymd: string): boolean {
+  return LSE_CLOSED_YMD.has(ymd);
+}
+
+/** London Stock Exchange regular session scheduled on this calendar day (Europe/London date). */
+export function isLondonTradingDay(ymd: string): boolean {
+  return !isWeekendYmd(ymd) && !isLseHoliday(ymd);
 }
 
 /** NYSE regular session scheduled on this calendar day (America/New_York date). */
@@ -154,6 +222,29 @@ export function nyseSessionsBack(fromYmd: string, sessions: number): string | nu
   let cur = fromYmd;
   for (let i = 0; i < sessions; i++) {
     const prior = priorNyseSessionYmd(cur);
+    if (prior == null) return null;
+    cur = prior;
+  }
+  return cur;
+}
+
+/** Previous London Stock Exchange session date strictly before `ymd`. */
+export function priorLondonSessionYmd(ymd: string, maxSteps = 14): string | null {
+  let cur = ymd;
+  for (let i = 0; i < maxSteps; i++) {
+    const [y, m, d] = cur.split("-").map(Number);
+    const dt = new Date(Date.UTC(y!, m! - 1, d! - 1));
+    cur = dt.toISOString().slice(0, 10);
+    if (isLondonTradingDay(cur)) return cur;
+  }
+  return null;
+}
+
+/** London session `sessions` trading days strictly before `fromYmd` (e.g. 5 ≈ one week). */
+export function londonSessionsBack(fromYmd: string, sessions: number): string | null {
+  let cur = fromYmd;
+  for (let i = 0; i < sessions; i++) {
+    const prior = priorLondonSessionYmd(cur);
     if (prior == null) return null;
     cur = prior;
   }

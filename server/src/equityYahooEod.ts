@@ -4,10 +4,11 @@
  */
 
 import { chileWallClockAt } from "./chileDate.js";
-import { equityMarketKind } from "./equityQuote.js";
+import { equityMarketKind, unknownEquityMarketKind } from "./equityQuote.js";
 import { BROWSER_USER_AGENT, fetchOutboundText } from "./outboundFetch.js";
 import { isWeekendYmd } from "./marketHolidays.js";
 import { nyseYmdFromUnix } from "./nyseSession.js";
+import { londonYmdFromUnix } from "./londonSession.js";
 
 export type EodCloseSeries = { dates: string[]; closes: number[] };
 
@@ -128,21 +129,31 @@ export function yahooChartPeriodSeconds(firstMk: string, lastMk: string): { peri
 
 /**
  * Bar timestamp → exchange calendar day, explicit per market kind (crypto: UTC, Santiago: Chile,
- * NYSE and forex `=X` pairs: New York — a CLP=X print at 17:00 NY on D labels D, which is the
- * fx-day convention `forexDay.ts` builds on).
+ * London: Europe/London — Yahoo stamps an LSE daily bar at its 08:00 open —, NYSE and forex `=X`
+ * pairs: New York — a CLP=X print at 17:00 NY on D labels D, which is the fx-day convention
+ * `forexDay.ts` builds on).
  */
 export function yahooBarYmdFromUnix(symbol: string, sec: number): string {
   const kind = equityMarketKind(symbol);
-  if (kind === "crypto24") return new Date(sec * 1000).toISOString().slice(0, 10);
-  if (kind === "santiago") return chileWallClockAt(new Date(sec * 1000)).ymd;
-  return nyseYmdFromUnix(sec);
+  switch (kind) {
+    case "crypto24":
+      return new Date(sec * 1000).toISOString().slice(0, 10);
+    case "santiago":
+      return chileWallClockAt(new Date(sec * 1000)).ymd;
+    case "london":
+      return londonYmdFromUnix(sec);
+    case "nyse":
+      return nyseYmdFromUnix(sec);
+    default:
+      return unknownEquityMarketKind(kind);
+  }
 }
 
 /**
  * Parse daily OHLC series from a Yahoo chart result (drops bars with null close). A symbol on
- * the NYSE calendar never has a weekend bar: an instrument that trades nearly around the clock
- * (the ICE dollar index `DX-Y.NYB`) opens Sunday evening, and the in-progress quote Yahoo
- * appends then is dated Sunday — its own Sunday bars carry no close.
+ * a weekday calendar (NYSE, London) never has a weekend bar: an instrument that trades nearly
+ * around the clock (the ICE dollar index `DX-Y.NYB`) opens Sunday evening, and the in-progress
+ * quote Yahoo appends then is dated Sunday — its own Sunday bars carry no close.
  */
 export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartResult): YahooDailyCloseParse {
   const ts = result.timestamp;
@@ -152,12 +163,13 @@ export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartRes
   }
   const dates: string[] = [];
   const closes: number[] = [];
-  const nyseCalendar = equityMarketKind(symbol) === "nyse";
+  const kind = equityMarketKind(symbol);
+  const weekdayCalendar = kind === "nyse" || kind === "london";
   for (let i = 0; i < ts.length; i++) {
     const c = close[i];
     if (c == null || !Number.isFinite(c)) continue;
     const ymd = yahooBarYmdFromUnix(symbol, ts[i]!);
-    if (nyseCalendar && isWeekendYmd(ymd)) continue;
+    if (weekdayCalendar && isWeekendYmd(ymd)) continue;
     dates.push(ymd);
     closes.push(c);
   }
@@ -306,6 +318,22 @@ export async function fetchYahooNyseEodForSync(
 /** Recent daily bars (for EOD sync). `days` calendar lookback from today. */
 export async function fetchYahooRecentDailyCloses(symbol: string, days = 14): Promise<EodCloseSeries> {
   return (await fetchYahooRecentDailyClosesWithMeta(symbol, days)).series;
+}
+
+/** Recent daily bars plus the chart `meta`, its dividends and its splits — one request (the London EOD sync). */
+export async function fetchYahooRecentDailyClosesWithDividends(
+  symbol: string,
+  days = 14
+): Promise<{ series: EodCloseSeries; meta: YahooChartMeta | undefined; splits: YahooSplit[]; dividends: YahooDividend[] }> {
+  const period2 = Math.floor(Date.now() / 1000);
+  const period1 = period2 - days * 86400;
+  const result = await fetchYahooChart(symbol, `interval=1d&events=div,split&period1=${period1}&period2=${period2}`);
+  return {
+    series: parseYahooDailyCloseSeries(symbol, result).series,
+    meta: result.meta,
+    splits: parseYahooSplits(symbol, result),
+    dividends: parseYahooDividends(symbol, result),
+  };
 }
 
 /** Recent daily bars plus the chart `meta` (the current quote and its time) — one request. */

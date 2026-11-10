@@ -569,6 +569,7 @@
         "sbif_ipc": "Banco Central — IPC",
         "stocks_nyse": "Acciones — NYSE",
         "stocks_santiago": "Acciones — Bolsa de Santiago",
+        "stocks_london": "Acciones — Bolsa de Londres",
         "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
         "crypto_eod": "Cripto"
       },
