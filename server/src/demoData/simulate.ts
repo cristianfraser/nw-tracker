@@ -54,6 +54,7 @@ import { AUSTIN, SANTIAGO, drawnBasketTotal, drawnRows, santiagoBasketPerUnit } 
 import { newUsPayrollYtd, usPayDates, usPayStub, usW2sOfStubs, type UsPayStub } from "./usPayroll.js";
 import type { UsW2 } from "../usW2.js";
 import { f1040LinesFromW2s } from "../us1040/draft.js";
+import { usDividendWithholdingRateForChileanResident } from "../usLegalParameters.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
@@ -467,8 +468,16 @@ export const US_SAVINGS_TRANSFER_IN_DESCRIPTION = "ONLINE TRANSFER FROM SAVINGS"
 /** The US savings account pays the benchmark rate less this on its balance. */
 const US_SAVINGS_SPREAD_PCT = 0.3;
 
-/** The 15 % US tax the Chilean broker withholds from dividends (W-8BEN, no treaty). */
-export const DIVIDEND_WITHHOLDING_RATE = 0.15;
+/**
+ * The US tax the Chilean broker withholds from a US dividend paid on `payDay` (W-8BEN): 30 % before
+ * the Chile–US convention's withholding date (2024-02-01), its 15 % from then
+ * (`usDividendWithholdingRateForChileanResident`; docs/us-1040-readings.md §2). The broker keeps
+ * withholding 15 % after the move to the US (he never files a W-9 there: a story choice — the 1040
+ * credits it on line 25c). The US broker withholds nothing (W-9).
+ */
+export function chileanBrokerDividendWithholdingRate(payDay: Ymd): number {
+  return usDividendWithholdingRateForChileanResident(payDay);
+}
 
 /**
  * The story's short-term dollar rate (≈ the T-bill yield), from each year on until the next entry:
@@ -1802,17 +1811,17 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const holdForHouse = HOUSES.some((h) => month >= h.holdFromMonth && month <= h.month);
       // The options wheel runs first: its events sit mid-month, before the month-end investing below.
       if (person.optionsWheel) runWheel(month);
-      // Dividends (quarterly): the Chilean broker withholds the 15 % US tax (W-8BEN), the US one
-      // nothing (W-9).
+      // Dividends (quarterly): the Chilean broker withholds the US tax (W-8BEN: 30 %, the treaty's
+      // 15 % from 2024-02-01), the US one nothing (W-9).
       if (mo % 3 === 0) {
         for (const [ticker, dps] of Object.entries(DIVIDEND_PER_SHARE_USD)) {
           for (const cash of ["brokerUsd", "ibkrUsd"] as const) {
             const held = heldUnits(ticker, cash);
             const perShare = ticker === "INTC" && month >= "2024-09" ? 0 : ticker === "INTC" && month >= "2023-03" ? 0.125 : dps;
-            const net = cents(held * perShare * (cash === "brokerUsd" ? 1 - DIVIDEND_WITHHOLDING_RATE : 1));
-            if (net < 0.01) continue;
             // Paid on the 8th: before any play of the month (the book applies events in code order).
             const day = firstBusinessDayOnOrAfter(ymd(month, 8));
+            const net = cents(held * perShare * (cash === "brokerUsd" ? 1 - chileanBrokerDividendWithholdingRate(day) : 1));
+            if (net < 0.01) continue;
             book.transfer({ from: `stock:${ticker}`, to: cash, date: day, usd: net, flowKind: "dividend_payout", note: `Dividendo ${ticker}` });
           }
         }

@@ -3,21 +3,23 @@
  *
  * - the boletas de honorarios issued (`sii_issued_fee_receipts`, the SII's own record);
  * - each foreign dividend's gross and US withholding (a broker statement, `movement_dividend_details`):
- *   15 % at the Chilean broker (W-8BEN), none at the US broker (W-9);
+ *   at the Chilean broker (W-8BEN) 30 % before 2024-02-01 and the convention's 15 % from then
+ *   (docs/us-1040-readings.md §2), none at the US broker (W-9);
  * - in March, the third parties' DJs (`sii_informed_dj`): the employer's 1887 (from the imported
  *   liquidaciones, as `payrollTaxYear` rebuilds it), the AFP's 1899 (APV régimen B, in UF), the
  *   lender's 1898 (mortgage interest, actualizada) and the bank's 1890 (the real interest of the
  *   term deposits that matured in the year);
- * - in April, first each US tax year's Form 1040 (`buildF1040Draft`): its line 37 is paid from US
- *   checking on the 15th, its 35a refunded there about three weeks after filing, and the return is
- *   stored as filed (`recordFiledF1040`) with its settlement linked (`linkF1040Settlement`);
- * - then the F22 the tax module drafts (`buildF22Draft`), whose foreign-salary credit reads that
- *   1040's tax: its 305 plus the pension contributions on fees the SII charges (code 900, which the
- *   module does not draft) is what the person pays or gets back, and the form is stored as filed once
- *   April has passed.
+ * - in April, each income year's two returns in the order `taxReturnOrder` gives (the 1040 first in
+ *   a Chilean-resident year, whose F22 credits the 1040's tax; the F22 first in a non-resident or
+ *   split year, whose 1040 will credit Chile's): the Form 1040 (`buildF1040Draft`) — its line 37
+ *   paid from US checking on the 15th, its 35a refunded there about three weeks after filing, stored
+ *   as filed (`recordFiledF1040`) with its settlement linked (`linkF1040Settlement`) — and the F22
+ *   the tax module drafts (`buildF22Draft`): its 305 plus the pension contributions on fees the SII
+ *   charges (code 900, which the module does not draft) is what the person pays or gets back, stored
+ *   as filed once April has passed.
  *
- * The generator runs the simulation until every April settlement it booked is the tax module's
- * figure (`aprilSettlementsFromTaxModule`); see generate.ts.
+ * The generator runs the simulation until every April settlement it booked is the tax modules'
+ * figure (`aprilSettlementsFromTaxModules`); see generate.ts.
  */
 import { db } from "../db.js";
 import { buildF22Draft } from "../f22/draft.js";
@@ -30,7 +32,8 @@ import { upsertMovementDividendDetail } from "../movementDividendDetails.js";
 import { usRetirementAccountIds } from "../usRetirementAccounts.js";
 import { accountsWithRole, propertyLoanPairsWithLoan } from "../accountRoles.js";
 import { lenderDisplayName } from "../lenderNames.js";
-import { DIVIDEND_WITHHOLDING_RATE, US_IRS_PAYMENT, US_IRS_REFUND, type Ledger } from "./simulate.js";
+import { taxReturnOrder } from "../taxReturnOrder.js";
+import { chileanBrokerDividendWithholdingRate, US_IRS_PAYMENT, US_IRS_REFUND, type Ledger } from "./simulate.js";
 import type { Ymd } from "./person.js";
 
 /** «1.234.567» — how the SII's DJ summary prints pesos. */
@@ -61,7 +64,8 @@ function writeFeeReceipts(ledger: Ledger): void {
 }
 
 /**
- * The broker statement's split of each dividend. At the Chilean broker gross = net ÷ (1 − 15 %),
+ * The broker statement's split of each dividend. At the Chilean broker gross = net ÷ (1 − the pay
+ * day's rate: 30 % before 2024-02-01, 15 % from then),
  * withholding = gross − net; the US broker (the account holding `broker_cash` `ibkr|usd`) pays it
  * whole to a US person. A Roth IRA's dividend is no document: the custodian issues no 1099-DIV for
  * growth inside the IRA, and no return declares it (`usRetirementAccountIds`).
@@ -77,7 +81,7 @@ function writeDividendDetails(): void {
   for (const r of rows) {
     if (r.from_account_id != null && roth.has(r.from_account_id)) continue;
     const atUsBroker = r.to_account_id != null && usBroker.has(r.to_account_id);
-    const rate = atUsBroker ? 0 : DIVIDEND_WITHHOLDING_RATE;
+    const rate = atUsBroker ? 0 : chileanBrokerDividendWithholdingRate(r.occurred_on);
     const gross = Math.round((r.amount / (1 - rate)) * 100) / 100;
     const withholding = Math.round((gross - r.amount) * 100) / 100;
     upsertMovementDividendDetail({
@@ -187,20 +191,12 @@ function contributionsCharged(ledger: Ledger, incomeYear: number): number {
   return ledger.aprilSettlements.get(incomeYear)?.contributionsClp ?? 0;
 }
 
-/**
- * What the tax module says each income year settles in April: its 305 (0 when it computes no tax)
- * plus the contributions charged. Years the module sees nothing in and the simulation did not
- * settle are left out.
- */
-export function aprilSettlementsFromTaxModule(ledger: Ledger, today: Ymd): Map<number, number> {
-  const out = new Map<number, number>();
-  for (const y of incomeYearsToDraft(ledger, today)) {
-    const d = buildF22Draft(y + 1, today);
-    const r305 = d.taxComputed ? (d.draft[305] ?? 0) : 0;
-    const total = r305 + contributionsCharged(ledger, y);
-    if (total !== 0 || ledger.aprilSettlements.has(y)) out.set(y, total);
-  }
-  return out;
+/** What the tax module says an income year's F22 settles in April (305 + 900); null when it sees nothing and the simulation settled nothing. */
+function f22SettlementFromTaxModule(ledger: Ledger, y: number, today: Ymd): number | null {
+  const d = buildF22Draft(y + 1, today);
+  const r305 = d.taxComputed ? (d.draft[305] ?? 0) : 0;
+  const total = r305 + contributionsCharged(ledger, y);
+  return total !== 0 || ledger.aprilSettlements.has(y) ? total : null;
 }
 
 /** The US tax years whose April the simulation reached (it filed their 1040). */
@@ -211,14 +207,32 @@ function usTaxYearsToFile(ledger: Ledger, today: Ymd): number[] {
     .sort((a, b) => a - b);
 }
 
-/** What the 1040 module says each US tax year settles: line 37 − line 35a, dollars. */
-export function usAprilSettlementsFromTaxModule(ledger: Ledger, today: Ymd): Map<number, number> {
-  const out = new Map<number, number>();
-  for (const y of usTaxYearsToFile(ledger, today)) {
-    const lines = buildF1040Draft(y, today).lines;
-    out.set(y, (lines["37"] ?? 0) - (lines["35a"] ?? 0));
+/** What the 1040 module says a US tax year settles: line 37 − line 35a, dollars. */
+function usSettlementFromTaxModule(y: number, today: Ymd): number {
+  const lines = buildF1040Draft(y, today).lines;
+  return (lines["37"] ?? 0) - (lines["35a"] ?? 0);
+}
+
+/**
+ * What the tax modules say each income year settles in April — the F22 in pesos (its 305 plus the
+ * contributions charged; years it sees nothing in and the simulation did not settle are left out),
+ * the 1040 in dollars (line 37 − line 35a) —, each year's two returns in `taxReturnOrder`'s order.
+ */
+export function aprilSettlementsFromTaxModules(ledger: Ledger, today: Ymd): { f22: Map<number, number>; us: Map<number, number> } {
+  const f22Years = new Set(incomeYearsToDraft(ledger, today));
+  const usYears = new Set(usTaxYearsToFile(ledger, today));
+  const f22 = new Map<number, number>();
+  const us = new Map<number, number>();
+  for (const y of [...new Set([...f22Years, ...usYears])].sort((a, b) => a - b)) {
+    for (const kind of taxReturnOrder(y)) {
+      if (kind === "f22" && f22Years.has(y)) {
+        const v = f22SettlementFromTaxModule(ledger, y, today);
+        if (v != null) f22.set(y, v);
+      }
+      if (kind === "f1040" && usYears.has(y)) us.set(y, usSettlementFromTaxModule(y, today));
+    }
   }
-  return out;
+  return { f22, us };
 }
 
 /** The US tax years whose booked 1040 settlement differs from the module's. */
@@ -233,25 +247,6 @@ export function usSettlementDifferences(
     .filter((x) => x.booked !== x.module);
 }
 
-/**
- * The 1040s as filed, with the US checking movement that settled each (the IRS payment or refund),
- * before the F22s: the F22's foreign-salary credit reads the filed return's tax.
- */
-export function writeDemoFiledUsReturns(ledger: Ledger, today: Ymd): void {
-  for (const y of usTaxYearsToFile(ledger, today)) {
-    const settlement = ledger.usAprilSettlements.get(y)!;
-    const draft = buildF1040Draft(y, today);
-    recordFiledF1040({ taxYear: y, filingStatus: draft.filingStatus, filedOn: settlement.filedOn, sourceFile: `demo/F1040_${y}.pdf`, lines: draft.lines });
-    if (settlement.usd === 0 || settlement.settledOn > today) continue;
-    const desc = settlement.usd > 0 ? US_IRS_PAYMENT : US_IRS_REFUND;
-    const rows = db
-      .prepare(`SELECT id FROM movements WHERE currency = 'usd' AND account_id IS NOT NULL AND note LIKE ? AND occurred_on = ? AND amount = ?`)
-      .all(`%|${desc}|%`, settlement.settledOn, Math.abs(settlement.usd)) as { id: number }[];
-    if (rows.length !== 1) throw new Error(`demo taxes: 1040 ${y} settlement of US$${settlement.usd} matches ${rows.length} movements`);
-    linkF1040Settlement({ taxYear: y, movementId: rows[0]!.id, description: desc });
-  }
-}
-
 /** The years whose booked settlement differs from the module's, with both figures. */
 export function settlementDifferences(
   ledger: Ledger,
@@ -264,13 +259,42 @@ export function settlementDifferences(
     .filter((x) => x.booked !== x.module);
 }
 
+type UsDraft = ReturnType<typeof buildF1040Draft>;
+
+/** A 1040 as filed, with the US checking movement that settled it (the IRS payment or refund). */
+function writeFiledUsReturn(ledger: Ledger, y: number, draft: UsDraft, today: Ymd): void {
+  const settlement = ledger.usAprilSettlements.get(y)!;
+  recordFiledF1040({ taxYear: y, filingStatus: draft.filingStatus, filedOn: settlement.filedOn, sourceFile: `demo/F1040_${y}.pdf`, lines: draft.lines });
+  if (settlement.usd === 0 || settlement.settledOn > today) return;
+  const desc = settlement.usd > 0 ? US_IRS_PAYMENT : US_IRS_REFUND;
+  const rows = db
+    .prepare(`SELECT id FROM movements WHERE currency = 'usd' AND account_id IS NOT NULL AND note LIKE ? AND occurred_on = ? AND amount = ?`)
+    .all(`%|${desc}|%`, settlement.settledOn, Math.abs(settlement.usd)) as { id: number }[];
+  if (rows.length !== 1) throw new Error(`demo taxes: 1040 ${y} settlement of US$${settlement.usd} matches ${rows.length} movements`);
+  linkF1040Settlement({ taxYear: y, movementId: rows[0]!.id, description: desc });
+}
+
+/** An F22 as filed (its codes, the contributions charged in 900, the resulting 305), with its settlement linked. */
+function writeFiledF22(taxYear: number, codes: F22Codes): void {
+  const ins = db.prepare(`INSERT INTO sii_f22_filed (tax_year, code, amount, source_file) VALUES (?, ?, ?, ?)`);
+  db.transaction(() => {
+    for (const [code, amount] of Object.entries(codes)) {
+      if (amount === 0 && ![304, 305].includes(Number(code))) continue;
+      ins.run(taxYear, Number(code), Math.round(amount), `demo/F22_AT${taxYear}.pdf`);
+    }
+    linkSettlement(taxYear, Math.round(codes[305] ?? 0));
+  })();
+}
+
 /**
- * The returns as filed: every year whose April has passed, the module's draft with the
- * contributions charged (900) and the resulting 305.
+ * Every return whose April has passed, as filed — the 1040s (each with the movement that settled
+ * it) and the F22s (the module's draft with the contributions charged in 900 and the resulting
+ * 305) —, each income year's two in `taxReturnOrder`'s order. Every return is drafted before any is
+ * written: a filed year changes how the next year's draft reads, and the settlements the simulation
+ * booked were computed with nothing filed.
  */
 export function writeDemoFiledReturns(ledger: Ledger, today: Ymd): void {
-  const ins = db.prepare(`INSERT INTO sii_f22_filed (tax_year, code, amount, source_file) VALUES (?, ?, ?, ?)`);
-  const drafts: { taxYear: number; codes: F22Codes }[] = [];
+  const f22 = new Map<number, F22Codes>();
   for (const y of incomeYearsToDraft(ledger, today)) {
     const taxYear = y + 1;
     if (`${taxYear}-04-30` > today) continue;
@@ -280,18 +304,17 @@ export function writeDemoFiledReturns(ledger: Ledger, today: Ymd): void {
     const codes: F22Codes = { ...d.draft };
     if (contributions > 0) codes[900] = contributions;
     codes[305] = (d.draft[305] ?? 0) + contributions;
-    drafts.push({ taxYear, codes });
+    f22.set(y, codes);
   }
-  // Drafted first, written after: a filed year changes how the next year's draft reads.
-  db.transaction(() => {
-    for (const { taxYear, codes } of drafts) {
-      for (const [code, amount] of Object.entries(codes)) {
-        if (amount === 0 && ![304, 305].includes(Number(code))) continue;
-        ins.run(taxYear, Number(code), Math.round(amount), `demo/F22_AT${taxYear}.pdf`);
-      }
-      linkSettlement(taxYear, Math.round(codes[305] ?? 0));
+  const us = new Map(usTaxYearsToFile(ledger, today).map((y) => [y, buildF1040Draft(y, today)] as const));
+  for (const y of [...new Set([...f22.keys(), ...us.keys()])].sort((a, b) => a - b)) {
+    for (const kind of taxReturnOrder(y)) {
+      const codes = f22.get(y);
+      if (kind === "f22" && codes) writeFiledF22(y + 1, codes);
+      const draft = us.get(y);
+      if (kind === "f1040" && draft) writeFiledUsReturn(ledger, y, draft, today);
     }
-  })();
+  }
 }
 
 /**

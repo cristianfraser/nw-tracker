@@ -108,12 +108,10 @@ import { DEMO_US_BANK_ISSUER } from "../taxFacts/payers.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
 import {
-  aprilSettlementsFromTaxModule,
+  aprilSettlementsFromTaxModules,
   settlementDifferences,
-  usAprilSettlementsFromTaxModule,
   usSettlementDifferences,
   writeDemoFiledReturns,
-  writeDemoFiledUsReturns,
   writeDemoTaxDocuments,
 } from "./taxDocuments.js";
 import { resetDemoDatabaseToPristine, saveDemoPristineCopy } from "../demoWritable.js";
@@ -829,9 +827,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   try {
     for (let pass = 1; ; pass++) {
       const life = writeLife(person, market, ids, today, overrides, usOverrides);
-      // The 1040 first: the F22's credit for the US tax on the salary reads its line 24.
-      const fromUsModule = usAprilSettlementsFromTaxModule(life.ledger, today);
-      const fromModule = aprilSettlementsFromTaxModule(life.ledger, today);
+      // Each year's two returns in `taxReturnOrder`'s order (the one that credits the other's tax second).
+      const { f22: fromModule, us: fromUsModule } = aprilSettlementsFromTaxModules(life.ledger, today);
       const diffs = [
         ...usSettlementDifferences(life.ledger, fromUsModule).map((d) => ({ ...d, label: `1040 ${d.year}` })),
         ...settlementDifferences(life.ledger, fromModule).map((d) => ({ ...d, label: `F22 ${d.year}` })),
@@ -857,7 +854,6 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   } finally {
     fs.rmSync(checkpoint, { force: true });
   }
-  writeDemoFiledUsReturns(ledger, today);
   writeDemoFiledReturns(ledger, today);
 
   for (const c of person.cards) recomputeCcBillingMonthBalances(ids.get(`card:${c.key}` as Acct)!);
