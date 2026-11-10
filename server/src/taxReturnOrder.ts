@@ -22,3 +22,18 @@ export function taxReturnOrderFor(r: YearResidency): TaxReturnKind[] {
 export function taxReturnOrder(incomeYear: number): TaxReturnKind[] {
   return taxReturnOrderFor(residencyForIncomeYear(incomeYear));
 }
+
+/**
+ * Throws unless `reader`'s draft of `incomeYear` may read `read`'s: the one it reads must come
+ * first in {@link taxReturnOrder} (the F22 of a Chilean-resident year reads the 1040's tax; the 1040
+ * of a US-resident year reads Chile's). The two drafts call each other only through readers that
+ * assert this, so neither can recurse into the other for the same year.
+ */
+export function assertReadsEarlierReturn(reader: TaxReturnKind, read: TaxReturnKind, incomeYear: number): void {
+  const order = taxReturnOrder(incomeYear);
+  if (order.indexOf(read) > order.indexOf(reader)) {
+    throw new Error(
+      `${reader === "f22" ? "F22" : "1040"} ${incomeYear} reads the ${read === "f22" ? "F22" : "1040"} of the same year, which comes after it (taxReturnOrder: ${order.join(" → ")})`
+    );
+  }
+}

@@ -131,79 +131,50 @@
  * which code.
  */
 import { chileWallClockNow } from "../chileDate.js";
-import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
-import { F22_RESIDENCY_ASSUMPTION, residencyForIncomeYear } from "../taxResidency.js";
+import { assertReadsEarlierReturn } from "../taxReturnOrder.js";
+import { buildF1040Draft, usReturnStatusForYear } from "../us1040/draft.js";
+import { filedF1040 } from "../us1040/filed.js";
 import { informedDjAmount } from "../siiInformedDj.js";
-import { observadoOnOrBefore, type UsdFxPosture, type UsdPurchaseCost } from "../usdCashTaxLotEvents.js";
-import { loadWindowBlocks, type F22YearContext } from "./blocks.js";
-import { assertFiledReproduces } from "./chain.js";
+import { loadWindowBlocks } from "./blocks.js";
+import type { F22UsTaxRead } from "./foreignIncome.js";
 import { f22Code305 } from "./identities.js";
-import { nonresidentPart } from "./nonresident.js";
 import { EMPTY_OFFSET } from "./offsets.js";
 import { residentPart } from "./resident.js";
-import { DJ1922_ART107_DIFFERENCE, informedCodes, latestUta, loadFiled, loadInformed, utaDecember } from "./sources.js";
-import type { F22Codes, F22Draft, F22DraftBase, F22DraftOptions, F22Regime, F22Residency } from "./types.js";
-import type { UsdFxRoute } from "./usdFx.js";
+import { DJ1922_ART107_DIFFERENCE } from "./sources.js";
+import type { F22Codes, F22Draft, F22DraftBase, F22DraftOptions } from "./types.js";
+import { f22NonresidentPartOf, f22Year } from "./year.js";
 
-/**
- * How the exchange result on dollars bought with pesos is drafted (`f22/usdFx`): the route it
- * takes on the form (art. 20 N°5 income in line 58 d), code 1901, IDPC credited back — the AT2026
- * instructions' line for it; `igc_1032` would reuse the crypto codes), when a dollar is sold
- * (Oficio 2573/2022: spending dollars on an instrument sells them) and what a purchase cost
- * (the oficio's dólar observado of the purchase day). Parameters of {@link buildF22Draft}, so a
- * later UI switch is a parameter change; report-only until the user files them.
- */
-export const USD_FX_DEFAULT_ROUTE: UsdFxRoute = "idpc_1901";
-export const USD_FX_DEFAULT_POSTURE: UsdFxPosture = "oficio_2573";
-export const USD_FX_DEFAULT_PURCHASE_COST: UsdPurchaseCost = "observado";
+export { USD_FX_DEFAULT_PURCHASE_COST, USD_FX_DEFAULT_POSTURE, USD_FX_DEFAULT_ROUTE } from "./year.js";
 
 const zeroToNull = (n: number): number | null => (n === 0 ? null : n);
+
+/**
+ * The year's US income tax as a resident window of the F22 credits it (the 1040's line 24): the
+ * filed return when stored, else the draft — and, for a nonresident alien of the US (no 1040 drafted:
+ * a Form 1040-NR), an explicit «not drafted» with no credit until the filed return is stored. Only a
+ * year whose 1040 comes first (`taxReturnOrder`) may be read.
+ */
+export function f1040TaxForF22(incomeYear: number, todayYmd: string): F22UsTaxRead {
+  assertReadsEarlierReturn("f22", "f1040", incomeYear);
+  const filed = filedF1040(incomeYear);
+  if (filed) return { usd: filed.lines["24"] ?? 0, source: "filed" };
+  if (!usReturnStatusForYear(incomeYear).drafted) return { usd: 0, source: "nonresident_alien_not_drafted" };
+  return { usd: buildF1040Draft(incomeYear, todayYmd).lines["24"] ?? 0, source: "draft" };
+}
 
 export function buildF22Draft(
   taxYear: number,
   todayYmd: string = chileWallClockNow().ymd,
   options: F22DraftOptions = {}
 ): F22Draft {
-  const incomeYear = taxYear - 1;
-  const year = residencyForIncomeYear(incomeYear);
-  const regime: F22Regime = year.cl === "full" ? "resident" : year.cl === "none" ? "nonresident" : "split";
-  const residentWindow: DateWindow | null =
-    year.cl === "full" ? wholeYearWindow(incomeYear) : year.cl === "none" ? null : { fromYmd: `${incomeYear}-01-01`, throughYmd: year.cl.through };
-  const nonresidentWindow: DateWindow | null =
-    year.us === "full" ? wholeYearWindow(incomeYear) : year.us === "none" ? null : { fromYmd: year.us.from, throughYmd: `${incomeYear}-12-31` };
-  const residency: F22Residency = { regime, year, assumption: year.declared ? F22_RESIDENCY_ASSUMPTION : null, residentWindow };
+  const y = f22Year(taxYear, todayYmd, options, (incomeYear) => f1040TaxForF22(incomeYear, todayYmd));
+  const { incomeYear, regime, residentWindow, residency, provisional, utaClp, utaProvisional, filed, dj, informed, yearEndObservado } = y;
 
-  const provisional = todayYmd <= `${incomeYear}-12-31`;
-  const decemberUta = utaDecember(incomeYear);
-  const utaProvisional = decemberUta == null;
-  const utaClp = decemberUta ?? latestUta();
-  const filed = loadFiled(taxYear);
-  if (filed) {
-    if (utaProvisional) throw new Error(`F22 AT${taxYear}: a filed form but no December ${incomeYear} UTM — sync sbif_utm`);
-    assertFiledReproduces(taxYear, filed, utaClp, regime);
-  }
-  const dj = loadInformed(taxYear);
-  const informed = informedCodes(dj, incomeYear);
-  const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
-  const ctx: F22YearContext = {
-    taxYear,
-    incomeYear,
-    todayYmd,
-    provisional,
-    yearEndObservado,
-    usdFx: {
-      route: options.usdFx?.route ?? USD_FX_DEFAULT_ROUTE,
-      posture: options.usdFx?.posture ?? USD_FX_DEFAULT_POSTURE,
-      purchaseCost: options.usdFx?.purchaseCost ?? USD_FX_DEFAULT_PURCHASE_COST,
-      load: options.usdFx?.load,
-    },
-  };
-
-  const nonresidentBlocks = nonresidentWindow ? loadWindowBlocks(ctx, nonresidentWindow, true) : null;
-  const nonresident = nonresidentBlocks ? nonresidentPart(ctx, nonresidentBlocks, informed, utaClp, regime === "nonresident") : null;
+  const nr = f22NonresidentPartOf(y);
+  const nonresident = nr?.part ?? null;
 
   // The display blocks: the resident window's when there is one, else the non-resident year's own.
-  const blocks = residentWindow ? loadWindowBlocks(ctx, residentWindow, false) : nonresidentBlocks!;
+  const blocks = residentWindow ? loadWindowBlocks(y.ctx, residentWindow, false) : nr!.blocks;
   const { salary, crypto, dividends, foreignShares, art107, art107Distributions, usdFx, rentals, foreignSalary, foreignInterest } = blocks;
   const art107DistributionsClp = Math.round(art107Distributions.reduce((s, x) => s + x.amountClp, 0));
   const f1964 = dj.get(1964);

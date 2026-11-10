@@ -199,7 +199,8 @@ export type TaxReturnForeignIncome = {
     gross_clp: number;
     /** The 1040's line 24 (total tax): the filed return's, or the draft's. */
     us_tax_usd: number;
-    us_tax_source: "filed" | "draft" | null;
+    /** `nonresident_alien_not_drafted`: a nonresident alien's 1040-NR is not drafted — no credit until the filed return is stored. */
+    us_tax_source: "filed" | "draft" | "nonresident_alien_not_drafted" | null;
     us_tax_clp: number;
     /** Code 1030: gross less the US tax. */
     net_clp: number;
@@ -242,6 +243,7 @@ export type TaxReturnExcludedKind =
   | "foreign_dividends"
   | "foreign_interest"
   | "foreign_shares"
+  | "options"
   | "usd_fx"
   | "crypto"
   | "fund_redemptions"
