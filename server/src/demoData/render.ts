@@ -31,15 +31,20 @@ import { BRANCH, type BankRow, type CardStatement, type Ledger } from "./simulat
 
 /** The US checking account's number (fictional), as its statements print it. */
 export const DEMO_US_CHECKING_NUMBER = "4021987653";
+/** The US savings account's number (fictional), declared beside the checking one. */
+export const DEMO_US_SAVINGS_NUMBER = "4021987661";
 
-export type RenderedUsStatementRow = { date: Ymd; amount: number; note: string };
+/** A statement row; `transfer` when a transfer between own accounts explains it (the app holds the transfer, not the row). */
+export type RenderedUsStatementRow = { date: Ymd; amount: number; note: string; transfer: boolean };
 
 /**
  * The US checking account's monthly statements, row by row, in the bank-statement identity the
  * app reads a checking account's movements by (`import:cartola|<month>|<branch>|<description>|doc|on|amt|idx`,
  * so each row is a statement row: `listCheckingMovements`). A dollar account's `amt` tag carries
  * the amount in cents (the tag is an identity, never read as money). There is no US statement
- * importer (real US ingest is out of scope), so the generator writes these rows itself.
+ * importer (real US ingest is out of scope), so the generator writes these rows itself — except
+ * the rows a transfer explains («ONLINE TRANSFER TO / FROM SAVINGS»), which the statement prints
+ * and the ledger already holds as the transfer, as the cartola import keeps a transfer leg.
  */
 export function renderUsStatementRows(ledger: Ledger): RenderedUsStatementRow[] {
   const us = ledger.person.us;
@@ -53,7 +58,7 @@ export function renderUsStatementRows(ledger: Ledger): RenderedUsStatementRow[] 
     idxByMonth.set(m, idx + 1);
     const amtCents = Math.round(r.amount * 100);
     const note = `import:cartola|${m}|${us.bank.branch}|${r.description}|doc:${String(doc++).padStart(9, "0")}|on:${r.date}|amt:${amtCents}|idx:${idx}`;
-    return { date: r.date, amount: r.amount, note };
+    return { date: r.date, amount: r.amount, note, transfer: r.transfer === true };
   });
 }
 

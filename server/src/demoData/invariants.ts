@@ -17,7 +17,7 @@ import { f1040Settlement, filedF1040 } from "../f1040Filed.js";
 import { buildF22Draft } from "../f22Draft.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR } from "../legalParameters.js";
 import { accountIdsInPortfolioGroup } from "../portfolioGroupTree.js";
-import { mortgageBalanceUf } from "./simulate.js";
+import { MONEY_MARKET_SERIES_KEY, mortgageBalanceUf } from "./simulate.js";
 import type { MarketReader } from "./market.js";
 import { addDays, type Ymd } from "./person.js";
 import type { Acct, Ledger } from "./simulate.js";
@@ -36,8 +36,10 @@ export type DemoDbReport = {
   usCard: { statements: number; lines: number; payments: number } | null;
   /** The largest month of the flows overview's «sin explicar», after the dollar accounts' fx (CLP). */
   cashUnexplainedWorstClp: number;
-  /** The US chapter: the US checking account's statement rows and its gastos lines. */
-  us: { statementRows: number; gastosLines: number; balanceUsd: number } | null;
+  /** The US chapter: the US checking account's statement rows and its gastos lines, and the savings account's balance. */
+  us: { statementRows: number; gastosLines: number; balanceUsd: number; savingsUsd: number | null } | null;
+  /** The Chilean money-market fund today (null without one). */
+  savingsFundClp: number | null;
   /**
    * The returns across the border: each filed 1040 (lines 24 / 35a / 37 and the movement that
    * settled it) and each filed F22 with a US salary (1030, 748, 1018, 304, 305).
@@ -49,6 +51,7 @@ export type DemoDbReport = {
   netWorthClp: number;
   netWorthUsd: number;
   byAccount: { name: string; clp: number }[];
+  /** Months the cushion (the fund, else the whole cash) sat above one and a half times the savings band's top. */
   monthsOutsideBand: number;
 };
 
@@ -100,6 +103,7 @@ export function assertDemoInvariants(
   if (unpaired > 0) problems.push(`${unpaired} card payment debit(s) were not paired with their card's evidence`);
 
   const usReport = checkUsChapter(ledger, ids, today, problems);
+  const savingsFundClp = checkSavingsFund(ledger, ids, market, today, problems);
   const properties = checkProperties(ledger, ids, market, today, problems);
   const usCard = checkUsCard(ledger, ids, problems);
   const cashUnexplainedWorstClp = checkCashExplained(ids, market, today, problems);
@@ -143,8 +147,9 @@ export function assertDemoInvariants(
     netWorthClp: Math.round(nw),
     netWorthUsd: Math.round(nwUsd),
     byAccount,
-    monthsOutsideBand: ledger.months.filter((m) => m.cashClp > m.band[1] * 1.5).length,
+    monthsOutsideBand: ledger.months.filter((m) => m.cushionClp > m.band[1] * 1.5).length,
     us: usReport,
+    savingsFundClp,
     properties,
     usCard,
     cashUnexplainedWorstClp,
@@ -207,6 +212,37 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
   const lines = buildCheckingGastosLinesForAccounts([usId], {});
   if (debits.length === 0) problems.push("the US checking account lists no debits");
   if (lines.length !== debits.length) problems.push(`US checking: ${debits.length} debits, ${lines.length} gastos lines`);
+  // A transfer to or from savings is a transfer leg, never a listed row (the statement prints it).
+  const transferRows = ledger.usBank.filter((r) => r.transfer).length;
+  const listed = listDollarCheckingMovements(usId, "in").length + debits.length;
+  if (listed !== ledger.usBank.length - transferRows) problems.push(`US checking: ${ledger.usBank.length - transferRows} statement rows to write, ${listed} listed`);
+
+  // The savings account: the app's balance is the story's, and it never dips below zero.
+  const savingsId = ids.get("usSavings");
+  let savingsUsd: number | null = null;
+  if (savingsId != null) {
+    if (ledger.usSavingsBalanceUsd == null) problems.push("a US savings account with no balance in the story");
+    const expectedSavings = cents(ledger.usSavingsBalanceUsd ?? 0);
+    savingsUsd = cents(usdCashBalanceUsdAt(savingsId, today));
+    if (Math.abs(savingsUsd - expectedSavings) > 0.005) problems.push(`US savings: app balance US$ ${savingsUsd}, story balance US$ ${expectedSavings}`);
+    const savingsRows = db
+      .prepare(
+        `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind
+         FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
+      )
+      .all(savingsId, savingsId, savingsId) as MovementTransferRow[];
+    const byDaySavings = new Map<string, number>();
+    for (const r of savingsRows) byDaySavings.set(r.occurred_on, (byDaySavings.get(r.occurred_on) ?? 0) + signedUsdDeltaForAccountMovement(r, savingsId));
+    let sBal = 0;
+    for (const [d, delta] of [...byDaySavings].sort()) {
+      sBal += delta;
+      if (sBal < -0.005) {
+        problems.push(`US savings goes negative: US$ ${cents(sBal)} on ${d}`);
+        break;
+      }
+    }
+    if (ledger.usBank.length > 0 && transferRows === 0) problems.push("a US savings account, but the statement prints no transfer to or from it");
+  } else if (ledger.usSavingsBalanceUsd != null) problems.push("a US savings balance in the story without a savings account");
 
   const totals = new Map(
     (
@@ -253,7 +289,34 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
       }
     }
   }
-  return { statementRows: ledger.usBank.length, gastosLines: lines.length, balanceUsd: actual };
+  return { statementRows: ledger.usBank.length, gastosLines: lines.length, balanceUsd: actual, savingsUsd };
+}
+
+/**
+ * The Chilean money-market fund: the app values it at the cuotas held × the series' value today,
+ * the cuotas being what the story holds (deposits less redemptions), and its cuotas never go below zero.
+ */
+function checkSavingsFund(ledger: Ledger, ids: Map<Acct, number>, market: MarketReader, today: Ymd, problems: string[]): number | null {
+  const id = ids.get("savingsClp");
+  if (id == null) {
+    if (ledger.savingsClpUnits != null) problems.push("money-market cuotas in the story without a fund account");
+    return null;
+  }
+  if (ledger.savingsClpUnits == null) {
+    problems.push("a money-market fund account with no cuotas in the story");
+    return null;
+  }
+  let units = 0;
+  for (const m of [...ledger.direct].filter((d) => d.type === "transfer" && (d.from === "savingsClp" || d.to === "savingsClp")).sort((a, b) => a.date.localeCompare(b.date))) {
+    if (m.type !== "transfer" || m.units == null) throw new Error("demo: a money-market transfer without cuotas");
+    units = Math.round((units + (m.to === "savingsClp" ? m.units : -m.units)) * 1e4) / 1e4;
+    if (units < -0.00005) problems.push(`money-market fund: cuotas below zero on ${m.date} (${units})`);
+  }
+  if (Math.abs(units - ledger.savingsClpUnits) > 0.00005) problems.push(`money-market fund: ${units} cuotas from the transfers, ${ledger.savingsClpUnits} in the story`);
+  const expected = Math.round(units * market.fundUnit(MONEY_MARKET_SERIES_KEY, today));
+  const actual = accountMarkClpAtYmd(id, today)?.value_clp ?? NaN;
+  if (Math.abs(actual - expected) > 2) problems.push(`money-market fund: the app's value ${Math.round(actual)}, the story's ${expected}`);
+  return Math.round(actual);
 }
 
 /**
