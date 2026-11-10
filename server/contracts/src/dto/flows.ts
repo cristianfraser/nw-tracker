@@ -167,6 +167,7 @@ export interface RealEstateChartSeriesDto {
     | "rent"
     | "gastos_comunes"
     | "contribuciones"
+    | "management_fee"
     | "electricidad"
     | "gas"
     | "water"

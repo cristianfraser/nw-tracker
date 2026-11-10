@@ -252,7 +252,7 @@ export type Mortgage = { house: House; cuotas: MortgageCuota[]; pieClp: number; 
 /** A rent credited to checking: the bank prints `description` on `date` for `clp`. */
 export type RentCredit = { house: string; date: Ymd; clp: number; description: string };
 /** A place's bill paid from checking; a DFL-2 property's contribuciones say whether they were halved. */
-export type PlaceBill = { house: string; kind: "gastos_comunes" | "contribuciones"; date: Ymd; clp: number; description: string; halved?: boolean };
+export type PlaceBill = { house: string; kind: "gastos_comunes" | "contribuciones" | "management_fee"; date: Ymd; clp: number; description: string; halved?: boolean };
 
 export type Ledger = {
   person: Person;
@@ -1596,7 +1596,11 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
           const description = `TRANSF. DE ${rental.agency}`;
           book.bankRow("checking", day, description, rent);
           rents.push({ house: h.key, date: day, clp: rent, description });
-          bankBill("checking", day, `PAGO COMISION ADMINISTRACION ${rental.agency}`, "bills", round(rent * rental.feeRate));
+          const fee = round(rent * rental.feeRate);
+          const feeDescription = `PAGO COMISION ADMINISTRACION ${rental.agency}`;
+          bankBill("checking", day, feeDescription, "bills", fee);
+          // The commission is a cost of the place, a bill row of it (a Schedule E line).
+          placeBills.push({ house: h.key, kind: "management_fee", date: day, clp: fee, description: feeDescription });
         }
       }
     }

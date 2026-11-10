@@ -19,6 +19,7 @@ const ASSIGNABLE_KINDS = [
   "internet",
   "water",
   "contribuciones",
+  "management_fee",
 ] as const;
 
 /** Gastos category slug for utility bills («Cuentas y servicios»). */
