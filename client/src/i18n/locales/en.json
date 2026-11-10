@@ -32,7 +32,7 @@
       "lead": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
       "fictional": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
       "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
-      "storyTax": "Chilean resident: the US salary is declared in the F22 with the treaty credit for the US tax; the 1040 is filed first each April. The demo simplifies the first US year (2024) to a full resident year. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
+      "storyTax": "A Chilean resident until 2024-04-14, a US resident from 2024-04-15 (declared, not inferred). 2024 is split on both sides: the F22 declares the Chilean months as a resident and the rents after the move under the Impuesto Adicional; the 1040 is a dual-status return. From 2025 Chile taxes only the rents, and the 1040 carries the worldwide side: Schedule E for both apartments (the loss above the passive allowance carried forward), Form 8621 for the Chilean funds, the INTC options on Form 8949, and Form 1116 crediting Chile's Impuesto Adicional — capped near zero by the rental loss, so it carries forward. Each April the F22 comes first and the 1040 reads its tax. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
       "openDashboard": "Open the dashboard",
       "howTitle": "How it works",
       "youAreHere": "You are here",
@@ -99,7 +99,7 @@
         },
         "taxes": {
           "title": "Two returns each April",
-          "body": "The US tab holds the 1040 for the US salary; the Chile tab the F22, which declares that salary again with the treaty credit for the US tax, plus the rent of the apartment that is not DFL-2."
+          "body": "Two returns each year, in order: the Chile tab's F22 first (the Impuesto Adicional on the rents since the move), then the US tab's 1040, whose Form 1116 credits that Chilean tax beside Schedule E, Form 8621 and the options."
         },
         "end": {
           "title": "Tour complete",
