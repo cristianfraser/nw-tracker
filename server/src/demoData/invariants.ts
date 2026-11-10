@@ -6,12 +6,16 @@ import type { EmploymentPayslipsApplyDetails } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { accountMarkClpAtYmd } from "../accountMarkClpAtYmd.js";
 import { checkingMovementBalanceClpAt } from "../checkingCartolaBalances.js";
-import { listDollarCheckingMovements } from "../checkingCartolaLoaders.js";
+import { listDollarCheckingAccountIds, listDollarCheckingMovements } from "../checkingCartolaLoaders.js";
 import { buildCheckingGastosLinesForAccounts } from "../flowsCheckingGastos.js";
 import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
 import { usdCashBalanceUsdAt } from "../usdCashAccounts.js";
 import { buildFlowsOverviewPayload } from "../flowsOverview.js";
+import { listCreditCardMasterAccountIds } from "../creditCardTree.js";
+import { fxRowOnOrBefore } from "../fxRates.js";
+import { accountIdsUnderCheckingAccounts } from "../movementBalanceCashAccounts.js";
+import { convertValue } from "../valueConvert.js";
 import { listRealEstatePlaces } from "../flowsRealEstateExpenses.js";
 import { f1040Settlement, filedF1040 } from "../f1040Filed.js";
 import { buildF22Draft } from "../f22Draft.js";
@@ -19,7 +23,7 @@ import { CHILE_US_TREATY_FIRST_INCOME_YEAR } from "../legalParameters.js";
 import { accountIdsInPortfolioGroup } from "../portfolioGroupTree.js";
 import { MONEY_MARKET_SERIES_KEY, mortgageBalanceUf } from "./simulate.js";
 import type { MarketReader } from "./market.js";
-import { addDays, type Ymd } from "./person.js";
+import type { Ymd } from "./person.js";
 import type { Acct, Ledger } from "./simulate.js";
 
 export type DemoDbReport = {
@@ -34,7 +38,7 @@ export type DemoDbReport = {
   properties: { key: string; equityClp: number; loanClp: number; cuotas: number; linkedCardLines: number; rents: number; bills: number }[];
   /** The US card: statements, lines, payments. */
   usCard: { statements: number; lines: number; payments: number } | null;
-  /** The largest month of the flows overview's «sin explicar», after the dollar accounts' fx (CLP). */
+  /** The largest month of the flows overview's «sin explicar» after the story's own conversion costs (CLP). */
   cashUnexplainedWorstClp: number;
   /** The US chapter: the US checking account's statement rows and its gastos lines, and the savings account's balance. */
   us: { statementRows: number; gastosLines: number; balanceUsd: number; savingsUsd: number | null } | null;
@@ -106,7 +110,7 @@ export function assertDemoInvariants(
   const savingsFundClp = checkSavingsFund(ledger, ids, market, today, problems);
   const properties = checkProperties(ledger, ids, market, today, problems);
   const usCard = checkUsCard(ledger, ids, problems);
-  const cashUnexplainedWorstClp = checkCashExplained(ids, market, today, problems);
+  const cashUnexplainedWorstClp = checkCashExplained(problems);
   const returns = checkReturnsAcrossTheBorder(ledger, today, problems);
 
   // Net worth near the target.
@@ -491,57 +495,76 @@ function checkUsCard(ledger: Ledger, ids: Map<Acct, number>, problems: string[])
   return { statements: statements.length, lines: statements.reduce((a, s) => a + s.lines, 0), payments: transfers.length };
 }
 
-/** How far a month of the flows overview's «sin explicar» may sit from the dollar accounts' fx (CLP). */
-export const CASH_UNEXPLAINED_TOLERANCE_CLP = 150_000;
+/** How far a month of the flows overview's «sin explicar» may sit from the story's own conversion costs (CLP). */
+export const CASH_UNEXPLAINED_TOLERANCE_CLP = 1_000;
 
 /**
  * The flows overview's «sin explicar» every month: what checking moved that no leg of the overview
- * accounts for. The overview has no fx leg, so a month reads the fx result of the dollars held in the
- * checking accounts (each day's balance revalued at the next day's rate) and the spread of each
- * dollar sale into pesos between them; anything beyond that, within noise, is a bug (a cuota counted
- * as a gasto and as a deposit, a payment no leg sees).
+ * accounts for. The overview carries the fx result of the dollars held in the checking accounts
+ * (`cash_fx`), so what is left is two frame costs the story states and no leg counts, both
+ * computed here from the movements and the app's own rates:
+ * - the bank's spread on each conversion between two checking accounts (a dollar sale at
+ *   `fx × 0,992`, a purchase at `÷ fx × 0,995`, `simulate.ts`): the value that entered less the
+ *   value that left, dollars at the sell rate the app holds them at;
+ * - the half spread on every dollar flow the legs count at the day's mid (`fx_daily`: the US
+ *   salary and the other single-leg rows of a dollar checking account, its card autopays — the
+ *   income lines, the gastos lines and `loadCardPaymentsFromChecking` price them so) while the
+ *   dollars are held at the sell rate: signed dollars × (sell − mid).
+ * What those two leave is rounding (3 pesos on 2026-11-10); anything beyond is a bug (a cuota
+ * counted as a gasto and as a deposit, a payment no leg sees).
  */
-function checkCashExplained(ids: Map<Acct, number>, market: MarketReader, today: Ymd, problems: string[]): number {
-  const usdAccounts = (["checkingUsd", "usChecking"] as const).map((k) => ids.get(k)).filter((v): v is number => v != null);
-  const fxByMonth = new Map<string, number>();
-  const add = (month: string, clp: number) => fxByMonth.set(month, (fxByMonth.get(month) ?? 0) + clp);
-  for (const id of usdAccounts) {
+function checkCashExplained(problems: string[]): number {
+  const checking = new Set(accountIdsUnderCheckingAccounts());
+  const dollar = listDollarCheckingAccountIds();
+  const cards = new Set(listCreditCardMasterAccountIds());
+  const sell = (day: string) => {
+    const r = convertValue(1, "usd", "clp", day, "asset");
+    if (r == null) throw new Error(`demo invariants: no USD sell rate on or before ${day}`);
+    return r;
+  };
+  const mid = (day: string) => {
+    const r = fxRowOnOrBefore(day);
+    if (!r) throw new Error(`demo invariants: no fx_daily row on or before ${day}`);
+    return r.clp_per_usd;
+  };
+  const inClp = (amount: number, currency: string, day: string) => {
+    if (currency === "clp") return amount;
+    if (currency === "usd") return amount * sell(day);
+    throw new Error(`demo invariants: unexpected currency ${currency} on ${day}`);
+  };
+  const knownByMonth = new Map<string, number>();
+  const add = (month: string, clp: number) => knownByMonth.set(month, (knownByMonth.get(month) ?? 0) + clp);
+  // The conversions between two checking accounts: what the receiving leg is worth less what left.
+  const conversions = db
+    .prepare(`SELECT from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on FROM movements WHERE from_account_id IS NOT NULL AND counter_currency IS NOT NULL`)
+    .all() as { from_account_id: number; to_account_id: number; amount: number; currency: string; counter_amount: number; counter_currency: string; occurred_on: string }[];
+  for (const t of conversions) {
+    if (!checking.has(t.from_account_id) || !checking.has(t.to_account_id)) continue;
+    add(t.occurred_on.slice(0, 7), inClp(t.counter_amount, t.counter_currency, t.occurred_on) - inClp(t.amount, t.currency, t.occurred_on));
+  }
+  // The dollar flows the legs count at the mid, held at the sell rate.
+  for (const id of dollar) {
     const rows = db
       .prepare(
         `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind
-           FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
+           FROM movements WHERE account_id = ? OR from_account_id = ?`
       )
-      .all(id, id, id) as MovementTransferRow[];
-    if (rows.length === 0) continue;
-    const byDay = new Map<string, number>();
-    for (const r of rows) byDay.set(r.occurred_on, (byDay.get(r.occurred_on) ?? 0) + signedUsdDeltaForAccountMovement(r, id));
-    let bal = 0;
-    let prevRate: number | null = null;
-    for (let d = [...byDay.keys()].sort()[0]!; d <= today; d = addDays(d, 1)) {
-      const rate = market.fx(d);
-      if (prevRate != null) add(d.slice(0, 7), bal * (rate - prevRate));
-      bal += byDay.get(d) ?? 0;
-      prevRate = rate;
+      .all(id, id) as MovementTransferRow[];
+    for (const r of rows) {
+      // Its own rows, and its payments into a card master (a transfer elsewhere is a deposit leg).
+      if (r.from_account_id != null && (r.to_account_id == null || !cards.has(r.to_account_id))) continue;
+      add(r.occurred_on.slice(0, 7), signedUsdDeltaForAccountMovement(r, id) * (sell(r.occurred_on) - mid(r.occurred_on)));
     }
-  }
-  // A dollar sale between two checking accounts: the pesos received below the dollars' value.
-  const checking = new Set([ids.get("checking"), ids.get("vista"), ...usdAccounts].filter((v): v is number => v != null));
-  const sales = db
-    .prepare(`SELECT from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on FROM movements WHERE from_account_id IS NOT NULL AND counter_currency IS NOT NULL`)
-    .all() as { from_account_id: number; to_account_id: number; amount: number; currency: string; counter_amount: number; counter_currency: string; occurred_on: string }[];
-  for (const t of sales) {
-    if (!checking.has(t.from_account_id) || !checking.has(t.to_account_id)) continue;
-    const usd = t.currency === "usd" ? t.amount : t.counter_amount;
-    const clp = t.currency === "clp" ? t.amount : t.counter_amount;
-    add(t.occurred_on.slice(0, 7), clp - usd * market.fx(t.occurred_on));
   }
   let worst = 0;
   const off: string[] = [];
   for (const r of buildFlowsOverviewPayload("clp", "total", null).months) {
-    const residual = r.cash_unexplained - (fxByMonth.get(r.period_month) ?? 0);
+    const residual = r.cash_unexplained - (knownByMonth.get(r.period_month) ?? 0);
     worst = Math.max(worst, Math.abs(residual));
-    if (Math.abs(residual) > CASH_UNEXPLAINED_TOLERANCE_CLP) off.push(`${r.period_month} ${Math.round(r.cash_unexplained)} (fx ${Math.round(fxByMonth.get(r.period_month) ?? 0)})`);
+    if (Math.abs(residual) > CASH_UNEXPLAINED_TOLERANCE_CLP) {
+      off.push(`${r.period_month} ${Math.round(r.cash_unexplained)} (fx ${Math.round(r.cash_fx)}, known costs ${Math.round(knownByMonth.get(r.period_month) ?? 0)})`);
+    }
   }
-  if (off.length > 0) problems.push(`flows overview «sin explicar» beyond ${CASH_UNEXPLAINED_TOLERANCE_CLP} after the dollar accounts' fx: ${off.slice(0, 8).join("; ")}${off.length > 8 ? ` … ${off.length} months` : ""}`);
+  if (off.length > 0) problems.push(`flows overview «sin explicar» beyond ${CASH_UNEXPLAINED_TOLERANCE_CLP} after the story's conversion costs: ${off.slice(0, 8).join("; ")}${off.length > 8 ? ` … ${off.length} months` : ""}`);
   return Math.round(worst);
 }
