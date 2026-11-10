@@ -49,7 +49,7 @@ type AccountFlowsPanelProps = {
   kind: "account";
   accountId: number | string;
   /** The account's units word (server `units_kind`). */
-  unitsKind?: "shares" | "coin";
+  unitsKind?: "shares" | "coin" | "contracts";
   showPersonalOnlyFilter?: boolean;
 };
 

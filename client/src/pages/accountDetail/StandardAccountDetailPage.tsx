@@ -17,7 +17,8 @@ import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedge
 import { Table } from "../../components/ui/Table";
 import { Loadable, loadableClass } from "../../components/ui/Loadable";
 import { PageGridTile } from "../../components/layout/PageGridTile";
-import { formatClp, formatGroupedDecimal, formatInstrumentUnits, formatPct } from "../../format";
+import { formatClp, formatGroupedDecimal, formatInstrumentUnits, formatPct, formatUsdFine } from "../../format";
+import { OPTION_CONTRACT_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
 import { AccountClpCashMovementsForm } from "../../components/account/AccountClpCashMovementsForm";
@@ -162,6 +163,9 @@ export function StandardAccountDetailPage({ data }: Props) {
     });
   }, [perfIsDaily, perfDailyPending, perfDailySeries.data, monthlyPerfRows, summary.account_id]);
 
+  // An option contract account (server `option_contract`): its terms above the position, its own kinds on the form.
+  const optionContract = summary.option_contract ?? null;
+  const isOptionContract = optionContract != null;
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
     !isMovementCartolaAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
@@ -216,6 +220,36 @@ export function StandardAccountDetailPage({ data }: Props) {
             accountDashRow={data.accountDashRow}
             loading={loading}
           />
+        </PageGridTile>
+      ) : null}
+
+      {optionContract ? (
+        <PageGridTile id="option-contract" className={loadableClass(loading)} aria-busy={loading || undefined}>
+          <h2>{t("options.terms.title")}</h2>
+          <Table
+            header={
+              <thead>
+                <tr>
+                  <th>{t("options.terms.occSymbol")}</th>
+                  <th>{t("options.terms.underlying")}</th>
+                  <th>{t("options.terms.right")}</th>
+                  <th>{t("options.terms.strike")}</th>
+                  <th>{t("options.terms.expiry")}</th>
+                  <th>{t("options.terms.multiplier")}</th>
+                </tr>
+              </thead>
+            }
+          >
+            <tr>
+              <td className="mono">{optionContract.occ_symbol}</td>
+              <td className="mono">{optionContract.underlying_ticker}</td>
+              <td>{optionContract.right === "C" ? t("options.terms.call") : t("options.terms.put")}</td>
+              <td className="mono">{formatUsdFine(optionContract.strike)}</td>
+              <td className="mono">{optionContract.expiry}</td>
+              <td className="mono">{formatInstrumentUnits(optionContract.multiplier, "shares")}</td>
+            </tr>
+          </Table>
+          <p className="muted">{t("options.terms.intrinsicNote")}</p>
         </PageGridTile>
       ) : null}
 
@@ -606,6 +640,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               ticker={summary.position?.ticker ?? null}
               quoteCurrency={summary.equity_quote_currency ?? null}
               displayUnit={displayUnit}
+              flowKinds={isOptionContract ? OPTION_CONTRACT_FLOW_KINDS : undefined}
             />
           ) : showUnitsFlowForm && unitsFlowUnitLabel ? (
             <AccountUnitsFlowForm

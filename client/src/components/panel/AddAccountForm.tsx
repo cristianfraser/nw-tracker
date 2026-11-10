@@ -9,6 +9,8 @@ import {
   buildPanelAccountCreatePreview,
   defaultPanelAccountFormDraft,
   isEquityPanelAccountType,
+  isOptionPanelAccountType,
+  type OptionRight,
   type PanelAccountFormDraft,
   type PanelAccountType,
 } from "../../panelAccounts/panelAccountFormTypes";
@@ -20,6 +22,7 @@ const ACCOUNT_TYPE_LABEL_KEYS: Record<PanelAccountType, string> = {
   crypto: "panelAccounts.addAccount.accountType.crypto",
   clp_cash: "panelAccounts.addAccount.accountType.clpCash",
   usd_cash: "panelAccounts.addAccount.accountType.usdCash",
+  option: "options.addAccount.accountType",
 };
 
 type Props = {
@@ -97,9 +100,12 @@ export function AddAccountForm({ netWorthRoot }: Props) {
   }
 
   const isEquity = isEquityPanelAccountType(draft.accountType);
-  const displayNamePlaceholder = isEquity
-    ? t("panelAccounts.addAccount.displayNamePlaceholder")
-    : t("panelAccounts.addUsdAccount.displayNamePlaceholder");
+  const isOption = isOptionPanelAccountType(draft.accountType);
+  const displayNamePlaceholder = isOption
+    ? t("options.addAccount.namePlaceholder")
+    : isEquity
+      ? t("panelAccounts.addAccount.displayNamePlaceholder")
+      : t("panelAccounts.addUsdAccount.displayNamePlaceholder");
 
   return (
     <form onSubmit={onCreateSubmit}>
@@ -122,9 +128,53 @@ export function AddAccountForm({ netWorthRoot }: Props) {
           value={draft.displayName}
           onChange={(e) => updateDraft({ displayName: e.target.value })}
           placeholder={displayNamePlaceholder}
-          required
+          required={!isOption}
         />
       </Field>
+
+      {isOption ? (
+        <>
+          <Field label={t("options.addAccount.underlying")}>
+            <Input
+              type="text"
+              value={draft.optionUnderlying}
+              onChange={(e) => updateDraft({ optionUnderlying: e.target.value.toUpperCase() })}
+              placeholder="SPY"
+              required
+            />
+          </Field>
+          <Field label={t("options.addAccount.right")}>
+            <select
+              value={draft.optionRight}
+              onChange={(e) => updateDraft({ optionRight: e.target.value as OptionRight })}
+            >
+              <option value="C">{t("options.terms.call")}</option>
+              <option value="P">{t("options.terms.put")}</option>
+            </select>
+          </Field>
+          <Field label={t("options.addAccount.strike")}>
+            <Input
+              type="text"
+              inputMode="decimal"
+              value={draft.optionStrike}
+              onChange={(e) => updateDraft({ optionStrike: e.target.value })}
+              placeholder="600"
+              required
+            />
+          </Field>
+          <Field label={t("options.addAccount.expiry")}>
+            <Input
+              type="date"
+              value={draft.optionExpiry}
+              onChange={(e) => updateDraft({ optionExpiry: e.target.value })}
+              required
+            />
+          </Field>
+          <p className="muted" style={{ margin: 0 }}>
+            {t("options.addAccount.bucketNote")}
+          </p>
+        </>
+      ) : null}
 
       {isEquity ? (
         <Field label={t("panelAccounts.addAccount.tickerSymbol")}>
@@ -138,18 +188,20 @@ export function AddAccountForm({ netWorthRoot }: Props) {
         </Field>
       ) : null}
 
-      <Field label={t("panelAccounts.addAccount.bucket")}>
-        <select
-          value={draft.bucketSlug}
-          onChange={(e) => updateDraft({ bucketSlug: e.target.value })}
-        >
-          {leafBuckets.map((b) => (
-            <option key={b.slug} value={b.slug}>
-              {b.label} ({b.slug})
-            </option>
-          ))}
-        </select>
-      </Field>
+      {isOption ? null : (
+        <Field label={t("panelAccounts.addAccount.bucket")}>
+          <select
+            value={draft.bucketSlug}
+            onChange={(e) => updateDraft({ bucketSlug: e.target.value })}
+          >
+            {leafBuckets.map((b) => (
+              <option key={b.slug} value={b.slug}>
+                {b.label} ({b.slug})
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
 
       <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <input

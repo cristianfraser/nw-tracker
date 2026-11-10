@@ -60,7 +60,7 @@ export interface DashboardAccountStats {
   /** SPY, VEA, BTC, ETH — ticker, units, implied CLP per unit when data exists */
   position?: {
     ticker: string;
-    units_kind: "shares" | "coin";
+    units_kind: "shares" | "coin" | "contracts";
     units: number | null;
     deposited_clp: number;
     value_clp: number | null;

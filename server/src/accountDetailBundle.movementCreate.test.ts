@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
-import { BROKERAGE_FLOW_KINDS } from "./brokerageFlowMovement.js";
+import { STOCK_ACCOUNT_FLOW_KINDS } from "./brokerageFlowMovement.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 
@@ -10,7 +10,7 @@ describe("accountDetailBundle movement_create", () => {
 
     const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();
-    expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(BROKERAGE_FLOW_KINDS);
+    expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(STOCK_ACCOUNT_FLOW_KINDS);
   });
 
   it("AFC is a cuota-ledger account: units required on creates, no book-ledger edit", async () => {
@@ -46,7 +46,7 @@ describe("accountDetailBundle movement_create", () => {
 
     return buildAccountDetailBundle(result.account_id, "clp", "monthly").then((bundle) => {
       expect(bundle).not.toBeNull();
-      expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(BROKERAGE_FLOW_KINDS);
+      expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(STOCK_ACCOUNT_FLOW_KINDS);
 
       db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(result.account_id);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(result.account_id);

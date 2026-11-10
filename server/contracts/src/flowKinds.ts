@@ -63,6 +63,8 @@ export const FLOW_KINDS = [
   def("asset_sell", "internal"),
   def("fund_switch", "internal"),
   def("stock_split", "internal"),
+  // An option contract expiring or being assigned: contracts leave the ledger, no money moves.
+  def("option_settlement", "internal"),
   def("mortgage_cuota", "internal"),
   def("mortgage_prepayment", "internal"),
   // opening balance
@@ -129,6 +131,14 @@ export const LEGACY_FLOW_KIND_MAP = {
     carga_tarjeta: "card_load",
     afp_fund_switch: "fund_switch",
     stock_split: "stock_split",
+    // An option premium is a trade against USD cash (sold = asset_sell, bought = asset_buy); an
+    // expiry or an assignment settles the contracts with no money.
+    option_sell_open: "asset_sell",
+    option_sell_close: "asset_sell",
+    option_buy_open: "asset_buy",
+    option_buy_close: "asset_buy",
+    option_expire: "option_settlement",
+    option_assign: "option_settlement",
     other: "transfer",
   },
   DepositFlowKind: {
@@ -147,6 +157,12 @@ export const LEGACY_FLOW_KIND_MAP = {
     cash_fee: "fee",
     withdrawal_clp: "withdrawal",
     withdrawal_usd: "withdrawal",
+    option_sell_open: "asset_sell",
+    option_sell_close: "asset_sell",
+    option_buy_open: "asset_buy",
+    option_buy_close: "asset_buy",
+    option_expire: "option_settlement",
+    option_assign: "option_settlement",
     other: "transfer",
   },
   MortgageFlowKind: {

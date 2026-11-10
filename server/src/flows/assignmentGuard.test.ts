@@ -29,6 +29,7 @@ const ROW_ID_REFERENCES: Record<string, string> = {
   movement_mirror_merges: "the legs a mirror conversion merged (undo record)",
   movement_mirror_pair_rejections: "a refused mirror pairing",
   movement_transfer_notices: "a transfer notice paired with its bank row (rebuilt on every apply)",
+  option_assignments: "the two rows one option assignment wrote together: the contract's units row and the share leg at the strike",
   payroll_work_earnings: "the deposit that paid a payslip (a payslip is not a flow yet, F20)",
   payslip_advances: "the deposit that paid an advance",
   pension_contribution_periods: "the payroll month a contribution paid",

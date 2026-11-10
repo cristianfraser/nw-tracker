@@ -30,6 +30,7 @@ import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosit
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountProfile } from "./accountProfile.js";
 import { accountSummaryProfileFields } from "./accountRowProfileFields.js";
+import { optionContractForAccount } from "./optionContracts.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
@@ -150,6 +151,7 @@ export async function buildAccountDetailBundle(
     mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(accountId),
     // What the account holds and is, from its profile: the client picks these (F12).
     ...accountSummaryProfileFields(accountProfile(accountId)),
+    option_contract: optionContractDto(accountId),
   };
 
   const tsRaw = getAccountValuationTimeseries(accountId, unit, { granularity });
@@ -296,5 +298,19 @@ export async function buildAccountDetailBundle(
     monthly_performance,
     period_returns,
     dashboard_account_row,
+  };
+}
+
+/** The terms of an option contract account for the page (`option_contracts`); null elsewhere. */
+function optionContractDto(accountId: number) {
+  const t = optionContractForAccount(accountId);
+  if (!t) return null;
+  return {
+    occ_symbol: t.occ_symbol,
+    underlying_ticker: t.underlying_ticker,
+    right: t.right,
+    strike: t.strike,
+    expiry: t.expiry,
+    multiplier: t.multiplier,
   };
 }

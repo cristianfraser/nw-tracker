@@ -14,6 +14,12 @@ import {
   movementUsdLeg,
   type MovementCurrency,
 } from "./movementAmounts.js";
+import {
+  OPTION_UNITS_FLOW_KINDS,
+  isOptionFlowKind,
+  optionUnitsArriveOnToLeg,
+  optionUnitsLeaveFromLeg,
+} from "./optionFlowKinds.js";
 
 export type MovementTransferRow = {
   id?: number;
@@ -124,19 +130,24 @@ export function signedUsdDeltaForAccountMovement(
     const units = row.units_delta;
     const hasUnits = units != null && Number.isFinite(units) && units !== 0;
     if (row.from_account_id === accountId) {
-      // stock_sell USD proceeds land on USD cash (to_account), not the equity from leg.
-      if (fk === "stock_sell") return 0;
+      // stock_sell USD proceeds land on USD cash (to_account), not the equity from leg; the
+      // premium of a sold option (option_sell_open / option_sell_close) likewise.
+      if (fk === "stock_sell" || optionUnitsLeaveFromLeg(fk)) return 0;
       return -mag;
     }
     if (row.to_account_id === accountId) {
-      // stock_buy: share units on the stock leg consume USD from cash (from_account).
+      // stock_buy: share units on the stock leg consume USD from cash (from_account); the premium
+      // of a bought option (option_buy_open / option_buy_close) leaves cash the same way.
       if (fk === "stock_buy" && hasUnits) return 0;
+      if (optionUnitsArriveOnToLeg(fk)) return 0;
       return mag;
     }
     return 0;
   }
   if (row.account_id !== accountId) return 0;
   const fk = row.flow_kind;
+  // A contract expiring or being assigned moves contracts, never dollars.
+  if (isOptionFlowKind(fk)) return 0;
   if (fk === "compra_usd" || fk === "compra_usd_venta_clp") {
     const units = row.units_delta;
     if (units != null && Number.isFinite(units) && units !== 0) return 0;
@@ -151,7 +162,17 @@ export function signedUsdDeltaForAccountMovement(
   return 0;
 }
 
-/** Share units credited on `accountId` (legacy account_id, transfer to_account buy, or from_account sell). */
+/**
+ * Units credited on `accountId` by one row, with each kind's sign rule:
+ * - a transfer whose units LEAVE the from-leg — `stock_sell`, and the sold-option kinds
+ *   `option_sell_open` / `option_sell_close` — debits −|units| there and nothing on the to-leg
+ *   (the cash side never counts units);
+ * - every other transfer credits the to-leg's units as stored (`transferToLegUnits`: a buy's
+ *   shares, a bought option's contracts, a fund switch's cuotas);
+ * - a single-leg row credits its `units_delta` as stored, signed: a split's new shares, an
+ *   expiring or assigned option's −(contracts held) (`optionFlowKinds.ts`).
+ * An option account's contracts are therefore SIGNED: a short position sums negative.
+ */
 export function unitsDeltaForAccountMovement(
   row: MovementTransferRow,
   accountId: number
@@ -159,24 +180,27 @@ export function unitsDeltaForAccountMovement(
   const valid = (u: number | null | undefined): u is number =>
     u != null && Number.isFinite(u) && u !== 0;
   if (isMovementTransferRow(row)) {
-    if (row.flow_kind === "stock_sell") {
+    if (row.flow_kind === "stock_sell" || optionUnitsLeaveFromLeg(row.flow_kind)) {
       const sold = transferFromLegUnits(row);
       if (row.from_account_id === accountId && valid(sold)) return -Math.abs(sold);
       return 0;
     }
     const bought = transferToLegUnits(row);
-    return row.to_account_id === accountId && valid(bought) ? bought : 0;
+    if (row.to_account_id !== accountId || !valid(bought)) return 0;
+    // A bought option's contracts arrive positive whatever sign the row was stored with.
+    return optionUnitsArriveOnToLeg(row.flow_kind) ? Math.abs(bought) : bought;
   }
   const units = row.units_delta;
   return row.account_id === accountId && valid(units) ? units : 0;
 }
 
-/** Equity flow kinds whose transfer-leg units are read by the stock/share path, not the cuota path. */
+/** Equity and option flow kinds whose transfer-leg units are read by the share / contract path, not the cuota path. */
 const EQUITY_TRANSFER_FLOW_KINDS = new Set([
   "stock_buy",
   "stock_sell",
   "compra_usd",
   "compra_usd_venta_clp",
+  ...OPTION_UNITS_FLOW_KINDS,
 ]);
 
 /**

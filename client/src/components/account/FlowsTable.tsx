@@ -10,7 +10,7 @@ import styles from "./FlowsTable.module.css";
 
 function formatFlowUnits(
   row: FlowsApiRow,
-  unitsKind: "shares" | "coin" = "shares"
+  unitsKind: "shares" | "coin" | "contracts" = "shares"
 ): string | null {
   if (
     row.units_delta == null ||
@@ -102,7 +102,7 @@ export function FlowsTable({
   showAccountColumn?: boolean;
   /** Off for consolidated group tables (mixed instruments). */
   showUnitsColumn?: boolean;
-  unitsKind?: "shares" | "coin";
+  unitsKind?: "shares" | "coin" | "contracts";
   emptyMessage?: string;
   filteredEmptyMessage?: string;
   filterOptions?: FlowsFilterOptions;

@@ -525,6 +525,7 @@ function rebuildBrokerageNav() {
     ["brokerage_mutual_funds", 0],
     ["brokerage_long_term", 5],
     ["brokerage_acciones", 10],
+    ["brokerage_opciones", 15],
     ["brokerage_crypto", 20],
   ];
   for (const [slug, sort] of buckets) {
@@ -737,6 +738,18 @@ export function seedNavTree(): void {
       api_group: "brokerage",
       api_subgroup: "acciones",
       kind_slug: "acciones",
+      group_kind: "bucket",
+    });
+    upsert({
+      slug: "brokerage_opciones",
+      label: "Opciones",
+      parent_slug: "brokerage",
+      sort_order: 25,
+      route_path: "/inversiones/brokerage/opciones",
+      active_prefix: "/inversiones/brokerage/opciones",
+      api_group: "brokerage",
+      api_subgroup: "opciones",
+      kind_slug: "options",
       group_kind: "bucket",
     });
     upsert({

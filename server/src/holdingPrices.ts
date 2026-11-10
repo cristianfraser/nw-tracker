@@ -26,6 +26,7 @@ import {
 import { equityAsTradedClose } from "./equitySplits.js";
 import { assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 import type { Holding } from "./holdings.js";
+import { optionIntrinsicPerShare } from "./optionContracts.js";
 import type { CurrencyCode } from "./rates.js";
 import {
   isRiskyNorrisProxyMtmSeries,
@@ -38,10 +39,22 @@ export type HoldingPrice = { price: number; currency: CurrencyCode; as_of: strin
 
 export type InstrumentHolding = Exclude<Holding, { kind: "currency" } | { kind: "card" }>;
 
+/**
+ * The value of `qty` units of an instrument at `price` per unit, in the price's currency — the
+ * ONE rule the mark and the daily quantity series share: a fund's value is rounded to the cent (as
+ * its position card prints it), a contract is `multiplier` shares at the per-share price, signed
+ * (a short position is negative; `+ 0` folds a −0 into 0).
+ */
+export function instrumentNativeValue(h: InstrumentHolding, qty: number, price: number): number {
+  const raw = h.kind === "option" ? qty * price * h.multiplier : qty * price;
+  return (h.kind === "fund" ? Math.round(raw * 100) / 100 : raw) + 0;
+}
+
 /** The key a quantity series stores its instrument under (one per price source). */
 export function instrumentPriceKey(h: InstrumentHolding): string {
   if (h.kind === "stock") return `stock:${h.ticker}`;
   if (h.kind === "coin") return `coin:${h.priceTicker}`;
+  if (h.kind === "option") return `option:${h.occSymbol}`;
   return `fund:${h.seriesKey}`;
 }
 
@@ -75,9 +88,31 @@ function fundPriceAt(seriesKey: string, ymd: string, isToday: boolean, now: Date
   return fu && validPrice(fu.unit_value) ? { price: fu.unit_value, currency: fu.currency, as_of: fu.day } : null;
 }
 
+type OptionHolding = Extract<InstrumentHolding, { kind: "option" }>;
+
+/**
+ * One share of an option contract on `ymd`: its intrinsic value from the underlying's close — the
+ * as-traded close of a past day, today's price today — while unexpired, 0 on and after the expiry
+ * (`optionIntrinsicPerShare`). Time value is not priced (no history source exists for a contract).
+ * A missing underlying close is an error, never a book mark: the contract is valued from the
+ * underlying's series only.
+ */
+function optionPriceAt(h: OptionHolding, ymd: string, underlyingClose: () => number | null): HoldingPrice {
+  if (ymd >= h.expiry) return { price: 0, currency: h.quote, as_of: ymd };
+  const close = underlyingClose();
+  if (!validPrice(close)) {
+    throw new Error(
+      `option ${h.occSymbol}: cannot mark ${ymd} (no ${h.underlying} close on or before ${ymd}); a contract is valued at intrinsic value from its underlying's series only`
+    );
+  }
+  return { price: optionIntrinsicPerShare(h, close, ymd), currency: h.quote, as_of: ymd };
+}
+
 /** A stored day's price (no live input). */
 function pastPriceUncached(h: InstrumentHolding, ymd: string): HoldingPrice | null {
   if (h.kind === "fund") return fundPriceAt(h.seriesKey, ymd, false, new Date());
+  // The contracts held on `ymd` are worth the underlying's intrinsic value as traded that day.
+  if (h.kind === "option") return optionPriceAt(h, ymd, () => equityAsTradedClose(h.underlying, ymd));
   const ticker = tickerOf(h)!;
   // A stock's shares on `ymd` are counted as held then: its price as traded then
   // (`equitySplits.ts`). Today's price needs none — no split is recorded before its ex-date.
@@ -139,6 +174,9 @@ export function holdingPriceAt(
   if (ymd === today) {
     if (h.kind === "stock") return stockTodayPrice(h.ticker, h.quote, now);
     if (h.kind === "coin") return coinTodayPrice(h.priceTicker, now);
+    // Today's intrinsic value reads the underlying's today price (live in session, the held print
+    // after the close, else its newest bar) — the same choice the underlying's own account makes.
+    if (h.kind === "option") return optionPriceAt(h, ymd, () => stockTodayPrice(h.underlying, h.quote, now)?.price ?? null);
     return fundPriceAt(h.seriesKey, ymd, true, now);
   }
   if (ymd > today || opts?.now !== undefined) return pastPriceUncached(h, ymd);

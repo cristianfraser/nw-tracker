@@ -12,6 +12,7 @@ export function accountRowForId(accountId: number): AccountRow | null {
     .prepare(`SELECT notes, import_key, equity_ticker FROM accounts WHERE id = ?`)
     .get(accountId) as { notes: string | null; import_key: string | null; equity_ticker: string | null } | undefined;
   return {
+    account_id: accountId,
     bucket_slug,
     group_slug: dashboardBucketForAssetGroupSlug(bucket_slug) ?? bucket_slug,
     notes: row?.notes ?? null,
