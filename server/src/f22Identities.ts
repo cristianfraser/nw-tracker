@@ -1,12 +1,13 @@
 /**
  * The identities the Formulario 22 prints between its codes, in one place: the compact-form reader
  * (`siiF22Compacto`) checks a filed return against them and the draft (`f22Draft`) computes its
- * codes with them, so the two cannot disagree. A leaf: no imports. Line numbers are the AT2026
+ * codes with them, so the two cannot disagree. Imports only the dated law (`legalParameters`, a
+ * leaf). Line numbers are the AT2026
  * form's (`f22_at2026.pdf`, sii.cl/ayudas/formularios): línea 7 = 110 (honorarios), 8 = 155,
  * 9 = 152, 10 = 1032, 12 = 1104 («Otras rentas de fuente extranjera»), 13 = 1098 / 1030 / 161
  * (sueldos, fuente nacional / extranjera), 14 = 159 / 748 / 749 (incrementos), 17 = 169, 19 = 158,
  * 21 = 750 / 751, 23 = 765, 24 = 170, 25 = 157, 34 = 136, 39 = 1637, 45 = 1018, 46 = 162, 48 = 610,
- * 49 = 746, 52 = 304.
+ * 49 = 746, 52 = 304, 66 = 1829 / 1830, 69 = 951 / 952, 72 = 32 / 76 / 34, 95 = 833, 109 = 305.
  *
  *   955 = 1849 + 1852 + 1857 + 1862 + 1873 + 1865   (línea 5: rentas efectivas sin contabilidad
  *                                         completa; 1849 = rents determined by contract, art. 20 N°1 b))
@@ -24,11 +25,27 @@
  *                                         credit a Chilean company passes through with its dividends
  *                                         or retiros, Certificados 43 / 44 / 70 / 71 — never drafted,
  *                                         read from a filed form)
- *   305 = 304 + 1830 − 198 + 900         (1830: art. 107's 10% impuesto único, outside IGC; 198:
- *                                         retentions on fees credited; 900: the pension
- *                                         contributions charged on them)
+ *    32 = max(0, 158)                    (línea 72, a non-resident: «Al código 32 se debe trasladar la
+ *                                         cantidad positiva registrada en el código 158 de la línea 19»
+ *                                         — Instrucciones 72.2 a), AT2026; the rebajas of líneas 20–23
+ *                                         never reach it, so 750 / 765 do not reduce the Adicional)
+ *    34 = max(0, round(35% × 32) − 76)   (72.2 b)–d): the IA at 35 % less the credits of code 76 —
+ *                                         IDPC, ex-art. 21, IPE of art. 41 A — none of them drafted;
+ *                                         «No se debe registrar ninguna cantidad en este código, cuando
+ *                                         el monto registrado en el código 76 sea de un monto igual o
+ *                                         superior al impuesto determinado»)
+ *   305 = 304 + 34 + 952 + 1830 − 198 − 833 + 900
+ *                                        (líneas 53–83 add to the IGC: 34 the Adicional, 952 Ley
+ *                                         20.712 art. 82's 10 % único, 1830 art. 107's 10% único;
+ *                                         líneas 84–105 deduct: 198 retentions on fees, 833 the
+ *                                         retentions on the incomes of 955 / 32 / 951 / 1829 (línea 95,
+ *                                         never drafted); 900 the pension contributions charged)
  *    91 = 90 + 39                        (the payment section, when printed)
+ *
+ * A departure year's form carries both bases (the resident part's 157 and the non-resident part's
+ * 32): the 32 = 158 identity is checked only on a form without 157 (`f22Draft.ts`, «split»).
  */
+import { IMPUESTO_ADICIONAL_RATE } from "./legalParameters.js";
 export type F22CodeAmounts = ReadonlyMap<number, number> | Readonly<Record<number, number>>;
 
 function reader(codes: F22CodeAmounts): (code: number) => number | undefined {
@@ -94,7 +111,18 @@ export function f22Code170(codes: F22CodeAmounts): number {
 
 export function f22Code305(codes: F22CodeAmounts): number {
   const v = reader(codes);
-  return (v(304) ?? 0) + (v(1830) ?? 0) - (v(198) ?? 0) + (v(900) ?? 0);
+  return (v(304) ?? 0) + (v(34) ?? 0) + (v(952) ?? 0) + (v(1830) ?? 0) - (v(198) ?? 0) - (v(833) ?? 0) + (v(900) ?? 0);
+}
+
+/** Code 32 (línea 72): the positive 158, the Impuesto Adicional's base. */
+export function f22Code32(codes: F22CodeAmounts): number {
+  return Math.max(0, reader(codes)(158) ?? 0);
+}
+
+/** Code 34 (línea 72): the Impuesto Adicional at 35 % on 32 less the credits of 76, never negative. */
+export function f22Code34(codes: F22CodeAmounts): number {
+  const v = (c: number) => reader(codes)(c) ?? 0;
+  return Math.max(0, Math.round(IMPUESTO_ADICIONAL_RATE * v(32)) - v(76));
 }
 
 export function f22Code91(codes: F22CodeAmounts): number {
@@ -114,10 +142,15 @@ export function f22IdentityViolations(codes: ReadonlyMap<number, number>, label:
   };
   need(304);
   need(158);
-  const checks: [string, number, number][] = [
-    ["305 = 304 + 1830 − 198 + 900", need(305), f22Code305(codes)],
-    ["170 = 158 − 750 − 765", need(170), f22Code170(codes)],
-  ];
+  const checks: [string, number, number][] = [["305 = 304 + 34 + 952 + 1830 − 198 − 833 + 900", need(305), f22Code305(codes)]];
+  const nonresidentForm = codes.has(32) && !codes.has(157);
+  // 170 is the IGC's base: a non-resident's form (32 without 157) prints no IGC lines.
+  if (!nonresidentForm) checks.push(["170 = 158 − 750 − 765", need(170), f22Code170(codes)]);
+  if (codes.has(32) || codes.has(34)) {
+    checks.push(["34 = max(0, 35% × 32 − 76)", codes.get(34) ?? 0, f22Code34(codes)]);
+    // A form with no IGC (157) is a non-resident's: its base is the sub total.
+    if (!codes.has(157)) checks.push(["32 = max(0, 158)", codes.get(32) ?? 0, f22Code32(codes)]);
+  }
   if (codes.has(91)) checks.push(["91 = 90 + 39", need(91), f22Code91(codes)]);
   if (codes.has(955) && F22_LINE5_CODES.some((c) => codes.has(c))) {
     checks.push(["955 = Σ línea 5", need(955), f22Code955(codes)]);

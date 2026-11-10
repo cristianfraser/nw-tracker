@@ -31,6 +31,7 @@
  * each code so the F22 draft only picks.
  */
 import { IDPC_RATE } from "./legalParameters.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { ipcReajuste, monthBeforeYmd, type OfficialIpcLookup } from "./siiOfficialIpc.js";
 import type { TaxLotDisposal, TaxLotSlice } from "./taxLots.js";
 import {
@@ -125,6 +126,8 @@ export type UsdFxTaxGainsOptions = {
   roundPct?: boolean;
   /** The official IPC: the latest stored month and the lookup — the DB's unless injected (tests). */
   ipc?: { latestMonth: string; lookup: OfficialIpcLookup };
+  /** The disposals counted: the whole year unless one part of a departure year (`taxResidency.ts`). */
+  window?: DateWindow;
 };
 
 /**
@@ -142,7 +145,11 @@ export function usdFxTaxGainsForYear(
   const ipc = ipcReajuste({ round: roundPct, lookup: opts.ipc?.lookup, latestMonth: opts.ipc?.latestMonth });
   const { toMonth: november, provisional: reajusteIsEstimate } = ipc.december(incomeYear);
 
-  const inYear = (d: UsdFxDisposal) => d.date.startsWith(`${incomeYear}-`);
+  const window = opts.window ?? wholeYearWindow(incomeYear);
+  if (!window.fromYmd.startsWith(`${incomeYear}-`) || !window.throughYmd.startsWith(`${incomeYear}-`)) {
+    throw new Error(`usd fx ${incomeYear}: window ${window.fromYmd}→${window.throughYmd} is outside the year`);
+  }
+  const inYear = (d: UsdFxDisposal) => inDateWindow(d.date, window);
   const byDate = <T extends { date: string; movementId: number }>(a: T, b: T) =>
     a.date.localeCompare(b.date) || a.movementId - b.movementId;
 

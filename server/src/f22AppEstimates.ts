@@ -14,6 +14,7 @@
  * included (interest effectively paid). 2025: 4.892.161 vs 4.799.108 reported by the lender (+1,9%).
  */
 import { db } from "./db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotEvent } from "./taxLots.js";
 
@@ -55,7 +56,7 @@ export function fundTaxLotEvents(accountId: number): TaxLotEvent[] {
 
 export type FundRedemptionEstimate = { redemptionsClp: number; gainClp: number; lossClp: number };
 
-export function fundRedemptionGainsForYear(incomeYear: number): FundRedemptionEstimate {
+export function fundRedemptionGainsForYear(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): FundRedemptionEstimate {
   const { pct, toMonth } = yearEndPct();
   const accounts = db
     .prepare(
@@ -67,7 +68,7 @@ export function fundRedemptionGainsForYear(incomeYear: number): FundRedemptionEs
   let loss = 0;
   for (const a of accounts) {
     for (const d of realizeTaxLots(fundTaxLotEvents(a.id), "fifo").disposals) {
-      if (!d.date.startsWith(`${incomeYear}-`)) continue;
+      if (!inDateWindow(d.date, window)) continue;
       const cost = d.slices.reduce((s, x) => s + x.cost * (1 + pct(monthBeforeYmd(x.acquiredOn), monthBeforeYmd(d.date)) / 100), 0);
       const result = (d.proceeds - cost) * (1 + pct(monthBeforeYmd(d.date), toMonth(incomeYear)) / 100);
       redemptions += d.proceeds;
@@ -82,7 +83,11 @@ export function fundRedemptionGainsForYear(incomeYear: number): FundRedemptionEs
  * The mortgage interest paid in the year, reajustada to December: every loan's, or one loan's when
  * `loanAccountId` is given (each lender files its own DJ 1898; the art. 55 bis cap applies to the sum).
  */
-export function mortgageInterestForYear(incomeYear: number, loanAccountId?: number): number {
+export function mortgageInterestForYear(
+  incomeYear: number,
+  loanAccountId?: number,
+  window: DateWindow = wholeYearWindow(incomeYear)
+): number {
   const { pct, toMonth } = yearEndPct();
   const rows = db
     .prepare(
@@ -92,13 +97,14 @@ export function mortgageInterestForYear(incomeYear: number, loanAccountId?: numb
           AND (? IS NULL OR p.loan_account_id = ?)`
     )
     .all(`${incomeYear}-%`, loanAccountId ?? null, loanAccountId ?? null) as { occurred_on: string; interes_clp: number; payment_currency: string }[];
-  for (const r of rows) {
+  const inWindow = rows.filter((r) => inDateWindow(r.occurred_on, window));
+  for (const r of inWindow) {
     if (r.payment_currency !== "clp") {
       throw new Error(`mortgage interest ${r.occurred_on}: paid in ${r.payment_currency}, expected pesos`);
     }
   }
   return Math.round(
-    rows.reduce((s, r) => s + r.interes_clp * (1 + pct(monthBeforeYmd(r.occurred_on), toMonth(incomeYear)) / 100), 0)
+    inWindow.reduce((s, r) => s + r.interes_clp * (1 + pct(monthBeforeYmd(r.occurred_on), toMonth(incomeYear)) / 100), 0)
   );
 }
 

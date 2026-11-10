@@ -9,6 +9,7 @@ import { db } from "./db.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { ART107_INR_FROM } from "./art107TaxGains.js";
 import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./f22Draft.js";
+import type { TaxResidencyPeriod } from "./taxResidency.js";
 
 export type F22RowSection =
   | "income"
@@ -66,8 +67,14 @@ const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [751, "memo"],
   [170, "subtotal"],
   [157, "tax"],
+  [32, "tax"],
+  [76, "credit"],
+  [34, "tax"],
+  [951, "tax"],
+  [952, "tax"],
   [1829, "tax"],
   [1830, "tax"],
+  [833, "credit"],
   [136, "credit"],
   [1637, "credit"],
   [162, "credit"],
@@ -132,7 +139,7 @@ export function buildF22Payload(taxYear: number) {
     ...PAYMENT_SECTION_CODES.map((c) => [c, "payment"] as [number, F22RowSection]),
   ]);
   // A code only the draft has, at zero, says nothing (a year without crypto sales, dividends…).
-  const chain = new Set([158, 170, 157, 304, 305]);
+  const chain = new Set(d.regime === "nonresident" ? [158, 32, 34, 305] : [158, 170, 157, 304, 305]);
   const shown = (c: number) =>
     d.filed?.[c] != null || d.informed[c] != null || (d.draft[c] ?? 0) !== 0 || (d.taxComputed && chain.has(c));
   for (const c of [...all]) if (!shown(c)) all.delete(c);
@@ -157,12 +164,45 @@ export function buildF22Payload(taxYear: number) {
       estimated: d.estimatedCodes.includes(code),
     };
   });
+  // The income tax determined: the IGC (304) plus, for a non-resident or a departure year, the Impuesto Adicional (34).
+  const determined = (codes: Record<number, number> | null) => (codes == null ? null : (codes[304] ?? 0) + (codes[34] ?? 0));
+  const windowPayload = (w: { fromYmd: string; throughYmd: string }) => ({ from: w.fromYmd, through: w.throughYmd });
+  const residencyPeriod = (p: TaxResidencyPeriod) => ({ id: p.id, jurisdiction: p.jurisdiction, from: p.fromDate, to: p.toDate, note: p.note });
   return {
     tax_year: d.taxYear,
     income_year: d.incomeYear,
     available_tax_years: availableF22TaxYears(),
     provisional: d.provisional,
     base: d.base,
+    regime: d.regime,
+    residency: {
+      regime: d.regime,
+      declared: d.residency.year.declared,
+      cl: d.residency.year.cl,
+      us: d.residency.year.us,
+      assumption: d.residency.assumption,
+      periods: d.residency.year.periods.map(residencyPeriod),
+      resident_window: d.residency.residentWindow == null ? null : windowPayload(d.residency.residentWindow),
+      /** LIR art. 103's departure return (prorated brackets and credits) is not built: the resident part uses the full-year table. */
+      art103_departure_return_built: false,
+    },
+    nonresident:
+      d.nonresident == null
+        ? null
+        : {
+            window: windowPayload(d.nonresident.window),
+            tax_computed: d.nonresident.taxComputed,
+            codes: Object.fromEntries(Object.entries(d.nonresident.codes).filter(([, v]) => v !== 0)),
+            taxable_rent_clp: d.nonresident.rentals.taxableRentClp,
+            exempt_rent_clp: d.nonresident.rentals.exemptRentClp,
+            places: d.nonresident.rentals.places.map((p) => ({ slug: p.slug, label: p.label, dfl2: p.dfl2, credits: p.credits, rent_clp: p.rentClp })),
+            art107: {
+              sales: d.nonresident.art107.gains.disposals.length + d.nonresident.art107.gains.inrDisposals.length,
+              result_clp: d.nonresident.art107.codes[1814],
+              tax_clp: d.nonresident.art107.codes[1830],
+            },
+          },
+    excluded: d.excluded.map((x) => ({ kind: x.kind, reason: x.reason, clp: x.clp, count: x.count, window: windowPayload(x.window) })),
     tax_computed: d.taxComputed,
     uta_clp: d.utaClp,
     uta_provisional: d.utaProvisional,
@@ -190,8 +230,8 @@ export function buildF22Payload(taxYear: number) {
       return { ...payrollWithholdingYear(d.incomeYear, checks), months: payrollWithholdingMonths(d.incomeYear, checks) };
     })(),
     rows,
-    tax_filed: d.filed ? (d.filed[304] ?? 0) : null,
-    tax_draft: d.taxComputed ? (d.draft[304] ?? 0) : null,
+    tax_filed: determined(d.filed),
+    tax_draft: d.taxComputed ? determined(d.draft) : null,
     crypto: {
       method: d.crypto.method,
       fee_policy: d.crypto.feePolicy,

@@ -32,6 +32,7 @@
 import { listArt107Accounts, type Art107Kind } from "./art107Instruments.js";
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { equityCloseEod, equityQuoteCurrency } from "./equityQuote.js";
 import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
@@ -168,11 +169,33 @@ export type Art107YearResult = {
   provisional: boolean;
 };
 
+/**
+ * How a year's art. 107 sales are priced: the resident's choice between the two cost options
+ * (`default`, the lower result) or the general-rule cost alone, `cost_paid` — what a taxpayer
+ * «sin domicilio ni residencia en Chile» must use (art. 107 N°7: «deberán considerar el valor de
+ * adquisición y/o aporte conforme a la letra b) anterior»; the Dec-31 close is the residents'
+ * option, `taxResidency.ts`).
+ */
+export type Art107CostChoice = "default" | "cost_paid";
+
+export type Art107YearOptions = {
+  /** The sales counted: the whole year unless one part of a departure year. */
+  window?: DateWindow;
+  costChoice?: Art107CostChoice;
+  /** False: no loss carried into 1815 (the departure year's second part; the first part keeps the one carry). */
+  carry?: boolean;
+};
+
 export function art107GainsForYear(
   year: number,
   lotMethod: TaxLotMethod,
-  todayYmd: string = chileWallClockNow().ymd
+  todayYmd: string = chileWallClockNow().ymd,
+  options: Art107YearOptions = {}
 ): Art107YearResult {
+  const window = options.window ?? wholeYearWindow(year);
+  if (!window.fromYmd.startsWith(`${year}-`) || !window.throughYmd.startsWith(`${year}-`)) {
+    throw new Error(`Art. 107 ${year}: window ${window.fromYmd}→${window.throughYmd} is outside the year`);
+  }
   const provisional = todayYmd <= `${year}-12-31`;
   const ipcBetween = lazyIpcBetween();
   const all: Art107Disposal[] = [];
@@ -184,7 +207,7 @@ export function art107GainsForYear(
       throw new Error(`Art. 107: account ${a.id} (${a.ticker}) trades in ${currency}, expected pesos`);
     }
     for (const d of realizeTaxLots(events, lotMethod).disposals) {
-      if (!d.date.startsWith(`${year}-`)) continue;
+      if (!inDateWindow(d.date, window)) continue;
       const r = art107DisposalClp(d, ipcBetween, art107CloseDec31, a.ticker, !provisional);
       all.push({
         accountId: a.id,
@@ -211,7 +234,7 @@ export function art107GainsForYear(
       ? null
       : disposals.reduce((s, d) => s + d.resultClp.close_dec31!, 0),
   };
-  const defaultOption = pickArt107DefaultOption(totalClp);
+  const defaultOption = options.costChoice === "cost_paid" ? "cost_paid" : pickArt107DefaultOption(totalClp);
   // Under the default option every taxed sale has a result: `close_dec31` wins only when none is null.
   const sumKind = (kind: Art107Kind) =>
     disposals.filter((d) => d.kind === kind).reduce((s, d) => s + d.resultClp[defaultOption]!, 0);
@@ -275,12 +298,13 @@ export function art107ForTaxYear(
   taxYear: number,
   lotMethod: TaxLotMethod,
   todayYmd: string,
-  filedFor: (taxYear: number) => Readonly<Record<number, number>> | null
+  filedFor: (taxYear: number) => Readonly<Record<number, number>> | null,
+  options: Art107YearOptions = {}
 ): Art107TaxYear {
   const incomeYear = taxYear - 1;
-  const gains = art107GainsForYear(incomeYear, lotMethod, todayYmd);
+  const gains = art107GainsForYear(incomeYear, lotMethod, todayYmd, options);
   const carry: Art107LossCarry =
-    `${incomeYear - 1}-12-31` < ART107_TAX_FROM
+    options.carry === false || `${incomeYear - 1}-12-31` < ART107_TAX_FROM
       ? { clp: 0, source: null }
       : art107LossCarry(
           taxYear,
@@ -324,7 +348,7 @@ export type Art107Distribution = {
  * accounts, in pesos (a fund's reparto, a Chilean share's dividend — both dividends afectos al
  * IGC, F22 línea 2). Throws on one in another currency.
  */
-export function art107DistributionsForYear(year: number): Art107Distribution[] {
+export function art107DistributionsForYear(year: number, window: DateWindow = wholeYearWindow(year)): Art107Distribution[] {
   const out: Art107Distribution[] = [];
   const stmt = db.prepare(
     `SELECT id, occurred_on, amount, currency FROM movements
@@ -333,6 +357,7 @@ export function art107DistributionsForYear(year: number): Art107Distribution[] {
   for (const a of listArt107Accounts()) {
     const rows = stmt.all(a.id, `${year}-%`) as { id: number; occurred_on: string; amount: number; currency: string }[];
     for (const r of rows) {
+      if (!inDateWindow(r.occurred_on, window)) continue;
       if (r.currency !== "clp") throw new Error(`Art. 107: distribution ${r.id} of ${a.ticker} is in ${r.currency}, expected pesos`);
       out.push({ date: r.occurred_on, movementId: r.id, accountId: a.id, accountName: a.name, amountClp: r.amount });
     }

@@ -64,6 +64,14 @@ export function iuscTax(taxableClp: number, utmClp: number, incomeYear: number):
 
 /** Foreign tax credit cap: 35% of the foreign income's gross amount (art. 41 A). */
 export const FOREIGN_TAX_CREDIT_CAP = 0.35;
+
+/**
+ * The Impuesto Adicional on a non-resident natural person's Chilean-source income not covered by
+ * arts. 58 and 59 — a rented apartment's rent, art. 20 N°1 b): LIR art. 60 inc. 1, «pagarán respecto
+ * de ellas un impuesto adicional de 35%» (read 2026-11-10; the AT2026 F22 línea 72 instructions,
+ * 72.2 b), apply the same rate to code 32). Protocol 16 of the Chile–US convention caps it at 35 %.
+ */
+export const IMPUESTO_ADICIONAL_RATE = 0.35;
 /**
  * The first income year the Chile–US double-taxation treaty (signed 2010, in force 2024-02-01)
  * applies to income taxes other than withholding: taxable periods beginning on or after 1 January

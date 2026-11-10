@@ -16,6 +16,7 @@
 import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "./cryptoTaxLotEvents.js";
 import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { db } from "./db.js";
+import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotMethod } from "./taxLots.js";
 
@@ -51,8 +52,13 @@ export type CryptoYearTaxResult = {
 
 export function cryptoTaxGainsForYear(
   incomeYear: number,
-  opts: { method?: TaxLotMethod; feePolicy?: CryptoFeePolicy; roundPct?: boolean } = {}
+  opts: { method?: TaxLotMethod; feePolicy?: CryptoFeePolicy; roundPct?: boolean; window?: DateWindow } = {}
 ): CryptoYearTaxResult {
+  // The sales counted: the whole year, or one part of a departure year (`taxResidency.ts`).
+  const window = opts.window ?? wholeYearWindow(incomeYear);
+  if (!window.fromYmd.startsWith(`${incomeYear}-`) || !window.throughYmd.startsWith(`${incomeYear}-`)) {
+    throw new Error(`crypto ${incomeYear}: window ${window.fromYmd}→${window.throughYmd} is outside the year`);
+  }
   const method = opts.method ?? "average";
   const feePolicy = opts.feePolicy ?? "excluded";
   const roundPct = opts.roundPct ?? true;
@@ -63,7 +69,7 @@ export function cryptoTaxGainsForYear(
     const coin = (db.prepare(`SELECT equity_ticker FROM accounts WHERE id = ?`).get(accountId) as { equity_ticker: string })
       .equity_ticker;
     for (const d of realizeTaxLots(loadCryptoTaxLotEvents(accountId, feePolicy), method).disposals) {
-      if (!d.date.startsWith(`${incomeYear}-`)) continue;
+      if (!inDateWindow(d.date, window)) continue;
       const saleMonthBefore = monthBeforeYmd(d.date);
       const costReajustado = d.slices.reduce(
         (s, x) => s + x.cost * (1 + ipc.pct(monthBeforeYmd(x.acquiredOn), saleMonthBefore) / 100),
