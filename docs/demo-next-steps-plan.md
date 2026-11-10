@@ -46,3 +46,30 @@ triages what is left into three waves of agent work and says what is dropped. Fa
   1040 lines; each with the source quoted in the module comment and a test on a filed return.
 - Each wave: `cd server && npm run test`, both generations, the local demo pair; merge to `main`
   on the user's word; one demo release after the last wave.
+
+## Wave A status (2026-11-10): built, merged into the integration branch, green
+
+- **A1 (app, `us-a1-app`):** `accountIdForEquityTicker(ticker, {brokerCashAccountId})` tells two
+  holders apart by the cash leg their shares trade against (the Fintual import passes its USD
+  account); the income aggregates and chart carry a `rent` bucket; the dollar checking account's
+  rows reach the purchase notes, the refunds (dollars, pesos at the day's rate) and the deposits
+  reconciliation (dollar deposits priced like their deposit event; the dollar checking excluded
+  from the capital-return and deposit-target pools) — mirror pairs stay peso-only by nature
+  (stated in the module); DJ 1898 columns are headed by the lender (`lenderNames.ts`, the role
+  through the vendor catalog); the DAP account carries `import:dap|key=dap`
+  (`TERM_DEPOSIT_ACCOUNT_IMPORT_KEY`; it had no key at all); the `merchantExpenseNotes` flake was
+  the test snapshot restore stripping `flow_id` from a flow-keyed table (`snapshotTables.ts`).
+- **A2 (generator + copy, `us-a2-gen`):** the Roth IRA has a cash sweep («Roth IRA cash», always
+  0 at day end, out of the nav) so its SPY dividends are a `dividend_payout` + same-day
+  `stock_buy` pair, no withholding, and `usRetirementAccountIds("roth_ira")` keeps them out of the
+  F22's dividends and the generator's detail rows; the US salary gets a US$10k step at the 2025
+  review and a 12 % bonus in 2026 (`raiseExtraUsd`, `bonus.fractionByYear`), IBKR deposits
+  US$34,8k → 46,4k over the US months, `netWorthTargetUsd` 445k → 460k (US$460.994 today); the
+  About story and the tour's sidebar and retirement steps name the two rentals, the cash
+  vehicles, the two cards and the Roth's dividends (every tour target verified).
+- Checks on the merged tree: typecheck, client 85 files / 475 tests, server 499 files / 3296
+  tests, both generations (invariants unchanged: unexplained cash worst 37.040, 17 months of the
+  fund above the band during the pie years), the local demo pair: the income chart's Rent series
+  and all seven tour steps read on the dashboard, Retiro and tax pages.
+- Noted, not done: the Roth sweep's dollars pass through `usdCashTaxLotEvents` as zero-gain
+  same-day disposals (listed, never taxed); a Roth-aware skip there is a tidy follow-up.
