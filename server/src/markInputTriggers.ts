@@ -401,8 +401,22 @@ const SPECS_270: readonly TriggerSpec[] = [
   },
 ];
 
+/**
+ * Migration 304: an option contract's terms (`option_contracts`) decide its account's mark on
+ * every day — the underlying, the strike and the expiry are what the intrinsic value is read
+ * from (`holdingPrices.ts`) — so a change re-values the account's whole history.
+ */
+export const OPTION_CONTRACTS_SPEC: TriggerSpec = {
+  table: "option_contracts",
+  targets: (r) => [{ account: `${r}.account_id`, date: FULL_HISTORY }],
+  watch: ["account_id", "underlying_ticker", "right", "strike", "expiry", "multiplier"],
+};
+
+/** Migration 304 (frozen): 270's specs plus the option contract terms. */
+const SPECS_304: readonly TriggerSpec[] = [...SPECS_270, OPTION_CONTRACTS_SPEC];
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_270;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_304;
 
 /** The trim rule of a mark row's table; a table the newest specs do not watch throws. */
 export function markInputRuleForSource(source: string): MarkInputRule {
@@ -496,6 +510,8 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "us_f1040_returns",
   "us_f1040_filed_lines",
   "us_f1040_settlements",
+  "option_contracts",
+  "option_assignments",
 ];
 
 /**
@@ -565,6 +581,17 @@ export function runMarkInputChangeTriggers260(dbi: DatabaseType): void {
 /** Migration 265 hook: watch `equity_splits`. */
 export function runMarkInputChangeTriggers265(dbi: DatabaseType): void {
   installMarkInputChangeTriggers(dbi, SPECS_265);
+}
+
+/**
+ * Migration 304 hook: watch `option_contracts` (its write triggers: `optionContracts304.ts`). Only
+ * the new table's triggers are created — re-installing every mark trigger would put them after
+ * the flow triggers of 279 in firing order (SQLite fires the newest trigger first), which
+ * `markInputChanges.test.ts` reads as the mark row being the last one logged.
+ */
+export function runMarkInputChangeTriggers304(dbi: DatabaseType): void {
+  for (const k of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_${OPTION_CONTRACTS_SPEC.table}_${k}"`);
+  for (const sql of markInputTriggerSql(OPTION_CONTRACTS_SPEC)) dbi.exec(sql);
 }
 
 /**
