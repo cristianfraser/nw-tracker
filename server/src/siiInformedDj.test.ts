@@ -49,13 +49,13 @@ describe("parseF22CompactoText", () => {
   it("the result is 304 less the fee retentions (198) plus the pension charge on them (900)", () => {
     const codes = new Map([[158, 100], [170, 100], [304, -756], [198, 903], [900, 854], [305, -805]]);
     expect(() => assertF22Identities(codes)).not.toThrow();
-    expect(() => assertF22Identities(new Map([...codes, [305, -756]]))).toThrow(/305 = 304 \+ 1830 − 198 \+ 900/);
+    expect(() => assertF22Identities(new Map([...codes, [305, -756]]))).toThrow(/305 = 304 \+ 34 \+ 952 \+ 1830 − 198 − 833 \+ 900/);
   });
 
   it("the result adds art. 107's 10% impuesto único (1830) to 304", () => {
     const codes = new Map([[158, 100], [170, 100], [304, 407_751], [1830, 18_000], [305, 425_751]]);
     expect(() => assertF22Identities(codes)).not.toThrow();
-    expect(() => assertF22Identities(new Map([...codes, [305, 407_751]]))).toThrow(/305 = 304 \+ 1830/);
+    expect(() => assertF22Identities(new Map([...codes, [305, 407_751]]))).toThrow(/305 = 304 \+ 34 \+ 952 \+ 1830/);
   });
 });
 
