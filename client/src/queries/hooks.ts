@@ -910,6 +910,11 @@ export function useTaxReturn(taxYear: number | null) {
   });
 }
 
+/** The declared tax residency periods (Settings panel). */
+export function useTaxResidency() {
+  return useQuery({ queryKey: queryKeys.taxResidency(), queryFn: () => api.taxResidency() });
+}
+
 /** The 1040 of a US tax year; idle while `taxYear` is null (the año tributario has no US return). */
 export function useUsTaxReturn(taxYear: number | null) {
   return useQuery({

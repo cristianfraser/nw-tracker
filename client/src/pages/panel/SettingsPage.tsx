@@ -4,6 +4,7 @@ import { useTranslation } from "../../i18n";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { CHART_STYLES, type ChartStyle } from "../../chartStylePreference";
 import { ChartStylesPreviewModal } from "../../components/charts/ChartStylesPreviewModal";
+import { TaxResidencySection } from "../../components/panel/TaxResidencySection";
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -81,6 +82,7 @@ export function SettingsPage() {
       </div>
       {/* Mounted only while open: the samples draw every style at once. */}
       {previewOpen ? <ChartStylesPreviewModal open onClose={() => setPreviewOpen(false)} /> : null}
+      <TaxResidencySection />
     </>
   );
 }

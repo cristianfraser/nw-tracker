@@ -34,6 +34,8 @@ export const resources = {
   income: (): Invalidation[] => [{ queryKey: queryKeys.income() }],
   /** Every año tributario's draft (a rent mark or a place's DFL-2 flag moves its codes). */
   taxReturn: (): Invalidation[] => [{ queryKey: queryKeys.taxReturnAll() }],
+  /** A declared residency period: the list, and every año tributario's regime. */
+  taxResidency: (): Invalidation[] => [{ queryKey: queryKeys.taxResidency() }, { queryKey: queryKeys.taxReturnAll() }],
   /** One account's page bundle (monthly) in a unit. */
   accountPage: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
     { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
