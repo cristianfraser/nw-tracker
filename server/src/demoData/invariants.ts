@@ -50,7 +50,18 @@ export type DemoDbReport = {
    */
   returns: {
     f1040: { taxYear: number; line24: number; line35a: number; line37: number; settlementMovementId: number | null }[];
-    f22: { taxYear: number; c1030: number; c748: number; c1018: number; c304: number; c305: number; creditApplied: number }[];
+    f22: {
+      taxYear: number;
+      regime: "resident" | "nonresident" | "split";
+      c1030: number;
+      c748: number;
+      c1018: number;
+      c32: number;
+      c34: number;
+      c304: number;
+      c305: number;
+      creditApplied: number;
+    }[];
   };
   netWorthClp: number;
   netWorthUsd: number;
@@ -368,16 +379,38 @@ function checkReturnsAcrossTheBorder(ledger: Ledger, today: Ymd, problems: strin
     if (year < CHILE_US_TREATY_FIRST_INCOME_YEAR) problems.push(`F22 AT${taxYear}: a US salary before the treaty`);
     const d = buildF22Draft(taxYear, today);
     const applied = d.foreignSalaryCredit?.appliedClp ?? 0;
-    if (!((filed.get(1030) ?? 0) > 0)) problems.push(`F22 AT${taxYear}: a US salary in ${year} but no code 1030`);
-    if (!(applied > 0)) problems.push(`F22 AT${taxYear}: no credit for the US tax on the salary`);
-    if ((filed.get(1018) ?? 0) < applied) problems.push(`F22 AT${taxYear}: 1018 ${filed.get(1018)} below the salary credit ${applied}`);
-    if (d.foreignSalary.usTaxSource !== "filed") problems.push(`F22 AT${taxYear}: the credit reads the ${d.foreignSalary.usTaxSource} 1040, not the filed one`);
+    const stubsInYear = ledger.usPayslips.filter((p) => p.payDate.startsWith(`${year}-`)).length;
+    // The stubs of the resident part are declared (1030, credited); those of a non-resident window are
+    // not — they must be in the excluded list, with their count (the declared residency, taxResidency.ts).
+    // A non-resident year's display block is the non-resident window's: nothing of it is declared.
+    const declaredStubs = d.regime === "nonresident" ? 0 : d.foreignSalary.stubs.length;
+    if (declaredStubs > 0) {
+      if (!((filed.get(1030) ?? 0) > 0)) problems.push(`F22 AT${taxYear}: a US salary in ${year} but no code 1030`);
+      if (!(applied > 0)) problems.push(`F22 AT${taxYear}: no credit for the US tax on the salary`);
+      if ((filed.get(1018) ?? 0) < applied) problems.push(`F22 AT${taxYear}: 1018 ${filed.get(1018)} below the salary credit ${applied}`);
+      if (d.foreignSalary.usTaxSource !== "filed") problems.push(`F22 AT${taxYear}: the credit reads the ${d.foreignSalary.usTaxSource} 1040, not the filed one`);
+    } else if (filed.has(1030)) {
+      problems.push(`F22 AT${taxYear}: code 1030 filed while the US salary falls in the non-resident window`);
+    }
+    const excludedStubs = d.excluded.find((x) => x.kind === "us_salary")?.count ?? 0;
+    if (declaredStubs + excludedStubs !== stubsInYear) {
+      problems.push(`F22 AT${taxYear}: ${stubsInYear} US stubs, ${declaredStubs} declared + ${excludedStubs} excluded`);
+    }
     if ((filed.get(1030) ?? 0) !== (d.draft[1030] ?? 0)) problems.push(`F22 AT${taxYear}: filed 1030 ${filed.get(1030)} vs draft ${d.draft[1030]}`);
+    if (d.regime !== "resident") {
+      if ((filed.get(34) ?? 0) !== (d.draft[34] ?? 0)) problems.push(`F22 AT${taxYear}: filed 34 ${filed.get(34)} vs draft ${d.draft[34]}`);
+      if ((d.nonresident?.rentals.taxableRentClp ?? 0) > 0 && !((d.draft[34] ?? 0) > 0)) {
+        problems.push(`F22 AT${taxYear}: taxable rent in the non-resident part but no Impuesto Adicional (34)`);
+      }
+    }
     f22.push({
       taxYear,
+      regime: d.regime,
       c1030: filed.get(1030) ?? 0,
       c748: filed.get(748) ?? 0,
       c1018: filed.get(1018) ?? 0,
+      c32: filed.get(32) ?? 0,
+      c34: filed.get(34) ?? 0,
       c304: filed.get(304) ?? 0,
       c305: filed.get(305) ?? 0,
       creditApplied: applied,
