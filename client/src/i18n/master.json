@@ -6811,6 +6811,10 @@
           "en": "Total wages",
           "es": "Total sueldos"
         },
+        "2b": {
+          "en": "Taxable interest",
+          "es": "Intereses gravados"
+        },
         "9": {
           "en": "Total income",
           "es": "Ingreso total"

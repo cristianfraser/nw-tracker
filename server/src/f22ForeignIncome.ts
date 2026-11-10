@@ -28,13 +28,15 @@
  *   is lost (confidence: medium — the Suplemento's «crédito total disponible» worksheet is not
  *   reproduced line by line).
  *
- * **A foreign broker's interest** (`savings_earnings` on the dollar cash of a broker listed in
- * {@link FOREIGN_BROKERS}: IBKR's sweep interest) is «otras rentas de fuente extranjera» (línea 11,
+ * **A foreign broker's or a US bank's interest** (`savings_earnings` on the dollar cash of a broker
+ * listed in {@link FOREIGN_BROKERS}: IBKR's sweep interest; or on a dollar account at a US bank,
+ * `usBankAccounts.ts`) is «otras rentas de fuente extranjera» (línea 11,
  * code 1104, with the dividends). No US tax is withheld from a US resident's interest, so it carries
  * no credit. Converted like the dividends: at the 31-December observado.
  */
 import { db } from "./db.js";
 import { buildF1040Draft } from "./f1040Draft.js";
+import { US_BANK_ISSUERS } from "./usBankAccounts.js";
 import { filedF1040 } from "./f1040Filed.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "./legalParameters.js";
 import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
@@ -136,17 +138,19 @@ export function foreignSalaryForYear(incomeYear: number, todayYmd: string): F22F
   };
 }
 
-/** The interest the foreign brokers' dollar cash earned in `incomeYear`, at the year-end observado. */
+/** The interest the foreign brokers' dollar cash and the US bank accounts earned in `incomeYear`, at the year-end observado. */
 export function foreignInterestForYear(incomeYear: number, yearEndObservado: number): F22ForeignInterest {
   const brokerMatch = FOREIGN_BROKERS.map(() => `r.param LIKE ?`).join(" OR ");
+  const bankMatch = US_BANK_ISSUERS.map(() => "?").join(", ");
   const rows = db
     .prepare(
       `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency FROM movements m
         WHERE m.flow_kind = 'savings_earnings' AND m.occurred_on LIKE ?
-          AND m.account_id IN (SELECT r.account_id FROM account_roles r WHERE r.role = 'broker_cash' AND (${brokerMatch}))
+          AND (m.account_id IN (SELECT r.account_id FROM account_roles r WHERE r.role = 'broker_cash' AND (${brokerMatch}))
+               OR m.account_id IN (SELECT b.account_id FROM bank_account_numbers b WHERE b.currency = 'usd' AND b.issuer IN (${bankMatch})))
         ORDER BY m.occurred_on, m.id`
     )
-    .all(`${incomeYear}-%`, ...FOREIGN_BROKERS.map((b) => `${b}|%`)) as {
+    .all(`${incomeYear}-%`, ...FOREIGN_BROKERS.map((b) => `${b}|%`), ...US_BANK_ISSUERS) as {
     id: number;
     account_id: number;
     occurred_on: string;

@@ -12,6 +12,7 @@ import { F1040_LINES, type F1040Line } from "./f1040Identities.js";
 const ROW_SECTION: Record<F1040Line, UsTaxReturnRowSection> = {
   "1a": "income",
   "1z": "subtotal",
+  "2b": "income",
   "9": "subtotal",
   "10": "deduction",
   "11": "subtotal",
