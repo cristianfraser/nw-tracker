@@ -146,12 +146,11 @@ export function brokerageFlowKindCounterpartIsUsdCash(
   return kind === "dividend_payout" && form === "stock";
 }
 
-/** Quote currency of the stock behind a brokerage form (`.SN` = Bolsa de Santiago = clp). */
+/**
+ * Quote currency of the stock behind a brokerage form — always the server's fact (the account
+ * summary's `equity_quote_currency`, from the instrument registry), never read from the ticker.
+ */
 export type StockQuoteCurrency = "usd" | "clp";
-
-export function stockQuoteCurrencyForTicker(ticker: string | null | undefined): StockQuoteCurrency {
-  return ticker?.trim().toUpperCase().endsWith(".SN") ? "clp" : "usd";
-}
 
 /** Trade kinds settle in the stock's quote currency (buy/sell move cash ↔ shares). */
 function brokerageTradeFlowKind(kind: BrokerageFlowKind): boolean {

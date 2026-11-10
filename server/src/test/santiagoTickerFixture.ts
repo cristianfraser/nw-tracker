@@ -22,7 +22,7 @@ let createdAccount = false;
 export function installSantiagoTickerFixture(): void {
   const existing = db
     .prepare(
-      `SELECT COUNT(*) AS c FROM accounts WHERE upper(trim(COALESCE(equity_ticker, ''))) LIKE '%.SN'`
+      `SELECT COUNT(*) AS c FROM accounts a JOIN market_symbols m ON m.ticker = upper(trim(a.equity_ticker)) WHERE m.market_kind = 'santiago'`
     )
     .get() as { c: number };
   if (existing.c === 0) {

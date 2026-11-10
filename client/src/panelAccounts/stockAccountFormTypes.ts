@@ -5,7 +5,6 @@ import {
   brokerageFlowKindNeedsUsdForQuote,
   brokerageFlowKindShowsUnits,
   counterpartRoleForBrokerageFlowKind,
-  stockQuoteCurrencyForTicker,
 } from "./brokerageFlowKinds";
 
 export type InitialMovementDraft = {
@@ -65,17 +64,17 @@ export function removeMovementRow(
 }
 
 /**
- * Body for `POST /api/accounts/:id/movements` (brokerage accounts). Throws the localized
+ * Body for `POST /api/accounts/:id/movements` (brokerage accounts). `quote` is the currency the
+ * account's stock is quoted in as the server's instrument registry states it (the account summary's
+ * `equity_quote_currency`), undefined for an account that holds no stock. Throws the localized
  * message when a shown number field isn't a number (see `parseNumberInput`).
  */
 export function buildBrokerageMovementPostBody(
   row: InitialMovementDraft,
-  ticker?: string | null,
-  quoteCurrency?: StockQuoteCurrency
+  quote: StockQuoteCurrency | undefined
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
-  const quote = quoteCurrency ?? stockQuoteCurrencyForTicker(ticker);
   // Only submit the fields that the flow kind actually shows — a value left behind in a now-hidden
   // input (e.g. CLP typed before switching to "compra acciones") must not be sent. A kind that
   // shows both fields (compra_usd_venta_clp) sends CLP as the amount and USD as the counter leg.

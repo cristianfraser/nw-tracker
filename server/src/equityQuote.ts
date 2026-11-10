@@ -17,52 +17,25 @@ import {
 import { noteLiveTickerRead } from "./cacheDependencies.js";
 import { getLatestLiveEquityQuoteRow, type LiveMarketQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
-import { marketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
+import { requireMarketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
 
 export type EquityMarketKind = "nyse" | "santiago" | "london" | "crypto24";
-
-/**
- * The exchange suffixes the app knows, each on its own calendar. A suffix outside this table is
- * refused by {@link equityMarketKind} unless `market_symbols` names the symbol (the Yahoo check a
- * watchlist add runs): a ticker priced on the wrong market's sessions would be valued on the wrong
- * days without a word, which is exactly what `CSPX.L` did while every suffix fell back to NYSE.
- */
-const EXCHANGE_SUFFIX_MARKET: Record<string, EquityMarketKind> = {
-  ".SN": "santiago",
-  ".L": "london",
-  // ICE Futures US (the dollar index `DX-Y.NYB`): priced on the New York calendar, as it always was.
-  ".NYB": "nyse",
-};
 
 /** Throws at a `kind` no branch handles: every per-market branch ends here, never in a default. */
 export function unknownEquityMarketKind(kind: never): never {
   throw new Error(`Unhandled equity market kind ${String(kind)}`);
 }
 
-const TICKER_MARKET: Record<string, EquityMarketKind> = {
-  SPY: "nyse",
-  VEA: "nyse",
-  OILK: "nyse",
-  "BTC-USD": "crypto24",
-  "ETH-USD": "crypto24",
-};
-
 export type EquityQuoteCurrency = "usd" | "clp";
 
 /**
- * Quote currency for a Yahoo symbol — the currency the exchange prints the price in, or `none`
- * for an index level. A symbol checked against Yahoo when it was added to the watchlist reads
- * its `market_symbols` row; any other ticker keeps the suffix rule: `.SN` (Bolsa de Santiago)
- * quotes in CLP, everything else in USD — a `.L` line too (the LSE also quotes in pence and euros,
- * so every London EOD write checks Yahoo's currency against this before storing a bar,
- * `equityEodSync.ts`). Single source of truth: sync writers stamp this into
- * `equity_daily.currency` / `live_market_quotes.currency`, and readers fail fast on a stored
- * mismatch.
+ * The currency `ticker`'s price is quoted in — or `none` for an index level — as the instrument
+ * registry states it (`market_symbols`); an unregistered ticker throws, whatever its spelling.
+ * Single source of truth: sync writers stamp this into `equity_daily.currency` /
+ * `live_market_quotes.currency`, and readers fail fast on a stored mismatch.
  */
 export function marketQuoteCurrency(ticker: string): MarketQuoteCurrency {
-  const registered = marketSymbol(ticker);
-  if (registered != null) return registered.quote_currency;
-  return ticker.toUpperCase().endsWith(".SN") ? "clp" : "usd";
+  return requireMarketSymbol(ticker).quote_currency;
 }
 
 /**
@@ -205,28 +178,12 @@ function resolveCryptoEodQuote(ticker: string, now: Date): ResolvedEquityQuote |
 }
 
 /**
- * The market whose calendar a ticker trades on: its `market_symbols` row first, then the exchange
- * suffix (`EXCHANGE_SUFFIX_MARKET`); a bare symbol is NYSE (`TICKER_MARKET` names the coins).
- * A symbol with a suffix the table does not list throws — `XYZ.PA` is Paris, and nothing here
- * knows when Paris trades.
+ * The market whose calendar a ticker trades on, as the instrument registry states it
+ * (`market_symbols`); an unregistered ticker throws, whatever its spelling — `XYZ.PA` is not
+ * Paris until a provider or a declaration says so.
  */
 export function equityMarketKind(ticker: string): EquityMarketKind {
-  const registered = marketSymbol(ticker);
-  if (registered != null) return registered.market_kind;
-  const upper = ticker.toUpperCase();
-  const dot = upper.lastIndexOf(".");
-  if (dot > 0) {
-    const suffix = upper.slice(dot);
-    const kind = EXCHANGE_SUFFIX_MARKET[suffix];
-    if (kind == null) {
-      throw new Error(
-        `${ticker}: unknown exchange suffix ${suffix} (known: ${Object.keys(EXCHANGE_SUFFIX_MARKET).join(", ")}); ` +
-          `register the symbol in market_symbols (add it through the watchlist's Yahoo check) or add its market`
-      );
-    }
-    return kind;
-  }
-  return TICKER_MARKET[ticker] ?? "nyse";
+  return requireMarketSymbol(ticker).market_kind;
 }
 
 /** The market kind's regular session is open at `now` (crypto trades around the clock). */

@@ -43,7 +43,11 @@ import {
 import { upsertEquityDailySeries } from "../brokerageEquityMtm.js";
 import { chileCalendarAddDays, chileWallClockAt } from "../chileDate.js";
 import { db } from "../db.js";
-import { assertYahooMetaCurrencyMatches, cryptoCompletedUtcYmd } from "../equityEodSync.js";
+import { cryptoCompletedUtcYmd } from "../equityEodSync.js";
+import { checkYahooSeriesCurrency } from "../priceProviders/yahoo.js";
+import { describeSymbol } from "../priceProviders/index.js";
+import { requireMarketSymbol, type InstrumentFacts } from "../marketSymbols.js";
+import { declareDemoInstruments, DEMO_TICKERS } from "./market.js";
 import { listBenchmarkEquityTickers } from "../benchmarkLevels.js";
 import { insertEquityDividendsIfMissing } from "../equityDividends.js";
 import { fetchBolsaSantiagoDailyCloses } from "../equityBolsaSantiagoEod.js";
@@ -132,7 +136,9 @@ export function parseDemoSantiagoSnapshotCsv(text: string): Map<string, EodClose
     const cells = line.split(";");
     if (cells.length !== 3) throw new Error(`demo santiago csv: unexpected line «${line}»`);
     const [ticker, day, raw] = cells as [string, string, string];
-    if (!/\.SN$/.test(ticker)) throw new Error(`demo santiago csv: not a Santiago ticker «${line}»`);
+    if (DEMO_TICKERS.find((t) => t.ticker === ticker)?.market_kind !== "santiago") {
+      throw new Error(`demo santiago csv: not a declared Santiago instrument «${line}»`);
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`demo santiago csv: invalid day «${line}»`);
     if (!/^\d+(?:\.\d+)?$/.test(raw)) throw new Error(`demo santiago csv: unreadable close «${line}»`);
     const close = Number(raw);
@@ -310,6 +316,23 @@ export type DemoRealMarketSummary = {
 export type DemoSantiagoSource = "snapshot" | "bolsa";
 
 /**
+ * Where a declared instrument and a provider's statement disagree: market kind, quote currency and
+ * display symbol always; the exchange code only when the provider names one (an exchange its table
+ * does not know reads null, which is not a disagreement).
+ */
+export function demoInstrumentMismatches(
+  declared: Pick<InstrumentFacts, "market_kind" | "quote_currency" | "display_symbol" | "mic">,
+  stated: Pick<InstrumentFacts, "market_kind" | "quote_currency" | "display_symbol" | "mic">
+): { field: string; declared: string; stated: string }[] {
+  const out: { field: string; declared: string; stated: string }[] = [];
+  for (const field of ["market_kind", "quote_currency", "display_symbol"] as const) {
+    if (declared[field] !== stated[field]) out.push({ field, declared: `${field} ${declared[field]}`, stated: `${field} ${stated[field]}` });
+  }
+  if (stated.mic != null && declared.mic !== stated.mic) out.push({ field: "mic", declared: `mic ${declared.mic}`, stated: `mic ${stated.mic}` });
+  return out;
+}
+
+/**
  * Fills the market tables for `spec` from the real sources. Requires an empty market
  * (a fresh demo DB) and Banco Central credentials; throws otherwise.
  */
@@ -342,6 +365,19 @@ export async function loadDemoRealMarket(
     if (!tickers.some((x) => x.ticker === t)) tickers.push({ ticker: t, firstUse: null });
   }
 
+  // The instruments are declared (the generator declares the same facts again before any account),
+  // then each declaration is held to what Yahoo states: a market, currency, display symbol or
+  // exchange code that disagrees fails the load instead of pricing on the wrong calendar.
+  declareDemoInstruments(spec.tickers.map((t) => t.ticker));
+  for (const { ticker } of tickers) {
+    const declared = requireMarketSymbol(ticker);
+    const stated = await withDemoMarketRetries(`Yahoo describe ${ticker}`, () => describeSymbol(ticker, "yahoo"));
+    const mismatches = demoInstrumentMismatches(declared, stated);
+    if (mismatches.length > 0) {
+      throw new Error(`demo market: ${ticker} is declared ${mismatches.map((m) => m.declared).join(", ")} but Yahoo states ${mismatches.map((m) => m.stated).join(", ")}`);
+    }
+  }
+
   const equities: Record<string, number> = {};
   const dividends: Record<string, number> = {};
   const snapshots =
@@ -349,7 +385,7 @@ export async function loadDemoRealMarket(
       ? parseDemoSantiagoSnapshotCsv(readFileSync(DEMO_SANTIAGO_SNAPSHOT_CSV_PATH, "utf8"))
       : new Map<string, EodCloseSeries>();
   for (const { ticker, firstUse } of tickers) {
-    const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
+    const last = equityMarketKind(ticker) === "crypto24" ? cryptoCompletedUtcYmd(now) : yesterday;
     const withDividends = benchmarkTickers.has(ticker);
     // A `.SN` ticker's history is the committed snapshot (see DEMO_SANTIAGO_SNAPSHOT_CSV_PATH):
     // Yahoo keeps no past bars for the thin Santiago tickers (on 2026-11-09 it answered one bar,
@@ -392,7 +428,7 @@ export async function loadDemoRealMarket(
         const fetched = await fetchYahooDailyClosesWithMeta(ticker, unixSeconds(from), p2);
         // A London line is stored only in the currency the app values it in (the LSE also quotes
         // in pence): the same check the stocks_london sync makes at every write.
-        if (equityMarketKind(ticker) === "london") assertYahooMetaCurrencyMatches(ticker, fetched.meta);
+        if (equityMarketKind(ticker) === "london") checkYahooSeriesCurrency(ticker, fetched.meta);
         raw = fetched.series;
       }
       const s = closesThrough(santiagoSnapshot ? spliceSantiagoSnapshotWithLiveBars(santiagoSnapshot, raw, yesterday) : raw, last);

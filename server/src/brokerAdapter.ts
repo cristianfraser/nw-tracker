@@ -53,21 +53,28 @@ export function racionalCashAccountId(currency: BrokerCurrency): number {
 
 /**
  * The account holding a ticker as Racional prints it. Racional lists a Chilean instrument by its
- * bare Bolsa symbol («CFIETFIPSA»), while the app keys the account on the Yahoo symbol with the
- * exchange suffix (`CFIETFIPSA.SN`, see «Quote currency / Santiago (`.SN`) tickers»): the exact
- * symbol first, else the `.SN` account, never both.
+ * bare Bolsa symbol («CFIETFIPSA»), while the app keys the account on the provider's symbol
+ * (`CFIETFIPSA.SN`): the exact ticker, or the account whose registered instrument shows that
+ * display symbol (`market_symbols.display_symbol`) — exactly one, never both.
  */
 export function racionalEquityAccountId(ticker: string): number {
   const symbol = String(ticker ?? "").trim().toUpperCase();
   const exact = accountsWithEquityTicker(symbol);
-  const santiago = symbol.includes(".") ? [] : accountsWithEquityTicker(`${symbol}.SN`);
-  if (exact.length + santiago.length !== 1) {
+  const byDisplay = (
+    db
+      .prepare(
+        `SELECT a.id FROM accounts a JOIN market_symbols m ON m.ticker = upper(trim(a.equity_ticker))
+         WHERE m.display_symbol = ? AND m.ticker <> ? ORDER BY a.id`
+      )
+      .all(symbol, symbol) as { id: number }[]
+  ).map((r) => r.id);
+  if (exact.length + byDisplay.length !== 1) {
     throw new Error(
-      `Expected exactly one account with equity_ticker "${symbol}" or "${symbol}.SN", found ${exact.length + santiago.length}. ` +
+      `Expected exactly one account with equity_ticker "${symbol}" or a registered instrument displayed as "${symbol}", found ${exact.length + byDisplay.length}. ` +
         `Create the position in the panel first (it sets accounts.equity_ticker).`
     );
   }
-  return (exact[0] ?? santiago[0])!;
+  return (exact[0] ?? byDisplay[0])!;
 }
 
 /* -------------------------------------- adapter ------------------------------------ */

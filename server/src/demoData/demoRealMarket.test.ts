@@ -43,12 +43,12 @@ describe("demo Santiago closes snapshot", () => {
   const H = "ticker;day;close_clp";
 
   it("reads closes by ticker and throws on a bad row", () => {
-    const m = parseDemoSantiagoSnapshotCsv(`${H}\nABC.SN;2025-06-02;1000.5\nABC.SN;2025-06-03;1001\n`);
-    expect(m.get("ABC.SN")).toEqual({ dates: ["2025-06-02", "2025-06-03"], closes: [1000.5, 1001] });
+    const m = parseDemoSantiagoSnapshotCsv(`${H}\nCFIETFIPSA.SN;2025-06-02;1000.5\nCFIETFIPSA.SN;2025-06-03;1001\n`);
+    expect(m.get("CFIETFIPSA.SN")).toEqual({ dates: ["2025-06-02", "2025-06-03"], closes: [1000.5, 1001] });
     expect(() => parseDemoSantiagoSnapshotCsv("day;close\n2025-06-02;1")).toThrow(/header/);
     expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nSPY;2025-06-02;1`)).toThrow(/Santiago/);
-    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nABC.SN;2025-06-03;1\nABC.SN;2025-06-02;1`)).toThrow(/follow/);
-    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nABC.SN;2025-06-02;0`)).toThrow(/non-positive/);
+    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nCFIETFIPSA.SN;2025-06-03;1\nCFIETFIPSA.SN;2025-06-02;1`)).toThrow(/follow/);
+    expect(() => parseDemoSantiagoSnapshotCsv(`${H}\nCFIETFIPSA.SN;2025-06-02;0`)).toThrow(/non-positive/);
     expect(() => parseDemoSantiagoSnapshotCsv(`${H}\n`)).toThrow(/no rows/);
   });
 

@@ -16,6 +16,7 @@
  * detection therefore matches within the same ±5-day window `fintualCertImport` uses, so an
  * e-mail-dated row and a certificado-dated one for the same event recognise each other.
  */
+import { marketSymbol } from "./marketSymbols.js";
 import { addDaysIso } from "nw-tracker-contracts";
 import { accountIdForEquityTicker, accountsWithEquityTicker, accountsWithEquityTickerAtBroker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
@@ -239,6 +240,12 @@ export function planFintualEmailMovement(
           requires_manual:
             `no account for ticker ${ticker} and no single bucket the Fintual stocks sit in — ` +
             "create the position in the panel first",
+        };
+      }
+      if (marketSymbol(ticker) == null) {
+        return {
+          ...buyBase,
+          requires_manual: `ticker ${ticker} is not registered in market_symbols — run \`npm run register:market-symbols -w nw-tracker-server\``,
         };
       }
       return { ...buyBase, create_account: { ticker, bucket_slug: bucket } };

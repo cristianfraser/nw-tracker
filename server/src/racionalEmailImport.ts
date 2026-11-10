@@ -29,6 +29,7 @@
  * there is no bank-date skew on this side — so the window is same-day only; genuine same-day
  * equal twins are the known (rare) limitation and would report as duplicates for manual entry.
  */
+import { marketSymbol } from "./marketSymbols.js";
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
@@ -247,6 +248,12 @@ function planBuy(event: BrokerNotification): RacionalEmailPlannedMovement {
         requires_manual:
           `no account for ticker ${event.ticker} and no unambiguous sibling bucket to create it ` +
           `in — create the position in the panel first`,
+      };
+    }
+    if (marketSymbol(event.ticker) == null) {
+      return {
+        ...base,
+        requires_manual: `ticker ${event.ticker} is not registered in market_symbols — run \`npm run register:market-symbols -w nw-tracker-server\``,
       };
     }
     base.create_account = { ticker: event.ticker, name: event.ticker, bucket_slug: bucket };

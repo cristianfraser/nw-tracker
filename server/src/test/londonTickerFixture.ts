@@ -17,7 +17,7 @@ let createdAccount = false;
 
 export function installLondonTickerFixture(): void {
   const existing = db
-    .prepare(`SELECT COUNT(*) AS c FROM accounts WHERE upper(trim(COALESCE(equity_ticker, ''))) LIKE '%.L'`)
+    .prepare(`SELECT COUNT(*) AS c FROM accounts a JOIN market_symbols m ON m.ticker = upper(trim(a.equity_ticker)) WHERE m.market_kind = 'london'`)
     .get() as { c: number };
   if (existing.c === 0) {
     const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };

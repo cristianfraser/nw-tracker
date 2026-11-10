@@ -73,8 +73,9 @@ import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
 import { isLoanLenderMerchant } from "../expenseDepositLinks.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "../panelAccountNotes.js";
 import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarket.js";
-import { dbMarketReader, writeSyntheticMarket, type MarketReader } from "./market.js";
-import { addDays, addMonths, type Month, type Person, type Ymd } from "./person.js";
+import { dbMarketReader, declareDemoInstruments, writeSyntheticMarket, type MarketReader } from "./market.js";
+import { requireMarketSymbol } from "../marketSymbols.js";
+import { addDays, addMonths, BTC_TICKER, type Month, type Person, type Ymd } from "./person.js";
 import {
   renderCardStatements,
   renderCartolas,
@@ -156,8 +157,8 @@ function createAccounts(person: Person): Map<Acct, number> {
     ids.set("btc", createAccount(g("brokerage_crypto__bitcoin"), "Bitcoin", { ticker: "BTC-USD" }));
   }
   for (const t of person.brokerTickers) {
-    // The exchange suffix is the market, not the name: «CFIETFIPSA.SN» is the CFIETFIPSA account, «CSPX.L» CSPX.
-    const name = t.replace(/\.(SN|L)$/i, "");
+    // The name is the instrument's display symbol: «CFIETFIPSA.SN» is the CFIETFIPSA account, «CSPX.L» CSPX.
+    const name = requireMarketSymbol(t).display_symbol;
     const leaf = ensureAssetGroup(`brokerage_acciones__${name.toLowerCase()}`, name, "brokerage_acciones");
     ids.set(`stock:${t}`, createAccount(leaf, name, { key: buildPanelAccountNotes(t, `demo_${t}`), ticker: t }));
   }
@@ -744,6 +745,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   const n = (db.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number }).c;
   if (n > 0) throw new Error(`demo: target DB already has ${n} accounts — point NW_TRACKER_TEST_DB at a fresh file`);
 
+  // The instruments first: the registry decides every holding's calendar and currency.
+  declareDemoInstruments([...person.brokerTickers, ...(person.btc ? [BTC_TICKER] : [])]);
   const ids = createAccounts(person);
   writePlaces(person, ids);
   // The owner as the bank prints its own transfers (`owner_identity`, migration 277).

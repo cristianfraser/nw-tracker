@@ -9,6 +9,7 @@ import {
 import { syncEquityEodFromYahoo } from "../equityEodSync.js";
 import {
   createPanelAccount,
+  registerPanelAccountInstrument,
   updatePanelAccount,
   type PanelAccountCreateBody,
   type PanelAccountUpdateBody,
@@ -103,6 +104,7 @@ app.post("/api/accounts", asyncHandler(async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (body.account != null && typeof body.account === "object") {
     try {
+      await registerPanelAccountInstrument(body as PanelAccountCreateBody);
       const result = createPanelAccount(body as PanelAccountCreateBody);
       if (result.ticker) {
         await syncEquityEodFromYahoo([result.ticker], { force: true });

@@ -13,7 +13,6 @@ import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  ticker?: string | null;
   /** Stock's quote currency from the summary DTO (present even before the first movement). */
   quoteCurrency?: StockQuoteCurrency | null;
   displayUnit: DisplayUnit;
@@ -23,7 +22,6 @@ type Props = {
 
 export function AccountBrokerageMovementsForm({
   accountId,
-  ticker,
   quoteCurrency,
   displayUnit,
   flowKinds,
@@ -37,7 +35,7 @@ export function AccountBrokerageMovementsForm({
   const saveMutation = useMutation({
     mutationFn: async (rows: InitialMovementDraft[]) => {
       const bodies = rows
-        .map((row) => buildBrokerageMovementPostBody(row, ticker, quoteCurrency ?? undefined))
+        .map((row) => buildBrokerageMovementPostBody(row, quoteCurrency ?? undefined))
         .filter((b): b is Record<string, unknown> => b != null);
       if (bodies.length === 0) {
         throw new Error(t("panelAccounts.addAccount.previewInvalid"));
