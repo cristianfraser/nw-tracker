@@ -211,7 +211,7 @@ describe("breakdownForNavChild real_estate", () => {
     });
     const lines = br?.lines ?? [];
     expect(lines).toHaveLength(3);
-    expect(lines[0]?.label).toBe("casa propia · demo");
+    expect(lines[0]?.label).toBe("Casa propia · Demo");
     expect(lines[0]?.clp).toBe(27_110_948);
     expect(lines[1]?.label).toBe("valor");
     expect(lines[1]?.clp).toBe(27_110_948 + 68_878_583);

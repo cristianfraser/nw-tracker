@@ -259,7 +259,7 @@ export function buildRealEstateCardBreakdown(
     const netClp = total.clp;
     const groupUsd = total.usd;
     const propertyTo = propertyRow != null ? accountDetailPath(propertyRow.account_id) : nodeRoute;
-    lines.push({ label: props[0]!.name.trim().toLowerCase(), clp: netClp, usd: groupUsd, depth: 0, to: propertyTo });
+    lines.push({ label: props[0]!.name, clp: netClp, usd: groupUsd, depth: 0, to: propertyTo });
     if (propertyRow != null && mortgageRow?.current_value_clp != null) {
       const mortgageClp = mortgageRow.current_value_clp;
       const mortgageUsd = mortgageRow.current_value_usd ?? null;

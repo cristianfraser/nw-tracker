@@ -87,11 +87,11 @@ describe("buildRealEstateCardBreakdown", () => {
     lines.map((l) => [l.depth, l.label, l.clp, l.to]);
   // Vitest renders i18n in Spanish: «valor» / «hipoteca» are `realEstate.propertyValue` / `.mortgage`.
 
-  it("one property: the head line is the property (lowercase card label), valor and hipoteca under it", () => {
+  it("one property: the head line is the property, valor and hipoteca under it", () => {
     const rows = [property(1, "Casa propia", 40, 11)];
     const lines = buildRealEstateCardBreakdown(rows, { clp: 40, usd: null }, "/real-estate", [...rows, loan(11, 60)]);
     expect(shape(lines)).toEqual([
-      [0, "casa propia", 40, "/account/1"],
+      [0, "Casa propia", 40, "/account/1"],
       [1, "valor", 100, "/account/1"],
       [1, "hipoteca", 60, "/account/11"],
     ]);
