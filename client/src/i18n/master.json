@@ -3818,6 +3818,10 @@
         "en": "Cash change",
         "es": "Variación de caja"
       },
+      "cashFx": {
+        "en": "Cash fx",
+        "es": "Fx de caja"
+      },
       "cashUnexplained": {
         "en": "Unexplained",
         "es": "Sin explicar"

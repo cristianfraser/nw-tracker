@@ -4,9 +4,18 @@ import type { FlowsOverviewRow } from "./types";
 
 function row(
   period_month: string,
-  legs: { income: number; expenses: number; deposits: number; pl?: number; card_spent?: number; card_paid?: number; cash_change: number }
+  legs: {
+    income: number;
+    expenses: number;
+    deposits: number;
+    pl?: number;
+    card_spent?: number;
+    card_paid?: number;
+    cash_change: number;
+    cash_fx?: number;
+  }
 ): FlowsOverviewRow {
-  const { income, expenses, deposits, pl = 0, card_spent = 0, card_paid = 0, cash_change } = legs;
+  const { income, expenses, deposits, pl = 0, card_spent = 0, card_paid = 0, cash_change, cash_fx = 0 } = legs;
   const savings = income - expenses;
   return {
     period_month,
@@ -20,18 +29,19 @@ function row(
     card_paid,
     card_net: card_spent - card_paid,
     cash_change,
-    cash_unexplained: cash_change - (savings - deposits + card_spent - card_paid),
+    cash_fx,
+    cash_unexplained: cash_change - (savings - deposits + card_spent - card_paid + cash_fx),
     pl,
     investments_change: deposits + 10 + pl,
-    net_worth_change: savings + 10 + pl,
+    net_worth_change: savings + 10 + pl + cash_fx,
   };
 }
 
 describe("flows overview rows", () => {
   const months = [
     row("2023-12", { income: 100, expenses: 40, deposits: 10, pl: 5, cash_change: 50 }),
-    row("2024-01", { income: 200, expenses: 50, deposits: 20, pl: -3, card_spent: 30, cash_change: 160 }),
-    row("2024-02", { income: 300, expenses: 60, deposits: 30, pl: 7, card_paid: 30, cash_change: 175 }),
+    row("2024-01", { income: 200, expenses: 50, deposits: 20, pl: -3, card_spent: 30, cash_change: 160, cash_fx: 4 }),
+    row("2024-02", { income: 300, expenses: 60, deposits: 30, pl: 7, card_paid: 30, cash_change: 175, cash_fx: -1 }),
   ];
 
   it("rolls months up into calendar years, summing every field", () => {
@@ -49,11 +59,12 @@ describe("flows overview rows", () => {
       card_paid: 30,
       card_net: 0,
       cash_change: 335,
-      // 335 − (390 − 50 + 30 − 30)
-      cash_unexplained: -5,
+      cash_fx: 3,
+      // 335 − (390 − 50 + 30 − 30 + 3)
+      cash_unexplained: -8,
       pl: 4,
       investments_change: 74,
-      net_worth_change: 414,
+      net_worth_change: 417,
     });
     // The year's derived fields equal the sums of its months'.
     const sum = (k: keyof FlowsOverviewRow) => months.slice(1).reduce((s, r) => s + (r[k] as number), 0);

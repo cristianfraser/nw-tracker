@@ -16,6 +16,7 @@ const FIELDS = [
   "card_paid",
   "card_net",
   "cash_change",
+  "cash_fx",
   "cash_unexplained",
   "pl",
   "investments_change",

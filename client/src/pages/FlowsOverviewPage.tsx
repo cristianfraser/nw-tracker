@@ -52,6 +52,7 @@ const COLUMNS: readonly OverviewColumn[] = [
     value: (r) => r.card_net,
   },
   { id: "cash_change", labelKey: "flows.overview.cashChange", totalsLabelKey: "flows.overview.cashChange", value: (r) => r.cash_change },
+  { id: "cash_fx", labelKey: "flows.overview.cashFx", totalsLabelKey: "flows.overview.cashFx", value: (r) => r.cash_fx, muted: true },
   {
     id: "cash_unexplained",
     labelKey: "flows.overview.cashUnexplained",
