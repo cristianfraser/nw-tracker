@@ -123,6 +123,9 @@ describe("demo market artifact", () => {
       url: "https://example.test",
     })}\n`;
     expect(parseDemoMarketPublishOutcome(out)).toMatchObject({ complete_through: "2026-11-08", uploaded: true });
+    // On the server every console line carries the log stamp in front.
+    const stamped = out.replace(DEMO_MARKET_PUBLISH_RESULT_PREFIX, `[2026-11-09 -- 22:25:24 (-3)] ${DEMO_MARKET_PUBLISH_RESULT_PREFIX}`);
+    expect(parseDemoMarketPublishOutcome(stamped)).toMatchObject({ complete_through: "2026-11-08", uploaded: true });
     expect(() => parseDemoMarketPublishOutcome("Error: boom\n")).toThrow(/no result line/);
   });
 });

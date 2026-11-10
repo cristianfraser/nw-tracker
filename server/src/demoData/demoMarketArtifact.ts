@@ -84,12 +84,14 @@ export type DemoMarketPublishOutcome = {
 
 /** The outcome the publish script printed, from its whole output; throws when it printed none. */
 export function parseDemoMarketPublishOutcome(output: string): DemoMarketPublishOutcome {
+  // The server's log stamp (`serverLog.ts`) prefixes every console line, so the result sits after it.
   const line = output
     .split(/\r?\n/)
     .reverse()
-    .find((l) => l.startsWith(DEMO_MARKET_PUBLISH_RESULT_PREFIX));
+    .find((l) => l.includes(DEMO_MARKET_PUBLISH_RESULT_PREFIX));
   if (line == null) throw new Error("demo market publish: the script printed no result line");
-  const j = JSON.parse(line.slice(DEMO_MARKET_PUBLISH_RESULT_PREFIX.length)) as Partial<DemoMarketPublishOutcome>;
+  const json = line.slice(line.indexOf(DEMO_MARKET_PUBLISH_RESULT_PREFIX) + DEMO_MARKET_PUBLISH_RESULT_PREFIX.length);
+  const j = JSON.parse(json) as Partial<DemoMarketPublishOutcome>;
   if (typeof j.complete_through !== "string" || !YMD.test(j.complete_through) || typeof j.uploaded !== "boolean") {
     throw new Error(`demo market publish: unreadable result line «${line}»`);
   }
