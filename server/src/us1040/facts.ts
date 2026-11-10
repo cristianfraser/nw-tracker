@@ -53,11 +53,20 @@ function sheltered(accountId: number | null): boolean {
 
 /* ------------------------------- interest ------------------------------- */
 
+/** A Schedule B interest item and whether its payer is a US one (US-source: §861(a)(1)); the rest is foreign-source (Form 1116's passive income). */
+export type UsInterestItem = ScheduleBInterestItem & { usSource: boolean };
+
 /** The window's taxable interest, every payer, in dollars at each credit's day. */
-export function usInterestItems(window: DateWindow): ScheduleBInterestItem[] {
+export function usInterestItems(window: DateWindow): UsInterestItem[] {
   return interestFacts(window)
     .filter((f) => !sheltered(f.accountId))
-    .map((f) => ({ payer: accountName(f.accountId), date: f.date, movementId: f.movementId, usd: usdOn(f.amount, f.currency, f.date) }));
+    .map((f) => ({
+      payer: accountName(f.accountId),
+      date: f.date,
+      movementId: f.movementId,
+      usd: usdOn(f.amount, f.currency, f.date),
+      usSource: isUsPayer(f.payers),
+    }));
 }
 
 /* ------------------------------- dividends ------------------------------ */
@@ -136,7 +145,8 @@ function slicesInUsd(d: DisposalFact): Form8949Lot["slices"] {
 export function usDisposalLots(window: DateWindow): Form8949Lot[] {
   const payers = loadAccountPayers();
   const accounts = equityLotAccounts().filter((a) => !isUsRetirementAccount(a.accountId) && !isPficEquityTicker(a.ticker));
-  const equity = equityAccountDisposalFacts(window, { method: "fifo", accounts }).flatMap((a) => a.disposals);
+  // An option assignment moves its premium into the share trade it settles (Pub. 550): the walk takes it.
+  const equity = equityAccountDisposalFacts(window, { method: "fifo", accounts, optionAdjustments: true }).flatMap((a) => a.disposals);
   const lots: Form8949Lot[] = equity.map((d) => {
     const cash = (saleCashStmt.get(d.movementId) as { to_account_id: number | null } | undefined)?.to_account_id ?? null;
     return {

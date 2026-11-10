@@ -74,6 +74,7 @@ function schedules(d: F1040Draft): UsTaxReturnSchedule[] {
     of("schedule_d", d.scheduleD.lines),
     of("schedule_1", d.schedule1),
     of("schedule_2", d.schedule2),
+    of("schedule_3", d.schedule3),
     of("form_8960", d.form8960),
   ];
   if (d.qdcgWorksheet) out.push(of("qdcg_worksheet", d.qdcgWorksheet));
@@ -110,6 +111,10 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
       dual_status_statement: null,
       foreign_accounts: null,
       foreign_tax_withheld_usd: 0,
+      schedule_e: null,
+      form_8582: null,
+      form_1116: null,
+      form_8621: [],
       tax_filed: null,
       tax_draft: 0,
       refund_draft: 0,
@@ -202,12 +207,105 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
         }
       : null,
     foreign_tax_withheld_usd: d.foreignTaxWithheldUsd,
+    ...wiredSections(d),
     tax_filed: filedLines ? (filedLines["24"] ?? 0) : null,
     tax_draft: d.lines["24"] ?? 0,
     refund_draft: d.lines["35a"] ?? 0,
     owed_draft: d.lines["37"] ?? 0,
     filed: d.filed ? { filed_on: d.filed.filedOn, filing_status: d.filed.filingStatus, source_file: d.filed.sourceFile } : null,
     settlement: f1040Settlement(taxYear),
+  };
+}
+
+const usd = (x: number) => Math.round(x);
+const usdCents = (x: number) => Math.round(x * 100) / 100;
+
+/** Schedule E, Form 8582, Form 1116 and Form 8621 as the draft composed them. */
+function wiredSections(d: F1040Draft): Pick<UsTaxReturnResponse, "schedule_e" | "form_8582" | "form_1116" | "form_8621"> {
+  const r = d.rentals;
+  const f = r?.form8582 ?? null;
+  const t = d.foreignTaxCredit;
+  return {
+    schedule_e:
+      r && r.scheduleE.places.length > 0
+        ? {
+            places: r.scheduleE.places.map((p, i) => ({
+              label: p.label,
+              lines: Object.entries(p.lines).map(([k, v]) => ({ line: k.slice(1), amount: usd(v) })),
+              depreciation: {
+                basis_usd: usd(r.inputs[i]!.depreciation.basisUsd),
+                basis_origin: r.inputs[i]!.depreciation.basisOrigin,
+                building_basis_usd: usd(p.depreciation.buildingBasisUsd),
+                start_date: p.depreciation.startDate,
+                reading: p.depreciation.reading,
+                months_in_window: Math.round(p.depreciation.monthsInWindow * 100) / 100,
+                amount_usd: usd(p.depreciation.amountUsd),
+              },
+            })),
+            net_usd: usd(r.scheduleE.netUsd),
+          }
+        : null,
+    form_8582:
+      r && f
+        ? {
+            magi_usd: usd(r.magiUsd),
+            allowance_before_phase_out_usd: usd(f.allowanceBeforePhaseOutUsd),
+            allowance_usd: usd(f.allowanceUsd),
+            prior_suspended_loss_usd: usd(r.priorSuspendedLossUsd),
+            limited_loss_usd: usd(f.limitedLossUsd),
+            allowed_loss_usd: usd(f.allowedLossUsd),
+            suspended_loss_usd: usd(f.suspendedLossUsd),
+            prior_loss_absorbed_usd: usd(f.priorLossAbsorbedUsd),
+            included_in_income_usd: r.line5,
+          }
+        : null,
+    form_1116: t
+      ? {
+          chile: t.chile
+            ? { tax_year: t.chile.taxYear, adicional_clp: t.chile.adicionalClp, adicional_source: t.chile.adicionalSource, unico_art107_clp: t.chile.unicoArt107Clp }
+            : null,
+          rate_clp_per_usd: usdCents(t.rateClpPerUsd),
+          taxes: t.classified.map((c) => ({ item: c.item, amount_usd: usd(c.amountUsd), creditable: c.creditable, unverified: c.unverified, form8833: c.form8833 })),
+          foreign_passive_gross_usd: usd(t.input.foreignPassiveGrossUsd),
+          foreign_passive_deductions_usd: usd(t.input.foreignPassiveDeductionsUsd),
+          foreign_passive_taxable_income_usd: usd(t.result.foreignPassiveTaxableIncomeUsd),
+          taxable_income_usd: t.input.taxableIncomeUsd,
+          us_tax_before_credits_usd: t.input.usTaxBeforeCreditsUsd,
+          limit_fraction: Math.round(t.result.limitFraction * 1e6) / 1e6,
+          limit_usd: usd(t.result.limitUsd),
+          taxes_accrued_usd: usd(t.input.taxesAccruedUsd),
+          available_usd: usd(t.result.availableUsd),
+          credit_usd: t.credit,
+          carryovers_in: t.input.carryoversIn.map((c) => ({ tax_year: c.taxYear, amount_usd: usd(c.amountUsd) })),
+          carryovers_out: t.result.carryoversOut.map((c) => ({ tax_year: c.taxYear, amount_usd: usd(c.amountUsd) })),
+          expired_usd: usd(t.result.expiredUsd),
+        }
+      : null,
+    form_8621: d.form8621.map((x) => ({
+      label: x.label,
+      start_units: Math.round(x.startUnits * 1e4) / 1e4,
+      start_basis_usd: usd(x.startBasisUsd),
+      basis_before_mark_usd: usd(x.basisBeforeMarkUsd),
+      fmv_year_end_usd: usd(x.fmvYearEndUsd),
+      inclusion_usd: usd(x.inclusionUsd),
+      deduction_usd: usd(x.deductionUsd),
+      disallowed_loss_usd: usd(x.disallowedLossUsd),
+      disposals: x.disposals.map((p) => ({
+        date: p.date,
+        units: Math.round(p.units * 1e4) / 1e4,
+        proceeds_usd: usd(p.proceedsUsd),
+        basis_usd: usd(p.basisUsd),
+        ordinary_gain_usd: usd(p.ordinaryGainUsd),
+        ordinary_loss_usd: usd(p.ordinaryLossUsd),
+        capital_loss_usd: usd(p.capitalLossUsd),
+      })),
+      ordinary_income_usd: usd(x.ordinaryIncomeUsd),
+      capital_loss_usd: usd(x.capitalLossUsd),
+      end_units: Math.round(x.stateOut.units * 1e4) / 1e4,
+      end_basis_usd: usd(x.stateOut.adjustedBasisUsd),
+      unreversed_inclusions_usd: usd(x.stateOut.unreversedInclusionsUsd),
+      part_v_possible: x.flags.partVPossible,
+    })),
   };
 }
 

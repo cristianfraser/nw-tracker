@@ -431,14 +431,28 @@ export type UsTaxReturnNote =
   | "fx_daily_spot"
   | "section_988_not_modelled"
   | "form_2210_not_modelled"
-  | "schedules_not_wired"
-  | "foreign_accounts_month_end";
+  | "foreign_accounts_month_end"
+  | "depreciation_pre_residency_allowable"
+  | "depreciation_land_share_assumed"
+  | "life_insurance_not_deducted"
+  | "passive_loss_suspended"
+  | "pfic_mark_to_market"
+  | "pfic_part_v_possible"
+  | "pfic_capital_loss_term_assumed"
+  | "ftc_accrued_yearly_average"
+  | "ftc_carryback_not_modelled"
+  | "form_8833_treaty_credit"
+  | "unico_art107_not_creditable"
+  | "no_ftc_against_niit"
+  | "foreign_dividend_withholding_not_credited"
+  | "options_written_short_term"
+  | "covered_call_straddle_not_modelled";
 
 /** How the US treats the person in the year (from the declared tax residency). */
 export type UsTaxReturnResidency = { kind: "full" | "dual_status" | "nonresident" | "undeclared"; from: string | null };
 
 /** A schedule or worksheet of the return: its lines as the form numbers them, whole dollars (the worksheet's 15 % / 20 % lines to the cent). */
-export type UsTaxReturnScheduleForm = "schedule_1" | "schedule_2" | "schedule_b" | "schedule_d" | "qdcg_worksheet" | "form_8960";
+export type UsTaxReturnScheduleForm = "schedule_1" | "schedule_2" | "schedule_3" | "schedule_b" | "schedule_d" | "qdcg_worksheet" | "form_8960";
 export type UsTaxReturnSchedule = { form: UsTaxReturnScheduleForm; lines: { line: string; amount: number }[] };
 
 /** One Schedule B payer row (Part I interest or Part II dividends). */
@@ -479,6 +493,79 @@ export type UsTaxReturnForeignAccounts = {
   form8938_required: boolean;
 };
 
+/** Schedule E Part I, one rented place (whole dollars): 3 rents, 9 insurance, 11 management fees, 12 mortgage interest, 16 taxes, 17 utilities, 18 depreciation, 19 other, 20 total expenses, 21 income or loss. */
+export type UsTaxReturnScheduleEPlace = {
+  label: string;
+  lines: { line: string; amount: number }[];
+  depreciation: {
+    /** Land + building basis in dollars (cost at the purchase day's rate, or the lesser of cost and value on a home's conversion). */
+    basis_usd: number;
+    basis_origin: "purchase_cost" | "lesser_of_cost_and_value_at_conversion";
+    building_basis_usd: number;
+    /** The day the 30-year ADS schedule runs from. */
+    start_date: string;
+    reading: "from_placed_in_service" | "fresh_on_arrival" | "placed_in_window";
+    months_in_window: number;
+    amount_usd: number;
+  };
+};
+
+/** Form 8582 for the rentals (whole dollars). */
+export type UsTaxReturnForm8582 = {
+  magi_usd: number;
+  allowance_before_phase_out_usd: number;
+  allowance_usd: number;
+  prior_suspended_loss_usd: number;
+  limited_loss_usd: number;
+  allowed_loss_usd: number;
+  suspended_loss_usd: number;
+  prior_loss_absorbed_usd: number;
+  /** Schedule 1 line 5. */
+  included_in_income_usd: number;
+};
+
+/** Form 1116, passive category (dollars; the Chilean taxes also in pesos as the F22 states them). */
+export type UsTaxReturnForm1116 = {
+  /** Where Chile's taxes come from: the F22 of the same income year (its non-resident part); null when Chile taxed nothing in the US-resident months. */
+  chile: { tax_year: number; adicional_clp: number; adicional_source: "filed" | "draft"; unico_art107_clp: number } | null;
+  rate_clp_per_usd: number;
+  taxes: { item: "adicional_on_rent" | "unico_on_etf_sale" | "unico_on_fund_redemption" | "unico_on_fund_distribution"; amount_usd: number; creditable: boolean; unverified: boolean; form8833: boolean }[];
+  foreign_passive_gross_usd: number;
+  foreign_passive_deductions_usd: number;
+  foreign_passive_taxable_income_usd: number;
+  taxable_income_usd: number;
+  us_tax_before_credits_usd: number;
+  limit_fraction: number;
+  limit_usd: number;
+  taxes_accrued_usd: number;
+  available_usd: number;
+  /** Schedule 3 line 1, whole dollars. */
+  credit_usd: number;
+  carryovers_in: { tax_year: number; amount_usd: number }[];
+  carryovers_out: { tax_year: number; amount_usd: number }[];
+  expired_usd: number;
+};
+
+/** Form 8621 Part IV for one PFIC holding (dollars). */
+export type UsTaxReturnForm8621 = {
+  label: string;
+  start_units: number;
+  start_basis_usd: number;
+  basis_before_mark_usd: number;
+  fmv_year_end_usd: number;
+  inclusion_usd: number;
+  deduction_usd: number;
+  disallowed_loss_usd: number;
+  disposals: { date: string; units: number; proceeds_usd: number; basis_usd: number; ordinary_gain_usd: number; ordinary_loss_usd: number; capital_loss_usd: number }[];
+  /** To Schedule 1 line 8z. */
+  ordinary_income_usd: number;
+  capital_loss_usd: number;
+  end_units: number;
+  end_basis_usd: number;
+  unreversed_inclusions_usd: number;
+  part_v_possible: boolean;
+};
+
 export type UsTaxReturnResponse = {
   jurisdiction: "us";
   /** The calendar tax year. */
@@ -509,8 +596,13 @@ export type UsTaxReturnResponse = {
   capital_loss_carryover: { in: { short_term: number; long_term: number }; out: { short_term: number; long_term: number } } | null;
   dual_status_statement: UsTaxReturnDualStatusStatement | null;
   foreign_accounts: UsTaxReturnForeignAccounts | null;
-  /** Tax another country withheld on dividends (a Form 1116 input), dollars. */
+  /** Tax another country withheld on dividends, dollars (shown, not credited). */
   foreign_tax_withheld_usd: number;
+  /** Schedule E per rented place, and its net before the passive limit; null when there is none. */
+  schedule_e: { places: UsTaxReturnScheduleEPlace[]; net_usd: number } | null;
+  form_8582: UsTaxReturnForm8582 | null;
+  form_1116: UsTaxReturnForm1116 | null;
+  form_8621: UsTaxReturnForm8621[];
   /** Line 24 (total tax) as filed / as drafted. */
   tax_filed: number | null;
   tax_draft: number;

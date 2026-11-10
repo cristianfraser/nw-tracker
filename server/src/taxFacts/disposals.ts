@@ -19,6 +19,7 @@ import { loadCryptoCoinAccountIdsFundedByBuda } from "../budaWallet.js";
 import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "../cryptoTaxLotEvents.js";
 import { equityMarketKind, type EquityMarketKind } from "../equityQuote.js";
 import { loadEquityTaxLotEvents } from "../equityTaxLotEvents.js";
+import { optionAssignmentAdjustments } from "../optionTaxLotEvents.js";
 import { realizeTaxLots, type TaxLotDisposal, type TaxLotEvent, type TaxLotMethod } from "../taxLots.js";
 
 export type DisposalKind = "equity" | "crypto" | "fund";
@@ -56,13 +57,18 @@ export function equityLotAccounts(): EquityLotAccount[] {
 /**
  * The disposals of each of `accounts` in the window, in the accounts' order. `currency`: only the
  * accounts trading in it are walked (the others come back with no disposals and their currency).
+ * `optionAdjustments`: an option assignment or exercise moves its premium into the share trade it
+ * settles (`optionAssignmentAdjustments`: an assigned put lowers the shares' cost, an assigned call
+ * raises the sale's proceeds — US law, Pub. 550; the 1040 turns it on). The F22 leaves it off: a
+ * Chilean-resident window with options throws (Ley 20.544 not modelled) and a non-resident one
+ * excludes the foreign shares, so the Chilean reading never needs it.
  */
 export function equityAccountDisposalFacts(
   window: DateWindow,
-  opts: { method: TaxLotMethod; accounts: readonly EquityLotAccountRef[]; currency?: string }
+  opts: { method: TaxLotMethod; accounts: readonly EquityLotAccountRef[]; currency?: string; optionAdjustments?: boolean }
 ): EquityAccountDisposals[] {
   return opts.accounts.map((account) => {
-    const { currency, events } = loadEquityTaxLotEvents(account.accountId);
+    const { currency, events } = loadEquityTaxLotEvents(account.accountId, opts.optionAdjustments ? optionAssignmentAdjustments(account.accountId) : undefined);
     if (opts.currency != null && currency !== opts.currency) return { account, currency, disposals: [] };
     const disposals = realizeTaxLots(events, opts.method)
       .disposals.filter((d) => inDateWindow(d.date, window))
