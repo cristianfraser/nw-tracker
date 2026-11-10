@@ -400,3 +400,40 @@ session tests still pass reading registered rows; the demo and Vitest generation
   `.SN` / `.L` / `.NYB` (`accounts.equity_ticker`, `market_symbols`, the watchlist, the proxy
   basket) — the suffix rule throws on the first read of an unknown one. The documented primary
   tickers are bare or `.SN`, and `DX-Y.NYB` is covered.
+
+## Status (2026-11-10): L2 built (Opus core + Sonnet tools), merged into the integration branch
+
+- **Core (448d92c6 → b4915bfc):** migration 305 adds `mic`, `isin`, `display_symbol`, `source` to
+  `market_symbols` (plain `ADD COLUMN`s; the hook fills display symbol and MIC on existing rows
+  and re-creates the write-log UPDATE trigger; it also declares SPY, the benchmark migration 207
+  seeds). `registerInstrument` (refuses to reframe a ticker with stored bars) and
+  `requireMarketSymbol` (throws, naming the script) in `marketSymbols.ts`; `priceProviders/`
+  with the Yahoo adapter (`describeYahooSymbol`, `yahooExchangeMic`, `yahooDisplaySymbol` — the
+  only suffix parsing left; `checkYahooSeriesCurrency` replaced the EOD sync's assertion), the
+  CoinGecko adapter (the two coins) and the Bolsa de Santiago adapter (closes only); `yahooSymbols.
+  ts` deleted. `equityMarketKind` / `marketQuoteCurrency` read the row or throw; eleven suffix
+  tests deleted (`equityQuote.ts`, `equityBolsaSantiagoEod.ts`, `brokerAdapter.ts`, `generate.
+  ts`, `demoRealMarket.ts`, `foreignShareTaxGains.ts`, `brokerageEquityMtm.ts`, two fixtures, the
+  client's `stockQuoteCurrencyForTicker`). `CLP=X` is not an instrument (`YAHOO_USD_CLP_SYMBOL`
+  keeps the forex calendar). Doors: the panel account route registers before creating (a provider
+  refusal is a 400), the broker mail importers mark a buy of an unregistered ticker
+  `requires_manual`, the watchlist and the proxy composition sync register through the adapter.
+  The demo declares its instruments (`DEMO_TICKERS` with market kind, currency, display symbol,
+  MIC, name, type; `declareDemoInstruments` before any account; the real-market loader throws on
+  a mismatch with the provider); the market asset carries no registry rows.
+- **Tools (80222a6a, 0e1d880e):** `npm run register:market-symbols -w nw-tracker-server --
+  [--only=…] [--apply]` (`instrumentRegistrationPlan.ts`, pure, tested with a fake provider):
+  CoinGecko for its known coins, Yahoo otherwise; `declared` and `bolsa_santiago` rows are never
+  re-verified; registered rows whose provider facts changed are `update`s; all or nothing in one
+  transaction, exit 1 naming every unclassifiable ticker; a second run says «nothing to
+  register». Rehearsed on the demo DB (nothing) and on a copy with SPY and BTC-USD deleted
+  (listed, restored identically but for `source`). `scripts/server-deploy.sh` runs it with
+  `--apply` after the build and before the restart (a failure takes the rollback path).
+  `check:conventions` rule 7 flags ticker-suffix parsing outside `priceProviders/`; it found
+  nothing left to fix.
+- **Checks:** server 505 files / 3357 tests, client 85 / 475, typecheck + check-deps (no new
+  cycle), both generations; the merged tree typechecks (942b046f).
+- **On the first deploy to the primary** the script calls Yahoo and CoinGecko for every ticker
+  in use without a row (the old account tickers: VEA, OILK, the Santiago ones, …); a provider
+  outage fails that deploy and rolls back — the old code runs fine on the migrated DB (305 is
+  additive). This is the check the ssh query would have been.
