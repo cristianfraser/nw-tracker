@@ -167,7 +167,9 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  flex: 1 1 auto;
+  /* As wide as its text or pill (shrinks to truncate, never grows): the link inside is the title,
+     not the whole row. */
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -182,6 +184,11 @@
   white-space: nowrap;
   color: inherit;
   text-decoration: none;
+}
+
+/* A pill sets `cursor: default`; inside the title link it takes the link's pointer. */
+.card-title-row.title-container>.title.card-title-row__label a>* {
+  cursor: inherit;
 }
 
 .card-title-row.title-container>.title.card-title-row__label a:hover {
