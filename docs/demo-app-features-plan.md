@@ -414,16 +414,107 @@ equity and crypto event sources; O1 left `optionAssignmentForStockMovement` /
   strike − premium basis; assigned call = proceeds + premium), the demo's 2025 Schedule D
   carrying them, both generations.
 
+### Review of this section (2026-11-10): corrections before anything is built
+
+Checked against the code on `main` ff45fa61 and the demo story. Each item changes what R2 / O2
+build; where it contradicts a bullet above, this list wins.
+
+**Gaps in the tax readings**
+
+1. **The Chilean broker withholds 15 % US tax on dividends (W-8BEN) — and keeps doing so after
+   the move** (`taxDocuments.ts` writes it for every dividend at the broker that is not IBKR).
+   For a US resident that is US tax withheld, not a foreign tax: it is a payment on line 25b
+   (Form 1042-S), never Form 1116. R2 either credits it there, or the story files a W-9 with the
+   Chilean broker at the move (withholding stops). Decide; proposed: credit on 25b — it is what
+   happens to a person who forgets the form, and it exercises a real line.
+2. **The APV and AFP are missing from the PFIC story.** The plan names two PFICs, but APV A / B
+   are mutual funds too (≈ 45 M CLP on the demo) and the AFP a foreign pension. Research item:
+   the convention's pension article (deferral of a pension fund's earnings until distribution)
+   and whether it reaches a voluntary APV; then either both are stated as treaty-deferred (a
+   note on the return, Form 8833 flagged) or the APV funds join the 8621 list. Not deciding this
+   silently is the point.
+3. **Mark-to-market basis for a PFIC held before residency is its value on the first day as a US
+   person, not historic cost** (Reg. §1.1296-1(d)(5), verify). The money-market fund was held
+   since 2020: its first inclusion is the 2024-04-15 → 12-31 change only. Also verify the fund is
+   «marketable» at all (§1296(e): exchange-traded, or an open-end fund redeemable at NAV under
+   Reg. §1.1296-2(d)); if it is not, the default §1291 regime applies and the app flags it
+   rather than computing it.
+4. **No basis step-up for ordinary assets:** stocks and crypto bought as a Chilean resident keep
+   their historic dollar cost, so a post-move sale taxes the whole gain. And the dual-status
+   year excludes what was sold before 2024-04-15 (the 2024-02 plays, the UCITS sale of 03-12):
+   an NRA's foreign-source gains. State both in Schedule D's header.
+5. **Schedule E depreciation does not restart at the move.** Centro has been a rental since
+   2020: depreciation is «allowed or allowable» from the placed-in-service date, so 2024 is its
+   fifth year, on the historic dollar cost. Vitacura was his home until 2024-06: basis is the
+   lesser of cost and value at conversion. Both in dollars at the purchase / conversion day's
+   rate. The exchange gain on repaying a UF mortgage (§988) is not modelled — stated.
+6. **Form 1116 will credit little, and the plan should expect that.** Chile taxes the GROSS rent
+   at 35 %; the US taxes the net after interest, contribuciones and depreciation, which is small
+   or a suspended loss. The limit then caps the credit near zero and the excess carries (one
+   year back, ten forward). R2 keeps a carryover table per category or states that it does not;
+   the 10 % único withheld on the 2026-03 IPSA sale and the 8621 inclusions belong to the same
+   passive basket.
+7. **The April order is per year, not reversed globally.** A Chilean-resident year with a US
+   salary still needs the 1040 first (the F22 credits it — `foreignSalaryForYear` stays for any
+   user in that position); a non-resident or split year needs the F22 first. One rule,
+   `taxReturnOrder(incomeYear)` from the regime, read by the generator and by any reader that
+   chains the two drafts.
+8. **Smaller:** NIIT applies only if MAGI passes US$200k — computed, not asserted (the plan's
+   «crosses it» is a guess); the underpayment penalty (Form 2210) on the unwithheld rents and
+   inclusions is not modelled — stated; a person with US stubs and no declared US residency is a
+   1040-NR filer — the 1040 tab says so instead of drafting; the peso → dollar rate is `fx_daily`
+   everywhere on the 1040 (one rule, stated), the observado stays the F22's.
+
+**O2**
+
+9. «Every option gain is short-term» is wrong as written: a SHORT option's gain or loss is
+   always short-term (§1234(b)); a long option follows its holding period. Covered calls can
+   also suspend the stock's holding period — not modelled, stated.
+10. In a non-resident year the F22 does not throw on option events: a US-listed option's result
+    is foreign-source, so it is one more `excluded` item with reason `nonresident`. The throw is
+    for a resident window only.
+11. The wheel's size comes from the data: INTC is not a US$20 stock for all of 2025–2026 on the
+    real market, and IBKR's idle cash is US$2.000. Collateral is the SGOV reserve (US$15k),
+    the underlying and strike are chosen from the stored closes, and an assignment is whatever
+    the closes produce — the invariants must hold with zero, one or several.
+12. Short lots belong in the lot engine, not beside it: `taxLots.ts` gains signed lots
+    (`open_short` / `close_short`), and options are an event source like equities and crypto.
+    A second realization path would drift from the first.
+
+**Structure (the user asked for the cleaner shape, 2026-11-10)**
+
+13. **One set of tax-year facts, two returns that map them.** Today each F22 loader reads the
+    ledger and returns Chilean-shaped pesos; R2 as written would add a parallel set of readers
+    for the 1040 (dividends, interest, disposals, rents, funds). Instead: a jurisdiction-neutral
+    `taxFacts/` layer — `dividends(window)`, `interest(window)`, `disposals(window)` (lots in
+    the instrument's own currency, with dates), `rentals(window)` (gross, each expense, the
+    loan's interest), `fundHoldings(window)` — returning native-currency facts with their source
+    (country, payer, account role). `f22Draft.ts` and the 1040 become mappers: which facts enter,
+    at which rate, into which code or line. R1's `DateWindow` parameters are already the seam.
+14. **The 1040 is a folder, one pure module per form:** `us1040/scheduleB.ts`, `scheduleD.ts`
+    (+ `form8949.ts`), `scheduleE.ts`, `qualifiedDividendsWorksheet.ts`, `form1116.ts`,
+    `form8621.ts`, `form8960.ts`, `dualStatus.ts`, each `(facts, law) → lines` with its own
+    test against an IRS example, and `f1040Identities.ts` composing them. `f1040Draft.ts` at
+    eight forms in one file would be the next `f22Draft.ts`.
+15. **`f22Draft.ts` gets the same treatment while it is open:** the regime chains (resident,
+    non-resident, split) and each income block (salary, fees, rentals, art. 107, crypto, foreign
+    income, dollar lots) as modules under `f22/`, the draft a composition. Byte-parity on every
+    filed year is the test, as for the earlier untangle streams.
+
 ### Waves (continued)
 
-- **Wave R2 (one Opus agent, research first)** — all of R2 above; it owns `f1040*.ts`,
-  `usW2.ts`, `usLegalParameters.ts`, the new schedule modules, `taxDocuments.ts`'s US side and
-  the loop order in `generate.ts`.
-- **Wave O2a (one Sonnet agent, in parallel)** — `optionTaxLotEvents.ts` with its tests, the F22
-  throw, the demo's option events in `simulate.ts` and the invariants; it does NOT touch the
-  1040 modules or `taxDocuments.ts`.
-- **Wave O2b (one Sonnet agent, after both merged)** — the option lots wired into R2's Schedule D
-  / 8949, the generations re-converged, the tour's tax step if a sentence fits.
+- **Wave T0 (one Opus agent, no behaviour change)** — review items 13 and 15: the `taxFacts/`
+  layer and `f22/` split, byte-parity on every filed and drafted year of both generated
+  databases; item 12's signed lots in `taxLots.ts` with the existing equity, crypto and dollar
+  walks unchanged.
+- **Wave R2 (one Opus agent, research first; after T0)** — R2 above as corrected by the review
+  (items 1–8, 14): the `us1040/` modules, `usLegalParameters.ts`, `taxDocuments.ts`'s US side,
+  `taxReturnOrder`.
+- **Wave O2 (one Sonnet agent, in parallel with R2, after T0)** — the option event source on the
+  signed lot engine, the F22's resident throw and non-resident exclusion, the demo's wheel and
+  the invariants (items 9–11); it does not touch `us1040/`.
+- **Wave O2b (small, after both)** — the option disposals into Schedule D / 8949, the
+  generations re-converged, the tour's tax step.
 - Each wave: `cd server && npm run test`, both generations, the local demo pair; merge to `main`
   on the user's word; the market asset republished and one demo release after O2b.
 
