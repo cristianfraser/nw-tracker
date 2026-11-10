@@ -560,6 +560,29 @@ const IBKR: SecondBroker = {
   idleUsd: 2_000,
   sgovReserveUsd: 15_000,
 };
+/** The options wheel's parameters (`optionsWheel.ts` holds the rules). */
+export type OptionsWheel = {
+  /** The first month a contract is sold (the broker must have its US phase open by then). */
+  from: Month;
+  /** A contract is sold every this many months, once the previous one has ended. */
+  everyMonths: number;
+  /** Day of the month the contract is sold (or the next trading day). */
+  tradeDay: number;
+  /** How far out of the money the strike is, as a share of the close (the put below, the call above). */
+  otmPct: number;
+  /** The expiry is the monthly (third-Friday) expiry nearest to this many days out. */
+  targetDays: number;
+  /** Premium per share as a share of the strike, per day to expiry (a story assumption). */
+  premiumPctOfStrikePerDay: number;
+  /** Strikes sit on this step (USD). */
+  strikeStep: number;
+};
+/**
+ * The wheel (wave O2): from 2025-01, as a US resident with the SGOV reserve in place, a quarterly
+ * cash-secured put ~5 % below the close on the monthly expiry nearest 45 days out; assigned shares
+ * are written against with covered calls the same way. A story assumption throughout, not a model.
+ */
+const OPTIONS_WHEEL: OptionsWheel = { from: "2025-01", everyMonths: 3, tradeDay: 15, otmPct: 5, targetDays: 45, premiumPctOfStrikePerDay: 0.04, strikeStep: 1 };
 export const BTC_TICKER = "BTC-USD";
 
 /** Quarterly dividend per share (USD), by ticker; paid in Mar/Jun/Sep/Dec, 15 % withheld. */
@@ -621,6 +644,8 @@ export type Person = {
   dap: TermDeposits | null;
   /** A second US broker from `from`: the dollar DCA and lump sums go there (null: none). */
   ibkr: SecondBroker | null;
+  /** An options wheel at that broker from 2025 (null: none); `optionsWheel.ts` holds the rules. */
+  optionsWheel: OptionsWheel | null;
   /** Every ticker the broker can hold (SPY first: the DCA and lump sums buy it). */
   brokerTickers: string[];
   dividendPerShareUsd: Record<string, number>;
@@ -672,6 +697,7 @@ export const DEMO_PERSON: Person = {
   afpWithdrawals: AFP_WITHDRAWALS,
   dap: DAP,
   ibkr: IBKR,
+  optionsWheel: OPTIONS_WHEEL,
   brokerTickers: BROKER_TICKERS,
   dividendPerShareUsd: DIVIDEND_PER_SHARE_USD,
   btc: BTC,
@@ -760,6 +786,7 @@ export function testPerson(today: Ymd): Person {
     afpWithdrawals: [],
     dap: null,
     ibkr: null,
+    optionsWheel: null,
     brokerTickers: ["SPY", "AAPL"],
     dividendPerShareUsd: { SPY: 1.55, AAPL: 0.23 },
     btc: null,
