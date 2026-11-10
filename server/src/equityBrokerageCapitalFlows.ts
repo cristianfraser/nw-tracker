@@ -25,6 +25,12 @@ import {
   type MovementTransferRow,
 } from "./movementTransfer.js";
 import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
+import { isOptionContractAccount } from "./optionContracts.js";
+import {
+  OPTION_PREMIUM_PAID_FLOW_KINDS,
+  OPTION_PREMIUM_RECEIVED_FLOW_KINDS,
+  OPTION_TRANSFER_FLOW_KINDS,
+} from "./optionFlowKinds.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
@@ -391,6 +397,84 @@ export function loadEquityBrokerageCapitalSortFlows(
   return out;
 }
 
+type OptionPremiumRow = TransferCapitalRow & { to_account_id: number | null };
+
+function loadOptionPremiumRows(contractIds: number[]): OptionPremiumRow[] {
+  if (contractIds.length === 0) return [];
+  const ph = contractIds.map(() => "?").join(",");
+  const kinds = OPTION_TRANSFER_FLOW_KINDS.map(() => "?").join(",");
+  return db
+    .prepare(
+      `SELECT m.id AS id,
+              CASE WHEN m.from_account_id IN (${ph}) THEN m.from_account_id ELSE m.to_account_id END AS account_id,
+              m.from_account_id, m.to_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount,
+              m.counter_currency, m.flow_kind
+       FROM movements m
+       WHERE m.account_id IS NULL
+         AND (m.from_account_id IN (${ph}) OR m.to_account_id IN (${ph}))
+         AND m.flow_kind IN (${kinds})
+       ORDER BY m.occurred_on, m.id`
+    )
+    .all(...contractIds, ...contractIds, ...contractIds, ...OPTION_TRANSFER_FLOW_KINDS) as OptionPremiumRow[];
+}
+
+/**
+ * The sign of a premium on the CONTRACT account: received (`option_sell_open`, `option_sell_close`:
+ * contract → cash) is capital OUT of the contract — the `dividend_payout` mirror — and paid
+ * (`option_buy_open`, `option_buy_close`: cash → contract) is capital INTO it — the `stock_buy`
+ * mirror. A contract's value against its aportes is then the position's P/L: a short call sold
+ * for a premium holds −premium of aportes and −intrinsic of value, so P/L = premium − intrinsic
+ * day by day, and its expiry (worthless) turns the premium into P/L with no further event.
+ */
+function optionPremiumSign(flowKind: string): 1 | -1 {
+  if ((OPTION_PREMIUM_RECEIVED_FLOW_KINDS as readonly string[]).includes(flowKind)) return -1;
+  if ((OPTION_PREMIUM_PAID_FLOW_KINDS as readonly string[]).includes(flowKind)) return 1;
+  throw new Error(`optionPremiumSign: ${flowKind} moves no premium`);
+}
+
+/**
+ * Capital flows of option contract accounts (`option_contracts`): each premium at the USD
+ * reference rate of its day, signed by {@link optionPremiumSign}. An expiry or an assignment
+ * moves contracts, never money, so it is no flow. The USD-cash loader mirrors every premium
+ * on the cash side, negated, so the two legs cancel inside the brokerage bucket.
+ */
+export function loadOptionContractCapitalSortFlows(accountIds: number[]): Map<number, EquityCapitalSortFlow[]> {
+  const ids = [...new Set(accountIds.filter((id) => id > 0 && isOptionContractAccount(id)))];
+  const out = new Map<number, EquityCapitalSortFlow[]>();
+  if (ids.length === 0) return out;
+  for (const row of loadOptionPremiumRows(ids)) {
+    const usdLeg = movementUsdLeg(row);
+    if (usdLeg == null || usdLeg === 0) {
+      throw new Error(`movement ${row.id} (${row.flow_kind}): an option premium is in dollars — this row carries none`);
+    }
+    const flow = usdReferenceFlow(row, optionPremiumSign(row.flow_kind));
+    if (!flow) continue;
+    if (!out.has(row.account_id)) out.set(row.account_id, []);
+    out.get(row.account_id)!.push(flow);
+  }
+  return out;
+}
+
+/**
+ * The kinds the generic «any other dollar move is capital» branch of
+ * {@link loadUsdCashCapitalSortFlows} may price: a kind-less transfer (a wire between own
+ * accounts), the cash deposits and withdrawals, the peso conversions, a card payment and a card
+ * load from the account. A kind outside this list reached that branch by omission (a new
+ * instrument's leg with no rule of its own) and throws — it must never read as a deposit.
+ */
+const USD_CASH_GENERIC_CAPITAL_FLOW_KINDS: ReadonlySet<string> = new Set([
+  "",
+  "deposit_clp",
+  "deposit_usd",
+  "withdrawal_clp",
+  "withdrawal_usd",
+  "compra_usd",
+  "compra_usd_venta_clp",
+  "other",
+  "pago_tarjeta",
+  "carga_tarjeta",
+]);
+
 /**
  * Deposit-inflow flows for USD-cash accounts (event-based, native-frame — 2026-08-04).
  *
@@ -430,6 +514,8 @@ export function loadUsdCashCapitalSortFlows(
   };
   for (const r of rows) {
     if (r.flow_kind === "savings_earnings" || r.flow_kind === "cash_fee") continue; // interest/fees = P/L, not capital
+    // Rows that move no dollars (a split, an option expiring or assigned) are no capital event.
+    if (r.flow_kind === "stock_split" || r.flow_kind === "option_expire" || r.flow_kind === "option_assign") continue;
     for (const id of new Set([r.account_id, r.from_account_id, r.to_account_id])) {
       if (id == null || !requested.has(id)) continue;
       const usdSigned = signedUsdDeltaForAccountMovement(r, id);
@@ -465,6 +551,18 @@ export function loadUsdCashCapitalSortFlows(
             : clpDirectFlow(capitalRow, 1);
         if (f) push(id, { ...f, tie: `${f.tie}:cash:${id}` });
         continue;
+      }
+      if ((OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(r.flow_kind ?? "")) {
+        // The contract side's attribution, negated: a premium received is +capital on cash
+        // (−capital on the contract), a premium paid −capital on cash (+ on the contract).
+        const f = usdReferenceFlow(capitalRow, optionPremiumSign(r.flow_kind!) === -1 ? 1 : -1);
+        if (f) push(id, { ...f, tie: `${f.tie}:cash:${id}` });
+        continue;
+      }
+      if (!USD_CASH_GENERIC_CAPITAL_FLOW_KINDS.has(r.flow_kind ?? "")) {
+        throw new Error(
+          `movement ${r.id}: flow kind ${r.flow_kind} moves dollars on USD cash account ${id} but has no capital rule (equityBrokerageCapitalFlows.ts)`
+        );
       }
       const clpLeg = Math.abs(movementClpLegOrZero(r));
       const amt =

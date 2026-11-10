@@ -5,6 +5,7 @@ import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   loadEquityBrokerageCapitalSortFlows,
+  loadOptionContractCapitalSortFlows,
   loadUsdCashCapitalSortFlows,
 } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
@@ -21,6 +22,7 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
+import { OPTION_UNITS_FLOW_KINDS } from "./optionFlowKinds.js";
 
 /**
  * External capital: the signed CLP leg on `movements`. Charts (“aportes acum.”), the dashboard
@@ -81,6 +83,10 @@ const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
   "dividend_payout",
   // A split moves shares, never money (`equitySplits.ts`).
   "stock_split",
+  // An option's premium settles in USD cash; both legs come from the capital-flow loaders
+  // (`loadOptionContractCapitalSortFlows` / `loadUsdCashCapitalSortFlows`). An expiry or an
+  // assignment moves contracts, never money.
+  ...OPTION_UNITS_FLOW_KINDS,
 ]);
 
 /** Bank-paid yield (Abonos / Intereses) on cuenta_ahorro_vivienda — P/L, not personal capital. */
@@ -289,6 +295,9 @@ function buildMergedDepositMapUncached(
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
   const transfers = loadTransferLegSignedFlowEvents(accountIds, personalOnly);
   const equityCap = loadEquityBrokerageCapitalSortFlows(accountIds);
+  // An option contract's premiums: capital out of the contract when received, into it when paid
+  // (the cash leg's mirror comes from the USD-cash loader).
+  const optionCap = loadOptionContractCapitalSortFlows(accountIds);
   // USD-cash accounts (event-based since 2026-08-04): all their legs come from this one
   // loader — the generic movement/transfer paths above skip usd-cash endpoints, so each
   // (row, endpoint) is counted exactly once.
@@ -297,6 +306,7 @@ function buildMergedDepositMapUncached(
     ...mov.keys(),
     ...transfers.keys(),
     ...equityCap.keys(),
+    ...optionCap.keys(),
     ...usdCashCap.keys(),
     ...requested,
   ]);
@@ -310,6 +320,7 @@ function buildMergedDepositMapUncached(
     );
     const eqFlows: MergedSortFlow[] = [
       ...(equityCap.get(id) ?? []),
+      ...(optionCap.get(id) ?? []),
       ...(usdCashCap.get(id) ?? []),
     ].map((f) => ({
       occurred_on: f.occurred_on,

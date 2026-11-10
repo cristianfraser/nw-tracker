@@ -6,10 +6,15 @@ import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { accountUsesUsdCashFlowKinds } from "./accountUsdCashFlows.js";
 import { accountUsesClpCashFlowKinds } from "./accountClpCashFlows.js";
 import {
-  BROKERAGE_FLOW_KINDS,
   BROKERAGE_UNITS_REQUIRED_FLOW_KINDS,
+  OPTION_CONTRACT_FLOW_KINDS,
+  OPTION_UNITS_REQUIRED_FLOW_KINDS,
+  STOCK_ACCOUNT_FLOW_KINDS,
   signedAmountClpForBrokerageFlow,
 } from "./brokerageFlowMovement.js";
+import { isOptionContractAccount, requireOptionContract } from "./optionContracts.js";
+import { OPTION_TRANSFER_FLOW_KINDS, isOptionFlowKind, optionUnitsLeaveFromLeg } from "./optionFlowKinds.js";
+import { optionContractsThroughDate } from "./optionPosition.js";
 import {
   resolveTransferEndpoints,
   validateTransferCreate,
@@ -24,12 +29,19 @@ import { isUsdCashAccount } from "./usdCashAccounts.js";
 import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
 import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
 export type AccountRow = {
+  /** The account's id, when the row came from the database (`accountRowForId`); an option contract is told by it. */
+  account_id?: number;
   bucket_slug: string;
   group_slug: string;
   notes?: string | null;
   import_key?: string | null;
   equity_ticker?: string | null;
 };
+
+/** An option contract account (`option_contracts`): its own kinds, its contracts always required. */
+export function isOptionContractRow(account: AccountRow): boolean {
+  return account.account_id != null && isOptionContractAccount(account.account_id);
+}
 
 export type UnitsFieldRequirement = "required" | "optional";
 
@@ -55,12 +67,21 @@ const MOVEMENTS_UNITS_BY_CATEGORY: Record<string, { unit_label: string }> = {
 };
 
 export function movementCreateSchemaForAccount(account: AccountRow): MovementCreateSchema | null {
+  if (isOptionContractRow(account)) {
+    return {
+      ledger: "movements",
+      units_delta: "required",
+      unit_label: "contratos",
+      brokerage_flow_kinds: OPTION_CONTRACT_FLOW_KINDS,
+      units_required_for_flow_kinds: OPTION_UNITS_REQUIRED_FLOW_KINDS,
+    };
+  }
   if (accountUsesBrokerageFlowKinds(account)) {
     return {
       ledger: "movements",
       units_delta: "optional",
       unit_label: "acciones",
-      brokerage_flow_kinds: BROKERAGE_FLOW_KINDS,
+      brokerage_flow_kinds: STOCK_ACCOUNT_FLOW_KINDS,
       units_required_for_flow_kinds: BROKERAGE_UNITS_REQUIRED_FLOW_KINDS,
     };
   }
@@ -102,7 +123,7 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
  * manual creates) or an equity brokerage account. The endpoints a `counter_units_delta` may join.
  */
 export function accountTakesUnits(account: AccountRow): boolean {
-  if (accountUsesBrokerageFlowKinds(account)) return true;
+  if (accountUsesBrokerageFlowKinds(account) || isOptionContractRow(account)) return true;
   const schema = movementCreateSchemaForAccount(account);
   return schema != null && schema.units_delta === "required" && !schema.brokerage_flow_kinds;
 }
@@ -250,10 +271,63 @@ function transferInputLeg(input: TransferCreateInput, currency: MovementCurrency
   return null;
 }
 
+/**
+ * An option premium transfer (`optionFlowKinds.ts`): the contract account on one side, USD cash
+ * on the other, the premium in dollars, whole contracts, and a direction that fits the position
+ * held on the day — an «open» adds to a flat or same-side position, a «close» reduces the
+ * opposite one and never past zero.
+ */
+function validateOptionTransferEndpoints(input: TransferCreateInput): MovementCreateValidation | null {
+  const fk = input.flow_kind;
+  if (fk == null || !(OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(fk)) return null;
+  const bad = (error: string): MovementCreateValidation => ({ ok: false, status: 400, error });
+  const leaves = optionUnitsLeaveFromLeg(fk);
+  const contractId = leaves ? input.from_account_id : input.to_account_id;
+  const cashId = leaves ? input.to_account_id : input.from_account_id;
+  if (!isOptionContractAccount(contractId)) {
+    return bad(
+      leaves
+        ? `${fk} must transfer the premium from the option contract account (from_account) to USD cash (to_account).`
+        : `${fk} must transfer the premium from USD cash (from_account) to the option contract account (to_account).`
+    );
+  }
+  if (!isUsdCashAccount(cashId)) return bad(`${fk} settles in USD cash: the ${leaves ? "to" : "from"}_account must be a USD cash account.`);
+  if (input.currency !== "usd" || !(Math.abs(input.amount) > 0)) return bad(`${fk} requires the premium as a USD amount.`);
+  if (transferInputLeg(input, "clp") != null) return bad(`a CLP amount is not allowed on ${fk} (the premium settles in USD).`);
+  const n = Math.abs(input.units_delta ?? 0);
+  if (!(n > 0) || !Number.isInteger(n)) return bad(`${fk} requires units_delta: a whole number of contracts.`);
+  const terms = requireOptionContract(contractId);
+  if (input.occurred_on >= terms.expiry) return bad(`${fk} dated ${input.occurred_on}: the contract ${terms.occ_symbol} expired on ${terms.expiry}.`);
+  const held = optionContractsThroughDate(contractId, input.occurred_on);
+  switch (fk) {
+    case "option_sell_open":
+      if (held > 0) return bad(`option_sell_open with ${held} contract(s) held long: closing a long position is option_sell_close.`);
+      break;
+    case "option_buy_open":
+      if (held < 0) return bad(`option_buy_open with ${held} contract(s) held short: closing a short position is option_buy_close.`);
+      break;
+    case "option_buy_close":
+      if (!(held < 0)) return bad(`option_buy_close closes a short position; ${held} contract(s) held on ${input.occurred_on}.`);
+      if (n > -held) return bad(`option_buy_close of ${n} contract(s) exceeds the ${-held} held short on ${input.occurred_on}.`);
+      break;
+    case "option_sell_close":
+      if (!(held > 0)) return bad(`option_sell_close closes a long position; ${held} contract(s) held on ${input.occurred_on}.`);
+      if (n > held) return bad(`option_sell_close of ${n} contract(s) exceeds the ${held} held long on ${input.occurred_on}.`);
+      break;
+  }
+  return null;
+}
+
 function validateBrokerageTransferEndpoints(
   input: TransferCreateInput
 ): MovementCreateValidation | null {
   const fk = input.flow_kind;
+  if (isOptionFlowKind(fk)) {
+    if (!(OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(fk)) {
+      return { ok: false, status: 400, error: `${fk} is a single-leg row on the contract account, not a transfer.` };
+    }
+    return validateOptionTransferEndpoints(input);
+  }
   const inputClpLeg = transferInputLeg(input, "clp");
   const inputUsdLeg = transferInputLeg(input, "usd");
   const tradeQuoteCurrency =
@@ -435,7 +509,7 @@ function validateBrokerageMovementCreate(
   if (!occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
     return { ok: false, status: 400, error: "occurred_on is required (YYYY-MM-DD)." };
   }
-  if (!flow_kind || !(BROKERAGE_FLOW_KINDS as readonly string[]).includes(flow_kind)) {
+  if (!flow_kind || !(schema.brokerage_flow_kinds as readonly string[]).includes(flow_kind)) {
     return { ok: false, status: 400, error: "occurred_on and valid flow_kind are required." };
   }
   if (flow_kind === "stock_buy" || flow_kind === "stock_sell") {
@@ -445,6 +519,21 @@ function validateBrokerageMovementCreate(
       error: `${flow_kind} requires counterpart_account_id (USD cash transfer).`,
     };
   }
+  if ((OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(flow_kind)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `${flow_kind} requires counterpart_account_id (the premium moves between the contract and USD cash).`,
+    };
+  }
+  if (flow_kind === "option_assign") {
+    return {
+      ok: false,
+      status: 400,
+      error: "option_assign is written with its share leg by POST /api/accounts/:id/option-assignments.",
+    };
+  }
+  if (flow_kind === "option_expire") return validateOptionExpireCreate(account, body, occurred_on);
   if (flow_kind === "dividend_payout") {
     return {
       ok: false,
@@ -537,6 +626,43 @@ function validateBrokerageMovementCreate(
     counter_currency: null,
     note,
     units_delta: unitsProvided && unitsRaw !== null ? unitsRaw : null,
+  };
+}
+
+/**
+ * `option_expire` on the contract account: no money, and the units are exactly −(the contracts
+ * held on the day), on or after the expiry — the row that takes the position to zero. Written as
+ * a 0-dollar row, like a split's.
+ */
+function validateOptionExpireCreate(
+  account: AccountRow,
+  body: Record<string, unknown>,
+  occurred_on: string
+): MovementCreateValidation {
+  const bad = (error: string): MovementCreateValidation => ({ ok: false, status: 400, error });
+  const terms = requireOptionContract(account.account_id!);
+  const parsed = parseAmountFields(body);
+  if ("error" in parsed) return bad(parsed.error);
+  if (parsed.amount != null && parsed.amount !== 0) return bad("option_expire moves no money: amount must be absent or 0.");
+  if (parsed.counter_amount != null) return bad("counter_amount is only supported on cross-currency transfers.");
+  if (occurred_on < terms.expiry) return bad(`option_expire dated ${occurred_on}: ${terms.occ_symbol} expires on ${terms.expiry}.`);
+  const unitsRaw = parseUnitsDeltaField(body);
+  if (unitsRaw == null || unitsValueInvalid(unitsRaw)) return bad("units_delta is required for option_expire: −(the contracts held).");
+  const held = optionContractsThroughDate(account.account_id!, occurred_on);
+  if (held === 0) return bad(`option_expire on ${occurred_on}: no contracts of ${terms.occ_symbol} are held.`);
+  if (unitsRaw !== -held) return bad(`option_expire units_delta must be ${-held} (−the ${held} contract(s) held on ${occurred_on}).`);
+  const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
+  return {
+    ok: true,
+    mode: "brokerage",
+    occurred_on,
+    flow_kind: "option_expire",
+    amount: 0,
+    currency: "usd",
+    counter_amount: null,
+    counter_currency: null,
+    note,
+    units_delta: unitsRaw,
   };
 }
 
@@ -843,7 +969,7 @@ export function validateMovementCreate(
     }
     return validateTransferMovementCreate(currentAccountId, body);
   }
-  if (accountUsesBrokerageFlowKinds(account)) {
+  if (accountUsesBrokerageFlowKinds(account) || isOptionContractRow(account)) {
     return validateBrokerageMovementCreate(account, body);
   }
   if (accountUsesUsdCashFlowKinds(account)) {

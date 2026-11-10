@@ -35,6 +35,7 @@ import {
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
 import { loadConsumedNetWorthCapitalReturnOutflowKeys } from "./flowsCheckingInflows.js";
+import { OPTION_UNITS_FLOW_KINDS } from "./optionFlowKinds.js";
 import {
   clearFxConversionWarnings,
   takeFxConversionWarnings,
@@ -137,6 +138,9 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
   SAVINGS_EARNINGS_FLOW_KIND,
   // Commission charged to a cash balance — P/L cost, never a checking-funded deposit.
   CASH_FEE_FLOW_KIND,
+  // An option's premium moves between a contract account and USD cash; an expiry or an assignment
+  // moves contracts — none is a checking-funded deposit.
+  ...OPTION_UNITS_FLOW_KINDS,
 ]);
 
 // AFP and AFC inflows come from payroll (pre-tax payslip deductions), not from a checking/CC
