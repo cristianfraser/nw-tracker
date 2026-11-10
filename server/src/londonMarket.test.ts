@@ -63,6 +63,7 @@ describe("equityMarketKind: an exchange suffix must be known", () => {
   it("throws on a suffix nothing knows (Paris) instead of falling back to NYSE", () => {
     expect(() => equityMarketKind("XYZ.PA")).toThrow(/unknown exchange suffix \.PA/);
     expect(() => equityMarketKind("ABC.DE")).toThrow(/unknown exchange suffix \.DE/);
+    expect(equityMarketKind("DX-Y.NYB")).toBe("nyse");
   });
 
   it("lets a market_symbols row win over the suffix", () => {

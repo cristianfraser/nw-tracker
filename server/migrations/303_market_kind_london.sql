@@ -6,7 +6,9 @@
 -- `stocks_nyse` without a word; `equityMarketKind` now throws on an unknown suffix. Both
 -- enumerations live in CHECK constraints, so the two tables are rebuilt (templates: 179 / 182 for
 -- `account_sync_sources`, 210 for `market_symbols`). Neither is referenced by a foreign key —
--- `market_symbol_fetch_errors` keys on the ticker text — so foreign keys stay ON.
+-- `market_symbol_fetch_errors` keys on the ticker text — so foreign keys stay ON. A dropped table takes
+-- its triggers with it: the hook `runMarkInputChangeTriggers303` re-creates the mark-input trigger on
+-- `market_symbols` and the write-log triggers of both tables.
 CREATE TABLE market_symbols_new (
   ticker TEXT PRIMARY KEY,
   quote_currency TEXT NOT NULL CHECK (quote_currency IN ('usd', 'clp', 'none')),

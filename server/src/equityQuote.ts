@@ -30,6 +30,8 @@ export type EquityMarketKind = "nyse" | "santiago" | "london" | "crypto24";
 const EXCHANGE_SUFFIX_MARKET: Record<string, EquityMarketKind> = {
   ".SN": "santiago",
   ".L": "london",
+  // ICE Futures US (the dollar index `DX-Y.NYB`): priced on the New York calendar, as it always was.
+  ".NYB": "nyse",
 };
 
 /** Throws at a `kind` no branch handles: every per-market branch ends here, never in a default. */
