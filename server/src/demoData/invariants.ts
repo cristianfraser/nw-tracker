@@ -21,9 +21,10 @@ import { f1040Settlement, filedF1040 } from "../f1040Filed.js";
 import { buildF22Draft } from "../f22Draft.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR } from "../legalParameters.js";
 import { accountIdsInPortfolioGroup } from "../portfolioGroupTree.js";
+import { optionContractsThroughDate } from "../optionPosition.js";
 import { MONEY_MARKET_SERIES_KEY, mortgageBalanceUf } from "./simulate.js";
 import type { MarketReader } from "./market.js";
-import type { Ymd } from "./person.js";
+import { addDays, type Ymd } from "./person.js";
 import type { Acct, Ledger } from "./simulate.js";
 
 export type DemoDbReport = {
@@ -123,6 +124,7 @@ export function assertDemoInvariants(
   const usCard = checkUsCard(ledger, ids, problems);
   const cashUnexplainedWorstClp = checkCashExplained(problems);
   const returns = checkReturnsAcrossTheBorder(ledger, today, problems);
+  checkOptionsWheel(ledger, ids, today, problems);
 
   // Net worth near the target.
   const byAccount: DemoDbReport["byAccount"] = [];
@@ -305,6 +307,64 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
     }
   }
   return { statementRows: ledger.usBank.length, gastosLines: lines.length, balanceUsd: actual, savingsUsd };
+}
+
+/**
+ * The options wheel (`optionsWheel.ts`): every series is an account that holds −1 contract from its
+ * sale until its expiry and 0 from the expiry on (−1 today only while still open); the premiums and
+ * the assignment legs on the ledger are the story's, to the cent; every assignment is linked to a
+ * share leg of 100 shares at the strike; and the broker's dollar cash never dips below zero on any
+ * day that moves it. Holds for zero, one or several assignments.
+ */
+function checkOptionsWheel(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, problems: string[]): void {
+  const cs = ledger.optionContracts;
+  const cents = (n: number) => Math.round(n * 100);
+  for (const c of cs) {
+    const id = ids.get(c.key);
+    if (id == null) {
+      problems.push(`options: no account for ${c.occ}`);
+      continue;
+    }
+    if (c.expiry < today) {
+      if (optionContractsThroughDate(id, c.expiry) !== 0) problems.push(`options: ${c.occ} still holds contracts on its expiry ${c.expiry}`);
+      if (c.outcome === "open") problems.push(`options: ${c.occ} expired ${c.expiry} but the story left it open`);
+    }
+    const heldToday = optionContractsThroughDate(id, today);
+    const expected = c.outcome === "open" ? -1 : 0;
+    if (heldToday !== expected) problems.push(`options: ${c.occ} holds ${heldToday} contracts today, the story ${expected}`);
+    const dayBefore = optionContractsThroughDate(id, addDays(c.soldOn, -1));
+    if (dayBefore !== 0 || optionContractsThroughDate(id, c.soldOn) !== -1) problems.push(`options: ${c.occ} is not short one contract from its sale day ${c.soldOn}`);
+  }
+  const sum = (sql: string) => (db.prepare(sql).get() as { s: number | null }).s ?? 0;
+  const premiums = sum(`SELECT SUM(amount) AS s FROM movements WHERE flow_kind = 'option_sell_open'`);
+  if (cents(premiums) !== cents(cs.reduce((a, c) => a + c.premiumUsd, 0))) problems.push(`options: premiums on the ledger ${premiums}, the story's ${cs.reduce((a, c) => a + c.premiumUsd, 0)}`);
+  const assigned = cs.filter((c) => c.outcome === "assigned");
+  const links = db.prepare(`SELECT s.amount AS amount, s.units_delta AS units, s.flow_kind AS kind FROM option_assignments l JOIN movements s ON s.id = l.stock_movement_id`).all() as {
+    amount: number;
+    units: number;
+    kind: string;
+  }[];
+  if (links.length !== assigned.length) problems.push(`options: ${links.length} assignment links, ${assigned.length} assigned series in the story`);
+  const legs = links.reduce((a, l) => a + cents(l.amount) * (l.kind === "stock_buy" ? -1 : 1), 0);
+  const storyLegs = assigned.reduce((a, c) => a + cents(c.strike * 100) * (c.right === "P" ? -1 : 1), 0);
+  if (legs !== storyLegs) problems.push(`options: assignment legs on the ledger ${legs / 100}, the story's ${storyLegs / 100}`);
+  if (links.some((l) => l.units !== 100)) problems.push("options: an assignment share leg is not 100 shares");
+  const expires = sum(`SELECT COUNT(*) AS s FROM movements WHERE flow_kind = 'option_expire'`);
+  if (expires !== cs.filter((c) => c.outcome === "expired").length) problems.push(`options: ${expires} expiry rows, ${cs.filter((c) => c.outcome === "expired").length} expired series in the story`);
+  const ibkr = ids.get("ibkrUsd");
+  if (ibkr != null) {
+    const days = db
+      .prepare(`SELECT DISTINCT occurred_on AS d FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ? ORDER BY d`)
+      .all(ibkr, ibkr, ibkr) as { d: string }[];
+    for (const { d } of days) {
+      if (d >= today) continue;
+      const bal = usdCashBalanceUsdAt(ibkr, d);
+      if (bal < -0.005) {
+        problems.push(`options: IBKR dollar cash is ${bal} on ${d}`);
+        break;
+      }
+    }
+  }
 }
 
 /**

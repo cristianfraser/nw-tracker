@@ -25,6 +25,8 @@
 import { setExpenseCategoryRule } from "../expenseCategoryRules.js";
 import { readFileSync } from "node:fs";
 import { db } from "../db.js";
+import { createPanelAccount } from "../createPanelAccount.js";
+import { assignOptionContract } from "../optionAssignment.js";
 import { declareTaxResidency } from "../taxResidency.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { ensureRetirementCountrySplit, seedNavTree } from "../seedNavTree.js";
@@ -328,6 +330,28 @@ function writeOfficialIpcFromUf(fromMonth: Month): void {
 
 /* --------------------------------- direct writes ----------------------------------- */
 
+/**
+ * The options wheel's contract series as accounts, through the app's own account creation
+ * (`option_contracts` row, `brokerage_opciones` leaf, no equity ticker). The ids join the map under
+ * each series' key; a pass's database reset drops them, so every pass creates them again.
+ */
+function createOptionContractAccounts(ledger: Ledger, ids: Map<Acct, number>): void {
+  // An earlier pass's series (another set, perhaps) is gone with its database.
+  for (const key of [...ids.keys()]) if (key.startsWith("option:")) ids.delete(key);
+  for (const c of ledger.optionContracts) {
+    const r = createPanelAccount({
+      account: {
+        account_type: "option",
+        name: "",
+        bucket_slug: "brokerage_opciones",
+        option: { underlying: c.underlying, right: c.right, strike: c.strike, expiry: c.expiry },
+        exclude_from_group_totals: false,
+      },
+    });
+    ids.set(c.key, r.account_id);
+  }
+}
+
 function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
   const id = (a: Acct) => {
     const v = ids.get(a);
@@ -349,7 +373,17 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
   const sorted = [...ledger.direct].sort((a, b) => a.date.localeCompare(b.date));
   db.transaction(() => {
     for (const m of sorted) {
-      if (m.type === "single") {
+      if (m.type === "option_assign") {
+        // The contract's `option_assign` row and the share leg at the strike, linked in `option_assignments`.
+        assignOptionContract({
+          contract_account_id: id(m.contract),
+          stock_account_id: id(m.stock),
+          cash_account_id: id(m.cash),
+          occurred_on: m.date,
+          contracts: m.contracts,
+          note: m.note,
+        });
+      } else if (m.type === "single") {
         const r = insSingle.run(id(m.account), m.amount, m.currency, m.date, m.note, m.units ?? null, m.flowKind ?? null);
         const mid = Number(r.lastInsertRowid);
         if (m.cryptoKind) insKind.run(mid, m.cryptoKind);
@@ -848,6 +882,7 @@ function writeLife(
   usAprilSettlements: ReadonlyMap<number, number>
 ): { ledger: Ledger; payslipResult: ReturnType<typeof applyEmploymentPayslips> | null } {
   const ledger = simulate(person, market, today, { aprilSettlements, usAprilSettlements });
+  createOptionContractAccounts(ledger, ids);
   writeDirect(ledger, ids);
   writeUsStatementRows(ledger, ids);
   writeSplits(person, today);

@@ -28,7 +28,9 @@ import { MORTGAGE_CUOTA_DAY } from "../mortgageCuotaDay.js";
 import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { ccIssuerBySlug } from "../ccIssuers.js";
 import { derivedPayByIso } from "../ccInstallmentPayBy.js";
-import { equityQuoteCurrency } from "../equityQuote.js";
+import { equityMarketKind, equityQuoteCurrency } from "../equityQuote.js";
+import { occSymbol } from "../optionContracts.js";
+import { isWheelSaleMonth, pickWheelUnderlying, planWheelTrade, wheelOutcome, wheelTradeDayOf } from "./optionsWheel.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd, priorLondonSessionYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
@@ -84,6 +86,8 @@ export type Acct =
   | "hsa"
   | "rothIra"
   | `stock:${string}`
+  /** An option contract series at the US broker (`optionsWheel.ts`), by OCC symbol. */
+  | `option:${string}`
   | `card:${CardDef["key"]}`;
 
 /** A line a bank cartola prints (vista and the peso checking account). */
@@ -97,6 +101,19 @@ export type UsBankRow = { date: Ymd; description: string; amount: number; transf
 
 /** A ledger row written directly (transfers between own accounts, the broker's own records, funds). */
 export type DirectMovement =
+  | {
+      /**
+       * An option assignment: the contract's `option_assign` row and the share leg at the strike,
+       * written together by `assignOptionContract` (the cash leg is the share leg's).
+       */
+      type: "option_assign";
+      contract: Acct;
+      stock: Acct;
+      cash: CashAcct;
+      date: Ymd;
+      contracts: number;
+      note: string;
+    }
   | {
       type: "single";
       account: Acct;
@@ -128,6 +145,25 @@ export type DirectMovement =
       flowKind: string | null;
       note: string;
     };
+
+/**
+ * A series of the options wheel and how it ended: `open` until its expiry (or still open today),
+ * `expired` worthless, `assigned` (the share leg settled at the strike).
+ */
+export type OptionContractStory = {
+  key: Acct;
+  occ: string;
+  underlying: string;
+  right: "C" | "P";
+  strike: number;
+  expiry: Ymd;
+  soldOn: Ymd;
+  /** The premium received, all contracts (USD). */
+  premiumUsd: number;
+  outcome: "open" | "expired" | "assigned";
+  /** The day it was settled (the expiry day); null while open. */
+  resolvedOn: Ymd | null;
+};
 
 export type CardLine = {
   card: CardDef["key"];
@@ -253,6 +289,8 @@ export type Ledger = {
    * when there is one, else the cash) and that band's bounds.
    */
   months: { month: Month; expensesClp: number; cashClp: number; savingsClp: number; cushionClp: number; band: [number, number] }[];
+  /** The options wheel's series, in sale order. */
+  optionContracts: OptionContractStory[];
   /** Names the category rules need (description / merchant → category slug). */
   categoryByCheckingDescription: Map<string, string>;
   categoryByMerchant: Map<string, string>;
@@ -716,6 +754,11 @@ class Book {
       this.usBank.push({ date: t.date, description: usBank.description, amount: usBank.side === "from" ? -usd : usd, transfer: true });
     }
   }
+  /** An option assignment settling against `cash` (`usd` out for shares bought, in for shares sold). */
+  optionAssign(m: Extract<DirectMovement, { type: "option_assign" }>, usd: number, shareLeg: "stock_buy" | "stock_sell") {
+    this.add(m.cash, shareLeg === "stock_buy" ? -usd : usd, m.date);
+    this.direct.push(m);
+  }
   single(m: Extract<DirectMovement, { type: "single" }>) {
     if (isCash(m.account)) this.add(m.account as CashAcct, m.amount, m.date);
     this.direct.push(m);
@@ -1095,6 +1138,78 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
   /** The US-domiciled phase: SGOV as the reserve, SPY with the rest. */
   const ibkrUsPhase = (m: Month) => person.ibkr != null && m >= person.ibkr.usFrom;
   const dollarBroker = (m: Month): UsdBrokerCash => (ibkrOpen(m) ? "ibkrUsd" : "brokerUsd");
+  /** Sells enough of `ticker` held at `cash` to raise `usd` (all of it when that is not enough). */
+  const sellStockUsd = (day: Ymd, ticker: string, usd: number, cash: UsdBrokerCash): number => {
+    const held = heldUnits(ticker, cash);
+    if (held <= 0) return 0;
+    return sellStock(day, ticker, Math.min(1, usd / (held * heldClose(ticker, day)) + 2e-6), cash);
+  };
+
+  /* -------------------------------- the options wheel -------------------------------- */
+  /**
+   * The wheel's series and its underlying, chosen on the first sale day: the largest NYSE dollar
+   * ticker of the broker's list whose 100 shares cost no more than the SGOV reserve (the reserve
+   * counts as the put's collateral, so the pick is by what he could be assigned, not by idle cash).
+   * Settled at the expiry from the underlying's close — never forced either way.
+   */
+  const optionContracts: OptionContractStory[] = [];
+  let wheelUnderlying: string | null = null;
+  const settleWheelContract = (c: OptionContractStory) => {
+    const day = c.expiry;
+    const close = heldClose(c.underlying, day);
+    const stock: Acct = `stock:${c.underlying}`;
+    if (wheelOutcome(c.right, c.strike, close) === "expired") {
+      book.single({ type: "single", account: c.key, date: day, amount: 0, currency: "usd", units: 1, flowKind: "option_expire", note: `IBKR|vencimiento ${c.occ}` });
+      c.outcome = "expired";
+    } else {
+      const amount = cents(c.strike * 100);
+      const note = `IBKR|asignación ${c.occ}`;
+      if (c.right === "P") {
+        const lack = amount - Math.max(0, book.lowestFrom("ibkrUsd", day));
+        if (lack > 0) sellStockUsd(day, "SGOV", lack, "ibkrUsd");
+        book.optionAssign({ type: "option_assign", contract: c.key, stock, cash: "ibkrUsd", date: day, contracts: 1, note }, amount, "stock_buy");
+        addHeld(c.underlying, "ibkrUsd", 100);
+      } else {
+        if (heldUnits(c.underlying, "ibkrUsd") < 100) throw new Error(`demo wheel: call ${c.occ} assigned with fewer than 100 shares at the broker`);
+        addHeld(c.underlying, "ibkrUsd", -100);
+        book.optionAssign({ type: "option_assign", contract: c.key, stock, cash: "ibkrUsd", date: day, contracts: 1, note }, amount, "stock_sell");
+      }
+      c.outcome = "assigned";
+    }
+    c.resolvedOn = day;
+  };
+  const runWheel = (month: Month) => {
+    const w = person.optionsWheel!;
+    const open = optionContracts.find((c) => c.outcome === "open");
+    if (open && monthOf(open.expiry) === month && open.expiry < today) settleWheelContract(open);
+    if (!isWheelSaleMonth(w, month)) return;
+    const day = wheelTradeDayOf(month, w.tradeDay, isNyseTradingDay);
+    if (day >= today) return;
+    if (optionContracts.some((c) => c.outcome === "open")) throw new Error(`demo wheel: a contract is still open on the sale day ${day}`);
+    if (!ibkrUsPhase(month) || !person.ibkr) throw new Error(`demo wheel: ${day} is before the US broker's US phase`);
+    if (wheelUnderlying == null) {
+      // The collateral he actually has at the broker on the first sale day: the cash plus the SGOV.
+      const collateral = Math.max(0, book.lowestFrom("ibkrUsd", day)) + heldUnits("SGOV", "ibkrUsd") * heldClose("SGOV", day);
+      const candidates = person.brokerTickers
+        .filter((t) => t !== "SGOV" && equityMarketKind(t) === "nyse" && equityQuoteCurrency(t) === "usd")
+        .map((t) => ({ ticker: t, close: heldClose(t, day) }));
+      // Until some ticker's 100 shares fit the collateral, the quarter passes.
+      if (!candidates.some((c) => c.close * 100 <= collateral)) return;
+      wheelUnderlying = pickWheelUnderlying(candidates, collateral).ticker;
+    }
+    const trade = planWheelTrade(w, day, heldClose(wheelUnderlying, day), heldUnits(wheelUnderlying, "ibkrUsd"), isNyseTradingDay);
+    if (trade.right === "P") {
+      // Cash-secured: the cash and the SGOV he holds cover the strike.
+      const secured = Math.max(0, book.lowestFrom("ibkrUsd", day)) + heldUnits("SGOV", "ibkrUsd") * heldClose("SGOV", day);
+      // A put he cannot secure is not written: the quarter passes (the price outgrew the reserve).
+      if (secured < trade.strike * 100) return;
+    }
+    const occ = occSymbol({ underlying_ticker: wheelUnderlying, expiry: trade.expiry, right: trade.right, strike: trade.strike });
+    const premiumUsd = cents(trade.premiumPerShare * 100);
+    const key: Acct = `option:${occ}`;
+    book.transfer({ from: key, to: "ibkrUsd", date: day, usd: premiumUsd, units: 1, flowKind: "option_sell_open", note: `IBKR|venta ${occ}` });
+    optionContracts.push({ key, occ, underlying: wheelUnderlying, right: trade.right, strike: trade.strike, expiry: trade.expiry, soldOn: day, premiumUsd, outcome: "open", resolvedOn: null });
+  };
   const sellUsd = (day: Ymd, usd: number, from: "checkingUsd" = "checkingUsd") => {
     usd = cents(Math.floor(usd / 10) * 10);
     if (usd <= 0) return;
@@ -1684,6 +1799,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const nextNeeds = !savingsClpOn(month) ? 0 : abroad(month) ? chileNeedsInMonth(month, 1) + chileNeedsInMonth(month, 2) : cashNeedsInMonth(month, 1);
     if (brokerDay <= today) {
       const holdForHouse = HOUSES.some((h) => month >= h.holdFromMonth && month <= h.month);
+      // The options wheel runs first: its events sit mid-month, before the month-end investing below.
+      if (person.optionsWheel) runWheel(month);
       // Dividends (quarterly): the Chilean broker withholds the 15 % US tax (W-8BEN), the US one
       // nothing (W-9).
       if (mo % 3 === 0) {
@@ -1985,6 +2102,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     usSavingsBalanceUsd: person.savings.usd && person.us ? book.bal.usSavings : null,
     savingsClpUnits: savingsClpFrom != null ? book.unitsOf("savingsClp") : null,
     mortgages: [...mortgages.values()],
+    optionContracts,
     rents,
     placeBills,
     afcContributions,
