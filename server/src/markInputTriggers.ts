@@ -496,6 +496,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "us_f1040_returns",
   "us_f1040_filed_lines",
   "us_f1040_settlements",
+  "tax_residency_periods",
 ];
 
 /**

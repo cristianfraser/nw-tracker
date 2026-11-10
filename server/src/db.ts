@@ -48,6 +48,7 @@ import { runSiiIssuedFeeReceipts296 } from "./siiIssuedFeeReceipts296.js";
 import { runFacturadoPaymentCharges297 } from "./ccFacturadoPaymentCharges297.js";
 import { runRentalPlaces299 } from "./rentalPlaces300.js";
 import { runF1040Filed300 } from "./f1040Filed301.js";
+import { runTaxResidency302 } from "./taxResidency302.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -365,6 +366,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "298_payroll_jurisdiction.sql": runPayrollJurisdiction297,
   "300_rental_places_dfl2_and_rent_income.sql": runRentalPlaces299,
   "301_us_f1040_filed.sql": runF1040Filed300,
+  "302_tax_residency_periods.sql": runTaxResidency302,
 };
 
 /**
