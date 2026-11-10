@@ -305,9 +305,10 @@ export type TaxReturnResponse = {
 /** GET /api/tax-return/us — the local Form 1040, v1 (server: f1040Payload.ts). */
 export type UsTaxReturnRowSection = "income" | "subtotal" | "deduction" | "tax" | "credit" | "payment" | "result";
 
-/** One 1040 line (the 2024 form's numbering: «1a», «25d», «35a»); whole dollars. */
+/** One 1040 line; whole dollars. `line` is the role (the 2024 form's numbering: «1a», «12», «35a»), `printed_line` the year's number («12e» on the 2025 form). */
 export type UsTaxReturnRow = {
   line: string;
+  printed_line: string;
   section: UsTaxReturnRowSection;
   /** Null without a filed return; a line the filed return leaves out reads 0. */
   filed: number | null;

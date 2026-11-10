@@ -26,7 +26,7 @@ function F1040Table({ rows, loading }: { rows: UsTaxReturnRow[]; loading?: boole
       cardLayout="flat"
       rowProps={(r) => ({ style: { fontWeight: r.section === "subtotal" || r.section === "result" ? 600 : undefined } })}
       columns={[
-        { key: "line", header: t("taxReturn.us.table.line"), className: "mono", cell: (r) => r.line, title: (r) => `${r.line} · ${label(r.line)}` },
+        { key: "line", header: t("taxReturn.us.table.line"), className: "mono", cell: (r) => r.printed_line, title: (r) => `${r.printed_line} · ${label(r.line)}` },
         { key: "concept", header: t("taxReturn.us.table.concept"), cell: (r) => label(r.line), desktopOnly: true },
         { key: "filed", header: t("taxReturn.us.table.filed"), headerClassName: "num", className: "num", cell: (r) => dollars(r.filed) },
         { key: "draft", header: t("taxReturn.us.table.draft"), headerClassName: "num", className: "num", cell: (r) => dollars(r.draft) },

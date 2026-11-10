@@ -1,5 +1,6 @@
 /**
- * Form 1040 as filed (`us_f1040_returns` + `us_f1040_filed_lines`, migration 301) and how it was
+ * Form 1040 as filed (`us_f1040_returns` + `us_f1040_filed_lines`, migration 301; lines stored as
+ * roles in the 2024 numbering, `f1040RoleOfPrintedLine` turns a form's printed numbers into them) and how it was
  * settled (`us_f1040_settlements`): the IRS refund credited to, or the payment debited from, a
  * dollar account, by its movement. The writers are what the demo generator's April loop calls
  * (`recordFiledF1040`, `linkF1040Settlement`); the 1040 page reads `filedF1040` and
@@ -37,7 +38,7 @@ export function recordFiledF1040(r: FiledF1040): void {
   if (!ISO_DAY.test(r.filedOn)) throw new Error(`1040 ${r.taxYear}: filed on «${r.filedOn}» is not YYYY-MM-DD`);
   if (r.filedOn <= `${r.taxYear}-12-31`) throw new Error(`1040 ${r.taxYear}: filed on ${r.filedOn}, before the year ended`);
   for (const k of Object.keys(r.lines)) if (!isF1040Line(k)) throw new Error(`1040 ${r.taxYear}: unknown line ${k}`);
-  assertF1040Identities(r.lines, `${r.taxYear} (filed)`);
+  assertF1040Identities(r.lines, `${r.taxYear} (filed)`, r.taxYear);
   const stored = filedF1040(r.taxYear);
   if (stored) {
     if (sameReturn(stored, r)) return;

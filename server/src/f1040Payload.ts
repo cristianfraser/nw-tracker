@@ -1,13 +1,14 @@
 /**
  * The /tax-return page's US tab: the local Form 1040 for one tax year as ordered rows (the client
- * only labels and formats them), the W-2s behind line 1a, FICA reported beside the return, the
+ * only labels and formats them; `line` is the role, `printed_line` the number the year's form
+ * prints — 12e for the 2025 standard deduction), the W-2s behind line 1a, FICA reported beside the return, the
  * filed return and its settlement. Server: f1040Draft.ts, f1040Filed.ts.
  */
 import type { UsTaxReturnResponse, UsTaxReturnRow, UsTaxReturnRowSection } from "nw-tracker-contracts/dto/taxReturn";
 import { chileWallClockNow } from "./chileDate.js";
 import { availableUsTaxYears, buildF1040Draft } from "./f1040Draft.js";
 import { f1040Settlement } from "./f1040Filed.js";
-import { F1040_LINES, type F1040Line } from "./f1040Identities.js";
+import { F1040_LINES, f1040PrintedLine, type F1040Line } from "./f1040Identities.js";
 
 const ROW_SECTION: Record<F1040Line, UsTaxReturnRowSection> = {
   "1a": "income",
@@ -18,6 +19,7 @@ const ROW_SECTION: Record<F1040Line, UsTaxReturnRowSection> = {
   "11": "subtotal",
   "12": "deduction",
   "13": "deduction",
+  "13b": "deduction",
   "14": "deduction",
   "15": "subtotal",
   "16": "tax",
@@ -55,7 +57,14 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
   ).map((line) => {
     const filed = filedLines ? (filedLines[line] ?? 0) : null;
     const draft = d.lines[line] ?? 0;
-    return { line, section: ROW_SECTION[line], filed, draft, changed: filed != null && filed !== draft };
+    return {
+      line,
+      printed_line: f1040PrintedLine(line, d.taxYear),
+      section: ROW_SECTION[line],
+      filed,
+      draft,
+      changed: filed != null && filed !== draft,
+    };
   });
   return {
     jurisdiction: "us",

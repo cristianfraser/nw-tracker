@@ -11,7 +11,9 @@
  *   31   Schedule 3: Social Security withheld above the year's maximum by two or more employers
  *   34 / 35a refund, or 37 amount owed
  *
- * and the rest by the form's arithmetic (`f1040Identities.ts`). Social Security and Medicare (boxes
+ * and the rest by the form's arithmetic (`f1040Identities.ts`; the numbers above are the line
+ * ROLES in the 2024 numbering — the 2025 form prints 11a, 12e, 13a and adds 13b, which v1 never
+ * drafts; the payload prints the year's numbers). Social Security and Medicare (boxes
  * 4 and 6) are reported beside the return, not part of its tax. No itemized deductions, no other
  * income (1099s, Schedule E: v2), no credits. The filing status is the W-4's on the year's stubs
  * (one, or the draft throws). No state return: the stubs carry no state withholding (a job in a

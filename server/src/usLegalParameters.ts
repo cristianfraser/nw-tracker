@@ -13,6 +13,20 @@
  * (2023-75, 2024-80, 2025-67) and the HSA revenue procedures (2023-23, 2024-25, 2025-19), and
  * Pub. 15-T of each year for the withholding tables.
  *
+ * The 2025 figures the 1040 draft uses were checked against the FINAL 2025 Form 1040 and its
+ * instructions on 2026-11-10 (irs.gov `f1040.pdf` «Form 1040 (2025)», `i1040gi.pdf`): the form's
+ * margin and the instructions' «What's New» print the standard deduction «$15,750–Single or
+ * Married filing separately», «$31,500–Married filing jointly or Qualifying surviving spouse»;
+ * the «2025 Tax Computation Worksheet—Line 16» prints the bracket edges above $100.000 (Single
+ * 103,350 / 197,300 / 250,525 / 626,350; joint 206,700 / 394,600 / 501,050 / 751,600) and the
+ * 2025 Tax Table reproduces the lower ones (single 12,000–12,050 → $1,205; 48,500–48,550 →
+ * $5,590; joint 24,000–24,050 → $2,406; 97,000–97,050 → $11,174, each the brackets' tax on the
+ * row's midpoint); the Tax Table's rows are 0–5, 5–15, 15–25, then $25 wide through 2,975–3,000
+ * and $50 from 3,000; «If your taxable income is less than $100,000, you must use the Tax Table»;
+ * the Instructions for Form 8959 (2025) keep the additional Medicare thresholds (Single $200,000,
+ * Married filing jointly $250,000). The 2025 Pub. 15-T withholding deduction (15,000) was not
+ * re-read then and stands as entered.
+ *
  * Amounts are dollars; rates are fractions (0.062 = 6,2 %).
  */
 

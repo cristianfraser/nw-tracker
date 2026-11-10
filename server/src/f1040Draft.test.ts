@@ -11,7 +11,7 @@ import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { availableUsTaxYears, buildF1040Draft } from "./f1040Draft.js";
 import { f1040Settlement, filedF1040, linkF1040Settlement, recordFiledF1040 } from "./f1040Filed.js";
-import { assertF1040Identities, computeF1040Lines, type F1040Lines } from "./f1040Identities.js";
+import { assertF1040Identities, computeF1040Lines, f1040PrintedLine, f1040RoleOfPrintedLine, type F1040Lines } from "./f1040Identities.js";
 import { buildF1040Payload } from "./f1040Payload.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 import { registerTaxReturnRoutes } from "./routes/taxReturn.js";
@@ -200,6 +200,33 @@ describe("Form 1040 arithmetic and tax", () => {
     expect(withInterest["16"]).toBe(usForm1040Tax(105_250, "single", 2025));
     expect(() => assertF1040Identities(withInterest, "interest")).not.toThrow();
     expect(() => assertF1040Identities({ ...withInterest, "9": 120_000 }, "bad")).toThrow(/line 9 is/);
+    // The 2025 form's Schedule 1-A deductions (13b) join line 14; the 2024 form has no such line.
+    const with13b = { ...lines, "13b": 1_000, "14": lines["14"] + 1_000, "15": lines["15"] - 1_000 } as F1040Lines;
+    expect(() => assertF1040Identities(with13b, "13b", 2025)).not.toThrow();
+    expect(() => assertF1040Identities({ ...lines, "13b": 1_000 } as F1040Lines, "13b", 2025)).toThrow(/line 14 is/);
+    expect(() => assertF1040Identities({ ...lines, "13b": 0 } as F1040Lines, "13b", 2024)).not.toThrow();
+    expect(() => assertF1040Identities(with13b, "13b", 2024)).toThrow(/2024 form has no line 13b/);
+  });
+
+  it("prints each role under the year's own line number: the 2025 form renumbered 11 → 11a, 12 → 12e, 13 → 13a and added 13b", () => {
+    expect(f1040PrintedLine("11", 2024)).toBe("11");
+    expect(f1040PrintedLine("12", 2024)).toBe("12");
+    expect(f1040PrintedLine("11", 2025)).toBe("11a");
+    expect(f1040PrintedLine("12", 2025)).toBe("12e");
+    expect(f1040PrintedLine("13", 2025)).toBe("13a");
+    expect(f1040PrintedLine("13b", 2026)).toBe("13b");
+    expect(f1040PrintedLine("24", 2025)).toBe("24");
+    expect(() => f1040PrintedLine("13b", 2024)).toThrow(/no line 13b/);
+    expect(f1040RoleOfPrintedLine("11a", 2025)).toBe("11");
+    expect(f1040RoleOfPrintedLine("11b", 2025)).toBe("11");
+    expect(f1040RoleOfPrintedLine("12e", 2025)).toBe("12");
+    expect(f1040RoleOfPrintedLine("13a", 2025)).toBe("13");
+    expect(f1040RoleOfPrintedLine("13b", 2025)).toBe("13b");
+    expect(f1040RoleOfPrintedLine("35a", 2025)).toBe("35a");
+    expect(() => f1040RoleOfPrintedLine("12", 2025)).toThrow(/prints no line 12/);
+    expect(f1040RoleOfPrintedLine("12", 2024)).toBe("12");
+    expect(() => f1040RoleOfPrintedLine("12e", 2024)).toThrow(/prints no line 12e/);
+    expect(() => f1040RoleOfPrintedLine("99", 2025)).toThrow(/unknown line 99/);
   });
 
   it("takes the Tax Table's row midpoint below $100.000 and the exact amount above", () => {
@@ -308,6 +335,11 @@ describe("the 1040 draft", () => {
     const row = (line: string) => p.rows.find((r) => r.line === line)!;
     expect(row("16")).toMatchObject({ filed: d.lines["16"]! - 200, draft: d.lines["16"], changed: true });
     expect(row("1a")).toMatchObject({ changed: false });
+    // Rows carry the role and the 2025 form's own number.
+    expect(row("12")).toMatchObject({ printed_line: "12e" });
+    expect(row("11")).toMatchObject({ printed_line: "11a" });
+    expect(row("24")).toMatchObject({ printed_line: "24" });
+    expect(buildF1040Payload(2024, TODAY).rows.find((r) => r.line === "12")).toMatchObject({ printed_line: "12" });
     expect(p.tax_filed).toBe(p.tax_draft - 200);
 
     const refund = filedLines["35a"];
