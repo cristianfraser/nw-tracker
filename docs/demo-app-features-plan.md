@@ -105,7 +105,7 @@ That is the right outcome, and the law gets there, but not through discretion. R
   ETF as a US resident (the Chilean art. 107 story then needs a resident-era holding instead:
   bought 2023, sold before the move); (b) keep both and file 8621 with the mark-to-market
   election each year (the app computes the MTM inclusion). (a) is what an adviser says and is
-  simpler to model; (b) exercises more of the app. Proposed: (a).
+  simpler to model; (b) exercises more of the app. Taken: (b) — see the decisions below.
 
 ### Checks
 
@@ -265,12 +265,16 @@ carries the premiums; a Chilean-resident year with an option event throws.
 - Each wave: `cd server && npm run test`, both generations, the local demo pair; merge to `main`
   on the user's word; one demo release after R2 (the tax story) and one after O2. R1 before R2
   (R2 reads the Adicional); L and O1 independent of both and of each other; O2 after R2 and O1.
-  The user picks the first wave; R1 proposed.
+  Started 2026-11-10: R1, L and O1 in parallel (worktrees `us-r1-residency`, `us-l-london`,
+  `us-o1-options`, deps from `us-deps`), decisions 2–4 at their proposed values.
 
 ## Decisions for the user
 
 1. The PFIC story: (a) the cushion to a DAP ladder at the move and no IPSA ETF as a US
-   resident (proposed), or (b) keep both with the 8621 mark-to-market election.
+   resident, or (b) keep both with the 8621 mark-to-market election. **Taken 2026-11-10: (b).**
+   The IPSA ETF only exists since 2025-05 on the real market, so it cannot be a resident-era
+   holding sold before the move; keeping both and electing mark-to-market is the consistent
+   story, exercises more of the app (8621 in R2) and leaves R1's story untouched.
 2. The declared date: 2024-04-15, the move (proposed), or the first stub, 2024-04-19.
 3. UCITS as a resident-era holding sold before the move (proposed), or not at all.
 4. Options after the move only (proposed; the Chilean derivatives law stays unmodelled).
