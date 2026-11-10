@@ -320,12 +320,24 @@ function w2Figures(w2s: readonly UsW2[], filingStatus: UsFilingStatus, law: UsTa
   };
 }
 
-/** The prior year's capital loss carryover, from its own draft (none before the first drafted year). */
+/**
+ * The prior year's capital loss carryover, from its own draft: none before the first drafted year,
+ * and none when the prior year sold nothing and carried nothing in (then its draft — and its year's
+ * law — is not needed). The prior year is drafted with no wired inputs: an extra Form 8949 row of
+ * that year (an option) reaches this year's carryover once the wiring step passes it here too.
+ */
 function carryoverInto(taxYear: number, todayYmd: string): CapitalLossCarryover {
+  const none = { shortTerm: 0, longTerm: 0 };
   const prior = taxYear - 1;
-  if (!availableUsTaxYears(todayYmd).includes(prior)) return { shortTerm: 0, longTerm: 0 };
+  if (!availableUsTaxYears(todayYmd).includes(prior)) return none;
   const status = usReturnStatusForYear(prior);
-  if (!status.drafted || status.residency.kind === "undeclared") return { shortTerm: 0, longTerm: 0 };
+  if (!status.drafted || status.residency.kind === "undeclared") return none;
+  const window: DateWindow = {
+    fromYmd: status.residency.kind === "dual_status" ? status.residency.from! : `${prior}-01-01`,
+    throughYmd: `${prior}-12-31`,
+  };
+  const before = carryoverInto(prior, todayYmd);
+  if (usDisposalLots(window).length === 0 && before.shortTerm === 0 && before.longTerm === 0) return none;
   return buildF1040Draft(prior, todayYmd).capitalLossCarryoverOut;
 }
 
