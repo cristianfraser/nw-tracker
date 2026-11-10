@@ -338,9 +338,9 @@ export function plainNumberFlowParts(
   };
 }
 
-/** ETF shares or crypto coin units (no currency symbol) */
-export function formatInstrumentUnits(n: number, kind: "shares" | "coin") {
-  const max = kind === "coin" ? 8 : 6;
+/** ETF shares, crypto coin units or option contracts (whole, signed — a short position is negative); no currency symbol. */
+export function formatInstrumentUnits(n: number, kind: "shares" | "coin" | "contracts") {
+  const max = kind === "coin" ? 8 : kind === "contracts" ? 0 : 6;
   return normalizeIntlNum(numFmt(0, max).format(n));
 }
 

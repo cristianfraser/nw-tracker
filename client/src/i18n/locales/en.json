@@ -179,6 +179,29 @@
       "cripto": "Crypto"
     }
   },
+  "options": {
+    "addAccount": {
+      "accountType": "Option contract",
+      "namePlaceholder": "Empty: named after the contract (SPY 2025-06-20 C 600)",
+      "underlying": "Underlying (ticker)",
+      "right": "Right",
+      "strike": "Strike (US$)",
+      "expiry": "Expiry",
+      "bucketNote": "A contract is filed under Brokerage › Options; the server derives its OCC symbol."
+    },
+    "terms": {
+      "title": "Contract",
+      "occSymbol": "OCC symbol",
+      "underlying": "Underlying",
+      "right": "Right",
+      "call": "Call",
+      "put": "Put",
+      "strike": "Strike",
+      "expiry": "Expiry",
+      "multiplier": "Shares per contract",
+      "intrinsicNote": "Marked at intrinsic value from the underlying's close; time value is not priced. A short position shows a negative value and a negative number of contracts."
+    }
+  },
   "realEstate": {
     "propertyValue": "value",
     "mortgage": "mortgage",
@@ -445,6 +468,12 @@
       "withdrawal_clp": "CLP withdrawal",
       "withdrawal_usd": "USD withdrawal",
       "afp_fund_switch": "AFP fund switch",
+      "option_sell_open": "Option sold (open)",
+      "option_sell_close": "Option sold (close)",
+      "option_buy_open": "Option bought (open)",
+      "option_buy_close": "Option bought (close)",
+      "option_expire": "Option expired",
+      "option_assign": "Option assigned",
       "other": "Other"
     },
     "addUsdAccount": {

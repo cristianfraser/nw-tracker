@@ -7,7 +7,7 @@ import {
   buildBrokerageMovementPostBody,
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
-import { type StockQuoteCurrency } from "../../panelAccounts/brokerageFlowKinds";
+import { type BrokerageFlowKind, type StockQuoteCurrency } from "../../panelAccounts/brokerageFlowKinds";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { Button } from "@crfrsr/ui";
 
@@ -17,6 +17,8 @@ type Props = {
   /** Stock's quote currency from the summary DTO (present even before the first movement). */
   quoteCurrency?: StockQuoteCurrency | null;
   displayUnit: DisplayUnit;
+  /** The kinds this account's form offers (an option contract's differ from a stock's). */
+  flowKinds?: readonly BrokerageFlowKind[];
 };
 
 export function AccountBrokerageMovementsForm({
@@ -24,6 +26,7 @@ export function AccountBrokerageMovementsForm({
   ticker,
   quoteCurrency,
   displayUnit,
+  flowKinds,
 }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -76,6 +79,7 @@ export function AccountBrokerageMovementsForm({
         emptyTextKey="accountDetail.brokerageMovements.emptyDraft"
         currentAccountId={accountId}
         stockQuoteCurrency={quoteCurrency ?? undefined}
+        flowKinds={flowKinds}
       />
 
       {movements.length > 0 ? (

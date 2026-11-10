@@ -11,7 +11,7 @@ export function AccountFlowsSection({
   /** Brokerage manual movement entry, rendered under the Flujos heading. */
   addMovementsForm?: ReactNode;
   accountId: number;
-  unitsKind?: "shares" | "coin";
+  unitsKind?: "shares" | "coin" | "contracts";
 }) {
   const { t } = useTranslation();
 

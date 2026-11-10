@@ -515,6 +515,80 @@
       }
     }
   },
+  "options": {
+    "addAccount": {
+      "accountType": {
+        "en": "Option contract",
+        "es": "Contrato de opción"
+      },
+      "namePlaceholder": {
+        "en": "Empty: named after the contract (SPY 2025-06-20 C 600)",
+        "es": "Vacío: toma el nombre del contrato (SPY 2025-06-20 C 600)"
+      },
+      "underlying": {
+        "en": "Underlying (ticker)",
+        "es": "Subyacente (ticker)"
+      },
+      "right": {
+        "en": "Right",
+        "es": "Derecho"
+      },
+      "strike": {
+        "en": "Strike (US$)",
+        "es": "Strike (US$)"
+      },
+      "expiry": {
+        "en": "Expiry",
+        "es": "Vencimiento"
+      },
+      "bucketNote": {
+        "en": "A contract is filed under Brokerage › Options; the server derives its OCC symbol.",
+        "es": "Un contrato se archiva en Brokerage › Opciones; el servidor deriva su símbolo OCC."
+      }
+    },
+    "terms": {
+      "title": {
+        "en": "Contract",
+        "es": "Contrato"
+      },
+      "occSymbol": {
+        "en": "OCC symbol",
+        "es": "Símbolo OCC"
+      },
+      "underlying": {
+        "en": "Underlying",
+        "es": "Subyacente"
+      },
+      "right": {
+        "en": "Right",
+        "es": "Derecho"
+      },
+      "call": {
+        "en": "Call",
+        "es": "Call"
+      },
+      "put": {
+        "en": "Put",
+        "es": "Put"
+      },
+      "strike": {
+        "en": "Strike",
+        "es": "Strike"
+      },
+      "expiry": {
+        "en": "Expiry",
+        "es": "Vencimiento"
+      },
+      "multiplier": {
+        "en": "Shares per contract",
+        "es": "Acciones por contrato"
+      },
+      "intrinsicNote": {
+        "en": "Marked at intrinsic value from the underlying's close; time value is not priced. A short position shows a negative value and a negative number of contracts.",
+        "es": "Valorado al valor intrínseco según el cierre del subyacente; el valor tiempo no se valora. Una posición corta muestra un valor negativo y un número negativo de contratos."
+      }
+    }
+  },
   "realEstate": {
     "propertyValue": {
       "en": "value",
@@ -1383,6 +1457,30 @@
       "afp_fund_switch": {
         "en": "AFP fund switch",
         "es": "Traspaso AFP"
+      },
+      "option_sell_open": {
+        "en": "Option sold (open)",
+        "es": "Venta de opción (apertura)"
+      },
+      "option_sell_close": {
+        "en": "Option sold (close)",
+        "es": "Venta de opción (cierre)"
+      },
+      "option_buy_open": {
+        "en": "Option bought (open)",
+        "es": "Compra de opción (apertura)"
+      },
+      "option_buy_close": {
+        "en": "Option bought (close)",
+        "es": "Compra de opción (cierre)"
+      },
+      "option_expire": {
+        "en": "Option expired",
+        "es": "Vencimiento de opción"
+      },
+      "option_assign": {
+        "en": "Option assigned",
+        "es": "Asignación de opción"
       },
       "other": {
         "en": "Other",

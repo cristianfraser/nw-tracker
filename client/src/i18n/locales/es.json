@@ -179,6 +179,29 @@
       "cripto": "Cripto"
     }
   },
+  "options": {
+    "addAccount": {
+      "accountType": "Contrato de opción",
+      "namePlaceholder": "Vacío: toma el nombre del contrato (SPY 2025-06-20 C 600)",
+      "underlying": "Subyacente (ticker)",
+      "right": "Derecho",
+      "strike": "Strike (US$)",
+      "expiry": "Vencimiento",
+      "bucketNote": "Un contrato se archiva en Brokerage › Opciones; el servidor deriva su símbolo OCC."
+    },
+    "terms": {
+      "title": "Contrato",
+      "occSymbol": "Símbolo OCC",
+      "underlying": "Subyacente",
+      "right": "Derecho",
+      "call": "Call",
+      "put": "Put",
+      "strike": "Strike",
+      "expiry": "Vencimiento",
+      "multiplier": "Acciones por contrato",
+      "intrinsicNote": "Valorado al valor intrínseco según el cierre del subyacente; el valor tiempo no se valora. Una posición corta muestra un valor negativo y un número negativo de contratos."
+    }
+  },
   "realEstate": {
     "propertyValue": "valor",
     "mortgage": "hipoteca",
@@ -445,6 +468,12 @@
       "withdrawal_clp": "Retiro CLP",
       "withdrawal_usd": "Retiro USD",
       "afp_fund_switch": "Traspaso AFP",
+      "option_sell_open": "Venta de opción (apertura)",
+      "option_sell_close": "Venta de opción (cierre)",
+      "option_buy_open": "Compra de opción (apertura)",
+      "option_buy_close": "Compra de opción (cierre)",
+      "option_expire": "Vencimiento de opción",
+      "option_assign": "Asignación de opción",
       "other": "Otro"
     },
     "addUsdAccount": {

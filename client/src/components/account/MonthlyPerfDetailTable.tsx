@@ -34,7 +34,7 @@ type FmtPerf = (n: number | null | undefined) => string;
 function formatStockInflow(
   row: PerfRow,
   isAfpAccount: boolean,
-  unitsKind: "shares" | "coin" = "shares"
+  unitsKind: "shares" | "coin" | "contracts" = "shares"
 ): string {
   const u = row.stock_units_inflow ?? 0;
   if (!Number.isFinite(u) || u === 0) return "—";
@@ -70,7 +70,7 @@ export function MonthlyPerfDetailTable({
   displayUnit: "clp" | "usd";
   isMortgageAccount?: boolean;
   isAfpAccount?: boolean;
-  unitsKind?: "shares" | "coin";
+  unitsKind?: "shares" | "coin" | "contracts";
   /** Off for consolidated group tables (mixed instruments). */
   showStockInflowsColumn?: boolean;
   /**
