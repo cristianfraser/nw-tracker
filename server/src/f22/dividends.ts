@@ -4,7 +4,6 @@
  */
 import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
 import { dividendFacts } from "../taxFacts/dividends.js";
-import { usRetirementAccountIds } from "../usRetirementAccounts.js";
 import type { F22DividendLine } from "./types.js";
 
 /**
@@ -15,17 +14,12 @@ import type { F22DividendLine } from "./types.js";
  */
 export function loadF22Dividends(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): F22DividendLine[] {
   const inYear = windowWithinYear(incomeYear, window);
-  // KNOWN BUG, kept by the T0 refactor (no behaviour change; reported to be fixed apart): the SQL
-  // this replaced read `from_account_id NOT IN (<Roth ids>)`, and with no Roth IRA on file that
-  // list was `(NULL)`, which no id passes — so without a Roth every dividend paid out of an
-  // instrument's account was left out of the F22. Reproduced here until the fix lands.
-  const noRothOnFile = usRetirementAccountIds("roth_ira").length === 0;
+  // A Roth IRA's dividends are income to neither return (`usRetirementAccounts.ts`); every other
+  // dollar dividend enters. Until 2026-11-10 the exclusion was `NOT IN (<Roth ids>)`, which with
+  // no Roth on file read `NOT IN (NULL)` and dropped every dividend paid out of an instrument's
+  // account — the F22 of a person without a Roth declared no foreign dividends at all.
   return (inYear ? dividendFacts(inYear) : [])
-    .filter(
-      (d) =>
-        d.currency === "usd" &&
-        (d.fromAccountId == null || (!noRothOnFile && d.usRetirementAccount !== "roth_ira"))
-    )
+    .filter((d) => d.currency === "usd" && d.usRetirementAccount !== "roth_ira")
     .map((d) => ({
       date: d.date,
       movementId: d.movementId,
