@@ -876,6 +876,8 @@ export interface FlowIncomeMonthRow {
   salary_clp: number;
   severance_clp: number;
   parent_gift_clp: number;
+  /** Rent of the tracked places (income kind `rent`). */
+  rent_clp: number;
   other_clp: number;
   total_clp: number;
   line_count: number;
@@ -887,6 +889,7 @@ export interface FlowIncomeChartPoint {
   salary: number;
   severance: number;
   parent_gift: number;
+  rent: number;
   other: number;
   total: number;
 }

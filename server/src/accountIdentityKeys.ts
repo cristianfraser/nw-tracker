@@ -34,6 +34,12 @@ function requirePropertyKey(key: string): string {
   return key;
 }
 
+/**
+ * The term-deposit (DAP) ledger account: the account the principal sits on between its checking
+ * round-trips (kind `dap`, `accountProfile.ts`). One per instance.
+ */
+export const TERM_DEPOSIT_ACCOUNT_IMPORT_KEY = "import:dap|key=dap";
+
 /** The crypto exchange's peso wallet (role `buda_wallet`). */
 export const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 

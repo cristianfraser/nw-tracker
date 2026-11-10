@@ -27,6 +27,7 @@ const SERIES = [
   { dataKey: "salary" as const, color: "#22c55e" },
   { dataKey: "severance" as const, color: "#f59e0b" },
   { dataKey: "parent_gift" as const, color: "#a78bfa" },
+  { dataKey: "rent" as const, color: "#14b8a6" },
   { dataKey: "other" as const, color: "#64748b" },
 ];
 
@@ -50,7 +51,7 @@ export function IncomeMonthlyChart({
   const compactAxis = useIsNarrowViewport();
 
   const densePoints = useMemo(() => {
-    const zeroKeys = ["salary", "severance", "parent_gift", "other", "total"];
+    const zeroKeys = ["salary", "severance", "parent_gift", "rent", "other", "total"];
     return densifyRecordsByCalendarPeriod(
       points as unknown as Record<string, string | number | null>[],
       {
@@ -103,6 +104,7 @@ export function IncomeMonthlyChart({
                 salary: t("income.chart.salary"),
                 severance: t("income.chart.severance"),
                 parent_gift: t("income.chart.parent_gift"),
+                rent: t("income.chart.rent"),
                 other: t("income.chart.other"),
                 total: t("income.colTotal"),
               };
@@ -133,6 +135,7 @@ export function IncomeMonthlyChart({
                   salary: t("income.chart.salary"),
                   severance: t("income.chart.severance"),
                   parent_gift: t("income.chart.parent_gift"),
+                  rent: t("income.chart.rent"),
                   other: t("income.chart.other"),
                   total: t("income.colTotal"),
                 };

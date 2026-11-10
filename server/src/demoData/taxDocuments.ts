@@ -28,6 +28,7 @@ import { payrollTaxYear } from "../payrollTaxYear.js";
 import { upsertMovementDividendDetail } from "../movementDividendDetails.js";
 import { usRetirementAccountIds } from "../usRetirementAccounts.js";
 import { accountsWithRole, propertyLoanPairsWithLoan } from "../accountRoles.js";
+import { lenderDisplayName } from "../lenderNames.js";
 import { DIVIDEND_WITHHOLDING_RATE, US_IRS_PAYMENT, US_IRS_REFUND, type Ledger } from "./simulate.js";
 import type { Ymd } from "./person.js";
 
@@ -154,16 +155,16 @@ function writeInformedDjs(ledger: Ledger, today: Ymd): void {
       ins.run(taxYear, 1890, "B: Intereses Reales / Positivo", chileanInteger(dap.positive), file);
       ins.run(taxYear, 1890, "C: Intereses Reales / Negativo", chileanInteger(dap.negative), file);
     }
-    // Each lender files its own DJ 1898; the summary prints one column per lender.
+    // Each lender files its own DJ 1898; the summary prints one column per lender, headed by the
+    // lender's name (the loan's lender role, `lenderNames.ts`), never the app's loan account.
     const lenders = propertyLoanPairsWithLoan()
       .map((p) => ({ loan: p.loanAccountId, interest: mortgageInterestForYear(y, p.loanAccountId) }))
       .filter((x) => x.interest > 0);
     lenders.forEach((x, i) => {
-      const name = (db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(x.loan) as { name: string }).name;
       ins.run(
         taxYear,
         1898,
-        `${String.fromCharCode(65 + i)}: ${name} / Monto Actualizado de los Intereses Pagados ($) en Dividendo`,
+        `${String.fromCharCode(65 + i)}: ${lenderDisplayName(x.loan)} / Monto Actualizado de los Intereses Pagados ($) en Dividendo`,
         chileanInteger(x.interest),
         `demo/DJ_1898_${taxYear}.xlsx`
       );

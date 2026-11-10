@@ -841,8 +841,9 @@ function checkingExpenseRefundLineDrafts(): FlowCcExpenseLineRowDraft[] {
       purchase_on: r.received_on,
       statement_date: "",
       amount_clp: -r.amount_clp,
-      amount_usd: null,
-      amount_usd_at_expense: expenseGastosAmountUsdAtDate(-r.amount_clp, null, r.received_on),
+      // A dollar account's refund is its own dollars, as its gastos lines are.
+      amount_usd: r.amount_usd == null ? null : -r.amount_usd,
+      amount_usd_at_expense: r.amount_usd == null ? expenseGastosAmountUsdAtDate(-r.amount_clp, null, r.received_on) : -r.amount_usd,
       merchant: description || null,
       installment_flag: 0,
       nro_cuota_current: null,

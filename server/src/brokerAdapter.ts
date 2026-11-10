@@ -8,7 +8,7 @@
  * {@link pairDividendPayout}. A new broker is a new adapter.
  */
 import type { BrokerNotificationPlanRow } from "nw-tracker-contracts";
-import { accountsWithEquityTicker } from "./accountEquityTicker.js";
+import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { accountWithRole } from "./accountRoles.js";
@@ -99,11 +99,8 @@ const ADAPTERS: Record<BrokerSlug, BrokerAdapter> = {
     broker: "fintual",
     label: "Fintual",
     cashAccountId: (currency) => (currency === "usd" ? fintualUsdAccountId() : fintualClpBalanceAccountId()),
-    equityAccountId: (ticker) => {
-      const holders = accountsWithEquityTicker(ticker);
-      if (holders.length !== 1) throw new Error(`Expected exactly one account with equity_ticker "${ticker}", found ${holders.length}`);
-      return holders[0]!;
-    },
+    // Among several holders of a ticker, the one trading against Fintual's dollar wallet.
+    equityAccountId: (ticker) => accountIdForEquityTicker(ticker, { brokerCashAccountId: fintualUsdAccountId() }),
     dividendPairingWindowDays: BROKER_SETTLEMENT_WINDOW_DAYS,
     depositFromMail: {
       duplicateLeadDays: null,

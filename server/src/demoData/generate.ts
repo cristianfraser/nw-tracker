@@ -58,6 +58,7 @@ import {
   BUDA_ACCOUNT_IMPORT_KEY,
   loanAccountImportKey,
   propertyAccountImportKey,
+  TERM_DEPOSIT_ACCOUNT_IMPORT_KEY,
   usRetirementAccountImportKey,
 } from "../accountIdentityKeys.js";
 import { createRealEstatePlace } from "../flowsRealEstateExpenses.js";
@@ -167,7 +168,7 @@ function createAccounts(person: Person): Map<Acct, number> {
     db.prepare(`INSERT INTO account_roles (account_id, role, param) VALUES (?, 'broker_cash', 'ibkr|usd')`).run(ibkr);
     ids.set("ibkrUsd", ibkr);
   }
-  if (person.dap) ids.set("dap", createAccount(g("cash_eqs__dap"), "Depósito a plazo"));
+  if (person.dap) ids.set("dap", createAccount(g("cash_eqs__dap"), "Depósito a plazo", { key: TERM_DEPOSIT_ACCOUNT_IMPORT_KEY }));
   if (person.fund) {
     ids.set("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
   }

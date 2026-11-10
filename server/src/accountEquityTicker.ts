@@ -1,6 +1,7 @@
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { db } from "./db.js";
+import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 
 const stmtEquityTicker = db.prepare(
   `SELECT equity_ticker FROM accounts WHERE id = ?`
@@ -34,25 +35,63 @@ export function accountsWithEquityTicker(ticker: string): number[] {
   return rows.map((r) => r.id);
 }
 
+/** The share trades (a split is a single-leg row and names no cash account). */
+const SHARE_TRADE_FLOW_KINDS = BROKERAGE_SHARE_UNITS_FLOW_KINDS.filter((k) => k !== "stock_split");
+
+const stmtTradesAgainstCash = db.prepare(
+  `SELECT 1 FROM movements
+   WHERE flow_kind IN (${SHARE_TRADE_FLOW_KINDS.map(() => "?").join(", ")})
+     AND ((from_account_id = @stock AND to_account_id = @cash) OR (from_account_id = @cash AND to_account_id = @stock))
+   LIMIT 1`
+);
+
+/**
+ * The holders of a symbol whose shares were traded against `cashAccountId` — the broker's cash
+ * account on the other side of a buy or a sale, the evidence `equityBrokerHoldings.ts` groups a
+ * position by. Two accounts may hold one ticker (the demo's Roth IRA holds SPY beside the
+ * brokerage SPY account); the cash leg tells them apart.
+ */
+export function accountsWithEquityTickerAtBroker(ticker: string, cashAccountId: number): number[] {
+  return accountsWithEquityTicker(ticker).filter(
+    (stock) => stmtTradesAgainstCash.get(...SHARE_TRADE_FLOW_KINDS, { stock, cash: cashAccountId }) != null
+  );
+}
+
 /**
  * The account holding a symbol — the reverse of {@link equityTickerForAccount}, and the only
  * sanctioned way for an importer to turn a broker's ticker into an account.
  *
- * Throws unless exactly one account matches: zero means the position does not exist yet (a
- * first-ever purchase of something new, which should be created deliberately in the panel, not
- * invented by an importer), and more than one means the ticker is ambiguous.
+ * Zero holders throws: the position does not exist yet (a first-ever purchase of something new,
+ * which should be created deliberately in the panel, not invented by an importer). One holder is
+ * the account, whatever `brokerCashAccountId` says. Several holders resolve only through the
+ * broker's cash account ({@link accountsWithEquityTickerAtBroker}): exactly one of them must have
+ * traded against it, else the ticker is ambiguous and this throws.
  */
-export function accountIdForEquityTicker(ticker: string): number {
+export function accountIdForEquityTicker(ticker: string, opts: { brokerCashAccountId?: number } = {}): number {
   const symbol = String(ticker ?? "").trim().toUpperCase();
   if (!symbol) throw new Error("accountIdForEquityTicker: empty ticker");
   const rows = stmtAccountsByTicker.all(symbol) as { id: number }[];
-  if (rows.length !== 1) {
+  if (rows.length === 1) return rows[0]!.id;
+  if (rows.length === 0) {
     throw new Error(
-      `Expected exactly one account with equity_ticker "${symbol}", found ${rows.length}. ` +
+      `Expected exactly one account with equity_ticker "${symbol}", found 0. ` +
         `Create the position in the panel first (it sets accounts.equity_ticker).`
     );
   }
-  return rows[0]!.id;
+  if (opts.brokerCashAccountId == null) {
+    throw new Error(
+      `Expected exactly one account with equity_ticker "${symbol}", found ${rows.length}. ` +
+        `Resolve it through the broker's cash account (accountIdForEquityTicker(ticker, { brokerCashAccountId })).`
+    );
+  }
+  const atBroker = accountsWithEquityTickerAtBroker(symbol, opts.brokerCashAccountId);
+  if (atBroker.length !== 1) {
+    throw new Error(
+      `${rows.length} accounts hold equity_ticker "${symbol}" and ${atBroker.length} of them traded against ` +
+        `cash account ${opts.brokerCashAccountId}; expected exactly one.`
+    );
+  }
+  return atBroker[0]!;
 }
 
 /** Fail fast when an equity-MTM account has no `equity_ticker` in DB. */

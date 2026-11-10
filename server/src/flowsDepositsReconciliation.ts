@@ -21,6 +21,7 @@ import {
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
 import { loadF22RefundMovements } from "./f22Settlements.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
@@ -29,6 +30,8 @@ import {
   outflowFlowClaimKey,
 } from "./flowsCheckingGastos.js";
 import {
+  listDollarCheckingAccountIds,
+  listDollarCheckingMovements,
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
 import { loadConsumedNetWorthCapitalReturnOutflowKeys } from "./flowsCheckingInflows.js";
@@ -146,11 +149,32 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 // as internal on the checking side, so DAP inflows/outflows are excluded from reconciliation on
 // both sides — including them would demand links for flows the matcher intentionally ignores.
 
-// The checking bucket (cuenta_corriente + cuenta_vista) is the *funding source* for this feature,
-// never a reconciliation target. Its own inflows are income (salary) and internal corriente↔vista
-// transfers — out of scope here (handled by the future liquidaciones / income tab). We reconcile
-// money crossing the checking-bucket boundary into other net-worth buckets, not flows inside it.
-// listMovementBalanceCashAccountIds() is exactly {cuenta_corriente, cuenta_vista}.
+// The checking bucket (cuenta_corriente + cuenta_vista, and the dollar checking accounts) is the
+// *funding source* for this feature, never a reconciliation target. Its own inflows are income
+// (salary) and internal corriente↔vista transfers — out of scope here (handled by the future
+// liquidaciones / income tab). We reconcile money crossing the checking-bucket boundary into other
+// net-worth buckets, not flows inside it. listMovementBalanceCashAccountIds() is exactly
+// {cuenta_corriente, cuenta_vista}; listDollarCheckingAccountIds() the dollar ones.
+//
+// A dollar deposit — a single-leg dollar row buying units of a non-cash account, the deposit event
+// `accountDeposits.ts` counts — reconciles like a peso one, at its dollars priced at the day's rate,
+// and its "checking present" reads the dollar checking accounts' listed months: a dollar deposit is
+// funded from a dollar account. Dollar transfers (US checking → a Roth IRA's shares) are transfer
+// rows and need no link, like peso transfers; a dollar cash account is never a target (`usdCashIds`).
+
+/** The months a dollar checking account lists a movement in (either direction). */
+function loadDollarCheckingMonthsWithData(): Set<string> {
+  const months = new Set<string>();
+  for (const accountId of listDollarCheckingAccountIds()) {
+    for (const direction of ["in", "out"] as const) {
+      for (const m of listDollarCheckingMovements(accountId, direction)) {
+        const month = monthKeyFromYmd(m.occurred_on);
+        if (month != null) months.add(month);
+      }
+    }
+  }
+  return months;
+}
 
 // Coverage is decided by cuenta_corriente specifically, not the union of every movement-balance
 // cash account. cuenta_vista also holds checking-like data and can independently explain (link)
@@ -172,6 +196,7 @@ type RawMovementRow = MovementAmountFields & {
   id: number;
   account_id: number;
   occurred_on: string;
+  units_delta: number | null;
   flow_kind: string | null;
   note: string | null;
 };
@@ -186,16 +211,22 @@ function loadPositiveInflowMovements(
   // selling coins (internal to the crypto bucket) and must not count as deposits needing an outflow.
   const budaFilter =
     budaBufferId != null ? ` AND NOT (m.account_id = ${budaBufferId} AND m.note IS NOT 'import:buda|abono')` : "";
+  // A peso inflow, or a dollar single-leg row buying units (the dollar deposit event).
   return db
     .prepare(
-      `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind, m.note
+      `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.units_delta, m.flow_kind, m.note
        FROM movements m
        WHERE m.account_id IN (${ph})
-         AND ${MOVEMENT_CLP_LEG_SQL} > 0
+         AND (${MOVEMENT_CLP_LEG_SQL} > 0 OR (m.currency = 'usd' AND m.amount > 0 AND m.units_delta IS NOT NULL))
          ${budaFilter}
        ORDER BY m.occurred_on, m.id`
     )
     .all(...accountIds) as RawMovementRow[];
+}
+
+/** A dollar deposit row's dollars (positive), else null (see `loadPositiveInflowMovements`). */
+function dollarDepositUsd(m: RawMovementRow): number | null {
+  return m.currency === "usd" && m.units_delta != null && m.amount > 0 ? m.amount : null;
 }
 
 /**
@@ -284,7 +315,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   const accounts = listDepositFlowAccounts(false);
   const accountMap = new Map(accounts.map((a) => [a.account_id, a]));
   const usdCashIds = new Set(accounts.map((a) => a.account_id).filter((id) => isUsdCashAccount(id)));
-  const checkingBucketIds = new Set(listMovementBalanceCashAccountIds());
+  const checkingBucketIds = new Set([...listMovementBalanceCashAccountIds(), ...listDollarCheckingAccountIds()]);
   // Crypto coins are funded internally by the Buda buffer, not directly by checking — exclude them;
   // the buffer's abono deposits are the reconcilable targets (see loadPositiveInflowMovements).
   const cryptoCoinIds = loadCryptoCoinAccountIdsFundedByBuda();
@@ -305,6 +336,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   const linkSourceByMovementId = loadBestLinkSourceByMovementId();
   const taxRefundMovementIds = new Set(loadF22RefundMovements().map((r) => r.movement_id));
   const checkingMonths = loadCuentaCorrienteMonthsWithData();
+  const dollarCheckingMonths = loadDollarCheckingMonthsWithData();
 
   const movements = loadPositiveInflowMovements(nonUsdIds, budaBufferId);
 
@@ -322,12 +354,15 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
     if (!category) continue;
 
-    const amount_clp = Math.round(movementClpLegOrZero(m));
-    const amount_usd_raw = clpToUsdAtDate(amount_clp, m.occurred_on);
+    const usd = dollarDepositUsd(m);
+    // A dollar deposit: its dollars, in pesos at the day's rate (as the deposit event prices it).
+    const amount_clp = usd != null ? usdCashUsdToClpAt(usd, m.occurred_on, `depositReconciliation:${m.id}`) : Math.round(movementClpLegOrZero(m));
+    const amount_usd_raw = usd ?? clpToUsdAtDate(amount_clp, m.occurred_on);
     if (amount_usd_raw == null || !Number.isFinite(amount_usd_raw)) {
       if (amount_clp !== 0) fxError = true;
     }
     const amount_usd = amount_usd_raw != null && Number.isFinite(amount_usd_raw) ? amount_usd_raw : null;
+    const fundingMonths = usd != null ? dollarCheckingMonths : checkingMonths;
 
     const linkSource = linkSourceByMovementId.get(m.id);
     let status: DepositReconciliationStatus;
@@ -342,7 +377,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
       // the family / own funding splits were retired, migration 294: history is not recreated).
       const month = monthKeyFromYmd(m.occurred_on);
       status =
-        month != null && checkingMonths.has(month)
+        month != null && fundingMonths.has(month)
           ? "unlinked_checking_present"
           : "unlinked_no_checking_source";
     }

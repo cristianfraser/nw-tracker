@@ -302,9 +302,14 @@ export function loadNetWorthCapitalReturnLedgerOutflows(): DepositMatchCandidate
 
 export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] {
   const budaFunded = loadCryptoCoinAccountIdsFundedByBuda();
+  // Checking is the funding source, never a capital return: the cartola kinds by kind, the dollar
+  // checking accounts (a `usd` kind under Checking accounts) by id — a US checking debit is spending
+  // or a transfer, not money leaving an investment.
+  const dollarChecking = new Set(listDollarCheckingAccountIds());
   const accounts = listDepositFlowAccounts().filter(
     (a) =>
       !isMovementBalanceCashCategory(a.category_slug) &&
+      !dollarChecking.has(a.account_id) &&
       !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug) &&
       !budaFunded.has(a.account_id)
   );
@@ -397,8 +402,10 @@ export function checkingGastosAccountCategorySlug(accountId: number): string {
 
 export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
   const budaFunded = loadCryptoCoinAccountIdsFundedByBuda();
+  // A dollar checking account's credits (a US salary) are never deposits a checking debit funded.
+  const dollarChecking = new Set(listDollarCheckingAccountIds());
   const accounts = listDepositFlowAccounts().filter(
-    (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug) && !budaFunded.has(a.account_id)
+    (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug) && !budaFunded.has(a.account_id) && !dollarChecking.has(a.account_id)
   );
   const ids = accounts.map((a) => a.account_id);
   const metaById = new Map(
