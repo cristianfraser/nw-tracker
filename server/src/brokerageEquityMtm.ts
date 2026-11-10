@@ -23,9 +23,6 @@ import { holdingPriceAt } from "./holdingPrices.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue } from "./valueConvert.js";
 
-/** Equity symbols the EOD sync always keeps in `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
-export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
-
 const insEod = db.prepare(
   `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?,?,?,?)
    ON CONFLICT(ticker, trade_date) DO UPDATE SET close = excluded.close, currency = excluded.currency`

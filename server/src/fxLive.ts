@@ -1,13 +1,13 @@
 import { noteLiveFxRead } from "./cacheDependencies.js";
 import { chileWallClockAt } from "./chileDate.js";
-import { fetchYahooLiveQuote } from "./equityYahooEod.js";
+import { fetchYahooLiveQuote, YAHOO_USD_CLP_SYMBOL } from "./equityYahooEod.js";
 import { getLatestLiveFxQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 import { isFxDayOpen } from "./forexDay.js";
 import { fxMonthEndForBalanceUsd, type FxRow } from "./fxRates.js";
 
 /** Yahoo chart symbol: CLP per 1 USD (tipo de cambio observado intraday). */
-export const LIVE_FX_YAHOO_SYMBOL = "CLP=X";
+export const LIVE_FX_YAHOO_SYMBOL = YAHOO_USD_CLP_SYMBOL;
 
 /**
  * Use Yahoo intraday USD/CLP while the fx day is open — a weekday before its 17:05 New York end

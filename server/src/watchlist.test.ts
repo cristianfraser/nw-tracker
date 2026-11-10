@@ -4,7 +4,7 @@ import { equityQuoteCurrency, marketQuoteCurrency } from "./equityQuote.js";
 import {
   recordMarketSymbolFetchError,
   reloadMarketSymbols,
-  type MarketSymbolRow,
+  type InstrumentFacts,
 } from "./marketSymbols.js";
 import {
   addManualWatchlistTicker,
@@ -49,15 +49,15 @@ function seedRiskyNorrisProxyComposite(): void {
   ).run(RISKY_NORRIS_PROXY_BUCKET, SEED_DAY);
 }
 
-function symbolRow(ticker: string, overrides: Partial<MarketSymbolRow> = {}): MarketSymbolRow {
+function symbolFacts(ticker: string, overrides: Partial<InstrumentFacts> = {}): InstrumentFacts {
   return {
-    ticker,
     quote_currency: "usd",
     market_kind: "nyse",
+    mic: null,
     name: null,
     exchange: null,
     instrument_type: "EQUITY",
-    verified_at: "2026-01-01T00:00:00.000Z",
+    display_symbol: ticker.replace(/^\^/, ""),
     ...overrides,
   };
 }
@@ -161,7 +161,7 @@ describe("syncWatchlistFromApp", () => {
 describe("manual watchlist CRUD", () => {
   it("adds, patches marquee, and deletes manual ticker rows", () => {
     syncWatchlistFromApp();
-    const row = addManualWatchlistTicker(symbolRow(TEST_TICKER));
+    const row = addManualWatchlistTicker(TEST_TICKER, symbolFacts(TEST_TICKER));
     expect(row.source).toBe("manual");
     expect(row.show_in_marquee).toBe(1);
     expect(row.series_key).toBe(TEST_TICKER);
@@ -169,7 +169,7 @@ describe("manual watchlist CRUD", () => {
     const patched = patchWatchlistRow(row.id, { show_in_marquee: 0 });
     expect(patched.show_in_marquee).toBe(0);
 
-    expect(() => addManualWatchlistTicker(symbolRow(TEST_TICKER))).toThrow(/already/i);
+    expect(() => addManualWatchlistTicker(TEST_TICKER, symbolFacts(TEST_TICKER))).toThrow(/already/i);
 
     deleteManualWatchlistRow(row.id);
     const gone = db.prepare(`SELECT 1 FROM market_display_series WHERE id = ?`).get(row.id);
@@ -178,7 +178,7 @@ describe("manual watchlist CRUD", () => {
 
   it("notifies the sync scheduler without pinning userForcedStale", () => {
     syncWatchlistFromApp();
-    addManualWatchlistTicker(symbolRow(TEST_TICKER));
+    addManualWatchlistTicker(TEST_TICKER, symbolFacts(TEST_TICKER));
     expect(notifyGlobalSyncScheduler).toHaveBeenCalledTimes(1);
   });
 
@@ -204,7 +204,7 @@ describe("normalizeManualWatchlistTicker", () => {
 
 describe("getWatchlistPayload", () => {
   it("splits app and manual lists", async () => {
-    addManualWatchlistTicker(symbolRow(TEST_TICKER));
+    addManualWatchlistTicker(TEST_TICKER, symbolFacts(TEST_TICKER));
     const payload = await getWatchlistPayload();
     expect(payload.manual.some((r) => r.series_key === TEST_TICKER)).toBe(true);
     expect(payload.app.some((r) => r.slug === "uf")).toBe(true);
@@ -215,7 +215,7 @@ describe("getWatchlistPayload", () => {
 describe("addManualWatchlistTickerFromYahoo", () => {
   it("asks Yahoo, records what it says, and lists the symbol", async () => {
     syncWatchlistFromApp();
-    const verify = vi.fn(async (t: string) => symbolRow(t, { quote_currency: "none", instrument_type: "INDEX" }));
+    const verify = vi.fn(async (t: string) => symbolFacts(t, { quote_currency: "none", instrument_type: "INDEX" }));
     const row = await addManualWatchlistTickerFromYahoo(" ^zzwlix ", verify);
     expect(verify).toHaveBeenCalledWith(TEST_INDEX);
     expect(row.series_key).toBe(TEST_INDEX);
@@ -224,15 +224,15 @@ describe("addManualWatchlistTickerFromYahoo", () => {
 
   it("refuses a listed symbol without asking Yahoo", async () => {
     syncWatchlistFromApp();
-    addManualWatchlistTicker(symbolRow(TEST_TICKER));
-    const verify = vi.fn(async (t: string) => symbolRow(t));
+    addManualWatchlistTicker(TEST_TICKER, symbolFacts(TEST_TICKER));
+    const verify = vi.fn(async (t: string) => symbolFacts(t));
     await expect(addManualWatchlistTickerFromYahoo(TEST_TICKER, verify)).rejects.toThrow(/already/i);
     expect(verify).not.toHaveBeenCalled();
   });
 
   it("adds nothing when Yahoo refuses the symbol", async () => {
     syncWatchlistFromApp();
-    const verify = vi.fn(async (t: string): Promise<MarketSymbolRow> => {
+    const verify = vi.fn(async (t: string): Promise<InstrumentFacts> => {
       throw new Error(`Yahoo has no price for ${t}`);
     });
     await expect(addManualWatchlistTickerFromYahoo(TEST_TICKER, verify)).rejects.toThrow(/no price/);
@@ -253,7 +253,7 @@ describe("index symbols (no currency)", () => {
 
   it("shows the same points in both display units", () => {
     syncWatchlistFromApp();
-    addManualWatchlistTicker(symbolRow(TEST_INDEX, { quote_currency: "none", instrument_type: "INDEX" }));
+    addManualWatchlistTicker(TEST_INDEX, symbolFacts(TEST_INDEX, { quote_currency: "none", instrument_type: "INDEX" }));
     seedIndexBars();
     for (const unit of ["clp", "usd"] as const) {
       const row = getWatchlistPayload(NOW, unit).manual.find((r) => r.series_key === TEST_INDEX)!;
@@ -264,20 +264,20 @@ describe("index symbols (no currency)", () => {
   });
 
   it("is never valued as money", () => {
-    addManualWatchlistTicker(symbolRow(TEST_INDEX, { quote_currency: "none", instrument_type: "INDEX" }));
+    addManualWatchlistTicker(TEST_INDEX, symbolFacts(TEST_INDEX, { quote_currency: "none", instrument_type: "INDEX" }));
     expect(() => equityQuoteCurrency(TEST_INDEX)).toThrow(/index/);
   });
 
-  it("unregistered tickers keep the suffix rule", () => {
-    expect(marketQuoteCurrency("ZZWLNOREG")).toBe("usd");
-    expect(marketQuoteCurrency("ZZWLNOREG.SN")).toBe("clp");
+  it("an unregistered ticker throws whatever its spelling", () => {
+    expect(() => marketQuoteCurrency("ZZWLNOREG")).toThrow(/not registered/);
+    expect(() => marketQuoteCurrency("ZZWLNOREG.SN")).toThrow(/not registered/);
   });
 });
 
 describe("fetch errors", () => {
   it("shows the latest failure on the row", () => {
     syncWatchlistFromApp();
-    addManualWatchlistTicker(symbolRow(TEST_TICKER));
+    addManualWatchlistTicker(TEST_TICKER, symbolFacts(TEST_TICKER));
     recordMarketSymbolFetchError(TEST_TICKER, "live", "Yahoo live price missing", new Date("2026-01-07T12:00:00Z"));
     const row = getWatchlistPayload().manual.find((r) => r.series_key === TEST_TICKER)!;
     expect(row.fetch_error).toEqual({
