@@ -7,8 +7,8 @@ import {
   wheelExpiry,
   wheelOutcome,
   wheelStrike,
-  type OptionsWheel,
 } from "./optionsWheel.js";
+import type { OptionsWheel } from "./person.js";
 
 const W: OptionsWheel = { from: "2025-01", everyMonths: 3, tradeDay: 15, otmPct: 5, targetDays: 45, premiumPctOfStrikePerDay: 0.04, strikeStep: 1 };
 const weekday = (d: string) => {

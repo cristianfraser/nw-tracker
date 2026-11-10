@@ -9,8 +9,6 @@
  *   (about twenty months), so the suite stays fast.
  */
 
-import type { OptionsWheel } from "./optionsWheel.js";
-
 /** `YYYY-MM`. */
 export type Month = string;
 /** `YYYY-MM-DD`. */
@@ -561,6 +559,23 @@ const IBKR: SecondBroker = {
   usFrom: "2024-05",
   idleUsd: 2_000,
   sgovReserveUsd: 15_000,
+};
+/** The options wheel's parameters (`optionsWheel.ts` holds the rules). */
+export type OptionsWheel = {
+  /** The first month a contract is sold (the broker must have its US phase open by then). */
+  from: Month;
+  /** A contract is sold every this many months, once the previous one has ended. */
+  everyMonths: number;
+  /** Day of the month the contract is sold (or the next trading day). */
+  tradeDay: number;
+  /** How far out of the money the strike is, as a share of the close (the put below, the call above). */
+  otmPct: number;
+  /** The expiry is the monthly (third-Friday) expiry nearest to this many days out. */
+  targetDays: number;
+  /** Premium per share as a share of the strike, per day to expiry (a story assumption). */
+  premiumPctOfStrikePerDay: number;
+  /** Strikes sit on this step (USD). */
+  strikeStep: number;
 };
 /**
  * The wheel (wave O2): from 2025-01, as a US resident with the SGOV reserve in place, a quarterly

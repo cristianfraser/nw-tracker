@@ -9,24 +9,7 @@
  * decided by the underlying's close on the expiry day — whatever the closes produce is the story
  * (no assignment is ever forced, none is ever prevented).
  */
-import { addDays, addMonths, monthOf, ymd, type Month, type Ymd } from "./person.js";
-
-export type OptionsWheel = {
-  /** The first month a contract is sold (the broker must have its US phase open by then). */
-  from: Month;
-  /** A contract is sold every this many months, once the previous one has ended. */
-  everyMonths: number;
-  /** Day of the month the contract is sold (or the next trading day). */
-  tradeDay: number;
-  /** How far out of the money the strike is, as a share of the close (the put below, the call above). */
-  otmPct: number;
-  /** The expiry is the monthly (third-Friday) expiry nearest to this many days out. */
-  targetDays: number;
-  /** Premium per share as a share of the strike, per day to expiry (a story assumption). */
-  premiumPctOfStrikePerDay: number;
-  /** Strikes sit on this step (USD). */
-  strikeStep: number;
-};
+import { addDays, addMonths, monthOf, ymd, type Month, type OptionsWheel, type Ymd } from "./person.js";
 
 export type WheelRight = "C" | "P";
 
