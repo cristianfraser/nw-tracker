@@ -278,7 +278,8 @@ function checkingValueOn(byDay: ReadonlyMap<string, number>, ymd: string): numbe
 
 // --- income ---------------------------------------------------------------------------------
 
-type IncomeKindBucket = "salary" | "severance" | "parent_gift" | "other";
+/** The income chart's series: the payroll kinds, a gift, a tracked place's rent, the rest. */
+type IncomeKindBucket = "salary" | "severance" | "parent_gift" | "rent" | "other";
 
 function periodMonthFromYmd(ymd: string): string | null {
   const m = /^(\d{4}-\d{2})-\d{2}$/.exec(String(ymd ?? "").trim());
@@ -290,7 +291,7 @@ function incomeKindForMovement(income: FlowsOverviewIncome, movementId: number):
 }
 
 function kindBucket(kind: string): IncomeKindBucket {
-  return kind === "salary" || kind === "severance" || kind === "parent_gift" ? kind : "other";
+  return kind === "salary" || kind === "severance" || kind === "parent_gift" || kind === "rent" ? kind : "other";
 }
 
 function incomeLineAmount(
@@ -369,7 +370,7 @@ function incomeKindTotals(
   eachIncomeEntry(income, unit, grain, (key, kind, amount) => {
     let b = byKey.get(key);
     if (!b) {
-      b = { salary: 0, severance: 0, parent_gift: 0, other: 0, line_count: 0 };
+      b = { salary: 0, severance: 0, parent_gift: 0, rent: 0, other: 0, line_count: 0 };
       byKey.set(key, b);
     }
     b[kind] += amount;
@@ -380,13 +381,14 @@ function incomeKindTotals(
     b.salary = round(b.salary);
     b.severance = round(b.severance);
     b.parent_gift = round(b.parent_gift);
+    b.rent = round(b.rent);
     b.other = round(b.other);
   }
   return byKey;
 }
 
 function incomeKindSum(b: IncomeKindTotals): number {
-  return b.salary + b.severance + b.parent_gift + b.other;
+  return b.salary + b.severance + b.parent_gift + b.rent + b.other;
 }
 
 /** Income per bucket: the rounded kinds added. */
@@ -407,6 +409,7 @@ export type FlowsIncomeMonthRow = {
   salary_clp: number;
   severance_clp: number;
   parent_gift_clp: number;
+  rent_clp: number;
   other_clp: number;
   total_clp: number;
   line_count: number;
@@ -419,6 +422,7 @@ export type FlowsIncomeChartPoint = {
   salary: number;
   severance: number;
   parent_gift: number;
+  rent: number;
   other: number;
   total: number;
 };
@@ -455,6 +459,7 @@ export function buildFlowsIncomeAggregates(
       salary_clp: b.salary,
       severance_clp: b.severance,
       parent_gift_clp: b.parent_gift,
+      rent_clp: b.rent,
       other_clp: b.other,
       total_clp: total,
       line_count: b.line_count,
@@ -475,6 +480,7 @@ export function buildFlowsIncomeAggregates(
         salary_clp: 0,
         severance_clp: 0,
         parent_gift_clp: 0,
+        rent_clp: 0,
         other_clp: 0,
         total_clp: 0,
         line_count: 0,
@@ -490,6 +496,7 @@ export function buildFlowsIncomeAggregates(
       salary: b.salary,
       severance: b.severance,
       parent_gift: b.parent_gift,
+      rent: b.rent,
       other: b.other,
       total: incomeKindSum(b),
     };

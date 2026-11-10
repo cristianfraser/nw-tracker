@@ -110,6 +110,7 @@ export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[])
         salary_clp: row.salary_clp,
         severance_clp: row.severance_clp,
         parent_gift_clp: row.parent_gift_clp,
+        rent_clp: row.rent_clp,
         other_clp: row.other_clp,
         total_clp: row.total_clp,
         line_count: row.line_count,
@@ -119,6 +120,7 @@ export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[])
     cur.salary_clp += row.salary_clp;
     cur.severance_clp += row.severance_clp;
     cur.parent_gift_clp += row.parent_gift_clp;
+    cur.rent_clp += row.rent_clp;
     cur.other_clp += row.other_clp;
     cur.total_clp += row.total_clp;
     cur.line_count += row.line_count;
@@ -131,7 +133,7 @@ export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[])
   });
 }
 
-const INCOME_CHART_KEYS = ["salary", "severance", "parent_gift", "other", "total"] as const;
+const INCOME_CHART_KEYS = ["salary", "severance", "parent_gift", "rent", "other", "total"] as const;
 
 /**
  * Yearly income chart rows from monthly ones (every kind is a flow: it sums). The chart feeds it

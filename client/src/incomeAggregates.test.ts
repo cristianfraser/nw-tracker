@@ -14,6 +14,7 @@ function monthRow(period_month: string, salary: number, other = 0): FlowIncomeMo
     salary_clp: salary,
     severance_clp: 0,
     parent_gift_clp: 0,
+    rent_clp: 0,
     other_clp: other,
     total_clp: salary + other,
     line_count: (salary ? 1 : 0) + (other ? 1 : 0),
@@ -27,6 +28,7 @@ function chartPoint(r: FlowIncomeMonthRow): FlowIncomeChartPoint {
     salary: r.salary_clp,
     severance: r.severance_clp,
     parent_gift: r.parent_gift_clp,
+    rent: r.rent_clp,
     other: r.other_clp,
     total: r.total_clp,
   };
@@ -66,6 +68,7 @@ describe("income chart under a Rango", () => {
       salary: 1_100_000,
       severance: 0,
       parent_gift: 0,
+      rent: 0,
       other: 50_000,
       total: 1_150_000,
     });

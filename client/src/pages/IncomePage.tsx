@@ -68,6 +68,7 @@ export function IncomePage() {
         salary: m.salary_clp,
         severance: m.severance_clp,
         parent_gift: m.parent_gift_clp,
+        rent: m.rent_clp,
         other: m.other_clp,
         total: m.total_clp,
       })),

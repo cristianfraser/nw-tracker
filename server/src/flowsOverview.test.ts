@@ -314,7 +314,15 @@ describe("buildFlowsIncomeAggregates", () => {
       amount_clp: 150_000.4,
       amount_usd: 157.89,
     });
-    income.income_kind_by_movement_id = { 1: "salary", 2: "parent_gift" };
+    income.lines.push({
+      ...income.lines[0]!,
+      movement_id: 3,
+      received_on: "2024-03-02",
+      amount_clp: 380_000,
+      amount_usd: 400,
+      description: "TRANSFERENCIA ARRIENDO",
+    });
+    income.income_kind_by_movement_id = { 1: "salary", 2: "parent_gift", 3: "rent" };
     income.payroll_period_by_movement_id = { 1: "2024-02" };
     income.manual = [
       { id: 7, amount_clp: 30_000, received_on: "2024-01-10", amount_usd: 31.6, source: null, note: null, origin: "manual" },
@@ -357,11 +365,20 @@ describe("buildFlowsIncomeAggregates", () => {
     const agg = buildFlowsIncomeAggregates(mixedIncome(), "clp", TODAY);
     expect(agg.months.map((m) => m.period_month)).toEqual(["2024-01", "2024-02", "2024-03", "2024-04"]);
     expect(agg.months[1]).toMatchObject({ salary_clp: 2_000_000, total_clp: 2_000_000, line_count: 1 });
-    expect(agg.months[2]).toMatchObject({ salary_clp: 900_001, parent_gift_clp: 150_000, total_clp: 1_050_001, line_count: 2 });
-    expect(agg.months[3]).toMatchObject({ total_clp: 0, line_count: 0, cumulative_clp: 3_080_001 });
-    expect(agg.total).toBe(3_080_001);
-    expect(agg.days.map((d) => d.as_of_date)).toEqual(["2024-01-10", "2024-03-05", "2024-03-20", "2024-03-28"]);
-    expect(agg.days[1]).toMatchObject({ salary: 2_000_000, total: 2_000_000 });
+    // A rent credit lands in its own bucket, on the month it arrived, and never in «other».
+    expect(agg.months[2]).toMatchObject({
+      salary_clp: 900_001,
+      parent_gift_clp: 150_000,
+      rent_clp: 380_000,
+      other_clp: 0,
+      total_clp: 1_430_001,
+      line_count: 3,
+    });
+    expect(agg.months[3]).toMatchObject({ total_clp: 0, line_count: 0, cumulative_clp: 3_460_001 });
+    expect(agg.total).toBe(3_460_001);
+    expect(agg.days.map((d) => d.as_of_date)).toEqual(["2024-01-10", "2024-03-02", "2024-03-05", "2024-03-20", "2024-03-28"]);
+    expect(agg.days[1]).toMatchObject({ rent: 380_000, other: 0, total: 380_000 });
+    expect(agg.days[2]).toMatchObject({ salary: 2_000_000, total: 2_000_000 });
   });
 });
 

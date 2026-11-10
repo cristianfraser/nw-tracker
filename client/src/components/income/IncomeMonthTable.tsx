@@ -42,6 +42,7 @@ export function IncomeMonthTable({
               <th>{t("income.chart.salary")}</th>
               <th>{t("income.chart.severance")}</th>
               <th>{t("income.chart.parent_gift")}</th>
+              <th>{t("income.chart.rent")}</th>
               <th>{t("income.chart.other")}</th>
               <th>{t("income.colTotal")}</th>
               <th>{t("income.colCumulative")}</th>
@@ -59,6 +60,7 @@ export function IncomeMonthTable({
             <td className="mono">{formatFlowMoney(row.salary_clp, displayUnit)}</td>
             <td className="mono muted">{formatFlowMoney(row.severance_clp, displayUnit)}</td>
             <td className="mono muted">{formatFlowMoney(row.parent_gift_clp, displayUnit)}</td>
+            <td className="mono muted">{formatFlowMoney(row.rent_clp, displayUnit)}</td>
             <td className="mono muted">{formatFlowMoney(row.other_clp, displayUnit)}</td>
             <td className="mono">{formatFlowMoney(row.total_clp, displayUnit)}</td>
             <td className="mono muted">{formatFlowMoney(row.cumulative_clp, displayUnit)}</td>
