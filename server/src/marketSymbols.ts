@@ -1,39 +1,68 @@
 import { db } from "./db.js";
 
 /**
- * What Yahoo said about a watchlist symbol when it was added (`market_symbols`, migration 210):
- * the currency its price is quoted in and the market whose calendar it trades on. `none` is an
- * index level — points, not money — which is never converted between CLP and USD. A ticker
- * with no row keeps the suffix rule in `equityQuote.ts`.
+ * The instrument registry (`market_symbols`, migrations 210 / 303 / 305): the one source of an
+ * instrument's facts — the currency its price is quoted in (`none` for an index level: points, not
+ * money, never converted between CLP and USD), the market whose calendar and sessions it trades on,
+ * the exchange's ISO 10383 code, the symbol a position shows, and who stated them (a price provider,
+ * or the demo generator's declaration). A reader never parses a ticker's spelling: an instrument
+ * with no row throws ({@link requireMarketSymbol}).
  *
- * Read on hot paths (every equity mark asks for its quote currency), so the rows live in a
- * process cache: written through by {@link registerMarketSymbol} and reloaded by
- * {@link reloadMarketSymbols} on the live-quotes tick and each watchlist read, which picks up
- * a symbol another process added.
+ * Read on hot paths (every equity mark asks for its quote currency), so the rows live in a process
+ * cache: written through by {@link registerInstrument}, reloaded by {@link reloadMarketSymbols} on
+ * the live-quotes tick and each watchlist read, and once more before a miss throws, which picks up
+ * a symbol another process registered.
  */
 export type MarketQuoteCurrency = "usd" | "clp" | "none";
 export type MarketSymbolKind = "nyse" | "santiago" | "london" | "crypto24";
+
+/** Who stated an instrument's facts: a price provider's adapter, or a declaration (the demo, a fixture). */
+export type InstrumentSource = "yahoo" | "coingecko" | "bolsa_santiago" | "declared";
+
+/** What a provider (or a declaration) states about an instrument. */
+export type InstrumentFacts = {
+  quote_currency: MarketQuoteCurrency;
+  market_kind: MarketSymbolKind;
+  /** ISO 10383 (XNYS, XNAS, ARCX, XLON, XSGO); null for a coin or an index. */
+  mic: string | null;
+  /** The provider's own name for the exchange (provenance). */
+  exchange: string | null;
+  name: string | null;
+  /** The provider's instrument type (`EQUITY`, `ETF`, `INDEX`, `CRYPTOCURRENCY`, …). */
+  instrument_type: string | null;
+  /** The symbol without a provider's exchange suffix (CSPX, CFIETFIPSA, SPY). */
+  display_symbol: string;
+  isin?: string | null;
+};
 
 export type MarketSymbolRow = {
   ticker: string;
   quote_currency: MarketQuoteCurrency;
   market_kind: MarketSymbolKind;
+  mic: string | null;
+  isin: string | null;
+  display_symbol: string;
   name: string | null;
   exchange: string | null;
   instrument_type: string | null;
+  source: InstrumentSource;
   verified_at: string;
 };
 
-const stmtAll = db.prepare(
-  `SELECT ticker, quote_currency, market_kind, name, exchange, instrument_type, verified_at
-   FROM market_symbols`
-);
+const COLUMNS = `ticker, quote_currency, market_kind, mic, isin, display_symbol, name, exchange, instrument_type, source, verified_at`;
+const stmtAll = db.prepare(`SELECT ${COLUMNS} FROM market_symbols`);
+const stmtOne = db.prepare(`SELECT ${COLUMNS} FROM market_symbols WHERE ticker = ?`);
 const stmtUpsert = db.prepare(
-  `INSERT INTO market_symbols (ticker, quote_currency, market_kind, name, exchange, instrument_type, verified_at)
-   VALUES (@ticker, @quote_currency, @market_kind, @name, @exchange, @instrument_type, @verified_at)
+  `INSERT INTO market_symbols (${COLUMNS})
+   VALUES (@ticker, @quote_currency, @market_kind, @mic, @isin, @display_symbol, @name, @exchange, @instrument_type, @source, @verified_at)
    ON CONFLICT(ticker) DO UPDATE SET
-     quote_currency = excluded.quote_currency, market_kind = excluded.market_kind, name = excluded.name,
-     exchange = excluded.exchange, instrument_type = excluded.instrument_type, verified_at = excluded.verified_at`
+     quote_currency = excluded.quote_currency, market_kind = excluded.market_kind, mic = excluded.mic,
+     isin = excluded.isin, display_symbol = excluded.display_symbol, name = excluded.name,
+     exchange = excluded.exchange, instrument_type = excluded.instrument_type, source = excluded.source,
+     verified_at = excluded.verified_at`
+);
+const stmtStoredBarCurrencies = db.prepare(
+  `SELECT currency, COUNT(*) AS n FROM equity_daily WHERE ticker = ? GROUP BY currency`
 );
 
 let cache: Map<string, MarketSymbolRow> | null = null;
@@ -42,16 +71,119 @@ export function reloadMarketSymbols(): void {
   cache = new Map((stmtAll.all() as MarketSymbolRow[]).map((r) => [r.ticker, r]));
 }
 
+/** The registered row, or null. Prefer {@link requireMarketSymbol} wherever the facts are needed. */
 export function marketSymbol(ticker: string): MarketSymbolRow | null {
   if (cache == null) reloadMarketSymbols();
   return cache!.get(ticker.toUpperCase()) ?? null;
 }
 
-export function registerMarketSymbol(row: MarketSymbolRow): void {
-  const normalized = { ...row, ticker: row.ticker.toUpperCase() };
-  stmtUpsert.run(normalized);
+/**
+ * The registered facts of `ticker`, whatever its spelling; throws when it has no row. The process
+ * cache is reloaded once before throwing, so a row another process wrote is found.
+ */
+export function requireMarketSymbol(ticker: string): MarketSymbolRow {
+  const hit = marketSymbol(ticker);
+  if (hit != null) return hit;
+  reloadMarketSymbols();
+  const row = cache!.get(ticker.toUpperCase());
+  if (row == null) {
+    throw new Error(
+      `${ticker} is not registered in market_symbols; run \`npm run register:market-symbols -w nw-tracker-server\``
+    );
+  }
+  return row;
+}
+
+/**
+ * Writes (or updates) `ticker`'s row from what `source` states, stamped verified now, and refreshes
+ * the process cache. Refuses facts that would reframe a stored series: when `equity_daily` holds
+ * bars for the ticker, the quote currency must be the bars' own, and a re-registration may not
+ * change the market kind or the quote currency — a series in another currency or on another
+ * calendar is a data problem to fix, never something to relabel.
+ */
+export function registerInstrument(
+  ticker: string,
+  facts: InstrumentFacts,
+  source: InstrumentSource,
+  now: Date = new Date()
+): MarketSymbolRow {
+  const key = ticker.trim().toUpperCase();
+  if (!key) throw new Error("registerInstrument: empty ticker");
+  if (!facts.display_symbol.trim()) throw new Error(`registerInstrument: ${key} has no display symbol`);
+  const bars = stmtStoredBarCurrencies.all(key) as { currency: string; n: number }[];
+  if (bars.length > 0) {
+    const existing = stmtOne.get(key) as MarketSymbolRow | undefined;
+    if (existing != null && (existing.market_kind !== facts.market_kind || existing.quote_currency !== facts.quote_currency)) {
+      throw new Error(
+        `registerInstrument: ${key} is registered as ${existing.market_kind}/${existing.quote_currency} with stored ` +
+          `equity_daily bars; ${source} now states ${facts.market_kind}/${facts.quote_currency} — fix the stored series, never reframe it`
+      );
+    }
+    const other = bars.filter((b) => b.currency !== facts.quote_currency);
+    if (other.length > 0) {
+      throw new Error(
+        `registerInstrument: ${key} has ${other.map((b) => `${b.n} equity_daily bar(s) in ${b.currency}`).join(", ")}; ` +
+          `${source} states ${facts.quote_currency} — fix the stored series, never reframe it`
+      );
+    }
+  }
+  const row: MarketSymbolRow = {
+    ticker: key,
+    quote_currency: facts.quote_currency,
+    market_kind: facts.market_kind,
+    mic: facts.mic,
+    isin: facts.isin ?? null,
+    display_symbol: facts.display_symbol.trim().toUpperCase(),
+    name: facts.name,
+    exchange: facts.exchange,
+    instrument_type: facts.instrument_type,
+    source,
+    verified_at: now.toISOString(),
+  };
+  stmtUpsert.run(row);
   if (cache == null) reloadMarketSymbols();
-  else cache.set(normalized.ticker, normalized);
+  else cache.set(key, row);
+  return row;
+}
+
+/** The facts part of a registered row (to compare a declaration against a provider's statement). */
+export function instrumentFactsOf(row: MarketSymbolRow): InstrumentFacts {
+  return {
+    quote_currency: row.quote_currency,
+    market_kind: row.market_kind,
+    mic: row.mic,
+    exchange: row.exchange,
+    name: row.name,
+    instrument_type: row.instrument_type,
+    display_symbol: row.display_symbol,
+    isin: row.isin,
+  };
+}
+
+/**
+ * Every ticker the app prices, from every table that names one: stock and coin accounts, option
+ * underlyings, the watchlist's equity rows, the benchmarks, the proxy basket's price tickers and
+ * the stored daily closes. Sorted, upper-cased, distinct.
+ */
+export function tickersInUse(): string[] {
+  const rows = db
+    .prepare(
+      `SELECT upper(trim(equity_ticker)) AS t FROM accounts WHERE COALESCE(trim(equity_ticker), '') <> ''
+       UNION SELECT upper(trim(underlying_ticker)) FROM option_contracts
+       UNION SELECT upper(trim(series_key)) FROM market_display_series WHERE kind = 'equity' AND COALESCE(trim(series_key), '') <> ''
+       UNION SELECT upper(trim(ticker)) FROM benchmarks WHERE COALESCE(trim(ticker), '') <> ''
+       UNION SELECT upper(trim(ticker)) FROM watchlist_composite_holdings
+       UNION SELECT DISTINCT upper(ticker) FROM equity_daily
+       ORDER BY 1`
+    )
+    .all() as { t: string }[];
+  return rows.map((r) => r.t);
+}
+
+/** The tickers in use ({@link tickersInUse}) the registry has no row for. */
+export function unregisteredTickersInUse(): string[] {
+  reloadMarketSymbols();
+  return tickersInUse().filter((t) => !cache!.has(t));
 }
 
 const stmtUpsertError = db.prepare(
