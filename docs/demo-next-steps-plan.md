@@ -128,3 +128,8 @@ G08, the Chile–US convention, the IRS's final 2025 Form 1040, its instructions
   16.448.761; 1040 2024 refund US$2.444 unchanged, 2025 owed US$235 → 207 (line 2b follows the
   wires the bigger F22 payments resize); net worth US$460.994 → 453.582, invariants green.
 - Not touched: the dollar-lot posture on spending abroad (the user's decision).
+- Merged into the integration branch 2026-11-10 and checked there: typecheck, client 85 / 475,
+  server 499 / 3300, the demo generation (US$453.582; AT2026 1030 137,3 M, 1018 25,6 M, 304
+  16,4 M; 1040 2025 owed US$207; 3 April passes), both tax tabs read on the local demo. Two copy
+  defects fixed on the merge (886af2a3): a doubled «US$» prefix on the foreign-income figures, and
+  the 1040 intro naming the 2024 form while the rows print the 2025 numbers.
