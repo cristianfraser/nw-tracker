@@ -322,6 +322,111 @@ whatever the suffix; a Yahoo meta with `Europe/London` + USD registers london / 
 `GBp` is refused; the adapter audit (`check:conventions`) passes; the London and Santiago
 session tests still pass reading registered rows; the demo and Vitest generations, both suites.
 
+## 5. R2 and O2 — the 1040's worldwide side, and the options' tax and story
+
+Planned 2026-11-10 after L2 went to main. Facts checked on `main` ff45fa61: the 1040 draft has
+W-2 wages (1a), bank interest (2b), the standard deduction, Form 8959 and Schedule 3 line 31,
+nothing else; a `first_year_full_resident` note drafts 2024 as a full resident year; the April
+loop computes the 1040 before the F22 (`generate.ts` ~799: `usAprilSettlementsFromTaxModule`
+then `aprilSettlementsFromTaxModule`); the tax-lot engine is long-only (`taxLots.ts`) with
+equity and crypto event sources; O1 left `optionAssignmentForStockMovement` /
+`…ForOptionMovement` ready for a lot reader.
+
+### R2 — the 1040 of a resident (research first; the readings to verify, sources quoted)
+
+- **2024 is a dual-status return** (Pub. 519): residency under the substantial presence test
+  starts on the first day present, the declared 2024-04-15; the nonresident part (Jan 1 → Apr 14)
+  has no US-source income; the resident part is worldwide. A single filer cannot elect full-year
+  residence (§6013(g)/(h) need a US spouse), and a dual-status return takes **no standard
+  deduction** (itemized only; Texas has no income tax, foreign real-property taxes are not
+  deductible since the TCJA, so itemized ≈ 0). The `first_year_full_resident` note goes; the
+  residency comes from R1's `residencyForIncomeYear(year).us` (`full | none | {from}`), and
+  `availableUsTaxYears` keys off it. Expected: 2024's tax rises by the lost deduction.
+- **Schedule D / Form 8949 — every sale as a resident**: the US-domiciled stocks at both brokers
+  (the IBKR SPY / SGOV sales AND the Racional-held US stocks — a US resident's sales anywhere),
+  crypto at Buda (basis and proceeds in dollars at each day's rate), the fund only if sold (see
+  8621); short- vs long-term by holding period, FIFO, `equityTaxLotEventsFromRows` /
+  `cryptoTaxLotEventsFromRows` reused, wash sales not modelled (stated). Line 7.
+- **Schedule B**: Part I the bank and broker interest (US and Chilean); Part II the dividends
+  — ordinary 3b and qualified 3a (SPY, VEA… qualified; the IPSA ETF's distributions ordinary);
+  Part III «yes» to foreign accounts, with FBAR (FinCEN 114, aggregate > US$10k) and Form 8938
+  (US$50k / 75k single) as flags in the notes, never filed by the app.
+- **Line 16 through the Qualified Dividends and Capital Gain Tax Worksheet** (0 / 15 / 20 %
+  brackets on 3a + net long-term gain), else the dividends and gains would be taxed as wages.
+- **Schedule E, one per place** (Pub. 527; Chilean rents in dollars at each day's rate — Pub. 54
+  allows the spot rate; the IRS yearly average is the alternative, stated): gross rent (the
+  `rent` income overrides), the agency's 7 %, mortgage interest (`loan_payments`),
+  contribuciones and gastos comunes (the bill rows), insurance (the loan's seguros),
+  **depreciation** of the building share over 30 years ADS straight-line (foreign residential;
+  the land share a declared 20 % of the purchase price, stated), both places taxed (no DFL-2 in
+  US law). Net to Schedule 1 line 5 → line 8. The passive-loss rules (§469; the US$25k
+  allowance phases out at US$100k–150k MAGI — he is above) are applied: a net rental loss is
+  suspended, carried, never deducted against wages.
+- **Form 1116, passive category**: the Chilean tax of the same income year — the F22's code 34
+  (Adicional on the rent) and the 10 % único withheld on the IPSA ETF's distributions — under
+  the **accrued** method (elected once, binding; Pub. 514), so year N's Chilean tax credits year
+  N's 1040 (the paid method would credit it a year late). Limit = US tax × passive foreign
+  income ÷ taxable income. Schedule 3 line 1 → line 20.
+- **Form 8621 mark-to-market** (§1296) for the two PFICs, the money-market fund and the IPSA ETF:
+  election in the first resident year each is held (2024 for the fund, 2025 for the ETF);
+  inclusion = FMV at Dec 31 (pesos → dollars at the day's rate) − adjusted basis (cost in dollars
+  at purchase rates), ordinary income on Schedule 1 line 8z; a loss deductible only up to the
+  unreversed prior inclusions; basis adjusted each year; a sale = ordinary to the extent of
+  unreversed inclusions, the rest capital. The app computes the inclusion and shows the form's
+  Part IV figures; the filing itself is the user's.
+- **Form 8960 NIIT**: 3,8 % on net investment income above US$200k MAGI (single, not indexed) —
+  the 2026 salary plus bonus crosses it; line 23 beside Form 8959.
+- **Order and cycle**: the F22 of a non-resident year reads nothing from the 1040, and the 1040
+  reads the F22's 34 → the April loop computes the **F22 first, then the 1040** (the reverse of
+  today), `writeDemoFiledReturns` before `writeDemoFiledUsReturns`. The split year 2024 is still
+  one direction (the F22's resident part has no US income to credit).
+- **Demo**: both generations re-converged; expected moves — 2024 tax up (no standard deduction,
+  rents Apr–Dec), 2025 up (rents, dividends, gains, the 8621 inclusions) less the 1116 credit;
+  `netWorthTargetUsd` restated once from the data if it leaves the band. The tour's tax step
+  names the dual-status year and the two returns' direction.
+- **Checks**: a filed 2024 and 2025 return reproduce (`assertF1040Identities` extended to the
+  schedules' totals: 7 = Schedule D 16/21, 8 = Schedule 1 10, 3a ≤ 3b, 20 ≤ 16); the worksheet
+  against the IRS example; Schedule E ties to the rent overrides and the bill rows; 1116 ≤ the
+  Chilean tax; 8621's basis roll-forward across years; the dual-status return has no 12e.
+
+### O2 — the options' tax lots and their story
+
+- **`optionTaxLotEvents.ts`** (pure, beside `equityTaxLotEvents.ts`): short lots — a sold
+  contract opens a short lot at the premium; it closes on expiry (the premium a short-term gain
+  on the expiry day), on a buy-back (premium − cost) or on assignment (the premium joins the
+  stock sale's proceeds: `optionAssignmentForStockMovement` adjusts the `stock_sell` event's
+  proceeds; an exercised long put adds its premium to the shares' basis); long lots as equities.
+  Every option gain is short-term (§1234; no §1256 for equity options). Fed into R2's Schedule D
+  as 8949 rows; `foreignEquityAccounts` already excludes contract accounts.
+- **A Chilean-resident year with option events throws** in `buildF22Draft` («derivatives under
+  Ley 20.544 are not modelled»), by R1's windows — the only Chilean code of this feature.
+- **Story (the agent picks from the data and states it)**: the IBKR SPY stack never reaches a
+  round lot (US$1k a month after the SGOV reserve), so a covered call on SPY is out; the honest
+  shape is a **cash-secured put wheel on a cheap name he already follows** (INTC ≈ US$20 →
+  100 shares ≈ US$2k, inside the IBKR idle cash): from 2025-01 a put sold every quarter ~5 % OTM
+  45 days out, one assigned when the close crosses the strike (100 INTC shares land at IBKR —
+  a second holder of INTC beside the Racional position, which wave A's broker-aware lookup
+  allows), then covered calls on those shares, one assigned back. Strikes from
+  `market.close(underlying, day)`, the expiry on a Friday, every event on an NYSE day. Events sit
+  beside the dividend loop in `simulate.ts`; `invariants.ts` checks contracts net to zero at
+  every expiry and the premium legs reconcile with the cash account.
+- **Checks**: the lots on a fixture (expired short put = premium gain; assigned put = shares at
+  strike − premium basis; assigned call = proceeds + premium), the demo's 2025 Schedule D
+  carrying them, both generations.
+
+### Waves (continued)
+
+- **Wave R2 (one Opus agent, research first)** — all of R2 above; it owns `f1040*.ts`,
+  `usW2.ts`, `usLegalParameters.ts`, the new schedule modules, `taxDocuments.ts`'s US side and
+  the loop order in `generate.ts`.
+- **Wave O2a (one Sonnet agent, in parallel)** — `optionTaxLotEvents.ts` with its tests, the F22
+  throw, the demo's option events in `simulate.ts` and the invariants; it does NOT touch the
+  1040 modules or `taxDocuments.ts`.
+- **Wave O2b (one Sonnet agent, after both merged)** — the option lots wired into R2's Schedule D
+  / 8949, the generations re-converged, the tour's tax step if a sentence fits.
+- Each wave: `cd server && npm run test`, both generations, the local demo pair; merge to `main`
+  on the user's word; the market asset republished and one demo release after O2b.
+
 ## Waves
 
 - **Wave R1 — residency, Chile (one agent, research first):** the sources above read and quoted
