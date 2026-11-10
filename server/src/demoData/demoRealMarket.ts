@@ -21,6 +21,10 @@
  * History stops at yesterday (Chile; the last completed UTC day for crypto): today's close is
  * the live sync's. Every source is retried with backoff for up to ~10 minutes; a source still
  * failing then throws and the boot fails (Render keeps the previous deploy live).
+ *
+ * Since 2026-11-09 Render's build does not call this: the home server runs it nightly against a
+ * scratch DB and publishes the result as a GitHub Release asset, which the build loads with
+ * {@link loadDemoMarketFromAsset} (docs/demo-market-publish-plan.md).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -42,6 +46,15 @@ import { db } from "../db.js";
 import { cryptoCompletedUtcYmd } from "../equityEodSync.js";
 import { listBenchmarkEquityTickers } from "../benchmarkLevels.js";
 import { insertEquityDividendsIfMissing } from "../equityDividends.js";
+import { fetchBolsaSantiagoDailyCloses } from "../equityBolsaSantiagoEod.js";
+import { demoMarketAssetDownloadUrl, demoMarketRepo, downloadDemoMarketAsset } from "../demoMarketRelease.js";
+import {
+  assertDemoMarketArtifactCovers,
+  assertDemoMarketArtifactFresh,
+  decodeDemoMarketArtifact,
+  DEMO_MARKET_PUBLISH_JOB_HINT,
+  loadDemoMarketArtifactIntoDb,
+} from "./demoMarketArtifact.js";
 import {
   fetchYahooDailyCloses,
   fetchYahooDailyClosesAndDividends,
@@ -289,10 +302,23 @@ export type DemoRealMarketSummary = {
 };
 
 /**
+ * Where a `.SN` ticker's history comes from: the committed snapshot (for a machine that cannot
+ * reach the Bolsa — Render, should its build ever fetch directly again), or the Bolsa's own point
+ * history (the home server's nightly publish, `demoMarketPublishJob.ts`, and any machine that
+ * reaches www.bolsadesantiago.com).
+ */
+export type DemoSantiagoSource = "snapshot" | "bolsa";
+
+/**
  * Fills the market tables for `spec` from the real sources. Requires an empty market
  * (a fresh demo DB) and Banco Central credentials; throws otherwise.
  */
-export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new Date()): Promise<DemoRealMarketSummary> {
+export async function loadDemoRealMarket(
+  spec: DemoMarketSpec,
+  now: Date = new Date(),
+  opts: { santiago?: DemoSantiagoSource } = {}
+): Promise<DemoRealMarketSummary> {
+  const santiagoSource = opts.santiago ?? "snapshot";
   const creds = loadBcentralCredentials();
   if (!creds) {
     throw new Error("demo market: set BCENTRAL_EMAIL and BCENTRAL_PASSWORD (Banco Central series for the demo)");
@@ -318,7 +344,10 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
 
   const equities: Record<string, number> = {};
   const dividends: Record<string, number> = {};
-  const snapshots = parseDemoSantiagoSnapshotCsv(readFileSync(DEMO_SANTIAGO_SNAPSHOT_CSV_PATH, "utf8"));
+  const snapshots =
+    santiagoSource === "snapshot"
+      ? parseDemoSantiagoSnapshotCsv(readFileSync(DEMO_SANTIAGO_SNAPSHOT_CSV_PATH, "utf8"))
+      : new Map<string, EodCloseSeries>();
   for (const { ticker, firstUse } of tickers) {
     const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
     const withDividends = benchmarkTickers.has(ticker);
@@ -327,6 +356,21 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
     // today's, for CFIETFIPSA.SN) and Render cannot reach the Bolsa's API (2026-11-09: an HTML
     // page where the laptop gets JSON), so the build only appends Yahoo's bars after the snapshot.
     const santiago = equityQuoteCurrency(ticker) === "clp";
+    if (santiago && santiagoSource === "bolsa") {
+      if (withDividends) throw new Error(`demo market: ${ticker} cannot be a dividend benchmark (no dividend source)`);
+      const series = await withDemoMarketRetries(`Bolsa de Santiago ${ticker}`, async () => {
+        const s = closesThrough(await fetchBolsaSantiagoDailyCloses(ticker), last);
+        if (s.dates.length === 0) throw new Error(`no closes for ${ticker}`);
+        return s;
+      });
+      // A history that stops short of yesterday is the exchange's lag, not a fetch failure: refuse it.
+      assertSantiagoSnapshotFresh(series, yesterday);
+      if (firstUse != null && series.dates[0]! > firstUse) {
+        throw new Error(`demo market: ${ticker} history starts ${series.dates[0]}, after its first use ${firstUse}`);
+      }
+      equities[ticker] = upsertEquityDailySeries(ticker, series);
+      continue;
+    }
     const santiagoSnapshot = snapshots.get(ticker);
     if (santiago) {
       // Decided before the retries: a stale or missing snapshot is a repository state, not a network failure.
@@ -398,4 +442,36 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
     bcentral: { usd: usd.length, eur: eur.length, uf: uf.length, utm: utm.length, ipc: ipc.length },
     afp_official: pension ? pension.modelo + pension.uno : 0,
   };
+}
+
+export type DemoMarketFromAssetSummary = {
+  source: string;
+  generated_at: string;
+  complete_through: string;
+  rows: Record<string, number>;
+};
+
+/**
+ * Fills the market tables of a fresh demo DB from the published artifact (the Render build,
+ * docs/demo-market-publish-plan.md) instead of fetching: the release asset by default, or a local
+ * file (`file`, a rehearsal). Throws when the artifact is of another version, older than
+ * `DEMO_MARKET_ASSET_MAX_AGE_DAYS` before the build's yesterday, built for less than `spec`, or of
+ * other columns than this schema — naming the home-server job that publishes it.
+ */
+export async function loadDemoMarketFromAsset(
+  spec: DemoMarketSpec,
+  opts: { file?: string; now?: Date; fetchImpl?: typeof fetch; retry?: <T>(label: string, fn: () => Promise<T>) => Promise<T> } = {}
+): Promise<DemoMarketFromAssetSummary> {
+  const now = opts.now ?? new Date();
+  const yesterday = chileCalendarAddDays(chileWallClockAt(now).ymd, -1);
+  const retry = opts.retry ?? withDemoMarketRetries;
+  const source = opts.file ?? demoMarketAssetDownloadUrl(demoMarketRepo());
+  const bytes = opts.file
+    ? readFileSync(opts.file)
+    : await retry("the demo market asset", () => downloadDemoMarketAsset({ fetchImpl: opts.fetchImpl, hint: DEMO_MARKET_PUBLISH_JOB_HINT }));
+  const artifact = decodeDemoMarketArtifact(bytes);
+  assertDemoMarketArtifactFresh(artifact, yesterday);
+  assertDemoMarketArtifactCovers(artifact, { fromMonth: spec.fromMonth, tickers: [...spec.tickers], withAfp: spec.withAfp });
+  const rows = loadDemoMarketArtifactIntoDb(db, artifact);
+  return { source, generated_at: artifact.generated_at, complete_through: artifact.complete_through, rows };
 }

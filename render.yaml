@@ -30,10 +30,12 @@
 # - startCommand runs the server from source via tsx (same as local dev, minus watch):
 #   the compiled dist/ build would not ship server/migrations/*.sql. Build therefore
 #   installs devDependencies explicitly (Render sets NODE_ENV=production by default).
-# - The demo runs on real market data: the build fetches the history of its holdings (Yahoo),
-#   Banco Central series and AFP UNO's valor cuota (its own API) before generating the DB, and its
-#   market syncs + live quotes run while someone browses it, sleeping 30 min after the last
-#   request (server/src/demoMode.ts, demoData/demoRealMarket.ts, demoMarketActivity.ts).
+# - The demo runs on real market data: the build downloads the market the home server publishes
+#   every night as a GitHub Release asset (tag demo-market; Yahoo, Banco Central, AFP UNO and the
+#   Bolsa de Santiago, fetched where every source answers — docs/demo-market-publish-plan.md) before
+#   generating the DB, and its market syncs + live quotes run while someone browses it, sleeping
+#   30 min after the last request (server/src/demoMode.ts, demoData/demoRealMarket.ts,
+#   demoMarketActivity.ts).
 #   DB backups default off; the dashboard cache warmer stays on for first paint.
 # - Single-service same-origin (SERVE_CLIENT_DIST=1) — no CORS_ALLOWED_ORIGINS needed.
 # - Every flag below is parsed once at boot by server/src/config.ts (1/true/yes on, 0/false/no off;
@@ -57,13 +59,22 @@ services:
     # The demo DB (real market history + the generated story) is built here, not at boot: Render
     # keeps the previous version serving while a build runs, but stops it before a new instance
     # boots (the persistent disk below rules out zero-downtime deploys), so a boot that fetched and
-    # generated cost minutes of downtime. A market source that stays down fails the build, and the
-    # old version keeps serving. The boot only generates when the DB is empty (local rehearsal).
-    # BCENTRAL_EMAIL / BCENTRAL_PASSWORD are read at build time too.
+    # generated cost minutes of downtime. The build reads the market from the published asset
+    # (`demo:generate` = generate-demo-data.ts --market-asset) and refuses one older than three days
+    # before its yesterday, naming the home server's publish job; the old version keeps serving.
+    # Rollback to fetching here: `demo:generate:fetch` (needs a fresh Santiago snapshot, see the plan).
+    # The boot only generates when the DB is empty (local rehearsal).
     # version-info.mjs first: writes version.json (commit-stamped) at repo root while
     # .git is present, so the server can report the deployed commit at /api/health.
     buildCommand: node scripts/version-info.mjs --write version.json && npm install --include=dev -w nw-tracker-server -w nw-tracker-contracts -w nw-tracker-client --include-workspace-root && npm run build -w nw-tracker-client && rm -f server/data/nw-tracker.demo.db* && npm run demo:generate -w nw-tracker-server
-    startCommand: npm run serve -w nw-tracker-server
+    # The heap flag is on the start command, NOT an env var: a service env var applies to the
+    # build too, and the client's Vite build aborted at 320 MB (deploy of e3e8a113, 2026-11-09).
+    # V8 sizes its heap from the machine's memory — on the Starter (512 MB) a ~256 MB limit —
+    # and the boot warm of the US-chapter demo died there («heap out of memory», a restart loop)
+    # until the %-chains stopped retaining whole daily payloads (server/src/dailyPctSeries.ts;
+    # ~200 MB after). 320 MB leaves the warm headroom and still fits the instance beside the
+    # process's own ~130 MB; the warm's log line prints the heap it used.
+    startCommand: NODE_OPTIONS=--max-old-space-size=320 npm run serve -w nw-tracker-server
     healthCheckPath: /api/health
     # Persistent disk for the visit analytics only. The synthetic demo DB
     # (NW_TRACKER_TEST_DB, a relative path → server/data/, ephemeral) still regenerates
@@ -87,6 +98,12 @@ services:
         value: nw-tracker.demo.db
       - key: DEMO_ANALYTICS_DB
         value: /var/data/demo-analytics.db
+      # Empty on purpose, and kept: this file once set --max-old-space-size here, which reached
+      # the client build too (Vite aborted at 320 MB, deploy e3e8a113, 2026-11-09), and Render
+      # keeps an env var a blueprint stops declaring — only a declared empty value clears it. The
+      # server's heap flag is on the startCommand above.
+      - key: NODE_OPTIONS
+        value: ""
       # Streamed prices: at most one cache rebuild per 15 s on the small instance (the home
       # server writes every 5 s; server/src/yahooPriceStream.ts).
       - key: LIVE_QUOTES_FLUSH_GAP_MS
@@ -106,9 +123,10 @@ services:
       # read it from the service's Environment tab.
       - key: DEMO_OWNER_CODE
         generateValue: true
-      # Banco Central API (observed dollar, euro, UF, UTM, IPC) for the demo's real market data.
-      # Entered by hand in the dashboard (secrets never live in this public file); the boot fails
-      # without them.
+      # Banco Central API (observed dollar, euro, UF, UTM, IPC): the build no longer reads them
+      # (the market comes from the published asset), but the demo's wake-on-visit syncs append the
+      # days since the build from the Banco Central, so they stay. Entered by hand in the dashboard
+      # (secrets never live in this public file).
       - key: BCENTRAL_EMAIL
         sync: false
       - key: BCENTRAL_PASSWORD

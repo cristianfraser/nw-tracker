@@ -32,9 +32,9 @@ export type OutboundRequest = {
   /** Who is asking: the app's own name for public data, {@link BROWSER_USER_AGENT} where a site insists. */
   userAgent: string;
   accept?: string;
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
-  body?: string | URLSearchParams;
+  body?: string | URLSearchParams | Uint8Array;
   timeoutMs?: number;
   signal?: AbortSignal;
   /** `latin1` for the SP's CSVs and the SII's pages; `utf8` otherwise. */
@@ -50,6 +50,32 @@ export type OutboundResponse = {
   text: string;
 };
 
+export type OutboundBytesResponse = {
+  status: number;
+  ok: boolean;
+  bytes: Uint8Array;
+};
+
+/**
+ * The response's raw bytes (a binary download, the demo market asset); the caller decides what a
+ * non-2xx status means. No gate: the gated sources are text APIs.
+ */
+export async function fetchOutboundBytes(req: Omit<OutboundRequest, "gate" | "decode">): Promise<OutboundBytesResponse> {
+  const timeout = AbortSignal.timeout(req.timeoutMs ?? OUTBOUND_TIMEOUT_MS);
+  const init: RequestInit = {
+    method: req.method ?? "GET",
+    headers: {
+      "User-Agent": req.userAgent,
+      ...(req.accept ? { Accept: req.accept } : {}),
+      ...req.headers,
+    },
+    body: req.body as BodyInit | undefined,
+    signal: req.signal ? AbortSignal.any([req.signal, timeout]) : timeout,
+  };
+  const res = req.fetchImpl ? await req.fetchImpl(req.url, init) : await fetchOut(req.label, req.url, init);
+  return { status: res.status, ok: res.ok, bytes: new Uint8Array(await res.arrayBuffer()) };
+}
+
 /** The response decoded as text; the caller decides what a non-2xx status means. */
 export async function fetchOutboundText(req: OutboundRequest): Promise<OutboundResponse> {
   await req.gate?.acquire();
@@ -62,7 +88,7 @@ export async function fetchOutboundText(req: OutboundRequest): Promise<OutboundR
         ...(req.accept ? { Accept: req.accept } : {}),
         ...req.headers,
       },
-      body: req.body,
+      body: req.body as BodyInit | undefined,
       signal: req.signal ? AbortSignal.any([req.signal, timeout]) : timeout,
     };
     const res = req.fetchImpl ? await req.fetchImpl(req.url, init) : await fetchOut(req.label, req.url, init);

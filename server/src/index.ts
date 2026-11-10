@@ -21,6 +21,7 @@ import { registerClientDistStatic, serveClientDistEnabled } from "./staticClient
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { ensureCacheFresh } from "./cacheRegistry.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
+import { startDemoMarketPublishJob } from "./demoMarketPublishJob.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
 import { registerMortgageRoutes } from "./routes/mortgage.js";
@@ -147,6 +148,7 @@ app.listen(PORT, HOST, () => {
   startDemoResetScheduler();
   startLiveMarketQuotesScheduler();
   startDbBackupScheduler();
+  startDemoMarketPublishJob();
   startDashboardCacheWarmer();
   startIngestRunScheduler();
   startJobQueueExecutor();

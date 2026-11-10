@@ -34,7 +34,7 @@ import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from 
 import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { withDailyChainedReturns } from "./periodReturnsDaily.js";
-import { resolveAccountDailySeries } from "./groupDailySeries.js";
+import { accountDailyPctPoints } from "./dailyPctSeries.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
@@ -266,16 +266,15 @@ export async function buildAccountDetailBundle(
             ],
             unit
           ),
-          resolveAccountDailySeries(
+          accountDailyPctPoints(
             {
               account_id: accountId,
               name: cat.account_name,
               bucket_slug: cat.bucket_slug,
               import_key: cat.account_import_key,
             },
-            unit,
-            0
-          ).points
+            unit
+          )
         )
       : null;
 

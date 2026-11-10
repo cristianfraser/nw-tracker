@@ -11,7 +11,7 @@ import { rollupMonthlyPerfYearly } from "./monthlyPerfRollup.js";
 import { computePeriodReturns, type PeriodReturnsPayload } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { withDailyChainedReturns } from "./periodReturnsDaily.js";
-import { resolveGroupDailySeries } from "./groupDailySeries.js";
+import { groupDailyPctPoints } from "./dailyPctSeries.js";
 import { groupHasPeriodReturns } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab, type GroupTabAccountRow } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
@@ -94,7 +94,7 @@ function groupPeriodReturnsFromMonthly(
   if (!groupHasPeriodReturns(groupSlug)) return null;
   return withDailyChainedReturns(
     withShortHorizonCells(computePeriodReturns(consolidated_monthly, unit), rows, unit),
-    resolveGroupDailySeries(groupSlug, unit, 0)?.points ?? []
+    groupDailyPctPoints(groupSlug, unit) ?? []
   );
 }
 

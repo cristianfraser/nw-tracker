@@ -229,6 +229,31 @@ healthy_at() { # sha → 0 when /api/health reports it, within 4 minutes
   return 1
 }
 
+# Optional, off by default (releasing the demo is the user's call): with NW_DEPLOY_RELEASE_DEMO=1 in
+# the installed agent's environment, a healthy deploy of main is also released to the hosted demo
+# (scripts/release-demo.sh --yes), pushing `demo` through RELEASE_DEMO_PUSH_REMOTE — a remote with a
+# write credential, since the deploy key is read-only (docs/demo-market-publish-plan.md, «Releasing
+# from the home server»). A refused or failed release never undoes the deploy: it is logged and
+# raised as a notification.
+release_demo_after_deploy() {
+  [[ "${NW_DEPLOY_RELEASE_DEMO:-0}" == "1" ]] || return 0
+  if [[ -z "${RELEASE_DEMO_PUSH_REMOTE:-}" ]]; then
+    log "NW_DEPLOY_RELEASE_DEMO=1 but RELEASE_DEMO_PUSH_REMOTE is unset; not releasing $short"
+    message notification "Demo not released: $short" "NW_DEPLOY_RELEASE_DEMO=1 needs RELEASE_DEMO_PUSH_REMOTE (a git remote that may push demo). Details in cfraser/deploy.log."
+    return 0
+  fi
+  local out
+  if out="$(RELEASE_DEMO_PUSH_REMOTE="$RELEASE_DEMO_PUSH_REMOTE" scripts/release-demo.sh --yes "$new" 2>&1)"; then
+    printf '%s\n' "$out" | sed 's/^/    /' >>"$LOG"
+    log "Released $short to the demo"
+    message log "Demo release $short" "$(printf 'Released %s to the demo branch; Render builds it.\n%s' "$short" "$out")"
+  else
+    printf '%s\n' "$out" | sed 's/^/    /' >>"$LOG"
+    log "Releasing $short to the demo failed (the deploy stands)"
+    message notification "Demo release failed: $short" "$(printf 'The deploy of %s succeeded; releasing it to the demo did not.\n%s' "$short" "$out")"
+  fi
+}
+
 STAGE=deploying
 log "Deploying $(git rev-parse --short=8 "$old") → $short"
 echo "$commits" | sed 's/^/    /' | tee -a "$LOG"
@@ -241,6 +266,7 @@ if job_heartbeat && install_and_build "$changed" && job_heartbeat && restart "$c
   message log "Deploy $short" "$(printf 'Deployed %s.\n%s' "$short" "$commits")"
   job_complete true ""
   rm -f "$STATE"
+  release_demo_after_deploy
   exit 0
 fi
 

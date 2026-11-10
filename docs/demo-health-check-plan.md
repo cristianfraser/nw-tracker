@@ -19,6 +19,20 @@ every time, nothing was lost, and a deploy does not change it. It is a symptom o
 spends its CPU, not of a fault — but each alert is a mail, and a visitor during those seconds
 waits as long as the probe did.
 
+## What the 2026-11-09 release found: it was memory first
+
+The release of the US chapter (6da22346) did not stall — it died. The Render instance restarted
+every ~3 minutes with `FATAL ERROR: Ineffective mark-compacts near heap limit … JavaScript heap
+out of memory` about 50 s after boot, in the first warm step. V8 sizes its heap from the
+machine's memory, ~256 MB on the Starter (512 MB), and the boot warm needed ~290 MB on the
+longer US-chapter history: every % the app shows compounds its scope's own daily returns, and
+the readers held the whole cached daily payload of every account and group (48 scopes × 2
+units; the CLP home bundle alone retained 98 MB). `dailyPctSeries.ts` now keeps only each
+day's pct for those readers (56 MB; the full warm ~200 MB) and `render.yaml` sets
+`NODE_OPTIONS=--max-old-space-size=320` on the start command (as a service env var it reached the client build, which aborted); the warm's log line prints the heap it used, and
+`server/scripts/profile-cache-memory.ts` lists what each step retains. The stalls below are the
+same mechanism one notch down: a warm that fits in memory but holds the loop.
+
 ## Why the probe times out
 
 The server is one Node process. The health route itself costs nothing

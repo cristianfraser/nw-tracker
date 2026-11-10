@@ -1,7 +1,7 @@
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { accountIsDebt } from "./accountProfile.js";
 import { db } from "./db.js";
-import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
+import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js";
 import { monthlyPerfForAccountId, type ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 import { rollupMonthlyPerfYearly } from "./monthlyPerfRollup.js";
 import { isLiabilityOnlyScope, withDailyChainedMonthPct } from "./periodPctDailyChain.js";
@@ -29,12 +29,11 @@ export function monthlyPerfForAccountDisplay(
     name: string | null;
     import_key: string | null;
   };
-  const series = resolveAccountDailySeries(
+  const points = accountDailyPctPoints(
     { account_id: accountId, name: acc.name, bucket_slug: perf.bucket_slug, import_key: acc.import_key },
-    unit,
-    0
+    unit
   );
-  const monthly: AccountMonthlyPerformanceRow[] = withDailyChainedMonthPct(perf.monthly, series.points);
+  const monthly: AccountMonthlyPerformanceRow[] = withDailyChainedMonthPct(perf.monthly, points);
   return { ...perf, monthly, yearly: rollupMonthlyPerfYearly(monthly) };
 }
 
@@ -52,7 +51,7 @@ export function withGroupDailyChainedMonthPct(
   if (tabSubgroup != null) return [...rows];
   const members = listAccountsForGroupTab(groupSlug).filter((r) => r.account_id > 0);
   if (isLiabilityOnlyScope(members.map((r) => r.account_id), accountIsDebt)) return [...rows];
-  const series = resolveGroupDailySeries(groupSlug, unit, 0);
-  if (series == null) return [...rows];
-  return withDailyChainedMonthPct(rows, series.points);
+  const points = groupDailyPctPoints(groupSlug, unit);
+  if (points == null) return [...rows];
+  return withDailyChainedMonthPct(rows, points);
 }
