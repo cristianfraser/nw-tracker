@@ -73,3 +73,23 @@ triages what is left into three waves of agent work and says what is dropped. Fa
   and all seven tour steps read on the dashboard, Retiro and tax pages.
 - Noted, not done: the Roth sweep's dollars pass through `usdCashTaxLotEvents` as zero-gain
   same-day disposals (listed, never taxed); a Roth-aware skip there is a tidy follow-up.
+
+## Wave B status (2026-11-10): built, merged into the integration branch, green
+
+- `cash_fx` on every overview row (month and day; `checkingCashByDay` in `flowsOverviewCash.ts`):
+  for each checking account whose currency is not the unit, the quantity held at the end of the
+  previous day × the day's change of its asset-side rate (dollars at the sell rate in CLP; pesos
+  at 1/ask in USD; today live through `fxForLiveMtm`, past days from the stored rows) — the
+  card revaluation's shape on the asset side; days sum to months by construction. Identities:
+  `cash_unexplained = cash_change − (savings − deposits + card_spent − card_paid + cash_fx)`,
+  `net_worth_change = savings + deposits_pre_tax + pl + cash_fx`; `cash_fx` is a base leg, so
+  yearly rows and «en el rango» stay a field-by-field Σ. `flows_overview` DTO v2.
+- Shown as «Cash fx» / «Fx de caja» beside the cash change on /flows (muted, like «Sin
+  explicar»); not on the home flows card — its nine lines are pitched to the strip's divider on
+  the big desktop, and the leg reaches the card through «Variación patrimonio».
+- The demo's «sin explicar» after the leg is the story's own conversion costs (the bank's spread
+  on each conversion between the checking accounts, and the half spread on every dollar flow
+  priced at the mid); the invariant subtracts both and holds `|residual| ≤ 1.000`: 3 pesos on
+  the demo, 1 on the Vitest person (was a 150k tolerance against an estimate).
+- Checks on the merged tree: typecheck, client 85 / 475, server 499 / 3298, the demo generation
+  (US$460.994), the row on the local demo's overview.
