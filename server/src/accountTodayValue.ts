@@ -1,5 +1,5 @@
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
-import { holdingPriceAt } from "./holdingPrices.js";
+import { holdingPriceAt, instrumentNativeValue } from "./holdingPrices.js";
 import {
   getAccountPositionMeta,
   hasCuotaLedgerUnitsEvents,
@@ -20,6 +20,7 @@ import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { cryptoTodayNativeValue } from "./cryptoValuation.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { clpCashBalanceLive } from "./clpCashAccounts.js";
+import { optionContractsThroughDate } from "./optionPosition.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import { liveTierCached } from "./cacheRegistry.js";
 import {
@@ -125,6 +126,19 @@ function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined):
         return { value: 0, currency: "clp", as_of_date: today, market: true };
       }
       return storedTodayTail(p, today);
+    }
+    case "option_contracts": {
+      // Signed contracts × today's intrinsic value × the multiplier, in the underlying's dollars
+      // (`holdingPrices.ts` throws without an underlying price) — never a book mark. No contracts
+      // (closed, expired, assigned, not opened yet): 0 today, as every past day reads.
+      if (p.holding.kind !== "option") throw new Error(`account ${accountId}: option contract account holds no option`);
+      const contracts = optionContractsThroughDate(accountId, today);
+      if (!Number.isFinite(contracts) || contracts === 0) {
+        return { value: 0, currency: p.holding.quote, as_of_date: today, market: true };
+      }
+      const px = holdingPriceAt(p.holding, today, now ? { now } : undefined);
+      if (!px) throw new Error(`option ${p.holding.occSymbol}: no price today`);
+      return { value: instrumentNativeValue(p.holding, contracts, px.price), currency: px.currency, as_of_date: px.as_of, market: true };
     }
     case "coin": {
       // Units × close is crypto's only value source — no stored-row fallback.

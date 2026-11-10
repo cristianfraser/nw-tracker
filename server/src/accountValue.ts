@@ -26,6 +26,7 @@ import { cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import type { Holding } from "./holdings.js";
+import { optionContractsThroughDate } from "./optionPosition.js";
 import type { CurrencyCode } from "./rates.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { convertValue } from "./valueConvert.js";
@@ -46,6 +47,7 @@ export function accountValueCurrency(accountId: number): CurrencyCode {
   if (h.kind === "stock") return h.quote;
   if (h.kind === "coin") return h.quote;
   if (h.kind === "fund") return h.quote;
+  if (h.kind === "option") return h.quote;
   return "clp";
 }
 
@@ -73,6 +75,8 @@ export function accountHoldingQtyAt(
     return { qty: usdCashBalanceUsdAt(accountId, today), holding, as_of: today };
   }
   if (holding.kind === "stock") return { qty: equityShareUnitsThroughYmd(accountId, today), holding, as_of: today };
+  // Signed contracts: a short position is a negative quantity.
+  if (holding.kind === "option") return { qty: optionContractsThroughDate(accountId, today), holding, as_of: today };
   if (holding.kind === "coin") return { qty: cryptoCoinCumulativeThroughDate(accountId, today), holding, as_of: today };
   if (holding.kind === "fund") {
     const cuotas = profile.quantity.kind === "cuota_ledger"

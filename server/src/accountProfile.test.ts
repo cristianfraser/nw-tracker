@@ -8,6 +8,7 @@ const base: AccountProfileFacts = {
   leafSlug: "cash_eqs__clp",
   kind: "clp",
   equityTicker: null,
+  optionContract: null,
   coinPriceTicker: null,
   usesEquityMtm: false,
   fundSeriesKey: null,

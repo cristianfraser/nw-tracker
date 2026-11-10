@@ -30,9 +30,12 @@ export interface AccountListRow {
   chart_inactive?: boolean;
 }
 
+/** What an account holds a quantity of: shares, coins, or (signed) option contracts. */
+export type UnitsKind = "shares" | "coin" | "contracts";
+
 export interface AccountPositionSnapshot {
   ticker: string;
-  units_kind: "shares" | "coin";
+  units_kind: UnitsKind;
   units: number | null;
   deposited_clp: number;
   value_clp: number | null;

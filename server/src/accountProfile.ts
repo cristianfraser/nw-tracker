@@ -23,6 +23,7 @@ import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
 import { isFintualGoalImportKey } from "./fintualGoals.js";
 import { fundSeriesCurrency } from "./fundUnitDaily.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
+import { optionContractForAccount, type OptionRight } from "./optionContracts.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 import type { CurrencyCode } from "./rates.js";
 
@@ -31,6 +32,20 @@ export type Holding =
   | { kind: "stock"; ticker: string; quote: CurrencyCode }
   | { kind: "coin"; coin: string; priceTicker: string; quote: CurrencyCode }
   | { kind: "fund"; seriesKey: string; quote: CurrencyCode }
+  /**
+   * Contracts of one option series (`option_contracts`), SIGNED — a short position is negative —
+   * each worth `multiplier` shares' intrinsic value in the underlying's dollars (`holdingPrices.ts`).
+   */
+  | {
+      kind: "option";
+      occSymbol: string;
+      underlying: string;
+      right: OptionRight;
+      strike: number;
+      expiry: string;
+      multiplier: number;
+      quote: "usd";
+    }
   | { kind: "card" };
 
 /** How a day's quantity of the account's holding is found — the branch every ladder takes. */
@@ -49,6 +64,8 @@ export type QuantitySource =
   | { kind: "stock"; ticker: string }
   /** Coin units × the coin's dollar close; no other value source (a missing close throws). */
   | { kind: "coin"; priceTicker: string }
+  /** Signed option contracts (`optionPosition.ts`) × the contract's intrinsic value; never a book mark. */
+  | { kind: "option_contracts" }
   /** The depto ledger's net equity (pesos, until the loan phase of the holdings plan). */
   | { kind: "depto_property"; propertyAccountId: number }
   /** The depto ledger's balance of the loan of `propertyAccountId` (null: no property on file). */
@@ -105,6 +122,8 @@ export type AccountProfileFacts = {
   leafSlug: string;
   kind: string;
   equityTicker: string | null;
+  /** The option series the account is (`option_contracts`); null for any other account. */
+  optionContract: OptionContractFacts | null;
   /** The coin's price ticker when the account is valued from coin units. */
   coinPriceTicker: string | null;
   /** True when the account is valued from share units (an equity position). */
@@ -117,6 +136,16 @@ export type AccountProfileFacts = {
   roles: readonly { role: StoredAccountRole; param: string }[];
   /** A demo or test database: an AFP account without a series prices with UNO Fondo A. */
   demoOrTest: boolean;
+};
+
+/** The terms `profileFromFacts` reads of an option contract account (`option_contracts`). */
+export type OptionContractFacts = {
+  occSymbol: string;
+  underlying: string;
+  right: OptionRight;
+  strike: number;
+  expiry: string;
+  multiplier: number;
 };
 
 const DEBT_KINDS: ReadonlySet<string> = new Set(["credit_card", "mortgage"]);
@@ -163,6 +192,17 @@ function quantityFromFacts(f: AccountProfileFacts, roles: AccountRoles): Quantit
   if (f.kind === "mortgage") return { kind: "depto_loan", propertyAccountId: roles.loanOf };
   // A property reads its own depto ledger (one per `property` role holder).
   if (f.kind === "property") return { kind: "depto_property", propertyAccountId: f.id };
+  if (f.optionContract) {
+    // A contract account carries no ticker of its own and never holds shares: its value is its
+    // signed contracts × the intrinsic value read through the terms, whatever its leaf says.
+    if (f.equityTicker) {
+      throw new Error(`account profile: option contract account ${f.id} carries equity_ticker ${f.equityTicker} (must be NULL)`);
+    }
+    if (f.usesEquityMtm || f.coinPriceTicker) {
+      throw new Error(`account profile: option contract account ${f.id} also carries share or coin units`);
+    }
+    return { kind: "option_contracts" };
+  }
   if (f.coinPriceTicker && f.usesEquityMtm) {
     throw new Error(`account profile: account ${f.id} is valued both from coin units and from share units`);
   }
@@ -201,6 +241,25 @@ function holdingFromQuantity(f: AccountProfileFacts, q: QuantitySource): Holding
       return { kind: "coin", coin: q.priceTicker.replace(/-USD$/i, "").toUpperCase(), priceTicker: q.priceTicker, quote: "usd" };
     case "stock":
       return { kind: "stock", ticker: q.ticker, quote: f.quoteCurrencyOf(q.ticker) };
+    case "option_contracts": {
+      const o = f.optionContract;
+      if (!o) throw new Error(`account profile: account ${f.id} has no option contract terms`);
+      // The intrinsic value is in the underlying's currency; only dollar-quoted underlyings are modeled.
+      const quote = f.quoteCurrencyOf(o.underlying);
+      if (quote !== "usd") {
+        throw new Error(`account profile: option contract ${o.occSymbol} on ${o.underlying} quoted in ${quote} (USD underlyings only)`);
+      }
+      return {
+        kind: "option",
+        occSymbol: o.occSymbol,
+        underlying: o.underlying,
+        right: o.right,
+        strike: o.strike,
+        expiry: o.expiry,
+        multiplier: o.multiplier,
+        quote: "usd",
+      };
+    }
     case "cuota_ledger":
     case "fintual_goal":
       // Priced in its series' currency (`fund_unit_daily.currency`).
@@ -224,6 +283,7 @@ export function profileFromFacts(f: AccountProfileFacts): AccountProfile {
   const side = kindIsDebt(f.kind) ? "debt" : "asset";
   const priceless = !(
     quantity.kind === "stock" ||
+    quantity.kind === "option_contracts" ||
     quantity.kind === "coin" ||
     quantity.kind === "cuota_ledger" ||
     quantity.kind === "fintual_goal"
@@ -315,6 +375,7 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
     if (!row) return null;
     const kind = leafKind(row.leaf_slug, row.leaf_kind);
     const equityTicker = equityTickerForAccount(accountId);
+    const contract = optionContractForAccount(accountId);
     // A share flow's cash leg is never the equity side: a buy's from-account and a sell's
     // to-account are the wallet the proceeds move through (`usd` / `clp` ledgers).
     const usesEquityMtm = kind !== "usd" && kind !== "clp" && stmtHasShareUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null;
@@ -325,6 +386,16 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
       leafSlug: row.leaf_slug,
       kind,
       equityTicker,
+      optionContract: contract
+        ? {
+            occSymbol: contract.occ_symbol,
+            underlying: contract.underlying_ticker,
+            right: contract.right,
+            strike: contract.strike,
+            expiry: contract.expiry,
+            multiplier: contract.multiplier,
+          }
+        : null,
       coinPriceTicker: coinPriceTicker(accountId, kind, equityTicker),
       usesEquityMtm,
       fundSeriesKey: row.fund_series_key?.trim() || null,

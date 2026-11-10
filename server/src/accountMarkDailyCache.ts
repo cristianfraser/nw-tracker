@@ -15,7 +15,7 @@ import {
   type CachedMarkSeries as StoredMarkSeries,
 } from "./markSeriesStore.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { instrumentPriceKey, pastHoldingPriceLookup, type HoldingPrice } from "./holdingPrices.js";
+import { instrumentNativeValue, instrumentPriceKey, pastHoldingPriceLookup, type HoldingPrice } from "./holdingPrices.js";
 import type { CurrencyCode } from "./rates.js";
 import { pastValueRateLookup } from "./valueConvert.js";
 
@@ -54,7 +54,7 @@ import { pastValueRateLookup } from "./valueConvert.js";
  */
 function rateIndependent(accountId: number): boolean {
   const h = accountHolding(accountId);
-  if (h.kind === "stock" || h.kind === "coin" || h.kind === "fund") return true;
+  if (h.kind === "stock" || h.kind === "coin" || h.kind === "fund" || h.kind === "option") return true;
   return h.kind === "currency" && h.code !== "clp" && h.code !== "uf";
 }
 
@@ -183,8 +183,7 @@ function cellsInUnit(
         out[i] = null;
         continue;
       }
-      const raw = cell.qty * px.price;
-      native = a.kind === "fund" ? Math.round(raw * 100) / 100 : raw;
+      native = instrumentNativeValue(a, cell.qty, px.price);
       currency = px.currency;
     }
     if (isCard) {

@@ -15,9 +15,10 @@ import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
-import { holdingPriceAt, type InstrumentHolding } from "./holdingPrices.js";
+import { holdingPriceAt, instrumentNativeValue, type InstrumentHolding } from "./holdingPrices.js";
 import { accountProfileOptional, type AccountProfile, type Holding } from "./accountProfile.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
+import { optionContractsThroughDate } from "./optionPosition.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue, type ValueSide } from "./valueConvert.js";
 import {
@@ -123,6 +124,18 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       if (!(units > 0) || !Number.isFinite(units)) return { qty: 0, asset, as_of_date: asOfYmd };
       if (holdingPriceAt(asset, asOfYmd)) return { qty: units, asset, as_of_date: asOfYmd };
       return bookMark(profile, asOfYmd);
+    }
+    case "option_contracts": {
+      // Signed contracts × the contract's intrinsic value (`holdingPrices.ts`) is a contract's
+      // only value source — never a book mark. No contracts (not opened yet, closed, expired,
+      // assigned): an explicit 0, no price read.
+      const asset = profile.holding;
+      if (asset.kind !== "option") throw new Error(`account ${accountId}: option contract account holds no option`);
+      const contracts = optionContractsThroughDate(accountId, asOfYmd);
+      if (!Number.isFinite(contracts) || contracts === 0) return { qty: 0, asset, as_of_date: asOfYmd };
+      // Throws when the underlying has no close on or before the day.
+      holdingPriceAt(asset, asOfYmd);
+      return { qty: contracts, asset, as_of_date: asOfYmd };
     }
     case "coin": {
       // Units × close × fx is crypto's only value source — no stored-row fallback.
@@ -236,8 +249,7 @@ export function qtyMarkNativeValue(
   if (mark.qty === 0) return { value: 0, currency: a.quote };
   const px = holdingPriceAt(a, ymd, now ? { now } : undefined);
   if (!px) return null;
-  const raw = mark.qty * px.price;
-  const value = a.kind === "fund" ? Math.round(raw * 100) / 100 : raw;
+  const value = instrumentNativeValue(a, mark.qty, px.price);
   return Number.isFinite(value) ? { value, currency: px.currency } : null;
 }
 

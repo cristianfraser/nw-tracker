@@ -20,10 +20,12 @@ export function isPropertyKind(kind: string): boolean {
 
 /** The account page header's units word and ticker, from the profile's holding. */
 export function accountSummaryProfileFields(p: {
-  holding: { kind: string; ticker?: string; coin?: string };
-}): { units_kind: "shares" | "coin"; ticker: string | null } {
+  holding: { kind: string; ticker?: string; coin?: string; occSymbol?: string };
+}): { units_kind: "shares" | "coin" | "contracts"; ticker: string | null } {
+  const h = p.holding;
   return {
-    units_kind: p.holding.kind === "coin" ? "coin" : "shares",
-    ticker: p.holding.kind === "stock" ? p.holding.ticker ?? null : p.holding.kind === "coin" ? p.holding.coin ?? null : null,
+    units_kind: h.kind === "coin" ? "coin" : h.kind === "option" ? "contracts" : "shares",
+    ticker:
+      h.kind === "stock" ? h.ticker ?? null : h.kind === "coin" ? h.coin ?? null : h.kind === "option" ? h.occSymbol ?? null : null,
   };
 }

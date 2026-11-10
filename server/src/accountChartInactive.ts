@@ -11,6 +11,8 @@ import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import { accountHolding } from "./holdings.js";
 import { accountHoldingQtyAt, accountValueCurrency } from "./accountValue.js";
+import { isOptionContractAccount } from "./optionContracts.js";
+import { optionContractsThroughDate } from "./optionPosition.js";
 import { clpCashBalanceClpAt, isClpCashKindSlug } from "./clpCashAccounts.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
@@ -66,6 +68,8 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
     return equityShareUnitsThroughYmd(accountId, today);
   }
   if (accountUsesCryptoMtm(accountId)) return cryptoCoinCumulativeThroughDate(accountId, today);
+  // A contract account holds its signed contracts: closed, expired or assigned, it holds none.
+  if (isOptionContractAccount(accountId)) return optionContractsThroughDate(accountId, today);
   const slug = bucketSlugForAccountId(accountId);
   const kindSlug = slug != null ? accountBucketKindSlug(slug) : "";
   const importKey = (stmtImportKey.get(accountId) as { import_key: string | null } | undefined)?.import_key ?? null;

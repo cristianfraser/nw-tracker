@@ -24,6 +24,9 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
+import { optionContractsThroughDate } from "./optionPosition.js";
+import { holdingPriceAt } from "./holdingPrices.js";
+import type { Holding } from "./accountProfile.js";
 import {
   fintualGoalUnitsFromMovementsThroughDate,
   newestCuotaMovementYmdForAccount,
@@ -42,7 +45,7 @@ import {
   shouldUseRiskyNorrisProxyMtm,
 } from "./riskyNorrisProxyMtm.js";
 
-export type UnitsKind = "shares" | "coin";
+export type UnitsKind = "shares" | "coin" | "contracts";
 
 export type AccountPositionMeta = {
   ticker: string;
@@ -207,9 +210,42 @@ export function equityBrokeragePositionMeta(
 }
 
 /**
+ * An option contract account: its SIGNED contracts (a short position is negative, never hidden),
+ * valued at the contract's intrinsic value × the multiplier in pesos (`holdingPriceAt` — the
+ * underlying's close; it throws without one). The «price per unit» is one contract's value. No
+ * contracts (closed, expired, assigned, not opened yet): an explicit 0 mark, as every ladder reads.
+ */
+function optionPositionMeta(
+  accountId: number,
+  holding: Extract<Holding, { kind: "option" }>,
+  asOf: string,
+  now: Date
+): AccountPositionMeta {
+  const contracts = optionContractsThroughDate(accountId, asOf);
+  const out: AccountPositionMeta = { ticker: holding.occSymbol, units_kind: "contracts", units: contracts };
+  if (!Number.isFinite(contracts) || contracts === 0) {
+    out.units = 0;
+    out.afp_override_value_clp = 0;
+    out.afp_override_value_as_of = asOf;
+    return out;
+  }
+  const today = chileCalendarTodayYmd();
+  const px = holdingPriceAt(holding, asOf, asOf === today ? { now } : undefined);
+  if (!px) throw new Error(`option ${holding.occSymbol}: no price on ${asOf}`);
+  const perContractUsd = px.price * holding.multiplier;
+  const mtm = convertValue(contracts * perContractUsd, px.currency, "clp", asOf, "asset", now);
+  const perContractClp = convertValue(perContractUsd, px.currency, "clp", asOf, "asset", now);
+  if (mtm == null || perContractClp == null) return out;
+  out.afp_override_value_clp = Math.round(mtm * 100) / 100;
+  out.afp_override_value_as_of = px.as_of;
+  out.afp_override_valor_cuota_clp = Math.round(perContractClp * 10000) / 10000;
+  return out;
+}
+
+/**
  * The account's position (units, mark, price per unit) as of `asOfYmd` (default Chile today), by
- * its profile: a Fintual goal's cuotas, share units, coins, or a cuota ledger's cuotas. Null for
- * every other account (its value is not units × a price).
+ * its profile: a Fintual goal's cuotas, share units, coins, option contracts, or a cuota ledger's
+ * cuotas. Null for every other account (its value is not units × a price).
  */
 export function getAccountPositionMeta(
   accountId: number,
@@ -226,6 +262,9 @@ export function getAccountPositionMeta(
       return fintualCertPositionMeta(accountId, profile.importKey!, profile.name.trim() || "Fintual", asOf, now);
     case "stock":
       return equityBrokeragePositionMeta(accountId, q.ticker, asOf, now);
+    case "option_contracts":
+      if (profile.holding.kind !== "option") throw new Error(`account ${accountId}: option contract account holds no option`);
+      return optionPositionMeta(accountId, profile.holding, asOf, now);
     case "coin":
       return coinPositionMeta(accountId, q.priceTicker, asOf, now);
     case "cuota_ledger":
@@ -395,6 +434,13 @@ export function positionMarkFromMeta(
   const crypto = q === "coin";
   const units = meta.units;
   const ovc = meta.afp_override_value_clp;
+  // A contract's mark is its value whatever the sign: a short position marks negative, an empty
+  // one 0 — the «positive value» tests below are for positions that cannot be short.
+  if (q === "option_contracts") {
+    return ovc != null && Number.isFinite(ovc) && meta.afp_override_value_as_of != null
+      ? { value_clp: ovc, as_of_date: meta.afp_override_value_as_of }
+      : null;
+  }
   const fundUnitMark =
     ovc != null &&
     Number.isFinite(ovc) &&
@@ -435,7 +481,11 @@ export function positionSnapshotFromMeta<E extends object = Record<never, never>
   extra?: (value_clp: number | null) => E | null
 ): (AccountPositionSnapshot & Partial<E>) | null {
   if (meta == null) return null;
-  const afp = accountProfileOptional(accountId)?.quantity.kind === "cuota_ledger";
+  const qk = accountProfileOptional(accountId)?.quantity.kind;
+  const afp = qk === "cuota_ledger";
+  // An option's per-unit price is one contract's value, stated by its meta (a short position's
+  // value ÷ its negative units would still be it, but the meta already has it).
+  const option = qk === "option_contracts";
   const v = today?.value_clp;
   const units = meta.units;
   const mark = positionMarkFromMeta(accountId, meta);
@@ -449,7 +499,7 @@ export function positionSnapshotFromMeta<E extends object = Record<never, never>
   const value_per_unit_clp =
     fundUnitMark && meta.afp_override_valor_cuota_clp != null
       ? meta.afp_override_valor_cuota_clp
-      : afp && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
+      : (afp || option) && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
         ? meta.afp_override_valor_cuota_clp
         : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
           ? v / units

@@ -1,4 +1,4 @@
-import type { AccountPositionSnapshot } from "./core.js";
+import type { AccountPositionSnapshot, UnitsKind } from "./core.js";
 import type { AccountCcInstallmentsResponse } from "./creditCard.js";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard.js";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage.js";
@@ -94,8 +94,20 @@ export interface AccountSummaryResponse {
   book_ledger_edit?: BookLedgerEditSchema;
   mortgage_payment_create?: MortgagePaymentCreateSchema;
   /** What the account holds a quantity of (server account profile): its units word, its ticker. */
-  units_kind?: "shares" | "coin";
+  units_kind?: UnitsKind;
   ticker?: string | null;
+  /** An option contract account's terms (`option_contracts`); absent on every other account. */
+  option_contract?: OptionContractDto | null;
+}
+
+/** The terms of an option contract account (migration 304), as the account page shows them. */
+export interface OptionContractDto {
+  occ_symbol: string;
+  underlying_ticker: string;
+  right: "C" | "P";
+  strike: number;
+  expiry: string;
+  multiplier: number;
 }
 
 /** `GET /api/accounts/:id/detail-bundle` */
