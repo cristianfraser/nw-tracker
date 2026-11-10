@@ -32,7 +32,7 @@ import { equityMarketKind, equityQuoteCurrency } from "../equityQuote.js";
 import { occSymbol } from "../optionContracts.js";
 import { isWheelSaleMonth, pickWheelUnderlying, planWheelTrade, wheelOutcome, wheelTradeDayOf } from "./optionsWheel.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd, priorLondonSessionYmd } from "../marketHolidays.js";
-import type { MarketReader } from "./market.js";
+import { demoTickerFirstUse, type MarketReader } from "./market.js";
 import {
   addDays,
   addMonths,
@@ -1191,7 +1191,8 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       // The collateral he actually has at the broker on the first sale day: the cash plus the SGOV.
       const collateral = Math.max(0, book.lowestFrom("ibkrUsd", day)) + heldUnits("SGOV", "ibkrUsd") * heldClose("SGOV", day);
       const candidates = person.brokerTickers
-        .filter((t) => t !== "SGOV" && equityMarketKind(t) === "nyse" && equityQuoteCurrency(t) === "usd")
+        // Only a ticker whose history the market holds by this day: the market spec loads each from its first use.
+        .filter((t) => t !== "SGOV" && equityMarketKind(t) === "nyse" && equityQuoteCurrency(t) === "usd" && demoTickerFirstUse(t) <= day)
         .map((t) => ({ ticker: t, close: heldClose(t, day) }));
       // Until some ticker's 100 shares fit the collateral, the quarter passes.
       if (!candidates.some((c) => c.close * 100 <= collateral)) return;

@@ -313,6 +313,13 @@ export function dbMarketReader(): MarketReader {
 }
 
 /** What the real-market loader fetches for the hosted demo. */
+/** The day the market holds a demo ticker's history from (its first use in the story). */
+export function demoTickerFirstUse(ticker: string): Ymd {
+  const row = DEMO_TICKERS.find((t) => t.ticker === ticker);
+  if (!row) throw new Error(`demo market: ${ticker} is not a demo ticker`);
+  return row.firstUse;
+}
+
 export function demoMarketSpec(today: Ymd = chileCalendarTodayYmd()): { fromMonth: Month; tickers: typeof DEMO_TICKERS; withAfp: boolean } {
   return { fromMonth: DEMO_PERSON.marketFromMonth(today), tickers: DEMO_TICKERS, withAfp: true };
 }
