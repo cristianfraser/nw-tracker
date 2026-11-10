@@ -72,20 +72,26 @@
  * never drafts it.
  *
  * **A foreign broker's or a US bank's interest** (`savings_earnings` on the dollar cash of a broker
- * listed in {@link FOREIGN_BROKERS}: IBKR's sweep interest; or on a dollar account at a US bank,
+ * listed in `FOREIGN_BROKER_COUNTRY` (`taxFacts/payers.ts`): IBKR's sweep interest; or on a dollar account at a US bank,
  * `usBankAccounts.ts`) is «otras rentas de fuente extranjera» (línea 12, code 1104, with the
  * dividends). No US tax is withheld from a US resident's interest, so it carries no credit.
  * Converted like the dividends: at the 31-December observado.
  */
-import { db } from "../db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
 import { buildF1040Draft } from "../f1040Draft.js";
-import { US_BANK_ISSUERS } from "../usBankAccounts.js";
 import { filedF1040 } from "../f1040Filed.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR, FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
+import { interestFacts } from "../taxFacts/interest.js";
+import type { AccountPayer } from "../taxFacts/payers.js";
+import { usPayStubFacts } from "../taxFacts/salaries.js";
 
-/** Brokers domiciled abroad: the interest their cash earns is foreign-source (the `broker_cash` role's broker). */
-export const FOREIGN_BROKERS: readonly string[] = ["ibkr"];
+/**
+ * A payer whose interest is foreign-source for a Chilean resident: a broker domiciled abroad (its
+ * cash in any currency), or a US bank's dollar account (`taxFacts/payers.ts`).
+ */
+export function isForeignInterestPayerForChile(p: AccountPayer): boolean {
+  return p.kind === "broker" ? p.country !== "CL" : p.country === "US" && p.currency === "usd";
+}
 
 export type F22ForeignSalaryStub = {
   payDate: string;
@@ -138,8 +144,6 @@ const EMPTY_SALARY: F22ForeignSalary = {
   provisional: false,
 };
 
-type StubRow = { id: number; pay_date: string | null; employer_name: string; source_pdf: string };
-
 const cents = (x: number) => Math.round(x * 100) / 100;
 
 /** The US salary of `incomeYear` for the F22 at the year-end rate, or zeros without US pay stubs. */
@@ -150,24 +154,16 @@ export function foreignSalaryForYear(
   window: DateWindow = wholeYearWindow(incomeYear)
 ): F22ForeignSalary {
   // The stubs counted: the whole year, or one part of a departure year, by pay date (`taxResidency.ts`).
-  const heads = (
-    db
-      .prepare(
-        `SELECT id, pay_date, employer_name, source_pdf FROM payroll_work_earnings
-        WHERE jurisdiction = 'us' AND pay_date LIKE ? ORDER BY pay_date, id`
-      )
-      .all(`${incomeYear}-%`) as StubRow[]
-  ).filter((h) => h.pay_date != null && inDateWindow(h.pay_date, window));
+  const inYear = windowWithinYear(incomeYear, window);
+  const heads = inYear ? usPayStubFacts(inYear) : [];
   if (heads.length === 0) return EMPTY_SALARY;
   if (incomeYear < CHILE_US_TREATY_FIRST_INCOME_YEAR) {
     throw new Error(`F22 ${incomeYear}: a US salary before the Chile–US treaty applies (${CHILE_US_TREATY_FIRST_INCOME_YEAR}) — not modelled`);
   }
   if (!(yearEnd.observado > 0)) throw new Error(`F22 ${incomeYear}: no year-end dólar observado for the US salary`);
-  const lineStmt = db.prepare(`SELECT side, kind, amount FROM payslip_lines WHERE payslip_id = ?`);
   const stubs = heads.map((h): F22ForeignSalaryStub => {
-    if (h.pay_date == null) throw new Error(`F22 ${incomeYear}: US payslip ${h.source_pdf} has no pay date`);
-    const lines = lineStmt.all(h.id) as { side: string; kind: string | null; amount: number }[];
-    if (lines.length === 0) throw new Error(`F22 ${incomeYear}: US payslip ${h.source_pdf} has no lines`);
+    const lines = h.lines;
+    if (lines.length === 0) throw new Error(`F22 ${incomeYear}: US payslip ${h.sourcePdf} has no lines`);
     const grossUsd = cents(lines.filter((l) => l.side === "haber").reduce((s, l) => s + l.amount, 0));
     const ficaUsd = cents(
       lines
@@ -175,8 +171,8 @@ export function foreignSalaryForYear(
         .reduce((s, l) => s + l.amount, 0)
     );
     return {
-      payDate: h.pay_date,
-      employer: h.employer_name,
+      payDate: h.payDate,
+      employer: h.employer,
       grossUsd,
       ficaUsd,
       observado: yearEnd.observado,
@@ -208,27 +204,13 @@ export function foreignInterestForYear(
   yearEndObservado: number,
   window: DateWindow = wholeYearWindow(incomeYear)
 ): F22ForeignInterest {
-  const brokerMatch = FOREIGN_BROKERS.map(() => `r.param LIKE ?`).join(" OR ");
-  const bankMatch = US_BANK_ISSUERS.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency FROM movements m
-        WHERE m.flow_kind = 'savings_earnings' AND m.occurred_on LIKE ?
-          AND (m.account_id IN (SELECT r.account_id FROM account_roles r WHERE r.role = 'broker_cash' AND (${brokerMatch}))
-               OR m.account_id IN (SELECT b.account_id FROM bank_account_numbers b WHERE b.currency = 'usd' AND b.issuer IN (${bankMatch})))
-        ORDER BY m.occurred_on, m.id`
-    )
-    .all(`${incomeYear}-%`, ...FOREIGN_BROKERS.map((b) => `${b}|%`), ...US_BANK_ISSUERS) as {
-    id: number;
-    account_id: number;
-    occurred_on: string;
-    amount: number;
-    currency: string;
-  }[];
-  const lines = rows.filter((r) => inDateWindow(r.occurred_on, window)).map((r): F22ForeignInterestLine => {
-    if (r.currency !== "usd") throw new Error(`F22 ${incomeYear}: foreign interest movement ${r.id} is in ${r.currency}, expected dollars`);
-    return { date: r.occurred_on, movementId: r.id, accountId: r.account_id, usd: r.amount };
-  });
+  const inYear = windowWithinYear(incomeYear, window);
+  const lines = (inYear ? interestFacts(inYear) : [])
+    .filter((f) => f.payers.some(isForeignInterestPayerForChile))
+    .map((f): F22ForeignInterestLine => {
+      if (f.currency !== "usd") throw new Error(`F22 ${incomeYear}: foreign interest movement ${f.movementId} is in ${f.currency}, expected dollars`);
+      return { date: f.date, movementId: f.movementId, accountId: f.accountId, usd: f.amount };
+    });
   const usd = Math.round(lines.reduce((s, l) => s + l.usd, 0) * 100) / 100;
   return { lines, usd, clp: Math.round(usd * yearEndObservado) };
 }

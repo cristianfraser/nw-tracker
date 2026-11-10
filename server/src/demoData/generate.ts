@@ -102,7 +102,7 @@ import {
   type Acct,
   type Ledger,
 } from "./simulate.js";
-import { DEMO_US_BANK_ISSUER } from "../usBankAccounts.js";
+import { DEMO_US_BANK_ISSUER } from "../taxFacts/payers.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 import { writeIngestHistory } from "./ingestHistory.js";
 import {

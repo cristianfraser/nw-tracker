@@ -13,10 +13,10 @@
  * Mortgage interest (codes 750 / 751): every `loan_payments` loan row's interest, prepayments
  * included (interest effectively paid). 2025: 4.892.161 vs 4.799.108 reported by the lender (+1,9%).
  */
-import { db } from "../db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
 import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotEvent } from "../taxLots.js";
+import { fundDisposalFacts, fundLotAccounts } from "../taxFacts/disposals.js";
+import { loanPaymentFacts } from "../taxFacts/loans.js";
 
 type Pct = (fromMonth: string, toMonth: string) => number;
 
@@ -25,56 +25,24 @@ function yearEndPct(): { pct: Pct; toMonth: (incomeYear: number) => string } {
   return { pct: ipc.pct, toMonth: (y) => ipc.december(y).toMonth };
 }
 
-/** A fund account's deposits and redemptions as lot events (units = cuotas, amounts in pesos). */
-export function fundTaxLotEvents(accountId: number): TaxLotEvent[] {
-  const rows = db
-    .prepare(
-      `SELECT id, occurred_on, account_id, to_account_id, amount, units_delta FROM movements
-        WHERE ? IN (account_id, from_account_id, to_account_id)`
-    )
-    .all(accountId) as {
-    id: number;
-    occurred_on: string;
-    account_id: number | null;
-    to_account_id: number | null;
-    amount: number;
-    units_delta: number | null;
-  }[];
-  const events: TaxLotEvent[] = rows.map((r) => {
-    if (r.units_delta == null || r.units_delta === 0) {
-      throw new Error(`Fund lots: account ${accountId} movement ${r.id} has no cuotas`);
-    }
-    const inflow = r.to_account_id === accountId || (r.account_id === accountId && r.units_delta > 0);
-    const units = Math.abs(r.units_delta);
-    return inflow
-      ? { kind: "acquire", date: r.occurred_on, movementId: r.id, units, cost: Math.abs(r.amount) }
-      : { kind: "dispose", date: r.occurred_on, movementId: r.id, units, proceeds: Math.abs(r.amount) };
-  });
-  const rank = (e: TaxLotEvent) => (e.kind === "acquire" ? 0 : 1);
-  return events.sort((a, b) => a.date.localeCompare(b.date) || rank(a) - rank(b) || a.movementId - b.movementId);
-}
-
 export type FundRedemptionEstimate = { redemptionsClp: number; gainClp: number; lossClp: number };
+
+/** The Fintual goals outside APV: the fund redemptions DJ 1894 reports (APV redemptions are not). */
+const isNonApvFintualFund = (seriesKey: string) => seriesKey.startsWith("fintual_cert_") && !seriesKey.startsWith("fintual_cert_apv");
 
 export function fundRedemptionGainsForYear(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): FundRedemptionEstimate {
   const { pct, toMonth } = yearEndPct();
-  const accounts = db
-    .prepare(
-      `SELECT id FROM accounts WHERE fund_series_key LIKE 'fintual_cert_%' AND fund_series_key NOT LIKE 'fintual_cert_apv%'`
-    )
-    .all() as { id: number }[];
+  const inYear = windowWithinYear(incomeYear, window);
+  const accounts = fundLotAccounts().filter((a) => isNonApvFintualFund(a.seriesKey));
   let redemptions = 0;
   let gain = 0;
   let loss = 0;
-  for (const a of accounts) {
-    for (const d of realizeTaxLots(fundTaxLotEvents(a.id), "fifo").disposals) {
-      if (!inDateWindow(d.date, window)) continue;
-      const cost = d.slices.reduce((s, x) => s + x.cost * (1 + pct(monthBeforeYmd(x.acquiredOn), monthBeforeYmd(d.date)) / 100), 0);
-      const result = (d.proceeds - cost) * (1 + pct(monthBeforeYmd(d.date), toMonth(incomeYear)) / 100);
-      redemptions += d.proceeds;
-      if (result >= 0) gain += result;
-      else loss -= result;
-    }
+  for (const d of inYear ? fundDisposalFacts(inYear, { method: "fifo", accounts }) : []) {
+    const cost = d.slices.reduce((s, x) => s + x.cost * (1 + pct(monthBeforeYmd(x.acquiredOn), monthBeforeYmd(d.date)) / 100), 0);
+    const result = (d.proceeds - cost) * (1 + pct(monthBeforeYmd(d.date), toMonth(incomeYear)) / 100);
+    redemptions += d.proceeds;
+    if (result >= 0) gain += result;
+    else loss -= result;
   }
   return { redemptionsClp: Math.round(redemptions), gainClp: Math.round(gain), lossClp: Math.round(loss) };
 }
@@ -89,23 +57,12 @@ export function mortgageInterestForYear(
   window: DateWindow = wholeYearWindow(incomeYear)
 ): number {
   const { pct, toMonth } = yearEndPct();
-  const rows = db
-    .prepare(
-      `SELECT m.occurred_on, p.interest AS interes_clp, p.payment_currency
-         FROM loan_payments p JOIN movements m ON m.id = p.movement_id
-        WHERE p.leg = 'loan' AND p.interest IS NOT NULL AND m.occurred_on LIKE ?
-          AND (? IS NULL OR p.loan_account_id = ?)`
-    )
-    .all(`${incomeYear}-%`, loanAccountId ?? null, loanAccountId ?? null) as { occurred_on: string; interes_clp: number; payment_currency: string }[];
-  const inWindow = rows.filter((r) => inDateWindow(r.occurred_on, window));
-  for (const r of inWindow) {
-    if (r.payment_currency !== "clp") {
-      throw new Error(`mortgage interest ${r.occurred_on}: paid in ${r.payment_currency}, expected pesos`);
-    }
+  const inYear = windowWithinYear(incomeYear, window);
+  const inWindow = (inYear ? loanPaymentFacts(inYear, loanAccountId) : []).filter((p) => p.interest != null);
+  for (const p of inWindow) {
+    if (p.currency !== "clp") throw new Error(`mortgage interest ${p.date}: paid in ${p.currency}, expected pesos`);
   }
-  return Math.round(
-    inWindow.reduce((s, r) => s + r.interes_clp * (1 + pct(monthBeforeYmd(r.occurred_on), toMonth(incomeYear)) / 100), 0)
-  );
+  return Math.round(inWindow.reduce((s, p) => s + p.interest! * (1 + pct(monthBeforeYmd(p.date), toMonth(incomeYear)) / 100), 0));
 }
 
 /** Art. 55 bis: the lesser of the interest and 8 UTA, reduced proportionally between 90 and 150 UTA of gross income. */

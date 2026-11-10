@@ -13,12 +13,11 @@
  *   December 0,0%), never negative.
  * The SII prints its percentages with one decimal; `roundPct` (default true) does the same.
  */
-import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "../cryptoTaxLotEvents.js";
-import { loadCryptoCoinAccountIdsFundedByBuda } from "../budaWallet.js";
-import { db } from "../db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import type { CryptoFeePolicy } from "../cryptoTaxLotEvents.js";
+import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
 import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotMethod } from "../taxLots.js";
+import { cryptoDisposalFacts } from "../taxFacts/disposals.js";
+import type { TaxLotMethod } from "../taxLots.js";
 
 export type CryptoSaleTaxResult = {
   accountId: number;
@@ -65,32 +64,27 @@ export function cryptoTaxGainsForYear(
   const ipc = ipcReajuste({ round: roundPct });
   const { toMonth: november, provisional } = ipc.december(incomeYear);
   const sales: CryptoSaleTaxResult[] = [];
-  for (const accountId of [...loadCryptoCoinAccountIdsFundedByBuda()].sort((a, b) => a - b)) {
-    const coin = (db.prepare(`SELECT equity_ticker FROM accounts WHERE id = ?`).get(accountId) as { equity_ticker: string })
-      .equity_ticker;
-    for (const d of realizeTaxLots(loadCryptoTaxLotEvents(accountId, feePolicy), method).disposals) {
-      if (!inDateWindow(d.date, window)) continue;
-      const saleMonthBefore = monthBeforeYmd(d.date);
-      const costReajustado = d.slices.reduce(
-        (s, x) => s + x.cost * (1 + ipc.pct(monthBeforeYmd(x.acquiredOn), saleMonthBefore) / 100),
-        0
-      );
-      const gain = d.proceeds - costReajustado;
-      const decemberPct = ipc.yearEndPct(saleMonthBefore, november);
-      sales.push({
-        accountId,
-        coin,
-        date: d.date,
-        movementId: d.movementId,
-        units: d.units,
-        proceedsClp: d.proceeds,
-        costClp: d.cost,
-        costReajustadoClp: costReajustado,
-        gainClp: gain,
-        decemberPct,
-        gainDecemberClp: gain * (1 + decemberPct / 100),
-      });
-    }
+  for (const d of cryptoDisposalFacts(window, { method, feePolicy })) {
+    const saleMonthBefore = monthBeforeYmd(d.date);
+    const costReajustado = d.slices.reduce(
+      (s, x) => s + x.cost * (1 + ipc.pct(monthBeforeYmd(x.acquiredOn), saleMonthBefore) / 100),
+      0
+    );
+    const gain = d.proceeds - costReajustado;
+    const decemberPct = ipc.yearEndPct(saleMonthBefore, november);
+    sales.push({
+      accountId: d.accountId,
+      coin: d.instrument!,
+      date: d.date,
+      movementId: d.movementId,
+      units: d.units,
+      proceedsClp: d.proceeds,
+      costClp: d.cost,
+      costReajustadoClp: costReajustado,
+      gainClp: gain,
+      decemberPct,
+      gainDecemberClp: gain * (1 + decemberPct / 100),
+    });
   }
   sales.sort((a, b) => a.date.localeCompare(b.date) || a.movementId - b.movementId);
   return {

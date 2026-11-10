@@ -15,13 +15,12 @@
  * both are published SII positions; the other is always reported beside it.
  */
 import { art107InstrumentKind } from "../art107Instruments.js";
-import { equityMarketKind } from "../equityQuote.js";
 import { chileWallClockNow } from "../chileDate.js";
 import { db } from "../db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "../dateWindow.js";
-import { loadEquityTaxLotEvents } from "../equityTaxLotEvents.js";
+import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
 import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "../taxLots.js";
+import { equityAccountDisposalFacts, equityLotAccounts, type EquityLotAccount } from "../taxFacts/disposals.js";
+import type { TaxLotDisposal, TaxLotMethod } from "../taxLots.js";
 import { observadoOnOrBefore } from "../usdCashTaxLotEvents.js";
 
 export type ForeignShareGainMode = "usd_31dic" | "clp_ipc";
@@ -84,20 +83,12 @@ function latestObservadoDate(): string {
 }
 
 /**
- * Foreign equity accounts: a ticker, not a crypto pair, trading in dollars. An art. 107 instrument
- * (a Chilean fund or share, `art107Instruments`) never is, whatever it trades in: its sales are
- * taxed apart (`f22/art107`).
+ * Foreign equity accounts: a ticker, not a crypto pair (`equityLotAccounts`), trading in dollars. An
+ * art. 107 instrument (a Chilean fund or share, `art107Instruments`) never is, whatever it trades
+ * in: its sales are taxed apart (`f22/art107`).
  */
-function foreignEquityAccounts(): { id: number; name: string }[] {
-  const rows = db
-    .prepare(
-      `SELECT id, name, equity_ticker FROM accounts WHERE COALESCE(equity_ticker, '') <> ''`
-    )
-    .all() as { id: number; name: string; equity_ticker: string }[];
-  return rows
-    .filter((a) => equityMarketKind(a.equity_ticker) !== "crypto24")
-    .filter((a) => art107InstrumentKind(a.equity_ticker) == null && loadEquityTaxLotEvents(a.id).currency === "usd")
-    .map(({ id, name }) => ({ id, name }));
+function foreignEquityAccounts(): EquityLotAccount[] {
+  return equityLotAccounts().filter((a) => art107InstrumentKind(a.ticker) == null);
 }
 
 export function foreignShareGainsForYear(
@@ -115,22 +106,20 @@ export function foreignShareGainsForYear(
   const yearEndObservado = observadoOnOrBefore(yearEndObservadoDate);
   const ipcBetween = ipcReajuste({ round: false }).pct;
   const disposals: ForeignShareDisposalResult[] = [];
-  for (const a of foreignEquityAccounts()) {
-    const { events } = loadEquityTaxLotEvents(a.id);
-    for (const d of realizeTaxLots(events, lotMethod).disposals) {
-      if (!inDateWindow(d.date, window)) continue;
-      disposals.push({
-        accountId: a.id,
-        accountName: a.name,
-        date: d.date,
-        movementId: d.movementId,
-        units: d.units,
-        proceedsUsd: d.proceeds,
-        costUsd: d.cost,
-        gainUsd: d.gain,
-        resultClp: foreignShareDisposalClp(d, observadoOnOrBefore, ipcBetween, yearEndObservado),
-      });
-    }
+  for (const d of equityAccountDisposalFacts(window, { method: lotMethod, accounts: foreignEquityAccounts(), currency: "usd" }).flatMap(
+    (a) => a.disposals
+  )) {
+    disposals.push({
+      accountId: d.accountId,
+      accountName: d.accountName,
+      date: d.date,
+      movementId: d.movementId,
+      units: d.units,
+      proceedsUsd: d.proceeds,
+      costUsd: d.cost,
+      gainUsd: d.gain,
+      resultClp: foreignShareDisposalClp(d, observadoOnOrBefore, ipcBetween, yearEndObservado),
+    });
   }
   const totalClp = {
     usd_31dic: disposals.reduce((s, d) => s + d.resultClp.usd_31dic, 0),

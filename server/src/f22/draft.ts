@@ -123,7 +123,9 @@
  */
 import { chileWallClockNow } from "../chileDate.js";
 import { db } from "../db.js";
-import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
+import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
+import { dividendFacts } from "../taxFacts/dividends.js";
+import { usRetirementAccountIds } from "../usRetirementAccounts.js";
 import {
   f22Code158,
   f22Code170,
@@ -160,7 +162,6 @@ import {
 } from "./art107.js";
 import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./crypto.js";
 import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShares.js";
-import { usRetirementAccountIds } from "../usRetirementAccounts.js";
 import { informedDjAmount, informedDjSectionAmounts, type InformedDjField } from "../siiInformedDj.js";
 import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterestForYear } from "./estimates.js";
 import { payrollTaxYear, type PayrollTaxYear } from "./salary.js";
@@ -617,31 +618,25 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
  * `window`: one part of a departure year (`taxResidency.ts`), else the whole year.
  */
 export function loadF22Dividends(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): F22DividendLine[] {
-  const roth = usRetirementAccountIds("roth_ira");
-  const rows = db
-    .prepare(
-      `SELECT m.id, m.occurred_on, m.amount, d.gross_amount, d.withholding_amount
-         FROM movements m
-         LEFT JOIN movement_dividend_details d ON d.movement_id = m.id
-        WHERE m.flow_kind = 'dividend_payout' AND m.currency = 'usd' AND m.occurred_on LIKE ?
-          AND m.occurred_on >= ? AND m.occurred_on <= ?
-          AND (m.from_account_id IS NULL OR m.from_account_id NOT IN (${roth.map(() => "?").join(", ") || "NULL"}))
-        ORDER BY m.occurred_on, m.id`
+  const inYear = windowWithinYear(incomeYear, window);
+  // KNOWN BUG, kept by the T0 refactor (no behaviour change; reported to be fixed apart): the SQL
+  // this replaced read `from_account_id NOT IN (<Roth ids>)`, and with no Roth IRA on file that
+  // list was `(NULL)`, which no id passes — so without a Roth every dividend paid out of an
+  // instrument's account was left out of the F22. Reproduced here until the fix lands.
+  const noRothOnFile = usRetirementAccountIds("roth_ira").length === 0;
+  return (inYear ? dividendFacts(inYear) : [])
+    .filter(
+      (d) =>
+        d.currency === "usd" &&
+        (d.fromAccountId == null || (!noRothOnFile && d.usRetirementAccount !== "roth_ira"))
     )
-    .all(`${incomeYear}-%`, window.fromYmd, window.throughYmd, ...roth) as {
-    id: number;
-    occurred_on: string;
-    amount: number;
-    gross_amount: number | null;
-    withholding_amount: number | null;
-  }[];
-  return rows.map((r) => ({
-    date: r.occurred_on,
-    movementId: r.id,
-    grossUsd: r.gross_amount,
-    withholdingUsd: r.withholding_amount,
-    netUsd: r.amount,
-  }));
+    .map((d) => ({
+      date: d.date,
+      movementId: d.movementId,
+      grossUsd: d.detail?.gross ?? null,
+      withholdingUsd: d.detail?.withholding ?? null,
+      netUsd: d.net,
+    }));
 }
 
 /** Every item of one window the two regimes read: the resident chain codes them, the non-resident part excludes or taxes them. */
