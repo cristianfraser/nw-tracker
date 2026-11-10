@@ -278,3 +278,43 @@ carries the premiums; a Chilean-resident year with an option event throws.
 2. The declared date: 2024-04-15, the move (proposed), or the first stub, 2024-04-19.
 3. UCITS as a resident-era holding sold before the move (proposed), or not at all.
 4. Options after the move only (proposed; the Chilean derivatives law stays unmodelled).
+
+## Status (2026-11-10): R1, L and O1 built in parallel, merged into the integration branch
+
+- **R1 (`us-r1-residency`, 6 commits):** `tax_residency_periods` (migration 302, hook, write log),
+  `taxResidency.ts` readers and writers, `GET|POST|DELETE /api/tax-residency`, a Settings section;
+  the F22 has a `regime` (resident | nonresident | split) beside its `base`: a non-resident year
+  runs 158 → 32 → 34 (línea 72, 35 % Impuesto Adicional; 305 = 304 + 34 + 952 + 1830 − 198 − 833 +
+  900), the departure year is two parts, every excluded item is listed with its reason
+  (`nonresident`, `treaty_art13_8`, `fund_unico_withheld`, `withheld_at_source`, `no_igc`). Two
+  plan readings corrected from the sources: a non-resident's art. 107 gain is still the 10 % único
+  (N° 6–7, cost = cost paid), and the Chilean fund's gain is the administradora's withheld 10 %
+  único (Ley 20.712 art. 82 B), not the Adicional; DFL-2 art. 15 exempts the rent from the
+  Adicional too; convention art. 13(8) leaves a non-resident's crypto gain to the US. Unverified:
+  the SII's position on a non-resident's crypto source; whether art. 13(8) reaches fund cuotas.
+  Not built: LIR art. 103's departure return; DJ yearly figures stay whole in the resident part.
+- **L (`us-l-london`, 4 commits):** `equityMarketKind` throws on an unknown exchange suffix
+  (`.SN`, `.L`, `.NYB` known; a `market_symbols` row wins); the `london` kind through sessions
+  (`londonSession.ts`, 08:00–16:30), the LSE calendar 2023–2027 from gov.uk, the live gates, the
+  Yahoo bar dates, `stocks_london` (migration 303; due 16:40 London with carry-over), the
+  currency assertion on every London write (a pence line is refused). Demo: IBKR opens 2023-05
+  with US$1.000/month into CSPX.L + VWRA.L from the dollar checking (a standing order — the peso
+  cushion's gates stopped the planned Fintual wires), sold 2024-03-12 (gain US$1.883,80 → 1104 of
+  AT2025, resident part), the US phase from 2024-05 unchanged. Yahoo: both USD, history to 2010 /
+  2019. **The market asset must be republished before the demo release** (the spec grew).
+- **O1 (`us-o1-options`, 5 commits):** `option_contracts` + `option_assignments` + the
+  `brokerage_opciones` bucket (migration 304), the `option` holding marked at intrinsic value
+  (signed contracts, multiplier, 0 after expiry, a missing underlying close throws), six flow kinds
+  with per-kind sign rules, premiums as capital out of / into the contract account, the generic
+  dollar-inflow branch throwing on an unlisted kind, `assignOptionContract`, the add-account and
+  movement forms. Identity proven on a fixture (sold call expiring: P/L = premium; assignment:
+  three legs reconcile, bucket P/L +400). O2 still owes the tax lots, Schedule D and the story.
+- **Merged tree:** typecheck ok (check-deps cycles unchanged at 37 / 102); client 85 files / 475
+  tests; the demo regenerated (AT2025 split: resident part 158 22.572.983 incl. the UCITS gain,
+  non-resident part 32 8.139.700 / 34 2.848.895, 305 3.271.365; AT2026 non-resident 32 13.136.220
+  / 34 4.597.677; 1040 2025 line 24 US$27.453, owed US$282; `stocks_london` ok; CSPX / VWRA in
+  the nav; the opciones group answers). Server suite: see below.
+- **Before the push to main:** one query on the home server for a dot-suffixed ticker other than
+  `.SN` / `.L` / `.NYB` (`accounts.equity_ticker`, `market_symbols`, the watchlist, the proxy
+  basket) — the suffix rule throws on the first read of an unknown one. The documented primary
+  tickers are bare or `.SN`, and `DX-Y.NYB` is covered.
