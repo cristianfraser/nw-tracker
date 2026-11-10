@@ -29,14 +29,15 @@
  * A fund's distributions are not art. 107 income: for a resident a reparto is a dividend afecto
  * al IGC (F22 línea 2, code 105) — {@link art107DistributionsForYear}.
  */
-import { listArt107Accounts, type Art107Kind } from "./art107Instruments.js";
-import { chileWallClockNow } from "./chileDate.js";
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { equityCloseEod, equityQuoteCurrency } from "./equityQuote.js";
-import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
-import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
+import { listArt107Accounts, type Art107Kind } from "../art107Instruments.js";
+import { chileWallClockNow } from "../chileDate.js";
+import { db } from "../db.js";
+import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
+import { equityCloseEod, equityQuoteCurrency } from "../equityQuote.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
+import { dividendFacts } from "../taxFacts/dividends.js";
+import { equityAccountDisposalFacts } from "../taxFacts/disposals.js";
+import type { TaxLotDisposal, TaxLotMethod } from "../taxLots.js";
 
 export type Art107CostOption = "cost_paid" | "close_dec31";
 export type Art107Regime = "tax_10pct" | "inr";
@@ -202,12 +203,14 @@ export function art107GainsForYear(
   for (const a of listArt107Accounts()) {
     const quote = equityQuoteCurrency(a.ticker);
     if (quote !== "clp") throw new Error(`Art. 107: ${a.ticker} quotes in ${quote}, expected pesos`);
-    const { currency, events } = loadEquityTaxLotEvents(a.id);
+    const [{ currency, disposals }] = equityAccountDisposalFacts(window, {
+      method: lotMethod,
+      accounts: [{ accountId: a.id, accountName: a.name, ticker: a.ticker }],
+    });
     if (currency != null && currency !== "clp") {
       throw new Error(`Art. 107: account ${a.id} (${a.ticker}) trades in ${currency}, expected pesos`);
     }
-    for (const d of realizeTaxLots(events, lotMethod).disposals) {
-      if (!inDateWindow(d.date, window)) continue;
+    for (const d of disposals) {
       const r = art107DisposalClp(d, ipcBetween, art107CloseDec31, a.ticker, !provisional);
       all.push({
         accountId: a.id,
@@ -349,17 +352,13 @@ export type Art107Distribution = {
  * IGC, F22 línea 2). Throws on one in another currency.
  */
 export function art107DistributionsForYear(year: number, window: DateWindow = wholeYearWindow(year)): Art107Distribution[] {
+  const inYear = windowWithinYear(year, window);
+  const facts = inYear ? dividendFacts(inYear) : [];
   const out: Art107Distribution[] = [];
-  const stmt = db.prepare(
-    `SELECT id, occurred_on, amount, currency FROM movements
-      WHERE flow_kind = 'dividend_payout' AND from_account_id = ? AND occurred_on LIKE ?`
-  );
   for (const a of listArt107Accounts()) {
-    const rows = stmt.all(a.id, `${year}-%`) as { id: number; occurred_on: string; amount: number; currency: string }[];
-    for (const r of rows) {
-      if (!inDateWindow(r.occurred_on, window)) continue;
-      if (r.currency !== "clp") throw new Error(`Art. 107: distribution ${r.id} of ${a.ticker} is in ${r.currency}, expected pesos`);
-      out.push({ date: r.occurred_on, movementId: r.id, accountId: a.id, accountName: a.name, amountClp: r.amount });
+    for (const r of facts.filter((f) => f.fromAccountId === a.id)) {
+      if (r.currency !== "clp") throw new Error(`Art. 107: distribution ${r.movementId} of ${a.ticker} is in ${r.currency}, expected pesos`);
+      out.push({ date: r.date, movementId: r.movementId, accountId: a.id, accountName: a.name, amountClp: r.net });
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.movementId - b.movementId);

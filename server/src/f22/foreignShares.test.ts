@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { foreignShareDisposalClp, pickForeignShareDefaultMode } from "./foreignShareTaxGains.js";
-import { monthBeforeYmd } from "./siiOfficialIpc.js";
+import { foreignShareDisposalClp, pickForeignShareDefaultMode } from "./foreignShares.js";
+import { monthBeforeYmd } from "../siiOfficialIpc.js";
 
 describe("foreignShareDisposalClp", () => {
   // 10 shares bought for USD 1.000 on 2026-01-15 (observado 900), sold for USD 1.100 on 2026-06-10

@@ -35,7 +35,7 @@
  *   1° y 2° del artículo 56° se concederán en forma proporcional al período a que corresponden las
  *   rentas declaradas. Asimismo, se aplicarán proporcionalmente las unidades tributarias referidas
  *   en los artículos 52° y 57°.» That departure return (prorated brackets) is NOT built; the F22 of
- *   the departure year is drafted as two parts (`f22Draft.ts`) and says so.
+ *   the departure year is drafted as two parts (`f22/draft.ts`) and says so.
  * - **Chile–US convention** (sii.cl `chile_usa_ing.pdf`), art. 4(1)–(2): a dual resident is a
  *   resident only of the State of his permanent home, else the centre of vital interests, habitual
  *   abode, nationality, mutual agreement. The declared date is the user's reading of that test.

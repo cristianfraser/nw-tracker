@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { OfficialIpcLookup } from "./siiOfficialIpc.js";
-import { IDPC_RATE } from "./legalParameters.js";
+import type { OfficialIpcLookup } from "../siiOfficialIpc.js";
+import { IDPC_RATE } from "../legalParameters.js";
 import {
   usdFxF22Codes,
   usdFxTaxGainsForYear,
   type UsdFxDisposalLoader,
   type UsdFxTaxGainsOptions,
-} from "./usdFxTaxGains.js";
+} from "./usdFx.js";
 
 const ACCOUNT = 9101;
 

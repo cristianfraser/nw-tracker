@@ -14,10 +14,10 @@
  * `incompleteMonths` — its taxable pay is overstated (the 2019 Dealsyte months) — and so is one
  * whose totals were not parsed at all (left out: the scanned 2018-08).
  */
-import { db } from "./db.js";
-import { wholeYearWindow, windowMonths, type DateWindow } from "./dateWindow.js";
-import { iuscTaxableClp } from "./payslipLineKinds.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
+import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
+import { chileanPayslipFacts, type ChileanPayslipFact } from "../taxFacts/salaries.js";
+import { iuscTaxableClp } from "../payslipLineKinds.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
 
 export type PayrollTaxYear = {
   incomeYear: number;
@@ -31,6 +31,7 @@ export type PayrollTaxYear = {
   provisional: boolean;
 };
 
+/** The liquidación totals {@link monthTaxablePay} reads (a {@link ChileanPayslipFact}'s, in the DB's column names). */
 type Row = {
   period_month: string;
   total_haberes_clp: number | null;
@@ -43,6 +44,21 @@ type Row = {
   desc_cesantia_clp: number | null;
   desc_tax_clp: number | null;
 };
+
+function rowOfFact(f: ChileanPayslipFact): Row {
+  return {
+    period_month: f.periodMonth,
+    total_haberes_clp: f.totalHaberesClp,
+    total_imponible_clp: f.totalImponibleClp,
+    total_no_imponible_clp: f.totalNoImponibleClp,
+    colacion_clp: f.colacionClp,
+    movilizacion_clp: f.movilizacionClp,
+    desc_afp_clp: f.descAfpClp,
+    desc_health_clp: f.descHealthClp,
+    desc_cesantia_clp: f.descCesantiaClp,
+    desc_tax_clp: f.descTaxClp,
+  };
+}
 
 /** The month's taxable pay, or null when the liquidación's totals were not parsed. */
 export function monthTaxablePay(r: Row): number | null {
@@ -66,17 +82,11 @@ export function monthTaxablePay(r: Row): number | null {
  * year: a payslip belongs to the window holding its period month (`taxResidency.ts`).
  */
 export function payrollTaxYear(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): PayrollTaxYear {
-  const { fromMonth, throughMonth } = windowMonths(window);
-  const rows = db
-    .prepare(
-      `SELECT period_month, total_haberes_clp, total_imponible_clp, total_no_imponible_clp, colacion_clp,
-              movilizacion_clp, desc_afp_clp, desc_health_clp, desc_cesantia_clp, desc_tax_clp
-         FROM payroll_work_earnings
-        WHERE period_month LIKE ? AND period_month >= ? AND period_month <= ?
-          AND jurisdiction = 'cl' AND earning_type = 'salary' AND liquido_currency = 'clp'
-        ORDER BY period_month`
-    )
-    .all(`${incomeYear}-%`, fromMonth, throughMonth) as Row[];
+  const inYear = windowWithinYear(incomeYear, window);
+  // A Chilean art. 42 N°1 salary: a peso salary liquidación (a finiquito or a dollar wire is not).
+  const rows = (inYear ? chileanPayslipFacts(inYear) : [])
+    .filter((f) => f.earningType === "salary" && f.liquidoCurrency === "clp")
+    .map(rowOfFact);
   const ipc = ipcReajuste({ round: true, floorAtZero: true });
   const { toMonth, provisional } = ipc.december(incomeYear);
   let taxable = 0;

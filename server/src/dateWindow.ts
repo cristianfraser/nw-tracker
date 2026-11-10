@@ -2,7 +2,7 @@
  * A closed range of ISO days, `fromYmd` through `throughYmd` inclusive. The F22 draft hands one
  * to every loader of a year's items so the departure year (a declared tax residency that changes
  * mid-year, `taxResidency.ts`) can be computed in two parts: the resident part through the declared
- * day, the non-resident part from the next day. A leaf: no imports.
+ * day, the non-resident part from the next day; the tax facts (`taxFacts/`) take one too. A leaf: no imports.
  */
 export type DateWindow = { fromYmd: string; throughYmd: string };
 
@@ -17,4 +17,11 @@ export function inDateWindow(ymd: string, window: DateWindow): boolean {
 /** The window's months as `YYYY-MM` bounds (a payslip is keyed by its period month). */
 export function windowMonths(window: DateWindow): { fromMonth: string; throughMonth: string } {
   return { fromMonth: window.fromYmd.slice(0, 7), throughMonth: window.throughYmd.slice(0, 7) };
+}
+
+/** The part of `window` inside calendar year `year`; null when they do not meet. */
+export function windowWithinYear(year: number, window: DateWindow): DateWindow | null {
+  const fromYmd = window.fromYmd > `${year}-01-01` ? window.fromYmd : `${year}-01-01`;
+  const throughYmd = window.throughYmd < `${year}-12-31` ? window.throughYmd : `${year}-12-31`;
+  return fromYmd <= throughYmd ? { fromYmd, throughYmd } : null;
 }

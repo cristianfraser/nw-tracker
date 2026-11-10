@@ -1,17 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
-import { buildF22Draft, computeF22Tax } from "./f22Draft.js";
-import { f22PropertyTaxCreditCap } from "./f22Identities.js";
-import { rentalsForYear } from "./f22Rentals.js";
+import { db } from "../db.js";
+import { checkingAccountId } from "../checkingCartolaImport.js";
+import { computeF22Tax } from "./chain.js";
+import { buildF22Draft } from "./draft.js";
+import { f22PropertyTaxCreditCap } from "./identities.js";
+import { rentalsForYear } from "./rentals.js";
 import {
   deleteCheckingIncomeMovementOverride,
   loadRentPlaceSlugByMovementId,
   upsertCheckingIncomeMovementOverride,
-} from "./flowsCheckingIncomeOverrides.js";
-import { createRealEstatePlace, listRealEstatePlaces, setRealEstatePlaceDfl2 } from "./flowsRealEstateExpenses.js";
-import { dfl2ContribucionesHalvedThroughYear, dfl2ContribucionesHalvingYears } from "./legalParameters.js";
-import type { UsdFxDisposalLoader } from "./usdFxTaxGains.js";
+} from "../flowsCheckingIncomeOverrides.js";
+import { createRealEstatePlace, listRealEstatePlaces, setRealEstatePlaceDfl2 } from "../flowsRealEstateExpenses.js";
+import { dfl2ContribucionesHalvedThroughYear, dfl2ContribucionesHalvingYears } from "../legalParameters.js";
+import type { UsdFxDisposalLoader } from "./usdFx.js";
 
 const UTA = 800_000;
 // A synthetic year the Vitest person does not reach; the IPC reajuste is zero past the latest month.

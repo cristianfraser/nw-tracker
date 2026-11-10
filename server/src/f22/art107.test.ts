@@ -4,8 +4,8 @@ import {
   art107LossCarry,
   art107RegimeForSale,
   pickArt107DefaultOption,
-} from "./art107TaxGains.js";
-import type { TaxLotDisposal } from "./taxLots.js";
+} from "./art107.js";
+import type { TaxLotDisposal } from "../taxLots.js";
 
 /** An IPC that answers only the (from, to) pairs a case expects, so a wrong month fails the test. */
 function ipcOf(table: Record<string, number>) {

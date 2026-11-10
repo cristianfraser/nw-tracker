@@ -9,7 +9,7 @@ import {
   roundReajustePct,
   unemploymentCapUf,
 } from "./legalParameters.js";
-import { f22Code170, f22Code305, f22IdentityViolations } from "./f22Identities.js";
+import { f22Code170, f22Code305, f22IdentityViolations } from "./f22/identities.js";
 import { decemberReajuste, ipcReajuste, type OfficialIpcLookup } from "./siiOfficialIpc.js";
 import { mortgageCuotaWindow } from "./mortgageCuotaDay.js";
 

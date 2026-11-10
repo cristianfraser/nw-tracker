@@ -14,7 +14,7 @@
  *
  * A document decoder: it belongs with the ingest parsers (F15); kept here until it moves.
  */
-import { f22IdentityViolations } from "../../src/f22Identities.js";
+import { f22IdentityViolations } from "../../src/f22/identities.js";
 
 type Column = { codeStart: [number, number]; valueEnd: [number, number] };
 
@@ -71,7 +71,7 @@ export function parseF22CompactoText(text: string): Map<number, number> {
   return codes;
 }
 
-/** Throws unless the parsed amounts satisfy the identities the form prints (`f22Identities`). */
+/** Throws unless the parsed amounts satisfy the identities the form prints (`f22/identities`). */
 export function assertF22Identities(codes: ReadonlyMap<number, number>): void {
   const bad = f22IdentityViolations(codes, "F22 compacto");
   if (bad.length > 0) throw new Error(`F22 compacto: ${bad.join("; ")}`);

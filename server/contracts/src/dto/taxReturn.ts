@@ -1,4 +1,4 @@
-/** GET /api/tax-return — the local Formulario 22 (server: f22DraftPayload.ts). */
+/** GET /api/tax-return — the local Formulario 22 (server: f22/payload.ts). */
 export type TaxReturnRowSection =
   | "income"
   | "subtotal"
@@ -75,7 +75,7 @@ export type TaxReturnArt107Distribution = {
   amount_clp: number;
 };
 
-/** GET /api/tax-return `art107`: the art. 107 LIR fund and share sales and the fund distributions (server: art107TaxGains.ts). */
+/** GET /api/tax-return `art107`: the art. 107 LIR fund and share sales and the fund distributions (server: f22/art107.ts). */
 export type TaxReturnArt107 = {
   lot_method: "fifo" | "lifo" | "average";
   provisional: boolean;
@@ -106,7 +106,7 @@ export type TaxReturnArt107 = {
 
 export type TaxReturnLossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "usd_fx";
 
-/** A realized disposal of dollars bought with pesos (server: usdFxTaxGains.ts): proceeds and cost at the dólar observado. */
+/** A realized disposal of dollars bought with pesos (server: f22/usdFx.ts): proceeds and cost at the dólar observado. */
 export type TaxReturnUsdFxDisposal = {
   date: string;
   account_name: string;
@@ -161,7 +161,7 @@ export type TaxReturnLossOffset = TaxReturnOffsetBalance & {
   parts: { source: TaxReturnLossOffsetSource; gain_clp: number; loss_clp: number }[];
 };
 
-/** One place's rent of the year (server: f22Rentals.ts), reajustada to December. */
+/** One place's rent of the year (server: f22/rentals.ts), reajustada to December. */
 export type TaxReturnRentalPlace = {
   slug: string;
   label: string;
@@ -184,7 +184,7 @@ export type TaxReturnRentals = {
 };
 
 /**
- * GET /api/tax-return `foreign_income` (server: f22ForeignIncome.ts): a salary earned abroad (US pay
+ * GET /api/tax-return `foreign_income` (server: f22/foreignIncome.ts): a salary earned abroad (US pay
  * stubs → code 1030, its credit 748 / 1018 under art. 41 A and the Chile–US treaty) and a foreign
  * broker's interest (in 1104).
  */
@@ -234,7 +234,7 @@ export type TaxReturnRegime = "resident" | "nonresident" | "split";
 
 export type TaxReturnDateWindow = { from: string; through: string };
 
-/** Why an item of a non-resident window enters no code (server: f22Draft.ts, «Residency»). */
+/** Why an item of a non-resident window enters no code (server: f22/draft.ts, «Residency»). */
 export type TaxReturnExcludedReason = "nonresident" | "treaty_art13_8" | "fund_unico_withheld" | "withheld_at_source" | "no_igc";
 
 export type TaxReturnExcludedKind =

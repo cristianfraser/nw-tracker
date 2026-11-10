@@ -18,7 +18,7 @@ import { accountIdsUnderCheckingAccounts } from "../movementBalanceCashAccounts.
 import { convertValue } from "../valueConvert.js";
 import { listRealEstatePlaces } from "../flowsRealEstateExpenses.js";
 import { f1040Settlement, filedF1040 } from "../f1040Filed.js";
-import { buildF22Draft } from "../f22Draft.js";
+import { buildF22Draft } from "../f22/draft.js";
 import { CHILE_US_TREATY_FIRST_INCOME_YEAR } from "../legalParameters.js";
 import { accountIdsInPortfolioGroup } from "../portfolioGroupTree.js";
 import { optionContractsThroughDate } from "../optionPosition.js";

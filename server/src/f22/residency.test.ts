@@ -1,14 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, type UsPayslip } from "nw-tracker-contracts";
-import { db } from "./db.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
-import { buildF22Draft, computeF22Tax } from "./f22Draft.js";
-import { f22Code305, f22IdentityViolations } from "./f22Identities.js";
-import { deleteCheckingIncomeMovementOverride, upsertCheckingIncomeMovementOverride } from "./flowsCheckingIncomeOverrides.js";
-import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
-import { IMPUESTO_ADICIONAL_RATE } from "./legalParameters.js";
-import { applyEmploymentPayslips } from "./payslipsApply.js";
-import type { UsdFxDisposalLoader } from "./usdFxTaxGains.js";
+import { db } from "../db.js";
+import { checkingAccountId } from "../checkingCartolaImport.js";
+import { computeF22Tax } from "./chain.js";
+import { buildF22Draft } from "./draft.js";
+import { f22Code305, f22IdentityViolations } from "./identities.js";
+import { deleteCheckingIncomeMovementOverride, upsertCheckingIncomeMovementOverride } from "../flowsCheckingIncomeOverrides.js";
+import { createRealEstatePlace } from "../flowsRealEstateExpenses.js";
+import { IMPUESTO_ADICIONAL_RATE } from "../legalParameters.js";
+import { applyEmploymentPayslips } from "../payslipsApply.js";
+import type { UsdFxDisposalLoader } from "./usdFx.js";
 
 // Synthetic far years no other suite reaches (the IPC reajuste is zero past the latest month, and a
 // 1040 is drafted under the latest listed US law while the year is open).

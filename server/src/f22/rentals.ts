@@ -21,11 +21,10 @@
  * Contribuciones are the place's `contribuciones` bill rows whose month falls in the year (a bill
  * row exists only when a purchase backs it, so it is what was paid).
  */
-import { db } from "./db.js";
-import { inDateWindow, wholeYearWindow, type DateWindow } from "./dateWindow.js";
-import { DFL2_MAX_EXEMPT_RENTALS } from "./legalParameters.js";
-import { loadRentCreditsForYear } from "./flowsCheckingIncomeOverrides.js";
-import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
+import { wholeYearWindow, windowWithinYear, type DateWindow } from "../dateWindow.js";
+import { DFL2_MAX_EXEMPT_RENTALS } from "../legalParameters.js";
+import { rentalFacts } from "../taxFacts/rentals.js";
+import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
 
 export type F22RentalPlace = {
   slug: string;
@@ -50,39 +49,26 @@ export type F22Rentals = {
   provisional: boolean;
 };
 
-type PlaceRow = { id: number; slug: string; label: string; dfl2: number };
-
 /** The year's rents, or one part of a departure year's (credits received and contribuciones paid inside `window`). */
 export function rentalsForYear(incomeYear: number, window: DateWindow = wholeYearWindow(incomeYear)): F22Rentals {
-  const credits = loadRentCreditsForYear(incomeYear).filter((c) => inDateWindow(c.receivedOn, window));
+  const inYear = windowWithinYear(incomeYear, window);
+  const facts = inYear ? rentalFacts(inYear) : [];
   const empty: F22Rentals = { places: [], taxableRentClp: 0, exemptRentClp: 0, propertyTaxPaidClp: 0, provisional: false };
-  if (credits.length === 0) return empty;
+  if (facts.length === 0) return empty;
   const ipc = ipcReajuste({ round: true, floorAtZero: true });
   const { toMonth, provisional } = ipc.december(incomeYear);
   const reajustado = (amount: number, ymd: string) => amount * (1 + ipc.pct(monthBeforeYmd(ymd), toMonth) / 100);
 
-  const placeIds = [...new Set(credits.map((c) => c.placeId))];
-  const placeStmt = db.prepare(`SELECT id, slug, label, dfl2 FROM expense_accounts WHERE id = ?`);
-  const taxStmt = db.prepare(
-    `SELECT spent_on, amount_clp FROM expense_entries
-      WHERE expense_account_id = ? AND category = 'contribuciones' AND spent_on LIKE ?`
-  );
-  const places: F22RentalPlace[] = placeIds.map((id) => {
-    const p = placeStmt.get(id) as PlaceRow | undefined;
-    if (!p) throw new Error(`rent names place ${id}, which does not exist`);
-    const mine = credits.filter((c) => c.placeId === id);
-    const taxRows = (taxStmt.all(id, `${incomeYear}-%`) as { spent_on: string; amount_clp: number }[]).filter((r) =>
-      inDateWindow(r.spent_on, window)
-    );
-    return {
-      slug: p.slug,
-      label: p.label,
-      dfl2: p.dfl2 === 1,
-      credits: mine.length,
-      rentClp: Math.round(mine.reduce((s, c) => s + reajustado(c.amountClp, c.receivedOn), 0)),
-      propertyTaxPaidClp: Math.round(taxRows.reduce((s, r) => s + reajustado(r.amount_clp, r.spent_on), 0)),
-    };
-  });
+  const places: F22RentalPlace[] = facts.map((p) => ({
+    slug: p.slug,
+    label: p.label,
+    dfl2: p.dfl2 != null,
+    credits: p.rentCredits.length,
+    rentClp: Math.round(p.rentCredits.reduce((s, c) => s + reajustado(c.amountClp, c.date), 0)),
+    propertyTaxPaidClp: Math.round(
+      p.bills.filter((b) => b.category === "contribuciones").reduce((s, b) => s + reajustado(b.amountClp, b.date), 0)
+    ),
+  }));
   const exempt = places.filter((p) => p.dfl2);
   if (exempt.length > DFL2_MAX_EXEMPT_RENTALS) {
     throw new Error(
