@@ -13,7 +13,6 @@ const B = "ZZPLANB.XX";
 const facts = (over: Partial<InstrumentFacts> = {}): InstrumentFacts => ({
   quote_currency: "usd",
   market_kind: "nyse",
-  mic: "XNYS",
   exchange: null,
   name: null,
   instrument_type: "EQUITY",
@@ -49,21 +48,21 @@ describe("planInstrumentRegistration", () => {
     expect(marketSymbol(A)).toBeNull(); // planning writes nothing
 
     expect(applyInstrumentRegistrationPlan(plan)).toEqual([]);
-    expect(marketSymbol(A)).toMatchObject({ market_kind: "nyse", mic: "XNYS", display_symbol: "ZZPLAN", source: "yahoo" });
+    expect(marketSymbol(A)).toMatchObject({ market_kind: "nyse", display_symbol: "ZZPLAN", source: "yahoo" });
 
     const again = await planInstrumentRegistration({ only: [A], describe: describe_ });
     expect(again.items).toEqual([]);
   });
 
   it("reports a provider-stated row whose facts changed, and leaves declared rows alone", async () => {
-    registerInstrument(A, facts({ mic: null }), "yahoo");
-    registerInstrument(B, facts({ mic: null }), "declared");
+    registerInstrument(A, facts({ display_symbol: "ZZOLD" }), "yahoo");
+    registerInstrument(B, facts({ display_symbol: "ZZOLD" }), "declared");
     const plan = await planInstrumentRegistration({ describe: async () => facts() });
     const mine = plan.items.filter((i) => i.ticker === A || i.ticker === B);
     expect(mine.map((i) => i.ticker)).toEqual([A]);
-    expect(mine[0]!.changes).toEqual(["mic: null → XNYS"]);
+    expect(mine[0]!.changes).toEqual(["display_symbol: ZZOLD → ZZPLAN"]);
     expect(applyInstrumentRegistrationPlan({ items: mine, failures: [] })).toEqual([]);
-    expect(marketSymbol(A)!.mic).toBe("XNYS");
+    expect(marketSymbol(A)!.display_symbol).toBe("ZZPLAN");
   });
 
   it("collects every provider failure by ticker", async () => {

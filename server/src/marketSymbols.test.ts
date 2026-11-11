@@ -17,7 +17,6 @@ const T = "ZZREGTEST.XX";
 const facts = (over: Partial<InstrumentFacts> = {}): InstrumentFacts => ({
   quote_currency: "usd",
   market_kind: "nyse",
-  mic: "XNYS",
   exchange: null,
   name: "Registry test",
   instrument_type: "EQUITY",
@@ -41,17 +40,17 @@ describe("the instrument registry", () => {
   });
 
   it("a registered row decides market, currency and display symbol", () => {
-    registerInstrument(T.toLowerCase(), facts({ market_kind: "london", mic: "XLON" }), "declared");
+    registerInstrument(T.toLowerCase(), facts({ market_kind: "london" }), "declared");
     expect(equityMarketKind(T)).toBe("london");
     expect(marketQuoteCurrency(T)).toBe("usd");
-    expect(requireMarketSymbol(T)).toMatchObject({ ticker: T, mic: "XLON", display_symbol: "ZZREGTEST", source: "declared" });
+    expect(requireMarketSymbol(T)).toMatchObject({ ticker: T, display_symbol: "ZZREGTEST", source: "declared" });
   });
 
   it("finds a row another connection wrote (one reload before throwing)", () => {
     reloadMarketSymbols();
     db.prepare(
-      `INSERT INTO market_symbols (ticker, quote_currency, market_kind, mic, isin, display_symbol, name, exchange, instrument_type, source, verified_at)
-       VALUES (?, 'clp', 'santiago', 'XSGO', NULL, 'ZZREGTEST', NULL, NULL, NULL, 'yahoo', '2026-11-10T00:00:00.000Z')`
+      `INSERT INTO market_symbols (ticker, quote_currency, market_kind, isin, display_symbol, name, exchange, instrument_type, source, verified_at)
+       VALUES (?, 'clp', 'santiago', NULL, 'ZZREGTEST', NULL, NULL, NULL, 'yahoo', '2026-11-10T00:00:00.000Z')`
     ).run(T);
     expect(marketSymbol(T)).toBeNull(); // the cache does not know it yet
     expect(requireMarketSymbol(T).market_kind).toBe("santiago");
@@ -84,7 +83,6 @@ describe("every ticker of the generated database is registered", () => {
         market_kind: declared.market_kind,
         quote_currency: declared.quote_currency,
         display_symbol: declared.display_symbol,
-        mic: declared.mic,
       });
     }
   });

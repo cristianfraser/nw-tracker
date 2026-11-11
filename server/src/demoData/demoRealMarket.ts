@@ -316,19 +316,18 @@ export type DemoRealMarketSummary = {
 export type DemoSantiagoSource = "snapshot" | "bolsa";
 
 /**
- * Where a declared instrument and a provider's statement disagree: market kind, quote currency and
- * display symbol always; the exchange code only when the provider names one (an exchange its table
- * does not know reads null, which is not a disagreement).
+ * Where a declared instrument and a provider's statement disagree: market kind, quote currency or
+ * display symbol — the facts that decide a price. Which US venue lists it does not: every one is the
+ * `nyse` market.
  */
 export function demoInstrumentMismatches(
-  declared: Pick<InstrumentFacts, "market_kind" | "quote_currency" | "display_symbol" | "mic">,
-  stated: Pick<InstrumentFacts, "market_kind" | "quote_currency" | "display_symbol" | "mic">
+  declared: Pick<InstrumentFacts, "market_kind" | "quote_currency" | "display_symbol">,
+  stated: Pick<InstrumentFacts, "market_kind" | "quote_currency" | "display_symbol">
 ): { field: string; declared: string; stated: string }[] {
   const out: { field: string; declared: string; stated: string }[] = [];
   for (const field of ["market_kind", "quote_currency", "display_symbol"] as const) {
     if (declared[field] !== stated[field]) out.push({ field, declared: `${field} ${declared[field]}`, stated: `${field} ${stated[field]}` });
   }
-  if (stated.mic != null && declared.mic !== stated.mic) out.push({ field: "mic", declared: `mic ${declared.mic}`, stated: `mic ${stated.mic}` });
   return out;
 }
 

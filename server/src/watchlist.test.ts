@@ -53,7 +53,6 @@ function symbolFacts(ticker: string, overrides: Partial<InstrumentFacts> = {}): 
   return {
     quote_currency: "usd",
     market_kind: "nyse",
-    mic: null,
     name: null,
     exchange: null,
     instrument_type: "EQUITY",

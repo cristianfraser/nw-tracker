@@ -22,7 +22,6 @@ export async function describeCoinGeckoSymbol(symbol: string): Promise<Instrumen
   return {
     quote_currency: "usd",
     market_kind: "crypto24",
-    mic: null,
     exchange: null,
     name: COIN_NAMES[ticker] ?? null,
     instrument_type: "CRYPTOCURRENCY",

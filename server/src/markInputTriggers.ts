@@ -642,15 +642,16 @@ export function runMarkInputChangeTriggers303(dbi: DatabaseType): void {
 }
 
 /**
- * Migration 305 hook part: `market_symbols` gained columns (mic, isin, display_symbol, source), and
- * its write-log UPDATE trigger names every column the mark trigger does not watch, so it is
- * re-created over the current column list. The mark trigger (quote_currency, market_kind) is untouched.
+ * Migrations 305 and 306 hook part: `market_symbols` gained columns (305: mic, isin, display_symbol,
+ * source) and lost one (306: mic), and its write-log UPDATE trigger names every column the mark
+ * trigger does not watch, so it is re-created over the current column list. The mark trigger
+ * (quote_currency, market_kind) is untouched.
  */
-export function recreateMarketSymbolsWriteLogTrigger305(dbi: DatabaseType): void {
+export function recreateMarketSymbolsWriteLogTrigger(dbi: DatabaseType, migration: string): void {
   const spec = SPECS_270.find((s) => s.table === "market_symbols");
-  if (!spec) throw new Error("migration 305: no mark-input spec for market_symbols");
+  if (!spec) throw new Error(`migration ${migration}: no mark-input spec for market_symbols`);
   for (const suffix of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "write_log_market_symbols_${suffix}"`);
   const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all("market_symbols") as { name: string }[]).map((c) => c.name);
-  if (columns.length === 0) throw new Error("migration 305: table market_symbols does not exist");
+  if (columns.length === 0) throw new Error(`migration ${migration}: table market_symbols does not exist`);
   for (const sql of writeLogTriggerSql("market_symbols", columns, spec.watch ?? null)) dbi.exec(sql);
 }

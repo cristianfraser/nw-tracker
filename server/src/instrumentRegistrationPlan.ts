@@ -26,7 +26,7 @@ export type PlannedRegistration = {
   provider: Exclude<InstrumentSource, "declared" | "bolsa_santiago">;
   action: "register" | "update";
   facts: InstrumentFacts;
-  /** What differs from the stored row (`update`), e.g. `mic: null → XLON`. */
+  /** What differs from the stored row (`update`), e.g. `display_symbol: CSPX.L → CSPX`. */
   changes: string[];
 };
 
@@ -42,7 +42,6 @@ function factChanges(row: MarketSymbolRow, facts: InstrumentFacts): string[] {
   const out: string[] = [];
   if (row.market_kind !== facts.market_kind) out.push(`market_kind: ${row.market_kind} → ${facts.market_kind}`);
   if (row.quote_currency !== facts.quote_currency) out.push(`quote_currency: ${row.quote_currency} → ${facts.quote_currency}`);
-  if (row.mic !== facts.mic) out.push(`mic: ${row.mic ?? "null"} → ${facts.mic ?? "null"}`);
   const display = facts.display_symbol.trim().toUpperCase();
   if (row.display_symbol !== display) out.push(`display_symbol: ${row.display_symbol} → ${display}`);
   return out;
@@ -56,7 +55,7 @@ export async function planInstrumentRegistration(
   const only = opts.only?.map((t) => t.trim().toUpperCase());
   const stored = db
     .prepare(
-      `SELECT ticker, quote_currency, market_kind, mic, isin, display_symbol, name, exchange, instrument_type, source, verified_at
+      `SELECT ticker, quote_currency, market_kind, isin, display_symbol, name, exchange, instrument_type, source, verified_at
        FROM market_symbols ORDER BY ticker`
     )
     .all() as MarketSymbolRow[];

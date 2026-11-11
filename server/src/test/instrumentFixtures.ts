@@ -8,7 +8,6 @@ import { marketSymbol, registerInstrument, type InstrumentFacts, type MarketSymb
 const US_ETF: Omit<InstrumentFacts, "display_symbol"> = {
   quote_currency: "usd",
   market_kind: "nyse",
-  mic: "ARCX",
   exchange: null,
   name: null,
   instrument_type: "ETF",
@@ -19,9 +18,9 @@ export function declareTestInstrument(ticker: string, facts: Partial<InstrumentF
   return registerInstrument(ticker, { ...US_ETF, display_symbol: ticker, ...facts }, "declared");
 }
 
-const SANTIAGO: Partial<InstrumentFacts> = { market_kind: "santiago", quote_currency: "clp", mic: "XSGO" };
-const LONDON: Partial<InstrumentFacts> = { market_kind: "london", quote_currency: "usd", mic: "XLON" };
-const COIN: Partial<InstrumentFacts> = { market_kind: "crypto24", quote_currency: "usd", mic: null, instrument_type: "CRYPTOCURRENCY" };
+const SANTIAGO: Partial<InstrumentFacts> = { market_kind: "santiago", quote_currency: "clp" };
+const LONDON: Partial<InstrumentFacts> = { market_kind: "london", quote_currency: "usd" };
+const COIN: Partial<InstrumentFacts> = { market_kind: "crypto24", quote_currency: "usd", instrument_type: "CRYPTOCURRENCY" };
 
 /**
  * The synthetic and well-known tickers the suites value. Registered once per test file (missing
@@ -46,7 +45,7 @@ export const VITEST_INSTRUMENTS: Readonly<Record<string, Partial<InstrumentFacts
   "VTIPSA.SN": { ...SANTIAGO, display_symbol: "VTIPSA" },
   "VITESTWATERFALLB.SN": { ...SANTIAGO, display_symbol: "VITESTWATERFALLB" },
   // The ICE dollar index: points on the New York calendar.
-  "DX-Y.NYB": { quote_currency: "none", market_kind: "nyse", mic: null, instrument_type: "INDEX", display_symbol: "DX-Y" },
+  "DX-Y.NYB": { quote_currency: "none", market_kind: "nyse", instrument_type: "INDEX", display_symbol: "DX-Y" },
   // US-listed dollar lines (synthetic suites' tickers and a few real ones the suites hold).
   VITEST: {},
   SPY_TEST_DELTA: {},

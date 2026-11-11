@@ -23,8 +23,6 @@ export type InstrumentSource = "yahoo" | "coingecko" | "bolsa_santiago" | "decla
 export type InstrumentFacts = {
   quote_currency: MarketQuoteCurrency;
   market_kind: MarketSymbolKind;
-  /** ISO 10383 (XNYS, XNAS, ARCX, XLON, XSGO); null for a coin or an index. */
-  mic: string | null;
   /** The provider's own name for the exchange (provenance). */
   exchange: string | null;
   name: string | null;
@@ -39,7 +37,6 @@ export type MarketSymbolRow = {
   ticker: string;
   quote_currency: MarketQuoteCurrency;
   market_kind: MarketSymbolKind;
-  mic: string | null;
   isin: string | null;
   display_symbol: string;
   name: string | null;
@@ -49,14 +46,14 @@ export type MarketSymbolRow = {
   verified_at: string;
 };
 
-const COLUMNS = `ticker, quote_currency, market_kind, mic, isin, display_symbol, name, exchange, instrument_type, source, verified_at`;
+const COLUMNS = `ticker, quote_currency, market_kind, isin, display_symbol, name, exchange, instrument_type, source, verified_at`;
 const stmtAll = db.prepare(`SELECT ${COLUMNS} FROM market_symbols`);
 const stmtOne = db.prepare(`SELECT ${COLUMNS} FROM market_symbols WHERE ticker = ?`);
 const stmtUpsert = db.prepare(
   `INSERT INTO market_symbols (${COLUMNS})
-   VALUES (@ticker, @quote_currency, @market_kind, @mic, @isin, @display_symbol, @name, @exchange, @instrument_type, @source, @verified_at)
+   VALUES (@ticker, @quote_currency, @market_kind, @isin, @display_symbol, @name, @exchange, @instrument_type, @source, @verified_at)
    ON CONFLICT(ticker) DO UPDATE SET
-     quote_currency = excluded.quote_currency, market_kind = excluded.market_kind, mic = excluded.mic,
+     quote_currency = excluded.quote_currency, market_kind = excluded.market_kind,
      isin = excluded.isin, display_symbol = excluded.display_symbol, name = excluded.name,
      exchange = excluded.exchange, instrument_type = excluded.instrument_type, source = excluded.source,
      verified_at = excluded.verified_at`
@@ -131,7 +128,6 @@ export function registerInstrument(
     ticker: key,
     quote_currency: facts.quote_currency,
     market_kind: facts.market_kind,
-    mic: facts.mic,
     isin: facts.isin ?? null,
     display_symbol: facts.display_symbol.trim().toUpperCase(),
     name: facts.name,
@@ -151,7 +147,6 @@ export function instrumentFactsOf(row: MarketSymbolRow): InstrumentFacts {
   return {
     quote_currency: row.quote_currency,
     market_kind: row.market_kind,
-    mic: row.mic,
     exchange: row.exchange,
     name: row.name,
     instrument_type: row.instrument_type,

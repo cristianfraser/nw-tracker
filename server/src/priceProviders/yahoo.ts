@@ -21,9 +21,9 @@ import {
   type MarketSymbolKind,
 } from "../marketSymbols.js";
 import type { PriceProvider, ProviderSymbolSearchResult } from "./types.js";
-import { yahooDisplaySymbol, yahooExchangeMic } from "./yahooSymbol.js";
+import { yahooDisplaySymbol } from "./yahooSymbol.js";
 
-export { yahooDisplaySymbol, yahooExchangeMic } from "./yahooSymbol.js";
+export { yahooDisplaySymbol } from "./yahooSymbol.js";
 
 type YahooSearchJson = {
   quotes?: Array<{
@@ -94,11 +94,9 @@ export function classifyYahooSymbol(symbol: string, meta: YahooChartMeta): Instr
     );
   }
 
-  const coinOrIndex = marketKind === "crypto24" || type === "INDEX";
   return {
     quote_currency: quoteCurrency,
     market_kind: marketKind,
-    mic: coinOrIndex ? null : yahooExchangeMic(meta.exchangeName, meta.fullExchangeName),
     exchange: meta.fullExchangeName ?? null,
     name: meta.longName?.trim() || meta.shortName?.trim() || null,
     instrument_type: type,

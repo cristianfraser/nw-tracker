@@ -1,7 +1,7 @@
 /**
  * Backfill the instrument registry (`market_symbols`, migration 305): register every ticker the
  * app prices that has no row, and refresh rows whose facts a price provider now states
- * differently (market kind, quote currency, MIC, display symbol). Report-first: without --apply it
+ * differently (market kind, quote currency, display symbol). Report-first: without --apply it
  * prints what it would write and changes nothing.
  *
  *   npm run register:market-symbols -w nw-tracker-server -- [--only=SPY,BTC-USD] [--apply]
@@ -28,14 +28,13 @@ function arg(name: string): string | undefined {
 }
 
 function table(items: PlannedRegistration[]): string {
-  const head = ["action", "ticker", "provider", "market", "ccy", "mic", "display", "name", "changes"];
+  const head = ["action", "ticker", "provider", "market", "ccy", "display", "name", "changes"];
   const rows = items.map((i) => [
     i.action,
     i.ticker,
     i.provider,
     i.facts.market_kind,
     i.facts.quote_currency,
-    i.facts.mic ?? "-",
     i.facts.display_symbol,
     i.facts.name ?? "-",
     i.changes.join("; ") || "-",

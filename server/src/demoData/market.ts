@@ -30,50 +30,45 @@ export type DemoInstrument = {
   market_kind: MarketSymbolKind;
   quote_currency: MarketQuoteCurrency;
   display_symbol: string;
-  /** ISO 10383; null for a coin. */
-  mic: string | null;
   name: string;
   instrument_type: string;
 };
 
-const us = (ticker: string, firstUse: Ymd, mic: string, name: string, instrument_type: "EQUITY" | "ETF"): DemoInstrument => ({
+const us = (ticker: string, firstUse: Ymd, name: string, instrument_type: "EQUITY" | "ETF"): DemoInstrument => ({
   ticker,
   firstUse,
   market_kind: "nyse",
   quote_currency: "usd",
   display_symbol: ticker,
-  mic,
   name,
   instrument_type,
 });
 
 /** Every ticker the person holds, with the first day the story needs its price and its declared facts. */
 export const DEMO_TICKERS: DemoInstrument[] = [
-  us("SPY", "2018-05-01", "ARCX", "SPDR S&P 500 ETF Trust", "ETF"),
-  us("AAPL", "2019-03-01", "XNAS", "Apple Inc.", "EQUITY"),
-  us("AMD", "2019-07-01", "XNAS", "Advanced Micro Devices, Inc.", "EQUITY"),
-  us("MSFT", "2020-04-01", "XNAS", "Microsoft Corporation", "EQUITY"),
-  us("ZM", "2020-10-01", "XNAS", "Zoom Communications, Inc.", "EQUITY"),
-  us("NVDA", "2021-03-01", "XNAS", "NVIDIA Corporation", "EQUITY"),
-  us("INTC", "2021-04-01", "XNAS", "Intel Corporation", "EQUITY"),
-  us("OILK", "2026-05-01", "BATS", "ProShares K-1 Free Crude Oil ETF", "ETF"),
-  us("LNG", "2026-05-01", "XNYS", "Cheniere Energy, Inc.", "EQUITY"),
-  // Yahoo states NYSE for SGOV (the fund lists on NYSE Arca); the declaration is held to Yahoo's answer.
-  us("SGOV", "2024-05-01", "XNYS", "iShares 0-3 Month Treasury Bond ETF", "ETF"),
+  us("SPY", "2018-05-01", "SPDR S&P 500 ETF Trust", "ETF"),
+  us("AAPL", "2019-03-01", "Apple Inc.", "EQUITY"),
+  us("AMD", "2019-07-01", "Advanced Micro Devices, Inc.", "EQUITY"),
+  us("MSFT", "2020-04-01", "Microsoft Corporation", "EQUITY"),
+  us("ZM", "2020-10-01", "Zoom Communications, Inc.", "EQUITY"),
+  us("NVDA", "2021-03-01", "NVIDIA Corporation", "EQUITY"),
+  us("INTC", "2021-04-01", "Intel Corporation", "EQUITY"),
+  us("OILK", "2026-05-01", "ProShares K-1 Free Crude Oil ETF", "ETF"),
+  us("LNG", "2026-05-01", "Cheniere Energy, Inc.", "EQUITY"),
+  us("SGOV", "2024-05-01", "iShares 0-3 Month Treasury Bond ETF", "ETF"),
   {
     ticker: "CFIETFIPSA.SN",
     firstUse: "2025-06-01",
     market_kind: "santiago",
     quote_currency: "clp",
     display_symbol: "CFIETFIPSA",
-    mic: "XSGO",
     name: "ETF IPSA",
     instrument_type: "ETF",
   },
   // The Irish UCITS ETFs on the LSE's USD lines, held at IBKR as a Chilean resident (2023-05 → 2024-03).
-  { ticker: "CSPX.L", firstUse: "2023-05-01", market_kind: "london", quote_currency: "usd", display_symbol: "CSPX", mic: "XLON", name: "iShares Core S&P 500 UCITS ETF USD (Acc)", instrument_type: "ETF" },
-  { ticker: "VWRA.L", firstUse: "2023-05-01", market_kind: "london", quote_currency: "usd", display_symbol: "VWRA", mic: "XLON", name: "Vanguard FTSE All-World UCITS ETF USD Accumulation", instrument_type: "ETF" },
-  { ticker: BTC_TICKER, firstUse: "2018-06-01", market_kind: "crypto24", quote_currency: "usd", display_symbol: BTC_TICKER, mic: null, name: "Bitcoin USD", instrument_type: "CRYPTOCURRENCY" },
+  { ticker: "CSPX.L", firstUse: "2023-05-01", market_kind: "london", quote_currency: "usd", display_symbol: "CSPX", name: "iShares Core S&P 500 UCITS ETF USD (Acc)", instrument_type: "ETF" },
+  { ticker: "VWRA.L", firstUse: "2023-05-01", market_kind: "london", quote_currency: "usd", display_symbol: "VWRA", name: "Vanguard FTSE All-World UCITS ETF USD Accumulation", instrument_type: "ETF" },
+  { ticker: BTC_TICKER, firstUse: "2018-06-01", market_kind: "crypto24", quote_currency: "usd", display_symbol: BTC_TICKER, name: "Bitcoin USD", instrument_type: "CRYPTOCURRENCY" },
 ];
 
 /** The declared facts of a demo instrument, as `registerInstrument` takes them. */
@@ -81,7 +76,6 @@ export function demoInstrumentFacts(i: DemoInstrument): InstrumentFacts {
   return {
     quote_currency: i.quote_currency,
     market_kind: i.market_kind,
-    mic: i.mic,
     exchange: null,
     name: i.name,
     instrument_type: i.instrument_type,

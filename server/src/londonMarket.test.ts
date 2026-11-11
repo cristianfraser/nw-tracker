@@ -69,7 +69,7 @@ describe("equityMarketKind: the registry decides, never the suffix", () => {
   it("a registered row decides market and currency, whatever the suffix says", () => {
     registerInstrument(
       "VITESTREG.PA",
-      { quote_currency: "clp", market_kind: "santiago", mic: null, exchange: null, name: null, instrument_type: null, display_symbol: "VITESTREG" },
+      { quote_currency: "clp", market_kind: "santiago", exchange: null, name: null, instrument_type: null, display_symbol: "VITESTREG" },
       "declared"
     );
     try {
@@ -182,12 +182,11 @@ describe("the London session gates at fixed instants", () => {
 });
 
 describe("classifyYahooSymbol: Europe/London in USD only", () => {
-  it("reads a USD LSE line as london / usd on XLON and refuses a pence line", () => {
+  it("reads a USD LSE line as london / usd and refuses a pence line", () => {
     const meta = { regularMarketPrice: 810.47, currency: "USD", instrumentType: "ETF", exchangeTimezoneName: "Europe/London", fullExchangeName: "LSE" };
     expect(classifyYahooSymbol("CSPX.L", meta)).toMatchObject({
       quote_currency: "usd",
       market_kind: "london",
-      mic: "XLON",
       display_symbol: "CSPX",
     });
     expect(() => classifyYahooSymbol("VWRL.L", { ...meta, currency: "GBp" })).toThrow(/quoted in GBp/);
