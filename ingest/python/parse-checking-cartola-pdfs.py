@@ -54,6 +54,7 @@ from cartola_layout import (
     reconcile_cartola_movements,
     strip_amounts_from_line,
 )
+from ocr_tessdata import use_expected_tessdata
 from statement_values import parse_clp_amount, parse_dd_mm_yy_to_iso
 
 RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
@@ -96,20 +97,6 @@ def resolve_pdfs_dir() -> Path:
     if env:
         return Path(env).resolve()
     return CFRASER_DIR / "cartolas-cuenta-corriente"
-
-
-def tessdata_prefix() -> Optional[str]:
-    env = os.environ.get("TESSDATA_PREFIX", "").strip()
-    if env and Path(env).is_dir():
-        return env
-    for prefix in (
-        "/opt/homebrew/share/tessdata",
-        "/usr/local/share/tessdata",
-        "/usr/share/tessdata",
-    ):
-        if Path(prefix).is_dir():
-            return prefix
-    return None
 
 
 def period_month_from_hasta(hasta_iso: str) -> str:
@@ -533,9 +520,7 @@ def parse_ocr_word_rows(
 def extract_pdf_text_ocr(pdf_path: Path) -> Tuple[str, List[Tuple[float, float, str]]]:
     import fitz  # type: ignore
 
-    prefix = tessdata_prefix()
-    if prefix:
-        os.environ.setdefault("TESSDATA_PREFIX", prefix)
+    use_expected_tessdata()
     if not shutil.which("tesseract"):
         raise RuntimeError(
             "Tesseract is required for CID-encoded cartola PDFs. Install: brew install tesseract"
