@@ -60,6 +60,7 @@ describe("runNightly", () => {
       "import:transfer-mails",
       "import:payment-receipt-mails",
       "import:utility-bills",
+      "import:metlife-receipts",
       "import:apple-mail",
       "fetch:emails",
       "check:broker-emails",
@@ -168,6 +169,7 @@ describe("runHourly", () => {
       "fetch:emails",
       "import:transfer-mails --days=2",
       "import:utility-bills --only-if-new",
+      "import:metlife-receipts --days=3",
       "import:fintual-wallet --apply",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
@@ -185,6 +187,7 @@ describe("runHourly", () => {
       "import:racional-emails --apply",
       "import:transfer-mails --days=2",
       "import:utility-bills --only-if-new",
+      "import:metlife-receipts --days=3",
       "import:fintual-wallet --apply",
     ]);
   });
@@ -204,6 +207,17 @@ describe("runHourly", () => {
     expect(quiet.calls).toContain("import:utility-bills --only-if-new");
     const mailed = fakeRunner({ "fetch:emails": { staged: 0 }, "import:utility-bills": { staged: 1 } });
     expect((await runHourly(mailed.x, HOURLY)).activity).toBe(true);
+  });
+
+  it("reads MetLife's receipts every hour and counts a sent one as activity", async () => {
+    const quiet = fakeRunner({ "fetch:emails": { staged: 0 }, "import:metlife-receipts": { staged: 0 } });
+    expect((await runHourly(quiet.x, HOURLY)).activity).toBe(false);
+    expect(quiet.calls).toContain("import:metlife-receipts --days=3");
+    const paid = fakeRunner({ "fetch:emails": { staged: 0 }, "import:metlife-receipts": { staged: 1, inserted: 1 } });
+    expect((await runHourly(paid.x, HOURLY)).activity).toBe(true);
+    const dry = fakeRunner();
+    await runHourly(dry.x, { ...HOURLY, dryRun: true });
+    expect(dry.calls).toContain("import:metlife-receipts --days=3 --dry-run");
   });
 
   it("reads the Fintual wallet every hour and counts a booked interest credit as activity", async () => {
@@ -230,6 +244,7 @@ describe("runHourly", () => {
       "fetch:santander --balance-poll",
       "import:transfer-mails --days=2",
       "import:utility-bills --only-if-new",
+      "import:metlife-receipts --days=3",
       "import:fintual-wallet --apply",
     ]);
   });
@@ -252,6 +267,7 @@ describe("runHourly", () => {
       "server-task cc_bank_cupo_check --recheck",
       "import:transfer-mails --days=2",
       "import:utility-bills --only-if-new",
+      "import:metlife-receipts --days=3",
       "import:fintual-wallet --apply",
     ]);
   });

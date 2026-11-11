@@ -23,9 +23,15 @@ export type BankConfig = {
    * the file does not declare one: the step then reports itself as not reached.
    */
   usd_checking_account_number: string | null;
+  /**
+   * MetLife only, optional: the card the mortgage cuota is paid with (4 digits) —
+   * `"paid_with_card_last4"` in `cfraser/metlife-fetch.json`. The receipt mail does not name the
+   * card, so `import:metlife-receipts` declares it (`requireMetlifeCardLast4`); the login ignores it.
+   */
+  paid_with_card_last4: string | null;
 };
 
-export type BankName = "santander" | "racional" | "afp-uno" | "buk" | "afc";
+export type BankName = "santander" | "racional" | "afp-uno" | "buk" | "afc" | "metlife";
 
 /**
  * Which identifier each bank signs in with. Santander uses the RUT; Racional is a
@@ -38,6 +44,8 @@ export const LOGIN_IDENTIFIER: Record<BankName, "rut" | "email"> = {
   buk: "email",
   // The AFC signs in through ClaveÚnica: the RUT is the RUN there, the clave is ClaveÚnica's.
   afc: "rut",
+  // MetLife Hipotecario's «Portal de Clientes»: RUT + clave, then a mailed Clave Dinámica.
+  metlife: "rut",
 } as const;
 
 export function resolveBankConfigPath(bank: BankName): string {
@@ -66,7 +74,28 @@ export function loadBankConfig(bank: BankName): BankConfig {
   const keychain_service = String(cfg.keychain_service ?? `nw-tracker-${bank}`).trim();
   assertKeychainServiceBelongsToBank(bank, keychain_service, file);
   const usd_checking_account_number = readOptionalAccountNumber(cfg, "usd_checking_account_number", file);
-  return { rut, email, keychain_service, loginAccount, usd_checking_account_number };
+  const paid_with_card_last4 = readOptionalCardLast4(cfg, file);
+  return { rut, email, keychain_service, loginAccount, usd_checking_account_number, paid_with_card_last4 };
+}
+
+/** An optional card ending: absent → null; present → exactly four digits, else the file is wrong. */
+function readOptionalCardLast4(cfg: Partial<BankConfig>, file: string): string | null {
+  const raw = cfg.paid_with_card_last4;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const value = String(raw).trim();
+  if (!/^\d{4}$/.test(value)) throw new Error(`${file} "paid_with_card_last4" must be the card's last four digits, got ${JSON.stringify(value)}.`);
+  return value;
+}
+
+/** The card MetLife's cuotas are paid with; the receipts command cannot run without it. */
+export function requireMetlifeCardLast4(config: BankConfig): string {
+  if (config.paid_with_card_last4 == null) {
+    throw new Error(
+      `${resolveBankConfigPath("metlife")} is missing "paid_with_card_last4" (the card the cuota is charged to). Expected shape:\n` +
+        `{\n  "rut": "12.345.678-9",\n  "keychain_service": "nw-tracker-metlife",\n  "paid_with_card_last4": "1234"\n}`
+    );
+  }
+  return config.paid_with_card_last4;
 }
 
 /** An optional account-number field: absent → null; present → digits only, else the file is wrong. */

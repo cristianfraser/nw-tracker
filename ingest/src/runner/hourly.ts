@@ -124,6 +124,13 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     : await x.step("Utility bill mails", ingest("import:utility-bills", "--only-if-new"));
   const billMails = bills.result.staged ?? 0;
 
+  // Every hour: MetLife's receipt for a cuota paid online, so its charge is on the card the hour
+  // it is paid (the nightly sends the whole window).
+  const metlife = o.dryRun
+    ? await x.step("MetLife receipts (dry run)", ingest("import:metlife-receipts", "--days=3", "--dry-run"))
+    : await x.step("MetLife receipts", ingest("import:metlife-receipts", "--days=3"));
+  const metlifeReceipts = metlife.result.staged ?? 0;
+
   // Every hour: the Fintual dollar wallet's cash interest, which no mail announces (one /gql
   // request); a credit is in the ledger within the hour it posts.
   const wallet =
@@ -142,12 +149,14 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     listings.length > 0 ||
     mailMovements > 0 ||
     billMails > 0 ||
+    metlifeReceipts > 0 ||
     walletInterest > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
         `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, ` +
+        `metlife receipts=${metlifeReceipts}, ` +
         `fintual wallet interest=${walletInterest}`
     );
   }

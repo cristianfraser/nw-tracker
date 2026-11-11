@@ -45,6 +45,9 @@ const RUNNERS: Record<BankName, (opts: RunOptions) => Promise<number>> = {
   racional: runRacional,
   "afp-uno": runAfpUnoCapture,
   afc: runAfcCapture,
+  metlife: async () => {
+    throw new Error("metlife has its own command — run npm run fetch:metlife -- --capture");
+  },
   buk: async () => {
     throw new Error("buk has no session steps — run npm run fetch:buk-payslips");
   },

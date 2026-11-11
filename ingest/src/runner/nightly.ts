@@ -105,6 +105,10 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   if (o.dryRun) await x.step(dry("Utility bill mails"), ingest("import:utility-bills", "--dry-run"));
   else await x.step("Utility bill mails", ingest("import:utility-bills"));
 
+  // 3c''''. MetLife's receipts for cuotas paid online: the cuota's charge on the card that paid it.
+  if (o.dryRun) await x.step(dry("MetLife receipts"), ingest("import:metlife-receipts", "--dry-run"));
+  else await x.step("MetLife receipts", ingest("import:metlife-receipts"));
+
   // 3d. Apple's mails, once the card lines they explain are in: which app each charge paid for.
   if (o.dryRun) await x.step(dry("Apple receipts"), ingest("import:apple-mail", "--dry-run"));
   else await x.step("Apple receipts", ingest("import:apple-mail"));

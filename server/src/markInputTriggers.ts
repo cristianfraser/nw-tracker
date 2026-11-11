@@ -513,6 +513,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "option_contracts",
   "option_assignments",
   "tax_residency_periods",
+  "mortgage_payment_receipts",
 ];
 
 /**

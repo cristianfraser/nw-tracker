@@ -10,6 +10,11 @@ export type ImportBatchKind =
   | "cc_santander_receipt"
   /** The card's credit line, planted for a card payment entered by hand (`ccManualPayments.ts`). */
   | "cc_manual_payment"
+  /**
+   * A charge planted from a lender's receipt for a cuota paid by card (`mortgagePaymentReceiptsApply.ts`),
+   * on a card with no daily feed; the card's statement settles it.
+   */
+  | "cc_lender_receipt"
   /** A card's PAGO, planted when cuota purchases on another card paid its facturado. */
   | "cc_financing_payment"
   /** Same lines as a web paste, from the scheduled Lider «últimos movimientos» CSV drop. */

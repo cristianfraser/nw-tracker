@@ -33,6 +33,7 @@ import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js"
 import { applyFundAccountTransactions } from "./fintualCertImport.js";
 import { applyUnemploymentFundDocuments } from "./afcCertImport.js";
 import { applyMortgageSheetPayments } from "./mortgageSheetPaymentsApply.js";
+import { applyMortgagePaymentReceipt } from "./mortgagePaymentReceiptsApply.js";
 import { applyUtilityBills } from "./utilityBillsApply.js";
 import {
   applyCardUnbilledMovements,
@@ -172,6 +173,9 @@ const HANDLERS: IngestHandlerMap = {
     apply: ({ payload, envelope }) => ({ details: applyBankAccountMovements(payload, envelope.source.ref) }),
   },
   "mortgage.sheet_payments": { apply: ({ payload }) => ({ details: applyMortgageSheetPayments(payload) }) },
+  "mortgage.payment_receipt": {
+    apply: ({ payload, envelope }) => ({ details: applyMortgagePaymentReceipt(payload, envelope.source.ref) }),
+  },
   "utility.bill": { apply: ({ payload }) => ({ details: applyUtilityBills(payload) }) },
   "card.unbilled_movements": {
     apply: ({ payload, envelope }) => ({ details: cardUnbilledDetails(applyCardUnbilledMovements(payload, envelope.source.ref)) }),

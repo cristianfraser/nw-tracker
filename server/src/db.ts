@@ -52,6 +52,7 @@ import { runRentalPlaces299 } from "./rentalPlaces300.js";
 import { runF1040Filed300 } from "./us1040/filed301.js";
 import { runTaxResidency302 } from "./taxResidency302.js";
 import { runOptionContracts304 } from "./optionContracts304.js";
+import { runMortgagePaymentReceipts307 } from "./mortgagePaymentReceipts307.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -374,6 +375,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "301_us_f1040_filed.sql": runF1040Filed300,
   "302_tax_residency_periods.sql": runTaxResidency302,
   "304_option_contracts.sql": runOptionContracts304,
+  "307_mortgage_payment_receipts.sql": runMortgagePaymentReceipts307,
 };
 
 /**
