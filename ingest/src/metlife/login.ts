@@ -53,6 +53,8 @@ const CODE_REFUSED = /incorrect|inv[aá]lid|no coincide|err[oó]ne|expirad|caduc
 const PAGE_WAIT_MS = 45_000;
 const STEP_WAIT_MS = 60_000;
 const POLL_MS = 1_000;
+/** How long the code page gets to submit itself after the last digit before «VALIDAR CLAVE» is clicked. */
+const CODE_SELF_SUBMIT_WAIT_MS = 4_000;
 const TEXT_INPUTS = 'input:visible:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])';
 
 /** The RUT as the field asks for it: no dots, no dash, the verifier digit kept («12.345.678-9» → «123456789»). */
@@ -247,7 +249,32 @@ export async function signInWithMetlife(page: Page, opts: MetlifeLoginOptions): 
     await typeInto(p, code.fields, value, opts.label);
   }
   log(`${opts.label}: code entered — validating`);
-  await clickButton(p, p, /validar/i, opts.label, "metlife-code-page");
+  // The six boxes submit the code by themselves once the last digit is typed (2026-11-11: the page
+  // was already on the portal when «VALIDAR CLAVE» was clicked, and the click timed out). Click it
+  // only while the code page is still showing; a click the navigation overtakes is not a failure.
+  const submittedBy = Date.now() + CODE_SELF_SUBMIT_WAIT_MS;
+  let left = false;
+  while (Date.now() < submittedBy) {
+    await p.waitForTimeout(POLL_MS);
+    const s = await stageOf(p);
+    p = s.page;
+    if (s.stage !== "code") {
+      left = true;
+      break;
+    }
+  }
+  if (left) {
+    log(`${opts.label}: the code submitted itself`);
+  } else {
+    try {
+      await clickButton(p, p, /validar/i, opts.label, "metlife-code-page");
+    } catch (err) {
+      const s = await stageOf(p);
+      p = s.page;
+      if (s.stage !== "portal") throw err;
+      log(`${opts.label}: the code page moved on while «VALIDAR CLAVE» was being clicked`);
+    }
+  }
 
   // 4. The portal.
   const signedInBy = Date.now() + STEP_WAIT_MS;
