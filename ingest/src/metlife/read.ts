@@ -19,7 +19,7 @@ import { saveClaveUnicaDiagnostics } from "../claveUnica/login.js";
 import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
 import { log } from "../log.js";
-import { dismissOverlays } from "../overlays.js";
+import { clickPastOverlays, dismissOverlays } from "../overlays.js";
 import { ensureDir, resolveCaptureDir } from "../paths.js";
 import { assertRunAllowed } from "../runGuard.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
@@ -31,7 +31,6 @@ import { METLIFE_API_HOST, metlifeApiName, metlifeReadAt, metlifeStatementPayloa
 
 const BANK = "metlife" as const;
 export const METLIFE_PAYMENT_PAGE_URL = "https://portaldeclientes.metlife.cl/PIP/centroDePago/centroDePago";
-const API_WAIT_MS = 90_000;
 const POLL_MS = 500;
 const API_NAMES: readonly MetlifeApiName[] = ["credits", "pending", "history"];
 
@@ -96,6 +95,68 @@ async function recordResponse(response: Response, into: Map<MetlifeApiName, Metl
 }
 
 /** Sign in, open the payment page and wait for its three answers; the raw answers are saved. */
+/** How long each page gets to give the answers it asks for. */
+const STEP_ANSWER_WAIT_MS = 30_000;
+
+/** From «Mis Pagos» to the mortgage's own page, which asks for `credits` and `history`. */
+const PRODUCT_PAGE_STEPS: readonly { label: string; patterns: readonly RegExp[] }[] = [
+  { label: "MIS PRODUCTOS", patterns: [/^\s*mis productos\s*$/i] },
+  { label: "the mortgage", patterns: [/mutuo hipotecario/i, /hipotecario/i] },
+  { label: "the payment history", patterns: [/historial de pagos/i, /mis pagos realizados/i, /^\s*historial\s*$/i, /^\s*pagos\s*$/i] },
+];
+
+function haveAll(answers: Map<MetlifeApiName, MetlifeApiCall>, names: readonly MetlifeApiName[]): boolean {
+  return names.every((n) => answers.get(n)?.status === 200);
+}
+
+/** Wait until every named answer has arrived with a 200, or the time is up; overlays are closed meanwhile. */
+async function waitForAnswers(page: Page, answers: Map<MetlifeApiName, MetlifeApiCall>, names: readonly MetlifeApiName[], ms: number): Promise<void> {
+  const deadline = Date.now() + ms;
+  let lastSweep = 0;
+  while (!haveAll(answers, names) && Date.now() < deadline) {
+    if (Date.now() - lastSweep > 5_000) {
+      await dismissOverlays(page, "MetLife", "metlife-read");
+      lastSweep = Date.now();
+    }
+    await page.waitForTimeout(POLL_MS);
+  }
+}
+
+/** Click the first visible link or button whose text fits the step, through any overlay; false when none. */
+async function clickFirstVisible(page: Page, step: { label: string; patterns: readonly RegExp[] }): Promise<boolean> {
+  for (const pattern of step.patterns) {
+    for (const role of ["link", "button", "tab"] as const) {
+      const target = page.getByRole(role, { name: pattern }).locator("visible=true").first();
+      if (await target.count().catch(() => 0)) {
+        log(`MetLife: opening «${(await target.innerText().catch(() => step.label)).trim().slice(0, 40)}»`);
+        await clickPastOverlays(page, target, "MetLife", "metlife-read");
+        return true;
+      }
+    }
+    const text = page.getByText(pattern).locator("visible=true").first();
+    if (await text.count().catch(() => 0)) {
+      log(`MetLife: opening «${(await text.innerText().catch(() => step.label)).trim().slice(0, 40)}»`);
+      await clickPastOverlays(page, text, "MetLife", "metlife-read");
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The visible links' and buttons' text, for the log when a step finds nothing. */
+async function visibleControls(page: Page): Promise<string[]> {
+  try {
+    return await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a, button, [role=tab], [role=button]"))
+        .filter((el) => (el as HTMLElement).offsetParent !== null)
+        .map((el) => ((el as HTMLElement).innerText ?? "").replace(/\s+/g, " ").trim())
+        .filter((t) => t.length > 0 && t.length < 60)
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function readLive(opts: MetlifeReadOptions, stamp: string): Promise<Record<MetlifeApiName, MetlifeApiCall>> {
   const config = loadBankConfig(BANK);
   metlifeLoginLatch.assertNotLatched(config.keychain_service, config.loginAccount, opts.force);
@@ -118,23 +179,26 @@ async function readLive(opts: MetlifeReadOptions, stamp: string): Promise<Record
         return code;
       },
     });
-    // Only answers the payment page itself receives count (the landing may have asked first).
-    answers.clear();
+    // The answers come from two pages (2026-11-11): «Mis Pagos» (centroDePago) asks for `pending`;
+    // the mortgage's own page under «MIS PRODUCTOS» asks for `credits` and `history`. Every answer
+    // of the session counts (the latest 200 per call); each step waits for what is still missing.
     await dismissOverlays(page, "MetLife", "metlife-read");
     await page.goto(METLIFE_PAYMENT_PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    const deadline = Date.now() + API_WAIT_MS;
-    let lastSweep = 0;
-    while (API_NAMES.some((n) => answers.get(n)?.status !== 200)) {
-      if (Date.now() >= deadline) {
-        const state = API_NAMES.map((n) => `${n} ${answers.get(n)?.status ?? "none"}`).join(", ");
-        throw new Error(`MetLife: the payment page did not receive its answers in ${API_WAIT_MS / 1000} s (${state}) (${await saveClaveUnicaDiagnostics(page, "metlife-read")})`);
+    await waitForAnswers(page, answers, ["pending"], STEP_ANSWER_WAIT_MS);
+    if (!haveAll(answers, API_NAMES)) {
+      for (const step of PRODUCT_PAGE_STEPS) {
+        if (haveAll(answers, API_NAMES)) break;
+        const clicked = await clickFirstVisible(page, step);
+        if (!clicked) {
+          log(`MetLife: no «${step.label}» on the page — its links and buttons: ${(await visibleControls(page)).join(" | ").slice(0, 600)}`);
+          continue;
+        }
+        await waitForAnswers(page, answers, API_NAMES, STEP_ANSWER_WAIT_MS);
       }
-      // An overlay the page opens while it loads is closed through its own control.
-      if (Date.now() - lastSweep > 5_000) {
-        await dismissOverlays(page, "MetLife", "metlife-read");
-        lastSweep = Date.now();
-      }
-      await page.waitForTimeout(POLL_MS);
+    }
+    if (!haveAll(answers, API_NAMES)) {
+      const state = API_NAMES.map((n) => `${n} ${answers.get(n)?.status ?? "none"}`).join(", ");
+      throw new Error(`MetLife: the portal did not give all three answers (${state}); controls on the last page: ${(await visibleControls(page)).join(" | ").slice(0, 400)} (${await saveClaveUnicaDiagnostics(page, "metlife-read")})`);
     }
   } finally {
     await context.close().catch(() => undefined);
