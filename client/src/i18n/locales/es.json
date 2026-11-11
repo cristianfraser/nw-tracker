@@ -243,6 +243,8 @@
       "partlyPaidHint": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}.",
       "payByShort": "hasta",
       "payByDay": "hasta el",
+      "dueTodayHint": "Último día de pago: hoy.",
+      "dueTomorrowHint": "Último día de pago: mañana.",
       "overdueHint": "Pasó la fecha de pago y queda este monto por pagar.",
       "payOnShort": "el",
       "payOnDay": "el",

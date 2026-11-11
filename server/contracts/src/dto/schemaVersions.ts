@@ -19,7 +19,7 @@ export const DTO_SCHEMA_VERSIONS = {
   /** `GET /api/meta/sidebar-nav`: v5 `chart_coverage`, v6 `member_account_ids`, v7 Retirement by country. */
   sidebar_nav: 7,
   /** The page bundle's `upcoming_payments` («Próximos pagos»). */
-  upcoming_payments: 4,
+  upcoming_payments: 5,
   /** `GET /api/dashboard/latest-expenses` («Últimos gastos»); v3 adds the line shapes and row capabilities. */
   latest_expenses: 3,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */

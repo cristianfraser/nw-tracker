@@ -304,6 +304,20 @@ describe("groupUpcomingByMonth", () => {
     );
     expect(months.map((m) => [m.pay_month, m.total_clp, m.items.map((i) => i.key)])).toEqual([["2026-11", 8, ["late", "a", "b"]]]);
   });
+
+  it("marks a payment due today or tomorrow, never an overdue one", () => {
+    const months = groupUpcomingByMonth(
+      [it_("today", TODAY, 1), it_("tomorrow", "2026-11-03", 1), it_("later", "2026-11-04", 1), it_("late", "2026-11-01", 1, true)],
+      TODAY,
+      6
+    );
+    expect(Object.fromEntries(months[0]!.items.map((i) => [i.key, i.due_soon]))).toEqual({
+      late: null,
+      today: "today",
+      tomorrow: "tomorrow",
+      later: null,
+    });
+  });
 });
 
 describe("buildUpcomingPayments", () => {

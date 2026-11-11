@@ -72,6 +72,8 @@ export type UpcomingPaymentItemDto = {
   /** No document states the amount yet. */
   estimated: boolean;
   overdue: boolean;
+  /** Its last day is today or tomorrow (Chile day); null otherwise, an overdue one included. */
+  due_soon: "today" | "tomorrow" | null;
   cuota: number | null;
   cuota_count: number | null;
   /** Gastos comunes: the month billed (YYYY-MM). */

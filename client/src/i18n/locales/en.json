@@ -243,6 +243,8 @@
       "partlyPaidHint": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
       "payByShort": "by",
       "payByDay": "by the",
+      "dueTodayHint": "Last day to pay: today.",
+      "dueTomorrowHint": "Last day to pay: tomorrow.",
       "overdueHint": "The pay-by date passed with this amount still owed.",
       "payOnShort": "on",
       "payOnDay": "on the",

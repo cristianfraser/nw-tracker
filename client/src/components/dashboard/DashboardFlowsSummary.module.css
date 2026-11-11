@@ -76,7 +76,8 @@
    the dates line up in one right-aligned column (their day numbers with them) and so do the
    amounts. Past cards.css's 4-up columns (one class more than `.cards.cards--list`). */
 :global(.cards.cards--list).upcoming {
-  grid-template-columns: minmax(0, 1fr) auto 0.5rem auto;
+  --due-soon-blue: oklch(0.6 0.15 255);
+  grid-template-columns: minmax(0, 1fr) auto 1.1rem auto;
 }
 
 :global(.cards.cards--list).upcoming>.period,
@@ -126,6 +127,50 @@
 
 .amount {
   grid-column: 4;
+}
+
+/* A payment whose last day is today or tomorrow: a breathing dot in the spacer between its date
+   and its amount — full blue on the day, a darker, fainter one the day before. */
+.dueSoonCell {
+  grid-column: 3;
+  align-self: center;
+  display: flex;
+  justify-content: center;
+}
+
+.dueSoonDot {
+  --due-soon-dot: color-mix(in oklch, var(--due-soon-blue) 72%, black);
+  --due-soon-peak: 0.7;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--due-soon-dot);
+  animation: dueSoonBreathe 7.5s ease-in-out infinite;
+}
+
+.dueSoonToday {
+  --due-soon-dot: var(--due-soon-blue);
+  --due-soon-peak: 1;
+}
+
+/* Rises, holds at full for a while, then fades: the hold is what reads as «lit». */
+@keyframes dueSoonBreathe {
+  0%,
+  100% {
+    opacity: calc(var(--due-soon-peak) * 0.35);
+  }
+
+  20%,
+  80% {
+    opacity: var(--due-soon-peak);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dueSoonDot {
+    animation: none;
+    opacity: var(--due-soon-peak);
+  }
 }
 
 /* «hasta el» / «el» before the day: well dimmer than the (already muted) day number. */

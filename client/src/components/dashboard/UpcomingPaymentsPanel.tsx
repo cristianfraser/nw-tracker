@@ -66,6 +66,29 @@ function DueCell({ item }: { item: UpcomingPaymentItemDto }) {
   );
 }
 
+/** The breathing period's base; each dot takes it ± `DUE_SOON_PERIOD_JITTER_S` so dots side by side drift apart. */
+const DUE_SOON_PERIOD_S = 7.5;
+const DUE_SOON_PERIOD_JITTER_S = 0.2;
+
+/** A breathing dot between the date and the amount: full on a payment's last day, fainter the day before. */
+function DueSoonDot({ dueSoon }: { dueSoon: "today" | "tomorrow" }) {
+  const { t } = useTranslation();
+  // Picked once per mount, so the period stays steady while the dot is on screen.
+  const [periodS] = useState(() => DUE_SOON_PERIOD_S + (Math.random() * 2 - 1) * DUE_SOON_PERIOD_JITTER_S);
+  const label = dueSoon === "today" ? t("dashboard.ccUpcoming.dueTodayHint") : t("dashboard.ccUpcoming.dueTomorrowHint");
+  return (
+    <dd className={styles.dueSoonCell}>
+      <span
+        className={dueSoon === "today" ? `${styles.dueSoonDot} ${styles.dueSoonToday}` : styles.dueSoonDot}
+        style={{ animationDuration: `${periodS.toFixed(2)}s` }}
+        title={label}
+        role="img"
+        aria-label={label}
+      />
+    </dd>
+  );
+}
+
 /** What is owed: a card's after its payments (with the facturación beside it once part is paid), the mortgage's range. */
 function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
   const { t } = useTranslation();
@@ -194,6 +217,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
                   <dd className={styles.due}>
                     <DueCell item={item} />
                   </dd>
+                  {item.due_soon ? <DueSoonDot dueSoon={item.due_soon} /> : null}
                   <dd className={styles.amount}>
                     <AmountCell item={item} />
                   </dd>

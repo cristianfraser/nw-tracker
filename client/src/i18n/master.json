@@ -717,6 +717,14 @@
         "en": "by the",
         "es": "hasta el"
       },
+      "dueTodayHint": {
+        "en": "Last day to pay: today.",
+        "es": "Último día de pago: hoy."
+      },
+      "dueTomorrowHint": {
+        "en": "Last day to pay: tomorrow.",
+        "es": "Último día de pago: mañana."
+      },
       "overdueHint": {
         "en": "The pay-by date passed with this amount still owed.",
         "es": "Pasó la fecha de pago y queda este monto por pagar."

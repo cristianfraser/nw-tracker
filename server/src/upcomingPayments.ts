@@ -39,7 +39,7 @@ import {
   type RecurringOccurrence,
   type RecurringStatus,
 } from "./recurringPaymentMatch.js";
-import { addCalendarMonths, normalizeCheckDigitId } from "nw-tracker-contracts";
+import { addCalendarMonths, addDaysIso, normalizeCheckDigitId } from "nw-tracker-contracts";
 
 export { automaticRecurringMatchForLine, dayInMonth, listRecurringPayments, matchRecurringPayments, projectedUfClp };
 export type { UfLookup };
@@ -95,11 +95,24 @@ export type UpcomingPaymentItem = {
   route_path: string | null;
 };
 
+/**
+ * How close a payment's last day is: «today» on its due day, «tomorrow» the day before (Chile
+ * day); null otherwise, an overdue one included (it reads in red already).
+ */
+export type UpcomingPaymentDueSoon = "today" | "tomorrow" | null;
+
+export function upcomingPaymentDueSoon(item: Pick<UpcomingPaymentItem, "due_iso" | "overdue">, todayYmd: string): UpcomingPaymentDueSoon {
+  if (item.overdue) return null;
+  if (item.due_iso === todayYmd) return "today";
+  if (item.due_iso === addDaysIso(todayYmd, 1)) return "tomorrow";
+  return null;
+}
+
 export type UpcomingPaymentsMonth = {
   pay_month: string;
   total_clp: number;
   /** Overdue first, then by due date. */
-  items: UpcomingPaymentItem[];
+  items: (UpcomingPaymentItem & { due_soon: UpcomingPaymentDueSoon })[];
 };
 
 /** An automatic declared payment's occurrence (charged to the card; never listed in `months`). */
@@ -160,7 +173,7 @@ export function groupUpcomingByMonth(
     if (payMonth < first || payMonth > last) continue;
     const month = byMonth.get(payMonth) ?? { pay_month: payMonth, total_clp: 0, items: [] };
     month.total_clp += it.amount_clp;
-    month.items.push(it);
+    month.items.push({ ...it, due_soon: upcomingPaymentDueSoon(it, todayYmd) });
     byMonth.set(payMonth, month);
   }
   const months = [...byMonth.values()].sort((a, b) => a.pay_month.localeCompare(b.pay_month));
