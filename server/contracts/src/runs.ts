@@ -71,6 +71,16 @@ export const ingestRunRequestSchema = z
      * (from the 1st of a month until the previous month's payslip is stored). Absent = no.
      */
     payslips: z.object({ fetch: z.boolean(), reason: z.string().min(1) }).strict().nullable().default(null),
+    /**
+     * Either kind: read the mortgage lender's portal this run, and why — `quote` from 07:00 on the
+     * 11th until the cycle's cuota is quoted, `posted` once a payment receipt has arrived for a cuota
+     * the ledger lacks. Absent = no.
+     */
+    metlife_read: z
+      .object({ mode: z.enum(["quote", "posted"]), reason: z.string().min(1) })
+      .strict()
+      .nullable()
+      .default(null),
   })
   .strict()
   .refine((r) => r.kind === "hourly" || r.santander_fetch === null, {

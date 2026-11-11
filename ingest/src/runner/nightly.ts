@@ -1,4 +1,4 @@
-import type { SantanderFetchOutcome } from "nw-tracker-contracts";
+import type { IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
 import { ingest, serverTask, type StepOutcome, type StepRunner } from "./steps.js";
 
 /**
@@ -33,6 +33,8 @@ export type NightlyOptions = {
   /** The server's request to import the payslips tonight (reading the payroll portal first when
    *  `fetch`), and why; null = not tonight. */
   payslips: { fetch: boolean; reason: string } | null;
+  /** The server's request to read MetLife's portal tonight (`quote` | `posted`), or null. */
+  metlifeRead: IngestRunRequest["metlife_read"];
 };
 
 export type NightlyResult = { santander: SantanderFetchOutcome | null };
@@ -85,8 +87,8 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step("Santander USD movements", ingest("import:checking-usd-movements"));
     await x.step("Convert CC payment mirrors after card feed", serverTask("cc_payment_mirrors"));
     await x.step("CC bank cupo check", serverTask("cc_bank_cupo_check"));
-    // The mortgage cuota (the sheet, imported by the inbox pipeline) against the card line that
-    // paid it (the feed just imported): either side waiting past its deadline fails.
+    // The mortgage cuota in the ledger against the card line that paid it (the feed just
+    // imported): either side waiting past its deadline fails.
     await x.step("Mortgage card match check", serverTask("mortgage_card_match_check"));
   }
 
@@ -108,6 +110,8 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   // 3c''''. MetLife's receipts for cuotas paid online: the cuota's charge on the card that paid it.
   if (o.dryRun) await x.step(dry("MetLife receipts"), ingest("import:metlife-receipts", "--dry-run"));
   else await x.step("MetLife receipts", ingest("import:metlife-receipts"));
+  // When the server asks: MetLife's portal (the cuota quoted, or the cuota a receipt says was paid).
+  await runMetlifeRead(x, o.metlifeRead, o.dryRun);
 
   // 3d. Apple's mails, once the card lines they explain are in: which app each charge paid for.
   if (o.dryRun) await x.step(dry("Apple receipts"), ingest("import:apple-mail", "--dry-run"));
@@ -197,4 +201,21 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
 /** `<label> (apply)` with `--apply`, or `<label> (report only)`. */
 export function applyOrReport(x: StepRunner, label: string, script: string, apply: boolean): Promise<StepOutcome> {
   return apply ? x.step(`${label} (apply)`, ingest(script, "--apply")) : x.step(`${label} (report only)`, ingest(script));
+}
+
+/**
+ * «MetLife read (<mode>)» when the server asked for one (`fetch:metlife --read`, `--dry-run` in a
+ * dry run: the server rolls back what it would write). Returns what it wrote — paid cuotas plus a
+ * new quote row — so the hourly poll counts it as activity.
+ */
+export async function runMetlifeRead(x: StepRunner, request: IngestRunRequest["metlife_read"], dryRun: boolean): Promise<number> {
+  if (request == null) {
+    x.note("=== MetLife read (not asked)");
+    return 0;
+  }
+  x.note(`MetLife read: ${request.reason}`);
+  const r = dryRun
+    ? await x.step(`MetLife read (${request.mode}) (dry run)`, ingest("fetch:metlife", "--read", "--dry-run"))
+    : await x.step(`MetLife read (${request.mode})`, ingest("fetch:metlife", "--read"));
+  return (r.result.inserted ?? 0) + (r.result.staged ?? 0);
 }

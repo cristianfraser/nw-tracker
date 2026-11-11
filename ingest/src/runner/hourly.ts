@@ -1,5 +1,5 @@
 import type { BankProductSummaryFetchStep, IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
-import { applyOrReport } from "./nightly.js";
+import { applyOrReport, runMetlifeRead } from "./nightly.js";
 import { ingest, serverTask, type StepRunner } from "./steps.js";
 
 /**
@@ -19,6 +19,8 @@ export type HourlyOptions = {
   santanderVeto: () => string | null;
   /** Photos waiting in `cfraser/grocery-receipts/inbox` — the one input no fetch stages. */
   groceryInboxCount: () => number;
+  /** The server's request to read MetLife's portal this hour (`quote` | `posted`), or null. */
+  metlifeRead: IngestRunRequest["metlife_read"];
 };
 
 export type HourlyResult = { santander: SantanderFetchOutcome | null; activity: boolean };
@@ -131,6 +133,10 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     : await x.step("MetLife receipts", ingest("import:metlife-receipts", "--days=3"));
   const metlifeReceipts = metlife.result.staged ?? 0;
 
+  // When the server asks: MetLife's portal — the cuota quoted this cycle, or the cuota a receipt
+  // says was paid — after the receipts, so a cuota paid this hour is read with its receipt in.
+  const metlifeRead = await runMetlifeRead(x, o.metlifeRead, o.dryRun);
+
   // Every hour: the Fintual dollar wallet's cash interest, which no mail announces (one /gql
   // request); a credit is in the ledger within the hour it posts.
   const wallet =
@@ -150,13 +156,14 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     mailMovements > 0 ||
     billMails > 0 ||
     metlifeReceipts > 0 ||
+    metlifeRead > 0 ||
     walletInterest > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
         `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, ` +
-        `metlife receipts=${metlifeReceipts}, ` +
+        `metlife receipts=${metlifeReceipts}, metlife portal writes=${metlifeRead}, ` +
         `fintual wallet interest=${walletInterest}`
     );
   }

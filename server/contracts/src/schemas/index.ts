@@ -4,7 +4,6 @@ import { CARD_PARSED_STATEMENT_COLUMNS } from "../kinds/cardParsedStatements.js"
 import { ccCardRegistrySchema } from "./ccCards.js";
 import { ccStatementLineRulesSchema } from "./ccStatementLineRules.js";
 import {
-  mortgageSheetReadSchema,
   parsedCartolaPdfFileSchema,
   parsedGroceryReceiptSchema,
   parsedPayrollIndexSchema,
@@ -26,7 +25,6 @@ export const SHARED_FILE_SCHEMAS = {
   "parsed-payroll-index": parsedPayrollIndexSchema,
   "parsed-cartola-pdf-file": parsedCartolaPdfFileSchema,
   "parsed-grocery-receipt": parsedGroceryReceiptSchema,
-  "mortgage-sheet-read": mortgageSheetReadSchema,
 } as const;
 
 export type SharedFileSchemaName = keyof typeof SHARED_FILE_SCHEMAS;

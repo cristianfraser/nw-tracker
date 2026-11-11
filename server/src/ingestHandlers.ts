@@ -32,7 +32,7 @@ import { applyPayrollParameters } from "./payrollParametersApply.js";
 import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js";
 import { applyFundAccountTransactions } from "./fintualCertImport.js";
 import { applyUnemploymentFundDocuments } from "./afcCertImport.js";
-import { applyMortgageSheetPayments } from "./mortgageSheetPaymentsApply.js";
+import { applyMortgageLenderStatement } from "./mortgageLenderStatementApply.js";
 import { applyMortgagePaymentReceipt } from "./mortgagePaymentReceiptsApply.js";
 import { applyUtilityBills } from "./utilityBillsApply.js";
 import {
@@ -172,7 +172,7 @@ const HANDLERS: IngestHandlerMap = {
   "bank_account.movements": {
     apply: ({ payload, envelope }) => ({ details: applyBankAccountMovements(payload, envelope.source.ref) }),
   },
-  "mortgage.sheet_payments": { apply: ({ payload }) => ({ details: applyMortgageSheetPayments(payload) }) },
+  "mortgage.lender_statement": { apply: ({ payload }) => ({ details: applyMortgageLenderStatement(payload) }) },
   "mortgage.payment_receipt": {
     apply: ({ payload, envelope }) => ({ details: applyMortgagePaymentReceipt(payload, envelope.source.ref) }),
   },

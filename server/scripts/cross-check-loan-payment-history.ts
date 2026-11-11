@@ -26,7 +26,7 @@ import XLSX from "xlsx";
 import { db } from "../src/db.js";
 import { deptoLedgerChronoCompare, isDeptoPrepagoCuota } from "../src/deptoDividendosLedger.js";
 import { deptoLedgerForLoan } from "../src/deptoLedgerFromMovements.js";
-import { loanAccountIdForMortgageSheet } from "../src/mortgageSheetPaymentsApply.js";
+import { propertyLoanPairsWithLoan } from "../src/accountRoles.js";
 import { insertManualFundedDepositLink, linkedFundedDepositOf } from "../src/expenseDepositLinks.js";
 import { PARTS_SUM_FIELD, syncLoanPaymentFlowParts } from "../src/flows/loanPaymentParts.js";
 import {
@@ -72,8 +72,10 @@ const planItems: CorrectionPlanItem[] = [
   ...(plan.set_interest_residual ?? []).map((i) => ({ kind: "set_interest_residual" as const, cuota: i.cuota, reason: i.reason })),
   ...(plan.accept ?? []).map((i) => ({ kind: "accept" as const, cuota: i.cuota, field: i.field, reason: i.reason })),
 ];
-// The loan the history is of: the one loan on file (a second loan would need the sheet's lender).
-const loanId = loanAccountIdForMortgageSheet(undefined);
+// The loan the history is of: the one loan on file (a second loan would need the lender named).
+const loans = propertyLoanPairsWithLoan().map((p) => p.loanAccountId);
+if (loans.length !== 1) throw new Error(`cross-check: ${loans.length} loans on file (${loans.join(", ") || "none"}) — expected one`);
+const loanId = loans[0]!;
 const acceptedEntries = (plan.accept ?? []).map((a) => ({ label: a.cuota, field: a.field, reason: a.reason }));
 
 // --- the lender's history ---------------------------------------------------------------------

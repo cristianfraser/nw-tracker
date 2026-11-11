@@ -858,12 +858,13 @@
       }
     },
     "mortgageSheet": {
-      "titleProperty": "Mortgage / payments (apartment sheet)",
-      "titleMortgage": "Mortgage payments (apartment sheet)",
+      "titleProperty": "Mortgage / payments",
+      "titleMortgage": "Mortgage payments",
       "proxAbbrev": "next",
+      "quotedAbbrev": "bank quote",
       "referenceMinMax": "Reference: min / max installment (UF)",
       "cards": {
-        "viviendaHoja": "Home (sheet)",
+        "viviendaHoja": "Home (appraisal)",
         "hipotecaTrasPie": "Mortgage after down payment",
         "pieClpUf": "Down payment (CLP / UF)",
         "filasDePago": "Payment rows"
@@ -1699,7 +1700,7 @@
       "colMonthBreakdown": "Detail",
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - <name></name>: {{amount}}",
       "monthCuotasEmpty": "No pending installments on the calendar.",
-      "mortgageSheetEmpty": "No payment rows in the database. Run npm run import:excel (export depto-dividendos.csv from Numbers into cfraser/ before the import).",
+      "mortgageSheetEmpty": "No payment rows in the database. Enter a cuota in the app, or let the lender's portal reading post it.",
       "payByRule": {
         "ledger": "Installments by statement month: each row is one facturación (closing ~20th) with its pay-by date (~10th of the next month); \"cuota a pagar\" = plan installments billed at that close. PDFs pin amounts, progress and pay-by dates; open/projected months follow the plan. Rows roll off once their facturación is actually paid (or once the pay-by passes, when no payment is on record).",
         "statementsOnly": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported."

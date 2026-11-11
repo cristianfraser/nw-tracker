@@ -92,7 +92,7 @@ export type CommitMortgagePaymentResult = {
 /**
  * Writes the cuota's two movements (mortgage + property) and their `loan_payments` rows. The
  * property's appraisal is not written: the ledger carries the latest one forward.
- * `origin` names the writer — `manual` for the form, `import` for the mortgage sheet — and the
+ * `origin` names the writer — `manual` for the form, `import` for the lender's portal (`mortgage.lender_statement`) — and the
  * human note follows it.
  */
 export function commitMortgagePayment(

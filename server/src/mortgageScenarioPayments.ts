@@ -204,14 +204,20 @@ function buildScenarioRow(
   };
 }
 
+/** The lender's quote of one cuota: its minimum and maximum payment in UF (`mortgage_lender_quotes`). */
+export type MortgageCuotaQuote = { cuota: number; min_uf: number; max_uf: number };
+
 /**
  * Reference payment scenarios on the mortgage schedule (day 11 each month).
  * Term columns use the amortization formula; `max` is the bank's posted cuota máxima (sheet `max_uf`).
  * CLP = UF × uf_daily on schedule date.
- * Appends a projected next-payment row at the end (shown first in the UI).
+ * Appends a projected next-payment row at the end (shown first in the UI). When the lender has
+ * quoted that cuota (`quote`, its number the next row's), the row's minimum and maximum are the
+ * quote's and it carries `quoted`; the term columns stay projections.
  */
 export function buildDeptoPaymentScenarioRows(
-  ledger: readonly DeptoMortgageSheetRow[]
+  ledger: readonly DeptoMortgageSheetRow[],
+  quote: MortgageCuotaQuote | null = null
 ): DeptoPaymentScenarioRow[] {
   const firstSchedule = firstMortgageScheduleYmd(ledger);
   if (!firstSchedule) return [];
@@ -250,6 +256,20 @@ export function buildDeptoPaymentScenarioRows(
     monthsPaid + 1,
     { isNext: true }
   );
+  if (quote != null && quote.cuota === nextCuotaNum) {
+    const min = scenarioCellAtScheduleUf(30, quote.min_uf, nextScheduleYmd);
+    const max = scenarioCellAtScheduleUf("max", quote.max_uf, nextScheduleYmd);
+    return [
+      ...historical,
+      {
+        ...nextRow,
+        min_payment_uf: min.payment_uf,
+        min_payment_clp: min.payment_clp,
+        scenarios: nextRow.scenarios.map((c) => (c.term === "max" ? max : c)),
+        quoted: true,
+      },
+    ];
+  }
 
   return [...historical, nextRow];
 }

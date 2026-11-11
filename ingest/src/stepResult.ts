@@ -11,7 +11,7 @@ export const STEP_RESULT_ENV = "NW_INGEST_STEP_RESULT";
 export type StepResult = {
   /** Documents a fetch staged (mail documents, broker mail, a capture). */
   staged?: number;
-  /** Rows an import wrote (movements written from mail, mortgage rows, interest credits). */
+  /** Rows an import wrote (movements written from mail, paid mortgage cuotas, interest credits). */
   inserted?: number;
   /** Listings the bank's product summary asked to read (the balance poll). */
   fetch?: string[];

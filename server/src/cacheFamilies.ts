@@ -55,7 +55,7 @@ export const EXPENSE_METADATA_TABLES: ReadonlySet<string> = new Set([
   "grocery_product_aliases", "grocery_products", "grocery_receipt_items", "grocery_receipts", "import_batches",
   "income_entries", "incoming_wire_booking_notices", "incoming_wire_notices", "market_display_series",
   "merchant_document_sources", "merchant_receipt_items", "merchant_receipts", "merchant_subscription_notices",
-  "mortgage_sheet_imports", "movement_mirror_pair_rejections", "movement_transfer_notices", "outside_parties",
+  "movement_mirror_pair_rejections", "movement_transfer_notices", "outside_parties",
   "payment_processor_receipts", "payment_receipt_charges", "payroll_afp_rates", "payroll_parameters",
   "payslip_advances", "payslip_lines", "pension_account_reads", "recurring_payment_patterns", "recurring_payments", "sii_f22_filed",
   "sii_informed_dj", "sii_issued_fee_receipts", "transfer_counterparty_accounts", "unemployment_fund_reads", "utility_bills",

@@ -48,7 +48,7 @@ describe("dayInMonth", () => {
 });
 
 describe("mortgageUpcomingItems", () => {
-  const base = { loanAccountId: 9, name: "Depto", route_path: "/account/9", nextCuota: 33, nextScheduleYmd: "2026-11-11", minUf: 20, maxUf: 30, bestPay: null };
+  const base = { loanAccountId: 9, name: "Depto", route_path: "/account/9", nextCuota: 33, nextScheduleYmd: "2026-11-11", minUf: 20, maxUf: 30, quote: null, bestPay: null };
 
   it("lists every cuota from the next one to the horizon, on the 11th, min and max at the UF", () => {
     const items = mortgageUpcomingItems(base, TODAY, "2027-01", flatUf);
@@ -68,6 +68,14 @@ describe("mortgageUpcomingItems", () => {
     );
     expect(items[0]).toMatchObject({ cuota: 33, due_iso: "2026-10-27", overdue: false });
     expect(mortgageUpcomingItems({ ...base, nextScheduleYmd: "2026-10-11" }, "2026-11-11", "2026-11", flatUf)[0]!.overdue).toBe(true);
+  });
+
+  it("takes the lender's quote for the next cuota only, not estimated; later cuotas stay projected", () => {
+    const items = mortgageUpcomingItems({ ...base, quote: { minUf: 10.5, maxUf: 75 } }, TODAY, "2026-12", flatUf);
+    expect(items.map((i) => [i.cuota, i.amount_clp, i.amount_max_clp, i.estimated])).toEqual([
+      [33, 420_000, 3_000_000, false],
+      [34, 800_000, 1_200_000, true],
+    ]);
   });
 });
 

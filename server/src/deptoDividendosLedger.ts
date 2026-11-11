@@ -13,7 +13,7 @@ export type DeptoDividendosPaymentRow = {
   credito_restante_uf: number | null;
   /** The bank's cuota mínima (UF). */
   min_uf: number | null;
-  /** The bank's posted cuota máxima (UF), from the mortgage sheet. */
+  /** The bank's posted cuota máxima (UF), as the bank stated it (the lender's quote, the form or the retired sheet import). */
   max_uf: number | null;
   amortizacion_clp: number | null;
   amortizacion_ext_clp: number | null;
@@ -47,6 +47,8 @@ export type DeptoPaymentScenarioRow = {
   scenarios: DeptoPaymentScenarioCell[];
   /** Projected upcoming installment (first row in the UI). */
   is_next_payment?: boolean;
+  /** The next row's minimum and maximum are the lender's quote, not a projection. */
+  quoted?: boolean;
 };
 
 /** Σ of the parts that are present; null when none is (a sheet row that carries none of them). */

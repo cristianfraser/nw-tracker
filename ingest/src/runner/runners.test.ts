@@ -37,6 +37,7 @@ const NIGHTLY: NightlyOptions = {
   afcFetch: null,
   afcApply: true,
   payslips: null,
+  metlifeRead: null,
 };
 
 describe("runNightly", () => {
@@ -140,6 +141,18 @@ describe("runNightly", () => {
   });
 
 
+  it("reads MetLife's portal only when the server asks, after the receipts", async () => {
+    const quote = fakeRunner();
+    await runNightly(quote.x, { ...NIGHTLY, metlifeRead: { mode: "quote", reason: "cuota of 2030-11 not quoted yet" } });
+    const i = quote.calls.indexOf("import:metlife-receipts");
+    expect(quote.calls[i + 1]).toBe("fetch:metlife --read");
+    expect(quote.x.steps.map((s) => s.label)).toContain("MetLife read (quote)");
+    const dry = fakeRunner();
+    await runNightly(dry.x, { ...NIGHTLY, dryRun: true, metlifeRead: { mode: "posted", reason: "receipt for cuota 13" } });
+    expect(dry.calls).toContain("fetch:metlife --read --dry-run");
+    expect(dry.x.steps.map((s) => s.label)).toContain("MetLife read (posted) (dry run)");
+  });
+
   it("opens no bank session in a dry run", async () => {
     const { x, calls } = fakeRunner();
     expect((await runNightly(x, { ...NIGHTLY, dryRun: true })).santander).toBeNull();
@@ -154,6 +167,7 @@ const HOURLY: HourlyOptions = {
   santanderFetch: null,
   santanderVeto: () => null,
   groceryInboxCount: () => 0,
+  metlifeRead: null,
 };
 
 describe("runHourly", () => {
@@ -218,6 +232,21 @@ describe("runHourly", () => {
     const dry = fakeRunner();
     await runHourly(dry.x, { ...HOURLY, dryRun: true });
     expect(dry.calls).toContain("import:metlife-receipts --days=3 --dry-run");
+  });
+
+  it("reads MetLife's portal when the server asks, counting a write as activity", async () => {
+    const quiet = fakeRunner({ "fetch:emails": { staged: 0 }, "fetch:metlife": { inserted: 0, staged: 0 } });
+    const posted = { mode: "posted" as const, reason: "receipt for cuota 13, not in the ledger" };
+    expect((await runHourly(quiet.x, { ...HOURLY, metlifeRead: posted })).activity).toBe(false);
+    expect(quiet.calls.slice(-3)).toEqual(["import:metlife-receipts --days=3", "fetch:metlife --read", "import:fintual-wallet --apply"]);
+    expect(quiet.x.steps.map((s) => s.label)).toContain("MetLife read (posted)");
+    const wrote = fakeRunner({ "fetch:emails": { staged: 0 }, "fetch:metlife": { inserted: 1, staged: 0 } });
+    expect((await runHourly(wrote.x, { ...HOURLY, metlifeRead: posted })).activity).toBe(true);
+    const quoted = fakeRunner({ "fetch:emails": { staged: 0 }, "fetch:metlife": { inserted: 0, staged: 1 } });
+    expect((await runHourly(quoted.x, { ...HOURLY, metlifeRead: { mode: "quote", reason: "the 11th" } })).activity).toBe(true);
+    const dry = fakeRunner();
+    await runHourly(dry.x, { ...HOURLY, dryRun: true, metlifeRead: posted });
+    expect(dry.calls).toContain("fetch:metlife --read --dry-run");
   });
 
   it("reads the Fintual wallet every hour and counts a booked interest credit as activity", async () => {

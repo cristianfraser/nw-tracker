@@ -23,6 +23,7 @@ import {
   mortgageScheduleYmdForCuota,
 } from "./mortgageScenarioPayments.js";
 import { buildMortgageUfReminder } from "./mortgageUfReminder.js";
+import { nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { utilityBillMonth } from "./utilityBillsApply.js";
 import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
@@ -199,6 +200,8 @@ export type MortgageUpcomingInput = {
   /** Projected minimum (amortization at the remaining balance) and the bank's posted máxima, in UF. */
   minUf: number;
   maxUf: number;
+  /** The lender's quote of `nextCuota` (`mortgage_lender_quotes`): its figures replace the projection for that cuota only. */
+  quote: { minUf: number; maxUf: number } | null;
   /** The UF module's best pay date for the cuota of `bestPay.month` (null = the 11th is best). */
   bestPay: { month: string; date: string } | null;
 };
@@ -206,8 +209,9 @@ export type MortgageUpcomingInput = {
 /**
  * The mortgage's cuotas from the next unpaid one through the horizon: each on its best day to pay
  * (the 11th unless the UF module found a later, cheaper one), its minimum and maximum in pesos at
- * that day's UF (projected past the last published one). Overdue past its window (10th of the
- * next month).
+ * that day's UF (projected past the last published one). The next cuota takes the lender's quote
+ * when one is stored (not estimated); the rest are projections. Overdue past its window (10th of
+ * the next month).
  */
 export function mortgageUpcomingItems(
   input: MortgageUpcomingInput,
@@ -223,6 +227,9 @@ export function mortgageUpcomingItems(
     const due = input.bestPay && input.bestPay.month === month ? input.bestPay.date : schedule;
     const windowEnd = dayInMonth(addCalendarMonths(month, 1), MORTGAGE_WINDOW_END_DAY);
     const uf = ufOn(due);
+    const quoted = cuota === input.nextCuota ? input.quote : null;
+    const minUf = quoted?.minUf ?? input.minUf;
+    const maxUf = quoted?.maxUf ?? input.maxUf;
     out.push(
       item({
         key: `mortgage|${input.loanAccountId}|${cuota}`,
@@ -232,9 +239,9 @@ export function mortgageUpcomingItems(
         route_path: input.route_path,
         due_iso: due,
         due_kind: "on",
-        amount_clp: Math.round(input.minUf * uf),
-        amount_max_clp: Math.round(input.maxUf * uf),
-        estimated: true,
+        amount_clp: Math.round(minUf * uf),
+        amount_max_clp: Math.round(maxUf * uf),
+        estimated: quoted == null,
         overdue: todayYmd > windowEnd,
         cuota,
       })
@@ -405,6 +412,7 @@ function mortgageInput(
   const minUf = next.min_payment_uf;
   const maxUf = next.scenarios.find((s) => s.term === "max")?.payment_uf ?? null;
   if (minUf == null || maxUf == null) throw new Error(`Mortgage: cuota ${nextCuota} has no projected minimum or maximum`);
+  const quoteOfNext = nextCuotaQuoteForLoan(mortgageId, ledger);
   const reminder = buildMortgageUfReminder(todayYmd, mortgageId);
   const bestPay =
     reminder.show && reminder.cycle_month && reminder.best_pay_date
@@ -423,6 +431,7 @@ function mortgageInput(
     nextScheduleYmd,
     minUf,
     maxUf,
+    quote: quoteOfNext ? { minUf: quoteOfNext.min_uf, maxUf: quoteOfNext.max_uf } : null,
     bestPay,
   };
 }

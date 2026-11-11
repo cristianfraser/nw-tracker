@@ -38,6 +38,9 @@ export type IngestRunRow = {
   dry_run: number | null;
   /** The queue job that ran it (docs/job-queue-plan.md); null for runs from before the queue. */
   job_id: number | null;
+  /** The run asked for a read of the mortgage lender's portal (migration 308). */
+  metlife_request: "quote" | "posted" | null;
+  metlife_request_reason: string | null;
 };
 
 function parseInstant(value: string | null | undefined): Date | null {
@@ -84,21 +87,42 @@ export function markIngestRunRequested(
   reason: string,
   now: Date,
   santanderFetch: IngestRunRequest["santander_fetch"],
-  jobId: number
+  jobId: number,
+  metlifeRead: IngestRunRequest["metlife_read"] = null
 ): number {
   const row = db
     .prepare(
-      `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at, santander_request, santander_request_reason, job_id)
-       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?)
+      `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at, santander_request, santander_request_reason, job_id,
+                                metlife_request, metlife_request_reason)
+       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (kind, slot_at) DO UPDATE SET status = 'requested', reason = excluded.reason,
          requested_at = excluded.requested_at, error = NULL, santander_request = excluded.santander_request,
-         santander_request_reason = excluded.santander_request_reason, job_id = excluded.job_id
+         santander_request_reason = excluded.santander_request_reason, job_id = excluded.job_id,
+         metlife_request = excluded.metlife_request, metlife_request_reason = excluded.metlife_request_reason
        RETURNING id`
     )
-    .get(kind, slot.toISOString(), reason, now.toISOString(), santanderFetch?.mode ?? null, santanderFetch?.reason ?? null, jobId) as {
+    .get(
+      kind,
+      slot.toISOString(),
+      reason,
+      now.toISOString(),
+      santanderFetch?.mode ?? null,
+      santanderFetch?.reason ?? null,
+      jobId,
+      metlifeRead?.mode ?? null,
+      metlifeRead?.reason ?? null
+    ) as {
     id: number;
   };
   return row.id;
+}
+
+/** When the latest run that asked for a mortgage-lender read was requested (one the service took or may take), or null. */
+export function lastMetlifeReadRequestedAt(): Date | null {
+  const row = db
+    .prepare(`SELECT MAX(requested_at) AS t FROM ingest_runs WHERE metlife_request IS NOT NULL AND status <> 'not_started'`)
+    .get() as { t: string | null };
+  return parseInstant(row.t);
 }
 
 /**

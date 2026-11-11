@@ -17,6 +17,7 @@ import {
   mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
+import { nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
 import { bookLedgerEditSchemaForAccount } from "./accountBookLedgerEdit.js";
 import { mortgagePaymentCreateSchemaForAccount } from "./mortgagePaymentCreate.js";
 import { mortgageCardMatches } from "./mortgagePaymentCardMatch.js";
@@ -216,7 +217,7 @@ export async function buildAccountDetailBundle(
       has_sheet_rows: sheetRowsAll.length > 0,
       meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
       rows: sheetRows,
-      payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll),
+      payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll, loanId != null ? nextCuotaQuoteForLoan(loanId, sheetRowsAll) : null),
       card_matches: matches.payments,
       card_lines_without_payment: matches.unmatched_lines,
     };

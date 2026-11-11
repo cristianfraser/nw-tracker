@@ -217,7 +217,7 @@ export function checkMortgageCardMatches(todayYmd: string = chileCalendarTodayYm
     const overdue = todayYmd >= deadline;
     if (overdue) ok = false;
     report.push(
-      `${overdue ? "⚠" : "·"} card ${l.date} ${l.merchant} $${l.amount_clp} (${l.account_name}): no cuota in the ledger${overdue ? ` (deadline ${deadline} passed — post the row in the mortgage sheet)` : ` (until ${deadline})`}`
+      `${overdue ? "⚠" : "·"} card ${l.date} ${l.merchant} $${l.amount_clp} (${l.account_name}): no cuota in the ledger${overdue ? ` (deadline ${deadline} passed — enter the cuota in the app)` : ` (until ${deadline})`}`
     );
   }
   if (report.length === 0) report.push(`No mortgage cuota or card line in the last ${CHECK_WINDOW_DAYS} days.`);

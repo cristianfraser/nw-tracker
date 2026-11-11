@@ -94,6 +94,8 @@ export interface DeptoPaymentScenarioRow {
   scenarios: DeptoPaymentScenarioCell[];
   /** Projected upcoming installment (shown as first row). */
   is_next_payment?: boolean;
+  /** The next row's minimum and maximum are the lender's quote (`mortgage_lender_quotes`), not a projection. */
+  quoted?: boolean;
 }
 
 /** A card line that pays the mortgage cuota (mirror of server/src/mortgagePaymentCardMatch.ts). */

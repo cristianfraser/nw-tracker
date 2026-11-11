@@ -14,15 +14,19 @@ import {
   decideAfcFetch,
   decideAfpUnoFetch,
   decideIngestRun,
+  decideMetlifeRead,
   decidePayslipsRun,
+  metlifeQuoteSlotAtOrBefore,
   decideSantanderBalancePoll,
   type IngestSchedulerDecision,
 } from "./ingestRunPolicy.js";
 import { latestPayslip, latestSalaryPayslipPeriod } from "./payslipsApply.js";
+import { metlifeReadInputs } from "./mortgageLenderQuotes.js";
 import { latestUnemploymentFundContributionPeriod } from "./unemploymentFundBalanceApply.js";
 import {
   lastAnsweredSlot,
   lastJobSlot,
+  lastMetlifeReadRequestedAt,
   latestSantanderState,
   markIngestRunNotStarted,
   markIngestRunRequested,
@@ -122,6 +126,7 @@ type RunRequestExtras = {
   afpUnoFetch: IngestRunRequest["afp_uno_fetch"];
   afcFetch: IngestRunRequest["afc_fetch"];
   payslips: IngestRunRequest["payslips"];
+  metlifeRead: IngestRunRequest["metlife_read"];
 };
 
 /** What a run of `kind` requested now carries besides its kind: the same rules for a slot and a manual run. */
@@ -139,6 +144,9 @@ function runRequestExtras(kind: IngestRunKind, now: Date): RunRequestExtras {
     // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
     // re-imports while the newest payslip waits for its deposit.
     payslips: kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null,
+    // Either kind reads the mortgage lender's portal while the cycle's quote is missing (from 07:00
+    // on the 11th) or a payment receipt names a cuota the ledger lacks; at most once an hour.
+    metlifeRead: decideMetlifeRead({ now, ...metlifeReadInputs(), lastReadRequestedAt: lastMetlifeReadRequestedAt() }),
   };
 }
 
@@ -147,7 +155,8 @@ function extrasNote(e: RunRequestExtras): string {
     (e.santanderFetch ? `; Santander ${e.santanderFetch.mode}: ${e.santanderFetch.reason}` : "") +
     (e.afpUnoFetch ? `; AFP UNO: ${e.afpUnoFetch.reason}` : "") +
     (e.afcFetch ? `; AFC: ${e.afcFetch.reason}` : "") +
-    (e.payslips ? `; payslips: ${e.payslips.reason}` : "")
+    (e.payslips ? `; payslips: ${e.payslips.reason}` : "") +
+    (e.metlifeRead ? `; MetLife ${e.metlifeRead.mode}: ${e.metlifeRead.reason}` : "")
   );
 }
 
@@ -217,6 +226,8 @@ export function ingestSchedulerTick(now: Date): IngestTickOutcome {
     lastNightlySlot: laterOf(lastAnsweredSlot("nightly"), lastJobSlot("nightly")),
     lastHourlySlot: laterOf(lastAnsweredSlot("hourly"), lastJobSlot("hourly")),
     lastDailyRunAt: storedUtc(lastDailyRunAt()),
+    // 07:00 on the 11th while the cycle's lender quote is missing: the bank posted the cuota overnight.
+    extraHourlySlot: metlifeQuoteSlotAtOrBefore(now, metlifeReadInputs().latestQuoteDueOn),
   });
   if (decision.action === "idle") return { decision, job_id: null };
   if (decision.action === "skip") {
@@ -259,7 +270,7 @@ export type IngestDispatchOutcome = "started" | "superseded" | "released" | "not
 
 /**
  * Start queue job `job` (an ingest run `pickNextJobs` let start): claim it, write its run (the
- * request extras — Santander balance poll, AFP, AFC, payslips, mortgage sheet — decided now,
+ * request extras — Santander balance poll, AFP, AFC, payslips, the MetLife read — decided now,
  * at start, from the state as it is now) and hand it to the ingest service. A service that is busy
  * or does not answer gets it back in the queue, offered again shortly.
  */
@@ -276,7 +287,7 @@ export async function dispatchIngestJob(job: JobRow, now: Date, ctx: IngestDispa
   }
   if (!claimJob(job.id, INGEST_SERVICE_WORKER, now)) return "not_claimed";
   const extras = runRequestExtras(kind, now);
-  const runId = markIngestRunRequested(kind, slot, job.reason, now, extras.santanderFetch, job.id);
+  const runId = markIngestRunRequested(kind, slot, job.reason, now, extras.santanderFetch, job.id, extras.metlifeRead);
   const answer = await ctx.request({
     run_id: runId,
     job_id: job.id,
@@ -286,6 +297,7 @@ export async function dispatchIngestJob(job: JobRow, now: Date, ctx: IngestDispa
     afp_uno_fetch: extras.afpUnoFetch,
     afc_fetch: extras.afcFetch,
     payslips: extras.payslips,
+    metlife_read: extras.metlifeRead,
   });
   if (answer.status === "accepted") {
     console.log(`ingest-runs: ${kind} run ${runId} (job ${job.id}) started (${job.reason}${extrasNote(extras)})`);

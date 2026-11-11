@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { payslipLineSchema } from "../kinds/employmentPayslips.js";
-import { mortgageSheetPaymentRowSchema } from "../kinds/mortgageSheetPayments.js";
 
 /**
  * JSON the Python parsers write and ingest reads (docs/untangle-plan.md F8). Each schema states
@@ -115,22 +114,6 @@ export const parsedGroceryReceiptSchema = z.looseObject({
   parser_version: z.number().int(),
 });
 
-/** What `read-mortgage-sheet.py` writes (`ingest/src/mortgage/sheet.ts` `MortgageSheetRead`). */
-export const mortgageSheetReadSchema = z.strictObject({
-  document: z.strictObject({
-    path: z.string(),
-    name: z.string(),
-    sha256: z.string().regex(/^[0-9a-f]{64}$/),
-    size: z.number().int().nonnegative(),
-    modified_at: z.string(),
-  }),
-  sheet: z.string(),
-  table: z.string(),
-  rows: z.array(mortgageSheetPaymentRowSchema),
-  projected: z.array(z.string()),
-});
-
 export type ParsedPayrollRowContract = z.infer<typeof parsedPayrollRowSchema>;
 export type ParsedCartolaPdfEntry = z.infer<typeof parsedCartolaPdfEntrySchema>;
 export type ParsedGroceryReceiptContract = z.infer<typeof parsedGroceryReceiptSchema>;
-export type MortgageSheetReadContract = z.infer<typeof mortgageSheetReadSchema>;

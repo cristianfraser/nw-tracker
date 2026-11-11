@@ -1,14 +1,17 @@
 /**
- * MetLife Hipotecario's «Portal de Clientes» — a supervised capture only, until the reader is
- * built from what it records:
+ * MetLife Hipotecario's «Portal de Clientes»:
  *
+ *   npm run fetch:metlife -- --read [--dry-run] [--from-capture=<dir>] [--code-from-stdin] [--force] [--min-interval=N]
  *   npm run fetch:metlife -- --capture [--code-from-stdin] [--minutes=N] [--force] [--min-interval=N]
  *
- * Signs in with the RUT from `cfraser/metlife-fetch.json`, the clave from Keychain
- * `nw-tracker-metlife` (account = that RUT) and the «Clave Dinámica» MetLife mails (read from the
- * mailbox; `--code-from-stdin` types it instead), then records under `cfraser/metlife-captures/`.
+ * `--read` signs in (RUT from `cfraser/metlife-fetch.json`, clave from Keychain
+ * `nw-tracker-metlife`, the mailed «Clave Dinámica»), takes the «Centro de pago» page's own API
+ * answers and sends them as a `mortgage.lender_statement` (`./read.ts`); `--from-capture=<dir>`
+ * sends a saved directory's answers instead of logging in; `--dry-run` asks the server to roll
+ * back what it would write. `--capture` is the supervised capture (`./capture.ts`).
  */
 import { runMetlifeCapture } from "./capture.js";
+import { runMetlifeRead } from "./read.js";
 import { DEFAULT_MIN_INTERVAL_MINUTES } from "../runGuard.js";
 import { log } from "../log.js";
 
@@ -22,10 +25,25 @@ async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const min = Number(argv.find((a) => a.startsWith("--min-interval="))?.split("=")[1]);
   const minIntervalMinutes = Number.isFinite(min) && min >= 0 ? min : DEFAULT_MIN_INTERVAL_MINUTES;
+  const read = argv.includes("--read");
+  const capture = argv.includes("--capture");
+  if (read === capture) throw new Error("fetch:metlife takes exactly one of --read and --capture");
+  if (read) {
+    const fromCapture = argv.find((a) => a.startsWith("--from-capture="))?.slice("--from-capture=".length) ?? null;
+    if (fromCapture === "") throw new Error("--from-capture= needs a directory");
+    return runMetlifeRead({
+      fromCapture,
+      dryRun: argv.includes("--dry-run"),
+      force: argv.includes("--force"),
+      minIntervalMinutes,
+      codeFromStdin: argv.includes("--code-from-stdin"),
+      background: argv.includes("--background"),
+    });
+  }
   const minutesRaw = Number(argv.find((a) => a.startsWith("--minutes="))?.split("=")[1]);
   return runMetlifeCapture(
     {
-      capture: argv.includes("--capture"),
+      capture: true,
       background: argv.includes("--background"),
       movementsOnly: false,
       balancePoll: false,

@@ -346,6 +346,9 @@ function DeptoPaymentScenarioMobileCard({ row }: { row: DeptoPaymentScenarioRow 
       {row.is_next_payment ? (
         <span className={cn("muted", styles.cellSub)}> {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}</span>
       ) : null}
+      {row.quoted ? (
+        <span className={cn("muted", styles.cellSub)}> {i18n.t("accountDetail.mortgageSheet.quotedAbbrev")}</span>
+      ) : null}
       {" · "}
       {row.occurred_on}
     </>
@@ -414,6 +417,11 @@ export function DeptoPaymentScenarioTable({
                   {row.is_next_payment ? (
                     <span className={cn("muted", styles.cellSub)}>
                       {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}
+                    </span>
+                  ) : null}
+                  {row.quoted ? (
+                    <span className={cn("muted", styles.cellSub)}>
+                      {i18n.t("accountDetail.mortgageSheet.quotedAbbrev")}
                     </span>
                   ) : null}
                 </td>

@@ -222,4 +222,22 @@ describe("buildDeptoPaymentScenarioRows", () => {
     // Latest uf_daily row on-or-before the projected date is 2026-05-11.
     expect(next.min_payment_clp).toBe(Math.round(expectedUf! * UF_ON_MAY_11));
   });
+
+  it("the lender's quote of the next cuota replaces its minimum and maximum, marked quoted", () => {
+    const rows = buildDeptoPaymentScenarioRows(ledger, { cuota: 3, min_uf: 10.25, max_uf: 79.5 });
+    const next = rows[2]!;
+    expect(next.quoted).toBe(true);
+    expect(next.min_payment_uf).toBe(10.25);
+    expect(next.min_payment_clp).toBe(Math.round(10.25 * UF_ON_MAY_11));
+    expect(next.scenarios.find((s) => s.term === "max")).toEqual({ term: "max", payment_uf: 79.5, payment_clp: Math.round(79.5 * UF_ON_MAY_11) });
+    // The term columns stay projections, and the historical rows are untouched.
+    expect(next.scenarios.find((s) => s.term === 5)).toEqual(buildDeptoPaymentScenarioRows(ledger)[2]!.scenarios.find((s) => s.term === 5));
+    expect(rows[1]!.quoted).toBeUndefined();
+  });
+
+  it("a quote of another cuota is ignored", () => {
+    const rows = buildDeptoPaymentScenarioRows(ledger, { cuota: 7, min_uf: 10.25, max_uf: 79.5 });
+    expect(rows[2]!.quoted).toBeUndefined();
+    expect(rows[2]!.min_payment_uf).toBe(computeMortgageScenarioPaymentUf(998, 360, 3, 0.5));
+  });
 });

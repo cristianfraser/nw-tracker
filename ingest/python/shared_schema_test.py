@@ -137,19 +137,6 @@ class ParserOutputsTest(unittest.TestCase):
             payload["text_sha256"] = "0" * 64
             validate(json.loads(json.dumps(payload)), schema)
 
-    def test_mortgage_sheet_read(self) -> None:
-        from mortgage_sheet import payment_rows
-        import mortgage_sheet_test as fixtures
-
-        grid = [fixtures.header(), fixtures.row(32.0, dt.datetime(2036, 10, 11), 20.0, 40000.0, **fixtures.cuota_cols())]
-        out = {
-            "document": {"path": "/x/sheet.numbers", "name": "sheet.numbers", "sha256": "a" * 64, "size": 1, "modified_at": "2036-10-11T00:00:00Z"},
-            "sheet": "s",
-            "table": "t",
-            **payment_rows(grid),
-        }
-        validate(json.loads(json.dumps(out)), load_schema("mortgage-sheet-read"))
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,220 +1,268 @@
 /**
- * Sign in to MetLife's «Portal de Clientes» (w3.metlife.cl): RUT + clave, then the «Clave
- * Dinámica» MetLife mails (`./codeMail.ts`). No captcha, per the user.
+ * Sign in to MetLife Hipotecario's «Portal de Clientes» (portaldeclientes.metlife.cl), as the first
+ * capture recorded it (2026-11-11). The portal sends the browser to MetLife's Ping sign-in
+ * (federate.sso.metlife.com), three pages:
  *
- * The page has never been driven yet, so every step is found by what is visible — a RUT-ish text
- * field, the password field, a button named «Ingresar», then a code field (one input, or a row of
- * single-digit boxes) — in any frame, with a timeout on every wait. A rejection is quoted and a
- * changed page fails with a screenshot (`cfraser/scraper-diagnostics/`) instead of guessing; in a
- * supervised capture the user finishes by hand and the run keeps recording.
+ *   1. «¡Hola! Ingresa tu RUT y Clave de Acceso» — «RUT (Sin puntos, ni guión)», «Clave de
+ *      Acceso», «CONTINUAR»;
+ *   2. «Valida tu identidad para continuar … Elige dónde recibir tu clave» — «RECIBIR CLAVE POR
+ *      EMAIL» / «RECIBIR CLAVE POR SMS», «SIGUIENTE» (the e-mail is chosen: the code is read from
+ *      the mailbox);
+ *   3. «¡Tu Clave Dinámica fue enviada!» — six boxes, «VALIDAR CLAVE»; the code is valid 15 minutes
+ *      and may be requested at most three times, so an attempt asks for it once and never resends.
+ *
+ * Then the portal (`/PIP/…`). Every wait has a timeout; overlays are closed through their own
+ * close control before each navigation and click (`../overlays.ts`); a refused RUT/clave latches
+ * MetLife logins off until the Keychain item changes (`metlifeLoginLatch`); any other failure is
+ * quoted with a screenshot under `cfraser/scraper-diagnostics/`.
  */
 import type { Frame, Locator, Page } from "playwright-core";
 import { saveClaveUnicaDiagnostics } from "../claveUnica/login.js";
+import { loginLatch } from "../loginLatch.js";
 import { log } from "../log.js";
+import { clickPastOverlays, dismissOverlays } from "../overlays.js";
+
+export const METLIFE_LOGIN_URL = "https://portaldeclientes.metlife.cl/PIP/login";
+
+/** MetLife's credentials latch: a refused RUT/clave stops further logins until the Keychain item changes. */
+export const metlifeLoginLatch = loginLatch({
+  fileName: ".metlife-login-rejected.json",
+  site: "MetLife",
+  credentials: "RUT/Clave de Acceso",
+});
 
 export type MetlifeCodeProvider = (requestedAt: Date) => Promise<string>;
 
 export type MetlifeLoginOptions = {
+  /** The config's RUT in any format; typed without dots or dash, as the field asks. */
   rut: string;
   clave: string;
   /** Service name for the log and the diagnostics files. */
   label: string;
-  /** The portal's own signed-in state; the login is over once it holds. */
-  isSignedIn: (page: Page) => Promise<boolean>;
   code: MetlifeCodeProvider;
 };
 
-const OPEN_LOGIN = /ingres|iniciar sesi|portal de clientes|mi metlife|acceso clientes/i;
-const SUBMIT_FORM = /ingresar|entrar|iniciar sesi|continuar|acceder/i;
-const SUBMIT_CODE = /continuar|validar|verificar|ingresar|enviar|confirmar|aceptar/i;
-const RUT_FIELD = /rut|usuario|user|login|documento/i;
-const CODE_FIELD = /c[oó]digo|code|otp|token|clave din|pin/i;
-const CODE_PAGE = /clave din[aá]mica|c[oó]digo de acceso|c[oó]digo temporal/i;
-const REJECTED = /incorrect|inv[aá]lid|no coincide|bloquead|no existe|intente nuevamente|err[oó]ne|expir/i;
-const FORM_WAIT_MS = 45_000;
-const CODE_PAGE_WAIT_MS = 60_000;
-const SIGNED_IN_WAIT_MS = 60_000;
+export type MetlifeLoginStage = "credentials" | "channel" | "code" | "portal" | "unknown";
+
+const CREDENTIALS_PAGE = /Ingresa tu RUT y Clave de Acceso/i;
+const CHANNEL_PAGE = /Elige d[oó]nde recibir tu clave/i;
+const CODE_PAGE = /Clave Din[aá]mica fue enviada/i;
+const CREDENTIALS_REFUSED = /incorrect|inv[aá]lid|no coincide|err[oó]ne|bloquead|no existe/i;
+const CODE_REFUSED = /incorrect|inv[aá]lid|no coincide|err[oó]ne|expirad|caducad|bloquead/i;
+
+const PAGE_WAIT_MS = 45_000;
+const STEP_WAIT_MS = 60_000;
+const POLL_MS = 1_000;
 const TEXT_INPUTS = 'input:visible:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])';
 
-async function frameText(frame: Frame): Promise<string> {
-  try {
-    return await frame.evaluate(() => document.body?.innerText ?? "");
-  } catch {
-    return "";
-  }
+/** The RUT as the field asks for it: no dots, no dash, the verifier digit kept («12.345.678-9» → «123456789»). */
+export function metlifeRutForLogin(rut: string): string {
+  const compact = rut.replace(/[.\-\s]/g, "").toUpperCase();
+  if (!/^\d{7,8}[0-9K]$/.test(compact)) throw new Error(`MetLife: the configured RUT is not a RUT (expected e.g. 12.345.678-9)`);
+  return compact;
 }
 
-function livePages(page: Page): Page[] {
-  return page.context().pages().filter((p) => !p.isClosed());
+/** A page of the signed-in portal: portaldeclientes.metlife.cl under /PIP/, never its login route. */
+export function isMetlifePortalUrl(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  return u.protocol === "https:" && u.hostname === "portaldeclientes.metlife.cl" && u.pathname.startsWith("/PIP/") && !/^\/PIP\/login\b/i.test(u.pathname);
+}
+
+/** Which step of the sign-in a page is, from its URL and its visible text. */
+export function metlifeLoginStage(url: string, text: string): MetlifeLoginStage {
+  if (isMetlifePortalUrl(url)) return "portal";
+  if (CODE_PAGE.test(text)) return "code";
+  if (CHANNEL_PAGE.test(text)) return "channel";
+  if (CREDENTIALS_PAGE.test(text)) return "credentials";
+  return "unknown";
+}
+
+/** The visible line refusing what the stage submitted (the RUT/clave, or the code), or null. */
+export function metlifeRejection(stage: MetlifeLoginStage, text: string): string | null {
+  const pattern = stage === "credentials" ? CREDENTIALS_REFUSED : stage === "code" ? CODE_REFUSED : null;
+  if (!pattern) return null;
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0 && l.length < 200 && pattern.test(l)) ?? null;
 }
 
 function current(page: Page): Page {
-  return livePages(page).at(-1) ?? page;
+  return page.context().pages().filter((p) => !p.isClosed()).at(-1) ?? page;
 }
 
-/** The frame holding a visible password field. */
-async function findLoginForm(page: Page): Promise<Frame | null> {
-  for (const p of livePages(page)) {
-    for (const frame of p.frames()) {
-      try {
-        if (await frame.locator('input[type="password"]:visible').count()) return frame;
-      } catch {
-        // detached frame
-      }
+async function pageText(page: Page): Promise<string> {
+  const parts: string[] = [];
+  for (const frame of page.frames()) {
+    try {
+      parts.push(await frame.evaluate(() => document.body?.innerText ?? ""));
+    } catch {
+      // detached frame
+    }
+  }
+  return parts.join("\n");
+}
+
+async function stageOf(page: Page): Promise<{ stage: MetlifeLoginStage; text: string; page: Page }> {
+  const p = current(page);
+  const text = await pageText(p);
+  return { stage: metlifeLoginStage(p.url(), text), text, page: p };
+}
+
+async function waitForStage(page: Page, wanted: readonly MetlifeLoginStage[], ms: number): Promise<{ stage: MetlifeLoginStage; text: string; page: Page } | null> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const s = await stageOf(page);
+    if (wanted.includes(s.stage)) return s;
+    if (Date.now() >= deadline) return null;
+    await s.page.waitForTimeout(POLL_MS);
+  }
+}
+
+/** The frame holding a visible password field (the credentials form). */
+async function credentialsFrame(page: Page): Promise<Frame | null> {
+  for (const frame of page.frames()) {
+    try {
+      if (await frame.locator('input[type="password"]:visible').count()) return frame;
+    } catch {
+      // detached frame
     }
   }
   return null;
-}
-
-async function describeInput(el: Locator): Promise<string> {
-  return [await el.getAttribute("name"), await el.getAttribute("id"), await el.getAttribute("placeholder"), await el.getAttribute("aria-label"), await el.getAttribute("autocomplete")]
-    .filter(Boolean)
-    .join(" ");
-}
-
-/** The RUT field: a text input named for it, else the first visible text input of the form. */
-async function findRutField(frame: Frame): Promise<Locator | null> {
-  const inputs = frame.locator(TEXT_INPUTS);
-  const n = await inputs.count();
-  for (let i = 0; i < n; i++) if (RUT_FIELD.test(await describeInput(inputs.nth(i)))) return inputs.nth(i);
-  return n > 0 ? inputs.first() : null;
-}
-
-/** A visible code field (no password field beside it): one named for it, or a row of single-character boxes. */
-async function findCodeField(page: Page): Promise<{ frame: Frame; fields: Locator; boxes: boolean } | null> {
-  for (const p of livePages(page)) {
-    for (const frame of p.frames()) {
-      try {
-        if (await frame.locator('input[type="password"]:visible').count()) {
-          // A code field may be a password-type input on its own page; only when the page asks for a code.
-          if (!CODE_PAGE.test(await frameText(frame))) continue;
-          const pw = frame.locator('input[type="password"]:visible');
-          if ((await pw.count()) === 1 && (await frame.locator(TEXT_INPUTS).count()) === 0) return { frame, fields: pw, boxes: false };
-          continue;
-        }
-        const boxes = frame.locator('input[maxlength="1"]:visible');
-        if ((await boxes.count()) >= 4) return { frame, fields: boxes, boxes: true };
-        const inputs = frame.locator(TEXT_INPUTS);
-        const n = await inputs.count();
-        if (n === 0) continue;
-        const asksForCode = CODE_PAGE.test(await frameText(frame));
-        if (n >= 4 && asksForCode) return { frame, fields: inputs, boxes: true };
-        for (let i = 0; i < n; i++) {
-          const d = await describeInput(inputs.nth(i));
-          if (CODE_FIELD.test(d) || /one-time-code/.test(d)) return { frame, fields: inputs.nth(i), boxes: false };
-        }
-        if (n === 1 && asksForCode) return { frame, fields: inputs.first(), boxes: false };
-      } catch {
-        // detached frame
-      }
-    }
-  }
-  return null;
-}
-
-async function typeInto(field: Locator, value: string): Promise<void> {
-  await field.click({ timeout: 10_000 });
-  await field.fill("").catch(() => undefined);
-  await field.pressSequentially(value, { delay: 40 });
-}
-
-/** The visible line quoting a rejection, if the page shows one. */
-async function rejection(page: Page): Promise<string | null> {
-  for (const p of livePages(page)) {
-    for (const frame of p.frames()) {
-      const line = (await frameText(frame)).split("\n").map((l) => l.trim()).find((l) => l.length < 200 && REJECTED.test(l));
-      if (line) return line;
-    }
-  }
-  return null;
-}
-
-async function clickSubmit(frame: Frame, name: RegExp, label: string): Promise<boolean> {
-  const button = frame.getByRole("button", { name }).or(frame.locator('input[type="submit"]:visible')).first();
-  if (!(await button.count().catch(() => 0))) return false;
-  log(`${label}: clicking «${(await button.innerText().catch(() => "")).trim().slice(0, 30) || "submit"}»`);
-  await button.click({ timeout: 10_000 }).catch(() => undefined);
-  return true;
 }
 
 async function fail(page: Page, label: string, why: string, tag: string): Promise<never> {
   throw new Error(`${label}: ${why} (${await saveClaveUnicaDiagnostics(current(page), tag)})`);
 }
 
-export async function signInWithMetlife(page: Page, opts: MetlifeLoginOptions): Promise<Page> {
-  if (await opts.isSignedIn(page)) {
-    log(`${opts.label}: already signed in (session kept by the browser profile)`);
-    return page;
-  }
+async function typeInto(page: Page, field: Locator, value: string, label: string): Promise<void> {
+  await clickPastOverlays(page, field, label, "metlife-login");
+  await field.fill("", { timeout: 5_000 }).catch(() => undefined);
+  await field.pressSequentially(value, { delay: 40, timeout: 30_000 });
+}
 
-  // 1. The login form: on the page, or behind a «Portal de Clientes» / «Ingresar» link.
-  let form = await findLoginForm(page);
-  const formDeadline = Date.now() + FORM_WAIT_MS;
-  let opened = false;
-  while (!form && Date.now() < formDeadline) {
-    if (await opts.isSignedIn(current(page))) return current(page);
-    if (!opened) {
-      const opener = page.getByRole("link", { name: OPEN_LOGIN }).or(page.getByRole("button", { name: OPEN_LOGIN })).first();
-      if (await opener.count().catch(() => 0)) {
-        log(`${opts.label}: opening the login via «${(await opener.innerText().catch(() => "")).trim().slice(0, 40)}»`);
-        await opener.click({ timeout: 10_000 }).catch(() => undefined);
-        opened = true;
+async function clickButton(page: Page, scope: Page | Frame, name: RegExp, label: string, tag: string): Promise<void> {
+  const button = scope.getByRole("button", { name }).first();
+  if (!(await button.count().catch(() => 0))) return fail(page, label, `no «${name.source}» button`, tag);
+  log(`${label}: clicking «${(await button.innerText().catch(() => "")).trim().slice(0, 30)}»`);
+  await clickPastOverlays(page, button, label, tag);
+}
+
+/** Pick «RECIBIR CLAVE POR EMAIL» (a radio, or its label) and check it took. */
+async function chooseEmailChannel(page: Page, label: string): Promise<void> {
+  const radio = page.getByRole("radio", { name: /email/i }).first();
+  if (await radio.count().catch(() => 0)) {
+    if (!(await radio.isChecked().catch(() => false))) await clickPastOverlays(page, radio, label, "metlife-channel");
+    if (!(await radio.isChecked().catch(() => false))) return fail(page, label, "the e-mail option did not stay selected", "metlife-channel");
+    return;
+  }
+  const option = page.getByText(/RECIBIR CLAVE POR EMAIL/i).first();
+  if (!(await option.count().catch(() => 0))) return fail(page, label, "the code-channel page offers no e-mail option", "metlife-channel");
+  await clickPastOverlays(page, option, label, "metlife-channel");
+}
+
+/** Six boxes, or one field, on the code page. */
+async function codeFields(page: Page): Promise<{ fields: Locator; boxes: boolean } | null> {
+  for (const frame of page.frames()) {
+    try {
+      const inputs = frame.locator(TEXT_INPUTS);
+      const n = await inputs.count();
+      if (n >= 6) return { fields: inputs, boxes: true };
+      if (n === 1) return { fields: inputs.first(), boxes: false };
+    } catch {
+      // detached frame
+    }
+  }
+  return null;
+}
+
+export async function signInWithMetlife(page: Page, opts: MetlifeLoginOptions): Promise<Page> {
+  const rut = metlifeRutForLogin(opts.rut);
+  await dismissOverlays(page, opts.label, "metlife-login");
+  await page.goto(METLIFE_LOGIN_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
+
+  // 1. The credentials page (or the portal itself, the session kept by the browser profile).
+  const first = await waitForStage(page, ["credentials", "portal"], PAGE_WAIT_MS);
+  if (!first) return fail(page, opts.label, `the sign-in page never appeared (${PAGE_WAIT_MS / 1000} s)`, "metlife-login-form");
+  if (first.stage === "portal") {
+    log(`${opts.label}: already signed in (session kept by the browser profile)`);
+    metlifeLoginLatch.clear("MetLife accepted the session");
+    return first.page;
+  }
+  let p = first.page;
+  const form = await credentialsFrame(p);
+  if (!form) return fail(p, opts.label, "the sign-in page has no password field", "metlife-login-form");
+  const labelled = form.getByLabel(/RUT/i).first();
+  const rutField = (await labelled.count().catch(() => 0)) ? labelled : form.locator(TEXT_INPUTS).first();
+  if (!(await rutField.count().catch(() => 0))) return fail(p, opts.label, "the sign-in page has no RUT field", "metlife-login-form");
+  await typeInto(p, rutField, rut, opts.label);
+  await typeInto(p, form.locator('input[type="password"]:visible').first(), opts.clave, opts.label);
+  log(`${opts.label}: RUT and clave filled — submitting`);
+  let requestedAt = new Date();
+  await clickButton(p, form, /continuar/i, opts.label, "metlife-login-form");
+
+  // 2. The channel choice (e-mail), once; or straight to the code; or the portal; or a refusal.
+  let channelChosen = false;
+  const deadline = Date.now() + STEP_WAIT_MS;
+  let stage: Awaited<ReturnType<typeof stageOf>>;
+  for (;;) {
+    await p.waitForTimeout(POLL_MS);
+    stage = await stageOf(p);
+    p = stage.page;
+    if (stage.stage === "portal") {
+      log(`${opts.label}: signed in without a second factor`);
+      metlifeLoginLatch.clear("MetLife accepted the login");
+      return p;
+    }
+    if (stage.stage === "code") break;
+    if (stage.stage === "credentials") {
+      const refused = metlifeRejection("credentials", stage.text);
+      if (refused) {
+        metlifeLoginLatch.recordCredentialsRejected(refused);
+        return fail(p, opts.label, `the RUT or clave was refused — «${refused}»`, "metlife-login-rejected");
       }
     }
-    await page.waitForTimeout(1_000);
-    form = await findLoginForm(page);
-  }
-  if (!form) return fail(page, opts.label, "the login form (a password field) never appeared", "metlife-login-form");
-
-  // 2. RUT + clave. The RUT is typed as written in the config; a field that formats it does so itself.
-  const rutField = await findRutField(form);
-  if (!rutField) return fail(form.page(), opts.label, "the login form has no RUT field", "metlife-login-form");
-  await typeInto(rutField, opts.rut);
-  const password = form.locator('input[type="password"]:visible').first();
-  await typeInto(password, opts.clave);
-  log(`${opts.label}: RUT and clave filled — submitting`);
-  const requestedAt = new Date();
-  if (!(await clickSubmit(form, SUBMIT_FORM, opts.label))) await password.press("Enter");
-
-  // 3. The portal (no second factor), a rejection, or the code step.
-  let code: Awaited<ReturnType<typeof findCodeField>> = null;
-  const codeDeadline = Date.now() + CODE_PAGE_WAIT_MS;
-  while (!code && Date.now() < codeDeadline) {
-    await page.waitForTimeout(1_000);
-    if (await opts.isSignedIn(current(page))) {
-      log(`${opts.label}: signed in without a second factor`);
-      return current(page);
+    if (stage.stage === "channel" && !channelChosen) {
+      await chooseEmailChannel(p, opts.label);
+      requestedAt = new Date();
+      await clickButton(p, p, /siguiente/i, opts.label, "metlife-channel");
+      channelChosen = true;
     }
-    const refused = (await findLoginForm(page)) ? await rejection(page) : null;
-    if (refused) return fail(page, opts.label, `the RUT or clave was refused — «${refused}»`, "metlife-login-rejected");
-    code = await findCodeField(page);
+    if (Date.now() >= deadline) return fail(p, opts.label, `no code page ${STEP_WAIT_MS / 1000} s after submitting (${stage.stage} page showing)`, "metlife-code-page");
   }
-  if (!code) return fail(page, opts.label, `no code step ${CODE_PAGE_WAIT_MS / 1000} s after submitting`, "metlife-code-page");
 
-  // 4. The Clave Dinámica from the mailbox (never printed).
+  // 3. The Clave Dinámica from the mailbox (never printed), into the boxes, then VALIDAR CLAVE.
   const value = (await opts.code(requestedAt)).trim();
   if (!/^\d{6}$/.test(value)) throw new Error(`${opts.label}: the code read is not 6 digits`);
+  const code = await codeFields(p);
+  if (!code) return fail(p, opts.label, "the code page has neither six boxes nor one code field", "metlife-code-page");
   if (code.boxes) {
-    const n = await code.fields.count();
-    if (n < value.length) return fail(code.frame.page(), opts.label, `${n} code box(es) for a ${value.length}-digit code`, "metlife-code-page");
-    for (let i = 0; i < value.length; i++) await typeInto(code.fields.nth(i), value[i]!);
+    for (let i = 0; i < value.length; i++) await typeInto(p, code.fields.nth(i), value[i]!, opts.label);
   } else {
-    await typeInto(code.fields, value);
+    await typeInto(p, code.fields, value, opts.label);
   }
-  log(`${opts.label}: code entered — submitting`);
-  await code.frame.page().waitForTimeout(500);
-  if (!(await clickSubmit(code.frame, SUBMIT_CODE, opts.label))) await (code.boxes ? code.fields.last() : code.fields).press("Enter").catch(() => undefined);
+  log(`${opts.label}: code entered — validating`);
+  await clickButton(p, p, /validar/i, opts.label, "metlife-code-page");
 
-  // 5. The portal.
-  const deadline = Date.now() + SIGNED_IN_WAIT_MS;
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(1_000);
-    if (await opts.isSignedIn(current(page))) {
+  // 4. The portal.
+  const signedInBy = Date.now() + STEP_WAIT_MS;
+  for (;;) {
+    await p.waitForTimeout(POLL_MS);
+    const s = await stageOf(p);
+    p = s.page;
+    if (s.stage === "portal") {
       log(`${opts.label}: signed in`);
-      return current(page);
+      metlifeLoginLatch.clear("MetLife accepted the login");
+      return p;
     }
-    const refused = (await findCodeField(page)) ? await rejection(page) : null;
-    if (refused) return fail(page, opts.label, `the code was refused — «${refused}»`, "metlife-code-rejected");
+    const refused = s.stage === "code" ? metlifeRejection("code", s.text) : null;
+    if (refused) return fail(p, opts.label, `the code was refused — «${refused}»`, "metlife-code-rejected");
+    if (s.stage === "credentials") return fail(p, opts.label, "sent back to the sign-in page after the code", "metlife-code-rejected");
+    if (Date.now() >= signedInBy) return fail(p, opts.label, `not signed in ${STEP_WAIT_MS / 1000} s after the code`, "metlife-signed-in");
   }
-  return fail(page, opts.label, `not signed in ${SIGNED_IN_WAIT_MS / 1000} s after the code`, "metlife-signed-in");
 }

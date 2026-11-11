@@ -383,7 +383,7 @@ describe("requestFeederRun", () => {
     for (const [status, body, expected] of cases) {
       const svc = await stubService(status, body);
       try {
-        const request = { run_id: 50, job_id: 7, kind: "nightly" as const, reason: "x", santander_fetch: null, afp_uno_fetch: null, afc_fetch: null, payslips: null };
+        const request = { run_id: 50, job_id: 7, kind: "nightly" as const, reason: "x", santander_fetch: null, afp_uno_fetch: null, afc_fetch: null, payslips: null, metlife_read: null };
         expect((await requestFeederRun(request, svc.env)).status).toBe(expected);
       } finally {
         await svc.close();

@@ -2797,16 +2797,20 @@
     },
     "mortgageSheet": {
       "titleProperty": {
-        "en": "Mortgage / payments (apartment sheet)",
-        "es": "Hipoteca / dividendos (hoja depto)"
+        "en": "Mortgage / payments",
+        "es": "Hipoteca / dividendos"
       },
       "titleMortgage": {
-        "en": "Mortgage payments (apartment sheet)",
-        "es": "Dividendos hipoteca (hoja depto)"
+        "en": "Mortgage payments",
+        "es": "Dividendos hipoteca"
       },
       "proxAbbrev": {
         "en": "next",
         "es": "próx."
+      },
+      "quotedAbbrev": {
+        "en": "bank quote",
+        "es": "cotización banco"
       },
       "referenceMinMax": {
         "en": "Reference: min / max installment (UF)",
@@ -2814,8 +2818,8 @@
       },
       "cards": {
         "viviendaHoja": {
-          "en": "Home (sheet)",
-          "es": "Vivienda (hoja)"
+          "en": "Home (appraisal)",
+          "es": "Vivienda (tasación)"
         },
         "hipotecaTrasPie": {
           "en": "Mortgage after down payment",
@@ -5885,8 +5889,8 @@
         "es": "Sin cuotas pendientes en el calendario."
       },
       "mortgageSheetEmpty": {
-        "en": "No payment rows in the database. Run npm run import:excel (export depto-dividendos.csv from Numbers into cfraser/ before the import).",
-        "es": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import)."
+        "en": "No payment rows in the database. Enter a cuota in the app, or let the lender's portal reading post it.",
+        "es": "No hay filas de dividendos en la base. Ingresa una cuota en la app, o deja que la lectura del portal del banco la registre."
       },
       "payByRule": {
         "ledger": {

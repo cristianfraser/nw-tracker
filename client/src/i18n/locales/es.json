@@ -858,12 +858,13 @@
       }
     },
     "mortgageSheet": {
-      "titleProperty": "Hipoteca / dividendos (hoja depto)",
-      "titleMortgage": "Dividendos hipoteca (hoja depto)",
+      "titleProperty": "Hipoteca / dividendos",
+      "titleMortgage": "Dividendos hipoteca",
       "proxAbbrev": "próx.",
+      "quotedAbbrev": "cotización banco",
       "referenceMinMax": "Referencia: cuota mín / máx (UF)",
       "cards": {
-        "viviendaHoja": "Vivienda (hoja)",
+        "viviendaHoja": "Vivienda (tasación)",
         "hipotecaTrasPie": "Hipoteca tras pie",
         "pieClpUf": "Pie (CLP / UF)",
         "filasDePago": "Filas de pago"
@@ -1699,7 +1700,7 @@
       "colMonthBreakdown": "Detalle",
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - <name></name>: {{amount}}",
       "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
-      "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import).",
+      "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ingresa una cuota en la app, o deja que la lectura del portal del banco la registre.",
       "payByRule": {
         "ledger": "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece cuando su facturación se paga efectivamente (o pasado su pagar-hasta si no hay pago registrado).",
         "statementsOnly": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."

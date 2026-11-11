@@ -6,6 +6,7 @@ import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
+import { nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
 import { mortgageCardMatches, type MortgageCardLine, type MortgagePaymentCardMatch } from "./mortgagePaymentCardMatch.js";
 
 export type MortgageGroupLedgerResponse = {
@@ -41,7 +42,7 @@ function mortgageLedgerForOperationalAccount(operationalId: number): MortgageGro
     has_sheet_rows: sheetRowsAll.length > 0,
     meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
     rows: sheetRows,
-    payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll),
+    payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll, nextCuotaQuoteForLoan(operationalId, sheetRowsAll)),
     card_matches: matches.payments,
     card_lines_without_payment: matches.unmatched_lines,
   };

@@ -3,7 +3,7 @@
  * pesos) to the figures the user typed in the mortgage sheet — the bank's posted numbers — where
  * the ledger held formula-era values (the excel import's model mínima, or a form entry made from it).
  *
- *   npx tsx scripts/repair-mortgage-ledger-from-sheet.ts --plan=<json> [--apply]
+ *   npx tsx scripts/archive/repair-mortgage-ledger-from-sheet.ts --plan=<json> [--apply]
  *
  * Plan: `[{"cuota": "28", "min_uf": 11.2143, "amortizacion_clp": 107825, "amortizacion_ext_clp": 1338383}]`
  * (the split is optional; when given, both legs must still add up with interés + seguros to the
@@ -12,7 +12,7 @@
  * `--apply` writes inside one IMMEDIATE transaction. Context: PARSERS.md «Mortgage sheet».
  */
 import fs from "node:fs";
-import { db } from "../src/db.js";
+import { db } from "../../src/db.js";
 
 
 type PlanItem = { cuota: string; min_uf: number; amortizacion_clp?: number; amortizacion_ext_clp?: number };

@@ -5,6 +5,7 @@ import { SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES, type IngestRunCompletion, type
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
 import { lastRunAt } from "../runGuard.js";
 import { lastSuccessfulSantanderFetchAt } from "../santander/fetchHistory.js";
+import { santanderLoginLatch } from "../santander/loginLatch.js";
 import { runHourly } from "./hourly.js";
 import { runNightly } from "./nightly.js";
 import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
@@ -22,16 +23,12 @@ function envFlag(name: string): boolean {
   return process.env[name] === "1";
 }
 
-function loginLatchFile(): string {
-  return path.join(resolveCfraserDir(), ".santander-login-rejected.json");
-}
-
 /** The bank facts the server decides the next balance poll from. */
 export function readSantanderState(): SantanderState {
   return {
     last_attempt_at: lastRunAt("santander")?.toISOString() ?? null,
     last_success_at: lastSuccessfulSantanderFetchAt()?.toISOString() ?? null,
-    login_latched: fs.existsSync(loginLatchFile()),
+    login_latched: santanderLoginLatch.isLatched(),
   };
 }
 
@@ -92,6 +89,7 @@ export async function runRequestedRun(
               afcFetch: request.afc_fetch,
               afcApply: envFlag("NW_TRACKER_AFC_APPLY"),
               payslips: request.payslips,
+              metlifeRead: request.metlife_read,
             })),
             activity: false,
           }
@@ -100,6 +98,7 @@ export async function runRequestedRun(
             santanderFetch: request.santander_fetch,
             santanderVeto: () => santanderVeto(readSantanderState()),
             groceryInboxCount,
+            metlifeRead: request.metlife_read,
           });
     const failed = x.steps.filter((s) => !s.ok).length;
     x.note(`${request.kind} run ${request.run_id} finished with ${failed} failed step(s)`);

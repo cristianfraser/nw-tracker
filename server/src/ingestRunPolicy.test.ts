@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { SantanderState } from "nw-tracker-contracts";
 import {
   decideAfcFetch,
+  decideMetlifeRead,
   decidePayslipsRun,
+  metlifeQuoteMissing,
+  metlifeQuoteSlotAtOrBefore,
   decideIngestRun,
   decideSantanderBalancePoll,
   hourlySlotAtOrBefore,
@@ -180,5 +183,78 @@ describe("decidePayslipsRun", () => {
     expect(decidePayslipsRun({ now: nightOf("2026-10-06"), latest: { period: "2026-09", paired: true } })).toBeNull();
     // An old unpaired payslip (the 2017 ones no deposit pays) never keeps the import running.
     expect(decidePayslipsRun({ now: nightOf("2026-10-20"), latest: { period: "2026-08", paired: false } })).toBeNull();
+  });
+});
+
+describe("the mortgage lender's quote slot and read", () => {
+  // November 2026 is UTC−3 in Chile: 07:00 Chile on the 11th = 10:00Z.
+  const SEVEN_ON_11TH = at("2026-11-11T10:00:00Z");
+
+  it("the quote is missing from 07:00 on the 11th until a quote due next month is stored", () => {
+    expect(metlifeQuoteMissing(at("2026-11-11T09:59:00Z"), "2026-11-10")).toBe(false);
+    expect(metlifeQuoteMissing(SEVEN_ON_11TH, "2026-11-10")).toBe(true);
+    expect(metlifeQuoteMissing(at("2026-11-20T15:00:00Z"), null)).toBe(true);
+    expect(metlifeQuoteMissing(at("2026-11-20T15:00:00Z"), "2026-12-10")).toBe(false);
+    expect(metlifeQuoteMissing(at("2026-11-05T15:00:00Z"), "2026-11-10")).toBe(false);
+    // December's cycle is due in January of the next year.
+    expect(metlifeQuoteMissing(at("2026-12-11T12:00:00Z"), "2026-12-10")).toBe(true);
+    expect(metlifeQuoteMissing(at("2026-12-11T12:00:00Z"), "2027-01-11")).toBe(false);
+  });
+
+  it("the extra slot is 07:00 on the 11th only, once due, and only while the quote is missing", () => {
+    expect(metlifeQuoteSlotAtOrBefore(at("2026-11-11T09:30:00Z"), null)).toBeNull();
+    expect(metlifeQuoteSlotAtOrBefore(at("2026-11-11T10:00:30Z"), null)).toEqual(SEVEN_ON_11TH);
+    expect(metlifeQuoteSlotAtOrBefore(at("2026-11-11T10:00:30Z"), "2026-12-10")).toBeNull();
+    expect(metlifeQuoteSlotAtOrBefore(at("2026-11-12T10:00:30Z"), null)).toBeNull();
+  });
+
+  it("decideIngestRun queues an hourly for the 07:00 slot, then the :30 grid takes over", () => {
+    const base = {
+      lastNightlySlot: at("2026-11-11T01:00:00Z"),
+      lastDailyRunAt: at("2026-11-11T01:20:00Z"),
+      lastHourlySlot: at("2026-11-11T09:30:00Z"),
+    };
+    const now = at("2026-11-11T10:00:30Z");
+    expect(decideIngestRun({ ...base, now, extraHourlySlot: metlifeQuoteSlotAtOrBefore(now, null) })).toMatchObject({
+      action: "request",
+      kind: "hourly",
+      slot: SEVEN_ON_11TH,
+    });
+    // Answered: nothing until 07:30.
+    expect(decideIngestRun({ ...base, now, lastHourlySlot: SEVEN_ON_11TH, extraHourlySlot: SEVEN_ON_11TH })).toEqual({ action: "idle" });
+    const later = at("2026-11-11T10:31:00Z");
+    expect(decideIngestRun({ ...base, now: later, lastHourlySlot: SEVEN_ON_11TH, extraHourlySlot: SEVEN_ON_11TH })).toMatchObject({
+      action: "request",
+      slot: at("2026-11-11T10:30:00Z"),
+    });
+  });
+
+  const read = (over: Partial<Parameters<typeof decideMetlifeRead>[0]>) =>
+    decideMetlifeRead({
+      now: at("2026-11-11T10:00:30Z"),
+      hasLoan: true,
+      latestQuoteDueOn: "2026-11-10",
+      ledgerLastDueMonth: "2026-11",
+      receipts: [],
+      lastReadRequestedAt: null,
+      ...over,
+    });
+
+  it("reads for the quote while it is missing, never within an hour of the last read, never without a loan", () => {
+    expect(read({})).toMatchObject({ mode: "quote" });
+    expect(read({ latestQuoteDueOn: "2026-12-10" })).toBeNull();
+    expect(read({ lastReadRequestedAt: at("2026-11-11T09:30:00Z") })).toBeNull();
+    expect(read({ lastReadRequestedAt: at("2026-11-11T08:59:00Z") })).toMatchObject({ mode: "quote" });
+    expect(read({ hasLoan: false })).toBeNull();
+  });
+
+  it("reads the posted cuota while a recent receipt names a cuota the ledger lacks, any day", () => {
+    const now = at("2026-11-25T15:00:00Z");
+    const receipt = { due_on: "2026-12-10", paid_on: "2026-11-24" };
+    expect(read({ now, latestQuoteDueOn: "2026-12-10", receipts: [receipt] })).toMatchObject({ mode: "posted" });
+    // The ledger has it: nothing.
+    expect(read({ now, latestQuoteDueOn: "2026-12-10", ledgerLastDueMonth: "2026-12", receipts: [receipt] })).toBeNull();
+    // An old receipt no longer asks.
+    expect(read({ now: at("2026-12-09T15:00:00Z"), latestQuoteDueOn: "2026-12-10", receipts: [receipt] })).toBeNull();
   });
 });
