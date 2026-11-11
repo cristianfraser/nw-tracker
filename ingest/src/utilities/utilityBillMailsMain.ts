@@ -10,7 +10,12 @@
  *   npm run import:utility-bills -w nw-tracker-ingest -- --from=2024-01-01 --to=2026-10-28
  *   … -- --archive=<enel-x.json>,<metrogas-y.json>                        # staged archives (named <provider>-…)
  *   … -- --dry-run                                                        # decode + report only
+ *   … -- --only-if-new                                                    # send only when a mail is new
  *
+ * `--only-if-new` (the hourly poll) compares the default window's message ids with the previous
+ * `<provider>-recent.json` before it is overwritten, and sends nothing when no mail is new — the
+ * statement lands within the hour it is mailed; the nightly sends the whole window regardless. It
+ * reports the new mails as `staged` and the bills the server stored as `inserted`.
  * Each provider's window is staged as `cfraser/utility-bill-mails/<provider>-<from>_<to>.json` (the
  * default window overwrites `<provider>-recent.json`). The default window spans two monthly bills,
  * so each bill's period can be read from the one before (`withAnnouncedPeriods`). A bill mail that
@@ -18,15 +23,19 @@
  * 75 days whose charge is overdue.
  */
 import fs from "node:fs";
+import path from "node:path";
 import { utilityBillKind, type UtilityBillApplyDetails } from "nw-tracker-contracts";
 import { archiveMails, type ArchivedMail } from "../email/mailFetcher.js";
 import { log } from "../log.js";
+import { resolveCfraserDir } from "../paths.js";
+import { reportStepResult } from "../stepResult.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { decodeHoaStatement, HOA_STATEMENT_SUBJECT, HOA_UNIT_PDF, loadHoaSenders } from "./hoaStatementMails.js";
 import { UTILITY_PROVIDERS, utilityBillsFromDecoded, type DecodedUtilityBill, type UtilityProvider } from "./utilityBillMails.js";
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run");
+const onlyIfNew = argv.includes("--only-if-new");
 const arg = (name: string) => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 
 function chileToday(): string {
@@ -57,18 +66,29 @@ function providerForFile(file: string): UtilityProvider {
   return p;
 }
 
-async function stagedMails(): Promise<{ mails: TaggedMail[]; ref: string }> {
+/** The message ids of a staged archive, or none when it is not there yet. */
+function stagedMessageIds(file: string): Set<string> {
+  if (!fs.existsSync(file)) return new Set();
+  return new Set((JSON.parse(fs.readFileSync(file, "utf8")) as ArchivedMail[]).map((m) => m.message_id));
+}
+
+/** The mails, and how many of them the previous default window did not hold (null: not compared). */
+async function stagedMails(): Promise<{ mails: TaggedMail[]; ref: string; newMails: number | null }> {
   const archives = arg("archive");
   if (archives) {
+    if (onlyIfNew) throw new Error("--only-if-new compares the default window; it does not take --archive");
     const files = archives.split(",");
     return {
       mails: files.flatMap((f) => (JSON.parse(fs.readFileSync(f, "utf8")) as ArchivedMail[]).map((mail) => ({ provider: providerForFile(f), mail }))),
       ref: files.map((f) => f.split("/").pop()).join(","),
+      newMails: null,
     };
   }
   let fromYmd = arg("from");
   const toYmd = arg("to") ?? chileToday();
   const windowed = !fromYmd;
+  if (onlyIfNew && (!windowed || arg("to"))) throw new Error("--only-if-new compares the default window; it does not take --from / --to");
+  let newMails = 0;
   if (!fromYmd) {
     const days = Number(arg("days") ?? "70");
     if (!Number.isInteger(days) || days < 1) throw new Error(`--days must be a positive integer`);
@@ -78,6 +98,7 @@ async function stagedMails(): Promise<{ mails: TaggedMail[]; ref: string }> {
   }
   const mails: TaggedMail[] = [];
   for (const p of PROVIDERS) {
+    const before = windowed ? stagedMessageIds(path.join(resolveCfraserDir(), "utility-bill-mails", `${p.slug}-recent.json`)) : new Set<string>();
     const { file } = await archiveMails({
       from: p.from,
       label: `${p.slug} bills`,
@@ -88,13 +109,20 @@ async function stagedMails(): Promise<{ mails: TaggedMail[]; ref: string }> {
       dir: "utility-bill-mails",
       fileName: windowed ? `${p.slug}-recent.json` : `${p.slug}-${fromYmd}_${toYmd}.json`,
     });
-    mails.push(...(JSON.parse(fs.readFileSync(file, "utf8")) as ArchivedMail[]).map((mail) => ({ provider: p, mail })));
+    const staged = JSON.parse(fs.readFileSync(file, "utf8")) as ArchivedMail[];
+    newMails += staged.filter((m) => !before.has(m.message_id)).length;
+    mails.push(...staged.map((mail) => ({ provider: p, mail })));
   }
-  return { mails, ref: `${fromYmd}_${toYmd}` };
+  return { mails, ref: `${fromYmd}_${toYmd}`, newMails: windowed ? newMails : null };
 }
 
 async function main(): Promise<number> {
-  const { mails, ref } = await stagedMails();
+  const { mails, ref, newMails } = await stagedMails();
+  if (newMails != null) reportStepResult({ staged: newMails });
+  if (onlyIfNew && newMails === 0) {
+    log(`${mails.length} mail(s), none new — nothing sent`);
+    return 0;
+  }
   const decoded: DecodedUtilityBill[] = [];
   let failed = 0;
   for (const { provider, mail } of mails) {
@@ -124,6 +152,7 @@ async function main(): Promise<number> {
     }
     const d = result.details as UtilityBillApplyDetails;
     log(`server: ${d.new_bills} new bill(s)`);
+    reportStepResult({ inserted: d.new_bills });
     // An overdue bill alarms while it is recent; an old one (a backfill reaching before the card
     // history) is listed, not failed on every night.
     const alarmFrom = new Date(`${chileToday()}T00:00:00Z`);

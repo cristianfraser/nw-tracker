@@ -179,6 +179,7 @@ describe("runHourly", () => {
       "fetch:apple-mail",
       "fetch:emails",
       "import:transfer-mails --days=2",
+      "import:utility-bills --only-if-new",
       "import:fintual-wallet --apply",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
@@ -196,6 +197,7 @@ describe("runHourly", () => {
       "import:fintual-emails --apply",
       "import:racional-emails --apply",
       "import:transfer-mails --days=2",
+      "import:utility-bills --only-if-new",
       "import:fintual-wallet --apply",
     ]);
   });
@@ -215,6 +217,14 @@ describe("runHourly", () => {
       "import:transfer-mails": { inserted: 1 },
     });
     expect((await runHourly(x, HOURLY)).activity).toBe(true);
+  });
+
+  it("reads the bill mails every hour and counts a new one as activity", async () => {
+    const quiet = fakeRunner({ "fetch:emails": { staged: 0 }, "import:utility-bills": { staged: 0 } });
+    expect((await runHourly(quiet.x, HOURLY)).activity).toBe(false);
+    expect(quiet.calls).toContain("import:utility-bills --only-if-new");
+    const mailed = fakeRunner({ "fetch:emails": { staged: 0 }, "import:utility-bills": { staged: 1 } });
+    expect((await runHourly(mailed.x, HOURLY)).activity).toBe(true);
   });
 
   it("reads the Fintual wallet every hour and counts a booked interest credit as activity", async () => {
@@ -240,6 +250,7 @@ describe("runHourly", () => {
     expect(calls.slice(6)).toEqual([
       "fetch:santander --balance-poll",
       "import:transfer-mails --days=2",
+      "import:utility-bills --only-if-new",
       "import:fintual-wallet --apply",
     ]);
   });
@@ -261,6 +272,7 @@ describe("runHourly", () => {
       "import:cfraser-inbox",
       "server-task cc_bank_cupo_check --recheck",
       "import:transfer-mails --days=2",
+      "import:utility-bills --only-if-new",
       "import:fintual-wallet --apply",
     ]);
   });

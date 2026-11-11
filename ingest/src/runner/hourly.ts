@@ -132,6 +132,13 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     : await x.step("Transfer mails", ingest("import:transfer-mails", "--days=2"));
   const mailMovements = transfers.result.inserted ?? 0;
 
+  // Every hour: a utility bill or gastos comunes statement is stored the hour it is mailed (sent
+  // only when the default window holds a new mail; the nightly sends the whole window).
+  const bills = o.dryRun
+    ? await x.step("Utility bill mails (dry run)", ingest("import:utility-bills", "--only-if-new", "--dry-run"))
+    : await x.step("Utility bill mails", ingest("import:utility-bills", "--only-if-new"));
+  const billMails = bills.result.staged ?? 0;
+
   // Every hour: the Fintual dollar wallet's cash interest, which no mail announces (one /gql
   // request); a credit is in the ledger within the hour it posts.
   const wallet =
@@ -149,13 +156,14 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     beMsgs > 0 ||
     listings.length > 0 ||
     mailMovements > 0 ||
+    billMails > 0 ||
     sheetRows > 0 ||
     walletInterest > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, mortgage sheet rows=${sheetRows}, ` +
+        `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, mortgage sheet rows=${sheetRows}, ` +
         `fintual wallet interest=${walletInterest}`
     );
   }
