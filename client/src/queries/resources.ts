@@ -14,18 +14,18 @@ export const resources = {
   /** The expense lines and everything built from them: gastos views, flows overview, «Últimos gastos». */
   expenseLines: (): Invalidation[] => [
     { queryKey: queryKeys.flowsExpenses() },
-    { queryKey: queryKeys.latestExpensesAll() },
+    { queryKey: queryKeys.latestMovementsAll() },
   ],
   /** The lines' rows only (names, labels): the gastos views and the overview do not move. */
   expenseLineRows: (): Invalidation[] => [
     { queryKey: queryKeys.flowsExpenses(), exact: true },
-    { queryKey: queryKeys.latestExpensesAll() },
+    { queryKey: queryKeys.latestMovementsAll() },
   ],
   /** A big group on a line: the rows, the gastos views (chart filter, usage), «Últimos gastos». */
   expenseBigGroups: (): Invalidation[] => [
     { queryKey: queryKeys.flowsExpensesGastosAll() },
     { queryKey: queryKeys.flowsExpenses(), exact: true },
-    { queryKey: queryKeys.latestExpensesAll() },
+    { queryKey: queryKeys.latestMovementsAll() },
   ],
   /** The big-group catalog (labels) on the Expenses page. */
   expenseBigGroupCatalog: (): Invalidation[] => [{ queryKey: queryKeys.flowsExpenses() }],

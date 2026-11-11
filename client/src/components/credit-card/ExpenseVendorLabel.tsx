@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../../cn";
-import { useTranslation } from "../../i18n";
-import type { FlowCcExpenseLineRow } from "../../types";
+import i18n, { useTranslation } from "../../i18n";
+import type { ExpenseLinePaymentName, FlowCcExpenseLineRow } from "../../types";
 import { HoverPopover } from "../ui/HoverPopover";
 import { InfoIcon } from "../icons/InfoIcon";
 import { MoreIcon } from "../icons/MoreIcon";
@@ -19,6 +19,7 @@ export type ExpenseVendorSource = {
   Pick<
     FlowCcExpenseLineRow,
     | "display_merchant"
+    | "payment_name"
     | "merchant_processor"
     | "link_label"
     | "payment_receipt"
@@ -73,8 +74,12 @@ function InfoBlock({ lines }: { lines: readonly string[] }) {
 export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
   const { t } = useTranslation();
   const blocks: ReactNode[] = [];
-  if (source.display_merchant != null && source.merchant) {
-    const bank = [source.merchant];
+  if ((source.display_merchant != null || source.payment_name != null) && source.merchant) {
+    // A payment's name replaces the merchant: the store's name and the bank's text go here.
+    const bank =
+      source.payment_name != null && source.display_merchant != null && source.display_merchant !== source.merchant
+        ? [source.display_merchant, source.merchant]
+        : [source.merchant];
     if (source.merchant_processor) {
       bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: source.merchant_processor }));
     }
@@ -140,8 +145,21 @@ export function useExpenseVendorLinkLabel(source: ExpenseVendorSource): ExpenseV
   return null;
 }
 
-/** The name a row shows for its source: the server's display name, else the bank's. */
+/** A card payment's name («Pago Lider ·0101», «Pago con tarjeta Santander ·0781», «Pago desde …»). */
+export function expensePaymentName(p: ExpenseLinePaymentName): string {
+  switch (p.kind) {
+    case "pays_card":
+      return i18n.t("expenses.creditCard.paymentName.paysCard", { brand: p.card_brand, last4: p.card_last4 });
+    case "paid_by_card":
+      return i18n.t("expenses.creditCard.paymentName.paidByCard", { brand: p.card_brand, last4: p.card_last4 });
+    case "paid_from_account":
+      return i18n.t("expenses.creditCard.paymentName.paidFromAccount", { account: p.account_name });
+  }
+}
+
+/** The name a row shows for its source: a card payment's name, else the server's display name, else the bank's. */
 export function expenseVendorName(source: ExpenseVendorSource): string {
+  if (source.payment_name) return expensePaymentName(source.payment_name);
   return source.display_merchant ?? source.merchant ?? "—";
 }
 

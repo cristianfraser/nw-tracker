@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
 import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
@@ -361,6 +362,9 @@ export function importCcStatementsMerge(
         kind: line.kind,
       });
       const statementLineId = Number(ins.lastInsertRowid);
+      // The day the purchase reached the ledger (kept when its flow already has one: a cuota line of
+      // a plan on file, or a re-import whose adoption below carries the vanished line's day).
+      recordCardLineFlowFirstSeen(statementLineId);
       const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
       writtenHere.add(statementLineId);
       insertedLineIdsByStatement.set(statementId, writtenHere);

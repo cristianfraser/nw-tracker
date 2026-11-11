@@ -50,7 +50,7 @@ export const EXPENSE_METADATA_TABLES: ReadonlySet<string> = new Set([
   "cc_expense_big_groups", "cc_expense_categories", "cc_expense_generic_unique_merchants",
   "cc_expense_line_categories",
   "crypto_trade_details", "expense_accounts", "expense_category_rules",
-  "expense_entries", "expense_groups", "f22_settlements", "flow_big_groups", "flow_categories", "flow_evidence", "flow_income_overrides", "flow_link_rejections", "flow_notes", "flow_orphan_assignments", "flow_parts", "flow_refunds", "flows",
+  "expense_entries", "expense_groups", "f22_settlements", "flow_big_groups", "flow_categories", "flow_evidence", "flow_first_seen", "flow_income_overrides", "flow_link_rejections", "flow_notes", "flow_orphan_assignments", "flow_parts", "flow_refunds", "flows",
   "grocery_branch_merchants", "grocery_brands",
   "grocery_product_aliases", "grocery_products", "grocery_receipt_items", "grocery_receipts", "import_batches",
   "income_entries", "incoming_wire_booking_notices", "incoming_wire_notices", "market_display_series",

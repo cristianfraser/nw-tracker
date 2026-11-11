@@ -28,28 +28,28 @@ beforeEach(() => {
 type Payload = { schema_version: number; rows: number[] };
 
 const LATEST = persistedPayload(
-  "latest_expenses",
-  (v): v is Payload => hasSchemaVersion(v, "latest_expenses") && Array.isArray((v as Payload).rows)
+  "latest_movements",
+  (v): v is Payload => hasSchemaVersion(v, "latest_movements") && Array.isArray((v as Payload).rows)
 );
-const current = (rows: number[]): Payload => ({ schema_version: DTO_SCHEMA_VERSIONS.latest_expenses, rows });
+const current = (rows: number[]): Payload => ({ schema_version: DTO_SCHEMA_VERSIONS.latest_movements, rows });
 
 describe("persisted payload cache", () => {
   it("stores and reads a payload under its name, version and scope", () => {
     expect(writePersistedPayload(LATEST, ["clp"], current([1, 2]))).toBe(true);
-    expect(storage.has(`nw:cache:latest_expenses:v${DTO_SCHEMA_VERSIONS.latest_expenses}:clp`)).toBe(true);
+    expect(storage.has(`nw:cache:latest_movements:v${DTO_SCHEMA_VERSIONS.latest_movements}:clp`)).toBe(true);
     expect(readPersistedPayload(LATEST, ["clp"])).toEqual(current([1, 2]));
     expect(readPersistedPayload(LATEST, ["usd"])).toBeUndefined();
   });
 
   it("never stores a payload of another schema version (a server lagging a deploy)", () => {
-    const old = { schema_version: DTO_SCHEMA_VERSIONS.latest_expenses - 1, rows: [] };
+    const old = { schema_version: DTO_SCHEMA_VERSIONS.latest_movements - 1, rows: [] };
     expect(writePersistedPayload(LATEST, [], old as Payload)).toBe(false);
     expect(storage.size).toBe(0);
   });
 
   it("drops an entry in a shape this client does not read", () => {
-    const key = persistedPayloadKey("latest_expenses");
-    storage.set(key, JSON.stringify({ schema_version: DTO_SCHEMA_VERSIONS.latest_expenses }));
+    const key = persistedPayloadKey("latest_movements");
+    storage.set(key, JSON.stringify({ schema_version: DTO_SCHEMA_VERSIONS.latest_movements }));
     expect(readPersistedPayload(LATEST)).toBeUndefined();
     expect(storage.has(key)).toBe(false);
     storage.set(key, "{not json");

@@ -26,7 +26,7 @@ export type DashboardTileId =
   | "returns"
   | "detail"
   | "wealth-flows"
-  | "latest-expenses"
+  | "latest-movements"
   | "export"
   | "accounts";
 
@@ -67,7 +67,7 @@ const READING_ORDER: readonly DashboardTileId[] = [
   "allocation",
   "detail",
   "wealth-flows",
-  "latest-expenses",
+  "latest-movements",
   "export",
   "accounts",
 ];
@@ -84,7 +84,7 @@ const NOMINAL_HEIGHTS: Partial<Record<DashboardTileId, number>> = {
   returns: 6,
   detail: 12,
   "wealth-flows": 12,
-  "latest-expenses": 8,
+  "latest-movements": 8,
   export: 1,
   accounts: 8,
 };
@@ -116,7 +116,7 @@ const L: Record<DashboardTileId, TileRect> = {
   returns: { x: 0, y: 24, w: 8, h: 6 },
   "flows-periods": { x: 8, y: 1, w: 4, h: 9 },
   "cc-upcoming": { x: 8, y: 10, w: 4, h: 6 },
-  "latest-expenses": { x: 8, y: 16, w: 4, h: 14 },
+  "latest-movements": { x: 8, y: 16, w: 4, h: 14 },
   "flows-chart": { x: 0, y: 30, w: 6, h: 10 },
   "perf-combo": { x: 6, y: 30, w: 6, h: 10 },
   allocation: { x: 0, y: 40, w: 6, h: 14 },

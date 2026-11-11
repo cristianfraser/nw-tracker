@@ -836,6 +836,11 @@ function overviewSourceInputs(): OverviewSourceInputs {
 /** The finalized expense lines the overview reads (`flowsMortgageCarrying.ts` holds the cache). */
 export { cachedFlowsExpenseLines };
 
+/** The income the overview counts (checking credits, manual entries, their kinds), from the cached inputs. */
+export function cachedFlowsIncome(): FlowsOverviewIncome {
+  return overviewSourceInputs().income;
+}
+
 function gastosByMonth(
   src: OverviewSourceInputs,
   unit: GastosUnit,

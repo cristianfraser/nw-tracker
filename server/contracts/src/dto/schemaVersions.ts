@@ -20,8 +20,8 @@ export const DTO_SCHEMA_VERSIONS = {
   sidebar_nav: 7,
   /** The page bundle's `upcoming_payments` («Próximos pagos»). */
   upcoming_payments: 5,
-  /** `GET /api/dashboard/latest-expenses` («Últimos gastos»); v3 adds the line shapes and row capabilities. */
-  latest_expenses: 3,
+  /** `GET /api/dashboard/latest-movements` («Últimos movimientos»: expense lines and income, by the day each happened). */
+  latest_movements: 1,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
   flows_overview: 2,
 } as const;

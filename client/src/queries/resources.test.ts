@@ -6,7 +6,7 @@ import { invalidateResources, resources } from "./resources";
 describe("resources", () => {
   it("an expense-line write refetches «Últimos gastos» (bug 13)", () => {
     const keys = resources.expenseLines().map((i) => i.queryKey);
-    expect(keys).toContainEqual(queryKeys.latestExpensesAll());
+    expect(keys).toContainEqual(queryKeys.latestMovementsAll());
     expect(keys).toContainEqual(queryKeys.flowsExpenses());
   });
 
@@ -18,7 +18,7 @@ describe("resources", () => {
       return Promise.resolve();
     }) as QueryClient["invalidateQueries"];
     await invalidateResources(qc, resources.expenseLines(), resources.expenseLines(), resources.income());
-    expect(calls).toEqual([queryKeys.flowsExpenses(), queryKeys.latestExpensesAll(), queryKeys.income()]);
+    expect(calls).toEqual([queryKeys.flowsExpenses(), queryKeys.latestMovementsAll(), queryKeys.income()]);
   });
 
   it("display-unit keys declare their entity length; others throw", () => {

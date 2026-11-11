@@ -208,11 +208,11 @@ export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit,
   });
 }
 
-/** Home «Últimos gastos»: the newest expense lines across every source. */
-export function useLatestExpenses(limit: number) {
+/** Home «Últimos movimientos»: the newest expense lines and income credits, interleaved. */
+export function useLatestMovements(limit: number) {
   return useQuery({
-    queryKey: queryKeys.latestExpenses(limit),
-    queryFn: () => api.latestExpenses(limit),
+    queryKey: queryKeys.latestMovements(limit),
+    queryFn: () => api.latestMovements(limit),
   });
 }
 

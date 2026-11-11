@@ -1,4 +1,6 @@
 import { requireStoredCardLineKind } from "./cards/lineKinds.js";
+import type { ExpenseLinePaymentName } from "nw-tracker-contracts/dto/flows";
+import { cardLineFirstSeenByLineId } from "./flows/flowFirstSeen.js";
 import type { CardLineKind } from "nw-tracker-contracts";
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
 import { expensePieceKeySuffix } from "./expenseKeys.js";
@@ -77,6 +79,7 @@ import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 
 import { enrichFlowLinesWithOriginLabels, type ExpenseLineOrigin } from "./ccExpenseOriginLabel.js";
 import { withExpenseDisplayNames, type CategoryRuleLinkDto, type ExpenseLinkLabel } from "./expenseDisplayNames.js";
+import { withExpensePaymentNames } from "./expensePaymentNames.js";
 import { withRecurringPaymentNames } from "./recurringLineNames.js";
 import { loadExpenseCategoryRules, specificRuleCategory, type CategoryRuleLink } from "./expenseCategoryRules.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
@@ -93,7 +96,7 @@ import {
 import { buildInstallmentPaymentGastosLines } from "./ccInstallmentPaymentGastosLines.js";
 import { buildInstallmentPlanGastosLines } from "./ccInstallmentPlanGastosLines.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
-import { applyCcFacturadoFinancingProjection } from "./ccFacturadoFinancingProjectionLines.js";
+import { applyCcFacturadoFinancingProjection, statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
 import {
   type CcExpenseLineRole,
   type CcExpenseGastosScope,
@@ -187,6 +190,18 @@ export type FlowCcExpenseLineRow = {
 
   purchase_on: string | null;
 
+  /**
+   * CC lines: the posting date the source printed (ISO), when it printed one; null otherwise.
+   * A card credit often carries the original purchase's date as its transaction date.
+   */
+  posting_on?: string | null;
+
+  /**
+   * CC lines: the Chile day the line's flow first reached the ledger (`flow_first_seen`,
+   * migration 310; null for lines first seen before it). Survives re-imports: it is the flow's.
+   */
+  first_seen_on?: string | null;
+
   /** Raw statement close (DD/MM/YYYY); empty for checking. */
 
   statement_date: string;
@@ -271,6 +286,14 @@ export type FlowCcExpenseLineRow = {
   /** The merchant as the row shows it, when it differs from the bank's (`expenseDisplayNames.ts`). */
   display_merchant?: string;
 
+  /**
+   * The line is a card payment, named by what it paid (server-built from the payment records, never
+   * the bank's text; the client words it): a charge or cuota plan that paid another card's facturado
+   * (`pays_card`), the payment line on the card a facturado payment paid (`paid_by_card`), or a card
+   * payment line whose money came from a bank account (`paid_from_account`). Replaces the shown
+   * merchant; the bank's text stays in `merchant`.
+   */
+  payment_name?: ExpenseLinePaymentName;
   /** The payment processor whose prefix `display_merchant` dropped («Mercado Pago», «PayU»…). */
   merchant_processor?: string;
 
@@ -493,6 +516,7 @@ export function buildCcExpenseLines(
   const userClearedUniqueAtLoad = new Set(uniquePurchaseModeKeys);
 
   const dbLines = expenseEvidenceLines(accountIds);
+  const firstSeenByLineId = cardLineFirstSeenByLineId();
 
 
 
@@ -744,6 +768,10 @@ export function buildCcExpenseLines(
       occurred_on: statementDateIso,
 
       purchase_on: purchaseOn,
+
+      posting_on: isoFromDdMmYyyy(row.posting_date),
+
+      first_seen_on: firstSeenByLineId.get(row.statement_line_id) ?? null,
 
       statement_date: row.statement_date,
 
@@ -1015,6 +1043,10 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "recurring payment names", run: asRows(withRecurringPaymentNames) },
   { name: "subscription category", run: asRows(withSubscriptionCategory) },
   { name: "display names", run: asRows(withExpenseDisplayNames) },
+  {
+    name: "payment names",
+    run: asRows((lines: FlowCcExpenseLineRow[]) => withExpensePaymentNames(lines, statementFacturadoClpForBillingMonth)),
+  },
   { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },

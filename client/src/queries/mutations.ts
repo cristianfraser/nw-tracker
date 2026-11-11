@@ -226,7 +226,7 @@ export function usePatchCcExpensePurchaseNoteMutation() {
     },
     onSettled: () => {
       // The note is patched in place on the Expenses page; the dashboard list refetches.
-      void invalidateResources(queryClient, [{ queryKey: queryKeys.latestExpensesAll() }]);
+      void invalidateResources(queryClient, [{ queryKey: queryKeys.latestMovementsAll() }]);
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {

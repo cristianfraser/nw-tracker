@@ -517,6 +517,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "tax_residency_periods",
   "mortgage_payment_receipts",
   "mortgage_lender_quotes",
+  "flow_first_seen",
 ];
 
 /**

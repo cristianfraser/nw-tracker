@@ -1,5 +1,5 @@
 import { DEMO_EDITS_LIMITED } from "../../demoEdits";
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
@@ -395,6 +395,7 @@ function ExpenseLineRow({
   actions,
   expanded,
   onToggleExpanded,
+  date,
 }: {
   line: FlowCcExpenseLineRow;
   categories: readonly CcExpenseCategoryDto[];
@@ -405,6 +406,8 @@ function ExpenseLineRow({
   actions: RowActions;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /** The date the row shows instead of the line's purchase date (a list ordered by another day). */
+  date?: string;
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
@@ -471,7 +474,7 @@ function ExpenseLineRow({
           />
         ) : null}
       </div>
-      <div className={cn("mono", "muted", styles.date)}>{lineDate(ln)}</div>
+      <div className={cn("mono", "muted", styles.date)}>{date ?? lineDate(ln)}</div>
       <div className={styles.pills}>
         {bigGroupOnRow ? (
           <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
@@ -618,6 +621,51 @@ function SortButton({
 }
 
 /**
+ * A row of the list that is not an expense line (an income credit on the home «Últimos
+ * movimientos»): the same grid and cells — origin icon, date, pills, vendor, amount — with no ⋯.
+ */
+export function ExpenseListStaticRow({
+  origin,
+  date,
+  pills,
+  vendor,
+  amount,
+}: {
+  origin: ReactNode;
+  date: string;
+  pills: ReactNode;
+  /** The vendor cell: an `ExpenseVendorLabel` with `className={expenseListVendorClassName}`. */
+  vendor: ReactNode;
+  amount: ReactNode;
+}) {
+  return (
+    <div role="listitem" className={styles.row}>
+      <div className={styles.origin}>
+        <span className={styles.originIcon}>{origin}</span>
+      </div>
+      <div className={cn("mono", "muted", styles.date)}>{date}</div>
+      <div className={styles.pills}>{pills}</div>
+      {vendor}
+      <div className={styles.amountCell}>
+        <span className={cn("mono", styles.amount)}>{amount}</span>
+      </div>
+      <div className={styles.more} />
+    </div>
+  );
+}
+
+/** The cell class a static row's vendor label takes (the expense rows' vendor styling). */
+export const expenseListVendorClassName = styles.vendor;
+
+/**
+ * One row of a list given in its own order (`items`): an expense line, drawn as the Expenses page
+ * draws it with `on` as its date, or a row of another kind (`ExpenseListStaticRow`).
+ */
+export type ExpenseListItem =
+  | { kind: "expense"; on?: string; line: FlowCcExpenseLineRow }
+  | { kind: "custom"; key: string; node: ReactNode };
+
+/**
  * Expense lines as a responsive list: one row per line — origin icon, date and the category pill
  * (+ the big group's once set) on top, the merchant (+ note, ⓘ linked details) and the amount
  * (installment detail in superscript) below; the ⋯ button opens the row's extras (big group while
@@ -626,7 +674,8 @@ function SortButton({
  * width; narrow containers stack the pills under the merchant.
  */
 export function CreditCardExpenseLinesTable({
-  lines,
+  lines = [],
+  items,
   categories,
   emptyLabel,
   showCategoryControls = true,
@@ -640,7 +689,12 @@ export function CreditCardExpenseLinesTable({
   hideHeader = false,
   loading,
 }: {
-  lines: readonly FlowCcExpenseLineRow[];
+  lines?: readonly FlowCcExpenseLineRow[];
+  /**
+   * The rows in their own order, expense lines and rows of other kinds interleaved; replaces
+   * `lines` (no sort header, no sorting).
+   */
+  items?: readonly ExpenseListItem[];
   categories: readonly CcExpenseCategoryDto[];
   emptyLabel: string;
   showCategoryControls?: boolean;
@@ -679,7 +733,8 @@ export function CreditCardExpenseLinesTable({
     [categoryLabelBySlug, lines, sort]
   );
 
-  if (lines.length === 0 && !loading) {
+  const rowCount = items != null ? items.length : lines.length;
+  if (rowCount === 0 && !loading) {
     return <p className="muted" style={{ margin: 0 }}>{emptyLabel}</p>;
   }
 
@@ -715,7 +770,7 @@ export function CreditCardExpenseLinesTable({
           anySelected && styles.listHasSelection
         )}
       >
-        {hideHeader ? null : (
+        {hideHeader || items != null ? null : (
         <div className={styles.header}>
           <SortButton sortKey="date" label={t("expenses.creditCard.lineRow.sortDate")} sort={sort} onSort={onSort} />
           <span className={styles.headerRight}>
@@ -735,12 +790,15 @@ export function CreditCardExpenseLinesTable({
         </div>
         )}
         <div role="list">
-          {visible.map((ln) => {
+          {(items ?? visible.map((line): ExpenseListItem => ({ kind: "expense", line }))).map((item) => {
+            if (item.kind === "custom") return <Fragment key={item.key}>{item.node}</Fragment>;
+            const ln = item.line;
             const key = expenseLineRowKey(ln);
             return (
               <ExpenseLineRow
                 key={key}
                 line={ln}
+                date={item.on}
                 categories={categories}
                 bigGroups={bigGroups}
                 showCategoryControls={showCategoryControls}

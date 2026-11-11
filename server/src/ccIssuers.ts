@@ -47,6 +47,8 @@ export type CcStatementCurrencies = { primary: string; secondary: readonly strin
 
 type CcIssuerDef = {
   slug: string;
+  /** The card's short brand as a payment line names it («Pago Lider ·0101»). */
+  display_brand: string;
   sort_order: number;
   statement_currencies: CcStatementCurrencies;
   /** The issuer offers cuota products: a card of an issuer without them has its statements as the whole evidence. */
@@ -97,6 +99,7 @@ type CcIssuerDef = {
 export const CC_ISSUERS = [
   {
     slug: "santander",
+    display_brand: "Santander",
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
     unbilled_listing: true,
@@ -112,6 +115,7 @@ export const CC_ISSUERS = [
   },
   {
     slug: "bci",
+    display_brand: "Lider",
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
     unbilled_listing: true,
@@ -127,6 +131,7 @@ export const CC_ISSUERS = [
   },
   {
     slug: "cmr",
+    display_brand: "CMR",
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
     unbilled_listing: false,
@@ -145,6 +150,7 @@ export const CC_ISSUERS = [
     // fixed day of the month, the next cycle starting the day after, due 25 days after the close.
     // No cuotas (a US card has none), no feed, no paste.
     slug: "lonestar",
+    display_brand: "Lonestar",
     statement_currencies: { primary: "usd", secondary: [] },
     installments: false,
     unbilled_listing: false,

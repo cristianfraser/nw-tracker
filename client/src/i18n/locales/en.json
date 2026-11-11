@@ -345,9 +345,10 @@
       "summaryAria": "Deposits and total and period Δ"
     },
     "wealthFlowsTitle": "Wealth flows",
-    "latestExpenses": {
-      "title": "Latest expenses",
-      "empty": "No expenses yet."
+    "latestMovements": {
+      "title": "Latest movements",
+      "empty": "No recent movements",
+      "showMore": "Show more"
     }
   },
   "sidebar": {
@@ -1604,6 +1605,11 @@
         "saving": "Saving…",
         "delete": "Delete",
         "deleteConfirm": "Delete this manual expense?"
+      },
+      "paymentName": {
+        "paysCard": "Payment to {{brand}} ·{{last4}}",
+        "paidByCard": "Payment with {{brand}} card ·{{last4}}",
+        "paidFromAccount": "Payment from {{account}}"
       },
       "lineRow": {
         "planCountSave": "Change installments",

@@ -45,8 +45,8 @@ export const queryKeys = {
     withEntity(["groupConsolidatedTables", group, subgroup ?? null, unit] as const, 2),
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>
     withEntity(["groupPeriodReturns", group, unit] as const, 2),
-  latestExpenses: (limit: number) => ["latestExpenses", limit] as const,
-  latestExpensesAll: () => ["latestExpenses"] as const,
+  latestMovements: (limit: number) => ["latestMovements", limit] as const,
+  latestMovementsAll: () => ["latestMovements"] as const,
   groupConsolidatedMonthlyPage: (
     group: string,
     unit: DisplayUnit,

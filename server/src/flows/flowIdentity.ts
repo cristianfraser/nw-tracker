@@ -11,6 +11,7 @@ import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
 import { expenseKeySql } from "../expenseKeys.js";
 import { expenseKeyParts, resolveExpenseKey, type FlowSourceRow } from "./flowKeyResolve.js";
+import { carryFlowFirstSeen } from "./flowFirstSeen.js";
 
 export { expenseKeyParts };
 
@@ -93,6 +94,7 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
     for (const row of keyless.get(other)!) repointRow(row, target, dbHandle);
     // A facturado payment charge (migration 297) names the purchase by its flow: it follows it.
     dbHandle.prepare(`UPDATE cc_facturado_payment_charges SET flow_id = ? WHERE flow_id = ?`).run(target, other);
+    carryFlowFirstSeen(other, target, dbHandle);
     dbHandle.prepare(`DELETE FROM flows WHERE id = ? AND legacy_key IS NULL`).run(other);
   }
   dbHandle.prepare(`UPDATE flows SET legacy_key = ? WHERE id = ?`).run(resolved.flowKey, target);
@@ -169,6 +171,8 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
   }
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
+  // The day the purchase first reached the ledger: the earlier of the two.
+  carryFlowFirstSeen(from, to, dbHandle);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);
 }
 

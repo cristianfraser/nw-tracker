@@ -345,9 +345,10 @@
       "summaryAria": "Depósitos y Δ total y del período"
     },
     "wealthFlowsTitle": "Flujos de patrimonio",
-    "latestExpenses": {
-      "title": "Últimos gastos",
-      "empty": "Aún no hay gastos."
+    "latestMovements": {
+      "title": "Últimos movimientos",
+      "empty": "Sin movimientos recientes",
+      "showMore": "Ver más"
     }
   },
   "sidebar": {
@@ -1604,6 +1605,11 @@
         "saving": "Guardando…",
         "delete": "Eliminar",
         "deleteConfirm": "¿Eliminar este gasto manual?"
+      },
+      "paymentName": {
+        "paysCard": "Pago {{brand}} ·{{last4}}",
+        "paidByCard": "Pago con tarjeta {{brand}} ·{{last4}}",
+        "paidFromAccount": "Pago desde {{account}}"
       },
       "lineRow": {
         "planCountSave": "Cambiar cuotas",

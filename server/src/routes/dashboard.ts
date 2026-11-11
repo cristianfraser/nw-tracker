@@ -27,10 +27,10 @@ import {
   getGroupConsolidatedMonthlyPage,
 } from "../groupConsolidatedTables.js";
 import {
-  buildLatestExpenses,
-  LATEST_EXPENSES_DEFAULT_LIMIT,
-  LATEST_EXPENSES_MAX_LIMIT,
-} from "../latestExpenses.js";
+  buildLatestMovements,
+  LATEST_MOVEMENTS_DEFAULT_LIMIT,
+  LATEST_MOVEMENTS_MAX_LIMIT,
+} from "../latestMovements.js";
 import {
   buildGroupFlows,
   parseExtraFlowsFilterParams,
@@ -230,13 +230,13 @@ app.delete("/api/upcoming-payments/recurring/:id", (req, res) => {
   res.status(204).end();
 });
 
-app.get("/api/dashboard/latest-expenses", (req, res) => {
-  const limitRaw = req.query.limit == null ? LATEST_EXPENSES_DEFAULT_LIMIT : Number(req.query.limit);
-  if (!Number.isInteger(limitRaw) || limitRaw <= 0 || limitRaw > LATEST_EXPENSES_MAX_LIMIT) {
-    res.status(400).json({ error: `limit must be an integer 1..${LATEST_EXPENSES_MAX_LIMIT}` });
+app.get("/api/dashboard/latest-movements", (req, res) => {
+  const limitRaw = req.query.limit == null ? LATEST_MOVEMENTS_DEFAULT_LIMIT : Number(req.query.limit);
+  if (!Number.isInteger(limitRaw) || limitRaw <= 0 || limitRaw > LATEST_MOVEMENTS_MAX_LIMIT) {
+    res.status(400).json({ error: `limit must be an integer 1..${LATEST_MOVEMENTS_MAX_LIMIT}` });
     return;
   }
-  res.json(buildLatestExpenses(limitRaw));
+  res.json(buildLatestMovements(limitRaw));
 });
 
 /** Server-paginated consolidated detalle-por-mes rows (dashboard net_worth table). */

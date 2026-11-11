@@ -22,6 +22,7 @@ import { statementLineDateIso } from "../ccInstallmentPayBy.js";
 import { adoptFlow, flowExists, rowFlowId } from "./flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey } from "./flowIdentity.js";
 import { FLOW_HOLDING_TABLES } from "./flowRetirement290.js";
+import { cardLineFirstSeenForAccount, keepEarlierFlowFirstSeen } from "./flowFirstSeen.js";
 
 export type CcLineIdentitySource = {
   account_id: number;
@@ -381,7 +382,15 @@ function assignmentSignature(ref: CcLineRef): string | null {
 }
 
 /** Lines of an account before a re-import writes (see {@link adoptReimportedCardLines}). */
-export type CardLineCapture = { accountId: number; lines: CcLineRef[] };
+export type CardLineCapture = {
+  accountId: number;
+  lines: CcLineRef[];
+  /**
+   * The day each line's flow first reached the ledger, by line id: a bare flow goes with its row
+   * on a re-import, so the day is read before the write and carried onto the line that replaces it.
+   */
+  firstSeenByLineId: Map<number, string>;
+};
 
 export function captureCardLines(accountId: number): CardLineCapture {
   // A flow that holds nothing and answers to no key goes with its row, and `flows` reuses ids: only
@@ -389,7 +398,7 @@ export function captureCardLines(accountId: number): CardLineCapture {
   const lines = listCcLineRefsForAccount(accountId).map((r) =>
     r.flowId != null && !flowOutlivesRows(r.flowId) ? { ...r, flowId: null } : r
   );
-  return { accountId, lines };
+  return { accountId, lines, firstSeenByLineId: cardLineFirstSeenForAccount(accountId) };
 }
 
 function flowOutlivesRows(flowId: number): boolean {
@@ -419,6 +428,7 @@ export function adoptReimportedCardLines(capture: CardLineCapture): ReimportedCa
   const plan = planCcLineMoves(vanished, appeared, survivors);
   const fan = fanOutUniformGroups(plan.ambiguousGroups);
   const applied = adoptCardLineMoves([...plan.moves, ...fan.moves]);
+  carryFirstSeenOntoReplacingLines([...plan.moves, ...fan.moves], capture.firstSeenByLineId);
   // After the adoptions: a kept line's flow carries what its twin's had by now.
   const siblings = adoptCardLineMoves(copyOntoNewSiblings(plan.besideSurvivors));
   applied.copied += siblings.copied;
@@ -434,6 +444,22 @@ export function adoptReimportedCardLines(capture: CardLineCapture): ReimportedCa
     .filter(({ r }) => held(r))
     .map(({ r, reason }) => ({ lineId: r.lineId, parserRowId: r.parserRowId, reason }));
   return { ...applied, unpaired };
+}
+
+/**
+ * A replacing line's flow keeps the earlier first-seen day of the two: the re-imported line was
+ * recorded today, the line it replaces may have arrived long before (its flow may already be gone).
+ * Not onto a new sibling beside a kept line (it may be its own purchase), nor across cuota lines
+ * (their flow is their plan's).
+ */
+function carryFirstSeenOntoReplacingLines(moves: readonly CcLineMove[], firstSeenByLineId: Map<number, string>): void {
+  for (const move of moves) {
+    if (move.from.installment || move.to.installment) continue;
+    const day = firstSeenByLineId.get(move.from.lineId);
+    if (!day) continue;
+    const flow = rowFlowId("cc_statement_lines", move.to.lineId);
+    if (flow != null) keepEarlierFlowFirstSeen(flow, day);
+  }
 }
 
 /**

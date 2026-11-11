@@ -1044,14 +1044,18 @@
       "en": "Wealth flows",
       "es": "Flujos de patrimonio"
     },
-    "latestExpenses": {
+    "latestMovements": {
       "title": {
-        "en": "Latest expenses",
-        "es": "Últimos gastos"
+        "en": "Latest movements",
+        "es": "Últimos movimientos"
       },
       "empty": {
-        "en": "No expenses yet.",
-        "es": "Aún no hay gastos."
+        "en": "No recent movements",
+        "es": "Sin movimientos recientes"
+      },
+      "showMore": {
+        "en": "Show more",
+        "es": "Ver más"
       }
     }
   },
@@ -5543,6 +5547,11 @@
           "en": "Delete this manual expense?",
           "es": "¿Eliminar este gasto manual?"
         }
+      },
+      "paymentName": {
+        "paysCard": { "en": "Payment to {{brand}} ·{{last4}}", "es": "Pago {{brand}} ·{{last4}}" },
+        "paidByCard": { "en": "Payment with {{brand}} card ·{{last4}}", "es": "Pago con tarjeta {{brand}} ·{{last4}}" },
+        "paidFromAccount": { "en": "Payment from {{account}}", "es": "Pago desde {{account}}" }
       },
       "lineRow": {
         "planCountSave": {

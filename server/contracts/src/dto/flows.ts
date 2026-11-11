@@ -242,6 +242,12 @@ export interface CcFacturadoFinancingLink {
 }
 
 /** Who a bank transfer went to or came from, as the bank's mail states it (server: bankTransferNotices.ts). */
+/** See `FlowCcExpenseLineRow.payment_name`. `card_brand` is the issuer's short brand («Lider», «Santander»). */
+export type ExpenseLinePaymentName =
+  | { kind: "pays_card"; card_brand: string; card_last4: string }
+  | { kind: "paid_by_card"; card_brand: string; card_last4: string }
+  | { kind: "paid_from_account"; account_name: string };
+
 export interface TransferCounterparty {
   direction: "out" | "in" | "own";
   name: string | null;
@@ -343,6 +349,16 @@ export interface FlowCcExpenseLineRow {
   gastos_scope?: CcFacturadoFinancingGastosScope;
   occurred_on: string;
   purchase_on: string | null;
+  /**
+   * CC lines: the posting date the source printed (ISO), when it printed one; null otherwise.
+   * A card credit often carries the original purchase's date as its transaction date.
+   */
+  posting_on?: string | null;
+  /**
+   * CC lines: the Chile day the line's flow first reached the ledger (`flow_first_seen`, recorded
+   * from 2026-11-11 on; null for lines first seen before then). Survives re-imports: it is the flow's.
+   */
+  first_seen_on?: string | null;
   statement_date: string;
   amount_clp: number;
   /** Original USD when the charge is on a USD statement (or USD-only line). */
@@ -372,6 +388,14 @@ export interface FlowCcExpenseLineRow {
   origin: ExpenseLineOrigin;
   /** The merchant as the row shows it, when it differs from the bank's `merchant` (server-built). */
   display_merchant?: string;
+  /**
+   * The line is a card payment, named by what it paid (server-built from the payment records, never
+   * the bank's text; the client words it): a charge or cuota plan that paid another card's facturado
+   * (`pays_card`), the payment line on the card a facturado payment paid (`paid_by_card`), or a card
+   * payment line whose money came from a bank account (`paid_from_account`). Replaces the shown
+   * merchant; the bank's text stays in `merchant`.
+   */
+  payment_name?: ExpenseLinePaymentName;
   /** The payment processor whose prefix `display_merchant` dropped («Mercado Pago», «PayU»…). */
   merchant_processor?: string;
   /** The short label of what the line is linked to (receipt payee, app, transfer counterparty). */
@@ -1005,14 +1029,46 @@ export interface RealEstateLinkCandidateDto {
   purchase_month_offset: number;
 }
 
-/** `GET /api/dashboard/latest-expenses` (home «Últimos gastos»): the newest gastos lines, whole. */
-export interface LatestExpensesResponse {
-  /** `DTO_SCHEMA_VERSIONS.latest_expenses`: the client stores this payload under that version. */
-  schema_version: (typeof DTO_SCHEMA_VERSIONS)["latest_expenses"];
-  /** Newest first. */
-  lines: FlowCcExpenseLineRow[];
+/**
+ * `GET /api/dashboard/latest-movements` (home «Últimos movimientos»): the newest movements, each on
+ * the day it happened (`on`). Expense lines go out whole (every line the Expenses page lists in
+ * «Total» mode, whether it counts toward gastos or not; cuota lines never), income as its own row.
+ */
+export interface LatestMovementsResponse {
+  /** `DTO_SCHEMA_VERSIONS.latest_movements`: the client stores this payload under that version. */
+  schema_version: (typeof DTO_SCHEMA_VERSIONS)["latest_movements"];
+  /** Newest first (by `on`). */
+  rows: LatestMovementRow[];
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
+}
+
+export type LatestMovementRow =
+  | {
+      kind: "expense";
+      /** The day the movement happened (ISO): a credit's arrival, never a backdated transaction date. */
+      on: string;
+      line: FlowCcExpenseLineRow;
+    }
+  | {
+      kind: "income";
+      on: string;
+      income: LatestIncomeMovement;
+    };
+
+/** An income credit (checking) or a hand-entered income, as the income page counts it. */
+export interface LatestIncomeMovement {
+  /** Stable row key: `checking:<movement id>` or `manual:<id>`. */
+  key: string;
+  source: "checking" | "manual";
+  /** Checking account label; null for manual income. */
+  account_label: string | null;
+  /** Bank description (checking) or the manual entry's source / note. */
+  description: string;
+  amount_clp: number;
+  amount_usd: number | null;
+  income_kind: IncomeKind | null;
+  transfer_counterparty?: TransferCounterparty;
 }
 
 /**

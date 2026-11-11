@@ -54,6 +54,7 @@ import { runTaxResidency302 } from "./taxResidency302.js";
 import { runOptionContracts304 } from "./optionContracts304.js";
 import { runMortgagePaymentReceipts307 } from "./mortgagePaymentReceipts307.js";
 import { runMortgageLenderQuotes308 } from "./mortgageLenderQuotes308.js";
+import { runFlowFirstSeen310 } from "./flows/flowFirstSeen310.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -378,6 +379,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "304_option_contracts.sql": runOptionContracts304,
   "307_mortgage_payment_receipts.sql": runMortgagePaymentReceipts307,
   "308_mortgage_lender_quotes.sql": runMortgageLenderQuotes308,
+  "310_flow_first_seen.sql": runFlowFirstSeen310,
 };
 
 /**

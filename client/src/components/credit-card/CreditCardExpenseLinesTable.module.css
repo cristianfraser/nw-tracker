@@ -191,15 +191,22 @@
   white-space: nowrap;
 }
 
+/* The merchant gives way a quarter as fast as the note and the link label after it. Whole factors:
+   flex items whose shrink factors add up to less than 1 absorb only that share of the overflow, so a
+   merchant alone at 0.25 ran into the amount. */
 .vendor > span {
-  flex: 0 1 auto;
+  flex: 0 4 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* The clip box is the line box, which cuts descenders («g», «p»): room above and below, given
+     back by the margin so the row keeps its height. */
+  padding-block: 0.15em;
+  margin-block: -0.15em;
 }
 
 .vendor > span:first-child {
-  flex-shrink: 0.25;
+  flex-shrink: 1;
 }
 
 .vendor > span[aria-hidden],

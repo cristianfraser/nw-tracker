@@ -8,7 +8,7 @@ import {
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { UpcomingPaymentsPanel } from "../components/dashboard/UpcomingPaymentsPanel";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
-import { LatestExpensesTable } from "../components/dashboard/LatestExpensesTable";
+import { LatestMovementsTable } from "../components/dashboard/LatestMovementsTable";
 import { ExportToolbarButton } from "../components/export/ExportModal";
 import {
   prefetchAccountsByPortfolioGroup,
@@ -690,7 +690,7 @@ export function DashboardPage() {
           <>
             <DashboardFlowsPeriods displayUnit={displayUnit} />
             <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
-            <LatestExpensesTable />
+            <LatestMovementsTable />
           </>
         ),
         tileOrder: dashboardTileOrder,

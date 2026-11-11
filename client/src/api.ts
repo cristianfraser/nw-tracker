@@ -335,9 +335,9 @@ export const api = {
     j<import("./types").GroupPeriodReturnsResponse>(
       `/api/groups/${encodeURIComponent(slug)}/period-returns${unit === "usd" ? "?include_usd=true" : ""}`
     ),
-  latestExpenses: (limit: number) =>
-    j<import("./types").LatestExpensesResponse>(
-      `/api/dashboard/latest-expenses?${new URLSearchParams({ limit: String(limit) }).toString()}`
+  latestMovements: (limit: number) =>
+    j<import("./types").LatestMovementsResponse>(
+      `/api/dashboard/latest-movements?${new URLSearchParams({ limit: String(limit) }).toString()}`
     ),
   groupConsolidatedMonthly: (
     slug: string,
