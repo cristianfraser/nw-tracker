@@ -101,7 +101,9 @@ const STEP_ANSWER_WAIT_MS = 30_000;
 /** From «Mis Pagos» to the mortgage's own page, which asks for `credits` and `history`. */
 const PRODUCT_PAGE_STEPS: readonly { label: string; patterns: readonly RegExp[] }[] = [
   { label: "MIS PRODUCTOS", patterns: [/^\s*mis productos\s*$/i] },
-  { label: "the mortgage", patterns: [/mutuo hipotecario/i, /hipotecario/i] },
+  // The product card («MUTUO HIPOTECARIO FLEXIBLE … Ver mi producto») renders after the page's own
+  // answers; its link is «Ver mi producto».
+  { label: "the mortgage", patterns: [/^\s*ver mi producto\s*$/i, /ver mi producto/i, /mutuo hipotecario/i] },
   { label: "the payment history", patterns: [/historial de pagos/i, /mis pagos realizados/i, /^\s*historial\s*$/i, /^\s*pagos\s*$/i] },
 ];
 
@@ -128,25 +130,39 @@ async function waitForAnswers(page: Page, answers: Map<MetlifeApiName, MetlifeAp
  * first «Mis Productos» was outside the viewport and every click on it timed out).
  */
 async function clickFirstVisible(page: Page, step: { label: string; patterns: readonly RegExp[] }): Promise<boolean> {
+  const deadline = Date.now() + STEP_FIND_WAIT_MS;
+  for (;;) {
+    if (await tryClickOnce(page, step)) return true;
+    if (Date.now() >= deadline) return false;
+    await page.waitForTimeout(POLL_MS);
+  }
+}
+
+/** How long a step looks for its target: the page renders its cards after its own answers. */
+const STEP_FIND_WAIT_MS = 20_000;
+
+async function tryClickOnce(page: Page, step: { label: string; patterns: readonly RegExp[] }): Promise<boolean> {
   const viewport = page.viewportSize() ?? (await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })));
   for (const pattern of step.patterns) {
-    const candidates = [
-      ...(["link", "button", "tab"] as const).map((role) => page.getByRole(role, { name: pattern })),
-      page.getByText(pattern),
-    ];
-    for (const group of candidates) {
-      const n = Math.min(await group.count().catch(() => 0), 20);
-      for (let i = 0; i < n; i++) {
-        const target = group.nth(i);
-        if (!(await target.isVisible().catch(() => false))) continue;
-        await target.scrollIntoViewIfNeeded({ timeout: 2_000 }).catch(() => undefined);
-        const box = await target.boundingBox().catch(() => null);
-        if (!box || box.width === 0 || box.height === 0) continue;
-        const inside = box.x + box.width > 0 && box.y + box.height > 0 && box.x < viewport.width && box.y < viewport.height;
-        if (!inside) continue;
-        log(`MetLife: opening «${(await target.innerText().catch(() => step.label)).trim().slice(0, 40)}»`);
-        await clickPastOverlays(page, target, "MetLife", "metlife-read");
-        return true;
+    for (const frame of page.frames()) {
+      const candidates = [
+        ...(["link", "button", "tab"] as const).map((role) => frame.getByRole(role, { name: pattern })),
+        frame.getByText(pattern),
+      ];
+      for (const group of candidates) {
+        const n = Math.min(await group.count().catch(() => 0), 20);
+        for (let i = 0; i < n; i++) {
+          const target = group.nth(i);
+          if (!(await target.isVisible().catch(() => false))) continue;
+          await target.scrollIntoViewIfNeeded({ timeout: 2_000 }).catch(() => undefined);
+          const box = await target.boundingBox().catch(() => null);
+          if (!box || box.width === 0 || box.height === 0) continue;
+          const inside = box.x + box.width > 0 && box.y + box.height > 0 && box.x < viewport.width && box.y < viewport.height;
+          if (!inside) continue;
+          log(`MetLife: opening «${(await target.innerText().catch(() => step.label)).trim().slice(0, 40)}»`);
+          await clickPastOverlays(page, target, "MetLife", "metlife-read");
+          return true;
+        }
       }
     }
   }
@@ -156,12 +172,27 @@ async function clickFirstVisible(page: Page, step: { label: string; patterns: re
 /** The visible links' and buttons' text, for the log when a step finds nothing. */
 async function visibleControls(page: Page): Promise<string[]> {
   try {
-    return await page.evaluate(() =>
-      Array.from(document.querySelectorAll("a, button, [role=tab], [role=button]"))
-        .filter((el) => (el as HTMLElement).offsetParent !== null)
-        .map((el) => ((el as HTMLElement).innerText ?? "").replace(/\s+/g, " ").trim())
-        .filter((t) => t.length > 0 && t.length < 60)
-    );
+    const all: string[] = [];
+    for (const frame of page.frames()) {
+      const texts = await frame
+        .evaluate(() => {
+          // Walk open shadow roots too: the portal's controls may sit in web components.
+          const out: string[] = [];
+          const walk = (root: Document | ShadowRoot) => {
+            for (const el of Array.from(root.querySelectorAll("*"))) {
+              if (el.shadowRoot) walk(el.shadowRoot);
+              if (!el.matches("a, button, [role=tab], [role=button], [role=link]")) continue;
+              const t = ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
+              if (t.length > 0 && t.length < 60) out.push(t);
+            }
+          };
+          walk(document);
+          return out;
+        })
+        .catch(() => [] as string[]);
+      all.push(...texts);
+    }
+    return all;
   } catch {
     return [];
   }
