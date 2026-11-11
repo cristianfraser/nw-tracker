@@ -14,12 +14,10 @@ import {
   decideAfcFetch,
   decideAfpUnoFetch,
   decideIngestRun,
-  decideMortgageSheetRun,
   decidePayslipsRun,
   decideSantanderBalancePoll,
   type IngestSchedulerDecision,
 } from "./ingestRunPolicy.js";
-import { latestRegularMortgageCuotaPaidOn } from "./mortgageSheetPaymentsApply.js";
 import { latestPayslip, latestSalaryPayslipPeriod } from "./payslipsApply.js";
 import { latestUnemploymentFundContributionPeriod } from "./unemploymentFundBalanceApply.js";
 import {
@@ -124,7 +122,6 @@ type RunRequestExtras = {
   afpUnoFetch: IngestRunRequest["afp_uno_fetch"];
   afcFetch: IngestRunRequest["afc_fetch"];
   payslips: IngestRunRequest["payslips"];
-  mortgageSheet: IngestRunRequest["mortgage_sheet"];
 };
 
 /** What a run of `kind` requested now carries besides its kind: the same rules for a slot and a manual run. */
@@ -142,8 +139,6 @@ function runRequestExtras(kind: IngestRunKind, now: Date): RunRequestExtras {
     // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
     // re-imports while the newest payslip waits for its deposit.
     payslips: kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null,
-    // Either kind reads the mortgage sheet while the cycle's cuota is not in the ledger (from the 11th).
-    mortgageSheet: decideMortgageSheetRun({ now, latestCuotaPaidOn: latestRegularMortgageCuotaPaidOn() }),
   };
 }
 
@@ -152,8 +147,7 @@ function extrasNote(e: RunRequestExtras): string {
     (e.santanderFetch ? `; Santander ${e.santanderFetch.mode}: ${e.santanderFetch.reason}` : "") +
     (e.afpUnoFetch ? `; AFP UNO: ${e.afpUnoFetch.reason}` : "") +
     (e.afcFetch ? `; AFC: ${e.afcFetch.reason}` : "") +
-    (e.payslips ? `; payslips: ${e.payslips.reason}` : "") +
-    (e.mortgageSheet ? `; mortgage sheet: ${e.mortgageSheet.reason}` : "")
+    (e.payslips ? `; payslips: ${e.payslips.reason}` : "")
   );
 }
 
@@ -292,7 +286,6 @@ export async function dispatchIngestJob(job: JobRow, now: Date, ctx: IngestDispa
     afp_uno_fetch: extras.afpUnoFetch,
     afc_fetch: extras.afcFetch,
     payslips: extras.payslips,
-    mortgage_sheet: extras.mortgageSheet,
   });
   if (answer.status === "accepted") {
     console.log(`ingest-runs: ${kind} run ${runId} (job ${job.id}) started (${job.reason}${extrasNote(extras)})`);

@@ -19,8 +19,6 @@ export type HourlyOptions = {
   santanderVeto: () => string | null;
   /** Photos waiting in `cfraser/grocery-receipts/inbox` — the one input no fetch stages. */
   groceryInboxCount: () => number;
-  /** The server's request to read the mortgage sheet (stale from the 11th until the cuota is in). */
-  mortgageSheet: { reason: string } | null;
 };
 
 export type HourlyResult = { santander: SantanderFetchOutcome | null; activity: boolean };
@@ -112,19 +110,6 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     }
   }
 
-  // The mortgage sheet the user keeps by hand, while the server says the cycle's cuota is not in
-  // the ledger (from the 11th): a cuota posted during the day is in the ledger within the hour.
-  let sheetRows = 0;
-  if (o.mortgageSheet == null) {
-    x.note("=== Mortgage sheet (not stale)");
-  } else {
-    x.note(`mortgage sheet — ${o.mortgageSheet.reason}`);
-    const sheet = o.dryRun
-      ? await x.step("Mortgage sheet (dry run)", ingest("import:mortgage-sheet", "--dry-run"))
-      : await x.step("Mortgage sheet", ingest("import:mortgage-sheet"));
-    sheetRows = sheet.result.inserted ?? 0;
-  }
-
   // Every hour: a transfer to or from the user's checking account is mailed the moment it is made,
   // and its movement is written from the mail until the 22:00 bank feed lists it.
   const transfers = o.dryRun
@@ -157,13 +142,12 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     listings.length > 0 ||
     mailMovements > 0 ||
     billMails > 0 ||
-    sheetRows > 0 ||
     walletInterest > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, mortgage sheet rows=${sheetRows}, ` +
+        `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, ` +
         `fintual wallet interest=${walletInterest}`
     );
   }

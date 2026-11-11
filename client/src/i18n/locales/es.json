@@ -891,7 +891,7 @@
         "segurosInteres": "Seguros · interés",
         "amortizaciones": "Amortización · extra"
       },
-      "cardLinesWithoutPayment": "Cargos en la tarjeta sin cuota en el ledger (registra la fila en la hoja de la hipoteca):"
+      "cardLinesWithoutPayment": "Cargos en la tarjeta sin cuota en el ledger (registra la cuota):"
     },
     "import": {
       "sectionTitle": "Importar movimientos y documentos",

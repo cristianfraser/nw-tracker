@@ -891,7 +891,7 @@
         "segurosInteres": "Insurance · interest",
         "amortizaciones": "Amortization · extra"
       },
-      "cardLinesWithoutPayment": "Card charges with no cuota in the ledger (post the row in the mortgage sheet):"
+      "cardLinesWithoutPayment": "Card charges with no cuota in the ledger (enter the cuota):"
     },
     "import": {
       "sectionTitle": "Import movements and documents",

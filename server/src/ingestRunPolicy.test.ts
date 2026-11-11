@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { SantanderState } from "nw-tracker-contracts";
 import {
   decideAfcFetch,
-  decideMortgageSheetRun,
   decidePayslipsRun,
   decideIngestRun,
   decideSantanderBalancePoll,
@@ -127,29 +126,6 @@ describe("decideSantanderBalancePoll", () => {
   });
 });
 
-
-describe("decideMortgageSheetRun", () => {
-  const at = (ymd: string, hourChile = 12) => new Date(`${ymd}T${String(hourChile + 3).padStart(2, "0")}:00:00Z`); // Chile UTC−3
-
-  it("is stale from the 11th until a cuota dated in the cycle is in the ledger", () => {
-    const paidSept = "2026-09-11";
-    expect(decideMortgageSheetRun({ now: at("2026-10-10"), latestCuotaPaidOn: paidSept })).toBeNull();
-    expect(decideMortgageSheetRun({ now: at("2026-10-11"), latestCuotaPaidOn: paidSept })).toEqual({
-      reason: "no mortgage cuota in the ledger since 2026-10-11",
-    });
-    expect(decideMortgageSheetRun({ now: at("2026-10-25"), latestCuotaPaidOn: paidSept })?.reason).toContain("2026-10-11");
-    expect(decideMortgageSheetRun({ now: at("2026-10-11"), latestCuotaPaidOn: "2026-10-11" })).toBeNull();
-    expect(decideMortgageSheetRun({ now: at("2026-11-05"), latestCuotaPaidOn: "2026-10-20" })).toBeNull();
-    expect(decideMortgageSheetRun({ now: at("2026-11-11"), latestCuotaPaidOn: "2026-10-20" })).not.toBeNull();
-  });
-
-  it("stays stale while a cuota is paid late, across the year, and with an empty ledger", () => {
-    expect(decideMortgageSheetRun({ now: at("2026-11-15"), latestCuotaPaidOn: "2026-09-11" })?.reason).toContain("2026-11-11");
-    expect(decideMortgageSheetRun({ now: at("2027-01-05"), latestCuotaPaidOn: "2026-11-11" })?.reason).toContain("2026-12-11");
-    expect(decideMortgageSheetRun({ now: at("2027-01-05"), latestCuotaPaidOn: "2026-12-15" })).toBeNull();
-    expect(decideMortgageSheetRun({ now: at("2026-10-11"), latestCuotaPaidOn: null })).not.toBeNull();
-  });
-});
 
 describe("decideAfcFetch", () => {
   /** 22:00 Chile (UTC−3) of the given day. */

@@ -37,7 +37,6 @@ const NIGHTLY: NightlyOptions = {
   afcFetch: null,
   afcApply: true,
   payslips: null,
-  mortgageSheet: null,
 };
 
 describe("runNightly", () => {
@@ -139,16 +138,6 @@ describe("runNightly", () => {
     expect(quiet.calls.some((c) => /buk|payroll/.test(c))).toBe(false);
   });
 
-  it("reads the mortgage sheet after the inbox pipeline when the server says it is stale", async () => {
-    const { x, calls, notes } = fakeRunner();
-    await runNightly(x, { ...NIGHTLY, mortgageSheet: { reason: "no mortgage cuota in the ledger since 2030-10-11" } });
-    expect(calls.indexOf("import:mortgage-sheet")).toBe(calls.indexOf("import:cfraser-inbox") + 1);
-    const without = fakeRunner();
-    await runNightly(without.x, NIGHTLY);
-    expect(without.calls).not.toContain("import:mortgage-sheet");
-    expect(without.notes).toContain("=== Mortgage sheet (not stale)");
-    expect(notes).not.toContain("=== Mortgage sheet (not stale)");
-  });
 
   it("opens no bank session in a dry run", async () => {
     const { x, calls } = fakeRunner();
@@ -164,7 +153,6 @@ const HOURLY: HourlyOptions = {
   santanderFetch: null,
   santanderVeto: () => null,
   groceryInboxCount: () => 0,
-  mortgageSheet: null,
 };
 
 describe("runHourly", () => {
@@ -183,7 +171,6 @@ describe("runHourly", () => {
       "import:fintual-wallet --apply",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
-    expect(notes).toContain("=== Mortgage sheet (not stale)");
   });
 
   it("imports what the hour staged", async () => {
@@ -202,14 +189,6 @@ describe("runHourly", () => {
     ]);
   });
 
-  it("reads the mortgage sheet when the server says it is stale, and counts a written cuota as activity", async () => {
-    const stale = { reason: "no mortgage cuota in the ledger since 2030-10-11" };
-    const quiet = fakeRunner({ "fetch:emails": { staged: 0 }, "import:mortgage-sheet": { inserted: 0 } });
-    expect((await runHourly(quiet.x, { ...HOURLY, mortgageSheet: stale })).activity).toBe(false);
-    expect(quiet.calls).toContain("import:mortgage-sheet");
-    const written = fakeRunner({ "fetch:emails": { staged: 0 }, "import:mortgage-sheet": { inserted: 1 } });
-    expect((await runHourly(written.x, { ...HOURLY, mortgageSheet: stale })).activity).toBe(true);
-  });
 
   it("counts a movement written from a transfer mail as activity", async () => {
     const { x } = fakeRunner({

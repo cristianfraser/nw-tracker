@@ -2911,8 +2911,8 @@
         }
       },
       "cardLinesWithoutPayment": {
-        "en": "Card charges with no cuota in the ledger (post the row in the mortgage sheet):",
-        "es": "Cargos en la tarjeta sin cuota en el ledger (registra la fila en la hoja de la hipoteca):"
+        "en": "Card charges with no cuota in the ledger (enter the cuota):",
+        "es": "Cargos en la tarjeta sin cuota en el ledger (registra la cuota):"
       }
     },
     "import": {
