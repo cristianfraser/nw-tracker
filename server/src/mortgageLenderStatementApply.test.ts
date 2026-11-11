@@ -216,8 +216,18 @@ describe("applyMortgageLenderStatement (synthetic depto)", () => {
 
   it("a paid cuota that is not the credit's last waits (no balance after it)", (ctx) => {
     if (skip) ctx.skip();
-    const r = send({ ...AFTER, credit: { ...AFTER.credit, last_paid_cuota: null } }, false);
+    const r = send({ ...AFTER, credit: { ...AFTER.credit, last_paid_cuota: 1 } }, false);
     expect(r.details.paid.find((p) => p.cuota === 2)).toMatchObject({ outcome: "waiting" });
+  });
+
+  it("with the last-paid fields blank, the balance follows the latest paid history row", (ctx) => {
+    if (skip) ctx.skip();
+    // The portal right after a payment: the balance already counts it, the last-paid fields are null.
+    const blank = { ...AFTER.credit, last_paid_cuota: null, last_paid_on: null, last_paid_pesos: null, total_cuotas: null };
+    expect(send({ ...AFTER, credit: blank }, false).details.paid.find((p) => p.cuota === 2)).toMatchObject({ outcome: "written" });
+    // A balance that does not follow from that cuota is still refused.
+    const off = send({ ...AFTER, credit: { ...blank, balance_uf: AFTER.credit.balance_uf - 1 } }, false);
+    expect(off.status).toBe("conflict");
   });
 
   it("a receipt stating another amount for the cuota's due month is a conflict, nothing written", (ctx) => {

@@ -259,8 +259,13 @@ export function applyMortgageLenderStatement(payload: Payload): MortgageLenderSt
 
     let ledger = deptoLedgerForLoan(loanId);
     const paidRows = payload.history.filter((h) => h.status === "paid").sort((a, b) => a.cuota - b.cuota);
+    // The cuota the stated balance follows. Right after a payment the portal blanks the credit's
+    // last-paid fields while its balance already counts the payment (seen 2026-11-11); the latest
+    // paid history row is then that cuota. The write's
+    // balance-chain check (before − principal at the day's UF ≈ the stated balance) still decides.
+    const lastPaid = payload.credit.last_paid_cuota ?? paidRows.at(-1)?.cuota ?? null;
     for (const h of paidRows) {
-      const isLast = payload.credit.last_paid_cuota === h.cuota;
+      const isLast = lastPaid === h.cuota;
       const balanceAfter = isLast ? payload.credit.balance_uf : null;
       const stored = ledger.find((r) => numericCuota(r.cuota) === h.cuota);
       checkReceipts(payload, h, differences);
@@ -274,7 +279,7 @@ export function applyMortgageLenderStatement(payload: Payload): MortgageLenderSt
         details.paid.push({
           cuota: h.cuota,
           outcome: "waiting",
-          detail: `not the credit's last paid cuota (${payload.credit.last_paid_cuota ?? "none"}): no balance after it is stated`,
+          detail: `not the credit's last paid cuota (${lastPaid ?? "none"}): no balance after it is stated`,
         });
         continue;
       }
