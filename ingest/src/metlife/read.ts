@@ -104,7 +104,8 @@ const PRODUCT_PAGE_STEPS: readonly { label: string; patterns: readonly RegExp[] 
   // The product card («MUTUO HIPOTECARIO FLEXIBLE … Ver mi producto») renders after the page's own
   // answers; its link is «Ver mi producto».
   { label: "the mortgage", patterns: [/^\s*ver mi producto\s*$/i, /ver mi producto/i, /mutuo hipotecario/i] },
-  { label: "the payment history", patterns: [/historial de pagos/i, /mis pagos realizados/i, /^\s*historial\s*$/i, /^\s*pagos\s*$/i] },
+  // The product page's tabs: «Mi Crédito» (credits) · «Mis Pagos» (history) · «Mis Documentos».
+  { label: "the payment history", patterns: [/^\s*mis pagos\s*$/i, /historial de pagos/i, /mis pagos realizados/i, /^\s*historial\s*$/i, /^\s*pagos\s*$/i] },
 ];
 
 function haveAll(answers: Map<MetlifeApiName, MetlifeApiCall>, names: readonly MetlifeApiName[]): boolean {
@@ -169,26 +170,29 @@ async function tryClickOnce(page: Page, step: { label: string; patterns: readonl
   return false;
 }
 
+/** The text of every link, button and tab, open shadow roots included. */
+const CONTROL_TEXTS_SCRIPT = `(() => {
+  const out = [];
+  const walk = (root) => {
+    for (const el of Array.from(root.querySelectorAll("*"))) {
+      if (el.shadowRoot) walk(el.shadowRoot);
+      if (!el.matches("a, button, [role=tab], [role=button], [role=link]")) continue;
+      const t = (el.innerText || el.textContent || "").replace(/\\s+/g, " ").trim();
+      if (t.length > 0 && t.length < 60) out.push(t);
+    }
+  };
+  walk(document);
+  return out;
+})()`;
+
 /** The visible links' and buttons' text, for the log when a step finds nothing. */
 async function visibleControls(page: Page): Promise<string[]> {
   try {
     const all: string[] = [];
     for (const frame of page.frames()) {
+      // A string, not a function: tsx wraps named functions in a `__name` helper the page lacks.
       const texts = await frame
-        .evaluate(() => {
-          // Walk open shadow roots too: the portal's controls may sit in web components.
-          const out: string[] = [];
-          const walk = (root: Document | ShadowRoot) => {
-            for (const el of Array.from(root.querySelectorAll("*"))) {
-              if (el.shadowRoot) walk(el.shadowRoot);
-              if (!el.matches("a, button, [role=tab], [role=button], [role=link]")) continue;
-              const t = ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
-              if (t.length > 0 && t.length < 60) out.push(t);
-            }
-          };
-          walk(document);
-          return out;
-        })
+        .evaluate<string[]>(CONTROL_TEXTS_SCRIPT)
         .catch(() => [] as string[]);
       all.push(...texts);
     }
