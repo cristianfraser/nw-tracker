@@ -30,7 +30,7 @@ import { log } from "../log.js";
 import { resolveCfraserDir } from "../paths.js";
 import { reportStepResult } from "../stepResult.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
-import { decodeHoaStatement, HOA_STATEMENT_SUBJECT, HOA_UNIT_PDF, loadHoaSenders } from "./hoaStatementMails.js";
+import { decodeHoaStatement, HOA_NOTES_PDF, HOA_STATEMENT_SUBJECT, HOA_UNIT_PDF, loadHoaSenders } from "./hoaStatementMails.js";
 import { UTILITY_PROVIDERS, utilityBillsFromDecoded, type DecodedUtilityBill, type UtilityProvider } from "./utilityBillMails.js";
 
 const argv = process.argv.slice(2);
@@ -52,7 +52,7 @@ const PROVIDERS: readonly UtilityProvider[] = [
     slug: s.provider,
     from: s.from,
     wantSubject: (subject: string) => HOA_STATEMENT_SUBJECT.test(subject),
-    pdfAttachment: (filename: string) => HOA_UNIT_PDF.test(filename),
+    pdfAttachment: (filename: string) => HOA_UNIT_PDF.test(filename) || HOA_NOTES_PDF.test(filename),
     decode: (mail: ArchivedMail) => decodeHoaStatement(mail, s.provider),
   })),
 ];

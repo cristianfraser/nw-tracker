@@ -9,6 +9,11 @@
  * the unit's own block: «Depto 1203», its share, fund and insurance, and «Total a pagar $68.200» —
  * what the unit pays.
  *
+ * The due date: «COMENTARIOS.pdf» prints the month's last day to pay («Último día para realizar el
+ * pago 20-11-2036»), set by the administrator each month; when it does, that is the due date, and
+ * only without it does the unit PDF's fixed term («dentro de los 5 días») count from the statement
+ * date (2026-11-11: the term read 13-11 for a month the administrator had set to the 20th).
+ *
  * The statement's month is the month before its date. The month printed in its header must name the
  * same month (its year is not read: one statement printed «diciembre-2025» for December 2024), and
  * so must the subject when it names one — subjects vary («… gastos comunes junio 2036», «… Octubre»,
@@ -38,6 +43,11 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 export const HOA_STATEMENT_SUBJECT = /\bgastos?\b/i;
 /** The unit's own statement: a PDF named after the unit number. */
 export const HOA_UNIT_PDF = /^\s*(\d+)\s*\.pdf\s*$/i;
+/** The building's notes for the month, which print the last day to pay. */
+export const HOA_NOTES_PDF = /^\s*comentarios\s*\.pdf\s*$/i;
+const LAST_PAY_DAY = /[ÚU]ltimo\s+d[íi]a\s+para\s+realizar\s+el\s+pago\s+(\d{2})-(\d{2})-(\d{4})/i;
+/** A printed last day this far from the statement date is not this statement's. */
+const LAST_PAY_DAY_MAX_DAYS = 45;
 
 /** The month (0-11) and year a subject names, if any. */
 export function subjectMonth(subject: string): { month: number; year: number | null } | null {
@@ -101,6 +111,16 @@ export function decodeHoaStatement(mail: ArchivedMail, provider: string): Decode
   if (!Number.isInteger(amount) || amount < 0) throw new Error(`${unitPdf.filename}: total «${total[1]}» is not whole pesos`);
   const term = t.match(/dentro de los\s+(\d+)\s+d\S*as\s+siguientes/i);
   if (!term) throw new Error(`${unitPdf.filename}: no payment term`);
+  const notes = (mail.attachments ?? []).filter((a) => HOA_NOTES_PDF.test(a.filename));
+  if (notes.length > 1) throw new Error(`expected at most one COMENTARIOS PDF, found ${notes.length}`);
+  const printed = notes[0]?.text.match(LAST_PAY_DAY);
+  let due = addDays(issued, Number(term[1]));
+  if (printed) {
+    due = `${printed[3]}-${printed[2]}-${printed[1]}`;
+    if (due < issued || due > addDays(issued, LAST_PAY_DAY_MAX_DAYS)) {
+      throw new Error(`COMENTARIOS.pdf: last day to pay ${due} is not within ${LAST_PAY_DAY_MAX_DAYS} days of the statement date ${issued}`);
+    }
+  }
 
   const ym = `${billYear}-${String(billMonth + 1).padStart(2, "0")}`;
   return {
@@ -110,7 +130,7 @@ export function decodeHoaStatement(mail: ArchivedMail, provider: string): Decode
     bill_number: `${unit[1]}-${ym}`,
     issued_on: issued,
     amount,
-    due_on: addDays(issued, Number(term[1])),
+    due_on: due,
     period_from: `${ym}-01`,
     period_to: lastDayOfMonth(billYear, billMonth),
     kwh: null,

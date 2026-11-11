@@ -63,6 +63,18 @@ describe("gastos comunes statements", () => {
     expect(() => utilityBillKind.payload.parse({ bills: utilityBillsFromDecoded([d]) })).not.toThrow();
   });
 
+  it("takes the last day to pay COMENTARIOS prints over the fixed term", () => {
+    const withDay = (text: string) => pdfs().map((p) => (p.filename === "COMENTARIOS.pdf" ? { ...p, text } : p));
+    const printed = `INFORMACIONES\n                 Último día para realizar el pago 20-10-2036\n`;
+    expect(decodeHoaStatement(mail("GASTOS COMUNES", withDay(printed)), "comunidad_edificio")!.due_on).toBe("2036-10-20");
+    // No such line, or no COMENTARIOS at all: the term from the statement date.
+    expect(decodeHoaStatement(mail("GASTOS COMUNES", withDay("Comentarios")), "comunidad_edificio")!.due_on).toBe("2036-10-13");
+    expect(decodeHoaStatement(mail("GASTOS COMUNES", pdfs().slice(0, 2)), "comunidad_edificio")!.due_on).toBe("2036-10-13");
+    // A printed day before the statement, or months after it, is not this statement's.
+    expect(() => decodeHoaStatement(mail("GASTOS COMUNES", withDay("Último día para realizar el pago 20-09-2036")), "x")).toThrow(/not within/);
+    expect(() => decodeHoaStatement(mail("GASTOS COMUNES", withDay("Último día para realizar el pago 20-12-2036")), "x")).toThrow(/not within/);
+  });
+
   it("takes a subject with no month, an abbreviated one, and a January statement for December", () => {
     expect(decodeHoaStatement(mail("BUENAS TARDES, ACA DEJO GASTOS COMUNES", pdfs()), "c")?.bill_number).toBe("1203-2036-09");
     const dec = unitStatement({ header: "diciembre-2037", dated: "Santiago 08 de enero de 2037" });
