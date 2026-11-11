@@ -57,8 +57,9 @@ export const DEMO_TICKERS: DemoInstrument[] = [
   us("NVDA", "2021-03-01", "XNAS", "NVIDIA Corporation", "EQUITY"),
   us("INTC", "2021-04-01", "XNAS", "Intel Corporation", "EQUITY"),
   us("OILK", "2026-05-01", "BATS", "ProShares K-1 Free Crude Oil ETF", "ETF"),
-  us("LNG", "2026-05-01", "XASE", "Cheniere Energy, Inc.", "EQUITY"),
-  us("SGOV", "2024-05-01", "ARCX", "iShares 0-3 Month Treasury Bond ETF", "ETF"),
+  us("LNG", "2026-05-01", "XNYS", "Cheniere Energy, Inc.", "EQUITY"),
+  // Yahoo states NYSE for SGOV (the fund lists on NYSE Arca); the declaration is held to Yahoo's answer.
+  us("SGOV", "2024-05-01", "XNYS", "iShares 0-3 Month Treasury Bond ETF", "ETF"),
   {
     ticker: "CFIETFIPSA.SN",
     firstUse: "2025-06-01",
