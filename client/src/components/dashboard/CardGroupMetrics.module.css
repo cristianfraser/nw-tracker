@@ -53,7 +53,19 @@
   align-items: baseline;
 }
 
+/*
+ * One monospace character wide at the row's own size (the width of a "$" on the plain lines), so
+ * the digits after it start where theirs do; the glyph inside is drawn small and centred.
+ */
 .deltaIcon {
+  font-family: var(--font-mono);
+  display: inline-flex;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1ch;
+}
+
+.deltaGlyph {
   font-size: 0.55rem;
   line-height: 1;
 }

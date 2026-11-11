@@ -28,7 +28,7 @@ export function DeltaMetricFlow({
     return (
       <span className={cn(styles.delta, className)}>
         <span className={cn(styles.deltaIcon, styles.deltaIconReserve)} aria-hidden>
-          ▲
+          <span className={styles.deltaGlyph}>▲</span>
         </span>
         <span className={cn(styles.amount, styles.amountEmpty, "mono")}>—</span>
       </span>
@@ -40,7 +40,7 @@ export function DeltaMetricFlow({
   return (
     <span className={cn(styles.delta, tone, className)}>
       <span className={styles.deltaIcon} aria-hidden>
-        {sign > 0 ? "▲" : sign < 0 ? "▼" : "◆"}
+        <span className={styles.deltaGlyph}>{sign > 0 ? "▲" : sign < 0 ? "▼" : "◆"}</span>
       </span>
       <AnimatedNumberFlow
         value={delta}
