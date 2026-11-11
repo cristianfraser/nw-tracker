@@ -122,22 +122,32 @@ async function waitForAnswers(page: Page, answers: Map<MetlifeApiName, MetlifeAp
   }
 }
 
-/** Click the first visible link or button whose text fits the step, through any overlay; false when none. */
+/**
+ * Click the first link, button, tab or text that fits the step AND lies inside the window, through
+ * any overlay; false when none. The portal keeps copies of its menu off-screen (2026-11-11: the
+ * first «Mis Productos» was outside the viewport and every click on it timed out).
+ */
 async function clickFirstVisible(page: Page, step: { label: string; patterns: readonly RegExp[] }): Promise<boolean> {
+  const viewport = page.viewportSize() ?? (await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })));
   for (const pattern of step.patterns) {
-    for (const role of ["link", "button", "tab"] as const) {
-      const target = page.getByRole(role, { name: pattern }).locator("visible=true").first();
-      if (await target.count().catch(() => 0)) {
+    const candidates = [
+      ...(["link", "button", "tab"] as const).map((role) => page.getByRole(role, { name: pattern })),
+      page.getByText(pattern),
+    ];
+    for (const group of candidates) {
+      const n = Math.min(await group.count().catch(() => 0), 20);
+      for (let i = 0; i < n; i++) {
+        const target = group.nth(i);
+        if (!(await target.isVisible().catch(() => false))) continue;
+        await target.scrollIntoViewIfNeeded({ timeout: 2_000 }).catch(() => undefined);
+        const box = await target.boundingBox().catch(() => null);
+        if (!box || box.width === 0 || box.height === 0) continue;
+        const inside = box.x + box.width > 0 && box.y + box.height > 0 && box.x < viewport.width && box.y < viewport.height;
+        if (!inside) continue;
         log(`MetLife: opening «${(await target.innerText().catch(() => step.label)).trim().slice(0, 40)}»`);
         await clickPastOverlays(page, target, "MetLife", "metlife-read");
         return true;
       }
-    }
-    const text = page.getByText(pattern).locator("visible=true").first();
-    if (await text.count().catch(() => 0)) {
-      log(`MetLife: opening «${(await text.innerText().catch(() => step.label)).trim().slice(0, 40)}»`);
-      await clickPastOverlays(page, text, "MetLife", "metlife-read");
-      return true;
     }
   }
   return false;
