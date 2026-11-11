@@ -8,9 +8,10 @@
  * (`mortgage_parts` on the real-estate page, the carrying the Expenses page and the flows overview
  * take out of the card line) read the parts, never the columns' arithmetic.
  *
- * Σ parts = the payment ± 1 peso, fail fast — unless the user declared the difference (an
- * `accepted` entry `{label, field: "parts_sum"}` of the mortgage sheet config): the lender's own row
- * can be short of its total.
+ * Σ parts = the payment ± 1 peso, fail fast — unless the user declared the difference: the
+ * lender's own row can be short of its total. A declaration is the payment's
+ * `loan_payments.parts_difference_reason` (migration 309), or an `accepted` entry
+ * `{label, field: "parts_sum"}` a caller passes (the history cross-check's plan).
  */
 import { db } from "../db.js";
 import { withoutChurn } from "../rederivation.js";
@@ -30,12 +31,12 @@ export type AcceptedPaymentDifference = { label: string; field: string };
 /** A payment's parts by kind, in pesos (a kind absent = 0). */
 export type LoanPaymentParts = Partial<Record<LoanPaymentPartKind, number>>;
 
-type PaymentRow = { flow_id: number; cuota: string; pago_clp: number; loan_account_id: number };
+type PaymentRow = { flow_id: number; cuota: string; pago_clp: number; loan_account_id: number; parts_difference_reason: string | null };
 
 function propertyPaymentRows(): PaymentRow[] {
   return db
     .prepare(
-      `SELECT m.flow_id, p.cuota, CAST(round(abs(m.amount)) AS INTEGER) AS pago_clp, p.loan_account_id
+      `SELECT m.flow_id, p.cuota, CAST(round(abs(m.amount)) AS INTEGER) AS pago_clp, p.loan_account_id, p.parts_difference_reason
        FROM loan_payments p JOIN movements m ON m.id = p.movement_id
        WHERE p.leg = 'property' AND lower(trim(p.cuota)) <> 'pie'
        ORDER BY m.occurred_on, p.cuota`
@@ -86,10 +87,10 @@ export function syncLoanPaymentFlowParts(
   const stated = statedPartsByFlow();
   for (const p of payments) {
     const sum = (stated.get(p.flow_id)?.parts ?? []).reduce((s, x) => s + x.amount_clp, 0);
-    const accepted = p.loan_account_id === acceptedLoanAccountId && acceptedLabels.has(p.cuota);
+    const accepted = p.parts_difference_reason != null || (p.loan_account_id === acceptedLoanAccountId && acceptedLabels.has(p.cuota));
     if (Math.abs(sum - p.pago_clp) > 1 && !accepted) {
       throw new Error(
-        `loan payment parts: cuota ${p.cuota} of loan ${p.loan_account_id} states parts adding up to ${sum} against a payment of ${p.pago_clp} — fix loan_payments or declare the difference (accepted: ${p.cuota} / ${PARTS_SUM_FIELD})`
+        `loan payment parts: cuota ${p.cuota} of loan ${p.loan_account_id} states parts adding up to ${sum} against a payment of ${p.pago_clp} — fix loan_payments or declare the difference (loan_payments.parts_difference_reason)`
       );
     }
   }

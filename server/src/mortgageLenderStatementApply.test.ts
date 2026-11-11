@@ -10,6 +10,8 @@ import {
 } from "./deptoDividendosLedger.js";
 import { DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
 import { receiveIngest } from "./ingestHandlers.js";
+import { rolledBack } from "./ingestReceiver.js";
+import { syncLoanPaymentFlowParts } from "./flows/loanPaymentParts.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { latestMortgageLenderQuoteDueOn, metlifeReadInputs, nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
 
@@ -218,6 +220,23 @@ describe("applyMortgageLenderStatement (synthetic depto)", () => {
     if (skip) ctx.skip();
     const r = send({ ...AFTER, credit: { ...AFTER.credit, last_paid_cuota: 1 } }, false);
     expect(r.details.paid.find((p) => p.cuota === 2)).toMatchObject({ outcome: "waiting" });
+  });
+
+  it("a payment whose parts miss its total fails the parts sync until its difference is declared", (ctx) => {
+    if (skip) ctx.skip();
+    rolledBack(() => {
+      // The lender's own row short of what was paid (the property leg is the one the parts follow).
+      db.prepare(
+        `UPDATE loan_payments SET interest = interest - 772
+         WHERE cuota = '1' AND loan_account_id = ? AND leg = 'property'`
+      ).run(mortgageId);
+      expect(() => syncLoanPaymentFlowParts([])).toThrow(/cuota 1 .*parts_difference_reason/);
+      db.prepare(
+        `UPDATE loan_payments SET parts_difference_reason = 'the lender''s row is short of its total'
+         WHERE cuota = '1' AND loan_account_id = ? AND leg = 'property'`
+      ).run(mortgageId);
+      expect(() => syncLoanPaymentFlowParts([])).not.toThrow();
+    });
   });
 
   it("with the last-paid fields blank, the balance follows the latest paid history row", (ctx) => {
