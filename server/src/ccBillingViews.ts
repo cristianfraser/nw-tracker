@@ -7,6 +7,7 @@ import {
   openMonthUsdFacturado,
   payByFxDateIso,
   unbilledAtMonthEndAdjustmentsClp,
+  usdPaymentPaidStatementDateResolver,
   type CcBillingMonthBalanceRow,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
@@ -33,7 +34,7 @@ import { linesOfStatement, openCycleCuotaPurchaseLines } from "./cards/purchases
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { derivedPayByIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
+import { derivedPayByIso, resolveInstallmentPayByIso, statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import type { CcInstallmentMonthRow } from "./cards/planTypes.js";
@@ -321,12 +322,19 @@ export function paymentAbonosClpForBillingMonth(
 ): number {
   let sum = 0;
   const dates = new Set(statementDatesForFacturacion(accountId, billingMonth));
+  // A dollar payment cancels the dollar debt it paid at that debt's fx, as the owed walk values it
+  // (`normalizedPostCloseLines`): at this statement's fx instead, the rolled balance read the
+  // difference between the paid facturación's rate and today's as owed.
+  const paidStatementDate = usdPaymentPaidStatementDateResolver(accountId);
   for (const st of listCcStatementsForAccount(accountId)) {
     if (!dates.has(st.statement_date)) continue;
     const fxDateIso = balanceUsdFxDateIso(accountId, st.statement_date);
     const rows = linesOfStatement(st.id);
     for (const r of rows) {
       if (!isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
+      const paymentIso = (r.amount_usd ?? 0) < 0 ? statementLineDateIso(r) : null;
+      const paidDate = paymentIso ? paidStatementDate(paymentIso) : null;
+      const lineFxDateIso = paidDate ? balanceUsdFxDateIso(accountId, paidDate) : fxDateIso;
       const clp = debtCcExpenseLineAmountClp(
         {
           installment_flag: 0,
@@ -336,7 +344,7 @@ export function paymentAbonosClpForBillingMonth(
           valor_cuota_mensual_usd: null,
           statement_currency: st.currency,
         },
-        fxDateIso
+        lineFxDateIso
       );
       if (clp == null || !Number.isFinite(clp)) continue;
       sum += Math.abs(clp);

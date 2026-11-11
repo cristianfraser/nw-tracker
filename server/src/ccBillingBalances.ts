@@ -253,6 +253,36 @@ export type PostCloseStreamEntry = {
   statement_date: string | null;
 };
 
+/**
+ * A dollar payment pays the facturación that closed before it, whose debt the month-end anchor
+ * values at that facturación's debt fx: valued at its own statement's fx instead, the payment of a
+ * large dollar debt read the month's fx move as owed (·0161 2021-11: 3.xxx,xx USD at 839 vs the debt
+ * at 803, −1xx.xxx between the anchor and the walk). Same pairing as `facturacionPaidOn`: the latest
+ * dollar statement closed strictly before the payment. Returns the statement_date (dd/mm/yyyy) of the
+ * facturación a dollar payment dated `paymentIso` paid, or null when none closed before it.
+ */
+export function usdPaymentPaidStatementDateResolver(accountId: number): (paymentIso: string) => string | null {
+  const usdCloses = (
+    db
+      .prepare(
+        `SELECT DISTINCT statement_date FROM cc_statements
+         WHERE account_id = ? AND currency = 'usd' AND source_kind NOT IN ('listing_open', 'listing_other')`
+      )
+      .all(accountId) as { statement_date: string }[]
+  )
+    .map((r) => ({ date: r.statement_date, iso: parseDdMmYyToIso(r.statement_date) }))
+    .filter((r): r is { date: string; iso: string } => r.iso != null)
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+  return (paymentIso: string): string | null => {
+    let hit: string | null = null;
+    for (const c of usdCloses) {
+      if (c.iso < paymentIso) hit = c.date;
+      else break;
+    }
+    return hit;
+  };
+}
+
 export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntry[] {
   return getAggregationCached(cacheKeyCcBillingPart(accountId, `postclose_lines`), () => {
     const rows = debtEventLines(accountId);
@@ -264,29 +294,9 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       }
       return fxDateByStatementDate.get(statementDate) ?? null;
     };
-    // A dollar payment pays the facturación that closed before it, whose debt the month-end anchor
-    // values at that facturación's debt fx: valued at its own statement's fx instead, the payment of
-    // a large dollar debt read the month's fx move as owed (·0161 2021-11: 3.xxx,xx USD at 839 vs the
-    // debt at 803, −1xx.xxx between the anchor and the walk). Same pairing as `facturacionPaidOn`.
-    const usdCloses = (
-      db
-        .prepare(
-          `SELECT DISTINCT statement_date FROM cc_statements
-           WHERE account_id = ? AND currency = 'usd' AND source_kind NOT IN ('listing_open', 'listing_other')`
-        )
-        .all(accountId) as { statement_date: string }[]
-    )
-      .map((r) => ({ date: r.statement_date, iso: parseDdMmYyToIso(r.statement_date) }))
-      .filter((r): r is { date: string; iso: string } => r.iso != null)
-      .sort((a, b) => a.iso.localeCompare(b.iso));
-    const paidFacturacionStatementDate = (paymentIso: string): string | null => {
-      let hit: string | null = null;
-      for (const c of usdCloses) {
-        if (c.iso < paymentIso) hit = c.date;
-        else break;
-      }
-      return hit;
-    };
+    // A dollar payment is valued at the debt fx of the facturación it paid
+    // (`usdPaymentPaidStatementDateResolver`).
+    const paidFacturacionStatementDate = usdPaymentPaidStatementDateResolver(accountId);
 
     // A linked traspaso-de-deuda USD abono carries minus its CLP twin's booked pesos — the
     // pair is one debt reclassification and must net to exactly zero, never an fx estimate.

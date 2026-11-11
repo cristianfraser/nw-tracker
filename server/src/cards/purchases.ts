@@ -891,12 +891,22 @@ export function linesOfClose(accountId: number, statementDate: string): BilledLi
 }
 
 /** A statement row's own lines, with their stored kind. */
-export function linesOfStatement(
-  statementId: number
-): { id: number; kind: string | null; merchant: string | null; amount_clp: number | null; amount_usd: number | null }[] {
+export type StatementLineSummary = {
+  id: number;
+  kind: string | null;
+  merchant: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+};
+
+export function linesOfStatement(statementId: number): StatementLineSummary[] {
   return db
-    .prepare(`SELECT id, kind, merchant, amount_clp, amount_usd FROM cc_statement_lines WHERE statement_id = ?`)
-    .all(statementId) as { id: number; kind: string | null; merchant: string | null; amount_clp: number | null; amount_usd: number | null }[];
+    .prepare(
+      `SELECT id, kind, merchant, amount_clp, amount_usd, transaction_date, posting_date FROM cc_statement_lines WHERE statement_id = ?`
+    )
+    .all(statementId) as StatementLineSummary[];
 }
 
 /** A feed-typed cuota purchase in the open bucket, still waiting for its plan (count unknown). */
