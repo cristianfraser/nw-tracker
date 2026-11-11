@@ -108,12 +108,15 @@ function body(call: MetlifeApiCall, name: MetlifeApiName): Obj {
 export function metlifeStatementPayload(calls: Record<MetlifeApiName, MetlifeApiCall>, readAt: string): MortgageLenderStatementPayload {
   const c = obj(body(calls.credits, "credits").creditInformation, "credits.creditInformation");
   const items = arr(body(calls.pending, "pending").item, "pending.item");
-  if (items.length !== 1) throw new Error(`MetLife pending: expected one credit, the portal lists ${items.length}`);
-  const product = obj(items[0], "pending.item[0]");
-  const creditNumber = str(product, "idProduct", "pending.item[0]");
+  // With the month's cuota paid, nothing is due: the portal lists no credit at all (2026-11-11,
+  // right after cuota 33 was paid), and the credit is the one the credits answer was asked for.
+  if (items.length > 1) throw new Error(`MetLife pending: expected one credit, the portal lists ${items.length}`);
+  const product = items.length === 1 ? obj(items[0], "pending.item[0]") : null;
+  const poliza = new URL(calls.credits.url).searchParams.get("poliza");
+  if (product == null && poliza == null) throw new Error("MetLife: nothing is pending and the credits answer names no credit (poliza)");
+  const creditNumber = product != null ? str(product, "idProduct", "pending.item[0]") : poliza!;
 
   // The three answers must be about the same credit.
-  const poliza = new URL(calls.credits.url).searchParams.get("poliza");
   if (poliza != null && poliza !== creditNumber) throw new Error("MetLife: the credits answer is about another credit than the pending one");
   const historyRequest = calls.history.requestBody;
   if (historyRequest != null && typeof historyRequest === "object") {
@@ -123,7 +126,7 @@ export function metlifeStatementPayload(calls: Record<MetlifeApiName, MetlifeApi
     }
   }
 
-  const pending = arr(product.availablePayments, "pending.item[0].availablePayments").map((raw, i) => {
+  const pending = (product == null ? [] : arr(product.availablePayments, "pending.item[0].availablePayments")).map((raw, i) => {
     const where = `pending.availablePayments[${i}]`;
     const a = obj(raw, where);
     const status = str(a, "status", where);

@@ -166,6 +166,10 @@ describe("metlifeStatementPayload", () => {
     expect(() => metlifeStatementPayload(edited("credits", (b) => (b.creditInformation.lastPaymentDate = "11/03/2031")), at)).toThrow(/expected YYYY-MM-DD/);
     expect(() => metlifeStatementPayload(edited("credits", (b) => delete b.creditInformation.outstandingBalanceUf), at)).toThrow(/outstandingBalanceUf: expected a number/);
     expect(() => metlifeStatementPayload(edited("pending", (b) => b.item.push(b.item[0])), at)).toThrow(/expected one credit/);
+    // A paid month: the portal lists no credit as pending; the credit is the credits answer's poliza.
+    const paid = metlifeStatementPayload(edited("pending", (b) => (b.item = [])), at);
+    expect(paid.pending).toEqual([]);
+    expect(paid.credit_number).toBe(new URL(fixture().credits.url).searchParams.get("poliza"));
     expect(() => metlifeStatementPayload(edited("history", (b) => (b.metadata.totalCount = 9)), at)).toThrow(/holds 2 of 9/);
     // The parts of a paid cuota must add up (the contract's check).
     expect(() => metlifeStatementPayload(edited("history", (b) => (b.items[1].interestPesos = 100)), at)).toThrow(/add up/);
