@@ -5,9 +5,16 @@ import {
 } from "./ccFacturadoFinancingProjectionLines.js";
 import { db } from "./db.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
-import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
+import { aggregateGastosFromLines as aggregateFinishedLines } from "./flowsExpensesGastos.js";
+import { withLineMoney } from "./lineMoney.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { CcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
+
+// The gastos views read finished lines: the projection's output goes through «line money» first.
+const aggregateGastosFromLines = (
+  lines: FlowCcExpenseLineRow[],
+  ...rest: Parameters<typeof aggregateFinishedLines> extends [unknown, ...infer R] ? R : never
+) => aggregateFinishedLines(withLineMoney(lines), ...rest);
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   return {

@@ -6,7 +6,15 @@ import {
   periodMonthsForGastosLine,
   purchaseModalLines,
 } from "./ccExpensePeriodMonth.js";
-import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
+import { aggregateGastosFromLines as aggregateFinishedLines } from "./flowsExpensesGastos.js";
+import { withLineMoney } from "./lineMoney.js";
+import type { FlowCcExpenseLineRow as BuilderExpenseLine } from "./flowsExpenses.js";
+
+// The gastos views read finished lines: the fixtures go through the «line money» step first.
+const aggregateGastosFromLines = (
+  lines: BuilderExpenseLine[],
+  ...rest: Parameters<typeof aggregateFinishedLines> extends [unknown, ...infer R] ? R : never
+) => aggregateFinishedLines(withLineMoney(lines), ...rest);
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 

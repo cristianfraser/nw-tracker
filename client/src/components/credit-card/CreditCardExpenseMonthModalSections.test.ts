@@ -1,3 +1,4 @@
+import { clpMoney } from "../../test/lineMoneyFixture";
 import { describe, expect, it } from "vitest";
 import type { ExpenseMonthModalSection, FlowCcExpenseLineRow } from "../../types";
 import { buildCreditCardExpenseMonthBucket } from "./CreditCardExpenseMonthModalSections";
@@ -13,7 +14,7 @@ function line(
     statement_date: "22/05/2025",
     occurred_on: "2025-05-10",
     purchase_on: null,
-    amount_clp: 1000,
+    ...clpMoney(1000),
     period_month,
     month_modal_sections: { split, total },
   } as FlowCcExpenseLineRow;

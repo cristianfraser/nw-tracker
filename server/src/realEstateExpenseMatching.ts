@@ -4,6 +4,7 @@ import { countsTowardGastosMes } from "./flowsExpensesGastos.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { buildFlowsExpenseLines } from "./flowsExpenses.js";
+import { lineValueIn } from "./lineMoney.js";
 import {
   merchantMatchesExpectation,
   REAL_ESTATE_LINKABLE_KINDS,
@@ -27,6 +28,17 @@ import {
  * create a one-cuota-sized bill).
  */
 const GASTOS_INSTALLMENT_MODE = "total" as const;
+
+/**
+ * A line's value in pesos — what a place's bill row records. Bills are stated in pesos, and a
+ * bill created from a dollar charge (assigned by hand) holds that charge's pesos, so every
+ * comparison here is in pesos, never in the line's own currency.
+ */
+export function linePesos(line: Pick<FlowCcExpenseLineRow, "values">): number {
+  const v = lineValueIn(line, "clp");
+  if (v == null) throw new Error("expense line without a value in pesos");
+  return v;
+}
 
 /** Bill month X may be paid same month (X+0) or on the card in X+1 / X+2. */
 export const REAL_ESTATE_LINK_PURCHASE_MONTH_OFFSET_MIN = -MATCH_WINDOWS.real_estate_bill_purchase.daysBefore;
@@ -62,7 +74,7 @@ export function isGastosLineEligibleForRealEstateLink(line: FlowCcExpenseLineRow
   // A payroll deduction is never what paid a place's bill.
   if (line.source === "payslip") return false;
   if (line.nota_credito_role === "unmatched_nota") return false;
-  if (line.amount_clp <= 0) return false;
+  if (linePesos(line) <= 0) return false;
   return countsTowardGastosMes(line, GASTOS_INSTALLMENT_MODE);
 }
 
@@ -216,7 +228,7 @@ export function findAmountMatchCandidates(
   const billMonth = billMonthFromSpentOn(expectation.spent_on);
   return gastosLines.filter(
     (ln) =>
-      ln.amount_clp === expectation.amount_clp &&
+      linePesos(ln) === expectation.amount_clp &&
       !linkedPurchaseKeys.has(ln.purchase_key) &&
       !rejections.has(ln.purchase_key) &&
       purchaseMonthMatchesBillSlot(billMonth, purchaseMonthForLine(ln))
@@ -355,7 +367,7 @@ export function manualLinkRealEstateExpense(
   const gastosLines = loadGastosLinesForRealEstateMatching();
   const line = gastosLines.find((ln) => ln.purchase_key === purchaseKey);
   if (!line) throw new Error("purchase not found or not eligible");
-  if (line.amount_clp !== exp.amount_clp) throw new Error("amount does not match expectation");
+  if (linePesos(line) !== exp.amount_clp) throw new Error("amount does not match expectation");
 
   const billMonth = billMonthFromSpentOn(exp.spent_on);
   const purchaseMonth = purchaseMonthForLine(line);
@@ -524,7 +536,7 @@ export function assignPurchasesToRealEstateExpenses(
   db.transaction(() => {
     for (const p of planned) {
       const entryId = Number(
-        insert.run(p.line.amount_clp, monthEndUtcYmd(p.billMonth), p.opts.kind, p.note, p.accountId, p.opts.kwh ?? null, p.opts.m3 ?? null)
+        insert.run(linePesos(p.line), monthEndUtcYmd(p.billMonth), p.opts.kind, p.note, p.accountId, p.opts.kwh ?? null, p.opts.m3 ?? null)
           .lastInsertRowid
       );
       insertBillLink(entryId, p.opts.purchaseKey, "manual");
@@ -595,7 +607,7 @@ export function displayAmountClp(
   expectedAmount: number,
   linkedLine: FlowCcExpenseLineRow | undefined
 ): number {
-  if (linkedLine && linkedLine.amount_clp > 0) return linkedLine.amount_clp;
+  if (linkedLine && linePesos(linkedLine) > 0) return linePesos(linkedLine);
   if (expectedAmount > 0) return expectedAmount;
   return 0;
 }

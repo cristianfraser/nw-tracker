@@ -22,6 +22,7 @@ import {
   type FlowsOverviewMonthInputs,
 } from "./flowsOverview.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import { lineMoneyFromBuilderFields } from "./lineMoney.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 
 const TODAY = "2024-04-15";
@@ -39,8 +40,9 @@ function checkingValue(steps: Record<string, number> = {}, from = "2023-12-01"):
   return out;
 }
 
+/** A finished line: its money as the «line money» step writes it from the builder fields. */
 function mortgageLine(overrides: Partial<FlowCcExpenseLineRow> = {}): FlowCcExpenseLineRow {
-  return {
+  const l = {
     source: "checking",
     statement_line_id: 1,
     account_id: 10,
@@ -77,6 +79,7 @@ function mortgageLine(overrides: Partial<FlowCcExpenseLineRow> = {}): FlowCcExpe
     ],
     ...overrides,
   } as FlowCcExpenseLineRow;
+  return { ...l, ...lineMoneyFromBuilderFields(l) };
 }
 
 function incomePayload(): FlowsOverviewIncome {

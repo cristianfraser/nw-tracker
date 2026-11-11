@@ -5,6 +5,7 @@ import type { UtilityBill } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { IngestConflict } from "./ingestReceiver.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { withLineMoney } from "./lineMoney.js";
 import { assignPurchaseToRealEstateExpense, loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import {
@@ -118,7 +119,7 @@ describe("utilityBillMonthsCovered", () => {
 
 describe("pickUtilityBillCharge", () => {
   const line = (over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow =>
-    ({ purchase_key: "k1", amount_clp: 38215, merchant: "ENEL DISTRIBUCION", merchant_key: "ENEL DISTRIBUCION", purchase_on: "2036-10-15", occurred_on: "2036-10-20", ...over }) as FlowCcExpenseLineRow;
+    withLineMoney([{ purchase_key: "k1", amount_clp: 38215, merchant: "ENEL DISTRIBUCION", merchant_key: "ENEL DISTRIBUCION", purchase_on: "2036-10-15", occurred_on: "2036-10-20", ...over } as FlowCcExpenseLineRow])[0]!;
   const b = bill();
 
   it("takes the one whole charge of the bill's pesos, merchant and window", () => {
@@ -134,6 +135,11 @@ describe("pickUtilityBillCharge", () => {
     ];
     expect(pickUtilityBillCharge(b, null, lines, new Set())).toEqual({ kind: "none" });
     expect(pickUtilityBillCharge(b, null, [line({ purchase_on: "2036-11-10" })], new Set()).kind).toBe("one");
+  });
+
+  it("compares the bill with charges made in pesos, never a dollar charge's pesos", () => {
+    const dollar = line({ purchase_key: "usd", amount_usd: 40.12, amount_usd_at_expense: 40.12 });
+    expect(pickUtilityBillCharge(b, null, [dollar], new Set())).toEqual({ kind: "none" });
   });
 
   it("reports two fitting charges as ambiguous and skips taken ones", () => {
@@ -291,7 +297,7 @@ describe("gastos comunes statements", () => {
       ...over,
     });
   const transfer = (over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow =>
-    ({
+    withLineMoney([{
       purchase_key: "t1",
       amount_clp: 64321,
       merchant: `Transf a ${PATTERN}`,
@@ -299,7 +305,7 @@ describe("gastos comunes statements", () => {
       purchase_on: "2036-10-28",
       occurred_on: "2036-10-28",
       ...over,
-    }) as FlowCcExpenseLineRow;
+    } as FlowCcExpenseLineRow])[0]!;
   const counterparty = (direction: "out" | "own", name: string) => ({
     direction,
     name,

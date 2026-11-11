@@ -390,7 +390,7 @@ describe("ccExpenseCategories", () => {
     const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
     const line = payload.lines.find(
-      (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && allowed.has(ln.account_id)
+      (ln) => ln.values.clp!.value > 0 && ln.statement_line_id > 0 && allowed.has(ln.account_id)
     );
     if (!line) return;
 
@@ -563,7 +563,7 @@ function createMerchantPropagationFixture(tag: string): {
     const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
     const line = payload.lines.find(
-      (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
+      (ln) => ln.values.clp!.value > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
     );
     if (!line) return;
 
@@ -572,7 +572,7 @@ function createMerchantPropagationFixture(tag: string): {
         ln.statement_line_id !== line.statement_line_id &&
         ln.account_id === line.account_id &&
         ln.merchant_key === line.merchant_key &&
-        ln.amount_clp > 0
+        ln.values.clp!.value > 0
     );
     if (peers.length === 0) return;
 
@@ -595,7 +595,7 @@ function createMerchantPropagationFixture(tag: string): {
       (p) =>
         p.account_id === line.account_id &&
         p.merchant_key === line.merchant_key &&
-        p.amount_clp > 0 &&
+        p.values.clp!.value > 0 &&
         !p.category_unique
     )) {
       expect(ln.category_slug).toBe("unclassified");
@@ -608,7 +608,7 @@ function createMerchantPropagationFixture(tag: string): {
       (ln) =>
         ln.source === "cc" &&
         ln.statement_line_id > 0 &&
-        ln.amount_clp > 0 &&
+        ln.values.clp!.value > 0 &&
         ln.installment_flag === 1 &&
         ln.nro_cuota_total != null &&
         ln.nro_cuota_total >= 3 &&

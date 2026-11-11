@@ -37,8 +37,19 @@ import {
   type FlowCcExpenseMonthRow,
 } from "./flowsExpenses.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
+import { lineValueIn } from "./lineMoney.js";
 
 export type GastosUnit = "clp" | "usd";
+
+/**
+ * A finished expense line as the gastos views read it: wire or server-side (the server's carries
+ * the builder fields beside its money). Its value in a unit is `values[unit]` (`lineValueIn`).
+ */
+export type GastosLine = Omit<WireExpenseLine, "amount" | "values"> & {
+  amount?: Money;
+  values?: Record<string, LineUnitValue>;
+};
 
 /** Which level the chart groups spend by: at «category» a subcategory folds into its parent. */
 export type CcExpenseCategoryLevel = "category" | "subcategory";
@@ -81,16 +92,32 @@ export type FlowsExpensesGastosPayload = {
   views: Record<string, FlowsExpensesGastosView>;
 };
 
-export function expenseLineGastosAmount(line: FlowCcExpenseLineRow, unit: GastosUnit): number {
-  if (unit === "usd") {
-    if (line.amount_usd_at_expense == null) {
-      throw new Error(
-        `missing amount_usd_at_expense for expense line ${line.source}:${line.statement_line_id}`
-      );
-    }
-    return line.amount_usd_at_expense;
+/**
+ * A finished line's value in the display unit (`lineValueIn`, the «line money» step). Throws when
+ * the line has no value in the unit (no rate on file for its day).
+ */
+export function expenseLineGastosAmount(
+  line: Pick<FlowCcExpenseLineRow, "values" | "source" | "statement_line_id">,
+  unit: string
+): number {
+  const v = lineValueIn(line, unit);
+  if (v == null) {
+    throw new Error(`expense line ${line.source}:${line.statement_line_id} has no value in ${unit}`);
   }
-  return line.amount_clp;
+  return v;
+}
+
+/**
+ * What a line's sign is read from: its money (`amount`, set by the «line money» step) on a
+ * finished line, the builder's pesos on a builder line (the checking lines read before the
+ * pipeline, `loadFinalizedCheckingGastosLinesReadOnly`). The sign is the same in every unit.
+ */
+export type SignedExpenseLine = { amount?: Money; amount_clp?: number };
+
+export function expenseLineSignedValue(line: SignedExpenseLine): number {
+  if (line.amount) return line.amount.value;
+  if (line.amount_clp != null) return line.amount_clp;
+  throw new Error("expense line without an amount");
 }
 
 /**
@@ -120,7 +147,7 @@ export function mortgageLinkedLineCountsInMode(
 
 /** Carrying (interés + seguros) share of a mortgage-linked payment, in the unit. */
 export function mortgageLinkCarryingAmount(
-  line: FlowCcExpenseLineRow,
+  line: Pick<FlowCcExpenseLineRow, "values" | "source" | "statement_line_id">,
   link: { payment_clp: number; carrying_clp: number },
   unit: GastosUnit
 ): number {
@@ -133,7 +160,7 @@ export function mortgageLinkCarryingAmount(
 
 /** Amortización chart segment (negative, below axis) in the unit. */
 function mortgageLinkAmortizationChartAmount(
-  line: FlowCcExpenseLineRow,
+  line: Pick<FlowCcExpenseLineRow, "values" | "source" | "statement_line_id">,
   link: { payment_clp: number; amortization_clp: number },
   unit: GastosUnit
 ): number {
@@ -145,18 +172,18 @@ function mortgageLinkAmortizationChartAmount(
 }
 
 /** The fields {@link countsTowardGastosMes} reads (the checking read-only lines carry them too). */
-export type GastosMesLine = Pick<
-  FlowCcExpenseLineRow,
-  | "nota_credito_role"
-  | "amount_clp"
-  | "checking_refund"
-  | "card_refund"
-  | "category_slug"
-  | "installment_flag"
-  | "nro_cuota_current"
-  | "gastos_scope"
-  | "line_role"
->;
+export type GastosMesLine = SignedExpenseLine &
+  Pick<
+    FlowCcExpenseLineRow,
+    | "nota_credito_role"
+    | "checking_refund"
+    | "card_refund"
+    | "category_slug"
+    | "installment_flag"
+    | "nro_cuota_current"
+    | "gastos_scope"
+    | "line_role"
+  >;
 
 /**
  * A negative line that is spending coming back — a checking credit marked as a refund
@@ -172,7 +199,7 @@ export function countsTowardGastosMes(line: GastosMesLine, mode: CcInstallmentGa
   if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
     return false;
   }
-  if (line.amount_clp <= 0 && !isGastosRefundLine(line)) return false;
+  if (expenseLineSignedValue(line) <= 0 && !isGastosRefundLine(line)) return false;
   if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;
   const scope = line.gastos_scope ?? "both";
@@ -198,7 +225,7 @@ export type GastosAggregate = {
  * Lines carry the category they are stacked under (see {@link linesAtCategoryLevel}).
  */
 export function aggregateGastosFromLines(
-  lines: readonly FlowCcExpenseLineRow[],
+  lines: readonly GastosLine[],
   chartCategorySlugs: readonly string[],
   mode: CcInstallmentGastosMode = "split",
   excludedBigGroupSlugs?: ReadonlySet<string>,
@@ -317,11 +344,11 @@ export function aggregateGastosFromLines(
 }
 
 /** Lines with each category replaced by the one it is stacked under at the level. */
-export function linesAtCategoryLevel(
-  lines: readonly FlowCcExpenseLineRow[],
+export function linesAtCategoryLevel<L extends GastosLine>(
+  lines: readonly L[],
   categories: readonly Pick<CcExpenseCategoryRow, "slug" | "parent_slug">[],
   level: CcExpenseCategoryLevel
-): readonly FlowCcExpenseLineRow[] {
+): readonly L[] {
   if (level === "subcategory") return lines;
   const parentOf = new Map(
     categories.filter((c) => c.parent_slug != null).map((c) => [c.slug, c.parent_slug!])
@@ -449,7 +476,7 @@ export function expenseYearMonthlyAverages(
 }
 
 export function buildFlowsExpensesGastosViews(
-  lines: readonly FlowCcExpenseLineRow[],
+  lines: readonly GastosLine[],
   categories: readonly Pick<CcExpenseCategoryRow, "slug" | "parent_slug">[],
   unit: GastosUnit,
   excludedBigGroupSlugs: ReadonlySet<string>,
@@ -516,7 +543,7 @@ export type BigGroupUsage = {
  * sum the lines on the client.
  */
 export function bigGroupUsageByMode(
-  lines: readonly FlowCcExpenseLineRow[],
+  lines: readonly GastosLine[],
   catalog: readonly Pick<CcExpenseBigGroupRow, "slug" | "label">[]
 ): Record<CcInstallmentGastosMode, BigGroupUsage[]> {
   const labelBySlug = new Map(catalog.map((g) => [g.slug, g.label]));
@@ -526,7 +553,7 @@ export function bigGroupUsageByMode(
     for (const ln of lines) {
       const slug = ln.big_group_slug;
       if (!slug || !countsTowardGastosMes(ln, mode)) continue;
-      totals.set(slug, (totals.get(slug) ?? 0) + ln.amount_clp);
+      totals.set(slug, (totals.get(slug) ?? 0) + expenseLineGastosAmount(ln, "clp"));
       const set = purchases.get(slug) ?? new Set<string>();
       set.add(`${ln.account_id}|${ln.purchase_key}`);
       purchases.set(slug, set);

@@ -77,6 +77,13 @@ import type { JobStatus as S_JobStatus } from "../jobQueuePolicy.js";
 
 type Fits<S extends D, D> = [S, D];
 
+/** An expense line as `toWireExpenseLine` sends it: the builder fields stripped, its money set. */
+type S_WireExpenseLine = Omit<
+  S_FlowCcExpenseLineRow,
+  "amount_clp" | "amount_usd" | "amount_usd_at_expense" | "clp_rate_source" | "amount" | "values"
+> &
+  Required<Pick<S_FlowCcExpenseLineRow, "amount" | "values">>;
+
 /**
  * Not listed: `GroceryReceiptRow` (the server reads `source` as a plain string; the stored values
  * are the `GroceryReceiptSource` union) and the generic `Paginated`.
@@ -174,7 +181,7 @@ export type ServerDtosFitContracts = [
   Fits<S_FlowCcExpenseMonthRow, Dto.FlowCcExpenseMonthRow>,
   Fits<S_FlowCcExpenseChartPoint, Dto.FlowCcExpenseChartPoint>,
   Fits<S_FlowCcExpenseLineSource, Dto.FlowCcExpenseLineSource>,
-  Fits<S_FlowCcExpenseLineRow, Dto.FlowCcExpenseLineRow>,
+  Fits<S_WireExpenseLine, Dto.FlowCcExpenseLineRow>,
   Fits<S_FlowCcExpenseCategoryChartPoint, Dto.FlowCcExpenseCategoryChartPoint>,
   Fits<S_ExpenseLineOrigin, Dto.ExpenseLineOrigin>,
   Fits<S_CcFacturadoFinancingLink, Dto.CcFacturadoFinancingLink>,

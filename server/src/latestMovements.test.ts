@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { FlowsOverviewIncome } from "./flowsOverview.js";
 import { latestMovementRows, movementOn } from "./latestMovements.js";
+import { lineMoneyFromBuilderFields } from "./lineMoney.js";
 
+/** A finished line: its money as the «line money» step writes it. */
 function line(over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
-  return {
+  const l = {
     source: "cc",
     statement_line_id: 1,
     account_id: 1,
@@ -33,6 +35,7 @@ function line(over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     primary_card_last4: null,
     ...over,
   } as FlowCcExpenseLineRow;
+  return { ...l, ...lineMoneyFromBuilderFields(l) };
 }
 
 const noIncome: FlowsOverviewIncome = {
@@ -45,6 +48,7 @@ const noIncome: FlowsOverviewIncome = {
 
 const known = new Set(["food", "no_cuenta", "deposits", "checking_internal_transfer", "taxes"]);
 const today = "2026-09-30";
+const noDollars = new Set<number>();
 
 function ids(rows: ReturnType<typeof latestMovementRows>): string[] {
   return rows.map((r) => (r.kind === "expense" ? `${r.line.source}:${r.line.statement_line_id}@${r.on}` : `${r.income.key}@${r.on}`));
@@ -84,14 +88,14 @@ describe("latestMovementRows", () => {
       line({ statement_line_id: 8, purchase_on: "2026-09-09", amount_clp: -10_000, nota_credito_role: "matched_nota", first_seen_on: "2026-09-25" }),
       line({ statement_line_id: 9, purchase_on: "2026-10-01" }),
     ];
-    expect(ids(latestMovementRows(lines, noIncome, known, 10, today))).toEqual([
+    expect(ids(latestMovementRows(lines, noIncome, known, 10, today, noDollars))).toEqual([
       "cc:8@2026-09-25",
       "cc:7@2026-09-09",
       "cc:-5@2026-09-07",
       "cc:2@2026-09-05",
       "cc:1@2026-09-01",
     ]);
-    expect(latestMovementRows(lines, noIncome, known, 2, today)).toHaveLength(2);
+    expect(latestMovementRows(lines, noIncome, known, 2, today, noDollars)).toHaveLength(2);
   });
 
   it("interleaves income by day", () => {
@@ -103,13 +107,41 @@ describe("latestMovementRows", () => {
       manual: [{ id: 3, amount_clp: 50_000, received_on: "2026-09-03", amount_usd: 52, source: "Regalo", note: null, origin: "manual" }],
       income_kind_by_movement_id: { 40: "salary" },
     };
-    const rows = latestMovementRows([line({ statement_line_id: 1, purchase_on: "2026-09-10" })], income, known, 10, today);
+    const rows = latestMovementRows([line({ statement_line_id: 1, purchase_on: "2026-09-10" })], income, known, 10, today, noDollars);
     expect(ids(rows)).toEqual(["checking:40@2026-09-29", "cc:1@2026-09-10", "manual:3@2026-09-03"]);
-    expect(rows[0]).toMatchObject({ kind: "income", income: { income_kind: "salary", account_label: "Corriente" } });
+    expect(rows[0]).toMatchObject({
+      kind: "income",
+      income: {
+        income_kind: "salary",
+        account_label: "Corriente",
+        amount: { value: 900_000, currency: "clp" },
+        values: { clp: { value: 900_000, rate_source: "native" }, usd: { value: 950, rate_source: "day" } },
+      },
+    });
+    // Expense rows go over the wire without the builder fields.
+    expect(rows[1]).toMatchObject({ kind: "expense", line: { amount: { value: 10_000, currency: "clp" } } });
+    expect(rows[1]!.kind === "expense" && "amount_clp" in rows[1]!.line).toBe(false);
+  });
+
+  it("a dollar checking account's income is in dollars", () => {
+    const income: FlowsOverviewIncome = {
+      ...noIncome,
+      lines: [
+        { movement_id: 41, account_id: 7, account_label: "Checking (US)", received_on: "2026-09-29", amount_clp: 4_750_000, amount_usd: 5_000, description: "PAYROLL", source: "checking" },
+      ],
+    };
+    const rows = latestMovementRows([], income, known, 10, today, new Set([7]));
+    expect(rows[0]).toMatchObject({
+      kind: "income",
+      income: {
+        amount: { value: 5_000, currency: "usd" },
+        values: { clp: { value: 4_750_000, rate_source: "day" }, usd: { value: 5_000, rate_source: "native" } },
+      },
+    });
   });
 
   it("throws on a category the catalog does not know", () => {
-    expect(() => latestMovementRows([line({ category_slug: "nope" })], noIncome, known, 5, today)).toThrow(
+    expect(() => latestMovementRows([line({ category_slug: "nope" })], noIncome, known, 5, today, noDollars)).toThrow(
       /unknown category/
     );
   });

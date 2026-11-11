@@ -51,7 +51,7 @@ export function CreditCardFacturadoFinancingManager({
     if (financedAccountId === "") return [];
     const set = new Set<string>();
     for (const ln of lines) {
-      if (ln.line_role === "purchase" && ln.account_id === financedAccountId && ln.amount_clp > 0) {
+      if (ln.line_role === "purchase" && ln.account_id === financedAccountId && ln.amount.value > 0) {
         set.add(ln.billing_month);
       }
     }

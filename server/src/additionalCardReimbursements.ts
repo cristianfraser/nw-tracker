@@ -10,14 +10,17 @@
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import { ADDITIONAL_CARD_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { countsTowardGastosMes, type GastosMesLine } from "./flowsExpensesGastos.js";
+import type { LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
+import { lineAmount, lineValueIn } from "./lineMoney.js";
 
-/** The fields of a gastos line (`FlowCcExpenseLineRow`) the summary reads. */
+/** The fields of a finished gastos line (`FlowCcExpenseLineRow`, after «line money») the summary reads. */
 export type AdditionalCardChargeLineInput = GastosMesLine & {
   source: "cc" | "checking" | "manual" | "payslip";
-  origin_card_last4: string | null;
-  primary_card_last4: string | null;
+  origin_card_last4?: string | null;
+  primary_card_last4?: string | null;
   expense_month: string;
-  amount_usd_at_expense: number | null;
+  amount?: Money;
+  values?: Record<string, LineUnitValue>;
 };
 
 export type AdditionalCardsPeriodRow = {
@@ -69,7 +72,7 @@ export function isAdditionalCardChargeLine(line: AdditionalCardChargeLineInput):
 
 /** A reimbursement: a checking refund line (negative) in `additional_card`. */
 export function isAdditionalCardReimbursementLine(line: AdditionalCardChargeLineInput): boolean {
-  return line.source === "checking" && line.category_slug === ADDITIONAL_CARD_CC_EXPENSE_SLUG && line.amount_clp < 0;
+  return line.source === "checking" && line.category_slug === ADDITIONAL_CARD_CC_EXPENSE_SLUG && lineAmount(line).value < 0;
 }
 
 type Bucket = {
@@ -90,6 +93,13 @@ function emptyBucket(): Bucket {
     reimbursements_usd: 0,
     reimbursement_count: 0,
   };
+}
+
+/** A line's pesos: every finished line has them (`values.clp`). */
+function clpValue(line: AdditionalCardChargeLineInput): number {
+  const v = lineValueIn(line, "clp");
+  if (v == null) throw new Error(`additional-card line ${line.expense_month} without its pesos`);
+  return v;
 }
 
 function addUsd(total: number | null, usd: number | null): number | null {
@@ -149,13 +159,14 @@ export function buildAdditionalCardsSummary(lines: readonly AdditionalCardCharge
   for (const line of lines) {
     if (isAdditionalCardChargeLine(line)) {
       const b = touch(line.expense_month);
-      b.charges_clp += line.amount_clp;
-      b.charges_usd = addUsd(b.charges_usd, line.amount_usd_at_expense);
+      b.charges_clp += clpValue(line);
+      b.charges_usd = addUsd(b.charges_usd, lineValueIn(line, "usd"));
       b.charge_count += 1;
     } else if (isAdditionalCardReimbursementLine(line)) {
       const b = touch(line.expense_month);
-      b.reimbursements_clp -= line.amount_clp;
-      b.reimbursements_usd = addUsd(b.reimbursements_usd, line.amount_usd_at_expense == null ? null : -line.amount_usd_at_expense);
+      b.reimbursements_clp -= clpValue(line);
+      const usd = lineValueIn(line, "usd");
+      b.reimbursements_usd = addUsd(b.reimbursements_usd, usd == null ? null : -usd);
       b.reimbursement_count += 1;
     }
   }

@@ -242,6 +242,24 @@ export interface CcFacturadoFinancingLink {
 }
 
 /** Who a bank transfer went to or came from, as the bank's mail states it (server: bankTransferNotices.ts). */
+/** An amount in its own currency (lowercase ISO 4217). */
+export interface Money {
+  value: number;
+  currency: string;
+}
+
+/**
+ * How a line's value in a display unit was reached: `native` (the line is in that unit), `paid` /
+ * `live` / `pay_by` (a card's dollars at the rate its facturación was paid, today's while unpaid,
+ * the pay-by − 1 rate when the pay-by passed with no payment on file), `day` (the day's rate).
+ */
+export type LineRateSource = "native" | "paid" | "live" | "pay_by" | "day";
+
+export interface LineUnitValue {
+  value: number;
+  rate_source: LineRateSource;
+}
+
 /** See `FlowCcExpenseLineRow.payment_name`. `card_brand` is the issuer's short brand («Lider», «Santander»). */
 export type ExpenseLinePaymentName =
   | { kind: "pays_card"; card_brand: string; card_last4: string }
@@ -360,11 +378,14 @@ export interface FlowCcExpenseLineRow {
    */
   first_seen_on?: string | null;
   statement_date: string;
-  amount_clp: number;
-  /** Original USD when the charge is on a USD statement (or USD-only line). */
-  amount_usd?: number | null;
-  /** USD for gastos display: native USD or CLP ÷ FX on purchase / movement date. */
-  amount_usd_at_expense: number | null;
+  /** The line in the currency it happened in. */
+  amount: Money;
+  /**
+   * The line's value in each display unit (`clp`, `usd`, …) with how it was reached: a card's
+   * dollars in pesos at the rate their facturación was paid, anything else at the day's rate. A unit
+   * with no rate on file for the day is absent.
+   */
+  values: Record<string, LineUnitValue>;
   merchant: string | null;
   merchant_key: string;
   installment_flag: number;
@@ -1065,8 +1086,10 @@ export interface LatestIncomeMovement {
   account_label: string | null;
   /** Bank description (checking) or the manual entry's source / note. */
   description: string;
-  amount_clp: number;
-  amount_usd: number | null;
+  /** The credit in its own currency: a dollar checking account's in dollars, any other in pesos. */
+  amount: Money;
+  /** Its value in each display unit (the other currency at the day's rate; absent with no rate). */
+  values: Record<string, LineUnitValue>;
   income_kind: IncomeKind | null;
   transfer_counterparty?: TransferCounterparty;
 }

@@ -43,12 +43,14 @@ import { db } from "./db.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { lineAmount } from "./lineMoney.js";
 import {
   assignPurchaseToRealEstateExpense,
   loadExpectationById,
   loadGastosLinesForRealEstateMatching,
   updateRealEstateExpenseConsumption,
   updateRealEstateExpenseMonthsCovered,
+  linePesos,
 } from "./realEstateExpenseMatching.js";
 import { BILL_LINKS_SQL } from "./flows/flowLinks.js";
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
@@ -109,6 +111,12 @@ export function utilityBillMonthsCovered(b: Pick<UtilityBill, "period_from" | "p
   return Math.max(1, Math.round(days / DAYS_PER_MONTH));
 }
 
+/** A line's pesos when it happened in pesos (a bill is stated in pesos); null for a line in another currency. */
+function linePesosNative(l: Pick<FlowCcExpenseLineRow, "amount">): number | null {
+  const a = lineAmount(l);
+  return a.currency === "clp" ? a.value : null;
+}
+
 /** The day a gastos line's charge happened. */
 const lineDay = (l: Pick<FlowCcExpenseLineRow, "purchase_on" | "occurred_on">) => l.purchase_on ?? l.occurred_on;
 
@@ -151,7 +159,7 @@ export function pickUtilityBillCharge(
   let candidates = lines.filter(
     (l) =>
       !excluded.has(l.purchase_key) &&
-      Math.round(l.amount_clp) === bill.amount &&
+      Math.round(linePesosNative(l) ?? Number.NaN) === bill.amount &&
       lineDay(l) >= bill.issued_on &&
       lineDay(l) <= last &&
       linePaysKind(l, comunidadPatterns, kind)
@@ -459,7 +467,7 @@ export function unbilledHoaPayments(
     for (const l of lines) {
       if (taken.has(l.purchase_key) || lineDay(l) < since || lineDay(l) > until) continue;
       if (!linePaysKind(l, place.comunidad_patterns, "gastos_comunes")) continue;
-      out.push({ place: place.slug, purchase_key: l.purchase_key, day: lineDay(l), amount: Math.round(l.amount_clp), merchant: l.merchant });
+      out.push({ place: place.slug, purchase_key: l.purchase_key, day: lineDay(l), amount: Math.round(linePesos(l)), merchant: l.merchant });
     }
   }
   return out.sort((a, b) => a.day.localeCompare(b.day) || a.purchase_key.localeCompare(b.purchase_key));

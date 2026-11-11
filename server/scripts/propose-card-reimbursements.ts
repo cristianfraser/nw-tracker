@@ -32,6 +32,7 @@ import {
   type ReimbursementCreditInput,
 } from "./lib/cardReimbursementMatch.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
+import { expenseLineGastosAmount } from "../src/flowsExpensesGastos.js";
 import {
   loadCheckingExpenseRefunds,
   markCheckingExpenseRefund,
@@ -122,7 +123,7 @@ try {
     const chargeLines = payload.lines.filter(isAdditionalCardChargeLine);
     const charges: ReimbursementChargeInput[] = chargeLines.map((l) => {
       const date = l.purchase_on ?? l.occurred_on;
-      return { id: l.statement_line_id, date, amount_clp: l.amount_clp, merchant: l.merchant };
+      return { id: l.statement_line_id, date, amount_clp: expenseLineGastosAmount(l, "clp"), merchant: l.merchant };
     });
     const notas = charges.filter((c) => c.amount_clp < 0);
 

@@ -22,7 +22,12 @@ import type {
   LatestIncomeMovement,
   LatestMovementRow,
   LatestMovementsResponse,
+  LineUnitValue,
+  Money,
 } from "nw-tracker-contracts/dto/flows";
+import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { lineAmount } from "./lineMoney.js";
+import { toWireExpenseLine } from "./wireExpenseLine.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcExpenseBigGroups } from "./ccExpenseBigGroups.js";
 import { isInstallmentCuotaZeroLine, listCcExpenseCategories } from "./ccExpenseCategories.js";
@@ -33,7 +38,9 @@ export const LATEST_MOVEMENTS_DEFAULT_LIMIT = 15;
 export const LATEST_MOVEMENTS_MAX_LIMIT = 100;
 
 /** A line the Expenses page lists in «Total» mode (counted or not), cuota lines aside. */
-export function listedAsLatestMovement(line: FlowCcExpenseLineRow): boolean {
+export function listedAsLatestMovement(
+  line: Pick<FlowCcExpenseLineRow, "source" | "line_role" | "gastos_scope" | "installment_flag" | "nro_cuota_current">
+): boolean {
   if (isPreTaxExpenseLine(line)) return false;
   if (line.line_role === "installment_cuota") return false;
   if (line.gastos_scope === "split_only") return false;
@@ -42,27 +49,55 @@ export function listedAsLatestMovement(line: FlowCcExpenseLineRow): boolean {
 }
 
 /** The day an expense line happened (see the module comment). */
-export function movementOn(line: FlowCcExpenseLineRow, todayYmd: string): string {
+export function movementOn(
+  line: Pick<FlowCcExpenseLineRow, "source" | "purchase_on" | "occurred_on" | "first_seen_on" | "posting_on" | "amount">,
+  todayYmd: string
+): string {
   const purchaseOn = line.purchase_on ?? line.occurred_on;
-  if (line.source !== "cc" || line.amount_clp >= 0) return purchaseOn;
+  if (line.source !== "cc" || lineAmount(line).value >= 0) return purchaseOn;
   if (line.first_seen_on) return line.first_seen_on;
   if (line.posting_on && line.posting_on > purchaseOn) return line.posting_on;
   return line.occurred_on <= todayYmd ? line.occurred_on : purchaseOn;
 }
 
-function incomeMovements(income: FlowsOverviewIncome): { on: string; income: LatestIncomeMovement; id: number }[] {
+/**
+ * An income credit's money: a dollar checking account's credit is in dollars (its pesos at the
+ * day's rate), any other in pesos (its dollars at the day's rate, when the day has one).
+ */
+function incomeMoney(
+  amountClp: number,
+  amountUsd: number | null,
+  inDollars: boolean,
+  key: string
+): { amount: Money; values: Record<string, LineUnitValue> } {
+  if (inDollars) {
+    if (amountUsd == null) throw new Error(`latest movements: dollar income ${key} without its dollars`);
+    return {
+      amount: { value: amountUsd, currency: "usd" },
+      values: { clp: { value: amountClp, rate_source: "day" }, usd: { value: amountUsd, rate_source: "native" } },
+    };
+  }
+  const values: Record<string, LineUnitValue> = { clp: { value: amountClp, rate_source: "native" } };
+  if (amountUsd != null) values.usd = { value: amountUsd, rate_source: "day" };
+  return { amount: { value: amountClp, currency: "clp" }, values };
+}
+
+function incomeMovements(
+  income: FlowsOverviewIncome,
+  dollarAccountIds: ReadonlySet<number>
+): { on: string; income: LatestIncomeMovement; id: number }[] {
   const out: { on: string; income: LatestIncomeMovement; id: number }[] = [];
   for (const l of income.lines) {
+    const key = `checking:${l.movement_id}`;
     out.push({
       on: l.received_on,
       id: l.movement_id,
       income: {
-        key: `checking:${l.movement_id}`,
+        key,
         source: "checking",
         account_label: l.account_label,
         description: l.description,
-        amount_clp: l.amount_clp,
-        amount_usd: l.amount_usd,
+        ...incomeMoney(l.amount_clp, l.amount_usd, dollarAccountIds.has(l.account_id), key),
         income_kind: income.income_kind_by_movement_id[l.movement_id] ?? null,
       },
     });
@@ -76,8 +111,7 @@ function incomeMovements(income: FlowsOverviewIncome): { on: string; income: Lat
         source: "manual",
         account_label: null,
         description: m.source ?? m.note ?? "",
-        amount_clp: m.amount_clp,
-        amount_usd: m.amount_usd,
+        ...incomeMoney(m.amount_clp, m.amount_usd, false, `manual:${m.id}`),
         income_kind: null,
       },
     });
@@ -90,7 +124,9 @@ export function latestMovementRows(
   income: FlowsOverviewIncome,
   knownCategories: ReadonlySet<string>,
   limit: number,
-  todayYmd: string
+  todayYmd: string,
+  /** The dollar checking accounts (`listDollarCheckingAccountIds`): their income is in dollars. */
+  dollarAccountIds: ReadonlySet<number>
 ): LatestMovementRow[] {
   type Ranked = { row: LatestMovementRow; tie: number };
   const ranked: Ranked[] = [];
@@ -98,9 +134,9 @@ export function latestMovementRows(
     if (!listedAsLatestMovement(line)) continue;
     const on = movementOn(line, todayYmd);
     if (on > todayYmd) continue;
-    ranked.push({ row: { kind: "expense", on, line }, tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0) });
+    ranked.push({ row: { kind: "expense", on, line: toWireExpenseLine(line) }, tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0) });
   }
-  for (const m of incomeMovements(income)) {
+  for (const m of incomeMovements(income, dollarAccountIds)) {
     if (m.on > todayYmd) continue;
     ranked.push({ row: { kind: "income", on: m.on, income: m.income }, tie: m.id * 1000 });
   }
@@ -125,7 +161,8 @@ export function buildLatestMovements(limit: number): LatestMovementsResponse {
       cachedFlowsIncome(),
       new Set(categories.map((c) => c.slug)),
       limit,
-      chileCalendarTodayYmd()
+      chileCalendarTodayYmd(),
+      new Set(listDollarCheckingAccountIds())
     ),
     categories,
     big_groups: listCcExpenseBigGroups(),

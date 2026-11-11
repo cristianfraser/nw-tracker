@@ -1,4 +1,5 @@
 import type { FlowCcExpenseLineRow, FlowCcExpenseLineSource } from "./types";
+import { sumLineValues } from "./lineMoney";
 
 export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 
@@ -78,6 +79,7 @@ export function expenseLineMatchesPurchaseBigGroupPatch(
   return ln.purchase_key === purchaseKey;
 }
 
+/** Σ of the lines in pesos: the facturación and month modals' section totals are peso figures (the facturado's). */
 export function sumLineAmountsClp(lines: readonly FlowCcExpenseLineRow[]): number {
-  return lines.reduce((s, ln) => s + ln.amount_clp, 0);
+  return sumLineValues(lines, "clp");
 }

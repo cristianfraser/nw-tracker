@@ -37,7 +37,7 @@ export function CreditCardDepositMatchedExpensesTable({
         .filter(
           (ln) =>
             ln.line_role !== "installment_purchase_total" &&
-            ln.amount_clp > 0 &&
+            ln.amount.value > 0 &&
             isDepositLinkedExpenseLine(ln)
         )
         .sort(sortCreditCardExpenseLinesByAmountDesc),

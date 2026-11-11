@@ -39,7 +39,7 @@ export function ManualExpenseDialog({
     save.reset();
     remove.reset();
     setSpentOn(expense?.purchase_on ?? expense?.occurred_on ?? "");
-    setAmountText(expense ? formatNumberInput(expense.amount_clp) : "");
+    setAmountText(expense ? formatNumberInput(expense.amount.value) : "");
     setCategorySlug(expense?.category_slug ?? "");
     const merchant = expense?.merchant ?? "";
     // The demo takes a description from its list only; another one has to be picked again.

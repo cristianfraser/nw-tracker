@@ -26,7 +26,7 @@ import { buildMortgageUfReminder } from "./mortgageUfReminder.js";
 import { nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { utilityBillMonth } from "./utilityBillsApply.js";
-import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
+import { linePesos, loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { projectedUfClp, ufProjector, type UfLookup } from "./ufProjection.js";
 import {
@@ -518,9 +518,13 @@ const deletePatternsStmt = db.prepare(`DELETE FROM recurring_payment_patterns WH
 const deleteRecurringStmt = db.prepare(`DELETE FROM recurring_payments WHERE id = ?`);
 
 
-/** The expense lines the matcher reads, each named by its source and statement line id. */
+/**
+ * The expense lines the matcher reads, each named by its source and statement line id, at their
+ * pesos: a declared payment is stated in pesos or UF, and a dollar charge (a subscription billed
+ * in dollars) pays it at the pesos its card line shows.
+ */
 function recurringLines(): RecurringLine[] {
-  return loadGastosLinesForRealEstateMatching().map((l) => toRecurringLine(l));
+  return loadGastosLinesForRealEstateMatching().map((l) => toRecurringLine({ ...l, amount_clp: linePesos(l) }));
 }
 
 /** A manual occurrence as a «Próximos pagos» row (its own name; the detail on hover). */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { lineMoneyFromBuilderFields } from "./lineMoney.js";
 import {
   allowedPurchaseMonthsForBill,
   billMonthFromSpentOn,
@@ -17,7 +18,7 @@ function ccLine(
   overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "purchase_key" | "amount_clp">
 ): FlowCcExpenseLineRow {
   const { purchase_key, amount_clp, ...rest } = overrides;
-  return {
+  const line: FlowCcExpenseLineRow = {
     source: "cc",
     statement_line_id: 1,
     account_id: 1,
@@ -47,6 +48,7 @@ function ccLine(
     amount_clp,
     ...rest,
   };
+  return { ...line, ...lineMoneyFromBuilderFields(line) };
 }
 
 function expectation(

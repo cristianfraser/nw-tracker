@@ -1,3 +1,4 @@
+import { clpMoney } from "../test/lineMoneyFixture";
 import { describe, expect, it } from "vitest";
 import {
   applyCcExpenseLineCategoryPatch,
@@ -24,8 +25,7 @@ function sampleData(): FlowsExpensesResponse {
         occurred_on: "2025-05-10",
         purchase_on: "2025-05-10",
         statement_date: "22/05/2025",
-        amount_clp: 10_000,
-        amount_usd_at_expense: null,
+        ...clpMoney(10_000),
         merchant: "TEST",
         merchant_key: "TEST",
         installment_flag: 0,

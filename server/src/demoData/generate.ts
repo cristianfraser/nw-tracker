@@ -69,6 +69,7 @@ import { assignPurchasesToRealEstateExpenses, loadGastosLinesForRealEstateMatchi
 import { upsertCheckingIncomeMovementOverride } from "../flowsCheckingIncomeOverrides.js";
 import { syncMortgageExpenseDepositLinksFromSheet } from "../expenseDepositLinks.js";
 import { expenseLinesForDepositLinkSync } from "../flowsExpenses.js";
+import { lineAmount } from "../lineMoney.js";
 import { isChileBusinessDay, isNyseTradingDay } from "../marketHolidays.js";
 import { recordEquitySplit } from "../equitySplits.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
@@ -563,7 +564,10 @@ function writePlaceBills(ledger: Ledger): void {
   const lines = loadGastosLinesForRealEstateMatching().filter((l) => l.source === "checking");
   const byKey = new Map<string, string[]>();
   for (const l of lines) {
-    const k = `${l.purchase_on}|${Math.round(l.amount_clp)}|${l.merchant}`;
+    // The places' bills are stated in pesos and paid from the peso checking account.
+    const amount = lineAmount(l);
+    if (amount.currency !== "clp") continue;
+    const k = `${l.purchase_on}|${Math.round(amount.value)}|${l.merchant}`;
     byKey.set(k, [...(byKey.get(k) ?? []), l.purchase_key]);
   }
   assignPurchasesToRealEstateExpenses(

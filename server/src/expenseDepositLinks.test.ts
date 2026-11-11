@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
+import { aggregateGastosFromLines as aggregateFinishedLines } from "./flowsExpensesGastos.js";
+import { withLineMoney } from "./lineMoney.js";
+import type { FlowCcExpenseLineRow as BuilderExpenseLine } from "./flowsExpenses.js";
+
+// The gastos views read finished lines: the fixtures go through the «line money» step first.
+const aggregateGastosFromLines = (
+  lines: BuilderExpenseLine[],
+  ...rest: Parameters<typeof aggregateFinishedLines> extends [unknown, ...infer R] ? R : never
+) => aggregateFinishedLines(withLineMoney(lines), ...rest);
 import {
   BILLS_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,

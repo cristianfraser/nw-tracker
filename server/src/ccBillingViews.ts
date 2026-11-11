@@ -957,8 +957,17 @@ export function facturacionUsdRateResolver(
   accountId: number,
   facturaciones: readonly CcFacturacionRow[]
 ): (billingMonth: string) => number {
-  const byMonth = new Map<string, number | null>(
-    facturaciones.map((f) => [f.billing_month, f.usd_rate_clp])
+  const resolve = facturacionUsdRateWithSourceResolver(accountId, facturaciones);
+  return (billingMonth) => resolve(billingMonth).clp_per_usd;
+}
+
+/** {@link facturacionUsdRateResolver} with the rate's source (paid, live, pay_by), for a line's converted amount. */
+export function facturacionUsdRateWithSourceResolver(
+  accountId: number,
+  facturaciones: readonly CcFacturacionRow[]
+): (billingMonth: string) => { clp_per_usd: number; source: FacturacionUsdRateSource } {
+  const byMonth = new Map<string, { clp_per_usd: number | null; source: FacturacionUsdRateSource | null }>(
+    facturaciones.map((f) => [f.billing_month, { clp_per_usd: f.usd_rate_clp, source: f.usd_rate_source }])
   );
   return (billingMonth) => {
     if (!byMonth.has(billingMonth)) {
@@ -971,13 +980,14 @@ export function facturacionUsdRateResolver(
           pay_by_iso: derivedPayByIso(close, ccDerivedPayByRuleForAccount(accountId)),
         },
       ]);
-      byMonth.set(billingMonth, rates.get(billingMonth)!.clp_per_usd);
+      const r = rates.get(billingMonth)!;
+      byMonth.set(billingMonth, { clp_per_usd: r.clp_per_usd, source: r.source });
     }
-    const rate = byMonth.get(billingMonth);
-    if (rate == null) {
+    const rate = byMonth.get(billingMonth)!;
+    if (rate.clp_per_usd == null || rate.source == null) {
       throw new Error(`Account ${accountId}: facturación ${billingMonth} has no USD rate for its dollar lines`);
     }
-    return rate;
+    return { clp_per_usd: rate.clp_per_usd, source: rate.source };
   };
 }
 

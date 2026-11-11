@@ -1,3 +1,4 @@
+import { clpMoney } from "../../test/lineMoneyFixture";
 import { describe, expect, it } from "vitest";
 import { flowLinesForFacturacionMonth } from "./flowLinesForStatementMonth";
 import type { FlowCcExpenseLineRow } from "../../types";
@@ -15,8 +16,7 @@ function line(
     occurred_on: "2026-05-20",
     purchase_on: "2026-04-15",
     statement_date: "20/05/2026",
-    amount_clp: 1000,
-    amount_usd: null,
+    ...clpMoney(1000),
     merchant: "SHOP",
     merchant_key: "SHOP",
     category_slug: "unclassified",
@@ -29,7 +29,6 @@ function line(
     big_group_slug: null,
     origin_label: "4242",
     origin: { kind: "card", account_name: null, card_last4: null, additional: false },
-    amount_usd_at_expense: null,
     origin_card_last4: null,
     primary_card_last4: null,
     ...partial,
@@ -49,7 +48,7 @@ describe("flowLinesForFacturacionMonth", () => {
         statement_line_id: -2_000_000_001,
         line_role: "installment_cuota",
         billing_month: "2026-05",
-        amount_clp: 5000,
+        ...clpMoney(5000),
         nro_cuota_current: 3,
         nro_cuota_total: 12,
       }),
@@ -57,7 +56,7 @@ describe("flowLinesForFacturacionMonth", () => {
         statement_line_id: -500,
         line_role: "installment_purchase_total",
         billing_month: "2026-05",
-        amount_clp: 50_000,
+        ...clpMoney(50_000),
         category_statement_line_id: 100,
         nro_cuota_total: 3,
       }),
@@ -68,12 +67,12 @@ describe("flowLinesForFacturacionMonth", () => {
 
   it("lists an open month's bucket lines with its plan cuotas", () => {
     const flows = [
-      line({ statement_line_id: 200, billing_month: "2026-07", amount_clp: 50_000 }),
+      line({ statement_line_id: 200, billing_month: "2026-07", ...clpMoney(50_000) }),
       line({
         statement_line_id: -2_000_000_042,
         line_role: "installment_cuota",
         billing_month: "2026-07",
-        amount_clp: 18_660,
+        ...clpMoney(18_660),
         nro_cuota_current: 2,
         nro_cuota_total: 12,
       }),
@@ -81,7 +80,7 @@ describe("flowLinesForFacturacionMonth", () => {
         statement_line_id: -2_000_000_043,
         line_role: "installment_cuota",
         billing_month: "2026-08",
-        amount_clp: 18_660,
+        ...clpMoney(18_660),
         nro_cuota_current: 3,
         nro_cuota_total: 12,
       }),
@@ -118,7 +117,7 @@ describe("flowLinesForFacturacionMonth", () => {
         statement_line_id: -3_000_160_000,
         line_role: "installment_cuota",
         billing_month: "2026-08",
-        amount_clp: 400_000,
+        ...clpMoney(400_000),
         nro_cuota_current: 1,
         nro_cuota_total: 3,
       }),
@@ -128,7 +127,7 @@ describe("flowLinesForFacturacionMonth", () => {
         statement_line_id: -1_000_000_001,
         line_role: "installment_cuota",
         billing_month: "2026-08",
-        amount_clp: 112_727,
+        ...clpMoney(112_727),
         nro_cuota_current: 1,
         nro_cuota_total: 3,
         gastos_scope: "split_only",
@@ -138,7 +137,7 @@ describe("flowLinesForFacturacionMonth", () => {
         statement_line_id: -3_000_161_000,
         line_role: "installment_cuota",
         billing_month: "2026-08",
-        amount_clp: 422_345,
+        ...clpMoney(422_345),
         nro_cuota_current: 1,
         nro_cuota_total: 3,
         gastos_scope: "excluded",

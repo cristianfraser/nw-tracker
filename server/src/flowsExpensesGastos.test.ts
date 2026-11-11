@@ -9,14 +9,35 @@ import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
 import {
-  aggregateGastosFromLines,
-  bigGroupUsageByMode,
-  buildFlowsExpensesGastosPayload,
-  buildFlowsExpensesGastosViews,
+  aggregateGastosFromLines as aggregateFinishedLines,
+  bigGroupUsageByMode as bigGroupUsageOfFinishedLines,
+  buildFlowsExpensesGastosPayload as gastosPayloadOfFinishedLines,
+  buildFlowsExpensesGastosViews as gastosViewsOfFinishedLines,
   countsTowardGastosMes,
   expenseYearMonthlyAverages,
   gastosViewKey,
 } from "./flowsExpensesGastos.js";
+import { withLineMoney } from "./lineMoney.js";
+
+// The gastos views read finished lines: the fixtures go through the «line money» step first.
+const aggregateGastosFromLines = (
+  lines: FlowCcExpenseLineRow[],
+  ...rest: Parameters<typeof aggregateFinishedLines> extends [unknown, ...infer R] ? R : never
+) => aggregateFinishedLines(withLineMoney(lines), ...rest);
+const buildFlowsExpensesGastosViews = (
+  lines: FlowCcExpenseLineRow[],
+  ...rest: Parameters<typeof gastosViewsOfFinishedLines> extends [unknown, ...infer R] ? R : never
+) => gastosViewsOfFinishedLines(withLineMoney(lines), ...rest);
+const bigGroupUsageByMode = (
+  lines: FlowCcExpenseLineRow[],
+  ...rest: Parameters<typeof bigGroupUsageOfFinishedLines> extends [unknown, ...infer R] ? R : never
+) => bigGroupUsageOfFinishedLines(withLineMoney(lines), ...rest);
+const buildFlowsExpensesGastosPayload = (
+  unit: Parameters<typeof gastosPayloadOfFinishedLines>[0],
+  excluded: ReadonlySet<string>,
+  includePreTax: boolean,
+  lines: FlowCcExpenseLineRow[]
+) => gastosPayloadOfFinishedLines(unit, excluded, includePreTax, withLineMoney(lines));
 
 /** A card line as the builder emits it: with the kind the importer stored for its statement line. */
 function withStoredKind<L extends FlowCcExpenseLineRow>(l: L): L {

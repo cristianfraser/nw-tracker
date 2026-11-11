@@ -199,13 +199,47 @@ export function minAdaptiveUsdFractionDigits(values: Array<number | null | undef
 }
 
 /** CC expense line: CLP with optional original USD in parentheses. */
-export function formatCcExpenseLineAmount(
-  amountClp: number,
-  amountUsd: number | null | undefined
-): string {
+/** Pesos with dollars beside them (`$13.881 (US$15,00)`): an import preview's movement legs. */
+export function formatCcExpenseLineAmount(amountClp: number, amountUsd: number | null | undefined): string {
   const clp = formatClp(amountClp);
   if (amountUsd == null || !Number.isFinite(amountUsd) || amountUsd === 0) return clp;
   return `${clp} (${formatUsdFine(amountUsd)})`;
+}
+
+/**
+ * An amount in its own currency (lowercase ISO 4217): pesos whole, dollars with cents, any other
+ * currency as its code and its own minor digits (`EUR 12,50`). Negatives in parentheses.
+ */
+export function formatMoney(m: { value: number; currency: string }): string {
+  if (m.currency === "clp") return formatClp(m.value);
+  if (m.currency === "usd") return formatUsdFine(m.value);
+  if (!Number.isFinite(m.value)) return "—";
+  const code = m.currency.toUpperCase();
+  let digits = 2;
+  try {
+    digits = new Intl.NumberFormat("en", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    throw new Error(`formatMoney: unknown currency ${m.currency}`);
+  }
+  const body = `${code} ${normalizeIntlNum(numFmt(digits, digits).format(Math.abs(m.value)))}`;
+  return m.value < 0 ? `(${body})` : body;
+}
+
+/**
+ * An expense line's amount: in its own currency, and its value in the display unit beside it when
+ * the unit is another currency («US$13,30 ($13.083)», «$12.345 (US$12,70)»); «≈» marks a value at
+ * today's rate (a facturación not paid yet). The line's money is the server's (`amount`, `values`).
+ */
+export function formatLineAmount(
+  line: { amount: { value: number; currency: string }; values: Record<string, { value: number; rate_source: string }> },
+  unit: string
+): string {
+  const own = formatMoney(line.amount);
+  if (line.amount.currency === unit) return own;
+  const v = line.values[unit];
+  if (!v) return own;
+  const shown = formatMoney({ value: v.value, currency: unit });
+  return `${own} (${v.rate_source === "live" ? "≈ " : ""}${shown})`;
 }
 
 /** USD with cents — still prefixed `US$`; negatives `(US$1,234.56)`. */

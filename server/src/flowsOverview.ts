@@ -33,6 +33,7 @@
  * - investments_change = deposits + deposits_pre_tax + pl;
  * - net_worth_change = savings + deposits_pre_tax + pl + cash_fx.
  */
+import { lineAmount } from "./lineMoney.js";
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -185,7 +186,7 @@ function bucketMap(): { map: Map<string, Bucket>; touch: (key: string) => Bucket
 /** Payslip deductions counted as gastos (health, AFP commission, tax, fees): taken from gross pay. */
 function payslipGastosLines(lines: readonly FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
   return lines.filter(
-    (ln) => ln.source === "payslip" && ln.amount_clp > 0 && countsTowardGastosMes(ln, "split")
+    (ln) => ln.source === "payslip" && lineAmount(ln).value > 0 && countsTowardGastosMes(ln, "split")
   );
 }
 

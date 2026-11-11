@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { FlowCcExpenseLineRow } from "nw-tracker-contracts/dto/flows";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
+import { withLineMoney } from "./lineMoney.js";
 import { countsTowardGastosMes, isGastosRefundLine } from "./flowsExpensesGastos.js";
 import { isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine } from "./ccExpenseCategories.js";
 
@@ -36,10 +37,10 @@ function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     origin_card_last4: null,
     primary_card_last4: null,
     ...partial,
-  };
+  } as FlowCcExpenseLineRow;
 }
 
-const shape = (partial: Partial<FlowCcExpenseLineRow>) => withExpenseLineShapes([line(partial)], RULES)[0]!;
+const shape = (partial: Partial<FlowCcExpenseLineRow>) => withExpenseLineShapes(withLineMoney([line(partial)]), RULES)[0]!;
 const cuota = (partial: Partial<FlowCcExpenseLineRow>) =>
   shape({ line_role: "installment_cuota", installment_flag: 1, nro_cuota_current: 1, nro_cuota_total: 3, ...partial });
 

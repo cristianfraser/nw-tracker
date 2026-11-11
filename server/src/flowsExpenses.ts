@@ -1,5 +1,13 @@
 import { requireStoredCardLineKind } from "./cards/lineKinds.js";
-import type { ExpenseLinePaymentName } from "nw-tracker-contracts/dto/flows";
+import { withLineMoney } from "./lineMoney.js";
+import { toWireExpenseLines } from "./wireExpenseLine.js";
+import type {
+  ExpenseLinePaymentName,
+  FlowCcExpenseLineRow as WireExpenseLine,
+  LineRateSource,
+  LineUnitValue,
+  Money,
+} from "nw-tracker-contracts/dto/flows";
 import { cardLineFirstSeenByLineId } from "./flows/flowFirstSeen.js";
 import type { CardLineKind } from "nw-tracker-contracts";
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
@@ -68,7 +76,7 @@ import {
   effectiveCcExpenseLineAmountClpWith,
   effectiveCcExpenseLineAmountUsd,
 } from "./ccExpenseAmountClp.js";
-import { facturacionPayByIsoResolver, facturacionUsdRateResolver } from "./ccBillingViews.js";
+import { facturacionPayByIsoResolver, facturacionUsdRateWithSourceResolver } from "./ccBillingViews.js";
 import { usdPaymentLineClpResolver, type CcUsdPaymentLine } from "./ccFacturacionUsdRate.js";
 import { isCcUsdPaymentLine } from "./ccUsdStatementBilled.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
@@ -213,6 +221,15 @@ export type FlowCcExpenseLineRow = {
 
   /** USD for gastos display: native USD or CLP ÷ FX on purchase / movement date. */
   amount_usd_at_expense: number | null;
+
+  /**
+   * The line's money (`lineMoney.ts`): `amount` in the currency the line happened in, `values` its
+   * value in each display unit with how it was reached. Set by the «line money» step.
+   */
+  amount?: Money;
+  values?: Record<string, LineUnitValue>;
+  /** Builder hint for the «line money» step: how a card dollar line's pesos were reached. */
+  clp_rate_source?: LineRateSource;
 
   /**
    * A dollar statement line's amount in the charge's own currency, as printed («monto moneda
@@ -448,7 +465,8 @@ export type FlowsExpensesPayload = {
 
   big_groups: CcExpenseBigGroupRow[];
 
-  lines: FlowCcExpenseLineRow[];
+  /** The lines as they go over the wire (`toWireExpenseLines`: money as `amount` + `values`). */
+  lines: WireExpenseLine[];
 
   /** Big groups some line carries, sorted: the Expenses page's default chart exclusion. */
   active_big_group_slugs: string[];
@@ -586,15 +604,16 @@ export function buildCcExpenseLines(
   };
   // A line's dollars show at the rate its facturación was paid (today's while unpaid) — the rate
   // the facturación's row carries — so the facturación modal's lines add up to its row.
-  const usdRateResolverByAccount = new Map<number, (billingMonth: string) => number>();
-  const usdRateFor = (accountId: number, billingMonth: string): number => {
+  const usdRateResolverByAccount = new Map<number, ReturnType<typeof facturacionUsdRateWithSourceResolver>>();
+  const usdRateWithSourceFor = (accountId: number, billingMonth: string) => {
     let resolve = usdRateResolverByAccount.get(accountId);
     if (!resolve) {
-      resolve = facturacionUsdRateResolver(accountId, billingDetailCacheForAccount(accountId).facturaciones);
+      resolve = facturacionUsdRateWithSourceResolver(accountId, billingDetailCacheForAccount(accountId).facturaciones);
       usdRateResolverByAccount.set(accountId, resolve);
     }
     return resolve(billingMonth);
   };
+  const usdRateFor = (accountId: number, billingMonth: string): number => usdRateWithSourceFor(accountId, billingMonth).clp_per_usd;
   // A dollar payment pays the facturación before the statement that prints it, so it shows the
   // pesos actually paid for it instead (`usdPaymentLineClpResolver`).
   const usdPaymentClpResolverByAccount = new Map<number, (line: CcUsdPaymentLine) => number>();
@@ -637,15 +656,21 @@ export function buildCcExpenseLines(
 
       isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
 
-    const amount = effectiveCcExpenseLineAmountClpWith(row, (usd) =>
-      isCcUsdPaymentLine({ id: row.statement_line_id, kind: row.kind, usd })
-        ? usdPaymentClpFor(row.account_id, {
-            statement_line_id: row.statement_line_id,
-            date_iso: purchaseOn,
-            usd,
-          })
-        : Math.round(usd * usdRateFor(row.account_id, billingMonth))
-    );
+    // How the line's pesos were reached when it is in dollars (the line money's CLP rate source).
+    let clpRateSource: LineRateSource = "native";
+    const amount = effectiveCcExpenseLineAmountClpWith(row, (usd) => {
+      if (isCcUsdPaymentLine({ id: row.statement_line_id, kind: row.kind, usd })) {
+        clpRateSource = "paid";
+        return usdPaymentClpFor(row.account_id, {
+          statement_line_id: row.statement_line_id,
+          date_iso: purchaseOn,
+          usd,
+        });
+      }
+      const rate = usdRateWithSourceFor(row.account_id, billingMonth);
+      clpRateSource = rate.source;
+      return Math.round(usd * rate.clp_per_usd);
+    });
 
     if (amount == null || amount === 0) continue;
 
@@ -784,6 +809,8 @@ export function buildCcExpenseLines(
         : {}),
 
       amount_usd_at_expense: amountUsdAtExpense,
+
+      clp_rate_source: clpRateSource,
 
       merchant: row.merchant,
 
@@ -1051,6 +1078,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
   { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },
+  { name: "line money", run: asRows(withLineMoney) },
   {
     name: "line shapes",
     run: (lines) =>
@@ -1234,7 +1262,7 @@ export function flowsExpensesPayloadFromLines(
     account_ids: accountIds,
     categories: listCcExpenseCategories(),
     big_groups: listCcExpenseBigGroups(),
-    lines,
+    lines: toWireExpenseLines(lines),
     active_big_group_slugs: [...new Set(lines.flatMap((l) => (l.big_group_slug ? [l.big_group_slug] : [])))].sort(),
     ...(accountIds.length > 0 ? { cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds) } : {}),
     additional_cards: buildAdditionalCardsSummary(lines),

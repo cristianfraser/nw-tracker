@@ -28,6 +28,7 @@ import { db } from "../src/db.js";
 import { loadPaymentProcessorReceipts } from "../src/paymentProcessorReceipts.js";
 import { deriveMerchantChargeLinks } from "../src/merchantExpenseNotes.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
+import { expenseLineGastosAmount } from "../src/flowsExpensesGastos.js";
 
 const arg = (name: string): string | null => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -223,7 +224,7 @@ for (const l of lines) {
     merchants.set(key, m);
   }
   m.count++;
-  m.pesos += l.amount_clp;
+  m.pesos += expenseLineGastosAmount(l, "clp");
   if (day < m.first) m.first = day;
   if (day > m.last) m.last = day;
   m.categories.set(l.category_slug, (m.categories.get(l.category_slug) ?? 0) + 1);

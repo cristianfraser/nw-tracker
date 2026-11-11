@@ -1,3 +1,4 @@
+import { clpMoney } from "../../test/lineMoneyFixture";
 import { describe, expect, it } from "vitest";
 import { financingCandidatesFromLines } from "./financingCandidates";
 import type { FlowCcExpenseLineRow } from "../../types";
@@ -15,8 +16,7 @@ function line(
     occurred_on: "2025-01-05",
     purchase_on: "2025-01-05",
     statement_date: "",
-    amount_clp: 50_000,
-    amount_usd: null,
+    ...clpMoney(50_000),
     merchant: "STREAMING CO",
     merchant_key: "STREAMING CO",
     category_slug: "unclassified",
@@ -29,7 +29,6 @@ function line(
     big_group_slug: null,
     origin_label: "4242",
     origin: { kind: "card", account_name: null, card_last4: null, additional: false },
-    amount_usd_at_expense: null,
     ...partial,
   };
 }
@@ -40,11 +39,11 @@ describe("financingCandidatesFromLines", () => {
     const single = line({
       statement_line_id: -4,
       purchase_month: "2025-03",
-      amount_clp: 90_000,
+      ...clpMoney(90_000),
       merchant: "FURNITURE",
       purchase_key: "installment-h:1:2025-03-10:3:90000:FURNITURE",
     });
-    const cuota = line({ statement_line_id: 7, line_role: "installment_cuota", amount_clp: 4_167 });
+    const cuota = line({ statement_line_id: 7, line_role: "installment_cuota", ...clpMoney(4_167) });
     const purchase = line({ statement_line_id: 8, line_role: "purchase", purchase_key: "line-pr:x" });
 
     const candidates = financingCandidatesFromLines([...twins, single, cuota, purchase]);

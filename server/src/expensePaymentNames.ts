@@ -22,6 +22,7 @@ import type { ExpenseLinePaymentName } from "nw-tracker-contracts/dto/flows";
 import { listCcFacturadoFinancingLinks } from "./ccFacturadoFinancingLinksDb.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
+import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { ccPaymentEvidenceKey, type CcPaymentIdentity } from "./ccPaymentMirrorEvidence.js";
 import { findLines } from "./cards/purchases.js";
 import { chileCalendarAddDays } from "./chileDate.js";
@@ -219,19 +220,20 @@ const selPagoTarjetaTransfers = db.prepare(
     WHERE m.flow_kind = 'pago_tarjeta' AND m.account_id IS NULL AND m.to_account_id IS NOT NULL`
 );
 const selCardLast4 = db.prepare(`SELECT card_last4 FROM credit_card_account_config WHERE account_id = ?`);
-/** A card's statements' titular plastics (web-paste buckets carry the config's). */
+/** A card's statements' titular plastics, with each statement's source kind (bank listings carry the config's). */
 const selStatementPlastics = db.prepare(
-  `SELECT card_last4, statement_date FROM cc_statements
-    WHERE account_id = ? AND card_last4 IS NOT NULL AND card_last4 <> '' AND source_pdf NOT LIKE 'import:web-paste%'`
+  `SELECT card_last4, statement_date, source_kind FROM cc_statements
+    WHERE account_id = ? AND card_last4 IS NOT NULL AND card_last4 <> ''`
 );
 
 /**
- * The plastic a card is known by today: its newest statement's titular card (·0781 for a master
- * whose identity is the replaced ·0901), else the config's card identity.
+ * The plastic a card is known by today: its newest issued statement's titular card (·0781 for a
+ * master whose identity is the replaced ·0901), else the config's card identity.
  */
 function currentPlasticLast4(accountId: number): string | null {
   let best: { iso: string; last4: string } | null = null;
-  for (const r of selStatementPlastics.all(accountId) as { card_last4: string; statement_date: string }[]) {
+  for (const r of selStatementPlastics.all(accountId) as { card_last4: string; statement_date: string; source_kind: string }[]) {
+    if (!isStatementSourceKind(r.source_kind)) continue;
     const iso = parseDdMmYyToIso(r.statement_date);
     if (iso && (!best || iso > best.iso)) best = { iso, last4: r.card_last4 };
   }

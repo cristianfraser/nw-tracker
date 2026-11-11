@@ -13,14 +13,21 @@ import { isCheckingIncomeKind } from "./flowsCheckingIncomeOverrides.js";
 import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "./checkingExpenseRefunds.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
+import { lineMoneyFromBuilderFields } from "./lineMoney.js";
 
 // Synthetic registry (vitest.config.ts): primary 0781-style cards, additional card 4999.
 const ADDITIONAL = "4999";
 const PRIMARY = "4141";
 
+/** A finished line: its money as the «line money» step writes it from the builder pesos / dollars. */
 function chargeLine(
-  patch: Partial<AdditionalCardChargeLineInput> & { expense_month: string; amount_clp: number }
+  patch: Partial<AdditionalCardChargeLineInput> & {
+    expense_month: string;
+    amount_clp: number;
+    amount_usd_at_expense?: number | null;
+  }
 ): AdditionalCardChargeLineInput {
+  const { amount_clp, amount_usd_at_expense, ...rest } = patch;
   return {
     source: "cc",
     origin_card_last4: ADDITIONAL,
@@ -29,8 +36,11 @@ function chargeLine(
     line_role: "purchase",
     installment_flag: 0,
     nro_cuota_current: null,
-    amount_usd_at_expense: patch.amount_clp / 1000,
-    ...patch,
+    ...rest,
+    ...lineMoneyFromBuilderFields({
+      amount_clp,
+      amount_usd_at_expense: amount_usd_at_expense === undefined ? amount_clp / 1000 : amount_usd_at_expense,
+    }),
   };
 }
 
@@ -200,7 +210,12 @@ describe("checking credits as expense refunds", () => {
       expect(may(after)).toBe(may(before) - 12_340);
 
       const line = () => buildFlowsExpensesPayload().lines.find((l) => l.source === "checking" && l.statement_line_id === movementId);
-      expect(line()).toMatchObject({ amount_clp: -12_340, category_slug: "food", expense_month: "2099-05", checking_refund: true });
+      expect(line()).toMatchObject({
+        amount: { value: -12_340, currency: "clp" },
+        category_slug: "food",
+        expense_month: "2099-05",
+        checking_refund: true,
+      });
 
       // The expenses page edits a refund's category like any line's.
       assignFlowExpenseLineCategory({ lineId: movementId, source: "checking", unique: true, categorySlug: "fun" });

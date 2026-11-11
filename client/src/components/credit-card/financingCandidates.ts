@@ -1,3 +1,4 @@
+import { lineValueIn } from "../../lineMoney";
 import type { FlowCcExpenseLineRow } from "../../types";
 
 export type FinancingCandidate = {
@@ -29,7 +30,7 @@ export function financingCandidatesFromLines(
     const existing = byKey.get(key);
     if (existing) {
       existing.purchase_count += 1;
-      existing.amount_clp += ln.amount_clp;
+      existing.amount_clp += lineValueIn(ln, "clp");
       continue;
     }
     byKey.set(key, {
@@ -38,7 +39,8 @@ export function financingCandidatesFromLines(
       purchase_key: ln.purchase_key,
       merchant: ln.merchant ?? "",
       purchase_count: 1,
-      amount_clp: ln.amount_clp,
+      // A financing pays a peso facturado: the plans count in pesos.
+      amount_clp: lineValueIn(ln, "clp"),
       purchase_month: ln.purchase_month,
       origin_label: ln.origin_label,
     });

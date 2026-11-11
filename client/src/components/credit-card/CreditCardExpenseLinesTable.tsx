@@ -4,7 +4,8 @@ import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
-import { formatCcExpenseLineAmount, formatClp, parseNumberInput } from "../../format";
+import { formatClp, formatLineAmount, parseNumberInput } from "../../format";
+import { lineValueIn } from "../../lineMoney";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -48,10 +49,11 @@ export function sortCreditCardExpenseLinesByStatement(
   a: FlowCcExpenseLineRow,
   b: FlowCcExpenseLineRow
 ): number {
+  // Ordering compares every line in one unit; pesos is the one every line has a value in.
   return (
     lineDate(b).localeCompare(lineDate(a)) ||
     b.occurred_on.localeCompare(a.occurred_on) ||
-    Math.abs(b.amount_clp) - Math.abs(a.amount_clp)
+    Math.abs(lineValueIn(b, "clp")) - Math.abs(lineValueIn(a, "clp"))
   );
 }
 
@@ -59,7 +61,7 @@ export function sortCreditCardExpenseLinesByAmountDesc(
   a: FlowCcExpenseLineRow,
   b: FlowCcExpenseLineRow
 ): number {
-  return b.amount_clp - a.amount_clp || b.occurred_on.localeCompare(a.occurred_on);
+  return lineValueIn(b, "clp") - lineValueIn(a, "clp") || b.occurred_on.localeCompare(a.occurred_on);
 }
 
 type SortKey = "date" | "amount" | "category";
@@ -72,6 +74,7 @@ type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
 function sortLines(
   lines: readonly FlowCcExpenseLineRow[],
   sort: SortState,
+  unit: string,
   categoryLabel: (line: FlowCcExpenseLineRow) => string | null
 ): readonly FlowCcExpenseLineRow[] {
   if (!sort) return lines;
@@ -81,7 +84,7 @@ function sortLines(
     .sort((a, b) => {
       let cmp = 0;
       if (sort.key === "date") cmp = sign * lineDate(a.line).localeCompare(lineDate(b.line));
-      else if (sort.key === "amount") cmp = sign * (a.line.amount_clp - b.line.amount_clp);
+      else if (sort.key === "amount") cmp = sign * (lineValueIn(a.line, unit) - lineValueIn(b.line, unit));
       else {
         const la = categoryLabel(a.line);
         const lb = categoryLabel(b.line);
@@ -218,6 +221,7 @@ function FixedCategoryPill({
  * none: its cuota count is in the ⓘ card.
  */
 function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
+  const { displayUnit } = useDisplayPreferences();
   let sup: string[] | null = null;
   if (
     line.line_role !== "installment_purchase_total" &&
@@ -233,7 +237,7 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
   }
   return (
     <span className={cn("mono", styles.amount)}>
-      {formatCcExpenseLineAmount(line.amount_clp, line.amount_usd)}
+      {formatLineAmount(line, displayUnit)}
       {sup ? (
         <sup className={styles.amountSup}>
           <Joined parts={sup} />
@@ -271,7 +275,7 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
         title={t("accountDetail.creditCard.facturacionDeleteConfirmTitle")}
         message={t("accountDetail.creditCard.facturacionDeleteConfirmBody", {
           merchant: line.merchant ?? "—",
-          amount: formatCcExpenseLineAmount(line.amount_clp, line.amount_usd),
+          amount: formatLineAmount(line, displayUnit),
         })}
         confirmLabel={t("accountDetail.creditCard.facturacionDeleteConfirmAction")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
@@ -724,13 +728,14 @@ export function CreditCardExpenseLinesTable({
     () => new Map(categories.map((c) => [c.slug, ccExpenseCategoryPathLabel(c)])),
     [categories]
   );
+  const { displayUnit } = useDisplayPreferences();
   const sorted = useMemo(
     () =>
-      sortLines(lines, sort, (ln) => {
+      sortLines(lines, sort, displayUnit, (ln) => {
         const slug = lineCategorySlug(ln);
         return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
       }),
-    [categoryLabelBySlug, lines, sort]
+    [categoryLabelBySlug, lines, sort, displayUnit]
   );
 
   const rowCount = items != null ? items.length : lines.length;

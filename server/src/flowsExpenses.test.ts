@@ -20,7 +20,7 @@ import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
 import { flowCcExpenseLineFingerprint } from "./ccExpenseLineDedupe.js";
-import { buildFlowsExpensesPayload, resolveExpenseMonth } from "./flowsExpenses.js";
+import { buildFlowsExpenseLines, buildFlowsExpensesPayload, resolveExpenseMonth } from "./flowsExpenses.js";
 import { gastosSumMonthForLine } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
@@ -121,7 +121,7 @@ describe("flowsExpenses", () => {
     );
     if (rocaTotals.length === 0) return;
     expect(rocaTotals).toHaveLength(1);
-    expect(rocaTotals[0]?.amount_clp).toBe(881_134);
+    expect(rocaTotals[0]?.values.clp?.value).toBe(881_134);
   });
 
   it("includes 4242 purchase lines when statement data exists", () => {
@@ -145,7 +145,7 @@ describe("flowsExpenses", () => {
     const payload = buildFlowsExpensesPayload();
     expect(payload.account_ids).toContain(id4242);
     const cc4242 = payload.lines.filter(
-      (ln) => ln.source === "cc" && ln.account_id === id4242 && ln.amount_clp > 0
+      (ln) => ln.source === "cc" && ln.account_id === id4242 && ln.values.clp!.value > 0
     );
     expect(cc4242.length).toBeGreaterThan(0);
   });
@@ -428,7 +428,7 @@ describe("flowsExpenses", () => {
   it("does not count installment purchase totals toward gastos in split mode", () => {
     const payload = buildFlowsExpensesPayload();
     const totals = payload.lines.filter(
-      (ln) => ln.line_role === "installment_purchase_total" && ln.amount_clp > 0
+      (ln) => ln.line_role === "installment_purchase_total" && ln.values.clp!.value > 0
     );
     if (totals.length === 0) return;
 
@@ -453,23 +453,23 @@ describe("flowsExpenses", () => {
       const sumPositive = monthLines
         .filter(
           (ln) =>
-            (ln.amount_clp > 0 || ln.checking_refund === true) &&
+            (ln.values.clp!.value > 0 || ln.checking_refund === true) &&
             ln.nota_credito_role !== "annulled_purchase" &&
             ln.nota_credito_role !== "matched_nota" &&
             ln.nota_credito_role !== "unmatched_nota"
         )
-        .reduce((s, ln) => s + ln.amount_clp, 0);
+        .reduce((s, ln) => s + ln.values.clp!.value, 0);
       const sumCounted = monthLines.reduce((s, ln) => {
         if (ln.nota_credito_role === "annulled_purchase" || ln.nota_credito_role === "matched_nota") {
           return s;
         }
-        if (ln.nota_credito_role === "unmatched_nota") return s + ln.amount_clp;
+        if (ln.nota_credito_role === "unmatched_nota") return s + ln.values.clp!.value;
         if (countsTowardGastosMes(ln, "split")) {
           // Mortgage-linked lines contribute only the carrying portion (deuda amortization
           // is tracked separately), matching the production aggregateGastosFromLines logic.
           const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
           const mortgageSplit = hasSplittableMortgageExpenseDepositLink(link);
-          return s + (mortgageSplit ? link.carrying_clp : ln.amount_clp);
+          return s + (mortgageSplit ? link.carrying_clp : ln.values.clp!.value);
         }
         return s;
       }, 0);
@@ -499,7 +499,7 @@ describe("flowsExpenses", () => {
         }
         if (ln.nota_credito_role === "unmatched_nota") return true;
         return (
-          ln.amount_clp > 0 &&
+          ln.values.clp!.value > 0 &&
           countsTowardCcExpenseGastosMes(ln.category_slug, {
             installment_flag: ln.installment_flag,
             nro_cuota_current: ln.nro_cuota_current,
@@ -512,9 +512,9 @@ describe("flowsExpenses", () => {
     const dec = splitView(payload).by_month.find((m) => m.period_month === "2024-12");
     expect(dec).toBeDefined();
     const decAbonosFromLines = payload.lines
-      .filter((ln) => ln.expense_month === "2024-12" && ln.amount_clp < 0 && ln.checking_refund !== true)
+      .filter((ln) => ln.expense_month === "2024-12" && ln.values.clp!.value < 0 && ln.checking_refund !== true)
       .filter((ln) => ln.nota_credito_role !== "matched_nota" && ln.nota_credito_role !== "unmatched_nota")
-      .reduce((s, ln) => s + ln.amount_clp, 0);
+      .reduce((s, ln) => s + ln.values.clp!.value, 0);
     expect(dec!.abonos_mes_clp).toBe(Math.round(decAbonosFromLines));
   });
 
@@ -542,10 +542,10 @@ describe("flowsExpenses", () => {
     const usdIncludedClp = payload.lines
       .filter(
         (ln) =>
-          ln.amount_clp > 0 &&
+          ln.values.clp!.value > 0 &&
           usdOnlyIds.some((r) => r.id === ln.statement_line_id)
       )
-      .reduce((s, ln) => s + ln.amount_clp, 0);
+      .reduce((s, ln) => s + ln.values.clp!.value, 0);
     expect(usdIncludedClp).toBeGreaterThan(0);
   });
 
@@ -559,7 +559,7 @@ describe("flowsExpenses", () => {
         ln.nro_cuota_current >= 2
     );
     if (!inst) return;
-    expect(inst.amount_clp).toBeLessThan(200_000);
+    expect(inst.values.clp!.value).toBeLessThan(200_000);
   });
 
   it("lands each facturación's cuotas on the pay-by its facturaciones row shows", () => {
@@ -576,9 +576,9 @@ describe("flowsExpenses", () => {
   });
 
   it("has no duplicate gastos fingerprints on credit card lines", () => {
-    const payload = buildFlowsExpensesPayload();
+    // The fingerprint reads the builder pesos: the server-side lines, not the wire payload.
     const seen = new Set<string>();
-    for (const ln of payload.lines.filter(
+    for (const ln of buildFlowsExpenseLines().filter(
       (l) =>
         l.source === "cc" &&
         l.amount_clp > 0 &&

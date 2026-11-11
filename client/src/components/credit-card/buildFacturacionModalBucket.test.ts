@@ -1,9 +1,10 @@
+import { clpMoney } from "../../test/lineMoneyFixture";
 import { describe, expect, it } from "vitest";
 import { buildFacturacionModalBucket } from "./buildFacturacionModalBucket";
 import type { FlowCcExpenseLineRow } from "../../types";
 
 function line(
-  overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "merchant" | "amount_clp">
+  overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "merchant"> & Partial<Pick<FlowCcExpenseLineRow, "amount" | "values">>
 ): FlowCcExpenseLineRow {
   return {
     source: "cc",
@@ -16,7 +17,6 @@ function line(
     occurred_on: "2026-06-01",
     purchase_on: "2026-06-01",
     statement_date: "2026-06-20",
-    amount_usd_at_expense: null,
     merchant_key: "x",
     installment_flag: 0,
     nro_cuota_current: null,
@@ -28,6 +28,7 @@ function line(
     big_group_slug: null,
     origin_label: "4242",
     origin: { kind: "card", account_name: null, card_last4: null, additional: false },
+    ...clpMoney(0),
     ...overrides,
   };
 }
@@ -35,9 +36,9 @@ function line(
 describe("buildFacturacionModalBucket", () => {
   it("files the lines the server marks as financing and as abonos", () => {
     const bucket = buildFacturacionModalBucket([
-      line({ statement_line_id: 1, merchant: "JUMBO", amount_clp: 50_000 }),
-      line({ statement_line_id: 2, merchant: "INTERESES ROTATIVOS", amount_clp: 12_000, is_financing_cost: true }),
-      line({ statement_line_id: 3, merchant: "PAGO", amount_clp: -100_000, abono: true }),
+      line({ statement_line_id: 1, merchant: "JUMBO", ...clpMoney(50_000) }),
+      line({ statement_line_id: 2, merchant: "INTERESES ROTATIVOS", ...clpMoney(12_000), is_financing_cost: true }),
+      line({ statement_line_id: 3, merchant: "PAGO", ...clpMoney(-100_000), abono: true }),
     ]);
     expect(bucket.gastos.map((l) => l.merchant)).toEqual(["JUMBO"]);
     expect(bucket.costeFinanciero.map((l) => l.merchant)).toEqual(["INTERESES ROTATIVOS"]);
@@ -46,7 +47,7 @@ describe("buildFacturacionModalBucket", () => {
 
   it("never reads the merchant: an unmarked charge is a gasto", () => {
     const bucket = buildFacturacionModalBucket([
-      line({ statement_line_id: 4, merchant: "Servicio Administracion", amount_clp: 2_990 }),
+      line({ statement_line_id: 4, merchant: "Servicio Administracion", ...clpMoney(2_990) }),
     ]);
     expect(bucket.gastos).toHaveLength(1);
     expect(bucket.costeFinanciero).toHaveLength(0);
