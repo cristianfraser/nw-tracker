@@ -35,6 +35,7 @@ import {
   type DividendDetailUpsertOutcome,
   type MovementDividendDetailInput,
 } from "./movementDividendDetails.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 type RacionalMovement = BrokerMovement;
 type RacionalScrapedDividend = BrokerDividend;
@@ -121,10 +122,12 @@ const stmtSplitRowsNear = db.prepare(
 );
 
 export function planRacionalMovement(movement: RacionalMovement): RacionalPlannedMovement {
+  // Racional's cash accounts are pesos and dollars.
+  const currency = pesosOrDollars(movement.currency, "broker.movements (racional)");
   const note = [
     `Racional ${movement.title}`,
     movement.order_id ? `orden ${movement.order_id}` : null,
-    movement.price != null ? `${movement.units} @ ${movement.currency === "usd" ? "US$" : "$"}${movement.price}` : null,
+    movement.price != null ? `${movement.units} @ ${currency === "usd" ? "US$" : "$"}${movement.price}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -132,7 +135,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
   const base = {
     source: movement,
     amount: movement.amount,
-    currency: movement.currency,
+    currency: currency,
     units_delta: null as string | null,
     flow_kind: null as string | null,
     from_account_id: null as number | null,
@@ -152,7 +155,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
     case "buy":
       return {
         ...base,
-        from_account_id: racionalCashAccountId(movement.currency),
+        from_account_id: racionalCashAccountId(currency),
         to_account_id: equityAccount(),
         units_delta: movement.units,
         flow_kind: "stock_buy",
@@ -161,7 +164,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
       return {
         ...base,
         from_account_id: equityAccount(),
-        to_account_id: racionalCashAccountId(movement.currency),
+        to_account_id: racionalCashAccountId(currency),
         units_delta: movement.units,
         flow_kind: "stock_sell",
       };
@@ -172,20 +175,20 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
       return {
         ...base,
         from_account_id: equityAccount(),
-        to_account_id: racionalCashAccountId(movement.currency),
+        to_account_id: racionalCashAccountId(currency),
         flow_kind: "dividend_payout",
       };
     case "interest":
       return {
         ...base,
-        account_id: racionalCashAccountId(movement.currency),
+        account_id: racionalCashAccountId(currency),
         flow_kind: "savings_earnings",
       };
     case "fee": {
       // Racional's monthly comisión is charged to the PORTAFOLIO caja (the app's fee detail says
       // «Distribución por portafolios»), not the Stocks wallet — and it is a P/L cost, so it
       // carries `cash_fee` (nets against interest; never reads as a capital withdrawal).
-      if (movement.currency === "clp") {
+      if (currency === "clp") {
         const caja = portfolioCajaClpAccountId();
         if (caja == null) {
           return {
@@ -215,14 +218,14 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
     case "deposit":
       return {
         ...base,
-        account_id: racionalCashAccountId(movement.currency),
+        account_id: racionalCashAccountId(currency),
         requires_manual:
           "cash from a bank account — link it to the checking side in /panel/mirror-pairs",
       };
     case "withdrawal":
       return {
         ...base,
-        account_id: racionalCashAccountId(movement.currency),
+        account_id: racionalCashAccountId(currency),
         amount: -Math.abs(movement.amount),
         requires_manual:
           "cash to a bank account — link it to the checking side in /panel/mirror-pairs",
@@ -231,9 +234,9 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
       // A liquidated portfolio's caja goes back to the wallet: a plain transfer caja → Racional
       // CLP, the mirror of the transfer that funded the caja when the portfolio was bought
       // (movement 11377). The ETF's sale rides beside it as the `sell` of the same row.
-      if (movement.currency !== "clp") {
+      if (currency !== "clp") {
         throw new Error(
-          `Racional portfolio caja withdrawal (${movement.occurred_on}, ${movement.title}) is in ${movement.currency} — ` +
+          `Racional portfolio caja withdrawal (${movement.occurred_on}, ${movement.title}) is in ${currency} — ` +
             `only a CLP caja is mapped`
         );
       }

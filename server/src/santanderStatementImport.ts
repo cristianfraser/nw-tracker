@@ -46,6 +46,7 @@ import {
   type CardCanonicalLine,
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 const findContractCanonical = db.prepare(
   `SELECT canonical_row_id, merchant FROM cc_installment_purchases
@@ -362,7 +363,7 @@ export function writeSantanderStatements(
   return {
     accountId,
     statementDate: statements[0]!.close,
-    currencies: [...new Set(statements.map((st) => st.currency))],
+    currencies: [...new Set(statements.map((st) => pesosOrDollars(st.currency, "card.statement")))],
     lineCount: merged.statements.linesInserted,
   };
 }

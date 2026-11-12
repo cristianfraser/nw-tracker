@@ -12,6 +12,7 @@ import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { buildCcStatementImportAccountLog, logCcStatementImportRun, type CcStatementImportAccountLog } from "./ccStatementImportLog.js";
 import { db } from "./db.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 /**
  * Canonical card statements (`card.statement` statements, a `card.parsed_statements` converted,
@@ -47,6 +48,11 @@ export function applyCanonicalCardStatements(
   statements: readonly CardCanonicalStatement[],
   opts: ApplyParsedCcStatementsOptions
 ): CardParsedStatementsApplyDetails {
+  // A card's sub-balances are pesos and dollars: a statement or line in another currency is refused.
+  for (const st of statements) {
+    pesosOrDollars(st.currency, "card statement");
+    for (const line of st.lines) pesosOrDollars(line.currency, "card statement line");
+  }
   // Every card's write asks for the expense-link sync: one, when the corpus is in.
   return withExpenseLinkSyncDeferred(() => applyStatements(statements, opts));
 }

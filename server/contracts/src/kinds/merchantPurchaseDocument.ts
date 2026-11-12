@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -12,7 +13,7 @@ import { defineIngestKind } from "../defineKind.js";
 /** A merchant slug: which store issued the document, e.g. `apple_app_store`. */
 const merchantSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 
-const currencySchema = z.enum(["clp", "usd"]);
+const currencySchema = currencyCodeSchema;
 
 /** Pesos are whole; dollars carry cents. */
 const moneySchema = z

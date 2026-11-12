@@ -8,11 +8,12 @@ import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { createImportBatch } from "./importBatches.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 import { confirmUsdAccountMovements } from "./usdAccountMovementsConfirm.js";
 
 type DeclaredNumber = { account_id: number; number: string };
 
-function declaredNumbers(issuer: string, currency: "clp" | "usd"): DeclaredNumber[] {
+function declaredNumbers(issuer: string, currency: string): DeclaredNumber[] {
   return db
     .prepare(`SELECT account_id, number FROM bank_account_numbers WHERE issuer = ? AND currency = ?`)
     .all(issuer, currency) as DeclaredNumber[];
@@ -85,6 +86,9 @@ export function applyBankAccountMovements(
   payload: BankAccountMovementsPayload,
   sourceRef: string
 ): BankAccountMovementsApplyDetails | UsdAccountMovementsApplyDetails {
+  // A peso listing is imported, a dollar one confirmed: no other currency has a path yet.
+  pesosOrDollars(payload.account.currency, "bank_account.movements account");
+  for (const m of payload.movements) pesosOrDollars(m.currency, "bank_account.movements movement");
   const accountId = accountIdForIssuerBankAccount(payload.account);
   assertListingNamesAccount(accountId, payload.account);
   if (payload.account.currency === "usd") {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PAYMENT_PROCESSOR_SLUGS } from "../dto/paymentProcessors.js";
-import { chileMinuteSchema, hasAtMostCents, isoDateSchema } from "../formats/index.js";
+import { chileMinuteSchema, hasAtMostCents, isoDateSchema, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 const text = z.string().trim().min(1);
@@ -104,7 +104,7 @@ export const processorReceiptSchema = z
      * ISO 4217, lowercase: «clp», «usd», or the local currency a receipt abroad prints («eur»,
      * «nzd», «brl»); the card's dollar statement prints such a charge's original amount beside it.
      */
-    currency: z.string().regex(/^[a-z]{3}$/),
+    currency: currencyCodeSchema,
     /** When the payment went through, on the Chile clock: `YYYY-MM-DD HH:MM`. */
     paid_at_chile: chileMinuteSchema,
     order_ref: text.nullable(),

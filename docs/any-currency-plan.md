@@ -201,7 +201,7 @@ listings, payment receipt, bank movements and balances, broker movements and not
 merchant documents, the manual card-payment task) and `bank_account.incoming_wires`' usd become a
 lowercase ISO code (`/^[a-z]{3}$/`); the server checks it against `currencies` on receipt.
 `schema_version`s bump where a payload gets wider. Where the server's code still handles only
-pesos and dollars, it refuses with an error naming the currency until Phase C reaches it.
+pesos and dollars, it refuses with an error naming the currency until Phase C reaches it. *Done 2026-11-12:* `currencyCodeSchema`, `server/src/ingestCurrencies.ts` (422 `unknown_currency` / `unsupported_currency`); no `schema_version` bumped (widening keeps every old payload valid).
 
 ### Phase C — held currencies beyond pesos and dollars
 

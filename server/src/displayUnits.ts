@@ -83,6 +83,11 @@ function minorDigitsByCode(): ReadonlyMap<string, number> {
   });
 }
 
+/** `code` is a currency of the `currencies` table (UF included). */
+export function isLoadedCurrency(code: string): boolean {
+  return minorDigitsByCode().has(code);
+}
+
 /** How many decimals `code` is counted in (CLP 0, USD 2, UF 4); throws for an unknown code. */
 export function currencyMinorDigits(code: string): number {
   const d = minorDigitsByCode().get(code);

@@ -93,6 +93,10 @@ export const INGEST_ERROR_CODES = [
   "unsupported_schema_version",
   "invalid_envelope",
   "invalid_payload",
+  /** A currency the server's `currencies` table does not know. */
+  "unknown_currency",
+  /** A known currency the kind's handler cannot apply yet (it handles pesos and dollars only). */
+  "unsupported_currency",
   "unknown_ingest_run",
   "invalid_run_report",
   "run_not_waiting",

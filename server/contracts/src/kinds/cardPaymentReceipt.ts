@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -18,7 +19,7 @@ export const cardPaymentReceiptKind = defineIngestKind({
       /** Issuer slug of the bank account the pesos left (and of the card). */
       issuer: z.string().regex(/^[a-z][a-z0-9_]*$/),
       paid_on: z.iso.date(),
-      debt_currency: z.enum(["clp", "usd"]),
+      debt_currency: currencyCodeSchema,
       /** Pesos that left the bank account: the peso payment, or the dollar payment's peso cost. */
       amount_clp: z.number().int().positive(),
       /** Dollars credited to the card's dollar debt; null for a peso payment (or a receipt that prints none). */

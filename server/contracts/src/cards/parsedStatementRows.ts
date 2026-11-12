@@ -87,7 +87,7 @@ function headerFromRow(row: Row): CardCanonicalStatementHeader {
 }
 
 /** One parser row → the canonical line, on a statement in `statementCurrency`. */
-export function canonicalLineFromParsedRow(row: Row, statementCurrency: "clp" | "usd"): CardCanonicalLine {
+export function canonicalLineFromParsedRow(row: Row, statementCurrency: string): CardCanonicalLine {
   const document = cell(row, "source_pdf");
   if (cell(row, "orig_currency")) {
     throw new Error(

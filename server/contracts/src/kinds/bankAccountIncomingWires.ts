@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chileMinuteSchema, hasAtMostCents } from "../formats/index.js";
+import { chileMinuteSchema, hasAtMostCents, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 const text = z.string().trim().min(1);
@@ -23,7 +23,7 @@ export const incomingWireNoticeSchema = z
     reported_by: z.enum(["sending_bank", "receiving_bank"]),
     /** The value date the transfer message states, or the receiving bank's notice day. */
     value_date: z.iso.date(),
-    currency: z.enum(["usd"]),
+    currency: currencyCodeSchema,
     /** As printed, to the cent. */
     amount: z
       .number()
