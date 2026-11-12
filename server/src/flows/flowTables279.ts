@@ -42,7 +42,7 @@ function movementKindSql(a: string): string {
          ELSE 'transfer' END)`;
 }
 
-/** A single-leg row that takes money out of its account (`signedUsdDeltaForAccountMovement`'s rule). */
+/** A single-leg row that takes money out of its account (`signedNativeDeltaForAccountMovement`'s rule). */
 function movementOutgoingSql(a: string): string {
   return `(${a}.amount < 0 OR (${a}.currency <> 'clp' AND COALESCE(${a}.flow_kind, '') IN ('withdrawal', 'cash_fee')))`;
 }

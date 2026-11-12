@@ -66,7 +66,7 @@ beforeEach(() => {
   );
   insertLiveMarketQuote({
     symbol: LIVE_FX_SYMBOL,
-    kind: "fx_clp_per_usd",
+    kind: "fx",
     currency: null,
     value: LIVE,
     session_ymd: TODAY,

@@ -26,7 +26,7 @@ beforeAll(async () => {
     const value = getAggregationCached("daily.series|vitest-live-inputs-header", () => {
       builds += 1;
       noteLiveTickerRead("BTC-USD");
-      noteLiveFxRead();
+      noteLiveFxRead("USD_CLP");
       return { v: 1 };
     });
     res.json(value);
@@ -69,7 +69,7 @@ describe("cacheDepNodeLiveInputs", () => {
       linkCacheDepNode(b);
     });
     runInCacheDepNode(b, () => {
-      noteLiveFxRead();
+      noteLiveFxRead("USD_CLP");
       linkCacheDepNode(a);
     });
     runInCacheDepNode(root, () => linkCacheDepNode(a));

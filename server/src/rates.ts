@@ -16,13 +16,16 @@
  * A pair without bid/ask data reads its mid on both sides (UF, EUR).
  *
  * Dates: a day before Chile today reads the stored row on or before it. Today (or later — the
- * current month's month-end point) reads the live rate where the pair has one (USD/CLP while the
- * fx day is open, `fxLive.ts`), else the stored row.
+ * current month's month-end point) reads the live rate where the pair has one (USD/CLP and every
+ * pair `currencies` loads from Yahoo — EUR/USD — while the fx day is open, `fxLive.ts`), else the
+ * stored row. EUR/CLP today: Banco Central's direct rate (`eur_daily`) is published a day late, so
+ * while EUR/USD has a quote of today (live, or the close written at the fx day end) today's EUR/CLP
+ * is EUR/USD × USD/CLP of today; with none it reads the direct stored rate, as every past day does.
  */
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { FX_BID_ASK_SPREAD_CLP, fxBidAskRowOnOrBefore } from "./fxBidAsk.js";
-import { fxForLiveMtm } from "./fxLive.js";
+import { fxForLiveMtm, livePairKey, livePairRateForDay } from "./fxLive.js";
 import { clpToUsdAtPayment, fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 
 /**
@@ -54,7 +57,11 @@ export function isCurrencyCode(code: string): code is CurrencyCode {
   return currencyCodes().includes(code);
 }
 
-export type RateOpts = { side: ConvertSide; now?: Date };
+/**
+ * `storedOnly`: read the stored row on or before the day even for today — a flow converts at its
+ * own day's stored rate, never at a live one (as pesos to dollars at the stored buy rate do).
+ */
+export type RateOpts = { side: ConvertSide; now?: Date; storedOnly?: boolean };
 
 /** Quote units per one base unit on a day: the mid and, when the pair has them, bid and ask. */
 type PairQuote = { mid: number; bid: number; ask: number; date: string };
@@ -121,6 +128,24 @@ function eurClp(ymd: string): PairQuote | null {
   return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
 }
 
+/**
+ * EUR/CLP today: EUR/USD × USD/CLP while EUR/USD has a quote dated today (its live rate, or the
+ * close written at the fx day end), so a euro figure moves with both rates during the day; else
+ * Banco Central's direct rate, which carries no quote of today until it is published. The cross
+ * is a mid (the direct pair has no spread on file).
+ */
+function eurClpToday(ymd: string, now: Date | undefined): PairQuote | null {
+  const eurUsd = eurUsdToday(ymd, now);
+  if (eurUsd != null && eurUsd.date >= todayYmd(now)) {
+    const usdClp = usdClpToday(ymd, now);
+    if (usdClp != null) {
+      const v = eurUsd.mid * usdClp.mid;
+      return { mid: v, bid: v, ask: v, date: eurUsd.date < usdClp.date ? eurUsd.date : usdClp.date };
+    }
+  }
+  return eurClp(ymd);
+}
+
 const stmtFxRateOnOrBefore = db.prepare(
   `SELECT date, mid FROM fx_rates WHERE base = ? AND quote = ? AND date <= ? ORDER BY date DESC LIMIT 1`
 );
@@ -133,6 +158,21 @@ function fxRatesPair(base: CurrencyCode, quote: CurrencyCode): (ymd: string) => 
     return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
   };
 }
+
+/**
+ * Today's quote of a pair loaded through `currencies`: its live rate while the fx day is open
+ * (`fxLive.ts`), else its stored close.
+ */
+function fxRatesPairToday(base: CurrencyCode, quote: CurrencyCode): (ymd: string, now: Date | undefined) => PairQuote | null {
+  const stored = fxRatesPair(base, quote);
+  const key = livePairKey(base, quote);
+  return (ymd, now) => {
+    const live = livePairRateForDay(key, ymd, now);
+    return live != null && live.mid > 0 ? { mid: live.mid, bid: live.mid, ask: live.mid, date: live.date } : stored(ymd);
+  };
+}
+
+const eurUsdToday = fxRatesPairToday("eur", "usd");
 
 function ufClp(ymd: string): PairQuote | null {
   const r = ufRowOnOrBefore(ymd);
@@ -159,14 +199,14 @@ const PAIRS: readonly PairSource[] = [
     base: "eur",
     quote: "clp",
     stored: eurClp,
-    today: (ymd) => eurClp(ymd),
+    today: eurClpToday,
     dates: datesOf(`SELECT date FROM eur_daily ORDER BY date ASC`),
   },
   {
     base: "eur",
     quote: "usd",
     stored: fxRatesPair("eur", "usd"),
-    today: (ymd) => fxRatesPair("eur", "usd")(ymd),
+    today: eurUsdToday,
     dates: datesOf(`SELECT date FROM fx_rates WHERE base = ? AND quote = ? ORDER BY date ASC`, "eur", "usd"),
   },
 ];
@@ -228,8 +268,8 @@ function todayYmd(now: Date | undefined): string {
   return now ? chileWallClockAt(now).ymd : chileCalendarTodayYmd();
 }
 
-function quoteAt(pair: PairSource, ymd: string, now: Date | undefined): PairQuote | null {
-  return ymd >= todayYmd(now) ? pair.today(ymd, now) : pair.stored(ymd);
+function quoteAt(pair: PairSource, ymd: string, now: Date | undefined, storedOnly = false): PairQuote | null {
+  return !storedOnly && ymd >= todayYmd(now) ? pair.today(ymd, now) : pair.stored(ymd);
 }
 
 /**
@@ -245,7 +285,7 @@ function convertHop(
 ): number | null {
   const link = pairFor(from, to);
   if (!link) return null;
-  const q = quoteAt(link.pair, ymd, opts.now);
+  const q = quoteAt(link.pair, ymd, opts.now, opts.storedOnly === true);
   if (!q) return null;
   const sellingBase = !link.inverted; // from = base: converting base into quote
   const rate =
@@ -319,8 +359,9 @@ export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode
     if (!uf || !(uf.clp_per_uf > 0)) throw new Error(`flow ${ymd}: no UF on or before the date (${amount} CLP)`);
     return amount / uf.clp_per_uf;
   }
-  // Any other pair: the day's mid through the walk (no buy/sell rate on file for it).
-  const out = convertCurrency(amount, from, to, ymd, { side: "mid" });
+  // Any other pair: the day's stored mid through the walk (no buy/sell rate on file for it; a
+  // flow of today converts at the stored rate, not a live one).
+  const out = convertCurrency(amount, from, to, ymd, { side: "mid", storedOnly: true });
   if (out == null) throw new Error(`flow ${ymd}: no ${from}→${to} rate on or before the date (${amount} ${from})`);
   return out;
 }

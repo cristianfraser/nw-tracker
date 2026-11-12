@@ -82,7 +82,7 @@ function writeQuotes(at: Date, factor: number | ((ticker: string) => number), fx
     .get(chileYmd) as { clp_per_usd: number };
   insertLiveMarketQuote({
     symbol: LIVE_FX_SYMBOL,
-    kind: "fx_clp_per_usd",
+    kind: "fx",
     value: fx.clp_per_usd * fxFactor,
     currency: null,
     session_ymd: chileYmd,
@@ -152,7 +152,7 @@ async function tickParity(
   vi.setSystemTime(t1);
   const movedTickers = writeQuotes(t1, equityFactor, fxFactor);
   for (const t of opts.extraMovedTickers ?? []) movedTickers.add(t);
-  const moves: LiveQuoteMoves | undefined = opts.scoped ? { tickers: movedTickers, fx: fxFactor !== 1 } : undefined;
+  const moves: LiveQuoteMoves | undefined = opts.scoped ? { tickers: movedTickers, fx: new Set(fxFactor !== 1 ? ["USD_CLP"] : []) } : undefined;
   const cachedBefore = new Set(aggregationCacheKeysForTest());
   invalidateMarketDataAggregations("live_tail", moves);
   const keptKeys = aggregationCacheKeysForTest().filter((k) => cachedBefore.has(k));

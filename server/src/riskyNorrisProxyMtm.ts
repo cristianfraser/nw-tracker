@@ -15,6 +15,7 @@ import {
   nyseWallClock,
 } from "./nyseSession.js";
 import { noteLiveFxRead, noteLiveTickerRead } from "./cacheDependencies.js";
+import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import {
   listCompositeConstituentTickers,
   loadCompositeHoldings,
@@ -171,7 +172,7 @@ export function shouldUseRiskyNorrisProxyMtm(now = new Date()): boolean {
   for (const ticker of listCompositeConstituentTickers(RISKY_NORRIS_PROXY_BUCKET)) {
     noteLiveTickerRead(ticker);
   }
-  noteLiveFxRead();
+  noteLiveFxRead(LIVE_FX_SYMBOL);
   if (inChileHolidayProxyHold(now)) return true;
 
   const sessionYmd = nyseWallClock(now).ymd;
