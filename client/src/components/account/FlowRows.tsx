@@ -13,7 +13,10 @@ export type FlowRowItem = {
   amount: string;
   /** Units moved («12,4 acciones»), drawn small after the amount. */
   units: string | null;
+  /** The text shown (the server's `display_note`, else the note). */
   note: string | null;
+  /** The stored note, in the tooltip, when it is not the text shown. */
+  noteTitle: string | null;
 };
 
 export type FlowAccountsCell = { left: string | null; arrow: "→" | "←" | null; right: string | null };
@@ -127,7 +130,7 @@ export function FlowRows({
                 </sup>
               ) : null}
             </span>
-            <span className={cn("muted", styles.note)} title={row.note ?? undefined}>
+            <span className={cn("muted", styles.note)} title={row.noteTitle ?? row.note ?? undefined}>
               {row.note}
             </span>
           </div>
@@ -137,8 +140,12 @@ export function FlowRows({
   );
 }
 
-/** The two sides of the accounts cell and the arrow between them; an unnamed side is left out. */
+/**
+ * The two sides of the accounts cell and the arrow between them; an unnamed side is left out, and
+ * with neither named nothing is drawn (the amount's sign already says which way the money went).
+ */
 function FlowAccounts({ cell }: { cell: FlowAccountsCell }) {
+  if (!cell.left && !cell.right) return null;
   return (
     <>
       {cell.left ? <span>{cell.left}</span> : null}

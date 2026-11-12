@@ -28,6 +28,7 @@ function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
     counter_currency: null,
     occurred_on: "2026-01-15",
     note: null,
+    display_note: null,
     units_delta: null,
     counter_units_delta: null,
     flow_kind: null,
@@ -304,5 +305,45 @@ describe("the type of a transfer shown once", () => {
       flow_type: "pago_tarjeta",
       flow_type_label: "Pago tarjeta",
     });
+  });
+});
+
+describe("what a bank movement's flows row shows", () => {
+  it("its bank description without the import key, and «Transf. de» when a mail names the payer", () => {
+    const accountId = checkingAccountId();
+    const day = addCalendarMonths(chileCalendarTodayYmd().slice(0, 7), -1) + "-13";
+    const insert = (amount: number, note: string): number =>
+      Number(
+        db
+          .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
+          .run(accountId, amount, day, note).lastInsertRowid
+      );
+    const plainId = insert(-50_000, `import:cartola-partial|${day}|-50000|Traspaso a Cuenta de Otro Banco VITESTDN`);
+    const paidId = insert(29_721, `import:cartola-partial|${day}|29721|0099999999 TRANSF. VITESTDN PAYER`);
+    const humanId = insert(1_000, "Fintual · VITESTDN human note");
+    const messageId = "vitest-display-note@example.test";
+    db.prepare(
+      `INSERT INTO bank_transfer_notices (message_id, issuer, sent_at_chile, subject, kind, notice_date, amount, scheduled,
+         from_name, from_rut, to_name)
+       VALUES (?, 'bancochile', ?, 'Transferencia', 'incoming', ?, 29721, 0, 'Juana Vitestina Perez Soto', '99.999.999-9', 'Yo')`
+    ).run(messageId, `${day} 09:17`, day);
+    db.prepare(`INSERT INTO movement_transfer_notices (movement_id, account_id, message_id) VALUES (?, ?, ?)`).run(
+      paidId,
+      accountId,
+      messageId
+    );
+    try {
+      const rows = buildAccountFlows(accountId, { q: "VITESTDN" }, 1, 50)!.rows;
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(plainId)!.display_note).toBe("Traspaso a Cuenta de Otro Banco VITESTDN");
+      expect(byId.get(paidId)!.display_note).toBe("Transf. de Juana Perez");
+      expect(byId.get(humanId)!.display_note).toBeNull();
+      // The shown name is searchable too.
+      expect(buildAccountFlows(accountId, { q: "Juana Perez" }, 1, 50)!.rows.map((r) => r.id)).toContain(paidId);
+    } finally {
+      db.prepare(`DELETE FROM movement_transfer_notices WHERE message_id = ?`).run(messageId);
+      db.prepare(`DELETE FROM bank_transfer_notices WHERE message_id = ?`).run(messageId);
+      db.prepare(`DELETE FROM movements WHERE id IN (?, ?, ?)`).run(plainId, paidId, humanId);
+    }
   });
 });

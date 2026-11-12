@@ -31,6 +31,8 @@ import { toWireExpenseLine } from "./wireExpenseLine.js";
 import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type CardPaymentTransfer } from "./latestCardPayments.js";
 import { isPaymentLine } from "./expensePaymentNames.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
+import { checkingMovementDisplayNames, loadDisplayNameContext } from "./expenseDisplayNames.js";
 import { listCcExpenseBigGroups } from "./ccExpenseBigGroups.js";
 import { isInstallmentCuotaZeroLine, listCcExpenseCategories } from "./ccExpenseCategories.js";
 import { isPreTaxExpenseLine, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
@@ -105,10 +107,18 @@ function incomeMoneyIn(
   return { amount: m.amount, converted: lineConvertedForWire({ ...m, occurred_on: receivedOn }, unit) };
 }
 
+/** A checking credit's payer as the mail names it and the name the row shows (`checkingMovementDisplayNames`). */
+export type IncomeCreditNames = (
+  movementId: number,
+  accountId: number,
+  description: string
+) => Pick<LatestIncomeMovement, "transfer_counterparty" | "display_merchant" | "link_label">;
+
 function incomeMovements(
   income: FlowsOverviewIncome,
   foreignAccountIds: ReadonlySet<number>,
-  unit: string
+  unit: string,
+  names: IncomeCreditNames | undefined
 ): { on: string; income: LatestIncomeMovement; id: number }[] {
   const out: { on: string; income: LatestIncomeMovement; id: number }[] = [];
   for (const l of income.lines) {
@@ -123,6 +133,7 @@ function incomeMovements(
         description: l.description,
         ...incomeMoneyIn(l.amount_clp, l.amount_usd, foreignAccountIds.has(l.account_id), key, l.received_on, unit, l.native),
         income_kind: income.income_kind_by_movement_id[l.movement_id] ?? null,
+        ...(names ? names(l.movement_id, l.account_id, l.description) : {}),
       },
     });
   }
@@ -154,7 +165,9 @@ export function latestMovementRows(
   /** The card payments (`loadCardPaymentTransfers`): each one row, its evidence lines folded in. */
   cardPayments: readonly CardPaymentTransfer[] = [],
   /** The display unit every row's `converted` is in. */
-  unit: string = "clp"
+  unit: string = "clp",
+  /** Each checking credit's payer and shown name; none = the bank's description alone. */
+  incomeNames?: IncomeCreditNames
 ): LatestMovementRow[] {
   type Ranked = { row: LatestMovementRow; tie: number };
   const ranked: Ranked[] = [];
@@ -174,7 +187,7 @@ export function latestMovementRows(
     if (on > todayYmd) continue;
     ranked.push({ row: { kind: "expense", on, line: toWireExpenseLine(line, unit) }, tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0) });
   }
-  for (const m of incomeMovements(income, foreignAccountIds, unit)) {
+  for (const m of incomeMovements(income, foreignAccountIds, unit, incomeNames)) {
     if (m.on > todayYmd) continue;
     ranked.push({ row: { kind: "income", on: m.on, income: m.income }, tie: m.id * 1000 });
   }
@@ -190,6 +203,21 @@ export function latestMovementRows(
   return rows;
 }
 
+/** The live names of checking credits: their mail's counterparty, through the vendor catalog. */
+function checkingCreditNames(): IncomeCreditNames {
+  const counterparties = transferCounterpartiesByMovementSide();
+  const ctx = loadDisplayNameContext([]);
+  return (movementId, accountId, description) => {
+    const counterparty = counterparties.get(`${movementId}|${accountId}`);
+    const names = checkingMovementDisplayNames(description, accountId, counterparty, ctx);
+    return {
+      ...(counterparty ? { transfer_counterparty: counterparty } : {}),
+      ...(names.display_merchant ? { display_merchant: names.display_merchant } : {}),
+      ...(names.link_label ? { link_label: names.link_label } : {}),
+    };
+  };
+}
+
 export function buildLatestMovements(limit: number, unit: string = "clp"): LatestMovementsResponse {
   const categories = listCcExpenseCategories();
   return {
@@ -202,7 +230,8 @@ export function buildLatestMovements(limit: number, unit: string = "clp"): Lates
       chileCalendarTodayYmd(),
       new Set(listForeignCheckingAccountIds()),
       loadCardPaymentTransfers(),
-      unit
+      unit,
+      checkingCreditNames()
     ),
     categories,
     big_groups: listCcExpenseBigGroups(),

@@ -141,6 +141,11 @@
     white-space: normal;
   }
 
+  /* No account on either side (money from or to outside the app, on its account's page): no line. */
+  .accounts:empty {
+    display: none;
+  }
+
   .amount {
     grid-area: amount;
   }

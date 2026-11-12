@@ -425,6 +425,23 @@ export function expenseLineDisplayNames(
   return out;
 }
 
+/**
+ * A checking movement's names outside the expense lines (an income credit, a flows row): the same
+ * rule as a checking expense line — «Transf a <label>» / «Transf. de <label>» when a mail names the
+ * counterparty, else the bank's description through the catalog.
+ */
+export function checkingMovementDisplayNames(
+  description: string,
+  accountId: number,
+  counterparty: TransferCounterpartyDto | undefined,
+  ctx: DisplayNameContext
+): ExpenseDisplayNames {
+  return expenseLineDisplayNames(
+    { source: "checking", merchant: description, account_id: accountId, payment_receipt: undefined, transfer_counterparty: counterparty },
+    ctx
+  );
+}
+
 /** Every line with the names it shows (last step of the expense lines). */
 export function withExpenseDisplayNames<L extends FlowCcExpenseLineRow>(lines: L[]): L[] {
   if (lines.length === 0) return lines;

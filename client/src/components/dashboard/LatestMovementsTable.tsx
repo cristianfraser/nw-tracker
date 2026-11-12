@@ -53,7 +53,6 @@ const LATEST_MOVEMENTS = persistedPayload(
 /** An income credit drawn in the expense rows' grid: origin, date, its kind as a pill, the payer, the pesos. */
 function IncomeMovementRow({ on, income }: { on: string; income: LatestIncomeMovement }) {
   const { t } = useTranslation();
-  const counterparty = income.transfer_counterparty;
   return (
     <ExpenseListStaticRow
       origin={
@@ -81,11 +80,12 @@ function IncomeMovementRow({ on, income }: { on: string; income: LatestIncomeMov
       }
       vendor={
         <ExpenseVendorLabel
-          // The payer the bank's mail names, the bank's description in the ⓘ card.
+          // The server's name for the credit («Transf. de <payer>»), the bank's description in the ⓘ card.
           source={{
             merchant: income.description,
-            display_merchant: counterparty?.name ?? undefined,
-            transfer_counterparty: counterparty,
+            display_merchant: income.display_merchant,
+            link_label: income.link_label,
+            transfer_counterparty: income.transfer_counterparty,
           }}
           note={null}
           className={expenseListVendorClassName}

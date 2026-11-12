@@ -1136,6 +1136,10 @@ export interface LatestIncomeMovement {
   converted: LineConverted | null;
   income_kind: IncomeKind | null;
   transfer_counterparty?: TransferCounterparty;
+  /** The name the row shows when it is not the description: «Transf. de <payer>» (`checkingMovementDisplayNames`). */
+  display_merchant?: string;
+  /** The payer's short label when the shown name does not already carry it. */
+  link_label?: ExpenseLinkLabel;
 }
 
 /**

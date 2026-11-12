@@ -233,6 +233,8 @@ export type FlowsApiRow = {
   counter_currency: string | null;
   occurred_on: string;
   note: string | null;
+  /** What the row shows in place of `note` (a bank movement's «Transf a …» or bank description); null = the note. */
+  display_note: string | null;
   units_delta: number | null;
   /** A fund switch's to-leg units; null on every other row. */
   counter_units_delta: number | null;

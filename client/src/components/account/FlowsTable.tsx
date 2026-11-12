@@ -293,7 +293,8 @@ export function FlowsTable({
     accounts: flowAccountsCell(showAccountColumn ? "group" : "account", row),
     amount: formatMovementAmount(row),
     units: showUnitsColumn ? formatFlowUnits(row, unitsKind) : null,
-    note: row.note?.trim() ? row.note : null,
+    note: (row.display_note ?? row.note)?.trim() || null,
+    noteTitle: row.display_note != null && row.note?.trim() ? row.note : null,
   }));
 
   const emptyText = hasActiveFilter

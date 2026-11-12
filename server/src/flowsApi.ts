@@ -22,6 +22,9 @@ import {
 } from "./portfolioGroupTree.js";
 import { paginate, type Paginated } from "./pagination.js";
 import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpendingMovements.js";
+import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
+import { checkingMovementDisplayNames, loadDisplayNameContext, type DisplayNameContext } from "./expenseDisplayNames.js";
+import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 
 // Mirrors client `isPersonalCapitalFlowType` in `depositFlowKind.ts`
 const PERSONAL_FLOW_TYPES = new Set<string>([
@@ -43,6 +46,12 @@ export type FlowsApiRow = AccountMovementApiRow & {
   internal: boolean;
   /** The target's bucket on an internal transfer; null otherwise. */
   counterpart_bucket_slug: string | null;
+  /**
+   * What the row shows in place of `note` (which stays the stored provenance, the tooltip): a bank
+   * movement's «Transf a <label>» / «Transf. de <label>» when a mail names the counterparty, else
+   * its bank description without the import key. Null when the note itself is the text.
+   */
+  display_note: string | null;
 };
 
 /** Dropdown option for the portfolio-bucket filter; label resolution mirrors the sidebar. */
@@ -121,8 +130,15 @@ function assembleFlowRows(
   accountEntries: readonly { account_id: number; name: string; bucket_slug: string | null }[],
   movementsByAccount: Map<number, AccountMovementApiRow[]>
 ): FlowsApiRow[] {
+  return withDisplayNotes(assembleFlowRowsRaw(accountEntries, movementsByAccount));
+}
+
+function assembleFlowRowsRaw(
+  accountEntries: readonly { account_id: number; name: string; bucket_slug: string | null }[],
+  movementsByAccount: Map<number, AccountMovementApiRow[]>
+): Omit<FlowsApiRow, "display_note">[] {
   const onPage = new Map(accountEntries.map((e) => [e.account_id, e]));
-  const rows: FlowsApiRow[] = [];
+  const rows: Omit<FlowsApiRow, "display_note">[] = [];
   for (const entry of accountEntries) {
     const movements = movementsByAccount.get(entry.account_id) ?? [];
     for (const m of movements) {
@@ -158,6 +174,25 @@ function assembleFlowRows(
   }
   rows.sort((a, b) => compareFlowRowsForDisplay(a, b) || a.account_id - b.account_id);
   return rows;
+}
+
+/**
+ * Each row's `display_note`: the name a checking expense line shows (`checkingMovementDisplayNames`)
+ * for a movement whose note is an import key or whose mail names its counterparty.
+ */
+function withDisplayNotes(rows: Omit<FlowsApiRow, "display_note">[]): FlowsApiRow[] {
+  const counterparties = transferCounterpartiesByMovementSide();
+  let ctx: DisplayNameContext | null = null;
+  return rows.map((r) => {
+    const counterparty =
+      counterparties.get(`${r.id}|${r.account_id}`) ??
+      (r.counterpart_account_id != null ? counterparties.get(`${r.id}|${r.counterpart_account_id}`) : undefined);
+    const description = cartolaDescriptionFromNote(r.note);
+    if (!counterparty && description === (r.note ?? "").trim()) return { ...r, display_note: null };
+    ctx ??= loadDisplayNameContext([]);
+    const names = checkingMovementDisplayNames(description, r.account_id, counterparty, ctx);
+    return { ...r, display_note: names.display_merchant ?? description };
+  });
 }
 
 function buildFilterOptions(all: FlowsApiRow[], isMultiAccount: boolean): FlowsFilterOptions {
@@ -214,7 +249,7 @@ export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): Fl
     }
     if (filters.q) {
       const q = filters.q.toLowerCase();
-      const haystack = [r.note, r.account_name, r.counterpart_account_name, r.flow_type_label]
+      const haystack = [r.note, r.display_note, r.account_name, r.counterpart_account_name, r.flow_type_label]
         .filter(Boolean)
         .join("\n")
         .toLowerCase();
