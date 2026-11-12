@@ -4,7 +4,13 @@ import {
   roundedMetricDeposits,
   type CardGroupMetricsByPeriod,
 } from "../../dashboardCardBreakdown";
-import { accountingCurrencyNumberFlowParts, minAdaptiveUsdFractionDigits } from "../../format";
+import { legacyDisplayUnit } from "../../displayUnitSupport";
+import {
+  accountingCurrencyNumberFlowParts,
+  currencyHasAdaptiveCardDecimals,
+  minAdaptiveUsdFractionDigits,
+} from "../../format";
+import type { DisplayUnit } from "../../queries/keys";
 import { useTranslation } from "../../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
@@ -19,16 +25,23 @@ const METRIC_TIMING = {
 type Props = {
   /** All three period slices; rows carry no visible labels (tooltip + a11y text only). */
   metricsByPeriod: CardGroupMetricsByPeriod;
-  showUsd: boolean;
+  /** The unit the card shows (its metrics carry pesos and dollars until stream 2 lands). */
+  unit: DisplayUnit;
   animated?: boolean;
 };
+
+/** The metrics' pesos/dollars pick for `unit`; another unit has no figures yet and throws. */
+function metricsShowUsd(unit: DisplayUnit): boolean {
+  return legacyDisplayUnit(unit, "Card metrics") === "usd";
+}
 
 /** Shared decimal alignment for every Δ on the card (the balance-row day Δ included). */
 export function cardDeltaFractionDigits(
   metricsByPeriod: CardGroupMetricsByPeriod,
-  showUsd: boolean
+  unit: DisplayUnit
 ): number {
-  if (!showUsd) return 0;
+  if (!currencyHasAdaptiveCardDecimals(unit)) return 0;
+  const showUsd = metricsShowUsd(unit);
   return minAdaptiveUsdFractionDigits([
     roundedMetricDelta(metricsByPeriod.month, showUsd, "total"),
     roundedMetricDelta(metricsByPeriod.day, showUsd, "period"),
@@ -44,10 +57,11 @@ export function cardDeltaFractionDigits(
  */
 export function CardValueDayPl({
   metricsByPeriod,
-  showUsd,
+  unit,
   animated = true,
 }: Props) {
   const { t } = useTranslation();
+  const showUsd = metricsShowUsd(unit);
   const label = t("dashboard.cardBreakdown.periodDeltaDay");
   return (
     <span className={styles.valueDayPl} title={label}>
@@ -55,7 +69,7 @@ export function CardValueDayPl({
       <DeltaMetricFlow
         delta={roundedMetricDelta(metricsByPeriod.day, showUsd, "period")}
         animated={animated}
-        fractionDigits={cardDeltaFractionDigits(metricsByPeriod, showUsd)}
+        fractionDigits={cardDeltaFractionDigits(metricsByPeriod, unit)}
       />
     </span>
   );
@@ -64,17 +78,16 @@ export function CardValueDayPl({
 /** Bare deposits/amount cell (also used by the leaf-bucket accounts summary table). */
 export function DepositedMetricFlow({
   value,
-  showUsd,
+  unit,
   animated,
 }: {
   value: number | null;
-  showUsd: boolean;
+  unit: DisplayUnit;
   animated: boolean;
 }) {
   if (value == null) {
     return <span className={cn(styles.amount, styles.amountEmpty, "mono")}>—</span>;
   }
-  const unit = showUsd ? "usd" : "clp";
   return (
     <AnimatedNumberFlow
       value={value}
@@ -94,7 +107,7 @@ function MetricsRow({
   delta,
   deltaLabel,
   deltaFractionDigits,
-  showUsd,
+  unit,
   animated,
   dim = false,
 }: {
@@ -103,7 +116,7 @@ function MetricsRow({
   delta: number | null;
   deltaLabel: string;
   deltaFractionDigits: number;
-  showUsd: boolean;
+  unit: DisplayUnit;
   animated: boolean;
   dim?: boolean;
 }) {
@@ -112,7 +125,7 @@ function MetricsRow({
       <span className={styles.deposited} title={depositedLabel}>
         <span className="visually-hidden">{depositedLabel}</span>
         {/* Only the P/L figures animate (and the card's balance); the deposits stay still. */}
-        <DepositedMetricFlow value={deposited} showUsd={showUsd} animated={false} />
+        <DepositedMetricFlow value={deposited} unit={unit} animated={false} />
       </span>
       <span className={styles.deltaWrap} title={deltaLabel}>
         <DeltaMetricFlow
@@ -132,15 +145,16 @@ function MetricsRow({
  */
 export function DashboardCardGroupMetrics({
   metricsByPeriod,
-  showUsd,
+  unit,
   animated = true,
 }: Props) {
   const { t } = useTranslation();
+  const showUsd = metricsShowUsd(unit);
 
   // Lifetime fields are identical across slices — read them from the month slice.
   const lifetime = metricsByPeriod.month;
-  const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd);
-  const shared = { deltaFractionDigits, showUsd, animated };
+  const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, unit);
+  const shared = { deltaFractionDigits, unit, animated };
 
   return (
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>

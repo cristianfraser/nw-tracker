@@ -11,6 +11,7 @@ import {
   resolvePortfolioGroupSlugForLegacyTab,
 } from "../portfolioGroupTree.js";
 import { isKnownClassTabGroup } from "./shared.js";
+import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
 
 export function registerBenchmarkRoutes(app: express.Express): void {
   app.get("/api/benchmarks", (_req, res) => {
@@ -56,7 +57,10 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       res.status(400).json({ error: "unknown benchmark" });
       return;
     }
-    const unit = req.query.unit === "usd" ? ("usd" as const) : ("clp" as const);
+    const unit = requireLegacyDisplayUnit(
+      requestDisplayUnit(req.query, { surface: "/api/benchmark-comparison", supported: LEGACY_DISPLAY_UNITS }),
+      "/api/benchmark-comparison"
+    );
 
     if (req.query.account_id != null) {
       const id = Number(req.query.account_id);
@@ -103,7 +107,10 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       res.status(400).json({ error: "invalid account_id" });
       return;
     }
-    const unit = req.query.unit === "usd" ? ("usd" as const) : ("clp" as const);
+    const unit = requireLegacyDisplayUnit(
+      requestDisplayUnit(req.query, { surface: "/api/mortgage-prepayment-comparison", supported: LEGACY_DISPLAY_UNITS }),
+      "/api/mortgage-prepayment-comparison"
+    );
     res.json(computeMortgagePrepaymentComparison({ accountId: id, benchmark, unit }));
   });
 }

@@ -17,6 +17,8 @@ import type {
   WealthPercentileYearRow,
 } from "../types";
 import { queryLoadError } from "../queries/pageShapeReady";
+import type { DisplayUnit } from "../queries/keys";
+import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const BENCHMARK_COUNTRIES: readonly WealthBenchmarkCountry[] = [
   "US",
@@ -174,7 +176,7 @@ function ThresholdPairsCell({
   cell: WealthPercentileCell;
   ownUsd: number;
   ownClp: number;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
 }) {
   const { t } = useTranslation();
   const ownValue = formatCurrency(displayUnit === "usd" ? ownUsd : ownClp, displayUnit);
@@ -192,7 +194,7 @@ function ThresholdPairsCell({
     }
     lines.push(
       <span key={k} style={{ whiteSpace: "nowrap" }}>
-        {`${k}: ${formatCurrency(thresholdOf(cell, k, displayUnit), displayUnit)}`}
+        {`${k}: ${formatCurrency(thresholdOf(cell, k, legacyDisplayUnit(displayUnit, "Wealth percentile")), displayUnit)}`}
       </span>
     );
   }

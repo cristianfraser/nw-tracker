@@ -8,6 +8,7 @@ import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { loadableClass } from "../ui/Loadable";
 import { PageGridTile } from "../layout/PageGridTile";
 import { ColumnTable } from "../ui/ColumnTable";
+import type { DisplayUnit } from "../../queries/keys";
 
 const PAGE_SIZE = 12;
 const DEFAULT_BENCHMARK = "spy";
@@ -28,7 +29,7 @@ export function MortgagePrepaymentSection({
   displayUnit,
 }: {
   accountId: number;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
 }) {
   const { t } = useTranslation();
   const { benchmark, setBenchmark } = useSurfaceBenchmark(

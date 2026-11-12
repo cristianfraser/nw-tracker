@@ -6,6 +6,8 @@ import {
 } from "../../surfaceDisplayPrefs";
 import type { NavValueMapColorBounds, NavValueMapNodeDto } from "../../types";
 import { ValueTreemap } from "./ValueTreemap";
+import type { DisplayUnit } from "../../queries/keys";
+import { legacyDisplayUnit } from "../../displayUnitSupport";
 
 /**
  * The value map in the composition chart's slot: Período (the return window, Día by default,
@@ -30,7 +32,7 @@ export function ValueMapPanel({
   /** null until the first payload for this page arrives (the panel renders empty). */
   root: NavValueMapNodeDto | null;
   bounds: NavValueMapColorBounds | null;
-  unit: "clp" | "usd";
+  unit: DisplayUnit;
   /** The payload is pending or held prior data: the map dims (empty box when `root` is null). */
   loading?: boolean;
 }) {
@@ -50,7 +52,7 @@ export function ValueMapPanel({
       root={root}
       bounds={bounds}
       period={prefs.period}
-      unit={unit}
+      unit={root ? legacyDisplayUnit(unit, "Value map") : "clp"}
       loading={loading}
     />
   );
@@ -64,7 +66,7 @@ export function ValueMapPanel({
 export function valueMapRootForPage(
   valueMap: NavValueMapNodeDto | undefined,
   slug: string,
-  unit: "clp" | "usd"
+  unit: DisplayUnit
 ): NavValueMapNodeDto | null {
   if (!valueMap) return null;
   const find = (n: NavValueMapNodeDto): NavValueMapNodeDto | null => {
@@ -85,7 +87,7 @@ export type HeldValueMap = {
   root: NavValueMapNodeDto | null;
   bounds: NavValueMapColorBounds | null;
   /** The unit `root` was drawn in — the previous one while a unit switch is loading. */
-  unit: "clp" | "usd";
+  unit: DisplayUnit;
 };
 
 /**
@@ -97,7 +99,7 @@ export function useHeldValueMap(
   scope: string,
   root: NavValueMapNodeDto | null,
   bounds: NavValueMapColorBounds | undefined,
-  unit: "clp" | "usd"
+  unit: DisplayUnit
 ): HeldValueMap {
   const [held, setHeld] = useState<(HeldValueMap & { scope: string }) | null>(null);
   if (root && bounds) {

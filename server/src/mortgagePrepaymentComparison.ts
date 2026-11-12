@@ -2,7 +2,7 @@ import { levelInUnit } from "./benchmarkComparison.js";
 import { benchmarkLevelSeries, getBenchmark, type BenchmarkRow } from "./benchmarkLevels.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 import { windowIrr } from "./irr.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 

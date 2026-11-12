@@ -58,6 +58,8 @@ export type AnimatedNumberFlowProps = NumberFlowPassthrough & {
    * (`.is-loading` around it), keeps `animated`.
    */
   flashOnChange?: boolean;
+  /** The currency the value is in (default: the display unit); a change of it rolls, never flashes. */
+  unit?: string;
 };
 
 export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFlowProps>(
@@ -72,6 +74,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       transformTiming,
       spinTiming,
       flashOnChange = false,
+      unit: unitProp,
       ...rest
     },
     ref
@@ -79,7 +82,8 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     const hostRef = useRef<NumberFlowElement | null>(null);
     useImperativeHandle(ref, () => hostRef.current as NumberFlowElement);
     const wrapRef = useRef<HTMLSpanElement | null>(null);
-    const { displayUnit } = useDisplayPreferences();
+    const { displayUnit: contextUnit } = useDisplayPreferences();
+    const displayUnit = unitProp ?? contextUnit;
     const last = useRef<{ shown: string; value: number; unit: string; settled: boolean } | null>(null);
 
     const flow = value == null ? null : mapDisplayValue(value);

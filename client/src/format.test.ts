@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   accountingCurrencyNumberFlowParts,
+  adaptiveAccountingNumberFlowParts,
   adaptiveUsdAccountingNumberFlowParts,
   adaptiveUsdFractionDigits,
   formatClp,
   formatClpUfDay,
+  formatCurrency,
+  formatCurrencyFine,
+  formatMoney,
+  currencySymbol,
+  roundCardValue,
+  setCurrencyRegistry,
   formatCompactMoney,
   formatCcExpenseLineAmount,
   formatGroupedDecimal,
@@ -357,5 +364,34 @@ describe("formatNumberInput", () => {
   it("refuses a non-finite number", () => {
     expect(() => formatNumberInput(Number.NaN)).toThrow();
     expect(() => formatNumberInput(Number.POSITIVE_INFINITY)).toThrow();
+  });
+});
+
+describe("formats by currency code", () => {
+  it("pesos and dollars print as they always have", () => {
+    expect(formatCurrency(1234567, "clp")).toBe("$1.234.567");
+    expect(formatCurrency(-1234.4, "usd")).toBe("(US$1.234)");
+    expect(formatCurrency(1234.5, "usd-fine")).toBe("US$1.234,50");
+    expect(formatCurrencyFine(1234.5, "usd")).toBe(formatUsdFine(1234.5));
+    expect(formatCompactMoney(350_000, "usd")).toBe("$350k");
+    expect(currencySymbol("usd", "bare")).toBe("$");
+    expect(currencySymbol("usd")).toBe("US$");
+    expect(roundCardValue(1234.56, "clp")).toBe(1235);
+    expect(roundCardValue(4.567, "usd")).toBe(4.57);
+  });
+
+  it("another currency uses its own symbol and minor digits, from the registry once loaded", () => {
+    expect(formatCurrency(1234.4, "eur")).toBe("€1.234");
+    expect(formatMoney({ value: -12.5, currency: "eur" })).toBe("(€12,50)");
+    expect(formatCompactMoney(2_500_000, "eur")).toBe("€2,5M");
+    const parts = adaptiveAccountingNumberFlowParts(54.327, "eur", "bare");
+    expect(parts.prefix).toBe("€");
+    expect(parts.value).toBe(54.33);
+    // A currency without minor units keeps whole card values.
+    expect(adaptiveAccountingNumberFlowParts(54.327, "clp", "bare")).toEqual(
+      accountingCurrencyNumberFlowParts(54.327, "clp", "bare")
+    );
+    setCurrencyRegistry([{ code: "pen", symbol: "S/ ", minor_digits: 2 }]);
+    expect(formatCurrencyFine(12.5, "pen")).toBe("S/ 12,50");
   });
 });

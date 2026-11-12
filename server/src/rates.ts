@@ -25,16 +25,33 @@ import { FX_BID_ASK_SPREAD_CLP, fxBidAskRowOnOrBefore } from "./fxBidAsk.js";
 import { fxForLiveMtm } from "./fxLive.js";
 import { clpToUsdAtPayment, fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 
-export type CurrencyCode = "clp" | "usd" | "uf" | "eur";
+/**
+ * A currency code: lowercase ISO 4217 (`clp`, `usd`, `eur`, …) as loaded in `currencies`, or `uf`
+ * (the Unidad de Fomento, a series unit with its own pair). Data, not a closed union: validate
+ * with `isCurrencyCode` (or `parseDisplayUnit` for a request's display unit).
+ */
+export type CurrencyCode = string;
 
-/** The units a series (chart, table, P/L) is shown in. */
-export type TsUnit = Exclude<CurrencyCode, "eur">;
+/** The unit a series (chart, table, P/L) is shown in: a core currency or `uf`. */
+export type TsUnit = CurrencyCode;
+/** Same as `TsUnit`; the name the display-unit plumbing reads. */
+export type DisplayUnitCode = TsUnit;
 export type ConvertSide = "asset" | "debt" | "mid";
 
-export const CURRENCY_CODES: readonly CurrencyCode[] = ["clp", "usd", "uf", "eur"];
+const selCurrencyCodes = db.prepare(`SELECT code FROM currencies ORDER BY code`);
 
+let knownCodes: readonly string[] | null = null;
+
+/** Every code a conversion may name: the `currencies` table plus `uf`. */
+export function currencyCodes(): readonly string[] {
+  knownCodes = [...(selCurrencyCodes.all() as { code: string }[]).map((r) => r.code), "uf"];
+  return knownCodes;
+}
+
+/** A code `currencies` loads (or `uf`). A miss re-reads the table, so a newly loaded code is seen. */
 export function isCurrencyCode(code: string): code is CurrencyCode {
-  return (CURRENCY_CODES as readonly string[]).includes(code);
+  if (knownCodes?.includes(code)) return true;
+  return currencyCodes().includes(code);
 }
 
 export type RateOpts = { side: ConvertSide; now?: Date };
@@ -222,4 +239,30 @@ export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode
   const out = convertCurrency(amount, from, to, ymd, { side: "mid" });
   if (out == null) throw new Error(`flow ${ymd}: no ${from}→${to} rate on or before the date (${amount} ${from})`);
   return out;
+}
+
+/**
+ * A deposit/flow event: every one carries its CLP leg (`amt`); USD-cash and equity capital
+ * events also carry the dollars that actually moved (`amt_usd`).
+ */
+export type FlowEvent = { occurred_on: string; amt: number; amt_usd?: number | null };
+
+/**
+ * One deposit/flow event in `unit`, at its own date's rate — the single conversion every
+ * deposit and flow reader shares (dashboard totals, window flows, aportes lines, the daily
+ * grid, mortgage and property payments). The event's own dollar leg is used as is when the unit
+ * is USD (its sign following the CLP leg); any other unit converts the CLP leg with
+ * {@link convertFlow} (pesos to dollars at the buy rate, to UF at the day's UF, any other pair at
+ * the day's mid through the walk). Unrounded — callers sum first and round once for display. A
+ * missing rate throws: a flow is never dropped from a total.
+ */
+export function flowEventInUnit(e: FlowEvent, unit: TsUnit): number {
+  if (!Number.isFinite(e.amt)) {
+    throw new Error(`flow event ${e.occurred_on}: non-finite CLP amount ${e.amt}`);
+  }
+  if (e.amt === 0) return 0;
+  if (unit === "usd" && e.amt_usd != null && Number.isFinite(e.amt_usd)) {
+    return Math.sign(e.amt) * Math.abs(e.amt_usd);
+  }
+  return convertFlow(e.amt, "clp", unit, e.occurred_on);
 }

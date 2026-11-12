@@ -2,6 +2,7 @@
 import express from "express";
 import { getAppVersion } from "../appVersion.js";
 import { demoModeEnabled } from "../demoMode.js";
+import { currenciesPayload } from "../displayUnits.js";
 import { listRatesInstrumentSeries } from "../marketDisplaySeries.js";
 import { getNetWorthNavGroupNodeWithLiabilities } from "../navTree.js";
 import { cachedSidebarNavPayload } from "../sidebarNavChartBuckets.js";
@@ -9,6 +10,11 @@ import { cachedSidebarNavPayload } from "../sidebarNavChartBuckets.js";
 export function registerMetaRoutes(app: express.Express): void {
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, version: getAppVersion() });
+});
+
+/** Loaded currencies (code, symbol, minor digits, tier): the client's display-unit picker and money formats. */
+app.get("/api/currencies", (_req, res) => {
+  res.json(currenciesPayload());
 });
 
 /** Recursive portfolio groups (accounts + nested groups) with resolved colors. */

@@ -4,10 +4,11 @@ import { api } from "../../api";
 import { useTranslation } from "../../i18n";
 import { AccountImportPanel, useAccountImportSlots } from "./AccountImportPanel";
 import { PageGridTile } from "../layout/PageGridTile";
+import type { DisplayUnit } from "../../queries/keys";
 
 type Props = {
   accountId: number;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
 };
 
 export function AccountImportSection({ accountId, displayUnit }: Props) {

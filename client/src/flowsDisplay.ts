@@ -1,5 +1,5 @@
 import { monthYearSurfacePeriod, type SurfacePeriod } from "./surfaceDisplayPrefs";
-import { formatClp, formatUsd } from "./format";
+import { formatCurrency } from "./format";
 import { formatYearMonthLabel } from "./formatDateLabel";
 import type { DisplayUnit } from "./queries/keys";
 
@@ -13,7 +13,7 @@ export type FlowChartGranularity = SurfacePeriod;
 export const flowTableGranularity: (g: FlowChartGranularity) => "month" | "year" = monthYearSurfacePeriod;
 
 export function formatFlowMoney(amount: number, unit: DisplayUnit): string {
-  return unit === "usd" ? formatUsd(amount) : formatClp(amount);
+  return formatCurrency(amount, unit);
 }
 
 /**

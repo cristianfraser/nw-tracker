@@ -1,3 +1,4 @@
+import type { DisplayUnitCode } from "./core.js";
 /** Rentabilidad (chained period returns) DTOs — mirrors server/src/periodReturns.ts. */
 
 export type PeriodReturnKey = "d1" | "w1" | "mtd" | "ytd" | "y1" | "y3" | "y5" | "total";
@@ -45,7 +46,7 @@ export interface BenchmarkComparisonCell {
 }
 
 export interface BenchmarkComparisonPayload {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   benchmark: { slug: string };
   as_of_date: string;
   benchmark_first_date: string | null;
@@ -67,7 +68,7 @@ export interface PrepaymentRow {
 }
 
 export interface MortgagePrepaymentComparison {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   account_id: number;
   benchmark: { slug: string };
   as_of_date: string;
@@ -90,7 +91,7 @@ export interface MortgagePrepaymentComparison {
 }
 
 export interface PeriodReturnsPayload {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   as_of_date: string;
   /** Series start month key (`YYYY-MM`). */
   first_month: string;

@@ -15,11 +15,10 @@ import type { GroupInfoTableAccount } from "./groupInfoTableAccount";
  */
 export function consolidatedRowsForDisplay(
   rows: ConsolidatedMonthlyPerfRow[],
-  sourceUnit: "clp" | "usd" | "uf",
+  sourceUnit: string,
   displayUnit: DisplayUnit
 ): ConsolidatedMonthlyPerfRow[] | null {
-  const wanted = displayUnit === "usd" ? "usd" : "clp";
-  return sourceUnit === wanted || sourceUnit === "uf" ? rows : null;
+  return sourceUnit === displayUnit || sourceUnit === "uf" ? rows : null;
 }
 
 /** Same rule for the period-returns strip: the payload when its unit matches (or is `uf`), null

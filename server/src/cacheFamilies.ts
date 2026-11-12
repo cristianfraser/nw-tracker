@@ -127,7 +127,8 @@ export const CACHE_FAMILIES: Readonly<Record<string, CacheFamily>> = {
 
 export type CacheFamilyName = keyof typeof CACHE_FAMILIES;
 
-export type CacheUnit = "clp" | "usd" | "uf";
+/** A display unit code (`TsUnit`); cache keys carry it as is. */
+export type CacheUnit = string;
 
 export function cacheKeyAccountMonthlyPerf(accountId: number, unit: CacheUnit): string {
   return `account.monthly_perf|${accountId}|${unit}`;

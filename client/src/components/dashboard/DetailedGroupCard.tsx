@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../../cn";
+import type { DisplayUnit } from "../../queries/keys";
 import { DashboardCardTitleRow } from "./DashboardCardTitleRow";
 import { DashboardCardValue } from "./DashboardCardValue";
 
@@ -9,9 +10,9 @@ export type DetailedGroupCardProps = {
   titleTo?: string;
   /** The bucket's colour (`r,g,b`): the title becomes a pill in it. */
   titleColorRgb?: string | null;
-  showUsd: boolean;
-  clp: number;
-  apiUsd?: number | null;
+  /** The balance in `unit` (null: none on file). */
+  value: number | null;
+  unit: DisplayUnit;
   animated?: boolean;
   /** Day Δ rendered right-aligned on the balance row (e.g. `CardValueDayPl`). */
   valueDelta?: ReactNode;
@@ -35,9 +36,8 @@ export function DetailedGroupCard({
   title,
   titleTo,
   titleColorRgb,
-  showUsd,
-  clp,
-  apiUsd,
+  value,
+  unit,
   animated = true,
   valueDelta,
   metrics,
@@ -53,9 +53,8 @@ export function DetailedGroupCard({
       <div className="value">
         <DashboardCardValue
           flashOnChange
-          clp={clp}
-          apiUsd={apiUsd}
-          showUsd={showUsd}
+          value={value}
+          unit={unit}
           animated={animated}
           fxMissing={fxMissing}
           syncStale={syncStale}

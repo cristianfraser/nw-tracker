@@ -10,6 +10,7 @@ import { buildFlowsOverviewPayload } from "./flowsOverview.js";
 import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { warmVisitedPages } from "./visitedPagesWarm.js";
+import { warmedDisplayUnits } from "./displayUnits.js";
 
 /** The home net-worth chart's default Rango (3y) in days, as the client asks for it (timeRange.ts). */
 const HOME_OVERVIEW_DEFAULT_DAYS = 1096;
@@ -78,21 +79,23 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     // awaiting the promise it is building.
     await whenNoApiRequestsInFlight();
     const t0 = performance.now();
-    await buildDashboardPageBundle("clp");
-    await whenNoApiRequestsInFlight();
-    await buildDashboardPageBundle("usd");
+    const units = warmedDisplayUnits();
+    for (const [i, unit] of units.entries()) {
+      if (i > 0) await whenNoApiRequestsInFlight();
+      await buildDashboardPageBundle(unit);
+    }
     // The net-worth chart's default view (Diario, Rango 3y = 1096 days): a first visit's chart
     // waits on it, and its first build takes seconds.
-    await whenNoApiRequestsInFlight();
-    getDashboardOverviewDaily("clp", HOME_OVERVIEW_DEFAULT_DAYS);
-    await whenNoApiRequestsInFlight();
-    getDashboardOverviewDaily("usd", HOME_OVERVIEW_DEFAULT_DAYS);
+    for (const unit of units) {
+      await whenNoApiRequestsInFlight();
+      getDashboardOverviewDaily(unit, HOME_OVERVIEW_DEFAULT_DAYS);
+    }
     const tBundles = performance.now();
     // The home dashboard's flows section (Por cuota, month rows).
-    await whenNoApiRequestsInFlight();
-    buildFlowsOverviewPayload("clp", "split", null);
-    await whenNoApiRequestsInFlight();
-    buildFlowsOverviewPayload("usd", "split", null);
+    for (const unit of units) {
+      await whenNoApiRequestsInFlight();
+      buildFlowsOverviewPayload(unit, "split", null);
+    }
     // The pages actually opened, most visited first (usage log).
     const tVisited = performance.now();
     const visited = await warmVisitedPages();

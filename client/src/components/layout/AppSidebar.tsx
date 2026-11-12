@@ -30,6 +30,7 @@ import { DEMO_TOUR_ENABLED, startDemoTour } from "./DemoTour";
 import { DASHBOARD_PATH, DEMO_BUILD } from "../../dashboardPath";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
+import type { DisplayUnit } from "../../queries/keys";
 
 const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
 
@@ -106,7 +107,7 @@ function SidebarNavItem({
   onToggleCollapse: (id: string) => void;
   pathname: string;
   navPayload: SidebarNavResponse | null;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   onPrefetchShape: (targetPath: string) => void;
   /** `data-tour` name the demo tour points at (DemoTour.tsx). */
   tourTarget?: string;

@@ -91,3 +91,22 @@ export interface FxBidAskGapRow {
   suggested_buy: number | null;
   suggested_sell: number | null;
 }
+
+/**
+ * A display unit: a lowercase currency code the server loads (`currencies`, core tier: clp, usd,
+ * eur, …) or `uf` where a surface accepts it. Data, not a closed union.
+ */
+export type DisplayUnitCode = string;
+
+/** One loaded currency (`GET /api/currencies`). */
+export interface CurrencyDto {
+  code: string;
+  symbol: string;
+  minor_digits: number;
+  /** `core`: a display unit, kept current; `on_demand`: loaded when something holds it. */
+  tier: string;
+}
+
+export interface CurrenciesResponse {
+  currencies: CurrencyDto[];
+}

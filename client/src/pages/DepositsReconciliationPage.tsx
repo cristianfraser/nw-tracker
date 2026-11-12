@@ -14,6 +14,7 @@ import type {
   DepositRedemptionStatus,
 } from "../types";
 import { queryLoadError } from "../queries/pageShapeReady";
+import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const STATUS_ORDER: DepositReconciliationStatus[] = [
   "unlinked_checking_present",
@@ -68,6 +69,7 @@ function ReconciliationSection({
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
   const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
@@ -130,6 +132,7 @@ function ManualAssertionsSection({
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
   const unmatched = rows.filter((r) => r.status === "asserted_unmatched");
   const linkedCount = rows.length - unmatched.length;
   const totalClp = unmatched.reduce((s, r) => s + r.amount_clp, 0);
@@ -245,6 +248,7 @@ function RedemptionSection({
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
   const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
@@ -301,6 +305,7 @@ function RedemptionSection({
 export function DepositsReconciliationPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
   const { data, error: queryError } = useFlowsDepositsReconciliation();
   const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;

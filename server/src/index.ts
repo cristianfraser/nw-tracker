@@ -47,6 +47,7 @@ import { registerUsageRoutes } from "./routes/usage.js";
 import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
 import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js";
+import { DisplayUnitRequestError } from "./displayUnits.js";
 
 seedNavTree();
 
@@ -140,6 +141,10 @@ app.use(
       `[api] route error: ${err instanceof Error ? (err.stack ?? msg) : msg}`
     );
     if (res.headersSent) return;
+    if (err instanceof DisplayUnitRequestError) {
+      res.status(err.status).json({ error: msg });
+      return;
+    }
     res.status(500).json({ error: msg });
   }
 );

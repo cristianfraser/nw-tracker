@@ -20,6 +20,8 @@ import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
 import type { FlowsPlAccountRow, FlowsPlBucketBlock, FlowsPlBucketSlug } from "../types";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import type { DisplayUnit } from "../queries/keys";
+import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const PAGE_SIZE = 12;
 
@@ -29,17 +31,17 @@ const PL_TABLE_BUCKETS: FlowsPlBucketSlug[] = ["brokerage", "retirement", "cash"
 function accountRowValue(
   row: FlowsPlAccountRow,
   field: "pl_month" | "pl_ytd" | "pl_cumulative",
-  unit: "clp" | "usd"
+  unit: DisplayUnit
 ): number {
-  return row[`${field}_${unit}`];
+  return row[`${field}_${legacyDisplayUnit(unit, "Flows P/L")}`];
 }
 
 function bucketTotal(
   block: FlowsPlBucketBlock,
   field: "total_month" | "total_ytd" | "total_cumulative",
-  unit: "clp" | "usd"
+  unit: DisplayUnit
 ): number {
-  return block[`${field}_${unit}`];
+  return block[`${field}_${legacyDisplayUnit(unit, "Flows P/L")}`];
 }
 
 /** Flows → PL: monthly market P/L of the buckets (brokerage / retiro / efectivo / inmuebles) — the flows overview's P/L. */

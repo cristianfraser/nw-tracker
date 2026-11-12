@@ -1,4 +1,4 @@
-import type { FxCoverage } from "./core.js";
+import type { FxCoverage, DisplayUnitCode } from "./core.js";
 
 /** `GET /api/market-series` — sparse observations per field (no cross-series forward-fill); CLP crosses use FX on or before each equity/fund observation date. */
 export interface MarketSeriesPoint {
@@ -87,7 +87,7 @@ export interface WatchlistSymbolSearchResult {
 
 /** `GET /api/watchlist?unit=` — every value and change column expressed in `unit`. */
 export interface WatchlistResponse {
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   app: WatchlistRow[];
   manual: WatchlistRow[];
 }
@@ -103,7 +103,7 @@ export interface MarketTickerValue {
 /** `GET /api/market-ticker?unit=` — the same row stats as the watchlist, in the display unit. */
 export interface MarketTickerResponse {
   chile_today: string;
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   uf: MarketTickerValue | null;
   /** The USD/CLP rate itself — CLP per USD in both units. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;

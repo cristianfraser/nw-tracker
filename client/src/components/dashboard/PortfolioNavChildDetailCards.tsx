@@ -11,6 +11,7 @@ import {
 import { compareDashboardCardMainDesc } from "../../dashboardCardBreakdown";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
+import { legacyCardValue } from "./DashboardCardValue";
 
 export type PortfolioNavChildDetailCardsProps = {
   dash: Pick<
@@ -67,9 +68,7 @@ export function PortfolioNavChildDetailCards({
             title={resolveNavTreeLabel(child)}
             titleTo={rp || undefined}
             titleColorRgb={child.color_rgb}
-            showUsd={showUsd}
-            clp={clp}
-            apiUsd={apiUsd}
+            {...legacyCardValue(clp, apiUsd, showUsd)}
             fxMissing={fxMissing}
             syncStale={syncStale}
             animated={animated}
@@ -77,14 +76,14 @@ export function PortfolioNavChildDetailCards({
             valueDelta={
               <CardValueDayPl
                 metricsByPeriod={metricsByPeriod}
-                showUsd={showUsd}
+                unit={showUsd ? "usd" : "clp"}
                 animated={animated}
               />
             }
             metrics={
               <DashboardCardGroupMetrics
                 metricsByPeriod={metricsByPeriod}
-                showUsd={showUsd}
+                unit={showUsd ? "usd" : "clp"}
                 animated={animated}
               />
             }

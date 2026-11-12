@@ -3,6 +3,7 @@ import type { DashboardCardValueVariant } from "./DashboardCardValue";
 import { DashboardCardValue } from "./DashboardCardValue";
 import { DashboardCardTitleRow } from "./DashboardCardTitleRow";
 import { cn } from "../../cn";
+import type { DisplayUnit } from "../../queries/keys";
 import styles from "./CompactEntityCard.module.css";
 
 export type CompactEntityCardProps = {
@@ -12,9 +13,9 @@ export type CompactEntityCardProps = {
   to?: string;
   /** The bucket's colour (`r,g,b`): the label becomes a pill in it. */
   labelColorRgb?: string | null;
-  showUsd: boolean;
-  clp: number;
-  apiUsd?: number | null;
+  /** The balance in `unit` (null: none on file). */
+  value: number | null;
+  unit: DisplayUnit;
   animated?: boolean;
   fxMissing?: boolean;
   /** Lower opacity when linked sync source(s) are stale. */
@@ -37,9 +38,8 @@ export function CompactEntityCard({
   label,
   to,
   labelColorRgb,
-  showUsd,
-  clp,
-  apiUsd,
+  value,
+  unit,
   animated = true,
   subtitle,
   valueDelta,
@@ -59,9 +59,8 @@ export function CompactEntityCard({
         {/* No change flash on a summary card (the page's own total, an account's hero): only the
             detail cards and breakdown lines below it flash (2026-11-04). */}
         <DashboardCardValue
-          clp={clp}
-          apiUsd={apiUsd}
-          showUsd={showUsd}
+          value={value}
+          unit={unit}
           animated={animated}
           variant={valueVariant}
           fxMissing={fxMissing}

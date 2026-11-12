@@ -8,7 +8,7 @@ import {
   totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import {

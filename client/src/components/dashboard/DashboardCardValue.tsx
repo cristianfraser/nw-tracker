@@ -1,10 +1,7 @@
 import { NumberFlowElement, NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useRef, type ReactNode } from "react";
-import {
-  accountingCurrencyNumberFlowParts,
-  adaptiveUsdAccountingNumberFlowParts,
-  roundUsdAdaptive,
-} from "../../format";
+import { adaptiveAccountingNumberFlowParts, roundCardValue } from "../../format";
+import type { DisplayUnit } from "../../queries/keys";
 import { useTranslation } from "../../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { cn } from "../../cn";
@@ -79,25 +76,17 @@ const ALIGN_STYLE: Record<DashboardCardValueVariant, { id: string; css: string }
   },
 };
 
-function resolvedAmount(
+/**
+ * A card value in `unit` from the legacy pesos + `_usd` twin pair a payload still carries — the
+ * thin adapter call sites use until their stream sends one value per requested unit.
+ */
+export function legacyCardValue(
   clp: number,
   apiUsd: number | null | undefined,
-  showUsd: boolean,
-  usdFractionDigits: 0 | 1 | 2 | undefined
-): number | null {
-  if (showUsd) {
-    if (apiUsd != null && Number.isFinite(apiUsd)) {
-      // Sub-balance lists pin decimals so sibling rows align; main balances adapt
-      // to magnitude (cents below US$100, tenths below US$1.000).
-      if (usdFractionDigits != null) {
-        const factor = 10 ** usdFractionDigits;
-        return Math.round(apiUsd * factor) / factor;
-      }
-      return roundUsdAdaptive(apiUsd);
-    }
-    return null;
-  }
-  return Math.round(clp);
+  showUsd: boolean
+): { value: number | null; unit: DisplayUnit } {
+  if (showUsd) return { value: apiUsd != null && Number.isFinite(apiUsd) ? apiUsd : null, unit: "usd" };
+  return { value: clp, unit: "clp" };
 }
 
 function injectAlignStyles(host: NumberFlowElement | null, variant: DashboardCardValueVariant) {
@@ -111,38 +100,39 @@ function injectAlignStyles(host: NumberFlowElement | null, variant: DashboardCar
 }
 
 type Props = {
-  clp: number;
-  apiUsd?: number | null;
-  showUsd: boolean;
+  /** The value in `unit`; null = none on file (an em dash, or `!` when `fxMissing`). */
+  value: number | null;
+  unit: DisplayUnit;
   animated?: boolean;
   variant?: DashboardCardValueVariant;
-  /** When true in USD mode, show conversion error instead of em dash. */
+  /** When true and there is no value, show a conversion error instead of an em dash. */
   fxMissing?: boolean;
   /** Lower opacity when linked sync source(s) are stale. */
   syncStale?: boolean;
   /**
-   * Fixed USD decimals for card sub-balance lists — parent passes the max adaptive
-   * need across siblings so the column aligns. Omit → adaptive (main balances).
+   * Fixed decimals for card sub-balance lists in a currency with minor units — parent passes the
+   * max adaptive need across siblings so the column aligns. Omit → adaptive (main balances).
    */
-  usdFractionDigits?: 0 | 1 | 2;
+  fractionDigits?: 0 | 1 | 2;
   /** Flash green/red when the value changes while the page is open (`AnimatedNumberFlow`); off = rolling digits. */
   flashOnChange?: boolean;
 };
 
 export function DashboardCardValue({
-  clp,
-  apiUsd,
-  showUsd,
+  value,
+  unit,
   animated = true,
   variant = "main",
   fxMissing = false,
   syncStale = false,
-  usdFractionDigits,
+  fractionDigits,
   flashOnChange,
 }: Props) {
   const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
-  const target = resolvedAmount(clp, apiUsd, showUsd, usdFractionDigits);
+  // Sub-balance lists pin decimals so sibling rows align; main balances adapt to magnitude
+  // (cents below 100, tenths below 1.000); a currency without minor units is whole.
+  const target = value != null && Number.isFinite(value) ? roundCardValue(value, unit, fractionDigits) : null;
   const { transformTiming, spinTiming } = VARIANT_TIMING[variant];
   const isMain = variant === "main";
 
@@ -166,17 +156,14 @@ export function DashboardCardValue({
       value={target}
       animated={animated}
       flashOnChange={flashOnChange}
-      mapDisplayValue={(n) =>
-        showUsd
-          ? adaptiveUsdAccountingNumberFlowParts(n, "bare", usdFractionDigits)
-          : accountingCurrencyNumberFlowParts(n, "clp", "bare")
-      }
+      unit={unit}
+      mapDisplayValue={(n) => adaptiveAccountingNumberFlowParts(n, unit, "bare", fractionDigits)}
       wrapClassName={wrapClass}
       className={valueClass}
       transformTiming={transformTiming}
       spinTiming={spinTiming}
       emptyFallback={
-        showUsd && fxMissing ? (
+        fxMissing ? (
           <span
             className={cn(valueClass, styles.valueEmpty, "dashboard-card-value-empty", styles.valueFxError)}
             title={t("fxCoverage.cardMissingFx")}

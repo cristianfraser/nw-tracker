@@ -2,6 +2,7 @@ import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { db } from "./db.js";
 import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js";
 import { accountIsDebt } from "./accountProfile.js";
+import { warmedDisplayUnits } from "./displayUnits.js";
 
 /**
  * The full-history daily RETURNS every Rentabilidad table chains (`periodReturnsDaily.ts`), the
@@ -32,7 +33,7 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
 
   let scopes = 0;
   const yieldToRequests = () => whenNoApiRequestsInFlight();
-  for (const unit of ["clp", "usd"] as const) {
+  for (const unit of warmedDisplayUnits()) {
     for (const slug of groups) {
       await yieldToRequests();
       if (groupDailyPctPoints(slug, unit)) scopes += 1;

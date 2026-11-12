@@ -22,10 +22,11 @@ import type {
   AccountSummaryResponse,
   DashboardAccountRow,
 } from "../../types";
+import type { DisplayUnit } from "../../queries/keys";
 
 type Props = {
   mortgageLedger: AccountMortgageLedgerResponse;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   /** The server's yearly rollup of `monthlyPerfRows`. */
   monthlyPerfYearlyRows: readonly AccountMonthlyPerformanceRow[];

@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildFlowsDepositsPayload,
-  flowEventInUnit,
   flowsDepositsNetTotalByAccount,
   isPreTaxDepositRow,
   markPensionSwitchRows,
   netDepositFlowBetween,
   type FlowDepositRow,
 } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 import { totalDisplayDepositsClpForAccount } from "./accountDeposits.js";
 import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";

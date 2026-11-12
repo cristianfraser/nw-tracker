@@ -4,7 +4,7 @@ import {
   type CardBreakdownLine,
   type CardBreakdownNode,
 } from "../../dashboardCardBreakdown";
-import { DashboardCardValue } from "./DashboardCardValue";
+import { DashboardCardValue, legacyCardValue } from "./DashboardCardValue";
 import { minAdaptiveUsdFractionDigits } from "../../format";
 import { cn } from "../../cn";
 import styles from "./DashboardCardBreakdown.module.css";
@@ -34,12 +34,10 @@ function BreakdownAmount({
   const amount = (
     <span className={cn("card-breakdown__amount", "mono", muted && "card-breakdown__amount--muted")}>
       <DashboardCardValue
-        clp={node.clp}
-        apiUsd={node.usd}
-        showUsd={showUsd}
+        {...legacyCardValue(node.clp, node.usd, showUsd)}
         animated={animated}
         variant="breakdown"
-        usdFractionDigits={usdFractionDigits}
+        fractionDigits={usdFractionDigits}
         flashOnChange
       />
     </span>

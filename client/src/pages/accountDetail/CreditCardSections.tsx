@@ -28,6 +28,7 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
+import type { DisplayUnit } from "../../queries/keys";
 
 function CreditCardInstallmentsSection({
   ledger,
@@ -37,7 +38,7 @@ function CreditCardInstallmentsSection({
 }: {
   ledger: AccountCcInstallmentsResponse;
   accountId: number;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   /** The ledger is a placeholder or held prior data: the section keeps its frame, dimmed, with no «empty» copy. */
   loading?: boolean;
 }) {

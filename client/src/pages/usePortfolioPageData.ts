@@ -19,6 +19,7 @@ import {
   usePortfolioGroupBundle,
 } from "../queries/hooks";
 import type { NavTreeNodeDto, SidebarNavResponse } from "../types";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 
 /**
  * A portfolio page's data, the one block the group and Pasivos pages shared (docs/untangle-plan.md
@@ -75,7 +76,8 @@ export function usePortfolioPageData(opts: {
   // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
   // in THEIR unit, and flips to the new values once they land — never a blank strip.
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navNode?.slug ?? null);
+  const { previousDisplayUnit } = useDisplayPreferences();
+  const heldStrip = useHeldNavStrip(previousDisplayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navNode?.slug ?? null);
   const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
 
   const accounts = useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);

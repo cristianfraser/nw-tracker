@@ -14,7 +14,7 @@
 import { CHART_STYLE_LS_KEY, isChartStyle, type ChartStyle } from "./chartStylePreference";
 import { LANGUAGE_LS_KEY, type AppLanguage } from "./languagePreference";
 import { DECIMAL_SEPARATOR_LS_KEY, type DecimalSeparator } from "./numberFormatPreference";
-import type { DisplayUnit } from "./queries/keys";
+import { isDisplayUnitCode, type DisplayUnit } from "./queries/keys";
 
 export const DISPLAY_UNIT_LS_KEY = "nw-tracker.displayUnit";
 
@@ -31,7 +31,7 @@ export function parsePreferenceStorageChange(
   if (key === null || newValue === null) return null;
   switch (key) {
     case DISPLAY_UNIT_LS_KEY:
-      if (newValue === "clp" || newValue === "usd") {
+      if (isDisplayUnitCode(newValue)) {
         return { pref: "displayUnit", value: newValue };
       }
       return null;

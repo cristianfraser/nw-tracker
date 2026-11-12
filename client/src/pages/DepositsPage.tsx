@@ -17,12 +17,14 @@ import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
 import { rollupDepositChartPointsByYear } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
 import { queryLoadError } from "../queries/pageShapeReady";
+import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
 export function DepositsPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  legacyDisplayUnit(displayUnit, "Deposits");
   const chartPrefs = useSurfacePrefs("flows.deposits.chart", "month", "3y");
   const metricsPeriod = chartPrefs.period;
   const timeRange = chartPrefs.range;

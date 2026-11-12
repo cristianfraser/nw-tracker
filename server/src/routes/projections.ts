@@ -7,10 +7,14 @@ import {
   PROJECTION_PARAM_BOUNDS,
   type ProjectionParams,
 } from "../projections.js";
+import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
 
 export function registerProjectionsRoutes(app: express.Express): void {
   app.get("/api/projections", (req, res) => {
-    const unit = req.query.unit === "usd" ? ("usd" as const) : ("clp" as const);
+    const unit = requireLegacyDisplayUnit(
+      requestDisplayUnit(req.query, { surface: "/api/projections", supported: LEGACY_DISPLAY_UNITS }),
+      "/api/projections"
+    );
     const params: ProjectionParams = {
       ...PROJECTION_DEFAULTS,
       monthly_aporte_clp: defaultMonthlyAporteClp(),

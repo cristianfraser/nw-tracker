@@ -1,4 +1,4 @@
-import type { AccountPositionSnapshot, UnitsKind } from "./core.js";
+import type { AccountPositionSnapshot, UnitsKind, DisplayUnitCode } from "./core.js";
 import type { AccountCcInstallmentsResponse } from "./creditCard.js";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard.js";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage.js";
@@ -8,7 +8,7 @@ import type { BookLedgerEditSchema, MovementCreateSchema } from "./ledgerSchemas
 
 /** `GET /api/accounts/:id/valuation-timeseries` */
 export interface AccountValuationTimeseriesResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   account_id: number;
   name: string;
   accounts: TimeseriesBlock;
@@ -34,7 +34,7 @@ export interface AccountMonthlyPerformanceRow {
   closing_balance_uf?: number | null;
   /** Mortgage: UF/CLP rate from depto dividendos sheet at month-end. */
   uf_clp_day?: number | null;
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
 }
 
 export interface AccountMonthlyPerformanceResponse {

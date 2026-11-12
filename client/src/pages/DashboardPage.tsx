@@ -16,7 +16,6 @@ import {
   prefetchDashboardNavSnapshot,
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
-import { otherDisplayUnit } from "../queries/keys";
 import { dailyPayloadPending, isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
@@ -112,7 +111,7 @@ export function DashboardPage() {
   const belowFoldShown = fold === "full";
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { displayUnit } = useDisplayPreferences();
+  const { displayUnit, previousDisplayUnit } = useDisplayPreferences();
   const overviewPrefs = useSurfacePrefs("home.overview", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const perfArea = useSurfaceAreaMode("home.perf");
@@ -194,7 +193,8 @@ export function DashboardPage() {
   // previous unit's values, dimmed and in THEIR unit — the cards then flip to the new values once
   // the bundle lands, never through a blank strip or an fx-converted guess.
   const stripFromHeldBundle = holdingPrevUnit && !navSnapshot;
-  const stripShowUsd = (stripFromHeldBundle ? otherDisplayUnit(displayUnit) : displayUnit) === "usd";
+  const stripUnit = stripFromHeldBundle ? previousDisplayUnit : displayUnit;
+  const stripShowUsd = stripUnit === "usd";
   const dashForStrip = useMemo(() => {
     if (!netWorthNav) return null;
     if (useRealBundle && data) return data.dash;

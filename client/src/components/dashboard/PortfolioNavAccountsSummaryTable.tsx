@@ -24,7 +24,7 @@ import type {
   NavTreeNodeDto,
 } from "../../types";
 import { cardDeltaFractionDigits, DepositedMetricFlow } from "./DashboardCardGroupMetrics";
-import { DashboardCardValue } from "./DashboardCardValue";
+import { DashboardCardValue, legacyCardValue } from "./DashboardCardValue";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
 import { Table } from "../ui/Table";
 import {
@@ -283,7 +283,7 @@ export function PortfolioNavAccountsSummaryTable({
       {rows.map((row) => {
         const { metricsByPeriod } = row;
         const lifetime = metricsByPeriod.month;
-        const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd);
+        const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd ? "usd" : "clp");
         const nameCell =
           row.kind === "liquidated" ? (
             <div className={styles.nameStack}>
@@ -306,9 +306,7 @@ export function PortfolioNavAccountsSummaryTable({
         );
         const balanceValue = (variant: CellVariant) => (
           <DashboardCardValue
-            clp={row.clp}
-            apiUsd={row.apiUsd}
-            showUsd={showUsd}
+            {...legacyCardValue(row.clp, row.apiUsd, showUsd)}
             animated={isAnimated(variant)}
             // Desktop cell aligns left like every other column ("breakdown" is a
             // block-level right-align meant for card sub-balance lists; the mobile
@@ -332,7 +330,7 @@ export function PortfolioNavAccountsSummaryTable({
               ) : null}
               <DepositedMetricFlow
                 value={value}
-                showUsd={showUsd}
+                unit={showUsd ? "usd" : "clp"}
                 animated={isAnimated(variant)}
               />
             </span>

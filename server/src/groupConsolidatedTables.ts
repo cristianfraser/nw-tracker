@@ -18,6 +18,7 @@ import type { TsUnit } from "./valuationTimeseries.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
 import { withGroupDailyChainedMonthPct } from "./detalleDailyChainedPct.js";
 import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
+import { requireLegacyDisplayUnit } from "./displayUnits.js";
 
 export type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 
@@ -164,7 +165,7 @@ export function getGroupConsolidatedMonthlyPage(
   const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
   const shown =
     groupSlug === "net_worth" && installmentMode != null && unit !== "uf"
-      ? withIncomeAndExpenses(rows, unit, installmentMode, period)
+      ? withIncomeAndExpenses(rows, requireLegacyDisplayUnit(unit, "net worth detalle income and expenses"), installmentMode, period)
       : rows;
   return { unit, group_slug: groupSlug, period, ...paginate(shown, page, pageSize) };
 }

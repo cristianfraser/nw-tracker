@@ -1,8 +1,9 @@
 import { DefaultZIndexes } from "recharts";
-import { formatClp, formatCompactMoney, formatPct, formatUsd } from "../../format";
+import { formatCompactMoney, formatCurrency, formatPct } from "../../format";
 import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 
-export type ChartDisplayUnit = "clp" | "usd";
+/** A chart's money unit: a currency code (`clp`, `usd`, `eur`, …). */
+export type ChartDisplayUnit = string;
 
 /**
  * Recharts cartesian margins. `left` and `right` are 0: the chart spans its columns edge to edge. Y-axis
@@ -30,7 +31,7 @@ export const DIM_LEGEND_OPACITY = 0.32;
 
 export function formatAxisValue(v: number, unit: ChartDisplayUnit, compact = false) {
   if (compact) return formatCompactMoney(v, unit);
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
+  return formatCurrency(v, unit);
 }
 
 /** Recharts' Y-axis tick line and the gap between it and the label (its `tickSize` / `tickMargin` defaults). */
@@ -117,7 +118,7 @@ export function moneyYAxisProps(unit: ChartDisplayUnit, compact = false, ticks?:
 }
 
 export function formatTooltipValue(v: number, unit: ChartDisplayUnit) {
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
+  return formatCurrency(v, unit);
 }
 
 /** Min and max across the given data keys (finite numbers only). */

@@ -3,7 +3,7 @@ import { PAYROLL_FUNDED_KINDS } from "./accountProfile.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { loadMergedDisplayDepositInflowEvents, type DepositInflowEvent } from "./accountDeposits.js";
+import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
@@ -19,33 +19,8 @@ import {
   mortgageSheetPaymentEventsThroughDate,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import { convertFlow, type TsUnit } from "./rates.js";
+import { flowEventInUnit, type TsUnit } from "./rates.js";
 import { windowIndexOf } from "./perfKernel.js";
-
-/**
- * A deposit/flow event: every one carries its CLP leg (`amt`); USD-cash and equity capital
- * events also carry the dollars that actually moved (`amt_usd`).
- */
-export type FlowEvent = Pick<DepositInflowEvent, "occurred_on" | "amt" | "amt_usd">;
-
-/**
- * One deposit/flow event in `unit`, at its own date's rate — the single conversion every
- * deposit and flow reader shares (dashboard totals, window flows, aportes lines, the daily
- * grid, mortgage and property payments). A leg the event carries is used as is (CLP always;
- * USD when recorded, its sign following the CLP leg); only a missing leg converts: CLP ÷ the
- * buy rate on or before the event date, CLP ÷ that date's UF. Unrounded — callers sum first
- * and round once for display. A missing rate throws: a flow is never dropped from a total.
- */
-export function flowEventInUnit(e: FlowEvent, unit: TsUnit): number {
-  if (!Number.isFinite(e.amt)) {
-    throw new Error(`flow event ${e.occurred_on}: non-finite CLP amount ${e.amt}`);
-  }
-  if (e.amt === 0) return 0;
-  if (unit === "usd" && e.amt_usd != null && Number.isFinite(e.amt_usd)) {
-    return Math.sign(e.amt) * Math.abs(e.amt_usd);
-  }
-  return convertFlow(e.amt, "clp", unit, e.occurred_on);
-}
 
 /**
  * The depto ledger's payments as flows in `unit` through `throughYmd`, each at its own day's rate

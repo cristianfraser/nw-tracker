@@ -51,26 +51,76 @@ export const NUMBER_FLOW_INT_FORMAT = {
   signDisplay: "never",
 } as const;
 
-export type CurrencyDisplayUnit = "clp" | "usd" | "usd-fine";
+/**
+ * A currency code (lowercase ISO 4217 as the server loads it: `clp`, `usd`, `eur`, …); `usd-fine`
+ * is the legacy spelling of dollars with cents ({@link formatCurrencyFine}).
+ */
+export type CurrencyDisplayUnit = string;
 
 /**
  * `full` spells the currency out where there is room (desktop, cards, tables);
  * `bare` keeps only the symbol for space-constrained surfaces (mobile chart axes,
- * dashboard card values). A new currency adds both forms in one place — `bare`
- * is what mobile drops the qualifier to, so it can never drift per-surface.
+ * dashboard card values). Both come from the currency's one symbol ({@link currencySymbol}):
+ * `bare` drops a letter qualifier in front of `$` (`US$` → `$`), so it can never drift per-surface.
  */
 export type CurrencySymbolVariant = "full" | "bare";
 
-const CURRENCY_SYMBOL: Record<
-  Exclude<CurrencyDisplayUnit, "usd-fine">,
-  Record<CurrencySymbolVariant, string>
-> = {
-  clp: { full: "$", bare: "$" },
-  usd: { full: "US$", bare: "$" },
+/**
+ * The symbols of the well-known currencies until `/api/currencies` has answered (any other prints
+ * its ISO code): pesos and dollars as the app has always written them, the rest as they are
+ * commonly written. The server's `currencies` rows win once loaded ({@link setCurrencyRegistry}).
+ */
+const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
+  clp: "$",
+  usd: "US$",
+  eur: "€",
+  gbp: "£",
+  jpy: "¥",
+  cny: "CN¥",
+  brl: "R$",
+  mxn: "MX$",
+  ars: "AR$",
+  cad: "C$",
+  aud: "A$",
+  chf: "CHF ",
 };
 
-function intlFormatter(unit: CurrencyDisplayUnit): Intl.NumberFormat {
-  return unit === "usd-fine" ? numFmt(2, 2) : numFmt(0, 0);
+type CurrencyFormatInfo = { symbol: string; minorDigits: number };
+
+/** The loaded currencies (`GET /api/currencies`), by code. */
+const currencyRegistry = new Map<string, CurrencyFormatInfo>();
+
+/** Records the server's currencies (symbol, minor digits); formats read them from then on. */
+export function setCurrencyRegistry(rows: readonly { code: string; symbol: string; minor_digits: number }[]): void {
+  for (const r of rows) currencyRegistry.set(r.code, { symbol: r.symbol, minorDigits: r.minor_digits });
+}
+
+/** How `code` prints: the registry's row, else the built-in symbol and the ISO minor digits. */
+export function currencyFormatInfo(code: string): CurrencyFormatInfo {
+  const known = currencyRegistry.get(code);
+  if (known) return known;
+  if (code === "clp") return { symbol: "$", minorDigits: 0 };
+  if (code === "usd") return { symbol: "US$", minorDigits: 2 };
+  const iso = code.toUpperCase();
+  let minorDigits = 2;
+  try {
+    minorDigits =
+      new Intl.NumberFormat("en", { style: "currency", currency: iso }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    throw new Error(`unknown currency ${code}`);
+  }
+  return { symbol: CURRENCY_SYMBOLS[code] ?? `${iso} `, minorDigits };
+}
+
+/** `code`'s symbol: `full` as written (`US$`, `€`), `bare` without a letter qualifier on `$` (`$`). */
+export function currencySymbol(code: string, variant: CurrencySymbolVariant = "full"): string {
+  const full = currencyFormatInfo(code).symbol;
+  return variant === "bare" ? full.replace(/^[A-Z]+\$$/, "$") : full;
+}
+
+/** Legacy `usd-fine` → dollars with cents; every other unit is a currency code. */
+function fineCode(unit: CurrencyDisplayUnit): string | null {
+  return unit === "usd-fine" ? "usd" : null;
 }
 
 /** Grouped digits with up to 2 fraction digits; trailing zeros omitted (e.g. `902`, `40,41`). */
@@ -86,18 +136,27 @@ export function formatGroupedDecimal(n: number, minFrac: number, maxFrac = minFr
 }
 
 /**
- * Currency display string. Negatives use accounting parentheses: `$-1` → `($1)`.
+ * Currency display string, whole units (pesos, dollars, euros alike: `US$1.234`); `usd-fine` keeps
+ * the cents ({@link formatCurrencyFine}). Negatives use accounting parentheses: `$-1` → `($1)`.
  * No leading `+` on positives.
  */
 export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): string {
+  const fine = fineCode(unit);
+  if (fine) return formatCurrencyFine(n, fine);
   if (!Number.isFinite(n)) return "—";
-  const rounded = unit === "usd-fine" ? n : Math.round(n);
+  const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const sym =
-    unit === "usd-fine" ? CURRENCY_SYMBOL.usd.full : CURRENCY_SYMBOL[unit].full;
-  const digits = normalizeIntlNum(intlFormatter(unit).format(abs));
-  const body = `${sym}${digits}`;
+  const body = `${currencySymbol(unit)}${normalizeIntlNum(numFmt(0, 0).format(abs))}`;
   if (rounded < 0) return `(${body})`;
+  return body;
+}
+
+/** `code` with its minor digits (`US$1.234,50`, `€12,50`; pesos whole). Negatives in parentheses. */
+export function formatCurrencyFine(n: number, code: string): string {
+  if (!Number.isFinite(n)) return "—";
+  const digits = currencyFormatInfo(code).minorDigits;
+  const body = `${currencySymbol(code)}${normalizeIntlNum(numFmt(digits, digits).format(Math.abs(n)))}`;
+  if (n < 0) return `(${body})`;
   return body;
 }
 
@@ -133,11 +192,11 @@ export function formatUsd(n: number): string {
  * NOT `Intl` `notation: "compact"`: es-CL renders locale words there (`10 M`, `350 mil`),
  * which breaks both the bilingual contract and the separator convention.
  */
-export function formatCompactMoney(n: number, unit: Exclude<CurrencyDisplayUnit, "usd-fine">): string {
+export function formatCompactMoney(n: number, unit: CurrencyDisplayUnit): string {
   if (!Number.isFinite(n)) return "—";
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const sym = CURRENCY_SYMBOL[unit].bare;
+  const sym = currencySymbol(unit, "bare");
   const { mantissa, suffix, frac } = compactMagnitude(abs);
   const body = `${sym}${normalizeIntlNum(numFmt(0, frac).format(mantissa))}${suffix}`;
   return rounded < 0 ? `(${body})` : body;
@@ -207,43 +266,13 @@ export function formatCcExpenseLineAmount(amountClp: number, amountUsd: number |
 }
 
 /**
- * The symbols of the well-known currencies (any other prints its ISO code): pesos and dollars as
- * the app has always written them, the rest as they are commonly written.
- */
-const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
-  clp: "$",
-  usd: "US$",
-  eur: "€",
-  gbp: "£",
-  jpy: "¥",
-  cny: "CN¥",
-  brl: "R$",
-  mxn: "MX$",
-  ars: "AR$",
-  cad: "C$",
-  aud: "A$",
-  chf: "CHF ",
-};
-
-/**
  * An amount in its own currency (lowercase ISO 4217): pesos whole, dollars with cents, any other
- * currency with its own minor digits and its symbol when it is a well-known one (`€12,50`), else
- * its code (`PEN 12,50`). Negatives in parentheses.
+ * currency with its own minor digits and its symbol (`€12,50`), else its code (`PEN 12,50`).
+ * Negatives in parentheses.
  */
 export function formatMoney(m: { value: number; currency: string }): string {
   if (m.currency === "clp") return formatClp(m.value);
-  if (m.currency === "usd") return formatUsdFine(m.value);
-  if (!Number.isFinite(m.value)) return "—";
-  const code = m.currency.toUpperCase();
-  let digits = 2;
-  try {
-    digits = new Intl.NumberFormat("en", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    throw new Error(`formatMoney: unknown currency ${m.currency}`);
-  }
-  const prefix = CURRENCY_SYMBOLS[m.currency] ?? `${code} `;
-  const body = `${prefix}${normalizeIntlNum(numFmt(digits, digits).format(Math.abs(m.value)))}`;
-  return m.value < 0 ? `(${body})` : body;
+  return formatCurrencyFine(m.value, m.currency);
 }
 
 /**
@@ -265,7 +294,7 @@ export function formatLineAmount(
 
 /** USD with cents — still prefixed `US$`; negatives `(US$1,234.56)`. */
 export function formatUsdFine(n: number): string {
-  return formatCurrency(n, "usd-fine");
+  return formatCurrencyFine(n, "usd");
 }
 
 /** Percent (value already ×100) with fixed decimals in the active separator convention (e.g. `12,34%`). */
@@ -277,7 +306,7 @@ export function formatPct(n: number | null | undefined, frac = 2): string {
 /** Props for {@link https://number-flow.barvian.me/ NumberFlow} currency (no `+`/`-` digit; negatives via parens). */
 export function accountingCurrencyNumberFlowParts(
   n: number,
-  unit: Exclude<CurrencyDisplayUnit, "usd-fine">,
+  unit: CurrencyDisplayUnit,
   /** Dashboard card values pass `"bare"` — `$` for both CLP and USD. */
   variant: CurrencySymbolVariant = "full"
 ): {
@@ -289,7 +318,7 @@ export function accountingCurrencyNumberFlowParts(
 } {
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const symbol = CURRENCY_SYMBOL[unit][variant];
+  const symbol = currencySymbol(unit, variant);
   if (rounded < 0) {
     return {
       value: abs,
@@ -322,18 +351,50 @@ export function adaptiveUsdAccountingNumberFlowParts(
   /** Dashboard card values pass `"bare"` — `$` for both CLP and USD. */
   variant: CurrencySymbolVariant = "full",
   fixedFractionDigits?: 0 | 1 | 2
-): {
+): AdaptiveNumberFlowParts {
+  return adaptiveAccountingNumberFlowParts(n, "usd", variant, fixedFractionDigits);
+}
+
+type AdaptiveNumberFlowParts = {
   value: number;
   prefix: string;
   suffix: string;
   locales: string;
   format: { minimumFractionDigits: number; maximumFractionDigits: number; signDisplay: "never" };
-} {
+};
+
+/** Whether a currency's card values adapt their decimals to the magnitude (it has minor units). */
+export function currencyHasAdaptiveCardDecimals(code: string): boolean {
+  return currencyFormatInfo(code).minorDigits > 0;
+}
+
+/** A card value in `code` rounded to what its card shows: whole for a currency without minor units, else adaptive (or `fixedFractionDigits`). */
+export function roundCardValue(n: number, code: string, fixedFractionDigits?: 0 | 1 | 2): number {
+  if (!currencyHasAdaptiveCardDecimals(code)) return Math.round(n);
+  if (fixedFractionDigits != null) {
+    const factor = 10 ** fixedFractionDigits;
+    return Math.round(n * factor) / factor;
+  }
+  return roundUsdAdaptive(n);
+}
+
+/**
+ * Card-value parts in any currency: a currency without minor units (pesos) keeps
+ * {@link accountingCurrencyNumberFlowParts}; one with them adapts its decimals like dollars
+ * ({@link adaptiveUsdFractionDigits}), or pins `fixedFractionDigits`.
+ */
+export function adaptiveAccountingNumberFlowParts(
+  n: number,
+  code: string,
+  variant: CurrencySymbolVariant = "full",
+  fixedFractionDigits?: 0 | 1 | 2
+): AdaptiveNumberFlowParts {
+  if (!currencyHasAdaptiveCardDecimals(code)) return accountingCurrencyNumberFlowParts(n, code, variant);
   const fd = fixedFractionDigits ?? adaptiveUsdFractionDigits(Math.abs(n));
   const factor = 10 ** fd;
   const rounded = Math.round(n * factor) / factor;
   const abs = Math.abs(rounded);
-  const symbol = CURRENCY_SYMBOL.usd[variant];
+  const symbol = currencySymbol(code, variant);
   // Adaptive (min 0) trims trailing decimal zeros (55,00 → 55; 42,40 → 42,4);
   // fixed keeps them so sibling rows align.
   const format = {

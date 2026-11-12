@@ -80,6 +80,7 @@ import {
   updateRealEstateExpenseMonthsCovered,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
+import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
 
 /**
  * A write that can move an expense deposit link (an income mark, a refund, pieces, a manual
@@ -114,11 +115,10 @@ app.get("/api/flows/pl", (req, res) => {
 });
 
 app.get("/api/flows/overview", (req, res) => {
-  const unit = String(req.query.unit ?? "clp");
-  if (unit !== "clp" && unit !== "usd") {
-    res.status(400).json({ error: `unit must be clp or usd, got ${unit}` });
-    return;
-  }
+  const unit = requireLegacyDisplayUnit(
+    requestDisplayUnit(req.query, { surface: "/api/flows/overview", supported: LEGACY_DISPLAY_UNITS }),
+    "/api/flows/overview"
+  );
   const mode = String(req.query.installment_mode ?? "split");
   if (mode !== "split" && mode !== "total") {
     res.status(400).json({ error: `installment_mode must be split or total, got ${mode}` });
@@ -142,11 +142,10 @@ app.get("/api/flows/deposits/reconciliation", (_req, res) => {
 });
 
 app.get("/api/income", (req, res) => {
-  const unit = String(req.query.unit ?? "clp");
-  if (unit !== "clp" && unit !== "usd") {
-    res.status(400).json({ error: `unit must be clp or usd, got ${unit}` });
-    return;
-  }
+  const unit = requireLegacyDisplayUnit(
+    requestDisplayUnit(req.query, { surface: "/api/income", supported: LEGACY_DISPLAY_UNITS }),
+    "/api/income"
+  );
   const payload = buildFlowsCheckingIncomePayload();
   const counterparties = transferCounterpartiesByMovementSide();
   res.json({
@@ -343,11 +342,10 @@ app.get("/api/flows/expenses/credit-card", (_req, res) => {
 });
 
 app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
-  const unitRaw = String(req.query.unit ?? "clp");
-  if (unitRaw !== "clp" && unitRaw !== "usd") {
-    res.status(400).json({ error: `unit must be clp or usd, got ${unitRaw}` });
-    return;
-  }
+  const unitRaw = requireLegacyDisplayUnit(
+    requestDisplayUnit(req.query, { surface: "/api/flows/expenses/credit-card/gastos", supported: LEGACY_DISPLAY_UNITS }),
+    "/api/flows/expenses/credit-card/gastos"
+  );
   const excluded = new Set(
     String(req.query.exclude_big_groups ?? "")
       .split(",")

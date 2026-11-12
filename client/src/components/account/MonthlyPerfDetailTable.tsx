@@ -8,6 +8,7 @@ import { PerfDetailRows, type PerfDetailFlow, type PerfDetailRow } from "./PerfD
 import { BanknoteIcon } from "../icons/BanknoteIcon";
 import { CoinsIcon } from "../icons/CoinsIcon";
 import { ShoppingBagIcon } from "../icons/ShoppingBagIcon";
+import type { DisplayUnit } from "../../queries/keys";
 
 const PAGE_SIZE = 12;
 
@@ -67,7 +68,7 @@ export function MonthlyPerfDetailTable({
    * the server's page of the chosen period.
    */
   yearlyRows?: readonly PerfRow[];
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   isMortgageAccount?: boolean;
   isAfpAccount?: boolean;
   unitsKind?: "shares" | "coin" | "contracts";

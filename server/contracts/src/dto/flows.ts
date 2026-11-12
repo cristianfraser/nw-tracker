@@ -1,6 +1,6 @@
 import type { PaymentProcessorSlug } from "./paymentProcessors.js";
 import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
-import type { FxConversionWarning } from "./core.js";
+import type { FxConversionWarning, DisplayUnitCode } from "./core.js";
 
 /** How the card feed typed a purchase in cuotas (server `ccCuotaPurchaseKinds.ts`). */
 export type CcCuotaPurchaseKind = "cuota_comercio" | "precio_contado";
@@ -134,7 +134,7 @@ export type FlowsOverviewTotals = Omit<FlowsOverviewRow, "period_month" | "as_of
 export interface FlowsOverviewResponse {
   /** `DTO_SCHEMA_VERSIONS.flows_overview`: the client stores this payload under that version. */
   schema_version: (typeof DTO_SCHEMA_VERSIONS)["flows_overview"];
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   installment_mode: "split" | "total";
   /** Oldest first, contiguous through Chile today. */
   months: FlowsOverviewRow[];
@@ -656,7 +656,7 @@ export interface FlowsExpensesGastosView {
 
 /** `GET /api/flows/expenses/credit-card/gastos?unit=&exclude_big_groups=&include_pre_tax=`. */
 export interface FlowsExpensesGastosResponse {
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   /** Whether the payslip deductions (pre-tax expenses) are counted; off by default. */
   include_pre_tax: boolean;
   excluded_big_groups: string[];
@@ -781,7 +781,7 @@ export interface FlowsIncomeResponse {
 }
 
 export interface FlowsIncomeAggregates {
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   /** Oldest first, through Chile today (zero months after the last arrival). */
   months: FlowIncomeMonthRow[];
   /** Days carrying income, by arrival date, oldest first. */

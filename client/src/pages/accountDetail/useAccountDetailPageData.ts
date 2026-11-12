@@ -11,7 +11,6 @@ import {
   useHeldNavStrip,
   useSidebarNav,
 } from "../../queries/hooks";
-import { otherDisplayUnit } from "../../queries/keys";
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
@@ -30,6 +29,7 @@ import type {
   DashboardAccountRow,
   PeriodReturnsPayload,
 } from "../../types";
+import type { DisplayUnit } from "../../queries/keys";
 
 type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"]>;
 
@@ -54,13 +54,13 @@ export type AccountDetailPageData = {
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
   /** undefined while the bundle loads; null is the server stating the account has no period returns. */
   periodReturns: PeriodReturnsPayload | null | undefined;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   /**
    * The unit the card strip (hero, metrics, nav-child cards) renders in: `displayUnit`, except
    * while the page holds the previous unit's bundle during a switch — then THAT unit, so the
    * cards keep their values, dimmed, and flip once the new unit lands.
    */
-  stripUnit: "clp" | "usd";
+  stripUnit: DisplayUnit;
   /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
   valuationPrefs: SurfacePrefsValue;
   perfPrefs: SurfacePrefsValue;
@@ -80,7 +80,7 @@ export type AccountDetailPageData = {
 
 export function useAccountDetailPageData(): AccountDetailPageData {
   const { id } = useParams();
-  const { displayUnit } = useDisplayPreferences();
+  const { displayUnit, previousDisplayUnit } = useDisplayPreferences();
 
   const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
   const valuationPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.valuation`, "day", "3y");
@@ -156,8 +156,8 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   // the whole strip stays in that unit, so the hero (held detail row) and the nav-child cards (the
   // previous unit's nav context or snapshot) never mix units.
   const holdingPrevUnit = detailIsPlaceholder && bundleReady;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && needsNavChildCards, navSelfEarly?.slug ?? null);
-  const stripUnit = holdingPrevUnit ? otherDisplayUnit(displayUnit) : displayUnit;
+  const heldStrip = useHeldNavStrip(previousDisplayUnit, holdingPrevUnit && needsNavChildCards, navSelfEarly?.slug ?? null);
+  const stripUnit = holdingPrevUnit ? previousDisplayUnit : displayUnit;
   const realDash = holdingPrevUnit ? (heldStrip?.dash ?? null) : navCtx ? dashPickForNavStrip(navCtx) : null;
   // Nav-context not in yet: the strip's zero frame from the nav tree (cards in their placeholder phase).
   const dash =

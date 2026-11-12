@@ -3,7 +3,7 @@ import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 
 function listDepositFlowAccountIds(): number[] {
   const rows = db

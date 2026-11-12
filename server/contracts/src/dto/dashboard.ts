@@ -1,5 +1,5 @@
 import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
-import type { AccountPositionSnapshot, FxConversionWarning } from "./core.js";
+import type { AccountPositionSnapshot, FxConversionWarning, DisplayUnitCode } from "./core.js";
 import type { CcFacturadoBarSegments } from "./creditCard.js";
 
 export interface DashboardAccountRow {
@@ -401,7 +401,7 @@ export interface TimeseriesBlock {
 
 /** Dashboard home, or `/api/...?group=` for class tabs */
 export interface ValuationTimeseriesResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   /** Home: also carries the USD milestone reference lines (`usd_50k`, …) and their anchors. */
   overview?: Required<Pick<TimeseriesBlock, "lines" | "points">> &
     Pick<TimeseriesBlock, "referenceMilestoneByDate"> & {
@@ -441,7 +441,7 @@ export interface DashboardOverviewDailyPoint {
 
 /** Daily net-worth series for the day period view (calendar-day grid, last point live). */
 export interface DashboardOverviewDailyResponse {
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   days: number;
   end_ymd: string;
   points: DashboardOverviewDailyPoint[];

@@ -13,12 +13,12 @@ import {
   getWatchlistPayload,
   patchWatchlistRow,
   searchWatchlistSymbols,
-  watchlistDisplayUnitParam,
 } from "../watchlist.js";
 import { asyncHandler } from "./shared.js";
 import { invalidateMarketDataAggregations } from "../cacheRegistry.js";
 import { listEquitySplits, recordEquitySplit } from "../equitySplits.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
+import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
 
 export function registerMarketRoutes(app: express.Express): void {
 app.get("/api/fx/latest", (_req, res) => {
@@ -113,7 +113,7 @@ app.get("/api/live-quotes/stamp", (req, res) => {
 // `?unit=usd` returns values and changes in USD (the app's CLP/USD toggle); default CLP.
 app.get("/api/market-ticker", (req, res) => {
   try {
-    res.json(getMarketTickerPayload(new Date(), watchlistDisplayUnitParam(req.query.unit)));
+    res.json(getMarketTickerPayload(new Date(), requireLegacyDisplayUnit(requestDisplayUnit(req.query, { surface: "/api/market-ticker", supported: LEGACY_DISPLAY_UNITS }), "/api/market-ticker")));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
   }
@@ -163,7 +163,7 @@ app.post("/api/equity-splits", (req, res) => {
 // DB-only: history depth is maintained by the live-quotes scheduler, never on request.
 app.get("/api/watchlist", (req, res) => {
   try {
-    res.json(getWatchlistPayload(new Date(), watchlistDisplayUnitParam(req.query.unit)));
+    res.json(getWatchlistPayload(new Date(), requireLegacyDisplayUnit(requestDisplayUnit(req.query, { surface: "/api/watchlist", supported: LEGACY_DISPLAY_UNITS }), "/api/watchlist")));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "watchlist_failed" });
   }

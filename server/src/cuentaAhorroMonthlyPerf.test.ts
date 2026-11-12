@@ -4,7 +4,7 @@ import { clearAggregationCache } from "./cacheRegistry.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { addCalendarMonths } from "nw-tracker-contracts";

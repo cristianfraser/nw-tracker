@@ -13,6 +13,10 @@ describe("parsePreferenceStorageChange", () => {
       pref: "displayUnit",
       value: "usd",
     });
+    expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "eur")).toEqual({
+      pref: "displayUnit",
+      value: "eur",
+    });
     expect(parsePreferenceStorageChange(DECIMAL_SEPARATOR_LS_KEY, "comma")).toEqual({
       pref: "decimalSeparator",
       value: "comma",
@@ -32,7 +36,8 @@ describe("parsePreferenceStorageChange", () => {
   });
 
   it("ignores invalid values for a known key", () => {
-    expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "eur")).toBeNull();
+    expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "EUR")).toBeNull();
+    expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "euro")).toBeNull();
     expect(parsePreferenceStorageChange(DECIMAL_SEPARATOR_LS_KEY, "dot")).toBeNull();
     expect(parsePreferenceStorageChange(LANGUAGE_LS_KEY, "pt")).toBeNull();
     expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "")).toBeNull();

@@ -1,8 +1,13 @@
-export type DisplayUnit = "clp" | "usd";
+/**
+ * A display unit: a lowercase core currency code the server loads (`clp`, `usd`, `eur`, …;
+ * `GET /api/currencies`). Data, not a closed union. The unit a page was showing before a switch
+ * (the one keep-previous data belongs to) is `previousDisplayUnit` in DisplayPreferencesContext.
+ */
+export type DisplayUnit = string;
 
-/** The unit a page was showing before a switch — the one keep-previous data belongs to. */
-export function otherDisplayUnit(unit: DisplayUnit): DisplayUnit {
-  return unit === "usd" ? "clp" : "usd";
+/** A string that can name a display unit (three lowercase letters); the server decides if it is loaded. */
+export function isDisplayUnitCode(v: unknown): v is DisplayUnit {
+  return typeof v === "string" && /^[a-z]{3}$/.test(v);
 }
 
 const ENTITY = Symbol("entityKeyLength");
@@ -61,6 +66,7 @@ export const queryKeys = {
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
     withEntity(["accounts", "portfolioGroup", portfolioGroup, unit] as const, 3),
   ratesInstruments: () => ["ratesInstruments"] as const,
+  currencies: () => ["currencies"] as const,
   /** Prefix keys (no unit) invalidate every unit's copy at once. */
   marketTickerAll: () => ["marketTicker"] as const,
   marketTicker: (unit: DisplayUnit) => ["marketTicker", unit] as const,

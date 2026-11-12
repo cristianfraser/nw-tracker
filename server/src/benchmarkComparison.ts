@@ -3,7 +3,7 @@ import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 import {
   benchmarkLevelSeries,
   type BenchmarkLevelSeries,

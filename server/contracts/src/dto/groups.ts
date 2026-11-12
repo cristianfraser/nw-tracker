@@ -1,7 +1,7 @@
 import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountMonthlyPerformanceRow } from "./accounts.js";
 import type { PeriodReturnsPayload } from "./performance.js";
-import type { FxCoverage } from "./core.js";
+import type { FxCoverage, DisplayUnitCode } from "./core.js";
 import type { UpcomingPaymentsDto } from "./creditCard.js";
 import type { DashboardAccountRow, DashboardResponse, FxLatest, ValuationTimeseriesResponse, ValueSeriesType } from "./dashboard.js";
 
@@ -21,7 +21,7 @@ export interface GroupMonthlyPerformanceGroupedBars {
 }
 
 export interface GroupMonthlyPerformanceResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   group_slug: string;
   bar_accounts: GroupMonthlyPerformanceBarAccount[];
   points: Record<string, string | number | null>[];
@@ -153,7 +153,7 @@ export interface InversionesYearlyPctPoint {
 
 /** The page bundle's `inversionesPerf`: one point per month of the inversiones consolidation. */
 export interface InversionesPerfMonthlyResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   points: InversionesPerfPoint[];
   /** One point per calendar year (a year's % is not a sum of its months' %). */
   yearly_pct: InversionesYearlyPctPoint[];
@@ -161,7 +161,7 @@ export interface InversionesPerfMonthlyResponse {
 
 /** `GET /api/dashboard/inversiones-perf-daily` — the same combo, one point per day. */
 export interface InversionesPerfDailyResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   days: number;
   points: InversionesPerfPoint[];
 }
@@ -182,7 +182,7 @@ export type ConsolidatedMonthlyPerfRow = {
 };
 
 export interface GroupConsolidatedTablesResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   group_slug: string;
   account_monthly: {
     account_id: number;
@@ -200,7 +200,7 @@ export interface GroupConsolidatedTablesResponse {
 
 /** `GET /api/groups/:slug/period-returns` — the Rentabilidad table alone (home dashboard). */
 export interface GroupPeriodReturnsResponse {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   group_slug: string;
   period_returns: PeriodReturnsPayload | null;
 }
@@ -215,7 +215,7 @@ export type Paginated<T> = {
 
 /** `GET /api/groups/:slug/consolidated-monthly` — server-paginated detalle por mes. */
 export type GroupConsolidatedMonthlyPageResponse = Paginated<ConsolidatedMonthlyPerfRow> & {
-  unit: "clp" | "usd" | "uf";
+  unit: DisplayUnitCode;
   group_slug: string;
   period: "month" | "year";
 };

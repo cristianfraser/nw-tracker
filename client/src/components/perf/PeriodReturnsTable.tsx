@@ -17,6 +17,7 @@ import type {
 import { loadableClass } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import styles from "./PeriodReturnsTable.module.css";
+import type { DisplayUnit } from "../../queries/keys";
 
 const PERIOD_LABEL_KEY: Record<PeriodReturnKey, string> = {
   d1: "periodReturns.d1",
@@ -71,7 +72,7 @@ export function PeriodReturnsTable({
   loading,
 }: {
   data: PeriodReturnsPayload | null;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   comparison?: BenchmarkComparisonProps;
   /** The payload is not in yet (or is held prior data): the table dims. */
   loading?: boolean;
@@ -239,7 +240,7 @@ export function PeriodReturnsWithBenchmark({
   loading,
 }: {
   data: PeriodReturnsPayload | null;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   scope: { accountId: number } | { portfolioGroup: string };
   /** Null until the page's scope is known (its benchmark choice is not read or stored). */
   surfaceId: string | null;

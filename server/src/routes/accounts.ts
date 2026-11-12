@@ -19,7 +19,7 @@ import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
 import { db } from "../db.js";
-import { listAccountsForGroupTab, type TsUnit } from "../valuationTimeseries.js";
+import { listAccountsForGroupTab } from "../valuationTimeseries.js";
 import { monthlyPerfForAccountDisplay } from "../detalleDailyChainedPct.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
 import { cachedAccountDetailBundle } from "../accountDetailBundle.js";
@@ -30,6 +30,7 @@ import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
 import { asyncHandler, accountIdFromReq } from "./shared.js";
+import { LEGACY_DISPLAY_UNITS, requestDisplayUnit } from "../displayUnits.js";
 
 export function registerAccountsRoutes(app: express.Express): void {
 app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -40,7 +41,8 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
       res.status(400).json({ error: "unknown portfolio_group" });
       return;
     }
-    const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+    const unit = requestDisplayUnit(req.query, { surface: "/api/accounts", supported: LEGACY_DISPLAY_UNITS });
+    const includeUsd = unit === "usd";
     const rows = await listPortfolioGroupAccountsForApi(portfolioGroupSlug, includeUsd);
     res.json({ accounts: rows });
     return;
@@ -293,8 +295,7 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
-  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/detail-bundle", supported: LEGACY_DISPLAY_UNITS });
   const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
   const payload = await timeHeavyAsync(`${HeavyWork.accountDetailBundle} ${id} ${unit} ${granularity}`, () =>
     cachedAccountDetailBundle(id, unit, granularity)
@@ -313,8 +314,7 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
-  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/performance-monthly", supported: LEGACY_DISPLAY_UNITS });
   const payload = monthlyPerfForAccountDisplay(id, unit);
   if (!payload) {
     res.status(404).json({ error: "account not found" });

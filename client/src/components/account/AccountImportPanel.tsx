@@ -5,6 +5,7 @@ import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
 import { Button, Textarea } from "@crfrsr/ui";
+import type { DisplayUnit } from "../../queries/keys";
 
 type ImportFlowItem = {
   occurred_on: string;
@@ -84,7 +85,7 @@ export type ImportSlot = TextSlot | FileSlot | MultiFileSlot;
 
 type Props = {
   accountId: number;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   slots: ImportSlot[];
 };
 

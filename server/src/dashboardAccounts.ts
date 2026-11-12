@@ -31,7 +31,7 @@ import { flowAdjustedPct } from "./periodReturns.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
 import { ccFinancingCostBetweenInUnit, ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./rates.js";
 import { timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
   getDashboardChartShape,

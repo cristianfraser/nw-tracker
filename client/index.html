@@ -61,18 +61,19 @@
         var unit = "clp";
         var chartPrefsStored = false;
         try {
-          if (localStorage.getItem("nw-tracker.displayUnit") === "usd") unit = "usd";
+          var stored = localStorage.getItem("nw-tracker.displayUnit");
+          if (stored && /^[a-z]{3}$/.test(stored)) unit = stored;
           chartPrefsStored = localStorage.getItem("nw-tracker.surface.home.overview") != null;
         } catch (e) {
           // storage blocked: the defaults
         }
-        var usd = unit === "usd";
+        var unitParam = unit !== "clp" ? "unit=" + unit : "";
         var urls = [
           base + "/api/meta/sidebar-nav",
-          base + "/api/dashboard/page-bundle" + (usd ? "?include_usd=true" : ""),
+          base + "/api/dashboard/page-bundle" + (unitParam ? "?" + unitParam : ""),
         ];
         if (!chartPrefsStored) {
-          urls.push(base + "/api/dashboard/overview-daily?" + (usd ? "include_usd=true&" : "") + "days=1096");
+          urls.push(base + "/api/dashboard/overview-daily?" + (unitParam ? unitParam + "&" : "") + "days=1096");
         }
         for (var i = 0; i < urls.length; i++) {
           var link = document.createElement("link");

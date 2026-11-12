@@ -17,11 +17,12 @@ import {
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor } from "./displayUnitQueries";
-import { otherDisplayUnit, queryKeys, type DisplayUnit } from "./keys";
+import { queryKeys, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 import type { NavTreeNodeDto } from "../types";
+import { setCurrencyRegistry } from "../format";
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
 const navSnapshotsFromLocalCache = new WeakSet<object>();
@@ -153,6 +154,8 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
 /** What a nav strip renders while the page holds the previous unit: cards in THAT unit. */
 export type HeldNavStrip = {
   dash: ReturnType<typeof dashPickForNavStrip>;
+  /** The unit the held cards are in (the previous display unit). */
+  unit: DisplayUnit;
   showUsd: boolean;
 };
 
@@ -162,14 +165,19 @@ export type HeldNavStrip = {
  * never converted; null when neither is on hand. Read only: neither query is enabled here, so
  * nothing is fetched for a unit the user left.
  */
-export function useHeldNavStrip(unit: DisplayUnit, holding: boolean, root: string | null): HeldNavStrip | null {
-  const other = otherDisplayUnit(unit);
+export function useHeldNavStrip(
+  /** The unit the page showed before the switch (`previousDisplayUnit`). */
+  heldUnit: DisplayUnit,
+  holding: boolean,
+  root: string | null
+): HeldNavStrip | null {
+  const other = heldUnit;
   const { data: navCtx } = useDashboardNavContext(other, root, false);
   const { data: navSnapshot } = useDashboardNavSnapshot(other, false);
   return useMemo(() => {
     if (!holding) return null;
     if (navCtx) {
-      return { dash: dashPickForNavStrip(navCtx), showUsd: other === "usd" };
+      return { dash: dashPickForNavStrip(navCtx), unit: other, showUsd: other === "usd" };
     }
     if (!navSnapshot) return null;
     return {
@@ -180,6 +188,7 @@ export function useHeldNavStrip(unit: DisplayUnit, holding: boolean, root: strin
         nw_bucket_totals: navSnapshot.nw_bucket_totals,
         card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
       }),
+      unit: other,
       showUsd: other === "usd",
     };
   }, [holding, navCtx, navSnapshot, other]);
@@ -326,6 +335,22 @@ export function useAccountsAll() {
     queryKey: queryKeys.accountsAll(),
     queryFn: () => api.accountsAll(),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * The loaded currencies (`GET /api/currencies`): the display-unit picker's options and every
+ * money format's symbol and minor digits (recorded in `format.ts` as they arrive).
+ */
+export function useCurrencies() {
+  return useQuery({
+    queryKey: queryKeys.currencies(),
+    queryFn: async () => {
+      const data = await api.currencies();
+      setCurrencyRegistry(data.currencies);
+      return data;
+    },
+    staleTime: Infinity,
   });
 }
 
@@ -891,7 +916,7 @@ export function useMovementMirrorCandidates() {
 
 
 export function useProjections(
-  unit: "clp" | "usd",
+  unit: DisplayUnit,
   overrides: Partial<import("../types").ProjectionParams>
 ) {
   const overridesKey = useMemo(() => JSON.stringify(overrides), [overrides]);

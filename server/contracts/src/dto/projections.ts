@@ -1,3 +1,4 @@
+import type { DisplayUnitCode } from "./core.js";
 /** Adjustable inputs for /projections (CLP amounts are today's money). */
 export interface ProjectionParams {
   real_return_pct: number;
@@ -16,7 +17,7 @@ export interface ProjectionParams {
 }
 
 export interface ProjectionsResponse {
-  unit: "clp" | "usd";
+  unit: DisplayUnitCode;
   fx_clp_per_usd: number;
   params: ProjectionParams;
   retire_month: string;

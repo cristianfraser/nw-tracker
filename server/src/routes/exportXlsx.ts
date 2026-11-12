@@ -9,13 +9,20 @@ import {
   type ExportSection,
 } from "../exportWorkbook.js";
 import { isKnownClassTabGroup, accountIdFromReq } from "./shared.js";
+import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function parseExportOptions(
   q: Record<string, unknown>
 ): { ok: true; opts: ExportOptions } | { ok: false; error: string } {
-  const opts: ExportOptions = { sections: [], unit: q.unit === "usd" ? "usd" : "clp" };
+  const opts: ExportOptions = {
+    sections: [],
+    unit: requireLegacyDisplayUnit(
+      requestDisplayUnit(q, { surface: "XLSX export", supported: LEGACY_DISPLAY_UNITS }),
+      "XLSX export"
+    ),
+  };
   for (const key of ["from", "to"] as const) {
     const v = q[key];
     if (v == null || v === "") continue;

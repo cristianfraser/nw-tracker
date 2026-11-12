@@ -18,6 +18,7 @@ import {
 } from "../../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
+import { legacyCardValue } from "./DashboardCardValue";
 
 type StripDash = Pick<
   DashboardResponse,
@@ -61,22 +62,20 @@ function NavSummaryCard({
       label={label}
       to={to}
       labelColorRgb={node.color_rgb}
-      showUsd={showUsd}
-      clp={totals.clp}
-      apiUsd={totals.apiUsd}
+      {...legacyCardValue(totals.clp, totals.apiUsd, showUsd)}
       animated={animated}
       valueVariant="main"
       valueDelta={
         <CardValueDayPl
           metricsByPeriod={metricsByPeriod}
-          showUsd={showUsd}
+          unit={showUsd ? "usd" : "clp"}
           animated={animated}
         />
       }
       metrics={
         <DashboardCardGroupMetrics
           metricsByPeriod={metricsByPeriod}
-          showUsd={showUsd}
+          unit={showUsd ? "usd" : "clp"}
           animated={animated}
         />
       }

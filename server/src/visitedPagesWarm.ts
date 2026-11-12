@@ -13,6 +13,7 @@ import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode, type NavTreeNodeDto
 import { cachedSidebarNavPayload } from "./sidebarNavChartBuckets.js";
 import { usageDb } from "./usageDb.js";
 import type { TsUnit } from "./valuationTimeseries.js";
+import { warmedDisplayUnits } from "./displayUnits.js";
 
 /**
  * Warm the pages actually opened (the usage log, `usageLog.ts`), most visited first, after the
@@ -52,9 +53,15 @@ function paramsOf(params: string): Map<string, string> {
   return out;
 }
 
-function unitOf(p: Map<string, string>): TsUnit {
+/**
+ * The unit a logged request asked for (`unit`, else the deprecated `include_usd` alias, else CLP);
+ * null for a unit the warmers do not build (the surface refuses it).
+ */
+function unitOf(p: Map<string, string>): TsUnit | null {
+  const raw = p.get("unit");
   const v = p.get("include_usd");
-  return v === "1" || v === "true" ? "usd" : "clp";
+  const unit = raw ? raw.toLowerCase() : v === "1" || v === "true" ? "usd" : "clp";
+  return (warmedDisplayUnits() as readonly string[]).includes(unit) ? unit : null;
 }
 
 /**
@@ -95,13 +102,17 @@ export function planVisitedWarm(
     const slug = p.get("portfolio_group");
     if (!slug) continue;
     if (route === "/api/dashboard/valuation-timeseries") {
+      const unit = unitOf(p);
+      if (unit == null) continue;
       const byUnit = units.get(slug) ?? new Map<TsUnit, number>();
-      byUnit.set(unitOf(p), (byUnit.get(unitOf(p)) ?? 0) + n);
+      byUnit.set(unit, (byUnit.get(unit) ?? 0) + n);
       units.set(slug, byUnit);
     } else if (route === "/api/daily-series") {
       const days = Number(p.get("days") ?? "");
       if (!Number.isInteger(days) || days < 0) continue;
-      const v: DailyVariant = { days, unit: unitOf(p), perfLevels: p.get("perf_levels") === "1" || p.get("perf_levels") === "true" };
+      const unit = unitOf(p);
+      if (unit == null) continue;
+      const v: DailyVariant = { days, unit, perfLevels: p.get("perf_levels") === "1" || p.get("perf_levels") === "true" };
       const key = `${v.days}|${v.unit}|${v.perfLevels}`;
       const bySlug = daily.get(slug) ?? new Map();
       const prev = bySlug.get(key);

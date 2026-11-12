@@ -45,7 +45,7 @@ export function monthEndYmdsForSkeleton(firstYmd?: string | null): string[] {
 
 export function emptyAccountMonthlyPerfRows(
   _accountId: number,
-  unit: "clp" | "usd" | "uf" = "clp"
+  unit: string = "clp"
 ): AccountMonthlyPerformanceRow[] {
   return monthEndYmdsThroughToday().map((as_of_date) => ({
     as_of_date,

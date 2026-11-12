@@ -23,6 +23,7 @@ import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
 import { useTranslation } from "../i18n";
 import { queryLoadError } from "../queries/pageShapeReady";
 import { DASHBOARD_PATH } from "../dashboardPath";
+import { legacyDisplayUnit } from "../displayUnitSupport";
 
 type RatesTab = "fx" | "tickers";
 
@@ -405,6 +406,7 @@ export function RatesPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<RatesTab>("fx");
   const { displayUnit } = useDisplayPreferences();
+  legacyDisplayUnit(displayUnit, "Rates");
   // Range-only per-surface control (rates are daily-native): one Rango for every panel.
   const rangePrefs = useSurfacePrefs("rates.range", "month", "1y");
   const { data: payload, error: queryError, isPending: seriesPending } = useMarketSeries();

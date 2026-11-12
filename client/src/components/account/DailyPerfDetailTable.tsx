@@ -5,6 +5,7 @@ import type { DailySeriesPointDto, DailySeriesResponse } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { PerfDetailRows, type PerfDetailRow } from "./PerfDetailRows";
 import { CoinsIcon } from "../icons/CoinsIcon";
+import type { DisplayUnit } from "../../queries/keys";
 
 const PAGE_SIZE = 12;
 
@@ -28,7 +29,7 @@ export function DailyPerfDetailTable({
   loading = false,
 }: {
   series: DailySeriesResponse | null | undefined;
-  displayUnit: "clp" | "usd";
+  displayUnit: DisplayUnit;
   dimClosedDays?: boolean;
   /** The series is not in yet (or is held prior data): the table dims; with no rows it shows its header only, never the empty copy. */
   loading?: boolean;

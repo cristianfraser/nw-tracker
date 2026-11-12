@@ -1,4 +1,5 @@
 import i18n from "./i18n";
+import type { DisplayUnit } from "./queries/keys";
 import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMoves } from "./liveInputs";
 
 const base = () => import.meta.env.VITE_API_URL ?? "";
@@ -144,51 +145,52 @@ export const api = {
       body: JSON.stringify({ color_rgb }),
     }),
   ratesInstruments: () => j<import("./types").RatesInstrumentsResponse>("/api/meta/rates-instruments"),
-  dashboardNavSnapshot: (unit: "clp" | "usd") => {
+  currencies: () => j<import("./types").CurrenciesResponse>("/api/currencies"),
+  dashboardNavSnapshot: (unit: DisplayUnit) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     const qs = q.toString();
     return j<import("./types").DashboardNavSnapshotResponse>(
       `/api/dashboard/nav-snapshot${qs ? `?${qs}` : ""}`
     );
   },
   /** `root`: the page's nav node slug; the payload covers that page's strip only. */
-  dashboardNavContext: (unit: "clp" | "usd", root: string) => {
+  dashboardNavContext: (unit: DisplayUnit, root: string) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     q.set("root", root);
     return j<import("./types").DashboardNavContextResponse>(`/api/dashboard/nav-context?${q}`);
   },
-  dashboardPageBundle: (unit: "clp" | "usd") => {
+  dashboardPageBundle: (unit: DisplayUnit) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     const qs = q.toString();
     return j<import("./types").DashboardPageBundleResponse>(`/api/dashboard/page-bundle${qs ? `?${qs}` : ""}`);
   },
-  dashboardOverviewDaily: (unit: "clp" | "usd", days: number) => {
+  dashboardOverviewDaily: (unit: DisplayUnit, days: number) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     q.set("days", String(days));
     return j<import("./types").DashboardOverviewDailyResponse>(
       `/api/dashboard/overview-daily?${q.toString()}`
     );
   },
-  inversionesPerfDaily: (unit: "clp" | "usd", days: number) => {
+  inversionesPerfDaily: (unit: DisplayUnit, days: number) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     q.set("days", String(days));
     return j<import("./types").InversionesPerfDailyResponse>(
       `/api/dashboard/inversiones-perf-daily?${q.toString()}`
     );
   },
   dailySeries: (
-    unit: "clp" | "usd",
+    unit: DisplayUnit,
     scope: { portfolioGroup?: string; accountId?: number },
     days: number,
     opts?: { perfLevels?: boolean }
   ) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     if (scope.portfolioGroup) q.set("portfolio_group", scope.portfolioGroup);
     if (scope.accountId != null) q.set("account_id", String(scope.accountId));
     q.set("days", String(days));
@@ -196,11 +198,11 @@ export const api = {
     return j<import("./types").DailySeriesResponse>(`/api/daily-series?${q.toString()}`);
   },
   valuationTimeseries: (
-    unit: "clp" | "usd",
+    unit: DisplayUnit,
     opts?: { portfolio_group?: string; group?: string; subgroup?: string }
   ) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     if (opts?.portfolio_group) q.set("portfolio_group", opts.portfolio_group);
     if (opts?.group) q.set("group", opts.group);
     if (opts?.subgroup) q.set("subgroup", opts.subgroup);
@@ -209,10 +211,10 @@ export const api = {
       `/api/dashboard/valuation-timeseries${qs ? `?${qs}` : ""}`
     );
   },
-  accountsByPortfolioGroup: (portfolioGroup: string, unit: "clp" | "usd" = "clp") => {
+  accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit = "clp") => {
     const q = new URLSearchParams();
     q.set("portfolio_group", portfolioGroup);
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     const qs = q.toString();
     return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${qs}`);
   },
@@ -253,8 +255,8 @@ export const api = {
       `/api/accounts/${id}/cc-statement-lines/${lineId}/make-installment`,
       { method: "POST", body: JSON.stringify({ cuotas_totales }), headers: { "Content-Type": "application/json" } }
     ),
-  accountMonthlyPerformance: (id: string | number, unit: "clp" | "usd") => {
-    const q = unit === "usd" ? "?include_usd=true" : "";
+  accountMonthlyPerformance: (id: string | number, unit: DisplayUnit) => {
+    const q = unit !== "clp" ? `?unit=${encodeURIComponent(unit)}` : "";
     return j<import("./types").AccountMonthlyPerformanceResponse>(
       `/api/accounts/${id}/performance-monthly${q}`
     );
@@ -322,18 +324,18 @@ export const api = {
     form.append("type", type);
     return jForm<Record<string, unknown>>(`/api/accounts/${id}/imports/document`, form);
   },
-  groupConsolidatedTables: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
+  groupConsolidatedTables: (slug: string, unit: DisplayUnit, subgroup?: string) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     if (subgroup) q.set("subgroup", subgroup);
     const qs = q.toString();
     return j<import("./types").GroupConsolidatedTablesResponse>(
       `/api/groups/${encodeURIComponent(slug)}/consolidated-tables${qs ? `?${qs}` : ""}`
     );
   },
-  groupPeriodReturns: (slug: string, unit: "clp" | "usd") =>
+  groupPeriodReturns: (slug: string, unit: DisplayUnit) =>
     j<import("./types").GroupPeriodReturnsResponse>(
-      `/api/groups/${encodeURIComponent(slug)}/period-returns${unit === "usd" ? "?include_usd=true" : ""}`
+      `/api/groups/${encodeURIComponent(slug)}/period-returns${unit !== "clp" ? `?unit=${encodeURIComponent(unit)}` : ""}`
     ),
   latestMovements: (limit: number) =>
     j<import("./types").LatestMovementsResponse>(
@@ -341,11 +343,11 @@ export const api = {
     ),
   groupConsolidatedMonthly: (
     slug: string,
-    unit: "clp" | "usd",
+    unit: DisplayUnit,
     opts: { page?: number; pageSize?: number; period?: "month" | "year"; installmentMode?: "split" | "total" }
   ) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     if (opts.period === "year") q.set("period", "year");
     if (opts.installmentMode) q.set("installment_mode", opts.installmentMode);
     if (opts.page) q.set("page", String(opts.page));
@@ -357,11 +359,11 @@ export const api = {
   },
   accountDetailBundle: (
     id: string | number,
-    unit: "clp" | "usd",
+    unit: DisplayUnit,
     opts?: { granularity?: "monthly" | "daily" }
   ) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     if (opts?.granularity === "daily") q.set("granularity", "daily");
     const qs = q.toString();
     return j<import("./types").AccountDetailBundleResponse>(
@@ -444,9 +446,9 @@ export const api = {
       `/api/accounts/${id}/flows${qs ? `?${qs}` : ""}`
     );
   },
-  groupMonthlyPerformance: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
+  groupMonthlyPerformance: (slug: string, unit: DisplayUnit, subgroup?: string) => {
     const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
+    if (unit !== "clp") q.set("unit", unit);
     if (subgroup) q.set("subgroup", subgroup);
     const qs = q.toString();
     return j<import("./types").GroupMonthlyPerformanceResponse>(
@@ -480,7 +482,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  income: (unit: "clp" | "usd") =>
+  income: (unit: DisplayUnit) =>
     j<import("./types").FlowsIncomeResponse>(`/api/income?unit=${unit}`),
   patchWorkEarning: (
     id: number,
@@ -535,7 +537,7 @@ export const api = {
     j<import("./types").FlowsPlResponse>(
       days != null ? `/api/flows/pl?days=${days}` : "/api/flows/pl"
     ),
-  flowsOverview: (unit: "clp" | "usd", installmentMode: "split" | "total", days?: number) => {
+  flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) => {
     const q = new URLSearchParams({ unit, installment_mode: installmentMode });
     if (days != null) q.set("days", String(days));
     return j<import("./types").FlowsOverviewResponse>(`/api/flows/overview?${q.toString()}`);
@@ -628,7 +630,7 @@ export const api = {
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
   flowsExpenses: () =>
     j<import("./types").FlowsExpensesResponse>("/api/flows/expenses/credit-card"),
-  flowsExpensesGastos: (unit: "clp" | "usd", excludedBigGroups: readonly string[], includePreTax: boolean) => {
+  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) => {
     const q = new URLSearchParams({ unit });
     if (includePreTax) q.set("include_pre_tax", "1");
     if (excludedBigGroups.length > 0) q.set("exclude_big_groups", [...excludedBigGroups].sort().join(","));
@@ -734,12 +736,12 @@ export const api = {
       since == null ? "/api/live-quotes/stamp" : `/api/live-quotes/stamp?since=${encodeURIComponent(since)}`
     ),
   // Values come back in the display unit (server-side conversion); CLP is the default.
-  marketTicker: (unit: "clp" | "usd") =>
+  marketTicker: (unit: DisplayUnit) =>
     j<import("./types").MarketTickerResponse>(
-      unit === "usd" ? "/api/market-ticker?unit=usd" : "/api/market-ticker"
+      unit !== "clp" ? `/api/market-ticker?unit=${encodeURIComponent(unit)}` : "/api/market-ticker"
     ),
-  watchlist: (unit: "clp" | "usd") =>
-    j<import("./types").WatchlistResponse>(unit === "usd" ? "/api/watchlist?unit=usd" : "/api/watchlist"),
+  watchlist: (unit: DisplayUnit) =>
+    j<import("./types").WatchlistResponse>(unit !== "clp" ? `/api/watchlist?unit=${encodeURIComponent(unit)}` : "/api/watchlist"),
   patchWatchlistRow: (id: number, body: { show_in_marquee?: number; sort_order?: number }) =>
     j<import("./types").WatchlistRow>(`/api/watchlist/${id}`, {
       method: "PATCH",
@@ -804,9 +806,9 @@ export const api = {
     ),
   deleteGenericUniqueMerchant: (id: number) =>
     j<void>(`/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" }),
-  projections: (unit: "clp" | "usd", overrides: Partial<import("./types").ProjectionParams>) => {
+  projections: (unit: DisplayUnit, overrides: Partial<import("./types").ProjectionParams>) => {
     const qs = new URLSearchParams();
-    if (unit === "usd") qs.set("unit", "usd");
+    if (unit !== "clp") qs.set("unit", unit);
     for (const [k, v] of Object.entries(overrides)) {
       if (v != null) qs.set(k, String(v));
     }
@@ -817,7 +819,7 @@ export const api = {
     j<import("./types").WealthPercentileResponse>("/api/wealth-percentile"),
   benchmarks: () =>
     j<{ benchmarks: import("./types").BenchmarkOption[] }>("/api/benchmarks"),
-  mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: "clp" | "usd") =>
+  mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: DisplayUnit) =>
     j<import("./types").MortgagePrepaymentComparison | null>(
       `/api/mortgage-prepayment-comparison?${new URLSearchParams({
         account_id: String(accountId),
@@ -828,7 +830,7 @@ export const api = {
   benchmarkComparison: (
     scope: { accountId: number } | { portfolioGroup: string },
     benchmark: string,
-    unit: "clp" | "usd"
+    unit: DisplayUnit
   ) => {
     const qs = new URLSearchParams({ benchmark, unit });
     if ("accountId" in scope) qs.set("account_id", String(scope.accountId));

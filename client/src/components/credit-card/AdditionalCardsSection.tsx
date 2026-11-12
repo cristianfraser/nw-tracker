@@ -17,6 +17,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
+import { legacyDisplayUnit } from "../../displayUnitSupport";
 
 const PAGE_SIZE = 12;
 
@@ -35,7 +36,7 @@ const EMPTY_SUMMARY: AdditionalCardsSummary = {
 };
 
 function pick(clp: number, usd: number | null, unit: DisplayUnit, what: string): number {
-  if (unit === "usd") {
+  if (legacyDisplayUnit(unit, "Additional cards") === "usd") {
     if (usd == null) throw new Error(`missing USD figure for additional cards ${what}`);
     return usd;
   }
