@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { LineChartPanel, MonthlyPerformanceComboChart } from "../../components/charts/lazyCharts";
@@ -17,7 +18,8 @@ import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedge
 import { Table } from "../../components/ui/Table";
 import { Loadable, loadableClass } from "../../components/ui/Loadable";
 import { PageGridTile } from "../../components/layout/PageGridTile";
-import { formatInstrumentUnits, formatMoney, formatPct, formatUsdFine } from "../../format";
+import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
+import { formatOptionStrikeDollars } from "../../formatNative";
 import { OPTION_CONTRACT_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
@@ -216,7 +218,7 @@ export function StandardAccountDetailPage({ data }: Props) {
             summary={summary}
             monthlyPerfRows={monthlyPerfRows}
             // Its pesos fallbacks: the dashboard row is in the strip's unit, pesos only in CLP.
-            accountDashRow={data.stripUnit === "clp" ? data.accountDashRow : null}
+            accountDashRow={isHomeCurrency(data.stripUnit) ? data.accountDashRow : null}
             loading={loading}
           />
         </PageGridTile>
@@ -243,7 +245,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               <td className="mono">{optionContract.occ_symbol}</td>
               <td className="mono">{optionContract.underlying_ticker}</td>
               <td>{optionContract.right === "C" ? t("options.terms.call") : t("options.terms.put")}</td>
-              <td className="mono">{formatUsdFine(optionContract.strike)}</td>
+              <td className="mono">{formatOptionStrikeDollars(optionContract.strike)}</td>
               <td className="mono">{optionContract.expiry}</td>
               <td className="mono">{formatInstrumentUnits(optionContract.multiplier, "shares")}</td>
             </tr>

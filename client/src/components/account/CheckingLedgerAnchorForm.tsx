@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { formatClp, formatNumberInput, parseNumberInputOrThrow } from "../../format";
+import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
+import { formatCartolaPesos } from "../../formatNative";
 import { useTranslation } from "../../i18n";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
@@ -93,7 +94,7 @@ export function CheckingLedgerAnchorForm({
         <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
           {t("accountDetail.checking.ledgerAnchorDerived", {
             month: formatYearMonthLabel(cartolaDerivedAnchor.period_month),
-            amount: formatClp(cartolaDerivedAnchor.amount_clp),
+            amount: formatCartolaPesos(cartolaDerivedAnchor.amount_clp),
             date: cartolaDerivedAnchor.occurred_on,
           })}
         </p>

@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -243,7 +244,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
   const accountDataKey = String(summary.account_id);
   const chartUnitVal =
-    stripUnit !== "clp" &&
+    !isHomeCurrency(stripUnit) &&
     lastChartRow &&
     typeof lastChartRow[accountDataKey] === "number" &&
     Number.isFinite(lastChartRow[accountDataKey] as number)

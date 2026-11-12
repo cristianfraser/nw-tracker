@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useMemo } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
@@ -499,7 +500,7 @@ function MortgageLoanSection({
     () => ({
       account_id: mortgageDashRow?.account_id ?? mortgageLedger?.account_id ?? 0,
       // The dashboard row is in the display unit: its pesos only when the unit is pesos.
-      latest_valuation: displayUnit === "clp" ? mortgageDashRow?.current_value ?? null : null,
+      latest_valuation: isHomeCurrency(displayUnit) ? mortgageDashRow?.current_value ?? null : null,
     }),
     [mortgageDashRow, mortgageLedger?.account_id, displayUnit]
   );
@@ -515,7 +516,7 @@ function MortgageLoanSection({
       monthlyPerfRows={mortgagePerf?.monthly ?? []}
       monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
       summary={mortgageSummary}
-      accountDashRow={displayUnit === "clp" ? mortgageDashRow : null}
+      accountDashRow={isHomeCurrency(displayUnit) ? mortgageDashRow : null}
       accountColorRgb={mortgageColorRgb}
       {...(linkTo != null ? { linkTo } : {})}
       loading={mortgageLedgerPending}

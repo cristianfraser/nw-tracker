@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatInstrumentUnits, formatPct, formatUfBalance, formatCurrencyFine } from "../../format";
+import { formatInstrumentUnits, formatMoney, formatPct, formatUfBalance } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { formatYearMonthLabel } from "../../formatDateLabel";
@@ -89,7 +89,7 @@ export function MonthlyPerfDetailTable({
 
   const fmtPerf: FmtPerf = (n) => {
     if (n == null || !Number.isFinite(n)) return "—";
-    return displayUnit === "clp" ? formatClp(n) : formatCurrencyFine(n, displayUnit);
+    return formatMoney({ value: n, currency: displayUnit });
   };
 
   // Mortgage view: no stock units by definition.

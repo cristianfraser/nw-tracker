@@ -9,7 +9,7 @@ import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout"
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
 import { Pill } from "../components/ui/Pill";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
-import { formatClp } from "../format";
+import { formatReceiptPesos } from "../formatNative";
 import type {
   GroceriesSummary,
   GroceryBrandRow,
@@ -336,7 +336,7 @@ export function GroceriesPage() {
                       <td className="desktop-only muted">{g.barcode ?? "—"}</td>
                       <td className="desktop-only num">{g.occurrences}</td>
                       <td className="desktop-only">{isoDay(g.last_seen)}</td>
-                      <td className="desktop-only num">{formatClp(g.last_unit_price_clp)}</td>
+                      <td className="desktop-only num">{formatReceiptPesos(g.last_unit_price_clp)}</td>
                       <td className="desktop-only">{suggestionButtons}</td>
                       <td className="mobile-only">
                         <TableMobileCard
@@ -357,7 +357,7 @@ export function GroceriesPage() {
                           />
                           <TableMobileCardRow
                             label={t("groceries.cleaning.colLastPrice")}
-                            value={formatClp(g.last_unit_price_clp)}
+                            value={formatReceiptPesos(g.last_unit_price_clp)}
                           />
                           {g.suggestions.length > 0 ? (
                             <TableMobileCardRow
@@ -407,7 +407,7 @@ export function GroceriesPage() {
                     <td className="desktop-only">{isoDay(p.last_purchased_at)}</td>
                     <td className="desktop-only num">
                       {p.last_effective_unit_price_clp != null
-                        ? formatClp(p.last_effective_unit_price_clp)
+                        ? formatReceiptPesos(p.last_effective_unit_price_clp)
                         : "—"}
                     </td>
                     <td className="mobile-only">
@@ -424,7 +424,7 @@ export function GroceriesPage() {
                           label={t("groceries.products.colLastPrice")}
                           value={
                             p.last_effective_unit_price_clp != null
-                              ? formatClp(p.last_effective_unit_price_clp)
+                              ? formatReceiptPesos(p.last_effective_unit_price_clp)
                               : "—"
                           }
                         />
@@ -517,7 +517,7 @@ export function GroceriesPage() {
                 <AppLineChart
                   data={chartData}
                   tooltip={{
-                    formatValue: (v) => formatClp(Number(v)),
+                    formatValue: (v) => formatReceiptPesos(Number(v)),
                     formatLabel: (l) => String(l),
                   }}
                 >
@@ -526,7 +526,7 @@ export function GroceriesPage() {
                   <YAxis
                     tick={{ fill: "var(--muted)", fontSize: 10 }}
                     width={52}
-                    tickFormatter={(v: number) => formatClp(v)}
+                    tickFormatter={(v: number) => formatReceiptPesos(v)}
                     domain={yScale.domain}
                     ticks={yScale.ticks}
                   />
@@ -558,21 +558,21 @@ export function GroceriesPage() {
                       {r.qty}
                       {r.qty_unit === "kg" ? " kg" : ""}
                     </td>
-                    <td className="desktop-only num">{formatClp(r.unit_price_clp)}</td>
+                    <td className="desktop-only num">{formatReceiptPesos(r.unit_price_clp)}</td>
                     <td className="desktop-only num">
-                      {r.discount_clp > 0 ? formatClp(-r.discount_clp) : "—"}
+                      {r.discount_clp > 0 ? formatReceiptPesos(-r.discount_clp) : "—"}
                     </td>
-                    <td className="desktop-only num">{formatClp(r.effective_unit_price_clp)}</td>
+                    <td className="desktop-only num">{formatReceiptPesos(r.effective_unit_price_clp)}</td>
                     {normalizedAvailable ? (
                       <td className="desktop-only num">
                         {r.normalized_unit_price_clp != null ? (
-                          formatClp(r.normalized_unit_price_clp)
+                          formatReceiptPesos(r.normalized_unit_price_clp)
                         ) : (
                           <span className="muted">{t("groceries.history.noContent")}</span>
                         )}
                       </td>
                     ) : null}
-                    <td className="desktop-only num">{formatClp(r.total_clp - r.discount_clp)}</td>
+                    <td className="desktop-only num">{formatReceiptPesos(r.total_clp - r.discount_clp)}</td>
                     <td className="mobile-only">
                       <TableMobileCard title={isoMinute(r.purchased_at)}>
                         <TableMobileCardRow label={t("groceries.history.colBranch")} value={r.branch} />
@@ -582,31 +582,31 @@ export function GroceriesPage() {
                         />
                         <TableMobileCardRow
                           label={t("groceries.history.colUnitPrice")}
-                          value={formatClp(r.unit_price_clp)}
+                          value={formatReceiptPesos(r.unit_price_clp)}
                         />
                         {r.discount_clp > 0 ? (
                           <TableMobileCardRow
                             label={t("groceries.history.colDiscount")}
-                            value={formatClp(-r.discount_clp)}
+                            value={formatReceiptPesos(-r.discount_clp)}
                           />
                         ) : null}
                         <TableMobileCardRow
                           label={t("groceries.history.colEffective")}
-                          value={formatClp(r.effective_unit_price_clp)}
+                          value={formatReceiptPesos(r.effective_unit_price_clp)}
                         />
                         {normalizedAvailable ? (
                           <TableMobileCardRow
                             label={t("groceries.history.colNormalized", { unit: baseUnitLabel })}
                             value={
                               r.normalized_unit_price_clp != null
-                                ? formatClp(r.normalized_unit_price_clp)
+                                ? formatReceiptPesos(r.normalized_unit_price_clp)
                                 : t("groceries.history.noContent")
                             }
                           />
                         ) : null}
                         <TableMobileCardRow
                           label={t("groceries.history.colTotal")}
-                          value={formatClp(r.total_clp - r.discount_clp)}
+                          value={formatReceiptPesos(r.total_clp - r.discount_clp)}
                         />
                       </TableMobileCard>
                     </td>
@@ -657,9 +657,9 @@ export function GroceriesPage() {
                           ) : null}{" "}
                           — {item.qty}
                           {item.qty_unit === "kg" ? " kg" : ""} ×{" "}
-                          {formatClp(item.unit_price_clp)}
-                          {item.discount_clp > 0 ? ` (${formatClp(-item.discount_clp)})` : ""} ={" "}
-                          {formatClp(item.total_clp - item.discount_clp)}
+                          {formatReceiptPesos(item.unit_price_clp)}
+                          {item.discount_clp > 0 ? ` (${formatReceiptPesos(-item.discount_clp)})` : ""} ={" "}
+                          {formatReceiptPesos(item.total_clp - item.discount_clp)}
                         </li>
                       ))}
                     </ul>
@@ -681,7 +681,7 @@ export function GroceriesPage() {
                 const cardPaidCell =
                   r.card_paid_clp > 0 ? (
                     <>
-                      {formatClp(r.card_paid_clp)}
+                      {formatReceiptPesos(r.card_paid_clp)}
                       {pendingBranchPill ? <> {pendingBranchPill}</> : null}
                     </>
                   ) : (
@@ -694,7 +694,7 @@ export function GroceriesPage() {
                       <td className="desktop-only">{r.branch}</td>
                       <td className="desktop-only muted">{r.city ?? "—"}</td>
                       <td className="desktop-only">{sourcePill}</td>
-                      <td className="desktop-only num">{formatClp(r.total_clp)}</td>
+                      <td className="desktop-only num">{formatReceiptPesos(r.total_clp)}</td>
                       <td className="desktop-only num">{cardPaidCell}</td>
                       <td className="desktop-only num">
                         {r.classified_count}/{r.item_count}
@@ -708,7 +708,7 @@ export function GroceriesPage() {
                           />
                           <TableMobileCardRow
                             label={t("groceries.receipts.colTotal")}
-                            value={formatClp(r.total_clp)}
+                            value={formatReceiptPesos(r.total_clp)}
                           />
                           <TableMobileCardRow
                             label={t("groceries.receipts.colCardPaid")}

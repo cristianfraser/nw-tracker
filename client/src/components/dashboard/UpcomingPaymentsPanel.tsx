@@ -1,8 +1,10 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatCurrency } from "../../format";
+import { formatCurrency } from "../../format";
+import { formatBillPesos } from "../../formatNative";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { dayOfMonthLabelParts, formatYearMonthLabel } from "../../formatDateLabel";
 import type { CcUpcomingPaymentRowDto, UpcomingPaymentDetailDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
@@ -103,7 +105,7 @@ function DueSoonDot({ dueSoon }: { dueSoon: "today" | "tomorrow" }) {
  * amount in it (the server's `*_in_unit`, at today's rate).
  */
 function withUnitHint(hint: string | undefined, amountInUnit: number, unit: string): string | undefined {
-  if (unit === "clp") return hint;
+  if (isHomeCurrency(unit)) return hint;
   const inUnit = `≈ ${formatCurrency(amountInUnit, unit)}`;
   return hint ? `${hint} · ${inUnit}` : inUnit;
 }
@@ -113,23 +115,23 @@ function AmountCell({ item, unit }: { item: UpcomingPaymentItemDto; unit: string
   const { t } = useTranslation();
   const card: CcUpcomingPaymentRowDto | null = item.card;
   if (card && card.amount_clp !== card.billed_clp) {
-    const billed = formatClp(card.billed_clp);
+    const billed = formatBillPesos(card.billed_clp);
     return (
       <span
         className="mono"
         title={withUnitHint(t("dashboard.ccUpcoming.partlyPaidHint", { amount: billed }), item.amount_in_unit, unit)}
       >
-        {formatClp(card.amount_clp)} <span className="muted">{t("dashboard.ccUpcoming.billedOf", { amount: billed })}</span>
+        {formatBillPesos(card.amount_clp)} <span className="muted">{t("dashboard.ccUpcoming.billedOf", { amount: billed })}</span>
       </span>
     );
   }
   const className = item.estimated ? `mono ${styles.estimate}` : "mono";
   // A range (the mortgage) shows its minimum, what counts in the month's total; the maximum is on hover.
   if (item.amount_max_clp != null) {
-    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatClp(item.amount_max_clp) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
+    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatBillPesos(item.amount_max_clp) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
     return (
       <span className={className} title={withUnitHint(hint, item.amount_in_unit, unit)}>
-        {formatClp(item.amount_clp)}
+        {formatBillPesos(item.amount_clp)}
       </span>
     );
   }
@@ -139,7 +141,7 @@ function AmountCell({ item, unit }: { item: UpcomingPaymentItemDto; unit: string
       className={className}
       title={withUnitHint(item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined, item.amount_in_unit, unit)}
     >
-      {formatClp(item.amount_clp)}
+      {formatBillPesos(item.amount_clp)}
     </span>
   );
 }
@@ -233,7 +235,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
             <div className={styles.monthHeading}>
               <span>{formatYearMonthLabel(month.pay_month)}</span>{" "}
               <span className="mono" title={withUnitHint(undefined, month.total_in_unit, unit)}>
-                {formatClp(month.total_clp)}
+                {formatBillPesos(month.total_clp)}
               </span>
             </div>
             <dl className={styles.lines}>

@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import {
   accountCountsTowardGroupTotals,
   hasMaterialDashboardBalance,
@@ -147,7 +148,7 @@ function cardMetricsForAccountRow(
   unit: DisplayUnit
 ): CardGroupMetrics {
   // Pesos are the ledger's own unit: a row always carries them (a missing leg is a zero).
-  const missing = unit === "clp" ? 0 : null;
+  const missing = isHomeCurrency(unit) ? 0 : null;
   if (!r) return { deposits: missing, delta_total: null, deposits_period: missing, delta_period: null };
   const dep = period === "month" ? r.deposits_month : period === "day" ? r.deposits_day : r.deposits_year;
   const delta = period === "month" ? r.delta_month : period === "day" ? r.delta_day : r.delta_year;

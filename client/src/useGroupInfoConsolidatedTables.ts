@@ -18,7 +18,7 @@ export function consolidatedRowsForDisplay(
   sourceUnit: string,
   displayUnit: DisplayUnit
 ): ConsolidatedMonthlyPerfRow[] | null {
-  return sourceUnit === displayUnit || sourceUnit === "uf" ? rows : null;
+  return sourceUnit === displayUnit || sourceUnit === "uf" ? rows : null; // convention-ok: the UF rows are an index the table shows in any display unit
 }
 
 /** Same rule for the period-returns strip: the payload when its unit matches (or is `uf`), null
@@ -27,7 +27,7 @@ export function periodReturnsForDisplay(
   payload: PeriodReturnsPayload,
   displayUnit: DisplayUnit
 ): PeriodReturnsPayload | null {
-  return payload.unit === displayUnit || payload.unit === "uf" ? payload : null;
+  return payload.unit === displayUnit || payload.unit === "uf" ? payload : null; // convention-ok: the UF rows are an index the table shows in any display unit
 }
 
 export function useGroupInfoConsolidatedTables(

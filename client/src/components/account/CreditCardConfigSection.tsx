@@ -41,8 +41,8 @@ export function CreditCardConfigSection({ accountId }: Props) {
   // Prefills are written in the separator setting's convention, so a setting change re-derives them.
   useEffect(() => {
     if (!config) return;
-    const clp = config.cupo.find((c) => c.currency === "clp")?.value;
-    const usd = config.cupo.find((c) => c.currency === "usd")?.value;
+    const clp = config.cupo.find((c) => c.currency === "clp")?.value; // convention-ok: the cupo form edits a Chilean card's peso and dollar cupo (one input each)
+    const usd = config.cupo.find((c) => c.currency === "usd")?.value; // convention-ok: the cupo form edits a Chilean card's peso and dollar cupo (one input each)
     setCupoClp(clp != null ? formatNumberInput(clp) : "");
     setCupoUsd(usd != null ? formatNumberInput(usd) : "");
     setCycleStart(formatNumberInput(config.billing_cycle_start_day));

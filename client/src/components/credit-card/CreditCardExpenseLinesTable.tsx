@@ -4,7 +4,8 @@ import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
-import { formatClp, formatLineAmount, lineAmountParts, parseNumberInput } from "../../format";
+import { formatLineAmount, lineAmountParts, parseNumberInput } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { linePesos, lineValueIn } from "../../lineMoney";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
@@ -257,7 +258,7 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
     const cuota = `${line.nro_cuota_current}/${line.nro_cuota_total}`;
     sup =
       line.line_role === "installment_cuota" && line.installment_total_clp != null
-        ? [cuota, formatClp(line.installment_total_clp)]
+        ? [cuota, formatCardBillingPesos(line.installment_total_clp)]
         : [cuota];
   }
   return (

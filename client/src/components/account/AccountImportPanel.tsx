@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { api } from "../../api";
-import { formatCcExpenseLineAmount, formatUsdFine } from "../../format";
+import { formatCcExpenseLineAmount } from "../../format";
+import { formatImportDollars } from "../../formatNative";
 import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
@@ -44,7 +45,7 @@ function flowAmountLabel(flow: ImportFlowItem): string {
   if (typeof flow.amount_clp === "number") {
     return formatCcExpenseLineAmount(flow.amount_clp, flow.amount_usd ?? null);
   }
-  if (typeof flow.amount_usd === "number") return formatUsdFine(flow.amount_usd);
+  if (typeof flow.amount_usd === "number") return formatImportDollars(flow.amount_usd);
   return "—";
 }
 

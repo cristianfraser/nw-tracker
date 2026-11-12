@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import type { FlowCcExpenseLineRow } from "../../types";
-import { formatClp } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import { Button } from "@crfrsr/ui";
@@ -216,7 +216,7 @@ export function CreditCardFacturadoFinancingManager({
                   {formatYearMonthLabel(c.purchase_month)} · {c.origin_label}
                 </span>
               </span>
-              <span className="mono">{formatClp(c.amount_clp)}</span>
+              <span className="mono">{formatCardBillingPesos(c.amount_clp)}</span>
             </label>
           ))}
         </ul>

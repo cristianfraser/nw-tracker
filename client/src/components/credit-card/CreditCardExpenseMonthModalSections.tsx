@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
 import { lineInModalSection, linePeriodMonth, type CcInstallmentGastosMode } from "../../expenseLineShape";
@@ -93,7 +93,7 @@ export function CreditCardExpenseMonthModalSections({
         {t("expenses.creditCard.modalSectionPurchases")}
         {bucket.purchases.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(purchasesSum)}
+            {formatCardBillingPesos(purchasesSum)}
           </span>
         ) : null}
       </h3>
@@ -118,7 +118,7 @@ export function CreditCardExpenseMonthModalSections({
         {t("expenses.creditCard.modalSectionInstallments")}
         {bucket.installments.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(installmentsSum)}
+            {formatCardBillingPesos(installmentsSum)}
           </span>
         ) : null}
       </h3>
@@ -136,7 +136,7 @@ export function CreditCardExpenseMonthModalSections({
         {t("expenses.creditCard.modalSectionAbonos")}
         {bucket.abonos.length > 0 || abonosSumClp != null ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(abonosDisplaySum)}
+            {formatCardBillingPesos(abonosDisplaySum)}
           </span>
         ) : null}
       </h3>
@@ -154,7 +154,7 @@ export function CreditCardExpenseMonthModalSections({
         {t("expenses.creditCard.modalSectionExcluded")}
         {bucket.excluded.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(excludedSum)}
+            {formatCardBillingPesos(excludedSum)}
           </span>
         ) : null}
       </h3>

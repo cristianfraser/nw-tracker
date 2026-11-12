@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import {
   createContext,
   useCallback,
@@ -39,7 +40,7 @@ function readStoredUnit(): DisplayUnit {
 
 /** Before any switch, the unit a held placeholder would be in: the other of pesos and dollars. */
 function initialPreviousUnit(unit: DisplayUnit): DisplayUnit {
-  return unit === "clp" ? "usd" : "clp";
+  return isHomeCurrency(unit) ? "usd" : "clp";
 }
 
 type UnitState = { unit: DisplayUnit; previous: DisplayUnit };

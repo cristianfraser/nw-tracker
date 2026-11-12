@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { type ReactNode } from "react";
 import { useSurfaceLiquidatedOpen } from "../../surfaceDisplayPrefs";
 import { Button } from "@crfrsr/ui";
@@ -137,7 +138,7 @@ export function PortfolioNavAccountsSummaryTable({
     return {
       ...base,
       // Pesos: a row without a value reads 0 (the ledger unit is always present).
-      value: finiteOrNull(row?.current_value) ?? (unit === "clp" ? 0 : null),
+      value: finiteOrNull(row?.current_value) ?? (isHomeCurrency(unit) ? 0 : null),
       metricsByPeriod: cardMetricsByPeriodForAccountRow(row, unit),
       pct: (slice) => accountRowPct(row, slice),
       pctOnDeposits: () => finiteOrNull(row?.pct_total_on_deposits),

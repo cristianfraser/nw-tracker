@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { useMortgageUfReminder } from "../../queries/hooks";
-import { formatClpUfDay } from "../../format";
+import { formatUfDayPesos } from "../../formatNative";
 import styles from "./MortgageUfReminderToast.module.css";
 import { Button } from "@crfrsr/ui";
 
@@ -38,8 +38,8 @@ export function MortgageUfReminderToast() {
           cierre: data.cierre_iso,
           nextMonth: data.next_billing_month,
           bestDate: data.best_pay_date,
-          ufBest: formatClpUfDay(data.uf_best),
-          ufNow: formatClpUfDay(data.uf_now),
+          ufBest: formatUfDayPesos(data.uf_best),
+          ufNow: formatUfDayPesos(data.uf_now),
         })
       : t("reminders.mortgageUf.payTodayMessage", {
           nextMonth: data.next_billing_month,

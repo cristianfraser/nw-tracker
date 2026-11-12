@@ -3,7 +3,7 @@ import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
-import { formatClp, formatInstrumentUnits, formatUsdFine } from "../../format";
+import { formatInstrumentUnits, formatMoney } from "../../format";
 import { useCurrencies } from "../../queries/hooks";
 import { PaginatedTable } from "../ui/PaginatedTable";
 import { FlowRows, flowAccountsCell, type FlowRowItem } from "./FlowRows";
@@ -28,10 +28,7 @@ function formatFlowUnits(
 
 
 function formatMovementLeg(amount: number, currency: string): string {
-  if (currency === "usd") return formatUsdFine(amount);
-  if (currency === "clp") return formatClp(amount);
-  // eur is schema-reserved; no movements carry it yet — surface raw rather than mislabel.
-  return `${amount} ${currency.toUpperCase()}`;
+  return formatMoney({ value: amount, currency });
 }
 
 /** Single Monto cell: native amount; fx conversions show both legs («$X → US$Y»). */

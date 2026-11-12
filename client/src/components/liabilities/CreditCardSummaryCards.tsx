@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatMoney } from "../../format";
+import { formatMoney } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import type { AccountCcInstallmentsResponse, CcFacturacionDto } from "../../types";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 
@@ -10,16 +11,16 @@ function FacturacionCardBody({ fact, note }: { fact: CcFacturacionDto | undefine
   return (
     <>
       <div className="value mono">
-        {fact.facturado_total_clp != null ? formatClp(fact.facturado_total_clp) : "—"}{" "}
+        {fact.facturado_total_clp != null ? formatCardBillingPesos(fact.facturado_total_clp) : "—"}{" "}
         <span className="muted">· {formatYearMonthLabel(fact.billing_month)}</span>
         {note}
       </div>
-      <div className="muted mono">{fact.facturado_clp != null ? formatClp(fact.facturado_clp) : "—"}</div>
+      <div className="muted mono">{fact.facturado_clp != null ? formatCardBillingPesos(fact.facturado_clp) : "—"}</div>
       {fact.facturado_foreign.map((f) =>
         f.amount != null ? (
           <div key={f.currency} className="muted mono">
             {formatMoney({ value: f.amount, currency: f.currency })}
-            {f.clp != null ? ` (${formatClp(f.clp)})` : ""}
+            {f.clp != null ? ` (${formatCardBillingPesos(f.clp)})` : ""}
           </div>
         ) : null
       )}
@@ -60,7 +61,7 @@ export function CreditCardSummaryCards({
         return { key: c.currency, available: fmt(c.cupo_disponible), total: fmt(c.cupo_total) };
       })
     : cupo?.available_clp != null && cupo.total_clp != null
-      ? [{ key: "clp", available: formatClp(cupo.available_clp), total: formatClp(cupo.total_clp) }]
+      ? [{ key: "clp", available: formatCardBillingPesos(cupo.available_clp), total: formatCardBillingPesos(cupo.total_clp) }]
       : [];
 
   const cards = (
@@ -86,12 +87,12 @@ export function CreditCardSummaryCards({
       <div className="card">
         <div className="label">{t("accountDetail.creditCard.deudaEnCuotas")}</div>
         <div className="value mono">
-          {formatClp(currentRow?.cupo_en_cuotas_clp ?? ccLedger.totals.total_remaining_principal_clp)}
+          {formatCardBillingPesos(currentRow?.cupo_en_cuotas_clp ?? ccLedger.totals.total_remaining_principal_clp)}
         </div>
         {/* The slice of that debt the open facturación bills — it leaves on that statement's pay-by. */}
         {openFact?.cuota_a_pagar_clp != null ? (
           <div className="muted mono">
-            {formatYearMonthLabel(openFact.billing_month)} · {formatClp(openFact.cuota_a_pagar_clp)}
+            {formatYearMonthLabel(openFact.billing_month)} · {formatCardBillingPesos(openFact.cuota_a_pagar_clp)}
           </div>
         ) : null}
       </div>

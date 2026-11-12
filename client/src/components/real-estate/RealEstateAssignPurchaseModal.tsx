@@ -3,7 +3,7 @@ import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 import { loadableClass } from "../ui/Loadable";
 import { addCalendarMonths } from "../../calendarMonth";
-import { formatClp } from "../../format";
+import { formatBillPesos } from "../../formatNative";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateUnlinkedPurchases } from "../../queries/hooks";
 import { useAssignRealEstatePurchaseMutation } from "../../queries/mutations";
@@ -203,7 +203,7 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
                   ? ` · ${t("expenses.creditCard.sourceChecking")}`
                   : ` · ${t("expenses.creditCard.sourceCreditCard")}`}
               </td>
-              <td className="mono">{formatClp(p.amount_clp)}</td>
+              <td className="mono">{formatBillPesos(p.amount_clp)}</td>
               <td>
                 <Button
                   disabled={busy}

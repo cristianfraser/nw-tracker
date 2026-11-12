@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../downloadFile";
@@ -60,7 +61,7 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
   const unitOptions =
     loadedUnits && loadedUnits.length > 0
       ? ["clp", ...loadedUnits.filter((c) => c !== "clp").sort((a, b) => a.localeCompare(b))]
-      : ["clp", "usd"];
+      : ["clp", "usd"]; // convention-ok: the picker's options until /api/currencies answers
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,7 +83,7 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
     if (range.from) qs.set("from", range.from);
     if (range.to) qs.set("to", range.to);
     qs.set("sections", [...sections].join(","));
-    if (unit !== "clp") qs.set("unit", unit);
+    if (!isHomeCurrency(unit)) qs.set("unit", unit);
     setBusy(true);
     setError(null);
     try {

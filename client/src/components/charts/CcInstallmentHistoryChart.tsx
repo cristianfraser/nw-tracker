@@ -4,7 +4,8 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
-import { formatClp, formatMoney } from "../../format";
+import { formatMoney } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { AppComposedChart } from "./AppComposedChart";
 import { ChartEmptyState } from "./ChartEmptyState";
@@ -196,25 +197,25 @@ export function CcInstallmentHistoryChart({
     <>
       <div>
         {t("accountDetail.creditCard.colTotalFacturado")}:{" "}
-        {bar.facturado_total_clp != null ? formatClp(bar.facturado_total_clp) : "—"}
+        {bar.facturado_total_clp != null ? formatCardBillingPesos(bar.facturado_total_clp) : "—"}
       </div>
       <div style={{ paddingLeft: 12 }}>
         {bar.facturado_foreign_clp != null ? (
           <div>
             {t("accountDetail.creditCard.chartFacturadoUsd")}:{" "}
             {bar.facturado_foreign != null
-              ? `${bar.facturado_foreign.map((f) => formatMoney({ value: f.amount, currency: f.currency })).join(" · ")} (${formatClp(bar.facturado_foreign_clp)})`
-              : formatClp(bar.facturado_foreign_clp)}
+              ? `${bar.facturado_foreign.map((f) => formatMoney({ value: f.amount, currency: f.currency })).join(" · ")} (${formatCardBillingPesos(bar.facturado_foreign_clp)})`
+              : formatCardBillingPesos(bar.facturado_foreign_clp)}
           </div>
         ) : null}
         {bar.facturado_cuotas_clp != null ? (
           <div>
-            {t("accountDetail.creditCard.chartFacturadoCuotasClp")}: {formatClp(bar.facturado_cuotas_clp)}
+            {t("accountDetail.creditCard.chartFacturadoCuotasClp")}: {formatCardBillingPesos(bar.facturado_cuotas_clp)}
           </div>
         ) : null}
         {bar.facturado_rest_clp != null ? (
           <div>
-            {t("accountDetail.creditCard.chartFacturadoClp")}: {formatClp(bar.facturado_rest_clp)}
+            {t("accountDetail.creditCard.chartFacturadoClp")}: {formatCardBillingPesos(bar.facturado_rest_clp)}
           </div>
         ) : null}
       </div>
@@ -231,7 +232,7 @@ export function CcInstallmentHistoryChart({
           margin={{ ...RECHARTS_MONEY_CHART_MARGIN, bottom: 4 }}
           stackOffset="sign"
           tooltip={{
-            formatValue: (v) => formatClp(v),
+            formatValue: (v) => formatCardBillingPesos(v),
             renderContent: ({ label, payload }) => {
               const d = payload[0]?.payload as CcHistorialChartRow | undefined;
               if (!d) return null;
@@ -241,11 +242,11 @@ export function CcInstallmentHistoryChart({
                   <div style={{ marginBottom: 6, fontWeight: 600 }}>{periodLabel(String(label))}</div>
                   <div>
                     {t("accountDetail.creditCard.saldoTotal")}:{" "}
-                    {d.balance_total_clp != null ? formatClp(d.balance_total_clp) : "—"}
+                    {d.balance_total_clp != null ? formatCardBillingPesos(d.balance_total_clp) : "—"}
                   </div>
                   <div>
                     {t("accountDetail.creditCard.colCupoEnCuotas")}:{" "}
-                    {d.cupo_en_cuotas_clp != null ? formatClp(d.cupo_en_cuotas_clp) : "—"}
+                    {d.cupo_en_cuotas_clp != null ? formatCardBillingPesos(d.cupo_en_cuotas_clp) : "—"}
                   </div>
                   {bars.map((bar) => (
                     <div key={bar.month} style={{ marginTop: 6 }}>

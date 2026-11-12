@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatClp, formatGroupedDecimalTrimmed, formatMoney } from "../../format";
+import { formatGroupedDecimalTrimmed, formatMoney } from "../../format";
+import { formatCheckingPesos } from "../../formatNative";
 import { useMovementMirrorCandidates } from "../../queries/hooks";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -474,7 +475,7 @@ export function MirrorPairsPanelPage() {
                       {p.evidence.cc_account_name}
                     </Link>
                   </td>
-                  <td className="desktop-only">{formatClp(p.evidence.amount_clp)}</td>
+                  <td className="desktop-only">{formatCheckingPesos(p.evidence.amount_clp)}</td>
                   <td className="desktop-only">{flags}</td>
                   <td className="desktop-only">{note}</td>
                   <td className="mobile-only">
@@ -491,7 +492,7 @@ export function MirrorPairsPanelPage() {
                       <TableMobileCardRow label={t("mirrorPairs.colDates")} value={dates} />
                       <TableMobileCardRow
                         label={t("mirrorPairs.colAmount")}
-                        value={formatClp(p.evidence.amount_clp)}
+                        value={formatCheckingPesos(p.evidence.amount_clp)}
                       />
                       <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={flags} />
                       <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={note} />

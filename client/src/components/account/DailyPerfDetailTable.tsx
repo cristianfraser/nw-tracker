@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatPct, formatCurrencyFine } from "../../format";
+import { formatMoney, formatPct } from "../../format";
 import type { DailySeriesPointDto, DailySeriesResponse } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { PerfDetailRows, type PerfDetailRow } from "./PerfDetailRows";
@@ -38,7 +38,7 @@ export function DailyPerfDetailTable({
 
   const fmt = (n: number | null | undefined): string => {
     if (n == null || !Number.isFinite(n)) return "—";
-    return displayUnit === "clp" ? formatClp(n) : formatCurrencyFine(n, displayUnit);
+    return formatMoney({ value: n, currency: displayUnit });
   };
 
   const rowsDesc: DailySeriesPointDto[] = useMemo(

@@ -2,7 +2,8 @@ import { PageGridTile } from "../layout/PageGridTile";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api";
-import { formatClp, formatNumberInput, parseNumberInput } from "../../format";
+import { formatNumberInput, parseNumberInput } from "../../format";
+import { formatPesosPerDollar } from "../../formatNative";
 import { useTranslation } from "../../i18n";
 import { queryKeys } from "../../queries/keys";
 import type { FxBidAskGapRow } from "../../types";
@@ -139,7 +140,7 @@ export function FxBidAskGapsTable() {
               <div key={gap.date} role="listitem" className={styles.row}>
                 <span className={cn("mono", styles.date)}>{gap.date}</span>
                 <span className={cn("mono", styles.mid)}>
-                  {gap.mid_clp_per_usd != null ? formatClp(gap.mid_clp_per_usd) : "—"}
+                  {gap.mid_clp_per_usd != null ? formatPesosPerDollar(gap.mid_clp_per_usd) : "—"}
                 </span>
                 <span className={styles.buy}>
                   <Input
@@ -183,7 +184,7 @@ export function FxBidAskGapsTable() {
                   {gap.source ?? "—"}
                   {gap.buy_clp_per_usd != null && gap.sell_clp_per_usd != null ? (
                     <span className={cn("mono muted", styles.sourceRates)}>
-                      {formatClp(gap.buy_clp_per_usd)} / {formatClp(gap.sell_clp_per_usd)}
+                      {formatPesosPerDollar(gap.buy_clp_per_usd)} / {formatPesosPerDollar(gap.sell_clp_per_usd)}
                     </span>
                   ) : null}
                 </span>

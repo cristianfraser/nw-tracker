@@ -5,7 +5,7 @@ import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import type { FacturacionModalBucket } from "./buildFacturacionModalBucket";
 import { isFacturacionModalBucketEmpty } from "./buildFacturacionModalBucket";
-import { formatClp } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 
 export function CreditCardFacturacionModalSections({
   bucket,
@@ -32,7 +32,7 @@ export function CreditCardFacturacionModalSections({
         {t("expenses.creditCard.modalSectionGastos")}
         {bucket.gastos.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(gastosSum)}
+            {formatCardBillingPesos(gastosSum)}
           </span>
         ) : null}
       </h3>
@@ -47,7 +47,7 @@ export function CreditCardFacturacionModalSections({
         {t("accountDetail.creditCard.facturacionModalSectionFinancing")}
         {bucket.costeFinanciero.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(costeFinancieroSum)}
+            {formatCardBillingPesos(costeFinancieroSum)}
           </span>
         ) : null}
       </h3>
@@ -62,7 +62,7 @@ export function CreditCardFacturacionModalSections({
         {t("expenses.creditCard.modalSectionAbonos")}
         {bucket.abonos.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatClp(abonosSum)}
+            {formatCardBillingPesos(abonosSum)}
           </span>
         ) : null}
       </h3>

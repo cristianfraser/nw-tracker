@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatOrDash } from "../../format";
+import { formatOrDash } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { cn } from "../../cn";
 import styles from "../AccountDetailPage.module.css";
@@ -18,11 +19,11 @@ const PAGE_SIZE = 12;
 
 function renderFacturado(row: CcBillingDetailMonthDto, projectedHint: string): ReactNode {
   if (row.total_facturado_clp != null) {
-    return formatOrDash(row.total_facturado_clp, formatClp);
+    return formatOrDash(row.total_facturado_clp, formatCardBillingPesos);
   }
   return (
     <span className="muted" title={projectedHint}>
-      ≈ {formatClp(row.cuota_a_pagar_next_mes_clp)}
+      ≈ {formatCardBillingPesos(row.cuota_a_pagar_next_mes_clp)}
     </span>
   );
 }
@@ -76,11 +77,11 @@ function CreditCardDetallePorMesMobileCard({
         />
         <TableMobileCardRow
           label={labels.cupoEnCuotas}
-          value={formatOrDash(row.cupo_en_cuotas_clp, formatClp)}
+          value={formatOrDash(row.cupo_en_cuotas_clp, formatCardBillingPesos)}
         />
         <TableMobileCardRow
           label={labels.balanceTotal}
-          value={formatOrDash(row.balance_total_clp, formatClp)}
+          value={formatOrDash(row.balance_total_clp, formatCardBillingPesos)}
         />
       </TableMobileCardSection>
     </TableMobileCard>
@@ -154,8 +155,8 @@ export function CreditCardDetallePorMesTable({
               <ProvisionalMark row={row} />
             </td>
             <td className="mono desktop-only">{renderFacturado(row, projectedHint)}</td>
-            <td className="mono desktop-only">{formatOrDash(row.cupo_en_cuotas_clp, formatClp)}</td>
-            <td className="mono desktop-only">{formatOrDash(row.balance_total_clp, formatClp)}</td>
+            <td className="mono desktop-only">{formatOrDash(row.cupo_en_cuotas_clp, formatCardBillingPesos)}</td>
+            <td className="mono desktop-only">{formatOrDash(row.balance_total_clp, formatCardBillingPesos)}</td>
             <td className="mobile-only">
               <CreditCardDetallePorMesMobileCard row={row} isYearly={isYearly} labels={mobileLabels} />
             </td>

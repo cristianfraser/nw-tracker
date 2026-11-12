@@ -18,7 +18,7 @@ import {
 } from "../../panelAccounts/brokerageFlowKinds";
 
 /** Native currency of a ledger cash form; interest (savings_earnings) is entered in this currency. */
-export type CashFormCurrency = "usd" | "clp";
+export type CashFormCurrency = "usd" | "clp"; // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
 import {
   appendMovementRow,
   removeMovementRow,
@@ -65,19 +65,19 @@ export function BrokerageMovementRowFields({
   const counterpartIsEquity = brokerageFlowKindCounterpartIsEquity(row.flowKind, formContext);
   const counterpartIsUsdCash = brokerageFlowKindCounterpartIsUsdCash(row.flowKind, formContext);
   // A cash form's own-currency rows (deposits, withdrawals, interest, fees) take its currency's field.
-  const ownInClp = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "clp";
-  const ownInUsd = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "usd";
+  const ownInClp = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "clp"; // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
+  const ownInUsd = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "usd"; // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
   const showClp =
     (cashCurrency != null ? brokerageFlowKindNeedsClp(row.flowKind) : brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency)) ||
     ownInClp;
   const showUsd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency) || ownInUsd;
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
   const clpTransferCounterpart =
-    cashCurrency === "clp" && clpCashFlowKindAllowsCounterpart(row.flowKind);
-  const tradeSettlesInClp = stockQuoteCurrency === "clp" && counterpartIsUsdCash;
+    cashCurrency === "clp" && clpCashFlowKindAllowsCounterpart(row.flowKind); // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
+  const tradeSettlesInClp = stockQuoteCurrency === "clp" && counterpartIsUsdCash; // convention-ok: a Santiago stock trades in pesos, every other one in dollars (plan C1 leftover)
   // dividend_payout is USD-only today (movementUnitsPolicy rejects CLP-quoted stocks).
   const availableKinds = flowKinds.filter(
-    (k) => !(k === "dividend_payout" && stockQuoteCurrency === "clp")
+    (k) => !(k === "dividend_payout" && stockQuoteCurrency === "clp") // convention-ok: a Santiago stock pays no dollar dividend to the broker cash
   );
 
   return (

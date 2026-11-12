@@ -271,7 +271,7 @@ export function formatCcExpenseLineAmount(amountClp: number, amountUsd: number |
  * Negatives in parentheses.
  */
 export function formatMoney(m: { value: number; currency: string }): string {
-  if (m.currency === "clp") return formatClp(m.value);
+  if (m.currency === "clp") return formatClp(m.value); // convention-ok: pesos print through the whole-peso formatter, which rounds before taking the sign
   return formatCurrencyFine(m.value, m.currency);
 }
 

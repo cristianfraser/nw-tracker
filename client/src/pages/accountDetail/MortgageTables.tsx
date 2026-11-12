@@ -12,7 +12,8 @@ import type {
   DeptoPaymentScenarioRow,
   DeptoPaymentScenarioTerm,
 } from "../../types";
-import { formatClp, formatUfUnits, formatUfUnitsFine } from "../../format";
+import { formatUfUnits, formatUfUnitsFine } from "../../format";
+import { formatMortgagePesos } from "../../formatNative";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
 import { PageGridTile } from "../../components/layout/PageGridTile";
@@ -25,7 +26,7 @@ function cellUfClpPair(uf: number | null, clp: number | null) {
     <>
       {uf != null ? formatUfUnitsFine(uf) : "—"}
       {clp != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatClp(clp)}</span>
+        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(clp)}</span>
       ) : null}
     </>
   );
@@ -50,7 +51,7 @@ function cellCreditoPair(row: DeptoMortgageSheetRow) {
     <>
       {row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
       {row.restante_clp != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatClp(row.restante_clp)}</span>
+        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(row.restante_clp)}</span>
       ) : null}
     </>
   );
@@ -75,7 +76,7 @@ function ufClpLine(key: string, uf: number | null, clp: number | null): MergedCe
   return {
     key,
     main: uf != null ? formatUfUnitsFine(uf) : "—",
-    sub: clp != null ? formatClp(clp) : null,
+    sub: clp != null ? formatMortgagePesos(clp) : null,
   };
 }
 
@@ -255,7 +256,7 @@ export function MortgageDividendosTable({
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
-                {m?.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {m ? formatUfUnitsFine(m.pie_uf) : "—"}
+                {m?.pie_clp != null ? formatMortgagePesos(m.pie_clp) : "—"} · {m ? formatUfUnitsFine(m.pie_uf) : "—"}
               </div>
             </div>
             <div className="card">
@@ -271,7 +272,7 @@ export function MortgageDividendosTable({
           <p className="muted">
             {i18n.t("accountDetail.mortgageSheet.cardLinesWithoutPayment")}{" "}
             {ledger.card_lines_without_payment
-              .map((l) => `${l.date} · ${l.merchant} · ${formatClp(l.amount_clp)} · ${l.account_name}`)
+              .map((l) => `${l.date} · ${l.merchant} · ${formatMortgagePesos(l.amount_clp)} · ${l.account_name}`)
               .join(" | ")}
           </p>
         )}
@@ -332,7 +333,7 @@ function formatScenarioPayment(uf: number | null, clp: number | null) {
     <>
       {uf != null ? formatUfUnitsFine(uf) : "—"}
       {clp != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatClp(clp)}</span>
+        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(clp)}</span>
       ) : null}
     </>
   );
@@ -432,7 +433,7 @@ export function DeptoPaymentScenarioTable({
                     <td key={String(term)} className={cn("mono", "desktop-only", styles.nowrap)}>
                       {cell.uf != null ? formatUfUnitsFine(cell.uf) : "—"}
                       {cell.clp != null ? (
-                        <span className={cn("muted", styles.cellSub)}>{formatClp(cell.clp)}</span>
+                        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(cell.clp)}</span>
                       ) : null}
                     </td>
                   );

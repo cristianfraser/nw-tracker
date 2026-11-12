@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useTranslation } from "../../i18n";
 import {
   CreditCardDetalleSurface,
@@ -30,7 +31,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
   const heroValue =
     data.accountDashRow?.current_value ??
-    (data.stripUnit === "clp"
+    (isHomeCurrency(data.stripUnit)
       ? summary.latest_valuation ?? ccLedger.totals.total_remaining_principal_clp
       : data.chartUnitVal);
 

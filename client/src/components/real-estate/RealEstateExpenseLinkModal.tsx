@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 import { loadableClass } from "../ui/Loadable";
-import { formatClp } from "../../format";
+import { formatBillPesos } from "../../formatNative";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateLinkCandidates } from "../../queries/hooks";
 import { useLinkRealEstateExpenseMutation } from "../../queries/mutations";
@@ -54,7 +54,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
         slot ? (
           <>
             {expenseKindLabel(slot.kind)} · {slot.bill_month} ·{" "}
-            <span className="mono">{formatClp(slot.expected_amount_clp)}</span>
+            <span className="mono">{formatBillPesos(slot.expected_amount_clp)}</span>
           </>
         ) : null
       }
@@ -110,7 +110,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
                     ? ` · ${t("expenses.creditCard.sourceChecking")}`
                     : ` · ${t("expenses.creditCard.sourceCreditCard")}`}
                 </td>
-                <td className="mono">{formatClp(c.amount_clp)}</td>
+                <td className="mono">{formatBillPesos(c.amount_clp)}</td>
                 <td>
                   <Button variant="secondary"
                     disabled={pendingKey != null}

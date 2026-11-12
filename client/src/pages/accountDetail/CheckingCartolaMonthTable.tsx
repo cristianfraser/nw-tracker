@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
+import { formatCartolaPesos } from "../../formatNative";
 import type { CheckingCartolaMonthRowDto } from "../../types";
 import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import { loadableClass } from "../../components/ui/Loadable";
@@ -20,7 +20,7 @@ const periodKeyOf = (row: CheckingCartolaMonthRowDto) => row.period_month;
 /** Abonos/cargos are ledger-derived for every month; dash only when the month has no movements at all. */
 function fmtMoney(n: number, hasMovements: boolean): string {
   if (!hasMovements && n === 0) return "—";
-  return formatClp(n);
+  return formatCartolaPesos(n);
 }
 
 function cartolaMonthHasEmptyImport(row: CheckingCartolaMonthRowDto): boolean {
@@ -145,14 +145,14 @@ export function CheckingCartolaMonthTable({
       header: labels.balanceEnd,
       className: "mono",
       section: 1,
-      cell: (row) => (row.balance_end_clp != null ? formatClp(row.balance_end_clp) : "—"),
+      cell: (row) => (row.balance_end_clp != null ? formatCartolaPesos(row.balance_end_clp) : "—"),
     },
     {
       key: "cartolaSaldo",
       header: t("accountDetail.checking.colCartolaSaldo"),
       className: "mono muted",
       section: 1,
-      cell: (row) => (row.cartola_saldo_final_clp != null ? formatClp(row.cartola_saldo_final_clp) : "—"),
+      cell: (row) => (row.cartola_saldo_final_clp != null ? formatCartolaPesos(row.cartola_saldo_final_clp) : "—"),
     },
     {
       key: "diff",
@@ -161,7 +161,7 @@ export function CheckingCartolaMonthTable({
       section: 1,
       cell: (row) => {
         const diff = cartolaBalanceDiff(row);
-        return diff != null ? formatClp(diff) : "—";
+        return diff != null ? formatCartolaPesos(diff) : "—";
       },
     },
     {
@@ -221,11 +221,11 @@ export function CheckingCartolaMonthTable({
               {labels.withdrawals}: {fmtMoney(selected.withdrawals_clp, selected.movement_count > 0)}
               {" · "}
               {labels.balanceEnd}:{" "}
-              {selected.balance_end_clp != null ? formatClp(selected.balance_end_clp) : "—"}
+              {selected.balance_end_clp != null ? formatCartolaPesos(selected.balance_end_clp) : "—"}
               {selectedDiff != null ? (
                 <>
                   {" · "}
-                  {labels.diff}: {formatClp(selectedDiff)}
+                  {labels.diff}: {formatCartolaPesos(selectedDiff)}
                 </>
               ) : null}
             </>

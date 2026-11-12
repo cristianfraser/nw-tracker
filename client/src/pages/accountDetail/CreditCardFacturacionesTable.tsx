@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatOrDash, formatMoney, formatPct } from "../../format";
+import { formatOrDash, formatMoney, formatPct } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { cn } from "../../cn";
 import { Loadable } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
@@ -38,7 +39,7 @@ function formatFacturadoForeignCell(row: CcFacturacionDto): string {
     .filter((f) => f.amount != null && Number.isFinite(f.amount))
     .map((f) => {
       const amount = formatMoney({ value: f.amount!, currency: f.currency });
-      return f.clp == null || !Number.isFinite(f.clp) ? amount : `${amount} (${formatClp(f.clp)})`;
+      return f.clp == null || !Number.isFinite(f.clp) ? amount : `${amount} (${formatCardBillingPesos(f.clp)})`;
     });
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
@@ -51,9 +52,9 @@ function formatProxyCell(
   if (!proxy) return "—";
   const t = proxy.by_ticker[inlineTicker];
   if (!t) return "—";
-  if (t.blended_return_pct == null) return formatClp(Math.round(t.total_gain_clp));
+  if (t.blended_return_pct == null) return formatCardBillingPesos(Math.round(t.total_gain_clp));
   const sign = t.total_gain_clp >= 0 ? "+" : "";
-  return `${sign}${formatClp(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
+  return `${sign}${formatCardBillingPesos(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
 }
 
 /**
@@ -96,7 +97,7 @@ function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
   const estimate =
     row.provisional_estimate_total_clp != null
       ? ` ${t("accountDetail.creditCard.provisionalEstimateHint", {
-          amount: formatClp(row.provisional_estimate_total_clp),
+          amount: formatCardBillingPesos(row.provisional_estimate_total_clp),
         })}`
       : "";
   return (
@@ -146,20 +147,20 @@ function FacturacionMobileCard({
       <TableMobileCardSection>
         <TableMobileCardRow
           label={labels.facturado}
-          value={formatOrDash(row.facturado_clp, formatClp)}
+          value={formatOrDash(row.facturado_clp, formatCardBillingPesos)}
         />
         <TableMobileCardRow label={labels.facturadoUsd} value={formatFacturadoForeignCell(row)} />
         <TableMobileCardRow
           label={labels.facturadoTotal}
-          value={formatOrDash(row.facturado_total_clp, formatClp)}
+          value={formatOrDash(row.facturado_total_clp, formatCardBillingPesos)}
         />
         <TableMobileCardRow
           label={labels.cuotaAPagar}
-          value={formatOrDash(row.cuota_a_pagar_clp, formatClp)}
+          value={formatOrDash(row.cuota_a_pagar_clp, formatCardBillingPesos)}
         />
         <TableMobileCardRow
           label={labels.deudaEnCuotas}
-          value={formatOrDash(row.deuda_en_cuotas_clp, formatClp)}
+          value={formatOrDash(row.deuda_en_cuotas_clp, formatCardBillingPesos)}
         />
         <TableMobileCardRow
           label={labels.proxyEarnings}
@@ -199,7 +200,7 @@ function PendingCuotaPurchasesNotice({
           return (
             <li key={p.statement_line_id}>
               <span className="mono">{p.purchase_date}</span> · {p.merchant ?? "—"} ·{" "}
-              <span className="mono">{formatClp(p.amount_clp)}</span>
+              <span className="mono">{formatCardBillingPesos(p.amount_clp)}</span>
               {open ? (
                 <>
                   {" "}
@@ -293,7 +294,7 @@ export function CreditCardFacturacionesTable({
         </>
       ) : null}
       {selected.facturado_total_clp != null ? (
-        <> · {t("account.creditCard.colFacturadoTotal")}: {formatOrDash(selected.facturado_total_clp, formatClp)}</>
+        <> · {t("account.creditCard.colFacturadoTotal")}: {formatOrDash(selected.facturado_total_clp, formatCardBillingPesos)}</>
       ) : null}
     </>
   ) : null;
@@ -372,11 +373,11 @@ export function CreditCardFacturacionesTable({
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>
                   <PayByCell row={row} />
                 </td>
-                <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatClp)}</td>
+                <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatCardBillingPesos)}</td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoForeignCell(row)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatClp)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatClp)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.deuda_en_cuotas_clp, formatClp)}</td>
+                <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatCardBillingPesos)}</td>
+                <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatCardBillingPesos)}</td>
+                <td className="mono desktop-only">{formatOrDash(row.deuda_en_cuotas_clp, formatCardBillingPesos)}</td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatProxyCell(proxy, inlineTicker)}</td>
                 <td className="mobile-only">
                   <FacturacionMobileCard

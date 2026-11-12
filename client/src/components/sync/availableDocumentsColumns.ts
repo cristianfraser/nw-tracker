@@ -28,9 +28,9 @@ export function buildAvailableDocumentsColumns(
     const acc = accounts[i]!;
     const next = accounts[i + 1];
     if (
-      acc.cc_statement_currency === "clp" &&
+      acc.cc_statement_currency === "clp" && // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
       next?.account_id === acc.account_id &&
-      next.cc_statement_currency === "usd"
+      next.cc_statement_currency === "usd" // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
     ) {
       cols.push({
         type: "cc_split",

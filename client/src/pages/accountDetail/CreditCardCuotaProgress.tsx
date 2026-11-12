@@ -1,6 +1,6 @@
 import { useId, useState, type CSSProperties, type PointerEvent } from "react";
 import type { CcCuotaProgress, CcCuotaProgressCuota } from "../../types";
-import { formatClp } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
@@ -47,7 +47,7 @@ export function CreditCardCuotaProgress({
   const segments = Math.max(maxInstallments, total, 1);
   // What is still owed, written as a minus: «-$400.000» (none left reads «$0»).
   const owed = progress.pending_clp + progress.billed_clp;
-  const owedLabel = owed > 0 ? `-${formatClp(owed)}` : formatClp(0);
+  const owedLabel = owed > 0 ? `-${formatCardBillingPesos(owed)}` : formatCardBillingPesos(0);
 
   return (
     <div
@@ -56,11 +56,11 @@ export function CreditCardCuotaProgress({
     >
       <div className={cn("mono", styles.caption)}>
         {t("account.creditCard.cuotaProgress.caption", {
-          cuota: formatClp(cuotaClp),
+          cuota: formatCardBillingPesos(cuotaClp),
           paidCount: progress.paid_count,
           total,
-          paid: formatClp(progress.paid_clp),
-          totalClp: formatClp(progress.total_clp),
+          paid: formatCardBillingPesos(progress.paid_clp),
+          totalClp: formatCardBillingPesos(progress.total_clp),
           pending: owedLabel,
         })}
       </div>
@@ -109,7 +109,7 @@ export function CreditCardCuotaProgress({
                       {c.index}/{total}
                     </td>
                     <td>{formatYearMonthLabel(c.billing_month)}</td>
-                    <td className={styles.num}>{formatClp(c.amount_clp)}</td>
+                    <td className={styles.num}>{formatCardBillingPesos(c.amount_clp)}</td>
                     <td>
                       {t(STATUS_KEY[c.status])}
                       {c.statement_date ? <span className={styles.statementDate}>{c.statement_date}</span> : null}
@@ -120,7 +120,7 @@ export function CreditCardCuotaProgress({
               <tfoot>
                 <tr>
                   <td colSpan={2}>{t("account.creditCard.cuotaProgress.total")}</td>
-                  <td className={styles.num}>{formatClp(progress.total_clp)}</td>
+                  <td className={styles.num}>{formatCardBillingPesos(progress.total_clp)}</td>
                   <td />
                 </tr>
               </tfoot>

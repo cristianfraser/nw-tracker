@@ -1,4 +1,5 @@
-import { formatClp, formatUfUnitsFine } from "../../format";
+import { formatUfUnitsFine } from "../../format";
+import { formatMortgagePesos } from "../../formatNative";
 import { cn } from "../../cn";
 import styles from "./ClpUfSuperscriptAmount.module.css";
 
@@ -26,7 +27,7 @@ export function ClpUfSuperscriptAmount({ clpClp, ufAmount, className }: ClpUfSup
   const ufOk = ufAmount != null && Number.isFinite(ufAmount);
   return (
     <span className={cn("mono", styles.root, className)}>
-      <span className={styles.clp}>{formatClp(clpClp)}</span>
+      <span className={styles.clp}>{formatMortgagePesos(clpClp)}</span>
       {ufOk ? <sup className={styles.ufSup}>{formatUfUnitsFine(ufAmount)}</sup> : null}
     </span>
   );

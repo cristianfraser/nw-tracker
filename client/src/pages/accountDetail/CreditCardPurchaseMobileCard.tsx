@@ -1,5 +1,5 @@
 import type { CcInstallmentPurchaseComputed } from "../../types";
-import { formatClp } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { useTranslation } from "../../i18n";
 import {
   TableMobileCard,
@@ -44,7 +44,7 @@ export function CreditCardPurchaseMobileCard({
         title={
           <div className="mono">
             {purchase.purchase_date ?? "—"}
-            {purchase.cuota_progress ? null : ` · ${formatClp(purchase.cuota_clp)}`}
+            {purchase.cuota_progress ? null : ` · ${formatCardBillingPesos(purchase.cuota_clp)}`}
           </div>
         }
       >
@@ -66,7 +66,7 @@ export function CreditCardPurchaseMobileCard({
     <TableMobileCard title={vendor}>
       <TableMobileCardSection>
         <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
-        <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
+        <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatCardBillingPesos(purchase.principal_clp)} />
       </TableMobileCardSection>
 
       <TableMobileCardSection>
@@ -82,7 +82,7 @@ export function CreditCardPurchaseMobileCard({
       </TableMobileCardSection>
 
       <TableMobileCardSection>
-        <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
+        <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatCardBillingPesos(purchase.cuota_clp)} />
       </TableMobileCardSection>
     </TableMobileCard>
   );

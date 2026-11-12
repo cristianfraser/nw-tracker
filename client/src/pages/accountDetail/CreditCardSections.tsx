@@ -9,7 +9,7 @@ import type {
   CcInstallmentMonthBreakdown,
   CcInstallmentPurchaseComputed,
 } from "../../types";
-import { formatClp } from "../../format";
+import { formatCardBillingPesos } from "../../formatNative";
 import { cn } from "../../cn";
 import { Trans, useTranslation } from "../../i18n";
 import { formatYearMonthLabel } from "../../formatDateLabel";
@@ -85,7 +85,7 @@ function CreditCardInstallmentsSection({
           <Trans
             i18nKey="account.creditCard.monthCuotasBreakdownLine"
             values={{
-              amount: formatClp(b.amount_clp),
+              amount: formatCardBillingPesos(b.amount_clp),
               current: b.installment_index + 1,
               total:
                 b.installment_count ??
@@ -146,7 +146,7 @@ function CreditCardInstallmentsSection({
         <td className="desktop-only">
           <div className="mono">
             {p.purchase_date ?? "—"}
-            {p.cuota_progress ? null : ` · ${formatClp(p.cuota_clp)}`}
+            {p.cuota_progress ? null : ` · ${formatCardBillingPesos(p.cuota_clp)}`}
           </div>
           {purchaseVendor(p)}
         </td>
@@ -194,10 +194,10 @@ function CreditCardInstallmentsSection({
           {purchaseVendor(p)}
         </td>
         <td className="mono desktop-only">{p.installment_count}</td>
-        <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
+        <td className="mono desktop-only">{formatCardBillingPesos(p.principal_clp)}</td>
         <td className="mono desktop-only">{p.purchase_date ?? "—"}</td>
         <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
-        <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
+        <td className="mono desktop-only">{formatCardBillingPesos(p.cuota_clp)}</td>
         <td className="mono desktop-only">
           {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}
         </td>
@@ -251,13 +251,13 @@ function CreditCardInstallmentsSection({
           <div className="cards">
             <div className="card">
               <div className="label">{t("account.creditCard.totalRemainingLabel")}</div>
-              <div className="value mono">{formatClp(ledger.totals.total_remaining_principal_clp)}</div>
+              <div className="value mono">{formatCardBillingPesos(ledger.totals.total_remaining_principal_clp)}</div>
             </div>
             <div className="card">
               <div className="label">{t("account.creditCard.nextMonthWithCharges")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
                 {ledger.totals.next_calendar_month
-                  ? `${formatYearMonthLabel(ledger.totals.next_calendar_month)} · ${formatClp(ledger.totals.next_calendar_month_total_clp ?? 0)}`
+                  ? `${formatYearMonthLabel(ledger.totals.next_calendar_month)} · ${formatCardBillingPesos(ledger.totals.next_calendar_month_total_clp ?? 0)}`
                   : "—"}
               </div>
             </div>
@@ -359,8 +359,8 @@ function CreditCardInstallmentsSection({
                         {formatYearMonthLabel(row.month)}{" "}
                         <span className="muted">({row.pay_by_date})</span>
                       </td>
-                      <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
-                      <td className="mono muted desktop-only">{formatClp(row.debt_after_clp)}</td>
+                      <td className="mono desktop-only">{formatCardBillingPesos(row.total_clp)}</td>
+                      <td className="mono muted desktop-only">{formatCardBillingPesos(row.debt_after_clp)}</td>
                       <td className="desktop-only">
                         {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
                       </td>
@@ -369,11 +369,11 @@ function CreditCardInstallmentsSection({
                           <TableMobileCardSection>
                             <TableMobileCardRow
                               label={t("account.creditCard.colMonthCuotaTotal")}
-                              value={formatClp(row.total_clp)}
+                              value={formatCardBillingPesos(row.total_clp)}
                             />
                             <TableMobileCardRow
                               label={t("account.creditCard.colDebtAfterPayment")}
-                              value={<span className="muted">{formatClp(row.debt_after_clp)}</span>}
+                              value={<span className="muted">{formatCardBillingPesos(row.debt_after_clp)}</span>}
                             />
                           </TableMobileCardSection>
                           {row.breakdown.length > 0 ? (

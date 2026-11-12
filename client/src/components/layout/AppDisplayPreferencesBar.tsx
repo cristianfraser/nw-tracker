@@ -5,7 +5,7 @@ import { useCurrencies } from "../../queries/hooks";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
 /** The picker's options until `/api/currencies` answers (the current unit always listed). */
-const FALLBACK_UNITS = ["clp", "usd"] as const;
+const FALLBACK_UNITS = ["clp", "usd"] as const; // convention-ok: the picker's options until /api/currencies answers
 
 function unitRank(code: string): number {
   const i = (FALLBACK_UNITS as readonly string[]).indexOf(code);

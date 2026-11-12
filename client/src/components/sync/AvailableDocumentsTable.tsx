@@ -17,10 +17,10 @@ import {
 import styles from "./AvailableDocumentsTable.module.css";
 
 function currencySlotLabel(
-  currency: "clp" | "usd",
+  currency: "clp" | "usd", // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
   t: (key: string) => string
 ): string {
-  return currency === "clp"
+  return currency === "clp" // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
     ? t("importSync.ccStatementCurrencyClp")
     : t("importSync.ccStatementCurrencyUsd");
 }

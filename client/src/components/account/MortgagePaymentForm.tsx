@@ -3,13 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import {
-  formatClp,
-  formatClpUfDay,
-  formatNumberInput,
-  formatUfUnitsFine,
-  parseNumberInputOrThrow,
-} from "../../format";
+import { formatNumberInput, formatUfUnitsFine, parseNumberInputOrThrow } from "../../format";
+import { formatMortgagePesos, formatUfDayPesos } from "../../formatNative";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type {
   AccountSummaryResponse,
@@ -325,20 +320,20 @@ export function MortgagePaymentForm({
         <div className={cn("cards", styles.cardsBelow)}>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewAmort")}</div>
-            <div className="value mono">{formatClp(preview.sheet.amortizacion_clp ?? 0)}</div>
+            <div className="value mono">{formatMortgagePesos(preview.sheet.amortizacion_clp ?? 0)}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewAmortExt")}</div>
             <div className="value mono">
               {preview.sheet.amortizacion_ext_clp != null
-                ? formatClp(preview.sheet.amortizacion_ext_clp)
+                ? formatMortgagePesos(preview.sheet.amortizacion_ext_clp)
                 : "—"}
             </div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewUfDay")}</div>
             <div className="value mono">
-              {preview.sheet.uf_clp_day != null ? formatClpUfDay(preview.sheet.uf_clp_day) : "—"}
+              {preview.sheet.uf_clp_day != null ? formatUfDayPesos(preview.sheet.uf_clp_day) : "—"}
             </div>
           </div>
           <div className="card">
@@ -359,11 +354,11 @@ export function MortgagePaymentForm({
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewMortgageClp")}</div>
-            <div className="value mono">{formatClp(preview.mortgage_balance_clp)}</div>
+            <div className="value mono">{formatMortgagePesos(preview.mortgage_balance_clp)}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewNetClp")}</div>
-            <div className="value mono">{formatClp(preview.property_net_clp)}</div>
+            <div className="value mono">{formatMortgagePesos(preview.property_net_clp)}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewPagoUf")}</div>

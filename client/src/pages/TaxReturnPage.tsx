@@ -6,13 +6,14 @@ import { PageGridTile } from "../components/layout/PageGridTile";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Pill } from "../components/ui/Pill";
 import { ColumnTable } from "../components/ui/ColumnTable";
-import { formatClp, formatCurrencyFine, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
+import { formatCurrencyFine, formatGroupedDecimal, formatPct } from "../format";
+import { formatF22Pesos, formatTaxDocumentDollars } from "../formatNative";
 import { useTaxReturn, useUsTaxReturn } from "../queries/hooks";
 import { UsTaxReturnSections } from "../components/tax/UsTaxReturnSections";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 
-const money = (n: number | null) => (n == null ? "—" : formatClp(n));
+const money = (n: number | null) => (n == null ? "—" : formatF22Pesos(n));
 
 function useCodeLabel() {
   const { t, i18n } = useTranslation();
@@ -70,11 +71,11 @@ function F22Table({ rows, loading }: { rows: TaxReturnRow[]; loading?: boolean }
           cellProps: (r) => (f22Diff(r) != null ? { style: { color: "var(--negative)" } } : {}),
           cell: (r) => {
             const diff = f22Diff(r);
-            return diff == null ? "" : formatClp(diff);
+            return diff == null ? "" : formatF22Pesos(diff);
           },
           card: (r) => {
             const diff = f22Diff(r);
-            return diff == null ? null : formatClp(diff);
+            return diff == null ? null : formatF22Pesos(diff);
           },
         },
       ]}
@@ -93,15 +94,15 @@ function LossOffsetHint({ data, kind }: { data: TaxReturnResponse; kind: "pool" 
   const o = kind === "pool" ? data.loss_offset : data.foreign_share_offset;
   const k = (key: string) => `taxReturn.lossOffset.${kind === "foreign" ? `foreign${key[0].toUpperCase()}${key.slice(1)}` : key}`;
   const year = data.income_year;
-  const tax = o.tax_effect_clp != null && o.tax_effect_clp > 0 ? formatClp(o.tax_effect_clp) : null;
+  const tax = o.tax_effect_clp != null && o.tax_effect_clp > 0 ? formatF22Pesos(o.tax_effect_clp) : null;
   let text: string | null = null;
   if (o.unused_loss_clp > 0) {
-    const amount = formatClp(o.unused_loss_clp);
+    const amount = formatF22Pesos(o.unused_loss_clp);
     text = data.provisional
       ? `${t(k("unusedOpen"), { year, amount })}${tax ? ` ${t("taxReturn.lossOffset.unusedOpenTax", { tax })}` : ""}`
       : t(k("unusedClosed"), { year, amount });
   } else if (data.provisional && o.taxed_gain_clp > 0) {
-    const amount = formatClp(o.taxed_gain_clp);
+    const amount = formatF22Pesos(o.taxed_gain_clp);
     const effect = tax
       ? ` ${t("taxReturn.lossOffset.taxedOpenTax", { tax })}`
       : o.tax_effect_clp === 0
@@ -114,7 +115,7 @@ function LossOffsetHint({ data, kind }: { data: TaxReturnResponse; kind: "pool" 
     kind === "pool"
       ? data.loss_offset.parts
           .filter((p) => p.gain_clp !== 0 || p.loss_clp !== 0)
-          .map((p) => `${t(`taxReturn.lossOffset.source.${p.source}`)} ${formatClp(p.gain_clp - p.loss_clp)}`)
+          .map((p) => `${t(`taxReturn.lossOffset.source.${p.source}`)} ${formatF22Pesos(p.gain_clp - p.loss_clp)}`)
           .join(" · ")
       : "";
   return (
@@ -159,13 +160,13 @@ function ResidencySection({ data }: { data: TaxReturnResponse }) {
               {t("taxReturn.residency.nonresidentPart", {
                 from: nr.window.from,
                 through: nr.window.through,
-                rent: formatClp(nr.taxable_rent_clp),
-                exempt: formatClp(nr.exempt_rent_clp),
-                base: formatClp(nr.codes["32"] ?? 0),
-                tax: formatClp(nr.codes["34"] ?? 0),
+                rent: formatF22Pesos(nr.taxable_rent_clp),
+                exempt: formatF22Pesos(nr.exempt_rent_clp),
+                base: formatF22Pesos(nr.codes["32"] ?? 0),
+                tax: formatF22Pesos(nr.codes["34"] ?? 0),
               })}
               {nr.art107.sales > 0
-                ? ` ${t("taxReturn.residency.nonresidentArt107", { sales: nr.art107.sales, result: formatClp(nr.art107.result_clp), tax: formatClp(nr.art107.tax_clp) })}`
+                ? ` ${t("taxReturn.residency.nonresidentArt107", { sales: nr.art107.sales, result: formatF22Pesos(nr.art107.result_clp), tax: formatF22Pesos(nr.art107.tax_clp) })}`
                 : ""}
             </p>
           ) : null}
@@ -188,7 +189,7 @@ function ExcludedSection({ data }: { data: TaxReturnResponse }) {
           <li key={`${x.kind}-${x.window.from}`}>
             {t("taxReturn.residency.excludedItem", {
               kind: t(`taxReturn.residency.kind.${x.kind}`),
-              clp: formatClp(x.clp),
+              clp: formatF22Pesos(x.clp),
               reason: t(`taxReturn.residency.reason.${x.reason}`),
             })}
           </li>
@@ -220,21 +221,21 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
           { key: "date", header: t("taxReturn.crypto.date"), className: "mono", cell: (s) => s.date, title: (s) => `${s.date} · ${s.coin}` },
           { key: "coin", header: t("taxReturn.crypto.coin"), cell: (s) => s.coin, desktopOnly: true },
           { key: "units", header: t("taxReturn.crypto.units"), headerClassName: "num", className: "num", cell: (s) => formatGroupedDecimal(s.units, 8) },
-          { key: "proceeds", header: t("taxReturn.crypto.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
-          { key: "cost", header: t("taxReturn.crypto.cost"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
-          { key: "costReajustado", header: t("taxReturn.crypto.costReajustado"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_reajustado_clp) },
-          { key: "gain", header: t("taxReturn.crypto.gain"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_clp) },
+          { key: "proceeds", header: t("taxReturn.crypto.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.proceeds_clp) },
+          { key: "cost", header: t("taxReturn.crypto.cost"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.cost_clp) },
+          { key: "costReajustado", header: t("taxReturn.crypto.costReajustado"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.cost_reajustado_clp) },
+          { key: "gain", header: t("taxReturn.crypto.gain"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.gain_clp) },
           { key: "decemberPct", header: t("taxReturn.crypto.decemberPct"), headerClassName: "num", className: "num", cell: (s) => formatPct(s.december_pct, 1) },
-          { key: "gainDecember", header: t("taxReturn.crypto.gainDecember"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_december_clp) },
+          { key: "gainDecember", header: t("taxReturn.crypto.gainDecember"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.gain_december_clp) },
         ]}
       />
       <p>
         {t("taxReturn.crypto.totals", {
-          sales: formatClp(c.sales_clp),
-          gain: formatClp(c.gain_december_clp),
+          sales: formatF22Pesos(c.sales_clp),
+          gain: formatF22Pesos(c.gain_december_clp),
         })}
         {c.informed_sales_clp != null
-          ? ` ${t("taxReturn.crypto.informed", { amount: formatClp(c.informed_sales_clp) })}`
+          ? ` ${t("taxReturn.crypto.informed", { amount: formatF22Pesos(c.informed_sales_clp) })}`
           : ""}
       </p>
       <LossOffsetHint data={data} kind="pool" />
@@ -246,7 +247,7 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   if (data.dividends.length === 0) return null;
   const missing = data.dividends.filter((d) => d.gross_usd == null).length;
-  const usdOrMissing = (n: number | null) => (n == null ? t("taxReturn.dividends.missingDetail") : formatUsdFine(n));
+  const usdOrMissing = (n: number | null) => (n == null ? t("taxReturn.dividends.missingDetail") : formatTaxDocumentDollars(n));
   return (
     <PageGridTile id="dividends">
       <h2>{t("taxReturn.dividends.title")}</h2>
@@ -298,9 +299,9 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
             title: (s) => `${s.date} · ${s.account_name}`,
           },
           { key: "instrument", header: t("taxReturn.foreign.instrument"), cell: (s) => s.account_name, desktopOnly: true },
-          { key: "gainUsd", header: t("taxReturn.foreign.gainUsd"), headerClassName: "num", className: "num", cell: (s) => formatUsdFine(s.gain_usd) },
-          { key: "usd31", header: t("taxReturn.foreign.mode.usd_31dic"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.result_clp.usd_31dic) },
-          { key: "clpIpc", header: t("taxReturn.foreign.mode.clp_ipc"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.result_clp.clp_ipc) },
+          { key: "gainUsd", header: t("taxReturn.foreign.gainUsd"), headerClassName: "num", className: "num", cell: (s) => formatTaxDocumentDollars(s.gain_usd) },
+          { key: "usd31", header: t("taxReturn.foreign.mode.usd_31dic"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.result_clp.usd_31dic) },
+          { key: "clpIpc", header: t("taxReturn.foreign.mode.clp_ipc"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.result_clp.clp_ipc) },
         ]}
       />
       <LossOffsetHint data={data} kind="foreign" />
@@ -337,25 +338,25 @@ function RentalsSection({ data }: { data: TaxReturnResponse }) {
             cell: (p) => t(p.dfl2 ? "taxReturn.rentals.exempt" : "taxReturn.rentals.taxable"),
           },
           { key: "credits", header: t("taxReturn.rentals.credits"), headerClassName: "num", className: "num", cell: (p) => String(p.credits) },
-          { key: "rent", header: t("taxReturn.rentals.rent"), headerClassName: "num", className: "num", cell: (p) => formatClp(p.rent_clp) },
+          { key: "rent", header: t("taxReturn.rentals.rent"), headerClassName: "num", className: "num", cell: (p) => formatF22Pesos(p.rent_clp) },
           {
             key: "propertyTax",
             header: t("taxReturn.rentals.propertyTax"),
             headerClassName: "num",
             className: "num",
-            cell: (p) => formatClp(p.property_tax_paid_clp),
+            cell: (p) => formatF22Pesos(p.property_tax_paid_clp),
           },
         ]}
       />
       <p>
-        {t("taxReturn.rentals.totals", { taxable: formatClp(r.taxable_rent_clp), exempt: formatClp(r.exempt_rent_clp) })}
+        {t("taxReturn.rentals.totals", { taxable: formatF22Pesos(r.taxable_rent_clp), exempt: formatF22Pesos(r.exempt_rent_clp) })}
       </p>
       {credit ? (
         <p className="muted">
           {t("taxReturn.rentals.credit", {
-            paid: formatClp(credit.paid_clp),
-            cap: formatClp(credit.cap_clp),
-            credit: formatClp(credit.credit_clp),
+            paid: formatF22Pesos(credit.paid_clp),
+            cap: formatF22Pesos(credit.cap_clp),
+            credit: formatF22Pesos(credit.credit_clp),
           })}
         </p>
       ) : null}
@@ -383,27 +384,27 @@ function ForeignIncomeSection({ data }: { data: TaxReturnResponse }) {
         <p>
           {t("taxReturn.foreignIncome.salary", {
             stubs: salary.stubs,
-            usd: formatUsdFine(salary.income_usd),
-            gross: formatClp(salary.gross_clp),
-            taxUsd: formatUsdFine(salary.us_tax_usd),
+            usd: formatTaxDocumentDollars(salary.income_usd),
+            gross: formatF22Pesos(salary.gross_clp),
+            taxUsd: formatTaxDocumentDollars(salary.us_tax_usd),
             source: salary.us_tax_source ? t(`taxReturn.foreignIncome.taxSource.${salary.us_tax_source}`) : "—",
-            tax: formatClp(salary.us_tax_clp),
-            net: formatClp(salary.net_clp),
+            tax: formatF22Pesos(salary.us_tax_clp),
+            net: formatF22Pesos(salary.net_clp),
           })}
         </p>
       ) : null}
       {salary.credit_cap_clp != null && salary.credit_applied_clp != null ? (
         <p className="muted">
           {t("taxReturn.foreignIncome.credit", {
-            credit: formatClp(salary.credit_clp),
-            cap: formatClp(salary.credit_cap_clp),
-            applied: formatClp(salary.credit_applied_clp),
+            credit: formatF22Pesos(salary.credit_clp),
+            cap: formatF22Pesos(salary.credit_cap_clp),
+            applied: formatF22Pesos(salary.credit_applied_clp),
           })}
         </p>
       ) : null}
       {interest.lines.length > 0 ? (
         <p className="muted">
-          {t("taxReturn.foreignIncome.interest", { usd: formatUsdFine(interest.usd), clp: formatClp(interest.clp) })}
+          {t("taxReturn.foreignIncome.interest", { usd: formatTaxDocumentDollars(interest.usd), clp: formatF22Pesos(interest.clp) })}
         </p>
       ) : null}
     </PageGridTile>
@@ -463,9 +464,9 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
                 ),
               },
               { key: "units", header: t("taxReturn.art107.units"), headerClassName: "num", className: "num", cell: (s) => formatGroupedDecimal(s.units, 0, 4) },
-              { key: "proceeds", header: t("taxReturn.art107.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
-              { key: "costPaid", header: t("taxReturn.art107.costPaid"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
-              { key: "costReajustado", header: t("taxReturn.art107.costReajustado"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_reajustado_clp) },
+              { key: "proceeds", header: t("taxReturn.art107.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.proceeds_clp) },
+              { key: "costPaid", header: t("taxReturn.art107.costPaid"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.cost_clp) },
+              { key: "costReajustado", header: t("taxReturn.art107.costReajustado"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.cost_reajustado_clp) },
               { key: "closeDec31", header: t("taxReturn.art107.closeDec31"), headerClassName: "num", className: "num", cell: (s) => money(s.cost_close_dec31_clp) },
               { key: "result", header: t("taxReturn.art107.result"), headerClassName: "num", className: "num", cell: (s) => money(s.result_clp[a.default_option]) },
               {
@@ -482,7 +483,7 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
           {taxed ? (
             <p>
               {t("taxReturn.art107.totals", {
-                costPaid: formatClp(a.totals_clp.cost_paid),
+                costPaid: formatF22Pesos(a.totals_clp.cost_paid),
                 closeDec31: money(a.totals_clp.close_dec31),
               })}
             </p>
@@ -491,24 +492,24 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
       ) : null}
       {carried ? (
         <p>
-          {t("taxReturn.art107.carriedLoss", { amount: formatClp(a.carried_loss_clp) })}
+          {t("taxReturn.art107.carriedLoss", { amount: formatF22Pesos(a.carried_loss_clp) })}
           {a.carried_loss_source != null ? ` ${t(`taxReturn.art107.carriedLossSource.${a.carried_loss_source}`)}` : ""}
         </p>
       ) : null}
       {taxed || carried ? (
         <p>
           {t("taxReturn.art107.summary", {
-            result: formatClp(a.result_clp),
-            base: formatClp(a.base_clp),
-            tax: formatClp(a.tax_clp),
+            result: formatF22Pesos(a.result_clp),
+            base: formatF22Pesos(a.base_clp),
+            tax: formatF22Pesos(a.tax_clp),
           })}
         </p>
       ) : null}
       {a.informed_sales_clp != null ? (
-        <p className="muted">{t("taxReturn.art107.informedSales", { amount: formatClp(a.informed_sales_clp) })}</p>
+        <p className="muted">{t("taxReturn.art107.informedSales", { amount: formatF22Pesos(a.informed_sales_clp) })}</p>
       ) : null}
       {a.informed_result_clp != null ? (
-        <p className="muted">{t("taxReturn.art107.informedResult", { amount: formatClp(a.informed_result_clp) })}</p>
+        <p className="muted">{t("taxReturn.art107.informedResult", { amount: formatF22Pesos(a.informed_result_clp) })}</p>
       ) : null}
       {a.distributions.length > 0 ? (
         <>
@@ -527,10 +528,10 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
                 title: (d) => `${d.date} · ${d.account_name}`,
               },
               { key: "account", header: t("taxReturn.art107.colAccount"), cell: (d) => d.account_name, desktopOnly: true },
-              { key: "amount", header: t("taxReturn.art107.colAmount"), headerClassName: "num", className: "num", cell: (d) => formatClp(d.amount_clp) },
+              { key: "amount", header: t("taxReturn.art107.colAmount"), headerClassName: "num", className: "num", cell: (d) => formatF22Pesos(d.amount_clp) },
             ]}
           />
-          <p>{t("taxReturn.art107.distributionsTotal", { amount: formatClp(a.distributions_clp) })}</p>
+          <p>{t("taxReturn.art107.distributionsTotal", { amount: formatF22Pesos(a.distributions_clp) })}</p>
         </>
       ) : null}
     </PageGridTile>
@@ -552,14 +553,14 @@ function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
   const codes =
     f.route === "idpc_1901" ? (
       f.codes[1901] != null && f.codes.idpc_clp != null ? (
-        <p>{t("taxReturn.foreignFx.codes1901", { amount: formatClp(f.codes[1901]), idpc: formatClp(f.codes.idpc_clp) })}</p>
+        <p>{t("taxReturn.foreignFx.codes1901", { amount: formatF22Pesos(f.codes[1901]), idpc: formatF22Pesos(f.codes.idpc_clp) })}</p>
       ) : f.result_december_clp < 0 ? (
         <p style={{ color: "var(--negative)" }}>{t("taxReturn.foreignFx.lossLost1901")}</p>
       ) : null
     ) : f.codes[1032] != null ? (
-      <p>{t("taxReturn.foreignFx.codes1032", { amount: formatClp(f.codes[1032]) })}</p>
+      <p>{t("taxReturn.foreignFx.codes1032", { amount: formatF22Pesos(f.codes[1032]) })}</p>
     ) : f.codes.loss169 != null ? (
-      <p>{t("taxReturn.foreignFx.loss169", { amount: formatClp(f.codes.loss169) })}</p>
+      <p>{t("taxReturn.foreignFx.loss169", { amount: formatF22Pesos(f.codes.loss169) })}</p>
     ) : null;
   return (
     <PageGridTile id="foreign-fx">
@@ -595,17 +596,17 @@ function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
                 className: "mono",
                 cell: (s) => s.purchase_dates.join(", "),
               },
-              { key: "proceeds", header: t("taxReturn.foreignFx.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
-              { key: "cost", header: t("taxReturn.foreignFx.cost"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
-              { key: "result", header: t("taxReturn.foreignFx.result"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_clp) },
+              { key: "proceeds", header: t("taxReturn.foreignFx.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.proceeds_clp) },
+              { key: "cost", header: t("taxReturn.foreignFx.cost"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.cost_clp) },
+              { key: "result", header: t("taxReturn.foreignFx.result"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.gain_clp) },
               { key: "decemberPct", header: t("taxReturn.foreignFx.decemberPct"), headerClassName: "num", className: "num", cell: (s) => formatPct(s.december_pct, 1) },
-              { key: "resultDecember", header: t("taxReturn.foreignFx.resultDecember"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_december_clp) },
+              { key: "resultDecember", header: t("taxReturn.foreignFx.resultDecember"), headerClassName: "num", className: "num", cell: (s) => formatF22Pesos(s.gain_december_clp) },
             ]}
           />
           <p>
             {t("taxReturn.foreignFx.totals", {
-              result: formatClp(f.result_clp),
-              resultDecember: formatClp(f.result_december_clp),
+              result: formatF22Pesos(f.result_clp),
+              resultDecember: formatF22Pesos(f.result_december_clp),
             })}
           </p>
           {f.by_currency.length > 1
@@ -615,8 +616,8 @@ function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
                   <p key={c.currency} className="muted">
                     {t("taxReturn.foreignFx.byCurrency", {
                       currency: c.currency.toUpperCase(),
-                      result: formatClp(c.result),
-                      resultDecember: formatClp(c.result_december),
+                      result: formatF22Pesos(c.result),
+                      resultDecember: formatF22Pesos(c.result_december),
                       count: c.disposals,
                     })}
                   </p>
@@ -643,15 +644,15 @@ function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
               },
               { key: "account", header: t("taxReturn.foreignFx.account"), cell: (x) => x.account_name, desktopOnly: true },
               { key: "amount", header: t("taxReturn.foreignFx.amount"), headerClassName: "num", className: "num", cell: (x) => formatCurrencyFine(x.amount, x.currency) },
-              { key: "costLost", header: t("taxReturn.foreignFx.costLost"), headerClassName: "num", className: "num", cell: (x) => formatClp(x.cost_lost_clp) },
+              { key: "costLost", header: t("taxReturn.foreignFx.costLost"), headerClassName: "num", className: "num", cell: (x) => formatF22Pesos(x.cost_lost_clp) },
             ]}
           />
-          <p>{t("taxReturn.foreignFx.feesTotal", { amount: formatClp(f.fees_lost_clp) })}</p>
+          <p>{t("taxReturn.foreignFx.feesTotal", { amount: formatF22Pesos(f.fees_lost_clp) })}</p>
         </>
       ) : null}
       {f.deferred.length > 0 ? (
         <p className="muted">
-          {t("taxReturn.foreignFx.deferredTotal", { count: f.deferred.length, amount: formatClp(f.deferred_clp) })}
+          {t("taxReturn.foreignFx.deferredTotal", { count: f.deferred.length, amount: formatF22Pesos(f.deferred_clp) })}
         </p>
       ) : null}
     </PageGridTile>
@@ -675,15 +676,15 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
     <PageGridTile id="settlement">
       <h2>{t("taxReturn.settlement.title")}</h2>
       <p>
-        {t(`taxReturn.settlement.expected.${s.expected.kind}`, { amount: formatClp(s.expected.amount) })}
+        {t(`taxReturn.settlement.expected.${s.expected.kind}`, { amount: formatF22Pesos(s.expected.amount) })}
         {s.links.length === 0 ? (
           <span style={{ color: "var(--negative)" }}> · {t("taxReturn.settlement.notLinked")}</span>
         ) : (
           <>
             {" · "}
-            {t(`taxReturn.settlement.settled.${s.expected.kind}`, { amount: formatClp(s.settled) })}
+            {t(`taxReturn.settlement.settled.${s.expected.kind}`, { amount: formatF22Pesos(s.settled) })}
             {s.difference != null && s.difference !== 0
-              ? ` · ${t(`taxReturn.settlement.difference.${s.expected.kind}`, { amount: formatClp(s.difference) })}`
+              ? ` · ${t(`taxReturn.settlement.difference.${s.expected.kind}`, { amount: formatF22Pesos(s.difference) })}`
               : ""}
           </>
         )}
@@ -703,7 +704,7 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
             },
             { key: "account", header: t("taxReturn.settlement.colAccount"), cell: (l) => l.account_name ?? "—", desktopOnly: true },
             { key: "description", header: t("taxReturn.settlement.colDescription"), cell: (l) => settlementLinkLabel(t, l) },
-            { key: "amount", header: t("taxReturn.settlement.colAmount"), headerClassName: "num", className: "num", cell: (l) => formatClp(l.amount) },
+            { key: "amount", header: t("taxReturn.settlement.colAmount"), headerClassName: "num", className: "num", cell: (l) => formatF22Pesos(l.amount) },
           ]}
         />
       ) : null}
@@ -724,9 +725,9 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
       <p className="muted">{t("taxReturn.payroll.explain")}</p>
       <p>
         {t("taxReturn.payroll.summary", {
-          withheld: formatClp(w.withheld),
-          byTable: formatClp(w.by_table),
-          difference: formatClp(w.difference),
+          withheld: formatF22Pesos(w.withheld),
+          byTable: formatF22Pesos(w.by_table),
+          difference: formatF22Pesos(w.difference),
         })}
       </p>
       <ColumnTable
@@ -735,15 +736,15 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
         cardLayout="flat"
         columns={[
           { key: "month", header: t("taxReturn.payroll.colMonth"), className: "mono", cell: monthLabel, title: true },
-          { key: "withheld", header: t("taxReturn.payroll.colWithheld"), headerClassName: "num", className: "num", cell: (m) => formatClp(m.withheld) },
-          { key: "byTable", header: t("taxReturn.payroll.colTable"), headerClassName: "num", className: "num", cell: (m) => formatClp(m.by_table) },
+          { key: "withheld", header: t("taxReturn.payroll.colWithheld"), headerClassName: "num", className: "num", cell: (m) => formatF22Pesos(m.withheld) },
+          { key: "byTable", header: t("taxReturn.payroll.colTable"), headerClassName: "num", className: "num", cell: (m) => formatF22Pesos(m.by_table) },
           {
             key: "difference",
             header: t("taxReturn.payroll.colDifference"),
             headerClassName: "num",
             className: "num",
             cellProps: (m) => (differs(m.difference) ? { style: { color: "var(--negative)" } } : {}),
-            cell: (m) => (differs(m.difference) ? formatClp(m.difference) : "—"),
+            cell: (m) => (differs(m.difference) ? formatF22Pesos(m.difference) : "—"),
           },
         ]}
       />
@@ -830,7 +831,7 @@ export function TaxReturnPage() {
                   {t("taxReturn.summaryFiled", { amount: money(data?.tax_filed ?? null) })} ·{" "}
                   {t("taxReturn.summaryDraft", { amount: money(data?.tax_draft ?? null) })}
                   {data && data.tax_filed != null && data.tax_draft != null
-                    ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
+                    ? ` · ${t("taxReturn.summaryDiff", { amount: formatF22Pesos(data.tax_draft - data.tax_filed) })}`
                     : ""}
                 </p>
                 <F22Table rows={data?.rows ?? []} loading={loading} />

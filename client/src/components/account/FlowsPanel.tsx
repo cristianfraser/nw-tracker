@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useCallback, useMemo, useState } from "react";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { parseFlowsAmountFilter } from "../../flowsAmountFilter";
@@ -29,7 +30,7 @@ function extraFiltersFromState(fs: FlowsFilterState): {
       amount_max: max?.value,
       // Only meaningful alongside an amount filter; omitted otherwise so query keys stay stable.
       amount_currency:
-        hasAmountFilter && fs.amount_currency && fs.amount_currency !== "clp"
+        hasAmountFilter && fs.amount_currency && !isHomeCurrency(fs.amount_currency)
           ? fs.amount_currency
           : undefined,
     },
