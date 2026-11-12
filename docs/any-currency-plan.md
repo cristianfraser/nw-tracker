@@ -1,6 +1,9 @@
 # Any display currency (CLP, USD, EUR now; any ISO code later)
 
-Status: built 2026-11-12 for CLP, USD and EUR (core currencies). On-demand currencies (any other ISO code, loaded on first use) are the next step. The global display unit (today the CLP/USD toggle) becomes any
+Status: built 2026-11-12 for CLP, USD and EUR as DISPLAY units. The 2026-11-12 audit (below,
+«Remaining work») found what is still fixed to CLP and USD: display leaks, closed currency lists in
+storage and contracts, and code that models only pesos and dollars as held currencies. On-demand
+currencies (any other ISO code, loaded on first use) come after that. The global display unit (today the CLP/USD toggle) becomes any
 **core currency** of the `currencies` table (migration 312: CLP, USD, EUR; UF stays a series unit of
 its own). Conversions go through `server/src/rates.ts` only: a direct pair first, else through USD,
 else through CLP. EUR/USD lives in `fx_rates` (Yahoo `EURUSD=X`, synced by the `fx_pairs` source);
@@ -117,3 +120,116 @@ Client: Watchlist, the marquee, Rates, Projections, WealthPercentile pages.
 
 Only USD/CLP has a live rate (`fxLive.ts`, `CLP=X` in the poll and the price stream). EUR/USD and
 EUR/CLP read their latest stored day for today; a live EUR/USD quote is a follow-up.
+
+## Remaining work (audit of 2026-11-12)
+
+Four read-only audits (client, server logic, contracts, storage + ingest + copy) looked for
+anything still fixed to CLP / USD. Classes: **D** a figure shown in the wrong currency in EUR,
+**R** a fixed rate or currency pair, **S** storage named after one currency, **L** a label naming
+a currency, **N** native (correct as it is: card facturado, tax, cartola balances, rate tables).
+Earlier passes missed these because they searched for `_usd` twins and `include_usd`; these sites
+never had a twin. Phases run in order; each keeps CLP / USD payloads byte-identical to captures
+from a copy of the database taken before it, and adds EUR tests on synthetic fixtures.
+
+### Phase A — display leaks (D / R / L)
+
+1. Account page (`StandardAccountDetailPage.tsx`): the position table, broker holdings, state
+   contribution and the USD cash tile format with `formatClp` whatever the unit; the contracts
+   behind them (`AccountPositionSnapshot`, `EquityBrokerHolding`, `AccountSummaryResponse`
+   deposits / latest valuation, `AccountDepositInflowsResponse`) get one value in the requested
+   unit. The cash tile's native balance shows in its own currency always (it reads «—» outside
+   USD today).
+2. FX coverage (`fxCoverage.ts`, `FxCoverageBanner`, the `fxCoverage.*` strings): check every
+   pair the requested unit walks through `rates.ts`, and name the pair and unit in the copy.
+3. Gastos and income month rows: one value in the unit, rounded by the currency's minor digits;
+   `_clp` field names and `BigGroupUsage.total_clp` renamed.
+4. `flowsOverview.ts` still calls the legacy CLP + USD deposits builder; the reconciliation keeps
+   twins. Both build in the unit.
+5. Hand conversions through pesos (`flowsOverviewCash.ts`, the flow legs, card upcoming
+   payments, the USD milestones) go through `rates.ts`.
+6. Client cells pinned to one currency: `BigExpenseGroupsSection`, `DeptoAccountSummaryCards`,
+   `StackedExpensesChart`, `CreditCardSummaryCards`, `DashboardCardValue`'s «US$».
+7. Export columns, property aportes (CLP only), `ZERO_CLOSE_EPS` and every `unit === "clp"`
+   rounding read the currency's minor digits.
+8. Market: watchlist / marquee chip and market series gain EUR/USD; projections get an inflation
+   per currency (EUR falls back to USD's today) and inputs typed in the display unit.
+9. Warmers: visited account pages warmed in the units they were opened in
+   (`visitedPagesWarm.ts`); the dump / profile scripts loop over `coreCurrencyCodes()`.
+10. Copy: `toolbarAria`, the demo tour step, the `FlowsTable` amount filter (any currency), chart
+    prop defaults and the `chartColors` union.
+11. Cleanup: `dashboardBucketsUsdToday`, unused fx fields, stale TODOs, AGENTS.md «Deferred: value
+    + currency refactor» (valuations already take any currency, migration 260).
+
+**Guard, landing with A1:** `check:conventions` rules, each with an allowlist of native surfaces:
+`formatClp(` / `formatUsd(` in `client/src/components|pages`; `unit === "<code>"` and
+`["clp","usd"]` literals outside `rates.ts` / `valueConvert.ts`; `_clp` / `_usd` keys in
+`server/contracts/src/dto`; `CHECK (… IN ('clp'…))` in a new migration; `"clp" | "usd"` type
+unions outside the allowlist.
+
+### Phase B — open storage and contracts
+
+**Every currency column references `currencies(code)`.** One migration rebuilds the 24 tables
+whose CHECK lists codes (`cc_statements`, `cc_bank_cupo_snapshots`, `cc_header_payment_legs`,
+`cc_planted_payment_lines`, `cc_manual_payments`, `cc_owed_anchors`, `bank_account_numbers`,
+`bank_account_balance_snapshots`, `merchant_receipts`, `merchant_subscription_notices`,
+`payroll_work_earnings`, `equity_dividends`, `broker_withdrawal_requests`,
+`incoming_wire_notices`, `market_symbols`, `equity_daily`, `live_market_quotes`,
+`recurring_payments`, `movements` (both legs), `movement_dividend_details`, `loan_payments`
+(both), `fund_unit_daily`, `pension_fund_unit_official`), with foreign keys off
+(`FOREIGN_KEYS_OFF_MIGRATIONS`, as migration 169) and the baseline updated. `flows.currency`
+gets the reference too. Exceptions: the UF stays a `currencies` row (tier `index`), so it passes
+the reference; `'none'` (an index level in points) becomes a NULL quote currency on an instrument
+registered as an index (`market_symbols`, `equity_daily`, `live_market_quotes`; readers read NULL
+where they read `'none'`); `crypto_trade_details`' btc / eth stay their own list (coins are
+instruments, not currencies).
+
+**One-currency storage gets `amount` + `currency`:** `expense_entries.amount_clp` (manual expenses
+in any currency; place bills stay pesos by CHECK; the flow triggers in `flowTables279.ts` read the
+row's currency), `flow_parts.amount_clp` (a piece is held in its flow's currency), and the legacy
+`income_entries.amount_clp` (its `amount_usd` twins in `flowsCheckingInflows.ts` go too).
+
+**Ingest contracts:** the 12 `z.enum(["clp","usd"])` (card line, statement, unbilled and pasted
+listings, payment receipt, bank movements and balances, broker movements and notifications,
+merchant documents, the manual card-payment task) and `bank_account.incoming_wires`' usd become a
+lowercase ISO code (`/^[a-z]{3}$/`); the server checks it against `currencies` on receipt.
+`schema_version`s bump where a payload gets wider. Where the server's code still handles only
+pesos and dollars, it refuses with an error naming the currency until Phase C reaches it.
+
+### Phase C — held currencies beyond pesos and dollars
+
+What Phase B opens, the code still models as «pesos, plus dollars». Each step replaces a two-slot
+model by one keyed by currency; parity for CLP / USD as above, and a synthetic EUR case per step.
+
+1. **Foreign cash accounts.** USD cash (kind `usd`, `isUsdCashAccount`, `usdCashBalanceUsdAt`,
+   `signedUsdDeltaForAccountMovement`, `listUsdCashAccountIds`: 26 files) becomes cash held in the
+   account's currency (`accounts` declares it; the leaf kind stops naming the currency). The flow
+   kinds named after a pair (`deposit_usd`, `withdrawal_usd`, `compra_usd_venta_clp`, …: 12
+   files) become currency-neutral kinds whose legs carry their currencies; a migration renames
+   stored rows. The capital-flow rules (`equityBrokerageCapitalFlows.ts`), the cash ledger walks,
+   the deposits and the cash fx leg of the flows overview read the account's currency.
+2. **Foreign-currency lots.** `usdCashLotWalk.ts` / `usdCashCostLots.ts` walk lots of any foreign
+   currency; the card payment cost tracer prices a payment in its currency. The F22's dollar-lot
+   module (`f22/usdFx.ts`) applies the same oficios to any foreign currency (they speak of
+   «moneda extranjera»), at that currency's official rate; to confirm against the SII before
+   building.
+3. **Cards.** `CcOwedNative {clp, usd}` (`ccOwedWalk.ts`, `ccOwedByCurrency.ts`) becomes a map by
+   currency, its revaluation term per sub-balance. Statement lines: `cc_statement_lines`
+   `amount_clp` / `amount_usd` and `valor_cuota_mensual_*` → `amount` + `currency` (a line is in
+   its statement's currency already); `cc_billing_month_balances` → the long table
+   `cc_billing_month_metrics(…, metric, currency, amount)`; `credit_card_account_config.cupo_*`,
+   `cc_feed_billing_closes.saldo_inicial_*`, `cc_traspaso_deuda_links` (from / to line). The
+   facturación rows' `facturado_usd*` and `usd_rate_*` become per-currency entries;
+   `usdDebtPaymentsForAccount`, `isCcUsdPaymentLine`, `usdPaymentLineClpResolver` take the
+   currency (13 files). The issuer's `statement_currencies` already names them.
+4. **Payment mirrors and checking.** The divisas tier of `ccPaymentMirrors.ts` pairs any foreign
+   debt bought with pesos; checking mirror pairs pair two rows of the same currency; the bank
+   balance checks and `bank_account_numbers` take any declared currency.
+5. **Market.** The Yahoo adapter accepts any currency `currencies` holds (pence still refused);
+   `holdingPriceAt` converts any quote through `rates.ts`; dividends and splits in any currency.
+6. **Live rates.** The poll and the price stream carry every core pair, not only `CLP=X`
+   (EUR/USD live, so a euro holding moves during the day).
+7. **Type unions.** The remaining `"clp" | "usd"` literals (about 50 server files, 13 contract,
+   8 ingest, 4 client) become `CurrencyCode`, file by file as the steps above reach them; the
+   guard's allowlist shrinks to what stays native by nature.
+
+Order: A (the guard first), then B, then C1 → C7; C3 is the largest and can split by table.
