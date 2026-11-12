@@ -30,7 +30,7 @@ type Props = {
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   /** The server's yearly rollup of `monthlyPerfRows`. */
   monthlyPerfYearlyRows: readonly AccountMonthlyPerformanceRow[];
-  summary: Pick<AccountSummaryResponse, "latest_valuation_clp" | "account_id">;
+  summary: Pick<AccountSummaryResponse, "latest_valuation" | "account_id">;
   accountDashRow: DashboardAccountRow | null;
   accountColorRgb?: string | null;
   linkTo?: string;

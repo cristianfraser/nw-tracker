@@ -26,7 +26,8 @@ import {
   netDepositFlowBetween,
 } from "./flowsDeposits.js";
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
-import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
+import { getAccountPositionMeta } from "./accountPosition.js";
+import { positionSnapshotInUnit } from "./accountPositionInUnit.js";
 import { flowAdjustedPct } from "./periodReturns.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
@@ -458,7 +459,8 @@ function buildDashboardAccountRowFor(
 
   const clpFrame = frameIn("clp");
   const frame = unit === "clp" ? clpFrame : frameIn(unit);
-  const position = positionSnapshotFromMeta(a.id, positionMeta, clpFrame.deposits ?? 0, v);
+  // The position in the row's unit: its deposits and its value as the row converts them.
+  const position = positionSnapshotInUnit(a.id, positionMeta, v, frame.deposits ?? null, unit);
   // A row the unit could not convert (no rate for its balance or its deposits).
   const fx_missing =
     unit === "clp"

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type * as Dto from "nw-tracker-contracts/dto";
-import type { AccountPositionSnapshot as S_AccountPositionSnapshot } from "../accountPosition.js";
+import type { AccountPositionSnapshot as S_AccountPositionSnapshot } from "../accountPositionInUnit.js";
 import type { EquityBrokerHolding as S_EquityBrokerHolding } from "../equityBrokerHoldings.js";
 import type { FxCoverage as S_FxCoverage } from "../fxCoverage.js";
 import type { FxConversionWarningCode as S_FxConversionWarningCode, FxConversionWarning as S_FxConversionWarning } from "../fxConversionWarnings.js";

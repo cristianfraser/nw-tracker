@@ -37,13 +37,16 @@ export interface AccountPositionSnapshot {
   ticker: string;
   units_kind: UnitsKind;
   units: number | null;
-  deposited_clp: number;
-  value_clp: number | null;
+  /** The currency every money field is in: the request's display unit. */
+  unit: DisplayUnitCode;
+  /** Net personal capital deposited; null when a rate it needs is missing. */
+  deposited: number | null;
+  value: number | null;
   value_as_of: string | null;
-  value_per_unit_clp: number | null;
+  value_per_unit: number | null;
   /** Total dividends received (DRIP + payouts), informational — already netted into total return. */
-  dividends_clp?: number;
-  total_return_clp?: number | null;
+  dividends?: number;
+  total_return?: number | null;
   return_on_deposited_pct?: number | null;
   /** Stock accounts: the shares split by the cash account that paid for them (one account per ticker, any broker). */
   brokers?: EquityBrokerHolding[];
@@ -54,7 +57,8 @@ export interface EquityBrokerHolding {
   cash_account_name: string | null;
   units: number;
   share: number;
-  value_clp: number | null;
+  /** The position's value × share, in the position's `unit`. */
+  value: number | null;
 }
 
 /** One rate pair (`base` priced in `quote`) a conversion into the display unit walks. */

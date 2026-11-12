@@ -499,7 +499,7 @@ function MortgageLoanSection({
     () => ({
       account_id: mortgageDashRow?.account_id ?? mortgageLedger?.account_id ?? 0,
       // The dashboard row is in the display unit: its pesos only when the unit is pesos.
-      latest_valuation_clp: displayUnit === "clp" ? mortgageDashRow?.current_value ?? null : null,
+      latest_valuation: displayUnit === "clp" ? mortgageDashRow?.current_value ?? null : null,
     }),
     [mortgageDashRow, mortgageLedger?.account_id, displayUnit]
   );

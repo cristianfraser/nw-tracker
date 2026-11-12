@@ -19,8 +19,9 @@ export type MortgageSummaryCardsData = {
 export type PropertySummaryCardsData = {
   valueUf: number | null;
   valueClp: number | null;
-  /** Pesos deposited (the account summary's figure, pesos whatever the display unit). */
-  depositedClp: number;
+  /** Deposited, in `depositedUnit` (the account summary's unit). */
+  deposited: number | null;
+  depositedUnit: string;
   /** P/L this year and all-time, in `plUnit`. */
   plYtd: number | null;
   plTotal: number | null;
@@ -81,7 +82,7 @@ function latestMonthlyPerfRow(
 
 export function buildMortgageSummaryCardsData(
   ledger: AccountMortgageLedgerResponse,
-  summary: Pick<AccountSummaryResponse, "latest_valuation_clp">,
+  summary: Pick<AccountSummaryResponse, "latest_valuation">,
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[],
   /** A dashboard row in pesos (its unit is the payload's: callers pass it only in CLP). */
   accountDashRow: DashboardAccountRow | null
@@ -97,7 +98,7 @@ export function buildMortgageSummaryCardsData(
     null;
   const balanceClp =
     snapshot?.restante_clp ??
-    summary.latest_valuation_clp ??
+    summary.latest_valuation ??
     accountDashRow?.current_value ??
     null;
 
@@ -113,7 +114,7 @@ export function buildMortgageSummaryCardsData(
 
 export function buildPropertySummaryCardsData(
   ledger: AccountMortgageLedgerResponse,
-  summary: Pick<AccountSummaryResponse, "deposits_clp" | "latest_valuation_clp">,
+  summary: Pick<AccountSummaryResponse, "unit" | "deposits" | "latest_valuation">,
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[],
   /** A dashboard row in pesos (its unit is the payload's: callers pass it only in CLP). */
   accountDashRow: DashboardAccountRow | null
@@ -125,10 +126,11 @@ export function buildPropertySummaryCardsData(
     valueUf: valueRow?.valor_neto_uf ?? null,
     valueClp:
       valueRow?.valor_neto_clp ??
-      summary.latest_valuation_clp ??
+      summary.latest_valuation ??
       accountDashRow?.current_value ??
       null,
-    depositedClp: summary.deposits_clp,
+    deposited: summary.deposits,
+    depositedUnit: summary.unit,
     plYtd: latestPerf?.ytd_nominal_pl ?? accountDashRow?.delta_year ?? null,
     plTotal: latestPerf?.cumulative_nominal_pl ?? accountDashRow?.delta_total ?? null,
     // The performance rows carry their unit; the dashboard row fallback is pesos (callers pass it

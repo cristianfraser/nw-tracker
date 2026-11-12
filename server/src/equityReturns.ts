@@ -17,10 +17,11 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { flowAdjustedPct } from "./periodReturns.js";
+import { flowEventInUnit, type DisplayUnitCode } from "./rates.js";
 
-/** Σ reference CLP of all dividends received (`dividend_payout` transfers). Informational. */
-export function totalDividendsClpForAccount(accountId: number): number {
-  if (!Number.isFinite(accountId) || accountId <= 0 || !accountUsesEquityMtm(accountId)) return 0;
+/** Every dividend received (`dividend_payout` transfers): its dollars and their reference pesos. */
+function dividendEventsForAccount(accountId: number): { occurred_on: string; amt: number; amt_usd: number }[] {
+  if (!Number.isFinite(accountId) || accountId <= 0 || !accountUsesEquityMtm(accountId)) return [];
   const rows = db
     .prepare(
       `SELECT occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}
@@ -33,41 +34,53 @@ export function totalDividendsClpForAccount(accountId: number): number {
        ORDER BY occurred_on, id`
     )
     .all(accountId) as ({ occurred_on: string } & MovementAmountFields)[];
-  let sum = 0;
+  const out: { occurred_on: string; amt: number; amt_usd: number }[] = [];
   for (const r of rows) {
-    const clp = usdToClpReferenceRounded(Math.abs(movementUsdLeg(r) ?? 0), r.occurred_on);
-    if (clp != null && Number.isFinite(clp)) sum += clp;
+    const usd = Math.abs(movementUsdLeg(r) ?? 0);
+    const clp = usdToClpReferenceRounded(usd, r.occurred_on);
+    if (clp != null && Number.isFinite(clp)) out.push({ occurred_on: r.occurred_on, amt: clp, amt_usd: usd });
   }
+  return out;
+}
+
+/** Σ reference CLP of all dividends received (`dividend_payout` transfers). Informational. */
+export function totalDividendsClpForAccount(accountId: number): number {
+  let sum = 0;
+  for (const e of dividendEventsForAccount(accountId)) sum += e.amt;
+  return sum;
+}
+
+/** Σ of the dividends received in `unit`, each at its own day's rate (its dollars in USD). */
+export function totalDividendsInUnitForAccount(accountId: number, unit: DisplayUnitCode): number {
+  let sum = 0;
+  for (const e of dividendEventsForAccount(accountId)) sum += flowEventInUnit(e, unit);
   return sum;
 }
 
 export type EquityReturnSnapshot = {
-  /** Total dividends received as payouts (already netted in `total_return_clp`). */
-  dividends_clp: number;
-  total_return_clp: number | null;
+  /** Total dividends received as payouts (already netted in `total_return`), in the unit. */
+  dividends: number;
+  total_return: number | null;
   return_on_deposited_pct: number | null;
 };
 
+/** An equity position's returns in `unit`; `deposited` and `value` are in `unit`. */
 export function equityReturnSnapshot(
   accountId: number,
-  depositedClp: number,
-  valueClp: number | null
+  deposited: number | null,
+  value: number | null,
+  unit: DisplayUnitCode
 ): EquityReturnSnapshot | null {
   if (!accountUsesEquityMtm(accountId)) return null;
-  const total_return_clp =
-    valueClp != null && Number.isFinite(valueClp) ? valueClp - depositedClp : null;
+  const total_return =
+    value != null && Number.isFinite(value) && deposited != null ? value - deposited : null;
   // Lifetime return on the capital deposited — the shared rule's prior-less frame, so a
   // position sold off (bought and sold within its lifetime) reads null, not −100%.
-  const return_on_deposited_pct = flowAdjustedPct(
-    total_return_clp,
-    null,
-    depositedClp,
-    valueClp,
-    "clp"
-  );
+  const return_on_deposited_pct =
+    deposited == null ? null : flowAdjustedPct(total_return, null, deposited, value, unit);
   return {
-    dividends_clp: totalDividendsClpForAccount(accountId),
-    total_return_clp,
+    dividends: totalDividendsInUnitForAccount(accountId, unit),
+    total_return,
     return_on_deposited_pct,
   };
 }

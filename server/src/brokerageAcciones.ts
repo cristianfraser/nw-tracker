@@ -59,17 +59,18 @@ export interface DashboardAccountStats {
    * valuation charts). Computed on each `/api/dashboard` response.
    */
   chart_inactive: boolean;
-  /** SPY, VEA, BTC, ETH — ticker, units, implied CLP per unit when data exists */
+  /** SPY, VEA, BTC, ETH — ticker, units, value per unit in the row's unit when data exists (`accountPositionInUnit.ts`). */
   position?: {
     ticker: string;
     units_kind: "shares" | "coin" | "contracts";
     units: number | null;
-    deposited_clp: number;
-    value_clp: number | null;
+    unit: string;
+    deposited: number | null;
+    value: number | null;
     value_as_of: string | null;
-    value_per_unit_clp: number | null;
-    dividends_clp?: number;
-    total_return_clp?: number | null;
+    value_per_unit: number | null;
+    dividends?: number;
+    total_return?: number | null;
     return_on_deposited_pct?: number | null;
   } | null;
   /** True when any linked global sync source is currently stale. */

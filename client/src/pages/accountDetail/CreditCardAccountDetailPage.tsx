@@ -31,7 +31,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   const heroValue =
     data.accountDashRow?.current_value ??
     (data.stripUnit === "clp"
-      ? summary.latest_valuation_clp ?? ccLedger.totals.total_remaining_principal_clp
+      ? summary.latest_valuation ?? ccLedger.totals.total_remaining_principal_clp
       : data.chartUnitVal);
 
   return (

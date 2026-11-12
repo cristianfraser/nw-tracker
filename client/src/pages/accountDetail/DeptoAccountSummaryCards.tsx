@@ -14,6 +14,16 @@ import {
   buildPropertySummaryCardsData,
 } from "./deptoAccountSummary";
 
+/** The property cards need the summary's deposits and the unit they are in. */
+function propertySummary(
+  summary: Pick<AccountSummaryResponse, "latest_valuation"> & Partial<Pick<AccountSummaryResponse, "deposits" | "unit">>
+): Pick<AccountSummaryResponse, "unit" | "deposits" | "latest_valuation"> {
+  if (summary.unit == null || summary.deposits == null) {
+    throw new Error("DeptoAccountSummaryCards: the property variant needs the summary's deposits and unit");
+  }
+  return { unit: summary.unit, deposits: summary.deposits, latest_valuation: summary.latest_valuation };
+}
+
 function formatPl(value: number | null, unit: string): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return formatCurrency(value, unit);
@@ -47,8 +57,8 @@ export function DeptoAccountSummaryCards({
 }: {
   variant: "mortgage" | "property";
   ledger: AccountMortgageLedgerResponse;
-  summary: Pick<AccountSummaryResponse, "latest_valuation_clp"> &
-    Partial<Pick<AccountSummaryResponse, "deposits_clp">>;
+  summary: Pick<AccountSummaryResponse, "latest_valuation"> &
+    Partial<Pick<AccountSummaryResponse, "deposits" | "unit">>;
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   accountDashRow: DashboardAccountRow | null;
   /** The ledger is a placeholder or held prior data: the cards dim (empty values read «—»). */
@@ -69,10 +79,7 @@ export function DeptoAccountSummaryCards({
       variant === "property"
         ? buildPropertySummaryCardsData(
             ledger,
-            {
-              latest_valuation_clp: summary.latest_valuation_clp,
-              deposits_clp: summary.deposits_clp ?? 0,
-            },
+            propertySummary(summary),
             monthlyPerfRows,
             accountDashRow
           )
@@ -124,7 +131,7 @@ export function DeptoAccountSummaryCards({
         </div>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.property.deposited")}</div>
-          <div className="value mono">{formatClp(propertyData.depositedClp)}</div>
+          <div className="value mono">{formatPl(propertyData.deposited, propertyData.depositedUnit)}</div>
         </div>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.property.plYtd")}</div>

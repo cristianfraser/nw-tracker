@@ -17,7 +17,7 @@ import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedge
 import { Table } from "../../components/ui/Table";
 import { Loadable, loadableClass } from "../../components/ui/Loadable";
 import { PageGridTile } from "../../components/layout/PageGridTile";
-import { formatClp, formatGroupedDecimal, formatInstrumentUnits, formatPct, formatUsdFine } from "../../format";
+import { formatInstrumentUnits, formatMoney, formatPct, formatUsdFine } from "../../format";
 import { OPTION_CONTRACT_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
@@ -183,7 +183,11 @@ export function StandardAccountDetailPage({ data }: Props) {
     periodReturns === undefined
       ? data.accountDashRow == null || data.accountDashRow.has_period_returns === true
       : periodReturns !== null;
-  const showEquityReturnColumns = summary.position?.dividends_clp != null;
+  const showEquityReturnColumns = summary.position?.dividends != null;
+  // Every money figure of the summary is the server's, in its `unit` (the request's display unit).
+  const summaryUnit = summary.position?.unit ?? summary.unit;
+  const money = (v: number | null | undefined) =>
+    v != null && Number.isFinite(v) ? formatMoney({ value: v, currency: summaryUnit }) : "—";
   // Shown only when the ticker is held through more than one cash account (broker).
   const brokerHoldings = summary.position?.brokers ?? [];
 
@@ -195,7 +199,7 @@ export function StandardAccountDetailPage({ data }: Props) {
       stripUnit={data.stripUnit}
       heroValue={
         data.accountDashRow?.current_value ??
-        (data.stripUnit === "clp" ? summary.latest_valuation_clp ?? 0 : data.chartUnitVal)
+        (data.stripUnit === summary.unit ? summary.latest_valuation ?? 0 : data.chartUnitVal)
       }
       dash={data.dash}
       accountNavChildren={data.accountNavChildren}
@@ -290,30 +294,21 @@ export function StandardAccountDetailPage({ data }: Props) {
                   )
                   : "—"}
               </td>
-              <td className="mono">{formatClp(summary.position?.deposited_clp ?? summary.deposits_clp)}</td>
+              <td className="mono">{money(summary.position ? summary.position.deposited : summary.deposits)}</td>
               {showEquityReturnColumns ? (
-                <td className="mono">{formatClp(summary.position?.dividends_clp ?? 0)}</td>
+                <td className="mono">{money(summary.position?.dividends ?? 0)}</td>
               ) : null}
-              <td className="mono">
-                {(() => {
-                  const v = summary.position?.value_clp ?? summary.latest_valuation_clp;
-                  return v != null ? formatClp(v) : "—";
-                })()}
-              </td>
+              <td className="mono">{money(summary.position?.value ?? summary.latest_valuation)}</td>
               <td className="muted">
                 {summary.position?.value_as_of ?? summary.latest_valuation_date ?? "—"}
               </td>
               <td className="mono">
-                {summary.position?.value_per_unit_clp != null
-                  ? formatClp(summary.position.value_per_unit_clp)
-                  : "—"}
+                {money(summary.position?.value_per_unit)}
               </td>
               {showEquityReturnColumns ? (
                 <>
                   <td className="mono">
-                    {summary.position?.total_return_clp != null
-                      ? formatClp(summary.position.total_return_clp)
-                      : "—"}
+                    {money(summary.position?.total_return)}
                   </td>
                   <td className="mono">
                     {summary.position?.return_on_deposited_pct != null
@@ -347,7 +342,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                       {formatInstrumentUnits(h.units, summary.position?.units_kind ?? "shares")}
                     </td>
                     <td className="mono">{formatPct(h.share * 100)}</td>
-                    <td className="mono">{h.value_clp != null ? formatClp(h.value_clp) : "—"}</td>
+                    <td className="mono">{money(h.value)}</td>
                   </tr>
                 ))}
               </Table>
@@ -364,7 +359,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               <thead>
                 <tr>
                   <th>{t("accountDetail.usdCash.balanceUsd")}</th>
-                  <th>{t("accountDetail.usdCash.balanceClp")}</th>
+                  <th>{t("accountDetail.usdCash.valueInUnit", { currency: summary.unit.toUpperCase() })}</th>
                   <th>{t("accountDetail.usdCash.asOf")}</th>
                 </tr>
               </thead>
@@ -372,18 +367,10 @@ export function StandardAccountDetailPage({ data }: Props) {
           >
             <tr>
               <td className="mono">
-                {/* The row carries the strip's unit only: dollars when the strip is in dollars. */}
-                {data.stripUnit === "usd" && data.accountDashRow?.current_value != null
-                  ? formatGroupedDecimal(data.accountDashRow.current_value, 2)
-                  : "—"}
+                {/* What the account holds, in its own currency whatever the display unit. */}
+                {summary.latest_valuation_native ? formatMoney(summary.latest_valuation_native) : "—"}
               </td>
-              <td className="mono">
-                {formatClp(
-                  (data.stripUnit === "clp" ? data.accountDashRow?.current_value : null) ??
-                    summary.latest_valuation_clp ??
-                    0
-                )}
-              </td>
+              <td className="mono">{money(summary.latest_valuation)}</td>
               <td className="muted">
                 {summary.latest_valuation_date ?? "—"}
               </td>
@@ -605,8 +592,8 @@ export function StandardAccountDetailPage({ data }: Props) {
             {depositInflows.state_contribution_events.map((e, idx) => (
               <tr key={`state-${e.occurred_on}-${idx}`}>
                 <td>{e.occurred_on}</td>
-                <td className="mono">{formatClp(e.amt_clp)}</td>
-                <td className="mono muted">{formatClp(e.cumulative_clp)}</td>
+                <td className="mono">{formatMoney({ value: e.amt, currency: depositInflows.unit })}</td>
+                <td className="mono muted">{formatMoney({ value: e.cumulative, currency: depositInflows.unit })}</td>
               </tr>
             ))}
           </Table>

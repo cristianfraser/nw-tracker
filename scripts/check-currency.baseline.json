@@ -1,11 +1,11 @@
 {
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
-    "currency-formatter": 306,
+    "currency-formatter": 296,
     "currency-list-literal": 21,
     "currency-type-union": 150,
-    "dto-currency-key": 331,
-    "unit-literal-compare": 380
+    "dto-currency-key": 314,
+    "unit-literal-compare": 377
   },
   "violations": {
     "client/src/api.ts": {
@@ -156,14 +156,14 @@
       "currency-formatter": 10
     },
     "client/src/pages/accountDetail/DeptoAccountSummaryCards.tsx": {
-      "currency-formatter": 2
+      "currency-formatter": 1
     },
     "client/src/pages/accountDetail/MortgageTables.tsx": {
       "currency-formatter": 7
     },
     "client/src/pages/accountDetail/StandardAccountDetailPage.tsx": {
-      "currency-formatter": 10,
-      "unit-literal-compare": 4
+      "currency-formatter": 1,
+      "unit-literal-compare": 1
     },
     "client/src/pages/accountDetail/useAccountDetailPageData.ts": {
       "unit-literal-compare": 1
@@ -233,10 +233,10 @@
     },
     "server/contracts/src/dto/accounts.ts": {
       "currency-type-union": 1,
-      "dto-currency-key": 20
+      "dto-currency-key": 18
     },
     "server/contracts/src/dto/core.ts": {
-      "dto-currency-key": 10
+      "dto-currency-key": 4
     },
     "server/contracts/src/dto/creditCard.ts": {
       "currency-type-union": 2,
@@ -259,7 +259,7 @@
       "dto-currency-key": 3
     },
     "server/contracts/src/dto/mortgage.ts": {
-      "dto-currency-key": 36
+      "dto-currency-key": 27
     },
     "server/contracts/src/dto/projections.ts": {
       "dto-currency-key": 4

@@ -147,7 +147,7 @@ describe("buildMortgageSummaryCardsData", () => {
           },
         ],
       },
-      { latest_valuation_clp: 74_695_292 },
+      { latest_valuation: 74_695_292 },
       [],
       null
     );
@@ -178,7 +178,7 @@ describe("buildPropertySummaryCardsData", () => {
           }),
         ],
       },
-      { deposits_clp: 94_511_320, latest_valuation_clp: 45_000_000 },
+      { unit: "clp", deposits: 94_511_320, latest_valuation: 45_000_000 },
       [
         {
           as_of_date: "2025-01-31",
@@ -209,7 +209,8 @@ describe("buildPropertySummaryCardsData", () => {
     );
     expect(data.valueUf).toBe(1200);
     expect(data.valueClp).toBe(45_000_000);
-    expect(data.depositedClp).toBe(94_511_320);
+    expect(data.deposited).toBe(94_511_320);
+    expect(data.depositedUnit).toBe("clp");
     expect(data.plYtd).toBe(350_000);
     expect(data.plTotal).toBe(1_650_000);
     expect(data.plUnit).toBe("clp");

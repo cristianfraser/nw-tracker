@@ -25,8 +25,8 @@ export type EquityBrokerHolding = {
   units: number;
   /** units ÷ the position's units. */
   share: number;
-  /** The position's value × share; null when the position has no value. */
-  value_clp: number | null;
+  /** The position's value × share, in the unit the position's value was given in; null when it has none. */
+  value: number | null;
 };
 
 const UNITS_EPS = 1e-9;
@@ -59,7 +59,8 @@ function cashCounterpartId(row: MovementTransferRow, accountId: number): number 
 export function equityBrokerHoldings(
   accountId: number,
   asOfYmd: string,
-  positionValueClp: number | null
+  /** The position's value in the caller's display unit (each group gets its share of it). */
+  positionValue: number | null
 ): EquityBrokerHolding[] {
   const rows = stmtShareRows.all(
     accountId,
@@ -111,8 +112,7 @@ export function equityBrokerHoldings(
       cash_account_name: name,
       units,
       share,
-      value_clp:
-        positionValueClp != null && Number.isFinite(positionValueClp) ? positionValueClp * share : null,
+      value: positionValue != null && Number.isFinite(positionValue) ? positionValue * share : null,
     });
   }
   out.sort((a, b) => b.units - a.units);
