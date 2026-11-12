@@ -12,6 +12,7 @@ import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { parseDdMmYyToIso, normalizeMerchantText, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
 import { buildExpenseKey, parseExpenseKey } from "./expenseKeys.js";
+import { lineCuotaClpSql } from "./cards/lineAmountSql.js";
 
 export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
 /** Where a charge a document shows is a subscription's lands when nothing else categorizes it. */
@@ -564,7 +565,7 @@ export function loadCcStatementLineExpenseCtx(statementLineId: number): CcStatem
   const row = db
     .prepare(
       `SELECT s.account_id, l.installment_flag, l.merchant, l.transaction_date, l.posting_date,
-              l.nro_cuota_total, l.valor_cuota_mensual_clp, l.parser_row_id
+              l.nro_cuota_total, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, l.parser_row_id
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE l.id = ?`
@@ -753,7 +754,7 @@ function listInstallmentSiblingIdsViaHeuristic(ctx: CcStatementLineExpenseCtx): 
 
   const candidates = db
     .prepare(
-      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.valor_cuota_mensual_clp
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND l.installment_flag = 1 AND l.nro_cuota_total = ?`
@@ -814,7 +815,7 @@ function listInstallmentHHeuristicStatementLineIds(
   };
   const candidates = db
     .prepare(
-      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.valor_cuota_mensual_clp
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND l.installment_flag = 1 AND l.nro_cuota_total = ?`

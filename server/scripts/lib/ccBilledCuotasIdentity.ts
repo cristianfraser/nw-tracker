@@ -3,6 +3,7 @@ import { cancelledInstallmentPurchaseIdsForAccount } from "../../src/ccInstallme
 import { isStatementSourceKind } from "../../src/ccStatementSourceKind.js";
 import { listCcStatementsForAccount } from "../../src/ccStatementsDb.js";
 import { db } from "../../src/db.js";
+import { lineCuotaClpSql } from "../../src/cards/lineAmountSql.js";
 
 export type CcBilledCuotasMonth = {
   billing_month: string;
@@ -23,7 +24,7 @@ export type CcBilledCuotasMonth = {
  */
 export function ccBilledCuotasIdentity(accountId: number): CcBilledCuotasMonth[] {
   const sumPrintedCuotas = db.prepare(
-    `SELECT COALESCE(SUM(valor_cuota_mensual_clp), 0) AS clp FROM cc_statement_lines
+    `SELECT COALESCE(SUM(${lineCuotaClpSql("")}), 0) AS clp FROM cc_statement_lines
      WHERE statement_id = ? AND installment_flag = 1 AND nro_cuota_current >= 1`
   );
   const billedByMonth = new Map<string, number>();

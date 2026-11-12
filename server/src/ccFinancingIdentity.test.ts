@@ -17,6 +17,7 @@ import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
+import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 /** The section-3 charges the statements of one facturación print, in pesos. */
 function statementSection3ChargesClp(accountId: number, billingMonth: string): number {
@@ -58,7 +59,7 @@ beforeAll(() => {
     .prepare(
       `SELECT s.id, s.account_id, l.transaction_date FROM cc_statements s
        JOIN cc_statement_lines l ON l.statement_id = s.id
-       WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp > 0
+       WHERE s.currency = 'clp' AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} > 0
        ORDER BY s.statement_date DESC, l.id LIMIT 1`
     )
     .get() as { id: number; account_id: number; transaction_date: string } | undefined;

@@ -22,6 +22,7 @@ import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
+import { lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 describe("feed cuota purchase rules", () => {
   it("bills cuota comercio at the close after the purchase cycle, precio contado at its own", () => {
@@ -515,7 +516,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const restated = db
       .prepare(
         `SELECT l.transaction_date FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND l.merchant = 'APPLE.COM/BILL' AND l.amount_usd = 13.22`
+         WHERE s.account_id = ? AND l.merchant = 'APPLE.COM/BILL' AND ${lineAmountUsdSql("l")} = 13.22`
       )
       .all(accountId);
     expect(restated).toEqual([{ transaction_date: "17/9/2026" }]);

@@ -34,6 +34,7 @@ import {
 } from "../src/ccCrossImportDedupe.js";
 import { deleteLines } from "../src/cards/lineWrites.js";
 import { isGarbledUsdStatementMerchant } from "../src/ccStatementSection3.js";
+import { lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -72,7 +73,7 @@ function artifactRule(line: LineRow): ArtifactRule | null {
 const rows = db
   .prepare(
     `SELECT l.id, s.account_id, s.id AS statement_id, s.source_pdf, s.statement_date,
-            l.transaction_date, l.merchant, l.country, l.amount_orig, l.orig_currency, l.amount_usd
+            l.transaction_date, l.merchant, l.country, l.amount_orig, l.orig_currency, ${lineAmountUsdSql("l")} AS amount_usd
      FROM cc_statement_lines l
      JOIN cc_statements s ON s.id = l.statement_id
      WHERE s.currency = 'usd' AND s.source_pdf NOT LIKE 'import:%'

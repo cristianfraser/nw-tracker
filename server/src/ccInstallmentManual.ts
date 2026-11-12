@@ -18,6 +18,7 @@ import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategori
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 export type ManualCcPurchaseInput = {
   purchase_date: string;
@@ -150,7 +151,7 @@ export function updateManualCcInstallmentPurchase(
 }
 
 const selStatementLineForConvert = db.prepare(`
-  SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp,
+  SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineAmountClpSql("l")} AS amount_clp,
          l.installment_flag, l.cuota_purchase_kind, s.account_id, s.card_group
   FROM cc_statement_lines l
   JOIN cc_statements s ON s.id = l.statement_id

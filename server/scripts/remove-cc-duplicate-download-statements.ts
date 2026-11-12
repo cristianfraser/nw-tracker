@@ -48,6 +48,7 @@ import {
   assertCcPaymentEvidenceKept,
   ccPaymentPairingIdsWithEvidence,
 } from "../src/ccPaymentMirrorEvidence.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
 
 const apply = process.argv.includes("--apply");
 const csvArg = process.argv.find((a) => a.startsWith("--csv="))?.slice("--csv=".length);
@@ -134,7 +135,7 @@ for (const p of parsed.values()) {
 }
 
 const selLines = db.prepare(
-  `SELECT l.id, l.transaction_date, l.merchant, l.amount_clp, l.amount_usd,
+  `SELECT l.id, l.transaction_date, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
           (c.statement_line_id IS NOT NULL) AS categorized
    FROM cc_statement_lines l
    LEFT JOIN cc_expense_line_categories c ON c.statement_line_id = l.id

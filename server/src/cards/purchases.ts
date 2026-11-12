@@ -34,6 +34,7 @@ import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch } from "../m
 import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix, isCcPaymentMerchant } from "nw-tracker-contracts";
 import { paymentStatementMonthYm } from "./statementMonth.js";
 import { billingMonthContainingPurchase, lastPdfBillingMonthForAccount } from "./facturacion.js";
+import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql, lineCuotaUsdSql } from "./lineAmountSql.js";
 
 /** A plan as the line matchers read it (`cc_installment_purchases`). */
 export type CardPlanForMatching = {
@@ -237,7 +238,7 @@ function listOneShotLinesForAccountUncached(accountId: number): CardOneShotLine[
   const rows = db
     .prepare(
       `SELECT l.id AS statement_line_id, l.merchant, l.transaction_date, l.posting_date,
-              l.amount_clp, l.amount_usd, s.statement_date, s.currency AS statement_currency
+              ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.statement_date, s.currency AS statement_currency
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND l.installment_flag = 0`
@@ -475,8 +476,9 @@ export type CardLine = {
 
 const CARD_LINE_COLUMNS = `l.id AS line_id, s.id AS statement_id, s.account_id, s.statement_date,
   s.currency AS statement_currency, s.source_pdf, s.source_kind, l.merchant, l.transaction_date,
-  l.posting_date, l.amount, l.currency, l.cuota_amount, l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.installment_flag,
-  l.nro_cuota_current, l.nro_cuota_total, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
+  l.posting_date, l.amount, l.currency, l.cuota_amount, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
+  l.amount_orig, l.orig_currency, l.installment_flag,
+  l.nro_cuota_current, l.nro_cuota_total, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
   l.cuota_purchase_kind, l.kind, l.origin_card_last4, l.dedupe_key, l.parser_row_id, l.raw_line, l.flow_id`;
 
 // ---------------------------------------------------------------------------------------------
@@ -525,12 +527,12 @@ export function findLines(q: FindLinesQuery = {}): CardLine[] {
     params.push(q.accountId);
   }
   if (q.amountClp != null) {
-    where.push("l.amount_clp = ?");
+    where.push(`${lineAmountClpSql("l")} = ?`);
     params.push(q.amountClp);
   }
-  if (q.amountClpSign === "positive") where.push("l.amount_clp > 0");
-  if (q.amountClpSign === "negative") where.push("l.amount_clp < 0");
-  if (q.amountClpSign === "present") where.push("l.amount_clp IS NOT NULL");
+  if (q.amountClpSign === "positive") where.push(`${lineAmountClpSql("l")} > 0`);
+  if (q.amountClpSign === "negative") where.push(`${lineAmountClpSql("l")} < 0`);
+  if (q.amountClpSign === "present") where.push(`${lineAmountClpSql("l")} IS NOT NULL`);
   if (q.installmentFlag != null) {
     where.push("l.installment_flag = ?");
     params.push(q.installmentFlag);
@@ -622,11 +624,11 @@ export type CardPaymentLine = {
 
 const stmtClpPaymentLines = db.prepare(
   `SELECT l.id AS line_id, s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name,
-          l.transaction_date, l.amount_clp AS amount, l.merchant
+          l.transaction_date, ${lineAmountClpSql("l")} AS amount, l.merchant
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    JOIN accounts a ON a.id = s.account_id
-   WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp < 0
+   WHERE s.currency = 'clp' AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} < 0
      AND (@account_id IS NULL OR s.account_id = @account_id)`
 );
 
@@ -831,8 +833,8 @@ function backdatedPostingCutoffIso(closeIso: string): string {
 export function debtEventLines(accountId: number): DebtEventLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.amount, l.currency, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
-              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
+      `SELECT l.id, l.merchant, l.amount, l.currency, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
+              l.installment_flag, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
               l.transaction_date, l.posting_date, s.statement_date, l.dedupe_key
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
@@ -885,8 +887,8 @@ export type BilledLine = {
 export function billedOneShotLines(accountId: number, statementDate: string): BilledLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
-              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
+      `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
+              l.installment_flag, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.statement_date = ? AND l.installment_flag = 0`
@@ -900,9 +902,9 @@ export function billedOneShotLines(accountId: number, statementDate: string): Bi
 export function linesOfClose(accountId: number, statementDate: string): BilledLine[] {
   return db
     .prepare(
-      `SELECT l.id, l.merchant, l.installment_flag, l.amount_clp, l.amount_usd,
+      `SELECT l.id, l.merchant, l.installment_flag, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
               s.currency AS statement_currency,
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
+              ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.statement_date = ?`
@@ -927,7 +929,7 @@ export type StatementLineSummary = {
 export function linesOfStatement(statementId: number): StatementLineSummary[] {
   return db
     .prepare(
-      `SELECT id, kind, merchant, amount, currency, amount_clp, amount_usd, transaction_date, posting_date FROM cc_statement_lines WHERE statement_id = ?`
+      `SELECT id, kind, merchant, amount, currency, ${lineAmountClpSql("")} AS amount_clp, ${lineAmountUsdSql("")} AS amount_usd, transaction_date, posting_date FROM cc_statement_lines WHERE statement_id = ?`
     )
     .all(statementId) as StatementLineSummary[];
 }
@@ -950,7 +952,7 @@ export type OpenCycleCuotaPurchaseLine = {
 export function openCycleCuotaPurchaseLines(accountId: number): OpenCycleCuotaPurchaseLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp, l.cuota_purchase_kind,
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineAmountClpSql("l")} AS amount_clp, l.cuota_purchase_kind,
               s.source_pdf
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.source_kind = 'listing_open'
@@ -1018,9 +1020,9 @@ export function expenseEvidenceLines(accountIds: readonly number[]): CardExpense
               s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
               l.transaction_date, l.posting_date, l.origin_card_last4, l.parser_row_id,
               l.amount, l.currency, l.cuota_amount,
-              l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.merchant, l.installment_flag,
+              ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, l.amount_orig, l.orig_currency, l.merchant, l.installment_flag,
               l.nro_cuota_current, l.nro_cuota_total,
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind, l.kind
+              ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd, l.cuota_purchase_kind, l.kind
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id IN (${accountIds.map(() => "?").join(",")})
@@ -1123,7 +1125,7 @@ export function planPrintedCuotaLines(
   return db
     .prepare(
       `SELECT ip.id AS purchase_id, ip.purchase_date, ip.total_amount_clp,
-              l.amount_clp AS principal_clp, l.interest_rate_text AS rate_text
+              ${lineAmountClpSql("l")} AS principal_clp, l.interest_rate_text AS rate_text
        FROM cc_installment_purchases ip
        JOIN cc_installment_payments p ON p.purchase_id = ip.id
        JOIN cc_statement_lines l ON l.parser_row_id = p.parser_row_id
@@ -1145,13 +1147,13 @@ export function oneShotCreditLines(
 ): { merchant: string | null; amount_clp: number; occurred: string | null; stmt_period_to: string | null; stmt_statement_date: string | null }[] {
   return db
     .prepare(
-      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred,
+      `SELECT l.merchant, ${lineAmountClpSql("l")} AS amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred,
               s.period_to AS stmt_period_to, s.statement_date AS stmt_statement_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ?
          AND l.installment_flag = 0
-         AND l.amount_clp < 0`
+         AND ${lineAmountClpSql("l")} < 0`
     )
     .all(accountId) as {
     merchant: string | null;

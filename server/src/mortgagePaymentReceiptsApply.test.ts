@@ -8,6 +8,7 @@ import { IngestConflict } from "./ingestReceiver.js";
 import { LENDER_CARD_MERCHANT, applyMortgagePaymentReceipt } from "./mortgagePaymentReceiptsApply.js";
 import { parsedStatements } from "./test/parsedStatementRecords.js";
 import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
+import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 /** Synthetic BCI card and receipt: no real card digits, transaction ids or amounts. */
 const CARD_LAST4 = "4747";
@@ -40,7 +41,7 @@ let cardId = 0;
 function cardLines(): { id: number; merchant: string; amount_clp: number; source_pdf: string }[] {
   return db
     .prepare(
-      `SELECT l.id, l.merchant, l.amount_clp, s.source_pdf FROM cc_statement_lines l
+      `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, s.source_pdf FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`
     )
     .all(cardId) as { id: number; merchant: string; amount_clp: number; source_pdf: string }[];

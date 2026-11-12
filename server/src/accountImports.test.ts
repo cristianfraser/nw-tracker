@@ -6,6 +6,7 @@ import { CARD_PASTED_LISTING, type CardPastedListing } from "nw-tracker-contract
 import { db } from "./db.js";
 import { importCcWebPaste } from "./accountImports.js";
 import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
+import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 const BCI_PASTE = `11/06/2026\tVITEST BCI WEB PASTE\t$9.999
 11/06/2026\tVITEST BCI WEB PASTE\t$9.999`;
@@ -77,7 +78,7 @@ describe("importCcWebPaste", () => {
 
       const lines = db
         .prepare(
-          `SELECT l.id, l.amount_clp, l.dedupe_key, s.id AS statement_id, s.card_group
+          `SELECT l.id, ${lineAmountClpSql("l")} AS amount_clp, l.dedupe_key, s.id AS statement_id, s.card_group
            FROM cc_statement_lines l
            JOIN cc_statements s ON s.id = l.statement_id
            WHERE s.account_id = ? AND l.merchant = 'VITEST BCI WEB PASTE'

@@ -47,6 +47,7 @@ import {
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
 import { pesosOrDollars } from "./ingestCurrencies.js";
+import { lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 const findContractCanonical = db.prepare(
   `SELECT canonical_row_id, merchant FROM cc_installment_purchases
@@ -308,10 +309,10 @@ export function usdStatementIsStaleEcho(
   // The target close's own lines are excluded so a JSON-owned rewrite never reads as an echo.
   const existing = db
     .prepare(
-      `SELECT l.transaction_date, l.merchant, l.amount_usd
+      `SELECT l.transaction_date, l.merchant, ${lineAmountUsdSql("l")} AS amount_usd
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND s.currency = 'usd' AND l.amount_usd IS NOT NULL
+       WHERE s.account_id = ? AND s.currency = 'usd' AND ${lineAmountUsdSql("l")} IS NOT NULL
          AND s.statement_date != ?`
     )
     .all(accountId, padCcStatementDate(statementDate)) as {

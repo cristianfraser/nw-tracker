@@ -20,6 +20,7 @@ import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { bankPostedOn } from "./movementBankPostings.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 // The synthesis tests plant card lines (and the revaluation they trigger) on the synthetic
 // preset's Santander master ·4321 — restore its tables so nothing leaks into later files.
@@ -202,11 +203,11 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
   ): { amount_clp: number; amount_usd: number | null }[] {
     return db
       .prepare(
-        `SELECT l.amount_clp, l.amount_usd FROM cc_statement_lines l
+        `SELECT ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND l.merchant = ? AND ROUND(ABS(l.${field}), 2) = ROUND(?, 2)`
+         WHERE s.account_id = ? AND l.merchant = ? AND l.currency = ? AND ROUND(ABS(l.amount), 2) = ROUND(?, 2)`
       )
-      .all(masterId, merchant, absAmount) as { amount_clp: number; amount_usd: number | null }[];
+      .all(masterId, merchant, field === "amount_usd" ? "usd" : "clp", absAmount) as { amount_clp: number; amount_usd: number | null }[];
   }
 
   it("writes the transfer, its provenance row and the card's PAGO line when no debit exists; the bank's later listings dedupe", () => {

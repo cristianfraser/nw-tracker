@@ -15,6 +15,7 @@ import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
 import { parseDdMmYyToIso, dayWithinWindow } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 export type RecurringPendingReplacement = { pending_line_id: number; posted_line_id: number; entry: string; amount_clp: number; pending_on: string };
 
@@ -39,7 +40,7 @@ export function planRecurringPendingReplacement(accountId: number): RecurringPen
   const lines = (
     db
       .prepare(
-        `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, l.transaction_date,
+        `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, l.transaction_date,
                 CASE WHEN s.source_kind IN ('listing_open', 'listing_other') THEN 1 ELSE 0 END AS bucket
          FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ?`

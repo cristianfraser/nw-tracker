@@ -26,6 +26,7 @@ import { MONEY_MARKET_SERIES_KEY, mortgageBalanceUf } from "./simulate.js";
 import type { MarketReader } from "./market.js";
 import { addDays, type Ymd } from "./person.js";
 import type { Acct, Ledger } from "./simulate.js";
+import { lineAmountUsdSql } from "../cards/lineAmountSql.js";
 
 export type DemoDbReport = {
   today: Ymd;
@@ -558,7 +559,7 @@ function checkUsCard(ledger: Ledger, ids: Map<Acct, number>, problems: string[])
   const statements = db
     .prepare(
       `SELECT s.id, s.statement_date, s.monto_facturado, s.compras_cargos,
-              COALESCE((SELECT SUM(l.amount_usd) FROM cc_statement_lines l WHERE l.statement_id = s.id AND l.amount_usd > 0), 0) AS charges,
+              COALESCE((SELECT SUM(${lineAmountUsdSql("l")}) FROM cc_statement_lines l WHERE l.statement_id = s.id AND ${lineAmountUsdSql("l")} > 0), 0) AS charges,
               (SELECT COUNT(*) FROM cc_statement_lines l WHERE l.statement_id = s.id) AS lines
          FROM cc_statements s WHERE s.account_id = ? AND s.currency = 'usd'`
     )
@@ -570,8 +571,8 @@ function checkUsCard(ledger: Ledger, ids: Map<Acct, number>, problems: string[])
   }
   const paymentLines = db
     .prepare(
-      `SELECT l.transaction_date AS day, l.amount_usd AS usd FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-        WHERE s.account_id = ? AND l.amount_usd < 0`
+      `SELECT l.transaction_date AS day, ${lineAmountUsdSql("l")} AS usd FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+        WHERE s.account_id = ? AND ${lineAmountUsdSql("l")} < 0`
     )
     .all(cardId) as { day: string; usd: number }[];
   const transfers = db

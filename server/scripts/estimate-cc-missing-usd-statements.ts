@@ -122,9 +122,9 @@ const tx = db.transaction(() => {
         .run(acc, closeIso, p.date, p.usd, p.debit_id != null ? "bank_debit" : "pay_by");
       if (p.debit_id != null) debitIds.push(p.debit_id);
     }
-    const lines = db.prepare(`SELECT COALESCE(SUM(amount_usd), 0) AS s FROM cc_statement_lines WHERE statement_id = ? AND amount_usd > 0`).get(s.id) as { s: number };
+    const lines = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM cc_statement_lines WHERE statement_id = ? AND currency = 'usd' AND amount > 0`).get(s.id) as { s: number };
     const legs = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM cc_header_payment_legs WHERE account_id = ? AND statement_close_iso = ? AND currency = 'usd'`).get(acc, closeIso) as { s: number };
-    const negLines = db.prepare(`SELECT COALESCE(SUM(amount_usd), 0) AS s FROM cc_statement_lines WHERE statement_id = ? AND amount_usd < 0`).get(s.id) as { s: number };
+    const negLines = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM cc_statement_lines WHERE statement_id = ? AND currency = 'usd' AND amount < 0`).get(s.id) as { s: number };
     if (cents(lines.s) !== cents(header.compras_cargos) || cents(negLines.s) - cents(legs.s) !== cents(header.abono)) {
       throw new Error(`statement ${s.id}: charges ${lines.s} vs ${header.compras_cargos}, payments ${negLines.s} − legs ${legs.s} vs ${header.abono}`);
     }

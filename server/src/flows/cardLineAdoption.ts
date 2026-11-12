@@ -23,6 +23,7 @@ import { adoptFlow, flowExists, rowFlowId } from "./flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey } from "./flowIdentity.js";
 import { FLOW_HOLDING_TABLES } from "./flowRetirement290.js";
 import { cardLineFirstSeenForAccount, keepEarlierFlowFirstSeen } from "./flowFirstSeen.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "../cards/lineAmountSql.js";
 
 export type CcLineIdentitySource = {
   account_id: number;
@@ -114,7 +115,7 @@ export function ccLineRefFromRow(
 
 export const CC_LINE_REF_SELECT = `
   SELECT l.id, s.account_id, s.currency, l.transaction_date, l.posting_date, l.merchant,
-         l.amount_clp, l.amount_usd, l.installment_flag, l.nro_cuota_current, l.nro_cuota_total,
+         ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, l.installment_flag, l.nro_cuota_current, l.nro_cuota_total,
          l.parser_row_id, l.flow_id
   FROM cc_statement_lines l
   JOIN cc_statements s ON s.id = l.statement_id`;

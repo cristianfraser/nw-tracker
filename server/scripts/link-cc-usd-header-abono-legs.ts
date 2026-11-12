@@ -46,8 +46,9 @@ const tx = db.transaction(() => {
   for (const list of byAccount.values()) list.sort((a, b) => iso(a.statement_date).localeCompare(iso(b.statement_date)));
 
   const negLines = db.prepare(
-    `SELECT COALESCE(SUM(amount_usd), 0) AS s FROM cc_statement_lines
-     WHERE statement_id = ? AND amount_usd < 0 AND id NOT IN (SELECT usd_line_id FROM cc_traspaso_deuda_links)`
+    `SELECT COALESCE(SUM(amount), 0) AS s FROM cc_statement_lines
+     WHERE statement_id = ? AND currency = 'usd' AND amount < 0
+       AND id NOT IN (SELECT from_line_id FROM cc_traspaso_deuda_links WHERE from_currency = 'usd')`
   );
   const hasLeg = db.prepare(`SELECT 1 FROM cc_header_payment_legs WHERE account_id = ? AND statement_close_iso = ? AND currency = 'usd'`);
   const checking = accountIdsUnderCheckingAccounts();

@@ -13,6 +13,7 @@
  */
 import { db } from "../src/db.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
+import { lineAmountClpSql } from "../src/cards/lineAmountSql.js";
 
 function isoDay(raw: string): string {
   const d = parseDdMmYyToIso(raw);
@@ -66,8 +67,8 @@ for (const y of years) {
     const pay = code(y, 91) ?? result;
     const card = db
       .prepare(
-        `SELECT l.transaction_date, s.account_id, l.amount_clp, l.merchant FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-          WHERE l.amount_clp = ? AND (l.merchant LIKE 'SII%' OR l.merchant LIKE 'F22%' OR l.merchant LIKE 'TGR%')`
+        `SELECT l.transaction_date, s.account_id, ${lineAmountClpSql("l")} AS amount_clp, l.merchant FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+          WHERE ${lineAmountClpSql("l")} = ? AND (l.merchant LIKE 'SII%' OR l.merchant LIKE 'F22%' OR l.merchant LIKE 'TGR%')`
       )
       .all(pay) as { transaction_date: string; account_id: number; amount_clp: number; merchant: string }[];
     const inWindow = [...new Map(card.map((c) => [`${c.account_id}|${isoDay(c.transaction_date)}`, c])).values()].filter((c) => {

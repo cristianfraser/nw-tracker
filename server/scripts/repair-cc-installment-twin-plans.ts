@@ -29,6 +29,7 @@ import { cardAccountForStatement } from "../src/cards/documentAccount.js";
 import type { CardStatementLineRef } from "../src/ccInstallmentLedgerMerge.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { db } from "../src/db.js";
+import { lineAmountClpSql } from "../src/cards/lineAmountSql.js";
 
 function arg(name: string): string | undefined {
   const p = `--${name}=`;
@@ -188,12 +189,12 @@ type TwinEvidence = {
 function statementTwinEvidence(): TwinEvidence[] {
   const rows = db
     .prepare(
-      `SELECT s.account_id, l.merchant, l.transaction_date, l.amount_clp, l.nro_cuota_total,
+      `SELECT s.account_id, l.merchant, l.transaction_date, ${lineAmountClpSql("l")} AS amount_clp, l.nro_cuota_total,
               COUNT(*) AS n
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE l.installment_flag = 1 AND s.source_kind NOT IN ('listing_open', 'listing_other')
-       GROUP BY s.id, l.merchant, l.transaction_date, l.amount_clp, l.nro_cuota_total, l.nro_cuota_current
+       GROUP BY s.id, l.merchant, l.transaction_date, ${lineAmountClpSql("l")}, l.nro_cuota_total, l.nro_cuota_current
        HAVING COUNT(*) > 1`
     )
     .all() as {

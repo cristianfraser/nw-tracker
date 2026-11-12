@@ -36,6 +36,7 @@ import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { ccLineOriginCurrency, parseCcOriginAmount } from "../src/ccOriginCurrency.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { db } from "../src/db.js";
+import { lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
 
 const APPLY = process.argv.includes("--apply");
 const originsCsv = process.argv.find((a) => a.startsWith("--origins-csv="))?.slice("--origins-csv=".length);
@@ -85,7 +86,7 @@ const printedOrigins = originsCsv ? printedOriginsFromCsv(originsCsv) : null;
 const rows = db
   .prepare(
     `SELECT l.id, s.account_id, s.source_pdf, l.parser_row_id, l.transaction_date, l.posting_date,
-            l.merchant, l.amount_orig, l.amount_usd, l.orig_currency
+            l.merchant, l.amount_orig, ${lineAmountUsdSql("l")} AS amount_usd, l.orig_currency
      FROM cc_statement_lines l
      JOIN cc_statements s ON s.id = l.statement_id
      ORDER BY l.id`

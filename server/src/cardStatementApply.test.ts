@@ -6,6 +6,7 @@ import { cardIssuerStatementSchema, type CardIssuerStatementPayload, type CardSt
 import { applyCardStatement } from "./cardStatementApply.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { db } from "./db.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 const BANK_ACCOUNT = "800000007311";
 const LAST4 = "7311";
@@ -132,7 +133,7 @@ describe("applyCardStatement", () => {
   function linesOf(currency: "clp" | "usd"): { merchant: string; amount_clp: number | null; amount_usd: number | null }[] {
     return db
       .prepare(
-        `SELECT l.merchant, l.amount_clp, l.amount_usd FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+        `SELECT l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
           WHERE s.account_id = ? AND s.statement_date = '24/09/2026' AND s.currency = ? ORDER BY l.merchant`
       )
       .all(accountId, currency) as { merchant: string; amount_clp: number | null; amount_usd: number | null }[];

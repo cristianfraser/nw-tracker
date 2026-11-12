@@ -25,6 +25,7 @@ import { gastosSumMonthForLine } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import { buildFlowsExpensesGastosViews, countsTowardGastosMes, gastosViewKey } from "./flowsExpensesGastos.js";
+import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql } from "./cards/lineAmountSql.js";
 
 /** The Expenses page's Por cuota view at the subcategory level (every category its own), in CLP. */
 function splitView(payload: ReturnType<typeof buildFlowsExpensesPayload>) {
@@ -527,9 +528,9 @@ describe("flowsExpenses", () => {
         `SELECT l.id FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id IN (${ph})
-           AND (l.amount_usd IS NOT NULL AND l.amount_usd != 0)
-           AND (l.amount_clp IS NULL OR l.amount_clp = 0)
-           AND NOT (l.installment_flag = 1 AND l.valor_cuota_mensual_clp IS NOT NULL AND l.valor_cuota_mensual_clp != 0)`
+           AND (${lineAmountUsdSql("l")} IS NOT NULL AND ${lineAmountUsdSql("l")} != 0)
+           AND (${lineAmountClpSql("l")} IS NULL OR ${lineAmountClpSql("l")} = 0)
+           AND NOT (l.installment_flag = 1 AND ${lineCuotaClpSql("l")} IS NOT NULL AND ${lineCuotaClpSql("l")} != 0)`
       )
       .all(...accountIds) as { id: number }[];
     if (usdOnlyIds.length === 0) return;

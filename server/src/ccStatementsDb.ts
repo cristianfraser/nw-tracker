@@ -3,6 +3,7 @@ import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql, lineCuotaUsdSql } from "./cards/lineAmountSql.js";
 
 export type CcStatementRow = {
   id: number;
@@ -119,8 +120,8 @@ export function listCcStatementLinesForStatement(statementId: number): CcStateme
   const rows = db
     .prepare(
       `SELECT id, statement_id, transaction_date, posting_date, place, merchant, description_merged,
-              country, amount_orig, orig_currency, amount_clp, amount_usd, installment_flag,
-              nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, valor_cuota_mensual_usd,
+              country, amount_orig, orig_currency, ${lineAmountClpSql("")} AS amount_clp, ${lineAmountUsdSql("")} AS amount_usd, installment_flag,
+              nro_cuota_current, nro_cuota_total, ${lineCuotaClpSql("")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("")} AS valor_cuota_mensual_usd,
               interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line
        FROM cc_statement_lines WHERE statement_id = ?
        ORDER BY transaction_date, id`

@@ -35,6 +35,7 @@ import { assignFlowExpenseLineCategory } from "../src/expenseAssignmentWrites.js
 import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey, resolveCcExpensePurchaseKey } from "../src/ccExpenseCategories.js";
 import { FLOW_KIND_CARGA_TARJETA } from "../src/movementFlowType.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
+import { lineAmountClpSql } from "../src/cards/lineAmountSql.js";
 
 type Plan = {
   mail_archive: string;
@@ -106,7 +107,7 @@ function bankEvents(): Ev[] {
   const merchants = plan.card_merchants.map((m) => m.toUpperCase());
   const cardLines = db
     .prepare(
-      `SELECT l.id, l.transaction_date, l.merchant, l.amount_clp
+      `SELECT l.id, l.transaction_date, l.merchant, ${lineAmountClpSql("l")} AS amount_clp
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND upper(trim(l.merchant)) IN (${merchants.map(() => "?").join(",")})`
     )

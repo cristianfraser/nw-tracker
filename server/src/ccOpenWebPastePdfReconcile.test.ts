@@ -7,6 +7,7 @@ import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 // Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
 const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
@@ -35,9 +36,9 @@ describe("reconcileOpenWebPasteAfterPdfClose", () => {
 
     const pdfLine = db
       .prepare(
-        `SELECT l.id, l.merchant, l.amount_clp, l.transaction_date, l.posting_date
+        `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, l.transaction_date, l.posting_date
          FROM cc_statement_lines l
-         WHERE l.statement_id = ? AND l.installment_flag = 0 AND l.amount_clp > 0
+         WHERE l.statement_id = ? AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} > 0
          LIMIT 1`
       )
       .get(pdfStmt.id) as

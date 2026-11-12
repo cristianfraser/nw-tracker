@@ -7,6 +7,7 @@ import { ccOwedByCurrencyAtYmd, ccOwedClpAtYmd, ccRevaluationCostByDate } from "
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql } from "./cards/lineAmountSql.js";
 
 /**
  * A card that bills in euros (docs/any-currency-plan.md, Phase C3; the fictional issuer
@@ -90,7 +91,7 @@ describe("a card that bills in euros", () => {
   it("stores the line in euros; the legacy peso and dollar columns read nothing", () => {
     const row = db
       .prepare(
-        `SELECT l.amount, l.currency, l.amount_clp, l.amount_usd, l.valor_cuota_mensual_clp, l.kind, f.amount AS flow_amount, f.currency AS flow_currency
+        `SELECT l.amount, l.currency, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, l.kind, f.amount AS flow_amount, f.currency AS flow_currency
          FROM cc_statement_lines l JOIN flows f ON f.id = l.flow_id WHERE l.id = ?`
       )
       .get(lineId);

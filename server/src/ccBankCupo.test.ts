@@ -18,6 +18,7 @@ import {
   latestBankCupoForAccount,
   type BankCupoSnapshot,
 } from "./ccBankCupoCheck.js";
+import { lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 /**
  * Synthetic Santander card on 2026-10-02: August closed by its statements, September by the
@@ -250,7 +251,7 @@ describe("bank cupo check", () => {
         db
           .prepare(
             `SELECT l.dedupe_key FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-             WHERE s.account_id = ? AND l.amount_usd = 12.34 ORDER BY l.id`
+             WHERE s.account_id = ? AND ${lineAmountUsdSql("l")} = 12.34 ORDER BY l.id`
           )
           .all(accountId) as { dedupe_key: string }[]
       ).map((r) => r.dedupe_key);

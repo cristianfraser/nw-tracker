@@ -52,6 +52,7 @@ import type { CardLinePlan } from "./cards/lineWriteSession.js";
 
 import { parseDdMmYyToIso, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 
 export type MerchantDuplicateRule = "truncated" | "pending_authorization";
@@ -161,7 +162,7 @@ function pairLabel(shorter: BucketLine, longer: BucketLine, rule: MerchantDuplic
 export function planTruncatedMerchantDuplicateLines(accountId: number): TruncatedMerchantDedupePlan[] {
   const lines = db
     .prepare(
-      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, l.transaction_date
+      `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, l.transaction_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.source_kind IN ('listing_open', 'listing_other')`

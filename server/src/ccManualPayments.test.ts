@@ -74,13 +74,12 @@ function record(input: Parameters<typeof recordManualCardPayment>[0]) {
 
 /** The master's credit lines of exactly this money, in any bucket. */
 function creditLines(currency: "clp" | "usd", amount: number): { id: number; merchant: string }[] {
-  const field = currency === "usd" ? "amount_usd" : "amount_clp";
   return db
     .prepare(
       `SELECT l.id, l.merchant FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND ROUND(l.${field}, 2) = ROUND(?, 2)`
+       WHERE s.account_id = ? AND l.currency = ? AND ROUND(l.amount, 2) = ROUND(?, 2)`
     )
-    .all(master, -amount) as { id: number; merchant: string }[];
+    .all(master, currency, -amount) as { id: number; merchant: string }[];
 }
 
 function feed(date: string, merchant: string, currency: "clp" | "usd", amount: number) {

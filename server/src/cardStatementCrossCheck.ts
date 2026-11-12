@@ -3,6 +3,7 @@ import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contra
 import { padCcStatementDate } from "./ccStatementJsonSource.js";
 import { db } from "./db.js";
 import { pesosOrDollars } from "./ingestCurrencies.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 /**
  * The cross-check of a `card.statement` against the statement already in the ledger: which lines
@@ -24,7 +25,7 @@ function loadImportedLines(accountId: number, statementDate: string, currency: "
   if (!statement) return null;
   const rows = db
     .prepare(
-      `SELECT merchant, amount_clp, amount_usd FROM cc_statement_lines WHERE statement_id = ?`
+      `SELECT merchant, ${lineAmountClpSql("")} AS amount_clp, ${lineAmountUsdSql("")} AS amount_usd FROM cc_statement_lines WHERE statement_id = ?`
     )
     .all(statement.id) as { merchant: string | null; amount_clp: number | null; amount_usd: number | null }[];
   return rows.map((r) => ({

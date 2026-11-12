@@ -21,6 +21,7 @@ import {
 } from "../src/ccTruncatedMerchantDedupe.js";
 import { applyLinePlan } from "../src/cards/lineWrites.js";
 import { earliestTransactionDateForLineIds } from "../src/ccCrossImportDedupe.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -42,7 +43,7 @@ const accountIds = (
 ).map((r) => r.account_id);
 
 const lineById = db.prepare(
-  `SELECT id, transaction_date, merchant, amount_clp, amount_usd FROM cc_statement_lines WHERE id = ?`
+  `SELECT id, transaction_date, merchant, ${lineAmountClpSql("")} AS amount_clp, ${lineAmountUsdSql("")} AS amount_usd FROM cc_statement_lines WHERE id = ?`
 );
 const bucketCount = db.prepare(
   `SELECT COUNT(*) AS c FROM cc_statement_lines l

@@ -24,6 +24,7 @@ import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurch
 import { creditCardMasterMetaForAccount, type CcListingLine } from "./ccWebPasteParse.js";
 import { noteCardLineWritten, withCardLineSession } from "./cards/lineWriteSession.js";
 import { parseDdMmYyToIso, daysBetweenIso, isWebPasteCutOf, normalizeMerchantText } from "nw-tracker-contracts";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 /** An open web-paste bucket line, as the feed matchers see it. */
 export type CcOpenBucketLine = {
@@ -39,7 +40,7 @@ export type CcOpenBucketLine = {
 };
 
 const selOpenBucketLines = db.prepare<[number]>(
-  `SELECT l.id, l.transaction_date, l.posting_date, l.merchant, l.amount_clp, l.amount_usd,
+  `SELECT l.id, l.transaction_date, l.posting_date, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
           l.installment_flag, l.cuota_purchase_kind, s.source_pdf
    FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND s.source_kind = 'listing_open'

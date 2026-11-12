@@ -20,6 +20,7 @@ import { noteCardLineEvidence, withCardLineSession } from "./cards/lineWriteSess
 import { cardStatementKey, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
+import { lineAmountClpSql, lineCuotaClpSql } from "./cards/lineAmountSql.js";
 
 const findStmtId = db.prepare(
   `SELECT id FROM cc_statements
@@ -34,7 +35,7 @@ const listManualPurchases = db.prepare(
 
 const listInstallmentLinesForStatement = db.prepare(
   `SELECT l.id, l.installment_flag, l.merchant, l.transaction_date, l.posting_date,
-          l.nro_cuota_total, l.nro_cuota_current, l.amount_clp, l.valor_cuota_mensual_clp
+          l.nro_cuota_total, l.nro_cuota_current, ${lineAmountClpSql("l")} AS amount_clp, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp
    FROM cc_statement_lines l
    WHERE l.statement_id = ? AND l.installment_flag = 1`
 );

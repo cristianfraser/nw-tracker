@@ -21,6 +21,7 @@ import {
   earliestTransactionDateForLineIds,
 } from "../src/ccCrossImportDedupe.js";
 import { deleteLines } from "../src/cards/lineWrites.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -39,7 +40,7 @@ type LineRow = {
 const rows = db
   .prepare(
     `SELECT l.id, s.account_id, s.source_pdf, l.transaction_date, l.merchant,
-            l.amount_clp, l.amount_usd
+            ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd
      FROM cc_statement_lines l
      JOIN cc_statements s ON s.id = l.statement_id
      WHERE s.source_kind IN ('listing_open', 'listing_other')

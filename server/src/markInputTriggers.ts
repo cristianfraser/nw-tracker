@@ -489,8 +489,19 @@ const SPECS_322: readonly TriggerSpec[] = SPECS_321.map((s) =>
     : s
 );
 
+/**
+ * Migration 324 (frozen): a card line watches its stored amount and currency — the trigger
+ * migration 319 rewrote already reads them; the generated `amount_clp` / `amount_usd` it named are
+ * gone.
+ */
+const SPECS_324: readonly TriggerSpec[] = SPECS_322.map((s) =>
+  s.table === "cc_statement_lines"
+    ? { ...s, watch: s.watch.flatMap((c) => (c === "amount_clp" ? ["amount", "currency"] : c === "amount_usd" ? [] : [c])) }
+    : s
+);
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_322;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_324;
 
 /**
  * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column

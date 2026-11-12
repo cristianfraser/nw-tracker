@@ -18,6 +18,7 @@ import { purchaseAmountsMatch } from "./matching/installmentAmount.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { adoptReplacingCardLines, type CardLineAdoptionResult } from "./flows/cardLineAdoption.js";
 import { noteCardLineEvidence, requireCardLineSession, type CardLinePlan } from "./cards/lineWriteSession.js";
+import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 export const selLineCategory = db.prepare<[number]>(
   `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
@@ -45,7 +46,7 @@ const dbOneShotCandidates = db.prepare<[number, number]>(
   `SELECT l.id, l.merchant, l.transaction_date, l.posting_date
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?`
+   WHERE s.account_id = ? AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} = ?`
 );
 
 // PDF statement imports scan with web-paste statements excluded: the merge's own supersede
@@ -56,7 +57,7 @@ const dbOneShotCandidatesNoWebPaste = db.prepare<[number, number]>(
   `SELECT l.id, l.merchant, l.transaction_date, l.posting_date
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?
+   WHERE s.account_id = ? AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} = ?
      AND s.source_kind NOT IN ('listing_open', 'listing_other')`
 );
 

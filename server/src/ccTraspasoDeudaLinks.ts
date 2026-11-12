@@ -19,6 +19,7 @@
  */
 
 import { db } from "./db.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 export type CcTraspasoDeudaPair = {
   statement_date: string;
@@ -42,7 +43,7 @@ const MIN_PLAUSIBLE_CLP_PER_USD = 300;
 const MAX_PLAUSIBLE_CLP_PER_USD = 3000;
 
 const listTraspasoLegCandidates = db.prepare(
-  `SELECT l.id, s.statement_date, s.currency, l.merchant, l.amount_clp, l.amount_usd
+  `SELECT l.id, s.statement_date, s.currency, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.kind = 'card_debt_transfer'

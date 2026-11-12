@@ -1,6 +1,7 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import { normalizeMerchantText, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { buildExpenseKey, parseExpenseKey, type CheckingPortion, type ExpenseKey } from "../expenseKeys.js";
+import { lineCuotaClpSql } from "../cards/lineAmountSql.js";
 
 /**
  * Which rows an expense key names (docs/untangle-flow-identity.md, F9 step 3): the inverse of the
@@ -63,7 +64,7 @@ function linesWhere(dbi: DatabaseType, where: string, ...args: unknown[]) {
   return dbi
     .prepare(
       `SELECT l.id, s.account_id, l.installment_flag, l.merchant, l.transaction_date, l.posting_date,
-              l.nro_cuota_total, l.valor_cuota_mensual_clp, l.parser_row_id
+              l.nro_cuota_total, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, l.parser_row_id
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE ${where}`
     )

@@ -62,6 +62,7 @@ import {
   pesoReceiptMayBeChargedInDollars,
   processorMerchantHint,
 } from "../src/paymentProcessorReceipts.js";
+import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql } from "../src/cards/lineAmountSql.js";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const apply = process.argv.includes("--apply");
@@ -411,7 +412,8 @@ function refreshStoredFingerprint(statementId: number): void {
   const lines = db
     .prepare(
       `SELECT transaction_date, posting_date, place, merchant, description_merged, country, amount_orig,
-              amount_clp, amount_usd, installment_flag, nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp,
+              ${lineAmountClpSql("")} AS amount_clp, ${lineAmountUsdSql("")} AS amount_usd, installment_flag, nro_cuota_current, nro_cuota_total,
+              ${lineCuotaClpSql("")} AS valor_cuota_mensual_clp,
               interest_rate_text, tipo_cuota, parser_row_id, raw_line, origin_card_last4
        FROM cc_statement_lines WHERE statement_id = ?`
     )

@@ -34,6 +34,7 @@ import {
 } from "../src/ccPaymentMirrorEvidence.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { clearAggregationCache } from "../src/cacheRegistry.js";
+import { lineAmountClpSql, lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
 
 const apply = process.argv.includes("--apply");
 const csvArg = process.argv.find((a) => a.startsWith("--csv="))?.slice("--csv=".length);
@@ -78,7 +79,7 @@ const stale = statements.filter((s) => {
 });
 
 const lineStats = db.prepare(
-  `SELECT COUNT(*) AS n, COALESCE(SUM(amount_clp), 0) AS clp, COALESCE(SUM(amount_usd), 0) AS usd
+  `SELECT COUNT(*) AS n, COALESCE(SUM(${lineAmountClpSql("")}), 0) AS clp, COALESCE(SUM(${lineAmountUsdSql("")}), 0) AS usd
    FROM cc_statement_lines WHERE statement_id = ?`
 );
 const stats = (id: number) => lineStats.get(id) as { n: number; clp: number; usd: number };
