@@ -63,7 +63,7 @@ export function collectDirectionalFxPaymentDates(): string[] {
 
   const expenseDates = db
     .prepare(
-      `SELECT DISTINCT spent_on AS d FROM expense_entries WHERE amount_clp != 0
+      `SELECT DISTINCT spent_on AS d FROM expense_entries WHERE amount != 0
        UNION
        SELECT DISTINCT occurred_on AS d FROM movements
        WHERE flow_kind IN ('compra_usd', 'compra_usd_venta_clp') AND ${MOVEMENT_CLP_LEG_SQL} > 0`

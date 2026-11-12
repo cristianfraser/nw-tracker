@@ -5,7 +5,7 @@ import { Button, Input } from "@crfrsr/ui";
 import { api } from "../../api";
 import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import { isCcExpenseTotalsExcludedSlug } from "../../ccExpenseLineBuckets";
-import { formatClp, formatNumberInput, parseNumberInput } from "../../format";
+import { currencyFormatInfo, formatMoney, formatNumberInput, parseNumberInput } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useSaveExpenseLinePiecesMutation } from "../../queries/hooks";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
@@ -68,7 +68,7 @@ export function ExpenseLinePiecesDialog({
       query.data.pieces.map((p) => ({
         seq: p.seq,
         spentOn: p.spent_on ?? "",
-        amountText: formatNumberInput(p.amount_clp),
+        amountText: formatNumberInput(p.amount),
         categorySlug: p.category_slug,
       }))
     );
@@ -80,11 +80,16 @@ export function ExpenseLinePiecesDialog({
   const data = query.data;
   const parsed = (rows ?? []).map((r) => parseNumberInput(r.amountText));
   const amounts = parsed.map((p) => (p.ok ? p.value : null));
-  const piecesTotal = amounts.reduce<number>((s, v) => s + (v ?? 0), 0);
-  const remainder = data ? data.line_amount_clp - piecesTotal : 0;
+  // Pieces are in the line's own currency (a dollar line's in dollars and cents).
+  const minorDigits = data ? currencyFormatInfo(data.currency).minorDigits : 0;
+  const scale = 10 ** minorDigits;
+  const inCoins = (v: number) => Math.round(v * scale);
+  const piecesTotal = amounts.reduce<number>((s, v) => s + inCoins(v ?? 0), 0) / scale;
+  const remainder = data ? (inCoins(data.line_amount) - inCoins(piecesTotal)) / scale : 0;
+  const money = (value: number) => formatMoney({ value, currency: data?.currency ?? "" });
   const amountError = parsed.some((p) => !p.ok)
     ? (parsed.find((p) => !p.ok) as { ok: false; message: string }).message
-    : amounts.some((v) => v == null || v <= 0 || !Number.isInteger(v))
+    : amounts.some((v) => v == null || v <= 0 || inCoins(v) !== v * scale)
       ? t("expenses.creditCard.pieces.amountRequired")
       : null;
   const formError = amountError ?? (remainder < 0 ? t("expenses.creditCard.pieces.over") : null);
@@ -101,7 +106,7 @@ export function ExpenseLinePiecesDialog({
       pieces: rows.map((r, i) => ({
         ...(r.seq != null ? { seq: r.seq } : {}),
         spent_on: r.spentOn || null,
-        amount_clp: amounts[i]!,
+        amount: amounts[i]!,
         category_slug: r.categorySlug,
       })),
     });
@@ -143,7 +148,7 @@ export function ExpenseLinePiecesDialog({
                   <td>
                     <Input
                       type="text"
-                      inputMode="numeric"
+                      inputMode="decimal"
                       value={r.amountText}
                       onChange={(e) => update(i, { amountText: e.target.value })}
                     />
@@ -187,11 +192,11 @@ export function ExpenseLinePiecesDialog({
           </div>
           <dl className="mono" style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "0.25rem 1rem", margin: 0 }}>
             <dt>{t("expenses.creditCard.pieces.line")}</dt>
-            <dd style={{ margin: 0 }}>{formatClp(data.line_amount_clp)}</dd>
+            <dd style={{ margin: 0 }}>{money(data.line_amount)}</dd>
             <dt>{t("expenses.creditCard.pieces.inPieces")}</dt>
-            <dd style={{ margin: 0 }}>{formatClp(piecesTotal)}</dd>
+            <dd style={{ margin: 0 }}>{money(piecesTotal)}</dd>
             <dt>{t("expenses.creditCard.pieces.remainder")}</dt>
-            <dd style={{ margin: 0 }}>{formatClp(remainder)}</dd>
+            <dd style={{ margin: 0 }}>{money(remainder)}</dd>
           </dl>
           {formError ? <p className="error">{formError}</p> : null}
           {saveError ? <p className="error">{saveError}</p> : null}

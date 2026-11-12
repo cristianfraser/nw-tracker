@@ -122,7 +122,7 @@ describe("real-estate chart scopes", () => {
     cleanup();
     for (const p of PLACES) createRealEstatePlace(p);
     const ins = db.prepare(
-      `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id)
+      `INSERT INTO expense_entries (amount, spent_on, category, note, expense_account_id)
        VALUES (?, ?, ?, 'vitest chart', (SELECT id FROM expense_accounts WHERE slug = ?))`
     );
     for (const [slug, spentOn, kind, amount] of BILLS) ins.run(amount, spentOn, kind, slug);

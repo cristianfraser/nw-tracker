@@ -96,7 +96,7 @@ export function syncLoanPaymentFlowParts(
   }
   withoutChurn(["flow_parts"], [], () => {
     const del = db.prepare(`DELETE FROM flow_parts WHERE flow_id = ? AND kind <> 'piece'`);
-    const ins = db.prepare(`INSERT INTO flow_parts (flow_id, seq, kind, amount_clp) VALUES (?, ?, ?, ?)`);
+    const ins = db.prepare(`INSERT INTO flow_parts (flow_id, seq, kind, amount) VALUES (?, ?, ?, ?)`);
     for (const p of payments) {
       del.run(p.flow_id);
       for (const part of stated.get(p.flow_id)?.parts ?? []) ins.run(p.flow_id, part.seq, part.kind, part.amount_clp);
@@ -108,7 +108,7 @@ export function syncLoanPaymentFlowParts(
 export function loanPaymentPartsByFlow(): Map<number, LoanPaymentParts> {
   const rows = db
     .prepare(
-      `SELECT f.flow_id, f.kind, f.amount_clp FROM flow_parts f
+      `SELECT f.flow_id, f.kind, f.amount AS amount_clp FROM flow_parts f
        WHERE f.kind IN (${LOAN_PAYMENT_PART_KINDS.map((k) => `'${k}'`).join(", ")})`
     )
     .all() as { flow_id: number; kind: LoanPaymentPartKind; amount_clp: number }[];
@@ -144,10 +144,10 @@ export function assertLoanPaymentPartsCurrent(): void {
 
 /** SQL: Σ of a flow's principal parts (the dividendo's amortization), NULL when it carries none. */
 export function loanPrincipalPartsSql(flowCol: string): string {
-  return `(SELECT SUM(x.amount_clp) FROM flow_parts x WHERE x.flow_id = ${flowCol} AND x.kind IN ${LOAN_PRINCIPAL_PART_KINDS_SQL})`;
+  return `(SELECT SUM(x.amount) FROM flow_parts x WHERE x.flow_id = ${flowCol} AND x.kind IN ${LOAN_PRINCIPAL_PART_KINDS_SQL})`;
 }
 
 /** SQL: Σ of a flow's carrying parts (interest + insurances), NULL when it carries none. */
 export function loanCarryingPartsSql(flowCol: string): string {
-  return `(SELECT SUM(x.amount_clp) FROM flow_parts x WHERE x.flow_id = ${flowCol} AND x.kind IN ${LOAN_CARRYING_PART_KINDS_SQL})`;
+  return `(SELECT SUM(x.amount) FROM flow_parts x WHERE x.flow_id = ${flowCol} AND x.kind IN ${LOAN_CARRYING_PART_KINDS_SQL})`;
 }

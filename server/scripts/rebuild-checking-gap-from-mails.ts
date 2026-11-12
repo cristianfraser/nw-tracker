@@ -540,8 +540,8 @@ const tx = db.transaction(() => {
   say(`card payments paired: ${paired.length} (${cardDebits.length} corriente debits + ${paired.length - cardDebits.length} vista)`);
 
   // 6. Real-estate bills onto the mailed payments; the excel-gap rows they replace go.
-  const updBill = db.prepare(`UPDATE expense_entries SET amount_clp = ?, spent_on = ?, note = ? WHERE id = ? AND expense_account_id = ?`);
-  const insBill = db.prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id) VALUES (?, ?, ?, ?, ?)`);
+  const updBill = db.prepare(`UPDATE expense_entries SET amount = ?, spent_on = ?, note = ? WHERE id = ? AND expense_account_id = ?`);
+  const insBill = db.prepare(`INSERT INTO expense_entries (amount, currency, spent_on, category, note, expense_account_id) VALUES (?, 'clp', ?, ?, ?, ?)`);
   const monthEnd = (ym: string) =>
     `${ym}-${String(new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate()).padStart(2, "0")}`;
   for (const b of plan.bills) {
@@ -553,7 +553,7 @@ const tx = db.transaction(() => {
       entry = Number(insBill.run(b.paid.amount, monthEnd(b.bill_month), b.kind, note, plan.place_expense_account_id).lastInsertRowid);
       insertBillLink(entry, `checking-mv:${mv}`, "manual");
     } else {
-      const old = db.prepare(`SELECT category, amount_clp, spent_on FROM expense_entries WHERE id = ?`).get(entry) as { category: string; amount_clp: number; spent_on: string };
+      const old = db.prepare(`SELECT category, amount AS amount_clp, spent_on FROM expense_entries WHERE id = ?`).get(entry) as { category: string; amount_clp: number; spent_on: string };
       if (old.category !== b.kind) throw new Error(`bill ${entry} is ${old.category}, plan says ${b.kind}`);
       if (updBill.run(b.paid.amount, monthEnd(b.bill_month), note, entry, plan.place_expense_account_id).changes !== 1) throw new Error(`bill ${entry} not on the place`);
       if (billLinkPurchaseKey(entry) == null) throw new Error(`bill ${entry} has no link`);

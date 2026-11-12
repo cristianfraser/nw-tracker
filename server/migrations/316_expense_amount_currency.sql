@@ -1,0 +1,13 @@
+-- Manual expenses, place bills, legacy income entries and flow parts drop their peso-only amount
+-- for `amount` held in a currency (docs/any-currency-plan.md, Phase B «One-currency storage gets
+-- amount + currency»):
+--   expense_entries.amount_clp → amount + currency (a place bill stays in pesos by CHECK);
+--   income_entries.amount_clp  → amount + currency;
+--   flow_parts.amount_clp      → amount, in the currency of the flow the part is of (a piece of a
+--                                dollar line is dollars to the cent).
+--
+-- The rebuild lives in the paired POST_MIGRATION_HOOKS entry (server/src/expenseAmountCurrency316.ts):
+-- every table is rebuilt (SQLite cannot add a CHECK in place), its rows copied and counted, and its
+-- triggers re-created from the ones on file with the amount read from the row and its currency.
+-- Runs with foreign_keys=OFF (db.ts, FOREIGN_KEYS_OFF_MIGRATIONS): flow_links, flow_link_rejections
+-- and utility_bills reference expense_entries.

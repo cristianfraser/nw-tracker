@@ -531,7 +531,7 @@ describe("checkingCartolaPartialReconcile", () => {
     const entryId = Number(
       db
         .prepare(
-          `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id)
+          `INSERT INTO expense_entries (amount, spent_on, category, note, expense_account_id)
            VALUES (68200, '1800-03-31', 'gastos_comunes', 'vitest',
                    (SELECT id FROM expense_accounts WHERE slug = 'vitest_cartola_place'))`
         )

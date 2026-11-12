@@ -212,7 +212,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     setCcExpensePurchaseBigGroup({ purchaseKey: oldKey, groupSlug: BIG_GROUP });
     setFlowNote(accountId, oldKey, "kept");
     db.prepare(
-      `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp)
+      `INSERT INTO flow_parts (flow_id, seq, category_id, amount)
        VALUES ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 1, ?, 1500), ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 2, ?, 1000)`
     ).run(oldLine, fun.id, oldLine, food.id);
 
@@ -235,7 +235,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     expect(oldLeft.n).toBe(0);
     const splits = db
       .prepare(
-        `SELECT l.id AS line_id, p.amount_clp FROM flow_parts p JOIN cc_statement_lines l ON l.flow_id = p.flow_id
+        `SELECT l.id AS line_id, p.amount AS amount_clp FROM flow_parts p JOIN cc_statement_lines l ON l.flow_id = p.flow_id
          WHERE l.id IN (?, ?) ORDER BY p.seq`
       )
       .all(oldLine, newLine) as { line_id: number; amount_clp: number }[];
@@ -261,7 +261,7 @@ describe("adoptReimportedCardLines (statement re-import)", () => {
     const entryId = Number(
       db
         .prepare(
-          `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id)
+          `INSERT INTO expense_entries (amount, spent_on, category, note, expense_account_id)
            VALUES (2500, '2024-12-31', 'electricidad', 'vitest rekey bill', ?)`
         )
         .run(placeId).lastInsertRowid

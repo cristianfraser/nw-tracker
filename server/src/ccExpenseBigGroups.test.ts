@@ -36,7 +36,8 @@ describe("ccExpenseBigGroups", () => {
     ).run(statementId);
     const manual = createManualExpense({
       spent_on: "2026-09-03",
-      amount_clp: 1000,
+      amount: 1000,
+      currency: "clp",
       category_slug: "unclassified",
       description: "vitest big group",
     });

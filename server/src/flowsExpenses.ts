@@ -1,5 +1,6 @@
 import { requireStoredCardLineKind } from "./cards/lineKinds.js";
-import { withLineMoney } from "./lineMoney.js";
+import { lineMoneyFromBuilderFields, withLineMoney } from "./lineMoney.js";
+import { currencySmallestCoin, roundToCurrency } from "./displayUnits.js";
 import { toWireExpenseLines } from "./wireExpenseLine.js";
 import type {
   ExpenseLinePaymentName,
@@ -940,48 +941,61 @@ export function expandLineSplitsInDrafts(
     if (draft.line_role !== "purchase") {
       throw new Error(`line pieces on ${ref}: only a purchase line takes pieces (line_role ${draft.line_role})`);
     }
-    const piecesClp = splits.reduce((sum, p) => sum + p.amount_clp, 0);
-    if (piecesClp > draft.amount_clp + 1) {
-      throw new Error(`line pieces on ${ref} add up to ${piecesClp}, more than the line's ${draft.amount_clp}`);
-    }
-    // USD amounts allocate by CLP share, at the parent's FX date: the shares of a fully split
-    // line sum back to the parent's USD.
-    const usdShare = (parentUsd: number | null | undefined, clp: number): number | null => {
-      if (parentUsd == null) return null;
-      if (draft.amount_clp === 0) {
-        throw new Error(`cannot split USD amounts for ${ref}: amount_clp is 0`);
+    // A piece is held in its line's own currency (the currency of the line's flow): a peso line's
+    // pieces are pesos, a dollar line's are dollars to the cent.
+    const native = lineMoneyFromBuilderFields(draft).amount;
+    for (const split of splits) {
+      if (split.currency !== native.currency) {
+        throw new Error(`line pieces on ${ref} are in ${split.currency}, the line is in ${native.currency}`);
       }
-      return parentUsd * (clp / draft.amount_clp);
-    };
+    }
+    const coin = currencySmallestCoin(native.currency);
+    const piecesTotal = roundToCurrency(
+      splits.reduce((sum, p) => sum + p.amount, 0),
+      native.currency
+    );
+    if (piecesTotal > native.value + coin) {
+      throw new Error(`line pieces on ${ref} add up to ${piecesTotal} ${native.currency}, more than the line's ${native.value}`);
+    }
+    if (native.value === 0) throw new Error(`cannot split ${ref}: its amount is 0`);
+    // The line's other figures allocate by the piece's share of its own amount, at the parent's
+    // rates: the shares of a fully split line sum back to the parent's.
+    const share = (parent: number | null | undefined, part: number): number | null =>
+      parent == null ? null : parent * (part / native.value);
+    const dollarLine = draft.amount_usd != null && draft.amount_usd !== 0;
+    const pesosOf = (part: number): number => (dollarLine ? Math.round(share(draft.amount_clp, part)!) : part);
     const { category_from_bank_name: _fromBankName, ...parent } = draft;
+    let piecesClp = 0;
     for (const split of splits) {
       const day = split.spent_on;
       const month = day ? monthKeyFromYmd(day) : null;
+      const pieceClp = pesosOf(split.amount);
+      piecesClp += pieceClp;
       result.push({
         ...parent,
         ...(day && month
           ? { occurred_on: day, purchase_on: day, expense_month: month, purchase_month: month }
           : {}),
-        amount_clp: split.amount_clp,
-        amount_usd: usdShare(draft.amount_usd, split.amount_clp),
+        amount_clp: pieceClp,
+        amount_usd: share(draft.amount_usd, split.amount),
         // A peso line's dollars are read on the day the piece was spent; a dollar line's are fixed.
         amount_usd_at_expense:
-          day && draft.amount_usd == null
-            ? expenseGastosAmountUsdAtDate(split.amount_clp, null, day)
-            : usdShare(draft.amount_usd_at_expense, split.amount_clp),
+          day && !dollarLine
+            ? expenseGastosAmountUsdAtDate(pieceClp, null, day)
+            : share(draft.amount_usd_at_expense, split.amount),
         category_slug: split.category_slug,
         category_unique: true,
         split_purchase_key_suffix: expensePieceKeySuffix(split.seq),
         piece_seq: split.seq,
       });
     }
-    const remainderClp = draft.amount_clp - piecesClp;
-    if (remainderClp > 1) {
+    const remainder = roundToCurrency(native.value - piecesTotal, native.currency);
+    if (remainder > coin) {
       result.push({
         ...draft,
-        amount_clp: remainderClp,
-        amount_usd: usdShare(draft.amount_usd, remainderClp),
-        amount_usd_at_expense: usdShare(draft.amount_usd_at_expense, remainderClp),
+        amount_clp: draft.amount_clp - piecesClp,
+        amount_usd: share(draft.amount_usd, remainder),
+        amount_usd_at_expense: share(draft.amount_usd_at_expense, remainder),
         pieces_remainder: true,
       });
     }

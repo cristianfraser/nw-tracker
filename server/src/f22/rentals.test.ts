@@ -99,7 +99,7 @@ describe("rents in the F22 draft", () => {
     }
     const tower = listRealEstatePlaces().find((p) => p.slug === "vitest_rent_tower")!;
     const centro = listRealEstatePlaces().find((p) => p.slug === "vitest_rent_centro")!;
-    const bill = db.prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, expense_account_id) VALUES (?, ?, 'contribuciones', ?)`);
+    const bill = db.prepare(`INSERT INTO expense_entries (amount, spent_on, category, expense_account_id) VALUES (?, ?, 'contribuciones', ?)`);
     bill.run(120_000, `${INCOME_YEAR}-04-30`, tower.id);
     bill.run(30_000, `${INCOME_YEAR}-04-30`, centro.id);
     // An informed year whose real interest came out negative.

@@ -80,6 +80,12 @@ function planFlowValues(a: string): string {
     NULL, NULL, ${a}.merchant`;
 }
 
+/*
+ * The manual-expense and income-entry values below speak the schema migrations 279–315 knew
+ * (`amount_clp`, always pesos). Migration 316 gave both tables `amount` + `currency` and rewrote the
+ * installed insert triggers to read them (`expenseAmountCurrency316.ts`); a later migration that
+ * re-installs one of those triggers must write its own values, not reuse these.
+ */
 function manualFlowValues(a: string): string {
   return `'purchase', NULL, NULL, ${UNRECORDED_PARTY}, ${UNKNOWN_PARTY}, ${a}.spent_on, ${a}.amount_clp, 'clp',
     NULL, NULL, ${a}.merchant`;

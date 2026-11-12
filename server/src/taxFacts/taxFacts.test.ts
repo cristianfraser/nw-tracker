@@ -139,7 +139,7 @@ describe("tax facts", () => {
     );
     movements.push(credit);
     upsertCheckingIncomeMovementOverride(credit, { income_kind: "rent", rent_place_slug: "vitest_tax_facts_place" });
-    const bill = db.prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, expense_account_id) VALUES (?, ?, ?, ?)`);
+    const bill = db.prepare(`INSERT INTO expense_entries (amount, spent_on, category, expense_account_id) VALUES (?, ?, ?, ?)`);
     bill.run(30_000, `${YEAR}-04-30`, "contribuciones", place.id);
     bill.run(80_000, `${YEAR}-03-31`, "gastos_comunes", place.id);
     bill.run(28_000, `${YEAR}-03-31`, "management_fee", place.id);

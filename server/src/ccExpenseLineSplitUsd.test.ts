@@ -56,7 +56,7 @@ describe("expandLineSplitsInDrafts USD allocation", () => {
     const [catA, catB] = categorySlugs(2);
     const catId = db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ? LIMIT 1`);
     const ins = db.prepare(
-      `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, note)
+      `INSERT INTO flow_parts (flow_id, seq, category_id, amount, note)
        VALUES (${lineFlowSql("cc")}, ?, ?, ?, ?)`
     );
     ins.run(VITEST_LINE_ID, 0, (catId.get(catA!) as { id: number }).id, 100_000, VITEST_SPLIT_NOTE);
@@ -83,11 +83,29 @@ describe("expandLineSplitsInDrafts USD allocation", () => {
     expect(splits.every((l) => l.amount_usd == null)).toBe(true);
   });
 
-  it("allocates native amount_usd for USD-statement parents", () => {
-    const expanded = expandLineSplitsInDrafts([draft({ amount_usd: 150 })]);
-    const splits = expanded.filter((l) => l.statement_line_id === VITEST_LINE_ID);
-    expect(splits[0]!.amount_usd).toBeCloseTo(150 * (100_000 / 130_000), 6);
-    expect(splits[1]!.amount_usd).toBeCloseTo(150 * (30_000 / 130_000), 6);
+  it("holds a dollar line's pieces in dollars: pesos by the piece's share, the rest on the line", () => {
+    const flowOf = db.prepare(`SELECT flow_id AS f FROM cc_statement_lines WHERE id = ?`).get(VITEST_LINE_ID) as { f: number };
+    const before = db.prepare(`SELECT currency FROM flows WHERE id = ?`).get(flowOf.f) as { currency: string };
+    const setPiece = db.prepare(`UPDATE flow_parts SET amount = ? WHERE flow_id = ? AND seq = ?`);
+    db.prepare(`UPDATE flows SET currency = 'usd' WHERE id = ?`).run(flowOf.f);
+    setPiece.run(100.25, flowOf.f, 0);
+    setPiece.run(30, flowOf.f, 1);
+    try {
+      const expanded = expandLineSplitsInDrafts([draft({ amount_usd: 150, amount_usd_at_expense: 150 })]);
+      const lines = expanded.filter((l) => l.statement_line_id === VITEST_LINE_ID);
+      expect(lines.map((l) => [l.amount_usd, l.amount_clp, l.pieces_remainder ?? null])).toEqual([
+        [100.25, Math.round(130_000 * (100.25 / 150)), null],
+        [30, 26_000, null],
+        [expect.closeTo(19.75, 9), 130_000 - Math.round(130_000 * (100.25 / 150)) - 26_000, true],
+      ]);
+      expect(lines.reduce((s, l) => s + l.amount_clp, 0)).toBe(130_000);
+      // A peso piece on a dollar line is refused: the pieces are held in the line's currency.
+      expect(() => expandLineSplitsInDrafts([draft()])).toThrow(/in usd, the line is in clp/);
+    } finally {
+      db.prepare(`UPDATE flows SET currency = ? WHERE id = ?`).run(before.currency, flowOf.f);
+      setPiece.run(100_000, flowOf.f, 0);
+      setPiece.run(30_000, flowOf.f, 1);
+    }
   });
 
   it("keeps null USD null and leaves unsplit drafts untouched", () => {

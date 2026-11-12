@@ -29,6 +29,7 @@ import {
 } from "./checkingDescriptionPredicates.js";
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import { convertFlow } from "./rates.js";
 import { flowLegsInUnit } from "./flowLegs.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import {
@@ -53,7 +54,10 @@ export type FlowCheckingIncomeLine = {
   received_on: string;
   /** A dollar account's credit: its dollars at the day's `fx_daily` rate. */
   amount_clp: number;
-  /** CLP ÷ `fx_daily` on or before `received_on`; a dollar account's credit, its own dollars. */
+  /**
+   * The credit's own dollars (a dollar account's credit); null for a peso credit, whose dollars are
+   * its pesos at the day's buy rate, read only when a unit asks ({@link incomeLineUsdLeg}).
+   */
   amount_usd: number | null;
   description: string;
   source: "checking";
@@ -61,9 +65,10 @@ export type FlowCheckingIncomeLine = {
 
 export type FlowManualIncomeLine = {
   id: number;
+  /** The entry's amount (`income_entries.amount` in its `currency`, migration 316) in pesos, as a flow of its day. */
   amount_clp: number;
   received_on: string;
-  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  /** The entry's amount in dollars, as a flow of its day (its own dollars for a dollar entry). */
   amount_usd: number | null;
   source: string | null;
   note: string | null;
@@ -83,6 +88,10 @@ export type FlowFilteredCheckingIncomeLine = {
   account_label: string;
   received_on: string;
   amount_clp: number;
+  /**
+   * The credit's own dollars (a dollar account's credit); null for a peso credit, whose dollars are
+   * its pesos at the day's buy rate, read only when a unit asks ({@link incomeLineUsdLeg}).
+   */
   amount_usd: number | null;
   description: string;
   filter_reason: IncomeAutoFilterReason;
@@ -131,22 +140,29 @@ function loadAccountLabels(accountIds: readonly number[]): Map<number, string> {
 }
 
 function loadManualIncomeEntries(): FlowManualIncomeLine[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT id, amount_clp, received_on, source, note
+      `SELECT id, amount, currency, received_on, source, note
        FROM income_entries
        WHERE note IS NULL OR note NOT LIKE 'import:excel%'
        ORDER BY received_on DESC, id DESC`
     )
-    .all()
-    .map((row) => ({
-      ...(row as Omit<FlowManualIncomeLine, "origin" | "amount_usd">),
-      amount_usd: clpToUsdAtDate(
-        Math.round((row as { amount_clp: number }).amount_clp),
-        (row as { received_on: string }).received_on
-      ),
-      origin: "manual" as const,
-    }));
+    .all() as { id: number; amount: number; currency: string; received_on: string; source: string | null; note: string | null }[];
+  // An entry is income in its own currency; its pesos and dollars are flows of its day (convertFlow).
+  return rows.map(({ amount, currency, ...row }) => ({
+    ...row,
+    amount_clp: Math.round(convertFlow(amount, currency, "clp", row.received_on)),
+    amount_usd: convertFlow(amount, currency, "usd", row.received_on),
+    origin: "manual" as const,
+  }));
+}
+
+/**
+ * An income line's dollar leg for {@link flowLegsInUnit}: its own dollars, else its pesos at the
+ * day's buy rate (read only when the unit is dollars).
+ */
+export function incomeLineUsdLeg(line: { amount_clp: number; amount_usd: number | null; received_on: string }) {
+  return line.amount_usd ?? (() => clpToUsdAtDate(Math.round(line.amount_clp), line.received_on));
 }
 
 type IncomeFilterContext = {
@@ -263,7 +279,7 @@ function toCheckingIncomeLine(
     account_label: accountLabels.get(credit.account_id) ?? String(credit.account_id),
     received_on: credit.occurred_on,
     amount_clp,
-    amount_usd: clpToUsdAtDate(amount_clp, credit.occurred_on),
+    amount_usd: null,
     description: cartolaDescriptionFromNote(credit.note),
     source: "checking",
   };
@@ -359,7 +375,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
           account_label: accountLabels.get(credit.account_id) ?? String(credit.account_id),
           received_on: credit.occurred_on,
           amount_clp,
-          amount_usd: clpToUsdAtDate(amount_clp, credit.occurred_on),
+          amount_usd: null,
           description: cartolaDescriptionFromNote(credit.note),
           filter_reason: filterReason,
         });
@@ -414,7 +430,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
       account_label: refundAccountLabels.get(r.account_id) ?? String(r.account_id),
       received_on: r.occurred_on,
       amount_clp,
-      amount_usd: clpToUsdAtDate(amount_clp, r.occurred_on),
+      amount_usd: null,
       description: `F22 AT${r.tax_year}`,
       source: "checking",
     });
@@ -491,7 +507,7 @@ function incomeLineInUnit<R extends { amount_clp: number; amount_usd: number | n
   const { amount_clp, amount_usd, ...rest } = r;
   return {
     ...rest,
-    amount: flowLegsInUnit({ clp: Math.round(amount_clp), usd: amount_usd }, r.received_on, unit),
+    amount: flowLegsInUnit({ clp: Math.round(amount_clp), usd: incomeLineUsdLeg(r) }, r.received_on, unit),
   } as InUnit<R>;
 }
 

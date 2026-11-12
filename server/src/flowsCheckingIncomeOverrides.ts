@@ -5,7 +5,6 @@ import { isCheckingCredit } from "./checkingCartolaLoaders.js";
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
-import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
 
 
@@ -322,7 +321,8 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
       account_label: row.account_label,
       received_on: row.received_on,
       amount_clp,
-      amount_usd: clpToUsdAtDate(amount_clp, row.received_on),
+      // A peso credit has no dollars of its own: the unit conversion reads its pesos at the day's rate.
+      amount_usd: null,
       description: cartolaDescriptionFromNote(row.cartola_note),
       note: row.override_note,
     };

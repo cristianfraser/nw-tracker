@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Button, Field, Input } from "@crfrsr/ui";
 import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import { isCcExpenseTotalsExcludedSlug } from "../../ccExpenseLineBuckets";
-import { formatNumberInput, parseNumberInput } from "../../format";
+import { currencyFormatInfo, formatNumberInput, parseNumberInput } from "../../format";
 import { useTranslation } from "../../i18n";
-import { useDeleteManualExpenseMutation, useSaveManualExpenseMutation } from "../../queries/hooks";
+import { useCurrencies, useDeleteManualExpenseMutation, useSaveManualExpenseMutation } from "../../queries/hooks";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Modal } from "../ui/Modal";
 import { DEMO_EDITS_LIMITED, DEMO_MANUAL_EXPENSE_DESCRIPTIONS } from "../../demoEdits";
@@ -31,6 +31,9 @@ export function ManualExpenseDialog({
   const pickable = assignableCcExpenseCategories(categories).filter((c) => !isCcExpenseTotalsExcludedSlug(c.slug));
   const [spentOn, setSpentOn] = useState("");
   const [amountText, setAmountText] = useState("");
+  const [currency, setCurrency] = useState("");
+  const { data: currencies } = useCurrencies();
+  const coreCurrencies = (currencies?.currencies ?? []).filter((c) => c.tier === "core");
   const [categorySlug, setCategorySlug] = useState("");
   const [description, setDescription] = useState("");
 
@@ -40,6 +43,8 @@ export function ManualExpenseDialog({
     remove.reset();
     setSpentOn(expense?.purchase_on ?? expense?.occurred_on ?? "");
     setAmountText(expense ? formatNumberInput(expense.amount.value) : "");
+    // A new expense starts in the first core currency the server lists, unless one was picked.
+    setCurrency(expense?.amount.currency ?? "");
     setCategorySlug(expense?.category_slug ?? "");
     const merchant = expense?.merchant ?? "";
     // The demo takes a description from its list only; another one has to be picked again.
@@ -49,17 +54,20 @@ export function ManualExpenseDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, expense]);
 
+  const shownCurrency = currency || coreCurrencies[0]?.code || "";
   const parsed = parseNumberInput(amountText);
   const amount = parsed.ok ? parsed.value : null;
+  const minorDigits = shownCurrency ? currencyFormatInfo(shownCurrency).minorDigits : 0;
+  const amountFits = amount != null && amount > 0 && Math.round(amount * 10 ** minorDigits) === amount * 10 ** minorDigits;
   const valid =
     /^\d{4}-\d{2}-\d{2}$/.test(spentOn) &&
-    amount != null &&
-    Number.isInteger(amount) &&
-    amount > 0 &&
+    shownCurrency !== "" &&
+    amountFits &&
     categorySlug !== "" &&
     description.trim() !== "";
   const error =
     (!parsed.ok ? parsed.message : null) ??
+    (amount != null && !amountFits ? t("expenses.creditCard.manualExpense.amountInvalid") : null) ??
     (save.error instanceof Error ? save.error.message : null) ??
     (remove.error instanceof Error ? remove.error.message : null);
   const busy = save.isPending || remove.isPending;
@@ -68,7 +76,13 @@ export function ManualExpenseDialog({
     if (!valid) return;
     await save.mutateAsync({
       id: expense?.statement_line_id ?? null,
-      input: { spent_on: spentOn, amount_clp: amount!, category_slug: categorySlug, description: description.trim() },
+      input: {
+        spent_on: spentOn,
+        amount: amount!,
+        currency: shownCurrency,
+        category_slug: categorySlug,
+        description: description.trim(),
+      },
     });
     onClose();
   };
@@ -93,7 +107,16 @@ export function ManualExpenseDialog({
           <Input type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
         </Field>
         <Field label={t("expenses.creditCard.manualExpense.amount")}>
-          <Input type="text" inputMode="numeric" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
+          <Input type="text" inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
+        </Field>
+        <Field label={t("expenses.creditCard.manualExpense.currency")}>
+          <select value={shownCurrency} onChange={(e) => setCurrency(e.target.value)}>
+            {coreCurrencies.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code.toUpperCase()}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label={t("expenses.creditCard.manualExpense.category")}>
           <select value={categorySlug} onChange={(e) => setCategorySlug(e.target.value)}>

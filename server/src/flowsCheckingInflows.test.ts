@@ -344,7 +344,7 @@ describe("flowsCheckingInflows", () => {
   it("returns manual income_entries alongside cartola lines", () => {
     const ins = db
       .prepare(
-        `INSERT INTO income_entries (amount_clp, received_on, source, note)
+        `INSERT INTO income_entries (amount, received_on, source, note)
          VALUES (?, ?, ?, ?)`
       )
       .run(250_000, "2099-05-01", "Bono", "vitest-manual-income");
@@ -360,7 +360,7 @@ describe("flowsCheckingInflows", () => {
   it("does not return Excel-imported income_entries in manual list", () => {
     const ins = db
       .prepare(
-        `INSERT INTO income_entries (amount_clp, received_on, source, note)
+        `INSERT INTO income_entries (amount, received_on, source, note)
          VALUES (?, ?, ?, ?)`
       )
       .run(1, "2099-04-01", "Excel", "import:excel|flujos|Gasto mensual|Ingreso");

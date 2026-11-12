@@ -2,6 +2,7 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { countsTowardGastosMes } from "./flowsExpensesGastos.js";
 import { db } from "./db.js";
+import { placeBillPesosSql, requirePlaceBillPesos } from "./placeBillAmount.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { buildFlowsExpenseLines } from "./flowsExpenses.js";
 import { lineValueIn } from "./lineMoney.js";
@@ -529,8 +530,8 @@ export function assignPurchasesToRealEstateExpenses(
   });
 
   const insert = db.prepare(
-    `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id, kwh, m3)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO expense_entries (amount, currency, spent_on, category, note, expense_account_id, kwh, m3)
+     VALUES (?, 'clp', ?, ?, ?, ?, ?, ?)`
   );
   const out: { expense_entry_id: number; link: RealEstateLinkRow }[] = [];
   db.transaction(() => {
@@ -570,7 +571,7 @@ export function unmatchRealEstateExpense(expenseEntryId: number): void {
 export function loadExpectationById(expenseEntryId: number): ExpenseExpectationRow | null {
   const row = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.months_covered, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
+      `SELECT e.id, ${placeBillPesosSql("e")} AS amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.months_covered, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id
@@ -578,13 +579,13 @@ export function loadExpectationById(expenseEntryId: number): ExpenseExpectationR
     )
     .get(expenseEntryId) as ExpenseExpectationRow | undefined;
   if (!row) return null;
-  return { ...row, amount_clp: Math.round(row.amount_clp) };
+  return { ...row, amount_clp: Math.round(requirePlaceBillPesos(row.id, row.amount_clp)) };
 }
 
 export function listRealEstateExpectations(): ExpenseExpectationRow[] {
   const rows = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.months_covered, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
+      `SELECT e.id, ${placeBillPesosSql("e")} AS amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.months_covered, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id
@@ -593,7 +594,7 @@ export function listRealEstateExpectations(): ExpenseExpectationRow[] {
     )
     .all() as ExpenseExpectationRow[];
 
-  return rows.map((r) => ({ ...r, amount_clp: Math.round(r.amount_clp) }));
+  return rows.map((r) => ({ ...r, amount_clp: Math.round(requirePlaceBillPesos(r.id, r.amount_clp)) }));
 }
 
 export function gastosLineByPurchaseKey(
