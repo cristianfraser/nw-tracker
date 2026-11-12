@@ -1,11 +1,11 @@
 {
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
-    "currency-formatter": 308,
+    "currency-formatter": 306,
     "currency-list-literal": 21,
     "currency-type-union": 150,
     "dto-currency-key": 331,
-    "unit-literal-compare": 384
+    "unit-literal-compare": 380
   },
   "violations": {
     "client/src/api.ts": {
@@ -45,12 +45,6 @@
     "client/src/components/charts/CcInstallmentHistoryChart.tsx": {
       "currency-formatter": 9
     },
-    "client/src/components/charts/StackedExpensesChart.tsx": {
-      "unit-literal-compare": 1
-    },
-    "client/src/components/credit-card/BigExpenseGroupsSection.tsx": {
-      "currency-formatter": 1
-    },
     "client/src/components/credit-card/CreditCardExpenseLinesTable.tsx": {
       "currency-formatter": 1
     },
@@ -84,8 +78,7 @@
       "currency-formatter": 2
     },
     "client/src/components/liabilities/CreditCardSummaryCards.tsx": {
-      "currency-formatter": 8,
-      "unit-literal-compare": 1
+      "currency-formatter": 8
     },
     "client/src/components/panel/BrokerageMovementsSection.tsx": {
       "currency-type-union": 1,
@@ -163,7 +156,7 @@
       "currency-formatter": 10
     },
     "client/src/pages/accountDetail/DeptoAccountSummaryCards.tsx": {
-      "currency-formatter": 3
+      "currency-formatter": 2
     },
     "client/src/pages/accountDetail/MortgageTables.tsx": {
       "currency-formatter": 7
@@ -549,9 +542,6 @@
     },
     "server/src/expensePaymentNames.ts": {
       "unit-literal-compare": 3
-    },
-    "server/src/exportWorkbook.ts": {
-      "unit-literal-compare": 2
     },
     "server/src/f22/art107.ts": {
       "unit-literal-compare": 2
