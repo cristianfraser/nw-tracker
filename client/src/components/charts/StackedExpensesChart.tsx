@@ -7,6 +7,7 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import { formatFlowMoney } from "../../flowsDisplay";
+import { currencyFormatInfo } from "../../format";
 import type { DisplayUnit } from "../../queries/keys";
 import { useTranslation } from "../../i18n";
 import type { ExpenseYearMonthlyAverage } from "../../types";
@@ -46,6 +47,15 @@ export type StackedExpenseSeries = {
 };
 
 export type StackedExpenseLegendEntry = { key: string; label: string; color: string };
+
+/**
+ * The fine tick step of the expenses axis in `unit`: a million in a currency counted in whole
+ * units (pesos), a thousand in one counted in cents (dollars, euros) — the size of a month's
+ * spend in each.
+ */
+function expenseChartFineTickUnit(unit: DisplayUnit): number {
+  return currencyFormatInfo(unit).minorDigits === 0 ? 1_000_000 : 1_000;
+}
 
 /**
  * Stacked monthly expenses with a clickable legend: a click on an entry hides its series (the
@@ -215,9 +225,9 @@ export function StackedExpensesChart({
         minV = Math.min(minV, negStack);
       }
     }
-    // Fine 1M-CLP (1k-USD) ticks in the 0–4M band where monthly spend clusters; the
-    // range-derived coarse steps stay sparse elsewhere (and on yearly-scale axes entirely).
-    return buildNiceYAxis(minV, maxV, { fineUnit: displayUnit === "usd" ? 1_000 : 1_000_000 });
+    // Fine ticks in the low band where monthly spend clusters (0–4M pesos, 0–4k dollars or
+    // euros); the range-derived coarse steps stay sparse elsewhere (and on yearly-scale axes).
+    return buildNiceYAxis(minV, maxV, { fineUnit: expenseChartFineTickUnit(displayUnit) });
   }, [densePoints, barKeys, chartStyle, displayUnit, showTotalLine]);
 
   const TitleTag = titleAs;

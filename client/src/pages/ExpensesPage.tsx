@@ -244,6 +244,7 @@ export function ExpensesPage() {
         categories={data?.categories ?? []}
         bigGroups={data?.big_groups ?? []}
         usage={bigGroupUsage}
+        unit={gastos.data?.unit ?? displayUnit}
         isExcluded={isExcluded}
         toggleExcluded={toggleExcluded}
         loading={gastosLoading}

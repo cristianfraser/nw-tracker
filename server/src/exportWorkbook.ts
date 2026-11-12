@@ -4,6 +4,11 @@
  * labels (same convention as server-owned chart line names). Numbers are written as raw
  * numeric cells — the decimal-separator preference is a display concern.
  *
+ * Every figure of the closings, P/L and aportes sheets is in the requested unit, and the column
+ * header names it (`cierre_eur`, `monto_usd`). The movements sheet keeps each movement's own
+ * legs as stored: a column per leg currency (`monto_clp`, `monto_usd` always, `monto_<code>` for
+ * any other), never converted.
+ *
  * Sections reuse the existing aggregation surface:
  * - closings / pl → monthlyPerfForAccountId / monthlyPerfForAccountDisplay (P/L: the page's
  *   compounded %; per account; groups iterate members)
@@ -23,9 +28,10 @@ import {
 } from "./accountMovementsApi.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
-import { movementClpLegOrZero, movementUsdLeg } from "./movementAmounts.js";
+import { movementClpLegOrZero, movementUsdLeg, type MovementAmountFields } from "./movementAmounts.js";
 import { transferToLegUnits } from "./movementTransfer.js";
 import { flowEventInUnit } from "./rates.js";
+import { roundToCurrency } from "./displayUnits.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 export const EXPORT_SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
@@ -61,6 +67,11 @@ type SheetRow = Record<string, string | number | null>;
 
 type MemberAccount = { account_id: number; name: string };
 
+/** A value column's header in the requested unit (`cierre` → `cierre_clp`). */
+function inUnit(column: string, opts: ExportOptions): string {
+  return `${column}_${opts.unit}`;
+}
+
 function closingsRows(accounts: readonly MemberAccount[], opts: ExportOptions, withAccount: boolean): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const a of accounts) {
@@ -71,7 +82,7 @@ function closingsRows(accounts: readonly MemberAccount[], opts: ExportOptions, w
       rows.push({
         ...(withAccount ? { cuenta: a.name } : {}),
         mes: m.as_of_date,
-        cierre: m.closing_value,
+        [inUnit("cierre", opts)]: m.closing_value,
       });
     }
   }
@@ -88,13 +99,13 @@ function plRows(accounts: readonly MemberAccount[], opts: ExportOptions, withAcc
       rows.push({
         ...(withAccount ? { cuenta: a.name } : {}),
         mes: m.as_of_date,
-        cierre: m.closing_value,
-        cierre_anterior: m.prior_closing,
-        aporte_neto: m.net_capital_flow,
-        pl_nominal: m.nominal_pl,
+        [inUnit("cierre", opts)]: m.closing_value,
+        [inUnit("cierre_anterior", opts)]: m.prior_closing,
+        [inUnit("aporte_neto", opts)]: m.net_capital_flow,
+        [inUnit("pl_nominal", opts)]: m.nominal_pl,
         pct_mes: m.pct_month,
-        pl_ytd: m.ytd_nominal_pl ?? null,
-        pl_acumulado: m.cumulative_nominal_pl ?? null,
+        [inUnit("pl_ytd", opts)]: m.ytd_nominal_pl ?? null,
+        [inUnit("pl_acumulado", opts)]: m.cumulative_nominal_pl ?? null,
       });
     }
   }
@@ -106,16 +117,15 @@ function aportesRows(accounts: readonly MemberAccount[], opts: ExportOptions, wi
   for (const a of accounts) {
     let cumulative = 0;
     for (const e of getMergedDisplayDepositInflowEventsForAccount(a.account_id)) {
-      cumulative += e.amt;
+      // Each event at its own date's rate (its dollars as moved when the unit is USD).
+      const amount = flowEventInUnit(e, opts.unit);
+      cumulative += amount;
       if (!monthInRange(e.occurred_on, opts)) continue;
       rows.push({
         ...(withAccount ? { cuenta: a.name } : {}),
         fecha: e.occurred_on,
-        monto_clp: e.amt,
-        monto_usd: e.amt_usd ?? null,
-        // A display unit other than the two native legs: the event at its own date's rate.
-        ...(opts.unit !== "clp" && opts.unit !== "usd" ? { [`monto_${opts.unit}`]: flowEventInUnit(e, opts.unit) } : {}),
-        acumulado_clp: Math.round(cumulative),
+        [inUnit("monto", opts)]: amount,
+        [inUnit("acumulado", opts)]: roundToCurrency(cumulative, opts.unit),
       });
     }
   }
@@ -123,16 +133,29 @@ function aportesRows(accounts: readonly MemberAccount[], opts: ExportOptions, wi
   return rows;
 }
 
+/**
+ * The movement's legs as stored, one `monto_<code>` column per currency (SUM-friendly): pesos and
+ * dollars on every row (0 / empty when the movement has none, the legacy columns), any other
+ * currency only on the rows that carry it.
+ */
+function movementLegColumns(m: MovementAmountFields): SheetRow {
+  const out: SheetRow = { monto_clp: movementClpLegOrZero(m), monto_usd: movementUsdLeg(m) };
+  const legs: [string | null, number | null][] = [
+    [m.currency, m.amount],
+    [m.counter_currency, m.counter_amount],
+  ];
+  for (const [currency, amount] of legs) {
+    if (currency != null && !(`monto_${currency}` in out)) out[`monto_${currency}`] = amount;
+  }
+  return out;
+}
+
 function movementRow(m: AccountMovementApiRow, accountName: string | null): SheetRow {
-  // Sheet keeps split CLP/USD columns (SUM-friendly), derived from the native amount+currency.
-  const montoClp = movementClpLegOrZero(m);
-  const montoUsd = movementUsdLeg(m);
   return {
     ...(accountName != null ? { cuenta: accountName } : {}),
     fecha: m.occurred_on,
     tipo: m.flow_type_label,
-    monto_clp: montoClp,
-    monto_usd: montoUsd,
+    ...movementLegColumns(m),
     // The viewed account's own leg: a fund switch credits the to-leg its own count.
     unidades: m.transfer_direction === "in" ? transferToLegUnits(m) : m.units_delta,
     contraparte: m.counterpart_account_name,

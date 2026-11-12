@@ -2,7 +2,8 @@ import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { PageGridTile } from "../layout/PageGridTile";
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
+import { formatFlowMoney } from "../../flowsDisplay";
+import type { DisplayUnit } from "../../queries/keys";
 import type {
   BigGroupUsage,
   CcExpenseBigGroupDto,
@@ -22,7 +23,8 @@ import styles from "./BigExpenseGroupsSection.module.css";
 function BigGroupBlock({
   slug,
   label,
-  totalClp,
+  total,
+  unit,
   purchaseCount,
   lines,
   categories,
@@ -32,7 +34,9 @@ function BigGroupBlock({
 }: {
   slug: string;
   label: string;
-  totalClp: number;
+  /** The group's spend in `unit`. */
+  total: number;
+  unit: DisplayUnit;
   purchaseCount: number;
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
@@ -79,7 +83,7 @@ function BigGroupBlock({
         >
           {open ? "▾" : "▸"} {label}
           <span className={cn("mono muted", styles.totals)}>
-            {formatClp(totalClp)} · {t("expenses.creditCard.bigGroups.purchaseCount", { count: purchaseCount })}
+            {formatFlowMoney(total, unit)} · {t("expenses.creditCard.bigGroups.purchaseCount", { count: purchaseCount })}
           </span>
         </Button>
         {DEMO_EDITS_LIMITED ? null : (
@@ -123,6 +127,7 @@ export function BigExpenseGroupsSection({
   categories,
   bigGroups,
   usage,
+  unit,
   isExcluded,
   toggleExcluded,
   loading,
@@ -132,6 +137,8 @@ export function BigExpenseGroupsSection({
   bigGroups: readonly CcExpenseBigGroupDto[];
   /** The groups that hold spend in the page's installment mode (server-built, gastos payload). */
   usage: readonly BigGroupUsage[];
+  /** The gastos payload's unit, the one `usage` is stated in. */
+  unit: DisplayUnit;
   isExcluded: (slug: string) => boolean;
   toggleExcluded: (slug: string) => void;
   loading?: boolean;
@@ -153,7 +160,8 @@ export function BigExpenseGroupsSection({
           key={g.slug}
           slug={g.slug}
           label={g.label}
-          totalClp={g.total_clp}
+          total={g.total_clp}
+          unit={unit}
           purchaseCount={g.purchase_count}
           lines={lines}
           categories={categories}
