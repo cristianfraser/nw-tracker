@@ -15,6 +15,22 @@ index 4544510..8f3b84e 100644
      return /*#__PURE__*/React.createElement(StaticCurve, {
        props: props,
        points: stepData,
+diff --git a/node_modules/recharts/es6/cartesian/LineDrawShape.js b/node_modules/recharts/es6/cartesian/LineDrawShape.js
+index 0b9702e..41b0550 100644
+--- a/node_modules/recharts/es6/cartesian/LineDrawShape.js
++++ b/node_modules/recharts/es6/cartesian/LineDrawShape.js
+@@ -150,7 +150,10 @@ export function LineDrawShape(props) {
+     var _pathRef$current;
+     var pathRef = curveProps.pathRef;
+     var totalLength = getTotalLength((_pathRef$current = pathRef === null || pathRef === void 0 ? void 0 : pathRef.current) !== null && _pathRef$current !== void 0 ? _pathRef$current : null);
+-    strokeDasharray = computeAnimatedStrokeDasharray(userStrokeDasharray, totalLength, visibleLength);
++    // nw-tracker patch: on the first render the path is not drawn yet, so its length reads 0 and
++    // the pattern came out "0px 0px", which the browser draws as a solid line: every line
++    // showed in full for a frame, vanished, then wiped in. An unmeasured line is hidden instead.
++    strokeDasharray = totalLength > 0 ? computeAnimatedStrokeDasharray(userStrokeDasharray, totalLength, visibleLength) : "0px 1px";
+   } else if (userStrokeDasharray != null) {
+     strokeDasharray = String(userStrokeDasharray);
+   }
 diff --git a/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js b/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js
 index cb7d44e..1798908 100644
 --- a/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js
@@ -48,6 +64,22 @@ index 3ddb154..9e2c34e 100644
      return /*#__PURE__*/React.createElement(StaticCurve, {
        props: props,
        points: stepData,
+diff --git a/node_modules/recharts/lib/cartesian/LineDrawShape.js b/node_modules/recharts/lib/cartesian/LineDrawShape.js
+index b043074..485d4ce 100644
+--- a/node_modules/recharts/lib/cartesian/LineDrawShape.js
++++ b/node_modules/recharts/lib/cartesian/LineDrawShape.js
+@@ -157,7 +157,10 @@ function LineDrawShape(props) {
+     var _pathRef$current;
+     var pathRef = curveProps.pathRef;
+     var totalLength = getTotalLength((_pathRef$current = pathRef === null || pathRef === void 0 ? void 0 : pathRef.current) !== null && _pathRef$current !== void 0 ? _pathRef$current : null);
+-    strokeDasharray = computeAnimatedStrokeDasharray(userStrokeDasharray, totalLength, visibleLength);
++    // nw-tracker patch: on the first render the path is not drawn yet, so its length reads 0 and
++    // the pattern came out "0px 0px", which the browser draws as a solid line: every line
++    // showed in full for a frame, vanished, then wiped in. An unmeasured line is hidden instead.
++    strokeDasharray = totalLength > 0 ? computeAnimatedStrokeDasharray(userStrokeDasharray, totalLength, visibleLength) : "0px 1px";
+   } else if (userStrokeDasharray != null) {
+     strokeDasharray = String(userStrokeDasharray);
+   }
 diff --git a/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js b/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js
 index cb461e7..6344049 100644
 --- a/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js

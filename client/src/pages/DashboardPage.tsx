@@ -464,9 +464,13 @@ export function DashboardPage() {
         <LineChartPanel
           title={t("dashboard.sections.overviewTitle")}
           block={
+            // Until the real data is in, every period shows the pending frame (title, controls,
+            // legend), never the placeholder's zero lines: those only flashed before the draw-in.
             overviewIsDaily
               ? (dailyOverviewBlock ?? { lines: overviewBlock.lines, points: [] })
-              : overviewBlock
+              : useRealBundle
+                ? overviewBlock
+                : { lines: overviewBlock.lines, points: [] }
           }
           displayUnit={displayUnit}
           thickKey="total_nw"
