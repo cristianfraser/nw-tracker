@@ -1,0 +1,5 @@
+-- A card's cupo and the feed close's SALDO INICIAL go per currency (docs/any-currency-plan.md, Phase C3):
+-- credit_card_account_config.cupo_clp / cupo_usd -> credit_card_cupos(account_id, currency, amount);
+-- cc_feed_billing_closes.saldo_inicial_clp / _usd -> cc_feed_billing_close_amounts(close_id, currency, amount).
+-- The move lives in the paired POST_MIGRATION_HOOKS entry (server/src/cards/cardAmountsByCurrency321.ts).
+-- Runs with foreign_keys=OFF (db.ts, FOREIGN_KEYS_OFF_MIGRATIONS): DROP COLUMN rewrites the tables.

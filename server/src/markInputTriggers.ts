@@ -437,8 +437,60 @@ const SPECS_318: readonly TriggerSpec[] = SPECS_312.map((spec) =>
   spec.table === "accounts" ? { ...spec, watch: [...spec.watch, "cash_currency"] } : spec
 );
 
+/**
+ * Migration 321: a card's cupo per currency (`credit_card_cupos`) and the feed close's SALDO
+ * INICIAL per currency (`cc_feed_billing_close_amounts`) left their parent rows, whose triggers
+ * watched them as columns: a cupo re-reads the card's whole history, a close amount re-frames its
+ * billing month, as before.
+ */
+export const CREDIT_CARD_CUPOS_SPEC: TriggerSpec = {
+  table: "credit_card_cupos",
+  targets: (r) => [{ account: `${r}.account_id`, date: FULL_HISTORY }],
+  watch: ["account_id", "currency", "amount"],
+};
+
+export const CC_FEED_BILLING_CLOSE_AMOUNTS_SPEC: TriggerSpec = {
+  table: "cc_feed_billing_close_amounts",
+  targets: (r) => [
+    {
+      account: `(SELECT account_id FROM cc_feed_billing_closes WHERE id = ${r}.close_id)`,
+      date: `(SELECT close_date FROM cc_feed_billing_closes WHERE id = ${r}.close_id)`,
+    },
+  ],
+  watch: ["close_id", "currency", "amount"],
+  rule: { backDays: 45 },
+};
+
+/** Migration 321 (frozen): 318's specs without the dropped columns, plus the two per-currency tables. */
+const SPECS_321: readonly TriggerSpec[] = [
+  ...SPECS_318.map((s) =>
+    s.table === "credit_card_account_config" || s.table === "cc_feed_billing_closes"
+      ? { ...s, watch: s.watch.filter((c) => !/^(cupo|saldo_inicial)_/.test(c)) }
+      : s
+  ),
+  CREDIT_CARD_CUPOS_SPEC,
+  CC_FEED_BILLING_CLOSE_AMOUNTS_SPEC,
+];
+
+/** Migration 322 (frozen): a traspaso link names its legs by direction (`from_*` the leg the debt leaves, `to_*` where it lands). */
+const SPECS_322: readonly TriggerSpec[] = SPECS_321.map((s) =>
+  s.table === "cc_traspaso_deuda_links"
+    ? {
+        ...s,
+        targets: (r: string) => [
+          {
+            account: `${r}.account_id`,
+            date: `(SELECT s.statement_date FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+          WHERE l.id = ${r}.from_line_id)`,
+          },
+        ],
+        watch: ["account_id", "to_line_id", "from_line_id", "to_amount", "from_amount"],
+      }
+    : s
+);
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_318;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_322;
 
 /**
  * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column
@@ -532,6 +584,8 @@ const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
   "cuenta_ahorro_deposit_splits",
   // The retired mortgage-sheet import (migration 308).
   "mortgage_sheet_imports",
+  // The billing-month snapshot went long (migration 320: cc_billing_month_metrics).
+  "cc_billing_month_balances",
 ]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [
@@ -564,6 +618,9 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "card_to_card_payments",
   "currencies",
   "fx_rates",
+  "cc_billing_month_metrics",
+  "credit_card_cupos",
+  "cc_feed_billing_close_amounts",
 ];
 
 /**

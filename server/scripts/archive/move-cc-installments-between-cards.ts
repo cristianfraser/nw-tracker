@@ -119,7 +119,7 @@ function main() {
 
     const billingRows = db
       .prepare(
-        `SELECT id, billing_month, as_of_date, as_of_kind FROM cc_billing_month_balances WHERE account_id = ?`
+        `SELECT id, billing_month, as_of_date, as_of_kind FROM cc_billing_month_metrics WHERE account_id = ?`
       )
       .all(fromId) as {
       id: number;
@@ -130,17 +130,17 @@ function main() {
     for (const b of billingRows) {
       const dup = db
         .prepare(
-          `SELECT 1 AS o FROM cc_billing_month_balances
+          `SELECT 1 AS o FROM cc_billing_month_metrics
            WHERE account_id = ? AND billing_month = ? AND as_of_date = ? AND as_of_kind = ?`
         )
         .get(toId, b.billing_month, b.as_of_date, b.as_of_kind);
       if (dup) {
         dropBillingDupes += 1;
-        if (apply) db.prepare(`DELETE FROM cc_billing_month_balances WHERE id = ?`).run(b.id);
+        if (apply) db.prepare(`DELETE FROM cc_billing_month_metrics WHERE id = ?`).run(b.id);
       } else {
         moveBillingRows += 1;
         if (apply) {
-          db.prepare(`UPDATE cc_billing_month_balances SET account_id = ? WHERE id = ?`).run(toId, b.id);
+          db.prepare(`UPDATE cc_billing_month_metrics SET account_id = ? WHERE id = ?`).run(toId, b.id);
         }
       }
     }

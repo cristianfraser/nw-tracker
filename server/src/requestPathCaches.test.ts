@@ -257,7 +257,7 @@ function ccLedgerPayloadsUncached(): Map<string, string> {
 
 describe("card ledger caches", () => {
   it("serve the uncached build, before and after a card write", () => {
-    const restoreCardTables = snapshotTables(["valuations", "cc_billing_month_balances", "cc_owed_anchors"]);
+    const restoreCardTables = snapshotTables(["valuations", "cc_billing_month_metrics", "cc_owed_anchors"]);
     clearAggregationCache();
     const masterId = listCreditCardMasterAccountIds()[0];
     expect(masterId).toBeDefined();

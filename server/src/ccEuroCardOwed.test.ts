@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
+import { applyCreditCardConfigPatch, getCreditCardAccountConfig } from "./ccAccountConfig.js";
 import { writeCcOwedAnchor } from "./ccCreditCardValuations.js";
 import { ccOwedByCurrencyAtYmd, ccOwedClpAtYmd, ccRevaluationCostByDate } from "./ccOwedWalk.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -110,6 +111,13 @@ describe("a card that bills in euros", () => {
     expect(ccOwedClpAtYmd(ccId!, addDaysIso(CHARGE, 1))!.value_clp).toBe(Math.round(240.5 * CLP_PER_EUR[0]));
     expect(ccOwedClpAtYmd(ccId!, END)!.value_clp).toBe(Math.round(240.5 * CLP_PER_EUR[1]));
     expect(cardValueInUnit(ccId!, 0, END, "eur")).toBeCloseTo(240.5, 6);
+  });
+
+  it("lists and sets its cupo in euros, the one currency it bills in", () => {
+    expect(getCreditCardAccountConfig(ccId!).cupo).toEqual([{ currency: "eur", value: null }]);
+    applyCreditCardConfigPatch(ccId!, { cupo: [{ currency: "eur", value: 2500 }] });
+    expect(getCreditCardAccountConfig(ccId!).cupo).toEqual([{ currency: "eur", value: 2500 }]);
+    expect(() => applyCreditCardConfigPatch(ccId!, { cupo: [{ currency: "usd", value: 1 }] })).toThrow(/not a currency this card bills in/);
   });
 
   it("books the rate move on the euros carried over as the card's fx cost in pesos", () => {

@@ -24,7 +24,7 @@ const restoreCcTables = snapshotTables([
   "cc_statements",
   "cc_statement_lines",
   "cc_expense_line_categories",
-  "cc_billing_month_balances",
+  "cc_billing_month_metrics",
   "valuations",
   "cc_owed_anchors",
   "import_batches",

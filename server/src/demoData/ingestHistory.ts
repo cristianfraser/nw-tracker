@@ -17,6 +17,7 @@
  *
  * Deterministic: each month draws from its own stream (`stream(seed, "<month>|ingest")`).
  */
+import { loadCreditCardCupos } from "../cards/config.js";
 import { applyBankAccountBalances, ledgerBalanceInOwnCurrency } from "../bankAccountBalances.js";
 import { ccOwedByCurrency } from "../ccOwedByCurrency.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock } from "../chileDate.js";
@@ -114,10 +115,7 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
   const cardId = card ? ids.get(`card:${card.key}` as Acct) : undefined;
   const source = `demo-card-movements-${observedAt.toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
   if (card && cardId != null) {
-    const cfg = db.prepare(`SELECT cupo_clp, cupo_usd FROM credit_card_account_config WHERE account_id = ?`).get(cardId) as {
-      cupo_clp: number;
-      cupo_usd: number;
-    };
+    const cupos = loadCreditCardCupos(cardId);
     const owed = ccOwedByCurrency(cardId, ymd);
     const bankAccount = `8000${card.last4}`;
     const row = (currency: "clp" | "usd", used: number, limit: number) => ({
@@ -135,8 +133,8 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
         status: "present",
         observed_at: observedAt.toISOString(),
         rows: [
-          row("clp", Math.round(owed.clp.total), cfg.cupo_clp),
-          row("usd", Math.round(owed.usd.total * 100) / 100, cfg.cupo_usd),
+          row("clp", Math.round(owed.clp.total), cupos.get("clp") ?? 0),
+          row("usd", Math.round(owed.usd.total * 100) / 100, cupos.get("usd") ?? 0),
         ],
       },
       new Map(owed.close_iso ? [[bankAccount, { close_iso: owed.close_iso }]] : [])

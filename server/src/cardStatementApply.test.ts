@@ -118,7 +118,7 @@ describe("applyCardStatement", () => {
   afterEach(() => {
     db.prepare(`DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`).run(accountId);
     db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);

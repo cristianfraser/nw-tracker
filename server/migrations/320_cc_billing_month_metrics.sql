@@ -1,0 +1,4 @@
+-- A card's billing-month snapshot goes long (docs/any-currency-plan.md, Phase C3):
+-- cc_billing_month_balances (facturado_clp / _usd, cupo_utilizado_clp, saldo_total_clp / _usd) →
+-- cc_billing_month_metrics(account_id, billing_month, as_of_date, as_of_kind, metric, currency, amount).
+-- The split lives in the paired POST_MIGRATION_HOOKS entry (server/src/cards/billingMetrics320.ts).

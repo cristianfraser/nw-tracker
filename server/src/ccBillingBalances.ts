@@ -41,6 +41,11 @@ import { isCcPaymentOrUsdDebtAbonoMerchant, requireHeaderPagoIso } from "./ccPay
 import { primaryStatementOfSlot, statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant, isCcTraspasoDeudaMerchant, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 
+/**
+ * One billing month of a card's stored snapshot (`cc_billing_month_metrics`, migration 320: one
+ * row per metric and currency), pivoted: `facturado` and `saldo_total` per currency, the cupo in
+ * pesos. The `_clp` / `_usd` fields are those maps' peso and dollar entries.
+ */
 export type CcBillingMonthBalanceRow = {
   id: number;
   account_id: number;
@@ -52,23 +57,37 @@ export type CcBillingMonthBalanceRow = {
   cupo_utilizado_clp: number;
   saldo_total_clp: number;
   saldo_total_usd: number | null;
+  facturado_by_currency: Record<string, number>;
+  saldo_total_by_currency: Record<string, number>;
+  cupo_utilizado_by_currency: Record<string, number>;
 };
 
-const upsertBalance = db.prepare(`
-  INSERT INTO cc_billing_month_balances (
-    account_id, billing_month, as_of_date, as_of_kind,
-    facturado_clp, facturado_usd, cupo_utilizado_clp, saldo_total_clp, saldo_total_usd
-  ) VALUES (
-    @account_id, @billing_month, @as_of_date, @as_of_kind,
-    @facturado_clp, @facturado_usd, @cupo_utilizado_clp, @saldo_total_clp, @saldo_total_usd
-  )
-  ON CONFLICT(account_id, billing_month, as_of_date, as_of_kind) DO UPDATE SET
-    facturado_clp = excluded.facturado_clp,
-    facturado_usd = excluded.facturado_usd,
-    cupo_utilizado_clp = excluded.cupo_utilizado_clp,
-    saldo_total_clp = excluded.saldo_total_clp,
-    saldo_total_usd = excluded.saldo_total_usd
+type BalanceWrite = {
+  account_id: number;
+  billing_month: string;
+  as_of_date: string;
+  as_of_kind: string;
+  facturado: Readonly<Record<string, number | null>>;
+  saldo_total: Readonly<Record<string, number | null>>;
+};
+
+const upsertMetric = db.prepare(`
+  INSERT INTO cc_billing_month_metrics (account_id, billing_month, as_of_date, as_of_kind, metric, currency, amount)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(account_id, billing_month, as_of_date, as_of_kind, metric, currency) DO UPDATE SET amount = excluded.amount
 `);
+
+/** A month's snapshot rows: facturado and saldo total per currency (a null entry writes nothing), the peso cupo 0 until set. */
+function writeBalance(b: BalanceWrite): void {
+  const put = (metric: string, currency: string, amount: number | null) => {
+    if (amount != null) upsertMetric.run(b.account_id, b.billing_month, b.as_of_date, b.as_of_kind, metric, currency, amount);
+  };
+  for (const [c, v] of Object.entries(b.facturado)) put("facturado", c, v);
+  // Set from the detalle once it can be built from these rows.
+  put("cupo_utilizado", "clp", 0);
+  put("saldo_total", "clp", 0);
+  for (const [c, v] of Object.entries(b.saldo_total)) if (c !== "clp") put("saldo_total", c, v);
+}
 
 type RevolvingLineRow = {
   id: number;
@@ -810,12 +829,12 @@ export function facturadoFromStatement(
 }
 
 const updateBalanceFromDetalle = db.prepare(`
-  UPDATE cc_billing_month_balances SET cupo_utilizado_clp = ?, saldo_total_clp = ?
-  WHERE account_id = ? AND billing_month = ?
+  UPDATE cc_billing_month_metrics SET amount = CASE metric WHEN 'cupo_utilizado' THEN ? ELSE ? END
+  WHERE account_id = ? AND billing_month = ? AND currency = 'clp' AND metric IN ('cupo_utilizado', 'saldo_total')
 `);
 
 /**
- * Rebuilds one card's stored `cc_billing_month_balances` snapshot: a row per statement slot, as
+ * Rebuilds one card's stored `cc_billing_month_metrics` snapshot: a row per statement slot, as
  * of its close, and — while no statement closes it — the open facturación's row, as of today.
  * Facturado is per currency, the slot's own (`facturadoClpUsdForStatementSlot`); `saldo_total_usd`
  * is the USD statement's printed deuda total. Cupo en cuotas and saldo total are the detalle row
@@ -831,7 +850,7 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
   const months = new Set<string>();
   let n = 0;
 
-  db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(accountId);
 
   for (const [billingMonth, slot] of statementSlotsByBillingMonth(accountId)) {
     const primary = primaryStatementOfSlot(accountId, slot);
@@ -841,17 +860,13 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
     const saldo_total_usd =
       slot.get("usd")?.deuda_total != null && slot.get("usd")!.deuda_total! > 0 ? slot.get("usd")!.deuda_total! : 0;
 
-    upsertBalance.run({
+    writeBalance({
       account_id: accountId,
       billing_month: billingMonth,
       as_of_date: asOfIso,
       as_of_kind: "statement",
-      facturado_clp: facturado_clp > 0 ? facturado_clp : null,
-      facturado_usd: facturado_usd > 0 ? facturado_usd : null,
-      // Set from the detalle below, once it can be built from these rows.
-      cupo_utilizado_clp: 0,
-      saldo_total_clp: 0,
-      saldo_total_usd: saldo_total_usd > 0 ? saldo_total_usd : null,
+      facturado: { clp: facturado_clp > 0 ? facturado_clp : null, usd: facturado_usd > 0 ? facturado_usd : null },
+      saldo_total: { usd: saldo_total_usd > 0 ? saldo_total_usd : null },
     });
     months.add(billingMonth);
     n += 1;
@@ -864,16 +879,13 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
       (s) => s.billing_month === openBm && !isListingSourceKind(s.source_kind)
     );
     if (!hasPdfForOpen) {
-      upsertBalance.run({
+      writeBalance({
         account_id: accountId,
         billing_month: openBm,
         as_of_date: today,
         as_of_kind: "manual",
-        facturado_clp: null,
-        facturado_usd: null,
-        cupo_utilizado_clp: 0,
-        saldo_total_clp: 0,
-        saldo_total_usd: null,
+        facturado: {},
+        saldo_total: {},
       });
       months.add(openBm);
       n += 1;
@@ -897,14 +909,59 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
 }
 
 export function listCcBillingMonthBalances(accountId: number): CcBillingMonthBalanceRow[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT id, account_id, billing_month, as_of_date, as_of_kind,
-              facturado_clp, facturado_usd, cupo_utilizado_clp, saldo_total_clp, saldo_total_usd
-       FROM cc_billing_month_balances WHERE account_id = ?
-       ORDER BY billing_month DESC, as_of_date DESC`
+      `SELECT id, billing_month, as_of_date, as_of_kind, metric, currency, amount
+       FROM cc_billing_month_metrics WHERE account_id = ? ORDER BY id`
     )
-    .all(accountId) as CcBillingMonthBalanceRow[];
+    .all(accountId) as {
+    id: number;
+    billing_month: string;
+    as_of_date: string;
+    as_of_kind: string;
+    metric: string;
+    currency: string;
+    amount: number;
+  }[];
+  const byKey = new Map<string, CcBillingMonthBalanceRow>();
+  for (const r of rows) {
+    const key = `${r.billing_month}|${r.as_of_date}|${r.as_of_kind}`;
+    let row = byKey.get(key);
+    if (!row) {
+      row = {
+        id: r.id,
+        account_id: accountId,
+        billing_month: r.billing_month,
+        as_of_date: r.as_of_date,
+        as_of_kind: r.as_of_kind,
+        facturado_clp: null,
+        facturado_usd: null,
+        cupo_utilizado_clp: 0,
+        saldo_total_clp: 0,
+        saldo_total_usd: null,
+        facturado_by_currency: {},
+        saldo_total_by_currency: {},
+        cupo_utilizado_by_currency: {},
+      };
+      byKey.set(key, row);
+    }
+    if (r.metric === "facturado") row.facturado_by_currency[r.currency] = r.amount;
+    else if (r.metric === "saldo_total") row.saldo_total_by_currency[r.currency] = r.amount;
+    else if (r.metric === "cupo_utilizado") row.cupo_utilizado_by_currency[r.currency] = r.amount;
+    else throw new Error(`Account ${accountId}: billing-month metric ${r.metric} has no reader`);
+  }
+  const out = [...byKey.values()];
+  for (const row of out) {
+    row.facturado_clp = row.facturado_by_currency.clp ?? null;
+    row.facturado_usd = row.facturado_by_currency.usd ?? null;
+    row.saldo_total_clp = row.saldo_total_by_currency.clp ?? 0;
+    row.cupo_utilizado_clp = row.cupo_utilizado_by_currency.clp ?? 0;
+    row.saldo_total_usd = row.saldo_total_by_currency.usd ?? null;
+  }
+  // The old table's order: month and as-of descending, ties by insertion.
+  return out.sort(
+    (a, b) => b.billing_month.localeCompare(a.billing_month) || b.as_of_date.localeCompare(a.as_of_date) || a.id - b.id
+  );
 }
 
 export function patchCreditCardBillingConfig(

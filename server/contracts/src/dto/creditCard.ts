@@ -42,8 +42,8 @@ export type CcUpcomingPaymentRowDto = {
   pay_by_source: "statement" | "derived";
   /** What is still owed, in pesos (the dollars left at today's rate). */
   amount_clp: number;
-  /** What is still owed per currency (pesos whole, dollars to the cent): what the display unit converts. */
-  owed: { clp: number; usd: number };
+  /** What is still owed per currency the facturación bills in (each to its smallest coin): what the display unit converts. */
+  owed: Record<string, number>;
   /** The facturación's total in pesos (CLP + the dollars in pesos). */
   billed_clp: number;
   /** Its pay-by has passed with something still owed. */
@@ -364,7 +364,8 @@ export interface AccountCcInstallmentsResponse {
   facturacion_proxy?: CcProxyFacturacionAggregate[];
 }
 
-export type CcCupoEntry = { currency: "clp" | "usd"; value: number | null };
+/** A card's cupo in one currency (`currency`: a `currencies` code); null when none is configured. */
+export type CcCupoEntry = { currency: string; value: number | null };
 
 /** `GET /api/accounts/:id/credit-card-config` — editable `credit_card_account_config` row. */
 export type CreditCardAccountConfigDto = {

@@ -1,17 +1,28 @@
 /**
  * Read/edit `credit_card_account_config` (cupo, billing cycle) for operational CC masters.
  *
- * DB columns stay per-currency (`cupo_clp` / `cupo_usd`, see the deferred value+currency
- * refactor in AGENTS.md); the API payload uses the newer single value+currency shape
- * (`cupo: [{ currency, value }]`).
+ * The cupo is a row per currency (`credit_card_cupos`, migration 321); the payload lists one entry
+ * per currency the card's issuer bills in (primary first), then any other currency on file, a
+ * currency without a cupo as null.
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 
 import { patchCreditCardBillingConfig } from "./ccBillingBalances.js";
 import { db } from "./db.js";
-import { loadCreditCardConfigRow } from "./cards/config.js";
+import { loadCreditCardConfigRow, loadCreditCardCupos } from "./cards/config.js";
+import { ccIssuerBySlug } from "./ccIssuers.js";
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
+import { currencyMinorDigits } from "./displayUnits.js";
 
-export type CcCupoCurrency = "clp" | "usd";
+/** A currency code (`currencies.code`). */
+export type CcCupoCurrency = string;
+
+/** The currencies a card's cupo is listed in: its issuer's statement currencies, primary first. */
+function cupoCurrenciesForCard(accountId: number): string[] {
+  const issuer = ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId));
+  if (!issuer) throw new Error(`Account ${accountId}: card issuer has no rules`);
+  return [issuer.statement_currencies.primary, ...issuer.statement_currencies.secondary];
+}
 
 export type CcCupoEntry = { currency: CcCupoCurrency; value: number | null };
 
@@ -47,11 +58,14 @@ export function getCreditCardAccountConfig(accountId: number): CreditCardAccount
     card_last4: row.card_last4,
     billing_cycle_start_day: row.billing_cycle_start_day,
     billing_cycle_end_day: row.billing_cycle_end_day,
-    cupo: [
-      { currency: "clp", value: row.cupo_clp },
-      { currency: "usd", value: row.cupo_usd },
-    ],
+    cupo: cupoEntries(accountId),
   };
+}
+
+function cupoEntries(accountId: number): CcCupoEntry[] {
+  const stored = loadCreditCardCupos(accountId);
+  const currencies = [...new Set([...cupoCurrenciesForCard(accountId), ...stored.keys()])];
+  return currencies.map((currency) => ({ currency, value: stored.get(currency) ?? null }));
 }
 
 const PATCH_ALLOWED_KEYS = new Set(["billing_cycle_start_day", "billing_cycle_end_day", "cupo"]);
@@ -77,8 +91,8 @@ function parseCupoEntries(raw: unknown): CcCupoEntry[] {
       }
     }
     const { currency, value } = entry as { currency?: unknown; value?: unknown };
-    if (currency !== "clp" && currency !== "usd") {
-      throw new Error("cupo entry currency must be 'clp' or 'usd'");
+    if (typeof currency !== "string" || !/^[a-z]{3}$/.test(currency)) {
+      throw new Error("cupo entry currency must be a lowercase currency code");
     }
     if (seen.has(currency)) {
       throw new Error(`duplicate cupo entry for currency ${currency}`);
@@ -88,8 +102,9 @@ function parseCupoEntries(raw: unknown): CcCupoEntry[] {
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
         throw new Error(`cupo ${currency} value must be a finite number >= 0 (or null to clear)`);
       }
-      if (currency === "clp" && !Number.isInteger(value)) {
-        throw new Error("cupo clp value must be an integer amount of pesos");
+      const f = 10 ** currencyMinorDigits(currency);
+      if (Math.abs(Math.round(value * f) - value * f) > 1e-6) {
+        throw new Error(`cupo ${currency} value has more decimals than the currency's smallest coin`);
       }
     }
     out.push({ currency, value: value === null ? null : (value as number) });
@@ -134,12 +149,10 @@ export function parseCreditCardConfigPatch(body: unknown): CreditCardConfigPatch
 }
 
 const upsertCupoStmt = db.prepare(
-  `INSERT INTO credit_card_account_config (account_id, cupo_clp, cupo_usd)
-   VALUES (@account_id, @cupo_clp, @cupo_usd)
-   ON CONFLICT(account_id) DO UPDATE SET
-     cupo_clp = excluded.cupo_clp,
-     cupo_usd = excluded.cupo_usd`
+  `INSERT INTO credit_card_cupos (account_id, currency, amount) VALUES (?, ?, ?)
+   ON CONFLICT(account_id, currency) DO UPDATE SET amount = excluded.amount`
 );
+const deleteCupoStmt = db.prepare(`DELETE FROM credit_card_cupos WHERE account_id = ? AND currency = ?`);
 
 /** Apply a validated patch. Returns the new config and whether billing-cycle days changed. */
 export function applyCreditCardConfigPatch(
@@ -162,16 +175,16 @@ export function applyCreditCardConfigPatch(
   }
 
   if (patch.cupo !== undefined) {
-    const next = new Map<CcCupoCurrency, number | null>([
-      ["clp", before.cupo.find((c) => c.currency === "clp")?.value ?? null],
-      ["usd", before.cupo.find((c) => c.currency === "usd")?.value ?? null],
-    ]);
-    for (const entry of patch.cupo) next.set(entry.currency, entry.value);
-    upsertCupoStmt.run({
-      account_id: accountId,
-      cupo_clp: next.get("clp"),
-      cupo_usd: next.get("usd"),
-    });
+    const allowed = new Set(before.cupo.map((c) => c.currency));
+    for (const entry of patch.cupo) {
+      if (!allowed.has(entry.currency)) {
+        throw new Error(`cupo entry currency ${entry.currency} is not a currency this card bills in`);
+      }
+    }
+    for (const entry of patch.cupo) {
+      if (entry.value == null) deleteCupoStmt.run(accountId, entry.currency);
+      else upsertCupoStmt.run(accountId, entry.currency, entry.value);
+    }
   }
 
   return { config: getCreditCardAccountConfig(accountId), billingCycleChanged };

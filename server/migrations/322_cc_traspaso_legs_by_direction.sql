@@ -1,0 +1,4 @@
+-- A traspaso de deuda link names its legs by direction and currency (docs/any-currency-plan.md, Phase C3):
+-- clp_line_id / usd_line_id / amount_clp / amount_usd -> to_line_id / from_line_id / to_amount /
+-- from_amount, with from_currency and to_currency. The rebuild lives in the paired POST_MIGRATION_HOOKS
+-- entry (server/src/cards/traspasoLegs322.ts).

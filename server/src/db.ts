@@ -62,6 +62,9 @@ import { runCurrencies312 } from "./currencies312.js";
 import { runCurrencyReferences314 } from "./currencyReferences314.js";
 import { runExpenseAmountCurrency316 } from "./expenseAmountCurrency316.js";
 import { runStatementLineAmount319 } from "./cards/statementLineAmount319.js";
+import { runBillingMetrics320 } from "./cards/billingMetrics320.js";
+import { runCardAmountsByCurrency321 } from "./cards/cardAmountsByCurrency321.js";
+import { runTraspasoLegs322 } from "./cards/traspasoLegs322.js";
 import { runMovementFlowTrigger317 } from "./flows/movementFlowTrigger317.js";
 import { runCashCurrency318 } from "./cashCurrency318.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
@@ -400,6 +403,9 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   },
   "318_cash_currency_neutral_flow_kinds.sql": runCashCurrency318,
   "319_cc_statement_line_amount_currency.sql": runStatementLineAmount319,
+  "320_cc_billing_month_metrics.sql": runBillingMetrics320,
+  "321_cc_card_amounts_by_currency.sql": runCardAmountsByCurrency321,
+  "322_cc_traspaso_legs_by_direction.sql": runTraspasoLegs322,
 };
 
 /**
@@ -418,6 +424,7 @@ const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
   "315_market_tables_any_currency.sql",
   "316_expense_amount_currency.sql",
   "319_cc_statement_line_amount_currency.sql",
+  "321_cc_card_amounts_by_currency.sql",
 ]);
 
 export function runMigrations() {

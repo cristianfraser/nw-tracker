@@ -566,7 +566,7 @@ describe("facturación proxy on a card ledger", () => {
       `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
     ).run(accountId);
     db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);

@@ -18,14 +18,21 @@ export type CreditCardConfigRow = {
   card_last4: string | null;
   billing_cycle_start_day: number;
   billing_cycle_end_day: number | null;
-  cupo_clp: number | null;
-  cupo_usd: number | null;
 };
 
 const stmtConfig = db.prepare(
-  `SELECT card_last4, billing_cycle_start_day, billing_cycle_end_day, cupo_clp, cupo_usd
+  `SELECT card_last4, billing_cycle_start_day, billing_cycle_end_day
    FROM credit_card_account_config WHERE account_id = ?`
 );
+
+const stmtCupos = db.prepare(`SELECT currency, amount FROM credit_card_cupos WHERE account_id = ?`);
+
+/** The card master's configured cupo per currency (`credit_card_cupos`, migration 321); a currency with none is absent. */
+export function loadCreditCardCupos(accountId: number): Map<string, number> {
+  return new Map(
+    (stmtCupos.all(accountId) as { currency: string; amount: number }[]).map((r) => [r.currency, r.amount])
+  );
+}
 
 /** The card master's config row; an account without one is not a card master and throws. */
 export function loadCreditCardConfigRow(accountId: number): CreditCardConfigRow {

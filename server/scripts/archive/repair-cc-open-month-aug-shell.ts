@@ -2,7 +2,7 @@
 // ·0781 arriving before its CLP twin advanced the open facturación to 2026-08
 // (lastPdfBillingMonthForAccount counted any currency), which minted an empty
 // `import:web-paste|open|2026-08` statement shell and wrong-month
-// cc_billing_month_balances rows. With the both-currencies close rule in place, this
+// cc_billing_month_metrics rows. With the both-currencies close rule in place, this
 // deleted the empty August shell and rebuilt the account's balance cache. The July CLP
 // statement was imported later the same day, so an `open|2026-08` shell existing NOW is
 // the legitimate open bucket, not the bug state this repaired.
@@ -38,7 +38,7 @@ if (!shell) {
   if (APPLY) {
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(shell.id);
     const n = recomputeCcBillingMonthBalances(shell.account_id);
-    console.log(`rebuilt ${n} cc_billing_month_balances rows for account ${shell.account_id}`);
+    console.log(`rebuilt ${n} cc_billing_month_metrics rows for account ${shell.account_id}`);
   }
 }
 

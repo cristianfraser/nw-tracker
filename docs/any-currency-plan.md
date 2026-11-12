@@ -242,7 +242,12 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
    payloads + the cupo task). Still open: the readers of the legacy line columns (~70 files: the
    billing detail, the facturaciones and their dollar rates, the statement-frame split
    `ccStatementOwedByCurrencyByMonth`, which still splits pesos and dollars only, expense lines), so a
-   euro card's anchors, facturaciones and expense lines are not right yet; and the tables below.
+   euro card's anchors, facturaciones and expense lines are not right yet.
+   *Part 2 (storage) done 2026-11-12:* `cc_billing_month_metrics` (320), `credit_card_cupos` and
+   `cc_feed_billing_close_amounts` (321), traspaso legs `from_*` / `to_*` (322), the upcoming
+   payment's `owed` a map by currency; parity on a real-data copy for each. Still open: the readers
+   named above, the facturación rows' per-currency entries and the currency argument of the dollar
+   payment helpers, and retiring the generated legacy line columns.
    `CcOwedNative {clp, usd}` (`ccOwedWalk.ts`, `ccOwedByCurrency.ts`) becomes a map by
    currency, its revaluation term per sub-balance. Statement lines: `cc_statement_lines`
    `amount_clp` / `amount_usd` and `valor_cuota_mensual_*` → `amount` + `currency` (a line is in

@@ -5,7 +5,7 @@ import { deleteCcWebPasteStatementLine } from "./ccStatementLineDelete.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 
 // Card writes here re-stamp the owed walk; put every card's marks, anchors and billing snapshots back.
-const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 afterAll(() => restoreDerivedCardState());
 
 describe("deleteCcWebPasteStatementLine", () => {

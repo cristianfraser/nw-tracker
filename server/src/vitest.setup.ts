@@ -46,7 +46,7 @@ beforeEach(() => {
  * file order. Each file gets them back as it found them; a file that changed them is named, so the
  * leak can be fixed where it happens.
  */
-const DERIVED_ACCOUNT_TABLES = ["valuations", "cc_owed_anchors", "cc_billing_month_balances"] as const;
+const DERIVED_ACCOUNT_TABLES = ["valuations", "cc_owed_anchors", "cc_billing_month_metrics"] as const;
 
 type DerivedSnapshot = { accountIds: number[]; rows: Map<string, Record<string, unknown>[]>; sourceRows: string };
 

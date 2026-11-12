@@ -25,7 +25,7 @@ import { ddMmYyyyFromIso } from "nw-tracker-contracts";
  * in the last days so the daily series reach them.
  */
 const TAG = "vitest-c2c";
-const restore = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+const restore = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 
 let paid = 0; // BCI master: the facturado paid
 let paying = 0; // Santander master: the purchases that paid it

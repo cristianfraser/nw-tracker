@@ -6,7 +6,7 @@ import { db } from "./db.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
-import { feedBillingCloseForMonth, type CcFeedBillingClose } from "./cards/facturacion.js";
+import { FEED_CLOSE_COLUMNS_SQL, feedBillingCloseForMonth, feedCloseFromDbRow, type CcFeedBillingClose } from "./cards/facturacion.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function isoFromField(raw: string | null | undefined): string | null {
@@ -28,6 +28,21 @@ export type CcFeedCloseRecordResult = {
   status: "new" | "seen";
   close: CcFeedBillingClose;
 };
+
+const insertCloseAmount = db.prepare(
+  `INSERT INTO cc_feed_billing_close_amounts (close_id, currency, amount) VALUES (?, ?, ?)
+   ON CONFLICT(close_id, currency) DO NOTHING`
+);
+
+/** The observation's SALDO INICIAL per currency, on the close; a currency already on file keeps its figure. */
+function insertMissingCloseAmounts(closeId: number, obs: CcFeedCloseObservation): void {
+  for (const [currency, amount] of [
+    ["clp", obs.saldo_inicial_clp],
+    ["usd", obs.saldo_inicial_usd],
+  ] as const) {
+    if (amount != null) insertCloseAmount.run(closeId, currency, amount);
+  }
+}
 
 /** A currency one fetch did not show is not evidence: only two observed figures can disagree. */
 function amountsAgree(a: number | null, b: number | null, tolerance: number): boolean {
@@ -70,25 +85,21 @@ export function recordFeedBillingClose(
     }
     // A currency a previous fetch missed is filled in; one this fetch missed keeps its figure.
     db.prepare(
-      `UPDATE cc_feed_billing_closes SET last_seen_at = datetime('now'), source_file = ?,
-         saldo_inicial_clp = COALESCE(saldo_inicial_clp, ?),
-         saldo_inicial_usd = COALESCE(saldo_inicial_usd, ?)
+      `UPDATE cc_feed_billing_closes SET last_seen_at = datetime('now'), source_file = ?
        WHERE account_id = ? AND billing_month = ?`
-    ).run(obs.source_file, obs.saldo_inicial_clp, obs.saldo_inicial_usd, accountId, billingMonth);
+    ).run(obs.source_file, accountId, billingMonth);
+    insertMissingCloseAmounts(existing.id, obs);
     return { status: "seen", close: feedBillingCloseForMonth(accountId, billingMonth)! };
   }
-  db.prepare(
-    `INSERT INTO cc_feed_billing_closes
-       (account_id, billing_month, close_date, saldo_inicial_clp, saldo_inicial_usd, source_file)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(
-    accountId,
-    billingMonth,
-    obs.close_iso,
-    obs.saldo_inicial_clp,
-    obs.saldo_inicial_usd,
-    obs.source_file
+  const closeId = Number(
+    db
+      .prepare(
+        `INSERT INTO cc_feed_billing_closes (account_id, billing_month, close_date, source_file)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(accountId, billingMonth, obs.close_iso, obs.source_file).lastInsertRowid
   );
+  insertMissingCloseAmounts(closeId, obs);
   return { status: "new", close: feedBillingCloseForMonth(accountId, billingMonth)! };
 }
 
@@ -111,13 +122,11 @@ export function feedCloseStatementMismatches(
   accountId: number,
   statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
 ): string[] {
-  const closes = db
-    .prepare(
-      `SELECT account_id, billing_month, close_date, saldo_inicial_clp, saldo_inicial_usd,
-              first_seen_at, last_seen_at, source_file
-       FROM cc_feed_billing_closes WHERE account_id = ?`
-    )
-    .all(accountId) as CcFeedBillingClose[];
+  const closes = (
+    db
+      .prepare(`SELECT ${FEED_CLOSE_COLUMNS_SQL} FROM cc_feed_billing_closes c WHERE c.account_id = ?`)
+      .all(accountId) as Parameters<typeof feedCloseFromDbRow>[0][]
+  ).map(feedCloseFromDbRow);
   const problems: string[] = [];
   for (const close of closes) {
     for (const st of statements) {
