@@ -43,7 +43,9 @@
   margin: 0;
 }
 
-.page-tile>:last-child {
+/* Not a `<dialog>`: a modal rendered inside a tile centers itself with `margin: auto`, which this
+   rule would beat once the dialog is the tile's last child (it dropped to the viewport's bottom). */
+.page-tile>:last-child:not(dialog) {
   margin-bottom: 0;
 }
 
