@@ -111,13 +111,5 @@ export function warmedDisplayUnits(): readonly string[] {
   return coreCurrencyCodes();
 }
 
-/**
- * The ledger's home currency: pesos. Checking, the peso cash ledgers and the card's billing frame
- * are kept in it; a cash ledger in any other currency is foreign cash (`cashCurrency.ts`).
- */
-export const HOME_CURRENCY = "clp";
-
-/** `code` is the home currency (pesos). */
-export function isHomeCurrency(code: string): boolean {
-  return code === HOME_CURRENCY;
-}
+/** The ledger's home currency (pesos) and its test: one definition, shared with the client. */
+export { HOME_CURRENCY, isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
