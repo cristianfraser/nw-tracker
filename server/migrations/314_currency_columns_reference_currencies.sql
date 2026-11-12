@@ -1,0 +1,11 @@
+-- Currency columns reference `currencies` (2026-11-12): every currency column of the money tables
+-- (card statements and their payment rows, bank account numbers and balances, merchant receipts,
+-- payroll, dividends, wires, recurring payments, movements and flows, loan payments, fund unit
+-- prices) becomes `REFERENCES currencies(code)` instead of a literal CHECK list, so a new currency
+-- is a `currencies` row. The market tables and `crypto_trade_details` (coins) keep their own lists.
+--
+-- The rebuilds live in the paired POST_MIGRATION_HOOKS entry (server/src/currencyReferences314.ts):
+-- each table is rebuilt from its stored CREATE with only those columns changed, and its indexes and
+-- triggers (which a DROP takes with it) are re-created verbatim. Runs with foreign_keys=OFF
+-- (db.ts FOREIGN_KEYS_OFF_MIGRATIONS): DROP TABLE movements would otherwise cascade-delete every
+-- child row.
