@@ -38,7 +38,7 @@ describe("CLP-funded stock_buy capital flows", () => {
     // Fund the CLP cash account, then buy the .SN stock from it.
     db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
-       VALUES (?, 3_000_000, 'clp', '2026-07-02', ?, 'deposit_clp')`
+       VALUES (?, 3_000_000, 'clp', '2026-07-02', ?, 'deposit')`
     ).run(clpId, `${FIXTURE_NOTE}|deposit`);
     db.prepare(
       `INSERT INTO movements (

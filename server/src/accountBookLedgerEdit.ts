@@ -8,7 +8,7 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm } from "./cryptoValuation.js";
 import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { accountUsesUsdCashFlowKinds } from "./accountUsdCashFlows.js";
+import { accountUsesForeignCashFlowKinds } from "./accountForeignCashFlows.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 
@@ -25,7 +25,7 @@ export function bookLedgerEditSchemaForAccount(accountId: number): BookLedgerEdi
   const kind = accountBucketKindSlug(account.bucket_slug);
   if (kind === "afp") return null;
   if (isMovementBalanceCashCategory(kind)) return null;
-  if (accountUsesUsdCashFlowKinds({ bucket_slug: account.bucket_slug, group_slug: account.bucket_slug })) return null;
+  if (accountUsesForeignCashFlowKinds({ bucket_slug: account.bucket_slug })) return null;
   if (kind === "credit_card") return null;
   if (kind === "property" || kind === "mortgage") return null;
   if (account.import_key && isFintualCertV2AccountNotes(account.import_key)) return null;

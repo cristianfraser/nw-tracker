@@ -137,7 +137,7 @@ beforeAll(() => {
   declareTestInstrument(TICKER);
   cash = account(leaf("%\\_\\_usd"), "USD cash", null);
   stock = account(leaf("brokerage_acciones\\_\\_%"), "stock", TICKER);
-  db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 50000, 'usd', '2026-01-02', ?, 'compra_usd')`).run(cash, NOTE);
+  db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 50000, 'usd', '2026-01-02', ?, 'fx_purchase')`).run(cash, NOTE);
 });
 afterAll(() => {
   for (const a of created) {

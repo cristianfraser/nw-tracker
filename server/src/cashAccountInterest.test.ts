@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   clpCashInterestClpThroughDate,
-  usdCashInterestUsdThroughDate,
+  foreignCashInterestThroughDate,
 } from "./cashAccountInterest.js";
 
 describe("cash interest net of fees", () => {
@@ -52,6 +52,6 @@ describe("cash interest net of fees", () => {
     );
     ins.run(id, 10, "2099-02-01", "savings_earnings");
     ins.run(id, 4, "2099-02-18", "cash_fee"); // USD single-leg rows stored positive, kind carries direction
-    expect(usdCashInterestUsdThroughDate(id, "2099-12-31")).toBe(6);
+    expect(foreignCashInterestThroughDate(id, "2099-12-31", "usd")).toBe(6);
   });
 });

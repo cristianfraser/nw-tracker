@@ -10,12 +10,13 @@
  * what lets the tax lots (wave O2) carry the contract's premium into the sale's proceeds or the
  * purchase's basis.
  */
+import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+
 import { requireOptionContract, type OptionContractTerms } from "./optionContracts.js";
 import { optionContractsThroughDate } from "./optionPosition.js";
 
@@ -71,7 +72,7 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
   if (stockTicker !== terms.underlying_ticker.toUpperCase()) {
     fail(400, `stock_account_id holds ${stockTicker ?? "no ticker"}, not the contract's underlying ${terms.underlying_ticker}.`);
   }
-  if (!isUsdCashAccount(input.cash_account_id)) fail(400, "cash_account_id must be a USD cash account.");
+  if (!isForeignCashAccountIn(input.cash_account_id, "usd")) fail(400, "cash_account_id must be a USD cash account.");
 
   const held = optionContractsThroughDate(input.contract_account_id, input.occurred_on);
   if (held === 0) fail(400, `no contracts of ${terms.occ_symbol} are held on ${input.occurred_on}.`);

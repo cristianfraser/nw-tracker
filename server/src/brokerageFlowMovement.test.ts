@@ -10,12 +10,12 @@ function sorted(rows: Row[]): number[] {
 describe("intraDayFlowRank", () => {
   it("orders the cash pipeline: inflows < transfers < sell < fx < buy < withdrawal", () => {
     const ranks = [
-      "deposit_clp",
+      "deposit",
       null,
       "stock_sell",
-      "compra_usd_venta_clp",
+      "fx_exchange",
       "stock_buy",
-      "withdrawal_clp",
+      "withdrawal",
     ].map(intraDayFlowRank);
     expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
     expect(new Set(ranks).size).toBe(ranks.length);
@@ -26,7 +26,7 @@ describe("compareFlowRowsForDisplay", () => {
   it("renders a same-day funding chain newest-first regardless of entry order", () => {
     // Entered out of order: fx and buys first (low ids), funding transfers last.
     const rows: Row[] = [
-      { id: 11106, occurred_on: "2026-07-01", flow_kind: "compra_usd_venta_clp" },
+      { id: 11106, occurred_on: "2026-07-01", flow_kind: "fx_exchange" },
       { id: 11109, occurred_on: "2026-07-01", flow_kind: "stock_buy" },
       { id: 11113, occurred_on: "2026-07-01", flow_kind: null },
       { id: 11112, occurred_on: "2026-07-01", flow_kind: null },
@@ -37,7 +37,7 @@ describe("compareFlowRowsForDisplay", () => {
 
   it("sorts by date before intra-day rank", () => {
     const rows: Row[] = [
-      { id: 1, occurred_on: "2026-07-02", flow_kind: "deposit_clp" },
+      { id: 1, occurred_on: "2026-07-02", flow_kind: "deposit" },
       { id: 2, occurred_on: "2026-07-01", flow_kind: "stock_buy" },
     ];
     expect(sorted(rows)).toEqual([1, 2]);

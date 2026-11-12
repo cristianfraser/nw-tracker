@@ -217,7 +217,7 @@ pesos and dollars, it refuses with an error naming the currency until Phase C re
 What Phase B opens, the code still models as «pesos, plus dollars». Each step replaces a two-slot
 model by one keyed by currency; parity for CLP / USD as above, and a synthetic EUR case per step.
 
-1. **Foreign cash accounts.** USD cash (kind `usd`, `isUsdCashAccount`, `usdCashBalanceUsdAt`,
+1. **Done 2026-11-12** (migration 318: `accounts.cash_currency`, currency-neutral flow kinds; AGENTS.md «Cash in any currency»). Leftovers: the legacy `usd` leaves keep their slug (routes, import keys), the client's cash form and panel offer CLP / USD only, trades and premiums settle in dollars only. **Foreign cash accounts.** USD cash (kind `usd`, `isUsdCashAccount`, `usdCashBalanceUsdAt`,
    `signedUsdDeltaForAccountMovement`, `listUsdCashAccountIds`: 26 files) becomes cash held in the
    account's currency (`accounts` declares it; the leaf kind stops naming the currency). The flow
    kinds named after a pair (`deposit_usd`, `withdrawal_usd`, `compra_usd_venta_clp`, …: 12

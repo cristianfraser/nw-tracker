@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Backfill `fx_daily_bid_ask` buy rates from brokerage `compra_usd` / `compra_usd_venta_clp` movements.
+ * Backfill `fx_daily_bid_ask` buy rates from brokerage `fx_purchase` / `fx_exchange` movements.
  * Sell leg: Yahoo mid on that date when below buy, else buy − 4 CLP (typical retail spread).
  *
  * Usage: npm run backfill:fx-bid-ask-from-movements -w nw-tracker-server [--dry-run]
@@ -28,7 +28,7 @@ function main() {
     .prepare(
       `SELECT occurred_on, amount_clp, amount_usd
        FROM movements
-       WHERE flow_kind IN ('compra_usd_venta_clp', 'compra_usd')
+       WHERE flow_kind IN ('fx_exchange', 'fx_purchase')
          AND amount_clp > 0
          AND amount_usd IS NOT NULL
          AND ABS(amount_usd) > 0

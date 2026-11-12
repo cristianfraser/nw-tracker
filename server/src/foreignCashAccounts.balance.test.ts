@@ -1,7 +1,7 @@
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { describe, expect, it } from "vitest";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 
 /**
@@ -44,18 +44,18 @@ describe("USD cash account balance (synthetic)", () => {
     // Two conversions into USD cash (single-leg compra rows on the account). The legacy
     // fixture also carried the CLP-spent leg (amount_clp 900_000 / 450_000); the CHECK
     // forbids a counter pair on single-leg rows and the assertions only read the USD leg.
-    movIds.push(Number(ins.run(usdId, null, null, 1_000, "usd", "2026-02-10", "vitest-compra-1", "compra_usd_venta_clp", null).lastInsertRowid));
-    movIds.push(Number(ins.run(usdId, null, null, 500, "usd", "2026-03-05", "vitest-compra-2", "compra_usd_venta_clp", null).lastInsertRowid));
+    movIds.push(Number(ins.run(usdId, null, null, 1_000, "usd", "2026-02-10", "vitest-compra-1", "fx_exchange", null).lastInsertRowid));
+    movIds.push(Number(ins.run(usdId, null, null, 500, "usd", "2026-03-05", "vitest-compra-2", "fx_exchange", null).lastInsertRowid));
     // Buys funded from USD cash: transfer legs usd -> equity (legacy amount_clp was 0).
     movIds.push(Number(ins.run(null, usdId, eqId, 900, "usd", "2026-03-10", "vitest-buy-1", "stock_buy", 5).lastInsertRowid));
     movIds.push(Number(ins.run(null, usdId, eqId, 600, "usd", "2026-04-02", "vitest-buy-2", "stock_buy", 3).lastInsertRowid));
 
     try {
       // Running balance: +1000, +500, −900, −600.
-      expect(usdCashBalanceUsdAt(usdId, "2026-02-28")).toBeCloseTo(1_000, 6);
-      expect(usdCashBalanceUsdAt(usdId, "2026-03-09")).toBeCloseTo(1_500, 6);
-      expect(usdCashBalanceUsdAt(usdId, "2026-03-31")).toBeCloseTo(600, 6);
-      expect(usdCashBalanceUsdAt(usdId, "2026-04-30")).toBeCloseTo(0, 6);
+      expect(foreignCashBalanceAt(usdId, "2026-02-28")).toBeCloseTo(1_000, 6);
+      expect(foreignCashBalanceAt(usdId, "2026-03-09")).toBeCloseTo(1_500, 6);
+      expect(foreignCashBalanceAt(usdId, "2026-03-31")).toBeCloseTo(600, 6);
+      expect(foreignCashBalanceAt(usdId, "2026-04-30")).toBeCloseTo(0, 6);
 
       // Dashboard rows agree with the balance function and keep the identity.
       const today = chileCalendarTodayYmd();
@@ -63,7 +63,7 @@ describe("USD cash account balance (synthetic)", () => {
       const row = dashUsd.find((r) => r.account_id === usdId);
       expect(row).toBeDefined();
       if (row?.current_value != null) {
-        expect(row.current_value).toBeCloseTo(usdCashBalanceUsdAt(usdId, today), 2);
+        expect(row.current_value).toBeCloseTo(foreignCashBalanceAt(usdId, today), 2);
       }
       if (row?.current_value != null && row.deposits != null && row.delta_total != null) {
         expect(row.delta_total).toBeCloseTo(row.current_value - row.deposits, 2);

@@ -1,6 +1,6 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 5736,
+  "edge_count": 6581,
   "largest_cycle": 37,
   "cycle_members": [
     "ingest/src/config.ts",
@@ -27,7 +27,6 @@
     "server/src/accountPeriodMetrics.ts",
     "server/src/accountRowForMovement.ts",
     "server/src/accountTodayValue.ts",
-    "server/src/accountUsdCashFlows.ts",
     "server/src/accountValue.ts",
     "server/src/additionalCardReimbursements.ts",
     "server/src/assetGroupTree.ts",

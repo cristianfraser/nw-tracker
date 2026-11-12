@@ -18,7 +18,7 @@ import { convertValue, type ValueSide } from "./valueConvert.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { cryptoTodayNativeValue } from "./cryptoValuation.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { optionContractsThroughDate } from "./optionPosition.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
@@ -112,10 +112,10 @@ function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined):
     }
     case "checking_ledger":
       return clpRaw(checkingMovementBalanceLive(accountId), false);
-    case "usd_ledger":
-      // Its dollars: converted into a display unit once, at today's rate (live while the fx day
-      // is open), so its day P/L in pesos moves with the peso.
-      return { value: usdCashBalanceUsdAt(accountId, today), currency: "usd", as_of_date: today, market: false };
+    case "foreign_ledger":
+      // Its own currency: converted into a display unit once, at today's rate (live while the fx
+      // day is open), so its day P/L in pesos moves with the peso.
+      return { value: foreignCashBalanceAt(accountId, today), currency: p.quantity.currency, as_of_date: today, market: false };
     case "clp_ledger":
       return clpRaw(clpCashBalanceLive(accountId), false);
     case "stock": {

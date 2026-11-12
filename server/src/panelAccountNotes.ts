@@ -6,9 +6,13 @@ export function buildPanelAccountNotes(ticker: string, categoryKey: string): str
 }
 
 /** Ledger cash accounts created from Panel (no equity ticker); `kind` is `clp` or `usd`. */
-export function buildPanelCashAccountNotes(kind: "clp" | "usd", categoryKey: string): string {
+/**
+ * Identity of a panel cash account: `import:panel|kind=<leaf kind>|key=<key>`, plus the declared
+ * currency for a generic foreign cash leaf (`kind=foreign_cash|currency=eur|key=…`), which names none.
+ */
+export function buildPanelCashAccountNotes(kind: string, categoryKey: string, currency?: string): string {
   const key = categoryKey.trim().toLowerCase();
-  return `import:panel|kind=${kind}|key=${key}`;
+  return currency != null ? `import:panel|kind=${kind}|currency=${currency}|key=${key}` : `import:panel|kind=${kind}|key=${key}`;
 }
 
 /** Parse panel provenance notes (dedupe on create only — ticker lives in `accounts.equity_ticker`). */

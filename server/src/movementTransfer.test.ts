@@ -1,14 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import {
-  isMovementTransferRow,
-  signedClpDeltaForAccountMovement,
-  signedUsdDeltaForAccountMovement,
-  sumClpThroughDate,
-  sumClpThroughDisplayDate,
-  unitsDeltaForAccountMovement,
-} from "./movementTransfer.js";
+import { isMovementTransferRow, signedClpDeltaForAccountMovement, sumClpThroughDate, sumClpThroughDisplayDate, unitsDeltaForAccountMovement, signedNativeDeltaForAccountMovement } from "./movementTransfer.js";
 
 describe("movementTransfer", () => {
   let fromId = 0;
@@ -96,8 +89,8 @@ describe("movementTransfer", () => {
       flow_kind: "stock_buy",
       ticker: "SPY",
     };
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(-264.35);
-    expect(signedUsdDeltaForAccountMovement(row, toId)).toBe(0);
+    expect(signedNativeDeltaForAccountMovement(row, fromId, "usd")).toBe(-264.35);
+    expect(signedNativeDeltaForAccountMovement(row, toId, "usd")).toBe(0);
     expect(unitsDeltaForAccountMovement(row, toId)).toBe(4);
     expect(unitsDeltaForAccountMovement(row, fromId)).toBe(0);
   });
@@ -119,8 +112,8 @@ describe("movementTransfer", () => {
       flow_kind: "stock_buy",
       ticker: "SPY",
     };
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(-612.36);
-    expect(signedUsdDeltaForAccountMovement(row, toId)).toBe(0);
+    expect(signedNativeDeltaForAccountMovement(row, fromId, "usd")).toBe(-612.36);
+    expect(signedNativeDeltaForAccountMovement(row, toId, "usd")).toBe(0);
   });
 
   it("single-leg compra credits USD regardless of provenance notes (gates removed with tranche B)", () => {
@@ -137,13 +130,13 @@ describe("movementTransfer", () => {
       occurred_on: "2026-05-28",
       note: "migration:fx-merge|dep=1448|compra=1449",
       units_delta: null,
-      flow_kind: "compra_usd_venta_clp",
+      flow_kind: "fx_exchange",
       ticker: null,
     };
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(3353.07);
+    expect(signedNativeDeltaForAccountMovement(row, fromId, "usd")).toBe(3353.07);
   });
 
-  it("legacy compra_usd rows carrying share units stay off the USD cash ledger", () => {
+  it("legacy fx_purchase rows carrying share units stay off the USD cash ledger", () => {
     const row = {
       account_id: fromId,
       from_account_id: null,
@@ -155,10 +148,10 @@ describe("movementTransfer", () => {
       occurred_on: "2026-03-03",
       note: null,
       units_delta: 0.5,
-      flow_kind: "compra_usd",
+      flow_kind: "fx_purchase",
       ticker: "SPY",
     };
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
+    expect(signedNativeDeltaForAccountMovement(row, fromId, "usd")).toBe(0);
   });
 
   it("stock_sell transfer debits shares on from_account and credits USD on to_account", () => {
@@ -178,8 +171,8 @@ describe("movementTransfer", () => {
     };
     expect(unitsDeltaForAccountMovement(row, fromId)).toBeCloseTo(-61.056979521, 8);
     expect(unitsDeltaForAccountMovement(row, toId)).toBe(0);
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
-    expect(signedUsdDeltaForAccountMovement(row, toId)).toBe(3072.48);
+    expect(signedNativeDeltaForAccountMovement(row, fromId, "usd")).toBe(0);
+    expect(signedNativeDeltaForAccountMovement(row, toId, "usd")).toBe(3072.48);
   });
 
   it("sums CLP through date with transfer + legacy rows", () => {

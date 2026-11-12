@@ -8,7 +8,7 @@
  */
 import { db } from "../db.js";
 import { assertF1040Identities, isF1040Line, type F1040Lines } from "./identities.js";
-import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
+import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
 import { US_FILING_STATUSES, type UsFilingStatus } from "../usLegalParameters.js";
 
 export type FiledF1040 = {
@@ -105,7 +105,7 @@ export function linkF1040Settlement(input: { taxYear: number; movementId: number
     throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} is not a single-leg movement`);
   }
   if (m.currency !== "usd") throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} is in ${m.currency}, not dollars`);
-  const signed = signedUsdDeltaForAccountMovement(m, m.account_id);
+  const signed = signedNativeDeltaForAccountMovement(m, m.account_id, "usd");
   if (signed === 0) throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} moves no dollars`);
   const kind = signed > 0 ? "refund" : "payment";
   if (kind !== expected.kind) {

@@ -28,7 +28,7 @@ function row(r: Partial<UsdWalkRow> & { id: number; occurred_on: string; amount:
 
 const ROWS: UsdWalkRow[] = [
   // Buy 1.000 dollars for 950.000 pesos on a day the observado is 940.
-  row({ id: 1, occurred_on: "2026-03-03", from_account_id: CLP, to_account_id: USD, flow_kind: "compra_usd_venta_clp", amount: 950_000, currency: "clp", counter_amount: 1000, counter_currency: "usd" }),
+  row({ id: 1, occurred_on: "2026-03-03", from_account_id: CLP, to_account_id: USD, flow_kind: "fx_exchange", amount: 950_000, currency: "clp", counter_amount: 1000, counter_currency: "usd" }),
   // Spend 600 of them on a stock when the observado is 960.
   row({ id: 2, occurred_on: "2026-03-05", from_account_id: USD, to_account_id: STOCK, flow_kind: "stock_buy", amount: 600, currency: "usd", units_delta: 1 }),
   // A 10-dollar dividend arrives at 970.
@@ -98,7 +98,7 @@ describe("usdCashTaxDisposalsFromRows", () => {
     ["oficio_2390", "realized"],
     ["none", "deferred"],
   ] as const)("dollars spent from the account (a single-leg debit) under %s are %s at the observado of their day", (posture, tag) => {
-    const spent = row({ id: 9, occurred_on: "2026-07-01", account_id: USD, flow_kind: "withdrawal_usd", amount: 100, currency: "usd" });
+    const spent = row({ id: 9, occurred_on: "2026-07-01", account_id: USD, flow_kind: "withdrawal", amount: 100, currency: "usd" });
     const { disposals } = run([...ROWS, spent], { posture });
     expect(disposals.find((x) => x.movementId === 9)).toMatchObject({ units: 100, proceeds: 98_000, cost: 94_000, gain: 4_000, tag });
   });
@@ -110,7 +110,7 @@ describe("usdCashTaxDisposalsFromRows", () => {
   });
 
   it("an own transfer carries the original date and cost, and the destination consumes FIFO", () => {
-    const secondBuy = row({ id: 6, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "compra_usd_venta_clp", amount: 100_000, currency: "clp", counter_amount: 100, counter_currency: "usd" });
+    const secondBuy = row({ id: 6, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "fx_exchange", amount: 100_000, currency: "clp", counter_amount: 100, counter_currency: "usd" });
     const wire = row({ id: 7, occurred_on: "2026-07-02", from_account_id: USD, to_account_id: BANK_USD, amount: 510, currency: "usd" });
     const bankPayment = row({ id: 8, occurred_on: "2026-07-03", from_account_id: BANK_USD, to_account_id: CARD, flow_kind: "pago_tarjeta", amount: 450, currency: "usd" });
     const { disposals, openLots } = run([...ROWS, secondBuy, wire, bankPayment]);
@@ -128,7 +128,7 @@ describe("usdCashTaxDisposalsFromRows", () => {
 
   it("a withdrawal request reserves its dollars, so a buy after it cannot spend them", () => {
     const rows = [
-      row({ id: 10, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "compra_usd_venta_clp", amount: 98_000, currency: "clp", counter_amount: 100, counter_currency: "usd" }),
+      row({ id: 10, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "fx_exchange", amount: 98_000, currency: "clp", counter_amount: 100, counter_currency: "usd" }),
       row({ id: 11, occurred_on: "2026-07-02", from_account_id: USD, to_account_id: STOCK, flow_kind: "stock_buy", amount: 10, currency: "usd", units_delta: 1 }),
     ];
     const request: UsdWalkRequest = { message_id: "<r@test>", requested_at: "2026-07-01T20:00:00Z", gross_cents: 10_000, net_cents: 9_000, account_id: USD, booking: null };
@@ -137,7 +137,7 @@ describe("usdCashTaxDisposalsFromRows", () => {
 
   it("a booked withdrawal's fee keeps its own cost; the delivered dollars carry only theirs", () => {
     const rows = [
-      row({ id: 20, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "compra_usd_venta_clp", amount: 98_000, currency: "clp", counter_amount: 100, counter_currency: "usd" }),
+      row({ id: 20, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "fx_exchange", amount: 98_000, currency: "clp", counter_amount: 100, counter_currency: "usd" }),
       row({ id: 21, occurred_on: "2026-07-02", account_id: USD, flow_kind: "cash_fee", amount: 10, currency: "usd" }),
       row({ id: 22, occurred_on: "2026-07-02", from_account_id: USD, to_account_id: BANK_USD, amount: 90, currency: "usd" }),
       row({ id: 23, occurred_on: "2026-07-03", from_account_id: BANK_USD, to_account_id: CARD, flow_kind: "pago_tarjeta", amount: 90, currency: "usd" }),

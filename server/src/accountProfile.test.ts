@@ -16,6 +16,7 @@ const base: AccountProfileFacts = {
   fundQuoteCurrencyOf: () => "clp",
   roles: [],
   demoOrTest: true,
+  cashCurrency: null,
 };
 const p = (f: Partial<AccountProfileFacts>) => profileFromFacts({ ...base, ...f });
 
@@ -40,15 +41,17 @@ describe("profileFromFacts", () => {
         .quantity
     ).toEqual({ kind: "fintual_goal", seriesKey: "s", goalId: "9" });
     expect(p({ kind: "cuenta_corriente" }).quantity).toEqual({ kind: "checking_ledger" });
-    expect(p({ kind: "usd" }).quantity).toEqual({ kind: "usd_ledger" });
-    expect(p({ kind: "clp" }).quantity).toEqual({ kind: "clp_ledger" });
+    expect(p({ kind: "usd", cashCurrency: "usd" }).quantity).toEqual({ kind: "foreign_ledger", currency: "usd" });
+    expect(p({ kind: "foreign_cash", cashCurrency: "eur" }).quantity).toEqual({ kind: "foreign_ledger", currency: "eur" });
+    expect(p({ kind: "clp", cashCurrency: "clp" }).quantity).toEqual({ kind: "clp_ledger" });
     expect(p({ kind: "dap" }).quantity).toEqual({ kind: "book_mark" });
     // A stock account before its first share keeps its book marks.
     expect(p({ kind: "spy", equityTicker: "SPY" }).quantity).toEqual({ kind: "book_mark" });
   });
 
   it("maps each quantity to what the account holds", () => {
-    expect(p({ kind: "usd" }).holding).toEqual({ kind: "currency", code: "usd" });
+    expect(p({ kind: "usd", cashCurrency: "usd" }).holding).toEqual({ kind: "currency", code: "usd" });
+    expect(p({ kind: "foreign_cash", cashCurrency: "eur" }).holding).toEqual({ kind: "currency", code: "eur" });
     expect(p({ kind: "cuenta_corriente" }).holding).toEqual({ kind: "currency", code: "clp" });
     expect(p({ kind: "property" }).holding).toEqual({ kind: "currency", code: "uf" });
     expect(p({ kind: "credit_card" }).holding).toEqual({ kind: "card" });
@@ -75,11 +78,11 @@ describe("profileFromFacts", () => {
     expect(p({ kind: "other_debt" }).chartDeposits).toBe(false);
     expect([p({ kind: "dap" }).side, p({ kind: "dap" }).flowCarry]).toEqual(["asset", true]);
     expect(p({ kind: "cuenta_vista" }).perf).toBe("ledger_cash");
-    expect(p({ kind: "usd" }).perf).toBe("ledger_cash");
+    expect(p({ kind: "usd", cashCurrency: "usd" }).perf).toBe("ledger_cash");
     expect(p({ kind: "cuenta_ahorro_vivienda" }).perf).toBe("book_valuation");
     expect(p({ kind: "cuenta_ahorro_vivienda" }).monthPrecision).toBe(true);
     expect(p({ kind: "dap" }).perf).toBe("valuation_series");
-    expect(p({ kind: "usd" }).priceless).toBe(true);
+    expect(p({ kind: "usd", cashCurrency: "usd" }).priceless).toBe(true);
     expect(p({ kind: "spy", equityTicker: "SPY", usesEquityMtm: true }).priceless).toBe(false);
   });
 

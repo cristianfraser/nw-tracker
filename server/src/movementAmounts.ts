@@ -1,7 +1,7 @@
 /**
  * Native movement amounts (migration 169). A movement stores one `amount` in its own
  * `currency`; a cross-currency transfer additionally carries the to-leg as
- * `counter_amount`/`counter_currency` (compra_usd_venta_clp: amount = CLP from-leg,
+ * `counter_amount`/`counter_currency` (fx_exchange: amount = CLP from-leg,
  * counter = USD to-leg). There is no stored CLP equivalent for non-CLP movements —
  * same as the legacy pair, where a USD movement's `amount_clp` was 0.
  *
@@ -28,11 +28,14 @@ export type MovementAmountFields = {
   counter_currency: string | null;
 };
 
-function legOf(row: MovementAmountFields, currency: MovementCurrency): number | null {
+/** The row's leg in `currency` (its own amount, or a conversion's counter leg), or null when it has none. */
+export function movementLeg(row: MovementAmountFields, currency: string): number | null {
   if (row.currency === currency) return row.amount;
   if (row.counter_currency === currency) return row.counter_amount;
   return null;
 }
+
+const legOf = movementLeg;
 
 /** The row's CLP leg, or 0 when it has none — exact legacy `amount_clp` semantics. */
 export function movementClpLegOrZero(row: MovementAmountFields): number {

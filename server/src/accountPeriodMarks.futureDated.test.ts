@@ -41,11 +41,11 @@ describe("monthEndCloseClpForAccount with future-dated movements", () => {
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`
     );
     // Closed prior month: deposit that must keep counting at its month-end.
-    ins.run(clpId, 1_000_000, "2099-06-20", `${FIXTURE}|jun-deposit`, "deposit_clp");
+    ins.run(clpId, 1_000_000, "2099-06-20", `${FIXTURE}|jun-deposit`, "deposit");
     // Current month, before today: counts.
-    ins.run(clpId, 2_000_000, "2099-07-10", `${FIXTURE}|jul-deposit`, "deposit_clp");
+    ins.run(clpId, 2_000_000, "2099-07-10", `${FIXTURE}|jul-deposit`, "deposit");
     // Current month, AFTER today (settles later): already counts in the live close.
-    ins.run(clpId, 2_985_000, "2099-07-20", `${FIXTURE}|jul-future-buy`, "withdrawal_clp");
+    ins.run(clpId, 2_985_000, "2099-07-20", `${FIXTURE}|jul-future-buy`, "withdrawal");
   });
 
   afterEach(() => {

@@ -1132,7 +1132,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     if (clp <= 0) return;
     book.transfer({ from: "checking", to: "brokerClp", date: day, clp, flowKind: null, note: "Broker|depósito" }, { account: "checking", description: "TRANSF A BROKER DEMO SPA", side: "from" });
     const usd = cents((clp / market.fx(day)) * 0.995);
-    book.transfer({ from: "brokerClp", to: "brokerUsd", date: day, clp, usd, flowKind: "compra_usd_venta_clp", note: "Broker|compra de dólares" });
+    book.transfer({ from: "brokerClp", to: "brokerUsd", date: day, clp, usd, flowKind: "fx_exchange", note: "Broker|compra de dólares" });
   };
   const depositBrokerUsd = (day: Ymd, usd: number, cash: UsdBrokerCash = "brokerUsd") => {
     usd = cents(Math.floor(usd / 100) * 100);
@@ -1225,7 +1225,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     if (usd <= 0) return;
     const clp = round(usd * market.fx(day) * 0.992);
     book.transfer(
-      { from, to: "checking", date: day, clp, usd, flowKind: "withdrawal_usd", note: "Venta de divisas" },
+      { from, to: "checking", date: day, clp, usd, flowKind: "withdrawal", note: "Venta de divisas" },
       { account: "checking", description: "ABONO POR VENTA DE DIVISAS", side: "to" }
     );
   };
@@ -1445,7 +1445,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       const netUsd = contractor.monthlyUsd - feeUsd;
       if (wire <= today) {
         const fx = market.fx(wire);
-        book.single({ type: "single", account: "checkingUsd", date: wire, amount: netUsd, currency: "usd", note: `Rec Or de Pago ${contractor.platform} ${contractor.employer}`, flowKind: "compra_usd" });
+        book.single({ type: "single", account: "checkingUsd", date: wire, amount: netUsd, currency: "usd", note: `Rec Or de Pago ${contractor.platform} ${contractor.employer}`, flowKind: "fx_purchase" });
         contractorPayslips.push({ job: contractor, month, wireDate: wire, grossUsd: contractor.monthlyUsd, feeUsd, fx });
         const grossClp = round(contractor.monthlyUsd * fx);
         const ret = round(grossClp * boletaRetentionRate(Number(wire.slice(0, 4))));
@@ -1758,7 +1758,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     for (const b of apvBonuses.filter((x) => monthOf(x.day) === month && x.day <= today)) {
       const units = Math.round((b.clp / market.fundUnit(APV_FUND_SERIES_KEY, b.day)) * 1e4) / 1e4;
       book.addUnits("apvA", units, 4);
-      book.single({ type: "single", account: "apvA", date: b.day, amount: b.clp, currency: "clp", note: "Bonificación fiscal APV", units, flowKind: "aporte_estatal_clp" });
+      book.single({ type: "single", account: "apvA", date: b.day, amount: b.clp, currency: "clp", note: "Bonificación fiscal APV", units, flowKind: "state_bonus" });
     }
 
     /* ---------- AFP fund switch ---------- */

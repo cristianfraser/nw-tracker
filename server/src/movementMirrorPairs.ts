@@ -135,7 +135,7 @@ type EligibleLegRow = {
  * Buda buffer rows (budaWallet.ts).
  *
  * Peso-only by nature (2026-11-10), the dollar checking accounts included: a dollar single-leg
- * row carries its direction in `flow_kind` (`compra_usd` / `withdrawal_usd`, the USD-cash
+ * row carries its direction in `flow_kind` (`fx_purchase` / `withdrawal`, the USD-cash
  * convention) and the pairing reads `flow_kind IS NULL` rows; the conversion writes a peso
  * transfer and `movement_mirror_merges` keeps peso legs; and a dollar transfer between own
  * accounts (US checking ↔ US savings, the broker's wallet) arrives as a transfer row from its

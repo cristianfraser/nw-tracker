@@ -44,7 +44,7 @@ function movementKindSql(a: string): string {
 
 /** A single-leg row that takes money out of its account (`signedUsdDeltaForAccountMovement`'s rule). */
 function movementOutgoingSql(a: string): string {
-  return `(${a}.amount < 0 OR (${a}.currency <> 'clp' AND COALESCE(${a}.flow_kind, '') IN ('withdrawal_usd', 'cash_fee')))`;
+  return `(${a}.amount < 0 OR (${a}.currency <> 'clp' AND COALESCE(${a}.flow_kind, '') IN ('withdrawal', 'cash_fee')))`;
 }
 
 function movementFlowValues(a: string): string {

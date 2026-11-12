@@ -16,7 +16,7 @@ import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
-import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
+import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
 
 export type CheckingExpenseRefund = {
@@ -38,7 +38,7 @@ type RefundMovementRow = MovementTransferRow &
 /** A dollar checking credit's dollars (positive), else null; a listed row that moves no dollars throws. */
 function dollarCreditUsd(row: MovementTransferRow & { account_id: number | null }, dollarAccountIds: ReadonlySet<number>): number | null {
   if (row.account_id == null || !dollarAccountIds.has(row.account_id)) return null;
-  return signedUsdDeltaForAccountMovement(row, row.account_id);
+  return signedNativeDeltaForAccountMovement(row, row.account_id, "usd");
 }
 
 export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {

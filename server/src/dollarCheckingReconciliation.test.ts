@@ -1,3 +1,4 @@
+import { foreignCashToClpAt } from "./foreignCashAccounts.js";
 /**
  * The dollar checking account in the deposits reconciliation and the mirror pairs: a dollar
  * deposit (a single-leg dollar row buying units) reconciles at its dollars priced at the day's rate,
@@ -11,7 +12,6 @@ import { db } from "./db.js";
 import { buildDepositsReconciliationPayload, classifyDepositsReconciliation } from "./flowsDepositsReconciliation.js";
 import { listMirrorPairCandidates } from "./movementMirrorPairs.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
-import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
 
 const RATE = 950;
 const PREFIX = "Vitest · dollar reconciliation";
@@ -48,7 +48,7 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
       Math.abs(usd),
       day,
       `import:cartola|${day.slice(0, 7)}|Austin|${description}|doc:vitest-recon${idx}|on:${day}|amt:${Math.round(usd * 100)}|idx:${960 + idx}`,
-      usd > 0 ? "compra_usd" : "withdrawal_usd"
+      usd > 0 ? "fx_purchase" : "withdrawal"
     );
 
   beforeEach(() => {
@@ -88,12 +88,12 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
       account_id: stock,
       category: "brokerage",
       // Priced as the deposit event is (`accountDeposits.ts`: the dollars at the day's sell rate).
-      amount_clp: usdCashUsdToClpAt(1000, recent, "vitest"),
+      amount_clp: foreignCashToClpAt(1000, "usd", recent, "vitest"),
       amount_usd: 1000,
       status: "unlinked_checking_present",
     });
     expect(rows.find((r) => r.movement_id === noSource)).toMatchObject({
-      amount_clp: usdCashUsdToClpAt(500.5, ancient, "vitest"),
+      amount_clp: foreignCashToClpAt(500.5, "usd", ancient, "vitest"),
       amount_usd: 500.5,
       status: "unlinked_no_checking_source",
     });
@@ -109,7 +109,7 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
     expect(savings).toBeDefined();
     const out = listedUsd(checkingUsd, "VITEST TRANSFER TO SAVINGS", -2_468.13, recent, 1);
     const inn = movement(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 2468.13, 'usd', ?, 'vitest savings credit', 'compra_usd')`,
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 2468.13, 'usd', ?, 'vitest savings credit', 'fx_purchase')`,
       savings!.id,
       recent
     );

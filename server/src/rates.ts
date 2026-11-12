@@ -326,16 +326,31 @@ export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode
 }
 
 /**
- * A deposit/flow event: every one carries its CLP leg (`amt`); USD-cash and equity capital
- * events also carry the dollars that actually moved (`amt_usd`).
+ * A deposit/flow event: every one carries its CLP leg (`amt`); dollar cash and equity capital
+ * events also carry the dollars that actually moved (`amt_usd`), and a cash event in another
+ * foreign currency its own amount (`amt_native` in `native_currency`).
  */
-export type FlowEvent = { occurred_on: string; amt: number; amt_usd?: number | null };
+export type FlowEvent = {
+  occurred_on: string;
+  amt: number;
+  amt_usd?: number | null;
+  amt_native?: number | null;
+  native_currency?: string | null;
+};
+
+/** The event fields for an amount that moved in `currency`: the dollar leg, or a native leg in any other currency. */
+export function nativeFlowLeg(
+  signed: number,
+  currency: CurrencyCode
+): { amt_usd: number } | { amt_native: number; native_currency: CurrencyCode } {
+  return currency === "usd" ? { amt_usd: signed } : { amt_native: signed, native_currency: currency };
+}
 
 /**
  * One deposit/flow event in `unit`, at its own date's rate — the single conversion every
  * deposit and flow reader shares (dashboard totals, window flows, aportes lines, the daily
  * grid, mortgage and property payments). The event's own dollar leg is used as is when the unit
- * is USD (its sign following the CLP leg); any other unit converts the CLP leg with
+ * is USD, its native leg when the unit is that leg's currency (the sign following the CLP leg); any other unit converts the CLP leg with
  * {@link convertFlow} (pesos to dollars at the buy rate, to UF at the day's UF, any other pair at
  * the day's mid through the walk). Unrounded — callers sum first and round once for display. A
  * missing rate throws: a flow is never dropped from a total.
@@ -347,6 +362,9 @@ export function flowEventInUnit(e: FlowEvent, unit: TsUnit): number {
   if (e.amt === 0) return 0;
   if (unit === "usd" && e.amt_usd != null && Number.isFinite(e.amt_usd)) {
     return Math.sign(e.amt) * Math.abs(e.amt_usd);
+  }
+  if (e.native_currency != null && unit === e.native_currency && e.amt_native != null && Number.isFinite(e.amt_native)) {
+    return Math.sign(e.amt) * Math.abs(e.amt_native);
   }
   return convertFlow(e.amt, "clp", unit, e.occurred_on);
 }

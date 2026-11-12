@@ -1,3 +1,4 @@
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
@@ -5,7 +6,6 @@ import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.j
 import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapitalFlows.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
 
 const FIXTURE_USD = "vitest-dividend-payout-usd";
@@ -154,7 +154,7 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
       0
     );
     const sharesBefore = brokerageShareUnitsThroughDate(stockId, "2026-12-31");
-    const usdBefore = usdCashBalanceUsdAt(usdId, "2026-12-31");
+    const usdBefore = foreignCashBalanceAt(usdId, "2026-12-31");
 
     const v = validateMovementCreate(
       usdAccountRow,
@@ -173,7 +173,7 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     insertValidatedTransfer(v);
 
     // USD cash balance goes up by the dividend USD.
-    const usdAfter = usdCashBalanceUsdAt(usdId, "2026-12-31");
+    const usdAfter = foreignCashBalanceAt(usdId, "2026-12-31");
     expect(usdAfter - usdBefore).toBeCloseTo(DIV_USD, 6);
 
     // Stock deposited / cost-basis line drops by the USD reference CLP at the dividend date.

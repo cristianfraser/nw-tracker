@@ -31,7 +31,7 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 
 
 import { BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
-import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
+import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
 type TransferLegRow = {
   id: number;
@@ -93,7 +93,7 @@ type UsdTransferLegRow = MovementTransferRow & { id: number };
 /**
  * The dollar twin of {@link findMatchingInternalTransferLegId}: the id of an existing transfer
  * leg touching `accountId` (a USD cash account) whose signed DOLLAR delta on it
- * (`signedUsdDeltaForAccountMovement` — the USD leg of a wire booking, a `pago_tarjeta` from the
+ * (`signedNativeDeltaForAccountMovement` — the USD leg of a wire booking, a `pago_tarjeta` from the
  * dollar account, the counter leg of a conversion) equals `amountUsdSigned` to the cent, inside
  * the same posting window, not yet claimed — else null.
  */
@@ -123,7 +123,7 @@ export function findMatchingUsdTransferLegId(
     .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as UsdTransferLegRow[];
   for (const r of rows) {
     if (consumed.has(r.id)) continue;
-    if (Math.round(signedUsdDeltaForAccountMovement(r, accountId) * 100) === targetCents) return r.id;
+    if (Math.round(signedNativeDeltaForAccountMovement(r, accountId, "usd") * 100) === targetCents) return r.id;
   }
   return null;
 }

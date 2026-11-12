@@ -720,7 +720,7 @@ describe("fintualEmailImport", () => {
       currency: "clp",
       counter_amount: 711.05,
       counter_currency: "usd",
-      flow_kind: "compra_usd_venta_clp",
+      flow_kind: "fx_exchange",
       requires_manual: null,
     });
     expect(applyFintualEmailMovements(planned)).toBe(1);

@@ -128,7 +128,7 @@ function shareUnitsAllTime(accountId: number): number {
       `SELECT account_id, from_account_id, to_account_id, units_delta, flow_kind
        FROM movements
        WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
-         AND flow_kind IN ('compra_usd', 'stock_buy', 'stock_sell', 'dividend_usd')`
+         AND flow_kind IN ('fx_purchase', 'stock_buy', 'stock_sell', 'dividend_usd')`
     )
     .all(accountId, accountId, accountId) as MovementRow[];
   let total = 0;

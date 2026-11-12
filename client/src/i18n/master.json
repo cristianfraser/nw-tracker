@@ -1433,17 +1433,17 @@
       "es": "No se encontró el bucket maestro de patrimonio neto en el árbol de navegación."
     },
     "flowKinds": {
-      "deposit_clp": {
-        "en": "CLP deposit",
-        "es": "Depósito CLP"
+      "deposit": {
+        "en": "Deposit",
+        "es": "Depósito"
       },
-      "compra_usd": {
-        "en": "USD purchase",
-        "es": "Compra USD"
+      "fx_purchase": {
+        "en": "Currency purchase",
+        "es": "Compra de divisas"
       },
-      "compra_usd_venta_clp": {
-        "en": "USD purchase / CLP sale",
-        "es": "Compra USD / Venta CLP"
+      "fx_exchange": {
+        "en": "Currency exchange (from CLP)",
+        "es": "Cambio de divisas (desde CLP)"
       },
       "stock_buy": {
         "en": "Stock buy",
@@ -1465,13 +1465,9 @@
         "en": "Fee / commission",
         "es": "Comisión"
       },
-      "withdrawal_clp": {
-        "en": "CLP withdrawal",
-        "es": "Retiro CLP"
-      },
-      "withdrawal_usd": {
-        "en": "USD withdrawal",
-        "es": "Retiro USD"
+      "withdrawal": {
+        "en": "Withdrawal",
+        "es": "Retiro"
       },
       "afp_fund_switch": {
         "en": "AFP fund switch",

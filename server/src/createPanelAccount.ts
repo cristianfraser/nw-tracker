@@ -1,8 +1,10 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
-import { accountUsesUsdCashFlowKinds } from "./accountUsdCashFlows.js";
+import { accountUsesForeignCashFlowKinds } from "./accountForeignCashFlows.js";
 import { assetGroupBySlug, ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { isClpCashKindSlug } from "./clpCashAccounts.js";
+import { FOREIGN_CASH_KIND_SLUG, foreignCashCurrencyOf } from "./cashCurrency.js";
+import { isHomeCurrency, isLoadedCurrency } from "./displayUnits.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { marketSymbol } from "./marketSymbols.js";
@@ -32,7 +34,7 @@ import {
  * any non-liability leaf bucket. Accounts are created empty — flows are added afterwards via the
  * per-account movement forms (which do auto-mirror parity), so there are no `initial_movements`.
  */
-export type PanelAccountType = "equity" | "crypto" | "clp_cash" | "usd_cash" | "option";
+export type PanelAccountType = "equity" | "crypto" | "clp_cash" | "usd_cash" | "foreign_cash" | "option";
 
 /** The terms of an option contract account (`option_contracts`); the server derives the OCC symbol and the name. */
 export type PanelOptionContractInput = {
@@ -58,6 +60,8 @@ export type PanelAccountCreateBody = {
     ticker?: string;
     /** Required for an option contract. */
     option?: PanelOptionContractInput;
+    /** Required for a foreign cash account (`foreign_cash`): the currency it holds, a code of `currencies` other than pesos. */
+    currency?: string;
     exclude_from_group_totals: boolean;
   };
 };
@@ -75,6 +79,7 @@ const PANEL_ACCOUNT_TYPES = new Set<PanelAccountType>([
   "crypto",
   "clp_cash",
   "usd_cash",
+  "foreign_cash",
   "option",
 ]);
 
@@ -223,6 +228,7 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
   let ticker: string | null = null;
   let childSlug: string;
   let notes: string;
+  let cashCurrency: string | null = null;
 
   if (isEquity) {
     ticker = (acc.ticker ?? "").trim().toUpperCase();
@@ -242,7 +248,17 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     childSlug = categoryKey;
     notes = buildPanelAccountNotes(ticker, categoryKey);
   } else {
-    const kind = type === "clp_cash" ? "clp" : "usd";
+    // The legacy cash leaves name their currency (`clp`, `usd`); a generic foreign cash leaf names
+    // none, so the account declares it (`accounts.cash_currency`, `cashCurrency.ts`).
+    const kind = type === "clp_cash" ? "clp" : type === "usd_cash" ? "usd" : FOREIGN_CASH_KIND_SLUG;
+    if (type === "foreign_cash") {
+      const code = (acc.currency ?? "").trim().toLowerCase();
+      if (!code || !isLoadedCurrency(code)) fail(400, `account.currency ${JSON.stringify(acc.currency)} is not a currency of the currencies table`);
+      if (isHomeCurrency(code)) fail(400, "a foreign cash account holds a currency other than pesos (use account_type clp_cash)");
+      cashCurrency = code;
+    } else {
+      cashCurrency = kind;
+    }
     const categoryKey = (acc.category_slug?.trim() || slugify(name)).toLowerCase();
     if (!SLUG_RE.test(categoryKey)) {
       fail(400, "account.category_slug must be a lowercase slug (a-z, 0-9, _)");
@@ -250,7 +266,7 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     // Leaf slug ends in the kind so `accountBucketKindSlug` resolves the cash behavior regardless
     // of which bucket the account is filed under (e.g. `<bucket>__savings__clp` → kind `clp`).
     childSlug = `${categoryKey}__${kind}`;
-    notes = buildPanelCashAccountNotes(kind, categoryKey);
+    notes = buildPanelCashAccountNotes(kind, categoryKey, type === "foreign_cash" ? cashCurrency : undefined);
   }
 
   const dup = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(notes) as
@@ -269,10 +285,10 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     const exclude = acc.exclude_from_group_totals ? 1 : 0;
     const insAcc = db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, exclude_from_group_totals, equity_ticker)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key, exclude_from_group_totals, equity_ticker, cash_currency)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(assetGroupId, name, notes, notes, exclude, ticker);
+      .run(assetGroupId, name, notes, notes, exclude, ticker, cashCurrency);
     accountId = Number(insAcc.lastInsertRowid);
     db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(
       prettyRgbTripletForAccountId(accountId),
@@ -303,9 +319,9 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
       if (!accountUsesBrokerageFlowKinds(accountRow)) {
         fail(500, "created equity account does not resolve to brokerage flow kinds");
       }
-    } else if (type === "usd_cash") {
-      if (!accountUsesUsdCashFlowKinds(accountRow)) {
-        fail(500, "created USD cash account does not resolve to USD cash flow kinds");
+    } else if (type === "usd_cash" || type === "foreign_cash") {
+      if (!accountUsesForeignCashFlowKinds(accountRow) || foreignCashCurrencyOf(accountId) !== cashCurrency) {
+        fail(500, "created foreign cash account does not resolve to a foreign cash ledger in its currency");
       }
     } else if (!isClpCashKindSlug(accountBucketKindSlug(meta.bucket_slug))) {
       fail(500, "created CLP cash account does not resolve to the CLP cash ledger");

@@ -98,7 +98,7 @@ describe("accountValueAt — one conversion from what the account holds", () => 
     });
     created.accounts.push(panel.account_id);
     if (panel.created_leaf_bucket) created.groups.push(panel.asset_group_id);
-    move(panel.account_id, "2099-01-02", 100, "usd", "compra_usd", null);
+    move(panel.account_id, "2099-01-02", 100, "usd", "fx_purchase", null);
 
     expect(accountHoldingQtyAt(panel.account_id, PAST)).toMatchObject({ qty: 100, holding: { kind: "currency", code: "usd" } });
     expect(accountValueAt(panel.account_id, PAST, "usd")?.value).toBeCloseTo(100, 9);

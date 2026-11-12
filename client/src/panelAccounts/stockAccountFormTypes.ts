@@ -29,7 +29,7 @@ export function newMovementRowId(): string {
   return `mv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit_clp"): InitialMovementDraft {
+export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit"): InitialMovementDraft {
   return {
     id: newMovementRowId(),
     flowKind,
@@ -77,7 +77,7 @@ export function buildBrokerageMovementPostBody(
   if (!occurred_on) return null;
   // Only submit the fields that the flow kind actually shows — a value left behind in a now-hidden
   // input (e.g. CLP typed before switching to "compra acciones") must not be sent. A kind that
-  // shows both fields (compra_usd_venta_clp) sends CLP as the amount and USD as the counter leg.
+  // shows both fields (fx_exchange) sends CLP as the amount and USD as the counter leg.
   const clp = brokerageFlowKindNeedsClpForQuote(row.flowKind, quote)
     ? parseNumberInputOrThrow(row.amountClp)
     : null;

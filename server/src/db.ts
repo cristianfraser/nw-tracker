@@ -62,6 +62,7 @@ import { runCurrencies312 } from "./currencies312.js";
 import { runCurrencyReferences314 } from "./currencyReferences314.js";
 import { runExpenseAmountCurrency316 } from "./expenseAmountCurrency316.js";
 import { runMovementFlowTrigger317 } from "./flows/movementFlowTrigger317.js";
+import { runCashCurrency318 } from "./cashCurrency318.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -396,6 +397,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "317_movement_flow_trigger_option_kinds.sql": (dbi) => {
     runMovementFlowTrigger317(dbi);
   },
+  "318_cash_currency_neutral_flow_kinds.sql": runCashCurrency318,
 };
 
 /**

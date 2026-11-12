@@ -424,7 +424,7 @@ function writeUsStatementRows(ledger: Ledger, ids: Map<Acct, number>): void {
   // A single-leg dollar row is positive, its direction in the flow kind (`signedUsdDeltaForAccountMovement`).
   const ins = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'usd', ?, ?, ?)`);
   db.transaction(() => {
-    for (const r of rows) ins.run(id, Math.abs(r.amount), r.date, r.note, r.amount > 0 ? "compra_usd" : "withdrawal_usd");
+    for (const r of rows) ins.run(id, Math.abs(r.amount), r.date, r.note, r.amount > 0 ? "fx_purchase" : "withdrawal");
   })();
 }
 

@@ -1,4 +1,5 @@
 import { InputError } from "./inputError.js";
+import { isForeignCashKindSlug } from "./cashCurrency.js";
 import { SPLITTABLE_DEPOSIT_KINDS } from "./cards/bankDescriptionRules.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -1115,7 +1116,7 @@ export function matchWithdrawalToInvestmentDeposit(
   usedDepositKeys?: Set<string>
 ): DepositMatchCandidate | null {
   const investment = deposits.filter(
-    (d) => isInvestmentDepositTarget(d.group_slug) || d.category_slug === "usd"
+    (d) => isInvestmentDepositTarget(d.group_slug) || isForeignCashKindSlug(d.category_slug)
   );
   return matchWithdrawalToDeposit(withdrawal, investment, maxDayGap, usedDepositKeys);
 }
