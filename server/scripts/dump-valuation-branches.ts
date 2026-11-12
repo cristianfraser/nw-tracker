@@ -45,6 +45,7 @@ process.env.PORT = process.env.PORT ?? "3988";
 process.env.HOST = "127.0.0.1";
 
 const { db } = await import("../src/db.js");
+const { coreCurrencyCodes } = await import("../src/displayUnits.js");
 const { chileCalendarTodayYmd, chileCalendarAddDays } = await import("../src/chileDate.js");
 const { accountValueAt } = await import("../src/accountValue.js");
 const { accountTodayValue } = await import("../src/accountTodayValue.js");
@@ -100,8 +101,7 @@ for (const a of accounts) {
   const values: Record<string, unknown> = {};
   for (const d of dates) {
     values[d] = {
-      clp: attempt(() => accountValueAt(a.id, d, "clp")),
-      usd: attempt(() => accountValueAt(a.id, d, "usd")),
+      ...Object.fromEntries(coreCurrencyCodes().map((u) => [u, attempt(() => accountValueAt(a.id, d, u))])),
       mark: attempt(() => accountMarkClpAtYmd(a.id, d)),
       qty: d < today ? attempt(() => accountHistoricalQtyMark(a.id, d)) : null,
     };
@@ -133,7 +133,7 @@ if (withPayloads) {
       .all() as { slug: string }[]
   ).map((r) => r.slug);
   const paths: string[] = [];
-  for (const unit of ["clp", "usd"]) {
+  for (const unit of coreCurrencyCodes()) {
     paths.push(`/api/dashboard/page-bundle?unit=${unit}`);
     paths.push(`/api/accounts?unit=${unit}`);
   }

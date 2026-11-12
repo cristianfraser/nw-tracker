@@ -2,10 +2,8 @@ import { buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
 import { cacheKeyDashboardPageBundle } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
-import { db } from "./db.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries, type TsUnit } from "./valuationTimeseries.js";
 import { attachNetWorthAth } from "./netWorthAllTimeHigh.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
@@ -15,13 +13,6 @@ import { buildUpcomingPayments } from "./upcomingPayments.js";
 
 export type { FxCoverage };
 
-function fxLatestRow() {
-  return db
-    .prepare(
-      `SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
-    )
-    .get(chileCalendarTodayYmd()) as { date: string; clp_per_usd: number } | undefined;
-}
 
 export type DashboardPageBundle = Awaited<ReturnType<typeof buildDashboardPageBundleInner>>;
 
@@ -56,7 +47,6 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
   );
   await nextMacrotask();
-  const fx = fxLatestRow() ?? null;
   // The P/L + deposits combo, from the inversiones consolidation and the payload's deposits.
   const depositsMonthly = dash.inversiones_deposits_chart.monthly;
   const inversionesPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
@@ -68,7 +58,6 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
   return {
     dash,
     ts: tsRaw,
-    fx,
     // Every rate pair a conversion into the unit walks (`rates.ts`), from each held currency.
     fx_coverage: buildFxCoverageWithConversionWarnings(unit),
     inversionesPerf,

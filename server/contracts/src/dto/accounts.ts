@@ -85,8 +85,8 @@ export interface AccountSummaryResponse {
   group_slug: string | null;
   group_label: string | null;
   group_peer_count: number | null;
-  /** Quote currency of `accounts.equity_ticker` (clp for Bolsa de Santiago `.SN`); null for non-equity accounts. */
-  equity_quote_currency?: "usd" | "clp" | null;
+  /** Quote currency code of `accounts.equity_ticker` (the instrument registry's; clp for a Bolsa de Santiago line); null for non-equity accounts. */
+  equity_quote_currency?: string | null;
   /** The currency `deposits`, `latest_valuation` and the position's money are in: the request's display unit. */
   unit: DisplayUnitCode;
   /** Net personal capital deposited (the aportes timeline), each deposit at its own day's rate. */

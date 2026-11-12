@@ -4,48 +4,67 @@ import { PageGridTile } from "../components/layout/PageGridTile";
 import { ProjectionsChart } from "../components/charts/ProjectionsChart";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatCurrency, formatNumberInput, parseNumberInput } from "../format";
-import { useProjections } from "../queries/hooks";
+import { formatCurrency, formatNumberInput, formatPct, parseNumberInput } from "../format";
+import { useCurrencies, useProjections } from "../queries/hooks";
+import {
+  projectionInflationKey,
+  projectionMoneyCurrencyKey,
+  readStoredProjectionOverrides,
+  writeStoredProjectionOverrides,
+  type ProjectionMoneyKey,
+  type ProjectionOverrides,
+} from "../projectionsOverrides";
 import type { ProjectionParams, ProjectionsResponse } from "../types";
 import { Button, Field, Input } from "@crfrsr/ui";
 
-const LS_KEY = "nw-tracker.projections.overrides";
-
-/** Mirrors the server's PROJECTION_PARAM_BOUNDS (projections.ts) — out-of-range overrides
- * never reach the request; the field shows an inline error instead of a blocking 400. */
-const PARAM_BOUNDS: Record<keyof ProjectionParams, [number, number]> = {
+/** The plain numeric inputs (no currency), mirroring the server's bounds (projections.ts). */
+const NUMBER_BOUNDS = {
   real_return_pct: [-5, 20],
-  monthly_aporte_clp: [0, 1_000_000_000],
-  inflation_clp_pct: [0, 30],
-  inflation_usd_pct: [0, 30],
   retire_return_pct: [-5, 20],
   end_age: [66, 110],
   swr_pct: [0, 25],
   pct_balance_pct: [0, 25],
-  monthly_income_clp: [0, 1_000_000_000],
   liquidate_other_pct: [0, 100],
-  monthly_rent_clp: [0, 1_000_000_000],
-};
+} as const;
+type NumberKey = keyof typeof NUMBER_BOUNDS;
+const MONEY_BOUNDS: readonly [number, number] = [0, 1_000_000_000];
+const INFLATION_BOUNDS: readonly [number, number] = [0, 30];
 
-function isInBounds(key: keyof ProjectionParams, v: number): boolean {
-  const [min, max] = PARAM_BOUNDS[key];
+/** One form field: its request key, how it reads the server's echo and its bounds. */
+type FieldSpec =
+  | { kind: "number"; key: NumberKey }
+  | { kind: "money"; key: ProjectionMoneyKey }
+  | { kind: "inflation"; code: string };
+
+function fieldKey(f: FieldSpec): string {
+  return f.kind === "inflation" ? projectionInflationKey(f.code) : f.key;
+}
+
+function fieldBounds(f: FieldSpec): readonly [number, number] {
+  if (f.kind === "number") return NUMBER_BOUNDS[f.key];
+  return f.kind === "money" ? MONEY_BOUNDS : INFLATION_BOUNDS;
+}
+
+function isInBounds(f: FieldSpec, v: number): boolean {
+  const [min, max] = fieldBounds(f);
   return v >= min && v <= max;
 }
 
-/** Assumption fields in display order. */
-const PARAM_FIELDS: (keyof ProjectionParams)[] = [
-  "real_return_pct",
-  "monthly_aporte_clp",
-  "inflation_clp_pct",
-  "inflation_usd_pct",
-  "retire_return_pct",
-  "end_age",
-  "swr_pct",
-  "pct_balance_pct",
-  "monthly_income_clp",
-  "liquidate_other_pct",
-  "monthly_rent_clp",
-];
+/** Assumption fields in display order; one inflation field per core currency. */
+function fieldSpecs(inflationCodes: readonly string[]): FieldSpec[] {
+  return [
+    { kind: "number", key: "real_return_pct" },
+    { kind: "money", key: "monthly_aporte" },
+    ...inflationCodes.map((code): FieldSpec => ({ kind: "inflation", code })),
+    { kind: "number", key: "retire_return_pct" },
+    { kind: "number", key: "end_age" },
+    { kind: "number", key: "swr_pct" },
+    { kind: "number", key: "pct_balance_pct" },
+    { kind: "money", key: "monthly_income" },
+    { kind: "number", key: "liquidate_other_pct" },
+    { kind: "money", key: "monthly_rent" },
+  ];
+}
 
 /** Summary figures while the first load has nothing to show: zeros, dimmed, never a guess. */
 const EMPTY_SUMMARY: ProjectionsResponse["summary"] = {
@@ -60,62 +79,105 @@ const EMPTY_SUMMARY: ProjectionsResponse["summary"] = {
   fixed_income_depletion_age: null,
 };
 
-function readStoredOverrides(): Partial<ProjectionParams> {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<ProjectionParams>;
-    return typeof parsed === "object" && parsed != null ? parsed : {};
-  } catch {
-    return {};
-  }
+/** The server's echo of a field, in the response's unit. */
+function echoedValue(f: FieldSpec, params: ProjectionParams | undefined): number | undefined {
+  if (!params) return undefined;
+  if (f.kind === "inflation") return params.inflation_pct[f.code];
+  return params[f.key];
 }
 
 export function ProjectionsPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const [overrides, setOverrides] = useState<Partial<ProjectionParams>>(readStoredOverrides);
+  const { data: currencies } = useCurrencies();
+  const [overrides, setOverrides] = useState<ProjectionOverrides>(() => readStoredProjectionOverrides(localStorage));
   /** Free-form text while a field is being edited (allows "" mid-edit); committed on change,
    * cleared on blur so the display snaps back to the effective value. */
-  const [drafts, setDrafts] = useState<Partial<Record<keyof ProjectionParams, string>>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const inflationCodes = useMemo(() => {
+    const core = currencies?.currencies.filter((c) => c.tier === "core").map((c) => c.code);
+    return core && core.length > 0 ? core : [displayUnit];
+  }, [currencies, displayUnit]);
+  const fields = useMemo(() => fieldSpecs(inflationCodes), [inflationCodes]);
+
   // Only in-bounds overrides go to the server; invalid fields show inline errors while the
   // chart keeps rendering with the last valid parameters.
   const validOverrides = useMemo(() => {
-    const out: Partial<ProjectionParams> = {};
-    for (const [k, v] of Object.entries(overrides) as [keyof ProjectionParams, number][]) {
-      if (typeof v === "number" && Number.isFinite(v) && isInBounds(k, v)) out[k] = v;
+    const out: ProjectionOverrides = {};
+    for (const f of fields) {
+      const key = fieldKey(f);
+      const v = overrides[key];
+      if (typeof v !== "number" || !Number.isFinite(v) || !isInBounds(f, v)) continue;
+      out[key] = v;
+      if (f.kind === "money") {
+        const ck = projectionMoneyCurrencyKey(f.key);
+        const c = overrides[ck];
+        if (typeof c === "string") out[ck] = c;
+      }
     }
     return out;
-  }, [overrides]);
+  }, [overrides, fields]);
   const { data, error, isPending } = useProjections(displayUnit, validOverrides);
   // The form is inert only until the first response (an edit keeps the previous data on screen);
   // the summary and chart also dim while the other display unit's numbers are held.
   const resultsLoading = isPending || (data != null && data.unit !== displayUnit);
 
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(overrides));
+    writeStoredProjectionOverrides(localStorage, overrides);
   }, [overrides]);
 
-  const setParam = (key: keyof ProjectionParams, raw: string) => {
+  const setParam = (f: FieldSpec, raw: string) => {
+    const key = fieldKey(f);
     setDrafts((prev) => ({ ...prev, [key]: raw }));
     // A draft that isn't a number keeps the last override and shows its message (see render).
     const parsed = parseNumberInput(raw);
     if (!parsed.ok) return;
     setOverrides((prev) => {
       const next = { ...prev };
-      if (parsed.value == null) delete next[key];
-      else next[key] = parsed.value;
+      const currencyKey = f.kind === "money" ? projectionMoneyCurrencyKey(f.key) : null;
+      if (parsed.value == null) {
+        delete next[key];
+        if (currencyKey) delete next[currencyKey];
+      } else {
+        next[key] = parsed.value;
+        // A money input is typed in the unit on screen.
+        if (currencyKey) next[currencyKey] = displayUnit;
+      }
       return next;
     });
   };
 
-  const commitParam = (key: keyof ProjectionParams) => {
+  const commitParam = (f: FieldSpec) => {
     setDrafts((prev) => {
       const next = { ...prev };
-      delete next[key];
+      delete next[fieldKey(f)];
       return next;
     });
   };
+
+  /** What a field shows when not being edited: an override typed in this unit, else the server's echo. */
+  const effectiveValue = (f: FieldSpec): number | undefined => {
+    const raw = overrides[fieldKey(f)];
+    const typedHere =
+      f.kind !== "money" || overrides[projectionMoneyCurrencyKey(f.key)] === displayUnit;
+    if (typeof raw === "number" && typedHere) return raw;
+    // A held response of another unit shows its echo dimmed until this unit's arrives.
+    return echoedValue(f, data?.params);
+  };
+
+  const fieldLabel = (f: FieldSpec): string => {
+    if (f.kind === "inflation") return t("projections.params.inflation_pct", { code: f.code.toUpperCase() });
+    if (f.kind === "money") return t(`projections.params.${f.key}`, { unit: displayUnit.toUpperCase() });
+    return t(`projections.params.${f.key}`);
+  };
+
+  const inflationDefaults = data?.inflation_default_pct;
+  const inflationAssumption = inflationDefaults
+    ? Object.entries(inflationDefaults)
+        .map(([code, pct]) => `${code.toUpperCase()} ${formatPct(pct, 1)}`)
+        .join(" · ")
+    : null;
 
   const money = (n: number) => formatCurrency(n, displayUnit);
   const chartPoints = data?.chart.points ?? [];
@@ -149,18 +211,19 @@ export function ProjectionsPage() {
         className="flows-filters"
         style={{ display: "flex", flexWrap: "wrap", columnGap: "0.75rem", rowGap: "2.5rem" }}
       >
-        {PARAM_FIELDS.map((key) => {
+        {fields.map((f) => {
+          const key = fieldKey(f);
           const raw = overrides[key];
-          const invalid = raw != null && !isInBounds(key, raw);
-          const [min, max] = PARAM_BOUNDS[key];
+          const invalid = typeof raw === "number" && !isInBounds(f, raw);
+          const [min, max] = fieldBounds(f);
           const draft = drafts[key];
           const draftParsed = draft != null ? parseNumberInput(draft) : null;
           const draftError = draftParsed != null && !draftParsed.ok ? draftParsed.message : null;
-          const effective = raw ?? data?.params[key];
+          const effective = effectiveValue(f);
           return (
             <Field
               key={key}
-              label={t(`projections.params.${key}`)}
+              label={fieldLabel(f)}
               error={
                 draftError ?? (invalid ? t("projections.invalidRange", { min, max }) : undefined)
               }
@@ -171,8 +234,8 @@ export function ProjectionsPage() {
                 inputMode={min < 0 ? undefined : "decimal"}
                 aria-invalid={draftError != null || invalid || undefined}
                 value={draft ?? (effective != null ? formatNumberInput(effective) : "")}
-                onChange={(e) => setParam(key, e.target.value)}
-                onBlur={() => commitParam(key)}
+                onChange={(e) => setParam(f, e.target.value)}
+                onBlur={() => commitParam(f)}
               />
             </Field>
           );
@@ -189,6 +252,9 @@ export function ProjectionsPage() {
           </Button>
         </div>
       </Loadable>
+      {inflationAssumption ? (
+        <p className="muted">{t("projections.inflationAssumption", { list: inflationAssumption })}</p>
+      ) : null}
 
       <PageGridTile id="summary" className={loadableClass(resultsLoading)}>
         <p>

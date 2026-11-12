@@ -151,13 +151,13 @@ from a copy of the database taken before it, and adds EUR tests on synthetic fix
    `StackedExpensesChart`, `CreditCardSummaryCards`, `DashboardCardValue`'s «US$».
 7. Export columns, property aportes (CLP only), `ZERO_CLOSE_EPS` and every `unit === "clp"`
    rounding read the currency's minor digits.
-8. Market: watchlist / marquee chip and market series gain EUR/USD; projections get an inflation
+8. **Done 2026-11-12** (rate rows of kind `fx_pair`, migration 313; projections per-currency inflation and money inputs in any core currency). Market: watchlist / marquee chip and market series gain EUR/USD; projections get an inflation
    per currency (EUR falls back to USD's today) and inputs typed in the display unit.
-9. Warmers: visited account pages warmed in the units they were opened in
+9. **Done 2026-11-12.** Warmers: visited account pages warmed in the units they were opened in
    (`visitedPagesWarm.ts`); the dump / profile scripts loop over `coreCurrencyCodes()`.
 10. Copy: `toolbarAria`, the demo tour step, the `FlowsTable` amount filter (any currency), chart
     prop defaults and the `chartColors` union.
-11. Cleanup: `dashboardBucketsUsdToday`, unused fx fields, stale TODOs, AGENTS.md «Deferred: value
+11. **Done 2026-11-12.** Cleanup: `dashboardBucketsUsdToday`, unused fx fields, stale TODOs, AGENTS.md «Deferred: value
     + currency refactor» (valuations already take any currency, migration 260).
 
 **Guard, landing with A1:** `check:conventions` rules, each with an allowlist of native surfaces:

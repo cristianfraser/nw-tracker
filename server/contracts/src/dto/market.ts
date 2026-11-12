@@ -28,6 +28,8 @@ export interface MarketSeriesResponse {
   fx_usd_clp_buy?: { date: string; value: number }[];
   fx_usd_clp_sell?: { date: string; value: number }[];
   eur_clp: { date: string; value: number }[];
+  /** EUR/USD (`fx_rates`, Yahoo EURUSD=X): dollars per euro. */
+  eur_usd: { date: string; value: number }[]; // convention-ok: a rate pair's own series, not a display amount
   fx_coverage: FxCoverage;
 }
 
@@ -38,7 +40,11 @@ export interface MarketDisplaySeriesRow {
   label: string;
   label_i18n_key: string | null;
   sort_order: number;
-  kind: "equity" | "fund_unit" | "fx_usd" | "uf" | "composite";
+  /**
+   * `fx_usd`: the USD/CLP rate (live CLP=X). `fx_pair`: another pair's rate, `series_key`
+   * `<base>_<quote>` (`eur_usd`, `eur_clp`). Both are rates, never converted.
+   */
+  kind: "equity" | "fund_unit" | "fx_usd" | "fx_pair" | "uf" | "composite";
   series_key: string | null;
   show_in_marquee: number;
   show_in_rates: number;
@@ -113,6 +119,16 @@ export interface MarketTickerResponse {
   uf: MarketTickerValue | null;
   /** The USD/CLP rate itself — CLP per USD in every unit. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
+  /** Every other rate pair on the marquee (EUR/USD, EUR/CLP): quote units per one base unit. */
+  fx_pairs: {
+    /** The row's `series_key` (`eur_usd`). */
+    pair: string;
+    base: string;
+    quote: string;
+    date: string;
+    rate: number;
+    delta_pct: number | null;
+  }[];
   uno_a: MarketTickerValue | null;
   risky_norris: MarketTickerValue | null;
   risky_norris_proxy: MarketTickerValue | null;

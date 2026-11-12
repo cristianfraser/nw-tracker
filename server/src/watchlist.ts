@@ -14,6 +14,7 @@ import {
   type MarketSymbolFetchError,
 } from "./marketSymbols.js";
 import { notifyGlobalSyncScheduler } from "./globalSyncScheduler.js";
+import { pairRateOnOrBefore } from "./rates.js";
 import {
   compositeHoldingsWithStats,
   type WatchlistCompositeHoldingRow,
@@ -52,6 +53,11 @@ function fundSeriesHasData(seriesKey: string): boolean {
   return stmtFundUnitHasData.get(seriesKey) != null;
 }
 
+/** A rate pair builtin is inserted once the pair has a rate on file (EUR/USD loads with `fx_pairs`). */
+function fxPairHasData(base: string, quote: string): boolean {
+  return pairRateOnOrBefore(base, quote, chileCalendarTodayYmd()) != null;
+}
+
 function riskyNorrisProxyHasData(): boolean {
   return (
     loadCompositeMeta(RISKY_NORRIS_PROXY_BUCKET) != null &&
@@ -86,6 +92,24 @@ const BUILTIN_INSTRUMENTS: {
     sort_order: 20,
     kind: "fx_usd",
     series_key: null,
+  },
+  {
+    slug: "eur_usd",
+    label: "EUR/USD",
+    label_i18n_key: null,
+    sort_order: 21,
+    kind: "fx_pair",
+    series_key: "eur_usd",
+    hasBackingData: () => fxPairHasData("eur", "usd"),
+  },
+  {
+    slug: "eur_clp",
+    label: "EUR/CLP",
+    label_i18n_key: null,
+    sort_order: 22,
+    kind: "fx_pair",
+    series_key: "eur_clp",
+    hasBackingData: () => fxPairHasData("eur", "clp"),
   },
   {
     slug: "afp_uno_cuota_a",

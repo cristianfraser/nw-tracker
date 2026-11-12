@@ -31,6 +31,7 @@ describe("planVisitedWarm", () => {
         { route: "/api/dashboard/valuation-timeseries", params: "unit=usd&portfolio_group=brokerage", n: 7 },
         { route: "/api/dashboard/valuation-timeseries", params: "portfolio_group=cash_eqs", n: 2 },
         { route: "/api/accounts/:id/detail-bundle", params: "granularity=daily", n: 1 },
+        { route: "/api/accounts/:id/detail-bundle", params: "granularity=daily&unit=eur", n: 3 },
       ],
       routes
     );
@@ -43,8 +44,8 @@ describe("planVisitedWarm", () => {
     expect(plan.groups[0]!.units).toEqual(["clp"]);
     expect(plan.groups[1]!.units).toEqual(["usd", "clp"]);
     expect(plan.accounts).toEqual([
-      { id: 32, unit: "clp", granularity: "daily" },
-      { id: 7, unit: "clp", granularity: "daily" },
+      { id: 32, units: ["eur", "clp"], granularity: "daily" },
+      { id: 7, units: ["eur", "clp"], granularity: "daily" },
     ]);
     expect(plan.navContexts).toEqual([
       { root: "liabilities", unit: "clp" },

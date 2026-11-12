@@ -18,6 +18,7 @@ import {
   runMarkInputChangeTriggers265,
   runMarkInputChangeTriggers270,
   runMarkInputChangeTriggers303,
+  runMarketDisplaySeriesFxPair313,
 } from "./markInputTriggers.js";
 import { runLoanPayments258 } from "./loanPayments258.js";
 import { runDropMarketSymbolsMic306, runInstrumentRegistry305 } from "./instrumentRegistry305.js";
@@ -342,6 +343,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "265_equity_splits.sql": runMarkInputChangeTriggers265,
   "270_cache_write_log.sql": runMarkInputChangeTriggers270,
   "303_market_kind_london.sql": runMarkInputChangeTriggers303,
+  "313_market_display_series_fx_pair.sql": runMarketDisplaySeriesFxPair313,
   "305_instrument_registry.sql": runInstrumentRegistry305,
   "306_drop_market_symbols_mic.sql": runDropMarketSymbolsMic306,
   "271_account_roles.sql": runAccountRoles271,

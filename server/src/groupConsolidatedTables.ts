@@ -164,9 +164,7 @@ export function getGroupConsolidatedMonthlyPage(
   const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
   const shown =
     groupSlug === "net_worth" && installmentMode != null && unit !== "uf"
-      ? // TODO(any-currency, Stream 1): pass `unit` straight through once the flows overview
-        // (`GastosUnit`) is built per any unit; until then a non-CLP/USD unit is refused here.
-        withIncomeAndExpenses(rows, unit, installmentMode, period)
+      ? withIncomeAndExpenses(rows, unit, installmentMode, period)
       : rows;
   return { unit, group_slug: groupSlug, period, ...paginate(shown, page, pageSize) };
 }

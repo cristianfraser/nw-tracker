@@ -814,7 +814,7 @@ export const api = {
     ),
   deleteGenericUniqueMerchant: (id: number) =>
     j<void>(`/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" }),
-  projections: (unit: DisplayUnit, overrides: Partial<import("./types").ProjectionParams>) => {
+  projections: (unit: DisplayUnit, overrides: import("./projectionsOverrides").ProjectionOverrides) => {
     const qs = new URLSearchParams();
     if (unit !== "clp") qs.set("unit", unit);
     for (const [k, v] of Object.entries(overrides)) {

@@ -6,7 +6,7 @@ import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatCurrencyFine, formatGroupedDecimal, formatPct } from "../format";
+import { currencyFormatInfo, formatCurrencyFine, formatGroupedDecimal, formatPct } from "../format";
 import { useTranslation } from "../i18n";
 import {
   useAddWatchlistTicker,
@@ -28,8 +28,14 @@ function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
   return row.label;
 }
 
-function formatPriceRow(row: Pick<WatchlistRow, "value" | "value_currency">): string {
+function formatPriceRow(
+  row: Pick<WatchlistRow, "value" | "value_currency"> & { kind?: WatchlistRow["kind"] }
+): string {
   if (row.value == null || !Number.isFinite(row.value)) return "—";
+  // A cross rate near 1 (EUR/USD) reads with four decimals, as quoted.
+  if (row.kind === "fx_pair" && currencyFormatInfo(row.value_currency).minorDigits > 0) {
+    return formatGroupedDecimal(row.value, 4);
+  }
   // An index level is points, not money: no currency sign.
   if (row.value_currency === "none") return formatGroupedDecimal(row.value, 2);
   // In the currency's minor digits: pesos whole, dollars and euros with cents.
@@ -139,6 +145,7 @@ function watchlistTr({
 }: {
   row: Pick<WatchlistRow, "value" | "value_currency" | "changes"> & {
     fetch_error?: WatchlistRow["fetch_error"];
+    kind?: WatchlistRow["kind"];
   };
   symbol: string;
   symbolClassName?: string;

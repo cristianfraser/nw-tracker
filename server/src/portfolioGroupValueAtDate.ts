@@ -302,11 +302,6 @@ export function dashboardBucketsTodayInUnit(unit: TsUnit): BucketValues {
   return out;
 }
 
-/** {@link dashboardBucketsTodayInUnit} in dollars (the callers that still ask for USD by name). */
-export function dashboardBucketsUsdToday(): BucketValues {
-  return dashboardBucketsTodayInUnit("usd");
-}
-
 /**
  * The buckets and net worth at a date in `unit`. Pesos: integer per bucket by largest-remainder
  * apportionment, so the cards add up to the headline exactly. Another unit: each bucket from its

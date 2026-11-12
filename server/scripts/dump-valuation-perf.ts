@@ -40,6 +40,7 @@ process.env.CACHE_WARM_ENABLED = "0";
 process.env.USAGE_LOG_ENABLED = "0";
 
 const { db } = await import("../src/db.js");
+const { coreCurrencyCodes } = await import("../src/displayUnits.js");
 const { monthlyPerfForAccountDisplay } = await import("../src/detalleDailyChainedPct.js");
 const { buildAccountDetailBundle } = await import("../src/accountDetailBundle.js");
 const { accountDailySeriesResponse, groupDailySeriesResponse } = await import("../src/groupDailySeriesResponse.js");
@@ -62,7 +63,7 @@ async function attempt<T>(f: () => T | Promise<T>): Promise<T | { error: string 
   }
 }
 
-const UNITS = ["clp", "usd", "uf"] as const;
+const UNITS = [...coreCurrencyCodes(), "uf"];
 const DAYS = 400;
 const accounts = db
   .prepare(
@@ -129,7 +130,7 @@ for (const g of [...groups, ...liabilityGroups]) {
 out.groups = grp;
 
 const flows: Record<string, unknown> = {};
-for (const unit of ["clp", "usd"] as const) {
+for (const unit of coreCurrencyCodes()) {
   for (const mode of ["split", "total"] as const) {
     flows[`overview|${unit}|${mode}`] = await attempt(() => buildFlowsOverviewPayload(unit, mode, 400));
   }

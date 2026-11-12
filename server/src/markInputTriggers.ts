@@ -683,3 +683,15 @@ export function recreateMarketSymbolsWriteLogTrigger(dbi: DatabaseType, migratio
   if (columns.length === 0) throw new Error(`migration ${migration}: table market_symbols does not exist`);
   for (const sql of writeLogTriggerSql("market_symbols", columns, spec.watch ?? null)) dbi.exec(sql);
 }
+
+/**
+ * Migration 313 hook: `market_display_series` was rebuilt for the `fx_pair` kind, and the dropped
+ * table took its write-log triggers with it (it has no mark triggers). Re-created over its columns.
+ */
+export function runMarketDisplaySeriesFxPair313(dbi: DatabaseType): void {
+  const table = "market_display_series";
+  for (const suffix of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "write_log_${table}_${suffix}"`);
+  const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
+  if (columns.length === 0) throw new Error(`migration 313: table ${table} does not exist`);
+  for (const sql of writeLogTriggerSql(table, columns, null)) dbi.exec(sql);
+}

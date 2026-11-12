@@ -2,10 +2,10 @@
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
     "currency-formatter": 296,
-    "currency-list-literal": 21,
-    "currency-type-union": 150,
-    "dto-currency-key": 314,
-    "unit-literal-compare": 377
+    "currency-list-literal": 20,
+    "currency-type-union": 148,
+    "dto-currency-key": 309,
+    "unit-literal-compare": 376
   },
   "violations": {
     "client/src/api.ts": {
@@ -171,9 +171,6 @@
     "client/src/pages/panel/MirrorPairsPanelPage.tsx": {
       "currency-formatter": 5
     },
-    "client/src/panelAccounts/brokerageFlowKinds.ts": {
-      "currency-type-union": 1
-    },
     "client/src/useGroupInfoConsolidatedTables.ts": {
       "unit-literal-compare": 2
     },
@@ -232,7 +229,6 @@
       "currency-type-union": 2
     },
     "server/contracts/src/dto/accounts.ts": {
-      "currency-type-union": 1,
       "dto-currency-key": 18
     },
     "server/contracts/src/dto/core.ts": {
@@ -243,7 +239,7 @@
       "dto-currency-key": 50
     },
     "server/contracts/src/dto/dashboard.ts": {
-      "dto-currency-key": 3
+      "dto-currency-key": 2
     },
     "server/contracts/src/dto/flows.ts": {
       "currency-type-union": 1,
@@ -260,9 +256,6 @@
     },
     "server/contracts/src/dto/mortgage.ts": {
       "dto-currency-key": 27
-    },
-    "server/contracts/src/dto/projections.ts": {
-      "dto-currency-key": 4
     },
     "server/contracts/src/dto/sync.ts": {
       "currency-type-union": 1
@@ -690,9 +683,6 @@
     "server/src/priceProviders/yahoo.ts": {
       "unit-literal-compare": 2
     },
-    "server/src/projections.ts": {
-      "unit-literal-compare": 1
-    },
     "server/src/proxyBasketBreakdown.ts": {
       "unit-literal-compare": 2
     },
@@ -709,9 +699,6 @@
     },
     "server/src/routes/movements.ts": {
       "unit-literal-compare": 1
-    },
-    "server/src/routes/projections.ts": {
-      "currency-list-literal": 1
     },
     "server/src/santanderBankCupo.ts": {
       "currency-type-union": 1

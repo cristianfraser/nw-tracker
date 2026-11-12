@@ -176,7 +176,6 @@ export function buildPlaceholderDashboardBundle(
   return {
     dash: buildPlaceholderDashboardDash(unit),
     ts: buildPlaceholderDashboardTimeseries(unit, shape),
-    fx: null,
     inversionesPerf: includePerf ? zeroInversionesPerf(unit, monthEnds) : null,
     upcomingPayments: null,
   };

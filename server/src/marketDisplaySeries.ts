@@ -4,6 +4,7 @@ import { db } from "./db.js";
 import { syncWatchlistFromApp } from "./watchlist.js";
 import { RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
 import {
+  fxPairCodes,
   watchlistStatsForRow,
   type WatchlistDisplayUnit,
   type WatchlistRowStats,
@@ -17,7 +18,7 @@ export type MarketDisplaySeriesRow = {
   label: string;
   label_i18n_key: string | null;
   sort_order: number;
-  kind: "equity" | "fund_unit" | "fx_usd" | "uf" | "composite";
+  kind: "equity" | "fund_unit" | "fx_usd" | "fx_pair" | "uf" | "composite";
   series_key: string | null;
   show_in_marquee: number;
   show_in_rates: number;
@@ -58,6 +59,17 @@ export type MarketTickerEquityRow = {
   delta_pct: number | null;
 };
 
+/** A rate pair's chip: quote units per one base unit (EUR/USD: dollars per euro). */
+export type MarketTickerFxPair = {
+  /** The row's `series_key` (`eur_usd`). */
+  pair: string;
+  base: string;
+  quote: string;
+  date: string;
+  rate: number;
+  delta_pct: number | null;
+};
+
 /** Yahoo live/EOD symbols for marquee rows with show_in_marquee = 1. */
 export function equityTickersForMarqueeQuotes(marqueeSeries: MarketDisplaySeriesRow[]): string[] {
   return [
@@ -76,6 +88,8 @@ export type MarketTickerPayload = {
   uf: MarketTickerValue | null;
   /** The USD/CLP rate itself — CLP per USD in every unit. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
+  /** Every other rate pair on the marquee (`fx_pair` rows: EUR/USD, EUR/CLP), never converted. */
+  fx_pairs: MarketTickerFxPair[];
   uno_a: MarketTickerValue | null;
   risky_norris: MarketTickerValue | null;
   risky_norris_proxy: MarketTickerValue | null;
@@ -116,6 +130,7 @@ export function getMarketTickerPayloadFromDb(
   let risky_norris: MarketTickerPayload["risky_norris"] = null;
   let risky_norris_proxy: MarketTickerPayload["risky_norris_proxy"] = null;
   const equities: MarketTickerEquityRow[] = [];
+  const fx_pairs: MarketTickerFxPair[] = [];
 
   for (const row of marquee_series) {
     if (row.kind === "uf") {
@@ -130,6 +145,21 @@ export function getMarketTickerPayloadFromDb(
           clp_per_usd: stats.value,
           delta_pct: stats.changes?.day_pct ?? null,
         };
+      }
+      continue;
+    }
+    if (row.kind === "fx_pair") {
+      const stats = watchlistStatsForRow(row, now, unit);
+      if (stats.value != null && stats.as_of_date != null) {
+        const { base, quote } = fxPairCodes(row.series_key);
+        fx_pairs.push({
+          pair: row.series_key!,
+          base,
+          quote,
+          date: stats.as_of_date,
+          rate: stats.value,
+          delta_pct: stats.changes?.day_pct ?? null,
+        });
       }
       continue;
     }
@@ -173,6 +203,7 @@ export function getMarketTickerPayloadFromDb(
     unit,
     uf,
     usd,
+    fx_pairs,
     uno_a,
     risky_norris,
     risky_norris_proxy,

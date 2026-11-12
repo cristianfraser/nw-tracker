@@ -160,6 +160,7 @@
     "recentColValue": "Value",
     "recentEmpty": "No recent data",
     "fx": {
+      "usdPerEur": "USD per €1 (Yahoo EURUSD=X)",
       "yahoo": "Yahoo CLP=X (conversions)",
       "bcentralObservado": "Banco Central — observed dollar (reference)",
       "buy": "US$ buy (bid/ask)",
@@ -1842,17 +1843,17 @@
     "reset": "Reset",
     "params": {
       "real_return_pct": "Real return % (accum.)",
-      "monthly_aporte_clp": "Monthly contribution CLP",
-      "inflation_clp_pct": "CLP inflation %",
-      "inflation_usd_pct": "USD inflation %",
+      "monthly_aporte": "Monthly contribution {{unit}}",
+      "inflation_pct": "{{code}} inflation %",
       "retire_return_pct": "Real return % (drawdown)",
       "end_age": "End age",
       "swr_pct": "SWR %",
       "pct_balance_pct": "% of balance",
-      "monthly_income_clp": "Monthly income CLP (0 = SWR)",
+      "monthly_income": "Monthly income {{unit}} (0 = SWR)",
       "liquidate_other_pct": "% of non-invested liquidated at 65",
-      "monthly_rent_clp": "Monthly passive rent CLP (drawdown)"
+      "monthly_rent": "Monthly passive rent {{unit}} (drawdown)"
     },
+    "inflationAssumption": "Default inflation is an assumption, not a forecast: {{list}}. Each currency's nominal line uses its own.",
     "summary": {
       "balanceAtRetire": "Balance at {{age}}",
       "investedLabel": "invested",

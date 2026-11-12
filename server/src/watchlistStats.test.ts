@@ -120,6 +120,16 @@ describe("watchlistStatsForRow in the display unit", () => {
       expect(sn.changes?.day_pct).toBeCloseTo((1300 / 1100 / (1250 / 1000) - 1) * 100, 6);
       // The USD/CLP row stays the rate.
       expect(watchlistStatsForRow(row({ kind: "fx_usd", series_key: null }), now, "eur").value_currency).toBe("clp");
+      // The EUR rate rows are the rates themselves in every unit: dollars / pesos per euro.
+      for (const unit of ["clp", "usd", "eur"]) {
+        const eurUsd = watchlistStatsForRow(row({ kind: "fx_pair", series_key: "eur_usd" }), now, unit);
+        expect(eurUsd).toMatchObject({ value: 1.25, value_currency: "usd", as_of_date: "2099-01-06" });
+        expect(eurUsd.changes?.day_pct).toBeCloseTo((1.25 / 1.2 - 1) * 100, 9);
+        const eurClpRow = watchlistStatsForRow(row({ kind: "fx_pair", series_key: "eur_clp" }), now, unit);
+        expect(eurClpRow).toMatchObject({ value: 1100, value_currency: "clp", as_of_date: "2099-01-06" });
+        expect(eurClpRow.changes?.day_pct).toBeCloseTo(10, 9);
+      }
+      expect(() => watchlistStatsForRow(row({ kind: "fx_pair", series_key: "eurusd" }), now, "clp")).toThrow(/series_key/);
     } finally {
       db.prepare(`DELETE FROM fx_rates WHERE source = 'vitest'`).run();
       db.prepare(`DELETE FROM eur_daily WHERE date >= '2099-01-01'`).run();

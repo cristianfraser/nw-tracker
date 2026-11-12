@@ -920,7 +920,7 @@ export function useMovementMirrorCandidates() {
 
 export function useProjections(
   unit: DisplayUnit,
-  overrides: Partial<import("../types").ProjectionParams>
+  overrides: import("../projectionsOverrides").ProjectionOverrides
 ) {
   const overridesKey = useMemo(() => JSON.stringify(overrides), [overrides]);
   return useQuery({

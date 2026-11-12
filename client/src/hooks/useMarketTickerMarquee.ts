@@ -16,6 +16,13 @@ export type TickerMarqueeItem =
       fractionDigits: number;
     }
   | {
+      kind: "fx_pair";
+      label: string;
+      value: string;
+      delta: number | null;
+      fractionDigits: number;
+    }
+  | {
       kind: "uno_a";
       label: string;
       value: string;
@@ -61,6 +68,14 @@ function formatMarqueeValue(value: number, currency: string): string {
   return digits === 0 ? formatGroupedDecimalTrimmed(value) : formatGroupedDecimal(value, digits);
 }
 
+/**
+ * A rate in its quote currency: pesos grouped with the decimals the rate has (as the USD/CLP
+ * chip), a cross rate near 1 (EUR/USD) with four decimals, as quoted.
+ */
+function formatRateValue(rate: number, quote: string): string {
+  return currencyFormatInfo(quote).minorDigits === 0 ? formatGroupedDecimalTrimmed(rate) : formatGroupedDecimal(rate, 4);
+}
+
 type MarqueeLabels = {
   uf: string;
   usdLive: string;
@@ -102,6 +117,20 @@ function buildItemsFromSeriesConfig(
         delta: payload.usd.delta_pct,
         fractionDigits: 2,
       });
+      continue;
+    }
+    if (row.kind === "fx_pair") {
+      // The rate itself (EUR/USD: dollars per euro) whatever the display unit.
+      const pair = payload.fx_pairs?.find((p) => p.pair === row.series_key);
+      if (pair != null && Number.isFinite(pair.rate)) {
+        items.push({
+          kind: "fx_pair",
+          label: seriesLabel(row, labels),
+          value: formatRateValue(pair.rate, pair.quote),
+          delta: pair.delta_pct,
+          fractionDigits: 2,
+        });
+      }
       continue;
     }
     if (row.kind === "fund_unit" && row.series_key === "afp_uno_cuota_a" && payload.uno_a != null) {

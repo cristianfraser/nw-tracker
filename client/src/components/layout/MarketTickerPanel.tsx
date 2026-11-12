@@ -53,6 +53,7 @@ function MarqueeTrack({ items }: { items: ReturnType<typeof useMarketTickerMarqu
             deltaFractionDigits={"fractionDigits" in item ? item.fractionDigits : 0}
             showDelta={
               item.kind === "usd_live" ||
+              item.kind === "fx_pair" ||
               item.kind === "uno_a" ||
               item.kind === "risky_norris" ||
               item.kind === "risky_norris_proxy" ||

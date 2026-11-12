@@ -51,6 +51,11 @@ function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): Inst
   }));
 }
 
+/** A cross rate near 1 (EUR/USD): four decimals, as quoted. */
+function formatRate4(n: number): string {
+  return formatGroupedDecimal(n, 4);
+}
+
 function formatIpcIndex(n: number): string {
   return formatGroupedDecimal(n, 1, 2);
 }
@@ -425,10 +430,16 @@ export function RatesPage() {
   const fxUfClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_uf), [points]);
   const fxIpc = useMemo(() => seriesFromPoints(points, (p) => p.ipc_index), [points]);
   const fxEurClp = useMemo(() => payload?.eur_clp ?? [], [payload]);
+  const fxEurUsd = useMemo(() => payload?.eur_usd ?? [], [payload]);
 
   const fxSyncStale = useMemo(() => {
     const stale = syncStatus?.stale ?? [];
-    return stale.includes("yahoo_fx_usd") || stale.includes("sbif_usd") || stale.includes("sbif_eur");
+    return (
+      stale.includes("yahoo_fx_usd") ||
+      stale.includes("sbif_usd") ||
+      stale.includes("sbif_eur") ||
+      stale.includes("fx_pairs")
+    );
   }, [syncStatus]);
 
   const recentColDate = t("rates.recentColDate");
@@ -515,6 +526,16 @@ export function RatesPage() {
               data={fxEurClp}
               yUnit="clp"
               valueFormatter={formatClp}
+              {...recentTableProps}
+              loading={seriesPending}
+            />
+            <MiniLineChart
+              timeRange={rangePrefs.range}
+              title="EUR / USD"
+              footnote={t("rates.fx.usdPerEur")}
+              data={fxEurUsd}
+              yUnit="usd"
+              valueFormatter={formatRate4}
               {...recentTableProps}
               loading={seriesPending}
             />

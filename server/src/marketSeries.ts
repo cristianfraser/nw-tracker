@@ -94,7 +94,7 @@ type MarketSeriesPointOut = {
 
 /**
  * `GET /api/market-series?unit=`: the rates page's history. Rate series (USD/CLP, UF, EUR/CLP,
- * IPC, UTM) are facts in their own quote; equity closes and fund cuotas are expressed in `unit`
+ * EUR/USD, IPC, UTM) are facts in their own quote; equity closes and fund cuotas are expressed in `unit`
  * at the stored rate on or before each observation day.
  */
 export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
@@ -110,6 +110,8 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
   fx_usd_clp_buy: { date: string; value: number }[];
   fx_usd_clp_sell: { date: string; value: number }[];
   eur_clp: { date: string; value: number }[];
+  /** EUR/USD (`fx_rates`, Yahoo EURUSD=X): dollars per euro, a rate in its own quote. */
+  eur_usd: { date: string; value: number }[];
   fx_coverage: FxCoverage;
 } {
   clearFxConversionWarnings();
@@ -132,6 +134,9 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
     .all() as { date: string; buy_clp_per_usd: number; sell_clp_per_usd: number }[];
   const ufRows = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date ASC`).all() as UfR[];
   const eurRows = db.prepare(`SELECT date, clp_per_eur FROM eur_daily ORDER BY date ASC`).all() as EurR[];
+  const eurUsdRows = db
+    .prepare(`SELECT date, mid FROM fx_rates WHERE base = 'eur' AND quote = 'usd' ORDER BY date ASC`)
+    .all() as { date: string; mid: number }[];
   const ipcRows = db.prepare(`SELECT date, ipc_index FROM ipc_daily ORDER BY date ASC`).all() as IpcR[];
   const utmRows = db.prepare(`SELECT date, utm_clp FROM utm_daily ORDER BY date ASC`).all() as UtmR[];
   // Index levels (currency `none`) are points, not prices with a CLP/USD frame.
@@ -307,6 +312,7 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
     fx_usd_clp_buy: fxBidAskRows.map((r) => ({ date: r.date, value: r.buy_clp_per_usd })),
     fx_usd_clp_sell: fxBidAskRows.map((r) => ({ date: r.date, value: r.sell_clp_per_usd })),
     eur_clp: eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur })),
+    eur_usd: eurUsdRows.map((r) => ({ date: r.date, value: r.mid })),
     fx_coverage: (() => {
       runFxConversionWarningScan();
       return buildFxCoverageWithConversionWarnings(unit);
