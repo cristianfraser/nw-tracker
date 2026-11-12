@@ -23,8 +23,8 @@ export function capitalLossOffset(input: {
   dividendsNetClp: number;
   declaredLossClp: number;
   fundLossClp: number;
-  usdFx1032: number;
-  usdFxLoss: number;
+  foreignFx1032: number;
+  foreignFxLoss: number;
 }): F22LossOffset {
   const { draftInput, draft, taxOf, taxed } = input;
   const gainsClp = capitalLossPoolClp(draftInput);
@@ -52,7 +52,7 @@ export function capitalLossOffset(input: {
         lossClp: input.declaredLossClp + input.fundLossClp,
       },
       // Only the `igc_1032` route puts the dollars' exchange result in the pool; under 1901 it is apart.
-      { source: "usd_fx", gainClp: input.usdFx1032, lossClp: input.usdFxLoss },
+      { source: "foreign_fx", gainClp: input.foreignFx1032, lossClp: input.foreignFxLoss },
     ],
     gainsClp,
     lossesClp,

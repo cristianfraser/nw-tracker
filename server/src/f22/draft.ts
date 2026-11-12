@@ -43,11 +43,11 @@
  * what makes its additions trustworthy. Foreign share gains also bear first-category tax (line 58,
  * IDPC 25%) credited back against IGC with refund (code 1914), so they change 304 only through
  * IGC; the draft reports the IDPC lines beside it. The exchange result on the dollars bought with
- * pesos (`f22/usdFx`) takes the same path under its default route: art. 20 N°5 income in line
- * 58 d), code 1901, with IDPC at {@link IDPC_RATE} credited back in line 5 (`usdFxIdpcClp`,
+ * pesos (`f22/foreignFx`) takes the same path under its default route: art. 20 N°5 income in line
+ * 58 d), code 1901, with IDPC at {@link IDPC_RATE} credited back in line 5 (`foreignFxIdpcClp`,
  * reported beside, net zero), so it changes 304 only through 158; a loss on that route offsets
  * nothing here and is reported. The alternative route adds it to 1032 and a loss to 169 like the
- * crypto result ({@link USD_FX_DEFAULT_ROUTE}). Report-only: `estimatedCodes` carries its codes.
+ * crypto result ({@link FOREIGN_FX_DEFAULT_ROUTE}). Report-only: `estimatedCodes` carries its codes.
  *
  * Losses (code 169) are deducted only from the gains of line 17's codes ({@link CAPITAL_LOSS_POOL_CODES}),
  * never from salary, and only in their own year; the draft caps 169 at that pool and reports what
@@ -125,7 +125,7 @@
  * part is its own module under `f22/`: the chain and the code-169 pool (`chain.ts`), what the SII's
  * documents state (`sources.ts`), the window's items (`blocks.ts`, over the income blocks `salary.ts`,
  * `fees.ts`, `rentals.ts`, `art107.ts`, `crypto.ts`, `foreignShares.ts`, `foreignIncome.ts`,
- * `dividends.ts`, `usdFx.ts`, `estimates.ts`), the regimes (`resident.ts`, `nonresident.ts`), the
+ * `dividends.ts`, `foreignFx.ts`, `estimates.ts`), the regimes (`resident.ts`, `nonresident.ts`), the
  * offsets (`offsets.ts`) and the types (`types.ts`). The blocks read the jurisdiction-neutral tax
  * facts (`taxFacts/`) and apply the Chilean rule: which enter, at which rate and reajuste, into
  * which code.
@@ -144,7 +144,7 @@ import { DJ1922_ART107_DIFFERENCE } from "./sources.js";
 import type { F22Codes, F22Draft, F22DraftBase, F22DraftOptions } from "./types.js";
 import { f22NonresidentPartOf, f22Year } from "./year.js";
 
-export { USD_FX_DEFAULT_PURCHASE_COST, USD_FX_DEFAULT_POSTURE, USD_FX_DEFAULT_ROUTE } from "./year.js";
+export { FOREIGN_FX_DEFAULT_PURCHASE_COST, FOREIGN_FX_DEFAULT_POSTURE, FOREIGN_FX_DEFAULT_ROUTE } from "./year.js";
 
 const zeroToNull = (n: number): number | null => (n === 0 ? null : n);
 
@@ -175,7 +175,7 @@ export function buildF22Draft(
 
   // The display blocks: the resident window's when there is one, else the non-resident year's own.
   const blocks = residentWindow ? loadWindowBlocks(y.ctx, residentWindow, false) : nr!.blocks;
-  const { salary, crypto, dividends, foreignShares, art107, art107Distributions, usdFx, rentals, foreignSalary, foreignInterest } = blocks;
+  const { salary, crypto, dividends, foreignShares, art107, art107Distributions, foreignFx, rentals, foreignSalary, foreignInterest } = blocks;
   const art107DistributionsClp = Math.round(art107Distributions.reduce((s, x) => s + x.amountClp, 0));
   const f1964 = dj.get(1964);
   const f1891 = dj.get(1891);
@@ -204,7 +204,7 @@ export function buildF22Draft(
     // A zero a third party reports says nothing (no sales, no difference): null, like informedCodes.
     art107InformedSalesClp: f1891 ? zeroToNull(informedDjAmount(f1891, "Monto Total Ventas")) : null,
     art107InformedResultClp: f1922 ? zeroToNull(informedDjAmount(f1922, DJ1922_ART107_DIFFERENCE)) : null,
-    usdFx,
+    foreignFx,
     rentals,
     foreignSalary,
     foreignInterest,
@@ -230,7 +230,7 @@ export function buildF22Draft(
       estimatedCodes: [],
       lossOffset: { ...EMPTY_OFFSET, parts: [] },
       foreignShareOffset: EMPTY_OFFSET,
-      usdFxIdpcClp: 0,
+      foreignFxIdpcClp: 0,
       propertyTaxCredit: null,
       foreignSalaryCredit: null,
     };

@@ -2409,7 +2409,7 @@
         "foreign_dividends": "Dividendos extranjeros (netos)",
         "foreign_interest": "Intereses extranjeros",
         "foreign_shares": "Mayor valor en acciones extranjeras",
-        "usd_fx": "Diferencia de cambio en dólares",
+        "foreign_fx": "Diferencia de cambio en moneda extranjera",
         "crypto": "Mayor valor en criptomonedas",
         "fund_redemptions": "Rescates de fondos chilenos",
         "fund_distributions": "Repartos de fondos chilenos",
@@ -2579,7 +2579,7 @@
         "foreign_shares": "acciones extranjeras",
         "foreign_dividends": "dividendos extranjeros",
         "funds_interest": "fondos e intereses",
-        "usd_fx": "diferencias de cambio"
+        "foreign_fx": "diferencias de cambio"
       },
       "taxedOpenNoTax": "Con los ingresos registrados hasta ahora no paga IGC.",
       "foreignUnusedOpen": "Pérdida en acciones extranjeras en {{year}}: {{amount}}. Solo compensa ganancias en acciones extranjeras del mismo año, no sueldo, fondos ni cripto: vender acciones extranjeras con ganancia de hasta {{amount}} antes del {{year}}-12-31 no pagaría impuesto.",
@@ -2624,18 +2624,18 @@
         "offset_paid": "Pagado con la devolución AT{{year}} (compensación de la Tesorería)"
       }
     },
-    "usdFx": {
-      "title": "Diferencias de cambio (dólares comprados con pesos)",
-      "explain": "Los dólares en caja son lotes tributarios (FIFO por cuenta): cada salida realiza la diferencia entre el dólar observado del día en que salieron y el del día de compra, costo sin reajuste (Oficio 2390/2021); el resultado se reajusta a diciembre. Criterio: {{posture}}. Costo: {{cost}}. Vía: {{route}}.",
+    "foreignFx": {
+      "title": "Diferencias de cambio (moneda extranjera comprada con pesos)",
+      "explain": "La moneda extranjera en caja son lotes tributarios (FIFO por cuenta): cada salida realiza la diferencia entre el observado del Banco Central de su moneda del día en que salió y el del día de compra, costo sin reajuste (Oficio 2390/2021); el resultado se reajusta a diciembre. Criterio: {{posture}}. Costo: {{cost}}. Vía: {{route}}.",
       "estimateNote": "Solo informativo: la lectura de los lotes que hace la app, aún no declarada en ninguna parte.",
       "provisional": "El reajuste a diciembre llega hasta {{month}}, el último IPC publicado.",
       "posture": {
-        "oficio_2573": "Oficio 2573/2022 — usar los dólares en un instrumento es venderlos",
-        "oficio_2390": "Oficio 2390/2021 — solo los dólares pagados a un tercero o vueltos a pesos",
+        "oficio_2573": "Oficio 2573/2022 — usar la moneda extranjera en un instrumento es venderla",
+        "oficio_2390": "Oficio 2390/2021 — solo la moneda pagada a un tercero o vuelta a pesos",
         "none": "ninguno — solo una reconversión a pesos"
       },
       "costOption": {
-        "observado": "dólar observado del día de compra",
+        "observado": "el observado del día de compra",
         "pesos_paid": "los pesos efectivamente pagados"
       },
       "route": {
@@ -2644,7 +2644,7 @@
       },
       "date": "Fecha",
       "account": "Cuenta",
-      "usd": "US$",
+      "amount": "Monto",
       "purchaseDates": "Comprados el",
       "proceeds": "Valor de salida",
       "cost": "Costo",
@@ -2652,11 +2652,12 @@
       "decemberPct": "IPC a diciembre",
       "resultDecember": "Resultado a diciembre",
       "totals": "Resultado del año: {{result}} nominal, {{resultDecember}} reajustado a diciembre.",
-      "feesTitle": "Comisiones cobradas en dólares",
+      "feesTitle": "Comisiones cobradas en moneda extranjera",
       "feesExplain": "Su costo se pierde: no es una pérdida deducible para una persona natural (FAQ del SII citando el Oficio 1474/2020; Oficio 2208/2022).",
       "costLost": "Costo perdido",
       "feesTotal": "Comisiones: {{amount}} de costo perdido.",
       "deferredTotal": "Diferido bajo este criterio ({{count}} salidas): {{amount}} que el otro criterio realizaría.",
+      "byCurrency": "{{currency}}: {{result}} nominal, {{resultDecember}} reajustado a diciembre ({{count}} salidas).",
       "codes1901": "Código 1901: {{amount}} · IDPC (línea 58 d) {{idpc}}, con crédito en la línea 5 — neto cero en el resultado.",
       "lossLost1901": "Una pérdida por esta vía solo se compensa con otras rentas del art. 20 N°5 y, si no, se pierde: sin código.",
       "codes1032": "Código 1032: {{amount}}, sumado a la ganancia cripto.",

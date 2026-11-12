@@ -9,7 +9,7 @@ import { f22ForeignSalaryCreditCap } from "./identities.js";
 import { buildF1040Draft } from "../us1040/draft.js";
 import { FOREIGN_TAX_CREDIT_CAP } from "../legalParameters.js";
 import { applyEmploymentPayslips } from "../payslipsApply.js";
-import type { UsdFxDisposalLoader } from "./usdFx.js";
+import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 const UTA = 800_000;
 // A synthetic open year the Vitest person does not reach: the IPC reajuste is zero past the latest
@@ -18,7 +18,7 @@ const INCOME_YEAR = 2096;
 const TODAY = `${INCOME_YEAR}-12-15`;
 const PREFIX = "vitest-f22-foreign/";
 const OBSERVADO = 900;
-const noUsd: UsdFxDisposalLoader = () => ({ disposals: [], openLots: [] });
+const noUsd: ForeignFxDisposalLoader = () => ({ disposals: [], openLots: [] });
 
 const PAY_DATES = [`${INCOME_YEAR}-03-06`, `${INCOME_YEAR}-06-05`, `${INCOME_YEAR}-09-04`];
 
@@ -145,7 +145,7 @@ describe("foreign income in the F22 draft", () => {
     );
     try {
       expect(f1040TaxForF22(INCOME_YEAR, TODAY)).toEqual({ usd: 0, source: "nonresident_alien_not_drafted" });
-      const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { usdFx: { load: noUsd } });
+      const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { foreignFx: { load: noUsd } });
       expect(d.foreignSalary.usTaxSource).toBe("nonresident_alien_not_drafted");
       expect(d.foreignSalary.creditClp).toBe(0);
       expect(d.draft[1030]).toBe(d.foreignSalary.grossClp);
@@ -172,7 +172,7 @@ describe("foreign income in the F22 draft", () => {
   });
 
   it("drafts 1030 in línea 13 (161 = 1098 + 1030), the credit in 748 / 1018, the interest in 1104, all at one year-end rate", () => {
-    const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { foreignFx: { load: noUsd } });
     const s = d.foreignSalary;
     expect(d.taxComputed).toBe(true);
     expect(s.grossClp).toBe(Math.round(3 * 20_000 * OBSERVADO));
@@ -207,7 +207,7 @@ describe("DJ 1898 from several lenders", () => {
   afterAll(clean);
 
   it("sums every lender's interest into 751; art. 55 bis caps the total", () => {
-    const d = buildF22Draft(DJ_TAX_YEAR, today, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(DJ_TAX_YEAR, today, { foreignFx: { load: noUsd } });
     expect(d.informed[751]).toBe(6_500_000);
     expect(d.draft[751]).toBe(6_500_000);
     expect(d.draft[750]).toBe(Math.min(6_500_000, 8 * d.utaClp));

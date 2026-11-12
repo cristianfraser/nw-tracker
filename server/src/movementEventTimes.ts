@@ -2,7 +2,7 @@
  * The moment a movement happened, when a source states it (`movement_event_times`, migration 231).
  * The ledger stores dates only; a broker mail carries its send time, which orders same-day events
  * where order matters (a dollar withdrawal request against that day's purchases,
- * `usdCashCostLots.ts`). A stamp is written once and never overwritten.
+ * `foreignCashCostLots.ts`). A stamp is written once and never overwritten.
  */
 import { db } from "./db.js";
 

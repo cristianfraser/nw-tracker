@@ -56,7 +56,7 @@ export function nonresidentPart(
   if (blocks.foreignShares.disposals.length > 0) {
     add("foreign_shares", "nonresident", blocks.foreignShares.totalClp[blocks.foreignShares.defaultMode], blocks.foreignShares.disposals.length);
   }
-  if (blocks.usdFx.disposals.length > 0) add("usd_fx", "nonresident", blocks.usdFx.resultDecemberClp, blocks.usdFx.disposals.length);
+  if (blocks.foreignFx.disposals.length > 0) add("foreign_fx", "nonresident", blocks.foreignFx.resultDecemberClp, blocks.foreignFx.disposals.length);
   // A US-listed option's premiums are foreign-source for a non-resident (art. 3): shown, not declared.
   const options = optionMovementFacts(window);
   if (options.movements > 0) {

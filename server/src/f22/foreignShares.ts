@@ -21,7 +21,7 @@ import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
 import { ipcReajuste, monthBeforeYmd } from "../siiOfficialIpc.js";
 import { equityAccountDisposalFacts, equityLotAccounts, type EquityLotAccount } from "../taxFacts/disposals.js";
 import type { TaxLotDisposal, TaxLotMethod } from "../taxLots.js";
-import { observadoOnOrBefore } from "../usdCashTaxLotEvents.js";
+import { dollarObservadoOnOrBefore } from "../bcentralObservado.js";
 
 export type ForeignShareGainMode = "usd_31dic" | "clp_ipc";
 
@@ -103,7 +103,7 @@ export function foreignShareGainsForYear(
   }
   const provisional = todayYmd <= yearEnd;
   const yearEndObservadoDate = provisional ? latestObservadoDate() : yearEnd;
-  const yearEndObservado = observadoOnOrBefore(yearEndObservadoDate);
+  const yearEndObservado = dollarObservadoOnOrBefore(yearEndObservadoDate);
   const ipcBetween = ipcReajuste({ round: false }).pct;
   const disposals: ForeignShareDisposalResult[] = [];
   for (const d of equityAccountDisposalFacts(window, { method: lotMethod, accounts: foreignEquityAccounts(), currency: "usd" }).flatMap(
@@ -118,7 +118,7 @@ export function foreignShareGainsForYear(
       proceedsUsd: d.proceeds,
       costUsd: d.cost,
       gainUsd: d.gain,
-      resultClp: foreignShareDisposalClp(d, observadoOnOrBefore, ipcBetween, yearEndObservado),
+      resultClp: foreignShareDisposalClp(d, dollarObservadoOnOrBefore, ipcBetween, yearEndObservado),
     });
   }
   const totalClp = {

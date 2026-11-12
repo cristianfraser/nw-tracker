@@ -52,7 +52,7 @@ const f22 = capture.f22 as Record<string, unknown>;
 for (const y of availableF22TaxYears(today)) {
   f22[`AT${y}`] = {
     draft: attempt(() => buildF22Draft(y, today)),
-    draft_igc_1032_2390: attempt(() => buildF22Draft(y, today, { usdFx: { route: "igc_1032", posture: "oficio_2390" } })),
+    draft_igc_1032_2390: attempt(() => buildF22Draft(y, today, { foreignFx: { route: "igc_1032", posture: "oficio_2390" } })),
     payload: attempt(() => buildF22Payload(y)),
   };
 }

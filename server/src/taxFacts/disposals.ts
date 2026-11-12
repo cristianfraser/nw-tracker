@@ -10,8 +10,8 @@
  * choice, so it is a parameter: the walk is the same, the identification differs by law. Accounts are
  * walked by id; within an account, in the walk's order (the ledger's date order).
  *
- * The dollars of a USD cash account are lots too (`usdCashTaxLotEvents.ts`), but priced in pesos at
- * the dólar observado by the Chilean oficios' rules: that walk stays the F22's (`f22/usdFx.ts`).
+ * The dollars of a USD cash account are lots too (`foreignCashTaxLotEvents.ts`), but priced in pesos at
+ * the dólar observado by the Chilean oficios' rules: that walk stays the F22's (`f22/foreignFx.ts`).
  */
 import { db } from "../db.js";
 import { inDateWindow, type DateWindow } from "../dateWindow.js";
