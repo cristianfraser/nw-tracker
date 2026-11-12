@@ -712,6 +712,7 @@ const PROCESSOR_NAMES: Record<string, string> = {
   eventbrite: "Eventbrite",
   micoca_cola: "miCoca-Cola",
   dynavap: "DynaVap",
+  namecheap: "Namecheap",
   mercadolibre: "Mercado Libre",
   amazon: "Amazon",
   amazon_order: "Amazon",
@@ -738,7 +739,7 @@ const PROCESSOR_NAMES: Record<string, string> = {
 } satisfies Partial<Record<PaymentProcessorSlug, string>>;
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set<string>(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"] satisfies PaymentProcessorSlug[]);
+const ORDER_CONFIRMATION_SOURCES = new Set<string>(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "namecheap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"] satisfies PaymentProcessorSlug[]);
 
 function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];

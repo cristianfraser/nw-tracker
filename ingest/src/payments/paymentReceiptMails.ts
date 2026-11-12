@@ -493,6 +493,52 @@ function decodeDynavap(mail: ArchivedMail): ProcessorReceipt | null {
   };
 }
 
+const NAMECHEAP_ORDER_SUBJECT = /^Namecheap Order Summary\b/i;
+
+/**
+ * Namecheap's «Namecheap Order Summary», in dollars: the order number, the items table (its HTML
+ * part; the plain text leaves it out) — «Domain Renewal crfrsr.io 1 1 year $75.98 $75.98 ICANN Fee
+ * $0.00 Domain Privacy 1 0 year $0.00 …» — and «TOTAL $75.98». The concept is what was paid for: a
+ * domain item's domain («crfrsr.io»), any other item its title; free items (the domain privacy) are
+ * left out. Items that do not add up to the total throw; an order of $0 charged nothing.
+ */
+function decodeNamecheap(mail: ArchivedMail): ProcessorReceipt | null {
+  if (!NAMECHEAP_ORDER_SUBJECT.test(mail.subject)) return null;
+  const t = mail.text;
+  const ref = need(t, /Order Number:? (\d+)/, "order number", mail)(1);
+  const table = need(t, /TITLE QTY DURATION PRICE SUB TOTAL (.+?) TOTAL \$([\d.]+)/, "items table", mail);
+  const total = printedDollars(table(2));
+  if (total === 0) return null;
+  const items = [...table(1).matchAll(/(.+?) (\d+) (\d+ [a-z]+) \$([\d.]+) \$([\d.]+)(?: ICANN Fee \$[\d.]+)? ?/g)].map((m) => ({
+    title: m[1]!.trim(),
+    subtotal: printedDollars(m[5]!),
+  }));
+  const sum = Math.round(items.reduce((a, i) => a + i.subtotal, 0) * 100) / 100;
+  if (items.length === 0 || sum !== total) {
+    throw new Error(`${mail.sent_at_chile} «${mail.subject}»: items add up to $${sum}, the total is $${total}`);
+  }
+  const paid = items
+    .filter((i) => i.subtotal > 0)
+    .map((i) => i.title.match(/^Domain (?:Renewal|Registration|Transfer|Redemption)\s+(\S+)$/i)?.[1] ?? i.title);
+  const card = t.match(/Payment Source:? Credit Card [*( ]*(\d{4})\)/i)?.[1];
+  return {
+    message_id: mail.message_id,
+    sent_at_chile: mail.sent_at_chile,
+    processor: "namecheap",
+    payee: { name: "namecheap.com", rut: null, email: null },
+    amount: total,
+    currency: "usd",
+    // Mailed the minute the order is placed (its own time is printed in a US zone).
+    paid_at_chile: mail.sent_at_chile,
+    order_ref: ref,
+    concept: concept([...new Set(paid)]),
+    statement_descriptor: null,
+    payment_method: card ? `card ${card}` : null,
+    installments: null,
+    charges: null,
+  };
+}
+
 const MERCADOLIBRE_ORDER_SUBJECT = /^Compraste\b/i;
 
 /** Numeric HTML entities («cr&#xE9;dito»): the 2020–2022 mails reach the archive text with them. */
@@ -703,6 +749,7 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
     decode: decodeMiCocaColaOrder,
   },
   { slug: "dynavap", from: "dynavap.com", wantSubject: (x) => DYNAVAP_ORDER_SUBJECT.test(x), decode: decodeDynavap },
+  { slug: "namecheap", from: "support@namecheap.com", wantSubject: (x) => NAMECHEAP_ORDER_SUBJECT.test(x), decode: decodeNamecheap },
   {
     slug: "amazon",
     gmraw: "from:(ship-confirm@amazon.com OR shipment-tracking@amazon.com)",

@@ -55,6 +55,8 @@ const PLACES: readonly string[] = [
   "Las Catalpas",
   "Consistorial",
   "Alcántara",
+  "Carlos Antúnez",
+  "MUT",
 ];
 
 type Place = { words: string[]; folded: string; foldedWords: string[] };
@@ -89,7 +91,18 @@ function completionsOf(tail: string): Place[] {
  * places come back as `choices` and the text stays as printed.
  */
 export function placeBranch(branch: string, cut: boolean): PlacedBranch {
-  let words = branch.split(" ").filter(Boolean);
+  // A store code after the place («Las Cond 1234») stays as printed; the place before it is read alone.
+  const all = branch.split(" ").filter(Boolean);
+  let codeAt = all.length;
+  while (codeAt > 1 && /^\d+$/.test(all[codeAt - 1]!)) codeAt--;
+  const code = all.slice(codeAt);
+  const placed = placeWords(all.slice(0, codeAt), cut);
+  const withCode = (text: string) => [text, ...code].filter(Boolean).join(" ");
+  return { text: withCode(placed.text), choices: placed.choices?.map(withCode) ?? null };
+}
+
+function placeWords(printed: string[], cut: boolean): PlacedBranch {
+  let words = printed;
   let choices: string[] | null = null;
   const folded = words.map((w) => foldVendorName(w));
   const last = words[words.length - 1] ?? "";

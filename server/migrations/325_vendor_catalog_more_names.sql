@@ -1,0 +1,7 @@
+-- More names as a person reads them (2026-11-12), and OK Market as Oxxo from 2022: the chain's
+-- stores became Oxxo, and the bank still prints them «OKM <branch>» / «OK MARKET S.A.». Every
+-- pre-2022 line prints «OK MARKET <branch>» (kept) except two «OKM» ones, which the user's own
+-- catalog file names. Store codes stay in brackets when the bank prints no place («SB 731» →
+-- «Salcobrand (731)»). The entries and the category rules they move are written by the hook
+-- `runVendorCatalog325` (vendorCatalog325.ts), which carries every line's category across the
+-- rename (vendorCatalogChange.ts).

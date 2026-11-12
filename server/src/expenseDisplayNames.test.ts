@@ -54,6 +54,41 @@ const catalog = vendorCatalogFromEntries([
 const receipt = (processor: string, payee: string, extra: Partial<PaymentReceiptDto> = {}) =>
   ({ processor, payee, stay: null, guess: false, ...extra }) as PaymentReceiptDto;
 
+describe("in-event charges", () => {
+  const events = new Map([
+    ["2036-05-10", [{ name: "Festival Uno", starts_on: "2036-05-10" }]],
+    ["2036-10-30", [{ name: "Noche Dos", starts_on: "2036-10-30" }]],
+  ]);
+  const ctx = (): DisplayNameContext => ({
+    catalog: vendorCatalogFromEntries([seed("prefix", "GLOVOX", "Glovox"), seed("prefix", "TOLIV", "Toliv")]),
+    counterparties: new Map(),
+    brands: [],
+    cardMerchantsByAccount: new Map(),
+    ticketEventsByDay: events,
+  });
+  const line = (merchant: string, day: string) => ({
+    source: "cc" as const,
+    merchant,
+    account_id: 1,
+    payment_receipt: undefined,
+    transfer_counterparty: undefined,
+    purchase_on: day,
+    occurred_on: day,
+  });
+  it("links a producer's charge on an event night, or the morning after, to that event", () => {
+    expect(expenseLineDisplayNames(line("MERPAGO*GLOVOX GLOVOX PRO", "2036-05-11"), ctx()).link_label).toMatchObject({
+      arrow: "≈",
+      text: "Festival Uno",
+      event_on: "2036-05-10",
+    });
+    expect(expenseLineDisplayNames(line("TUU*toliv", "2036-10-30"), ctx()).link_label?.text).toBe("Noche Dos");
+  });
+  it("links nothing on another day, or for another vendor", () => {
+    expect(expenseLineDisplayNames(line("GLOVOX", "2036-05-13"), ctx()).link_label).toBeUndefined();
+    expect(expenseLineDisplayNames(line("KIOSKO", "2036-05-10"), ctx()).link_label).toBeUndefined();
+  });
+});
+
 describe("vendor catalog", () => {
   it("matches exact, prefix and branch, user entries first", () => {
     expect(catalog.lookup("AMZN Mktp US*403MJ2GN3")).toBe("Amazon.com");
@@ -84,13 +119,34 @@ describe("vendor catalog", () => {
     expect(seeded.lookup("AMAZON* 4H4FI9OJ5")).toBe("Amazon.com");
     expect(seeded.lookup("MERCADO PAGO 4 TCOM")).toBe("Mercado Pago");
     expect(seeded.lookup("MUEVO COPEC")).toBe("Copec (App)");
-    expect(seeded.lookup("OKM SUECIA")).toBe("OK Market");
+    expect(seeded.lookup("OKM SUECIA")).toBe("Oxxo (Suecia)");
     expect(seeded.lookup("LONDON COFFEE ALCANT")).toBe("Santander Work/Café (Alcántara)");
     expect(seeded.lookup("HIPER PUENTE NUEVO.")).toBe("Hiper Lider (Puente Nuevo)");
     expect(seeded.lookup("IKEA COM")).toBe("Ikea");
     expect(seeded.lookup("GOOGLE PLAY-YO")).toBe("YouTube Premium");
-    expect(seeded.lookup("OK MARKET S.A.")).toBe("OK Market");
+    expect(seeded.lookup("OK MARKET S.A.")).toBe("Oxxo");
     expect(seeded.lookup("MUNICIPALIDAD DE MAIPU")).toBe("Permiso de circulación (Maipú)");
+  });
+
+  it("seeds the names migration 325 adds: store numbers in brackets, Oxxo for OK Market", () => {
+    const seeded = loadVendorCatalog();
+    expect(seeded.lookup("SB 731")).toBe("Salcobrand (731)");
+    expect(seeded.lookup("CRUZ VERDE CV 1034")).toBe("Cruz Verde (1034)");
+    expect(seeded.lookup("CRUZVERDE CV 1096")).toBe("Cruz Verde (1096)");
+    expect(seeded.lookup("FARM CRUZ VERDE CV 792")).toBe("Cruz Verde (792)");
+    expect(seeded.lookup("C. VERDE LAS COND 1234")).toBe("Cruz Verde (Las Condes 1234)");
+    expect(seeded.lookup("CV 1223")).toBe("Cruz Verde (1223)");
+    expect(seeded.lookup("TOTTUS KENNEDY II")).toBe("Tottus (Kennedy II)");
+    expect(seeded.lookup("DECATHLON CHILE SPA")).toBe("Decathlon");
+    expect(seeded.lookup("OKM CENTRO")).toBe("Oxxo (Centro)");
+    expect(seeded.lookup("OK MARKET APOQUINDO")).toBe("OK Market (Apoquindo)");
+    expect(seeded.lookup("PUNTO COPEC MACUL")).toBe("Punto Copec (Macul)");
+    expect(seeded.lookup("CPS COPEC POE")).toBe("Copec");
+    expect(seeded.lookup("UPA] F123 APOQUINDO")).toBe("Upa! (Apoquindo)");
+    expect(seeded.lookup("DECATHLON MUT")).toBe("Decathlon (MUT)");
+    expect(seeded.lookup("GLOVOXPRODUCC")).toBe("Glovox");
+    expect(seeded.lookup("GLOVO #C1R73BBF")).toBe("Glovo");
+    expect(seeded.lookup("NAME-CHEAP.COM* QODD6H")).toBe("namecheap.com");
   });
 
   it("spells a branch's places and completes the one a cut branch starts", () => {
@@ -118,7 +174,8 @@ describe("vendor catalog", () => {
       expect(() => saveVendorBranchChoice("EXPRESS VERY LONG NAME LAS", "Lider Express (Nowhere)")).toThrow(/not a branch/);
       saveVendorBranchChoice("EXPRESS VERY LONG NAME LAS", "Lider Express (Very Long Name Las Condes)");
       const after = loadVendorCatalog().match("EXPRESS VERY LONG NAME LAS");
-      expect(after).toEqual({ display: "Lider Express (Very Long Name Las Condes)", brand: "Lider Express (Very Long Name Las Condes)", branchChoices: null });
+      // The pick names the branch; the category rule stays the brand's.
+      expect(after).toEqual({ display: "Lider Express (Very Long Name Las Condes)", brand: "Lider Express", branchChoices: null });
     } finally {
       db.prepare(`DELETE FROM vendor_catalog WHERE source = 'choice'`).run();
     }

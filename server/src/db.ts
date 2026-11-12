@@ -60,6 +60,7 @@ import { runFlowFirstSeen310 } from "./flows/flowFirstSeen310.js";
 import { runCardToCardPayments311 } from "./cardToCardPayments311.js";
 import { runCurrencies312 } from "./currencies312.js";
 import { runCurrencyReferences314 } from "./currencyReferences314.js";
+import { runVendorCatalog325 } from "./vendorCatalog325.js";
 import { runExpenseAmountCurrency316 } from "./expenseAmountCurrency316.js";
 import { runStatementLineAmount319 } from "./cards/statementLineAmount319.js";
 import { runBillingMetrics320 } from "./cards/billingMetrics320.js";
@@ -406,6 +407,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "320_cc_billing_month_metrics.sql": runBillingMetrics320,
   "321_cc_card_amounts_by_currency.sql": runCardAmountsByCurrency321,
   "322_cc_traspaso_legs_by_direction.sql": runTraspasoLegs322,
+  "325_vendor_catalog_more_names.sql": runVendorCatalog325,
 };
 
 /**

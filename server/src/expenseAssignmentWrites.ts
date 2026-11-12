@@ -68,7 +68,9 @@ type AssignOpts = {
 };
 
 /** The one executor: «Único» row, merchant rule, line rows, declined marker. Throws on bad input. */
-export function assignExpenseCategory(target: ExpenseCategoryTarget, opts: AssignOpts): ExpenseCategoryAssignment {
+export function assignExpenseCategory(target: ExpenseCategoryTarget, given: AssignOpts): ExpenseCategoryAssignment {
+  // An additional cardholder's line writes its own category, never the merchant's rule.
+  const opts: AssignOpts = target.ownCategoryOnly ? { ...given, unique: true, ruleLink: null } : given;
   const categorySlug = opts.categorySlug != null ? String(opts.categorySlug).trim() : "";
   const hasCategory = categorySlug.length > 0;
   const clearCategory = opts.clearCategory === true;

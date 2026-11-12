@@ -7,12 +7,14 @@
  *
  * File: { "entries": [ { "kind": "exact" | "prefix" | "branch" | "rut", "pattern": "…", "display": "…" } ] }
  * Patterns are written as printed; they are folded here (upper case, no accents, single spaces),
- * a RUT reduced to digits + verifier. See `vendorCatalog.ts`.
+ * a RUT reduced to digits + verifier. See `vendorCatalog.ts`. The category rules a new name moves
+ * are carried across (`vendorCatalogChange.ts`), and the report lists them.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../src/db.js";
 import { foldVendorName, normalizeRut, type VendorCatalogKind } from "../src/vendorCatalog.js";
+import { applyVendorCatalogChange, describeVendorCatalogChange } from "../src/vendorCatalogChange.js";
 
 const KINDS: readonly VendorCatalogKind[] = ["exact", "prefix", "branch", "rut"];
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
@@ -59,11 +61,22 @@ if (added.length + changed.length + removed.length === 0) console.log("  nothing
 
 if (!apply) {
   console.log("\nReport only; run with --apply to write.");
-} else {
-  db.transaction(() => {
-    db.prepare(`DELETE FROM vendor_catalog WHERE source = 'user'`).run();
-    const ins = db.prepare(`INSERT INTO vendor_catalog (match_kind, pattern, display, source) VALUES (?, ?, ?, 'user')`);
-    for (const e of wanted.values()) ins.run(e.kind, e.pattern, e.display);
-  }).immediate();
+}
+class RollBack extends Error {}
+// The category rules the names move are carried across (vendorCatalogChange.ts); without --apply
+// the change runs and is rolled back, so the report is what --apply writes.
+const run = db.transaction(() => {
+  const report = applyVendorCatalogChange(db, {
+    remove: removed.map((e) => ({ kind: e.kind, pattern: e.pattern, source: "user" as const })),
+    upsert: [...wanted.values()].map((e) => ({ ...e, source: "user" as const })),
+  });
+  const lines = describeVendorCatalogChange(report);
+  console.log(lines.length > 0 ? `\nCategory rules:\n${lines.join("\n")}` : "\nNo category rule moves.");
+  if (!apply) throw new RollBack();
+});
+try {
+  run.immediate();
   console.log(`\nWrote ${wanted.size} user entries.`);
+} catch (e) {
+  if (!(e instanceof RollBack)) throw e;
 }

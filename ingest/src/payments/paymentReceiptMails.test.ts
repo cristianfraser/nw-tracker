@@ -324,6 +324,39 @@ describe("DynaVap order mails (dollars)", () => {
   });
 });
 
+describe("Namecheap order mails (dollars)", () => {
+  const namecheap = shop("namecheap");
+  const text = (items: string, total: string) =>
+    `Namecheap Order Summary Date: Nov 9, 2036 12:45:10 AM EST Hello, Order Details Order Date: Nov 9, 2036 12:45:03 AM Order Number: 100000001 Transaction ID: 200000002 User Name: someone Payment Source: Credit Card ***(* * * * 0000) Initial Charge: $${total} Final Cost: $${total} TITLE QTY DURATION PRICE SUB TOTAL ${items} TOTAL $${total} Additional Transaction Details Order Ref # x`;
+  const order = (subject: string, body: string) => namecheap.decode(mail("support@namecheap.com", subject, "2036-11-09 02:45", body));
+  it("names what was paid for: the domain, free items left out", () => {
+    const r = order(
+      "Namecheap Order Summary (Order# 100000001);",
+      text("Domain Renewal example.io 1 1 year $75.98 $75.98 ICANN Fee $0.00 Domain Privacy 1 0 year $0.00 $0.00 ICANN Fee $0.00", "75.98")
+    )!;
+    expect(r).toMatchObject({
+      processor: "namecheap",
+      payee: { name: "namecheap.com" },
+      currency: "usd",
+      amount: 75.98,
+      order_ref: "100000001",
+      concept: "example.io",
+      payment_method: "card 0000",
+    });
+  });
+
+  it("lists several paid items, throws when they do not add up, and reads a free order as no charge", () => {
+    const two = order(
+      "Namecheap Order Summary (Order# 1);",
+      text("Domain Registration one.dev 1 2 years $30.00 $30.00 ICANN Fee $0.40 PositiveSSL 1 1 year $9.99 $9.99", "39.99")
+    )!;
+    expect(two.concept).toBe("one.dev · PositiveSSL");
+    expect(() => order("Namecheap Order Summary (Order# 1);", text("Domain Renewal x.io 1 1 year $10.00 $10.00", "12.00"))).toThrow(/add up/);
+    expect(order("Namecheap Order Summary (Order# 1);", text("Domain Privacy 1 1 year $0.00 $0.00", "0.00"))).toBeNull();
+    expect(order("Important auto-renewal information", "x")).toBeNull();
+  });
+});
+
 describe("MercadoLibre order mails", () => {
   const ml = shop("mercadolibre");
   const order = (subject: string, text: string) => ml.decode(mail("info@mercadolibre.cl", subject, "2036-06-04 10:15", text));

@@ -9,6 +9,8 @@ export function foldVendorName(text: string): string {
   return foldUpper(text);
 }
 
+const ROMAN_NUMERALS = new Set(["ii", "iii", "iv"]);
+
 const LOWERCASE_PARTICLES =new Set(["de", "del", "la", "las", "los", "y", "e", "da", "do", "das", "dos", "van", "von", "di"]);
 
 /**
@@ -27,6 +29,8 @@ export function titleCaseName(text: string): string {
     .map((word, i) => {
       if (/^\s+$/.test(word) || !word) return word;
       if (i > 0 && LOWERCASE_PARTICLES.has(word)) return word;
+      // A store's number in Roman numerals («KENNEDY II»).
+      if (i > 0 && ROMAN_NUMERALS.has(word)) return word.toUpperCase();
       // Capitalize after a hyphen or apostrophe too («o'higgins» → «O'Higgins»).
       return word.replace(/(^|[-'’])(\p{L})/gu, (_, sep: string, c: string) => sep + c.toUpperCase());
     })

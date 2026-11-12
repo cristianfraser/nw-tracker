@@ -7,7 +7,7 @@ import {
   type ExpenseCategoryRules,
 } from "./expenseCategoryRules.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
-import { isInstallmentContractPurchaseKey } from "./ccAdditionalCardExpenseMatch.js";
+import { isAdditionalCardExpenseLine, isInstallmentContractPurchaseKey } from "./ccAdditionalCardExpenseMatch.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { parseDdMmYyToIso, normalizeMerchantText, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
@@ -1013,6 +1013,12 @@ export function ccExpenseLineCategoryTarget(statementLineId: number): ExpenseCat
     throw new InputError("statement line not in credit card group");
   }
   const purchaseKey = resolveCcExpensePurchaseKey(statementLineId);
+  const plastic = db
+    .prepare(
+      `SELECT l.origin_card_last4 AS origin, s.card_last4 AS card FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ?`
+    )
+    .get(statementLineId) as { origin: string | null; card: string | null } | undefined;
   return {
     accountId: belong.account_id,
     merchantKey: normalizeCcExpenseMerchantKey(belong.merchant),
@@ -1021,6 +1027,7 @@ export function ccExpenseLineCategoryTarget(statementLineId: number): ExpenseCat
     lineCategoryRowIds: listStatementLineIdsForPurchaseKey(statementLineId, purchaseKey),
     marksDeclinedAuto: !isInstallmentContractPurchaseKey(purchaseKey),
     clearsDeclinedAuto: true,
+    ownCategoryOnly: isAdditionalCardExpenseLine(plastic?.origin ?? null, plastic?.card ?? null),
   };
 }
 
@@ -1035,4 +1042,9 @@ export type ExpenseCategoryTargetFacts = {
   marksDeclinedAuto: boolean;
   /** Setting a category drops that record. */
   clearsDeclinedAuto: boolean;
+  /**
+   * The line's category is always its own («Único»), never a rule: an additional cardholder's
+   * charge says nothing about where the user files that merchant.
+   */
+  ownCategoryOnly?: boolean;
 };

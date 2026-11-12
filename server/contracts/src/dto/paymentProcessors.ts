@@ -26,6 +26,7 @@ export const PAYMENT_PROCESSOR_SLUGS = [
   "mercadolibre",
   "micoca_cola",
   "municipalidad_maipu",
+  "namecheap",
   "pago_facil",
   "paylogic",
   "puntoticket",

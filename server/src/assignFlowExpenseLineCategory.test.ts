@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccStatementLineBelongsToCreditCardGroup } from "./ccExpenseCategories.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
+import { hasGeneralRule } from "./expenseCategoryRules.js";
 import { checkingGastosMovementBelongs } from "./flowsCheckingGastos.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 
@@ -60,6 +61,22 @@ describe("assignFlowExpenseLineCategory", () => {
       expect(cardLine?.category_unique).not.toBe(true);
     } finally {
       assignFlowExpenseLineCategory({ lineId: SHARED_ID, source: "checking", unique: false, clearCategory: true });
+    }
+  });
+
+  it("an additional cardholder's line keeps its category as its own and writes no merchant rule", () => {
+    const id = SHARED_ID + 1;
+    const cleanup = fixtureCardLine(id);
+    try {
+      // 4999 is the fixture registry's additional card; the statement's own card is another.
+      db.prepare(`UPDATE cc_statement_lines SET origin_card_last4 = '4999', merchant = 'VITEST ADDITIONAL MERCHANT' WHERE id = ?`).run(id);
+      db.prepare(`UPDATE cc_statements SET card_last4 = '4242' WHERE id = (SELECT statement_id FROM cc_statement_lines WHERE id = ?)`).run(id);
+      const r = assignFlowExpenseLineCategory({ lineId: id, source: "cc", unique: false, categorySlug: "food" });
+      expect(r.unique).toBe(true);
+      expect(hasGeneralRule("VITEST ADDITIONAL MERCHANT")).toBe(false);
+    } finally {
+      assignFlowExpenseLineCategory({ lineId: id, source: "cc", unique: true, clearCategory: true });
+      cleanup();
     }
   });
 });

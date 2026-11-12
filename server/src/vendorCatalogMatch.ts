@@ -43,7 +43,9 @@ const MAY_BE_CUT_FROM = STATEMENT_MERCHANT_WIDTH - 4;
 export { normalizeRut };
 
 /**
- * A branch as the bank prints it, readable: store codes dropped («L272 LOS LEONES» → «Los Leones»),
+ * A branch as the bank prints it, readable: store codes before a place dropped («L272 LOS LEONES» →
+ * «Los Leones»), a store number kept («SB 731» → «731», «CV 1034» → «1034», «LAS COND 1234» →
+ * «Las Condes 1234»),
  * a trailing dot dropped, places spelled out (`chilePlaces.ts`). A branch a receipt already sets
  * apart — «- Isidora», «(Isidora)» — is unwrapped first, so it is not wrapped twice. `cut`: the
  * printed name may have been cut, so a branch ending mid-word may complete to its place.
@@ -55,9 +57,17 @@ function branchName(rest: string, cut: boolean): { text: string; choices: string
     .replace(/^\(([^()]*)\)$/, "$1")
     .replace(/\.+$/, "")
     .trim();
-  const cleaned = unwrapped.replace(/^(?:[A-Z]?\d{2,}\s+)+/i, "").trim();
-  // A «branch» that is only the brand's legal form («OK MARKET S.A.») is no branch.
-  if (!cleaned || stripLegalSuffix(`_ ${cleaned}`) === "_") return { text: "", choices: null };
+  const cleaned = unwrapped
+    .replace(/^(?:[A-Z]?\d{2,}\s+)+/i, "")
+    // A chain's own code letters before a bare store number («CV 1034») name nothing.
+    .replace(/^[A-Z]{1,3}\s+(?=\d+$)/, "")
+    .trim();
+  // A «branch» that is only the brand's legal form («OK MARKET S.A.»), or its country with one
+  // («DECATHLON CHILE SPA»), is no branch.
+  const unsuffixed = stripLegalSuffix(`_ ${cleaned}`);
+  if (!cleaned || unsuffixed === "_" || (unsuffixed !== `_ ${cleaned}` && /^_ chile$/i.test(unsuffixed))) {
+    return { text: "", choices: null };
+  }
   return placeBranch(titleCaseName(cleaned), cut);
 }
 
@@ -80,7 +90,15 @@ export type VendorCatalog = {
 
 const SOURCE_ORDER: Record<VendorCatalogSource, number> = { user: 0, choice: 1, seed: 2 };
 
-export function vendorCatalogFromEntries(entries: readonly VendorCatalogEntry[]): VendorCatalog {
+/**
+ * `exactBrand`: what an exact entry's brand is. `base` (the rule): a display «Brand (branch)» whose
+ * Brand is another entry's name has that Brand («ESQUINA 1» → «Oxxo (Esquina 1)» shares Oxxo's category
+ * rule); any other display is its own brand. `display`: the display itself, as before migration 325
+ * (only the migration reads the old catalog that way).
+ */
+export type VendorCatalogOptions = { exactBrand?: "base" | "display" };
+
+export function vendorCatalogFromEntries(entries: readonly VendorCatalogEntry[], opts: VendorCatalogOptions = {}): VendorCatalog {
   // User entries first, then the user's branch picks, so both win over a seed entry of the same name.
   const ordered = [...entries].sort((a, b) => SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source]);
   const exact = new Map<string, string>();
@@ -96,11 +114,17 @@ export function vendorCatalogFromEntries(entries: readonly VendorCatalogEntry[])
   }
   // Longest pattern first; a stable sort keeps user entries ahead of seed ones of the same length.
   prefixes.sort((a, b) => b.pattern.length - a.pattern.length);
+  const brandNames = new Set(prefixes.map((p) => p.display));
+  const exactBrandOf = (display: string): string => {
+    if (opts.exactBrand === "display") return display;
+    const base = /^(.+?) \([^()]+\)$/.exec(display)?.[1];
+    return base && brandNames.has(base) ? base : display;
+  };
   const match = (name: string): VendorCatalogMatch | null => {
     const folded = foldVendorName(name);
     if (!folded) return null;
     const hit = exact.get(folded);
-    if (hit != null) return { display: hit, brand: hit, branchChoices: null };
+    if (hit != null) return { display: hit, brand: exactBrandOf(hit), branchChoices: null };
     for (const p of prefixes) {
       if (p.branch) {
         if (folded === p.pattern) return { display: p.display, brand: p.display, branchChoices: null };

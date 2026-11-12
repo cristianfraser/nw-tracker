@@ -28,7 +28,7 @@
  *     first surname, title-cased
  *   - `inline`: false when the shown merchant already contains the label (no repeating it on the row)
  */
-import { normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
+import { addDaysIso, normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { TransferCounterpartyDto } from "./bankTransferNotices.js";
@@ -146,6 +146,8 @@ export function receiptLabel(
   // A ticket vendor's receipt for something that is no event (parking bought apart): what it was.
   if (TICKET_PROCESSORS.has(r.processor) && r.concept) return { text: r.concept, nights: null };
   if (r.processor === "apple_app_store") return { text: appStoreLabel(r.payee, catalog), nights: null };
+  // A registrar's order: what it bought («crfrsr.io»); the registrar is the merchant.
+  if (r.processor === "namecheap" && r.concept) return { text: r.concept, nights: null };
   const payee = repairMojibake(r.payee).trim();
   if (!payee || isEmailAddress(payee) || isPlaceholderPayee(payee)) return null;
   const host = hostOfUrl(payee);
@@ -240,7 +242,41 @@ export type DisplayNameContext = {
   brands: readonly string[];
   /** Each card account's merchants as printed (folded, distinct): evidence for a cut name. */
   cardMerchantsByAccount: ReadonlyMap<number, readonly string[]>;
+  /** The events a ticket receipt names, by the day they start (`inEventCharge`). */
+  ticketEventsByDay?: ReadonlyMap<string, readonly TicketEvent[]>;
 };
+
+export type TicketEvent = { name: string; starts_on: string };
+
+/**
+ * Vendors that sell inside an event (the producer's bars and lockers, a ticket vendor's in-event
+ * charges): a charge of one, with no receipt of its own, on the day an event the user holds a ticket
+ * for starts or the day after (nights run past midnight) links as a guess to that event — «Glovox
+ * · ≈ DGTL». By the catalog's brand.
+ */
+const IN_EVENT_VENDORS = new Set(["Glovox", "Toliv"]);
+
+/** The ticket events by start day (every ticket receipt that names one). */
+export function loadTicketEventsByDay(): Map<string, TicketEvent[]> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT event_name AS name, event_starts_on AS starts_on FROM payment_processor_receipts
+       WHERE event_name IS NOT NULL AND event_starts_on IS NOT NULL`
+    )
+    .all() as TicketEvent[];
+  const out = new Map<string, TicketEvent[]>();
+  for (const e of rows) out.set(e.starts_on, [...(out.get(e.starts_on) ?? []), e]);
+  return out;
+}
+
+/** The one event an in-event charge on `day` belongs to, or null (none, or several). */
+export function inEventCharge(day: string | null | undefined, byDay: ReadonlyMap<string, readonly TicketEvent[]>): TicketEvent | null {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const prev = addDaysIso(day, -1);
+  const found = [...(byDay.get(day) ?? []), ...(byDay.get(prev) ?? [])];
+  const names = new Set(found.map((e) => e.name));
+  return names.size === 1 ? found[0]! : null;
+}
 
 /** The folded merchants each card account's lines print. */
 export function cardMerchantsByAccount(
@@ -269,6 +305,7 @@ export function loadDisplayNameContext(
     counterparties: loadCounterpartyNames(),
     brands: brandsFromPayees(payees),
     cardMerchantsByAccount: cardMerchantsByAccount(lines),
+    ticketEventsByDay: loadTicketEventsByDay(),
   };
 }
 
@@ -276,17 +313,23 @@ export function loadDisplayNameContext(
 function catalogMerchant(
   raw: string,
   catalog: VendorCatalog
-): { name: string; processor: string | null; listed: string | null; choices: ExpenseDisplayNames["branch_choices"] | null } {
+): {
+  name: string;
+  processor: string | null;
+  listed: string | null;
+  brand: string | null;
+  choices: ExpenseDisplayNames["branch_choices"] | null;
+} {
   const cleaned = cleanBankMerchant(raw);
   const { name, processor } = splitProcessorPrefix(cleaned);
   for (const key of [name, cleaned]) {
     const m = catalog.match(key);
     if (m) {
       const choices = m.branchChoices ? { key: foldVendorName(key), options: m.branchChoices } : null;
-      return { name, processor, listed: m.display, choices };
+      return { name, processor, listed: m.display, brand: m.brand, choices };
     }
   }
-  return { name, processor, listed: null, choices: null };
+  return { name, processor, listed: null, brand: null, choices: null };
 }
 
 const PAYSLIP_LABEL_WORDS: readonly [RegExp, string][] = [
@@ -345,7 +388,7 @@ function cutMerchantListed(raw: string, accountId: number, ctx: DisplayNameConte
 /** The names one line shows. */
 export function expenseLineDisplayNames(
   line: Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id" | "payment_receipt" | "transfer_counterparty"> &
-    Partial<Pick<FlowCcExpenseLineRow, "recurring_payment">>,
+    Partial<Pick<FlowCcExpenseLineRow, "recurring_payment" | "purchase_on" | "occurred_on">>,
   ctx: DisplayNameContext
 ): ExpenseDisplayNames {
   const out: ExpenseDisplayNames = {};
@@ -356,12 +399,14 @@ export function expenseLineDisplayNames(
   let shown = raw;
   // The catalog's name for the line's own merchant (null when it does not know it).
   let ownListed: string | null = null;
+  let ownBrand: string | null = null;
   if (line.source === "checking" && cp && cpLabel && cp.direction !== "own") {
     shown = cp.direction === "out" ? `Transf a ${cpLabel}` : `Transf. de ${cpLabel}`;
   } else if (line.source === "payslip" && raw) {
     shown = payslipLineName(raw);
   } else if (raw) {
-    const { name, processor, listed, choices } = catalogMerchant(raw, ctx.catalog);
+    const { name, processor, listed, choices, brand } = catalogMerchant(raw, ctx.catalog);
+    ownBrand = brand;
     const known = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null);
     ownListed = known;
     shown = known ?? name;
@@ -408,6 +453,9 @@ export function expenseLineDisplayNames(
       const key = cp.rut ? normalizeRut(cp.rut) : `N:${foldVendorName(cp.name ?? cpLabel)}`;
       out.category_link = { kind: "recipient", key, label: cpLabel, specific_default: true };
     }
+  } else if (line.source === "cc" && ownBrand && IN_EVENT_VENDORS.has(ownBrand) && ctx.ticketEventsByDay) {
+    const event = inEventCharge(line.purchase_on ?? line.occurred_on, ctx.ticketEventsByDay);
+    if (event) out.link_label = { arrow: "≈", text: event.name, nights: null, event_on: event.starts_on, inline: true };
   } else if (line.recurring_payment) {
     // A charge only a declared payment's day and amount identify (a pending listing under another name).
     // The line shows the name the bank posts it under (the entry's other pattern; the entry's own name
