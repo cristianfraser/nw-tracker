@@ -16,9 +16,8 @@ let accountId: number;
 let originalConfig: {
   billing_cycle_start_day: number;
   billing_cycle_end_day: number | null;
-  cupo_clp: number | null;
-  cupo_usd: number | null;
 } | null = null;
+let originalCupos: { currency: string; amount: number }[] = [];
 
 beforeAll(() => {
   ensureVitestCreditCardFixtures();
@@ -27,25 +26,26 @@ beforeAll(() => {
   accountId = id;
   originalConfig = db
     .prepare(
-      `SELECT billing_cycle_start_day, billing_cycle_end_day, cupo_clp, cupo_usd
+      `SELECT billing_cycle_start_day, billing_cycle_end_day
        FROM credit_card_account_config WHERE account_id = ?`
     )
     .get(accountId) as typeof originalConfig;
+  originalCupos = db
+    .prepare(`SELECT currency, amount FROM credit_card_cupos WHERE account_id = ?`)
+    .all(accountId) as typeof originalCupos;
 });
 
 afterAll(() => {
   if (originalConfig) {
     db.prepare(
       `UPDATE credit_card_account_config
-       SET billing_cycle_start_day = ?, billing_cycle_end_day = ?, cupo_clp = ?, cupo_usd = ?
+       SET billing_cycle_start_day = ?, billing_cycle_end_day = ?
        WHERE account_id = ?`
-    ).run(
-      originalConfig.billing_cycle_start_day,
-      originalConfig.billing_cycle_end_day,
-      originalConfig.cupo_clp,
-      originalConfig.cupo_usd,
-      accountId
-    );
+    ).run(originalConfig.billing_cycle_start_day, originalConfig.billing_cycle_end_day, accountId);
+    db.prepare(`DELETE FROM credit_card_cupos WHERE account_id = ?`).run(accountId);
+    for (const c of originalCupos) {
+      db.prepare(`INSERT INTO credit_card_cupos (account_id, currency, amount) VALUES (?, ?, ?)`).run(accountId, c.currency, c.amount);
+    }
   }
   wipeVitestCcFixtureData();
 });

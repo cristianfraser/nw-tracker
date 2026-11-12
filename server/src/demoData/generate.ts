@@ -202,9 +202,12 @@ function createAccounts(person: Person): Map<Acct, number> {
   for (const c of person.cards) {
     const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `${ccMasterImportKeyPrefix(c.issuer)}${c.last4}` });
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, cupo_clp, cupo_usd, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
-       VALUES (?, ?, ?, 21, 20, ?, ?)`
-    ).run(id, c.key === "main" ? 8_000_000 : 12_000_000, c.key === "main" ? 3_000 : 6_000, c.last4, c.issuer);
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, ?, ?)`
+    ).run(id, c.last4, c.issuer);
+    const cupo = db.prepare(`INSERT INTO credit_card_cupos (account_id, currency, amount) VALUES (?, ?, ?)`);
+    cupo.run(id, "clp", c.key === "main" ? 8_000_000 : 12_000_000);
+    cupo.run(id, "usd", c.key === "main" ? 3_000 : 6_000);
     ids.set(`card:${c.key}` as Acct, id);
   }
   if (person.us) {

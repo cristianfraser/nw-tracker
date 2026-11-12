@@ -59,6 +59,7 @@ export type CcBillingMonthBalanceRow = {
   saldo_total_usd: number | null;
   facturado_by_currency: Record<string, number>;
   saldo_total_by_currency: Record<string, number>;
+  cupo_utilizado_by_currency: Record<string, number>;
 };
 
 type BalanceWrite = {
@@ -940,19 +941,21 @@ export function listCcBillingMonthBalances(accountId: number): CcBillingMonthBal
         saldo_total_usd: null,
         facturado_by_currency: {},
         saldo_total_by_currency: {},
+        cupo_utilizado_by_currency: {},
       };
       byKey.set(key, row);
     }
     if (r.metric === "facturado") row.facturado_by_currency[r.currency] = r.amount;
     else if (r.metric === "saldo_total") row.saldo_total_by_currency[r.currency] = r.amount;
-    else if (r.metric === "cupo_utilizado" && r.currency === "clp") row.cupo_utilizado_clp = r.amount;
-    else throw new Error(`Account ${accountId}: billing-month metric ${r.metric} in ${r.currency} has no reader`);
+    else if (r.metric === "cupo_utilizado") row.cupo_utilizado_by_currency[r.currency] = r.amount;
+    else throw new Error(`Account ${accountId}: billing-month metric ${r.metric} has no reader`);
   }
   const out = [...byKey.values()];
   for (const row of out) {
     row.facturado_clp = row.facturado_by_currency.clp ?? null;
     row.facturado_usd = row.facturado_by_currency.usd ?? null;
     row.saldo_total_clp = row.saldo_total_by_currency.clp ?? 0;
+    row.cupo_utilizado_clp = row.cupo_utilizado_by_currency.clp ?? 0;
     row.saldo_total_usd = row.saldo_total_by_currency.usd ?? null;
   }
   // The old table's order: month and as-of descending, ties by insertion.

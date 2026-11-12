@@ -429,8 +429,43 @@ export const FX_RATES_SPEC: TriggerSpec = {
 /** Migration 312 (frozen): 304's specs plus the generic rate table. */
 const SPECS_312: readonly TriggerSpec[] = [...SPECS_304, FX_RATES_SPEC];
 
+/**
+ * Migration 321: a card's cupo per currency (`credit_card_cupos`) and the feed close's SALDO
+ * INICIAL per currency (`cc_feed_billing_close_amounts`) left their parent rows, whose triggers
+ * watched them as columns: a cupo re-reads the card's whole history, a close amount re-frames its
+ * billing month, as before.
+ */
+export const CREDIT_CARD_CUPOS_SPEC: TriggerSpec = {
+  table: "credit_card_cupos",
+  targets: (r) => [{ account: `${r}.account_id`, date: FULL_HISTORY }],
+  watch: ["account_id", "currency", "amount"],
+};
+
+export const CC_FEED_BILLING_CLOSE_AMOUNTS_SPEC: TriggerSpec = {
+  table: "cc_feed_billing_close_amounts",
+  targets: (r) => [
+    {
+      account: `(SELECT account_id FROM cc_feed_billing_closes WHERE id = ${r}.close_id)`,
+      date: `(SELECT close_date FROM cc_feed_billing_closes WHERE id = ${r}.close_id)`,
+    },
+  ],
+  watch: ["close_id", "currency", "amount"],
+  rule: { backDays: 45 },
+};
+
+/** Migration 321 (frozen): 312's specs without the dropped columns, plus the two per-currency tables. */
+const SPECS_321: readonly TriggerSpec[] = [
+  ...SPECS_312.map((s) =>
+    s.table === "credit_card_account_config" || s.table === "cc_feed_billing_closes"
+      ? { ...s, watch: s.watch.filter((c) => !/^(cupo|saldo_inicial)_/.test(c)) }
+      : s
+  ),
+  CREDIT_CARD_CUPOS_SPEC,
+  CC_FEED_BILLING_CLOSE_AMOUNTS_SPEC,
+];
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_312;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_321;
 
 /** The trim rule of a mark row's table; a table the newest specs do not watch throws. */
 export function markInputRuleForSource(source: string): MarkInputRule {
@@ -538,6 +573,8 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "currencies",
   "fx_rates",
   "cc_billing_month_metrics",
+  "credit_card_cupos",
+  "cc_feed_billing_close_amounts",
 ];
 
 /**

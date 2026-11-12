@@ -64,9 +64,13 @@ export type CcCloseEvidence = {
 };
 
 export type CcFeedBillingClose = {
+  id: number;
   account_id: number;
   billing_month: string;
   close_date: string;
+  /** What the feed's SALDO INICIAL row states the close billed, per currency (`cc_feed_billing_close_amounts`, migration 321). */
+  saldo_inicial: Record<string, number>;
+  /** {@link saldo_inicial}'s peso and dollar entries (null when the feed showed none). */
   saldo_inicial_clp: number | null;
   saldo_inicial_usd: number | null;
   first_seen_at: string;
@@ -96,28 +100,47 @@ function daysBetweenIso(fromIso: string, toIso: string): number {
 // Observed closes (feed SALDO INICIAL)
 // ---------------------------------------------------------------------------------------------
 
+/** The columns of a feed close with its per-currency SALDO INICIAL (alias `c`). */
+export const FEED_CLOSE_COLUMNS_SQL = `c.id, c.account_id, c.billing_month, c.close_date,
+  (SELECT json_group_object(a.currency, a.amount) FROM cc_feed_billing_close_amounts a WHERE a.close_id = c.id) AS saldo_inicial_json,
+  c.first_seen_at, c.last_seen_at, c.source_file`;
+
+type FeedCloseDbRow = Omit<CcFeedBillingClose, "saldo_inicial" | "saldo_inicial_clp" | "saldo_inicial_usd"> & {
+  saldo_inicial_json: string | null;
+};
+
+/** A feed close row as read with {@link FEED_CLOSE_COLUMNS_SQL}. */
+export function feedCloseFromDbRow(r: FeedCloseDbRow): CcFeedBillingClose {
+  const { saldo_inicial_json, ...rest } = r;
+  const saldo_inicial = saldo_inicial_json ? (JSON.parse(saldo_inicial_json) as Record<string, number>) : {};
+  return {
+    ...rest,
+    saldo_inicial,
+    saldo_inicial_clp: saldo_inicial.clp ?? null,
+    saldo_inicial_usd: saldo_inicial.usd ?? null,
+  };
+}
+
 const selectFeedClose = db.prepare(
-  `SELECT account_id, billing_month, close_date, saldo_inicial_clp, saldo_inicial_usd,
-          first_seen_at, last_seen_at, source_file
-   FROM cc_feed_billing_closes WHERE account_id = ? AND billing_month = ?`
+  `SELECT ${FEED_CLOSE_COLUMNS_SQL} FROM cc_feed_billing_closes c WHERE c.account_id = ? AND c.billing_month = ?`
 );
 
 const selectLatestFeedClose = db.prepare(
-  `SELECT account_id, billing_month, close_date, saldo_inicial_clp, saldo_inicial_usd,
-          first_seen_at, last_seen_at, source_file
-   FROM cc_feed_billing_closes WHERE account_id = ?
-   ORDER BY close_date DESC LIMIT 1`
+  `SELECT ${FEED_CLOSE_COLUMNS_SQL} FROM cc_feed_billing_closes c WHERE c.account_id = ?
+   ORDER BY c.close_date DESC LIMIT 1`
 );
 
 export function feedBillingCloseForMonth(
   accountId: number,
   billingMonth: string
 ): CcFeedBillingClose | null {
-  return (selectFeedClose.get(accountId, billingMonth) as CcFeedBillingClose | undefined) ?? null;
+  const r = selectFeedClose.get(accountId, billingMonth) as FeedCloseDbRow | undefined;
+  return r ? feedCloseFromDbRow(r) : null;
 }
 
 export function latestFeedBillingClose(accountId: number): CcFeedBillingClose | null {
-  return (selectLatestFeedClose.get(accountId) as CcFeedBillingClose | undefined) ?? null;
+  const r = selectLatestFeedClose.get(accountId) as FeedCloseDbRow | undefined;
+  return r ? feedCloseFromDbRow(r) : null;
 }
 
 // ---------------------------------------------------------------------------------------------

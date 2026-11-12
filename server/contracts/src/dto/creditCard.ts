@@ -364,7 +364,8 @@ export interface AccountCcInstallmentsResponse {
   facturacion_proxy?: CcProxyFacturacionAggregate[];
 }
 
-export type CcCupoEntry = { currency: "clp" | "usd"; value: number | null };
+/** A card's cupo in one currency (`currency`: a `currencies` code); null when none is configured. */
+export type CcCupoEntry = { currency: string; value: number | null };
 
 /** `GET /api/accounts/:id/credit-card-config` — editable `credit_card_account_config` row. */
 export type CreditCardAccountConfigDto = {
