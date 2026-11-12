@@ -36,7 +36,7 @@ const stmtLatestEquity = db.prepare(
 const stmtLatestFx = db.prepare(
   `SELECT symbol, kind, value, currency, session_ymd, previous_value, fetched_at
    FROM live_market_quotes
-   WHERE symbol = ? AND kind = 'fx_clp_per_usd'
+   WHERE symbol = ? AND kind = 'fx'
    ORDER BY fetched_at DESC LIMIT 1`
 );
 
@@ -79,13 +79,20 @@ export function getLatestLiveEquityQuoteRow(
   return row;
 }
 
-export function getLatestLiveFxQuoteRow(
+/** The latest fresh live rate of a pair (`USD_CLP`, `EUR_USD`): quote units per base unit. */
+export function getLatestLivePairQuoteRow(
+  pairKey: string,
   maxAgeMs = liveQuotesMaxAgeMs()
 ): LiveMarketQuoteRow | null {
-  noteLiveFxRead();
-  const row = stmtLatestFx.get(LIVE_FX_SYMBOL) as LiveMarketQuoteRow | undefined;
+  noteLiveFxRead(pairKey);
+  const row = stmtLatestFx.get(pairKey) as LiveMarketQuoteRow | undefined;
   if (!row || !isFresh(row.fetched_at, maxAgeMs)) return null;
   return row;
+}
+
+/** The live dollar (USD/CLP). */
+export function getLatestLiveFxQuoteRow(maxAgeMs = liveQuotesMaxAgeMs()): LiveMarketQuoteRow | null {
+  return getLatestLivePairQuoteRow(LIVE_FX_SYMBOL, maxAgeMs);
 }
 
 /** For tests: clear all live quotes. */

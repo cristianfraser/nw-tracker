@@ -6,8 +6,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *
  * A live tick writes `live_market_quotes` only. Every reader of that table, and every gate that
  * decides whether to read it, reports here: an equity / crypto ticker
- * (`shouldUseLiveEquityQuote`, `equityHeldSessionQuote`, `getLatestLiveEquityQuoteRow`) or the
- * live dollar (`shouldUseLiveFxQuote`, `getLatestLiveFxQuoteRow`, the observado window average).
+ * (`shouldUseLiveEquityQuote`, `equityHeldSessionQuote`, `getLatestLiveEquityQuoteRow`) or a
+ * live exchange rate, named by its pair key (`USD_CLP` — `shouldUseLiveFxQuote`,
+ * `getLatestLiveFxQuoteRow`, the observado window average —, `EUR_USD`, …: `fxLive.ts`).
  * A gate reports even when it decides against the live row: an aggregate built before the open
  * read the stored close, and must go when the first tick of the session moves the price. The
  * same holds for every switch decided by the clock or the sync state (a session, a publish
@@ -28,18 +29,19 @@ import { AsyncLocalStorage } from "node:async_hooks";
  */
 export type CacheDepNode = {
   tickers: Set<string>;
-  fx: boolean;
+  /** Pair keys of the live rates read (`USD_CLP`, `EUR_USD`). */
+  fx: Set<string>;
   syncDimming: boolean;
   children: Set<CacheDepNode>;
 };
 
-/** What a live-quote poll moved: tickers as stored (upper case) and whether the dollar moved. */
-export type LiveQuoteMoves = { tickers: ReadonlySet<string>; fx: boolean; syncDimming?: boolean };
+/** What a live-quote poll moved: tickers as stored (upper case) and the pair keys of the rates that moved. */
+export type LiveQuoteMoves = { tickers: ReadonlySet<string>; fx: ReadonlySet<string>; syncDimming?: boolean };
 
 const storage = new AsyncLocalStorage<CacheDepNode>();
 
 export function newCacheDepNode(): CacheDepNode {
-  return { tickers: new Set(), fx: false, syncDimming: false, children: new Set() };
+  return { tickers: new Set(), fx: new Set(), syncDimming: false, children: new Set() };
 }
 
 /** Run `fn` with `node` collecting the live inputs it reads (async continuations included). */
@@ -57,9 +59,9 @@ export function noteLiveTickerRead(ticker: string): void {
   storage.getStore()?.tickers.add(ticker.toUpperCase());
 }
 
-export function noteLiveFxRead(): void {
-  const node = storage.getStore();
-  if (node) node.fx = true;
+/** The build read (or decided whether to read) the live rate of `pairKey` (`USD_CLP`, `EUR_USD`). */
+export function noteLiveFxRead(pairKey: string): void {
+  storage.getStore()?.fx.add(pairKey);
 }
 
 /** The build read which accounts the dashboard dims (`syncStatusPayload().stale_dimming`). */
@@ -108,7 +110,7 @@ export function cacheDepNodeAffected(
 }
 
 function directlyAffected(node: CacheDepNode, moves: LiveQuoteMoves): boolean {
-  if (moves.fx && node.fx) return true;
+  for (const p of node.fx) if (moves.fx.has(p)) return true;
   if (moves.syncDimming && node.syncDimming) return true;
   for (const t of node.tickers) if (moves.tickers.has(t)) return true;
   return false;
@@ -116,7 +118,7 @@ function directlyAffected(node: CacheDepNode, moves: LiveQuoteMoves): boolean {
 
 const EVERY_LIVE_INPUT: LiveQuoteMoves = {
   tickers: { has: () => true } as unknown as ReadonlySet<string>,
-  fx: true,
+  fx: { has: () => true } as unknown as ReadonlySet<string>,
   syncDimming: true,
 };
 
@@ -125,14 +127,14 @@ export function cacheDepNodeReadsLiveInput(node: CacheDepNode): boolean {
   return cacheDepNodeAffected(node, EVERY_LIVE_INPUT, new Map());
 }
 
-export type CacheDepLiveInputs = { tickers: Set<string>; fx: boolean; syncDimming: boolean };
+export type CacheDepLiveInputs = { tickers: Set<string>; fx: Set<string>; syncDimming: boolean };
 
 /**
  * Every live input `node` (or anything linked under it) read — what an HTTP response depended on
  * (`liveInputsHeader.ts`), so the client refetches it only when one of them moves.
  */
 export function cacheDepNodeLiveInputs(node: CacheDepNode): CacheDepLiveInputs {
-  const out: CacheDepLiveInputs = { tickers: new Set(), fx: false, syncDimming: false };
+  const out: CacheDepLiveInputs = { tickers: new Set(), fx: new Set(), syncDimming: false };
   const seen = new Set<CacheDepNode>();
   const stack = [node];
   while (stack.length > 0) {
@@ -140,7 +142,7 @@ export function cacheDepNodeLiveInputs(node: CacheDepNode): CacheDepLiveInputs {
     if (seen.has(n)) continue;
     seen.add(n);
     for (const t of n.tickers) out.tickers.add(t);
-    if (n.fx) out.fx = true;
+    for (const p of n.fx) out.fx.add(p);
     if (n.syncDimming) out.syncDimming = true;
     for (const c of n.children) if (!seen.has(c)) stack.push(c);
   }

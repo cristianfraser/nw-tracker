@@ -118,8 +118,10 @@ Client: Watchlist, the marquee, Rates, Projections, WealthPercentile pages.
 
 ## Live rates
 
-Only USD/CLP has a live rate (`fxLive.ts`, `CLP=X` in the poll and the price stream). EUR/USD and
-EUR/CLP read their latest stored day for today; a live EUR/USD quote is a follow-up.
+Every core pair has a live rate (C6, done 2026-11-12): USD/CLP (`CLP=X`) and every pair `currencies`
+loads from Yahoo (EUR/USD, `EURUSD=X`), in the poll and the price stream, on the forex day of
+`forexDay.ts`, its day close written once into `fx_rates`. Today's EUR/CLP is EUR/USD × USD/CLP while
+EUR/USD has a quote of today, else Banco Central's direct `eur_daily` (published a day late).
 
 ## Remaining work (audit of 2026-11-12)
 
@@ -227,8 +229,11 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
 2. **Foreign-currency lots.** `usdCashLotWalk.ts` / `usdCashCostLots.ts` walk lots of any foreign
    currency; the card payment cost tracer prices a payment in its currency. The F22's dollar-lot
    module (`f22/usdFx.ts`) applies the same oficios to any foreign currency (they speak of
-   «moneda extranjera»), at that currency's official rate; to confirm against the SII before
-   building.
+   «moneda extranjera»), at that currency's official rate. Checked 2026-11-12 against the text of
+   Oficio 2573/2022: its rule is stated for «moneda extranjera» (dollars are only its example), and
+   points 2–3 convert «según el tipo de cambio observado de la moneda que se trate, publicado por el
+   Banco Central» for a taxpayer without full accounting — so EUR lots use Banco Central's euro
+   observado (`eur_daily`), and a currency the Banco Central does not publish throws.
 3. **Cards.** *Part 1 done 2026-11-12 (migration 319):* statement lines store `amount` + `currency`
    + `cuota_amount` (the four legacy names are generated columns with unchanged values; a third
    currency reads NULL there), the owed walk, its anchors, `cardValueInUnit` and the revaluation term
@@ -253,8 +258,12 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
 5. **Market.** (Storage and the adapter done 2026-11-12, migration 315: `market_symbols`,
    `equity_daily` and `live_market_quotes` reference `currencies`, an index is a NULL currency.) The Yahoo adapter accepts any currency `currencies` holds (pence still refused);
    `holdingPriceAt` converts any quote through `rates.ts`; dividends and splits in any currency.
+   *Dividends and splits done 2026-11-12:* the benchmark total return reads any quote currency
+   `currencies` holds (an index throws naming it); a dividend breakdown takes any currency code and
+   Racional's (which states none) takes its movement's; splits never named a currency.
 6. **Live rates.** The poll and the price stream carry every core pair, not only `CLP=X`
-   (EUR/USD live, so a euro holding moves during the day).
+   (EUR/USD live, so a euro holding moves during the day). *Done 2026-11-12* (migration 323; see
+   «Live rates» above and AGENTS.md «Every core pair has a live rate»).
 7. **Type unions.** The remaining `"clp" | "usd"` literals (about 50 server files, 13 contract,
    8 ingest, 4 client) become `CurrencyCode`, file by file as the steps above reach them; the
    guard's allowlist shrinks to what stays native by nature.

@@ -35,7 +35,7 @@ describe("equityBrokeragePositionMeta", () => {
       });
       insertLiveMarketQuote({
         symbol: LIVE_FX_SYMBOL,
-        kind: "fx_clp_per_usd",
+        kind: "fx",
         currency: null,
         value: 900,
         session_ymd: "2026-05-19",
@@ -102,7 +102,7 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
     });
     insertLiveMarketQuote({
       symbol: LIVE_FX_SYMBOL,
-      kind: "fx_clp_per_usd",
+      kind: "fx",
       currency: null,
       value: 950,
       session_ymd: TODAY,

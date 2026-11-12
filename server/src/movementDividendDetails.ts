@@ -21,6 +21,7 @@
  * and a poorer document only FILL the fields the richer one left null. No field is ever
  * derived: a withholding rate is stored when the statement prints one, never computed.
  */
+import { isCurrencyCode, type CurrencyCode } from "./rates.js";
 import { db } from "./db.js";
 
 export const DIVIDEND_DETAIL_SOURCES = [
@@ -57,7 +58,8 @@ export type MovementDividendDetailInput = {
   movement_id: number;
   gross_amount: number;
   withholding_amount: number;
-  currency: "clp" | "usd" | "eur";
+  /** A `currencies` code: the currency the document states, which must be the movement's. */
+  currency: CurrencyCode;
   withholding_rate_pct?: number | null;
   /** Country whose tax was withheld, as the document names it (`US` for IRS NRA withholding). */
   withholding_jurisdiction?: string | null;
@@ -78,7 +80,7 @@ export type MovementDividendDetailRow = {
   movement_id: number;
   gross_amount: number;
   withholding_amount: number;
-  currency: "clp" | "usd" | "eur";
+  currency: CurrencyCode;
   withholding_rate_pct: number | null;
   withholding_jurisdiction: string | null;
   tax_residency_country: string | null;
@@ -112,6 +114,16 @@ const stmtMovement = db.prepare(
   `SELECT id, amount, currency, flow_kind, from_account_id, to_account_id
    FROM movements WHERE id = ?`
 );
+
+/**
+ * The currency a dividend movement was credited in — for a document that states the amounts
+ * without naming their currency (Racional's dividends API): its breakdown is in the movement's.
+ */
+export function dividendMovementCurrency(movementId: number): CurrencyCode {
+  const movement = stmtMovement.get(movementId) as { currency: string } | undefined;
+  if (!movement) throw new Error(`dividend detail: movement ${movementId} does not exist`);
+  return movement.currency;
+}
 
 const stmtInsert = db.prepare(
   `INSERT INTO movement_dividend_details (
@@ -185,6 +197,9 @@ export function upsertMovementDividendDetail(
     | { id: number; amount: number; currency: string; flow_kind: string | null; from_account_id: number | null; to_account_id: number | null }
     | undefined;
   if (!movement) throw new Error(`dividend detail: movement ${input.movement_id} does not exist`);
+  if (!isCurrencyCode(input.currency)) {
+    throw new Error(`dividend detail for movement ${input.movement_id}: ${input.currency} is not a currency the app knows`);
+  }
   if (movement.flow_kind !== "dividend_payout" || movement.from_account_id == null || movement.to_account_id == null) {
     throw new Error(
       `dividend detail: movement ${input.movement_id} is not a dividend_payout transfer (flow_kind ${movement.flow_kind ?? "null"})`

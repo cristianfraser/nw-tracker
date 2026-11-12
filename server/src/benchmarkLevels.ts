@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { assertFundSeriesClp } from "./fundUnitDaily.js";
-import { resolveEquityQuote } from "./equityQuote.js";
+import { equityQuoteCurrency, resolveEquityQuote } from "./equityQuote.js";
+import { isCurrencyCode } from "./rates.js";
 import { groupDailyPctPoints } from "./dailyPctSeries.js";
 import { runningGrowth } from "./perfKernel.js";
 import type { TsUnit } from "./valuationTimeseries.js";
@@ -158,8 +159,8 @@ function equityLevels(b: BenchmarkRow, todayYmd: string, now: Date): BenchmarkLe
   const ticker = b.ticker!;
   const rows = db
     .prepare(`SELECT trade_date, close, currency FROM equity_daily WHERE ticker = ? ORDER BY trade_date`)
-    .all(ticker) as { trade_date: string; close: number; currency: string }[];
-  const currency = rows[0]?.currency;
+    .all(ticker) as { trade_date: string; close: number; currency: string | null }[];
+  const currency = rows[0]?.currency ?? null;
   for (const r of rows) {
     if (r.currency !== currency) throw new Error(`benchmark ${b.slug}: ${ticker} closes mix currencies`);
   }
@@ -171,14 +172,17 @@ function equityLevels(b: BenchmarkRow, todayYmd: string, now: Date): BenchmarkLe
       throw new Error(`benchmark ${b.slug}: ${ticker} dividend ${d.ex_date} in ${d.currency}, closes in ${currency}`);
     }
   }
-  if (rows.length === 0) return { currency: "usd", first_ymd: null, levelAt: () => null };
+  if (rows.length === 0) return { currency: equityQuoteCurrency(ticker), first_ymd: null, levelAt: () => null };
   // A dividend benchmark with no dividend on file would read as a price-only return.
   if (divs.length === 0) {
     throw new Error(
       `benchmark ${b.slug}: no ${ticker} dividends stored — run npm run backfill:equity-dividends -w nw-tracker-server`
     );
   }
-  if (currency !== "usd" && currency !== "clp") throw new Error(`benchmark ${b.slug}: currency ${currency}`);
+  // Any quote currency `currencies` holds; an index level (no currency) cannot be a total return.
+  if (currency == null || !isCurrencyCode(currency)) {
+    throw new Error(`benchmark ${b.slug}: ${ticker} closes in ${currency ?? "no currency (an index)"}, not a currency the app converts`);
+  }
 
   const dates = rows.map((r) => r.trade_date);
   const closes = rows.map((r) => r.close);

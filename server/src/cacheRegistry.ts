@@ -2,6 +2,7 @@ import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { noteAggregationCacheLookup } from "./requestCacheStats.js";
 import {
   cacheDepNodeAffected,
+  cacheDepNodeLiveInputs,
   cacheDepNodeReadsLiveInput,
   linkCacheDepNode,
   newCacheDepNode,
@@ -296,7 +297,11 @@ export function buildHistoryTierValue<T>(what: string, build: () => T): T {
   const node = newCacheDepNode();
   const value = runInCacheDepNode(node, build);
   if (cacheDepNodeReadsLiveInput(node)) {
-    throw new Error(`history tier: ${what} read a live input; it may only read evidence dated before today`);
+    const read = cacheDepNodeLiveInputs(node);
+    const named = [...read.tickers, ...[...read.fx].map((p) => `fx ${p}`), ...(read.syncDimming ? ["sync dimming"] : [])];
+    throw new Error(
+      `history tier: ${what} read a live input (${named.join(", ")}); it may only read evidence dated before today`
+    );
   }
   return value;
 }
@@ -416,7 +421,7 @@ function dropLiveTickAffected(moves: LiveQuoteMoves): void {
 /** What moved, as the client's stamp and the live-tick drop both need it. */
 export type LiveInputChange =
   | { all: true }
-  | { tickers: readonly string[]; fx: boolean }
+  | { tickers: readonly string[]; fx: readonly string[] }
   | { dimming: true };
 
 /**
@@ -429,11 +434,11 @@ export function publishLiveInputChange(at: string, change: LiveInputChange): voi
     invalidateMarketDataAggregations("live_tail");
   } else if ("dimming" in change) {
     noteLiveQuotesChanged(at, { dimming: true });
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(), fx: false, syncDimming: true });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(), fx: new Set(), syncDimming: true });
   } else {
     const tickers = change.tickers.map((t) => t.toUpperCase());
     noteLiveQuotesChanged(at, { tickers, fx: change.fx });
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(tickers), fx: change.fx });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(tickers), fx: new Set(change.fx) });
   }
 }
 

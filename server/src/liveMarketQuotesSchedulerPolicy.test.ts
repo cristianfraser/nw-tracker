@@ -6,6 +6,7 @@ function result(equityOks: boolean[]): LiveMarketQuotesSyncResult {
   return {
     equities: equityOks.map((ok, i) => ({ ticker: `T${i}`, ok, ...(ok ? {} : { error: "fetch failed" }) })),
     fx: { ok: true, rows: 1, changed: false },
+    fx_pairs: [],
     pruned: 0,
     values_changed: false,
   };

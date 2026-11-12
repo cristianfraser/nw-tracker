@@ -32,6 +32,6 @@ export function liveInputsMiddleware(): RequestHandler {
   };
 }
 
-export function formatLiveInputs(inputs: { tickers: Iterable<string>; fx: boolean; syncDimming: boolean }): string {
+export function formatLiveInputs(inputs: { tickers: Iterable<string>; fx: Iterable<string>; syncDimming: boolean }): string {
   return formatLiveInputsHeader({ tickers: inputs.tickers, fx: inputs.fx, dimming: inputs.syncDimming });
 }

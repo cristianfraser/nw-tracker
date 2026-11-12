@@ -12,19 +12,21 @@
  * Moves are kept in a bounded log. A `since` the log cannot answer — older than its oldest entry
  * once it has dropped some, or from before this process started — reads as "everything moved".
  */
+import { sortFxPairKeys } from "nw-tracker-contracts";
 
 export type LiveQuoteMoveSet = {
   /** Unknown or everything (a fresh process, a truncated log, the day's `fx_daily` close). */
   all: boolean;
   tickers: string[];
-  fx: boolean;
+  /** Pair keys of the live rates that moved (`USD_CLP`, `EUR_USD`), the dollar first. */
+  fx: string[];
   /** The dashboard's sync dimming changed (`syncDimmingWatch.ts`). */
   dimming: boolean;
 };
 
 export type LiveQuoteMove = {
   tickers?: readonly string[];
-  fx?: boolean;
+  fx?: readonly string[];
   dimming?: boolean;
   all?: boolean;
 };
@@ -55,21 +57,23 @@ export function liveQuotesStamp(): string | null {
 /** What moved after `since` (a stamp the client saw), or null when nothing did. */
 export function liveQuoteMovesSince(since: string | null | undefined): LiveQuoteMoveSet | null {
   if (since == null || since === "" || since < knownSince) {
-    return publishedAt == null ? null : { all: true, tickers: [], fx: false, dimming: false };
+    return publishedAt == null ? null : { all: true, tickers: [], fx: [], dimming: false };
   }
   const tickers = new Set<string>();
-  const set: LiveQuoteMoveSet = { all: false, tickers: [], fx: false, dimming: false };
+  const fx = new Set<string>();
+  const set: LiveQuoteMoveSet = { all: false, tickers: [], fx: [], dimming: false };
   let any = false;
   for (const { at, move } of log) {
     if (at <= since) continue;
     any = true;
     if (move.all) set.all = true;
-    if (move.fx) set.fx = true;
+    for (const p of move.fx ?? []) fx.add(p);
     if (move.dimming) set.dimming = true;
     for (const t of move.tickers ?? []) tickers.add(t.toUpperCase());
   }
   if (!any) return null;
   set.tickers = [...tickers].sort();
+  set.fx = sortFxPairKeys(fx);
   return set;
 }
 
