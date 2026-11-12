@@ -26,7 +26,7 @@ function row(r: Partial<UsdWalkRow> & { occurred_on: string; amount: number; cur
   };
 }
 const buyUsd = (on: string, to: number, usd: number, clp: number, id?: number) =>
-  row({ id, occurred_on: on, from_account_id: CLP, to_account_id: to, amount: clp, currency: "clp", counter_amount: usd, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+  row({ id, occurred_on: on, from_account_id: CLP, to_account_id: to, amount: clp, currency: "clp", counter_amount: usd, counter_currency: "usd", flow_kind: "fx_exchange" });
 const spend = (on: string, from: number, to: number, usd: number, flow_kind: string | null, id?: number) =>
   row({ id, occurred_on: on, from_account_id: from, to_account_id: to, amount: usd, currency: "usd", flow_kind, units_delta: flow_kind === "stock_buy" ? 1 : null });
 

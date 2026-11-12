@@ -10,14 +10,14 @@
  * the one at login: equal to the cent, else a mismatch — a movement the ledger is missing or holds
  * twice. Each snapshot is judged once.
  */
+import { foreignCashBalanceAt, isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { normalizeAccountNumber, type BankAccountBalancesApplyDetails, type BankAccountBalancesPayload } from "nw-tracker-contracts";
 import { checkingMovementBalanceClpAt } from "./checkingCartolaBalances.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { pesosOrDollars } from "./ingestCurrencies.js";
 import { storeOnce } from "./ingestReceiver.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+
 
 type Currency = "clp" | "usd";
 
@@ -92,8 +92,8 @@ export function applyBankAccountBalances(received: BankAccountBalancesPayload, s
 /** The account's ledger balance in its own currency at `ymd` (pesos whole, dollars to the cent). */
 export function ledgerBalanceInOwnCurrency(accountId: number, currency: Currency, ymd: string): number {
   if (currency === "usd") {
-    if (!isUsdCashAccount(accountId)) throw new Error(`account ${accountId} is declared USD but is not a USD cash account`);
-    return usdCashBalanceUsdAt(accountId, ymd);
+    if (!isForeignCashAccountIn(accountId, "usd")) throw new Error(`account ${accountId} is declared USD but is not a USD cash account`);
+    return foreignCashBalanceAt(accountId, ymd);
   }
   return Math.round(checkingMovementBalanceClpAt(accountId, ymd));
 }

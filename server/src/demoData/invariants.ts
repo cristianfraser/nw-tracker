@@ -2,15 +2,15 @@
  * What must hold after a synthetic database is generated. A failure throws (the build fails; the live demo
  * keeps its previous version). The report is printed by the generate script.
  */
+import { foreignCashBalanceAt } from "../foreignCashAccounts.js";
 import type { EmploymentPayslipsApplyDetails } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { accountMarkClpAtYmd } from "../accountMarkClpAtYmd.js";
 import { checkingMovementBalanceClpAt } from "../checkingCartolaBalances.js";
 import { listDollarCheckingAccountIds, listDollarCheckingMovements } from "../checkingCartolaLoaders.js";
 import { buildCheckingGastosLinesForAccounts } from "../flowsCheckingGastos.js";
-import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
+import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
-import { usdCashBalanceUsdAt } from "../usdCashAccounts.js";
 import { buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { listCreditCardMasterAccountIds } from "../creditCardTree.js";
 import { fxRowOnOrBefore } from "../fxRates.js";
@@ -192,7 +192,7 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
   }
   const cents = (v: number) => Math.round(v * 100) / 100;
   const expected = cents(ledger.usCheckingBalanceUsd);
-  const actual = cents(usdCashBalanceUsdAt(usId, today));
+  const actual = cents(foreignCashBalanceAt(usId, today));
   if (Math.abs(actual - expected) > 0.005) problems.push(`US checking: app balance US$ ${actual}, story balance US$ ${expected}`);
   // Day by day, every movement the app reads on the account (statement rows and transfers).
   const rows = db
@@ -202,7 +202,7 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
     )
     .all(usId, usId, usId) as MovementTransferRow[];
   const byDay = new Map<string, number>();
-  for (const r of rows) byDay.set(r.occurred_on, (byDay.get(r.occurred_on) ?? 0) + signedUsdDeltaForAccountMovement(r, usId));
+  for (const r of rows) byDay.set(r.occurred_on, (byDay.get(r.occurred_on) ?? 0) + signedNativeDeltaForAccountMovement(r, usId, "usd"));
   let bal = 0;
   for (const [day, delta] of [...byDay].sort()) {
     bal += delta;
@@ -240,7 +240,7 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
   if (savingsId != null) {
     if (ledger.usSavingsBalanceUsd == null) problems.push("a US savings account with no balance in the story");
     const expectedSavings = cents(ledger.usSavingsBalanceUsd ?? 0);
-    savingsUsd = cents(usdCashBalanceUsdAt(savingsId, today));
+    savingsUsd = cents(foreignCashBalanceAt(savingsId, today));
     if (Math.abs(savingsUsd - expectedSavings) > 0.005) problems.push(`US savings: app balance US$ ${savingsUsd}, story balance US$ ${expectedSavings}`);
     const savingsRows = db
       .prepare(
@@ -249,7 +249,7 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
       )
       .all(savingsId, savingsId, savingsId) as MovementTransferRow[];
     const byDaySavings = new Map<string, number>();
-    for (const r of savingsRows) byDaySavings.set(r.occurred_on, (byDaySavings.get(r.occurred_on) ?? 0) + signedUsdDeltaForAccountMovement(r, savingsId));
+    for (const r of savingsRows) byDaySavings.set(r.occurred_on, (byDaySavings.get(r.occurred_on) ?? 0) + signedNativeDeltaForAccountMovement(r, savingsId, "usd"));
     let sBal = 0;
     for (const [d, delta] of [...byDaySavings].sort()) {
       sBal += delta;
@@ -358,7 +358,7 @@ function checkOptionsWheel(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, p
       .all(ibkr, ibkr, ibkr) as { d: string }[];
     for (const { d } of days) {
       if (d >= today) continue;
-      const bal = usdCashBalanceUsdAt(ibkr, d);
+      const bal = foreignCashBalanceAt(ibkr, d);
       if (bal < -0.005) {
         problems.push(`options: IBKR dollar cash is ${bal} on ${d}`);
         break;
@@ -646,7 +646,7 @@ function checkCashExplained(problems: string[]): number {
     for (const r of rows) {
       // Its own rows, and its payments into a card master (a transfer elsewhere is a deposit leg).
       if (r.from_account_id != null && (r.to_account_id == null || !cards.has(r.to_account_id))) continue;
-      add(r.occurred_on.slice(0, 7), signedUsdDeltaForAccountMovement(r, id) * (sell(r.occurred_on) - mid(r.occurred_on)));
+      add(r.occurred_on.slice(0, 7), signedNativeDeltaForAccountMovement(r, id, "usd") * (sell(r.occurred_on) - mid(r.occurred_on)));
     }
   }
   let worst = 0;

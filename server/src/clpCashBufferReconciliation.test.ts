@@ -145,7 +145,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
 
   it("resolves fund → buffer (movement pair) as an internal transfer on both sides", () => {
     insertLedgerMovement(fundId, "2099-05-02", -13_000_000);
-    insertLedgerMovement(bufferId, "2099-05-03", 13_000_000, "deposit_clp");
+    insertLedgerMovement(bufferId, "2099-05-03", 13_000_000, "deposit");
 
     const payload = buildDepositsReconciliationPayload("clp");
 
@@ -182,8 +182,8 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
   });
 
   it("links buffer → checking split wires (7M + 6M) as two redemptions", () => {
-    insertLedgerMovement(bufferId, "2099-05-04", -7_000_000, "withdrawal_clp");
-    insertLedgerMovement(bufferId, "2099-05-04", -6_000_000, "withdrawal_clp");
+    insertLedgerMovement(bufferId, "2099-05-04", -7_000_000, "withdrawal");
+    insertLedgerMovement(bufferId, "2099-05-04", -6_000_000, "withdrawal");
     const wire7 = insertCartolaMovement(
       checkingId,
       "2099-05-05",
@@ -216,9 +216,9 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
 
   it("reconciles the full split-withdrawal scenario end-to-end (13M → 7M + 6M)", () => {
     insertLedgerMovement(fundId, "2099-05-02", -13_000_000);
-    insertLedgerMovement(bufferId, "2099-05-03", 13_000_000, "deposit_clp");
-    insertLedgerMovement(bufferId, "2099-05-04", -7_000_000, "withdrawal_clp");
-    insertLedgerMovement(bufferId, "2099-05-04", -6_000_000, "withdrawal_clp");
+    insertLedgerMovement(bufferId, "2099-05-03", 13_000_000, "deposit");
+    insertLedgerMovement(bufferId, "2099-05-04", -7_000_000, "withdrawal");
+    insertLedgerMovement(bufferId, "2099-05-04", -6_000_000, "withdrawal");
     insertCartolaMovement(
       checkingId,
       "2099-05-05",
@@ -252,7 +252,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
   });
 
   it("links a checking → buffer funding wire as a deposit through the gastos matcher", () => {
-    const bufferIn = insertLedgerMovement(bufferId, "2099-06-02", 5_000_000, "deposit_clp");
+    const bufferIn = insertLedgerMovement(bufferId, "2099-06-02", 5_000_000, "deposit");
     insertCartolaMovement(
       checkingId,
       "2099-06-01",

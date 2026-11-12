@@ -19,10 +19,11 @@
  * transfer is an `own_transfer` lot naming the transfer (one lot per carried slice, so a partial
  * spend of a batch that spans two purchase rates is priced at the older rate first).
  */
+import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { movementClpLegOrZero, movementUsdLeg } from "./movementAmounts.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+
 import { walkUsdCashLotsFromDb, type UsdLotSlice, type UsdWalkInput } from "./usdCashLotWalk.js";
 
 export type UsdLotSource = "purchase" | "own_transfer" | "market";
@@ -40,7 +41,7 @@ function dollarCardPaymentSources(): number[] {
          AND currency = 'usd' AND counter_currency IS NULL`
     )
     .all() as { id: number }[];
-  return rows.map((r) => r.id).filter((id) => isUsdCashAccount(id));
+  return rows.map((r) => r.id).filter((id) => isForeignCashAccountIn(id, "usd"));
 }
 
 /** The sources plus every USD cash account that sent dollars into one already in scope. */
@@ -55,7 +56,7 @@ function scopeAccounts(sources: readonly number[]): Set<number> {
   while (pending.length > 0) {
     const accountId = pending.pop()!;
     for (const r of feeders.all(accountId) as { id: number }[]) {
-      if (scope.has(r.id) || !isUsdCashAccount(r.id)) continue;
+      if (scope.has(r.id) || !isForeignCashAccountIn(r.id, "usd")) continue;
       scope.add(r.id);
       pending.push(r.id);
     }

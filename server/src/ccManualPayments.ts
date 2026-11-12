@@ -10,6 +10,7 @@
  * {@link MANUAL_PAYMENT_CONFIRM_BUSINESS_DAYS} Chile business days after its day fails the
  * nightly `synthetic_cc_payments_check`.
  */
+import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { importCcListingLines } from "./accountImports.js";
 
 import { confirmManualPaymentForPlanted, recordPlantedPaymentLine } from "./ccPlantedPayments.js";
@@ -20,7 +21,7 @@ import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
 
 export const MANUAL_PAYMENT_CONFIRM_BUSINESS_DAYS = 5;
@@ -100,7 +101,7 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
     );
   }
   const cardGroup = creditCardMasterMetaForAccount(cardId).cardGroup;
-  const fromIsUsd = isUsdCashAccount(fromId);
+  const fromIsUsd = isForeignCashAccountIn(fromId, "usd");
   if ((currency === "usd") !== fromIsUsd) {
     throw new Error(
       `Account ${fromId} does not hold ${currency.toUpperCase()} — a cross-currency card payment is not supported here`

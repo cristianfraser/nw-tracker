@@ -99,8 +99,8 @@ describe("createPanelAccount", () => {
     const acc = accountRow(result.account_id);
     expect(acc.bucket_slug.endsWith("__usd")).toBe(true);
     const schema = movementCreateSchemaForAccount(acc);
-    expect(schema?.brokerage_flow_kinds).toContain("deposit_clp");
-    expect(schema?.brokerage_flow_kinds).toContain("compra_usd_venta_clp");
+    expect(schema?.brokerage_flow_kinds).toContain("deposit");
+    expect(schema?.brokerage_flow_kinds).toContain("fx_exchange");
 
     cleanup(result);
   });

@@ -8,6 +8,9 @@ export type FxBidAskRow = {
   source: string;
 };
 
+/** The foreign currency whose peso buy / sell rates this table stores (`fx_daily_bid_ask`): the dollar. */
+export const BID_ASK_FOREIGN_CURRENCY = "usd";
+
 /** Total CLP spread between buy and sell when inferring from Yahoo mid. */
 export const FX_BID_ASK_SPREAD_CLP = 4;
 

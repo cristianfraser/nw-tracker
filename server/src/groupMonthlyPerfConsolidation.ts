@@ -198,7 +198,7 @@ function ledgerCashNetFlowBetween(
   return (prevEvalYmd, evalYmd) => windowFlow(prevEvalYmd ?? "0000-01-01", evalYmd);
 }
 
-function usdCashMonthlyPerfRows(
+function foreignCashMonthlyPerfRows(
   accountId: number,
   categorySlug: string,
   unit: TsUnit
@@ -214,8 +214,8 @@ function usdCashMonthlyPerfRows(
     categorySlug,
     unit,
     monthEndsAsc,
-    "usd_cash",
-    // Its value in the unit: its ledger dollars, converted once from them.
+    "foreign_cash",
+    // Its value in the unit: its ledger balance in its own currency, converted once from it.
     ledgerCloseInUnit(accountId, unit),
     ledgerCashNetFlowBetween(accountId, unit)
   );
@@ -316,7 +316,7 @@ export function monthlyPerfRowsForAccount(
   const profile = accountProfileOptional(accountId);
   if (profile?.perf === "ledger_cash") {
     if (profile.quantity.kind === "checking_ledger") return movementBalanceMonthlyPerfRows(accountId, bucketSlug, unit);
-    if (profile.quantity.kind === "usd_ledger") return usdCashMonthlyPerfRows(accountId, bucketSlug, unit);
+    if (profile.quantity.kind === "foreign_ledger") return foreignCashMonthlyPerfRows(accountId, bucketSlug, unit);
     return clpCashMonthlyPerfRows(accountId, bucketSlug, unit);
   }
   if (profile?.perf === "book_valuation") return bookValuationMonthlyPerfRows(accountId, bucketSlug, unit);

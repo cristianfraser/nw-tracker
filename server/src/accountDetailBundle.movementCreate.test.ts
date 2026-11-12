@@ -69,7 +69,7 @@ describe("accountDetailBundle movement_create", () => {
 
     const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();
-    expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toContain("compra_usd_venta_clp");
+    expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toContain("fx_exchange");
     expect(bundle!.summary.movement_create?.brokerage_flow_kinds).not.toContain("stock_buy");
   });
 });

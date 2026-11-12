@@ -31,7 +31,7 @@ function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
     units_delta: null,
     counter_units_delta: null,
     flow_kind: null,
-    flow_type: "deposit_clp",
+    flow_type: "deposit",
     flow_type_label: "Depósito CLP",
     counterpart_account_id: null,
     counterpart_account_name: null,
@@ -275,7 +275,7 @@ describe("group flows show a transfer between two of their accounts once", () =>
         money_direction: "out",
         from_account_id: origin,
         to_account_id: outside,
-        flow_type: "withdrawal_clp",
+        flow_type: "withdrawal",
       });
     } finally {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -285,13 +285,13 @@ describe("group flows show a transfer between two of their accounts once", () =>
 
 describe("the type of a transfer shown once", () => {
   it("names a kind-less transfer by its currency, a conversion «Cambio de divisas»", () => {
-    expect(internalTransferFlowType("withdrawal_clp", "clp", null)).toEqual({
+    expect(internalTransferFlowType("withdrawal", "clp", null)).toEqual({
       flow_type: "internal_transfer_clp",
       flow_type_label: "Traspaso CLP",
     });
-    expect(internalTransferFlowType("withdrawal_usd", "usd", null).flow_type_label).toBe("Traspaso USD");
+    expect(internalTransferFlowType("withdrawal", "usd", null).flow_type_label).toBe("Traspaso USD");
     for (const [from, to] of [["usd", "clp"], ["clp", "usd"], ["usd", "eur"]] as const) {
-      const leg = from === "clp" ? "withdrawal_clp" : "withdrawal_usd";
+      const leg = from === "clp" ? "withdrawal" : "withdrawal";
       expect(internalTransferFlowType(leg, from, to)).toEqual({
         flow_type: "internal_fx_exchange",
         flow_type_label: "Cambio de divisas",

@@ -12,7 +12,7 @@
  * into its current account (null while it sits where it was acquired).
  *
  * **Events.** Every row with a non-zero dollar delta on an account in scope
- * (`signedUsdDeltaForAccountMovement`), plus the broker withdrawal requests whose source account
+ * (`signedNativeDeltaForAccountMovement`), plus the broker withdrawal requests whose source account
  * is in scope. They run by Chile date; within a day by time when every event of the day has one
  * (`movement_event_times`, a request's `requested_at`), else arrivals first and then by movement
  * id, with each request placed among its own account's events by time — a request's day must
@@ -38,7 +38,7 @@ import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { fintualUsdAccountId } from "./brokerAdapter.js";
 import { movementEventTimesMs } from "./movementEventTimes.js";
-import { isMovementTransferRow, signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
+import { isMovementTransferRow, signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
 export type UsdLotSource = "purchase" | "market";
 
@@ -230,7 +230,7 @@ export function walkUsdCashLots(input: UsdWalkInput): UsdWalkResult {
     const perAccount = new Map<number, number>();
     for (const accountId of new Set([row.account_id, row.from_account_id, row.to_account_id])) {
       if (accountId == null || !scope.has(accountId)) continue;
-      const delta = usdCents(signedUsdDeltaForAccountMovement(row, accountId));
+      const delta = usdCents(signedNativeDeltaForAccountMovement(row, accountId, "usd"));
       if (delta !== 0) perAccount.set(accountId, delta);
     }
     if (perAccount.size === 0) {

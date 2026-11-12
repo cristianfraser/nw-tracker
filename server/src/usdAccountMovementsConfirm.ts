@@ -1,10 +1,11 @@
+import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import type { BankAccountMovement, UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
 
 
 import { claimTransferLegForBankRow, findMatchingUsdTransferLegId } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { createImportBatch } from "./importBatches.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+
 
 /**
  * A dollar bank account's recent movements (`bank_account.movements` in USD, 2026-10-10) CONFIRM
@@ -27,7 +28,7 @@ export function confirmUsdAccountMovements(
   movements: BankAccountMovement[],
   sourceRef: string
 ): UsdAccountMovementsApplyDetails {
-  if (!isUsdCashAccount(accountId)) throw new Error(`account ${accountId} is not a USD cash account`);
+  if (!isForeignCashAccountIn(accountId, "usd")) throw new Error(`account ${accountId} is not a USD cash account`);
   const consumed = new Set<number>();
   const confirmed_flows: UsdAccountMovementsApplyDetails["confirmed_flows"] = [];
   const awaiting_flows: UsdAccountMovementsApplyDetails["awaiting_flows"] = [];

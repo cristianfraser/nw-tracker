@@ -2,7 +2,7 @@ import {
   brokerageFlowKindNeedsClp,
   brokerageFlowKindNeedsUsd,
   counterpartRoleForBrokerageFlowKind,
-  isInterestFlowKind,
+  isOwnCurrencyFlowKind,
 } from "./brokerageFlowKinds";
 import { parseNumberInputOrThrow } from "../format";
 import { type InitialMovementDraft } from "./stockAccountFormTypes";
@@ -16,16 +16,16 @@ export function buildUsdCashMovementPostBody(
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
-  // Interest on a USD cash account is entered in USD. Only submit the fields the form shows so a
-  // stale value in a hidden input isn't sent.
+  // Deposits, withdrawals and interest on a USD cash account are entered in USD. Only submit the
+  // fields the form shows so a stale value in a hidden input isn't sent.
   const showClp = brokerageFlowKindNeedsClp(row.flowKind);
-  const showUsd = brokerageFlowKindNeedsUsd(row.flowKind) || isInterestFlowKind(row.flowKind);
+  const showUsd = brokerageFlowKindNeedsUsd(row.flowKind) || isOwnCurrencyFlowKind(row.flowKind);
   const clp = showClp ? parseNumberInputOrThrow(row.amountClp) : null;
   const usd = showUsd ? parseNumberInputOrThrow(row.amountUsd) : null;
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    // A kind showing both fields (compra_usd_venta_clp) sends CLP as the amount, USD as counter.
+    // A kind showing both fields (fx_exchange) sends CLP as the amount, USD as counter.
     ...(clp != null
       ? {
           amount: clp,

@@ -130,7 +130,7 @@ function realCase(opts: { stampPurchase: boolean }) {
     currency: "clp",
     counter_amount: 1000,
     counter_currency: "usd",
-    flow_kind: "compra_usd_venta_clp",
+    flow_kind: "fx_exchange",
   });
   if (opts.stampPurchase) stampTime(firstBuy, "2097-10-05T14:31:00Z");
   const req = request({ at: "2097-10-05T22:22:00Z", gross: 950, net: 940 });
@@ -142,7 +142,7 @@ function realCase(opts: { stampPurchase: boolean }) {
     currency: "clp",
     counter_amount: 520,
     counter_currency: "usd",
-    flow_kind: "compra_usd_venta_clp",
+    flow_kind: "fx_exchange",
   });
   const soxq = movement({ date: "2097-10-07", from: fintualUsd, to: stock, amount: 570, currency: "usd", flow_kind: "stock_buy", units: 1 });
   const wire = movement({ date: "2097-10-08", from: fintualUsd, to: santanderUsd, amount: 940, currency: "usd" });
@@ -191,7 +191,7 @@ describe("usdOutflowPesoCostByMovement", () => {
       currency: "clp",
       counter_amount: 100,
       counter_currency: "usd",
-      flow_kind: "compra_usd_venta_clp",
+      flow_kind: "fx_exchange",
     });
     stampTime(buy, "2097-11-02T12:00:00Z");
     request({ at: "2097-11-02T15:00:00Z", gross: 100, net: 100 });
@@ -204,7 +204,7 @@ describe("usdOutflowPesoCostByMovement", () => {
     const clp = account("CLP cash", CLP_GROUP);
     const card = account("card", "credit_cards__credit_card");
     for (const [date, pesos] of [["2097-12-01", 90_000], ["2097-12-02", 100_000]] as const) {
-      movement({ date, from: clp, to: usd, amount: pesos, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+      movement({ date, from: clp, to: usd, amount: pesos, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     }
     const payment = movement({ date: "2097-12-03", from: usd, to: card, amount: 150, currency: "usd", flow_kind: "pago_tarjeta" });
     const cost = usdOutflowPesoCostByMovement().get(payment)!;
@@ -217,8 +217,8 @@ describe("usdOutflowPesoCostByMovement", () => {
     const fintualClp = account("Fintual CLP", CLP_GROUP);
     const santanderUsd = account("Santander USD", "cash_eqs__usd");
     const card = account("card", "credit_cards__credit_card");
-    movement({ date: "2097-08-01", from: fintualClp, to: fintualUsd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
-    movement({ date: "2097-08-02", from: fintualClp, to: fintualUsd, amount: 100_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+    movement({ date: "2097-08-01", from: fintualClp, to: fintualUsd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
+    movement({ date: "2097-08-02", from: fintualClp, to: fintualUsd, amount: 100_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     // The whole batch moves to the bank account, then 150 of its 200 dollars pay the card.
     const wire = movement({ date: "2097-08-03", from: fintualUsd, to: santanderUsd, amount: 200, currency: "usd" });
     const payment = movement({ date: "2097-08-04", from: santanderUsd, to: card, amount: 150, currency: "usd", flow_kind: "pago_tarjeta" });
@@ -240,8 +240,8 @@ describe("usdOutflowPesoCostByMovement", () => {
     const card = account("card", "credit_cards__credit_card");
     // The buy is written before the wire that funds it, the same day.
     movement({ date: "2097-11-10", from: usd, to: stock, amount: 100, currency: "usd", flow_kind: "stock_buy", units: 1 });
-    movement({ date: "2097-11-10", from: clp, to: usd, amount: 95_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
-    movement({ date: "2097-11-11", from: clp, to: usd, amount: 97_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+    movement({ date: "2097-11-10", from: clp, to: usd, amount: 95_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
+    movement({ date: "2097-11-11", from: clp, to: usd, amount: 97_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     const payment = movement({ date: "2097-11-12", from: usd, to: card, amount: 100, currency: "usd", flow_kind: "pago_tarjeta" });
     expect(usdOutflowPesoCostByMovement().get(payment)!.clp).toBeCloseTo(97_000, 6);
   });
@@ -263,7 +263,7 @@ describe("usdOutflowPesoCostByMovement", () => {
     const usd = account("USD cash", "cash_eqs__usd");
     const clp = account("CLP cash", CLP_GROUP);
     const card = account("card", "credit_cards__credit_card");
-    movement({ date: "2097-12-01", from: clp, to: usd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+    movement({ date: "2097-12-01", from: clp, to: usd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     movement({ date: "2097-12-03", from: usd, to: card, amount: 200, currency: "usd", flow_kind: "pago_tarjeta" });
     expect(() => usdOutflowPesoCostByMovement()).toThrow(/needs US\$200\.00 but only US\$100\.00/);
   });
@@ -282,7 +282,7 @@ describe("broker mail event times", () => {
       currency: "clp",
       counter_amount: 1000,
       counter_currency: "usd",
-      flow_kind: "compra_usd_venta_clp",
+      flow_kind: "fx_exchange",
     });
     const mail = (at: string) =>
       brokerNotification({

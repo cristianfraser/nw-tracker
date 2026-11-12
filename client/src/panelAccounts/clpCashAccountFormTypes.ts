@@ -21,7 +21,7 @@ export function buildClpCashMovementPostBody(
       amount: Math.abs(amount),
       currency: "clp",
       counterpart_account_id: row.counterpartAccountId,
-      counterpart_role: row.flowKind === "deposit_clp" ? "from" : "to",
+      counterpart_role: row.flowKind === "deposit" ? "from" : "to",
     };
   }
   return {

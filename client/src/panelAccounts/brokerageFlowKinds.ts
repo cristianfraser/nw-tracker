@@ -2,7 +2,7 @@
 
 export const BROKERAGE_FLOW_KINDS = [
 
-  "deposit_clp",
+  "deposit",
 
   "stock_buy",
 
@@ -10,9 +10,7 @@ export const BROKERAGE_FLOW_KINDS = [
 
   "dividend_payout",
 
-  "withdrawal_clp",
-
-  "withdrawal_usd",
+  "withdrawal",
 
   "other",
 
@@ -38,9 +36,9 @@ export const OPTION_CONTRACT_FLOW_KINDS = [
 
 export const USD_CASH_FLOW_KINDS = [
 
-  "deposit_clp",
+  "deposit",
 
-  "compra_usd_venta_clp",
+  "fx_exchange",
 
   "dividend_payout",
 
@@ -48,9 +46,7 @@ export const USD_CASH_FLOW_KINDS = [
 
   "cash_fee",
 
-  "withdrawal_usd",
-
-  "withdrawal_clp",
+  "withdrawal",
 
   "other",
 
@@ -58,13 +54,13 @@ export const USD_CASH_FLOW_KINDS = [
 
 export const CLP_CASH_FLOW_KINDS = [
 
-  "deposit_clp",
+  "deposit",
 
   "savings_earnings",
 
   "cash_fee",
 
-  "withdrawal_clp",
+  "withdrawal",
 
   "other",
 
@@ -80,11 +76,19 @@ export type BrokerageFlowKind =
 
   | (typeof OPTION_CONTRACT_FLOW_KINDS)[number]
 
-  | "compra_usd";
+  | "fx_purchase";
 
 /** Own-currency P/L rows (interest, commissions) — amount is in the account's own currency. */
 export function isInterestFlowKind(kind: BrokerageFlowKind): boolean {
   return kind === "savings_earnings" || kind === "cash_fee";
+}
+
+/**
+ * Single-leg rows in the account's own currency: deposits, withdrawals, interest and fees (a cash
+ * account's currency; a stock form's deposits and withdrawals are pesos, its legacy capital rows).
+ */
+export function isOwnCurrencyFlowKind(kind: BrokerageFlowKind): boolean {
+  return kind === "deposit" || kind === "withdrawal" || isInterestFlowKind(kind);
 }
 
 /** The premium transfers of an option contract (a kind that moves contracts AND dollars). */
@@ -106,7 +110,7 @@ export function isOptionFlowKind(kind: BrokerageFlowKind): boolean {
 
 export function brokerageFlowKindShowsUnits(kind: BrokerageFlowKind): boolean {
 
-  return kind === "stock_buy" || kind === "stock_sell" || kind === "compra_usd" || isOptionFlowKind(kind);
+  return kind === "stock_buy" || kind === "stock_sell" || kind === "fx_purchase" || isOptionFlowKind(kind);
 
 }
 
@@ -115,7 +119,7 @@ export function brokerageFlowKindShowsCounterpart(kind: BrokerageFlowKind): bool
     kind === "stock_buy" ||
     kind === "stock_sell" ||
     kind === "dividend_payout" ||
-    kind === "compra_usd_venta_clp" ||
+    kind === "fx_exchange" ||
     isOptionPremiumFlowKind(kind)
   );
 }
@@ -133,7 +137,7 @@ export function brokerageFlowKindCounterpartIsEquity(
 
 /** Counterpart is a CLP cash / checking source (compra USD / venta CLP funding account). */
 export function brokerageFlowKindCounterpartIsCash(kind: BrokerageFlowKind): boolean {
-  return kind === "compra_usd_venta_clp";
+  return kind === "fx_exchange";
 }
 
 /** Counterpart is the USD cash account (trades and premiums settle there; stock-form dividends credit it). */
@@ -164,7 +168,7 @@ export function brokerageFlowKindNeedsClpForQuote(
   quote: StockQuoteCurrency | undefined
 ): boolean {
   if (quote === "clp" && brokerageTradeFlowKind(kind)) return true;
-  return brokerageFlowKindNeedsClp(kind);
+  return stockFormFlowKindNeedsClp(kind);
 }
 
 /** USD amount field visibility, quote-currency aware (hidden on CLP-quoted trades). */
@@ -181,7 +185,7 @@ export function brokerageFlowKindNeedsUsdForQuote(
  * posting a single internal-transfer leg (from/to) instead of a plain one-sided movement.
  */
 export function clpCashFlowKindAllowsCounterpart(kind: BrokerageFlowKind): boolean {
-  return kind === "deposit_clp" || kind === "withdrawal_clp";
+  return kind === "deposit" || kind === "withdrawal";
 }
 
 /** Role of the COUNTERPART account in the transfer, relative to the hosting form. */
@@ -197,20 +201,17 @@ export function counterpartRoleForBrokerageFlowKind(
   // dividend_payout: cash form → the stock counterpart PAYS ("from");
   // stock form → the USD cash counterpart RECEIVES ("to").
   if (kind === "dividend_payout") return form === "cash" ? "from" : "to";
-  // compra_usd_venta_clp: the counterpart CLP account is the source of the pesos spent.
-  if (kind === "compra_usd_venta_clp") return "from";
+  // fx_exchange: the counterpart CLP account is the source of the pesos spent.
+  if (kind === "fx_exchange") return "from";
   return "to";
 }
 
+/** The pesos field on the cash forms: a conversion's pesos spent, or a free «other» row (deposits and withdrawals take the account's own currency). */
 export function brokerageFlowKindNeedsClp(kind: BrokerageFlowKind): boolean {
 
   return (
 
-    kind === "deposit_clp" ||
-
-    kind === "withdrawal_clp" ||
-
-    kind === "compra_usd_venta_clp" ||
+    kind === "fx_exchange" ||
 
     kind === "other"
 
@@ -218,12 +219,17 @@ export function brokerageFlowKindNeedsClp(kind: BrokerageFlowKind): boolean {
 
 }
 
+/** The stock form's pesos field: its deposits and withdrawals are pesos (legacy capital rows), plus the cash forms' rule. */
+function stockFormFlowKindNeedsClp(kind: BrokerageFlowKind): boolean {
+  return kind === "deposit" || kind === "withdrawal" || brokerageFlowKindNeedsClp(kind);
+}
+
 /** The premium is in dollars; an expiry moves no money. */
 export function brokerageFlowKindNeedsUsd(kind: BrokerageFlowKind): boolean {
 
   return (
 
-    kind === "compra_usd_venta_clp" ||
+    kind === "fx_exchange" ||
 
     kind === "stock_buy" ||
 
@@ -231,11 +237,9 @@ export function brokerageFlowKindNeedsUsd(kind: BrokerageFlowKind): boolean {
 
     kind === "dividend_payout" ||
 
-    kind === "withdrawal_usd" ||
-
     kind === "other" ||
 
-    kind === "compra_usd" ||
+    kind === "fx_purchase" ||
 
     isOptionPremiumFlowKind(kind)
 

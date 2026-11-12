@@ -26,6 +26,8 @@ import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds
 import { optionContractForAccount, type OptionRight } from "./optionContracts.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 import type { CurrencyCode } from "./rates.js";
+import { cashCurrencyForKind, isCashLedgerKindSlug } from "./cashCurrency.js";
+import { isHomeCurrency } from "./displayUnits.js";
 
 export type Holding =
   | { kind: "currency"; code: CurrencyCode }
@@ -56,8 +58,8 @@ export type QuantitySource =
   | { kind: "fintual_goal"; seriesKey: string; goalId: string | null }
   /** The cartola checking ledger (cuenta corriente / vista). */
   | { kind: "checking_ledger" }
-  /** A dollar ledger: Σ dollar movements. */
-  | { kind: "usd_ledger" }
+  /** A foreign cash ledger: Σ movements in its currency (`accounts.cash_currency`, `cashCurrency.ts`). */
+  | { kind: "foreign_ledger"; currency: CurrencyCode }
   /** A peso ledger: Σ peso movements (a broker's peso balance, a caja, MACH). */
   | { kind: "clp_ledger" }
   /** Share units × the ticker's close. */
@@ -136,6 +138,11 @@ export type AccountProfileFacts = {
   roles: readonly { role: StoredAccountRole; param: string }[];
   /** A demo or test database: an AFP account without a series prices with UNO Fondo A. */
   demoOrTest: boolean;
+  /**
+   * The currency the account's cash ledger holds (`cashCurrency.ts`: the account's declaration,
+   * or the currency a legacy `usd` / `clp` leaf names); null for any other account.
+   */
+  cashCurrency: CurrencyCode | null;
 };
 
 /** The terms `profileFromFacts` reads of an option contract account (`option_contracts`). */
@@ -228,8 +235,9 @@ function quantityFromFacts(f: AccountProfileFacts, roles: AccountRoles): Quantit
     return { kind: "fintual_goal", seriesKey: f.fundSeriesKey, goalId: roles.fintualGoalId };
   }
   if (CARTOLA_CHECKING_KIND_SLUGS.has(f.kind)) return { kind: "checking_ledger" };
-  if (f.kind === "usd") return { kind: "usd_ledger" };
-  if (f.kind === "clp") return { kind: "clp_ledger" };
+  if (f.cashCurrency != null) {
+    return isHomeCurrency(f.cashCurrency) ? { kind: "clp_ledger" } : { kind: "foreign_ledger", currency: f.cashCurrency };
+  }
   return { kind: "book_mark" };
 }
 
@@ -264,8 +272,8 @@ function holdingFromQuantity(f: AccountProfileFacts, q: QuantitySource): Holding
     case "fintual_goal":
       // Priced in its series' currency (`fund_unit_daily.currency`).
       return { kind: "fund", seriesKey: q.seriesKey, quote: f.fundQuoteCurrencyOf(q.seriesKey) };
-    case "usd_ledger":
-      return { kind: "currency", code: "usd" };
+    case "foreign_ledger":
+      return { kind: "currency", code: q.currency };
     case "depto_property":
     case "depto_loan":
       // What the bank and the appraisals state; valued in pesos until the loan phase.
@@ -289,7 +297,7 @@ export function profileFromFacts(f: AccountProfileFacts): AccountProfile {
     quantity.kind === "fintual_goal"
   );
   const perf: PerfBuilder =
-    quantity.kind === "checking_ledger" || quantity.kind === "usd_ledger" || quantity.kind === "clp_ledger"
+    quantity.kind === "checking_ledger" || quantity.kind === "foreign_ledger" || quantity.kind === "clp_ledger"
       ? "ledger_cash"
       : f.kind === "cuenta_ahorro_vivienda"
         ? "book_valuation"
@@ -313,7 +321,7 @@ export function profileFromFacts(f: AccountProfileFacts): AccountProfile {
 }
 
 const stmtAccount = db.prepare(
-  `SELECT a.name, a.import_key, a.fund_series_key, g.slug AS leaf_slug, pg.kind_slug AS leaf_kind
+  `SELECT a.name, a.import_key, a.fund_series_key, a.cash_currency, g.slug AS leaf_slug, pg.kind_slug AS leaf_kind
    FROM accounts a
    JOIN asset_groups g ON g.id = a.asset_group_id
    LEFT JOIN portfolio_groups pg ON pg.slug = g.slug
@@ -370,7 +378,14 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
   if (!(accountId > 0)) return null;
   return dbStateMemo("account_profile", accountId, () => {
     const row = stmtAccount.get(accountId) as
-      | { name: string; import_key: string | null; fund_series_key: string | null; leaf_slug: string; leaf_kind: string | null }
+      | {
+          name: string;
+          import_key: string | null;
+          fund_series_key: string | null;
+          cash_currency: string | null;
+          leaf_slug: string;
+          leaf_kind: string | null;
+        }
       | undefined;
     if (!row) return null;
     const kind = leafKind(row.leaf_slug, row.leaf_kind);
@@ -378,7 +393,7 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
     const contract = optionContractForAccount(accountId);
     // A share flow's cash leg is never the equity side: a buy's from-account and a sell's
     // to-account are the wallet the proceeds move through (`usd` / `clp` ledgers).
-    const usesEquityMtm = kind !== "usd" && kind !== "clp" && stmtHasShareUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null;
+    const usesEquityMtm = !isCashLedgerKindSlug(kind) && stmtHasShareUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null;
     return profileFromFacts({
       id: accountId,
       name: row.name,
@@ -403,6 +418,7 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
       fundQuoteCurrencyOf: (k) => fundSeriesCurrency(k) ?? "clp",
       roles: storedRolesOfAccount(accountId),
       demoOrTest: isDemoOrTest(),
+      cashCurrency: cashCurrencyForKind(accountId, kind, row.cash_currency),
     });
   });
 }

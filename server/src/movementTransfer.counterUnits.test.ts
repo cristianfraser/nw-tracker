@@ -168,7 +168,7 @@ describe("counter_units_delta on movement creates", () => {
     expect(v.error).toMatch(/counter_units_delta is only supported on a transfer/);
     const cash = validateMovementCreate(
       accountRowForId(checking)!,
-      { occurred_on: "1990-06-01", amount: 1000, currency: "clp", flow_kind: "deposit_clp", counter_units_delta: 1 },
+      { occurred_on: "1990-06-01", amount: 1000, currency: "clp", flow_kind: "deposit", counter_units_delta: 1 },
       checking
     );
     expect(cash.ok).toBe(false);

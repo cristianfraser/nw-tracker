@@ -6,20 +6,21 @@ describe("kind-less transfers are named in their own currency", () => {
     movementFlowTypeFromRow({ signed_clp_delta: 0, flow_kind: null, transfer_direction, currency });
 
   it("reads a dollar transfer as USD on both sides", () => {
-    expect(typeOf("usd", "out")).toBe("withdrawal_usd");
-    expect(typeOf("usd", "in")).toBe("deposit_usd");
+    expect(typeOf("usd", "out")).toBe("withdrawal");
+    expect(typeOf("usd", "in")).toBe("deposit");
     const usd = { currency: "usd", counter_currency: null };
     expect(movementFlowTypeLabel(typeOf("usd", "out"), usd)).toBe("Retiro USD");
     expect(movementFlowTypeLabel(typeOf("usd", "in"), usd)).toBe("Depósito USD");
   });
 
   it("keeps a peso transfer as before", () => {
-    expect(typeOf("clp", "out")).toBe("withdrawal_clp");
-    expect(typeOf("clp", "in")).toBe("deposit_clp");
+    expect(typeOf("clp", "out")).toBe("withdrawal");
+    expect(typeOf("clp", "in")).toBe("deposit");
   });
 
-  it("refuses a currency it has no name for", () => {
-    expect(() => typeOf("eur", "in")).toThrow(/eur/);
+  it("names a transfer in any currency by its own code", () => {
+    expect(typeOf("eur", "in")).toBe("deposit");
+    expect(movementFlowTypeLabel(typeOf("eur", "out"), { currency: "eur", counter_currency: null })).toBe("Retiro EUR");
   });
 });
 
@@ -40,18 +41,18 @@ describe("an AFP fund switch is named by its kind on both legs", () => {
 
 describe("labels that name a currency take it from the movement", () => {
   it("builds deposits, withdrawals and purchases from the row's currencies", () => {
-    expect(movementFlowTypeLabel("deposit_clp", { currency: "clp", counter_currency: null })).toBe("Depósito CLP");
-    expect(movementFlowTypeLabel("withdrawal_clp", { currency: "clp", counter_currency: null })).toBe("Retiro CLP");
-    expect(movementFlowTypeLabel("compra_usd", { currency: "usd", counter_currency: null })).toBe("Compra USD");
-    expect(movementFlowTypeLabel("compra_usd_venta_clp", { currency: "clp", counter_currency: "usd" })).toBe(
+    expect(movementFlowTypeLabel("deposit", { currency: "clp", counter_currency: null })).toBe("Depósito CLP");
+    expect(movementFlowTypeLabel("withdrawal", { currency: "clp", counter_currency: null })).toBe("Retiro CLP");
+    expect(movementFlowTypeLabel("fx_purchase", { currency: "usd", counter_currency: null })).toBe("Compra USD");
+    expect(movementFlowTypeLabel("fx_exchange", { currency: "clp", counter_currency: "usd" })).toBe(
       "Compra USD / Venta CLP"
     );
-    expect(movementFlowTypeLabel("compra_usd_venta_clp", { currency: "clp", counter_currency: "eur" })).toBe(
+    expect(movementFlowTypeLabel("fx_exchange", { currency: "clp", counter_currency: "eur" })).toBe(
       "Compra EUR / Venta CLP"
     );
   });
 
   it("refuses a currency purchase without its other currency", () => {
-    expect(() => movementFlowTypeLabel("compra_usd_venta_clp", { currency: "clp", counter_currency: null })).toThrow();
+    expect(() => movementFlowTypeLabel("fx_exchange", { currency: "clp", counter_currency: null })).toThrow();
   });
 });

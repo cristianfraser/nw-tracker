@@ -147,7 +147,7 @@ export function chileCalendarDaysListEndingAt(endYmd: string, count: number): st
 /**
  * Per-day net capital flows for one grid. Same event source and window semantics as
  * `netDepositFlowBetween` — merged display deposit events bucketed into `(grid[i-1], grid[i]]`
- * (USD-cash accounts included since 2026-08-04, via `loadUsdCashCapitalSortFlows`). Returns
+ * (USD-cash accounts included since 2026-08-04, via `loadForeignCashCapitalSortFlows`). Returns
  * CLP flows for clp/uf units and USD flows for usd, every event at its own date's rate
  * (`flowEventInUnit`, as in `netDepositFlowBetween`).
  *
@@ -217,7 +217,7 @@ function gridFlows(
     if (!includeShortHorizonAccount(a)) continue;
     // Cards are handled by the caller (their flows need the value legs); other liabilities
     // (mortgage) carry ledger-truth payment events. USD-cash accounts are regular since
-    // 2026-08-04 — their merged events come from loadUsdCashCapitalSortFlows.
+    // 2026-08-04 — their merged events come from loadForeignCashCapitalSortFlows.
     if (isCreditCardAccountId(a.account_id)) continue;
     if (accountIsDebt(a.account_id)) mortgageIds.push(a.account_id);
     else regularIds.push(a.account_id);

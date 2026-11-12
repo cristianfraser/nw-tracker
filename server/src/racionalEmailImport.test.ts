@@ -118,7 +118,7 @@ describe("planRacionalEmailMovements", () => {
       counter_currency: "usd",
       from_account_id: racionalClp.id,
       to_account_id: racionalUsd.id,
-      flow_kind: "compra_usd_venta_clp",
+      flow_kind: "fx_exchange",
       requires_manual: null,
     });
     // No VITSOX account and no Racional sibling buys in this DB → refuse to guess a bucket.

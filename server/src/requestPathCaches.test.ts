@@ -25,16 +25,7 @@ import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { buildFlowsExpensesGastosPayload } from "./flowsExpensesGastos.js";
 import { cachedFlowsExpensesGastosPayload, cachedFlowsExpensesPayload } from "./flowsMortgageCarrying.js";
 import { MOVEMENT_AMOUNT_COLUMNS_SQL } from "./movementAmounts.js";
-import {
-  signedClpDeltaForAccountMovement,
-  signedUsdDeltaForAccountMovement,
-  sumClpThroughDate,
-  sumUsdThroughDate,
-  transferFromLegUnits,
-  transferLegUnitsThroughDate,
-  transferToLegUnits,
-  type MovementTransferRow,
-} from "./movementTransfer.js";
+import { signedClpDeltaForAccountMovement, sumClpThroughDate, transferFromLegUnits, transferLegUnitsThroughDate, transferToLegUnits, type MovementTransferRow, signedNativeDeltaForAccountMovement, sumNativeThroughDate } from "./movementTransfer.js";
 import { getDashboardOverviewBlock, getGroupValuationTimeseries } from "./valuationTimeseries.js";
 import { createManualCcInstallmentPurchase, deleteManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
@@ -60,7 +51,7 @@ function sqlSums(accountId: number, asOfYmd: string): { clp: number; usd: number
   let usd = 0;
   for (const r of rows) {
     clp += signedClpDeltaForAccountMovement(r, accountId);
-    usd += signedUsdDeltaForAccountMovement(r, accountId);
+    usd += signedNativeDeltaForAccountMovement(r, accountId, "usd");
   }
   const legs = db
     .prepare(
@@ -73,7 +64,7 @@ function sqlSums(accountId: number, asOfYmd: string): { clp: number; usd: number
     .all(accountId, accountId, asOfYmd) as MovementTransferRow[];
   let legUnits = 0;
   for (const r of legs) {
-    if (r.flow_kind != null && ["stock_buy", "stock_sell", "compra_usd", "compra_usd_venta_clp"].includes(r.flow_kind)) {
+    if (r.flow_kind != null && ["stock_buy", "stock_sell", "fx_purchase", "fx_exchange"].includes(r.flow_kind)) {
       continue;
     }
     if (r.to_account_id === accountId) legUnits += Math.abs(transferToLegUnits(r) ?? 0);
@@ -85,7 +76,7 @@ function sqlSums(accountId: number, asOfYmd: string): { clp: number; usd: number
 function ledgerSums(accountId: number, asOfYmd: string) {
   return {
     clp: sumClpThroughDate(accountId, asOfYmd),
-    usd: sumUsdThroughDate(accountId, asOfYmd),
+    usd: sumNativeThroughDate(accountId, asOfYmd, "usd"),
     legUnits: transferLegUnitsThroughDate(accountId, asOfYmd),
   };
 }

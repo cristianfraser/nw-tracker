@@ -15,16 +15,13 @@
  * `dividend_usd` DRIP kind must not reappear (fail-fast below).
  */
 
+import { foreignCashCurrencyOf, foreignCashToClpAt } from "./foreignCashAccounts.js";
 import type { DepositInflowEvent } from "./accountDeposits.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
-import {
-  isUsdCashAccount,
-  signedUsdDeltaForAccountMovement,
-  type MovementTransferRow,
-} from "./movementTransfer.js";
-import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
+import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
+import { nativeFlowLeg } from "./rates.js";
 import { isOptionContractAccount } from "./optionContracts.js";
 import {
   OPTION_PREMIUM_PAID_FLOW_KINDS,
@@ -48,6 +45,9 @@ export type EquityCapitalSortFlow = {
   occurred_on: string;
   amt: number;
   amt_usd: number | null;
+  /** A foreign cash event in a currency other than the dollar: its own amount (signed like `amt`). */
+  amt_native?: number | null;
+  native_currency?: string | null;
   capital_kind: EquityCapitalKind;
   tie: string;
 };
@@ -156,7 +156,7 @@ function assertNoDividendUsdRows(accountIds: number[]): void {
 }
 
 /**
- * CLP→USD conversion wires on `accountId` dated `occurredOn`: single-leg `compra_usd*`
+ * CLP→USD conversion wires on `accountId` dated `occurredOn`: single-leg `fx_purchase*`
  * rows plus compra transfer legs ARRIVING at the account (the post-mirror-conversion
  * shape — e.g. checking → USD cash or CLP wallet → USD cash conversions).
  */
@@ -166,7 +166,7 @@ function sameDayWireLegs(accountId: number, occurredOn: string): ClpWireLeg[] {
       `SELECT ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
        WHERE (account_id = ? OR (account_id IS NULL AND to_account_id = ?))
          AND occurred_on = ?
-         AND flow_kind IN ('compra_usd_venta_clp', 'compra_usd')
+         AND flow_kind IN ('fx_exchange', 'fx_purchase')
          AND ${MOVEMENT_CLP_LEG_SQL} > 0
          AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
          AND ABS(COALESCE(units_delta, 0)) < 1e-12`
@@ -354,7 +354,7 @@ function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] 
 
 /**
  * Capital in/out from stock_buy / stock_sell transfers plus dividend_payout returns of capital.
- * CLP wire buys use actual `compra_usd*` CLP; USD-only rotation uses reference CLP at mid.
+ * CLP wire buys use actual `fx_purchase*` CLP; USD-only rotation uses reference CLP at mid.
  */
 export function loadEquityBrokerageCapitalSortFlows(
   accountIds: number[]
@@ -456,20 +456,18 @@ export function loadOptionContractCapitalSortFlows(accountIds: number[]): Map<nu
 }
 
 /**
- * The kinds the generic «any other dollar move is capital» branch of
- * {@link loadUsdCashCapitalSortFlows} may price: a kind-less transfer (a wire between own
+ * The kinds the generic «any other move is capital» branch of
+ * {@link loadForeignCashCapitalSortFlows} may price: a kind-less transfer (a wire between own
  * accounts), the cash deposits and withdrawals, the peso conversions, a card payment and a card
  * load from the account. A kind outside this list reached that branch by omission (a new
  * instrument's leg with no rule of its own) and throws — it must never read as a deposit.
  */
-const USD_CASH_GENERIC_CAPITAL_FLOW_KINDS: ReadonlySet<string> = new Set([
+const FOREIGN_CASH_GENERIC_CAPITAL_FLOW_KINDS: ReadonlySet<string> = new Set([
   "",
-  "deposit_clp",
-  "deposit_usd",
-  "withdrawal_clp",
-  "withdrawal_usd",
-  "compra_usd",
-  "compra_usd_venta_clp",
+  "deposit",
+  "withdrawal",
+  "fx_purchase",
+  "fx_exchange",
   "other",
   "pago_tarjeta",
   "carga_tarjeta",
@@ -479,7 +477,7 @@ const USD_CASH_GENERIC_CAPITAL_FLOW_KINDS: ReadonlySet<string> = new Set([
  * Deposit-inflow flows for USD-cash accounts (event-based, native-frame — 2026-08-04).
  *
  * Every balance-affecting non-interest movement is a capital event (the USD sign comes from
- * `signedUsdDeltaForAccountMovement`, the same walk the balance uses, so the USD-frame event
+ * `signedNativeDeltaForAccountMovement`, the same walk the balance uses, so the native-frame event
  * sum ≡ balance − interest by construction). `savings_earnings` is the account's own P/L and
  * never a deposit. The CLP frame is per-event, never a re-priced aggregate — a window with no
  * events reads 0 deposits in both frames (no fx drift):
@@ -490,10 +488,15 @@ const USD_CASH_GENERIC_CAPITAL_FLOW_KINDS: ReadonlySet<string> = new Set([
  *  - anything else converts the USD magnitude at the event date's sell rate (same rate family
  *    as the balance valuation).
  */
-export function loadUsdCashCapitalSortFlows(
+export function loadForeignCashCapitalSortFlows(
   accountIds: number[]
 ): Map<number, EquityCapitalSortFlow[]> {
-  const ids = [...new Set(accountIds.filter((id) => id > 0 && isUsdCashAccount(id)))];
+  const currencyOf = new Map<number, string>();
+  for (const id of new Set(accountIds)) {
+    const c = id > 0 ? foreignCashCurrencyOf(id) : null;
+    if (c != null) currencyOf.set(id, c);
+  }
+  const ids = [...currencyOf.keys()];
   const out = new Map<number, EquityCapitalSortFlow[]>();
   if (ids.length === 0) return out;
   const ph = ids.map(() => "?").join(",");
@@ -518,9 +521,21 @@ export function loadUsdCashCapitalSortFlows(
     if (r.flow_kind === "stock_split" || r.flow_kind === "option_expire" || r.flow_kind === "option_assign") continue;
     for (const id of new Set([r.account_id, r.from_account_id, r.to_account_id])) {
       if (id == null || !requested.has(id)) continue;
-      const usdSigned = signedUsdDeltaForAccountMovement(r, id);
-      if (usdSigned === 0 || !Number.isFinite(usdSigned)) continue;
-      const sign = usdSigned > 0 ? 1 : -1;
+      const currency = currencyOf.get(id)!;
+      const nativeSigned = signedNativeDeltaForAccountMovement(r, id, currency);
+      if (nativeSigned === 0 || !Number.isFinite(nativeSigned)) continue;
+      const sign = nativeSigned > 0 ? 1 : -1;
+      // Trades, dividends and option premiums settle in dollars (their stock side's attribution).
+      const dollarSettled =
+        r.flow_kind === "stock_buy" ||
+        r.flow_kind === "stock_sell" ||
+        r.flow_kind === "dividend_payout" ||
+        (OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(r.flow_kind ?? "");
+      if (dollarSettled && movementUsdLeg(r) == null && movementClpLegOrZero(r) === 0) {
+        throw new Error(
+          `movement ${r.id}: ${r.flow_kind} on ${currency} cash account ${id} — a trade settles in dollars or pesos (equityBrokerageCapitalFlows.ts)`
+        );
+      }
       const capitalRow: TransferCapitalRow = {
         id: r.id!,
         account_id: r.to_account_id ?? id,
@@ -559,9 +574,9 @@ export function loadUsdCashCapitalSortFlows(
         if (f) push(id, { ...f, tie: `${f.tie}:cash:${id}` });
         continue;
       }
-      if (!USD_CASH_GENERIC_CAPITAL_FLOW_KINDS.has(r.flow_kind ?? "")) {
+      if (!FOREIGN_CASH_GENERIC_CAPITAL_FLOW_KINDS.has(r.flow_kind ?? "")) {
         throw new Error(
-          `movement ${r.id}: flow kind ${r.flow_kind} moves dollars on USD cash account ${id} but has no capital rule (equityBrokerageCapitalFlows.ts)`
+          `movement ${r.id}: flow kind ${r.flow_kind} moves ${currency} on cash account ${id} but has no capital rule (equityBrokerageCapitalFlows.ts)`
         );
       }
       const clpLeg = Math.abs(movementClpLegOrZero(r));
@@ -569,11 +584,12 @@ export function loadUsdCashCapitalSortFlows(
         clpLeg !== 0
           ? sign * clpLeg
           : sign *
-            usdCashUsdToClpAt(Math.abs(usdSigned), r.occurred_on, `usdCashDeposit:${r.id}`);
+            foreignCashToClpAt(Math.abs(nativeSigned), currency, r.occurred_on, `usdCashDeposit:${r.id}`);
       push(id, {
         occurred_on: r.occurred_on,
         amt,
-        amt_usd: usdSigned,
+        amt_usd: null,
+        ...nativeFlowLeg(nativeSigned, currency),
         capital_kind: clpLeg !== 0 ? "clp_wire" : "usd_reference",
         tie: `u:${r.id}:${id}`,
       });

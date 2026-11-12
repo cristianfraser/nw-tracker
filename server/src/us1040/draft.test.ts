@@ -371,12 +371,12 @@ describe("the 1040 draft", () => {
     createdAccounts.push(accountId);
     const credit = Number(
       db
-        .prepare(`INSERT INTO movements (account_id, occurred_on, amount, currency, flow_kind, note) VALUES (?, '2026-04-28', ?, 'usd', 'compra_usd', 'IRS TREAS 310 TAX REF')`)
+        .prepare(`INSERT INTO movements (account_id, occurred_on, amount, currency, flow_kind, note) VALUES (?, '2026-04-28', ?, 'usd', 'fx_purchase', 'IRS TREAS 310 TAX REF')`)
         .run(accountId, refund).lastInsertRowid
     );
     const debit = Number(
       db
-        .prepare(`INSERT INTO movements (account_id, occurred_on, amount, currency, flow_kind, note) VALUES (?, '2026-04-28', 50, 'usd', 'withdrawal_usd', 'x')`)
+        .prepare(`INSERT INTO movements (account_id, occurred_on, amount, currency, flow_kind, note) VALUES (?, '2026-04-28', 50, 'usd', 'withdrawal', 'x')`)
         .run(accountId).lastInsertRowid
     );
     expect(() => linkF1040Settlement({ taxYear: 2025, movementId: debit, description: "x" })).toThrow(/is a payment, the filed return asks for a refund/);

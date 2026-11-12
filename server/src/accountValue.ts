@@ -28,27 +28,33 @@ import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js"
 import type { Holding } from "./holdings.js";
 import { optionContractsThroughDate } from "./optionPosition.js";
 import type { CurrencyCode } from "./rates.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { convertValue } from "./valueConvert.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
 
 export type AccountValueOpts = { now?: Date };
 
 /**
- * The currency an account's value is natively expressed in: dollars for a dollar ledger, a
- * dollar-quoted stock, a coin or a fund on a dollar series; pesos for everything else — peso
- * ledgers, peso funds and, until their own phases, the card and the depto ledger.
+ * The currency an account's value is natively expressed in: a foreign cash ledger's own currency,
+ * a stock's quote, a coin's or a fund's series currency; pesos for everything else — peso
+ * ledgers, peso funds and, until their own phases, the card and the depto ledger (UF holdings).
  */
 export function accountValueCurrency(accountId: number): CurrencyCode {
   // An id with no account row behind it (a synthetic chart line) holds pesos.
   const h = accountProfileOptional(accountId)?.holding;
   if (!h) return "clp";
-  if (h.kind === "currency") return h.code === "usd" || h.code === "eur" ? h.code : "clp";
+  // A UF holding (the depto ledger) is valued in pesos until the loan phase.
+  if (h.kind === "currency") return profileHoldsForeignCash(accountId) ? h.code : "clp";
   if (h.kind === "stock") return h.quote;
   if (h.kind === "coin") return h.quote;
   if (h.kind === "fund") return h.quote;
   if (h.kind === "option") return h.quote;
   return "clp";
+}
+
+/** True when the account is a foreign cash ledger (its value is in its own currency). */
+function profileHoldsForeignCash(accountId: number): boolean {
+  return accountProfileOptional(accountId)?.quantity.kind === "foreign_ledger";
 }
 
 /**
@@ -71,8 +77,8 @@ export function accountHoldingQtyAt(
   const profile = accountProfileOptional(accountId);
   if (!profile) return null;
   const holding = profile.holding;
-  if (holding.kind === "currency" && holding.code === "usd") {
-    return { qty: usdCashBalanceUsdAt(accountId, today), holding, as_of: today };
+  if (profile.quantity.kind === "foreign_ledger") {
+    return { qty: foreignCashBalanceAt(accountId, today), holding, as_of: today };
   }
   if (holding.kind === "stock") return { qty: equityShareUnitsThroughYmd(accountId, today), holding, as_of: today };
   // Signed contracts: a short position is a negative quantity.

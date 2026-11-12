@@ -17,7 +17,7 @@ describe("supportsBookLedgerEdit", () => {
         ledger: "movements",
         units_delta: "optional",
         unit_label: "acciones",
-        brokerage_flow_kinds: ["deposit_clp"],
+        brokerage_flow_kinds: ["deposit"],
       })
     ).toBe(false);
   });

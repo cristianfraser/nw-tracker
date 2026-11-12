@@ -430,6 +430,14 @@ export const FX_RATES_SPEC: TriggerSpec = {
 const SPECS_312: readonly TriggerSpec[] = [...SPECS_304, FX_RATES_SPEC];
 
 /**
+ * Migration 318: an account declares the currency its cash ledger holds (`accounts.cash_currency`),
+ * which decides how its whole history is valued.
+ */
+const SPECS_318: readonly TriggerSpec[] = SPECS_312.map((spec) =>
+  spec.table === "accounts" ? { ...spec, watch: [...spec.watch, "cash_currency"] } : spec
+);
+
+/**
  * Migration 321: a card's cupo per currency (`credit_card_cupos`) and the feed close's SALDO
  * INICIAL per currency (`cc_feed_billing_close_amounts`) left their parent rows, whose triggers
  * watched them as columns: a cupo re-reads the card's whole history, a close amount re-frames its
@@ -453,9 +461,9 @@ export const CC_FEED_BILLING_CLOSE_AMOUNTS_SPEC: TriggerSpec = {
   rule: { backDays: 45 },
 };
 
-/** Migration 321 (frozen): 312's specs without the dropped columns, plus the two per-currency tables. */
+/** Migration 321 (frozen): 318's specs without the dropped columns, plus the two per-currency tables. */
 const SPECS_321: readonly TriggerSpec[] = [
-  ...SPECS_312.map((s) =>
+  ...SPECS_318.map((s) =>
     s.table === "credit_card_account_config" || s.table === "cc_feed_billing_closes"
       ? { ...s, watch: s.watch.filter((c) => !/^(cupo|saldo_inicial)_/.test(c)) }
       : s
@@ -466,6 +474,27 @@ const SPECS_321: readonly TriggerSpec[] = [
 
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
 export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_321;
+
+/**
+ * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column
+ * list (`cash_currency` added) — the mark trigger, which now watches it, and the write-log UPDATE
+ * trigger, which names every column the mark trigger does not watch. By name, for the caller to
+ * re-create in the table's trigger order.
+ */
+export function accountsTriggerSql318(dbi: DatabaseType): Record<string, string> {
+  const spec = SPECS_318.find((s) => s.table === "accounts");
+  if (!spec) throw new Error("migration 318: no mark-input spec for accounts");
+  const columns = (dbi.prepare(`SELECT name FROM pragma_table_info('accounts')`).all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("cash_currency")) throw new Error("migration 318: accounts.cash_currency does not exist");
+  const [ai, ad, au] = markInputTriggerSql(spec);
+  const [logAu] = writeLogTriggerSql("accounts", columns, spec.watch);
+  return {
+    mark_input_accounts_ai: ai!,
+    mark_input_accounts_ad: ad!,
+    mark_input_accounts_au: au!,
+    write_log_accounts_au: logAu!,
+  };
+}
 
 /** The trim rule of a mark row's table; a table the newest specs do not watch throws. */
 export function markInputRuleForSource(source: string): MarkInputRule {

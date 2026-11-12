@@ -1,3 +1,4 @@
+import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { payByFxDateIso } from "./ccBillingBalances.js";
 import {
   listCcPaymentEvidenceRows,
@@ -10,7 +11,7 @@ import { db } from "./db.js";
 import { traspasoUsdLegs } from "./cards/purchases.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { fxForLiveMtm } from "./fxLive.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+
 import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
@@ -147,7 +148,7 @@ export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
   if (dollarPayments.length > 0) {
     const costs = usdOutflowPesoCostByMovement();
     for (const r of dollarPayments) {
-      if (r.from_account_id == null || !isUsdCashAccount(r.from_account_id)) {
+      if (r.from_account_id == null || !isForeignCashAccountIn(r.from_account_id, "usd")) {
         throw new Error(`pago_tarjeta movement ${r.id}: a payment in dollars must leave a USD cash account`);
       }
       const cost = costs.get(r.id);

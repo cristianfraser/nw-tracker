@@ -7,16 +7,15 @@ import { OPTION_TRANSFER_FLOW_KINDS, OPTION_UNITS_FLOW_KINDS } from "./optionFlo
 
 /** The kinds a STOCK account's movement form offers (the single-leg and cash-settled share kinds). */
 export const STOCK_ACCOUNT_FLOW_KINDS = [
-  "deposit_clp",
-  "compra_usd",
-  "compra_usd_venta_clp",
+  "deposit",
+  "fx_purchase",
+  "fx_exchange",
   "stock_buy",
   "stock_sell",
   "dividend_payout",
   "savings_earnings",
   "cash_fee",
-  "withdrawal_clp",
-  "withdrawal_usd",
+  "withdrawal",
   "other",
 ] as const;
 
@@ -44,7 +43,7 @@ import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 export { BROKERAGE_SHARE_UNITS_FLOW_KINDS };
 
 /** Kinds whose label names a currency: built from the movement's own currencies (`movementFlowTypeLabel`). */
-export type CurrencyNamedFlowKind = "deposit_clp" | "withdrawal_clp" | "withdrawal_usd" | "compra_usd" | "compra_usd_venta_clp";
+export type CurrencyNamedFlowKind = "deposit" | "withdrawal" | "fx_purchase" | "fx_exchange";
 
 export const BROKERAGE_FLOW_KIND_LABELS: Record<Exclude<BrokerageFlowKind, CurrencyNamedFlowKind>, string> = {
   stock_buy: "Compra acciones",
@@ -83,7 +82,7 @@ export function brokerageShareUnitsThroughDate(accountId: number, asOfYmd: strin
  */
 export function intraDayFlowRank(flowKind: string | null | undefined): number {
   switch (flowKind) {
-    case "deposit_clp":
+    case "deposit":
     case "dividend_payout":
     case "savings_earnings":
       return 0;
@@ -92,9 +91,9 @@ export function intraDayFlowRank(flowKind: string | null | undefined): number {
     case "option_sell_open":
     case "option_sell_close":
       return 2;
-    case "compra_usd_venta_clp":
+    case "fx_exchange":
       return 3;
-    case "compra_usd":
+    case "fx_purchase":
     case "stock_buy":
     case "option_buy_open":
     case "option_buy_close":
@@ -103,8 +102,7 @@ export function intraDayFlowRank(flowKind: string | null | undefined): number {
     case "option_expire":
     case "option_assign":
       return 1;
-    case "withdrawal_clp":
-    case "withdrawal_usd":
+    case "withdrawal":
     case "cash_fee":
       return 5;
     default:
@@ -124,20 +122,18 @@ export function compareFlowRowsForDisplay(
   return b.id - a.id;
 }
 
-/** Signed CLP for charts / deposit merge (`deposit_clp` +, `withdrawal_clp` −, trades often 0). */
+/** Signed CLP for charts / deposit merge (`deposit` +, `withdrawal` −, trades often 0). */
 export function signedAmountClpForBrokerageFlow(
   flow_kind: string,
   amount_clp: number | null,
   amount_usd: number | null
 ): number {
   switch (flow_kind) {
-    case "deposit_clp":
+    case "deposit":
       return amount_clp != null && Number.isFinite(amount_clp) ? Math.abs(amount_clp) : 0;
-    case "withdrawal_clp":
+    case "withdrawal":
       return amount_clp != null && Number.isFinite(amount_clp) ? -Math.abs(amount_clp) : 0;
-    case "withdrawal_usd":
-      return 0;
-    case "compra_usd_venta_clp":
+    case "fx_exchange":
       return amount_clp != null && Number.isFinite(amount_clp) ? -Math.abs(amount_clp) : 0;
     // Commission charged to the cash balance — always a debit (P/L cost, not capital).
     case "cash_fee":
