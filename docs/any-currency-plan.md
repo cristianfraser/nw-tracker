@@ -227,8 +227,11 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
 2. **Foreign-currency lots.** `usdCashLotWalk.ts` / `usdCashCostLots.ts` walk lots of any foreign
    currency; the card payment cost tracer prices a payment in its currency. The F22's dollar-lot
    module (`f22/usdFx.ts`) applies the same oficios to any foreign currency (they speak of
-   «moneda extranjera»), at that currency's official rate; to confirm against the SII before
-   building.
+   «moneda extranjera»), at that currency's official rate. Checked 2026-11-12 against the text of
+   Oficio 2573/2022: its rule is stated for «moneda extranjera» (dollars are only its example), and
+   points 2–3 convert «según el tipo de cambio observado de la moneda que se trate, publicado por el
+   Banco Central» for a taxpayer without full accounting — so EUR lots use Banco Central's euro
+   observado (`eur_daily`), and a currency the Banco Central does not publish throws.
 3. **Cards.** `CcOwedNative {clp, usd}` (`ccOwedWalk.ts`, `ccOwedByCurrency.ts`) becomes a map by
    currency, its revaluation term per sub-balance. Statement lines: `cc_statement_lines`
    `amount_clp` / `amount_usd` and `valor_cuota_mensual_*` → `amount` + `currency` (a line is in
