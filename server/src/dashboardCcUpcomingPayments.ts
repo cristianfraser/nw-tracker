@@ -29,7 +29,7 @@ export type CcUpcomingPaymentRow = {
    * (to the cent), each ≥ 0. `amount_clp` is their pesos; a display unit converts each one
    * (`upcomingMonthsInUnit`), never the dollars through pesos.
    */
-  owed: { clp: number; usd: number };
+  owed: Record<string, number>;
   /** The facturación's total in pesos (CLP + the dollars in pesos), as its facturaciones row shows it. */
   billed_clp: number;
   /** Its pay-by has passed with something still owed. */
@@ -125,8 +125,8 @@ export function upcomingPaymentRows(
   };
   const out: CcUpcomingPaymentRow[] = [];
   const push = (f: CcFacturacionRow, owedClp: number, owedUsd: number): void => {
-    const owed = { clp: Math.max(0, Math.round(owedClp)), usd: Math.max(0, centsOf(owedUsd)) };
-    const amount = owed.clp + pesosOfDollars(owed.usd);
+    const owed: Record<string, number> = { clp: Math.max(0, Math.round(owedClp)), usd: Math.max(0, centsOf(owedUsd)) };
+    const amount = owed.clp! + pesosOfDollars(owed.usd!);
     if (amount <= 0) return;
     if (f.pay_by_iso == null || f.pay_by_source == null) {
       throw new Error(`Facturación ${f.billing_month} owes ${amount} and has no pay-by date`);

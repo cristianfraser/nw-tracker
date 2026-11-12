@@ -630,8 +630,11 @@ export function upcomingMonthsInUnit(
   };
   const amountInUnit = (it: UpcomingPaymentsMonth["items"][number]): number => {
     if (it.card == null) return convert(it.amount_clp, "clp");
-    const { clp, usd } = it.card.owed;
-    return roundToCurrency(convert(clp, "clp"), unit) + (usd > 0 ? roundToCurrency(convert(usd, "usd"), unit) : 0);
+    let sum = 0;
+    for (const [currency, owed] of Object.entries(it.card.owed)) {
+      if (owed > 0) sum += roundToCurrency(convert(owed, currency), unit);
+    }
+    return sum;
   };
   return months.map((m) => {
     const items = m.items.map((it) => ({
