@@ -1,15 +1,26 @@
-/** `GET /api/accounts/:id/deposit-inflows` — same merge as charts / summary deposits */
+import type { DisplayUnitCode } from "./core.js";
+
+/** One deposit event in the response's `unit` (at its own day's rate) and the running total. */
+export interface DepositInflowEventInUnit {
+  occurred_on: string;
+  amt: number;
+  cumulative: number;
+}
+
+/** The account detail bundle's deposit timelines — same merge as charts / summary deposits, in `unit`. */
 export interface AccountDepositInflowsResponse {
   account_id: number;
+  /** The currency every amount is in: the request's display unit. */
+  unit: DisplayUnitCode;
   /** All external capital (includes state bonus). */
-  total_clp: number;
+  total: number;
   /** Personal deposits only (excludes `aporte_estatal_clp`). */
-  display_total_clp: number;
-  events: { occurred_on: string; amt_clp: number; cumulative_clp: number }[];
-  display_events: { occurred_on: string; amt_clp: number; cumulative_clp: number }[];
+  display_total: number;
+  events: DepositInflowEventInUnit[];
+  display_events: DepositInflowEventInUnit[];
   /** APV-A state bonus rows (`aporte_estatal_clp`). */
-  state_contribution_total_clp: number;
-  state_contribution_events: { occurred_on: string; amt_clp: number; cumulative_clp: number }[];
+  state_contribution_total: number;
+  state_contribution_events: DepositInflowEventInUnit[];
 }
 
 /** `GET /api/accounts/:id/mortgage-ledger` — property: full sheet from CSV; other accounts: empty. */

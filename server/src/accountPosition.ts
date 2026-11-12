@@ -457,29 +457,32 @@ export function positionMarkFromMeta(
   return { value_clp: ovc, as_of_date: meta.afp_override_value_as_of ?? null };
 }
 
-export type AccountPositionSnapshot = {
+/**
+ * An account's position in pesos as of today — the frame the account page's and the dashboard
+ * row's `position` are converted from (`accountPositionInUnit.ts`). `value_is_today` says the
+ * value is the account's today value (`accountTodayValue`), so it converts as that value does;
+ * otherwise it is the position's own mark, dated `value_as_of`.
+ */
+export type AccountPositionClpFrame = {
   ticker: string;
   units_kind: UnitsKind;
   units: number | null;
-  deposited_clp: number;
   value_clp: number | null;
   value_as_of: string | null;
   value_per_unit_clp: number | null;
+  value_is_today: boolean;
 };
 
 /**
- * The `position` block of the dashboard row and of the account page summary — one copy, so the
+ * The position frame of the dashboard row and of the account page summary — one copy, so the
  * two cannot drift. `today` is the account's value today (`accountTodayValue`), `meta` its
- * position asked at Chile today. `extra` adds fields computed from the snapshot's value (the
- * account page's equity returns).
+ * position asked at Chile today.
  */
-export function positionSnapshotFromMeta<E extends object = Record<never, never>>(
+export function positionClpFrameFromMeta(
   accountId: number,
   meta: AccountPositionMeta | null,
-  deposits_clp: number,
-  today: { value_clp: number; as_of_date: string } | null | undefined,
-  extra?: (value_clp: number | null) => E | null
-): (AccountPositionSnapshot & Partial<E>) | null {
+  today: { value_clp: number; as_of_date: string } | null | undefined
+): AccountPositionClpFrame | null {
   if (meta == null) return null;
   const qk = accountProfileOptional(accountId)?.quantity.kind;
   const afp = qk === "cuota_ledger";
@@ -508,10 +511,9 @@ export function positionSnapshotFromMeta<E extends object = Record<never, never>
     ticker: meta.ticker,
     units_kind: meta.units_kind,
     units,
-    deposited_clp: deposits_clp,
     value_clp,
     value_as_of,
     value_per_unit_clp,
-    ...(extra?.(value_clp) ?? {}),
-  } as AccountPositionSnapshot & Partial<E>;
+    value_is_today: value_clp != null && v != null && value_clp === v,
+  };
 }

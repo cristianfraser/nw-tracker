@@ -33,16 +33,16 @@ afterAll(() => {
 describe("equityReturnSnapshot — return on deposited", () => {
   it("is the total return over the capital deposited", () => {
     if (accountId == null) return;
-    const snap = equityReturnSnapshot(accountId, 100_000, 110_000)!;
-    expect(snap.total_return_clp).toBe(10_000);
+    const snap = equityReturnSnapshot(accountId, 100_000, 110_000, "clp")!;
+    expect(snap.total_return).toBe(10_000);
     expect(snap.return_on_deposited_pct).toBeCloseTo(0.1, 12);
   });
 
   it("a position sold off has no capital base left: null, not −100%", () => {
     if (accountId == null) return;
     // Sold everything at a loss: 2.000 of net deposits remain against a value of 0.
-    const snap = equityReturnSnapshot(accountId, 2_000, 0)!;
-    expect(snap.total_return_clp).toBe(-2_000);
+    const snap = equityReturnSnapshot(accountId, 2_000, 0, "clp")!;
+    expect(snap.total_return).toBe(-2_000);
     expect(snap.return_on_deposited_pct).toBeNull();
   });
 });

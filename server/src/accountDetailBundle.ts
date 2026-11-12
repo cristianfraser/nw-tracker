@@ -2,10 +2,8 @@ import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
   getStateContributionInflowEventsForAccount,
-  pocketDepositsClpForAccount,
-  totalDisplayDepositsClpForAccount,
-  totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
+import { flowEventInUnit, type FlowEvent } from "./rates.js";
 import { monthlyPerfForAccountDisplay } from "./detalleDailyChainedPct.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
@@ -27,7 +25,8 @@ import { equityQuoteCurrency } from "./equityQuote.js";
 import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
-import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
+import { getAccountPositionMeta } from "./accountPosition.js";
+import { positionSnapshotInUnit } from "./accountPositionInUnit.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountProfile } from "./accountProfile.js";
 import { accountSummaryProfileFields } from "./accountRowProfileFields.js";
@@ -49,7 +48,7 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { buildDashboardAccountRow } from "./dashboardAccounts.js";
-import { accountTodayValue } from "./accountTodayValue.js";
+import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
 
@@ -110,28 +109,46 @@ export async function buildAccountDetailBundle(
           ?.label ?? cat.bucket_label
       : cat.bucket_label;
 
-  const deposits_clp = pocketDepositsClpForAccount(accountId);
+  // Every money figure of the summary and the deposit timelines is in `unit`, each deposit at
+  // its own day's rate (`flowEventInUnit`): Σ display events = the summary's «Depositado».
+  const events = getMergedDepositInflowEventsForAccount(accountId);
+  const displayEvents = getMergedDisplayDepositInflowEventsForAccount(accountId);
+  const stateEvents = getStateContributionInflowEventsForAccount(accountId);
+  const inUnit = (list: FlowEvent[]) => {
+    let cumulative = 0;
+    const rows = list.map((e) => {
+      const amt = flowEventInUnit(e, unit);
+      cumulative += amt;
+      return { occurred_on: e.occurred_on, amt, cumulative };
+    });
+    return { rows, total: cumulative };
+  };
+  const allInUnit = inUnit(events);
+  const displayInUnit = inUnit(displayEvents);
+  const stateInUnit = inUnit(stateEvents);
+  // Personal capital: the APV-A state bonus is not your money.
+  const deposits = displayInUnit.total;
   // The account's one today value and its position asked at Chile today — the same pair the
   // dashboard row reads, so the header and the card cannot disagree.
   const today = chileCalendarTodayYmd();
   const positionMeta = getAccountPositionMeta(accountId, { asOfYmd: today });
   const latest = accountTodayValue(accountId, { positionMeta });
-  const position = positionSnapshotFromMeta(
-    accountId,
-    positionMeta,
-    deposits_clp,
-    latest,
-    (value_clp) => equityReturnSnapshot(accountId, deposits_clp, value_clp)
-  );
+  const position = positionSnapshotInUnit(accountId, positionMeta, latest, deposits, unit);
+  const equityReturns = position ? equityReturnSnapshot(accountId, position.deposited, position.value, unit) : null;
   // One account per ticker whatever the broker: the split by the cash account that paid.
-  const positionWithBrokers =
-    position != null && position.units_kind === "shares" && accountUsesEquityMtm(accountId)
-      ? {
+  const positionFull =
+    position == null
+      ? null
+      : {
           ...position,
-          brokers: equityBrokerHoldings(accountId, today, position.value_clp),
-        }
-      : position;
-  const latest_valuation_clp = latest?.value_clp ?? null;
+          ...(equityReturns ?? {}),
+          ...(position.units_kind === "shares" && accountUsesEquityMtm(accountId)
+            ? { brokers: equityBrokerHoldings(accountId, today, position.value) }
+            : {}),
+        };
+  const latest_valuation = latest ? todayValueInUnit(accountId, latest, unit) : null;
+  // What the account holds, in its own currency (a dollar account's dollars whatever the unit).
+  const latest_valuation_native = latest ? { value: latest.native_value, currency: latest.native_currency } : null;
   const latest_valuation_date = latest?.as_of_date ?? null;
 
   const accountRow = accountRowForId(accountId);
@@ -143,10 +160,12 @@ export async function buildAccountDetailBundle(
     group_label,
     group_peer_count: cat.group_peer_count,
     equity_quote_currency: bundleEquityTicker ? equityQuoteCurrency(bundleEquityTicker) : null,
-    deposits_clp,
-    latest_valuation_clp,
+    unit,
+    deposits,
+    latest_valuation,
+    latest_valuation_native,
     latest_valuation_date,
-    position: positionWithBrokers,
+    position: positionFull,
     movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
     book_ledger_edit: bookLedgerEditSchemaForAccount(accountId),
     mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(accountId),
@@ -158,34 +177,15 @@ export async function buildAccountDetailBundle(
   const tsRaw = getAccountValuationTimeseries(accountId, unit, { granularity });
   const ts = tsRaw ? attachColorsToValuationPayload(tsRaw) : null;
 
-  const events = getMergedDepositInflowEventsForAccount(accountId);
-  const displayEvents = getMergedDisplayDepositInflowEventsForAccount(accountId);
-  const stateEvents = getStateContributionInflowEventsForAccount(accountId);
-  const total_clp = deposits_clp;
-  const display_total_clp = totalDisplayDepositsClpForAccount(accountId);
-  let cumulative_clp = 0;
-  const events_with_cumulative = events.map((e) => {
-    cumulative_clp += e.amt;
-    return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp };
-  });
-  let display_cumulative_clp = 0;
-  const display_events = displayEvents.map((e) => {
-    display_cumulative_clp += e.amt;
-    return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp: display_cumulative_clp };
-  });
-  let state_cumulative_clp = 0;
-  const state_contribution_events = stateEvents.map((e) => {
-    state_cumulative_clp += e.amt;
-    return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp: state_cumulative_clp };
-  });
   const depositInflows = {
     account_id: accountId,
-    total_clp,
-    display_total_clp,
-    events: events_with_cumulative,
-    display_events,
-    state_contribution_total_clp: totalStateContributionsClpForAccount(accountId),
-    state_contribution_events,
+    unit,
+    total: allInUnit.total,
+    display_total: displayInUnit.total,
+    events: allInUnit.rows,
+    display_events: displayInUnit.rows,
+    state_contribution_total: stateInUnit.total,
+    state_contribution_events: stateInUnit.rows,
   };
 
   let mortgageLedger: {

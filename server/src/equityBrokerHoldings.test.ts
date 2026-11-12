@@ -76,7 +76,7 @@ describe("equityBrokerHoldings", () => {
     expect(out[2]!.cash_account_name).toBeNull();
     expect(out.reduce((a, h) => a + h.share, 0)).toBeCloseTo(1, 12);
     expect(out[1]!.share).toBeCloseTo(3 / 14, 12);
-    expect(out[1]!.value_clp).toBeCloseTo(300_000, 6);
+    expect(out[1]!.value).toBeCloseTo(300_000, 6);
   });
 
   it("returns nothing for a position with no shares", () => {

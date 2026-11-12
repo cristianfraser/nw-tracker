@@ -3,6 +3,7 @@ import type { AccountCcInstallmentsResponse } from "./creditCard.js";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard.js";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage.js";
 import type { PeriodReturnsPayload } from "./performance.js";
+import type { Money } from "./flows.js";
 
 import type { BookLedgerEditSchema, MovementCreateSchema } from "./ledgerSchemas.js";
 
@@ -86,8 +87,14 @@ export interface AccountSummaryResponse {
   group_peer_count: number | null;
   /** Quote currency of `accounts.equity_ticker` (clp for Bolsa de Santiago `.SN`); null for non-equity accounts. */
   equity_quote_currency?: "usd" | "clp" | null;
-  deposits_clp: number;
-  latest_valuation_clp: number | null;
+  /** The currency `deposits`, `latest_valuation` and the position's money are in: the request's display unit. */
+  unit: DisplayUnitCode;
+  /** Net personal capital deposited (the aportes timeline), each deposit at its own day's rate. */
+  deposits: number;
+  /** The account's value today. */
+  latest_valuation: number | null;
+  /** The same value in what the account holds (a dollar account's dollars whatever the unit). */
+  latest_valuation_native: Money | null;
   latest_valuation_date: string | null;
   position: AccountPositionSnapshot | null;
   movement_create?: MovementCreateSchema;

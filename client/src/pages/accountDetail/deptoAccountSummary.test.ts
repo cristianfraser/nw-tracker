@@ -147,7 +147,7 @@ describe("buildMortgageSummaryCardsData", () => {
           },
         ],
       },
-      { latest_valuation_clp: 74_695_292 },
+      { latest_valuation: 74_695_292 },
       [],
       null
     );
@@ -178,7 +178,7 @@ describe("buildPropertySummaryCardsData", () => {
           }),
         ],
       },
-      { deposits_clp: 94_511_320, latest_valuation_clp: 45_000_000 },
+      { deposits: 94_511_320, latest_valuation: 45_000_000 },
       [
         {
           as_of_date: "2025-01-31",

@@ -425,10 +425,10 @@ describe("equityBrokerageCapitalFlows on the Vitest person", () => {
     const dividends = totalDividendsClpForAccount(spyId);
     if (dividends <= 0) return;
 
-    const snap = equityReturnSnapshot(spyId, pocket, pocket + 1_000);
+    const snap = equityReturnSnapshot(spyId, pocket, pocket + 1_000, "clp");
     expect(snap).not.toBeNull();
-    expect(snap!.dividends_clp).toBeCloseTo(dividends, -2);
-    expect(snap!.total_return_clp).toBeCloseTo(1_000, 0);
+    expect(snap!.dividends).toBeCloseTo(dividends, -2);
+    expect(snap!.total_return).toBeCloseTo(1_000, 0);
   });
 });
 

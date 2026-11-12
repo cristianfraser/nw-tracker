@@ -2252,20 +2252,20 @@
         "es": "Cuotas / unidades"
       },
       "colDeposited": {
-        "en": "Deposited (CLP)",
-        "es": "Depositado (CLP)"
+        "en": "Deposited",
+        "es": "Depositado"
       },
       "colValueToday": {
-        "en": "Value today (CLP)",
-        "es": "Valor hoy (CLP)"
+        "en": "Value today",
+        "es": "Valor hoy"
       },
       "colValueDate": {
         "en": "Value date",
         "es": "Fecha valor"
       },
       "colValuePerUnit": {
-        "en": "Value / unit (CLP)",
-        "es": "Valor / unidad (CLP)"
+        "en": "Value / unit",
+        "es": "Valor / unidad"
       }
     },
     "monthlyPerfComputedTitle": {
@@ -2385,9 +2385,9 @@
         "en": "USD balance",
         "es": "Saldo USD"
       },
-      "balanceClp": {
-        "en": "CLP value",
-        "es": "Valor CLP"
+      "valueInUnit": {
+        "en": "Value in {{currency}}",
+        "es": "Valor en {{currency}}"
       },
       "asOf": {
         "en": "As of",
@@ -3474,12 +3474,12 @@
         "es": "Fecha"
       },
       "colAmount": {
-        "en": "CLP amount",
-        "es": "Monto CLP"
+        "en": "Amount",
+        "es": "Monto"
       },
       "colAccumulated": {
-        "en": "Accumulated CLP",
-        "es": "Acumulado CLP"
+        "en": "Accumulated",
+        "es": "Acumulado"
       }
     },
     "prepayments": {
@@ -3550,8 +3550,8 @@
         "es": "Proporción"
       },
       "colValue": {
-        "en": "Value today (CLP)",
-        "es": "Valor hoy (CLP)"
+        "en": "Value today",
+        "es": "Valor hoy"
       },
       "noCashAccount": {
         "en": "No cash account",

@@ -76,14 +76,15 @@ export function emptyCcLedger(accountId: number): AccountDetailBundleResponse["c
   };
 }
 
-function emptyDepositInflows(accountId: number): AccountDetailBundleResponse["depositInflows"] {
+function emptyDepositInflows(accountId: number, unit: DisplayUnit): AccountDetailBundleResponse["depositInflows"] {
   return {
     account_id: accountId,
-    total_clp: 0,
-    display_total_clp: 0,
+    unit,
+    total: 0,
+    display_total: 0,
     events: [],
     display_events: [],
-    state_contribution_total_clp: 0,
+    state_contribution_total: 0,
     state_contribution_events: [],
   };
 }
@@ -104,8 +105,10 @@ export function buildPlaceholderAccountDetailBundle(
       group_slug: null,
       group_label: null,
       group_peer_count: null,
-      deposits_clp: 0,
-      latest_valuation_clp: null,
+      unit,
+      deposits: 0,
+      latest_valuation: null,
+      latest_valuation_native: null,
       latest_valuation_date: null,
       position: null,
     },
@@ -116,7 +119,7 @@ export function buildPlaceholderAccountDetailBundle(
       accounts: { lines: [], points: [] },
       granularity: "monthly",
     },
-    depositInflows: emptyDepositInflows(accountId),
+    depositInflows: emptyDepositInflows(accountId, unit),
     mortgageLedger: emptyMortgageLedger(accountId),
     ccLedger: emptyCcLedger(accountId),
     checkingCartolaMonths: null,

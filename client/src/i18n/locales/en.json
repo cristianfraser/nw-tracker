@@ -700,10 +700,10 @@
       "title": "Position (ticker and units)",
       "colTicker": "Ticker",
       "colUnits": "Units",
-      "colDeposited": "Deposited (CLP)",
-      "colValueToday": "Value today (CLP)",
+      "colDeposited": "Deposited",
+      "colValueToday": "Value today",
       "colValueDate": "Value date",
-      "colValuePerUnit": "Value / unit (CLP)"
+      "colValuePerUnit": "Value / unit"
     },
     "monthlyPerfComputedTitle": "Monthly performance (computed)",
     "plMonthlyVsYtdTitle": "Monthly P/L vs YTD",
@@ -741,7 +741,7 @@
     "usdCash": {
       "positionTitle": "USD balance",
       "balanceUsd": "USD balance",
-      "balanceClp": "CLP value",
+      "valueInUnit": "Value in {{currency}}",
       "asOf": "As of"
     },
     "movements": {
@@ -1040,8 +1040,8 @@
     "stateContribution": {
       "title": "APV-A state contribution",
       "colDate": "Date",
-      "colAmount": "CLP amount",
-      "colAccumulated": "Accumulated CLP"
+      "colAmount": "Amount",
+      "colAccumulated": "Accumulated"
     },
     "prepayments": {
       "title": "Prepayments vs investing",
@@ -1062,7 +1062,7 @@
       "colAccount": "Cash account",
       "colUnits": "Units",
       "colShare": "Share",
-      "colValue": "Value today (CLP)",
+      "colValue": "Value today",
       "noCashAccount": "No cash account"
     }
   },

@@ -77,7 +77,7 @@ function latestMonthlyPerfRow(
 
 export function buildMortgageSummaryCardsData(
   ledger: AccountMortgageLedgerResponse,
-  summary: Pick<AccountSummaryResponse, "latest_valuation_clp">,
+  summary: Pick<AccountSummaryResponse, "latest_valuation">,
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[],
   /** A dashboard row in pesos (its unit is the payload's: callers pass it only in CLP). */
   accountDashRow: DashboardAccountRow | null
@@ -93,7 +93,7 @@ export function buildMortgageSummaryCardsData(
     null;
   const balanceClp =
     snapshot?.restante_clp ??
-    summary.latest_valuation_clp ??
+    summary.latest_valuation ??
     accountDashRow?.current_value ??
     null;
 
@@ -109,7 +109,7 @@ export function buildMortgageSummaryCardsData(
 
 export function buildPropertySummaryCardsData(
   ledger: AccountMortgageLedgerResponse,
-  summary: Pick<AccountSummaryResponse, "deposits_clp" | "latest_valuation_clp">,
+  summary: Pick<AccountSummaryResponse, "deposits" | "latest_valuation">,
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[],
   /** A dashboard row in pesos (its unit is the payload's: callers pass it only in CLP). */
   accountDashRow: DashboardAccountRow | null
@@ -121,10 +121,10 @@ export function buildPropertySummaryCardsData(
     valueUf: valueRow?.valor_neto_uf ?? null,
     valueClp:
       valueRow?.valor_neto_clp ??
-      summary.latest_valuation_clp ??
+      summary.latest_valuation ??
       accountDashRow?.current_value ??
       null,
-    depositedClp: summary.deposits_clp,
+    depositedClp: summary.deposits,
     plYtdClp: latestPerf?.ytd_nominal_pl ?? accountDashRow?.delta_year ?? null,
     plTotalClp:
       latestPerf?.cumulative_nominal_pl ?? accountDashRow?.delta_total ?? null,

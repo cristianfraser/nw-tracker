@@ -47,8 +47,8 @@ export function DeptoAccountSummaryCards({
 }: {
   variant: "mortgage" | "property";
   ledger: AccountMortgageLedgerResponse;
-  summary: Pick<AccountSummaryResponse, "latest_valuation_clp"> &
-    Partial<Pick<AccountSummaryResponse, "deposits_clp">>;
+  summary: Pick<AccountSummaryResponse, "latest_valuation"> &
+    Partial<Pick<AccountSummaryResponse, "deposits">>;
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   accountDashRow: DashboardAccountRow | null;
   /** The ledger is a placeholder or held prior data: the cards dim (empty values read «—»). */
@@ -70,8 +70,8 @@ export function DeptoAccountSummaryCards({
         ? buildPropertySummaryCardsData(
             ledger,
             {
-              latest_valuation_clp: summary.latest_valuation_clp,
-              deposits_clp: summary.deposits_clp ?? 0,
+              latest_valuation: summary.latest_valuation,
+              deposits: summary.deposits ?? 0,
             },
             monthlyPerfRows,
             accountDashRow
