@@ -3,9 +3,9 @@
   "totals": {
     "currency-formatter": 293,
     "currency-list-literal": 7,
-    "currency-type-union": 134,
+    "currency-type-union": 133,
     "dto-currency-key": 292,
-    "unit-literal-compare": 352
+    "unit-literal-compare": 344
   },
   "violations": {
     "client/src/api.ts": {
@@ -298,7 +298,7 @@
       "unit-literal-compare": 1
     },
     "server/src/accountMovementsApi.ts": {
-      "unit-literal-compare": 3
+      "unit-literal-compare": 1
     },
     "server/src/accountPerformance.ts": {
       "unit-literal-compare": 2
@@ -579,21 +579,15 @@
       "currency-list-literal": 1,
       "unit-literal-compare": 1
     },
-    "server/src/movementFlowType.ts": {
-      "unit-literal-compare": 2
-    },
     "server/src/movementUnitsPolicy.ts": {
       "currency-type-union": 1,
-      "unit-literal-compare": 14
+      "unit-literal-compare": 10
     },
     "server/src/navValueMap.ts": {
       "unit-literal-compare": 1
     },
     "server/src/netWorthAllTimeHigh.ts": {
       "unit-literal-compare": 4
-    },
-    "server/src/panelAccountNotes.ts": {
-      "currency-type-union": 1
     },
     "server/src/paymentProcessorReceipts.ts": {
       "currency-type-union": 1,

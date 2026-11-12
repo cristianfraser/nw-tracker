@@ -208,7 +208,7 @@ function flowsDepositsNetTotalsByAccount(
  * Net capital flow for one account over the half-open window `(startYmd, endYmd]`, in `unit`.
  * Sums merged deposit-inflow events in the window (same event source as the monthly builder,
  * so short-horizon returns flow-adjust identically to MTD) — USD-cash accounts included since
- * 2026-08-04: their events come from `loadUsdCashCapitalSortFlows` (native USD legs, per-event
+ * 2026-08-04: their events come from `loadForeignCashCapitalSortFlows` (native USD legs, per-event
  * CLP conversion), so a window with no events reads 0 in both frames instead of leaking fx
  * drift on the standing balance. Callers pass the window's prior anchor as `startYmd`
  * (exclusive) and the reference date as `endYmd` (inclusive).

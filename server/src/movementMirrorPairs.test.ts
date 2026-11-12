@@ -179,7 +179,7 @@ describe("listMirrorPairCandidates", () => {
         .prepare(
           `INSERT INTO movements (account_id, amount, currency, occurred_on, flow_kind, note) VALUES (?,?,'clp',?,?,?)`
         )
-        .run(ids.generic, -AMT.flowKind, "2026-03-25", "withdrawal_clp", NOTE).lastInsertRowid
+        .run(ids.generic, -AMT.flowKind, "2026-03-25", "withdrawal", NOTE).lastInsertRowid
     );
     insLeg(ids.generic2, AMT.flowKind, "2026-03-25");
     // USD-denominated leg (legacy amount_usd row): currency filter excludes it from the pool.

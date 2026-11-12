@@ -1,3 +1,4 @@
+import { foreignCashToClpAt, isForeignCashAccount } from "./foreignCashAccounts.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -18,10 +19,9 @@ import {
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
-import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
 import { flowLegsInUnit } from "./flowLegs.js";
 import { loadF22RefundMovements } from "./f22Settlements.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
@@ -129,8 +129,8 @@ export type DepositReconciliationLedger = {
 };
 
 const NON_CAPITAL_FLOW_KINDS = new Set([
-  "compra_usd",
-  "compra_usd_venta_clp",
+  "fx_purchase",
+  "fx_exchange",
   "stock_buy",
   "stock_sell",
   // Cash dividend paid from a stock to USD cash — return of capital, not a checking-funded deposit.
@@ -165,7 +165,7 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 // `accountDeposits.ts` counts — reconciles like a peso one, at its dollars priced at the day's rate,
 // and its "checking present" reads the dollar checking accounts' listed months: a dollar deposit is
 // funded from a dollar account. Dollar transfers (US checking → a Roth IRA's shares) are transfer
-// rows and need no link, like peso transfers; a dollar cash account is never a target (`usdCashIds`).
+// rows and need no link, like peso transfers; a foreign cash account is never a target (`foreignCashIds`).
 
 /** The months a dollar checking account lists a movement in (either direction). */
 function loadDollarCheckingMonthsWithData(): Set<string> {
@@ -319,7 +319,7 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
 
   const accounts = listDepositFlowAccounts(false);
   const accountMap = new Map(accounts.map((a) => [a.account_id, a]));
-  const usdCashIds = new Set(accounts.map((a) => a.account_id).filter((id) => isUsdCashAccount(id)));
+  const foreignCashIds = new Set(accounts.map((a) => a.account_id).filter((id) => isForeignCashAccount(id)));
   const checkingBucketIds = new Set([...listMovementBalanceCashAccountIds(), ...listDollarCheckingAccountIds()]);
   // Crypto coins are funded internally by the Buda buffer, not directly by checking — exclude them;
   // the buffer's abono deposits are the reconcilable targets (see loadPositiveInflowMovements).
@@ -327,7 +327,7 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
   const budaBufferId = loadBudaBufferAccountId();
   const nonUsdIds = accounts
     .map((a) => a.account_id)
-    .filter((id) => !usdCashIds.has(id))
+    .filter((id) => !foreignCashIds.has(id))
     .filter((id) => !checkingBucketIds.has(id))
     .filter((id) => !cryptoCoinIds.has(id))
     .filter((id) => {
@@ -361,7 +361,7 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
 
     const usd = dollarDepositUsd(m);
     // A dollar deposit: its dollars, in pesos at the day's rate (as the deposit event prices it).
-    const amount_clp = usd != null ? usdCashUsdToClpAt(usd, m.occurred_on, `depositReconciliation:${m.id}`) : Math.round(movementClpLegOrZero(m));
+    const amount_clp = usd != null ? foreignCashToClpAt(usd, "usd", m.occurred_on, `depositReconciliation:${m.id}`) : Math.round(movementClpLegOrZero(m));
     const amount_usd_raw = usd ?? clpToUsdAtDate(amount_clp, m.occurred_on);
     if (amount_usd_raw == null || !Number.isFinite(amount_usd_raw)) {
       if (amount_clp !== 0) fxError = true;

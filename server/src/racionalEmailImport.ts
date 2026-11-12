@@ -7,7 +7,7 @@
  *   mail is Racional confirming the money ARRIVED, so unlike an inbound wire there is no
  *   promised-but-missing risk; the bank's own listing of the debit is absorbed later by the
  *   checking importers' `superseded_by_transfer` skip (same mechanism as Fintual retiros).
- * - «Agregaste USD $Y a tu Billetera» → Racional CLP → Racional USD `compra_usd_venta_clp`
+ * - «Agregaste USD $Y a tu Billetera» → Racional CLP → Racional USD `fx_exchange`
  *   transfer (CLP from-leg from the body, USD counter leg from the subject). This event exists
  *   NOWHERE else — the app's movements list never shows conversions — so the mail is the only
  *   automatic source.
@@ -152,7 +152,7 @@ function planConversion(event: BrokerNotification): RacionalEmailPlannedMovement
     from_account_id: null,
     to_account_id: null,
     units_delta: null,
-    flow_kind: "compra_usd_venta_clp",
+    flow_kind: "fx_exchange",
     note: `Racional e-mail: compra de dólares (${occurredOn})`,
     create_account: null,
     duplicate_of: null,

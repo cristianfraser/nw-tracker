@@ -14,11 +14,11 @@ export interface AccountDepositInflowsResponse {
   unit: DisplayUnitCode;
   /** All external capital (includes state bonus). */
   total: number;
-  /** Personal deposits only (excludes `aporte_estatal_clp`). */
+  /** Personal deposits only (excludes `state_bonus`). */
   display_total: number;
   events: DepositInflowEventInUnit[];
   display_events: DepositInflowEventInUnit[];
-  /** APV-A state bonus rows (`aporte_estatal_clp`). */
+  /** APV-A state bonus rows (`state_bonus`). */
   state_contribution_total: number;
   state_contribution_events: DepositInflowEventInUnit[];
 }

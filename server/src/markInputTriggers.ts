@@ -429,8 +429,37 @@ export const FX_RATES_SPEC: TriggerSpec = {
 /** Migration 312 (frozen): 304's specs plus the generic rate table. */
 const SPECS_312: readonly TriggerSpec[] = [...SPECS_304, FX_RATES_SPEC];
 
+/**
+ * Migration 318: an account declares the currency its cash ledger holds (`accounts.cash_currency`),
+ * which decides how its whole history is valued.
+ */
+const SPECS_318: readonly TriggerSpec[] = SPECS_312.map((spec) =>
+  spec.table === "accounts" ? { ...spec, watch: [...spec.watch, "cash_currency"] } : spec
+);
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_312;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_318;
+
+/**
+ * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column
+ * list (`cash_currency` added) — the mark trigger, which now watches it, and the write-log UPDATE
+ * trigger, which names every column the mark trigger does not watch. By name, for the caller to
+ * re-create in the table's trigger order.
+ */
+export function accountsTriggerSql318(dbi: DatabaseType): Record<string, string> {
+  const spec = SPECS_318.find((s) => s.table === "accounts");
+  if (!spec) throw new Error("migration 318: no mark-input spec for accounts");
+  const columns = (dbi.prepare(`SELECT name FROM pragma_table_info('accounts')`).all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("cash_currency")) throw new Error("migration 318: accounts.cash_currency does not exist");
+  const [ai, ad, au] = markInputTriggerSql(spec);
+  const [logAu] = writeLogTriggerSql("accounts", columns, spec.watch);
+  return {
+    mark_input_accounts_ai: ai!,
+    mark_input_accounts_ad: ad!,
+    mark_input_accounts_au: au!,
+    write_log_accounts_au: logAu!,
+  };
+}
 
 /** The trim rule of a mark row's table; a table the newest specs do not watch throws. */
 export function markInputRuleForSource(source: string): MarkInputRule {

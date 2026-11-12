@@ -33,9 +33,10 @@
  *   (a booked withdrawal's net slices keep only their own pesos, `feeCostToNet: false`);
  * - an own transfer between two USD cash accounts carries slices and is no disposal.
  */
+import { listForeignCashAccountIds } from "./cashCurrency.js";
 import { db } from "./db.js";
 import { movementEventTimesMs } from "./movementEventTimes.js";
-import { isMovementTransferRow, isUsdCashAccount } from "./movementTransfer.js";
+import { isMovementTransferRow } from "./movementTransfer.js";
 import type { TaxLotDisposal, TaxLotSlice } from "./taxLots.js";
 import {
   loadUsdWalkRequests,
@@ -88,7 +89,7 @@ function classifyOutflow(o: UsdWalkOutflow, scope: ReadonlySet<number>, posture:
   if (!transfer && row.account_id === o.accountId && row.flow_kind === "cash_fee") return "fee";
   // Dollars spent from the account (a purchase or a bill a bank statement lists: a single-leg
   // debit): used, like a payment to a non-dollar account (Oficio 2573's «utilizarlos»).
-  if (!transfer && row.account_id === o.accountId && row.flow_kind === "withdrawal_usd") return posture === "none" ? "deferred" : "realized";
+  if (!transfer && row.account_id === o.accountId && row.flow_kind === "withdrawal") return posture === "none" ? "deferred" : "realized";
   throw new Error(
     `USD lots: account ${o.accountId} movement ${row.id} (${row.flow_kind ?? "no flow kind"}) is not a known way dollars leave`
   );
@@ -117,7 +118,7 @@ export function usdCashTaxDisposalsFromRows(input: {
     feeCostToNet: false,
     priceInflow: ({ row, accountId, cents, source }) => {
       if (source === "purchase") {
-        if (row.flow_kind !== "compra_usd_venta_clp" || row.counter_amount == null) {
+        if (row.flow_kind !== "fx_exchange" || row.counter_amount == null) {
           throw new Error(`USD lots: account ${accountId} movement ${row.id} (${row.flow_kind ?? "no flow kind"}) is not a known dollar purchase`);
         }
         return purchaseCost === "pesos_paid" ? Math.abs(row.amount) : (cents / 100) * observadoOn(row.occurred_on);
@@ -163,15 +164,9 @@ export function usdCashTaxDisposalsFromRows(input: {
   return { disposals, openLots };
 }
 
-/** Every USD cash account (`isUsdCashAccount`), by id. */
-export function listUsdCashAccountIds(): number[] {
-  const rows = db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[];
-  return rows.map((r) => r.id).filter((id) => isUsdCashAccount(id));
-}
-
 /** The disposals and open slices over every USD cash account, from the DB. */
 export function usdCashTaxDisposals(opts: { posture: UsdFxPosture; purchaseCost: UsdPurchaseCost }): UsdCashTaxDisposals {
-  const scope = new Set(listUsdCashAccountIds());
+  const scope = new Set(listForeignCashAccountIds("usd"));
   return usdCashTaxDisposalsFromRows({
     scope,
     rows: loadUsdWalkRows(scope),

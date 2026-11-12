@@ -9,11 +9,12 @@ import {
   counterpartAccountIdFor,
   isMovementTransferRow,
   signedClpDeltaForAccountMovement,
-  signedUsdDeltaForAccountMovement,
+  signedNativeDeltaForAccountMovement,
   transferDirectionForAccount,
   unitsDeltaForAccountMovement,
   type MovementTransferRow,
 } from "./movementTransfer.js";
+import { isHomeCurrency } from "./displayUnits.js";
 
 export type AccountMovementApiRow = {
   id: number;
@@ -71,12 +72,9 @@ const movementsForAccountStmt = db.prepare(
 export function moneyDirectionForAccount(row: MovementTransferRow, accountId: number): "in" | "out" | null {
   const leg = transferDirectionForAccount(row, accountId);
   if (leg) return leg;
-  const signed =
-    row.currency === "clp"
-      ? signedClpDeltaForAccountMovement(row, accountId)
-      : row.currency === "usd"
-        ? signedUsdDeltaForAccountMovement(row, accountId)
-        : 0;
+  const signed = isHomeCurrency(row.currency)
+    ? signedClpDeltaForAccountMovement(row, accountId)
+    : signedNativeDeltaForAccountMovement(row, accountId, row.currency);
   if (signed > 0) return "in";
   if (signed < 0) return "out";
   const units = unitsDeltaForAccountMovement(row, accountId);

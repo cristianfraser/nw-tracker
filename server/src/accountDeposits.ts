@@ -1,3 +1,4 @@
+import { foreignCashToClpAt, isForeignCashAccount } from "./foreignCashAccounts.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { accountIsMonthPrecisionDated } from "./accountBucket.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
@@ -6,22 +7,17 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   loadEquityBrokerageCapitalSortFlows,
   loadOptionContractCapitalSortFlows,
-  loadUsdCashCapitalSortFlows,
+  loadForeignCashCapitalSortFlows,
 } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
 import { historyTierMemo } from "./cacheRegistry.js";
-import {
-  isUsdCashAccount,
-  signedClpDeltaForAccountMovement,
-  type MovementTransferRow,
-} from "./movementTransfer.js";
+import { signedClpDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
-import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
 import { OPTION_UNITS_FLOW_KINDS } from "./optionFlowKinds.js";
 
 /**
@@ -32,7 +28,7 @@ import { OPTION_UNITS_FLOW_KINDS } from "./optionFlowKinds.js";
  * ({@link loadMergedDepositInflowEvents}) is informational (“Historial de aportes”, fx scans).
  *
  * Equity MTM stock accounts (post USD-cash migration): **`stock_buy` / `stock_sell`** transfer USD legs
- * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit_clp`** / **`withdrawal_clp`**
+ * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit`** / **`withdrawal`**
  * on `account_id` when present.
  *
  * Dividends: `dividend_payout` counts as a negative capital flow on the stock; a
@@ -53,6 +49,9 @@ export type DepositInflowEvent = {
   amt: number;
   /** Native USD when known (wire or USD-reference capital). */
   amt_usd?: number | null;
+  /** A foreign cash event in another currency than the dollar: its own amount (signed like `amt`). */
+  amt_native?: number | null;
+  native_currency?: string | null;
   capital_kind?: "clp_wire" | "usd_reference";
 };
 
@@ -71,20 +70,22 @@ const DISPLAY_DATING_OFF = "9999-12-31";
 
 type MergedSortFlow = SortFlow & {
   amt_usd?: number | null;
+  amt_native?: number | null;
+  native_currency?: string | null;
   capital_kind?: DepositInflowEvent["capital_kind"];
 };
 
 
 const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
-  "compra_usd",
-  "compra_usd_venta_clp",
+  "fx_purchase",
+  "fx_exchange",
   "stock_buy",
   "stock_sell",
   "dividend_payout",
   // A split moves shares, never money (`equitySplits.ts`).
   "stock_split",
   // An option's premium settles in USD cash; both legs come from the capital-flow loaders
-  // (`loadOptionContractCapitalSortFlows` / `loadUsdCashCapitalSortFlows`). An expiry or an
+  // (`loadOptionContractCapitalSortFlows` / `loadForeignCashCapitalSortFlows`). An expiry or an
   // assignment moves contracts, never money.
   ...OPTION_UNITS_FLOW_KINDS,
 ]);
@@ -122,12 +123,12 @@ function loadMovementSignedFlowEvents(
     units_delta: number | null;
   })[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
-  const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
+  const foreignCashIds = new Set(uniq.filter((id) => isForeignCashAccount(id)));
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
-    // USD-cash rows are emitted by loadUsdCashCapitalSortFlows (native USD legs) — skip here
+    // USD-cash rows are emitted by loadForeignCashCapitalSortFlows (native USD legs) — skip here
     // so each row is counted exactly once.
-    if (usdCashIds.has(r.account_id)) continue;
+    if (foreignCashIds.has(r.account_id)) continue;
     if (equityMtmIds.has(r.account_id) && r.flow_kind == null) continue;
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND || r.flow_kind === CASH_FEE_FLOW_KIND) continue;
@@ -138,7 +139,7 @@ function loadMovementSignedFlowEvents(
     if (r.currency === "usd" && r.units_delta != null) {
       if (!Number.isFinite(r.amount) || r.amount === 0) continue;
       const usd = r.amount;
-      const amt = Math.sign(usd) * usdCashUsdToClpAt(Math.abs(usd), r.occurred_on, `usdFundDeposit:${r.id}`);
+      const amt = Math.sign(usd) * foreignCashToClpAt(Math.abs(usd), "usd", r.occurred_on, `usdFundDeposit:${r.id}`);
       if (!map.has(r.account_id)) map.set(r.account_id, []);
       map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt, amt_usd: usd, tie: `m:${r.id}` });
       continue;
@@ -182,7 +183,7 @@ function loadTransferLegSignedFlowEvents(
     merge_in_occurred_on: string | null;
   })[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
-  const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
+  const foreignCashIds = new Set(uniq.filter((id) => isForeignCashAccount(id)));
   const monthPrecisionIds = new Set(uniq.filter((id) => accountIsMonthPrecisionDated(id)));
   const requested = new Set(uniq);
   const map = new Map<number, SortFlow[]>();
@@ -191,16 +192,16 @@ function loadTransferLegSignedFlowEvents(
     // ordinary transfer legs — a withdrawal from the sending fund and a deposit into the
     // receiving one on the switch day, which cancel inside the AFP group — and both endpoints
     // are cuota accounts (neither equity MTM, USD cash nor a card), so nothing below drops them.
-    // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
+    // fx_exchange transfer legs are real CLP↔USD conversions between two cash accounts:
     // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
-    // together (the USD `to` leg is emitted by loadUsdCashCapitalSortFlows — dropped below via
-    // usdCashIds). stock_buy/stock_sell also pass the row-level skip: the equity and USD-cash
-    // endpoints are dropped below (equityMtmIds / usdCashIds — the equity and USD-cash capital-flow
+    // together (the USD `to` leg is emitted by loadForeignCashCapitalSortFlows — dropped below via
+    // foreignCashIds). stock_buy/stock_sell also pass the row-level skip: the equity and USD-cash
+    // endpoints are dropped below (equityMtmIds / foreignCashIds — the equity and USD-cash capital-flow
     // paths count those), so only a CLP-cash funding leg contributes its ±CLP leg here
     // (CLP-quoted stocks; USD trades have no CLP leg → 0).
     if (
       r.flow_kind != null &&
-      r.flow_kind !== "compra_usd_venta_clp" &&
+      r.flow_kind !== "fx_exchange" &&
       r.flow_kind !== "stock_buy" &&
       r.flow_kind !== "stock_sell" &&
       BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)
@@ -209,7 +210,7 @@ function loadTransferLegSignedFlowEvents(
     }
     for (const endpoint of [r.from_account_id, r.to_account_id]) {
       if (endpoint == null || !requested.has(endpoint)) continue;
-      if (equityMtmIds.has(endpoint) || usdCashIds.has(endpoint)) continue;
+      if (equityMtmIds.has(endpoint) || foreignCashIds.has(endpoint)) continue;
       // A transfer touching a card (a payment to it, a load paid with it): only the CASH side emits.
       // The card leg is inert here forever — CC flows come from statement evidence
       // (`ccOwedFlowEvents.ts`), so counting the transfer too would double the movement.
@@ -301,13 +302,13 @@ function buildMergedDepositMapUncached(
   // USD-cash accounts (event-based since 2026-08-04): all their legs come from this one
   // loader — the generic movement/transfer paths above skip usd-cash endpoints, so each
   // (row, endpoint) is counted exactly once.
-  const usdCashCap = loadUsdCashCapitalSortFlows(accountIds);
+  const foreignCashCap = loadForeignCashCapitalSortFlows(accountIds);
   const ids = new Set<number>([
     ...mov.keys(),
     ...transfers.keys(),
     ...equityCap.keys(),
     ...optionCap.keys(),
-    ...usdCashCap.keys(),
+    ...foreignCashCap.keys(),
     ...requested,
   ]);
   // Forward-posted rows (bank date after today) are display-dated today — see
@@ -321,12 +322,14 @@ function buildMergedDepositMapUncached(
     const eqFlows: MergedSortFlow[] = [
       ...(equityCap.get(id) ?? []),
       ...(optionCap.get(id) ?? []),
-      ...(usdCashCap.get(id) ?? []),
+      ...(foreignCashCap.get(id) ?? []),
     ].map((f) => ({
       occurred_on: f.occurred_on,
       amt: f.amt,
       tie: f.tie,
       amt_usd: f.amt_usd,
+      amt_native: f.amt_native,
+      native_currency: f.native_currency,
       capital_kind: f.capital_kind,
     }));
     const merged = [...movFlows, ...eqFlows].filter((e) => e.amt !== 0 && Number.isFinite(e.amt));
@@ -340,6 +343,9 @@ function buildMergedDepositMapUncached(
           amt: f.amt,
           ...(forward ? { posted_on: f.occurred_on } : {}),
           ...(f.amt_usd != null && Number.isFinite(f.amt_usd) ? { amt_usd: f.amt_usd } : {}),
+          ...(f.amt_native != null && Number.isFinite(f.amt_native) && f.native_currency != null
+            ? { amt_native: f.amt_native, native_currency: f.native_currency }
+            : {}),
           ...(f.capital_kind ? { capital_kind: f.capital_kind } : {}),
           ...(withTransferCounter ? { event_key: f.tie } : {}),
           ...(withTransferCounter && f.counter_account_id != null
@@ -379,7 +385,7 @@ export function loadMergedDepositInflowEventsBankDatedWithTransferCounter(
   return buildMergedDepositMap(accountIds, false, "bank", true);
 }
 
-/** Personal capital only (`deposit_clp` + `traspaso_bonificacion_clp`; excludes `aporte_estatal_clp`). */
+/** Personal capital only (`deposit` + `state_bonus_transfer_in`; excludes `state_bonus`). */
 export function loadMergedDisplayDepositInflowEvents(
   accountIds: number[]
 ): Map<number, DepositInflowEvent[]> {

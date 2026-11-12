@@ -10,11 +10,11 @@ export function supportsBrokerageMovements(
   return Array.isArray(kinds) && kinds.length > 0;
 }
 
-/** USD cash ledger (not stock): `compra_usd_venta_clp`, no share flow kinds. */
+/** Foreign cash ledger (not stock): `fx_exchange`, no share flow kinds. */
 export function supportsUsdCashMovements(schema: unknown): boolean {
   if (!supportsBrokerageMovements(schema)) return false;
   const kinds = schema.brokerage_flow_kinds as readonly string[];
-  return kinds.includes("compra_usd_venta_clp") && !kinds.includes("stock_buy");
+  return kinds.includes("fx_exchange") && !kinds.includes("stock_buy");
 }
 
 /** CLP ledger cash (base currency): `savings_earnings` + CLP deposits/withdrawals, no USD/share kinds. */
@@ -23,9 +23,8 @@ export function supportsClpCashMovements(schema: unknown): boolean {
   const kinds = schema.brokerage_flow_kinds as readonly string[];
   return (
     kinds.includes("savings_earnings") &&
-    !kinds.includes("compra_usd_venta_clp") &&
-    !kinds.includes("stock_buy") &&
-    !kinds.includes("withdrawal_usd")
+    !kinds.includes("fx_exchange") &&
+    !kinds.includes("stock_buy")
   );
 }
 

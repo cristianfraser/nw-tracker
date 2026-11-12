@@ -4,13 +4,13 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
  */
 
 import type { Database } from "better-sqlite3";
-import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { signedAmountClpForBrokerageFlow } from "./brokerageFlowMovement.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { db, dbInTransaction } from "./db.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   movementClpLegOrZero,
+  movementLeg,
   movementUsdLeg,
   type MovementCurrency,
 } from "./movementAmounts.js";
@@ -117,26 +117,32 @@ export function signedClpDeltaForAccountMovement(
   return clpLeg;
 }
 
-/** Signed USD cash impact (USD-cash accounts and transfer legs). */
-export function signedUsdDeltaForAccountMovement(
+/**
+ * Signed impact of one movement row on `accountId`'s ledger in `currency` (a foreign cash
+ * account's balance, a transfer's foreign leg): the row's leg in that currency, signed by the
+ * account's side of a transfer, by the kind on a single-leg row. A single-leg row in a foreign
+ * currency is stored positive; its kind gives the direction.
+ */
+export function signedNativeDeltaForAccountMovement(
   row: MovementTransferRow,
-  accountId: number
+  accountId: number,
+  currency: string
 ): number {
-  const usdLeg = movementUsdLeg(row);
+  const leg = movementLeg(row, currency);
   if (isMovementTransferRow(row)) {
-    const mag = absAmount(usdLeg);
+    const mag = absAmount(leg);
     if (mag === 0) return 0;
     const fk = row.flow_kind;
     const units = row.units_delta;
     const hasUnits = units != null && Number.isFinite(units) && units !== 0;
     if (row.from_account_id === accountId) {
-      // stock_sell USD proceeds land on USD cash (to_account), not the equity from leg; the
+      // stock_sell proceeds land on the cash account (to_account), not the equity from leg; the
       // premium of a sold option (option_sell_open / option_sell_close) likewise.
       if (fk === "stock_sell" || optionUnitsLeaveFromLeg(fk)) return 0;
       return -mag;
     }
     if (row.to_account_id === accountId) {
-      // stock_buy: share units on the stock leg consume USD from cash (from_account); the premium
+      // stock_buy: share units on the stock leg consume cash from the from_account; the premium
       // of a bought option (option_buy_open / option_buy_close) leaves cash the same way.
       if (fk === "stock_buy" && hasUnits) return 0;
       if (optionUnitsArriveOnToLeg(fk)) return 0;
@@ -146,19 +152,19 @@ export function signedUsdDeltaForAccountMovement(
   }
   if (row.account_id !== accountId) return 0;
   const fk = row.flow_kind;
-  // A contract expiring or being assigned moves contracts, never dollars.
+  // A contract expiring or being assigned moves contracts, never money.
   if (isOptionFlowKind(fk)) return 0;
-  if (fk === "compra_usd" || fk === "compra_usd_venta_clp") {
+  if (fk === "fx_purchase" || fk === "fx_exchange" || fk === "deposit") {
     const units = row.units_delta;
     if (units != null && Number.isFinite(units) && units !== 0) return 0;
-    return absAmount(usdLeg);
+    return absAmount(leg);
   }
-  if (fk === "withdrawal_usd") return -absAmount(usdLeg);
-  // Interest / bank-paid yield credited in USD raises the cash balance (P/L, not capital — the
-  // deposited line excludes it, see accountDeposits / cash interest helpers).
-  if (fk === "savings_earnings") return absAmount(usdLeg);
-  // Commission charged in USD lowers it — the fee twin of interest (P/L cost, not capital).
-  if (fk === "cash_fee") return -absAmount(usdLeg);
+  if (fk === "withdrawal") return -absAmount(leg);
+  // Interest / bank-paid yield credited in the currency raises the cash balance (P/L, not
+  // capital — the deposited line excludes it, see accountDeposits / cash interest helpers).
+  if (fk === "savings_earnings") return absAmount(leg);
+  // Commission charged in the currency lowers it — the fee twin of interest (P/L cost, not capital).
+  if (fk === "cash_fee") return -absAmount(leg);
   return 0;
 }
 
@@ -198,8 +204,8 @@ export function unitsDeltaForAccountMovement(
 const EQUITY_TRANSFER_FLOW_KINDS = new Set([
   "stock_buy",
   "stock_sell",
-  "compra_usd",
-  "compra_usd_venta_clp",
+  "fx_purchase",
+  "fx_exchange",
   ...OPTION_UNITS_FLOW_KINDS,
 ]);
 
@@ -319,16 +325,6 @@ function ledgerTotalThrough(
   return total;
 }
 
-export function isUsdCashKindSlug(kindSlug: string): boolean {
-  return kindSlug === "usd";
-}
-
-export function isUsdCashAccount(accountId: number): boolean {
-  const slug = bucketSlugForAccountId(accountId);
-  if (!slug) return false;
-  return isUsdCashKindSlug(accountBucketKindSlug(slug));
-}
-
 const MOVEMENTS_FOR_ACCOUNT_SQL = `
   SELECT id, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
          occurred_on, note, units_delta, counter_units_delta, flow_kind
@@ -358,8 +354,14 @@ export function sumClpThroughDate(accountId: number, asOfYmd: string, dbHandle: 
   );
 }
 
-export function sumUsdThroughDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
-  return ledgerTotalThrough("usd", accountId, asOfYmd, dbHandle, true, (handle) =>
+/** Σ of `accountId`'s ledger in `currency` through `asOfYmd` (strict by date; unrounded). */
+export function sumNativeThroughDate(
+  accountId: number,
+  asOfYmd: string,
+  currency: string,
+  dbHandle: Database = db
+): number {
+  return ledgerTotalThrough(currency, accountId, asOfYmd, dbHandle, true, (handle) =>
     (
       handle
         .prepare(
@@ -368,7 +370,7 @@ export function sumUsdThroughDate(accountId: number, asOfYmd: string, dbHandle: 
            WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
         )
         .all(accountId, accountId, accountId) as MovementTransferRow[]
-    ).map((r) => ({ ...ledgerDeltaKey(r), delta: signedUsdDeltaForAccountMovement(r, accountId) }))
+    ).map((r) => ({ ...ledgerDeltaKey(r), delta: signedNativeDeltaForAccountMovement(r, accountId, currency) }))
   );
 }
 
@@ -399,9 +401,14 @@ export function sumClpThroughDisplayDate(accountId: number, asOfYmd: string, dbH
   return sumClpThroughDate(accountId, displayLedgerCutoffYmd(asOfYmd), dbHandle);
 }
 
-/** `sumUsdThroughDate` for display: strict before today, every known row from today on. */
-export function sumUsdThroughDisplayDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
-  return sumUsdThroughDate(accountId, displayLedgerCutoffYmd(asOfYmd), dbHandle);
+/** `sumNativeThroughDate` for display: strict before today, every known row from today on. */
+export function sumNativeThroughDisplayDate(
+  accountId: number,
+  asOfYmd: string,
+  currency: string,
+  dbHandle: Database = db
+): number {
+  return sumNativeThroughDate(accountId, displayLedgerCutoffYmd(asOfYmd), currency, dbHandle);
 }
 
 export function sumUnitsThroughDate(

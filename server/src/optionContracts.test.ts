@@ -14,7 +14,7 @@ import { clearAggregationCache } from "./cacheRegistry.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { holdingPriceAt } from "./holdingPrices.js";
-import { listMovementRowsForAccount, unitsDeltaForAccountMovement, signedUsdDeltaForAccountMovement } from "./movementTransfer.js";
+import { listMovementRowsForAccount, unitsDeltaForAccountMovement, signedNativeDeltaForAccountMovement } from "./movementTransfer.js";
 import { movementCreateSchemaForAccount, validateMovementCreate } from "./movementUnitsPolicy.js";
 import { assignOptionContract, assignmentShareLeg, optionAssignmentForStockMovement } from "./optionAssignment.js";
 import { occSymbol, occSymbolSlug, optionContractDisplayName, optionContractForAccount, optionIntrinsicPerShare } from "./optionContracts.js";
@@ -123,7 +123,7 @@ beforeAll(() => {
   callA = createContract("C", 105, "2026-06-05");
   callB = createContract("C", 100, "2026-07-17");
   // 10,000 dollars arrive; call A (2 contracts) sold for 600, expires worthless on 06-05.
-  single(cash, "2026-05-04", 10_000, "compra_usd");
+  single(cash, "2026-05-04", 10_000, "fx_purchase");
   transfer(callA, cash, "2026-05-05", 600, "option_sell_open", 2);
   single(callA, "2026-06-05", 0, "option_expire", 2);
   // 200 shares bought at 103 on 06-08; call B (2 contracts, strike 100) sold for 400 the same day
@@ -183,6 +183,7 @@ describe("the profile", () => {
     fundQuoteCurrencyOf: () => "clp",
     roles: [],
     demoOrTest: true,
+    cashCurrency: null,
   };
 
   it("decides the option quantity from the contract row, before the share-units branch", () => {
@@ -234,11 +235,11 @@ describe("signed contracts and the intrinsic mark", () => {
     const sell = rows.find((r) => r.flow_kind === "option_sell_open")!;
     expect(unitsDeltaForAccountMovement(sell, callA)).toBe(-2);
     expect(unitsDeltaForAccountMovement(sell, cash)).toBe(0);
-    expect(signedUsdDeltaForAccountMovement(sell, cash)).toBe(600);
-    expect(signedUsdDeltaForAccountMovement(sell, callA)).toBe(0);
+    expect(signedNativeDeltaForAccountMovement(sell, cash, "usd")).toBe(600);
+    expect(signedNativeDeltaForAccountMovement(sell, callA, "usd")).toBe(0);
     const expire = rows.find((r) => r.flow_kind === "option_expire")!;
     expect(unitsDeltaForAccountMovement(expire, callA)).toBe(2);
-    expect(signedUsdDeltaForAccountMovement(expire, callA)).toBe(0);
+    expect(signedNativeDeltaForAccountMovement(expire, callA, "usd")).toBe(0);
   });
 
   it("prices intrinsic value per share from the underlying's close, 0 from the expiry on, and throws without a close", () => {

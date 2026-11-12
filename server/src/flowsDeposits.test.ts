@@ -85,7 +85,7 @@ describe("state contributions are P/L, not deposits", () => {
        VALUES (?, ?, 'clp', ?, ?, ?)`
     );
     ins.run(accountId, 100_000, fixtureYmd(100), "vitest personal deposit", null);
-    ins.run(accountId, 50_000, fixtureYmd(90), "vitest state bonus", "aporte_estatal_clp");
+    ins.run(accountId, 50_000, fixtureYmd(90), "vitest state bonus", "state_bonus");
   });
 
   afterAll(() => {
@@ -95,7 +95,7 @@ describe("state contributions are P/L, not deposits", () => {
     db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(LEAF_STATE_BONUS);
   });
 
-  it("excludes aporte_estatal_clp from deposit rows and per-account totals", () => {
+  it("excludes state_bonus from deposit rows and per-account totals", () => {
     if (accountId == null) return;
     const rows = flowDepositRowsInUnit("clp").filter((r) => r.account_id === accountId);
     expect(rows.map((r) => r.amount_clp)).toEqual([100_000]);

@@ -81,7 +81,7 @@ describe("importFintualCertificado", () => {
       .prepare("SELECT flow_kind FROM movements WHERE account_id = ?")
       .all(certAccountId("import:fintual|cert|key=apv_a")!) as { flow_kind: string | null }[];
     expect(apvRows).toHaveLength(1);
-    expect(apvRows[0].flow_kind).toBe("aporte_estatal_clp");
+    expect(apvRows[0].flow_kind).toBe("state_bonus");
   });
 
   it("is idempotent and non-destructive: re-apply matches existing, adds nothing, deletes nothing", () => {

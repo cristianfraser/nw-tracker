@@ -1,17 +1,17 @@
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import {
   loadEquityBrokerageCapitalInflowEvents,
-  loadUsdCashCapitalSortFlows,
+  loadForeignCashCapitalSortFlows,
 } from "./equityBrokerageCapitalFlows.js";
 import {
   getMergedDisplayDepositInflowEventsForAccount,
   totalDisplayDepositsClpForAccount,
 } from "./accountDeposits.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
-import { cashInterestUsdThroughDate } from "./cashAccountInterest.js";
+import { cashInterestNativeThroughDate } from "./cashAccountInterest.js";
 
 const FIXTURE_USD = "vitest-usdcash-events-usd";
 const FIXTURE_CLP = "vitest-usdcash-events-clp";
@@ -98,7 +98,7 @@ describe("USD-cash deposit events (event-based, native-frame)", () => {
       counter_amount: 1_000,
       counter_currency: "usd",
       occurred_on: COMPRA_DATE,
-      flow_kind: "compra_usd_venta_clp",
+      flow_kind: "fx_exchange",
     });
     // USD stock buy funded from the cash account (different day — no wire match).
     insertTransfer({
@@ -163,8 +163,8 @@ describe("USD-cash deposit events (event-based, native-frame)", () => {
     if (!usdId) return;
     const events = getMergedDisplayDepositInflowEventsForAccount(usdId);
     const sumUsd = events.reduce((s, e) => s + (e.amt_usd ?? 0), 0);
-    const balance = usdCashBalanceUsdAt(usdId, "2026-06-30");
-    const interest = cashInterestUsdThroughDate(usdId, "2026-06-30");
+    const balance = foreignCashBalanceAt(usdId, "2026-06-30");
+    const interest = cashInterestNativeThroughDate(usdId, "2026-06-30");
     expect(sumUsd).toBeCloseTo(balance - interest, 6); // 620 = 620,5 − 0,5
   });
 
@@ -183,7 +183,7 @@ describe("USD-cash deposit events (event-based, native-frame)", () => {
     const events = getMergedDisplayDepositInflowEventsForAccount(usdId);
     const expected = events.reduce((s, e) => s + e.amt, 0);
     expect(totalDisplayDepositsClpForAccount(usdId)).toBe(expected);
-    expect(loadUsdCashCapitalSortFlows([stockId, clpId]).size).toBe(0);
+    expect(loadForeignCashCapitalSortFlows([stockId, clpId]).size).toBe(0);
   });
 
   it("compra legs cancel at bucket level: the CLP side emits the same pesos negated", () => {

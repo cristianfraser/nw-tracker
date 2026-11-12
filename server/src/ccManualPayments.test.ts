@@ -49,7 +49,7 @@ beforeAll(() => {
   db.prepare(
     `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
        occurred_on, note, flow_kind)
-     VALUES (?, ?, 4700000, 'clp', 5000, 'usd', ?, 'vitest manual payment funding', 'compra_usd_venta_clp')`
+     VALUES (?, ?, 4700000, 'clp', 5000, 'usd', ?, 'vitest manual payment funding', 'fx_exchange')`
   ).run(checkingAccountId(), usdAccountId, chileCalendarAddDays(today, -30));
 });
 

@@ -44,9 +44,8 @@ export type MovementFlowType =
   | typeof FLOW_KIND_CARGA_TARJETA
   | typeof FLOW_KIND_AFP_FUND_SWITCH
   | typeof FLOW_KIND_STOCK_SPLIT
-  | "withdrawal_clp"
-  | "withdrawal_usd"
-  | "deposit_usd"
+  | "withdrawal"
+  | "deposit"
   | "other";
 
 /**
@@ -62,7 +61,7 @@ export function internalTransferFlowType(
   currency: string,
   counterCurrency: string | null
 ): { flow_type: string; flow_type_label: string } {
-  if (!originLegType.startsWith("withdrawal_")) {
+  if (originLegType !== "withdrawal") {
     return {
       flow_type: originLegType,
       flow_type_label: movementFlowTypeLabel(originLegType, { currency, counter_currency: counterCurrency }),
@@ -102,9 +101,9 @@ export function movementFlowTypeFromRow(row: {
     if (row.flow_kind === FLOW_KIND_PAGO_TARJETA) return FLOW_KIND_PAGO_TARJETA;
     if (row.flow_kind === FLOW_KIND_CARGA_TARJETA) return FLOW_KIND_CARGA_TARJETA;
     if (row.flow_kind === FLOW_KIND_AFP_FUND_SWITCH) return FLOW_KIND_AFP_FUND_SWITCH;
-    if (row.currency === "usd") return row.transfer_direction === "out" ? "withdrawal_usd" : "deposit_usd";
-    if (row.currency !== "clp") throw new Error(`No flow type for a kind-less ${row.currency} transfer`);
-    return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
+    // A kind-less transfer's leg: a withdrawal from the sender, a deposit into the receiver, in
+    // the movement's own currency (the label names it).
+    return row.transfer_direction === "out" ? "withdrawal" : "deposit";
   }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
   if (row.flow_kind === FLOW_KIND_STOCK_SPLIT) return FLOW_KIND_STOCK_SPLIT;
@@ -116,7 +115,7 @@ export function movementFlowTypeFromRow(row: {
 
 /** Fallback for movements whose `flow_kind` column is unset: the sign decides. */
 export function movementFlowTypeFromSignedClp(signedClpDelta: number): MovementFlowType {
-  if (signedClpDelta < 0) return "withdrawal_clp";
+  if (signedClpDelta < 0) return "withdrawal";
   if (signedClpDelta === 0 || !Number.isFinite(signedClpDelta)) return "other";
   return DEPOSIT_FLOW_KIND_PERSONAL;
 }
@@ -134,15 +133,13 @@ const currencyCode = (c: string): string => c.toUpperCase();
 export function movementFlowTypeLabel(flowType: MovementFlowType, currencies: MovementCurrencies): string {
   const own = currencyCode(currencies.currency);
   switch (flowType) {
-    case "deposit_clp":
-    case "deposit_usd":
+    case "deposit":
       return `Depósito ${own}`;
-    case "withdrawal_clp":
-    case "withdrawal_usd":
+    case "withdrawal":
       return `Retiro ${own}`;
-    case "compra_usd":
+    case "fx_purchase":
       return `Compra ${currencyCode(currencies.counter_currency ?? currencies.currency)}`;
-    case "compra_usd_venta_clp": {
+    case "fx_exchange": {
       if (currencies.counter_currency == null) {
         throw new Error(`A currency purchase without its other currency (${currencies.currency})`);
       }

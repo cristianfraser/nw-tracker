@@ -6,7 +6,7 @@ import { getMergedDepositInflowEventsForAccount, pocketDepositsClpForAccount } f
 import {
   loadEquityBrokerageCapitalInflowEvents,
   loadEquityBrokerageCapitalSortFlows,
-  loadUsdCashCapitalSortFlows,
+  loadForeignCashCapitalSortFlows,
   type EquityCapitalSortFlow,
 } from "./equityBrokerageCapitalFlows.js";
 import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
@@ -172,7 +172,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
-           VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, 'compra_usd_venta_clp')`
+           VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, 'fx_exchange')`
         )
         .run(clpId, usdId, clp, usd, note).lastInsertRowid
     );
@@ -240,7 +240,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
           `INSERT INTO movements (
              account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note,
              units_delta, flow_kind
-           ) VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, NULL, 'compra_usd_venta_clp')`
+           ) VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, NULL, 'fx_exchange')`
         )
         .run(clpId, usdId, clp, usd, note).lastInsertRowid
     );
@@ -304,7 +304,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
   }
 
   function marchCashFlows(): EquityCapitalSortFlow[] {
-    const all = loadUsdCashCapitalSortFlows([usdId]).get(usdId) ?? [];
+    const all = loadForeignCashCapitalSortFlows([usdId]).get(usdId) ?? [];
     return all.filter((f) => f.occurred_on === "2026-03-26");
   }
 

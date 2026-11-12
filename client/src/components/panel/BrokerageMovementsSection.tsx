@@ -10,7 +10,8 @@ import {
   brokerageFlowKindShowsUnits,
   brokerageFlowKindNeedsUsdForQuote,
   clpCashFlowKindAllowsCounterpart,
-  isInterestFlowKind,
+  brokerageFlowKindNeedsClp,
+  isOwnCurrencyFlowKind,
   type BrokerageFlowKind,
   type BrokerageFormContext,
   type StockQuoteCurrency,
@@ -63,10 +64,13 @@ export function BrokerageMovementRowFields({
   const formContext: BrokerageFormContext = cashCurrency != null ? "cash" : "stock";
   const counterpartIsEquity = brokerageFlowKindCounterpartIsEquity(row.flowKind, formContext);
   const counterpartIsUsdCash = brokerageFlowKindCounterpartIsUsdCash(row.flowKind, formContext);
-  const interestInClp = isInterestFlowKind(row.flowKind) && cashCurrency === "clp";
-  const interestInUsd = isInterestFlowKind(row.flowKind) && cashCurrency === "usd";
-  const showClp = brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency) || interestInClp;
-  const showUsd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency) || interestInUsd;
+  // A cash form's own-currency rows (deposits, withdrawals, interest, fees) take its currency's field.
+  const ownInClp = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "clp";
+  const ownInUsd = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "usd";
+  const showClp =
+    (cashCurrency != null ? brokerageFlowKindNeedsClp(row.flowKind) : brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency)) ||
+    ownInClp;
+  const showUsd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency) || ownInUsd;
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
   const clpTransferCounterpart =
     cashCurrency === "clp" && clpCashFlowKindAllowsCounterpart(row.flowKind);
@@ -108,7 +112,7 @@ export function BrokerageMovementRowFields({
             type="text"
             inputMode="decimal"
             value={row.amountClp}
-            placeholder={row.flowKind === "deposit_clp" ? "3000000" : ""}
+            placeholder={row.flowKind === "deposit" ? "3000000" : ""}
             onChange={(e) => onChange({ ...row, amountClp: e.target.value })}
           />
         </Field>
@@ -119,7 +123,7 @@ export function BrokerageMovementRowFields({
             type="text"
             inputMode="decimal"
             value={row.amountUsd}
-            placeholder={row.flowKind === "compra_usd_venta_clp" ? formatNumberInput(3353.07) : ""}
+            placeholder={row.flowKind === "fx_exchange" ? formatNumberInput(3353.07) : ""}
             onChange={(e) => onChange({ ...row, amountUsd: e.target.value })}
           />
         </Field>

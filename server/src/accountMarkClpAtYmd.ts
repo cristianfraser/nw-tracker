@@ -9,7 +9,7 @@ import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js"
 import { afpCuotasCumulativeThroughDate as afpCuotas } from "./afpUnoValuation.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
@@ -110,9 +110,9 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       const clp = checkingMovementBalanceClpAtCached(accountId, asOfYmd);
       return Number.isFinite(clp) ? currency("clp", clp, asOfYmd) : bookMark(profile, asOfYmd);
     }
-    case "usd_ledger": {
-      const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
-      return Number.isFinite(usd) ? currency("usd", usd, asOfYmd) : bookMark(profile, asOfYmd);
+    case "foreign_ledger": {
+      const native = foreignCashBalanceAt(accountId, asOfYmd);
+      return Number.isFinite(native) ? currency(q.currency, native, asOfYmd) : bookMark(profile, asOfYmd);
     }
     case "clp_ledger": {
       const clp = clpCashBalanceClpAt(accountId, asOfYmd);

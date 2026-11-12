@@ -23,7 +23,7 @@ import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountIdsInPortfolioGroup, withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { isUsdCashKindSlug } from "./movementTransfer.js";
+import { isForeignCashKindSlug } from "./cashCurrency.js";
 import { isClpCashKindSlug } from "./clpCashAccounts.js";
 import {
   expandYearMonthsInclusive,
@@ -408,7 +408,7 @@ function attachDepositSeriesKeys(
       if (accountProfileOptional(t.account_id)?.chartDeposits === false) return { ...t };
       // Ledger cash: always draw the deposited line so interest shows as P/L — both kinds from
       // their merged deposit events (see the dep-map builder).
-      if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {
+      if (isForeignCashKindSlug(kind) || isClpCashKindSlug(kind)) {
         return { ...t, depositDataKey: `${t.dataKey}__dep` };
       }
       const depLen = (pocketDepMovs.get(t.account_id) ?? []).length;
@@ -435,7 +435,7 @@ function augmentChartDatesForCheckingAccounts(
     const slug = slugById.get(id) ?? "";
     const kind = accountBucketKindSlug(slug);
     return (
-      isMovementBalanceCashCategory(slug) || isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)
+      isMovementBalanceCashCategory(slug) || isForeignCashKindSlug(kind) || isClpCashKindSlug(kind)
     );
   });
   const boundsById = movementBoundsByAccountIds(ledgerCashIds);
@@ -824,7 +824,7 @@ function patchAccountLiveLastPoint(
   // Fintual cert funds are priced on their valor cuota's day: patched so today's point frames
   // the pesos on that day (`priced_on`), as the dashboard row does. An AFC kept on its book
   // marks (no cuota series) is patched like its cuota-ledger twin.
-  const patched = !(q === "checking_ledger" || q === "usd_ledger" || q === "clp_ledger" || q === "book_mark") ||
+  const patched = !(q === "checking_ledger" || q === "foreign_ledger" || q === "clp_ledger" || q === "book_mark") ||
     CUOTA_LEDGER_KINDS.has(profile.kind);
   if (!patched) return points;
   const live = accountTodayValue(row.account_id);

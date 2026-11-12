@@ -3,6 +3,7 @@
  * (`flowsCheckingGastos.ts`). This layer only SELECTs and shapes rows — classification
  * lives in `checkingDescriptionPredicates.ts`, pairing policy in the engine.
  */
+import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { CHECKING_LISTED_SOURCE_KINDS, movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
@@ -26,7 +27,7 @@ import {
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
-import { isUsdCashAccount, signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
+import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import {
   accountIdsUnderCheckingAccounts,
   cartolaCashAccountIdOptional,
@@ -177,7 +178,7 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
  * Chilean one: every row there is a transfer or written from another document) reads empty.
  */
 export function listDollarCheckingAccountIds(): number[] {
-  return accountIdsUnderCheckingAccounts().filter((id) => isUsdCashAccount(id));
+  return accountIdsUnderCheckingAccounts().filter((id) => isForeignCashAccountIn(id, "usd"));
 }
 
 /** A dollar checking account's bank-listed movement: its dollars, and its pesos at the day's rate. */
@@ -206,7 +207,7 @@ export function listDollarCheckingMovements(accountId: number, direction: "in" |
     .all(accountId) as (MovementTransferRow & { id: number; occurred_on: string; note: string | null })[];
   const out: DollarCheckingMovementRow[] = [];
   for (const r of rows) {
-    const usd = signedUsdDeltaForAccountMovement(r, accountId);
+    const usd = signedNativeDeltaForAccountMovement(r, accountId, "usd");
     if (!(Math.abs(usd) >= 0.005)) throw new Error(`dollar checking movement ${r.id}: a listed row that moves no dollars`);
     if (direction === "in" ? usd < 0 : usd > 0) continue;
     const fx = fxRowOnOrBefore(r.occurred_on);

@@ -1,10 +1,10 @@
 /** Personal wire / transferencia (your money). */
 import { foldAccents } from "nw-tracker-contracts";
-export const DEPOSIT_FLOW_KIND_PERSONAL = "deposit_clp" as const;
+export const DEPOSIT_FLOW_KIND_PERSONAL = "deposit" as const;
 /** Chile APV-A state bonus (~15% of prior-year deposits, capped). */
-export const DEPOSIT_FLOW_KIND_STATE = "aporte_estatal_clp" as const;
+export const DEPOSIT_FLOW_KIND_STATE = "state_bonus" as const;
 /** Prior AFP state bonus transferred in from another institution (still your capital). */
-export const DEPOSIT_FLOW_KIND_TRASPASO = "traspaso_bonificacion_clp" as const;
+export const DEPOSIT_FLOW_KIND_TRASPASO = "state_bonus_transfer_in" as const;
 
 export type DepositFlowKind =
   | typeof DEPOSIT_FLOW_KIND_PERSONAL

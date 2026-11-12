@@ -1,3 +1,4 @@
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -5,7 +6,6 @@ import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { checkingCashByDay } from "./flowsOverviewCash.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { convertValue } from "./valueConvert.js";
 import { buildFlowsDepositsResponse } from "./flowsDeposits.js";
 import { roundToCurrency } from "./displayUnits.js";
@@ -747,7 +747,7 @@ describe("buildFlowsOverviewPayload", () => {
       if (r.as_of_date >= today) continue; // today's rate may be live; the past is pinned
       const prev = chileCalendarAddDays(r.as_of_date, -1);
       let expected = 0;
-      for (const id of dollar) expected += usdCashBalanceUsdAt(id, prev) * (usdInClp(r.as_of_date) - usdInClp(prev));
+      for (const id of dollar) expected += foreignCashBalanceAt(id, prev) * (usdInClp(r.as_of_date) - usdInClp(prev));
       expect(r.cash_fx).toBe(Math.round(expected));
       if (r.cash_fx !== 0) moved++;
     }

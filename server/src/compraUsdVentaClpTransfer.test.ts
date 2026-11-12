@@ -1,3 +1,4 @@
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
@@ -5,7 +6,6 @@ import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 
 const FIXTURE_USD = "vitest-compra-usd";
 const FIXTURE_CLP = "vitest-compra-clp";
@@ -51,7 +51,7 @@ function insertTransfer(v: {
 
 let restoreFx: (() => void) | null = null;
 
-describe("compra_usd_venta_clp with a CLP source counterpart", () => {
+describe("fx_exchange with a CLP source counterpart", () => {
   let usdId = 0;
   let clpId = 0;
   let usdAccountRow: AccountRow;
@@ -98,7 +98,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
       usdAccountRow,
       {
         occurred_on: DATE,
-        flow_kind: "compra_usd_venta_clp",
+        flow_kind: "fx_exchange",
         amount: -CLP_SPENT,
         currency: "clp",
         counter_amount: USD_BOUGHT,
@@ -112,7 +112,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     if (!v.ok || v.mode !== "transfer") return;
     expect(v.from_account_id).toBe(clpId);
     expect(v.to_account_id).toBe(usdId);
-    expect(v.flow_kind).toBe("compra_usd_venta_clp");
+    expect(v.flow_kind).toBe("fx_exchange");
     expect(v.amount).toBe(CLP_SPENT);
     expect(v.currency).toBe("clp");
     expect(v.counter_amount).toBe(USD_BOUGHT);
@@ -126,7 +126,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
       clpAccountRow,
       {
         occurred_on: DATE,
-        flow_kind: "compra_usd_venta_clp",
+        flow_kind: "fx_exchange",
         amount: -CLP_SPENT,
         currency: "clp",
         counter_amount: USD_BOUGHT,
@@ -144,13 +144,13 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
 
     const clpBalBefore = clpCashBalanceClpAt(clpId, "2026-12-31");
     const clpDepBefore = getMergedDepositInflowEventsForAccount(clpId).reduce((s, e) => s + e.amt, 0);
-    const usdBefore = usdCashBalanceUsdAt(usdId, "2026-12-31");
+    const usdBefore = foreignCashBalanceAt(usdId, "2026-12-31");
 
     const v = validateMovementCreate(
       usdAccountRow,
       {
         occurred_on: DATE,
-        flow_kind: "compra_usd_venta_clp",
+        flow_kind: "fx_exchange",
         amount: -CLP_SPENT,
         currency: "clp",
         counter_amount: USD_BOUGHT,
@@ -176,7 +176,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     // CLP source balance drops by the pesos spent.
     expect(clpCashBalanceClpAt(clpId, "2026-12-31")).toBeCloseTo(clpBalBefore - CLP_SPENT, 0);
     // USD cash balance rises by the USD bought.
-    expect(usdCashBalanceUsdAt(usdId, "2026-12-31") - usdBefore).toBeCloseTo(USD_BOUGHT, 6);
+    expect(foreignCashBalanceAt(usdId, "2026-12-31") - usdBefore).toBeCloseTo(USD_BOUGHT, 6);
     // CLP deposited line drops in step with the balance — an internal conversion, not a loss.
     const clpDepAfter = getMergedDepositInflowEventsForAccount(clpId).reduce((s, e) => s + e.amt, 0);
     expect(clpDepBefore - clpDepAfter).toBeCloseTo(CLP_SPENT, 0);

@@ -31,7 +31,7 @@ describe("a dollar checking account in the flows", () => {
     const id = Number(
       db
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'usd', ?, ?, ?)`)
-        .run(accountId, Math.abs(usd), day, note, usd > 0 ? "compra_usd" : "withdrawal_usd").lastInsertRowid
+        .run(accountId, Math.abs(usd), day, note, usd > 0 ? "fx_purchase" : "withdrawal").lastInsertRowid
     );
     ids.push(id);
     return id;
@@ -54,7 +54,7 @@ describe("a dollar checking account in the flows", () => {
     const debit = listed("VITEST GROCERY AUSTIN", -87.34, 1);
     const manual = Number(
       db
-        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 10, 'usd', ?, 'a hand entry', 'withdrawal_usd')`)
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, 10, 'usd', ?, 'a hand entry', 'withdrawal')`)
         .run(accountId, day).lastInsertRowid
     );
     ids.push(manual);

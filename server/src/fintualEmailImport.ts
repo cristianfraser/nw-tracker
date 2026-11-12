@@ -95,7 +95,7 @@ export type FintualPlannedMovement = {
   account_id: number | null;
   amount: number;
   currency: "clp" | "usd";
-  /** The dollars of a peso → dollar conversion (`compra_usd_venta_clp`); null otherwise. */
+  /** The dollars of a peso → dollar conversion (`fx_exchange`); null otherwise. */
   counter_amount: number | null;
   counter_currency: "usd" | null;
   /**
@@ -288,7 +288,7 @@ export function planFintualEmailMovement(
         counter_currency: "usd" as const,
         from_account_id: fintualClpBalanceAccountId(),
         to_account_id: fintualUsdAccountId(),
-        flow_kind: "compra_usd_venta_clp",
+        flow_kind: "fx_exchange",
       };
       if (event.amount == null || event.clp_amount == null) {
         return { ...fxBase, requires_manual: "the mail does not state both the dollars and the pesos — enter the compra by hand" };
