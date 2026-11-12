@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { grossLessWithholdingIsNet } from "../formats/index.js";
+import { grossLessWithholdingIsNet, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -56,7 +56,7 @@ export const brokerMovementSchema = z
     occurred_at: z.iso.datetime({ offset: true }),
     /** As listed; the server signs single-leg rows by kind. */
     amount: z.number(),
-    currency: z.enum(["clp", "usd"]),
+    currency: currencyCodeSchema,
     /** Shares, as a decimal string (counts run to 8 decimals). */
     units: z.string().regex(/^\d+(?:\.\d+)?$/).nullable(),
     price: z.number().positive().nullable(),

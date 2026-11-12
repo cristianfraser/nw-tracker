@@ -10,6 +10,7 @@ import { diffStatementAgainstLedger } from "./cardStatementCrossCheck.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { padCcStatementDate, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 import {
   assertNoCardRoutingConflict,
   buildSantanderStatement,
@@ -37,8 +38,11 @@ import {
  * Every side is reported line by line, as the feeder prints it.
  */
 
+/** A statement side the card ledger can take: its sub-balances are pesos and dollars only. */
+type HandledStatement = CardStatementCurrency & { currency: "clp" | "usd" }; // convention-ok: the card ledger takes pesos and dollars only (Phase C)
+
 type Review = {
-  statement: CardStatementCurrency;
+  statement: HandledStatement;
   outcome: CardStatementOutcome;
   owner: "pdf" | "json" | null;
   report: string[];
@@ -49,7 +53,7 @@ function unexplainedDifferences(d: ReturnType<typeof diffStatementAgainstLedger>
   return d.only_in_json.length - d.expected_only_in_json + d.only_in_db.length;
 }
 
-function reviewStatement(accountId: number, statementDate: string, payload: CardIssuerStatementPayload, statement: CardStatementCurrency): Review {
+function reviewStatement(accountId: number, statementDate: string, payload: CardIssuerStatementPayload, statement: HandledStatement): Review {
   const report: string[] = [];
   if (statement.lines.length === 0) return { statement, outcome: "empty", owner: null, report };
 
@@ -134,7 +138,12 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
 export function applyCardStatement(payload: CardIssuerStatementPayload): CardStatementApplyDetails {
   const accountId = cardAccountForIssuerNumber(payload.account);
   const statementDate = padCcStatementDate(unpaddedCardLineDate(payload.close));
-  const reviews = payload.statements.map((s) => reviewStatement(accountId, statementDate, payload, s));
+  const reviews = payload.statements
+    .map((s): HandledStatement => {
+      const currency = pesosOrDollars(s.currency, "card.statement");
+      return { ...s, currency };
+    })
+    .map((s) => reviewStatement(accountId, statementDate, payload, s));
 
   let written: CardStatementApplyDetails["written"] = null;
   const pending = reviews.filter((r) => r.write != null);

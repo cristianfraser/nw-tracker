@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import type {
   IngestConflictEntry,
+  IngestErrorCode,
   IngestEnvelope,
   IngestKindDefinition,
   IngestResult,
@@ -49,6 +50,21 @@ export class IngestConflict extends Error {
   ) {
     super(message);
     this.name = "IngestConflict";
+  }
+}
+
+/**
+ * The document cannot be applied as it stands (a currency the server does not know, or one the
+ * kind's handler cannot take yet): nothing is written and the route answers a 4xx with `code` —
+ * the payload is refused like an invalid one, never a 500.
+ */
+export class IngestRefusal extends Error {
+  constructor(
+    readonly code: Extract<IngestErrorCode, "unknown_currency" | "unsupported_currency">,
+    message: string
+  ) {
+    super(message);
+    this.name = "IngestRefusal";
   }
 }
 
@@ -88,8 +104,9 @@ export function ingestPayloadSha256(payload: unknown): string {
 type StoredDocument = { payload_sha256: string; details_json: string | null; applied_at: string };
 
 /**
- * Receives one validated document. Throws only on a server fault (→ 500 from the error
- * middleware); a conflict is an answer.
+ * Receives one validated document. Throws `IngestRefusal` (→ 422 from the route) when a handler
+ * refuses the payload, and otherwise only on a server fault (→ 500 from the error middleware); a
+ * conflict is an answer.
  */
 export function receiveIngestDocument<P>(
   kind: IngestKindDefinition,

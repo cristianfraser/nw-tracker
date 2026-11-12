@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 import type { IncomingWireBookingReport } from "./bankAccountIncomingWires.js";
 
@@ -42,7 +43,7 @@ export const brokerNotificationSchema = z
     amount: z.number().positive().nullable(),
     /** A gross figure the broker never credits in full (a dividend before withholding). Never booked. */
     gross_amount: z.number().positive().nullable(),
-    currency: z.enum(["clp", "usd"]).nullable(),
+    currency: currencyCodeSchema.nullable(),
     /** Shares or cuotas, as a decimal string (counts run to 9 decimals). */
     units: z.string().regex(/^\d+(?:\.\d+)?$/).nullable(),
     price: z.number().positive().nullable(),

@@ -9,6 +9,7 @@ import type { MerchantPurchaseDocumentApplyDetails, MerchantPurchaseDocumentPayl
 import { db } from "./db.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 function storeDocuments(payload: MerchantPurchaseDocumentPayload, sourceRef: string, payloadJson: string): void {
   const source = db
@@ -63,6 +64,10 @@ export function applyMerchantPurchaseDocument(
   sourceRef: string,
   opts?: { today?: string }
 ): MerchantPurchaseDocumentApplyDetails {
+  // The charge matcher compares pesos and dollars (merchantExpenseNotes.ts).
+  for (const d of payload.documents) {
+    pesosOrDollars(d.type === "receipt" ? d.total.currency : d.price.currency, "merchant.purchase_document");
+  }
   const payloadJson = JSON.stringify(payload);
   return db.transaction((): MerchantPurchaseDocumentApplyDetails => {
     storeOnce([payloadJson], {

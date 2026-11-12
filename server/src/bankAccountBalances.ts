@@ -14,6 +14,7 @@ import { normalizeAccountNumber, type BankAccountBalancesApplyDetails, type Bank
 import { checkingMovementBalanceClpAt } from "./checkingCartolaBalances.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
@@ -35,7 +36,12 @@ function declaredAccountId(issuer: string, number: string, currency: Currency): 
  * Records one observation, once per source: a resend of the same file records nothing, and one
  * stating other balances under the same source is an `IngestConflict`.
  */
-export function applyBankAccountBalances(payload: BankAccountBalancesPayload, sourceRef: string): BankAccountBalancesApplyDetails {
+export function applyBankAccountBalances(received: BankAccountBalancesPayload, sourceRef: string): BankAccountBalancesApplyDetails {
+  // The check reads peso and dollar ledgers only.
+  const payload = {
+    ...received,
+    accounts: received.accounts.map((a) => ({ ...a, currency: pesosOrDollars(a.currency, "bank_account.balances") })),
+  };
   const details: BankAccountBalancesApplyDetails = { recorded: 0, known: [], unknown: [] };
   const ins = db.prepare(
     `INSERT INTO bank_account_balance_snapshots

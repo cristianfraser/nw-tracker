@@ -15,6 +15,7 @@ import { db } from "./db.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug, ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
 import { ccImportFlowItemFromLine, ccStatementLabel, type CcImportFlowItem } from "./ccStatementsImport.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 /**
  * One line of a card's listing of movements not billed yet — the nightly feed, a pasted table, a
@@ -70,7 +71,7 @@ export function webPasteLinesFromPastedListing(listing: CardPastedListing, cardG
     lines: listing.lines.map((l) => ({
       transaction_date: l.date,
       merchant: normCcMerchant(l.merchant),
-      currency: l.currency,
+      currency: pesosOrDollars(l.currency, "card.pasted_listing"),
       amount: flip ? -l.amount : l.amount,
       raw_line: l.raw_line,
     })),

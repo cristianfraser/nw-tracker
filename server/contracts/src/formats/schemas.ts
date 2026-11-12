@@ -14,8 +14,17 @@ export const chileSecondSchema = z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2
 /** An amount with at most two decimals. */
 export const centsSchema = z.number().refine(hasAtMostCents, { message: "amount must be in cents" });
 
-/** Whole pesos carry no decimals, dollars at most cents. */
-export function amountFitsCurrency(amount: number, currency: "clp" | "usd"): boolean {
+/**
+ * A currency as a lowercase ISO 4217 code (`clp`, `usd`, `eur`). The contract checks the shape
+ * only: which codes the app knows is the server's `currencies` table, checked on receipt.
+ */
+export const currencyCodeSchema = z.string().regex(/^[a-z]{3}$/, { message: "currency must be a lowercase ISO 4217 code" });
+
+/** A lowercase ISO 4217 code (see {@link currencyCodeSchema}). */
+export type CurrencyCode = string;
+
+/** Whole pesos carry no decimals, any other currency at most cents. */
+export function amountFitsCurrency(amount: number, currency: CurrencyCode): boolean {
   return currency === "clp" ? Number.isInteger(amount) : hasAtMostCents(amount);
 }
 

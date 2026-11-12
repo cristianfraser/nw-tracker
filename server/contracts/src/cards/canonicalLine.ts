@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CARD_LINE_KINDS } from "../flowKinds.js";
-import { isoDateSchema } from "../formats/index.js";
+import { isoDateSchema, currencyCodeSchema } from "../formats/index.js";
 
 /**
  * The canonical card line (docs/untangle-plan.md F13): the one shape a card statement line has
@@ -47,7 +47,7 @@ export const cardCanonicalLineSchema = z
     description: z.string().nullable(),
     place: z.string().nullable(),
     country: z.string().nullable(),
-    currency: z.enum(["clp", "usd"]),
+    currency: currencyCodeSchema,
     /** Debt-positive, in `currency`. */
     amount: z.number(),
     /** The amount in the currency the merchant charged, as printed (its currency is labeled on import). */
@@ -126,7 +126,7 @@ export const cardCanonicalStatementSchema = z
     pay_by: z.string().nullable(),
     card_last4: z.string().nullable(),
     card_product: z.string().nullable(),
-    currency: z.enum(["clp", "usd"]),
+    currency: currencyCodeSchema,
     /** How the ledger files the document's layout. */
     layout: z.enum(["compact", "wide", "international_usd"]),
     header: cardCanonicalStatementHeaderSchema,

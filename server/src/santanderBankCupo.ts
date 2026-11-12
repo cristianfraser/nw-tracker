@@ -2,6 +2,7 @@ import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 /**
  * The issuer's own credit line per card and currency, as a `card.unbilled_movements` listing
@@ -45,7 +46,7 @@ export function bankCupoRowsFromListing(
     seen.add(key);
     out.push({
       account_id: accountId,
-      currency: r.currency,
+      currency: pesosOrDollars(r.currency, "card.unbilled_movements issuer_balances"),
       bank_account: r.account.number,
       plastic_last4: r.card_last4,
       cupo_total: r.limit,

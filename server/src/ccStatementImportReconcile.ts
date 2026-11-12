@@ -19,6 +19,7 @@ import {
   type CardCanonicalLine,
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
@@ -488,7 +489,7 @@ function canonicalLineToReconcileRow(statement: CardCanonicalStatement, line: Ca
   const { amount_clp, amount_usd } = storedCardLineAmounts(line);
   const sourcePdf = statement.document.trim();
   return {
-    currency: statement.currency,
+    currency: pesosOrDollars(statement.currency, "card statement reconcile"),
     installment_flag: inst != null,
     merchant: line.merchant || null,
     amount_clp,
@@ -823,7 +824,7 @@ export function assertCcImportReconcilesOrThrow(
 
     for (const sourcePdf of [...new Set(pdfIncoming.map((st) => st.document.trim()).filter(Boolean))].sort()) {
       const stmtPdfIncoming = pdfIncoming.filter((st) => st.document.trim() === sourcePdf);
-      const reconcileCurrencies = [...new Set(stmtPdfIncoming.map((st) => st.currency))].sort();
+      const reconcileCurrencies = [...new Set(stmtPdfIncoming.map((st) => pesosOrDollars(st.currency, "card statement reconcile")))].sort();
 
       for (const headerCurrency of reconcileCurrencies) {
         const csvHeader = headerFromStatement(stmtPdfIncoming.find((st) => st.currency === headerCurrency));

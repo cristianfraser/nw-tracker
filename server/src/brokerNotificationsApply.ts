@@ -14,6 +14,7 @@ import { bookIncomingWires, storeWithdrawalRequests, withdrawalRequestFromNotifi
 import { racionalComisionCrawlDue } from "./racionalMovementsImport.js";
 import { recordMovementEventTime } from "./movementEventTimes.js";
 import { applyBrokerSplitNotifications } from "./brokerSplitNotifications.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 /**
  * `broker.notifications`: every money notification a broker sent, planned against the ledger
@@ -96,5 +97,9 @@ const NOTIFICATION_HANDLERS: Record<BrokerSlug, (payload: BrokerNotificationsPay
 };
 
 export function applyBrokerNotifications(payload: BrokerNotificationsPayload): BrokerNotificationsApplyDetails {
+  // The brokers' cash accounts are pesos and dollars.
+  for (const n of payload.notifications) {
+    if (n.currency != null) pesosOrDollars(n.currency, `broker.notifications (${payload.broker})`);
+  }
   return NOTIFICATION_HANDLERS[payload.broker](payload);
 }
