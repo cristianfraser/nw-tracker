@@ -108,6 +108,9 @@ export function MortgagePrepaymentSection({
       {mortgage ? (
         <p className="muted" style={{ fontSize: "var(--font-size-prose)", marginTop: 0 }}>
           {t("accountDetail.prepayments.hint", { mortgage: benchmarkOptionLabel(t, mortgage) })}
+          {options.find((o) => o.slug === selected)?.kind === "portfolio_group"
+            ? ` ${t("accountDetail.prepayments.portfolioHint")}`
+            : null}
         </p>
       ) : null}
       {totals && data && totals.covered_payments < data.rows.length && totals.covered_from ? (

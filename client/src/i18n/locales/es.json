@@ -31,7 +31,7 @@
       "title": "Bienvenido a NW Tracker",
       "lead": "Un tracker automatizado de patrimonio y gastos. Se conecta a bancos, emisores de tarjetas, corredoras, fondos de pensiones y casillas de correo, importa cada documento apenas llega, lo cuadra con los totales de la propia fuente y valoriza cada cuenta a diario a precios de mercado.",
       "fictional": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato.",
-      "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno.",
+      "story": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el F22 chileno y luego el 1040 de EE. UU..",
       "storyTax": "Residente en Chile hasta el 2024-04-14, residente en EE. UU. desde el 2024-04-15 (declarado, no inferido). 2024 se divide en ambos lados: el F22 declara los meses en Chile como residente y los arriendos posteriores con el Impuesto Adicional; el 1040 es una declaración de doble estatus. Desde 2025 Chile grava solo los arriendos, y el 1040 lleva el lado mundial: el anexo E de ambos departamentos (la pérdida sobre la asignación pasiva se arrastra), el formulario 8621 de los fondos chilenos, las opciones de INTC en el formulario 8949, y el formulario 1116 que acredita el Impuesto Adicional chileno — con un tope cercano a cero por la pérdida de arriendo, así que se arrastra. Cada abril el F22 va primero y el 1040 lee su impuesto. Mientras aún residía en Chile tuvo ETF UCITS irlandeses (CSPX, VWRA en las líneas en dólares de la Bolsa de Londres) en un bróker de EE. UU. — sin exposición al impuesto a la herencia de EE. UU. — y los vendió antes de mudarse: en manos de un residente de EE. UU. serían PFIC, así que su ganancia es una ganancia de acciones extranjeras en el F22, no una línea del 1040.",
       "openDashboard": "Abrir el dashboard",
       "howTitle": "Cómo funciona",
@@ -54,7 +54,7 @@
         },
         "client": {
           "title": "Cliente",
-          "body": "El cliente: muestra lo que calculó el servidor y nunca lo recalcula.",
+          "body": "Muestra lo que calculó el servidor y nunca lo recalcula.",
           "link": "Abrir el dashboard"
         }
       },
@@ -113,7 +113,7 @@
     },
     "privacy": {
       "title": "Privacidad",
-      "intro": "Esta demo no tiene cuentas ni inicio de sesión, y todas sus cifras son sintéticas. Esta nota describe lo que se registra sobre las visitas.",
+      "intro": "Esta demo no tiene cuentas ni inicio de sesión, y todas sus cifras son sintéticas.",
       "visitsTitle": "Visitas",
       "visitsBody": "Por cada visitante y día, la aplicación guarda un identificador obtenido con un hash de la dirección IP y el navegador junto a una clave que cambia a diario, de modo que no es posible seguir a un visitante de un día al siguiente. La aplicación no guarda la dirección IP. Junto al identificador se guardan: el user-agent del navegador, el país de la conexión, el sitio de origen (solo el dominio), una etiqueta de campaña del enlace si la hay y el número de solicitudes.",
       "pagesTitle": "Páginas y tiempos",
@@ -188,7 +188,7 @@
       "right": "Derecho",
       "strike": "Strike (US$)",
       "expiry": "Vencimiento",
-      "bucketNote": "Un contrato se archiva en Brokerage › Opciones; el servidor deriva su símbolo OCC."
+      "bucketNote": "Un contrato se archiva en Brokerage › Opciones."
     },
     "terms": {
       "title": "Contrato",
@@ -318,7 +318,7 @@
       "title": "Asignación (últimas valorizaciones)"
     },
     "accountsTreeTitle": "Cuentas",
-    "accountsTreeEmpty": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts.",
+    "accountsTreeEmpty": "No hay cuentas aún. Agrega una desde el panel.",
     "percentMode": {
       "retirementMonthly": "% retiro mensual",
       "retirementYearly": "% retiro anual",
@@ -391,7 +391,7 @@
   "chartStylesLab": {
     "title": "Estilos de gráficos",
     "previewButton": "Ver estilos",
-    "intro": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El ajuste «Gráficos» aplica un estilo a todas las páginas.",
+    "intro": "Los mismos dos gráficos bajo cada estilo. El ajuste «Gráficos» aplica un estilo a todas las páginas.",
     "lineTitle": "Patrimonio neto (muestra)",
     "comboTitle": "Δ mensual y depósitos (muestra)",
     "series": {
@@ -497,7 +497,6 @@
       "bucket": "Grupo portfolio (hoja)",
       "excludeFromTotals": "No sumar en totales de bucket (exclude_from_group_totals)",
       "initialMovementsTitle": "Movimientos iniciales (opcional)",
-      "initialMovementsHint": "Misma lógica que SPY/VEA: flow_kind, montos CLP/USD y acciones (units_delta) cuando corresponda.",
       "noMovements": "Sin movimientos iniciales. La cuenta quedaría vacía hasta importar o cargar movimientos.",
       "movementDate": "Fecha",
       "movementType": "Tipo",
@@ -508,7 +507,7 @@
       "removeMovement": "Quitar",
       "createBtn": "Crear cuenta",
       "resetBtn": "Limpiar",
-      "createSuccess": "Cuenta creada (#{{id}}). El árbol de navegación se actualizó; ejecuta sync de NYSE si necesitas historial de valor cuota.",
+      "createSuccess": "Cuenta creada (#{{id}}).",
       "previewInvalid": "Completa nombre, ticker, categoría y fecha en cada movimiento con fila."
     },
     "groupSubGroupsCount": "({{count}} subgrupos)",
@@ -719,21 +718,20 @@
     },
     "brokerageMovements": {
       "title": "Añadir movimientos",
-      "hint": "Misma lógica que SPY/VEA: flow_kind, montos CLP/USD y acciones (units_delta) cuando corresponda. Opcional: cuenta destino/origen para traspasos en una sola fila.",
+      "hint": "Opcional: cuenta destino/origen para traspasos en una sola fila.",
       "emptyDraft": "Sin borradores. Usa los botones para añadir filas y luego registrar.",
       "saveBtn": "Registrar movimientos",
       "saveSuccess": "{{count}} movimiento(s) registrado(s)."
     },
     "usdCashMovements": {
       "title": "Añadir movimientos",
-      "hint": "Elige el tipo en cada fila: depósito CLP, compra USD / venta CLP (ambos montos), dividendo (desde una acción), interés / rentabilidad (en USD), retiros u otro.",
       "emptyDraft": "Sin borradores. Añade depósitos, compras USD o traspasos a otra cuenta.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."
     },
     "clpCashMovements": {
       "title": "Añadir movimientos",
-      "hint": "Elige el tipo en cada fila: depósito CLP, interés / rentabilidad (en CLP), retiro u otro. El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila.",
+      "hint": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila.",
       "emptyDraft": "Sin borradores. Añade depósitos, interés o retiros.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."
@@ -763,7 +761,7 @@
         "unidades": "unidades"
       },
       "title": "Añadir aporte / retiro",
-      "hint": "Aporte o retiro con contraparte. Ingresa el monto en CLP y las {{unit}}; el monto debe cuadrar con {{unit}} × valor cuota (si no, se rechaza).",
+      "hint": "Ingresa el monto en CLP y las {{unit}}; el monto debe cuadrar con {{unit}} × valor cuota (si no, se rechaza).",
       "emptyDraft": "Sin borradores. Añade una fila, completa fecha, monto, cuotas y contraparte.",
       "addRow": "Añadir flujo",
       "saveBtn": "Registrar flujos",
@@ -772,14 +770,13 @@
     },
     "bookLedger": {
       "sectionTitle": "Valorización y flujos (manual)",
-      "sectionHint": "Valorización = saldo en una fecha (tabla valuations). Flujo = aporte o retiro en CLP (tabla movements). Monto positivo = ingreso; negativo = retiro.",
+      "sectionHint": "Valorización = saldo en una fecha. Flujo = aporte o retiro en CLP. Monto positivo = ingreso; negativo = retiro.",
       "valuationTitle": "Añadir valorización",
       "valuationHint": "Un punto de saldo por fecha. Usa 0 para cerrar la cuenta tras un retiro total.",
       "valuationSaveBtn": "Guardar valorización",
       "valuationSaved": "Valorización guardada.",
       "valuationValueInvalid": "Valor CLP inválido.",
       "movementTitle": "Añadir flujos",
-      "movementHint": "Aportes y retiros en CLP con signo (+ ingreso, − retiro).",
       "movementEmptyDraft": "Sin borradores. Añade una fila, completa fecha y monto, y registra.",
       "movementSaveBtn": "Registrar flujos",
       "movementSaved": "{{count}} flujo(s) registrado(s).",
@@ -795,14 +792,14 @@
     },
     "mortgagePayment": {
       "sectionTitle": "Registrar cuota hipotecaria",
-      "sectionHint": "Ingresa los montos del estado de cuenta del banco. La amortización, el saldo UF y el valor neto del inmueble se calculan en la app (UF día desde uf_daily).",
+      "sectionHint": "Ingresa los montos del estado de cuenta del banco. La amortización, el saldo UF y el valor neto del inmueble se calculan en la app.",
       "cuotaLabel": "Cuota",
       "pagoClpLabel": "Pago total CLP",
       "interesClpLabel": "Interés CLP",
       "minUfLabel": "Cuota mínima UF",
       "minUfHint": "Del estado de cuenta — separa la amortización programada del prepago.",
       "creditoRestanteUfLabel": "Crédito restante UF (banco)",
-      "creditoRestanteUfHint": "Opcional — saldo del estado de cuenta tras este pago. Reemplaza el valor derivado (el redondeo puede diferir en ±0,0001 UF).",
+      "creditoRestanteUfHint": "Opcional — saldo del estado de cuenta tras este pago. Reemplaza el valor derivado.",
       "incendioClpLabel": "Seguro incendio CLP",
       "desgravamenClpLabel": "Desgravamen CLP",
       "desgravamenOverride": "Usar valor del banco (en lugar del calculado)",
@@ -913,7 +910,7 @@
       "ccPdfClp": "PDF CLP",
       "ccPdfUsd": "PDF USD (opcional)",
       "cuentaVistaWebPaste": "Movimientos pegados (cuenta vista)",
-      "cuentaVistaWebPasteHint": "Un movimiento por línea: «fecha; descripción; monto» (monto negativo = cargo) o «fecha; descripción; cargo; abono». Fecha con año (dd/mm/aaaa). Ej: 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Los duplicados y lo ya cubierto por cartola o traspaso interno se omiten.",
+      "cuentaVistaWebPasteHint": "Un movimiento por línea: «fecha; descripción; monto» (monto negativo = cargo) o «fecha; descripción; cargo; abono». Fecha con año (dd/mm/aaaa). Ej: 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Los duplicados se omiten.",
       "checkingRecent": "Últimos movimientos (Excel)",
       "checkingRecentHint": "Export «últimos movimientos» de la cuenta corriente. Se pueden volver a subir archivos con filas ya importadas.",
       "checkingCartola": "Cartola oficial (Excel)",
@@ -962,7 +959,7 @@
       "colCartola": "Cartola",
       "cartolaYes": "Importada",
       "ledgerAnchorTitle": "Ancla del ledger",
-      "ledgerAnchorHint": "Ajuste único al inicio del historial (mes anterior al primero) para alinear el ledger con el saldo final de la última cartola importada. Se recalcula al importar cartolas o al agregar movimientos manuales.",
+      "ledgerAnchorHint": "Ajuste único al inicio del historial (mes anterior al primero) para alinear el ledger con el saldo final de la última cartola importada.",
       "ledgerAnchorAmount": "Monto (CLP)",
       "ledgerAnchorDate": "Fecha",
       "ledgerAnchorDerived": "Objetivo cartola {{month}}: {{amount}} · fecha sugerida {{date}} (mes anterior al primero)",
@@ -1007,7 +1004,7 @@
       "facturacionesTitle": "Facturaciones",
       "colCloseDate": "Fecha cierre",
       "colPayBy": "Pagar hasta",
-      "payByDerivedHint": "Derivada del cierre (alrededor del 10 del mes siguiente): ningún estado de cuenta imprime aún esta fecha.",
+      "payByDerivedHint": "Derivada del cierre según la regla del emisor: ningún estado de cuenta imprime aún esta fecha.",
       "colFacturadoUsd": "Facturado en moneda extranjera",
       "colFacturadoTotal": "Facturado total",
       "colCuotaAPagar": "Cuota a pagar",
@@ -1031,12 +1028,12 @@
       "facturacionDeleteConfirmAction": "Eliminar",
       "facturacionDeleteConfirmCancel": "Cancelar",
       "associatedCardsTitle": "Tarjetas asociadas",
-      "closeDateEstimatedHint": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre.",
+      "closeDateEstimatedHint": "Estimada desde el último cierre conocido de la tarjeta: el banco aún no publica este cierre.",
       "closeDateAnnouncedHint": "Anunciada como próximo período de facturación en el estado de cuenta anterior.",
       "provisionalCloseHint": "Cerrada en el banco, estado de cuenta aún sin importar. El facturado es el total que cobró el banco (SALDO INICIAL del feed de la tarjeta) si el feed vio el cierre; si no, la estimación de la app.",
       "provisionalEstimateHint": "La app había estimado {{amount}} para esta facturación."
     },
-    "monthlyPerfNotEnough": "Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un punto).",
+    "monthlyPerfNotEnough": "Sin suficientes meses de valorización mensual para calcular variaciones.",
     "stateContribution": {
       "title": "Aporte estatal APV-A",
       "colDate": "Fecha",
@@ -1045,7 +1042,8 @@
     },
     "prepayments": {
       "title": "Prepagos vs invertir",
-      "hint": "Cada peso pagado sobre la cuota mínima (lo extra de cada pago, y todo un prepago hecho fuera de una cuota, sus intereses incluidos), seguido hasta hoy de dos formas: prepagado, solo la parte que amortizó el crédito crece, a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra — los intereses de un prepago no valen nada en este lado; invertido el mismo día en la referencia, todo crece con ella. Δ = invertido − prepagado, y su % del valor prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados. Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado).",
+      "hint": "Cada peso pagado sobre la cuota mínima, seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca ({{mortgage}}); invertido el mismo día, crece con la referencia. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor. Antes de impuestos.",
+      "portfolioHint": "Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado).",
       "compareWith": "Invertido en",
       "colDate": "Fecha",
       "colCuota": "Pago",
@@ -1110,7 +1108,7 @@
     "accountsTreeTitleLiabilities": "Grupos y cuentas en esta vista",
     "chartToggleGrouped": "Agrupado",
     "chartToggleAccumulatedDeposits": "Aportes acumulados",
-    "chartToggleAccumulatedDepositsTitle": "Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización).",
+    "chartToggleAccumulatedDepositsTitle": "Líneas punteadas de aportes acumulados por cuenta o grupo.",
     "accountsTreeEmpty": "Aún no hay cuentas en esta vista.",
     "pasivos": {
       "creditCardSectionTitle": "Tarjetas de crédito",
@@ -1425,7 +1423,7 @@
       "merchantMatchHint": "comercio probable",
       "linkSourceAuto": "Vinculado automáticamente",
       "linkSourceManual": "Vinculado manualmente",
-      "expectedHint": "Esperado CSV: {{amount}}",
+      "expectedHint": "Cuenta: {{amount}}",
       "assignAction": "Asignar compra…",
       "assignModalTitle": "Asignar una compra",
       "assignKindLabel": "Tipo",
@@ -1468,7 +1466,7 @@
       "financing": {
         "openButton": "Financiamiento en cuotas…",
         "title": "Financiamiento de facturado en cuotas",
-        "intro": "Vincula un facturado (p. ej. Líder) que pagaste en cuotas con la tarjeta Santander. En «Total» el facturado se muestra en su mes; en «Por cuota» cada gasto se reparte en las cuotas del pago.",
+        "intro": "Vincula un facturado que otra tarjeta pagó en cuotas. En «Total» se muestra en su mes; en «Por cuota» cada gasto se reparte en las cuotas.",
         "existingTitle": "Vínculos existentes",
         "newTitle": "Nuevo vínculo",
         "none": "Sin vínculos.",
@@ -1541,7 +1539,7 @@
       "modalSectionInstallments": "Cuotas",
       "modalSectionAbonos": "Abonos",
       "modalSectionExcluded": "Excluidos del gasto",
-      "modalSectionExcludedHint": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito. No suman al gasto del mes.",
+      "modalSectionExcludedHint": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito.",
       "modalSectionEmpty": "Sin movimientos.",
       "sourceCreditCard": "Tarjeta",
       "sourceChecking": "Cuenta corriente",
@@ -1713,10 +1711,6 @@
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - <name></name>: {{amount}}",
       "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
       "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ingresa una cuota en la app, o deja que la lectura del portal del banco la registre.",
-      "payByRule": {
-        "ledger": "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece cuando su facturación se paga efectivamente (o pasado su pagar-hasta si no hay pago registrado).",
-        "statementsOnly": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."
-      },
       "cuotaProgress": {
         "caption": "{{cuota}} × {{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}})",
         "ariaLabel": "Progreso de cuotas: {{paid}} de {{total}} pagadas",
@@ -1761,7 +1755,7 @@
     "badgeWideGap": "fuera de ventana bancaria (reimportar la cartola puede duplicar)",
     "badgeMultiCandidate": "{{n}} candidatos del mismo monto",
     "confirmBatchTitle": "Convertir pares seleccionados",
-    "confirmBatchMessage": "Se convertirán {{n}} pares en transferencias únicas. Los saldos de fin de mes no cambian; la operación es reversible por par.",
+    "confirmBatchMessage": "Se convertirán {{n}} pares en transferencias únicas. Los saldos de fin de mes no cambian.",
     "confirmSingleTitle": "Convertir par",
     "confirmSingleMessage": "Convertir {{from}} → {{to}} por {{amount}} en una transferencia única.",
     "confirmConvert": "Convertir",
@@ -1957,7 +1951,7 @@
       },
       "cardLine": {
         "pendingBranch": "Sucursal nueva · sin línea de tarjeta",
-        "pendingBranchHint": "Aún no se conoce el nombre de comercio de esta sucursal. La primera línea de la tarjeta con el mismo día y monto (pegado, feed o estado de cuenta) empareja esta boleta y aprende el nombre del comercio."
+        "pendingBranchHint": "Aún no se conoce el nombre de esta sucursal; se aprende de la primera línea de la tarjeta con el mismo día y monto."
       }
     },
     "config": {
@@ -2001,7 +1995,7 @@
         "no_state_return": "Las liquidaciones no retienen impuesto estatal (un trabajo en un estado sin impuesto a la renta): no se prepara declaración estatal.",
         "residency_undeclared": "No hay residencia tributaria declarada: el año se prepara como residente todo el año, solo con los W-2 y los intereses de bancos de EE.UU. Declara la residencia en Configuración para preparar la declaración mundial.",
         "dual_status": "Año de doble estatus (Pub. 519): esta declaración cubre la parte residente desde el día de la residencia (ingresos mundiales recibidos o realizados desde entonces); sin deducción estándar (casilla 12c en el formulario 2025); los dividendos de fuente estadounidense de la parte no residente van en el anexo.",
-        "dual_status_statement_tax_line_16": "El impuesto del anexo de no residente se suma a la línea 16 (una lectura que las fuentes leídas no citan; la alternativa es el anexo 2).",
+        "dual_status_statement_tax_line_16": "El impuesto del anexo de no residente se suma a la línea 16 (las fuentes no lo dicen; la alternativa es el anexo 2).",
         "withholding_1042s_line_25c": "El impuesto de EE.UU. retenido sobre dividendos por un corredor extranjero (formulario 1042-S) es un pago en la línea 25c, nunca un impuesto extranjero.",
         "qualified_holding_period_not_tested": "Dividendos calificados: no se verifica el período de tenencia (más de 60 de los 121 días en torno a la fecha ex-dividendo) — no hay fechas ex-dividendo registradas.",
         "wash_sales_not_modelled": "No se aplican las ventas ficticias (wash sales, §1091) a las acciones y ETF; no alcanzan a las criptomonedas.",
@@ -2026,7 +2020,7 @@
         "form_8833_treaty_credit": "El Impuesto Adicional se acredita por el art. 23(1) del convenio: una posición basada en el tratado que el formulario 8833 podría tener que declarar (la app no lo presenta).",
         "unico_art107_not_creditable": "El impuesto único del 10 % retenido en Chile sobre una venta del art. 107 no se acredita: el convenio (art. 13) deja la ganancia a EE.UU., y es de fuente estadounidense.",
         "no_ftc_against_niit": "Ningún crédito por impuestos extranjeros se aplica contra el impuesto sobre la renta neta de inversiones (Reg. §1.1411-1(e)).",
-        "foreign_dividend_withholding_not_credited": "El impuesto retenido por otro país sobre dividendos se muestra, no se acredita: las fuentes revisadas no resuelven si es acreditable.",
+        "foreign_dividend_withholding_not_credited": "El impuesto retenido por otro país sobre dividendos se muestra, no se acredita: no está resuelto si es acreditable.",
         "options_written_short_term": "El resultado de una opción vendida es de corto plazo sea cual sea su duración (§1234(b)); el de una opción comprada sigue su plazo de tenencia. Una opción asignada no tiene fila: su prima está en la base de las acciones o en el precio de venta.",
         "covered_call_straddle_not_modelled": "No se modelan las reglas de straddle de las opciones de compra cubiertas (§1092: diferimiento de pérdidas, suspensión del plazo de tenencia de la acción)."
       },
@@ -2120,7 +2114,7 @@
       },
       "schedules": {
         "title": "Anexos y hojas de cálculo",
-        "explain": "Las líneas detrás de la declaración, con la numeración de cada formulario; dólares enteros (las líneas al 15 % y al 20 % de la hoja, al centavo).",
+        "explain": "Las líneas detrás de la declaración, con la numeración de cada formulario; dólares enteros.",
         "amount": "Monto",
         "forms": {
           "schedule_b": "Anexo B · intereses y dividendos ordinarios",
@@ -2324,7 +2318,7 @@
       }
     },
     "title": "Declaración de renta (Formulario 22)",
-    "subtitle": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada.",
+    "subtitle": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado.",
     "paymentNote": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento.",
     "codeFallback": "Código {{code}}",
     "table": {
@@ -2390,7 +2384,7 @@
       "1901": "Rentas afectas al IDPC, art. 20 N°5 (diferencia de cambio en dólares; línea 58 d)"
     },
     "residency": {
-      "undeclared": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año, como siempre.",
+      "undeclared": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año.",
       "regime": {
         "resident": "Declarada: residente tributario en Chile todo el año ({{period}}).",
         "nonresident": "Declarada: sin residencia tributaria en Chile en {{year}} — residente en EE. UU. desde {{from}} ({{period}}). Solo entran las rentas de fuente chilena, con Impuesto Adicional (art. 60 inc. 1° LIR, línea 72 del F22).",
@@ -2402,7 +2396,7 @@
       "nonresidentPart": "Parte no residente ({{from}} → {{through}}): arriendo afecto {{rent}}, arriendo DFL-2 exento {{exempt}} (art. 15 DFL N° 2: «ni Adicional»); base del Impuesto Adicional (32) {{base}}, impuesto (34) {{tax}}.",
       "nonresidentArt107": "Ventas art. 107 en la parte no residente: {{sales}}, resultado {{result}}, impuesto único 10 % {{tax}} — al costo de las normas generales (art. 107 N°7), retenido por el corredor (N°6; no hay registro de la retención).",
       "excludedTitle": "No declarado (no residente)",
-      "excludedExplain": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón. No desaparecen: es lo que Chile no alcanza.",
+      "excludedExplain": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón.",
       "excludedItem": "{{kind}}: {{clp}} — {{reason}}",
       "kind": {
         "us_salary": "Sueldo en EE. UU. (bruto)",
@@ -2566,7 +2560,7 @@
     "taxYearLabel": "Año tributario",
     "taxYearOption": "AT{{year}} (ingresos {{income}})",
     "estimatedTitle": "Estimado desde la app hasta que el tercero lo informe",
-    "estimatedNote": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo.",
+    "estimatedNote": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC) e intereses del crédito hipotecario. Los reemplazan las DJ que los terceros presentan en marzo.",
     "lossOffset": {
       "unusedOpen": "Pérdida sin compensar en {{year}}: {{amount}}. Ganancias de hasta {{amount}} en el mismo grupo (cripto, fondos, intereses, acciones o dividendos extranjeros) realizadas antes del {{year}}-12-31 no pagarían impuesto.",
       "unusedOpenTax": "Sin la pérdida costarían ≈ {{tax}} de IGC. Las pérdidas no se arrastran al año siguiente.",
@@ -2728,7 +2722,7 @@
   "panelSettings": {
     "taxResidency": {
       "title": "Residencia tributaria",
-      "explain": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Nada se infiere; sin períodos declarados eres residente tributario en Chile.",
+      "explain": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Sin períodos declarados eres residente tributario en Chile.",
       "none": "Sin períodos declarados.",
       "jurisdiction": "Jurisdicción",
       "jurisdictions": {

@@ -31,7 +31,7 @@
       "title": "Welcome to NW Tracker",
       "lead": "An automated net-worth and expense tracker. It connects to banks, card issuers, brokers, pension funds and mailboxes, imports each statement as it arrives, checks it against the source's own totals, and values every account daily at market prices.",
       "fictional": "This demo shows a fictional person's finances: their bank and card statements, payslips and investment records are generated as documents and imported the way real ones are. A few edits are allowed; they are undone after a while.",
-      "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
+      "story": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the Chilean F22 first, then the US 1040.",
       "storyTax": "A Chilean resident until 2024-04-14, a US resident from 2024-04-15 (declared, not inferred). 2024 is split on both sides: the F22 declares the Chilean months as a resident and the rents after the move under the Impuesto Adicional; the 1040 is a dual-status return. From 2025 Chile taxes only the rents, and the 1040 carries the worldwide side: Schedule E for both apartments (the loss above the passive allowance carried forward), Form 8621 for the Chilean funds, the INTC options on Form 8949, and Form 1116 crediting Chile's Impuesto Adicional — capped near zero by the rental loss, so it carries forward. Each April the F22 comes first and the 1040 reads its tax. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
       "openDashboard": "Open the dashboard",
       "howTitle": "How it works",
@@ -54,7 +54,7 @@
         },
         "client": {
           "title": "Client",
-          "body": "The client: it shows what the server computed and never recalculates it.",
+          "body": "Shows what the server computed and never recalculates it.",
           "link": "Open the dashboard"
         }
       },
@@ -113,7 +113,7 @@
     },
     "privacy": {
       "title": "Privacy",
-      "intro": "This demo has no accounts and no sign-in, and every figure in it is synthetic. This note describes what is recorded about visits.",
+      "intro": "This demo has no accounts and no sign-in, and every figure in it is synthetic.",
       "visitsTitle": "Visits",
       "visitsBody": "For each visitor and day, the application stores an identifier derived by hashing the IP address and browser with a key that changes daily, so a visitor cannot be followed from one day to the next. The application does not store the IP address itself. Stored alongside the identifier: the browser's user-agent string, the country of the connection, the referring site (domain only), a campaign tag from the link if present, and the number of requests made.",
       "pagesTitle": "Pages and timings",
@@ -188,7 +188,7 @@
       "right": "Right",
       "strike": "Strike (US$)",
       "expiry": "Expiry",
-      "bucketNote": "A contract is filed under Brokerage › Options; the server derives its OCC symbol."
+      "bucketNote": "A contract is filed under Brokerage › Options."
     },
     "terms": {
       "title": "Contract",
@@ -318,7 +318,7 @@
       "title": "Allocation (latest valuations)"
     },
     "accountsTreeTitle": "Accounts",
-    "accountsTreeEmpty": "No accounts yet. Open an asset tab and note the category IDs for POST /api/accounts.",
+    "accountsTreeEmpty": "No accounts yet. Add one from the panel.",
     "percentMode": {
       "retirementMonthly": "Monthly retirement %",
       "retirementYearly": "Annual retirement %",
@@ -391,7 +391,7 @@
   "chartStylesLab": {
     "title": "Chart styles",
     "previewButton": "Preview styles",
-    "intro": "The same two charts under each style (all rough.js). The «Charts» setting applies a style to every page.",
+    "intro": "The same two charts under each style. The «Charts» setting applies a style to every page.",
     "lineTitle": "Net worth (sample)",
     "comboTitle": "Monthly Δ and deposits (sample)",
     "series": {
@@ -497,7 +497,6 @@
       "bucket": "Portfolio group (leaf)",
       "excludeFromTotals": "Exclude from bucket totals (exclude_from_group_totals)",
       "initialMovementsTitle": "Initial movements (optional)",
-      "initialMovementsHint": "Same logic as SPY/VEA: flow_kind, CLP/USD amounts and shares (units_delta) where applicable.",
       "noMovements": "No initial movements. The account would stay empty until you import or load movements.",
       "movementDate": "Date",
       "movementType": "Type",
@@ -508,7 +507,7 @@
       "removeMovement": "Remove",
       "createBtn": "Create account",
       "resetBtn": "Clear",
-      "createSuccess": "Account created (#{{id}}). The navigation tree was refreshed; run the NYSE sync if you need unit-value history.",
+      "createSuccess": "Account created (#{{id}}).",
       "previewInvalid": "Fill in name, ticker, category, and a date on every movement row."
     },
     "groupSubGroupsCount": "({{count}} sub-groups)",
@@ -719,21 +718,20 @@
     },
     "brokerageMovements": {
       "title": "Add movements",
-      "hint": "Same logic as SPY/VEA: flow_kind, CLP/USD amounts and shares (units_delta) where applicable. Optional: destination/source account for single-row transfers.",
+      "hint": "Optional: destination/source account for single-row transfers.",
       "emptyDraft": "No drafts. Use the buttons to add rows, then save.",
       "saveBtn": "Save movements",
       "saveSuccess": "{{count}} movement(s) saved."
     },
     "usdCashMovements": {
       "title": "Add movements",
-      "hint": "Pick the type on each row: CLP deposit, USD purchase / CLP sale (both amounts), dividend (from a stock), interest / returns (in USD), withdrawals, or other.",
       "emptyDraft": "No drafts. Add deposits, USD purchases, or transfers to another account.",
       "saveBtn": "Save movements",
       "saved": "{{count}} movement(s) saved."
     },
     "clpCashMovements": {
       "title": "Add movements",
-      "hint": "Pick the type on each row: CLP deposit, interest / returns (in CLP), withdrawal, or other. Interest raises the balance but does not count as your own contribution (it is a return). Optional: counterpart account on deposits/withdrawals to record the transfer between accounts in a single row.",
+      "hint": "Interest raises the balance but does not count as your own contribution (it is a return). Optional: counterpart account on deposits/withdrawals to record the transfer between accounts in a single row.",
       "emptyDraft": "No drafts. Add deposits, interest, or withdrawals.",
       "saveBtn": "Save movements",
       "saved": "{{count}} movement(s) saved."
@@ -763,7 +761,7 @@
         "unidades": "units"
       },
       "title": "Add contribution / withdrawal",
-      "hint": "Contribution or withdrawal with a counterpart. Enter the CLP amount and the {{unit}}; the amount must match {{unit}} × unit value (otherwise it is rejected).",
+      "hint": "Enter the CLP amount and the {{unit}}; the amount must match {{unit}} × unit value (otherwise it is rejected).",
       "emptyDraft": "No drafts. Add a row and fill in date, amount, units, and counterpart.",
       "addRow": "Add flow",
       "saveBtn": "Save flows",
@@ -772,14 +770,13 @@
     },
     "bookLedger": {
       "sectionTitle": "Valuation and flows (manual)",
-      "sectionHint": "Valuation = balance on a date (valuations table). Flow = a CLP contribution or withdrawal (movements table). Positive amount = inflow; negative = withdrawal.",
+      "sectionHint": "Valuation = balance on a date. Flow = a CLP contribution or withdrawal. Positive amount = inflow; negative = withdrawal.",
       "valuationTitle": "Add valuation",
       "valuationHint": "One balance point per date. Use 0 to close the account after a full withdrawal.",
       "valuationSaveBtn": "Save valuation",
       "valuationSaved": "Valuation saved.",
       "valuationValueInvalid": "Invalid CLP value.",
       "movementTitle": "Add flows",
-      "movementHint": "Signed CLP contributions and withdrawals (+ inflow, − withdrawal).",
       "movementEmptyDraft": "No drafts. Add a row, fill in date and amount, then save.",
       "movementSaveBtn": "Save flows",
       "movementSaved": "{{count}} flow(s) saved.",
@@ -795,14 +792,14 @@
     },
     "mortgagePayment": {
       "sectionTitle": "Record mortgage payment",
-      "sectionHint": "Enter the amounts from the bank's statement. Amortization, the UF balance, and the property's net value are computed in the app (daily UF from uf_daily).",
+      "sectionHint": "Enter the amounts from the bank's statement. Amortization, the UF balance, and the property's net value are computed in the app.",
       "cuotaLabel": "Installment",
       "pagoClpLabel": "Total payment CLP",
       "interesClpLabel": "Interest CLP",
       "minUfLabel": "Minimum installment UF",
       "minUfHint": "From the statement — used to split scheduled amortization from any prepayment.",
       "creditoRestanteUfLabel": "Remaining credit UF (bank)",
-      "creditoRestanteUfHint": "Optional — the statement's balance after this payment. Overrides the derived value (rounding can differ by ±0.0001 UF).",
+      "creditoRestanteUfHint": "Optional — the statement's balance after this payment. Overrides the derived value.",
       "incendioClpLabel": "Fire insurance CLP",
       "desgravamenClpLabel": "Life insurance CLP",
       "desgravamenOverride": "Use the bank's value (instead of the computed one)",
@@ -913,7 +910,7 @@
       "ccPdfClp": "CLP PDF",
       "ccPdfUsd": "USD PDF (optional)",
       "cuentaVistaWebPaste": "Pasted movements (cuenta vista)",
-      "cuentaVistaWebPasteHint": "One movement per line: “date; description; amount” (negative amount = charge) or “date; description; charge; credit”. Date with year (dd/mm/yyyy). E.g. 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Duplicates and rows already covered by a bank statement or an internal transfer are skipped.",
+      "cuentaVistaWebPasteHint": "One movement per line: “date; description; amount” (negative amount = charge) or “date; description; charge; credit”. Date with year (dd/mm/yyyy). E.g. 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Duplicates are skipped.",
       "checkingRecent": "Latest movements (Excel)",
       "checkingRecentHint": "Checking-account “latest movements” export. Files with already-imported rows can be re-uploaded.",
       "checkingCartola": "Official bank statement (Excel)",
@@ -962,7 +959,7 @@
       "colCartola": "Statement",
       "cartolaYes": "Imported",
       "ledgerAnchorTitle": "Ledger anchor",
-      "ledgerAnchorHint": "One-time adjustment at the start of the history (the month before the first) to align the ledger with the final balance of the last imported statement. Recomputed when importing statements or adding manual movements.",
+      "ledgerAnchorHint": "One-time adjustment at the start of the history (the month before the first) to align the ledger with the final balance of the last imported statement.",
       "ledgerAnchorAmount": "Amount (CLP)",
       "ledgerAnchorDate": "Date",
       "ledgerAnchorDerived": "Statement target {{month}}: {{amount}} · suggested date {{date}} (month before the first)",
@@ -1007,7 +1004,7 @@
       "facturacionesTitle": "Billing cycles",
       "colCloseDate": "Close date",
       "colPayBy": "Pay by",
-      "payByDerivedHint": "Derived from the close (about the 10th of the next month): no statement prints this pay-by yet.",
+      "payByDerivedHint": "Derived from the close by the issuer's rule: no statement prints this pay-by yet.",
       "colFacturadoUsd": "Billed in foreign currency",
       "colFacturadoTotal": "Total billed",
       "colCuotaAPagar": "Installment due",
@@ -1031,12 +1028,12 @@
       "facturacionDeleteConfirmAction": "Delete",
       "facturacionDeleteConfirmCancel": "Cancel",
       "associatedCardsTitle": "Associated cards",
-      "closeDateEstimatedHint": "Estimated from the card's configured cycle: the bank has not published this close yet.",
+      "closeDateEstimatedHint": "Estimated from the card's latest known close: the bank has not published this close yet.",
       "closeDateAnnouncedHint": "Announced as the next billing period by the previous statement.",
       "provisionalCloseHint": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",
       "provisionalEstimateHint": "The app had estimated {{amount}} for this facturación."
     },
-    "monthlyPerfNotEnough": "Not enough months of monthly valuation to compute changes (or the account only has one point).",
+    "monthlyPerfNotEnough": "Not enough months of monthly valuation to compute changes.",
     "stateContribution": {
       "title": "APV-A state contribution",
       "colDate": "Date",
@@ -1045,7 +1042,8 @@
     },
     "prepayments": {
       "title": "Prepayments vs investing",
-      "hint": "Every peso paid above the minimum cuota (the extra in each payment, and the whole of a prepago made outside a cuota, its interest included), followed to today two ways: prepaid, only the part that paid down the loan grows, at the mortgage's rate, {{mortgage}}, the interest it saves — a prepago's interest is worth nothing on this side; invested on the same day in the benchmark, all of it grows with it. Δ = invested − prepaid, and its % of the prepaid value; green means investing would have come out ahead so far. Before tax on both sides. Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
+      "hint": "Every peso paid above the minimum cuota, followed to today two ways: prepaid, it grows at the mortgage's rate ({{mortgage}}); invested the same day, it grows with the benchmark. Δ = invested − prepaid; green means investing would have come out ahead. Before tax.",
+      "portfolioHint": "Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
       "compareWith": "Invested in",
       "colDate": "Date",
       "colCuota": "Payment",
@@ -1110,7 +1108,7 @@
     "accountsTreeTitleLiabilities": "Groups and accounts in this view",
     "chartToggleGrouped": "Grouped",
     "chartToggleAccumulatedDeposits": "Accumulated contributions",
-    "chartToggleAccumulatedDepositsTitle": "Dashed lines with accumulated contributions per account or group (same scale as valuation).",
+    "chartToggleAccumulatedDepositsTitle": "Dashed lines with accumulated contributions per account or group.",
     "accountsTreeEmpty": "No accounts in this view yet.",
     "pasivos": {
       "creditCardSectionTitle": "Credit cards",
@@ -1425,7 +1423,7 @@
       "merchantMatchHint": "likely merchant",
       "linkSourceAuto": "Linked automatically",
       "linkSourceManual": "Linked manually",
-      "expectedHint": "CSV expected: {{amount}}",
+      "expectedHint": "Bill: {{amount}}",
       "assignAction": "Assign purchase…",
       "assignModalTitle": "Assign a purchase",
       "assignKindLabel": "Kind",
@@ -1468,7 +1466,7 @@
       "financing": {
         "openButton": "Installment financing…",
         "title": "Installment financing of billed amounts",
-        "intro": "Link a billed amount (e.g. Líder) that you paid in installments with the Santander card. In “Total” the billed amount shows in its month; in “Per installment” each expense is spread across the payment's installments.",
+        "intro": "Link a billed amount that another card paid in installments. In “Total” it shows in its month; in “Per installment” each expense is spread over the installments.",
         "existingTitle": "Existing links",
         "newTitle": "New link",
         "none": "No links.",
@@ -1541,7 +1539,7 @@
       "modalSectionInstallments": "Installments",
       "modalSectionAbonos": "Credits",
       "modalSectionExcluded": "Excluded from spend",
-      "modalSectionExcludedHint": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes. They do not add to the month's spend.",
+      "modalSectionExcludedHint": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes.",
       "modalSectionEmpty": "No movements.",
       "sourceCreditCard": "Credit card",
       "sourceChecking": "Checking account",
@@ -1713,10 +1711,6 @@
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - <name></name>: {{amount}}",
       "monthCuotasEmpty": "No pending installments on the calendar.",
       "mortgageSheetEmpty": "No payment rows in the database. Enter a cuota in the app, or let the lender's portal reading post it.",
-      "payByRule": {
-        "ledger": "Installments by statement month: each row is one facturación (closing ~20th) with its pay-by date (~10th of the next month); \"cuota a pagar\" = plan installments billed at that close. PDFs pin amounts, progress and pay-by dates; open/projected months follow the plan. Rows roll off once their facturación is actually paid (or once the pay-by passes, when no payment is on record).",
-        "statementsOnly": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported."
-      },
       "cuotaProgress": {
         "caption": "{{cuota}} × {{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}})",
         "ariaLabel": "Installment progress: {{paid}} of {{total}} paid",
@@ -1761,7 +1755,7 @@
     "badgeWideGap": "outside the bank window (re-importing the statement may duplicate)",
     "badgeMultiCandidate": "{{n}} candidates with the same amount",
     "confirmBatchTitle": "Convert selected pairs",
-    "confirmBatchMessage": "{{n}} pairs will be converted into single transfers. Month-end balances do not change; the operation is reversible per pair.",
+    "confirmBatchMessage": "{{n}} pairs will be converted into single transfers. Month-end balances do not change.",
     "confirmSingleTitle": "Convert pair",
     "confirmSingleMessage": "Convert {{from}} → {{to}} for {{amount}} into a single transfer.",
     "confirmConvert": "Convert",
@@ -1957,7 +1951,7 @@
       },
       "cardLine": {
         "pendingBranch": "New store · no card line yet",
-        "pendingBranchHint": "No merchant name is known for this store yet. The first card line with the same day and amount (paste, feed or statement) pairs this receipt and learns the store's merchant name."
+        "pendingBranchHint": "This store's name isn't known yet; it is learned from the first card line with the same day and amount."
       }
     },
     "config": {
@@ -2001,7 +1995,7 @@
         "no_state_return": "No state withholding on the pay stubs (a job in a state without income tax): no state return is drafted.",
         "residency_undeclared": "No tax residency is declared: the year is drafted as a full-year resident from the W-2s and the US bank interest only. Declare the residency in Settings to draft the worldwide return.",
         "dual_status": "Dual-status year (Pub. 519): this return covers the resident part from the residency day (worldwide income received or realized from then); no standard deduction (box 12c on the 2025 form); the nonresident part's US-source dividends are on the attached statement.",
-        "dual_status_statement_tax_line_16": "The nonresident statement's tax is added to line 16 (a reading the sources read do not quote; the alternative is Schedule 2).",
+        "dual_status_statement_tax_line_16": "The nonresident statement's tax is added to line 16 (the sources don't say; the alternative is Schedule 2).",
         "withholding_1042s_line_25c": "US tax withheld on dividends by a broker abroad (Form 1042-S) is a payment on line 25c, never a foreign tax.",
         "qualified_holding_period_not_tested": "Qualified dividends: the holding period (more than 60 days of the 121 around the ex-dividend date) is not tested — no ex-dividend dates are on file.",
         "wash_sales_not_modelled": "Wash sales (§1091) are not applied to the stocks and ETFs; they do not reach the coins.",
@@ -2026,7 +2020,7 @@
         "form_8833_treaty_credit": "The Impuesto Adicional is credited under the treaty's Art. 23(1): a treaty position Form 8833 may have to disclose (not filed by the app).",
         "unico_art107_not_creditable": "The 10 % único Chile withheld on an art. 107 sale is not credited: the treaty (Art. 13) leaves the gain to the US, and it is US-source.",
         "no_ftc_against_niit": "No foreign tax credit applies against the net investment income tax (Reg. §1.1411-1(e)).",
-        "foreign_dividend_withholding_not_credited": "Tax another country withheld on dividends is shown, not credited: the readings do not settle whether it is creditable.",
+        "foreign_dividend_withholding_not_credited": "Tax another country withheld on dividends is shown, not credited: whether it is creditable is unsettled.",
         "options_written_short_term": "A written option's result is short-term whatever its length (§1234(b)); a bought option's follows its holding period. An assigned option has no row: its premium is in the shares' basis or the sale's proceeds.",
         "covered_call_straddle_not_modelled": "The straddle rules on covered calls (§1092: loss deferral, the stock's holding period suspended) are not modelled."
       },
@@ -2120,7 +2114,7 @@
       },
       "schedules": {
         "title": "Schedules and worksheets",
-        "explain": "The lines behind the return, as each form numbers them; whole dollars (the worksheet's 15 % and 20 % lines to the cent).",
+        "explain": "The lines behind the return, as each form numbers them; whole dollars.",
         "amount": "Amount",
         "forms": {
           "schedule_b": "Schedule B · interest and ordinary dividends",
@@ -2324,7 +2318,7 @@
       }
     },
     "title": "Tax return (Formulario 22)",
-    "subtitle": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
+    "subtitle": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed.",
     "paymentNote": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
     "codeFallback": "Code {{code}}",
     "table": {
@@ -2390,7 +2384,7 @@
       "1901": "Income taxed under IDPC, art. 20 N°5 (exchange result on dollars; line 58 d)"
     },
     "residency": {
-      "undeclared": "No tax residency declared: the return assumes a Chilean tax resident the whole year, as always.",
+      "undeclared": "No tax residency declared: the return assumes a Chilean tax resident the whole year.",
       "regime": {
         "resident": "Declared: Chilean tax resident the whole year ({{period}}).",
         "nonresident": "Declared: not a Chilean tax resident in {{year}} — US resident from {{from}} ({{period}}). Only Chilean-source income enters, under the Impuesto Adicional (LIR art. 60 inc. 1, F22 line 72).",
@@ -2402,7 +2396,7 @@
       "nonresidentPart": "Non-resident part ({{from}} → {{through}}): taxable rent {{rent}}, DFL-2 rent exempt {{exempt}} (DFL N° 2 art. 15: «ni Adicional»); Impuesto Adicional base (32) {{base}}, tax (34) {{tax}}.",
       "nonresidentArt107": "Art. 107 sales in the non-resident part: {{sales}}, result {{result}}, 10 % single tax {{tax}} — at the general-rule cost (art. 107 N°7), withheld by the broker (N°6; no withholding record is on file).",
       "excludedTitle": "Not declared (non-resident)",
-      "excludedExplain": "Items of the non-resident window the return does not declare, each with its reason. They are not gone: this is what Chile does not reach.",
+      "excludedExplain": "Items of the non-resident window the return does not declare, each with its reason.",
       "excludedItem": "{{kind}}: {{clp}} — {{reason}}",
       "kind": {
         "us_salary": "US salary (gross)",
@@ -2566,7 +2560,7 @@
     "taxYearLabel": "Tax year",
     "taxYearOption": "AT{{year}} (income {{income}})",
     "estimatedTitle": "Estimated from the ledger until the third party reports it",
-    "estimatedNote": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March.",
+    "estimatedNote": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost) and mortgage interest. They are replaced by the DJs third parties file in March.",
     "lossOffset": {
       "unusedOpen": "Uncompensated loss in {{year}}: {{amount}}. Gains up to {{amount}} in the same pool (crypto, funds, interest, foreign shares or dividends) realized by {{year}}-12-31 would pay no tax.",
       "unusedOpenTax": "Without the loss they would cost ≈ {{tax}} of IGC. Losses do not carry over to the next year.",
@@ -2728,7 +2722,7 @@
   "panelSettings": {
     "taxResidency": {
       "title": "Tax residency",
-      "explain": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). Nothing is inferred; with no period declared you are a Chilean tax resident.",
+      "explain": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). With no period declared you are a Chilean tax resident.",
       "none": "No period declared.",
       "jurisdiction": "Jurisdiction",
       "jurisdictions": {

@@ -117,9 +117,6 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
       <legend className="flow-section-title">
         {t("accountDetail.bookLedger.movementTitle")}
       </legend>
-      <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
-        {t("accountDetail.bookLedger.movementHint")}
-      </p>
 
       {movements.length === 0 ? (
         <p className="muted" style={{ fontSize: "var(--font-size-prose)" }}>

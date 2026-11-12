@@ -66,7 +66,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
         }}
         legend="add"
         titleKey="accountDetail.usdCashMovements.title"
-        hintKey="accountDetail.usdCashMovements.hint"
+        hintKey={null}
         emptyTextKey="accountDetail.usdCashMovements.emptyDraft"
         currentAccountId={accountId}
         flowKinds={USD_CASH_FLOW_KINDS}

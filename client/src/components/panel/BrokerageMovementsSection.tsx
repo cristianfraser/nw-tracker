@@ -198,7 +198,8 @@ export function BrokerageMovementsSection({
   legend?: BrokerageMovementsSectionLegend;
   emptyTextKey?: string;
   titleKey?: string;
-  hintKey?: string;
+  /** `null` = no hint. */
+  hintKey?: string | null;
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
   cashCurrency?: CashFormCurrency;
@@ -211,10 +212,11 @@ export function BrokerageMovementsSection({
       ? "accountDetail.brokerageMovements.title"
       : "panelAccounts.addAccount.initialMovementsTitle");
   const resolvedHintKey =
-    hintKey ??
-    (legend === "add"
-      ? "accountDetail.brokerageMovements.hint"
-      : "panelAccounts.addAccount.initialMovementsHint");
+    hintKey === undefined
+      ? legend === "add"
+        ? "accountDetail.brokerageMovements.hint"
+        : null
+      : hintKey;
 
   function addMovement() {
     onChange(appendMovementRow(movements));
@@ -225,9 +227,11 @@ export function BrokerageMovementsSection({
       <legend className="flow-section-title">
         {t(resolvedTitleKey)}
       </legend>
-      <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
-        {t(resolvedHintKey)}
-      </p>
+      {resolvedHintKey ? (
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
+          {t(resolvedHintKey)}
+        </p>
+      ) : null}
 
       {movements.length === 0 ? (
         <p className="muted" style={{ fontSize: "var(--font-size-prose)" }}>

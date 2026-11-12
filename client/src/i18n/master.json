@@ -74,8 +74,8 @@
         "es": "Esta demo muestra las finanzas de una persona ficticia: sus cartolas, estados de cuenta, liquidaciones e inversiones se generan como documentos y se importan como los reales. Se permiten algunos cambios; se deshacen al rato."
       },
       "story": {
-        "en": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the US 1040 first, then the Chilean F22.",
-        "es": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el 1040 de EE. UU. y luego el F22 chileno."
+        "en": "The story: a Chilean engineer who moves to Austin in 2024 on an intracompany transfer (a US payroll with 401(k), HSA and a Roth IRA whose dividends are reinvested). He keeps two rented apartments in Santiago with their mortgages, one of them DFL-2, his cash cushion in a money-market fund in Chile and a savings account in Texas, pays a US credit card, and files two returns every April: the Chilean F22 first, then the US 1040.",
+        "es": "La historia: un ingeniero chileno que se traslada a Austin en 2024 por una transferencia dentro de su empresa (nómina de EE. UU. con 401(k), HSA y una Roth IRA cuyos dividendos se reinvierten). Mantiene dos departamentos arrendados en Santiago con sus hipotecas, uno de ellos DFL-2, su colchón de efectivo en un fondo money market en Chile y una cuenta de ahorro en Texas, paga una tarjeta de crédito de EE. UU. y presenta dos declaraciones cada abril: primero el F22 chileno y luego el 1040 de EE. UU.."
       },
       "storyTax": {
         "en": "A Chilean resident until 2024-04-14, a US resident from 2024-04-15 (declared, not inferred). 2024 is split on both sides: the F22 declares the Chilean months as a resident and the rents after the move under the Impuesto Adicional; the 1040 is a dual-status return. From 2025 Chile taxes only the rents, and the 1040 carries the worldwide side: Schedule E for both apartments (the loss above the passive allowance carried forward), Form 8621 for the Chilean funds, the INTC options on Form 8949, and Form 1116 crediting Chile's Impuesto Adicional — capped near zero by the rental loss, so it carries forward. Each April the F22 comes first and the 1040 reads its tax. While still a Chilean resident he held Irish UCITS ETFs (CSPX, VWRA on the London Stock Exchange's dollar lines) at a US broker — no US estate-tax exposure — and sold them before the move: in a US resident's hands they would be PFICs, so their gain is a foreign share gain on the F22, not a 1040 line.",
@@ -142,8 +142,8 @@
             "es": "Cliente"
           },
           "body": {
-            "en": "The client: it shows what the server computed and never recalculates it.",
-            "es": "El cliente: muestra lo que calculó el servidor y nunca lo recalcula."
+            "en": "Shows what the server computed and never recalculates it.",
+            "es": "Muestra lo que calculó el servidor y nunca lo recalcula."
           },
           "link": {
             "en": "Open the dashboard",
@@ -300,8 +300,8 @@
         "es": "Privacidad"
       },
       "intro": {
-        "en": "This demo has no accounts and no sign-in, and every figure in it is synthetic. This note describes what is recorded about visits.",
-        "es": "Esta demo no tiene cuentas ni inicio de sesión, y todas sus cifras son sintéticas. Esta nota describe lo que se registra sobre las visitas."
+        "en": "This demo has no accounts and no sign-in, and every figure in it is synthetic.",
+        "es": "Esta demo no tiene cuentas ni inicio de sesión, y todas sus cifras son sintéticas."
       },
       "visitsTitle": {
         "en": "Visits",
@@ -546,8 +546,8 @@
         "es": "Vencimiento"
       },
       "bucketNote": {
-        "en": "A contract is filed under Brokerage › Options; the server derives its OCC symbol.",
-        "es": "Un contrato se archiva en Brokerage › Opciones; el servidor deriva su símbolo OCC."
+        "en": "A contract is filed under Brokerage › Options.",
+        "es": "Un contrato se archiva en Brokerage › Opciones."
       }
     },
     "terms": {
@@ -979,8 +979,8 @@
       "es": "Cuentas"
     },
     "accountsTreeEmpty": {
-      "en": "No accounts yet. Open an asset tab and note the category IDs for POST /api/accounts.",
-      "es": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts."
+      "en": "No accounts yet. Add one from the panel.",
+      "es": "No hay cuentas aún. Agrega una desde el panel."
     },
     "percentMode": {
       "retirementMonthly": { "en": "Monthly retirement %", "es": "% retiro mensual" },
@@ -1196,8 +1196,8 @@
       "es": "Ver estilos"
     },
     "intro": {
-      "en": "The same two charts under each style (all rough.js). The «Charts» setting applies a style to every page.",
-      "es": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El ajuste «Gráficos» aplica un estilo a todas las páginas."
+      "en": "The same two charts under each style. The «Charts» setting applies a style to every page.",
+      "es": "Los mismos dos gráficos bajo cada estilo. El ajuste «Gráficos» aplica un estilo a todas las páginas."
     },
     "lineTitle": {
       "en": "Net worth (sample)",
@@ -1553,10 +1553,6 @@
         "en": "Initial movements (optional)",
         "es": "Movimientos iniciales (opcional)"
       },
-      "initialMovementsHint": {
-        "en": "Same logic as SPY/VEA: flow_kind, CLP/USD amounts and shares (units_delta) where applicable.",
-        "es": "Misma lógica que SPY/VEA: flow_kind, montos CLP/USD y acciones (units_delta) cuando corresponda."
-      },
       "noMovements": {
         "en": "No initial movements. The account would stay empty until you import or load movements.",
         "es": "Sin movimientos iniciales. La cuenta quedaría vacía hasta importar o cargar movimientos."
@@ -1598,8 +1594,8 @@
         "es": "Limpiar"
       },
       "createSuccess": {
-        "en": "Account created (#{{id}}). The navigation tree was refreshed; run the NYSE sync if you need unit-value history.",
-        "es": "Cuenta creada (#{{id}}). El árbol de navegación se actualizó; ejecuta sync de NYSE si necesitas historial de valor cuota."
+        "en": "Account created (#{{id}}).",
+        "es": "Cuenta creada (#{{id}})."
       },
       "previewInvalid": {
         "en": "Fill in name, ticker, category, and a date on every movement row.",
@@ -2316,8 +2312,8 @@
         "es": "Añadir movimientos"
       },
       "hint": {
-        "en": "Same logic as SPY/VEA: flow_kind, CLP/USD amounts and shares (units_delta) where applicable. Optional: destination/source account for single-row transfers.",
-        "es": "Misma lógica que SPY/VEA: flow_kind, montos CLP/USD y acciones (units_delta) cuando corresponda. Opcional: cuenta destino/origen para traspasos en una sola fila."
+        "en": "Optional: destination/source account for single-row transfers.",
+        "es": "Opcional: cuenta destino/origen para traspasos en una sola fila."
       },
       "emptyDraft": {
         "en": "No drafts. Use the buttons to add rows, then save.",
@@ -2336,10 +2332,6 @@
       "title": {
         "en": "Add movements",
         "es": "Añadir movimientos"
-      },
-      "hint": {
-        "en": "Pick the type on each row: CLP deposit, USD purchase / CLP sale (both amounts), dividend (from a stock), interest / returns (in USD), withdrawals, or other.",
-        "es": "Elige el tipo en cada fila: depósito CLP, compra USD / venta CLP (ambos montos), dividendo (desde una acción), interés / rentabilidad (en USD), retiros u otro."
       },
       "emptyDraft": {
         "en": "No drafts. Add deposits, USD purchases, or transfers to another account.",
@@ -2360,8 +2352,8 @@
         "es": "Añadir movimientos"
       },
       "hint": {
-        "en": "Pick the type on each row: CLP deposit, interest / returns (in CLP), withdrawal, or other. Interest raises the balance but does not count as your own contribution (it is a return). Optional: counterpart account on deposits/withdrawals to record the transfer between accounts in a single row.",
-        "es": "Elige el tipo en cada fila: depósito CLP, interés / rentabilidad (en CLP), retiro u otro. El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila."
+        "en": "Interest raises the balance but does not count as your own contribution (it is a return). Optional: counterpart account on deposits/withdrawals to record the transfer between accounts in a single row.",
+        "es": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila."
       },
       "emptyDraft": {
         "en": "No drafts. Add deposits, interest, or withdrawals.",
@@ -2450,8 +2442,8 @@
         "es": "Añadir aporte / retiro"
       },
       "hint": {
-        "en": "Contribution or withdrawal with a counterpart. Enter the CLP amount and the {{unit}}; the amount must match {{unit}} × unit value (otherwise it is rejected).",
-        "es": "Aporte o retiro con contraparte. Ingresa el monto en CLP y las {{unit}}; el monto debe cuadrar con {{unit}} × valor cuota (si no, se rechaza)."
+        "en": "Enter the CLP amount and the {{unit}}; the amount must match {{unit}} × unit value (otherwise it is rejected).",
+        "es": "Ingresa el monto en CLP y las {{unit}}; el monto debe cuadrar con {{unit}} × valor cuota (si no, se rechaza)."
       },
       "emptyDraft": {
         "en": "No drafts. Add a row and fill in date, amount, units, and counterpart.",
@@ -2480,8 +2472,8 @@
         "es": "Valorización y flujos (manual)"
       },
       "sectionHint": {
-        "en": "Valuation = balance on a date (valuations table). Flow = a CLP contribution or withdrawal (movements table). Positive amount = inflow; negative = withdrawal.",
-        "es": "Valorización = saldo en una fecha (tabla valuations). Flujo = aporte o retiro en CLP (tabla movements). Monto positivo = ingreso; negativo = retiro."
+        "en": "Valuation = balance on a date. Flow = a CLP contribution or withdrawal. Positive amount = inflow; negative = withdrawal.",
+        "es": "Valorización = saldo en una fecha. Flujo = aporte o retiro en CLP. Monto positivo = ingreso; negativo = retiro."
       },
       "valuationTitle": {
         "en": "Add valuation",
@@ -2506,10 +2498,6 @@
       "movementTitle": {
         "en": "Add flows",
         "es": "Añadir flujos"
-      },
-      "movementHint": {
-        "en": "Signed CLP contributions and withdrawals (+ inflow, − withdrawal).",
-        "es": "Aportes y retiros en CLP con signo (+ ingreso, − retiro)."
       },
       "movementEmptyDraft": {
         "en": "No drafts. Add a row, fill in date and amount, then save.",
@@ -2566,8 +2554,8 @@
         "es": "Registrar cuota hipotecaria"
       },
       "sectionHint": {
-        "en": "Enter the amounts from the bank's statement. Amortization, the UF balance, and the property's net value are computed in the app (daily UF from uf_daily).",
-        "es": "Ingresa los montos del estado de cuenta del banco. La amortización, el saldo UF y el valor neto del inmueble se calculan en la app (UF día desde uf_daily)."
+        "en": "Enter the amounts from the bank's statement. Amortization, the UF balance, and the property's net value are computed in the app.",
+        "es": "Ingresa los montos del estado de cuenta del banco. La amortización, el saldo UF y el valor neto del inmueble se calculan en la app."
       },
       "cuotaLabel": {
         "en": "Installment",
@@ -2594,8 +2582,8 @@
         "es": "Crédito restante UF (banco)"
       },
       "creditoRestanteUfHint": {
-        "en": "Optional — the statement's balance after this payment. Overrides the derived value (rounding can differ by ±0.0001 UF).",
-        "es": "Opcional — saldo del estado de cuenta tras este pago. Reemplaza el valor derivado (el redondeo puede diferir en ±0,0001 UF)."
+        "en": "Optional — the statement's balance after this payment. Overrides the derived value.",
+        "es": "Opcional — saldo del estado de cuenta tras este pago. Reemplaza el valor derivado."
       },
       "incendioClpLabel": {
         "en": "Fire insurance CLP",
@@ -2984,8 +2972,8 @@
         "es": "Movimientos pegados (cuenta vista)"
       },
       "cuentaVistaWebPasteHint": {
-        "en": "One movement per line: “date; description; amount” (negative amount = charge) or “date; description; charge; credit”. Date with year (dd/mm/yyyy). E.g. 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Duplicates and rows already covered by a bank statement or an internal transfer are skipped.",
-        "es": "Un movimiento por línea: «fecha; descripción; monto» (monto negativo = cargo) o «fecha; descripción; cargo; abono». Fecha con año (dd/mm/aaaa). Ej: 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Los duplicados y lo ya cubierto por cartola o traspaso interno se omiten."
+        "en": "One movement per line: “date; description; amount” (negative amount = charge) or “date; description; charge; credit”. Date with year (dd/mm/yyyy). E.g. 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Duplicates are skipped.",
+        "es": "Un movimiento por línea: «fecha; descripción; monto» (monto negativo = cargo) o «fecha; descripción; cargo; abono». Fecha con año (dd/mm/aaaa). Ej: 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Los duplicados se omiten."
       },
       "checkingRecent": {
         "en": "Latest movements (Excel)",
@@ -3174,8 +3162,8 @@
         "es": "Ancla del ledger"
       },
       "ledgerAnchorHint": {
-        "en": "One-time adjustment at the start of the history (the month before the first) to align the ledger with the final balance of the last imported statement. Recomputed when importing statements or adding manual movements.",
-        "es": "Ajuste único al inicio del historial (mes anterior al primero) para alinear el ledger con el saldo final de la última cartola importada. Se recalcula al importar cartolas o al agregar movimientos manuales."
+        "en": "One-time adjustment at the start of the history (the month before the first) to align the ledger with the final balance of the last imported statement.",
+        "es": "Ajuste único al inicio del historial (mes anterior al primero) para alinear el ledger con el saldo final de la última cartola importada."
       },
       "ledgerAnchorAmount": {
         "en": "Amount (CLP)",
@@ -3348,8 +3336,8 @@
         "es": "Pagar hasta"
       },
       "payByDerivedHint": {
-        "en": "Derived from the close (about the 10th of the next month): no statement prints this pay-by yet.",
-        "es": "Derivada del cierre (alrededor del 10 del mes siguiente): ningún estado de cuenta imprime aún esta fecha."
+        "en": "Derived from the close by the issuer's rule: no statement prints this pay-by yet.",
+        "es": "Derivada del cierre según la regla del emisor: ningún estado de cuenta imprime aún esta fecha."
       },
       "colFacturadoUsd": {
         "en": "Billed in foreign currency",
@@ -3444,8 +3432,8 @@
         "es": "Tarjetas asociadas"
       },
       "closeDateEstimatedHint": {
-        "en": "Estimated from the card's configured cycle: the bank has not published this close yet.",
-        "es": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre."
+        "en": "Estimated from the card's latest known close: the bank has not published this close yet.",
+        "es": "Estimada desde el último cierre conocido de la tarjeta: el banco aún no publica este cierre."
       },
       "closeDateAnnouncedHint": {
         "en": "Announced as the next billing period by the previous statement.",
@@ -3461,8 +3449,8 @@
       }
     },
     "monthlyPerfNotEnough": {
-      "en": "Not enough months of monthly valuation to compute changes (or the account only has one point).",
-      "es": "Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un punto)."
+      "en": "Not enough months of monthly valuation to compute changes.",
+      "es": "Sin suficientes meses de valorización mensual para calcular variaciones."
     },
     "stateContribution": {
       "title": {
@@ -3488,8 +3476,12 @@
         "es": "Prepagos vs invertir"
       },
       "hint": {
-        "en": "Every peso paid above the minimum cuota (the extra in each payment, and the whole of a prepago made outside a cuota, its interest included), followed to today two ways: prepaid, only the part that paid down the loan grows, at the mortgage's rate, {{mortgage}}, the interest it saves — a prepago's interest is worth nothing on this side; invested on the same day in the benchmark, all of it grows with it. Δ = invested − prepaid, and its % of the prepaid value; green means investing would have come out ahead so far. Before tax on both sides. Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
-        "es": "Cada peso pagado sobre la cuota mínima (lo extra de cada pago, y todo un prepago hecho fuera de una cuota, sus intereses incluidos), seguido hasta hoy de dos formas: prepagado, solo la parte que amortizó el crédito crece, a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra — los intereses de un prepago no valen nada en este lado; invertido el mismo día en la referencia, todo crece con ella. Δ = invertido − prepagado, y su % del valor prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados. Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado)."
+        "en": "Every peso paid above the minimum cuota, followed to today two ways: prepaid, it grows at the mortgage's rate ({{mortgage}}); invested the same day, it grows with the benchmark. Δ = invested − prepaid; green means investing would have come out ahead. Before tax.",
+        "es": "Cada peso pagado sobre la cuota mínima, seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca ({{mortgage}}); invertido el mismo día, crece con la referencia. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor. Antes de impuestos."
+      },
+      "portfolioHint": {
+        "en": "Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
+        "es": "Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado)."
       },
       "compareWith": {
         "en": "Invested in",
@@ -3721,8 +3713,8 @@
       "es": "Aportes acumulados"
     },
     "chartToggleAccumulatedDepositsTitle": {
-      "en": "Dashed lines with accumulated contributions per account or group (same scale as valuation).",
-      "es": "Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización)."
+      "en": "Dashed lines with accumulated contributions per account or group.",
+      "es": "Líneas punteadas de aportes acumulados por cuenta o grupo."
     },
     "accountsTreeEmpty": {
       "en": "No accounts in this view yet.",
@@ -4864,8 +4856,8 @@
         "es": "Vinculado manualmente"
       },
       "expectedHint": {
-        "en": "CSV expected: {{amount}}",
-        "es": "Esperado CSV: {{amount}}"
+        "en": "Bill: {{amount}}",
+        "es": "Cuenta: {{amount}}"
       },
       "assignAction": {
         "en": "Assign purchase…",
@@ -5021,8 +5013,8 @@
           "es": "Financiamiento de facturado en cuotas"
         },
         "intro": {
-          "en": "Link a billed amount (e.g. Líder) that you paid in installments with the Santander card. In “Total” the billed amount shows in its month; in “Per installment” each expense is spread across the payment's installments.",
-          "es": "Vincula un facturado (p. ej. Líder) que pagaste en cuotas con la tarjeta Santander. En «Total» el facturado se muestra en su mes; en «Por cuota» cada gasto se reparte en las cuotas del pago."
+          "en": "Link a billed amount that another card paid in installments. In “Total” it shows in its month; in “Per installment” each expense is spread over the installments.",
+          "es": "Vincula un facturado que otra tarjeta pagó en cuotas. En «Total» se muestra en su mes; en «Por cuota» cada gasto se reparte en las cuotas."
         },
         "existingTitle": {
           "en": "Existing links",
@@ -5298,8 +5290,8 @@
         "es": "Excluidos del gasto"
       },
       "modalSectionExcludedHint": {
-        "en": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes. They do not add to the month's spend.",
-        "es": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito. No suman al gasto del mes."
+        "en": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes.",
+        "es": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito."
       },
       "modalSectionEmpty": {
         "en": "No movements.",
@@ -5916,16 +5908,6 @@
         "en": "No payment rows in the database. Enter a cuota in the app, or let the lender's portal reading post it.",
         "es": "No hay filas de dividendos en la base. Ingresa una cuota en la app, o deja que la lectura del portal del banco la registre."
       },
-      "payByRule": {
-        "ledger": {
-          "en": "Installments by statement month: each row is one facturación (closing ~20th) with its pay-by date (~10th of the next month); \"cuota a pagar\" = plan installments billed at that close. PDFs pin amounts, progress and pay-by dates; open/projected months follow the plan. Rows roll off once their facturación is actually paid (or once the pay-by passes, when no payment is on record).",
-          "es": "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece cuando su facturación se paga efectivamente (o pasado su pagar-hasta si no hay pago registrado)."
-        },
-        "statementsOnly": {
-          "en": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported.",
-          "es": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."
-        }
-      },
       "cuotaProgress": {
         "caption": {
           "en": "{{cuota}} × {{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}})",
@@ -6088,8 +6070,8 @@
       "es": "Convertir pares seleccionados"
     },
     "confirmBatchMessage": {
-      "en": "{{n}} pairs will be converted into single transfers. Month-end balances do not change; the operation is reversible per pair.",
-      "es": "Se convertirán {{n}} pares en transferencias únicas. Los saldos de fin de mes no cambian; la operación es reversible por par."
+      "en": "{{n}} pairs will be converted into single transfers. Month-end balances do not change.",
+      "es": "Se convertirán {{n}} pares en transferencias únicas. Los saldos de fin de mes no cambian."
     },
     "confirmSingleTitle": {
       "en": "Convert pair",
@@ -6746,8 +6728,8 @@
           "es": "Sucursal nueva · sin línea de tarjeta"
         },
         "pendingBranchHint": {
-          "en": "No merchant name is known for this store yet. The first card line with the same day and amount (paste, feed or statement) pairs this receipt and learns the store's merchant name.",
-          "es": "Aún no se conoce el nombre de comercio de esta sucursal. La primera línea de la tarjeta con el mismo día y monto (pegado, feed o estado de cuenta) empareja esta boleta y aprende el nombre del comercio."
+          "en": "This store's name isn't known yet; it is learned from the first card line with the same day and amount.",
+          "es": "Aún no se conoce el nombre de esta sucursal; se aprende de la primera línea de la tarjeta con el mismo día y monto."
         }
       }
     },
@@ -6886,8 +6868,8 @@
           "es": "Año de doble estatus (Pub. 519): esta declaración cubre la parte residente desde el día de la residencia (ingresos mundiales recibidos o realizados desde entonces); sin deducción estándar (casilla 12c en el formulario 2025); los dividendos de fuente estadounidense de la parte no residente van en el anexo."
         },
         "dual_status_statement_tax_line_16": {
-          "en": "The nonresident statement's tax is added to line 16 (a reading the sources read do not quote; the alternative is Schedule 2).",
-          "es": "El impuesto del anexo de no residente se suma a la línea 16 (una lectura que las fuentes leídas no citan; la alternativa es el anexo 2)."
+          "en": "The nonresident statement's tax is added to line 16 (the sources don't say; the alternative is Schedule 2).",
+          "es": "El impuesto del anexo de no residente se suma a la línea 16 (las fuentes no lo dicen; la alternativa es el anexo 2)."
         },
         "withholding_1042s_line_25c": {
           "en": "US tax withheld on dividends by a broker abroad (Form 1042-S) is a payment on line 25c, never a foreign tax.",
@@ -6986,8 +6968,8 @@
           "es": "Ningún crédito por impuestos extranjeros se aplica contra el impuesto sobre la renta neta de inversiones (Reg. §1.1411-1(e))."
         },
         "foreign_dividend_withholding_not_credited": {
-          "en": "Tax another country withheld on dividends is shown, not credited: the readings do not settle whether it is creditable.",
-          "es": "El impuesto retenido por otro país sobre dividendos se muestra, no se acredita: las fuentes revisadas no resuelven si es acreditable."
+          "en": "Tax another country withheld on dividends is shown, not credited: whether it is creditable is unsettled.",
+          "es": "El impuesto retenido por otro país sobre dividendos se muestra, no se acredita: no está resuelto si es acreditable."
         },
         "options_written_short_term": {
           "en": "A written option's result is short-term whatever its length (§1234(b)); a bought option's follows its holding period. An assigned option has no row: its premium is in the shares' basis or the sale's proceeds.",
@@ -7305,8 +7287,8 @@
       "schedules": {
         "title": { "en": "Schedules and worksheets", "es": "Anexos y hojas de cálculo" },
         "explain": {
-          "en": "The lines behind the return, as each form numbers them; whole dollars (the worksheet's 15 % and 20 % lines to the cent).",
-          "es": "Las líneas detrás de la declaración, con la numeración de cada formulario; dólares enteros (las líneas al 15 % y al 20 % de la hoja, al centavo)."
+          "en": "The lines behind the return, as each form numbers them; whole dollars.",
+          "es": "Las líneas detrás de la declaración, con la numeración de cada formulario; dólares enteros."
         },
         "amount": { "en": "Amount", "es": "Monto" },
         "forms": {
@@ -7701,8 +7683,8 @@
       "es": "Declaración de renta (Formulario 22)"
     },
     "subtitle": {
-      "en": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
-      "es": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada."
+      "en": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed.",
+      "es": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado."
     },
     "paymentNote": {
       "en": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
@@ -7950,8 +7932,8 @@
     },
     "residency": {
       "undeclared": {
-        "en": "No tax residency declared: the return assumes a Chilean tax resident the whole year, as always.",
-        "es": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año, como siempre."
+        "en": "No tax residency declared: the return assumes a Chilean tax resident the whole year.",
+        "es": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año."
       },
       "regime": {
         "resident": {
@@ -7992,8 +7974,8 @@
         "es": "No declarado (no residente)"
       },
       "excludedExplain": {
-        "en": "Items of the non-resident window the return does not declare, each with its reason. They are not gone: this is what Chile does not reach.",
-        "es": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón. No desaparecen: es lo que Chile no alcanza."
+        "en": "Items of the non-resident window the return does not declare, each with its reason.",
+        "es": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón."
       },
       "excludedItem": {
         "en": "{{kind}}: {{clp}} — {{reason}}",
@@ -8537,8 +8519,8 @@
       "es": "Estimado desde la app hasta que el tercero lo informe"
     },
     "estimatedNote": {
-      "en": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March.",
-      "es": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo."
+      "en": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost) and mortgage interest. They are replaced by the DJs third parties file in March.",
+      "es": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC) e intereses del crédito hipotecario. Los reemplazan las DJ que los terceros presentan en marzo."
     },
     "lossOffset": {
       "unusedOpen": {
@@ -9074,8 +9056,8 @@
         "es": "Residencia tributaria"
       },
       "explain": {
-        "en": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). Nothing is inferred; with no period declared you are a Chilean tax resident.",
-        "es": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Nada se infiere; sin períodos declarados eres residente tributario en Chile."
+        "en": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). With no period declared you are a Chilean tax resident.",
+        "es": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Sin períodos declarados eres residente tributario en Chile."
       },
       "none": {
         "en": "No period declared.",
