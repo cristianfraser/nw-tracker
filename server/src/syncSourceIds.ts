@@ -19,6 +19,7 @@ export const GLOBAL_SYNC_SOURCES = [
   "stocks_santiago",
   "stocks_london",
   "yahoo_fx_usd",
+  "fx_pairs",
   "crypto_eod",
 ] as const;
 

@@ -68,6 +68,7 @@ import { fintualGoalsSnapshotPath } from "./fintualApiLib.js";
 import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
+import { fxPairsNextSync, isFxPairsStale } from "./fxPairsSync.js";
 import {
   maxEurDateOnOrBefore,
   maxFxBcentralDateOnOrBefore,
@@ -580,6 +581,14 @@ export const SYNC_SOURCES: { readonly [S in GlobalSyncSource]: SyncSourceDefinit
     keepsForcedWhileStale: true,
     dayKind: (cl) => forexDayKind(cl.ymd),
     nextSync: (c) => yahooFxNextSync(c.cl),
+  },
+  fx_pairs: {
+    label: "Yahoo currency pairs (EUR/USD)",
+    configured: always,
+    stale: (c) => isFxPairsStale({ force: c.force }),
+    keepsForcedWhileStale: true,
+    dayKind: (cl) => forexDayKind(cl.ymd),
+    nextSync: () => fxPairsNextSync(),
   },
   crypto_eod: {
     label: "Crypto EOD",

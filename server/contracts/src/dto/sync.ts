@@ -14,6 +14,7 @@ export type SyncSourceId =
   | "stocks_santiago"
   | "stocks_london"
   | "yahoo_fx_usd"
+  | "fx_pairs"
   | "crypto_eod";
 
 export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";

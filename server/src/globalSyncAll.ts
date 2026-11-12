@@ -1,4 +1,5 @@
 import { assertValuationCurrency } from "./valuationValue.js";
+import { syncFxPairsFromYahoo } from "./fxPairsSync.js";
 import { invalidateMarketDataAggregations } from "./cacheRegistry.js";
 /**
  * Orchestrates external syncs with Chile-time rules:
@@ -746,6 +747,13 @@ async function runAfcCic(
   );
 }
 
+async function runFxPairs(notes: SyncStepNote[]): Promise<void> {
+  const result = await syncFxPairsFromYahoo();
+  for (const p of result.pairs) {
+    notes.push({ step: `Yahoo ${p.code.toUpperCase()}`, message: `ok — ${p.inserted} row(s) inserted into fx_rates (write-once); latest ${p.latest ?? "—"}` });
+  }
+}
+
 async function runYahooFxUsd(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[],
@@ -1355,6 +1363,9 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
 
     await runSyncStepIfStale("yahoo_fx_usd", stale, stepErrors, state!, cl, async () => {
       await runYahooFxUsd(state!, syncChanges, stepNotes);
+    });
+    await runSyncStepIfStale("fx_pairs", stale, stepErrors, state!, cl, async () => {
+      await runFxPairs(stepNotes);
     });
     await runSyncStepIfStale("stocks_nyse", stale, stepErrors, state!, cl, async () => {
       await runStocksNyse(state!, syncChanges, stepNotes);

@@ -415,8 +415,22 @@ export const OPTION_CONTRACTS_SPEC: TriggerSpec = {
 /** Migration 304 (frozen): 270's specs plus the option contract terms. */
 const SPECS_304: readonly TriggerSpec[] = [...SPECS_270, OPTION_CONTRACTS_SPEC];
 
+/**
+ * Migration 312: `fx_rates` holds the pairs loaded through `currencies` (EUR/USD first). A rate row
+ * moves no day before its own, like `fx_daily`.
+ */
+export const FX_RATES_SPEC: TriggerSpec = {
+  table: "fx_rates",
+  targets: (r) => [{ account: ALL, date: `${r}.date` }],
+  watch: ["base", "quote", "date", "mid"],
+  rule: { rateTable: true },
+};
+
+/** Migration 312 (frozen): 304's specs plus the generic rate table. */
+const SPECS_312: readonly TriggerSpec[] = [...SPECS_304, FX_RATES_SPEC];
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_304;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_312;
 
 /** The trim rule of a mark row's table; a table the newest specs do not watch throws. */
 export function markInputRuleForSource(source: string): MarkInputRule {
@@ -519,6 +533,8 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "mortgage_lender_quotes",
   "flow_first_seen",
   "card_to_card_payments",
+  "currencies",
+  "fx_rates",
 ];
 
 /**
@@ -599,6 +615,12 @@ export function runMarkInputChangeTriggers265(dbi: DatabaseType): void {
 export function runMarkInputChangeTriggers304(dbi: DatabaseType): void {
   for (const k of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_${OPTION_CONTRACTS_SPEC.table}_${k}"`);
   for (const sql of markInputTriggerSql(OPTION_CONTRACTS_SPEC)) dbi.exec(sql);
+}
+
+/** Migration 312 hook: watch `fx_rates` (only the new table's triggers, as in 304). */
+export function runMarkInputChangeTriggers312(dbi: DatabaseType): void {
+  for (const k of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_${FX_RATES_SPEC.table}_${k}"`);
+  for (const sql of markInputTriggerSql(FX_RATES_SPEC)) dbi.exec(sql);
 }
 
 /**

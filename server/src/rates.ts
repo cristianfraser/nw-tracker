@@ -3,9 +3,10 @@
  *
  * Currencies are codes (`clp`, `usd`, `uf`, `eur`). The rate data is a set of PAIRS, each
  * registered once below with where its rows live; nothing outside this module names a pair.
- * A conversion walks the pairs: directly when one links the two codes, else through a code both
- * reach (every pair stored today is quoted in pesos, so that is where the walk meets — the
- * registry, not the caller, knows it).
+ * A conversion walks the pairs: directly when one links the two codes, else through a hub both
+ * reach — USD first, then CLP (UF and the Banco Central EUR/CLP are quoted in pesos) — the
+ * registry, not the caller, knows it. Pairs loaded through `currencies` live in `fx_rates`
+ * (EUR/USD from Yahoo `EURUSD=X`).
  *
  * Side of the spread: a quantity is converted at what CLOSES the position.
  * - `asset`: you hold `from` and would sell it for `to` — base → quote at the bid (sell rate),
@@ -96,6 +97,19 @@ function eurClp(ymd: string): PairQuote | null {
   return v != null && v > 0 ? { mid: v, bid: v, ask: v } : null;
 }
 
+const stmtFxRateOnOrBefore = db.prepare(
+  `SELECT mid FROM fx_rates WHERE base = ? AND quote = ? AND date <= ? ORDER BY date DESC LIMIT 1`
+);
+
+/** A pair loaded through `currencies` (`fx_rates`): its mid on or before the day; no spread on file. */
+function fxRatesPair(base: CurrencyCode, quote: CurrencyCode): (ymd: string) => PairQuote | null {
+  return (ymd) => {
+    const r = stmtFxRateOnOrBefore.get(base, quote, ymd) as { mid: number } | undefined;
+    const v = r?.mid;
+    return v != null && v > 0 ? { mid: v, bid: v, ask: v } : null;
+  };
+}
+
 function ufClp(ymd: string): PairQuote | null {
   const r = ufRowOnOrBefore(ymd);
   const v = r?.clp_per_uf;
@@ -106,7 +120,11 @@ const PAIRS: readonly PairSource[] = [
   { base: "usd", quote: "clp", stored: usdClpStored, today: usdClpToday },
   { base: "uf", quote: "clp", stored: ufClp, today: (ymd) => ufClp(ymd) },
   { base: "eur", quote: "clp", stored: eurClp, today: (ymd) => eurClp(ymd) },
+  { base: "eur", quote: "usd", stored: fxRatesPair("eur", "usd"), today: (ymd) => fxRatesPair("eur", "usd")(ymd) },
 ];
+
+/** The hubs a conversion without a direct pair walks through, in order. */
+const HUBS: readonly CurrencyCode[] = ["usd", "clp"];
 
 function pairFor(a: CurrencyCode, b: CurrencyCode): { pair: PairSource; inverted: boolean } | null {
   for (const p of PAIRS) {
@@ -118,7 +136,7 @@ function pairFor(a: CurrencyCode, b: CurrencyCode): { pair: PairSource; inverted
 
 /** The code two pairs share, so a conversion without a direct pair can walk through it. */
 function commonCode(a: CurrencyCode, b: CurrencyCode): CurrencyCode | null {
-  for (const c of CURRENCY_CODES) {
+  for (const c of HUBS) {
     if (c === a || c === b) continue;
     if (pairFor(a, c) && pairFor(c, b)) return c;
   }
@@ -200,5 +218,8 @@ export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode
     if (!uf || !(uf.clp_per_uf > 0)) throw new Error(`flow ${ymd}: no UF on or before the date (${amount} CLP)`);
     return amount / uf.clp_per_uf;
   }
-  throw new Error(`convertFlow: no flow rule from ${from} to ${to}`);
+  // Any other pair: the day's mid through the walk (no buy/sell rate on file for it).
+  const out = convertCurrency(amount, from, to, ymd, { side: "mid" });
+  if (out == null) throw new Error(`flow ${ymd}: no ${from}→${to} rate on or before the date (${amount} ${from})`);
+  return out;
 }

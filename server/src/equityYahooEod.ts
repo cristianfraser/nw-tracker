@@ -138,7 +138,12 @@ export const YAHOO_USD_CLP_SYMBOL = "CLP=X";
  * in the instrument registry.
  */
 function yahooSymbolCalendar(symbol: string): EquityMarketKind {
-  return symbol === YAHOO_USD_CLP_SYMBOL ? "nyse" : equityMarketKind(symbol);
+  // `CLP=X` prints at 17:00 New York on the day it labels. Other forex pairs (`EURUSD=X`) stamp
+  // their daily bar at 00:00 London — the previous evening in New York, which would label
+  // Monday's bar a Sunday — so they are dated on the London calendar.
+  if (symbol === YAHOO_USD_CLP_SYMBOL) return "nyse";
+  if (symbol.endsWith("=X")) return "london";
+  return equityMarketKind(symbol);
 }
 
 /**

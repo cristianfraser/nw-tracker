@@ -207,8 +207,28 @@ export function formatCcExpenseLineAmount(amountClp: number, amountUsd: number |
 }
 
 /**
+ * The symbols of the well-known currencies (any other prints its ISO code): pesos and dollars as
+ * the app has always written them, the rest as they are commonly written.
+ */
+const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
+  clp: "$",
+  usd: "US$",
+  eur: "€",
+  gbp: "£",
+  jpy: "¥",
+  cny: "CN¥",
+  brl: "R$",
+  mxn: "MX$",
+  ars: "AR$",
+  cad: "C$",
+  aud: "A$",
+  chf: "CHF ",
+};
+
+/**
  * An amount in its own currency (lowercase ISO 4217): pesos whole, dollars with cents, any other
- * currency as its code and its own minor digits (`EUR 12,50`). Negatives in parentheses.
+ * currency with its own minor digits and its symbol when it is a well-known one (`€12,50`), else
+ * its code (`PEN 12,50`). Negatives in parentheses.
  */
 export function formatMoney(m: { value: number; currency: string }): string {
   if (m.currency === "clp") return formatClp(m.value);
@@ -221,7 +241,8 @@ export function formatMoney(m: { value: number; currency: string }): string {
   } catch {
     throw new Error(`formatMoney: unknown currency ${m.currency}`);
   }
-  const body = `${code} ${normalizeIntlNum(numFmt(digits, digits).format(Math.abs(m.value)))}`;
+  const prefix = CURRENCY_SYMBOLS[m.currency] ?? `${code} `;
+  const body = `${prefix}${normalizeIntlNum(numFmt(digits, digits).format(Math.abs(m.value)))}`;
   return m.value < 0 ? `(${body})` : body;
 }
 

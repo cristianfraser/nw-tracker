@@ -1950,6 +1950,10 @@
           "en": "Yahoo — USD/CLP (CLP=X EOD)",
           "es": "Yahoo — USD/CLP (CLP=X EOD)"
         },
+        "fx_pairs": {
+          "en": "Yahoo — currency pairs (EUR/USD EOD)",
+          "es": "Yahoo — pares de divisas (EUR/USD EOD)"
+        },
         "crypto_eod": {
           "en": "Crypto",
           "es": "Cripto"

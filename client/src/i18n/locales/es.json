@@ -606,6 +606,7 @@
         "stocks_santiago": "Acciones — Bolsa de Santiago",
         "stocks_london": "Acciones — Bolsa de Londres",
         "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
+        "fx_pairs": "Yahoo — pares de divisas (EUR/USD EOD)",
         "crypto_eod": "Cripto"
       },
       "agoNow": "ahora",
