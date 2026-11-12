@@ -43,6 +43,7 @@ import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerJobRoutes } from "./routes/jobs.js";
 import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 import { startJobQueueExecutor } from "./jobQueueExecutor.js";
+import { syncCardToCardPaymentTransfersAtBoot } from "./cardToCardPayments.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
@@ -57,6 +58,7 @@ const config = initServerConfig();
 console.log(describeServerConfig(config));
 await bootstrapDemoModeIfEnabled();
 ensureAccountSyncSourcesSeeded();
+syncCardToCardPaymentTransfersAtBoot();
 
 const app = express();
 const PORT = config.port;

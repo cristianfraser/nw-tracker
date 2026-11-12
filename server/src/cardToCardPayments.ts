@@ -254,3 +254,17 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
     return result;
   })();
 }
+
+/**
+ * The boot-time pass: a database migrated before the sync ran (migration 311 created the table
+ * empty) or written to while a part changed without a card write gets its transfers here. Idempotent
+ * and cheap (a no-op when in step); logs only what it changed.
+ */
+export function syncCardToCardPaymentTransfersAtBoot(): void {
+  const r = syncCardToCardPaymentTransfers();
+  if (r.created.length + r.updated.length + r.deleted.length === 0) return;
+  console.log(
+    `[card-to-card] boot sync: ${r.created.length} transfer(s) created, ${r.updated.length} updated, ` +
+      `${r.deleted.length} deleted, ${r.unchanged} unchanged`
+  );
+}
