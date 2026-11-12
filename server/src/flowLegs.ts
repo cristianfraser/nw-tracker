@@ -13,7 +13,7 @@ export type FlowLegs = {
   clp: number;
   usd: number | null | (() => number | null);
   /** The currency the event moved (its own leg); the pesos by default. */
-  native?: "clp" | "usd";
+  native?: CurrencyCode;
 };
 
 function usdLeg(legs: FlowLegs): number | null {

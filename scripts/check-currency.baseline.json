@@ -3,9 +3,9 @@
   "totals": {
     "currency-formatter": 296,
     "currency-list-literal": 21,
-    "currency-type-union": 150,
-    "dto-currency-key": 314,
-    "unit-literal-compare": 377
+    "currency-type-union": 148,
+    "dto-currency-key": 300,
+    "unit-literal-compare": 360
   },
   "violations": {
     "client/src/api.ts": {
@@ -247,7 +247,7 @@
     },
     "server/contracts/src/dto/flows.ts": {
       "currency-type-union": 1,
-      "dto-currency-key": 50
+      "dto-currency-key": 36
     },
     "server/contracts/src/dto/groceries.ts": {
       "dto-currency-key": 14
@@ -505,7 +505,7 @@
       "unit-literal-compare": 1
     },
     "server/src/dashboardOverviewDaily.ts": {
-      "unit-literal-compare": 4
+      "unit-literal-compare": 3
     },
     "server/src/dashboardPagePayload.ts": {
       "unit-literal-compare": 2
@@ -571,10 +571,6 @@
     "server/src/flowLegs.ts": {
       "unit-literal-compare": 2
     },
-    "server/src/flowsDeposits.ts": {
-      "currency-type-union": 2,
-      "unit-literal-compare": 1
-    },
     "server/src/flowsDepositsReconciliation.ts": {
       "unit-literal-compare": 1
     },
@@ -583,13 +579,7 @@
       "unit-literal-compare": 1
     },
     "server/src/flowsExpensesGastos.ts": {
-      "unit-literal-compare": 4
-    },
-    "server/src/flowsOverview.ts": {
-      "unit-literal-compare": 3
-    },
-    "server/src/flowsOverviewCash.ts": {
-      "unit-literal-compare": 3
+      "unit-literal-compare": 2
     },
     "server/src/flowsPayrollWorkEarnings.ts": {
       "unit-literal-compare": 3
@@ -685,7 +675,7 @@
       "currency-type-union": 1
     },
     "server/src/portfolioGroupValueAtDate.ts": {
-      "unit-literal-compare": 4
+      "unit-literal-compare": 2
     },
     "server/src/priceProviders/yahoo.ts": {
       "unit-literal-compare": 2
@@ -727,7 +717,7 @@
       "unit-literal-compare": 1
     },
     "server/src/upcomingPayments.ts": {
-      "unit-literal-compare": 4
+      "unit-literal-compare": 3
     },
     "server/src/us1040/facts.ts": {
       "unit-literal-compare": 1
@@ -755,7 +745,7 @@
     },
     "server/src/valuationTimeseries.ts": {
       "currency-type-union": 2,
-      "unit-literal-compare": 9
+      "unit-literal-compare": 5
     },
     "server/src/wealthPercentile.ts": {
       "unit-literal-compare": 2
