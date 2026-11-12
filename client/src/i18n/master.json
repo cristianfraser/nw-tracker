@@ -2,8 +2,8 @@
   "app": {
     "displayPreferences": {
       "toolbarAria": {
-        "en": "Currency (CLP or USD) and MTD/YTD period",
-        "es": "Divisa (CLP o USD) y período MTD/YTD"
+        "en": "Display currency",
+        "es": "Divisa de visualización"
       },
       "displayCurrency": {
         "en": "Currency: ",
@@ -228,8 +228,8 @@
             "es": "Cada gráfico tiene sus propios controles"
           },
           "body": {
-            "en": "Pick the period and range per chart. Daily values every calendar day at that day's prices and exchange rate; switch CLP / USD at the bottom.",
-            "es": "Elige el período y el rango en cada gráfico. Diario valoriza cada día del calendario a los precios y al tipo de cambio de ese día; cambia CLP / USD abajo."
+            "en": "Pick the period and range per chart. Daily values every calendar day at that day's prices and exchange rate; switch the currency at the bottom.",
+            "es": "Elige el período y el rango en cada gráfico. Diario valoriza cada día del calendario a los precios y al tipo de cambio de ese día; cambia la divisa abajo."
           }
         },
         "sidebar": {
@@ -383,24 +383,24 @@
   },
   "fxCoverage": {
     "title": {
-      "en": "USD/CLP exchange rate incomplete",
-      "es": "Tipo de cambio USD/CLP incompleto"
+      "en": "{{pair}} exchange rate incomplete",
+      "es": "Tipo de cambio {{pair}} incompleto"
     },
     "missingFromDate": {
-      "en": "No exchange rate since {{date}} to convert balances and charts to US$.",
-      "es": "Sin tipo de cambio desde {{date}} para convertir saldos y gráficos en US$."
+      "en": "No {{pair}} exchange rate since {{date}} to convert balances and charts to {{unit}}.",
+      "es": "Sin tipo de cambio {{pair}} desde {{date}} para convertir saldos y gráficos en {{unit}}."
     },
     "sparseHistory": {
-      "en": "Sparse daily history ({{daily}} days observed out of {{rows}} rows in fx_daily).",
-      "es": "Historial diario escaso ({{daily}} días observados de {{rows}} filas en fx_daily)."
+      "en": "{{pair}}: sparse daily history ({{daily}} days observed out of {{rows}} rows).",
+      "es": "{{pair}}: historial diario escaso ({{daily}} días observados de {{rows}} filas)."
     },
     "hint": {
       "en": "Run the backfill or check the sync at",
       "es": "Ejecuta el backfill o revisa la sincronización en"
     },
     "depositConversionError": {
-      "en": "At least one deposit could not be converted to US$ (missing fx_daily on the movement date).",
-      "es": "Al menos un depósito no pudo convertirse a US$ (falta fx_daily en la fecha del movimiento)."
+      "en": "At least one deposit could not be converted to {{unit}} (no exchange rate on the movement date).",
+      "es": "Al menos un depósito no pudo convertirse a {{unit}} (sin tipo de cambio en la fecha del movimiento)."
     },
     "syncStale": {
       "en": "The USD/EUR sync with Banco Central is stale or failed.",
@@ -423,8 +423,8 @@
       "es": "Monto en CLP es referencia (tipo medio); el capital en US$ es el valor canónico."
     },
     "cardMissingFx": {
-      "en": "No exchange rate for this date — cannot display the US$ value",
-      "es": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en US$"
+      "en": "No exchange rate for this date — cannot display the {{unit}} value",
+      "es": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en {{unit}}"
     }
   },
   "rates": {

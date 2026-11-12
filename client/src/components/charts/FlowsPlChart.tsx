@@ -39,7 +39,7 @@ export function FlowsPlChart({
   controls,
   points,
   xAxisGranularity = "month",
-  displayUnit = "clp",
+  displayUnit,
   loading,
 }: {
   title: string;
@@ -47,7 +47,7 @@ export function FlowsPlChart({
   controls?: ReactNode;
   points: readonly FlowsPlChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
-  displayUnit?: DisplayUnit;
+  displayUnit: DisplayUnit;
   loading?: boolean;
 }) {
   const { t } = useTranslation();

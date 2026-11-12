@@ -272,7 +272,7 @@ export type LineSeriesColorInput = {
   /** Fainter dashed overlay (USD milestone lines on the home net-worth chart). */
   isFaintReference?: boolean;
   /** A reference level fixed in this currency (server `level_currency`, the USD milestones). */
-  levelCurrency?: "clp" | "usd";
+  levelCurrency?: string;
 };
 
 export type ResolvedLineSeriesItem = LineSeriesColorInput & { stroke: string };

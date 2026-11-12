@@ -1,7 +1,7 @@
 {
   "app": {
     "displayPreferences": {
-      "toolbarAria": "Currency (CLP or USD) and MTD/YTD period",
+      "toolbarAria": "Display currency",
       "displayCurrency": "Currency: ",
       "numberFormat": "Format: ",
       "chartStyle": "Charts: ",
@@ -83,7 +83,7 @@
         },
         "chart": {
           "title": "Every chart has its own controls",
-          "body": "Pick the period and range per chart. Daily values every calendar day at that day's prices and exchange rate; switch CLP / USD at the bottom."
+          "body": "Pick the period and range per chart. Daily values every calendar day at that day's prices and exchange rate; switch the currency at the bottom."
         },
         "sidebar": {
           "title": "A page for every group and account",
@@ -139,17 +139,17 @@
     }
   },
   "fxCoverage": {
-    "title": "USD/CLP exchange rate incomplete",
-    "missingFromDate": "No exchange rate since {{date}} to convert balances and charts to US$.",
-    "sparseHistory": "Sparse daily history ({{daily}} days observed out of {{rows}} rows in fx_daily).",
+    "title": "{{pair}} exchange rate incomplete",
+    "missingFromDate": "No {{pair}} exchange rate since {{date}} to convert balances and charts to {{unit}}.",
+    "sparseHistory": "{{pair}}: sparse daily history ({{daily}} days observed out of {{rows}} rows).",
     "hint": "Run the backfill or check the sync at",
-    "depositConversionError": "At least one deposit could not be converted to US$ (missing fx_daily on the movement date).",
+    "depositConversionError": "At least one deposit could not be converted to {{unit}} (no exchange rate on the movement date).",
     "syncStale": "The USD/EUR sync with Banco Central is stale or failed.",
     "yahooRejected": "{{count}} Yahoo CLP=X date(s) rejected (invalid exchange rate): {{dates}}. Conversions use the last prior valid rate.",
     "warningBuyRateMissing": "CLP→US$ conversion without a buy rate in fx_daily_bid_ask; the reference mid rate was used.",
     "warningSellRateMissing": "US$→CLP conversion without a sell rate in fx_daily_bid_ask; the reference mid rate was used.",
     "warningUsdReferenceClp": "The CLP amount is a reference (mid rate); the US$ capital is the canonical value.",
-    "cardMissingFx": "No exchange rate for this date — cannot display the US$ value"
+    "cardMissingFx": "No exchange rate for this date — cannot display the {{unit}} value"
   },
   "rates": {
     "pageTitle": "Exchange rates",

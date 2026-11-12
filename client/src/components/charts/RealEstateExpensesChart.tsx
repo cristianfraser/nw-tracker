@@ -77,6 +77,8 @@ export function RealEstateExpensesChart({
       series={stacked}
       legend={legend}
       emptyMessage={t("charts.noExpensesInPeriod")}
+      // A place's bills are pesos (their native currency), whatever the display unit.
+      displayUnit="clp"
       xAxisGranularity={xAxisGranularity}
       showTotalLine={false}
       loading={loading}

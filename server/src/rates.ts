@@ -66,7 +66,14 @@ type PairSource = {
   stored: (ymd: string) => PairQuote | null;
   /** Today's quote (the live rate where the pair has one). Null when none is on file. */
   today: (ymd: string, now: Date | undefined) => PairQuote | null;
+  /** Every date the pair has a stored row, ascending (coverage reports read it). */
+  dates: () => string[];
 };
+
+function datesOf(sql: string, ...params: unknown[]): () => string[] {
+  const stmt = db.prepare(sql);
+  return () => (stmt.all(...params) as { date: string }[]).map((r) => r.date);
+}
 
 const halfSpreadUsdClp = FX_BID_ASK_SPREAD_CLP / 2;
 
@@ -134,10 +141,34 @@ function ufClp(ymd: string): PairQuote | null {
 }
 
 const PAIRS: readonly PairSource[] = [
-  { base: "usd", quote: "clp", stored: usdClpStored, today: usdClpToday },
-  { base: "uf", quote: "clp", stored: ufClp, today: (ymd) => ufClp(ymd) },
-  { base: "eur", quote: "clp", stored: eurClp, today: (ymd) => eurClp(ymd) },
-  { base: "eur", quote: "usd", stored: fxRatesPair("eur", "usd"), today: (ymd) => fxRatesPair("eur", "usd")(ymd) },
+  {
+    base: "usd",
+    quote: "clp",
+    stored: usdClpStored,
+    today: usdClpToday,
+    dates: datesOf(`SELECT date FROM fx_daily ORDER BY date ASC`),
+  },
+  {
+    base: "uf",
+    quote: "clp",
+    stored: ufClp,
+    today: (ymd) => ufClp(ymd),
+    dates: datesOf(`SELECT date FROM uf_daily ORDER BY date ASC`),
+  },
+  {
+    base: "eur",
+    quote: "clp",
+    stored: eurClp,
+    today: (ymd) => eurClp(ymd),
+    dates: datesOf(`SELECT date FROM eur_daily ORDER BY date ASC`),
+  },
+  {
+    base: "eur",
+    quote: "usd",
+    stored: fxRatesPair("eur", "usd"),
+    today: (ymd) => fxRatesPair("eur", "usd")(ymd),
+    dates: datesOf(`SELECT date FROM fx_rates WHERE base = ? AND quote = ? ORDER BY date ASC`, "eur", "usd"),
+  },
 ];
 
 /** The hubs a conversion without a direct pair walks through, in order. */
@@ -158,6 +189,39 @@ function commonCode(a: CurrencyCode, b: CurrencyCode): CurrencyCode | null {
     if (pairFor(a, c) && pairFor(c, b)) return c;
   }
   return null;
+}
+
+/** A stored rate pair, named by its two codes (`base` priced in `quote`). */
+export type RatePair = { base: CurrencyCode; quote: CurrencyCode };
+
+/**
+ * The pairs {@link convertCurrency} walks from `from` to `to`, in order: none when the codes are
+ * the same, one for a direct pair, two through a hub. Throws when no path exists (as a
+ * conversion would).
+ */
+export function conversionPairs(from: CurrencyCode, to: CurrencyCode): RatePair[] {
+  if (from === to) return [];
+  const direct = pairFor(from, to);
+  if (direct) return [{ base: direct.pair.base, quote: direct.pair.quote }];
+  const via = commonCode(from, to);
+  if (!via) throw new Error(`rates: no pair path from ${from} to ${to}`);
+  return [...conversionPairs(from, via), ...conversionPairs(via, to)];
+}
+
+function registeredPair(p: RatePair): PairSource {
+  const link = pairFor(p.base, p.quote);
+  if (!link || link.inverted) throw new Error(`rates: ${p.base}/${p.quote} is not a registered pair`);
+  return link.pair;
+}
+
+/** Whether the pair has a stored quote on or before `ymd` (the row a conversion of that day reads). */
+export function pairHasStoredQuote(p: RatePair, ymd: string): boolean {
+  return registeredPair(p).stored(ymd) != null;
+}
+
+/** Every date the pair has a stored row, ascending. */
+export function pairStoredDates(p: RatePair): string[] {
+  return registeredPair(p).dates();
 }
 
 function todayYmd(now: Date | undefined): string {
