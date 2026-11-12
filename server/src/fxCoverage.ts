@@ -57,9 +57,10 @@ const selHeldCurrencies = db.prepare(
    UNION SELECT currency FROM valuations`
 );
 
-/** The currencies the portfolio holds or moves (pesos and dollars always). */
+/** The currencies the portfolio holds or moves, plus the pesos every mark is computed in. */
 function heldCurrencies(): string[] {
-  const codes = new Set<string>(["clp", "usd"]);
+  const codes = new Set<string>();
+  codes.add("clp");
   for (const r of selHeldCurrencies.all() as { code: string | null }[]) {
     if (r.code && isCurrencyCode(r.code)) codes.add(r.code);
   }

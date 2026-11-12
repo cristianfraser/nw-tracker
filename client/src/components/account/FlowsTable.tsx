@@ -76,18 +76,11 @@ export const DEFAULT_FLOWS_FILTER_STATE: FlowsFilterState = {
   amount_currency: "clp",
 };
 
-/** The amount filter's currencies until `/api/currencies` answers. */
-const FALLBACK_AMOUNT_CURRENCIES = ["clp", "usd"] as const;
-
-/** Every loaded currency (pesos and dollars first), the current choice always listed. */
+/** Every loaded currency, in the server's order (core currencies first), the current choice always listed. */
 export function amountFilterCurrencyCodes(loaded: readonly string[] | undefined, current: string): string[] {
-  const rank = (code: string) => {
-    const i = (FALLBACK_AMOUNT_CURRENCIES as readonly string[]).indexOf(code);
-    return i < 0 ? FALLBACK_AMOUNT_CURRENCIES.length : i;
-  };
-  const codes = new Set<string>(loaded && loaded.length > 0 ? loaded : FALLBACK_AMOUNT_CURRENCIES);
+  const codes = new Set<string>(loaded ?? []);
   codes.add(current);
-  return [...codes].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return [...codes];
 }
 
 export function FlowsTable({

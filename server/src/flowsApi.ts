@@ -1,5 +1,6 @@
 import { db } from "./db.js";
-import { isCurrencyCode, type CurrencyCode } from "./rates.js";
+import { type CurrencyCode } from "./rates.js";
+import { coreCurrencyCodes } from "./displayUnits.js";
 import {
   DEPOSIT_FLOW_KIND_PERSONAL,
   DEPOSIT_FLOW_KIND_TRASPASO,
@@ -274,7 +275,7 @@ export function parseExtraFlowsFilterParams(
   }
   const currencyRaw = qp.amount_currency;
   if (currencyRaw != null && currencyRaw !== "") {
-    if (typeof currencyRaw !== "string" || currencyRaw === "uf" || !isCurrencyCode(currencyRaw)) {
+    if (typeof currencyRaw !== "string" || !coreCurrencyCodes().includes(currencyRaw)) {
       return { ok: false, error: "amount_currency must be a loaded currency code" };
     }
     filters.amount_currency = currencyRaw;

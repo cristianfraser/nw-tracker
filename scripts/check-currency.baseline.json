@@ -3,16 +3,13 @@
   "totals": {
     "currency-formatter": 308,
     "currency-list-literal": 21,
-    "currency-type-union": 153,
+    "currency-type-union": 150,
     "dto-currency-key": 331,
-    "unit-literal-compare": 385
+    "unit-literal-compare": 384
   },
   "violations": {
     "client/src/api.ts": {
       "unit-literal-compare": 19
-    },
-    "client/src/chartColors.ts": {
-      "currency-type-union": 1
     },
     "client/src/components/account/AccountBookValuationForm.tsx": {
       "currency-formatter": 2,
@@ -253,7 +250,6 @@
       "dto-currency-key": 50
     },
     "server/contracts/src/dto/dashboard.ts": {
-      "currency-type-union": 1,
       "dto-currency-key": 3
     },
     "server/contracts/src/dto/flows.ts": {
@@ -262,9 +258,6 @@
     },
     "server/contracts/src/dto/groceries.ts": {
       "dto-currency-key": 14
-    },
-    "server/contracts/src/dto/groups.ts": {
-      "currency-type-union": 1
     },
     "server/contracts/src/dto/market.ts": {
       "dto-currency-key": 6
@@ -520,9 +513,6 @@
     },
     "server/src/dashboardOverviewDaily.ts": {
       "unit-literal-compare": 4
-    },
-    "server/src/dashboardPageBundle.ts": {
-      "unit-literal-compare": 1
     },
     "server/src/dashboardPagePayload.ts": {
       "unit-literal-compare": 2
