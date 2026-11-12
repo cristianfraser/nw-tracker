@@ -25,30 +25,30 @@ export type TaxReturnCryptoSale = {
   date: string;
   coin: string;
   units: number;
-  proceeds_clp: number;
-  cost_clp: number;
-  cost_reajustado_clp: number;
-  gain_clp: number;
+  proceeds_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  cost_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  cost_reajustado_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  gain_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   december_pct: number;
-  gain_december_clp: number;
+  gain_december_clp: number; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 export type TaxReturnDividend = {
   date: string;
-  net_usd: number;
+  net_usd: number; // convention-ok: the foreign document's own dollars, stated beside the F22 pesos
   /** Null until the broker document with the gross / withholding split is imported. */
-  gross_usd: number | null;
-  withholding_usd: number | null;
-  gross_clp: number | null;
-  withholding_clp: number | null;
+  gross_usd: number | null; // convention-ok: the foreign document's own dollars, stated beside the F22 pesos
+  withholding_usd: number | null; // convention-ok: the foreign document's own dollars, stated beside the F22 pesos
+  gross_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
+  withholding_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 export type TaxReturnForeignShareSale = {
   date: string;
   account_name: string;
   units: number;
-  gain_usd: number;
-  result_clp: { usd_31dic: number; clp_ipc: number };
+  gain_usd: number; // convention-ok: the foreign document's own dollars, stated beside the F22 pesos
+  result_clp: { usd_31dic: number; clp_ipc: number }; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** An art. 107 LIR instrument: a fund unit (code 1813, art. 107 N°2) or a share (code 1809, N°1). */
@@ -58,13 +58,13 @@ export type TaxReturnArt107Sale = {
   ticker: string;
   kind: "fund" | "share";
   units: number;
-  proceeds_clp: number;
-  cost_clp: number;
-  cost_reajustado_clp: number;
+  proceeds_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  cost_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  cost_reajustado_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** The 31-December close option's cost; null when no close is stored or the lot was bought in an open year. */
-  cost_close_dec31_clp: number | null;
+  cost_close_dec31_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
   /** The result under each resident cost option; `close_dec31` is null when its cost is. */
-  result_clp: { cost_paid: number; close_dec31: number | null };
+  result_clp: { cost_paid: number; close_dec31: number | null }; // convention-ok: an F22 figure is stated in pesos by law
   /** By sale date: `tax_10pct` before 2027, `inr` (ingreso no renta, no code) from 2027. */
   regime: "tax_10pct" | "inr";
 };
@@ -72,7 +72,7 @@ export type TaxReturnArt107Sale = {
 export type TaxReturnArt107Distribution = {
   date: string;
   account_name: string;
-  amount_clp: number;
+  amount_clp: number; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** GET /api/tax-return `art107`: the art. 107 LIR fund and share sales and the fund distributions (server: f22/art107.ts). */
@@ -84,24 +84,24 @@ export type TaxReturnArt107 = {
   default_option: "cost_paid" | "close_dec31";
   sales: TaxReturnArt107Sale[];
   /** Results of the `tax_10pct` sales only, under each cost option. */
-  totals_clp: { cost_paid: number; close_dec31: number | null };
+  totals_clp: { cost_paid: number; close_dec31: number | null }; // convention-ok: an F22 figure is stated in pesos by law
   /** F22 1814: the year's net art. 107 result under the default option. */
-  result_clp: number;
+  result_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** F22 1815: the carried-forward loss, reajustada (≤ 0). */
-  carried_loss_clp: number;
+  carried_loss_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** Where the carried loss came from: the filed previous return, the app's own result, or none. */
   carried_loss_source: "filed" | "app" | null;
   /** F22 1816: the art. 107 base or loss. */
-  base_clp: number;
+  base_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** F22 1830: the 10% single tax on the base (line 66), added to the settlement (305). */
-  tax_clp: number;
+  tax_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** DJ 1891 «Monto Total Ventas» for the fund units, beside the app's proceeds. */
-  informed_sales_clp: number | null;
+  informed_sales_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
   /** DJ 1922 B1 «…que cumplen requisitos art. 107 LIR (actualizada)»: the informed art. 107 difference. */
-  informed_result_clp: number | null;
+  informed_result_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
   distributions: TaxReturnArt107Distribution[];
   /** The estimate behind code 105 (dividends afectos al IGC): the cash the fund credited. */
-  distributions_clp: number;
+  distributions_clp: number; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 export type TaxReturnLossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "foreign_fx";
@@ -115,13 +115,13 @@ export type TaxReturnForeignFxDisposal = {
   amount: number;
   /** Distinct purchase dates of the lots consumed, oldest first. */
   purchase_dates: string[];
-  proceeds_clp: number;
+  proceeds_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** Nominal pesos, no IPC reajuste. */
-  cost_clp: number;
-  gain_clp: number;
+  cost_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  gain_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** The December reajuste on the result (IPC from the month before the disposal), never negative. */
   december_pct: number;
-  gain_december_clp: number;
+  gain_december_clp: number; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** GET /api/tax-return `foreign_fx`: the year's exchange result on the foreign currency bought with pesos, every currency. */
@@ -136,11 +136,11 @@ export type TaxReturnForeignFx = {
   reajuste_to_month: string;
   disposals: TaxReturnForeignFxDisposal[];
   /** Money charged as fees: its cost is lost, never deducted. */
-  fees: { date: string; account_name: string; currency: string; amount: number; cost_lost_clp: number }[];
-  fees_lost_clp: number;
+  fees: { date: string; account_name: string; currency: string; amount: number; cost_lost_clp: number }[]; // convention-ok: an F22 figure is stated in pesos by law
+  fees_lost_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** What the other posture would have realized (information only). */
-  deferred: { date: string; account_name: string; currency: string; amount: number; gain_clp: number }[];
-  deferred_clp: number;
+  deferred: { date: string; account_name: string; currency: string; amount: number; gain_clp: number }[]; // convention-ok: an F22 figure is stated in pesos by law
+  deferred_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** Each currency's share of the year, in pesos (the codes take their sum). */
   by_currency: {
     currency: string;
@@ -150,26 +150,26 @@ export type TaxReturnForeignFx = {
     fees_lost: number;
     deferred: number;
   }[];
-  result_clp: number;
-  result_december_clp: number;
+  result_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  result_december_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** The pesos the route puts in each code; null when the code is not used (a loss under 1901 states nothing). */
-  codes: { 1901: number | null; idpc_clp: number | null; 1032: number | null; loss169: number | null };
+  codes: { 1901: number | null; idpc_clp: number | null; 1032: number | null; loss169: number | null }; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** Gains and losses that offset each other within one year, and what is left on either side. */
 export type TaxReturnOffsetBalance = {
-  gains_clp: number;
-  losses_clp: number;
-  deducted_clp: number;
-  unused_loss_clp: number;
-  taxed_gain_clp: number;
+  gains_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  losses_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  deducted_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  unused_loss_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  taxed_gain_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** IGC at stake for the unused loss or the taxed gain; null without a tax chain. */
-  tax_effect_clp: number | null;
+  tax_effect_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** The year's code-169 pool (F22 line 17): losses deduct only from these gains, in the same year. */
 export type TaxReturnLossOffset = TaxReturnOffsetBalance & {
-  parts: { source: TaxReturnLossOffsetSource; gain_clp: number; loss_clp: number }[];
+  parts: { source: TaxReturnLossOffsetSource; gain_clp: number; loss_clp: number }[]; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** One place's rent of the year (server: f22/rentals.ts), reajustada to December. */
@@ -179,19 +179,19 @@ export type TaxReturnRentalPlace = {
   /** DFL-2: the rent is not declared (DFL N° 2 art. 15); otherwise it is code 1849. */
   dfl2: boolean;
   credits: number;
-  rent_clp: number;
+  rent_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** Contribuciones paid in the year (they credit the IGC only on a taxable place). */
-  property_tax_paid_clp: number;
+  property_tax_paid_clp: number; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /** GET /api/tax-return `rentals`: the year's rents, taxable (1849 → 955, credit 1637) and exempt DFL-2. */
 export type TaxReturnRentals = {
   provisional: boolean;
   places: TaxReturnRentalPlace[];
-  taxable_rent_clp: number;
-  exempt_rent_clp: number;
+  taxable_rent_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  exempt_rent_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   /** Línea 39: the contribuciones paid on the taxable places, the cap (IGC on the rent) and the credit; null without taxable rent. */
-  property_tax_credit: { paid_clp: number; cap_clp: number; credit_clp: number } | null;
+  property_tax_credit: { paid_clp: number; cap_clp: number; credit_clp: number } | null; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 /**
@@ -205,21 +205,21 @@ export type TaxReturnForeignIncome = {
     provisional: boolean;
     stubs: number;
     /** Gross pay, dollars (nothing deducted: FICA is not a Chilean-law contribution, Circular 31/2021). */
-    income_usd: number;
+    income_usd: number; // convention-ok: the foreign document's own dollars, stated beside the F22 pesos
     /** The same in pesos at the 31-December observado (art. 41 A N°7 letra a), no reajuste). */
-    gross_clp: number;
+    gross_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     /** The 1040's line 24 (total tax): the filed return's, or the draft's. */
-    us_tax_usd: number;
+    us_tax_usd: number; // convention-ok: the foreign document's own dollars, stated beside the F22 pesos
     /** `nonresident_alien_not_drafted`: a nonresident alien's 1040-NR is not drafted — no credit until the filed return is stored. */
     us_tax_source: "filed" | "draft" | "nonresident_alien_not_drafted" | null;
-    us_tax_clp: number;
+    us_tax_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     /** Code 1030: gross less the US tax. */
-    net_clp: number;
+    net_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     /** min(US tax, 35 % of the gross): the incremento in 748 and the credit before its cap. */
-    credit_clp: number;
+    credit_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     /** The IGC on this income (the credit's cap, no refund) and what 1018 took; null without a credit. */
-    credit_cap_clp: number | null;
-    credit_applied_clp: number | null;
+    credit_cap_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
+    credit_applied_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
   };
   interest: {
     lines: { date: string; account_name: string; usd: number }[];
@@ -294,11 +294,11 @@ export type TaxReturnNonresidentPart = {
   tax_computed: boolean;
   /** 1849 / 955 / 158 / 32 / 34 and the art. 107 codes of this part (zeros left out). */
   codes: Record<string, number>;
-  taxable_rent_clp: number;
-  exempt_rent_clp: number;
-  places: { slug: string; label: string; dfl2: boolean; credits: number; rent_clp: number }[];
+  taxable_rent_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  exempt_rent_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  places: { slug: string; label: string; dfl2: boolean; credits: number; rent_clp: number }[]; // convention-ok: an F22 figure is stated in pesos by law
   /** Art. 107 sales of the window at the general-rule cost, the 10 % único (withheld by the broker, art. 107 N°6). */
-  art107: { sales: number; result_clp: number; tax_clp: number };
+  art107: { sales: number; result_clp: number; tax_clp: number }; // convention-ok: an F22 figure is stated in pesos by law
 };
 
 export type TaxReturnResponse = {
@@ -315,23 +315,23 @@ export type TaxReturnResponse = {
   nonresident: TaxReturnNonresidentPart | null;
   excluded: TaxReturnExcludedItem[];
   tax_computed: boolean;
-  uta_clp: number;
+  uta_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   uta_provisional: boolean;
   salary: {
     months: number;
-    taxable_pay_clp: number;
-    withheld_tax_clp: number;
+    taxable_pay_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+    withheld_tax_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     incomplete_months: string[];
     provisional: boolean;
   };
   /** The fees box drafted from the boletas de honorarios issued (null: none, or a filed year). */
   fees: {
     receipts: number;
-    gross_clp: number;
-    presumed_expenses_clp: number;
-    apv_clp: number;
-    net_clp: number;
-    retention_clp: number;
+    gross_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+    presumed_expenses_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+    apv_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+    net_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+    retention_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   } | null;
   year_end_observado: number;
   /** How the filed form was settled: its refund or payment against the linked bank movements. */
@@ -368,9 +368,9 @@ export type TaxReturnResponse = {
   crypto: {
     method: "fifo" | "lifo" | "average";
     fee_policy: "excluded" | "included";
-    informed_sales_clp: number | null;
-    sales_clp: number;
-    gain_december_clp: number;
+    informed_sales_clp: number | null; // convention-ok: an F22 figure is stated in pesos by law
+    sales_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+    gain_december_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     provisional: boolean;
     reajuste_to_month: string;
     sales: TaxReturnCryptoSale[];
@@ -382,8 +382,8 @@ export type TaxReturnResponse = {
   foreign_shares: {
     default_mode: "usd_31dic" | "clp_ipc";
     provisional: boolean;
-    total_clp: { usd_31dic: number; clp_ipc: number };
-    idpc_clp: number;
+    total_clp: { usd_31dic: number; clp_ipc: number }; // convention-ok: an F22 figure is stated in pesos by law
+    idpc_clp: number; // convention-ok: an F22 figure is stated in pesos by law
     sales: TaxReturnForeignShareSale[];
   };
   art107: TaxReturnArt107;
@@ -487,8 +487,8 @@ export type UsTaxReturnForm8949Row = {
 export type UsTaxReturnDualStatusStatement = {
   /** The residency starting day; the statement covers January 1 through the day before. */
   from: string;
-  rows: { date: string; instrument: string; gross_usd: number; rate_pct: number; tax_usd: number; withheld_usd: number }[];
-  gross_usd: number;
+  rows: { date: string; instrument: string; gross_usd: number; rate_pct: number; tax_usd: number; withheld_usd: number }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
+  gross_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   /** Whole dollars, added to line 16. */
   tax: number;
   /** Whole dollars, in line 25c. */
@@ -497,9 +497,9 @@ export type UsTaxReturnDualStatusStatement = {
 
 /** Schedule B Part III and the FBAR / Form 8938 flags (month-end values in dollars; the app files neither). */
 export type UsTaxReturnForeignAccounts = {
-  accounts: { name: string; year_end_usd: number; peak_month_end_usd: number }[];
-  year_end_usd: number;
-  peak_month_end_usd: number;
+  accounts: { name: string; year_end_usd: number; peak_month_end_usd: number }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
+  year_end_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  peak_month_end_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   fbar_required: boolean;
   form8938_required: boolean;
 };
@@ -510,70 +510,70 @@ export type UsTaxReturnScheduleEPlace = {
   lines: { line: string; amount: number }[];
   depreciation: {
     /** Land + building basis in dollars (cost at the purchase day's rate, or the lesser of cost and value on a home's conversion). */
-    basis_usd: number;
+    basis_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
     basis_origin: "purchase_cost" | "lesser_of_cost_and_value_at_conversion";
-    building_basis_usd: number;
+    building_basis_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
     /** The day the 30-year ADS schedule runs from. */
     start_date: string;
     reading: "from_placed_in_service" | "fresh_on_arrival" | "placed_in_window";
     months_in_window: number;
-    amount_usd: number;
+    amount_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   };
 };
 
 /** Form 8582 for the rentals (whole dollars). */
 export type UsTaxReturnForm8582 = {
-  magi_usd: number;
-  allowance_before_phase_out_usd: number;
-  allowance_usd: number;
-  prior_suspended_loss_usd: number;
-  limited_loss_usd: number;
-  allowed_loss_usd: number;
-  suspended_loss_usd: number;
-  prior_loss_absorbed_usd: number;
+  magi_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  allowance_before_phase_out_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  allowance_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  prior_suspended_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  limited_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  allowed_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  suspended_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  prior_loss_absorbed_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   /** Schedule 1 line 5. */
-  included_in_income_usd: number;
+  included_in_income_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
 };
 
 /** Form 1116, passive category (dollars; the Chilean taxes also in pesos as the F22 states them). */
 export type UsTaxReturnForm1116 = {
   /** Where Chile's taxes come from: the F22 of the same income year (its non-resident part); null when Chile taxed nothing in the US-resident months. */
-  chile: { tax_year: number; adicional_clp: number; adicional_source: "filed" | "draft"; unico_art107_clp: number } | null;
-  rate_clp_per_usd: number;
-  taxes: { item: "adicional_on_rent" | "unico_on_etf_sale" | "unico_on_fund_redemption" | "unico_on_fund_distribution"; amount_usd: number; creditable: boolean; unverified: boolean; form8833: boolean }[];
-  foreign_passive_gross_usd: number;
-  foreign_passive_deductions_usd: number;
-  foreign_passive_taxable_income_usd: number;
-  taxable_income_usd: number;
-  us_tax_before_credits_usd: number;
+  chile: { tax_year: number; adicional_clp: number; adicional_source: "filed" | "draft"; unico_art107_clp: number } | null; // convention-ok: Chile's tax as the F22 states it (pesos) and the rate the 1040 translates it at
+  rate_clp_per_usd: number; // convention-ok: Chile's tax as the F22 states it (pesos) and the rate the 1040 translates it at
+  taxes: { item: "adicional_on_rent" | "unico_on_etf_sale" | "unico_on_fund_redemption" | "unico_on_fund_distribution"; amount_usd: number; creditable: boolean; unverified: boolean; form8833: boolean }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
+  foreign_passive_gross_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  foreign_passive_deductions_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  foreign_passive_taxable_income_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  taxable_income_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  us_tax_before_credits_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   limit_fraction: number;
-  limit_usd: number;
-  taxes_accrued_usd: number;
-  available_usd: number;
+  limit_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  taxes_accrued_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  available_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   /** Schedule 3 line 1, whole dollars. */
-  credit_usd: number;
-  carryovers_in: { tax_year: number; amount_usd: number }[];
-  carryovers_out: { tax_year: number; amount_usd: number }[];
-  expired_usd: number;
+  credit_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  carryovers_in: { tax_year: number; amount_usd: number }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
+  carryovers_out: { tax_year: number; amount_usd: number }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
+  expired_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
 };
 
 /** Form 8621 Part IV for one PFIC holding (dollars). */
 export type UsTaxReturnForm8621 = {
   label: string;
   start_units: number;
-  start_basis_usd: number;
-  basis_before_mark_usd: number;
-  fmv_year_end_usd: number;
-  inclusion_usd: number;
-  deduction_usd: number;
-  disallowed_loss_usd: number;
-  disposals: { date: string; units: number; proceeds_usd: number; basis_usd: number; ordinary_gain_usd: number; ordinary_loss_usd: number; capital_loss_usd: number }[];
+  start_basis_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  basis_before_mark_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  fmv_year_end_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  inclusion_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  deduction_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  disallowed_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  disposals: { date: string; units: number; proceeds_usd: number; basis_usd: number; ordinary_gain_usd: number; ordinary_loss_usd: number; capital_loss_usd: number }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
   /** To Schedule 1 line 8z. */
-  ordinary_income_usd: number;
-  capital_loss_usd: number;
+  ordinary_income_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  capital_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   end_units: number;
-  end_basis_usd: number;
-  unreversed_inclusions_usd: number;
+  end_basis_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  unreversed_inclusions_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   part_v_possible: boolean;
 };
 
@@ -608,9 +608,9 @@ export type UsTaxReturnResponse = {
   dual_status_statement: UsTaxReturnDualStatusStatement | null;
   foreign_accounts: UsTaxReturnForeignAccounts | null;
   /** Tax another country withheld on dividends, dollars (shown, not credited). */
-  foreign_tax_withheld_usd: number;
+  foreign_tax_withheld_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   /** Schedule E per rented place, and its net before the passive limit; null when there is none. */
-  schedule_e: { places: UsTaxReturnScheduleEPlace[]; net_usd: number } | null;
+  schedule_e: { places: UsTaxReturnScheduleEPlace[]; net_usd: number } | null; // convention-ok: a Form 1040 figure is stated in dollars by law
   form_8582: UsTaxReturnForm8582 | null;
   form_1116: UsTaxReturnForm1116 | null;
   form_8621: UsTaxReturnForm8621[];

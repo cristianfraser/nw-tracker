@@ -115,7 +115,7 @@ export type BrokerMovementsApplyDetails = {
     occurred_on: string;
     kind: BrokerMovement["kind"];
     amount: number;
-    currency: "clp" | "usd";
+    currency: "clp" | "usd"; // convention-ok: Racional and Fintual hold broker cash in pesos and dollars only
     legs: string;
     units: string | null;
     /** new | duplicate | manual | conflict | blocked */

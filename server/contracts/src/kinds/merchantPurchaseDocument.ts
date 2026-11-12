@@ -19,7 +19,7 @@ const currencySchema = currencyCodeSchema;
 const moneySchema = z
   .object({ amount: z.number().positive(), currency: currencySchema })
   .strict()
-  .refine((m) => m.currency !== "clp" || Number.isInteger(m.amount), { message: "pesos are whole" });
+  .refine((m) => m.currency !== "clp" || Number.isInteger(m.amount), { message: "pesos are whole" }); // convention-ok: pesos have no minor unit
 
 /** How often a subscription bills, as the document prints it. */
 export const subscriptionPeriodSchema = z.enum(["day", "week", "month", "quarter", "half_year", "year"]);
@@ -61,7 +61,7 @@ const receiptSchema = z
   .refine(
     (r) =>
       Math.abs(r.items.reduce((s, i) => s + i.amount, 0) - r.total.amount) <
-      (r.total.currency === "clp" ? 0.5 : 0.005),
+      (r.total.currency === "clp" ? 0.5 : 0.005), // convention-ok: pesos have no minor unit, so the tolerance is half a peso against half a cent
     { message: "the items must add up to the total" }
   );
 

@@ -59,7 +59,7 @@ export const cardListingLineSchema = z
         message: `amount ${line.amount} is not a non-zero ${line.currency} amount`,
       });
     }
-    if (line.cuota_purchase && line.currency !== "clp") {
+    if (line.cuota_purchase && line.currency !== "clp") { // convention-ok: Chilean cuota products bill in pesos only
       ctx.addIssue({ code: "custom", path: ["cuota_purchase"], message: "cuota purchases are in pesos" });
     }
   });
@@ -186,9 +186,9 @@ export type CardUnbilledMovementsApplyDetails = {
      * the same money replaced, or carried as is; ambiguous pairings left alone.
      */
     planted_payments: {
-      replaced: { planted_line_id: number; bank_line_merchant: string; bank_line_date: string; amount: number; currency: "clp" | "usd" }[];
-      confirmed_in_place: { planted_line_id: number; bank_line_merchant: string; amount: number; currency: "clp" | "usd" }[];
-      ambiguous: { bank_line_merchant: string; bank_line_date: string; amount: number; currency: "clp" | "usd"; planted_line_ids: number[] }[];
+      replaced: { planted_line_id: number; bank_line_merchant: string; bank_line_date: string; amount: number; currency: "clp" | "usd" }[]; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+      confirmed_in_place: { planted_line_id: number; bank_line_merchant: string; amount: number; currency: "clp" | "usd" }[]; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+      ambiguous: { bank_line_merchant: string; bank_line_date: string; amount: number; currency: "clp" | "usd"; planted_line_ids: number[] }[]; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
     };
     /** Open-cycle lines the listing no longer shows, removed; null when no currency was mirrored. */
     removed_by_mirror:

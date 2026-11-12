@@ -91,7 +91,7 @@ type Money = { currency: string; amount: number };
 function readNumber(digits: string, currency: string, mail: ArchivedMail): number {
   if (!new RegExp(`^(?:${NUMBER})$`).test(digits)) fail(mail, `unreadable amount «${digits}»`);
   const n = Math.round(Number(digits.replace(/,/g, "")) * 100) / 100;
-  if (currency === "clp" && !Number.isInteger(n)) fail(mail, `pesos with cents «${digits}»`);
+  if (currency === "clp" && !Number.isInteger(n)) fail(mail, `pesos with cents «${digits}»`); // convention-ok: pesos have no minor unit
   if (!(n > 0)) fail(mail, `amount «${digits}» is not positive`);
   return n;
 }

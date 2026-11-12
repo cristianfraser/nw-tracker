@@ -31,7 +31,7 @@ const VIEW_RENDER_WAIT_MS = 15_000;
 /** Both statement endpoints (`estadoCuentaNacional`, `estadoCuentaInternacional`), never the PDF one (`estadoDeCuenta`). */
 const STATEMENT_CALL: ApiCallMatcher = /^estadoCuenta/i;
 
-export type CurrencyTab = { currency: "CLP" | "USD"; label: RegExp; name: string };
+export type CurrencyTab = { currency: "CLP" | "USD"; label: RegExp; name: string }; // convention-ok: Santander's card page has a Pesos and a Dólares tab only
 
 /**
  * The currency tab with `label`, once it is on screen; null when the view shows none within the
@@ -47,7 +47,7 @@ async function visibleCurrencyTab(page: Page, label: RegExp): Promise<Locator | 
   }
 }
 
-const CURRENCY_TABS: Record<"CLP" | "USD", CurrencyTab> = {
+const CURRENCY_TABS: Record<"CLP" | "USD", CurrencyTab> = { // convention-ok: Santander's card page has a Pesos and a Dólares tab only
   CLP: { currency: "CLP", label: TEXT.currencyClp, name: "Pesos" },
   USD: { currency: "USD", label: TEXT.currencyUsd, name: "Dólares" },
 };
@@ -71,7 +71,7 @@ export function otherCurrencyTab(currency: string | null): CurrencyTab | null {
  * tab, `estadoCuentaInternacional` the Dólares tab (the international request names no
  * currency in its body). Anything else — the PDF endpoint, an unknown name — is null.
  */
-export function statementCallCurrency(endpoint: string): "CLP" | "USD" | null {
+export function statementCallCurrency(endpoint: string): "CLP" | "USD" | null { // convention-ok: Santander's statement endpoints are national (CLP) and international (USD) only
   if (/^estadoCuentaNacional$/i.test(endpoint)) return "CLP";
   if (/^estadoCuentaInternacional$/i.test(endpoint)) return "USD";
   return null;

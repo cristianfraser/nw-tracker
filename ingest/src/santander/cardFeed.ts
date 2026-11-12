@@ -75,7 +75,7 @@ export function santanderMovementDateToIso(fecha: string): string {
   return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-function santanderSlideCurrency(raw: unknown): "clp" | "usd" {
+function santanderSlideCurrency(raw: unknown): "clp" | "usd" { // convention-ok: Santander's card feed has a peso and a dollar slide only
   const c = String(raw ?? "").trim().toLowerCase();
   if (c !== "clp" && c !== "usd") {
     throw new Error(`Unexpected Santander slide currency "${String(raw)}" (want CLP or USD)`);
@@ -88,12 +88,12 @@ function santanderSlideCurrency(raw: unknown): "clp" | "usd" {
  * (`"29.408"` = 29408 pesos) while USD amounts use a decimal comma (`"18,52"` = 18.52). The sign
  * is never in `Importe` — it is `IndicadorDebeHaber`. Null for a zero amount.
  */
-export function santanderImporteMagnitude(importe: string, currency: "clp" | "usd"): number | null {
+export function santanderImporteMagnitude(importe: string, currency: "clp" | "usd"): number | null { // convention-ok: Santander's card feed has a peso and a dollar slide only
   const m = /([\d.,]+)/.exec(importe.replace(/\s+/g, "").replace(/^[+-]?\$?/, ""));
   if (!m) throw new Error(`Could not parse Santander amount "${importe}"`);
   const digits = m[1]!;
   const n =
-    currency === "usd"
+    currency === "usd" // convention-ok: Santander prints dollar importes with two implied decimals
       ? Number(digits.replace(/\./g, "").replace(",", "."))
       : Math.round(Number(digits.replace(/[.,]/g, "")));
   if (!Number.isFinite(n)) throw new Error(`Could not parse Santander amount "${importe}"`);
@@ -126,7 +126,7 @@ function isCuotaBillingReference(merchant: string): boolean {
 /** One API row as a canonical listing line. */
 export function santanderMovementRowToLine(
   row: SantanderMovementRow,
-  currency: "clp" | "usd"
+  currency: "clp" | "usd" // convention-ok: Santander's card feed has a peso and a dollar slide only
 ): CardListingLine {
   const date = santanderMovementDateToIso(requireString(row.Fecha, "Fecha"));
   // `Comercio` is the merchant (what the site prints under "Detalle"); `Descripcion` is the
@@ -200,7 +200,7 @@ type CardClose = NonNullable<CardUnbilledMovementsPayload["cards"][number]["clos
 function applySaldoInicial(
   prev: CardClose | null,
   account: string,
-  currency: "clp" | "usd",
+  currency: "clp" | "usd", // convention-ok: Santander's card feed has a peso and a dollar slide only
   rows: readonly unknown[]
 ): CardClose | null {
   if (rows.length === 0) return prev;
@@ -257,7 +257,7 @@ export function santanderIssuerBalances(
     const currency = String(r.CODIGOMONEDA ?? "").trim().toLowerCase();
     if (!/^\d+$/.test(number)) throw new Error(`Santander cupo row has no bank account ("${number}")`);
     if (!/^\d{4,}$/.test(pan)) throw new Error(`Santander cupo ${number}: NUMEROPAN "${pan}" is not a card number`);
-    if (currency !== "clp" && currency !== "usd") {
+    if (currency !== "clp" && currency !== "usd") { // convention-ok: Santander's card feed has a peso and a dollar slide only
       throw new Error(`Santander cupo ${number}: unexpected currency "${String(r.CODIGOMONEDA)}"`);
     }
     const where = `${number} ${currency}`;
@@ -272,7 +272,7 @@ export function santanderIssuerBalances(
     return {
       account: { issuer: ISSUER, number },
       card_last4: pan.slice(-4),
-      currency: currency as "clp" | "usd",
+      currency: currency as "clp" | "usd", // convention-ok: Santander's card feed has a peso and a dollar slide only
       limit: total / 100,
       used: used / 100,
       available: available / 100,
@@ -354,14 +354,14 @@ export function santanderAccountBalances(
     if (!/^\d+$/.test(number)) throw new Error(`Santander balance row has no account number ("${number}")`);
     const product = DEPOSIT_PRODUCTS[group];
     if (!product) throw new Error(`Santander balance ${number}: unexpected product group "${group}"`);
-    if (currency !== "clp" && currency !== "usd") {
+    if (currency !== "clp" && currency !== "usd") { // convention-ok: Santander's card feed has a peso and a dollar slide only
       throw new Error(`Santander balance ${number}: unexpected currency "${String(r.CODIGOMONEDA)}"`);
     }
     const cents = bankCupoCents(r.MONTODISPONIBLE, "MONTODISPONIBLE", `${number} ${currency}`);
     return {
       number,
       product,
-      currency: currency as "clp" | "usd",
+      currency: currency as "clp" | "usd", // convention-ok: Santander's card feed has a peso and a dollar slide only
       balance: cents / 100,
       label: String(r.GLOSACORTA ?? "").trim() || group,
       status: String(r.GLOSAESTADO ?? "").trim() || "?",

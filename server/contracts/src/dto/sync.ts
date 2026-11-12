@@ -57,7 +57,7 @@ export type ImportSyncDocumentKind =
   | "cuenta_vista_cartola"
   | "cc_statement";
 
-export type CcStatementCoverageCurrency = "clp" | "usd";
+export type CcStatementCoverageCurrency = "clp" | "usd"; // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
 
 export interface ImportSyncDocumentAccount {
   account_id: number;

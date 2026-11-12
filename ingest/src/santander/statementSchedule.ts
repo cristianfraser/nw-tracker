@@ -30,7 +30,7 @@ export function announcedCloses(dir: string): AnnouncedClose[] {
   const latest = new Map<string, AnnouncedClose>();
   for (const file of listSantanderStatementFiles(dir)) {
     const parsed = parseSantanderStatementFile(file);
-    if (!parsed || parsed.currency !== "clp") continue;
+    if (!parsed || parsed.currency !== "clp") continue; // convention-ok: only Santander's national (peso) statement JSON announces the next close
     const prev = latest.get(parsed.header.account);
     if (prev && Number(prev.extracto) >= Number(parsed.extracto)) continue;
     latest.set(parsed.header.account, {

@@ -203,7 +203,7 @@ export function racionalMovementTicker(title: string): string | null {
  * CLP and `US$` is dollars — mixing them up is a ~900× error, so the prefix is required rather
  * than inferred from magnitude.
  */
-export function parseRacionalAmount(raw: string): { amount: number; currency: "clp" | "usd" } {
+export function parseRacionalAmount(raw: string): { amount: number; currency: "clp" | "usd" } { // convention-ok: Racional lists amounts in pesos or dollars only
   const text = String(raw ?? "").trim();
   const m = /^(US\$|\$)\s*(-?[\d.]+(?:,\d+)?)$/i.exec(text);
   if (!m) throw new Error(`Unexpected Racional amount "${raw}" (want "$1.234" or "US$1.234,56")`);
@@ -367,7 +367,7 @@ export function racionalRowToMovements(row: RacionalScrapedRow): RacionalMovemen
   if (single.kind !== "withdrawal") return [single];
   const liquidation = parseRacionalLiquidationDetail(row.detail);
   if (!liquidation) return [single];
-  if (single.currency !== "clp") {
+  if (single.currency !== "clp") { // convention-ok: Racional's managed portfolios are peso portfolios
     throw new Error(`Racional liquidation "${row.title}" (${row.amount}) is listed in ${single.currency} — only CLP portfolios are mapped`);
   }
   const day = liquidation.sale_day ?? single.occurred_on;
@@ -491,7 +491,7 @@ function decodeRacionalRow(row: RacionalScrapedRow): RacionalMovement {
   if (dividend && kind !== "dividend") {
     throw new Error(`Racional row "${row.title}" carries a dividend record but is a ${kind}`);
   }
-  if (dividend && (currency !== "usd" || Math.abs(dividend.net - amount) > 0.005)) {
+  if (dividend && (currency !== "usd" || Math.abs(dividend.net - amount) > 0.005)) { // convention-ok: Racional pays dividends on its dollar wallet only
     throw new Error(
       `Racional dividend row "${row.title}" prints ${amount} ${currency} but its API record ${dividend.id} ` +
         `credited ${dividend.net} usd — the crawl matched the wrong record`

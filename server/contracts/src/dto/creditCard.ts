@@ -8,20 +8,20 @@ export interface CcBillingDetailMonthDto {
   billing_month: string;
   as_of_date: string;
   as_of_kind: "statement" | "manual";
-  total_facturado_actual_clp: number | null;
-  total_facturado_clp: number | null;
+  total_facturado_actual_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  total_facturado_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /**
    * Month frame: the historial chart's month-end «deuda en cuotas» (today for the current month),
    * so the detalle shows the chart's number; null when the month has no point.
    */
-  cupo_en_cuotas_clp: number | null;
-  cuota_a_pagar_next_mes_clp: number;
+  cupo_en_cuotas_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  cuota_a_pagar_next_mes_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** Month frame: the chart's month-end «saldo total» (the owed walk); null when it has no point. */
-  balance_total_clp: number | null;
+  balance_total_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** Statement frame («cupo en cuotas» as the statement prints it) — carried, not displayed. */
-  cupo_statement_clp: number;
+  cupo_statement_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** Statement frame (facturado + cupo = balance) — carried, not displayed. */
-  balance_statement_clp: number;
+  balance_statement_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** Plan-only future month (no statement or balance evidence yet). */
   projected?: boolean;
   /** Closed at the bank, statement not imported yet (server `isProvisionallyClosedBillingMonth`). */
@@ -41,11 +41,11 @@ export type CcUpcomingPaymentRowDto = {
   pay_by_iso: string;
   pay_by_source: "statement" | "derived";
   /** What is still owed, in pesos (the dollars left at today's rate). */
-  amount_clp: number;
+  amount_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** What is still owed per currency the facturación bills in (each to its smallest coin): what the display unit converts. */
   owed: Record<string, number>;
   /** The facturación's total in pesos (CLP + the dollars in pesos). */
-  billed_clp: number;
+  billed_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** Its pay-by has passed with something still owed. */
   overdue: boolean;
   is_open_month: boolean;
@@ -68,9 +68,9 @@ export type UpcomingPaymentItemDto = {
   due_iso: string;
   due_kind: "by" | "on";
   /** Counts in the month's total (the mortgage: its minimum). */
-  amount_clp: number;
+  amount_clp: number; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
   /** The mortgage's maximum cuota. */
-  amount_max_clp: number | null;
+  amount_max_clp: number | null; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
   /** `amount_clp` in the block's `unit`, at today's mid rate. */
   amount_in_unit: number;
   /** `amount_max_clp` in the block's `unit`. */
@@ -102,9 +102,9 @@ export type AutomaticRecurringDto = {
   frequency: "yearly" | "monthly";
   due_iso: string;
   status: "paid" | "covered" | "overdue" | "upcoming";
-  amount_clp: number;
+  amount_clp: number; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
   estimated: boolean;
-  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null;
+  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
 };
 
 /**
@@ -117,7 +117,7 @@ export type UpcomingPaymentsDto = {
   /** The display unit of the `*_in_unit` figures. */
   unit: DisplayUnitCode;
   /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
-  months: { pay_month: string; total_clp: number; total_in_unit: number; items: UpcomingPaymentItemDto[] }[];
+  months: { pay_month: string; total_clp: number; total_in_unit: number; items: UpcomingPaymentItemDto[] }[]; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
   /** Automatic declared payments and their occurrences in the window (never in `months`). */
   automatic_recurring: AutomaticRecurringDto[];
 };
@@ -129,7 +129,7 @@ export interface CcPendingCuotaPurchaseDto {
   /** Purchase date (ISO). */
   purchase_date: string;
   /** Full principal (CLP). */
-  amount_clp: number;
+  amount_clp: number; // convention-ok: a pending cuota purchase in the card's peso billing frame
   kind: CcCuotaPurchaseKind;
   /** Facturación whose open bucket holds the line (`YYYY-MM`). */
   billing_month: string;
@@ -143,23 +143,23 @@ export interface CcFacturacionDto {
   pay_by_iso: string | null;
   /** The statement's printed PAGAR HASTA, or derived from the close while no statement prints it. */
   pay_by_source: "statement" | "derived" | null;
-  facturado_clp: number | null;
+  facturado_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** What it billed in each foreign currency the card bills in, with its pesos and the rate they show at. */
   facturado_foreign: CcFacturadoForeignDto[];
-  facturado_total_clp: number | null;
-  cuota_a_pagar_clp: number | null;
+  facturado_total_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  cuota_a_pagar_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /**
    * Statement-frame installment debt of this facturación: cuotas not yet billed after its close,
    * what the statement prints as «saldo capital cuotas».
    */
-  deuda_en_cuotas_clp: number | null;
+  deuda_en_cuotas_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** True before PDF close — facturado includes únicos + cuota a pagar. */
   is_open_month: boolean;
   /** Closed at the bank, statement pending: facturado is the bank's total or the app's estimate. */
   is_provisional_close: boolean;
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it. */
-  provisional_estimate_total_clp: number | null;
+  provisional_estimate_total_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
 }
 
 /** A facturación's billing in one foreign currency (docs/any-currency-plan.md C3). */
@@ -170,7 +170,7 @@ export interface CcFacturadoForeignDto {
   /** Its pesos at the rate it shows. */
   clp: number | null;
   /** The rate (pesos per unit) its charges show at: the rate paid, today's while unpaid, else the pay-by − 1 debt rate. */
-  rate_clp: number | null;
+  rate_clp: number | null; // convention-ok: a foreign facturación's rate into the card's peso billing frame
   rate_source: "paid" | "pay_by" | "live" | null;
 }
 
@@ -186,10 +186,10 @@ export interface CcInstallmentPurchaseComputed {
   /** @deprecated Use `origin`. */
   purchase_source?: "pdf" | "manual";
   label: string;
-  principal_clp: number;
+  principal_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   installment_count: number;
   installments_paid: number;
-  cuota_clp: number;
+  cuota_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   first_due_month: string;
   purchase_month: string | null;
   /** Purchase date (YYYY-MM-DD; DB ledger only). */
@@ -197,12 +197,12 @@ export interface CcInstallmentPurchaseComputed {
   /** Facturación month the purchase falls into: the bank's cycle containing the purchase date. */
   purchase_billing_month?: string | null;
   remaining_installments: number;
-  remaining_principal_clp: number;
+  remaining_principal_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   next_due_month: string | null;
   next_installment_index: number | null;
   /** YYYY-MM from last payment row (DB) or schedule (CSV). */
   last_paid_month: string | null;
-  upcoming_cuota_clp: number;
+  upcoming_cuota_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** The plan cuota by cuota for the progress bar (DB source only; null without a schedule). */
   cuota_progress?: CcCuotaProgress | null;
   /** The `installment-h:` key the plan's expense lines carry; its note is written under it (card page only). */
@@ -225,16 +225,16 @@ export interface CcCuotaProgressCuota {
   pay_by_date: string | null;
   /** ISO close of the statement that billed it; null until one prints it. */
   statement_date: string | null;
-  amount_clp: number;
+  amount_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   status: "paid" | "billed" | "pending";
 }
 
 export interface CcCuotaProgress {
   /** Σ printed cuotas = paid + billed + pending. */
-  total_clp: number;
-  paid_clp: number;
-  billed_clp: number;
-  pending_clp: number;
+  total_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  paid_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  billed_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  pending_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   paid_count: number;
   cuotas: CcCuotaProgressCuota[];
 }
@@ -244,18 +244,18 @@ export interface CcInstallmentMonthBreakdown {
   label: string;
   installment_index: number;
   installment_count: number;
-  amount_clp: number;
+  amount_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
 }
 
 export interface CcInstallmentMonthRow {
   /** Facturación (statement) month — the close that bills these cuotas. */
   month: string;
-  total_clp: number;
+  total_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   breakdown: CcInstallmentMonthBreakdown[];
   /** Statement PAGAR HASTA when closed; derived from the close by the issuer's rule for open/projected. */
   pay_by_date: string;
   /** Plan debt remaining after this facturación's cuotas are paid (last row = 0). */
-  debt_after_clp: number;
+  debt_after_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
 }
 
 /**
@@ -274,10 +274,10 @@ export interface AccountCcInstallmentsMeta {
 
 export interface CcInstallmentHistoryMonthPoint {
   month: string;
-  remaining_balance_clp: number;
-  installment_payments_clp: number;
+  remaining_balance_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  installment_payments_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** Ledger historial only when `has_installment_ledger`. */
-  ledger_remaining_installments_clp?: number;
+  ledger_remaining_installments_clp?: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
 }
 
 /**
@@ -286,27 +286,27 @@ export interface CcInstallmentHistoryMonthPoint {
  */
 export type CcFacturadoBarSegments = {
   /** «Facturado CLP (cuotas)» — a future month's: what the plan will bill. */
-  facturado_cuotas_clp: number | null;
+  facturado_cuotas_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** «Facturado CLP»: the CLP facturado minus those cuotas (negative when credits outweigh it). */
-  facturado_rest_clp: number | null;
+  facturado_rest_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** «Facturado en moneda extranjera»: the foreign currencies it billed, in pesos… */
-  facturado_foreign_clp: number | null;
+  facturado_foreign_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
   /** …and each currency's amount, for the tooltip (null: nothing billed in a foreign currency). */
   facturado_foreign: { currency: string; amount: number }[] | null;
-  facturado_total_clp: number | null;
+  facturado_total_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
 };
 
 /** One point in the server-built dense Historial chart series (day mode: `month` = ISO date). */
 export type CcHistorialChartPoint = CcFacturadoBarSegments & {
   month: string;
-  cupo_en_cuotas_clp: number | null;
-  balance_total_clp: number | null;
+  cupo_en_cuotas_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  balance_total_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
 };
 
 export interface CcProxyFacturacionAggregate {
   billing_month: string;
   by_ticker: Record<string, {
-    total_gain_clp: number;
+    total_gain_clp: number; // convention-ok: facturación proxy earnings, accrued on the card's peso billing frame
     /** Null when the facturación floated no money: a gain of 0 with no base (the open cycle before its first purchase). */
     blended_return_pct: number | null;
     projected: boolean;
@@ -314,10 +314,10 @@ export interface CcProxyFacturacionAggregate {
 }
 
 export interface CcCupoSnapshotDto {
-  total_clp: number | null;
-  used_clp: number | null;
+  total_clp: number | null; // convention-ok: the card's cupo as the bank states it, in pesos
+  used_clp: number | null; // convention-ok: the card's cupo as the bank states it, in pesos
   /** `total − used` when both are known, else null (an unconfigured cupo is not 0). */
-  available_clp: number | null;
+  available_clp: number | null; // convention-ok: the card's cupo as the bank states it, in pesos
   /** Billing month whose balance is `used_clp` (open month, else latest closed statement). */
   billing_month: string | null;
 }
@@ -326,7 +326,7 @@ export interface CcCupoSnapshotDto {
 export interface CcBankCupoStatusDto {
   observed_at: string;
   currencies: {
-    currency: "clp" | "usd";
+    currency: string;
     cupo_total: number;
     cupo_utilizado: number;
     cupo_disponible: number;
@@ -350,8 +350,8 @@ export interface AccountCcInstallmentsResponse {
   hidden_cancelled_purchases?: CcInstallmentPurchaseComputed[];
   months: CcInstallmentMonthRow[];
   totals: {
-    total_remaining_principal_clp: number;
-    next_calendar_month_total_clp: number | null;
+    total_remaining_principal_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+    next_calendar_month_total_clp: number | null; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
     next_calendar_month: string | null;
   };
   /** End-of-month outstanding installment principal vs cuotas pagadas (ledger import). */

@@ -51,7 +51,7 @@ export function decodeSecurityWireMail(mail: WireMail): IncomingWireNotice {
   const value = f32 && /Date\s*:\s*(\d{4})(\d{2})(\d{2})\s+Currency\s*:\s*([A-Z]{3})\s+Amount\s*:\s*([\d,]+)/.exec(f32);
   if (!value) throw new Error(`MT103 copy without a readable 32A field: "${f32 ?? ""}"`);
   const currency = value[4]!.toLowerCase();
-  if (currency !== "usd") throw new Error(`MT103 copy in ${value[4]}: only dollar wires are mapped`);
+  if (currency !== "usd") throw new Error(`MT103 copy in ${value[4]}: only dollar wires are mapped`); // convention-ok: Banco Security's MT103 copies are mapped for dollar wires only
   const f50 = field(text, "50K");
   const ordering = f50 && /^Ordering Customer\s+Account\s*:\s*(\S+)\s+Name\s*:\s*(.+)$/.exec(f50);
   const f57 = field(text, "57A");

@@ -88,7 +88,7 @@ function concept(parts: (string | null | undefined)[]): string | null {
 function receipt(
   mail: ArchivedMail,
   processor: ProcessorReceipt["processor"],
-  fields: { amount: number; currency: "clp" | "usd"; order_ref: string | null; concept: string | null }
+  fields: { amount: number; currency: "clp" | "usd"; order_ref: string | null; concept: string | null } // convention-ok: LATAM's mails charge pesos or dollars only
 ): ProcessorReceipt {
   return {
     message_id: mail.message_id,
@@ -163,7 +163,7 @@ function decodeOrderPurchase(mail: ArchivedMail, t: string): ProcessorReceipt {
   if (!total) fail(mail, "no total");
   // LATAM's Chilean site prints pesos as a bare «$»; a dollar total names its currency.
   const currency = total[2]?.trim() === "USD" ? "usd" : "clp";
-  const amount = currency === "usd" ? latamDollars(total[3]!, mail) : latamPesos(total[3]!, mail);
+  const amount = currency === "usd" ? latamDollars(total[3]!, mail) : latamPesos(total[3]!, mail); // convention-ok: LATAM's dollar and peso layouts print amounts differently
   const route = /viaje de (.+?) a (.+?)\. N[º°] de [Oo]rden/.exec(t);
   const what = route ? `${route[1]} → ${route[2]}` : /pago de tus adicionales/i.test(t) ? "Adicionales del viaje" : null;
   if (!what) fail(mail, "neither a route nor extras");
@@ -197,7 +197,7 @@ function decodeTripPurchase(mail: ArchivedMail, t: string): ProcessorReceipt {
   const total = /Informaci[oó]n de pago Total: (?:Millas ([\d.]+) \+ )?(CLP|USD) ([\d.,]+)/.exec(t);
   if (!total) fail(mail, "no total");
   const currency = total[2] === "USD" ? "usd" : "clp";
-  const amount = currency === "usd" ? latamDollars(total[3]!, mail) : latamPesos(total[3]!, mail);
+  const amount = currency === "usd" ? latamDollars(total[3]!, mail) : latamPesos(total[3]!, mail); // convention-ok: LATAM's dollar and peso layouts print amounts differently
   const itinerary = /Itinerario de viaje (.+?) (?:Te recomendamos|Lista de pasajeros)/.exec(t)?.[1];
   if (!itinerary || !/^Vuelo de ida /.test(itinerary)) fail(mail, "no itinerary");
   const journeys = itinerary

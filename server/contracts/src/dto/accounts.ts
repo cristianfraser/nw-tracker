@@ -48,27 +48,27 @@ export interface AccountMonthlyPerformanceResponse {
 
 export interface MortgagePaymentCreateSchema {
   next_cuota: string;
-  default_incendio_clp: number | null;
+  default_incendio_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
 }
 
 export interface MortgagePaymentPreviewResponse {
   sheet: DeptoMortgageSheetRow;
   input: {
     occurred_on: string;
-    pago_clp: number;
-    interes_clp: number;
-    incendio_clp: number;
-    desgravamen_clp?: number | null;
+    pago_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+    interes_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+    incendio_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+    desgravamen_clp?: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
     cuota?: string | null;
-    amortizacion_ext_clp?: number | null;
+    amortizacion_ext_clp?: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
     credito_restante_uf?: number | null;
   };
-  desgravamen_default_clp: number;
+  desgravamen_default_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
   desgravamen_used_override: boolean;
   credito_restante_derived_uf: number;
   credito_restante_used_override: boolean;
-  property_net_clp: number;
-  mortgage_balance_clp: number;
+  property_net_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  mortgage_balance_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
 }
 
 export interface MortgagePaymentCommitResponse {
@@ -137,30 +137,30 @@ export interface CheckingCartolaMonthRowDto {
   as_of_date: string;
   source_file: string;
   has_cartola: boolean;
-  deposits_clp: number;
-  withdrawals_clp: number;
-  balance_end_clp: number | null;
+  deposits_clp: number; // convention-ok: a checking cartola's printed pesos
+  withdrawals_clp: number; // convention-ok: a checking cartola's printed pesos
+  balance_end_clp: number | null; // convention-ok: a checking cartola's printed pesos
   /** Parsed cartola saldo final (reference only). */
-  cartola_saldo_final_clp: number | null;
+  cartola_saldo_final_clp: number | null; // convention-ok: a checking cartola's printed pesos
   /** Parsed cartola saldo inicial (prior month-end per statement). */
-  cartola_saldo_inicial_clp: number | null;
+  cartola_saldo_inicial_clp: number | null; // convention-ok: a checking cartola's printed pesos
   movement_count: number;
   imported_at: string | null;
 }
 
 export interface CheckingLedgerAnchorDto {
   movement_id: number;
-  amount_clp: number;
+  amount_clp: number; // convention-ok: a checking cartola's printed pesos
   occurred_on: string;
   anchor_period_month: string;
-  cartola_saldo_final_clp: number;
-  cartola_derived_amount_clp: number;
+  cartola_saldo_final_clp: number; // convention-ok: a checking cartola's printed pesos
+  cartola_derived_amount_clp: number; // convention-ok: a checking cartola's printed pesos
 }
 
 export interface CartolaDerivedAnchorDto {
   period_month: string;
   occurred_on: string;
-  amount_clp: number;
+  amount_clp: number; // convention-ok: a checking cartola's printed pesos
 }
 
 export interface CheckingCartolaMonthsResponse {

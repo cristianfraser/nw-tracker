@@ -12,7 +12,7 @@ import { parseDdMmYyToIso } from "../formats/ddMmYy.js";
 const USD_TOKEN_RE = /US\$|USD|U\$S?/i;
 const AMOUNT_RE = /([+-]?)\$?([\d.,]+)/;
 
-export type WebPasteAmount = { amount: number; currency: "clp" | "usd" };
+export type WebPasteAmount = { amount: number; currency: "clp" | "usd" }; // convention-ok: the bank's web table is in pesos or dollars only
 
 /**
  * A pasted amount token → signed amount + currency. A `USD` / `US$` token marks a dollar charge

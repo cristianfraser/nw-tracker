@@ -64,7 +64,7 @@ const STATEMENT_COLUMNS = [
   "pdf_total_operaciones",
 ] as const;
 
-function rowCurrency(row: Row): "clp" | "usd" {
+function rowCurrency(row: Row): "clp" | "usd" { // convention-ok: the PDF parser's CSV carries only peso and dollar statements (its clp/usd folders)
   if (cell(row, "currency").toLowerCase() === "usd") return "usd";
   return cell(row, "parser_layout") === "international_usd" ? "usd" : "clp";
 }

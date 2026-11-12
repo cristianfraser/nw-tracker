@@ -80,7 +80,7 @@ export type BrokerEmailEvent = {
    * amount at all. So the event stays a nudge for the crawl, whose API prints gross, tax and net.
    */
   gross_amount: number | null;
-  currency: "clp" | "usd" | null;
+  currency: "clp" | "usd" | null; // convention-ok: Fintual and Racional mails state pesos or dollars only
   /** Decimal string — share counts run to 9 decimals and must not touch a float. */
   units: string | null;
   /** A split's share count after it (`units` is the count before), as a decimal string. */

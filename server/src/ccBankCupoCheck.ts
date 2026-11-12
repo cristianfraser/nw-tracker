@@ -1,3 +1,4 @@
+import type { CurrencyCode } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { ccOwedByCurrency, foreignOwedIn, type CcForeignOwed, type CcOwedByCurrency } from "./ccOwedByCurrency.js";
@@ -268,7 +269,7 @@ export function formatBankCupoReport(
 export type CcBankCupoStatus = {
   observed_at: string;
   currencies: {
-    currency: "clp" | "usd";
+    currency: CurrencyCode;
     cupo_total: number;
     cupo_utilizado: number;
     cupo_disponible: number;
@@ -294,7 +295,7 @@ const selLatestAccountSnapshots = db.prepare(
 export function latestBankCupoForAccount(accountId: number): CcBankCupoStatus | null {
   const rows = selLatestAccountSnapshots.all(accountId, accountId) as {
     id: number;
-    currency: "clp" | "usd";
+    currency: CurrencyCode;
     observed_at: string;
     cupo_total: number;
     cupo_utilizado: number;

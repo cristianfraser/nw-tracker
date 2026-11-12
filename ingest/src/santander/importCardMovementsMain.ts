@@ -59,8 +59,8 @@ function printDetails(details: CardUnbilledMovementsApplyDetails): void {
     if (card.cuota_lines_tagged > 0) {
       console.log(`    ${card.cuota_lines_tagged} cuota purchase line(s) tagged (count unknown until the statement)`);
     }
-    const money = (amount: number, currency: "clp" | "usd") =>
-      currency === "usd" ? `US$${amount.toFixed(2)}` : `$${fmt(amount)}`;
+    const money = (amount: number, currency: "clp" | "usd") => // convention-ok: Santander's card feed has a peso and a dollar slide only
+      currency === "usd" ? `US$${amount.toFixed(2)}` : `$${fmt(amount)}`; // convention-ok: Santander's card feed has a peso and a dollar slide only
     // Older servers do not send it.
     const planted = card.planted_payments ?? { replaced: [], confirmed_in_place: [], ambiguous: [] };
     for (const r of planted.replaced) {

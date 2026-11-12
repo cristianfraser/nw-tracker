@@ -145,7 +145,7 @@ function readMoney(printed: string, bareDollarSignIsPeso: boolean, mail: Archive
  * clock there, not Chile's, and the mail does not say which zone. So such a receipt is dated by
  * the mail's own sending time (`sent_at_chile`) and its ride times are left null.
  */
-const isAbroad = (currency: string) => currency !== "clp";
+const isAbroad = (currency: string) => currency !== "clp"; // convention-ok: Uber's Chilean receipts are in pesos; any other currency is a ride abroad
 
 // ─── Dates ───────────────────────────────────────────────────────────────────
 
@@ -290,7 +290,7 @@ function announcedCharge(payments: Payment[], isUpdate: boolean, mail: ArchivedM
   const last = priced[priced.length - 1]!;
   const sum = priced.reduce((a, p) => a + p.money.amount, 0);
   return {
-    amount: currency === "clp" ? sum : Math.round(sum * 100) / 100,
+    amount: currency === "clp" ? sum : Math.round(sum * 100) / 100, // convention-ok: pesos have no minor unit
     currency,
     paidAt: last.stamp,
     method: methodLabel(last),

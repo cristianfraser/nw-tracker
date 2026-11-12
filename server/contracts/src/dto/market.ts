@@ -7,11 +7,11 @@ import type { FxCoverage, DisplayUnitCode } from "./core.js";
  */
 export interface MarketSeriesPoint {
   as_of_date: string;
-  clp_per_usd: number | null;
+  clp_per_usd: number | null; // convention-ok: a rate series' own quote (pesos per dollar / euro, UTM in pesos)
   clp_per_uf: number | null;
-  clp_per_eur: number | null;
+  clp_per_eur: number | null; // convention-ok: a rate series' own quote (pesos per dollar / euro, UTM in pesos)
   ipc_index: number | null;
-  utm_clp: number | null;
+  utm_clp: number | null; // convention-ok: a rate series' own quote (pesos per dollar / euro, UTM in pesos)
   /** Each equity's close on the day in `unit`. */
   equity: Record<string, number | null>;
   /** Each peso fund series' valor cuota on the day in `unit`. */
@@ -23,11 +23,11 @@ export interface MarketSeriesResponse {
   points: MarketSeriesPoint[];
   equity_tickers: string[];
   fund_series_keys: string[];
-  fx_usd_clp: { date: string; value: number }[];
+  fx_usd_clp: { date: string; value: number }[]; // convention-ok: a rate series' own quote (pesos per dollar / euro, UTM in pesos)
   fx_usd_clp_bcentral: { date: string; value: number }[];
   fx_usd_clp_buy?: { date: string; value: number }[];
   fx_usd_clp_sell?: { date: string; value: number }[];
-  eur_clp: { date: string; value: number }[];
+  eur_clp: { date: string; value: number }[]; // convention-ok: a rate series' own quote (pesos per dollar / euro, UTM in pesos)
   /** EUR/USD (`fx_rates`, Yahoo EURUSD=X): dollars per euro. */
   eur_usd: { date: string; value: number }[]; // convention-ok: a rate pair's own series, not a display amount
   fx_coverage: FxCoverage;
@@ -118,7 +118,7 @@ export interface MarketTickerResponse {
   unit: DisplayUnitCode;
   uf: MarketTickerValue | null;
   /** The USD/CLP rate itself — CLP per USD in every unit. */
-  usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
+  usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null; // convention-ok: a rate series' own quote (pesos per dollar / euro, UTM in pesos)
   /** Every other rate pair on the marquee (EUR/USD, EUR/CLP): quote units per one base unit. */
   fx_pairs: {
     /** The row's `series_key` (`eur_usd`). */

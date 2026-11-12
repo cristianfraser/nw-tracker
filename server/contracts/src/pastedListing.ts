@@ -22,7 +22,7 @@ export const pastedListingLineSchema = z
     raw_line: z.string().min(1).max(1000),
   })
   .strict()
-  .refine((l) => l.currency === "usd" || Number.isInteger(l.amount), { message: "pesos are whole" });
+  .refine((l) => l.currency === "usd" || Number.isInteger(l.amount), { message: "pesos are whole" }); // convention-ok: a pasted card table is pesos or dollars, and pesos have no minor unit
 
 export const cardPastedListingSchema = z
   .object({

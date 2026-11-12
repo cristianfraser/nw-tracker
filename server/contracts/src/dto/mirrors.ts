@@ -51,7 +51,7 @@ export interface CcPaymentMirrorCandidateDto {
     account_id: number;
     account_name: string;
     occurred_on: string;
-    amount_clp: number;
+    amount_clp: number; // convention-ok: a peso checking debit paired with card payment evidence in pesos
     note: string | null;
   };
   evidence: {
@@ -60,7 +60,7 @@ export interface CcPaymentMirrorCandidateDto {
     statement_line_id: number | null;
     statement_id: number | null;
     pago_iso: string;
-    amount_clp: number;
+    amount_clp: number; // convention-ok: a peso checking debit paired with card payment evidence in pesos
     label: string;
   };
   skew_days: number;

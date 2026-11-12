@@ -172,7 +172,7 @@ export function parseMailDate(text: string, mailedOn: string | null): string | n
   return iso;
 }
 
-type Money = { amount: number; currency: "clp" | "usd" };
+type Money = { amount: number; currency: "clp" | "usd" }; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
 
 const PRICE_LINE = /^(USD\s*)?\$?\s?(\d[\d.,]*)$/;
 
@@ -270,12 +270,12 @@ function itemFromBlock(block: ItemBlock, iconUrl: string | null): MerchantReceip
   return { app, product, amount: block.price.amount, renews, period, icon_url: iconUrl };
 }
 
-function readItems(lines: string[]): { blocks: ItemBlock[]; currency: "clp" | "usd" } {
+function readItems(lines: string[]): { blocks: ItemBlock[]; currency: "clp" | "usd" } { // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   const blocks: ItemBlock[] = [];
   let section: string | null = null;
   let pending: string[] = [];
   let renewal: string[] = [];
-  let currency: "clp" | "usd" | null = null;
+  let currency: "clp" | "usd" | null = null; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   for (const line of lines) {
     const price = parseMoney(line);
     if (price) {
@@ -355,7 +355,7 @@ export function decodeAppleReceipt(html: string): Extract<MerchantPurchaseDocume
   const icons = iconUrls(html);
   const items = blocks.map((b, i) => itemFromBlock(b, icons.length === blocks.length ? icons[i]! : null));
   const sum = items.reduce((s, i) => s + i.amount, 0);
-  if (Math.abs(sum - total.amount) > (total.currency === "clp" ? 0.5 : 0.005)) {
+  if (Math.abs(sum - total.amount) > (total.currency === "clp" ? 0.5 : 0.005)) { // convention-ok: pesos have no minor unit, so the tolerance is half a peso against half a cent
     throw new Error(`Receipt items add up to ${sum}, the total says ${total.amount}`);
   }
   return { type: "receipt", issued_on: issuedOn, order_id: orderId, card_last4: cardLast4, total, items };

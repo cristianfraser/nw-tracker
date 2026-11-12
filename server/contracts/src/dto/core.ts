@@ -84,7 +84,7 @@ export interface FxCoverage {
   first_missing_date: string | null;
   missing_count: number;
   is_sparse: boolean;
-  yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[];
+  yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[]; // convention-ok: a USD/CLP rate row: pesos per dollar
   conversion_warnings?: FxConversionWarning[];
 }
 
@@ -101,9 +101,9 @@ export interface FxConversionWarning {
 
 export interface FxBidAskGapRow {
   date: string;
-  mid_clp_per_usd: number | null;
-  buy_clp_per_usd: number | null;
-  sell_clp_per_usd: number | null;
+  mid_clp_per_usd: number | null; // convention-ok: a USD/CLP rate row: pesos per dollar
+  buy_clp_per_usd: number | null; // convention-ok: a USD/CLP rate row: pesos per dollar
+  sell_clp_per_usd: number | null; // convention-ok: a USD/CLP rate row: pesos per dollar
   source: string | null;
   suggested_buy: number | null;
   suggested_sell: number | null;

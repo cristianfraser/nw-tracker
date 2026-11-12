@@ -447,7 +447,7 @@ export interface DailySeriesResponse {
    * CC scopes only: future daily tail of the installment simulation (`today+1 .. plan end`, CLP),
    * so the daily historial covers the same window as its monthly/yearly forms.
    */
-  cc_plan_tail?: { as_of_date: string; plan_debt_clp: number; balance_clp: number }[];
+  cc_plan_tail?: { as_of_date: string; plan_debt_clp: number; balance_clp: number }[]; // convention-ok: the card historial is drawn in the card's peso billing frame
   /**
    * CC scopes only: one facturación bar per billing month (Σ of the members' bars, as the monthly
    * chart stacks them) on the month's latest member close (ascending; a date may lie past the

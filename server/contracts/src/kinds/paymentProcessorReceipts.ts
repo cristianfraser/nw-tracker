@@ -136,8 +136,8 @@ export const processorReceiptSchema = z
     subscription: z.boolean().optional(),
   })
   .strict()
-  .refine((r) => r.amount == null || r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" })
-  .refine((r) => r.amount == null || r.currency === "clp" || hasAtMostCents(r.amount), {
+  .refine((r) => r.amount == null || r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" }) // convention-ok: pesos have no minor unit
+  .refine((r) => r.amount == null || r.currency === "clp" || hasAtMostCents(r.amount), { // convention-ok: pesos have no minor unit; any other receipt currency carries cents
     message: "amounts other than pesos are to the cent",
   })
   .refine((r) => r.charges == null || (r.amount != null && Math.abs(r.charges.reduce((s, c) => s + c.amount, 0) - r.amount) < 0.005), {

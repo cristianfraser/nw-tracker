@@ -91,7 +91,7 @@ export type BrokerNotificationPlanRow = {
   occurred_on: string;
   kind: BrokerNotification["kind"];
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: Racional and Fintual hold broker cash in pesos and dollars only
   /** `from → to` account ids, or null for a single-leg row. */
   legs: string | null;
   units: string | null;

@@ -258,7 +258,7 @@ export function nationalHeader(respuesta: Record<string, unknown>): SantanderSta
 
 export type ParsedSantanderStatement = {
   file: string;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: Santander's statement JSON is national (CLP) or international (USD)
   /** The statement number (NumExtracto) the request asked for; both currencies of a facturación share it. */
   extracto: string;
   header: SantanderStatementHeader;
@@ -442,8 +442,8 @@ export function statementGroupPayload(group: SantanderStatementGroup): CardIssue
       currency: s.currency,
       document: s.file,
       // The international header carries no figures.
-      billed_total: s.currency === "clp" ? s.header.deuda_total : null,
-      payments_total: s.currency === "clp" ? s.header.total_pagos : null,
+      billed_total: s.currency === "clp" ? s.header.deuda_total : null, // convention-ok: only Santander's national (peso) statement JSON prints header totals
+      payments_total: s.currency === "clp" ? s.header.total_pagos : null, // convention-ok: only Santander's national (peso) statement JSON prints header totals
       lines: s.lines,
     }));
   return cardIssuerStatementSchema.parse({
@@ -458,7 +458,7 @@ export function statementGroupPayload(group: SantanderStatementGroup): CardIssue
   });
 }
 
-export type SantanderStatementGroupOutcomes = Partial<Record<"clp" | "usd", CardStatementOutcome>>;
+export type SantanderStatementGroupOutcomes = Partial<Record<"clp" | "usd", CardStatementOutcome>>; // convention-ok: Santander's statement JSON is national (CLP) or international (USD)
 
 /**
  * Which superseded facturaciones can leave the staging dir.

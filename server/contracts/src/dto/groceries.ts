@@ -7,8 +7,8 @@ export type UnclassifiedGroup = {
   occurrences: number;
   last_seen: string;
   qty_unit: string;
-  last_unit_price_clp: number;
-  total_spent_clp: number;
+  last_unit_price_clp: number; // convention-ok: a grocery receipt's printed pesos
+  total_spent_clp: number; // convention-ok: a grocery receipt's printed pesos
   suggestions: { product_id: number; product_name: string; via: string; score: number }[];
 };
 
@@ -19,7 +19,7 @@ export type GroceryProductRow = {
   alias_count: number;
   purchase_count: number;
   last_purchased_at: string | null;
-  last_effective_unit_price_clp: number | null;
+  last_effective_unit_price_clp: number | null; // convention-ok: a grocery receipt's printed pesos
 };
 
 /** Document that owns a receipt row — the `store.receipt` document kinds (server/contracts). */
@@ -32,9 +32,9 @@ export type GroceryReceiptRow = {
   store_chain: string;
   branch: string;
   city: string | null;
-  total_clp: number;
-  card_paid_clp: number;
-  payments: { method: string; amount_clp: number }[];
+  total_clp: number; // convention-ok: a grocery receipt's printed pesos
+  card_paid_clp: number; // convention-ok: a grocery receipt's printed pesos
+  payments: { method: string; amount_clp: number }[]; // convention-ok: a grocery receipt's printed pesos
   /** Card-line outcome: pending_branch = flagged, waiting for the bank's own line to pair it. */
   card_line_status: "created" | "covered" | "pending_branch" | "matched" | null;
   item_count: number;
@@ -48,9 +48,9 @@ export type GroceryReceiptItemRow = {
   description: string;
   qty: string;
   qty_unit: string;
-  unit_price_clp: number;
-  total_clp: number;
-  discount_clp: number;
+  unit_price_clp: number; // convention-ok: a grocery receipt's printed pesos
+  total_clp: number; // convention-ok: a grocery receipt's printed pesos
+  discount_clp: number; // convention-ok: a grocery receipt's printed pesos
   product_id: number | null;
   product_name: string | null;
   product_source: string | null;
@@ -64,12 +64,12 @@ export type ProductHistoryRow = {
   description: string;
   qty: string;
   qty_unit: string;
-  unit_price_clp: number;
-  effective_unit_price_clp: number;
-  total_clp: number;
-  discount_clp: number;
+  unit_price_clp: number; // convention-ok: a grocery receipt's printed pesos
+  effective_unit_price_clp: number; // convention-ok: a grocery receipt's printed pesos
+  total_clp: number; // convention-ok: a grocery receipt's printed pesos
+  discount_clp: number; // convention-ok: a grocery receipt's printed pesos
   brand_name: string | null;
-  normalized_unit_price_clp: number | null;
+  normalized_unit_price_clp: number | null; // convention-ok: a grocery receipt's printed pesos
 };
 
 export type GroceriesSummary = {

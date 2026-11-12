@@ -27,7 +27,7 @@ export const cardPaymentReceiptKind = defineIngestKind({
       card_last4: z.string().regex(/^\d{4}$/).nullable(),
     })
     .strict()
-    .refine((p) => p.debt_currency === "usd" || p.amount_usd === null, {
+    .refine((p) => p.debt_currency === "usd" || p.amount_usd === null, { // convention-ok: Santander's receipt prints a dollar amount only on the dollar-debt receipt
       message: "a peso payment carries no dollar amount",
     }),
 });

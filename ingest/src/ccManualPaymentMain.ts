@@ -33,7 +33,7 @@ function parseRequest(): CcManualPaymentRequest {
   }
   // The CLI's own format (period decimals), not a typed Chilean number.
   if (!/^\d+(\.\d{1,2})?$/.test(amountRaw)) throw new Error(`--amount must look like 250.00, got ${amountRaw}`);
-  if (currency !== "clp" && currency !== "usd") throw new Error(`--currency must be clp or usd, got ${currency}`);
+  if (currency !== "clp" && currency !== "usd") throw new Error(`--currency must be clp or usd, got ${currency}`); // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`--date must be YYYY-MM-DD, got ${date}`);
   return {
     from_account_id: from,

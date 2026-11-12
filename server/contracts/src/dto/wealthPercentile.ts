@@ -21,9 +21,9 @@ export interface WealthPercentileCell {
   percentile: number | null;
   below_support: boolean;
   /** The distribution's thresholds as printed (USD). */
-  p50_usd: number;
-  p90_usd: number;
-  p99_usd: number;
+  p50_usd: number; // convention-ok: the databook's thresholds as printed, in dollars
+  p90_usd: number; // convention-ok: the databook's thresholds as printed, in dollars
+  p99_usd: number; // convention-ok: the databook's thresholds as printed, in dollars
   /** The same thresholds in the response's `unit` at the row's year-end rate. */
   p50: number;
   p90: number;
@@ -36,7 +36,7 @@ export interface WealthPercentileYearRow {
   as_of_date: string;
   /** Seed row year backing every cell's distribution (< year once the databook lags). */
   distribution_year: number;
-  fx_clp_per_usd: number;
+  fx_clp_per_usd: number; // convention-ok: the USD/CLP rate the year-end row converts at
   fx_date: string;
   /** Distribution parameters interpolated across the 2022→2025 methodology break. */
   interpolated: boolean;

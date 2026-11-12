@@ -25,7 +25,7 @@ export type CurrencyCode = string;
 
 /** Whole pesos carry no decimals, any other currency at most cents. */
 export function amountFitsCurrency(amount: number, currency: CurrencyCode): boolean {
-  return currency === "clp" ? Number.isInteger(amount) : hasAtMostCents(amount);
+  return currency === "clp" ? Number.isInteger(amount) : hasAtMostCents(amount); // convention-ok: pesos have no minor unit; every other code a document states carries cents
 }
 
 /** A dividend's gross less its withholding is its net, to a cent and a half of rounding. */
