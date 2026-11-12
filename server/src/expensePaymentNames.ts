@@ -71,7 +71,7 @@ export type PaymentNameFacts = {
 
 const lineDay = (l: PaymentNameLine): string | null => l.purchase_on ?? l.posting_on ?? null;
 
-const isPaymentLine = (l: PaymentNameLine): boolean =>
+export const isPaymentLine = (l: PaymentNameLine): boolean =>
   l.source === "cc" && (l.amount_clp < 0 || (l.amount_usd != null && l.amount_usd < 0)) && (isCcPaymentMerchant(l.merchant) || isCcUsdDebtAbonoMerchant(l.merchant));
 
 /** The payment identity of a card payment line (dollars for a line on a dollar statement). */
@@ -230,7 +230,7 @@ const selStatementPlastics = db.prepare(
  * The plastic a card is known by today: its newest issued statement's titular card (·0781 for a
  * master whose identity is the replaced ·0901), else the config's card identity.
  */
-function currentPlasticLast4(accountId: number): string | null {
+export function currentPlasticLast4(accountId: number): string | null {
   let best: { iso: string; last4: string } | null = null;
   for (const r of selStatementPlastics.all(accountId) as { card_last4: string; statement_date: string; source_kind: string }[]) {
     if (!isStatementSourceKind(r.source_kind)) continue;
@@ -278,17 +278,35 @@ export function loadPaymentNameFacts(facturadoFor: FacturadoClpResolver): Paymen
     from_account_id: number;
   }[]) {
     if (!masterSet.has(r.to_account_id) || masterSet.has(r.from_account_id)) continue;
-    let identity: CcPaymentIdentity;
-    if (r.counter_currency === "usd" && r.counter_amount != null) {
-      identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "usd", amount_clp: Math.round(r.amount), amount_usd: r.counter_amount };
-    } else if (r.counter_currency == null && r.currency === "usd") {
-      identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "usd", amount_clp: 0, amount_usd: r.amount };
-    } else if (r.counter_currency == null && r.currency === "clp") {
-      identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "clp", amount_clp: Math.round(r.amount), amount_usd: null };
-    } else continue;
-    transfers.push({ key: ccPaymentEvidenceKey(identity), from_account_name: r.from_name });
+    const key = pagoTarjetaCardLegKey(r);
+    if (key == null) continue;
+    transfers.push({ key, from_account_name: r.from_name });
   }
   return { payments, transfers, cards, window: MATCH_WINDOWS.financing_payment };
+}
+
+/**
+ * A `pago_tarjeta` transfer's card leg as a payment identity (`ccPaymentEvidenceKey`): pesos for a
+ * peso transfer, the dollars credited for a divisas purchase (counter leg) or a transfer from a
+ * dollar account; null for any other shape.
+ */
+export function pagoTarjetaCardLegKey(r: {
+  to_account_id: number;
+  occurred_on: string;
+  amount: number;
+  currency: string;
+  counter_amount: number | null;
+  counter_currency: string | null;
+}): string | null {
+  let identity: CcPaymentIdentity;
+  if (r.counter_currency === "usd" && r.counter_amount != null) {
+    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "usd", amount_clp: Math.round(r.amount), amount_usd: r.counter_amount };
+  } else if (r.counter_currency == null && r.currency === "usd") {
+    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "usd", amount_clp: 0, amount_usd: r.amount };
+  } else if (r.counter_currency == null && r.currency === "clp") {
+    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "clp", amount_clp: Math.round(r.amount), amount_usd: null };
+  } else return null;
+  return ccPaymentEvidenceKey(identity);
 }
 
 /** The pipeline step: card payment lines named by what they paid. */

@@ -1056,7 +1056,10 @@
       "showMore": {
         "en": "Show more",
         "es": "Ver más"
-      }
+      },
+      "cardPayment": { "en": "Payment to {{brand}} ·{{last4}} · from {{from}}", "es": "Pago {{brand}} ·{{last4}} · desde {{from}}" },
+      "fromCard": { "en": "{{brand}} ·{{last4}}", "es": "{{brand}} ·{{last4}}" },
+      "cardPaymentPill": { "en": "Card payment", "es": "Pago de tarjeta" }
     }
   },
   "sidebar": {

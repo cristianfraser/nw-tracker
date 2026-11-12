@@ -2,7 +2,7 @@ import { Button } from "@crfrsr/ui";
 import { HeadingLink } from "../ui/HeadingLink";
 import { useTranslation } from "../../i18n";
 import { useLatestMovements } from "../../queries/hooks";
-import type { LatestIncomeMovement, LatestMovementsResponse } from "../../types";
+import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, LatestCardPayment, LatestIncomeMovement, LatestMovementsResponse } from "../../types";
 import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
@@ -36,6 +36,9 @@ function isLatestMovements(v: unknown): v is LatestMovementsResponse {
       }
       if (r.kind === "income") {
         return r.income != null && typeof r.income.key === "string" && r.income.amount != null && Number.isFinite(r.income.amount.value) && r.income.values != null;
+      }
+      if (r.kind === "card_payment") {
+        return r.payment != null && typeof r.payment.key === "string" && r.payment.amount != null && Number.isFinite(r.payment.amount.value) && Array.isArray(r.payment.lines);
       }
       return false;
     })
@@ -95,6 +98,78 @@ function IncomeMovementRow({ on, income }: { on: string; income: LatestIncomeMov
 }
 
 /**
+ * A card payment, once: «Pago Lider ·0101 · desde Santander ·0781» / «… · desde Cuenta corriente»,
+ * its amount in its own currency, and in its ⋯ panel the evidence lines (the PAGO on the card paid,
+ * the paying charge or plan) with their own category and note controls.
+ */
+function CardPaymentRow({
+  on,
+  payment,
+  categories,
+  bigGroups,
+}: {
+  on: string;
+  payment: LatestCardPayment;
+  categories: readonly CcExpenseCategoryDto[];
+  bigGroups: readonly CcExpenseBigGroupDto[];
+}) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const from =
+    payment.from.kind === "card"
+      ? t("dashboard.latestMovements.fromCard", { brand: payment.from.card_brand, last4: payment.from.card_last4 })
+      : payment.from.account_name;
+  const name = t("dashboard.latestMovements.cardPayment", {
+    brand: payment.to.card_brand,
+    last4: payment.to.card_last4,
+    from,
+  });
+  return (
+    <ExpenseListStaticRow
+      origin={
+        <ExpenseOriginIcon
+          origin={{
+            kind: payment.from.kind === "card" ? "card" : "checking",
+            account_name: payment.from.kind === "account" ? payment.from.account_name : null,
+            card_last4: payment.from.kind === "card" ? payment.from.card_last4 : null,
+            additional: false,
+          }}
+        />
+      }
+      date={on}
+      pills={
+        <PillPicker
+          readOnly
+          value={{ key: "card_payment", label: t("dashboard.latestMovements.cardPaymentPill") }}
+          emptyLabel=""
+          options={[]}
+          onSelect={() => undefined}
+          onClear={() => undefined}
+          clearLabel=""
+          ariaLabel=""
+        />
+      }
+      vendor={<ExpenseVendorLabel source={{ merchant: name }} note={null} className={expenseListVendorClassName} />}
+      amount={formatLineAmount(payment, displayUnit)}
+      moreAriaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: name })}
+      panel={
+        payment.lines.length > 0 ? (
+          <CreditCardExpenseLinesTable
+            lines={payment.lines}
+            categories={categories}
+            bigGroups={bigGroups}
+            showBigGroupControls
+            enableCheckingNotes
+            hideHeader
+            emptyLabel=""
+          />
+        ) : null
+      }
+    />
+  );
+}
+
+/**
  * Home «Últimos movimientos»: the newest expense lines across every source (card, checking,
  * manual, payroll) and the income credits, interleaved by the day they happened, as the server
  * lists them (`GET /api/dashboard/latest-movements`). Expense rows are the Expenses page's own row
@@ -108,11 +183,17 @@ export function LatestMovementsTable() {
   const { value: data } = usePersistedPayload(LATEST_MOVEMENTS, [], query.data);
   const loadError = queryLoadError(query);
 
-  const items: ExpenseListItem[] = (data?.rows ?? []).map((r) =>
-    r.kind === "expense"
-      ? { kind: "expense", on: r.on, line: r.line }
-      : { kind: "custom", key: r.income.key, node: <IncomeMovementRow on={r.on} income={r.income} /> }
-  );
+  const items: ExpenseListItem[] = (data?.rows ?? []).map((r) => {
+    if (r.kind === "expense") return { kind: "expense", on: r.on, line: r.line };
+    if (r.kind === "income") return { kind: "custom", key: r.income.key, node: <IncomeMovementRow on={r.on} income={r.income} /> };
+    return {
+      kind: "custom",
+      key: r.payment.key,
+      node: (
+        <CardPaymentRow on={r.on} payment={r.payment} categories={data?.categories ?? []} bigGroups={data?.big_groups ?? []} />
+      ),
+    };
+  });
 
   return (
     <PageGridTile id="latest-movements" order={dashboardTileOrder("latest-movements")}>

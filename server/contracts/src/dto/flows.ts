@@ -1075,7 +1075,29 @@ export type LatestMovementRow =
       kind: "income";
       on: string;
       income: LatestIncomeMovement;
+    }
+  | {
+      kind: "card_payment";
+      on: string;
+      payment: LatestCardPayment;
     };
+
+/**
+ * A card payment, once: the `pago_tarjeta` transfer that paid a card — from a bank account, or from
+ * another card (a facturado paid with a charge or a cuota plan there). Its evidence lines (the PAGO
+ * on the card paid, the paying charge or plan) ride along for their category and note controls and
+ * are not listed as rows of their own.
+ */
+export interface LatestCardPayment {
+  /** `movement:<id>`. */
+  key: string;
+  movement_id: number;
+  from: { kind: "card"; card_brand: string; card_last4: string } | { kind: "account"; account_name: string };
+  to: { card_brand: string; card_last4: string };
+  amount: Money;
+  values: Record<string, LineUnitValue>;
+  lines: FlowCcExpenseLineRow[];
+}
 
 /** An income credit (checking) or a hand-entered income, as the income page counts it. */
 export interface LatestIncomeMovement {

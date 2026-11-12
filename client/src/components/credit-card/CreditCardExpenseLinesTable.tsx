@@ -634,6 +634,8 @@ export function ExpenseListStaticRow({
   pills,
   vendor,
   amount,
+  panel,
+  moreAriaLabel,
 }: {
   origin: ReactNode;
   date: string;
@@ -641,7 +643,11 @@ export function ExpenseListStaticRow({
   /** The vendor cell: an `ExpenseVendorLabel` with `className={expenseListVendorClassName}`. */
   vendor: ReactNode;
   amount: ReactNode;
+  /** The row's extras, opened by its ⋯ button (none: no button). */
+  panel?: ReactNode;
+  moreAriaLabel?: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div role="listitem" className={styles.row}>
       <div className={styles.origin}>
@@ -653,7 +659,16 @@ export function ExpenseListStaticRow({
       <div className={styles.amountCell}>
         <span className={cn("mono", styles.amount)}>{amount}</span>
       </div>
-      <div className={styles.more} />
+      <div className={styles.more}>
+        {panel != null ? (
+          <ExpenseRowMoreButton
+            expanded={expanded}
+            ariaLabel={moreAriaLabel ?? ""}
+            onClick={() => setExpanded((e) => !e)}
+          />
+        ) : null}
+      </div>
+      {panel != null && expanded ? <div className={styles.panel}>{panel}</div> : null}
     </div>
   );
 }

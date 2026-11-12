@@ -51,7 +51,13 @@ const today = "2026-09-30";
 const noDollars = new Set<number>();
 
 function ids(rows: ReturnType<typeof latestMovementRows>): string[] {
-  return rows.map((r) => (r.kind === "expense" ? `${r.line.source}:${r.line.statement_line_id}@${r.on}` : `${r.income.key}@${r.on}`));
+  return rows.map((r) =>
+    r.kind === "expense"
+      ? `${r.line.source}:${r.line.statement_line_id}@${r.on}`
+      : r.kind === "income"
+        ? `${r.income.key}@${r.on}`
+        : `${r.payment.key}@${r.on}`
+  );
 }
 
 describe("movementOn", () => {

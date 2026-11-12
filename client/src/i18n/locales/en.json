@@ -348,7 +348,10 @@
     "latestMovements": {
       "title": "Latest movements",
       "empty": "No recent movements",
-      "showMore": "Show more"
+      "showMore": "Show more",
+      "cardPayment": "Payment to {{brand}} ·{{last4}} · from {{from}}",
+      "fromCard": "{{brand}} ·{{last4}}",
+      "cardPaymentPill": "Card payment"
     }
   },
   "sidebar": {

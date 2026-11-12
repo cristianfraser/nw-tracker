@@ -28,6 +28,8 @@ import type {
 import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { lineAmount } from "./lineMoney.js";
 import { toWireExpenseLine } from "./wireExpenseLine.js";
+import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type CardPaymentTransfer } from "./latestCardPayments.js";
+import { isPaymentLine } from "./expensePaymentNames.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcExpenseBigGroups } from "./ccExpenseBigGroups.js";
 import { isInstallmentCuotaZeroLine, listCcExpenseCategories } from "./ccExpenseCategories.js";
@@ -126,11 +128,21 @@ export function latestMovementRows(
   limit: number,
   todayYmd: string,
   /** The dollar checking accounts (`listDollarCheckingAccountIds`): their income is in dollars. */
-  dollarAccountIds: ReadonlySet<number>
+  dollarAccountIds: ReadonlySet<number>,
+  /** The card payments (`loadCardPaymentTransfers`): each one row, its evidence lines folded in. */
+  cardPayments: readonly CardPaymentTransfer[] = []
 ): LatestMovementRow[] {
   type Ranked = { row: LatestMovementRow; tie: number };
   const ranked: Ranked[] = [];
-  for (const line of lines) {
+  const evidence = cardPaymentEvidence(cardPayments, lines, (l) => isPaymentLine(l as never));
+  const evidenceIdx = new Set([...evidence.values()].flat());
+  for (const t of cardPayments) {
+    if (t.occurred_on > todayYmd) continue;
+    const own = evidence.get(t.movement_id)!.map((i) => toWireExpenseLine(lines[i]!));
+    ranked.push({ row: { kind: "card_payment", on: t.occurred_on, payment: latestCardPayment(t, own) }, tie: t.movement_id * 1000 });
+  }
+  for (const [i, line] of lines.entries()) {
+    if (evidenceIdx.has(i)) continue;
     if (!listedAsLatestMovement(line)) continue;
     const on = movementOn(line, todayYmd);
     if (on > todayYmd) continue;
@@ -162,7 +174,8 @@ export function buildLatestMovements(limit: number): LatestMovementsResponse {
       new Set(categories.map((c) => c.slug)),
       limit,
       chileCalendarTodayYmd(),
-      new Set(listDollarCheckingAccountIds())
+      new Set(listDollarCheckingAccountIds()),
+      loadCardPaymentTransfers()
     ),
     categories,
     big_groups: listCcExpenseBigGroups(),
