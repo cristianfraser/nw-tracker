@@ -20,7 +20,7 @@ import { snapshotTables } from "./test/snapshotTables.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
 // Manual-purchase creation + the nudge write valuations, owed-walk anchors and billing snapshots; restore exact rows afterwards.
-const restoreValuations = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+const restoreValuations = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 afterAll(() => restoreValuations());
 
 const createdPurchaseIds: number[] = [];

@@ -42,7 +42,7 @@ import { ddMmYyyyFromIso, parseDdMmYyToIso, addCalendarMonths } from "nw-tracker
 /**
  * A detalle row in the STATEMENT frame — what the billing-detail bundle builds and every internal
  * reader consumes: the month-end valuation anchors (`ccLedgerStatementClosingPointsClp`), the
- * stored `cc_billing_month_balances` snapshot, the «Cupo» card and the historial's billing-frame
+ * stored `cc_billing_month_metrics` snapshot, the «Cupo» card and the historial's billing-frame
  * fallback. A closed month's billed cuotas ride inside its facturado and its cupo is the plan
  * remainder after its close; facturado + cupo = balance. The month frame the table shows
  * ({@link CcBillingDetailMonthRow}) is overlaid outside the bundle, so nothing the bundle build
@@ -165,7 +165,7 @@ function pickSnapshotRow(
  * statement arrived.
  *
  * One rule for every reader, through {@link ccCupoFrame}: the detalle, the stored
- * `cc_billing_month_balances` snapshot (which copies the detalle's rows) and the month-end
+ * `cc_billing_month_metrics` snapshot (which copies the detalle's rows) and the month-end
  * valuation fallback. The last two used to carry their own copies keyed on the calendar month —
  * the double count above — one of them on the UTC month, which turns at 21:00 Chile.
  */

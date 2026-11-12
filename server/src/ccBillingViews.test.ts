@@ -33,7 +33,7 @@ import { addCalendarMonths } from "nw-tracker-contracts";
 // which upserts valuations (a today-dated row + restated month-ends) via
 // upsertCreditCardValuationsFromLedger. Deleting the purchase + recomputing balances doesn't
 // undo those valuation writes, so snapshot valuations and restore exact rows in afterAll.
-const restoreValuations = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_balances"]);
+const restoreValuations = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 afterAll(() => restoreValuations());
 
 describe("billingDetailBalanceClp", () => {
@@ -320,7 +320,7 @@ describe("buildBillingDetailByMonth", () => {
       expect(det.some((row) => row.billing_month >= todayMonth)).toBe(false);
       expect(det[0]!.billing_month < todayMonth).toBe(true);
     } finally {
-      db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(acctId);
+      db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(acctId);
       db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(acctId);
       db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(acctId);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(acctId);

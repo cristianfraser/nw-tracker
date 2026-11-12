@@ -52,7 +52,7 @@ describe("converted card payments across statement writes", () => {
     for (const p of listCcPaymentPairings(cardId)) undoMirrorConversion(p.transfer_movement_id);
     db.prepare(`DELETE FROM movements WHERE account_id = ? OR from_account_id = ?`).run(checkingId, checkingId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(cardId);
-    db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(cardId);
+    db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(cardId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(cardId);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(cardId);
     db.prepare(`DELETE FROM accounts WHERE id IN (?, ?)`).run(cardId, checkingId);

@@ -126,7 +126,7 @@ describe("facturación dollars at the rate actually paid", () => {
   afterEach(() => {
     vi.useRealTimers();
     db.prepare(`DELETE FROM movements WHERE from_account_id = ? OR to_account_id = ?`).run(checkingId, accountId);
-    db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id IN (?, ?)`).run(accountId, checkingId);
@@ -293,7 +293,7 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     vi.useRealTimers();
     db.prepare(`DELETE FROM movements WHERE from_account_id = ? OR to_account_id = ?`).run(checkingId, accountId);
     db.prepare(`DELETE FROM cc_traspaso_deuda_links WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id IN (?, ?)`).run(accountId, checkingId);

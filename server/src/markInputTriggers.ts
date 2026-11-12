@@ -503,6 +503,8 @@ const DROPPED_LOGGED_TABLES: ReadonlySet<string> = new Set([
   "cuenta_ahorro_deposit_splits",
   // The retired mortgage-sheet import (migration 308).
   "mortgage_sheet_imports",
+  // The billing-month snapshot went long (migration 320: cc_billing_month_metrics).
+  "cc_billing_month_balances",
 ]);
 
 export const WRITE_LOGGED_TABLES: readonly string[] = [
@@ -535,6 +537,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "card_to_card_payments",
   "currencies",
   "fx_rates",
+  "cc_billing_month_metrics",
 ];
 
 /**
