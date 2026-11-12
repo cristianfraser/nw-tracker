@@ -1,7 +1,7 @@
 {
   "app": {
     "displayPreferences": {
-      "toolbarAria": "Divisa (CLP o USD) y período MTD/YTD",
+      "toolbarAria": "Divisa de visualización",
       "displayCurrency": "Divisa: ",
       "numberFormat": "Formato: ",
       "chartStyle": "Gráficos: ",
@@ -83,7 +83,7 @@
         },
         "chart": {
           "title": "Cada gráfico tiene sus propios controles",
-          "body": "Elige el período y el rango en cada gráfico. Diario valoriza cada día del calendario a los precios y al tipo de cambio de ese día; cambia CLP / USD abajo."
+          "body": "Elige el período y el rango en cada gráfico. Diario valoriza cada día del calendario a los precios y al tipo de cambio de ese día; cambia la divisa abajo."
         },
         "sidebar": {
           "title": "Una página por grupo y por cuenta",
@@ -139,17 +139,17 @@
     }
   },
   "fxCoverage": {
-    "title": "Tipo de cambio USD/CLP incompleto",
-    "missingFromDate": "Sin tipo de cambio desde {{date}} para convertir saldos y gráficos en US$.",
-    "sparseHistory": "Historial diario escaso ({{daily}} días observados de {{rows}} filas en fx_daily).",
+    "title": "Tipo de cambio {{pair}} incompleto",
+    "missingFromDate": "Sin tipo de cambio {{pair}} desde {{date}} para convertir saldos y gráficos en {{unit}}.",
+    "sparseHistory": "{{pair}}: historial diario escaso ({{daily}} días observados de {{rows}} filas).",
     "hint": "Ejecuta el backfill o revisa la sincronización en",
-    "depositConversionError": "Al menos un depósito no pudo convertirse a US$ (falta fx_daily en la fecha del movimiento).",
+    "depositConversionError": "Al menos un depósito no pudo convertirse a {{unit}} (sin tipo de cambio en la fecha del movimiento).",
     "syncStale": "La sincronización USD/EUR con Banco Central está desactualizada o falló.",
     "yahooRejected": "{{count}} fecha(s) Yahoo CLP=X rechazada(s) (tipo de cambio inválido): {{dates}}. Las conversiones usan el último tipo de cambio válido anterior.",
     "warningBuyRateMissing": "Conversión CLP→US$ sin tipo compra en fx_daily_bid_ask; se usó el tipo medio de referencia.",
     "warningSellRateMissing": "Conversión US$→CLP sin tipo venta en fx_daily_bid_ask; se usó el tipo medio de referencia.",
     "warningUsdReferenceClp": "Monto en CLP es referencia (tipo medio); el capital en US$ es el valor canónico.",
-    "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en US$"
+    "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en {{unit}}"
   },
   "rates": {
     "pageTitle": "Tipos de cambio",

@@ -153,7 +153,7 @@ export function DashboardCardValue({
         fxMissing ? (
           <span
             className={cn(valueClass, styles.valueEmpty, "dashboard-card-value-empty", styles.valueFxError)}
-            title={t("fxCoverage.cardMissingFx")}
+            title={t("fxCoverage.cardMissingFx", { unit: unit.toUpperCase() })}
           >
             !
           </span>

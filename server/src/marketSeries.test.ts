@@ -152,6 +152,7 @@ describe("getMarketSeriesPayload", () => {
     expect(p.fx_usd_clp_sell).toEqual([{ date: "2024-01-02", value: 895 }]);
     expect(p.eur_clp).toEqual([{ date: "2024-01-02", value: 980 }]);
     expect(p.fx_coverage).toBeTruthy();
-    expect(p.fx_coverage.row_count).toBe(2);
+    expect(p.fx_coverage.unit).toBe("clp");
+    expect(p.fx_coverage.pairs.find((x) => x.base === "usd" && x.quote === "clp")?.row_count).toBe(2);
   });
 });

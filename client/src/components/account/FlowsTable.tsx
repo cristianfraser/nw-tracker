@@ -4,6 +4,7 @@ import { useTranslation } from "../../i18n";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatClp, formatInstrumentUnits, formatUsdFine } from "../../format";
+import { useCurrencies } from "../../queries/hooks";
 import { PaginatedTable } from "../ui/PaginatedTable";
 import { FlowRows, flowAccountsCell, type FlowRowItem } from "./FlowRows";
 import styles from "./FlowsTable.module.css";
@@ -75,6 +76,20 @@ export const DEFAULT_FLOWS_FILTER_STATE: FlowsFilterState = {
   amount_currency: "clp",
 };
 
+/** The amount filter's currencies until `/api/currencies` answers. */
+const FALLBACK_AMOUNT_CURRENCIES = ["clp", "usd"] as const;
+
+/** Every loaded currency (pesos and dollars first), the current choice always listed. */
+export function amountFilterCurrencyCodes(loaded: readonly string[] | undefined, current: string): string[] {
+  const rank = (code: string) => {
+    const i = (FALLBACK_AMOUNT_CURRENCIES as readonly string[]).indexOf(code);
+    return i < 0 ? FALLBACK_AMOUNT_CURRENCIES.length : i;
+  };
+  const codes = new Set<string>(loaded && loaded.length > 0 ? loaded : FALLBACK_AMOUNT_CURRENCIES);
+  codes.add(current);
+  return [...codes].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
 export function FlowsTable({
   rows,
   total,
@@ -112,6 +127,11 @@ export function FlowsTable({
   amountFilterError?: string | null;
 }) {
   const { t } = useTranslation();
+  const { data: currencies } = useCurrencies();
+  const amountCurrencyCodes = amountFilterCurrencyCodes(
+    currencies?.currencies.map((c) => c.code).filter((code) => code !== "uf"),
+    filterState?.amount_currency || "clp"
+  );
   const hasActiveFilter = filterState
     ? filterState.year || filterState.type || filterState.account_id || filterState.bucket ||
       filterState.q || filterState.personal_only || filterState.date_from || filterState.date_to ||
@@ -219,8 +239,11 @@ export function FlowsTable({
           onChange={(e) => onFilterChange({ amount_currency: e.target.value })}
           aria-label={t("flows.filters.amountCurrency")}
         >
-          <option value="clp">CLP</option>
-          <option value="usd">USD</option>
+          {amountCurrencyCodes.map((code) => (
+            <option key={code} value={code}>
+              {code.toUpperCase()}
+            </option>
+          ))}
         </select>
         <div className={styles.filterNarrow}>
           <Input

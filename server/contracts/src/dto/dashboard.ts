@@ -335,7 +335,7 @@ export interface TimeseriesBlock {
     color_rgb?: string;
     /** A reference level fixed in a currency (the USD milestones): in that display unit its value
      * is its own name, so the tooltip leaves it out. */
-    level_currency?: "clp" | "usd";
+    level_currency?: DisplayUnitCode;
   }[];
   points: Record<string, string | number | null>[];
   /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */

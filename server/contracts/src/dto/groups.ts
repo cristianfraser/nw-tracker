@@ -47,7 +47,7 @@ export interface DashboardChartShapeLine {
   account_id?: number;
   color_rgb?: string;
   /** See `TimeseriesBlock.lines[].level_currency`. */
-  level_currency?: "clp" | "usd";
+  level_currency?: DisplayUnitCode;
 }
 
 /**

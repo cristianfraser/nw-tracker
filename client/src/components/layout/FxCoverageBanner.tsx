@@ -1,6 +1,17 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import type { FxConversionWarning, FxCoverage } from "../../types";
+import type { FxConversionWarning, FxCoverage, FxCoveragePair } from "../../types";
+
+/** A rate pair as the copy names it (`USD/CLP`, `EUR/USD`). */
+export function fxPairLabel(p: { base: string; quote: string }): string {
+  return `${p.base.toUpperCase()}/${p.quote.toUpperCase()}`;
+}
+
+/** The pairs the banner talks about: those with a problem, else every pair checked. */
+function pairsWithProblems(coverage: FxCoverage): FxCoveragePair[] {
+  const bad = coverage.pairs.filter((p) => !p.complete || p.is_sparse);
+  return bad.length > 0 ? bad : coverage.pairs;
+}
 
 function warningMessage(t: (k: string) => string, w: FxConversionWarning): string {
   switch (w.code) {
@@ -39,15 +50,21 @@ export function FxCoverageBanner({
       (!coverage.complete || coverage.is_sparse || rejected.length > 0));
   if (!show) return null;
 
-  const detail =
-    coverage && !coverage.complete && coverage.first_missing_date
-      ? t("fxCoverage.missingFromDate", { date: coverage.first_missing_date })
-      : coverage?.is_sparse
-        ? t("fxCoverage.sparseHistory", {
-            daily: coverage.daily_count,
-            rows: coverage.row_count,
-          })
-        : null;
+  const problemPairs = coverage ? pairsWithProblems(coverage) : [];
+  // The conversion warnings are USD/CLP buy/sell fallbacks: name that pair when nothing else is checked.
+  const titlePair =
+    problemPairs.length > 0 ? problemPairs.map(fxPairLabel).join(", ") : fxPairLabel({ base: "usd", quote: "clp" });
+  const unitLabel = (coverage?.unit ?? "usd").toUpperCase();
+
+  const details = problemPairs
+    .map((p) =>
+      !p.complete && p.first_missing_date
+        ? t("fxCoverage.missingFromDate", { pair: fxPairLabel(p), date: p.first_missing_date, unit: unitLabel })
+        : p.is_sparse
+          ? t("fxCoverage.sparseHistory", { pair: fxPairLabel(p), daily: p.daily_count, rows: p.row_count })
+          : null
+    )
+    .filter((d): d is string => d != null);
 
   const rejectedDetail =
     rejected.length > 0
@@ -68,9 +85,9 @@ export function FxCoverageBanner({
       role="alert"
       style={{ lineHeight: 1.45 }}
     >
-      <strong>{t("fxCoverage.title")}</strong>
+      <strong>{t("fxCoverage.title", { pair: titlePair })}</strong>
       {conversionError ? (
-        <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{t("fxCoverage.depositConversionError")}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{t("fxCoverage.depositConversionError", { unit: unitLabel })}</p>
       ) : null}
       {uniqueWarnings.map((w) => (
         <p key={`${w.code}-${w.date}`} style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>
@@ -82,9 +99,11 @@ export function FxCoverageBanner({
           ) : null}
         </p>
       ))}
-      {detail ? (
-        <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{detail}</p>
-      ) : null}
+      {details.map((d) => (
+        <p key={d} style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>
+          {d}
+        </p>
+      ))}
       {rejectedDetail ? (
         <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{rejectedDetail}</p>
       ) : null}

@@ -47,7 +47,7 @@ export function DepositsByCategoryChart({
   controls,
   points,
   xAxisGranularity = "month",
-  displayUnit = "clp",
+  displayUnit,
   loading,
 }: {
   title: string;
@@ -55,7 +55,7 @@ export function DepositsByCategoryChart({
   controls?: ReactNode;
   points: FlowDepositChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
-  displayUnit?: DisplayUnit;
+  displayUnit: DisplayUnit;
   loading?: boolean;
 }) {
   const { t } = useTranslation();

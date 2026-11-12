@@ -69,8 +69,8 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     dash,
     ts: tsRaw,
     fx,
-    // The fx coverage concerns every conversion out of pesos (any other unit walks through USD/CLP).
-    fx_coverage: unit === "clp" ? null : buildFxCoverageWithConversionWarnings(),
+    // Every rate pair a conversion into the unit walks (`rates.ts`), from each held currency.
+    fx_coverage: buildFxCoverageWithConversionWarnings(unit),
     inversionesPerf,
     upcoming_payments: upcomingPayments,
   };

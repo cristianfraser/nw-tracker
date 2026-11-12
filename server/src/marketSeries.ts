@@ -309,7 +309,7 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
     eur_clp: eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur })),
     fx_coverage: (() => {
       runFxConversionWarningScan();
-      return buildFxCoverageWithConversionWarnings();
+      return buildFxCoverageWithConversionWarnings(unit);
     })(),
   };
 }

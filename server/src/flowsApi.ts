@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { isCurrencyCode, type CurrencyCode } from "./rates.js";
 import {
   DEPOSIT_FLOW_KIND_PERSONAL,
   DEPOSIT_FLOW_KIND_TRASPASO,
@@ -19,7 +20,6 @@ import {
   leafPortfolioGroupSlugByAccountIds,
 } from "./portfolioGroupTree.js";
 import { paginate, type Paginated } from "./pagination.js";
-import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
 import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpendingMovements.js";
 
 // Mirrors client `isPersonalCapitalFlowType` in `depositFlowKind.ts`
@@ -75,14 +75,14 @@ export type FlowsFilters = {
   date_from?: string;
   date_to?: string;
   /**
-   * Compared against the rounded |leg| of `amount_currency` (default clp): a row without a
+   * Compared against the rounded |leg| of `amount_currency` (any loaded code, default clp): a row without a
    * leg in that currency never matches an amount filter. `amount_exact` excludes min/max
    * (validated at the route).
    */
   amount_min?: number;
   amount_max?: number;
   amount_exact?: number;
-  amount_currency?: MovementCurrency;
+  amount_currency?: CurrencyCode;
 };
 
 /**
@@ -274,8 +274,8 @@ export function parseExtraFlowsFilterParams(
   }
   const currencyRaw = qp.amount_currency;
   if (currencyRaw != null && currencyRaw !== "") {
-    if (!isMovementCurrency(currencyRaw)) {
-      return { ok: false, error: "amount_currency must be one of clp/usd/eur" };
+    if (typeof currencyRaw !== "string" || currencyRaw === "uf" || !isCurrencyCode(currencyRaw)) {
+      return { ok: false, error: "amount_currency must be a loaded currency code" };
     }
     filters.amount_currency = currencyRaw;
   }

@@ -57,7 +57,10 @@ export interface EquityBrokerHolding {
   value_clp: number | null;
 }
 
-export interface FxCoverage {
+/** One rate pair (`base` priced in `quote`) a conversion into the display unit walks. */
+export interface FxCoveragePair {
+  base: string;
+  quote: string;
   complete: boolean;
   first_missing_date: string | null;
   missing_count: number;
@@ -67,6 +70,16 @@ export interface FxCoverage {
   row_count: number;
   is_sparse: boolean;
   max_gap_days: number;
+}
+
+/** Whether the stored rates cover every pair a conversion into `unit` walks. */
+export interface FxCoverage {
+  unit: DisplayUnitCode;
+  pairs: FxCoveragePair[];
+  complete: boolean;
+  first_missing_date: string | null;
+  missing_count: number;
+  is_sparse: boolean;
   yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[];
   conversion_warnings?: FxConversionWarning[];
 }

@@ -62,7 +62,7 @@ export function StackedExpensesChart({
   series,
   legend,
   emptyMessage,
-  displayUnit = "clp",
+  displayUnit,
   xAxisGranularity = "month",
   extendThroughYmd,
   yearAverages,
@@ -79,7 +79,7 @@ export function StackedExpensesChart({
   /** Legend entries in display order; each toggles every series with its key. */
   legend: readonly StackedExpenseLegendEntry[];
   emptyMessage: string;
-  displayUnit?: DisplayUnit;
+  displayUnit: DisplayUnit;
   xAxisGranularity?: "month" | "year";
   /** Extend the axis with empty periods through this day (the Expenses page: today). */
   extendThroughYmd?: string;

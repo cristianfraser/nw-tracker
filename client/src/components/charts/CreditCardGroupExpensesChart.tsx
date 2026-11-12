@@ -18,7 +18,7 @@ export function CreditCardGroupExpensesChart({
   points,
   categorySortPoints,
   categories,
-  displayUnit = "clp",
+  displayUnit,
   xAxisGranularity = "month",
   yearAverages,
   loading,
@@ -30,7 +30,7 @@ export function CreditCardGroupExpensesChart({
   /** When set, category stack order is derived from these (unfiltered) points. */
   categorySortPoints?: readonly FlowCcExpenseCategoryChartPoint[];
   categories: readonly CcExpenseCategoryDto[];
-  displayUnit?: DisplayUnit;
+  displayUnit: DisplayUnit;
   xAxisGranularity?: "month" | "year";
   /**
    * Per-year average monthly gastos, drawn as one flat segment per year over its months on the

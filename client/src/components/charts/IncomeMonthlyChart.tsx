@@ -36,7 +36,7 @@ export function IncomeMonthlyChart({
   controls,
   points,
   xAxisGranularity = "month",
-  displayUnit = "clp",
+  displayUnit,
   loading,
 }: {
   title: string;
@@ -44,7 +44,7 @@ export function IncomeMonthlyChart({
   controls?: ReactNode;
   points: readonly FlowIncomeChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
-  displayUnit?: DisplayUnit;
+  displayUnit: DisplayUnit;
   loading?: boolean;
 }) {
   const { t } = useTranslation();
