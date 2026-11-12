@@ -137,7 +137,7 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
   let midPeriodPayments = 0;
 
   for (const row of rows) {
-    if (row.currency !== "clp") continue;
+    if (row.currency !== "clp") continue; // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
     const dk = reconcileMovementDedupeKey(row);
     if (dk) {
       if (seenDedupe.has(dk)) continue;
@@ -295,7 +295,7 @@ export function reconcileBillingMonthMovements(
   // pdf_total_operaciones from the concat-text collection tripped the 8% arm). The BCI
   // monto_facturado check below is a hard gate now.
 
-  if (currency === "clp" && monto != null && monto > 0) {
+  if (currency === "clp" && monto != null && monto > 0) { // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
     if (bciLider) {
       const billed = parsed.parsed_operaciones + parsed.parsed_cargos_abonos;
       const delta = billed - monto;
@@ -524,7 +524,7 @@ function isPaymentReconcileRow(row: CcReconcileRow): boolean {
 
 function reconcilePaymentRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
   if (a.installment_flag || b.installment_flag) return false;
-  if (a.currency !== "clp" || b.currency !== "clp") return false;
+  if (a.currency !== "clp" || b.currency !== "clp") return false; // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
   if (!isPaymentReconcileRow(a) || !isPaymentReconcileRow(b)) return false;
   const absA = Math.abs(a.amount_clp);
   const absB = Math.abs(b.amount_clp);
@@ -533,7 +533,7 @@ function reconcilePaymentRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolea
 
 export function reconcilePurchaseRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
   if (a.installment_flag || b.installment_flag) return false;
-  if (a.currency !== "clp" || b.currency !== "clp") return false;
+  if (a.currency !== "clp" || b.currency !== "clp") return false; // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
   const crossSource = Boolean(a.from_web_paste) !== Boolean(b.from_web_paste);
   if (isPaymentReconcileRow(a) || isPaymentReconcileRow(b)) {
     if (!crossSource) {
@@ -846,7 +846,7 @@ export function assertCcImportReconcilesOrThrow(
           continue;
         }
         if (
-          headerCurrency === "clp" &&
+          headerCurrency === "clp" && // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
           (header.monto_facturado ?? 0) <= 0 &&
           (header.compras_cargos ?? 0) <= 0
         ) {

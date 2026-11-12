@@ -70,7 +70,7 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
   // The announced next close is the same printed «próximo período» end the PDF carries; a
   // PDF-owned close gets it filled when the PDF format predates the line, and a disagreement is a
   // problem.
-  if (owner === "pdf" && nextClose && statement.currency === "clp") {
+  if (owner === "pdf" && nextClose && statement.currency === "clp") { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
     const stored = statementNextPeriodTo(accountId, statementDate, statement.currency);
     if (stored && stored !== nextClose) {
       nextCloseDisagrees = true;
@@ -113,7 +113,7 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
   }
   // The dateless international endpoint can re-serve the last billed USD cycle on dormant months;
   // a full stale echo is expected there and must not import as new lines.
-  if (statement.currency === "usd" && usdStatementIsStaleEcho(accountId, statementDate, statement.lines)) {
+  if (statement.currency === "usd" && usdStatementIsStaleEcho(accountId, statementDate, statement.lines)) { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
     report.push("  → every USD row already exists on an earlier statement (stale echo) — not imported");
     return { statement, outcome: "skipped", owner, report };
   }

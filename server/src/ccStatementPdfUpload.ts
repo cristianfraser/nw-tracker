@@ -109,7 +109,7 @@ function persistUploadedCcStatementPdfs(opts: {
 
     const first = statements[0]!;
     const last4 = first.card_last4 ?? "";
-    const usd = first.currency === "usd";
+    const usd = first.currency === "usd"; // convention-ok: the PDF parser's statements are peso or dollar only
     const destDir = resolveCcStatementSlotDir(last4, usd);
     fs.mkdirSync(destDir, { recursive: true });
     let archiveBase =

@@ -25,7 +25,7 @@ import { isJsonStatementSourceKind } from "./ccStatementSourceKind.js";
 export const SANTANDER_JSON_SOURCE_PREFIX = "import:santander-json|";
 
 /** Stable synthetic source id for a JSON-written statement (one per close + currency). */
-export function santanderJsonSourcePdf(currency: "clp" | "usd", statementDate: string): string {
+export function santanderJsonSourcePdf(currency: "clp" | "usd", statementDate: string): string { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   return `${SANTANDER_JSON_SOURCE_PREFIX}${currency}|${padCcStatementDate(statementDate)}`;
 }
 
@@ -48,7 +48,7 @@ export type CcStatementSourceOwner = "json" | "pdf" | null;
 export function statementSourceOwnerForClose(
   accountId: number,
   statementDate: string,
-  currency: "clp" | "usd"
+  currency: "clp" | "usd" // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
 ): CcStatementSourceOwner {
   const rows = listOwningSources.all(accountId, padCcStatementDate(statementDate), currency) as {
     source_kind: string;

@@ -43,7 +43,7 @@ export type PlantedPaymentRow = {
   line_id: number;
   account_id: number;
   source: PlantingBatchKind;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   amount: number;
   paid_on: string;
 };
@@ -54,7 +54,7 @@ export type PlantedPaymentReplacement = {
   bank_line_merchant: string;
   bank_line_date: string;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   source: PlantingBatchKind;
 };
 
@@ -62,7 +62,7 @@ export type PlantedPaymentConfirmation = {
   planted_line_id: number;
   bank_line_merchant: string;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   source: PlantingBatchKind;
 };
 
@@ -70,7 +70,7 @@ export type PlantedPaymentAmbiguity = {
   bank_line_merchant: string;
   bank_line_date: string;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   planted_line_ids: number[];
 };
 
@@ -92,8 +92,8 @@ const EMPTY_MATCH: PlantedPaymentMatchResult = {
   removed_from_date: null,
 };
 
-function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean {
-  return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b);
+function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean { // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b); // convention-ok: pesos have no minor unit; dollars compare to the cent
 }
 
 /**
@@ -147,7 +147,7 @@ export type PlantedLineRecord =
 export function recordPlantedPaymentLine(
   accountId: number,
   source: PlantingBatchKind,
-  payment: { currency: "clp" | "usd"; amount: number; paid_on: string },
+  payment: { currency: "clp" | "usd"; amount: number; paid_on: string }, // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   dedupeKey: string,
   inserted: boolean
 ): PlantedLineRecord {
@@ -196,7 +196,7 @@ type ImportedPayment = {
   line: CardCanonicalLine;
   merchant: string;
   date: string;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   amount: number;
 };
 
@@ -330,10 +330,10 @@ function earliestPlantedDate(lineIds: readonly number[]): string | null {
 export function plantedPaymentMatchesStatementLine(
   planted: PlantedPaymentRow,
   stmt: { merchant: string | null; transaction_date: string | null; posting_date: string | null; amount_clp: number | null; amount_usd: number | null },
-  stmtCurrency: "clp" | "usd"
+  stmtCurrency: "clp" | "usd" // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
 ): boolean {
   if (stmtCurrency !== planted.currency || !isPaymentLikeCreditMerchant(stmt.merchant)) return false;
-  const raw = planted.currency === "usd" ? stmt.amount_usd : stmt.amount_clp;
+  const raw = planted.currency === "usd" ? stmt.amount_usd : stmt.amount_clp; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
   if (raw == null || raw >= 0 || !sameMoney(planted.currency, -raw, planted.amount)) return false;
   const iso = parseDdMmYyToIso(String(stmt.transaction_date ?? "")) ?? parseDdMmYyToIso(String(stmt.posting_date ?? ""));
   if (!iso) return false;

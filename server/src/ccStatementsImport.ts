@@ -64,8 +64,8 @@ export function ccImportFlowItemFromLine(line: CardCanonicalLine, statementLabel
     occurred_on:
       line.transaction_date ?? line.posting_date ?? (line.printed_transaction_date || line.printed_posting_date || ""),
     description: line.merchant || line.description || "—",
-    amount_clp: line.currency === "clp" ? line.amount : null,
-    amount_usd: line.currency === "usd" ? line.amount : null,
+    amount_clp: line.currency === "clp" ? line.amount : null, // convention-ok: the parsed-PDF rows fill the peso or the dollar legacy column
+    amount_usd: line.currency === "usd" ? line.amount : null, // convention-ok: the parsed-PDF rows fill the peso or the dollar legacy column
     installment: inst != null,
     cuota:
       inst?.number != null && inst.count != null

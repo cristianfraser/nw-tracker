@@ -138,12 +138,12 @@ export function feedCloseStatementMismatches(
         continue;
       }
       const printed =
-        st.monto_facturado ?? (st.currency === "usd" ? foreignBilledFromStatementLines(st.id, "usd") : null);
-      const observed = st.currency === "usd" ? close.saldo_inicial_usd : close.saldo_inicial_clp;
+        st.monto_facturado ?? (st.currency === "usd" ? foreignBilledFromStatementLines(st.id, "usd") : null); // convention-ok: the feed's SALDO INICIAL is stated in pesos and dollars only (Santander feed)
+      const observed = st.currency === "usd" ? close.saldo_inicial_usd : close.saldo_inicial_clp; // convention-ok: the feed's SALDO INICIAL is stated in pesos and dollars only (Santander feed)
       // Nothing to compare: a statement with no printed total, or a currency the feed did not
       // show (its tab failed, or the card never billed in it).
       if (printed == null || observed == null) continue;
-      const tolerance = st.currency === "usd" ? 0.005 : 0.5;
+      const tolerance = st.currency === "usd" ? 0.005 : 0.5; // convention-ok: pesos have no minor unit, so the tolerance is half a peso against half a cent
       if (Math.abs(printed - observed) > tolerance) {
         problems.push(`${label} bills ${printed}, the feed's SALDO INICIAL for that close is ${observed}`);
       }

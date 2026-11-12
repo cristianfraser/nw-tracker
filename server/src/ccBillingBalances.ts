@@ -211,7 +211,7 @@ type PostCloseLineRow = RevolvingLineRow & {
  * consumption, not cost, hence the positive-amount guard on both currencies.
  */
 function isFinancingChargeLine(r: PostCloseLineRow): boolean {
-  if (r.statement_currency === "usd") {
+  if (r.statement_currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
     const usd = r.amount_usd ?? 0;
     return usd > 0 && isUsdSection3FinancingChargeMerchant(r.merchant, usd);
   }
@@ -359,7 +359,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       }
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
-        r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined;
+        r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
       const usdPayment = (r.amount_usd ?? 0) < 0 && isCcPaymentOrUsdDebtAbonoMerchant(r.merchant);
       const paidStatementDate = usdPayment ? paidFacturacionStatementDate(iso) : null;
       const clp =
@@ -429,18 +429,18 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // payment like the lines above, valued at the debt fx of the facturación it paid.
     const legs = db
       .prepare(`SELECT statement_close_iso, currency, paid_on, amount FROM cc_header_payment_legs WHERE account_id = ?`)
-      .all(accountId) as { statement_close_iso: string; currency: "clp" | "usd"; paid_on: string; amount: number }[];
+      .all(accountId) as { statement_close_iso: string; currency: "clp" | "usd"; paid_on: string; amount: number }[]; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
     for (const g of legs) {
       const statementDate = ddMmYyyyFromIso(g.statement_close_iso);
       let clp: number | null = g.amount;
-      if (g.currency === "usd") {
+      if (g.currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
         const fxIso = fxDateFor(paidFacturacionStatementDate(g.paid_on) ?? statementDate);
         const fx = fxIso ? fxMonthEndForBalanceUsd(fxIso)?.clp_per_usd : null;
         clp = fx != null && fx > 0 ? g.amount * fx : null;
       }
       lines.push({
         iso: g.paid_on,
-        key: `hdr-leg|${g.statement_close_iso}|${g.currency === "usd" ? "usd|" : ""}${g.paid_on}|${g.amount}`,
+        key: `hdr-leg|${g.statement_close_iso}|${g.currency === "usd" ? "usd|" : ""}${g.paid_on}|${g.amount}`, // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
         clp: clp != null ? -clp : null,
         currency: g.currency,
         amount: -g.amount,
@@ -524,7 +524,7 @@ function statementFrameEntryClp(e: PostCloseStreamEntry): number | null {
   const uniform = uniformDebtUsdRateInEffect();
   if (uniform == null) return e.clp;
   if (e.amount == null) return null;
-  return e.currency === "usd" ? Math.round(e.amount * uniform) : e.amount;
+  return e.currency === "usd" ? Math.round(e.amount * uniform) : e.amount; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
 }
 
 /**
@@ -787,7 +787,7 @@ export function facturadoFromStatement(
   fxDate: string
 ): { facturado_clp: number | null; facturado_usd: number | null } {
   const headerMonto = statementHeaderFacturado(stmt);
-  if (stmt.currency === "usd") {
+  if (stmt.currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
     // A dollar statement that prints no total (the Santander international JSON) bills what its
     // own lines bill: summing peso lines for it had left a facturación's dollars out of its total.
     const usd = headerMonto ?? foreignBilledFromStatementLines(stmt.id, "usd");

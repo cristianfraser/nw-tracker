@@ -11,7 +11,7 @@ import { pesosOrDollars } from "./ingestCurrencies.js";
  */
 export type SantanderBankCupo = {
   account_id: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: Santander's product summary states cupos in pesos and dollars only
   bank_account: string;
   plastic_last4: string;
   cupo_total: number;

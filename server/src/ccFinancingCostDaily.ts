@@ -22,6 +22,7 @@
  * reconciliation, and the "aportes acum." companions — paying your own card moves wealth
  * between two accounts of one bucket, it does not add or remove any.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { normalizedPostCloseLines } from "./ccBillingBalances.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { ccRevaluationCostByDate } from "./ccOwedWalk.js";
@@ -57,7 +58,7 @@ export function ccSection3FinancingClpByDate(accountId: number): Map<string, num
  * owed), so with the card's value in that unit the derived flow is the evidence at each day's rate.
  */
 function ccChargesByDateInUnit(accountId: number, unit: CurrencyCode): Map<string, number> {
-  if (unit === "clp") return ccSection3FinancingClpByDate(accountId);
+  if (isHomeCurrency(unit)) return ccSection3FinancingClpByDate(accountId);
   const seen = new Set<string>();
   const byDate = new Map<string, number>();
   const add = (iso: string, qty: number, from: CurrencyCode) => {

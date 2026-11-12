@@ -16,6 +16,7 @@
  * statement's dollars. In pesos nothing is converted. The card pages ask for pesos (their monthly
  * historial is the CLP card ledger), so the two grains agree.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import {
   ccInstallmentDebtDailyClpForAccounts,
   ccInstallmentPlanTailClpForAccounts,
@@ -54,12 +55,12 @@ export type CcDailyHistorialBlock = {
 
 /** A peso amount the card owes (or billed) in `unit` on `ymd`, at the debt side; pesos as they are. */
 function clpOwedIn(clp: number | null, unit: CurrencyCode, ymd: string, side?: "debt"): number | null {
-  if (clp == null || unit === "clp") return clp;
+  if (clp == null || isHomeCurrency(unit)) return clp;
   return convertValue(clp, "clp", unit, ymd, side ?? (clp < 0 ? "asset" : "debt"));
 }
 
 function tailPointIn(p: CcPlanTailPoint, unit: CurrencyCode): CcPlanTailPoint {
-  if (unit === "clp") return p;
+  if (isHomeCurrency(unit)) return p;
   const plan = clpOwedIn(p.plan_debt_clp, unit, p.as_of_date);
   const balance = clpOwedIn(p.balance_clp, unit, p.as_of_date);
   if (plan == null || balance == null) {
@@ -69,7 +70,7 @@ function tailPointIn(p: CcPlanTailPoint, unit: CurrencyCode): CcPlanTailPoint {
 }
 
 function barIn(b: CcFacturacionBarPoint, unit: CurrencyCode): CcFacturacionBarPoint {
-  if (unit === "clp") return b;
+  if (isHomeCurrency(unit)) return b;
   const d = b.as_of_date;
   // One rate per bar (the debt side, what it billed), so the segments still add up to the total.
   return {

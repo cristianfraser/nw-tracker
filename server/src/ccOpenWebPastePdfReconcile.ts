@@ -60,7 +60,7 @@ export type CcOpenWebPastePdfReconcileResult = {
    * Bucket currencies settled: every line once the month is fully closed, else only the lines in
    * a currency whose statement is in (one twin arriving before the other).
    */
-  currencies: ("clp" | "usd")[];
+  currencies: ("clp" | "usd")[]; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
   deleted_count: number;
   deleted_line_ids: number[];
   /** Earliest purchase date among the deleted lines — evidence the owed walk must re-read from. */
@@ -130,8 +130,8 @@ export function reconcileOpenWebPasteAfterPdfClose(
     statementSlotsByBillingMonth(accountId).get(billingMonth),
     requiredStatementCurrenciesForAccount(accountId)
   );
-  const statementCurrencies = new Set<"clp" | "usd">(
-    pdfStatements.map((st) => (st.currency === "usd" ? "usd" : "clp"))
+  const statementCurrencies = new Set<"clp" | "usd">( // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+    pdfStatements.map((st) => (st.currency === "usd" ? "usd" : "clp")) // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
   );
   const settles = (line: CcStatementLineRow): boolean =>
     fullyClosed || statementCurrencies.has(bucketLineCurrency(line));
@@ -227,7 +227,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
 
   return {
     billing_month: billingMonth,
-    currencies: fullyClosed ? ["clp", "usd"] : [...statementCurrencies].sort(),
+    currencies: fullyClosed ? ["clp", "usd"] : [...statementCurrencies].sort(), // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
     deleted_count: toDelete.length,
     deleted_line_ids: toDelete,
     earliest_deleted_iso: earliestDeleted,
@@ -238,10 +238,10 @@ export function reconcileOpenWebPasteAfterPdfClose(
   };
 }
 
-type StatementLineForMatching = { line: CcStatementLineRow; currency: "clp" | "usd" };
+type StatementLineForMatching = { line: CcStatementLineRow; currency: "clp" | "usd" }; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
 
 /** A bucket line's currency: pasted / fed foreign purchases carry `amount_usd` (and 0 CLP). */
-function bucketLineCurrency(line: CcStatementLineRow): "clp" | "usd" {
+function bucketLineCurrency(line: CcStatementLineRow): "clp" | "usd" { // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
   return line.amount_usd != null && line.amount_usd !== 0 ? "usd" : "clp";
 }
 
@@ -252,7 +252,7 @@ function statementLinesForMatching(
   for (const st of pdfStatements) {
     for (const line of listCcStatementLinesForStatement(st.id)) {
       if (line.installment_flag) continue;
-      out.push({ line, currency: st.currency === "usd" ? "usd" : "clp" });
+      out.push({ line, currency: st.currency === "usd" ? "usd" : "clp" }); // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
     }
   }
   return out;
@@ -277,7 +277,7 @@ export function webPasteLineMatchesStatementLine(
 ): boolean {
   if (web.installment_flag || stmt.line.installment_flag) return false;
   const webUsd = lineUsdAmount(web);
-  const stmtUsd = stmt.currency === "usd" ? lineUsdAmount(stmt.line) : null;
+  const stmtUsd = stmt.currency === "usd" ? lineUsdAmount(stmt.line) : null; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
   if (webUsd != null || stmtUsd != null) {
     if (webUsd == null || stmtUsd == null || Math.abs(webUsd - stmtUsd) > 0.005) return false;
   } else {

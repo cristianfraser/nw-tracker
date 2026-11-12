@@ -28,7 +28,7 @@ import { pesosOrDollars } from "./ingestCurrencies.js";
 export type CcListingLine = {
   transaction_date: string;
   merchant: string;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
   /** Debt-positive, in `currency`. */
   amount: number;
   raw_line: string;
@@ -84,7 +84,7 @@ export function webPasteLinesFromPastedListing(listing: CardPastedListing, cardG
  * the listing showed; pesos are whole.
  */
 export function listingLineStoredAmount(line: Pick<CcListingLine, "merchant" | "currency" | "amount">): number {
-  const amount = line.currency === "clp" ? Math.trunc(line.amount) : line.amount;
+  const amount = line.currency === "clp" ? Math.trunc(line.amount) : line.amount; // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
   if (amount === 0) return 0;
   return isCcPaymentMerchant(line.merchant) ? -Math.abs(amount) : amount;
 }
@@ -117,7 +117,7 @@ export function isCcSaldoInicialMerchant(merchant: string | null | undefined): b
  * shares, on the pasted magnitude in its own currency (USD in cents keeps re-imports idempotent).
  */
 export function webPasteLineDedupeKey(cardGroup: string, line: CcListingLine): string {
-  const dedupeAmount = line.currency === "usd" ? Math.round(Math.abs(line.amount) * 100) : Math.abs(line.amount);
+  const dedupeAmount = line.currency === "usd" ? Math.round(Math.abs(line.amount) * 100) : Math.abs(line.amount); // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
   return ccOneShotDedupeKey(cardGroup, line.merchant, dedupeAmount, line.transaction_date);
 }
 
@@ -222,8 +222,8 @@ export function listingStatements(
       kind: cardLineKind({
         installment_flag: false,
         merchant: merchant || null,
-        amount_clp: line.currency === "clp" ? amount : 0,
-        amount_usd: line.currency === "usd" ? amount : null,
+        amount_clp: line.currency === "clp" ? amount : 0, // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
+        amount_usd: line.currency === "usd" ? amount : null, // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
         statement_currency: "clp",
       }),
       transaction_date: line.transaction_date,

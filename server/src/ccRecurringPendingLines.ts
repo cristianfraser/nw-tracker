@@ -34,7 +34,7 @@ type CardLine = { id: number; merchant: string | null; amount_clp: number | null
 export function planRecurringPendingReplacement(accountId: number): RecurringPendingPlan {
   const result: RecurringPendingResult = { replaced: [], ambiguous: [], removed_from_date: null };
   // Only automatic UF entries with an amount check and two names can say a line is another's pending listing.
-  const entries = listRecurringPayments().filter((e) => !e.manual && e.patterns.length >= 2 && e.currency === "uf" && e.amount_tolerance_pct != null);
+  const entries = listRecurringPayments().filter((e) => !e.manual && e.patterns.length >= 2 && e.currency === "uf" && e.amount_tolerance_pct != null); // convention-ok: only a UF-priced declared payment has two names the bank lists under
   const none = (): RecurringPendingPlan => ({ result, plan: { deleteLineIds: [], carry: [] } });
   if (entries.length === 0) return none();
   const lines = (

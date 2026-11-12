@@ -17,6 +17,7 @@
  *   bank account, by the payment identity of `ccPaymentMirrorEvidence.ts` (card, currency, day,
  *   pesos — dollars for a dollar payment). Two transfers with one identity name nothing.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant, parseDdMmYyToIso } from "nw-tracker-contracts";
 import type { ExpenseLinePaymentName } from "nw-tracker-contracts/dto/flows";
 import { listCcFacturadoFinancingLinks } from "./ccFacturadoFinancingLinksDb.js";
@@ -299,11 +300,11 @@ export function pagoTarjetaCardLegKey(r: {
   counter_currency: string | null;
 }): string | null {
   let identity: CcPaymentIdentity;
-  if (r.counter_currency != null && r.counter_currency !== "clp" && r.counter_amount != null) {
+  if (r.counter_currency != null && !isHomeCurrency(r.counter_currency) && r.counter_amount != null) {
     identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: r.counter_currency, amount_clp: Math.round(r.amount), amount_foreign: r.counter_amount };
-  } else if (r.counter_currency == null && r.currency !== "clp") {
+  } else if (r.counter_currency == null && !isHomeCurrency(r.currency)) {
     identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: r.currency, amount_clp: 0, amount_foreign: r.amount };
-  } else if (r.counter_currency == null && r.currency === "clp") {
+  } else if (r.counter_currency == null && isHomeCurrency(r.currency)) {
     identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "clp", amount_clp: Math.round(r.amount), amount_foreign: null };
   } else return null;
   return ccPaymentEvidenceKey(identity);

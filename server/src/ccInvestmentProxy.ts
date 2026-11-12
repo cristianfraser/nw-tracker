@@ -6,6 +6,7 @@
  *
  * Computed overlay only — not persisted, not part of net worth.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
@@ -70,7 +71,7 @@ export function tickerHasAnyPriceData(ticker: string): boolean {
   }
   const eq = stmtEquityLatest.get(ticker) as { close: number; currency: string } | undefined;
   if (eq == null || !Number.isFinite(eq.close) || eq.close <= 0) return false;
-  if (eq.currency === "clp") return true;
+  if (isHomeCurrency(eq.currency)) return true;
   const fx = stmtFxLatest.get() as { clp_per_usd: number } | undefined;
   return fx != null && Number.isFinite(fx.clp_per_usd) && fx.clp_per_usd > 0;
 }
@@ -124,7 +125,7 @@ export function priceClpForTickerAt(
     .get(ticker, ymd) as { trade_date: string; close: number; currency: string } | undefined;
 
   if (eodRow != null && Number.isFinite(eodRow.close) && eodRow.close > 0) {
-    if (eodRow.currency === "clp") {
+    if (isHomeCurrency(eodRow.currency)) {
       return { priceClp: eodRow.close, projected: false, lastRealDate: eodRow.trade_date };
     }
     const fx = fxRowOnOrBefore(eodRow.trade_date);
@@ -145,7 +146,7 @@ export function priceClpForTickerAt(
   if (latest == null || !Number.isFinite(latest.close) || latest.close <= 0) {
     throw new Error(`ccInvestmentProxy: no price data for equity ticker "${ticker}"`);
   }
-  if (latest.currency === "clp") {
+  if (isHomeCurrency(latest.currency)) {
     return {
       priceClp: projectPrice(latest.close, latest.trade_date, ymd),
       projected: true,

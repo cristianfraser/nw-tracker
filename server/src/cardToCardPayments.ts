@@ -21,6 +21,7 @@
  * tarjeta» row on a page holding both cards. The paid card's PAGO it explains is not offered to the
  * checking payment mirror (`ccPaymentMirrors.ts`), so a same-pesos checking debit cannot pair with it.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
@@ -81,7 +82,7 @@ export function expectedCardToCardParts(): CardToCardPart[] {
     );
     // The charge settled under another flow, or its line is gone: no part (the matcher drops the record).
     if (lines.length === 0) continue;
-    const line = lines.find((l) => l.statement_currency === "clp");
+    const line = lines.find((l) => isHomeCurrency(l.statement_currency));
     if (!line) {
       throw new Error(
         `facturado payment ${c.financing_link_id}: charge flow ${c.flow_id} is a dollar charge — a card-to-card payment is pesos only`
@@ -237,7 +238,7 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
         s.account_id == null &&
         s.from_account_id === want.from_account_id &&
         s.to_account_id === want.to_account_id &&
-        s.currency === "clp" &&
+        isHomeCurrency(s.currency) &&
         s.counter_amount == null &&
         s.flow_kind === FLOW_KIND_PAGO_TARJETA &&
         Math.round(s.amount) === want.amount_clp &&

@@ -31,12 +31,12 @@ export type CcStatementLineSection =
   | "skip";
 
 export function classifyCcStatementLine(line: {
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: section-3 charge rules are the Chilean statements' peso and dollar lists
   merchant: string | null;
   parser_layout: string;
   amount: number;
 }): CcStatementLineSection {
-  if (line.currency === "usd") {
+  if (line.currency === "usd") { // convention-ok: section-3 charge rules are the Chilean statements' peso and dollar lists
     if (isGarbledUsdStatementMerchant(line.merchant)) return "skip";
     if (isUsdSection3Merchant(line.merchant, line.amount)) return "cargos_abonos";
     return line.amount > 0 ? "operaciones" : "ignored";

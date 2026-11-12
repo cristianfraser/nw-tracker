@@ -62,7 +62,7 @@ export function dedupeKeysByOccurrence(bases: readonly string[]): string[] {
 /** A statement-JSON line's base key, in the `json|` key space (no occurrence suffix yet). */
 export function ccJsonStatementLineBaseKey(
   cardGroup: string,
-  currency: "clp" | "usd",
+  currency: "clp" | "usd", // convention-ok: statement dedupe keys exist for the parser's peso and dollar statements only
   dateIso: string,
   merchant: string,
   amountKey: string

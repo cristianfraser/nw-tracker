@@ -22,7 +22,7 @@
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { parseChileanNumber } from "nw-tracker-contracts";
 
-export type CcOriginCurrency = "usd" | "clp";
+export type CcOriginCurrency = "usd" | "clp"; // convention-ok: the statement prints an origin amount labeled only as pesos or dollars by value
 
 /**
  * How far origin ÷ US$ may sit from `fx_daily` for a peso origin. Measured on the stored corpus

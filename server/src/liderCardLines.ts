@@ -84,7 +84,7 @@ export function classifyLiderLines(
   const importable: CcListingLine[] = [];
   const sameDayAmount: LiderLineClassification[] = [];
   for (const line of lines) {
-    const amountDb = line.currency === "clp" ? listingLineStoredAmount(line) : 0;
+    const amountDb = line.currency === "clp" ? listingLineStoredAmount(line) : 0; // convention-ok: the Lider BCI card bills in pesos only
     const match = findLedgerLineSameDayAndAmount(accountId, line.transaction_date, amountDb);
     // A merchant the normal dedupe already matches needs no special handling — let the shared
     // path skip it as a duplicate so the reason shows up in the batch log.

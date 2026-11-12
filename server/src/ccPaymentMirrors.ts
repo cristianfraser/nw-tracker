@@ -26,6 +26,7 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { recordBankPosting } from "./movementBankPostings.js";
 
@@ -160,9 +161,9 @@ function manualPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
   return (e) =>
     rows.some((r) => {
       if (r.card_account_id !== e.cc_account_id || r.currency !== e.currency) return false;
-      const amount = e.currency !== "clp" ? e.amount_foreign : e.amount_clp;
+      const amount = !isHomeCurrency(e.currency) ? e.amount_foreign : e.amount_clp;
       if (amount == null) return false;
-      const scale = e.currency !== "clp" ? 100 : 1;
+      const scale = !isHomeCurrency(e.currency) ? 100 : 1;
       const same = Math.round(amount * scale) === Math.round(r.amount * scale);
       if (!same) return false;
       return dayWithinWindow(r.paid_on, e.pago_iso, MATCH_WINDOWS.planted_payment);
@@ -202,7 +203,7 @@ function cardToCardPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
     }
   }
   return (e) =>
-    e.currency === "clp" &&
+    isHomeCurrency(e.currency) &&
     claims.some(
       (c) =>
         c.card === e.cc_account_id &&
@@ -266,7 +267,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const byAmount = new Map<number, CcPaymentEvidence[]>();
   const foreignEvidence: CcPaymentEvidence[] = [];
   for (const e of evidence) {
-    if (e.currency !== "clp") {
+    if (!isHomeCurrency(e.currency)) {
       foreignEvidence.push(e);
       continue;
     }
@@ -384,7 +385,7 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
       // USD evidence has no peso amount: the transfer's CLP leg is the checking debit itself
       // (the exact pesos that left the account), and the card side rides as the USD counter
       // leg — the migration-169 cross-currency transfer shape.
-      const isForeign = cand.evidence.currency !== "clp";
+      const isForeign = !isHomeCurrency(cand.evidence.currency);
       const transferClp = isForeign ? Math.round(Math.abs(cand.out.amount_clp)) : cand.evidence.amount_clp;
       const note = isForeign
         ? `Pago tarjeta espejo (divisas: cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${foreignPaymentAmountLabel(cand.evidence.amount_foreign!, cand.evidence.currency)} ${cand.evidence.pago_iso})`

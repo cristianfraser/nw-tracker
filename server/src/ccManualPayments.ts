@@ -30,7 +30,7 @@ export type ManualCardPaymentInput = {
   from_account_id: number;
   card_account_id: number;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
   /** YYYY-MM-DD, the day the money left. */
   paid_on: string;
   note?: string | null;
@@ -59,8 +59,8 @@ type MovementRow = {
   flow_kind: string | null;
 };
 
-function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean {
-  return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b);
+function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean { // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b); // convention-ok: pesos have no minor unit; dollars compare to the cent
 }
 
 function existingManualPayment(transferId: number): { id: number } | undefined {
@@ -71,7 +71,7 @@ function existingManualPayment(transferId: number): { id: number } | undefined {
 
 /** The card's credit line for the payment, as a debt-positive listing line (a credit: negative). */
 function manualPaymentListingLine(input: ManualCardPaymentInput, magnitude: number) {
-  const merchant = input.currency === "usd" ? "ABONO DE DIVISAS" : "PAGO";
+  const merchant = input.currency === "usd" ? "ABONO DE DIVISAS" : "PAGO"; // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
   return {
     date: input.paid_on,
     merchant,
@@ -91,8 +91,8 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
   const { from_account_id: fromId, card_account_id: cardId, currency, paid_on: paidOn } = input;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) throw new Error(`paid_on must be YYYY-MM-DD, got ${paidOn}`);
   if (!(input.amount > 0)) throw new Error(`amount must be positive, got ${input.amount}`);
-  if (currency !== "clp" && currency !== "usd") throw new Error(`currency must be clp or usd, got ${currency}`);
-  const magnitude = currency === "usd" ? Number(input.amount.toFixed(2)) : Math.round(input.amount);
+  if (currency !== "clp" && currency !== "usd") throw new Error(`currency must be clp or usd, got ${currency}`); // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  const magnitude = currency === "usd" ? Number(input.amount.toFixed(2)) : Math.round(input.amount); // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
   if (fromId === cardId) throw new Error("A card payment needs a source account other than the card");
   // A card paying another card's facturado is the payment record's own transfer (`cardToCardPayments.ts`).
   if (listCreditCardMasterAccountIds().includes(fromId)) {
@@ -102,7 +102,7 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
   }
   const cardGroup = creditCardMasterMetaForAccount(cardId).cardGroup;
   const fromIsUsd = isForeignCashAccountIn(fromId, "usd");
-  if ((currency === "usd") !== fromIsUsd) {
+  if ((currency === "usd") !== fromIsUsd) { // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
     throw new Error(
       `Account ${fromId} does not hold ${currency.toUpperCase()} — a cross-currency card payment is not supported here`
     );
@@ -224,7 +224,7 @@ export type OverdueManualCardPayment = {
   manual_payment_id: number;
   transfer_movement_id: number;
   card_account_id: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
   amount: number;
   paid_on: string;
   /** Null only if the deadline walk failed — treated as overdue rather than hidden. */

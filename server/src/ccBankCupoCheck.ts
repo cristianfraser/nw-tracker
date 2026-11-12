@@ -67,7 +67,7 @@ export function judgeBankCupo(snapshot: BankCupoSnapshot, owed: CcOwedByCurrency
         `${owed.close_iso ?? "none"}`,
     };
   }
-  if (snapshot.currency === "clp") {
+  if (isHomeCurrency(snapshot.currency)) {
     const diff = Math.round(owed.clp.total - snapshot.cupo_utilizado);
     const tolerance = owed.clp.remaining_cuotas;
     return {
@@ -246,7 +246,7 @@ export function formatBankCupoReport(
       continue;
     }
     const verdict = v.status === "ok" ? "ok" : "MISMATCH";
-    const tolerance = s.currency === "clp" && v.tolerance ? ` (tolerance ${fmtAmount(v.tolerance, "clp")})` : "";
+    const tolerance = isHomeCurrency(s.currency) && v.tolerance ? ` (tolerance ${fmtAmount(v.tolerance, "clp")})` : "";
     lines.push(
       `  ${cur}: bank ${bank} · app ${fmtAmount(v.app_owed, s.currency)} · ${fmtSigned(v.diff, s.currency)}${tolerance} ${verdict}`
     );
@@ -254,7 +254,7 @@ export function formatBankCupoReport(
     if (!o) continue;
     const month = o.last_closed_billing_month ? `${o.last_closed_billing_month}, close ${o.close_iso}` : "no close yet";
     lines.push(
-      s.currency === "clp"
+      isHomeCurrency(s.currency)
         ? `     app = facturado ${fmtAmount(o.clp.facturado, "clp")} (${month}) + cuotas por facturar ` +
             `${fmtAmount(o.clp.installment_remainder, "clp")} (${o.clp.remaining_cuotas}) + later lines ` +
             `${fmtAmount(o.clp.open_cycle_lines, "clp")}`

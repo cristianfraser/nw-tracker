@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { cacheKeyCcLedgerAccount } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
@@ -94,7 +95,7 @@ function ccCupoSnapshotForAccount(
   rows: readonly CcBillingDetailStatementRow[],
   openBillingMonth: string | null
 ): CcCupoSnapshot {
-  const cupoClp = getCreditCardAccountConfig(accountId).cupo.find((c) => c.currency === "clp")?.value ?? null;
+  const cupoClp = getCreditCardAccountConfig(accountId).cupo.find((c) => isHomeCurrency(c.currency))?.value ?? null;
   return ccCupoSnapshot(cupoClp, rows, openBillingMonth);
 }
 

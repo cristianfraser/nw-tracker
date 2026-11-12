@@ -14,7 +14,7 @@ import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 type DbLine = { merchant: string; amount: number };
 
 /** Lines already imported for a statement, whichever source wrote it. */
-function loadImportedLines(accountId: number, statementDate: string, currency: "clp" | "usd"): DbLine[] | null {
+function loadImportedLines(accountId: number, statementDate: string, currency: "clp" | "usd"): DbLine[] | null { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   const statement = db
     .prepare(
       `SELECT id FROM cc_statements
@@ -30,7 +30,7 @@ function loadImportedLines(accountId: number, statementDate: string, currency: "
     .all(statement.id) as { merchant: string | null; amount_clp: number | null; amount_usd: number | null }[];
   return rows.map((r) => ({
     merchant: normalizeMerchantText(r.merchant),
-    amount: Number(currency === "usd" ? r.amount_usd ?? 0 : r.amount_clp ?? 0),
+    amount: Number(currency === "usd" ? r.amount_usd ?? 0 : r.amount_clp ?? 0), // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   }));
 }
 
@@ -49,7 +49,7 @@ function merchantRenderingKey(value: string): string {
 
 export type StatementDiff = {
   file: string;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   statement_date: string;
   account_id: number;
   json_lines: number;
@@ -189,6 +189,6 @@ export function diffStatementAgainstLedger(
     matched_by_rendering: pairing.matched_by_rendering,
     only_in_json: pairing.only_in_json,
     only_in_db: pairing.only_in_db,
-    expected_only_in_json: pairing.only_in_json.filter((l) => statement.currency === "clp" && l.kind === "payment").length,
+    expected_only_in_json: pairing.only_in_json.filter((l) => statement.currency === "clp" && l.kind === "payment").length, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   };
 }

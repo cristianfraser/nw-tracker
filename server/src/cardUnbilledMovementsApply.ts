@@ -272,13 +272,13 @@ function applyCardListing(
   // Last: everything this listing shows is now on file, so what the buckets hold beyond it is
   // what the bank dropped. Only from a close on record (the window start) and per currency the
   // listing proves complete: its SALDO INICIAL row, or the bank's cupo identity.
-  const stated = new Set<"clp" | "usd">();
+  const stated = new Set<"clp" | "usd">(); // convention-ok: Santander's card feed has a peso and a dollar slide only
   if (close?.saldo_inicial_clp != null) stated.add("clp");
   if (close?.saldo_inicial_usd != null) stated.add("usd");
   const recordedClose = feedClose ? null : latestFeedBillingClose(accountId);
   const windowStartIso = feedClose?.close_iso ?? recordedClose?.close_date ?? null;
   const closeOnRecord = feedClose ?? recordedClose;
-  const bankUsed: Partial<Record<"clp" | "usd", number>> = {};
+  const bankUsed: Partial<Record<"clp" | "usd", number>> = {}; // convention-ok: Santander's card feed has a peso and a dollar slide only
   if (bankCupo.status === "present") {
     for (const row of bankCupo.rows) if (row.account_id === accountId) bankUsed[row.currency] = row.cupo_utilizado;
   }

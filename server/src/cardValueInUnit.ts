@@ -9,6 +9,7 @@
  * dollars as dollars, never pesos ÷ a rate. `owedClp` is the card's owed in pesos (the same
  * sub-balances at the date's rate): a card with no walk on file is that peso figure alone.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { ccOwedByCurrencyAtYmd } from "./ccOwedWalk.js";
 import { convertValue } from "./valueConvert.js";
 import type { CurrencyCode } from "./rates.js";
@@ -24,7 +25,7 @@ export function cardValueInUnit(
   unit: CurrencyCode,
   now?: Date
 ): number | null {
-  if (unit === "clp") return owedClp;
+  if (isHomeCurrency(unit)) return owedClp;
   const mark = ccOwedByCurrencyAtYmd(accountId, ymd);
   if (mark == null) return subBalanceIn(owedClp, "clp", unit, ymd, now);
   let sum = 0;

@@ -109,12 +109,12 @@ export type SantanderStatementRecordsCtx = {
  * statement replacement stays idempotent and category assignments survive via key restore.
  */
 export function buildSantanderStatement(
-  currency: "clp" | "usd",
+  currency: "clp" | "usd", // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   lines: readonly CardStatementLine[],
   totals: Pick<CardStatementCurrency, "billed_total" | "payments_total"> | null,
   ctx: SantanderStatementRecordsCtx
 ): CardCanonicalStatement {
-  const paymentRows = currency === "clp" ? lines.filter((l) => l.kind === "payment") : [];
+  const paymentRows = currency === "clp" ? lines.filter((l) => l.kind === "payment") : []; // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   const nonPaymentRows = lines.filter((l) => !paymentRows.includes(l));
   // Payment-only months (dormant cards) keep the payment row as a negative line — a statement
   // with zero rows would not be written at all, and the owed walk's covered-check prevents
@@ -123,7 +123,7 @@ export function buildSantanderStatement(
   const lineRows = keepPaymentRowsAsLines ? lines : nonPaymentRows;
 
   const totalPagos = totals?.payments_total ?? null;
-  if (currency === "clp" && paymentRows.length > 0) {
+  if (currency === "clp" && paymentRows.length > 0) { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
     const sum = paymentRows.reduce((acc, l) => acc - l.amount, 0);
     if (totalPagos == null || Math.abs(sum - totalPagos) > 1) {
       throw new Error(
@@ -134,14 +134,14 @@ export function buildSantanderStatement(
   }
   const pagadoDate = paymentRows.length === 1 ? paymentRows[0]!.transaction_date : null;
   const billed = totals?.billed_total ?? null;
-  const section = currency === "usd" ? "international_usd" : "compact";
+  const section = currency === "usd" ? "international_usd" : "compact"; // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
 
   // Occurrence-indexed in line order: the Nth identical line of the statement is its `#dupN` twin.
   const lineAmount = (line: CardStatementLine): number =>
     // A cuota line's amount is the purchase's total; its cuota rides apart.
-    currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : Number(line.amount.toFixed(2));
+    currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : Number(line.amount.toFixed(2)); // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   const baseKeys = lineRows.map((line) => {
-    const amountKey = currency === "usd" ? lineAmount(line).toFixed(2) : String(lineAmount(line));
+    const amountKey = currency === "usd" ? lineAmount(line).toFixed(2) : String(lineAmount(line)); // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
     return ccJsonStatementLineBaseKey(ctx.cardGroup, currency, line.transaction_date, line.merchant, amountKey);
   });
   const dedupeKeys = dedupeKeysByOccurrence(baseKeys);
@@ -154,8 +154,8 @@ export function buildSantanderStatement(
       kind: cardLineKind({
         installment_flag: inst != null,
         merchant: merchant || null,
-        amount_clp: currency === "clp" ? amount : 0,
-        amount_usd: currency === "usd" ? amount : null,
+        amount_clp: currency === "clp" ? amount : 0, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+        amount_usd: currency === "usd" ? amount : null, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
         statement_currency: currency,
       }),
       transaction_date: line.transaction_date,
@@ -178,7 +178,7 @@ export function buildSantanderStatement(
             interest_rate_text: null,
             cuota_type: null,
             plan_id:
-              currency === "clp"
+              currency === "clp" // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
                 ? resolveJsonCuotaCanonicalRowId(ctx.accountId, ctx.cardGroup, line.transaction_date, inst.total_amount, inst.count, line.merchant)
                 : null,
           }
@@ -209,9 +209,9 @@ export function buildSantanderStatement(
     layout: cardStatementLayout(section),
     header: {
       ...EMPTY_CARD_STATEMENT_HEADER,
-      monto_facturado: currency === "clp" && billed != null ? billed : null,
-      monto_pagado_anterior: currency === "clp" && totalPagos != null && totalPagos > 0 ? -totalPagos : null,
-      monto_pagado_anterior_date: currency === "clp" ? pagadoDate : null,
+      monto_facturado: currency === "clp" && billed != null ? billed : null, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+      monto_pagado_anterior: currency === "clp" && totalPagos != null && totalPagos > 0 ? -totalPagos : null, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+      monto_pagado_anterior_date: currency === "clp" ? pagadoDate : null, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
       // Only the end is published (FechaProxFact); the cycle's first day stays whatever the PDF
       // prints — the close-day offset is read from statements that print both.
       next_period_to: ctx.nextClose ?? null,
@@ -234,7 +234,7 @@ const listStatementClosesForCurrency = db.prepare(
  */
 export function inheritedStatementCtx(
   accountId: number,
-  currency: "clp" | "usd",
+  currency: "clp" | "usd", // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   statementDate: string
 ): { cardGroup: string; periodFrom: string } {
   const targetIso = parseDdMmYyToIso(padCcStatementDate(statementDate));
@@ -336,7 +336,7 @@ export function usdStatementIsStaleEcho(
 export type SantanderStatementWriteResult = {
   accountId: number;
   statementDate: string;
-  currencies: ("clp" | "usd")[];
+  currencies: ("clp" | "usd")[]; // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   lineCount: number;
 };
 
@@ -373,7 +373,7 @@ export function writeSantanderStatements(
 export function statementNextPeriodTo(
   accountId: number,
   statementDate: string,
-  currency: "clp" | "usd"
+  currency: "clp" | "usd" // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
 ): string | null {
   const row = db
     .prepare(
@@ -395,7 +395,7 @@ export function statementNextPeriodTo(
 export function fillStatementNextPeriodTo(
   accountId: number,
   statementDate: string,
-  currency: "clp" | "usd",
+  currency: "clp" | "usd", // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
   nextClose: string
 ): void {
   db.prepare(

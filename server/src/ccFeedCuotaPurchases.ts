@@ -76,7 +76,7 @@ export function bucketLineMatchesFeedLine(
   maxDayGap: number
 ): boolean {
   const lineUsd = line.amount_usd != null && line.amount_usd !== 0;
-  if (lineUsd !== (feed.currency === "usd")) return false;
+  if (lineUsd !== (feed.currency === "usd")) return false; // convention-ok: Chilean cuota products bill in pesos only
   if (lineUsd) {
     if (Math.abs(Math.abs(line.amount_usd!) - Math.abs(feed.amount)) > 0.005) return false;
   } else if (Math.round(Math.abs(line.amount_clp ?? 0)) !== Math.round(Math.abs(feed.amount))) {
@@ -125,7 +125,7 @@ function createPlansInSession(
   const meta = creditCardMasterMetaForAccount(accountId);
   for (const line of lines) {
     const cp = line.cuota_purchase;
-    if (!cp || cp.cuota_count == null || line.currency !== "clp") continue;
+    if (!cp || cp.cuota_count == null || line.currency !== "clp") continue; // convention-ok: Chilean cuota products bill in pesos only
     const principal = Math.abs(Math.round(line.amount));
     if (principal <= 0) continue;
     if (findPlanForOneShotLine(accountId, line.merchant, line.transaction_date, principal)) continue;
@@ -180,7 +180,7 @@ export function tagFeedCuotaPurchaseLines(
 }
 
 function tagInSession(accountId: number, lines: readonly CcListingLine[]): number[] {
-  const typed = lines.filter((l) => l.cuota_purchase && l.currency === "clp");
+  const typed = lines.filter((l) => l.cuota_purchase && l.currency === "clp"); // convention-ok: Chilean cuota products bill in pesos only
   if (typed.length === 0) return [];
   const bucket = listOpenBucketLines(accountId);
   const used = new Set<number>();

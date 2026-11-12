@@ -70,7 +70,7 @@ function nudgeInSession(accountId: number, parsedLines: readonly CcListingLine[]
   const nudged = new Set<number>();
 
   for (const line of parsedLines) {
-    const amountClp = line.currency === "clp" ? Math.abs(Math.trunc(line.amount)) : 0;
+    const amountClp = line.currency === "clp" ? Math.abs(Math.trunc(line.amount)) : 0; // convention-ok: Chilean cuota plans are in pesos only
     if (amountClp <= 0) continue; // PAGOs / USD-only lines carry no CLP charge
 
     const match = findPlanForOneShotLine(

@@ -58,7 +58,7 @@ import { ddMmYyyyFromIso } from "nw-tracker-contracts";
 import { pesosOrDollars } from "./ingestCurrencies.js";
 
 export type ParsedPaymentReceipt = {
-  kind: "clp" | "usd";
+  kind: "clp" | "usd"; // convention-ok: Santander's receipts pay a card's peso or dollar debt
   /** Real payment date (YYYY-MM-DD) printed in the receipt. */
   paid_on: string;
   /** Pesos leaving checking — the CLP payment amount, or the USD payment's peso equivalent. */

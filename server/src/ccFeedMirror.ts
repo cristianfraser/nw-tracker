@@ -50,18 +50,18 @@ export type FeedMirrorCurrencyProof = "saldo_inicial" | "cupo_identity";
 
 export type CcFeedMirrorResult = {
   window_start: string;
-  currencies: ("clp" | "usd")[];
+  currencies: ("clp" | "usd")[]; // convention-ok: Santander's card feed has a peso and a dollar slide only
   /** Per mirrored currency, what proved its listing complete. */
-  proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>;
+  proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
   removed: CcFeedMirrorRemoved[];
 };
 
-function lineCurrency(line: CcOpenBucketLine): "clp" | "usd" {
+function lineCurrency(line: CcOpenBucketLine): "clp" | "usd" { // convention-ok: Santander's card feed has a peso and a dollar slide only
   return line.amount_usd != null && line.amount_usd !== 0 ? "usd" : "clp";
 }
 
-function roundedUnits(amount: number, currency: "clp" | "usd"): number {
-  return currency === "usd" ? Math.round(amount * 100) : Math.round(amount);
+function roundedUnits(amount: number, currency: "clp" | "usd"): number { // convention-ok: Santander's card feed has a peso and a dollar slide only
+  return currency === "usd" ? Math.round(amount * 100) : Math.round(amount); // convention-ok: pesos have no minor unit; dollars round to the cent
 }
 
 /**
@@ -75,21 +75,21 @@ function roundedUnits(amount: number, currency: "clp" | "usd"): number {
  */
 export function feedMirrorCurrencies(opts: {
   /** Currencies whose slide carried the SALDO INICIAL row. */
-  stated: ReadonlySet<"clp" | "usd">;
+  stated: ReadonlySet<"clp" | "usd">; // convention-ok: Santander's card feed has a peso and a dollar slide only
   /** The close on record for the card (the listing's, or the latest recorded), with its billed totals. */
   closeOnRecord: { saldo_inicial_clp: number | null; saldo_inicial_usd: number | null } | null;
   /** Every listed row, debt-positive, as the feeder sent it. */
-  lines: readonly { currency: "clp" | "usd"; amount: number }[];
+  lines: readonly { currency: "clp" | "usd"; amount: number }[]; // convention-ok: Santander's card feed has a peso and a dollar slide only
   /** The bank's cupo utilizado per currency, from the same session's product summary. */
-  bankUsed: Partial<Record<"clp" | "usd", number>>;
-}): Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> {
-  const proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> = {};
-  for (const currency of ["clp", "usd"] as const) {
+  bankUsed: Partial<Record<"clp" | "usd", number>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
+}): Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> { // convention-ok: Santander's card feed has a peso and a dollar slide only
+  const proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> = {}; // convention-ok: Santander's card feed has a peso and a dollar slide only
+  for (const currency of ["clp", "usd"] as const) { // convention-ok: Santander's card feed has a peso and a dollar slide only
     if (opts.stated.has(currency)) {
       proof[currency] = "saldo_inicial";
       continue;
     }
-    const saldoInicial = currency === "clp" ? opts.closeOnRecord?.saldo_inicial_clp : opts.closeOnRecord?.saldo_inicial_usd;
+    const saldoInicial = currency === "clp" ? opts.closeOnRecord?.saldo_inicial_clp : opts.closeOnRecord?.saldo_inicial_usd; // convention-ok: Santander's card feed has a peso and a dollar slide only
     const used = opts.bankUsed[currency];
     if (saldoInicial == null || used == null) continue;
     const listed = opts.lines
@@ -105,7 +105,7 @@ export function feedMirrorCurrencies(opts: {
 /** Bucket lines of the mirrored window that no feed row accounts for (read-only planner). */
 export function planFeedMirror(
   accountId: number,
-  opts: { windowStartIso: string; currencies: ReadonlySet<"clp" | "usd">; feedLines: readonly CcListingLine[] }
+  opts: { windowStartIso: string; currencies: ReadonlySet<"clp" | "usd">; feedLines: readonly CcListingLine[] } // convention-ok: Santander's card feed has a peso and a dollar slide only
 ): CcOpenBucketLine[] {
   const candidates = listOpenBucketLines(accountId).filter((line) => {
     if (line.installment_flag) return false;
@@ -135,11 +135,11 @@ export function planOpenBucketMirror(
   accountId: number,
   opts: {
     windowStartIso: string;
-    proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>;
+    proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
     feedLines: readonly CcListingLine[];
   }
 ): { result: CcFeedMirrorResult; plan: CardLinePlan } {
-  const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null));
+  const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null)); // convention-ok: Santander's card feed has a peso and a dollar slide only
   const unlisted = planFeedMirror(accountId, { windowStartIso: opts.windowStartIso, currencies, feedLines: opts.feedLines });
   const removed = unlisted.map((l) => ({
     id: l.id,
