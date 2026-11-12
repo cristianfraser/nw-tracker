@@ -75,7 +75,8 @@ export type AccountDetailPageData = {
   accountDashRow: DashboardAccountRow | null;
   accountMetricsAgg: ReturnType<typeof cardMetricsByPeriodForAccountRow>;
   accountNavChildren: NonNullable<ReturnType<typeof findNavTreeNodeByAccountId>>["children"];
-  chartUsdVal: number | null;
+  /** The chart's live point in the strip's unit when it is not pesos (the hero's fallback). */
+  chartUnitVal: number | null;
 };
 
 export function useAccountDetailPageData(): AccountDetailPageData {
@@ -162,7 +163,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   // Nav-context not in yet: the strip's zero frame from the nav tree (cards in their placeholder phase).
   const dash =
     realDash ??
-    (needsNavChildCards && sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, stripUnit) : null);
+    (needsNavChildCards && sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null);
   const dashIsPlaceholder = realDash == null && dash != null;
 
   // Tail clip runs server-side; the block carries the clipped x-range when the account ended early.
@@ -241,8 +242,8 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const lastChartRow =
     ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
   const accountDataKey = String(summary.account_id);
-  const chartUsdVal =
-    stripUnit === "usd" &&
+  const chartUnitVal =
+    stripUnit !== "clp" &&
     lastChartRow &&
     typeof lastChartRow[accountDataKey] === "number" &&
     Number.isFinite(lastChartRow[accountDataKey] as number)
@@ -256,7 +257,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     if (fromNavCtx) return fromNavCtx;
     return navSnapshot?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
   }, [detail?.dashboard_account_row, dash?.accounts, navSnapshot, summary.account_id]);
-  const accountMetricsAgg = cardMetricsByPeriodForAccountRow(accountDashRow ?? null);
+  const accountMetricsAgg = cardMetricsByPeriodForAccountRow(accountDashRow ?? null, stripUnit);
   const accountNavChildren = navSelf?.children?.filter((c) => c.route_path?.trim()) ?? [];
 
   return {
@@ -288,6 +289,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     accountDashRow,
     accountMetricsAgg,
     accountNavChildren,
-    chartUsdVal,
+    chartUnitVal,
   };
 }

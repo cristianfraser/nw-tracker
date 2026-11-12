@@ -197,9 +197,8 @@ describe("memoized card statements", () => {
 async function requestPathPayloads(): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (const unit of ["clp", "usd"] as const) {
-    const includeUsd = unit === "usd";
-    out.set(`nav_snapshot|${unit}`, JSON.stringify(await buildDashboardNavSnapshot(includeUsd)));
-    out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(includeUsd, unit, "net_worth")));
+    out.set(`nav_snapshot|${unit}`, JSON.stringify(await buildDashboardNavSnapshot(unit)));
+    out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(unit, "net_worth")));
     out.set(`overview|${unit}`, JSON.stringify(getDashboardOverviewBlock(unit)));
     out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set(), false)));
   }
@@ -300,8 +299,8 @@ describe("card ledger caches", () => {
 describe("dashboard account rows (one cache entry per account)", () => {
   async function rowsPayloads(): Promise<Map<string, string>> {
     const out = new Map<string, string>();
-    for (const includeUsd of [false, true]) {
-      out.set(String(includeUsd), JSON.stringify(await buildDashboardAccountRows(includeUsd)));
+    for (const unit of ["clp", "usd"] as const) {
+      out.set(unit, JSON.stringify(await buildDashboardAccountRows(unit)));
     }
     return out;
   }
@@ -311,7 +310,7 @@ describe("dashboard account rows (one cache entry per account)", () => {
     try {
       db.transaction(() => {
         // The rows build synchronously; the promises only resolve after the rollback.
-        for (const includeUsd of [false, true]) pending.push([String(includeUsd), buildDashboardAccountRows(includeUsd)]);
+        for (const unit of ["clp", "usd"] as const) pending.push([unit, buildDashboardAccountRows(unit)]);
         throw new Error("rollback");
       })();
     } catch (e) {
@@ -345,7 +344,7 @@ describe("dashboard account rows (one cache entry per account)", () => {
     );
     try {
       const afterWrite = await rowsPayloads();
-      expect(afterWrite.get("false")).not.toBe(cached.get("false"));
+      expect(afterWrite.get("clp")).not.toBe(cached.get("clp"));
       expect(await rowsUncached()).toEqual(afterWrite);
     } finally {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -537,8 +536,8 @@ describe("served JSON of the cached responses", () => {
     const asyncExpected = async (): Promise<Map<string, string>> => {
       const out = new Map<string, string>();
       out.set(`/api/dashboard/page-bundle`, JSON.stringify(await buildDashboardPageBundle("clp")));
-      out.set(`/api/dashboard/nav-context?root=net_worth`, JSON.stringify(await buildDashboardNavContext(false, "clp", "net_worth")));
-      out.set(`/api/dashboard/nav-snapshot?include_usd=1`, JSON.stringify(await buildDashboardNavSnapshot(true)));
+      out.set(`/api/dashboard/nav-context?root=net_worth`, JSON.stringify(await buildDashboardNavContext("clp", "net_worth")));
+      out.set(`/api/dashboard/nav-snapshot?include_usd=1`, JSON.stringify(await buildDashboardNavSnapshot("usd")));
       out.set(
         `/api/accounts/${masterId}/detail-bundle`,
         JSON.stringify(await cachedAccountDetailBundle(masterId, "clp", "monthly"))

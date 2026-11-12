@@ -10,16 +10,14 @@ import type { cardMetricsByPeriodForAccountRow } from "../../dashboardCardBreakd
 import type { dashPickForNavStrip } from "../../queries/fetchers";
 import styles from "../AccountDetailPage.module.css";
 import type { DisplayUnit } from "../../queries/keys";
-import { legacyCardValue } from "../../components/dashboard/DashboardCardValue";
-import { legacyDisplayUnit } from "../../displayUnitSupport";
 
 type LayoutProps = {
   title: string;
   accountMetricsAgg: ReturnType<typeof cardMetricsByPeriodForAccountRow>;
   /** The unit the strip renders in (`AccountDetailPageData.stripUnit`). */
   stripUnit: DisplayUnit;
-  heroClp: number;
-  heroApiUsd: number | null;
+  /** The hero balance in `stripUnit` (null: none on file). */
+  heroValue: number | null;
   dash: ReturnType<typeof dashPickForNavStrip> | null;
   accountNavChildren: NonNullable<
     ReturnType<typeof import("../../portfolioNavFromApi").findNavTreeNodeByAccountId>
@@ -39,8 +37,7 @@ export function AccountDetailSharedLayout({
   title,
   accountMetricsAgg,
   stripUnit,
-  heroClp,
-  heroApiUsd,
+  heroValue,
   dash,
   accountNavChildren,
   stripDetailSlots,
@@ -54,7 +51,7 @@ export function AccountDetailSharedLayout({
       <PortfolioNavChildDetailCards
         dash={dash}
         navChildren={accountNavChildren}
-        showUsd={stripUnit === "usd"}
+        unit={stripUnit}
         animated
       />
     ) : null;
@@ -79,7 +76,8 @@ export function AccountDetailSharedLayout({
           <PortfolioEntityCardsStrip
             compactSlot={
               <CompactEntityCard
-                {...legacyCardValue(heroClp, heroApiUsd, legacyDisplayUnit(stripUnit, "Account hero card") === "usd")}
+                value={heroValue}
+                unit={stripUnit}
                 animated
                 valueVariant="main"
                 valueDelta={

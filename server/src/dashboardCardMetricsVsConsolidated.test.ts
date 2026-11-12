@@ -50,7 +50,7 @@ describe("dashboard card metrics vs consolidated monthly table", () => {
 
   for (const unit of ["clp", "usd"] as const) {
     it(`every group node's card equals its table rollup (${unit})`, async () => {
-      const snap = await buildDashboardNavSnapshot(unit === "usd");
+      const snap = await buildDashboardNavSnapshot(unit);
       const today = chileCalendarTodayYmd();
       const currentMk = monthKeyFromYmd(today);
       const currentY = today.slice(0, 4);
@@ -65,22 +65,22 @@ describe("dashboard card metrics vs consolidated monthly table", () => {
         const monthRow = monthly.find((r) => monthKeyFromYmd(r.as_of_date) === currentMk) ?? null;
         const yearRow = yearly.find((r) => r.as_of_date.slice(0, 4) === currentY) ?? null;
         const latest = monthly[0] ?? null;
-        const pick = (p: { deposits_period_clp: number; deposits_period_usd: number | null; delta_period_clp: number | null; delta_period_usd: number | null }) =>
-          unit === "usd"
-            ? { dep: p.deposits_period_usd, pl: p.delta_period_usd }
-            : { dep: p.deposits_period_clp, pl: p.delta_period_clp };
+        const pick = (p: { deposits_period: number | null; delta_period: number | null }) => ({
+          dep: p.deposits_period,
+          pl: p.delta_period,
+        });
 
         const month = pick(card!.month);
         close(`${slug} month pl`, month.pl, monthRow?.nominal_pl ?? null, unit);
         const year = pick(card!.year);
         close(`${slug} year pl`, year.pl, yearRow?.nominal_pl ?? null, unit);
-        const totalPl = unit === "usd" ? card!.year.delta_total_usd : card!.year.delta_total_clp;
+        const totalPl = card!.year.delta_total;
         close(`${slug} total pl`, totalPl, latest?.cumulative_nominal_pl ?? null, unit);
 
         // Deposits: a scope with rows always carries a number (0 when nothing moved).
         if (monthRow) close(`${slug} month dep`, month.dep, monthRow.net_capital_flow, unit);
         if (yearRow) close(`${slug} year dep`, year.dep, yearRow.net_capital_flow, unit);
-        const totalDep = unit === "usd" ? card!.year.deposits_usd : card!.year.deposits_clp;
+        const totalDep = card!.year.deposits;
         if (latest) {
           const sumFlows = monthly.reduce((s, r) => s + r.net_capital_flow, 0);
           close(`${slug} total dep`, totalDep, sumFlows, unit);

@@ -231,6 +231,19 @@
   font-size: var(--font-size-card-label);
 }
 
+.amountConverted {
+  white-space: nowrap;
+}
+
+/* A list narrower than 450 px shows a line's value in the display unit alone: its own currency
+   and the parentheses go («≈» stays when the value is at today's rate). */
+@container (max-width: 450px) {
+  .amountOwn:has(+ .amountConverted),
+  .amountParen {
+    display: none;
+  }
+}
+
 .amountSup {
   margin-left: 0.2em;
   font-size: 0.7em;

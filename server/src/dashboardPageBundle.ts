@@ -50,8 +50,7 @@ const nextMacrotask = (): Promise<void> => new Promise((resolve) => setImmediate
  */
 async function buildDashboardPageBundleInner(unit: TsUnit) {
   clearFxConversionWarnings();
-  const includeUsd = unit === "usd";
-  const dash = await timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd));
+  const dash = await timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(unit));
   await nextMacrotask();
   const tsRaw = timeHeavy(HeavyWork.dashboardValuationTimeseries, () =>
     attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
@@ -59,23 +58,19 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
   await nextMacrotask();
   const fx = fxLatestRow() ?? null;
   // The P/L + deposits combo, from the inversiones consolidation and the payload's deposits.
-  const depositsChart = dash.inversiones_deposits_chart;
-  const depositsMonthly = includeUsd ? depositsChart.monthly_usd : depositsChart.monthly_clp;
-  if (!depositsMonthly) {
-    throw new Error(`dashboard page bundle: no ${unit} inversiones deposits series`);
-  }
+  const depositsMonthly = dash.inversiones_deposits_chart.monthly;
   const inversionesPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
     buildInversionesPerfMonthly(unit, depositsMonthly)
   );
   await nextMacrotask();
-  // Pesos in both units: the facturaciones rows, the UF cuotas and the bills are all in pesos.
-  const upcomingPayments = buildUpcomingPayments();
+  const upcomingPayments = buildUpcomingPayments(undefined, unit);
 
   return {
     dash,
     ts: tsRaw,
     fx,
-    fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
+    // The fx coverage concerns every conversion out of pesos (any other unit walks through USD/CLP).
+    fx_coverage: unit === "clp" ? null : buildFxCoverageWithConversionWarnings(),
     inversionesPerf,
     upcoming_payments: upcomingPayments,
   };

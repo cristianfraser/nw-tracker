@@ -4,7 +4,6 @@ import {
   roundedMetricDeposits,
   type CardGroupMetricsByPeriod,
 } from "../../dashboardCardBreakdown";
-import { legacyDisplayUnit } from "../../displayUnitSupport";
 import {
   accountingCurrencyNumberFlowParts,
   currencyHasAdaptiveCardDecimals,
@@ -25,15 +24,10 @@ const METRIC_TIMING = {
 type Props = {
   /** All three period slices; rows carry no visible labels (tooltip + a11y text only). */
   metricsByPeriod: CardGroupMetricsByPeriod;
-  /** The unit the card shows (its metrics carry pesos and dollars until stream 2 lands). */
+  /** The unit the card shows (its metrics are in it). */
   unit: DisplayUnit;
   animated?: boolean;
 };
-
-/** The metrics' pesos/dollars pick for `unit`; another unit has no figures yet and throws. */
-function metricsShowUsd(unit: DisplayUnit): boolean {
-  return legacyDisplayUnit(unit, "Card metrics") === "usd";
-}
 
 /** Shared decimal alignment for every Δ on the card (the balance-row day Δ included). */
 export function cardDeltaFractionDigits(
@@ -41,12 +35,11 @@ export function cardDeltaFractionDigits(
   unit: DisplayUnit
 ): number {
   if (!currencyHasAdaptiveCardDecimals(unit)) return 0;
-  const showUsd = metricsShowUsd(unit);
   return minAdaptiveUsdFractionDigits([
-    roundedMetricDelta(metricsByPeriod.month, showUsd, "total"),
-    roundedMetricDelta(metricsByPeriod.day, showUsd, "period"),
-    roundedMetricDelta(metricsByPeriod.month, showUsd, "period"),
-    roundedMetricDelta(metricsByPeriod.year, showUsd, "period"),
+    roundedMetricDelta(metricsByPeriod.month, unit, "total"),
+    roundedMetricDelta(metricsByPeriod.day, unit, "period"),
+    roundedMetricDelta(metricsByPeriod.month, unit, "period"),
+    roundedMetricDelta(metricsByPeriod.year, unit, "period"),
   ]);
 }
 
@@ -61,13 +54,12 @@ export function CardValueDayPl({
   animated = true,
 }: Props) {
   const { t } = useTranslation();
-  const showUsd = metricsShowUsd(unit);
   const label = t("dashboard.cardBreakdown.periodDeltaDay");
   return (
     <span className={styles.valueDayPl} title={label}>
       <span className="visually-hidden">{label}</span>
       <DeltaMetricFlow
-        delta={roundedMetricDelta(metricsByPeriod.day, showUsd, "period")}
+        delta={roundedMetricDelta(metricsByPeriod.day, unit, "period")}
         animated={animated}
         fractionDigits={cardDeltaFractionDigits(metricsByPeriod, unit)}
       />
@@ -149,7 +141,6 @@ export function DashboardCardGroupMetrics({
   animated = true,
 }: Props) {
   const { t } = useTranslation();
-  const showUsd = metricsShowUsd(unit);
 
   // Lifetime fields are identical across slices — read them from the month slice.
   const lifetime = metricsByPeriod.month;
@@ -161,24 +152,24 @@ export function DashboardCardGroupMetrics({
       <DashboardCardsValueGroup>
         <MetricsRow
           {...shared}
-          deposited={roundedMetricDeposits(metricsByPeriod.month, showUsd, "period")}
+          deposited={roundedMetricDeposits(metricsByPeriod.month, "period")}
           depositedLabel={t("dashboard.cardBreakdown.periodDepositsMonth")}
-          delta={roundedMetricDelta(metricsByPeriod.month, showUsd, "period")}
+          delta={roundedMetricDelta(metricsByPeriod.month, unit, "period")}
           deltaLabel={t("dashboard.cardBreakdown.periodDeltaMonth")}
         />
         <MetricsRow
           {...shared}
-          deposited={roundedMetricDeposits(metricsByPeriod.year, showUsd, "period")}
+          deposited={roundedMetricDeposits(metricsByPeriod.year, "period")}
           depositedLabel={t("dashboard.cardBreakdown.periodDepositsYear")}
-          delta={roundedMetricDelta(metricsByPeriod.year, showUsd, "period")}
+          delta={roundedMetricDelta(metricsByPeriod.year, unit, "period")}
           deltaLabel={t("dashboard.cardBreakdown.periodDeltaYear")}
         />
         <span className="card-divider" aria-hidden="true" />
         <MetricsRow
           {...shared}
-          deposited={roundedMetricDeposits(lifetime, showUsd, "total")}
+          deposited={roundedMetricDeposits(lifetime, "total")}
           depositedLabel={t("dashboard.cardBreakdown.totalDeposited")}
-          delta={roundedMetricDelta(lifetime, showUsd, "total")}
+          delta={roundedMetricDelta(lifetime, unit, "total")}
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
           dim
         />

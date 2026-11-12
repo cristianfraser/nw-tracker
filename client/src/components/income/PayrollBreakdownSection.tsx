@@ -29,7 +29,7 @@ const CHART_ANIM_MS = 90;
 const PAGE_SIZE = 12;
 
 /** Stands in for the server payload while it loads: the frame renders with no rows. */
-const EMPTY_BREAKDOWN: PayrollBreakdownPayload = { payslips: [], months: [], years: [] };
+const EMPTY_BREAKDOWN: PayrollBreakdownPayload = { unit: "clp", payslips: [], months: [], years: [] };
 
 /**
  * Stacked bottom to top: what reached the account, then what was taken from gross pay. Chilean
@@ -73,13 +73,14 @@ const ALWAYS_SHOWN: ReadonlySet<PayrollBreakdownField> = new Set(["gross", "net"
 function fieldsInUse(breakdown: PayrollBreakdownPayload): Set<PayrollBreakdownField> {
   const used = new Set<PayrollBreakdownField>(ALWAYS_SHOWN);
   for (const row of breakdown.years) {
-    for (const f of TABLE_COLUMNS) if (row.values[f].clp !== 0 || row.values[f].usd !== 0) used.add(f);
+    for (const f of TABLE_COLUMNS) if (row.values[f] !== 0) used.add(f);
   }
   return used;
 }
 
-function pick(row: PayrollBreakdownRow, field: PayrollBreakdownField, unit: DisplayUnit): number {
-  return unit === "usd" ? row.values[field].usd : row.values[field].clp;
+/** A field of a period, in the payload's unit (`breakdown.unit`). */
+function pick(row: PayrollBreakdownRow, field: PayrollBreakdownField, _unit: DisplayUnit): number {
+  return row.values[field];
 }
 
 function periodEndYmd(period: string): string {

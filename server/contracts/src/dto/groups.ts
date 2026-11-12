@@ -3,7 +3,14 @@ import type { AccountMonthlyPerformanceRow } from "./accounts.js";
 import type { PeriodReturnsPayload } from "./performance.js";
 import type { FxCoverage, DisplayUnitCode } from "./core.js";
 import type { UpcomingPaymentsDto } from "./creditCard.js";
-import type { DashboardAccountRow, DashboardResponse, FxLatest, ValuationTimeseriesResponse, ValueSeriesType } from "./dashboard.js";
+import type {
+  DashboardAccountRow,
+  DashboardNwBucketTotals,
+  DashboardResponse,
+  FxLatest,
+  ValuationTimeseriesResponse,
+  ValueSeriesType,
+} from "./dashboard.js";
 
 /** `GET /api/groups/:slug/performance-monthly` — derived, not stored. */
 export interface GroupMonthlyPerformanceBarAccount {
@@ -58,10 +65,12 @@ export interface DashboardChartShape {
 export interface DashboardNavSnapshotResponse {
   /** `DTO_SCHEMA_VERSIONS.nav_strip`: the client stores this payload under that version. */
   schema_version: (typeof DTO_SCHEMA_VERSIONS)["nav_strip"];
+  /** The display unit of every money field of the payload. */
+  unit: DisplayUnitCode;
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
-  nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
+  nw_bucket_totals: DashboardNwBucketTotals;
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   value_map?: DashboardResponse["value_map"];
   value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];
@@ -82,26 +91,13 @@ export type CachedDashboardNavSnapshot = Omit<
 export interface DashboardNavContextResponse {
   /** `DTO_SCHEMA_VERSIONS.nav_strip`: the client stores this payload under that version. */
   schema_version: (typeof DTO_SCHEMA_VERSIONS)["nav_strip"];
+  /** The display unit of every money field of the payload. */
+  unit: DisplayUnitCode;
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
-  cash_credit_card_links: DashboardResponse["cash_credit_card_links"];
   /** Live NW bucket totals + prior closes (same as page-bundle `dash.totals` buckets). */
-  nw_bucket_totals: Pick<
-    DashboardResponse["totals"],
-    | "net_worth_clp"
-    | "real_estate_clp"
-    | "retirement_clp"
-    | "brokerage_clp"
-    | "cash_eqs_clp"
-    | "prior_closes"
-  > &
-    Partial<
-      Pick<
-        DashboardResponse["totals"],
-        "net_worth_usd" | "real_estate_usd" | "retirement_usd" | "brokerage_usd" | "cash_eqs_usd"
-      >
-    >;
+  nw_bucket_totals: DashboardNwBucketTotals;
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   value_map?: DashboardResponse["value_map"];
   value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];

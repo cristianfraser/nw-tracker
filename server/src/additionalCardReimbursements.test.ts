@@ -100,7 +100,7 @@ describe("buildAdditionalCardsSummary", () => {
       ]
     );
     expect(
-      summary.by_month.map((r) => [r.period_month, r.charges_clp, r.reimbursements_clp, r.net_clp, r.balance_clp])
+      summary.by_month.map((r) => [r.period_month, r.charges, r.reimbursements, r.net, r.balance])
     ).toEqual([
       ["2098-12", 10_000, 0, 10_000, 10_000],
       ["2099-01", 9_000, 10_000, -1_000, 9_000],
@@ -109,25 +109,34 @@ describe("buildAdditionalCardsSummary", () => {
     expect(summary.by_month[1]!.charge_count).toBe(3);
     expect(summary.by_month[1]!.as_of_date).toBe("2099-01-31");
     expect(
-      summary.by_year.map((r) => [r.period_month, r.as_of_date, r.charges_clp, r.reimbursements_clp, r.balance_clp])
+      summary.by_year.map((r) => [r.period_month, r.as_of_date, r.charges, r.reimbursements, r.balance])
     ).toEqual([
       ["2098-12", "2098-12-31", 10_000, 0, 10_000],
       ["2099-12", "2099-12-31", 9_000, 17_000, 2_000],
     ]);
+    expect(summary.unit).toBe("clp");
     expect(summary.totals).toMatchObject({
-      charges_clp: 19_000,
-      reimbursements_clp: 17_000,
-      balance_clp: 2_000,
+      charges: 19_000,
+      reimbursements: 17_000,
+      balance: 2_000,
     });
-    expect(summary.totals.balance_usd).toBeCloseTo(2);
+    const inUsd = buildAdditionalCardsSummary(
+      [
+        chargeLine({ expense_month: "2098-12", amount_clp: 10_000 }),
+        chargeLine({ expense_month: "2099-01", amount_clp: -8_000, source: "checking", origin_card_last4: null, primary_card_last4: null }),
+      ],
+      "usd"
+    );
+    expect(inUsd.unit).toBe("usd");
+    expect(inUsd.totals.balance).toBeCloseTo(2);
   });
 
-  it("reports a null USD figure when a line has no USD equivalent", () => {
+  it("reports a null figure when a line has no value in the unit", () => {
     const summary = buildAdditionalCardsSummary([
       chargeLine({ expense_month: "2099-01", amount_clp: 1_000, amount_usd_at_expense: null }),
-    ]);
-    expect(summary.by_month[0]!.charges_usd).toBeNull();
-    expect(summary.totals.balance_usd).toBeNull();
+    ], "usd");
+    expect(summary.by_month[0]!.charges).toBeNull();
+    expect(summary.totals.balance).toBeNull();
   });
 });
 

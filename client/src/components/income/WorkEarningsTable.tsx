@@ -3,7 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import type { FlowWorkEarningRow, PayrollEarningType, PayslipChecksRow } from "../../types";
-import { workEarningLiquidoDisplayAmount } from "../../incomeAggregates";
+import { formatIncomeMoney } from "../../incomeAggregates";
 import { usePatchWorkEarningMutation } from "../../queries/mutations";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
@@ -82,7 +82,7 @@ export function WorkEarningsTable({
             <td className="mono muted">{formatOptionalClp(row.movilizacion_clp, displayUnit)}</td>
             <td className="mono">{formatOptionalClp(row.total_haberes_clp, displayUnit)}</td>
             <td className="mono muted">{formatOptionalClp(row.total_descuentos_clp, displayUnit)}</td>
-            <td className="mono">{formatFlowMoney(workEarningLiquidoDisplayAmount(row, displayUnit), displayUnit)}</td>
+            <td className="mono">{formatIncomeMoney(row.liquido, displayUnit)}</td>
             <td>
               <select
                 value={row.earning_type}
@@ -101,7 +101,7 @@ export function WorkEarningsTable({
               {row.movement_id != null && row.linked_received_on ? (
                 <span className="mono">
                   {row.linked_received_on}{" "}
-                  {formatFlowMoney(row.linked_amount_clp ?? row.liquido_clp, displayUnit)}
+                  {formatIncomeMoney(row.linked_amount ?? row.liquido, displayUnit)}
                   {row.link_source ? (
                     <span className="muted work-earnings-table__link-source">
                       ({t(`workEarnings.linkSource.${row.link_source}`)})

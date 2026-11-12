@@ -108,10 +108,10 @@ export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
  * beside them: its other parts (categories, big groups, the cards' pay-by dates) change only
  * through writes, which drop the `flows_inputs` family (`cacheFamilies.ts`).
  */
-export function cachedFlowsExpensesPayload(): FlowsExpensesPayload {
+export function cachedFlowsExpensesPayload(unit: string = "clp"): FlowsExpensesPayload {
   syncFlowsInputsWithLiveUsdRates();
-  return getAggregationCached(cacheKeyFlowsInputs("expenses_payload"), () =>
-    flowsExpensesPayloadFromLines(listCreditCardMasterAccountIds(), cachedFlowsExpenseLines())
+  return getAggregationCached(cacheKeyFlowsInputs(`expenses_payload|${unit}`), () =>
+    flowsExpensesPayloadFromLines(listCreditCardMasterAccountIds(), cachedFlowsExpenseLines(), unit)
   );
 }
 

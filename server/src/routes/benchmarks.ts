@@ -11,7 +11,7 @@ import {
   resolvePortfolioGroupSlugForLegacyTab,
 } from "../portfolioGroupTree.js";
 import { isKnownClassTabGroup } from "./shared.js";
-import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
+import { coreCurrencyCodes, requestDisplayUnit } from "../displayUnits.js";
 
 export function registerBenchmarkRoutes(app: express.Express): void {
   app.get("/api/benchmarks", (_req, res) => {
@@ -57,10 +57,7 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       res.status(400).json({ error: "unknown benchmark" });
       return;
     }
-    const unit = requireLegacyDisplayUnit(
-      requestDisplayUnit(req.query, { surface: "/api/benchmark-comparison", supported: LEGACY_DISPLAY_UNITS }),
-      "/api/benchmark-comparison"
-    );
+    const unit = requestDisplayUnit(req.query, { surface: "/api/benchmark-comparison" });
 
     if (req.query.account_id != null) {
       const id = Number(req.query.account_id);
@@ -93,7 +90,7 @@ export function registerBenchmarkRoutes(app: express.Express): void {
   });
 
   /**
-   * `?account_id=<mortgage account>&benchmark=<slug>&unit=clp|usd`: the mortgage's payments above
+   * `?account_id=<mortgage account>&benchmark=<slug>&unit=<core currency>`: the mortgage's payments above
    * the minimum, prepaid vs invested in the benchmark. `null` body: no such payments.
    */
   app.get("/api/mortgage-prepayment-comparison", (req, res) => {
@@ -107,10 +104,10 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       res.status(400).json({ error: "invalid account_id" });
       return;
     }
-    const unit = requireLegacyDisplayUnit(
-      requestDisplayUnit(req.query, { surface: "/api/mortgage-prepayment-comparison", supported: LEGACY_DISPLAY_UNITS }),
-      "/api/mortgage-prepayment-comparison"
-    );
+    const unit = requestDisplayUnit(req.query, {
+      surface: "/api/mortgage-prepayment-comparison",
+      supported: coreCurrencyCodes(),
+    });
     res.json(computeMortgagePrepaymentComparison({ accountId: id, benchmark, unit }));
   });
 }

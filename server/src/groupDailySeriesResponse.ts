@@ -149,7 +149,8 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
   // (owed, plan debt, plan tail) summed over the masters the merged monthly ledger sums, plus
   // each card's facturación bars on its close dates — CLP-native like the chart, so CLP
   // requests only (the client asks for clp explicitly).
-  const ccDaily = unit === "clp" ? ccDailyHistorialBlockForGroup(portfolioGroup, series) : null;
+  // TODO(any-currency, Stream 4): pass `unit` once `ccDailyHistorialBlock` takes one (CLP-only today).
+  const ccDaily = ccDailyHistorialBlockForGroup(portfolioGroup, series);
   return {
     ...withRefs,
     ...(wantPerfLevels ? { perf_levels: dailyPerfLevelsForGroup(portfolioGroup, unit, series) } : {}),
@@ -227,9 +228,9 @@ function buildAccountDailySeriesResponse(
   // CC masters: attach the day-period historial series — owed, plan debt («deuda en cuotas»),
   // the future plan tail (today+1 .. plan end) and the facturación bars on their close dates —
   // so the account page's daily historial has both lines and the bars and covers the same
-  // window as its monthly/yearly forms. CLP-native like the chart, so CLP requests only (the
-  // client asks for clp explicitly).
-  if (accountBucketKindSlug(row.bucket_slug) === "credit_card" && unit === "clp") {
+  // window as its monthly/yearly forms. In the series' unit (`ccDailyHistorialBlock`; the card
+  // pages ask for clp, the chart's own frame).
+  if (accountBucketKindSlug(row.bucket_slug) === "credit_card") {
     const ccDaily = ccDailyHistorialBlockForMasters([accountId], series);
     if (ccDaily) return { ...accountSeriesPayload, ...ccDaily };
   }

@@ -138,14 +138,14 @@ describe("Retirement by country", () => {
 
   it("gives both country nodes card metrics that add up to Retirement", async () => {
     clearAggregationCache();
-    const snap = await buildDashboardNavSnapshot(false);
+    const snap = await buildDashboardNavSnapshot("clp");
     const m = snap.card_metrics_by_slug;
-    const cl = m.retirement_cl!.value.child.clp;
-    const us = m.retirement_us!.value.child.clp;
+    const cl = m.retirement_cl!.value.child!;
+    const us = m.retirement_us!.value.child!;
     expect(us).toBeGreaterThan(0);
     expect(us).toBeCloseTo(accountValueAt(accountId, chileCalendarTodayYmd(), "clp")!.value, 2);
     // The bucket total is rounded to the peso.
-    expect(Math.abs(cl + us - m.retirement!.value.parent.clp)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cl + us - m.retirement!.value.parent!)).toBeLessThanOrEqual(1);
   });
 
   it("composes Retirement one level down: Chile and US", () => {

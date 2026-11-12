@@ -80,7 +80,7 @@ export function GroupInfoPage() {
   const { data: navCtx } = page.navCtxQuery;
   const {
     contentLoading,
-    stripShowUsd,
+    stripUnit,
     accounts,
     accountsTreeRoot,
     stripIsPlaceholder,
@@ -99,8 +99,8 @@ export function GroupInfoPage() {
   // (sub-groups or its own accounts); only the real nav-context payload carries it (a cached
   // snapshot's values are placeholders).
   const valueMapRoot = useMemo(
-    () => valueMapRootForPage(navCtx?.value_map, portfolioGroup, displayUnit),
-    [navCtx?.value_map, portfolioGroup, displayUnit]
+    () => valueMapRootForPage(navCtx?.value_map, portfolioGroup),
+    [navCtx?.value_map, portfolioGroup]
   );
   // A page whose nav node has sub-groups or accounts offers the map (a leaf group's tiles are
   // its accounts); the selected view is shown whatever is loading, holding the last data it
@@ -269,7 +269,7 @@ export function GroupInfoPage() {
             navNode: navMatchNode,
             groupSlug: portfolioGroup,
             dash: dashForStrip,
-            showUsd: stripShowUsd,
+            unit: stripUnit,
             // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
             placeholderPhase: stripIsPlaceholder || navCtx == null,
             linkedCardNavChildren,

@@ -16,7 +16,7 @@ import {
   readDashboardNavSnapshotCache,
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
-import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor } from "./displayUnitQueries";
+import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor, keepPreviousDataSameEntity } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
@@ -156,7 +156,6 @@ export type HeldNavStrip = {
   dash: ReturnType<typeof dashPickForNavStrip>;
   /** The unit the held cards are in (the previous display unit). */
   unit: DisplayUnit;
-  showUsd: boolean;
 };
 
 /**
@@ -177,7 +176,7 @@ export function useHeldNavStrip(
   return useMemo(() => {
     if (!holding) return null;
     if (navCtx) {
-      return { dash: dashPickForNavStrip(navCtx), unit: other, showUsd: other === "usd" };
+      return { dash: dashPickForNavStrip(navCtx), unit: other };
     }
     if (!navSnapshot) return null;
     return {
@@ -189,7 +188,6 @@ export function useHeldNavStrip(
         card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
       }),
       unit: other,
-      showUsd: other === "usd",
     };
   }, [holding, navCtx, navSnapshot, other]);
 }
@@ -218,10 +216,10 @@ export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit,
 }
 
 /** Home «Últimos movimientos»: the newest expense lines and income credits, interleaved. */
-export function useLatestMovements(limit: number) {
+export function useLatestMovements(limit: number, unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.latestMovements(limit),
-    queryFn: () => api.latestMovements(limit),
+    queryKey: queryKeys.latestMovements(limit, unit),
+    queryFn: () => api.latestMovements(limit, unit),
   });
 }
 
@@ -295,7 +293,7 @@ export function useGroupPageShell(opts: {
       if (!navNode) {
         throw new Error("useGroupPageShell: navNode required when cache is empty");
       }
-      return buildGroupPageShellFromNav(navNode, unit);
+      return buildGroupPageShellFromNav(navNode);
     },
     initialData: () =>
       cachedShell ? readGroupPageShellCache(portfolioGroup, unit) : undefined,
@@ -447,10 +445,11 @@ export function useDeleteWatchlistRow() {
   });
 }
 
-export function useMarketSeries() {
+export function useMarketSeries(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.marketSeries(),
-    queryFn: () => api.marketSeries(),
+    queryKey: queryKeys.marketSeries(unit),
+    queryFn: () => api.marketSeries(unit),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -619,25 +618,28 @@ export function useIncome(unit: DisplayUnit) {
   });
 }
 
-export function useFlowsDeposits() {
+/** The /flows/deposits page in `unit` (never held across units). */
+export function useFlowsDeposits(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.flowsDeposits(),
-    queryFn: () => api.flowsDeposits(),
+    queryKey: queryKeys.flowsDeposits(unit),
+    queryFn: () => api.flowsDeposits(unit),
   });
 }
 
-export function useFlowsPl(days?: number) {
+/** The /flows P/L page in `unit`: held across a Diario window change, never across units. */
+export function useFlowsPl(unit: DisplayUnit, days?: number) {
+  const queryKey = queryKeys.flowsPl(unit, days);
   return useQuery({
-    queryKey: queryKeys.flowsPl(days),
-    queryFn: () => api.flowsPl(days),
-    placeholderData: keepPreviousData,
+    queryKey,
+    queryFn: () => api.flowsPl(unit, days),
+    placeholderData: keepPreviousDataSameEntity(queryKey, 2),
   });
 }
 
-export function useFlowsDepositsReconciliation() {
+export function useFlowsDepositsReconciliation(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.flowsDepositsReconciliation(),
-    queryFn: () => api.flowsDepositsReconciliation(),
+    queryKey: queryKeys.flowsDepositsReconciliation(unit),
+    queryFn: () => api.flowsDepositsReconciliation(unit),
   });
 }
 
@@ -687,10 +689,11 @@ export function useRealEstatePropertyAccounts(enabled: boolean) {
   });
 }
 
-export function useFlowsExpenses() {
+/** The Expenses page's lines and catalogs, each line's `converted` in `unit`. */
+export function useFlowsExpenses(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.flowsExpenses(),
-    queryFn: () => api.flowsExpenses(),
+    queryKey: queryKeys.flowsExpensesLines(unit),
+    queryFn: () => api.flowsExpenses(unit),
   });
 }
 
@@ -991,9 +994,10 @@ export function useBenchmarkComparison(
   });
 }
 
-export function useWealthPercentile() {
+export function useWealthPercentile(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.wealthPercentile(),
-    queryFn: () => api.wealthPercentile(),
+    queryKey: queryKeys.wealthPercentile(unit),
+    queryFn: () => api.wealthPercentile(unit),
+    placeholderData: keepPreviousData,
   });
 }

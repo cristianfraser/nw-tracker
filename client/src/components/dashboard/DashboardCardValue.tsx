@@ -76,19 +76,6 @@ const ALIGN_STYLE: Record<DashboardCardValueVariant, { id: string; css: string }
   },
 };
 
-/**
- * A card value in `unit` from the legacy pesos + `_usd` twin pair a payload still carries — the
- * thin adapter call sites use until their stream sends one value per requested unit.
- */
-export function legacyCardValue(
-  clp: number,
-  apiUsd: number | null | undefined,
-  showUsd: boolean
-): { value: number | null; unit: DisplayUnit } {
-  if (showUsd) return { value: apiUsd != null && Number.isFinite(apiUsd) ? apiUsd : null, unit: "usd" };
-  return { value: clp, unit: "clp" };
-}
-
 function injectAlignStyles(host: NumberFlowElement | null, variant: DashboardCardValueVariant) {
   const root = host?.shadowRoot;
   const { id, css } = ALIGN_STYLE[variant];

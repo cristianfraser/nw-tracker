@@ -1,19 +1,25 @@
 import type { FxCoverage, DisplayUnitCode } from "./core.js";
 
-/** `GET /api/market-series` — sparse observations per field (no cross-series forward-fill); CLP crosses use FX on or before each equity/fund observation date. */
+/**
+ * `GET /api/market-series?unit=` — sparse observations per field (no cross-series forward-fill).
+ * The rate fields are facts in their own quote; `equity` / `fund_unit` are in the response's
+ * `unit`, converted at the stored rate on or before each observation date.
+ */
 export interface MarketSeriesPoint {
   as_of_date: string;
   clp_per_usd: number | null;
   clp_per_uf: number | null;
   clp_per_eur: number | null;
   ipc_index: number | null;
-  equity_usd: Record<string, number | null>;
-  equity_clp: Record<string, number | null>;
-  fund_unit_clp: Record<string, number | null>;
-  fund_unit_usd: Record<string, number | null>;
+  utm_clp: number | null;
+  /** Each equity's close on the day in `unit`. */
+  equity: Record<string, number | null>;
+  /** Each peso fund series' valor cuota on the day in `unit`. */
+  fund_unit: Record<string, number | null>;
 }
 
 export interface MarketSeriesResponse {
+  unit: DisplayUnitCode;
   points: MarketSeriesPoint[];
   equity_tickers: string[];
   fund_series_keys: string[];
@@ -57,7 +63,7 @@ export interface WatchlistCompositeHoldingRow {
   weight: number;
   value: number | null;
   /** Currency `value` is expressed in — the requested display unit (the fx rate row is always CLP per USD). */
-  value_currency: "usd" | "clp" | "none";
+  value_currency: DisplayUnitCode | "none";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
 }
@@ -66,9 +72,9 @@ export interface WatchlistRow extends MarketDisplaySeriesRow {
   value: number | null;
   /**
    * Currency `value` is expressed in — the requested display unit, except the fx rate row
-   * (always CLP per USD) and an index (`none`: points in both units).
+   * (always CLP per USD) and an index (`none`: points in every unit).
    */
-  value_currency: "usd" | "clp" | "none";
+  value_currency: DisplayUnitCode | "none";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
   composite_holdings?: WatchlistCompositeHoldingRow[];
@@ -96,7 +102,7 @@ export interface WatchlistResponse {
 export interface MarketTickerValue {
   day: string;
   value: number;
-  currency: "usd" | "clp" | "none";
+  currency: DisplayUnitCode | "none";
   delta_pct: number | null;
 }
 
@@ -105,7 +111,7 @@ export interface MarketTickerResponse {
   chile_today: string;
   unit: DisplayUnitCode;
   uf: MarketTickerValue | null;
-  /** The USD/CLP rate itself — CLP per USD in both units. */
+  /** The USD/CLP rate itself — CLP per USD in every unit. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: MarketTickerValue | null;
   risky_norris: MarketTickerValue | null;
@@ -115,7 +121,7 @@ export interface MarketTickerResponse {
     trade_date: string;
     value: number;
     /** Currency `value` is expressed in — the payload's `unit`; `none` for an index (points). */
-    currency: "usd" | "clp" | "none";
+    currency: DisplayUnitCode | "none";
     delta_pct: number | null;
   }[];
   marquee_series?: MarketDisplaySeriesRow[];

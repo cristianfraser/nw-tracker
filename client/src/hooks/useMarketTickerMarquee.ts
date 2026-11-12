@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { queryShowsLoading } from "../queries/pageShapeReady";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatGroupedDecimal, formatGroupedDecimalTrimmed } from "../format";
+import { currencyFormatInfo, formatGroupedDecimal, formatGroupedDecimalTrimmed } from "../format";
 import { useTranslation } from "../i18n";
 import { useMarketTicker } from "../queries/hooks";
 import type { MarketDisplaySeriesRow, MarketTickerResponse } from "../types";
@@ -51,12 +51,14 @@ function tickerLabel(ticker: string): string {
 }
 
 /**
- * The server already expressed the value in the display unit; pesos print grouped with the
- * decimals they have (a cuota, a UF), dollars always with two.
+ * The server already expressed the value in the display unit; a currency without minor digits
+ * (pesos) prints grouped with the decimals the value has (a cuota, a UF), any other with its
+ * minor digits (dollars, euros: two). An index (`none`) reads as its level with two decimals.
  */
-/** An index (`none`) reads as its level with two decimals, like a USD price. */
-function formatMarqueeValue(value: number, currency: "usd" | "clp" | "none"): string {
-  return currency === "clp" ? formatGroupedDecimalTrimmed(value) : formatGroupedDecimal(value, 2);
+function formatMarqueeValue(value: number, currency: string): string {
+  if (currency === "none") return formatGroupedDecimal(value, 2);
+  const digits = currencyFormatInfo(currency).minorDigits;
+  return digits === 0 ? formatGroupedDecimalTrimmed(value) : formatGroupedDecimal(value, digits);
 }
 
 type MarqueeLabels = {

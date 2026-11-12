@@ -1311,7 +1311,7 @@ describe("flowsCheckingGastos", () => {
 
   it("assigns category to checking gastos movement when present in DB", () => {
     const payload = buildFlowsExpensesPayload();
-    const line = payload.lines.find((ln) => ln.source === "checking" && ln.values.clp!.value > 0);
+    const line = payload.lines.find((ln) => ln.source === "checking" && ln.value_clp > 0);
     if (!line) return;
 
     expect(checkingGastosMovementBelongs(line.statement_line_id).ok).toBe(true);

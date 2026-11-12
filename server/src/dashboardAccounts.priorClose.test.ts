@@ -20,13 +20,13 @@ describe("buildDashboardAccountRows prior closes", () => {
 
   it("requests prior month and year marks via accountMarkClpAtYmd for every valued row", async () => {
     const markSpy = vi.spyOn(accountMarkModule, "accountMarkClpAtYmd");
-    const rows = await buildDashboardAccountRows(false);
+    const rows = await buildDashboardAccountRows("clp");
     const today = chileCalendarTodayYmd();
     const priorMonthEnd = priorPeriodEndYmd("mtd", today);
     const priorYearEnd = priorPeriodEndYmd("ytd", today);
 
     const valued = rows.filter(
-      (r) => r.current_value_clp != null && Number.isFinite(r.current_value_clp)
+      (r) => r.current_value != null && Number.isFinite(r.current_value)
     );
     expect(valued.length).toBeGreaterThan(0);
 
@@ -62,12 +62,12 @@ describe("buildDashboardAccountRows prior closes", () => {
     const cur = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
     if (cur?.nominal_pl == null) return;
 
-    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
+    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows("clp"));
     const dash = rows.find((r) => r.account_id === row.id);
     if (!dash) return;
 
-    expect(dash.current_value_clp).toBe(depto.value_clp);
-    expect(dash.delta_month_clp).toBe(cur.nominal_pl);
+    expect(dash.current_value).toBe(depto.value_clp);
+    expect(dash.delta_month).toBe(cur.nominal_pl);
   });
 
   it("sets prior_year_close_clp when accountMarkClpAtYmd returns a year-end mark", async () => {
@@ -81,10 +81,10 @@ describe("buildDashboardAccountRows prior closes", () => {
       return null;
     });
 
-    const rows = await buildDashboardAccountRows(false);
+    const rows = await buildDashboardAccountRows("clp");
     const hit = rows.find((r) => r.account_id === 1);
-    if (hit?.current_value_clp != null) {
-      expect(hit.prior_year_close_clp).toBe(11_610_000);
+    if (hit?.current_value != null) {
+      expect(hit.prior_year_close).toBe(11_610_000);
     }
   });
 });

@@ -22,17 +22,13 @@
  *            --exclude-ids=1,2 --movement-ids=1,2 --window-days=<n> (default 21)
  */
 import { db } from "../src/db.js";
-import {
-  buildAdditionalCardsSummary,
-  isAdditionalCardChargeLine,
-} from "../src/additionalCardReimbursements.js";
+import { isAdditionalCardChargeLine } from "../src/additionalCardReimbursements.js";
 import {
   matchCardReimbursements,
   type ReimbursementChargeInput,
   type ReimbursementCreditInput,
 } from "./lib/cardReimbursementMatch.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
-import { expenseLineGastosAmount } from "../src/flowsExpensesGastos.js";
 import {
   loadCheckingExpenseRefunds,
   markCheckingExpenseRefund,
@@ -123,7 +119,7 @@ try {
     const chargeLines = payload.lines.filter(isAdditionalCardChargeLine);
     const charges: ReimbursementChargeInput[] = chargeLines.map((l) => {
       const date = l.purchase_on ?? l.occurred_on;
-      return { id: l.statement_line_id, date, amount_clp: expenseLineGastosAmount(l, "clp"), merchant: l.merchant };
+      return { id: l.statement_line_id, date, amount_clp: l.value_clp, merchant: l.merchant };
     });
     const notas = charges.filter((c) => c.amount_clp < 0);
 
@@ -186,17 +182,17 @@ try {
       written += 1;
     }
 
-    const summary = buildAdditionalCardsSummary(buildFlowsExpensesPayload().lines);
+    const summary = buildFlowsExpensesPayload().additional_cards;
     console.log("\nBy month after classification (charges  reimbursements  net  balance):");
     for (const row of summary.by_month) {
       console.log(
-        `  ${row.period_month}  ${fmt(row.charges_clp).padStart(10)}  ${fmt(row.reimbursements_clp).padStart(10)}  ` +
-          `${fmt(row.net_clp).padStart(10)}  ${fmt(row.balance_clp).padStart(10)}`
+        `  ${row.period_month}  ${fmt(row.charges!).padStart(10)}  ${fmt(row.reimbursements!).padStart(10)}  ` +
+          `${fmt(row.net!).padStart(10)}  ${fmt(row.balance!).padStart(10)}`
       );
     }
     console.log(
-      `  total     ${fmt(summary.totals.charges_clp).padStart(10)}  ${fmt(summary.totals.reimbursements_clp).padStart(10)}  ` +
-        `balance ${fmt(summary.totals.balance_clp)}`
+      `  total     ${fmt(summary.totals.charges!).padStart(10)}  ${fmt(summary.totals.reimbursements!).padStart(10)}  ` +
+        `balance ${fmt(summary.totals.balance!)}`
     );
     console.log(`\nRefunds to mark: ${written}`);
     if (!apply) throw new RollBack();

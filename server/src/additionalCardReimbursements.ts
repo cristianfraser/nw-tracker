@@ -27,33 +27,27 @@ export type AdditionalCardsPeriodRow = {
   /** YYYY-MM (a year row: YYYY-12). */
   period_month: string;
   as_of_date: string;
-  /** Signed: charges +, notas de crédito −. */
-  charges_clp: number;
-  /** Null when a line of the period has no USD equivalent. */
-  charges_usd: number | null;
+  /** Signed: charges +, notas de crédito −. Null when a line of the period has no value in the unit. */
+  charges: number | null;
   charge_count: number;
-  reimbursements_clp: number;
-  reimbursements_usd: number | null;
+  reimbursements: number | null;
   reimbursement_count: number;
   /** charges − reimbursements. */
-  net_clp: number;
-  net_usd: number | null;
+  net: number | null;
   /** Running Σ net through the period: what the cardholder still owes (negative = paid ahead). */
-  balance_clp: number;
-  balance_usd: number | null;
+  balance: number | null;
 };
 
 export type AdditionalCardsSummary = {
+  /** The display unit every amount is in. */
+  unit: string;
   /** Oldest first. */
   by_month: AdditionalCardsPeriodRow[];
   by_year: AdditionalCardsPeriodRow[];
   totals: {
-    charges_clp: number;
-    charges_usd: number | null;
-    reimbursements_clp: number;
-    reimbursements_usd: number | null;
-    balance_clp: number;
-    balance_usd: number | null;
+    charges: number | null;
+    reimbursements: number | null;
+    balance: number | null;
   };
 };
 
@@ -76,34 +70,22 @@ export function isAdditionalCardReimbursementLine(line: AdditionalCardChargeLine
 }
 
 type Bucket = {
-  charges_clp: number;
-  charges_usd: number | null;
+  charges: number | null;
   charge_count: number;
-  reimbursements_clp: number;
-  reimbursements_usd: number | null;
+  reimbursements: number | null;
   reimbursement_count: number;
 };
 
 function emptyBucket(): Bucket {
-  return {
-    charges_clp: 0,
-    charges_usd: 0,
-    charge_count: 0,
-    reimbursements_clp: 0,
-    reimbursements_usd: 0,
-    reimbursement_count: 0,
-  };
+  return { charges: 0, charge_count: 0, reimbursements: 0, reimbursement_count: 0 };
 }
 
-/** A line's pesos: every finished line has them (`values.clp`). */
-function clpValue(line: AdditionalCardChargeLineInput): number {
-  const v = lineValueIn(line, "clp");
-  if (v == null) throw new Error(`additional-card line ${line.expense_month} without its pesos`);
-  return v;
+function add(total: number | null, v: number | null): number | null {
+  return total == null || v == null ? null : total + v;
 }
 
-function addUsd(total: number | null, usd: number | null): number | null {
-  return total == null || usd == null ? null : total + usd;
+function sub(a: number | null, b: number | null): number | null {
+  return a == null || b == null ? null : a - b;
 }
 
 function monthEndIso(ym: string): string {
@@ -116,36 +98,32 @@ function periodRows(
   buckets: Map<string, Bucket>,
   asOfDate: (period: string) => string
 ): AdditionalCardsPeriodRow[] {
-  let balanceClp = 0;
-  let balanceUsd: number | null = 0;
+  let balance: number | null = 0;
   return [...buckets.keys()].sort().map((period) => {
     const b = buckets.get(period)!;
-    const net_clp = b.charges_clp - b.reimbursements_clp;
-    const net_usd =
-      b.charges_usd == null || b.reimbursements_usd == null
-        ? null
-        : b.charges_usd - b.reimbursements_usd;
-    balanceClp += net_clp;
-    balanceUsd = addUsd(balanceUsd, net_usd);
+    const net = sub(b.charges, b.reimbursements);
+    balance = add(balance, net);
     return {
       period_month: period,
       as_of_date: asOfDate(period),
-      charges_clp: b.charges_clp,
-      charges_usd: b.charges_usd,
+      charges: b.charges,
       charge_count: b.charge_count,
-      reimbursements_clp: b.reimbursements_clp,
-      reimbursements_usd: b.reimbursements_usd,
+      reimbursements: b.reimbursements,
       reimbursement_count: b.reimbursement_count,
-      net_clp,
-      net_usd,
-      balance_clp: balanceClp,
-      balance_usd: balanceUsd,
+      net,
+      balance,
     };
   });
 }
 
-/** Charges and reimbursements, each by its gastos month (a reimbursement's is the day it arrived). */
-export function buildAdditionalCardsSummary(lines: readonly AdditionalCardChargeLineInput[]): AdditionalCardsSummary {
+/**
+ * Charges and reimbursements, each by its gastos month (a reimbursement's is the day it arrived),
+ * in `unit` (each line's value in it, `lineValueIn`; pesos are every line's).
+ */
+export function buildAdditionalCardsSummary(
+  lines: readonly AdditionalCardChargeLineInput[],
+  unit: string = "clp"
+): AdditionalCardsSummary {
   const byMonth = new Map<string, Bucket>();
   const touch = (ym: string): Bucket => {
     if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error(`invalid additional-card period month: ${ym}`);
@@ -156,17 +134,20 @@ export function buildAdditionalCardsSummary(lines: readonly AdditionalCardCharge
     }
     return b;
   };
+  const valueOf = (line: AdditionalCardChargeLineInput): number | null => {
+    const v = lineValueIn(line, unit);
+    if (v == null && unit === "clp") throw new Error(`additional-card line ${line.expense_month} without its pesos`);
+    return v;
+  };
   for (const line of lines) {
     if (isAdditionalCardChargeLine(line)) {
       const b = touch(line.expense_month);
-      b.charges_clp += clpValue(line);
-      b.charges_usd = addUsd(b.charges_usd, lineValueIn(line, "usd"));
+      b.charges = add(b.charges, valueOf(line));
       b.charge_count += 1;
     } else if (isAdditionalCardReimbursementLine(line)) {
       const b = touch(line.expense_month);
-      b.reimbursements_clp -= clpValue(line);
-      const usd = lineValueIn(line, "usd");
-      b.reimbursements_usd = addUsd(b.reimbursements_usd, usd == null ? null : -usd);
+      const v = valueOf(line);
+      b.reimbursements = add(b.reimbursements, v == null ? null : -v);
       b.reimbursement_count += 1;
     }
   }
@@ -175,38 +156,25 @@ export function buildAdditionalCardsSummary(lines: readonly AdditionalCardCharge
   for (const [ym, b] of byMonth) {
     const year = `${ym.slice(0, 4)}-12`;
     const y = byYear.get(year) ?? emptyBucket();
-    y.charges_clp += b.charges_clp;
-    y.charges_usd = addUsd(y.charges_usd, b.charges_usd);
+    y.charges = add(y.charges, b.charges);
     y.charge_count += b.charge_count;
-    y.reimbursements_clp += b.reimbursements_clp;
-    y.reimbursements_usd = addUsd(y.reimbursements_usd, b.reimbursements_usd);
+    y.reimbursements = add(y.reimbursements, b.reimbursements);
     y.reimbursement_count += b.reimbursement_count;
     byYear.set(year, y);
   }
 
   const by_month = periodRows(byMonth, monthEndIso);
   const by_year = periodRows(byYear, (p) => `${p.slice(0, 4)}-12-31`);
-  let charges_clp = 0;
-  let charges_usd: number | null = 0;
-  let reimbursements_clp = 0;
-  let reimbursements_usd: number | null = 0;
+  let charges: number | null = 0;
+  let reimbursements: number | null = 0;
   for (const row of by_year) {
-    charges_clp += row.charges_clp;
-    charges_usd = addUsd(charges_usd, row.charges_usd);
-    reimbursements_clp += row.reimbursements_clp;
-    reimbursements_usd = addUsd(reimbursements_usd, row.reimbursements_usd);
+    charges = add(charges, row.charges);
+    reimbursements = add(reimbursements, row.reimbursements);
   }
   return {
+    unit,
     by_month,
     by_year,
-    totals: {
-      charges_clp,
-      charges_usd,
-      reimbursements_clp,
-      reimbursements_usd,
-      balance_clp: charges_clp - reimbursements_clp,
-      balance_usd:
-        charges_usd == null || reimbursements_usd == null ? null : charges_usd - reimbursements_usd,
-    },
+    totals: { charges, reimbursements, balance: sub(charges, reimbursements) },
   };
 }

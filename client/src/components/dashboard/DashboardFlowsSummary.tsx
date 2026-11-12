@@ -6,7 +6,7 @@ import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from ".
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { formatFlowMoney } from "../../flowsDisplay";
-import { minAdaptiveUsdFractionDigits } from "../../format";
+import { currencyFormatInfo, minAdaptiveUsdFractionDigits } from "../../format";
 import { rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../../flowsOverviewRows";
 import { useTranslation } from "../../i18n";
 import { useFlowsOverview } from "../../queries/hooks";
@@ -136,7 +136,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
                           delta={value}
                           animated={false}
                           fractionDigits={
-                            displayUnit === "usd"
+                            currencyFormatInfo(displayUnit).minorDigits > 0
                               ? minAdaptiveUsdFractionDigits(SUMMARY_LINES.filter((l) => l.delta).map((l) => l.value(row)))
                               : 0
                           }

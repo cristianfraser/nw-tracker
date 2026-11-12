@@ -2,6 +2,11 @@ import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountPositionSnapshot, FxConversionWarning, DisplayUnitCode } from "./core.js";
 import type { CcFacturadoBarSegments } from "./creditCard.js";
 
+/**
+ * One dashboard account row. Every money field is in the payload's `unit` (the request's display
+ * unit): one value, never a pair. Pesos are the ledger's own unit, so in CLP a value is never
+ * missing; in any other unit null means the conversion had no rate (`fx_missing`).
+ */
 export interface DashboardAccountRow {
   account_id: number;
   name: string;
@@ -15,36 +20,23 @@ export interface DashboardAccountRow {
   /** Optional on dashboard/page-bundle rows (server `DashboardAccountStats.category_slug?`). */
   category_slug?: string;
   category_label: string;
-  deposits_clp: number;
-  deposits_usd?: number | null;
+  /** Lifetime net deposits. */
+  deposits: number | null;
   /** Nominal P/L for the current calendar month (or latest month in series). */
-  delta_month_clp?: number | null;
-  delta_month_usd?: number | null;
-  delta_year_clp?: number | null;
-  delta_year_usd?: number | null;
-  delta_total_clp?: number | null;
-  delta_total_usd?: number | null;
-  deposits_month_clp?: number;
-  deposits_month_usd?: number | null;
-  deposits_year_clp?: number;
-  deposits_year_usd?: number | null;
-  /** Day window = (prior completed NYSE session, Chile today]; null for CC/mortgage rows. */
-  deposits_day_clp?: number;
-  deposits_day_usd?: number | null;
-  delta_day_clp?: number | null;
-  delta_day_usd?: number | null;
-  prior_day_close_clp?: number | null;
-  prior_day_close_usd?: number | null;
-  prior_month_close_clp?: number | null;
-  prior_month_close_usd?: number | null;
-  prior_year_close_clp?: number | null;
-  prior_year_close_usd?: number | null;
-  current_value_clp: number | null;
+  delta_month?: number | null;
+  delta_year?: number | null;
+  delta_total?: number | null;
+  deposits_month?: number | null;
+  deposits_year?: number | null;
+  /** Day window = (yesterday, Chile today]. */
+  deposits_day?: number | null;
+  delta_day?: number | null;
+  prior_day_close?: number | null;
+  prior_month_close?: number | null;
+  prior_year_close?: number | null;
+  current_value: number | null;
   valuation_as_of: string | null;
-  current_value_usd?: number | null;
-  fx_clp_per_usd?: number | null;
-  fx_date_used?: string | null;
-  /** USD display could not resolve FX for balance or deposits. */
+  /** The unit could not resolve a rate for the balance or the deposits. */
   fx_missing?: boolean;
   position?: AccountPositionSnapshot | null;
   /** True when monthly closes show a long zero tail (same rule as chart tail clip). From `/api/dashboard`. */
@@ -53,18 +45,13 @@ export interface DashboardAccountRow {
   exclude_from_group_totals?: number;
   /** True when any linked global sync source is currently stale. */
   sync_stale?: boolean;
-  /** Flow-adjusted period returns (server-computed ratios; total = P/L ÷ lifetime deposits). */
-  pct_day_clp?: number | null;
-  pct_month_clp?: number | null;
-  pct_year_clp?: number | null;
-  pct_total_clp?: number | null;
-  pct_day_usd?: number | null;
-  pct_month_usd?: number | null;
-  pct_year_usd?: number | null;
-  pct_total_usd?: number | null;
-  /** The old all-time figure: P/L acumulado ÷ net deposits (`pct_total_*` is the compounded return). */
-  pct_total_on_deposits_clp?: number | null;
-  pct_total_on_deposits_usd?: number | null;
+  /** Flow-adjusted period returns in the unit (server-computed ratios, compounded daily). */
+  pct_day?: number | null;
+  pct_month?: number | null;
+  pct_year?: number | null;
+  pct_total?: number | null;
+  /** The old all-time figure: P/L acumulado ÷ net deposits (`pct_total` is the compounded return). */
+  pct_total_on_deposits?: number | null;
   /** The account page draws a Rentabilidad table (an investment account). */
   has_period_returns?: boolean;
   /** A property's loan: the mortgage its net equity is net of (null for any other account). */
@@ -75,8 +62,8 @@ export interface DashboardLinkedBalanceRow {
   slug: string;
   label: string;
   label_i18n_key: string;
-  clp: number;
-  usd?: number | null;
+  /** In the payload's unit (null: no rate). */
+  value: number | null;
   route_path: string;
 }
 
@@ -91,39 +78,33 @@ export interface DashboardLayoutCardRow {
   linked_balances?: DashboardLinkedBalanceRow[];
 }
 
+/** Net worth and each net-worth bucket (keyed by bucket slug) in the payload's unit (null: no rate). */
 export interface DashboardBucketCloseTotals {
-  net_worth_clp: number;
-  real_estate_clp: number;
-  retirement_clp: number;
-  brokerage_clp: number;
-  cash_eqs_clp: number;
-  net_worth_usd?: number | null;
-  real_estate_usd?: number | null;
-  retirement_usd?: number | null;
-  brokerage_usd?: number | null;
-  cash_eqs_usd?: number | null;
+  net_worth: number | null;
+  buckets: Record<string, number | null>;
 }
 
 export interface DashboardPriorCloses {
   month_end: string;
   year_end: string;
-  /** Prior completed NYSE session (day window anchor). */
+  /** Yesterday (day window anchor). */
   day_end?: string | null;
   month: DashboardBucketCloseTotals;
   year: DashboardBucketCloseTotals;
   day?: DashboardBucketCloseTotals;
 }
 
-/** One period slice of server-computed nav card metrics (mirror of CardGroupMetrics). */
+/** Live NW bucket totals + prior closes, in the payload's unit. */
+export interface DashboardNwBucketTotals extends DashboardBucketCloseTotals {
+  prior_closes: DashboardPriorCloses;
+}
+
+/** One period slice of server-computed nav card metrics, in the payload's unit. */
 export interface NavCardPeriodMetricsDto {
-  deposits_clp: number;
-  deposits_usd: number | null;
-  delta_total_clp: number | null;
-  delta_total_usd: number | null;
-  deposits_period_clp: number;
-  deposits_period_usd: number | null;
-  delta_period_clp: number | null;
-  delta_period_usd: number | null;
+  deposits: number | null;
+  delta_total: number | null;
+  deposits_period: number | null;
+  delta_period: number | null;
 }
 
 export interface NavCardMetricsVariantDto {
@@ -132,49 +113,41 @@ export interface NavCardMetricsVariantDto {
   year: NavCardPeriodMetricsDto;
 }
 
-/** A balance in both units (usd null = no member carries a dollar value in this payload). */
-export interface NavCardAmountDto {
-  clp: number;
-  usd: number | null;
-}
-
-/** Mirror of server `NavCardValueDto`: a nav node's balances, picked, never re-summed. */
+/** Mirror of server `NavCardValueDto`: a nav node's balances in the unit, picked, never re-summed. */
 export interface NavCardValueDto {
   /** The detail card's balance (a cash child: the CC-netted cash bucket). */
-  child: NavCardAmountDto;
+  child: number | null;
   /** The node's own page summary card and accounts-table «Total» row. */
-  parent: NavCardAmountDto;
+  parent: number | null;
   /** Σ of the member rows the card covers, never netted (a card breakdown line). */
-  members: NavCardAmountDto;
+  members: number | null;
   fx_missing: boolean;
   sync_stale: boolean;
 }
+
+/**
+ * One period's flow-adjusted return cell in the unit. Only the `total` cell carries
+ * `on_deposits` (P/L acumulado ÷ net deposits, the pre-compounding framing).
+ */
+export interface NavPctCell {
+  value: number | null;
+  on_deposits?: number | null;
+}
+
+export type NavPctByPeriod = Record<"day" | "month" | "year" | "total", NavPctCell>;
 
 /**
  * Server-computed card figures per nav-tree group slug (server/src/dashboardNavCardMetrics.ts).
  * `child` = the node as a strip detail card; `parent` = the node as its page's compact card.
  * The client renders these — it never re-sums account rows for a group's balance or metrics.
  */
-/**
- * One period's flow-adjusted return cell per unit. Only the `total` cell carries the
- * `on_deposits_*` figure (P/L acumulado ÷ net deposits, the pre-compounding framing).
- */
-export interface NavPctCell {
-  clp: number | null;
-  usd: number | null;
-  on_deposits_clp?: number | null;
-  on_deposits_usd?: number | null;
-}
-
-export type NavPctByPeriod = Record<"day" | "month" | "year" | "total", NavPctCell>;
-
 export interface NavCardMetricsDto {
   value: NavCardValueDto;
   child: NavCardMetricsVariantDto;
   parent: NavCardMetricsVariantDto;
   /**
    * The node's flow-adjusted return as one row of its parent's accounts table (a bucket
-   * listed beside accounts — Portafolio IPSA among Acciones' stocks), per period and unit.
+   * listed beside accounts — Portafolio IPSA among Acciones' stocks), per period.
    */
   row_pct: NavPctByPeriod;
   /** The node's own return over the `parent` scope — its page's «Total» row. */
@@ -190,23 +163,23 @@ export interface NavLiquidatedRowsDto {
   /** Chart-inactive sub-buckets listed beside the node's accounts. */
   group_slugs: string[];
   metrics: NavCardMetricsVariantDto;
-  /** Σ balance over the same rows. */
-  value: NavCardAmountDto & { fx_missing: boolean };
+  /** Σ balance over the same rows, in the unit. */
+  value: { value: number | null; fx_missing: boolean };
   row_pct: NavPctByPeriod;
 }
 
-/** One tile / frame of the server-built value map (`value_map`). Mirror of server `NavValueMapNodeDto`. */
 /** The ETF behind a holding tile of a proxied fund (mirror of server `NavValueMapHoldingDto`). */
 export interface NavValueMapHoldingDto {
   ticker: string;
   /** Share of the whole fund. */
   weight: number;
-  /** The holding's share of the fund's period return, fraction of the fund, per unit. */
-  contribution_pct: Record<"day" | "month" | "year", { clp: number | null; usd: number | null }>;
+  /** The holding's share of the fund's period return, fraction of the fund, in the unit. */
+  contribution_pct: Record<"day" | "month" | "year", number | null>;
   /** Calendar days in the period the fund held it, out of the period's days so far. */
   days_held: Record<"day" | "month" | "year", { held: number; total: number }>;
 }
 
+/** One tile / frame of the server-built value map (`value_map`). Mirror of server `NavValueMapNodeDto`. */
 export interface NavValueMapNodeDto {
   kind: "group" | "account" | "holding";
   /** Group slug, `account_<id>` for an account tile, `holding_<bucket>_<ticker|other>` for a holding tile. */
@@ -215,10 +188,10 @@ export interface NavValueMapNodeDto {
   label: string;
   label_i18n_key: string | null;
   route_path: string;
-  value_clp: number;
-  value_usd: number | null;
-  pct: Record<"day" | "month" | "year", { clp: number | null; usd: number | null }>;
-  pl: Record<"day" | "month" | "year", { clp: number | null; usd: number | null }>;
+  /** In the payload's unit; null when the unit has no rate for it. */
+  value: number | null;
+  pct: Record<"day" | "month" | "year", number | null>;
+  pl: Record<"day" | "month" | "year", number | null>;
   /** The nav group has group children (a frame). False for tiles. */
   frame: boolean;
   children?: NavValueMapNodeDto[];
@@ -234,29 +207,16 @@ export type NavValueMapColorBounds = Record<"day" | "month" | "year", number>;
 export interface DashboardResponse {
   /** `DTO_SCHEMA_VERSIONS.nav_strip`: the client stores this payload under that version. */
   schema_version: (typeof DTO_SCHEMA_VERSIONS)["nav_strip"];
-  totals: {
-    net_worth_clp: number;
-    deposits_clp: number;
-    real_estate_clp: number;
-    retirement_clp: number;
-    brokerage_clp: number;
-    cash_eqs_clp: number;
-    liabilities_clp: number;
-    /** Prior period closes from the same bucket valuation function as live totals. */
-    prior_closes: DashboardPriorCloses;
-    net_worth_usd?: number | null;
-    deposits_usd?: number | null;
-    real_estate_usd?: number;
-    retirement_usd?: number;
-    brokerage_usd?: number;
-    cash_eqs_usd?: number;
-    liabilities_usd?: number;
+  /** The display unit of every money field of the payload. */
+  unit: DisplayUnitCode;
+  totals: DashboardNwBucketTotals & {
+    deposits: number | null;
+    liabilities: number | null;
   };
   allocation: {
     group_slug: string;
     group_label: string;
-    value_clp: number;
-    value_usd?: number;
+    value: number | null;
     /** `portfolio_groups` resolved color (`r,g,b`). */
     color_rgb?: string;
   }[];
@@ -267,30 +227,19 @@ export interface DashboardResponse {
   value_map?: NavValueMapNodeDto;
   value_map_color_bounds?: NavValueMapColorBounds;
   liabilities_breakdown?: {
-    mortgage_clp: number;
-    credit_card_clp: number;
-    mortgage_usd?: number | null;
-    credit_card_usd?: number | null;
+    mortgage: number | null;
+    credit_card: number | null;
   };
-  /** Pasivos > tarjeta de crédito leaves (same source as liabilities sidebar). */
-  cash_credit_card_links?: {
-    liability_account_id: number;
-    operational_account_id: number;
-    name: string;
-    clp: number;
-    usd?: number | null;
-  }[];
   /**
-   * Retiro and brokerage net deposits per month, by class (flows chart aggregation); the yearly
-   * combos roll them up after their Rango cut.
+   * Retiro and brokerage net deposits per month, by class (flows chart aggregation), in the unit;
+   * the yearly combos roll them up after their Rango cut.
    */
   inversiones_deposits_chart?: {
-    monthly_clp: InversionesDepositsPoint[];
-    monthly_usd?: InversionesDepositsPoint[];
+    monthly: InversionesDepositsPoint[];
   };
   /** Home bucket cards (order + bucket) from `portfolio_groups`; Patrimonio neto hero is not included. */
   dashboard_layout?: DashboardLayoutCardRow[];
-  /** True when deposit USD totals could not be converted (missing fx_daily). */
+  /** True when deposit totals could not be converted (missing fx_daily). */
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
 }

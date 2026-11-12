@@ -9,7 +9,7 @@
  * period (Σ weight × daily return, fractions of the fund). `other_weight` is the non-ETF
  * sleeve (cash, bonds, futures): one neutral tile.
  */
-import type { CardMetricsPeriod, NavCardPctDto } from "./dashboardNavCardMetrics.js";
+import type { CardMetricsPeriod } from "./dashboardNavCardMetrics.js";
 
 export type ProxyHoldingBreakdown = {
   /** The ticker as the fund states it (SPXS, not the pricing proxy SPY). */
@@ -18,10 +18,10 @@ export type ProxyHoldingBreakdown = {
   price_ticker: string;
   /** Share of the WHOLE fund: stated ETF-sleeve weight × the sleeve's share of assets. */
   weight: number;
-  /** Held-window time-weighted return per period, fraction (0.03 = 3%), per display unit. */
-  pct: Record<CardMetricsPeriod, NavCardPctDto>;
-  /** Contribution to the fund's period return, fraction of the fund, per display unit. */
-  contribution_pct: Record<CardMetricsPeriod, NavCardPctDto>;
+  /** Held-window time-weighted return per period, fraction (0.03 = 3%), in the display unit. */
+  pct: Record<CardMetricsPeriod, number | null>;
+  /** Contribution to the fund's period return, fraction of the fund, in the display unit. */
+  contribution_pct: Record<CardMetricsPeriod, number | null>;
   /** Calendar days in the period the fund held the ETF, out of the period's days so far. */
   days_held: Record<CardMetricsPeriod, { held: number; total: number }>;
 };

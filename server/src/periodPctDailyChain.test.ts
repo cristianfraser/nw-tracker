@@ -58,26 +58,31 @@ describe("withDailyChainedMonthPct", () => {
 
 describe("withChainedGroupPct", () => {
   const pct = {
-    day: { clp: 0.01, usd: 0.02 },
-    month: { clp: 0.03, usd: 0.04 },
-    year: { clp: 0.05, usd: 0.06 },
-    total: { clp: 0.5, usd: 0.6 },
+    day: { value: 0.02 },
+    month: { value: 0.04 },
+    year: { value: 0.06 },
+    total: { value: 0.6 },
   };
 
-  it("reads every cell from the resolver and keeps the one-step Total as on_deposits", () => {
-    const chained: ChainedGroupPct = (_scope, p, unit) => (p === "year" && unit === "usd" ? null : -0.04);
-    const out = withChainedGroupPct(pct, { kind: "group", slug: "x" }, chained);
-    expect(out.day).toEqual({ clp: -0.04, usd: -0.04 });
-    expect(out.year).toEqual({ clp: -0.04, usd: null });
-    expect(out.total).toEqual({ clp: -0.04, usd: -0.04, on_deposits_clp: 0.5, on_deposits_usd: 0.6 });
+  it("reads every cell from the resolver in the unit and keeps the one-step Total as on_deposits", () => {
+    const asked: string[] = [];
+    const chained: ChainedGroupPct = (_scope, p, unit) => {
+      asked.push(unit);
+      return p === "year" ? null : -0.04;
+    };
+    const out = withChainedGroupPct(pct, { kind: "group", slug: "x" }, "usd", chained);
+    expect(new Set(asked)).toEqual(new Set(["usd"]));
+    expect(out.day).toEqual({ value: -0.04 });
+    expect(out.year).toEqual({ value: null });
+    expect(out.total).toEqual({ value: -0.04, on_deposits: 0.6 });
   });
 
   it("keeps the one-step cells of a liabilities-only scope", () => {
-    const out = withChainedGroupPct(pct, { kind: "group", slug: "x" }, () => undefined);
+    const out = withChainedGroupPct(pct, { kind: "group", slug: "x" }, "clp", () => undefined);
     expect(out).toEqual(pct);
   });
 
   it("is the identity without a resolver", () => {
-    expect(withChainedGroupPct(pct, { kind: "group", slug: "x" }, undefined)).toBe(pct);
+    expect(withChainedGroupPct(pct, { kind: "group", slug: "x" }, "clp", undefined)).toBe(pct);
   });
 });

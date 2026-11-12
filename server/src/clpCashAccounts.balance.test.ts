@@ -27,9 +27,9 @@ describe("CLP cash account (ledger / flows-based)", () => {
     const today = new Date().toISOString().slice(0, 10);
     const ledger = clpCashBalanceClpAt(row.account_id, today);
 
-    const dashRows = await buildDashboardAccountRows(false);
+    const dashRows = await buildDashboardAccountRows("clp");
     const dash = dashRows.find((r) => r.account_id === row.account_id);
     // Dashboard balance matches the ledger sum (not the missing valuation → 0).
-    expect(dash?.current_value_clp).toBe(ledger);
+    expect(dash?.current_value).toBe(ledger);
   });
 });

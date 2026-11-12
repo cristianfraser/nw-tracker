@@ -22,6 +22,7 @@ import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
+import { flowLegsInUnit } from "./flowLegs.js";
 import { loadF22RefundMovements } from "./f22Settlements.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
@@ -589,5 +590,92 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     manual_assertions,
     fx_conversion_error: fxError,
     fx_conversion_warnings: takeFxConversionWarnings(),
+  };
+}
+
+// --- one display unit (`GET /api/flows/deposits/reconciliation?unit=`) ------------------------
+
+type Unitless<R> = Omit<R, "amount_clp" | "amount_usd"> & { amount: number | null };
+
+export type DepositReconciliationUnitTotals = { count: number; total: number | null };
+
+export type DepositReconciliationUnitByMonth = {
+  month: string;
+  linked: number | null;
+  resolved_tax_refund: number | null;
+  resolved_internal_transfer: number | null;
+  unlinked_no_checking_source: number | null;
+  unlinked_checking_present: number | null;
+  total: number | null;
+};
+
+/** The reconciliation in one display unit: each amount its legs in the unit (`flowLegsInUnit`), totals summed from them. */
+export type DepositReconciliationUnitPayload = {
+  unit: string;
+  rows: Unitless<DepositReconciliationRow>[];
+  by_status: Record<DepositReconciliationStatus, DepositReconciliationUnitTotals>;
+  by_month: DepositReconciliationUnitByMonth[];
+  redemptions: Unitless<DepositRedemptionRow>[];
+  redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationUnitTotals>;
+  manual_assertions: Unitless<DepositManualAssertionRow>[];
+  fx_conversion_error: boolean;
+  fx_conversion_warnings: DepositReconciliationPayload["fx_conversion_warnings"];
+};
+
+function addOrNull(total: number | null, v: number | null): number | null {
+  return total == null || v == null ? null : total + v;
+}
+
+function inUnit<R extends { amount_clp: number; amount_usd: number | null; occurred_on: string }>(r: R, unit: string): Unitless<R> {
+  const { amount_clp, amount_usd, ...rest } = r;
+  return { ...rest, amount: flowLegsInUnit({ clp: amount_clp, usd: amount_usd }, r.occurred_on, unit) } as Unitless<R>;
+}
+
+function statusTotals<S extends string>(
+  statuses: readonly S[],
+  rows: readonly { status: S; amount: number | null }[]
+): Record<S, DepositReconciliationUnitTotals> {
+  const out = {} as Record<S, DepositReconciliationUnitTotals>;
+  for (const s of statuses) out[s] = { count: 0, total: 0 };
+  for (const r of rows) {
+    const b = out[r.status];
+    b.count += 1;
+    b.total = addOrNull(b.total, r.amount);
+  }
+  return out;
+}
+
+export function depositsReconciliationInUnit(p: DepositReconciliationPayload, unit: string): DepositReconciliationUnitPayload {
+  const rows = p.rows.map((r) => inUnit(r, unit));
+  const redemptions = p.redemptions.map((r) => inUnit(r, unit));
+  const byMonth = new Map<string, DepositReconciliationUnitByMonth>();
+  for (const r of rows) {
+    const month = monthKeyFromYmd(r.occurred_on) ?? r.occurred_on.slice(0, 7);
+    let pt = byMonth.get(month);
+    if (!pt) {
+      pt = {
+        month,
+        linked: 0,
+        resolved_tax_refund: 0,
+        resolved_internal_transfer: 0,
+        unlinked_no_checking_source: 0,
+        unlinked_checking_present: 0,
+        total: 0,
+      };
+      byMonth.set(month, pt);
+    }
+    pt.total = addOrNull(pt.total, r.amount);
+    pt[r.status] = addOrNull(pt[r.status], r.amount);
+  }
+  return {
+    unit,
+    rows,
+    by_status: statusTotals(Object.keys(p.by_status) as DepositReconciliationStatus[], rows),
+    by_month: [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month)),
+    redemptions,
+    redemptions_by_status: statusTotals(Object.keys(p.redemptions_by_status) as DepositRedemptionStatus[], redemptions),
+    manual_assertions: p.manual_assertions.map((r) => inUnit(r, unit)),
+    fx_conversion_error: p.fx_conversion_error,
+    fx_conversion_warnings: p.fx_conversion_warnings,
   };
 }

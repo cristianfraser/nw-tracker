@@ -12,10 +12,6 @@ import type {
 } from "../types";
 import { monthEndYmdsForSkeleton } from "./placeholderMonthRows";
 
-function unitForTs(unit: DisplayUnit): "clp" | "usd" {
-  return unit === "usd" ? "usd" : "clp";
-}
-
 /** Flat zero valuation block — one line per account, month-end points at 0. */
 export function buildPlaceholderGroupValuationBlock(
   accounts: readonly AccountListRow[],
@@ -192,7 +188,7 @@ export function buildPlaceholderGroupPerf(
   firstMonth?: string | null,
   navNode?: NavTreeNodeDto | null
 ): GroupMonthlyPerformanceResponse {
-  const unitTs = unitForTs(unit);
+  const unitTs = unit;
   const bar_accounts = accounts.map((a) => ({
     account_id: a.id,
     name: a.name,
@@ -238,7 +234,7 @@ export function buildPlaceholderGroupTimeseries(
   | "liab_grouped_proportional"
 > {
   return {
-    unit: unitForTs(unit),
+    unit: unit,
     accounts_in_group: buildPlaceholderGroupValuationBlock(accounts, firstMonth),
     group_allocation_proportional: buildPlaceholderGroupAllocationProportional(accounts, firstMonth),
     ...placeholderGroupedTsFields(navNode, firstMonth),
@@ -253,7 +249,7 @@ export function buildPlaceholderPortfolioGroupBundle(
   navNode?: NavTreeNodeDto | null
 ): PortfolioGroupBundle {
   if (accounts.length === 0) {
-    const unitTs = unitForTs(unit);
+    const unitTs = unit;
     return {
       accounts: [],
       ts: {

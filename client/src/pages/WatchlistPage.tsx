@@ -6,7 +6,7 @@ import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
+import { formatCurrencyFine, formatGroupedDecimal, formatPct } from "../format";
 import { useTranslation } from "../i18n";
 import {
   useAddWatchlistTicker,
@@ -32,7 +32,8 @@ function formatPriceRow(row: Pick<WatchlistRow, "value" | "value_currency">): st
   if (row.value == null || !Number.isFinite(row.value)) return "—";
   // An index level is points, not money: no currency sign.
   if (row.value_currency === "none") return formatGroupedDecimal(row.value, 2);
-  return row.value_currency === "usd" ? formatUsdFine(row.value) : formatClp(row.value);
+  // In the currency's minor digits: pesos whole, dollars and euros with cents.
+  return formatCurrencyFine(row.value, row.value_currency);
 }
 
 /** Why an equity row has no (or a stale) price: its last Yahoo fetch failed. */

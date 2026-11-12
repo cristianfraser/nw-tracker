@@ -146,9 +146,9 @@ describe("US payslips", () => {
 
   it("breaks a stub down by its own groups, the match apart, at the pay date's rate", () => {
     apply([stub("2026-03-06")]);
-    const p = buildPayrollBreakdown().payslips.find((x) => x.payslip_id === storedId(`${PREFIX}2026-03-06.pdf`))!;
+    const p = buildPayrollBreakdown("usd").payslips.find((x) => x.payslip_id === storedId(`${PREFIX}2026-03-06.pdf`))!;
     expect(p.jurisdiction).toBe("us");
-    const usd = Object.fromEntries(Object.entries(p.values).map(([k, v]) => [k, Math.round(v.usd * 100) / 100]));
+    const usd = Object.fromEntries(Object.entries(p.values).map(([k, v]) => [k, Math.round(v * 100) / 100]));
     expect(usd).toMatchObject({
       gross: 4_000,
       gross_taxable: 4_000,
@@ -162,7 +162,8 @@ describe("US payslips", () => {
       employer_retirement: 160,
       pension: 0,
     });
-    expect(p.values.net.clp).toBeCloseTo(2_836.27 * RATE, 6);
+    const inClp = buildPayrollBreakdown("clp").payslips.find((x) => x.payslip_id === p.payslip_id)!;
+    expect(inClp.values.net).toBeCloseTo(2_836.27 * RATE, 6);
   });
 
   it("turns taxes and premiums into gastos lines, never the 401(k) or the HSA", () => {

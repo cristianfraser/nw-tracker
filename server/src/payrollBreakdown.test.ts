@@ -39,7 +39,7 @@ describe("payroll breakdown", () => {
     applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "vitest", payslips: [PAYSLIP] }));
     const b = buildPayrollBreakdown();
     const month = b.months.find((m) => m.period === "2099-01")!;
-    const clp = Object.fromEntries(Object.entries(month.values).map(([k, v]) => [k, v.clp]));
+    const clp = month.values;
     expect(clp).toMatchObject({
       gross: 1_050_000,
       gross_taxable: 1_000_000,
@@ -54,7 +54,8 @@ describe("payroll breakdown", () => {
       deductions: 209_600,
       net: 840_400,
     });
-    expect(month.values.net.usd).toBeGreaterThan(0);
-    expect(b.years.find((y) => y.period === "2099")!.values.net.clp).toBe(840_400);
+    expect(b.unit).toBe("clp");
+    expect(buildPayrollBreakdown("usd").months.find((m) => m.period === "2099-01")!.values.net).toBeGreaterThan(0);
+    expect(b.years.find((y) => y.period === "2099")!.values.net).toBe(840_400);
   });
 });

@@ -4,14 +4,15 @@ import {
   type CardBreakdownLine,
   type CardBreakdownNode,
 } from "../../dashboardCardBreakdown";
-import { DashboardCardValue, legacyCardValue } from "./DashboardCardValue";
-import { minAdaptiveUsdFractionDigits } from "../../format";
+import { DashboardCardValue } from "./DashboardCardValue";
+import { currencyHasAdaptiveCardDecimals, minAdaptiveUsdFractionDigits } from "../../format";
+import type { DisplayUnit } from "../../queries/keys";
 import { cn } from "../../cn";
 import styles from "./DashboardCardBreakdown.module.css";
 
 type Props = {
   lines: CardBreakdownLine[];
-  showUsd: boolean;
+  unit: DisplayUnit;
   animated?: boolean;
   bottomLines?: CardBreakdownLine[];
   /** Pin `bottomLines` to the card footer (direct flex child + margin-top: auto). */
@@ -20,13 +21,13 @@ type Props = {
 
 function BreakdownAmount({
   node,
-  showUsd,
+  unit,
   animated,
   muted,
   usdFractionDigits,
 }: {
   node: CardBreakdownNode;
-  showUsd: boolean;
+  unit: DisplayUnit;
   animated: boolean;
   muted: boolean;
   usdFractionDigits: 0 | 1 | 2;
@@ -34,7 +35,8 @@ function BreakdownAmount({
   const amount = (
     <span className={cn("card-breakdown__amount", "mono", muted && "card-breakdown__amount--muted")}>
       <DashboardCardValue
-        {...legacyCardValue(node.clp, node.usd, showUsd)}
+        value={node.value}
+        unit={unit}
         animated={animated}
         variant="breakdown"
         fractionDigits={usdFractionDigits}
@@ -52,14 +54,14 @@ function BreakdownAmount({
 
 function BreakdownNodeRow({
   node,
-  showUsd,
+  unit,
   animated,
   depth,
   rowKeyPrefix,
   usdFractionDigits,
 }: {
   node: CardBreakdownNode;
-  showUsd: boolean;
+  unit: DisplayUnit;
   animated: boolean;
   depth: number;
   rowKeyPrefix: string;
@@ -88,7 +90,7 @@ function BreakdownNodeRow({
         {label}
         <BreakdownAmount
           node={node}
-          showUsd={showUsd}
+          unit={unit}
           animated={animated}
           muted={!isGroup}
           usdFractionDigits={usdFractionDigits}
@@ -100,7 +102,7 @@ function BreakdownNodeRow({
             <BreakdownNodeRow
               key={`${rowKeyPrefix}-${depth + 1}-${child.label}-${j}`}
               node={child}
-              showUsd={showUsd}
+              unit={unit}
               animated={animated}
               depth={depth + 1}
               rowKeyPrefix={rowKeyPrefix}
@@ -115,7 +117,7 @@ function BreakdownNodeRow({
 
 function BreakdownList({
   lines,
-  showUsd,
+  unit,
   animated,
   className,
   dividerClassName,
@@ -123,7 +125,7 @@ function BreakdownList({
   usdFractionDigits,
 }: {
   lines: CardBreakdownLine[];
-  showUsd: boolean;
+  unit: DisplayUnit;
   animated: boolean;
   className?: string;
   /** The divider above the list (each list opens a section). */
@@ -141,7 +143,7 @@ function BreakdownList({
         <BreakdownNodeRow
           key={`${rowKeyPrefix}-0-${node.label}-${i}`}
           node={node}
-          showUsd={showUsd}
+          unit={unit}
           animated={animated}
           depth={0}
           rowKeyPrefix={rowKeyPrefix}
@@ -155,7 +157,7 @@ function BreakdownList({
 
 export function DashboardCardBreakdown({
   lines,
-  showUsd,
+  unit,
   animated = true,
   bottomLines,
   pinBottomToCard = false,
@@ -165,17 +167,15 @@ export function DashboardCardBreakdown({
   if (!hasMain && !hasBottom) return null;
   // One decimal count for the whole card (main + bottom rows): the least adaptive
   // decimals across rows, so the largest sub-balance keeps every sibling clean.
-  const usdFractionDigits = showUsd
-    ? minAdaptiveUsdFractionDigits(
-        (hasBottom ? [...lines, ...bottomLines!] : lines).map((l) => l.usd)
-      )
+  const usdFractionDigits = currencyHasAdaptiveCardDecimals(unit)
+    ? minAdaptiveUsdFractionDigits((hasBottom ? [...lines, ...bottomLines!] : lines).map((l) => l.value))
     : 0;
 
   if (!hasBottom) {
     return (
       <BreakdownList
         lines={lines}
-        showUsd={showUsd}
+        unit={unit}
         animated={animated}
         rowKeyPrefix="row"
         usdFractionDigits={usdFractionDigits}
@@ -189,7 +189,7 @@ export function DashboardCardBreakdown({
         {hasMain ? (
           <BreakdownList
             lines={lines}
-            showUsd={showUsd}
+            unit={unit}
             animated={animated}
             rowKeyPrefix="main"
             usdFractionDigits={usdFractionDigits}
@@ -198,7 +198,7 @@ export function DashboardCardBreakdown({
         <div className="card-breakdown-spacer" aria-hidden />
         <BreakdownList
           lines={bottomLines!}
-          showUsd={showUsd}
+          unit={unit}
           animated={animated}
           className="card-breakdown-bottom"
           dividerClassName="card-breakdown-bottom"
@@ -213,7 +213,7 @@ export function DashboardCardBreakdown({
     <div className={styles.stack}>
       <BreakdownList
         lines={lines}
-        showUsd={showUsd}
+        unit={unit}
         animated={animated}
         rowKeyPrefix="main"
         usdFractionDigits={usdFractionDigits}
@@ -221,7 +221,7 @@ export function DashboardCardBreakdown({
       <div className={styles.push} aria-hidden />
       <BreakdownList
         lines={bottomLines!}
-        showUsd={showUsd}
+        unit={unit}
         animated={animated}
         rowKeyPrefix="bottom"
         usdFractionDigits={usdFractionDigits}

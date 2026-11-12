@@ -125,7 +125,7 @@ export function DashboardPage() {
   const netWorthNav = sidebarNav?.net_worth ?? null;
 
   const navShell = useMemo(
-    () => (netWorthNav ? buildGroupPageShellFromNav(netWorthNav, displayUnit) : null),
+    () => (netWorthNav ? buildGroupPageShellFromNav(netWorthNav) : null),
     [netWorthNav, displayUnit]
   );
 
@@ -172,6 +172,7 @@ export function DashboardPage() {
     if (!useRealBundle || !data) return;
     writeDashboardNavSnapshotCache(displayUnit, {
       schema_version: data.dash.schema_version,
+      unit: data.dash.unit,
       accounts: data.dash.accounts,
       liabilities_breakdown: data.dash.liabilities_breakdown,
       dashboard_layout: data.dash.dashboard_layout,
@@ -184,8 +185,8 @@ export function DashboardPage() {
 
   // No snapshot yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
   const placeholderStripDash = useMemo(
-    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
-    [sidebarNav, displayUnit]
+    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null),
+    [sidebarNav]
   );
   // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous).
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
@@ -194,7 +195,6 @@ export function DashboardPage() {
   // the bundle lands, never through a blank strip or an fx-converted guess.
   const stripFromHeldBundle = holdingPrevUnit && !navSnapshot;
   const stripUnit = stripFromHeldBundle ? previousDisplayUnit : displayUnit;
-  const stripShowUsd = stripUnit === "usd";
   const dashForStrip = useMemo(() => {
     if (!netWorthNav) return null;
     if (useRealBundle && data) return data.dash;
@@ -237,9 +237,9 @@ export function DashboardPage() {
   const valueMapRoot = useMemo(
     () =>
       useRealBundle && data
-        ? valueMapRootForPage(data.dash.value_map, "net_worth", displayUnit)
+        ? valueMapRootForPage(data.dash.value_map, "net_worth")
         : null,
-    [useRealBundle, data, displayUnit]
+    [useRealBundle, data]
   );
   // While a unit switch or refetch loads, the map keeps the last data it drew (old unit).
   const heldValueMap = useHeldValueMap(
@@ -673,7 +673,7 @@ export function DashboardPage() {
               navNode: netWorthNav,
               groupSlug: "net_worth",
               dash: dashForStrip,
-              showUsd: stripShowUsd,
+              unit: stripUnit,
             }
           : null
       }

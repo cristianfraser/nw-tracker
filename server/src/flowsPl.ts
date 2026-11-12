@@ -33,8 +33,6 @@ export const FLOWS_PL_BUCKETS = [
 ] as const;
 export type FlowsPlBucketSlug = (typeof FLOWS_PL_BUCKETS)[number]["slug"];
 
-/** The mortgage carrying per unit (`flowsMortgageCarrying.ts`). */
-export type FlowsPlCarrying = { clp: readonly MortgageCarryingEvent[]; usd: readonly MortgageCarryingEvent[] };
 
 /** A bucket's accounts: the group tab's, less the checking accounts. */
 function flowsPlBucketRows(bucket: (typeof FLOWS_PL_BUCKETS)[number]) {
@@ -78,40 +76,35 @@ export type FlowsPlChartPoint = {
   cumulative_total: number;
 };
 
+/** One account's P/L in the payload's unit (current month, YTD, since the start). */
 export type FlowsPlAccountRow = {
   account_id: number;
   name: string;
-  pl_month_clp: number;
-  pl_month_usd: number;
-  pl_ytd_clp: number;
-  pl_ytd_usd: number;
-  pl_cumulative_clp: number;
-  pl_cumulative_usd: number;
+  pl_month: number;
+  pl_ytd: number;
+  pl_cumulative: number;
 };
 
 export type FlowsPlBucketBlock = {
   slug: FlowsPlBucketSlug;
   group_slug: string;
   label_i18n_key: string;
-  total_month_clp: number;
-  total_month_usd: number;
-  total_ytd_clp: number;
-  total_ytd_usd: number;
-  total_cumulative_clp: number;
-  total_cumulative_usd: number;
+  total_month: number;
+  total_ytd: number;
+  total_cumulative: number;
   accounts: FlowsPlAccountRow[];
 };
 
+/** `GET /api/flows/pl?unit=`: every amount in `unit`. */
 export type FlowsPlPayload = {
+  unit: string;
   /**
    * Monthly only: the page's yearly chart rolls these up client-side AFTER cutting the months at
    * its own Rango (a partial first year), and the year table rolls them the same way.
    */
   chart_monthly: FlowsPlChartPoint[];
-  chart_monthly_usd: FlowsPlChartPoint[];
   /** Per-calendar-day P/L (Diario), windowed to `?days`; present only when `days` is passed. */
   chart_daily?: FlowsPlChartPoint[];
-  chart_daily_usd?: FlowsPlChartPoint[];
   by_bucket: FlowsPlBucketBlock[];
 };
 
@@ -196,7 +189,7 @@ export function assembleFlowsPlChartSeries(
 }
 
 /** The consolidated monthly P/L of each bucket's accounts, in the unit. */
-function consolidatedByBucket(unit: "clp" | "usd"): Record<FlowsPlBucketSlug, ConsolidatedMonthlyPerfRow[]> {
+function consolidatedByBucket(unit: string): Record<FlowsPlBucketSlug, ConsolidatedMonthlyPerfRow[]> {
   const out = {} as Record<FlowsPlBucketSlug, ConsolidatedMonthlyPerfRow[]>;
   for (const bucket of FLOWS_PL_BUCKETS) {
     const { rows } = flowsPlBucketRows(bucket);
@@ -210,7 +203,7 @@ function consolidatedByBucket(unit: "clp" | "usd"): Record<FlowsPlBucketSlug, Co
  * overview's P/L leg (`total` per month) — one builder for both.
  */
 export function buildFlowsPlChartMonthly(
-  unit: "clp" | "usd",
+  unit: string,
   carrying: readonly MortgageCarryingEvent[]
 ): FlowsPlChartPoint[] {
   return withAccountValuationTsCache(() =>
@@ -228,7 +221,7 @@ export function buildFlowsPlChartMonthly(
  * over a calendar month) reconciles to the monthly chart's `total`.
  */
 export function buildFlowsPlDailyChartSeries(
-  unit: "clp" | "usd",
+  unit: string,
   days: number,
   carrying: readonly MortgageCarryingEvent[]
 ): FlowsPlChartPoint[] {
@@ -314,27 +307,27 @@ function carryingSummary(events: readonly MortgageCarryingEvent[]): { pl_month: 
 function buildFlowsPlBucketBlock(
   bucket: (typeof FLOWS_PL_BUCKETS)[number],
   accountsClp: readonly ConsolidationAccountPayload[],
-  accountsUsd: readonly ConsolidationAccountPayload[],
-  carryingByAccount: ReadonlyMap<number, { clp: MortgageCarryingEvent[]; usd: MortgageCarryingEvent[] }>
+  accountsUnit: readonly ConsolidationAccountPayload[],
+  unit: string,
+  carryingByAccount: ReadonlyMap<number, { clp: MortgageCarryingEvent[]; unit: MortgageCarryingEvent[] }>
 ): FlowsPlBucketBlock {
-  const usdById = new Map(accountsUsd.map((a) => [a.account_id, a]));
-  const accounts: FlowsPlAccountRow[] = [];
+  const unitById = new Map(accountsUnit.map((a) => [a.account_id, a]));
+  const ranked: { row: FlowsPlAccountRow; cumulativeClp: number }[] = [];
   for (const acc of accountsClp) {
-    const usd = usdById.get(acc.account_id);
-    if (!usd) {
+    const inUnit = unitById.get(acc.account_id);
+    if (!inUnit) {
       throw new Error(
-        `flows PL: USD consolidation missing account ${acc.account_id} (${acc.name}) in bucket ${bucket.slug}`
+        `flows PL: ${unit} consolidation missing account ${acc.account_id} (${acc.name}) in bucket ${bucket.slug}`
       );
     }
     const clpSummary = flowsPlAccountPerfSummary(acc.monthly);
-    const usdSummary = flowsPlAccountPerfSummary(usd.monthly);
+    const unitSummary = unit === "clp" ? clpSummary : flowsPlAccountPerfSummary(inUnit.monthly);
     // The property's mortgage carrying back into its P/L (a gasto already), as in the chart.
     const carrying = carryingByAccount.get(acc.account_id);
     if (carrying) {
-      for (const [summary, events] of [
-        [clpSummary, carrying.clp],
-        [usdSummary, carrying.usd],
-      ] as const) {
+      const pairs: (readonly [ReturnType<typeof flowsPlAccountPerfSummary>, readonly MortgageCarryingEvent[]])[] =
+        unit === "clp" ? [[clpSummary, carrying.clp]] : [[clpSummary, carrying.clp], [unitSummary, carrying.unit]];
+      for (const [summary, events] of pairs) {
         const c = carryingSummary(events);
         summary.pl_month += c.pl_month;
         summary.pl_ytd += c.pl_ytd;
@@ -344,57 +337,58 @@ function buildFlowsPlBucketBlock(
     const row: FlowsPlAccountRow = {
       account_id: acc.account_id,
       name: acc.name,
-      pl_month_clp: clpSummary.pl_month,
-      pl_month_usd: usdSummary.pl_month,
-      pl_ytd_clp: clpSummary.pl_ytd,
-      pl_ytd_usd: usdSummary.pl_ytd,
-      pl_cumulative_clp: clpSummary.pl_cumulative,
-      pl_cumulative_usd: usdSummary.pl_cumulative,
+      pl_month: unitSummary.pl_month,
+      pl_ytd: unitSummary.pl_ytd,
+      pl_cumulative: unitSummary.pl_cumulative,
     };
     for (const [field, v] of Object.entries(row)) {
       if (typeof v === "number" && !Number.isFinite(v)) {
         throw new Error(`flows PL: non-finite ${field} for account ${acc.account_id} (${acc.name})`);
       }
     }
-    // Accounts with no P/L ever (e.g. interest-free checking) are noise on a P/L breakdown.
+    // Accounts with no P/L ever (e.g. interest-free checking) are noise on a P/L breakdown:
+    // zero in pesos and in the unit.
+    const zero = (v: number) => Math.abs(v) < ZERO_PL_EPS;
     const allZero =
-      Math.abs(row.pl_month_clp) < ZERO_PL_EPS &&
-      Math.abs(row.pl_ytd_clp) < ZERO_PL_EPS &&
-      Math.abs(row.pl_cumulative_clp) < ZERO_PL_EPS &&
-      Math.abs(row.pl_month_usd) < ZERO_PL_EPS &&
-      Math.abs(row.pl_ytd_usd) < ZERO_PL_EPS &&
-      Math.abs(row.pl_cumulative_usd) < ZERO_PL_EPS;
+      zero(clpSummary.pl_month) &&
+      zero(clpSummary.pl_ytd) &&
+      zero(clpSummary.pl_cumulative) &&
+      zero(row.pl_month) &&
+      zero(row.pl_ytd) &&
+      zero(row.pl_cumulative);
     if (allZero) continue;
-    accounts.push(row);
+    ranked.push({ row, cumulativeClp: clpSummary.pl_cumulative });
   }
-  accounts.sort((a, b) => b.pl_cumulative_clp - a.pl_cumulative_clp);
-
+  // Ordered by the pesos whatever the unit, so every unit lists the accounts alike.
+  ranked.sort((a, b) => b.cumulativeClp - a.cumulativeClp);
+  const accounts = ranked.map((r) => r.row);
   const sum = (pick: (a: FlowsPlAccountRow) => number) =>
     accounts.reduce((s, a) => s + pick(a), 0);
   return {
     slug: bucket.slug,
     group_slug: bucket.group_slug,
     label_i18n_key: bucket.label_i18n_key,
-    total_month_clp: sum((a) => a.pl_month_clp),
-    total_month_usd: sum((a) => a.pl_month_usd),
-    total_ytd_clp: sum((a) => a.pl_ytd_clp),
-    total_ytd_usd: sum((a) => a.pl_ytd_usd),
-    total_cumulative_clp: sum((a) => a.pl_cumulative_clp),
-    total_cumulative_usd: sum((a) => a.pl_cumulative_usd),
+    total_month: sum((a) => a.pl_month),
+    total_ytd: sum((a) => a.pl_ytd),
+    total_cumulative: sum((a) => a.pl_cumulative),
     accounts,
   };
 }
 
-/** @heavy 4 buckets × 2 units of consolidated monthly perf (inner per-account/group caches). */
-export function buildFlowsPlPayload(opts?: { days?: number }): FlowsPlPayload {
-  const carrying: FlowsPlCarrying = { clp: cachedMortgageCarryingEvents("clp"), usd: cachedMortgageCarryingEvents("usd") };
+/** @heavy 4 buckets of consolidated monthly perf in the unit (and pesos, the accounts' order). */
+export function buildFlowsPlPayload(unit: string = "clp", opts?: { days?: number }): FlowsPlPayload {
+  const carryingClp = cachedMortgageCarryingEvents("clp");
+  const carryingUnit = unit === "clp" ? carryingClp : cachedMortgageCarryingEvents(unit);
   return withAccountValuationTsCache(() => {
-    const carryingByAccount = new Map<number, { clp: MortgageCarryingEvent[]; usd: MortgageCarryingEvent[] }>();
-    for (const unit of ["clp", "usd"] as const) {
-      for (const e of carrying[unit]) {
+    const carryingByAccount = new Map<number, { clp: MortgageCarryingEvent[]; unit: MortgageCarryingEvent[] }>();
+    for (const [leg, events] of [
+      ["clp", carryingClp],
+      ["unit", carryingUnit],
+    ] as const) {
+      for (const e of events) {
         const id = carryingAccountId(e);
-        const entry = carryingByAccount.get(id) ?? { clp: [], usd: [] };
-        entry[unit].push(e);
+        const entry = carryingByAccount.get(id) ?? { clp: [], unit: [] };
+        entry[leg].push(e);
         carryingByAccount.set(id, entry);
       }
     }
@@ -406,24 +400,23 @@ export function buildFlowsPlPayload(opts?: { days?: number }): FlowsPlPayload {
           throw new Error(`flows PL: mortgage carrying on account ${id} outside the real-estate bucket`);
         }
       }
+      const accountsClp = getGroupConsolidationAccountMonthly(rows, bucket.group_slug, "clp");
       by_bucket.push(
         buildFlowsPlBucketBlock(
           bucket,
-          getGroupConsolidationAccountMonthly(rows, bucket.group_slug, "clp"),
-          getGroupConsolidationAccountMonthly(rows, bucket.group_slug, "usd"),
+          accountsClp,
+          unit === "clp" ? accountsClp : getGroupConsolidationAccountMonthly(rows, bucket.group_slug, unit),
+          unit,
           bucket.slug === "real_estate" ? carryingByAccount : new Map()
         )
       );
     }
     const payload: FlowsPlPayload = {
-      chart_monthly: buildFlowsPlChartMonthly("clp", carrying.clp),
-      chart_monthly_usd: buildFlowsPlChartMonthly("usd", carrying.usd),
+      unit,
+      chart_monthly: buildFlowsPlChartMonthly(unit, carryingUnit),
       by_bucket,
     };
-    if (opts?.days != null) {
-      payload.chart_daily = buildFlowsPlDailyChartSeries("clp", opts.days, carrying.clp);
-      payload.chart_daily_usd = buildFlowsPlDailyChartSeries("usd", opts.days, carrying.usd);
-    }
+    if (opts?.days != null) payload.chart_daily = buildFlowsPlDailyChartSeries(unit, opts.days, carryingUnit);
     return payload;
   });
 }

@@ -50,7 +50,7 @@ export const queryKeys = {
     withEntity(["groupConsolidatedTables", group, subgroup ?? null, unit] as const, 2),
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>
     withEntity(["groupPeriodReturns", group, unit] as const, 2),
-  latestMovements: (limit: number) => ["latestMovements", limit] as const,
+  latestMovements: (limit: number, unit: DisplayUnit) => ["latestMovements", limit, unit] as const,
   latestMovementsAll: () => ["latestMovements"] as const,
   groupConsolidatedMonthlyPage: (
     group: string,
@@ -73,7 +73,9 @@ export const queryKeys = {
   watchlistAll: () => ["watchlist"] as const,
   watchlist: (unit: DisplayUnit) => ["watchlist", unit] as const,
   watchlistSymbolSearch: (q: string) => ["watchlist-symbol-search", q] as const,
-  marketSeries: () => ["marketSeries"] as const,
+  /** Prefix key (no unit) invalidates every unit's copy at once. */
+  marketSeriesAll: () => ["marketSeries"] as const,
+  marketSeries: (unit: DisplayUnit) => ["marketSeries", unit] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,
   messages: (kind: "notification" | "log") => ["messages", kind] as const,
@@ -89,9 +91,9 @@ export const queryKeys = {
   income: (unit?: DisplayUnit) => (unit ? (["income", unit] as const) : (["income"] as const)),
   /** Under `income()`, so every income invalidation reaches it. */
   incomeRentPlaces: () => ["income", "rentPlaces"] as const,
-  flowsDeposits: () => ["flowsDeposits"] as const,
-  flowsPl: (days?: number) => ["flowsPl", days ?? null] as const,
-  flowsDepositsReconciliation: () => ["flowsDepositsReconciliation"] as const,
+  flowsDeposits: (unit?: DisplayUnit) => (unit ? (["flowsDeposits", unit] as const) : (["flowsDeposits"] as const)),
+  flowsPl: (unit: DisplayUnit, days?: number) => ["flowsPl", unit, days ?? null] as const,
+  flowsDepositsReconciliation: (unit: DisplayUnit) => ["flowsDepositsReconciliation", unit] as const,
   flowsRealEstateExpenses: () => ["flowsRealEstateExpenses"] as const,
   /** Prefix of every link-candidates list. */
   realEstateLinkCandidatesAll: () => ["realEstateLinkCandidates"] as const,
@@ -102,6 +104,9 @@ export const queryKeys = {
     ["realEstateUnlinkedPurchases", params] as const,
   realEstatePropertyAccounts: () => ["realEstatePropertyAccounts"] as const,
   flowsExpenses: () => ["flowsExpenses"] as const,
+  /** The Expenses page's lines in a unit (each line's `converted`); nested under `flowsExpenses()`. */
+  flowsExpensesLines: (unit: DisplayUnit) => ["flowsExpenses", "lines", unit] as const,
+  flowsExpensesLinesAll: () => ["flowsExpenses", "lines"] as const,
   /** Nested under `flowsExpenses()`: every invalidation of the lines refetches the gastos views too. */
   flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
   flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) =>
@@ -133,7 +138,7 @@ export const queryKeys = {
     withEntity(["accountFlows", id, filtersKey] as const, 2),
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
-  wealthPercentile: () => ["wealth-percentile"] as const,
+  wealthPercentile: (unit: DisplayUnit) => ["wealth-percentile", unit] as const,
   benchmarks: () => ["benchmarks"] as const,
   mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: DisplayUnit) =>
     ["mortgagePrepaymentComparison", accountId, benchmark, unit] as const,

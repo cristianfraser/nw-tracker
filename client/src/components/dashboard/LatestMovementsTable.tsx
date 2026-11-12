@@ -9,13 +9,13 @@ import { dashboardTileOrder } from "../../dashboardLayout";
 import {
   CreditCardExpenseLinesTable,
   ExpenseListStaticRow,
+  MoneyAmount,
   expenseListVendorClassName,
   type ExpenseListItem,
 } from "../credit-card/CreditCardExpenseLinesTable";
 import { ExpenseOriginIcon } from "../credit-card/ExpenseOriginIcon";
 import { ExpenseVendorLabel } from "../credit-card/ExpenseVendorLabel";
 import { PillPicker } from "../ui/PillPicker";
-import { formatLineAmount } from "../../format";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { queryLoadError } from "../../queries/pageShapeReady";
 
@@ -32,13 +32,13 @@ function isLatestMovements(v: unknown): v is LatestMovementsResponse {
     rows.every((r) => {
       if (r == null || typeof r !== "object" || typeof r.on !== "string") return false;
       if (r.kind === "expense") {
-        return r.line != null && typeof r.line.purchase_key === "string" && r.line.amount != null && Number.isFinite(r.line.amount.value) && r.line.values != null;
+        return r.line != null && typeof r.line.purchase_key === "string" && r.line.amount != null && Number.isFinite(r.line.amount.value) && r.line.converted !== undefined && typeof r.line.value_clp === "number";
       }
       if (r.kind === "income") {
-        return r.income != null && typeof r.income.key === "string" && r.income.amount != null && Number.isFinite(r.income.amount.value) && r.income.values != null;
+        return r.income != null && typeof r.income.key === "string" && r.income.amount != null && Number.isFinite(r.income.amount.value) && r.income.converted !== undefined;
       }
       if (r.kind === "card_payment") {
-        return r.payment != null && typeof r.payment.key === "string" && r.payment.amount != null && Number.isFinite(r.payment.amount.value) && Array.isArray(r.payment.lines);
+        return r.payment != null && typeof r.payment.key === "string" && r.payment.amount != null && Number.isFinite(r.payment.amount.value) && r.payment.converted !== undefined && Array.isArray(r.payment.lines);
       }
       return false;
     })
@@ -53,7 +53,6 @@ const LATEST_MOVEMENTS = persistedPayload(
 /** An income credit drawn in the expense rows' grid: origin, date, its kind as a pill, the payer, the pesos. */
 function IncomeMovementRow({ on, income }: { on: string; income: LatestIncomeMovement }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
   const counterparty = income.transfer_counterparty;
   return (
     <ExpenseListStaticRow
@@ -92,7 +91,7 @@ function IncomeMovementRow({ on, income }: { on: string; income: LatestIncomeMov
           className={expenseListVendorClassName}
         />
       }
-      amount={formatLineAmount(income, displayUnit)}
+      amount={<MoneyAmount money={income} />}
     />
   );
 }
@@ -114,7 +113,6 @@ function CardPaymentRow({
   bigGroups: readonly CcExpenseBigGroupDto[];
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
   const from =
     payment.from.kind === "card"
       ? t("dashboard.latestMovements.fromCard", { brand: payment.from.card_brand, last4: payment.from.card_last4 })
@@ -150,7 +148,7 @@ function CardPaymentRow({
         />
       }
       vendor={<ExpenseVendorLabel source={{ merchant: name }} note={null} className={expenseListVendorClassName} />}
-      amount={formatLineAmount(payment, displayUnit)}
+      amount={<MoneyAmount money={payment} />}
       moreAriaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: name })}
       panel={
         payment.lines.length > 0 ? (
@@ -178,9 +176,10 @@ function CardPaymentRow({
  */
 export function LatestMovementsTable() {
   const { t } = useTranslation();
-  const query = useLatestMovements(LATEST_MOVEMENTS_LIMIT);
-  // Until live data is here, the last stored one.
-  const { value: data } = usePersistedPayload(LATEST_MOVEMENTS, [], query.data);
+  const { displayUnit } = useDisplayPreferences();
+  const query = useLatestMovements(LATEST_MOVEMENTS_LIMIT, displayUnit);
+  // Until live data is here, the last stored one (per unit: its rows carry values in the unit).
+  const { value: data } = usePersistedPayload(LATEST_MOVEMENTS, [displayUnit], query.data);
   const loadError = queryLoadError(query);
 
   const items: ExpenseListItem[] = (data?.rows ?? []).map((r) => {

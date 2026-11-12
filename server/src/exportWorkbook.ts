@@ -25,6 +25,7 @@ import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
 import { movementClpLegOrZero, movementUsdLeg } from "./movementAmounts.js";
 import { transferToLegUnits } from "./movementTransfer.js";
+import { flowEventInUnit } from "./rates.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 export const EXPORT_SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
@@ -112,6 +113,8 @@ function aportesRows(accounts: readonly MemberAccount[], opts: ExportOptions, wi
         fecha: e.occurred_on,
         monto_clp: e.amt,
         monto_usd: e.amt_usd ?? null,
+        // A display unit other than the two native legs: the event at its own date's rate.
+        ...(opts.unit !== "clp" && opts.unit !== "usd" ? { [`monto_${opts.unit}`]: flowEventInUnit(e, opts.unit) } : {}),
         acumulado_clp: Math.round(cumulative),
       });
     }

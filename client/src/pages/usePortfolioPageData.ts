@@ -78,7 +78,8 @@ export function usePortfolioPageData(opts: {
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
   const { previousDisplayUnit } = useDisplayPreferences();
   const heldStrip = useHeldNavStrip(previousDisplayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navNode?.slug ?? null);
-  const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
+  /** The unit the strip's cards are in: the held previous unit's while a switch loads. */
+  const stripUnit: DisplayUnit = heldStrip ? heldStrip.unit : displayUnit;
 
   const accounts = useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
   const accountsTreeRoot = useMemo(
@@ -102,8 +103,8 @@ export function usePortfolioPageData(opts: {
 
   // No snapshot yet: nav-context alone, else a zero strip from the sidebar nav (cold cache).
   const placeholderStripDash = useMemo(
-    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
-    [sidebarNav, displayUnit]
+    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null),
+    [sidebarNav]
   );
   const stripIsPlaceholder = navNode != null && !navSnapshot && !navCtx && !heldStrip;
   const dashForStrip = useMemo(() => {
@@ -127,7 +128,7 @@ export function usePortfolioPageData(opts: {
     useRealBundle,
     contentLoading,
     heldStrip,
-    stripShowUsd,
+    stripUnit,
     accounts,
     accountsTreeRoot,
     stripIsPlaceholder,

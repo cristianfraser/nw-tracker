@@ -16,7 +16,7 @@ import type Database from "better-sqlite3";
 import { chileCalendarAddDays } from "../chileDate.js";
 
 /** Bumped when the file's shape changes (not when a table gains a column: that fails the column check). */
-export const DEMO_MARKET_ARTIFACT_SCHEMA_VERSION = 1;
+export const DEMO_MARKET_ARTIFACT_SCHEMA_VERSION = 2; // 2: fx_rates (EUR/USD)
 
 /**
  * Every table `loadDemoRealMarket` writes. The publish script checks that nothing else changed
@@ -29,6 +29,7 @@ export const DEMO_MARKET_TABLES = [
   "fx_daily",
   "fx_daily_bcentral",
   "eur_daily",
+  "fx_rates",
   "uf_daily",
   "utm_daily",
   "ipc_daily",

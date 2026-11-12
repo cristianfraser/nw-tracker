@@ -83,8 +83,8 @@ describe("dashboard rows: one cache entry per account", () => {
 
     clearAggregationCache();
     writeBtcQuote(t0, 60_000);
-    const before = JSON.stringify(await buildDashboardAccountRows(false));
-    await buildDashboardAccountRows(true);
+    const before = JSON.stringify(await buildDashboardAccountRows("clp"));
+    await buildDashboardAccountRows("usd");
     for (const unit of ["clp", "usd"]) {
       expect(aggregationCacheHasForTest(`${PREFIX}account_row|${btcId}|${unit}`)).toBe(true);
       expect(aggregationCacheHasForTest(`${PREFIX}account_rows|${unit}`)).toBe(true);
@@ -105,21 +105,21 @@ describe("dashboard rows: one cache entry per account", () => {
     }
 
     const incremental = {
-      clp: JSON.stringify(await buildDashboardAccountRows(false)),
-      usd: JSON.stringify(await buildDashboardAccountRows(true)),
+      clp: JSON.stringify(await buildDashboardAccountRows("clp")),
+      usd: JSON.stringify(await buildDashboardAccountRows("usd")),
     };
     clearAggregationCache();
     const full = {
-      clp: JSON.stringify(await buildDashboardAccountRows(false)),
-      usd: JSON.stringify(await buildDashboardAccountRows(true)),
+      clp: JSON.stringify(await buildDashboardAccountRows("clp")),
+      usd: JSON.stringify(await buildDashboardAccountRows("usd")),
     };
     vi.useRealTimers();
     expect(incremental).toEqual(full);
     // The tick reached the coin's row (otherwise the comparison proves nothing).
     expect(incremental.clp).not.toBe(before);
-    const btcRow = (JSON.parse(full.clp) as { account_id: number; current_value_clp: number | null }[]).find(
+    const btcRow = (JSON.parse(full.clp) as { account_id: number; current_value: number | null }[]).find(
       (r) => r.account_id === btcId
     );
-    expect(btcRow?.current_value_clp).toBeGreaterThan(0);
+    expect(btcRow?.current_value).toBeGreaterThan(0);
   }, 300_000);
 });

@@ -20,8 +20,8 @@ export function isChartActiveAccount(row: { chart_inactive?: boolean | null }): 
 
 const DASHBOARD_BALANCE_EPS = 1e-9;
 
-/** Non-null finite live CLP balance above zero (summary card breakdown lines). */
-export function hasMaterialDashboardBalance(row: { current_value_clp?: number | null }): boolean {
-  const v = row.current_value_clp;
+/** Non-null finite, non-zero live balance in the payload's unit (summary card breakdown lines). */
+export function hasMaterialDashboardBalance(row: { current_value?: number | null }): boolean {
+  const v = row.current_value;
   return v != null && Number.isFinite(v) && Math.abs(v) > DASHBOARD_BALANCE_EPS;
 }

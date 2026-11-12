@@ -15,6 +15,7 @@ import { ccIssuerBySlug } from "./ccIssuers.js";
 import { pagoTarjetaCardLegKey, paymentLineIdentityKey, currentPlasticLast4 } from "./expensePaymentNames.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
+import { lineConvertedForWire } from "./lineMoney.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 export type CardPaymentTransfer = {
@@ -139,21 +140,28 @@ export function cardPaymentEvidence<L extends EvidenceLine>(
 }
 
 /**
- * The row. A dollar payment's pesos are what its PAGO line on the card shows — the pesos those
- * dollars cost (`usdPaymentLineClpResolver`), not the day's rate — whenever that line is its evidence.
+ * The row, in the requested display unit. A dollar payment's pesos are what its PAGO line on the
+ * card shows — the pesos those dollars cost (`usdPaymentLineClpResolver`), not the day's rate —
+ * whenever that line is its evidence (`serverLines`: the evidence lines with their money).
  */
 export function latestCardPayment(
   t: CardPaymentTransfer,
-  lines: LatestCardPayment["lines"]
+  lines: LatestCardPayment["lines"],
+  unit: string = "clp",
+  serverLines: readonly { amount?: Money; values?: Record<string, LineUnitValue> }[] = []
 ): LatestCardPayment {
   const money = cardPaymentMoney(t);
-  const pago = lines.find(
-    (l) => l.amount.currency === money.amount.currency && Math.abs(l.amount.value) === Math.abs(money.amount.value) && l.amount.value < 0
+  const pago = serverLines.find(
+    (l) =>
+      l.amount != null &&
+      l.amount.currency === money.amount.currency &&
+      Math.abs(l.amount.value) === Math.abs(money.amount.value) &&
+      l.amount.value < 0
   );
   const values = { ...money.values };
-  if (pago) {
-    for (const [unit, v] of Object.entries(pago.values)) {
-      if (unit !== money.amount.currency && v.rate_source !== "day") values[unit] = { value: Math.abs(v.value), rate_source: v.rate_source };
+  if (pago?.values) {
+    for (const [u, v] of Object.entries(pago.values)) {
+      if (u !== money.amount.currency && v.rate_source !== "day") values[u] = { value: Math.abs(v.value), rate_source: v.rate_source };
     }
   }
   return {
@@ -162,7 +170,7 @@ export function latestCardPayment(
     from: t.part ? { kind: "card", ...cardLabel(t.from_account_id) } : { kind: "account", account_name: t.from_name },
     to: cardLabel(t.to_account_id),
     amount: money.amount,
-    values,
+    converted: lineConvertedForWire({ amount: money.amount, values, occurred_on: t.occurred_on }, unit),
     lines,
   };
 }

@@ -31,7 +31,7 @@ import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { convertCurrency, type CurrencyCode } from "./rates.js";
+import { convertCurrency, convertFlow, type CurrencyCode } from "./rates.js";
 import { convertValue } from "./valueConvert.js";
 import { assertValuationCurrency } from "./valuationValue.js";
 
@@ -165,7 +165,8 @@ function isoAddDays(iso: string, days: number): string {
  * `V(d) − V(d−1)` is the day's evidence at the day's rate plus this term, so the card's derived
  * flow (`−ΔV + cost`) is the evidence and its P/L carries the revaluation.
  *
- * **A dollar payment counts at the pesos actually paid** (in pesos only): where a payment of the
+ * **A dollar payment counts at the pesos actually paid** (in any unit but dollars, where the
+ * dollars are the payment): where a payment of the
  * dollar debt has its real rate on file (`usdDebtPaymentsForAccount`: the divisas purchase paired
  * with it, a traspaso de deuda's peso leg, the traced cost of dollars paid from a USD cash
  * account), the payment day's term adds `pesos paid − dollars paid · R(d)`: the paid dollars are
@@ -192,6 +193,7 @@ export function ccRevaluationCostByDate(accountId: number, unit: CurrencyCode): 
   return out;
 }
 
+/** The card's NATIVE sub-balances (what its statements bill in) — not display units; any display unit reads both. */
 const CURRENCIES: readonly ("clp" | "usd")[] = ["clp", "usd"];
 
 /** Rate of one `c` into `unit` on `day` at the side a sub-balance of `qty` is valued at. */
@@ -219,10 +221,12 @@ function revaluationTerm(
       term += prev[c] * rCur - prev[c] * rPrev;
     }
   }
-  if (unit === "clp" && paid && paid.usd !== 0) {
-    const rCur = subBalanceRate("usd", "clp", cur.usd, day);
+  if (unit !== "usd" && paid && paid.usd !== 0) {
+    // The paid dollars leave the debt at the pesos actually paid, in `unit`: the pesos as a flow of
+    // the day (identity in pesos), against the dollars at the day's rate into `unit`.
+    const rCur = subBalanceRate("usd", unit, cur.usd, day);
     if (rCur == null) return null;
-    term += paid.clp - paid.usd * rCur;
+    term += convertFlow(paid.clp, "clp", unit, day) - paid.usd * rCur;
   }
   return term;
 }
@@ -279,7 +283,7 @@ function buildRevaluation(accountId: number, unit: CurrencyCode, today: string):
   const entries = [...normalizedPostCloseLines(accountId), ...normalizedInstallmentPurchaseEvents(accountId)]
     .filter((e) => e.amount != null)
     .sort((a, b) => a.iso.localeCompare(b.iso));
-  const paymentsByDay = unit === "clp" ? realRatePaymentsByDay(accountId) : new Map<string, RealRatePayments>();
+  const paymentsByDay = unit !== "usd" ? realRatePaymentsByDay(accountId) : new Map<string, RealRatePayments>();
 
   // owed_c(d) for d in [first anchor, yesterday]: the anchor on or before d plus the deduped
   // evidence in (anchor, d] — the walk's own rule (`postCloseNativeAdjustment`), swept window by

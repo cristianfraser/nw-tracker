@@ -9,8 +9,8 @@ import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { saveVendorBranchChoice } from "../vendorCatalog.js";
 import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
-import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
-import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
+import { buildDepositsReconciliationPayload, depositsReconciliationInUnit } from "../flowsDepositsReconciliation.js";
+import { buildFlowsDepositsResponse } from "../flowsDeposits.js";
 import {
   cachedFlowsExpensesGastosPayload,
   cachedFlowsExpensesPayload,
@@ -45,7 +45,7 @@ import {
   listCcFacturadoFinancingLinks,
   upsertCcFacturadoFinancingLink,
 } from "../ccFacturadoFinancingLinksDb.js";
-import { buildFlowsCheckingIncomePayload } from "../flowsCheckingInflows.js";
+import { buildFlowsCheckingIncomePayload, flowsCheckingIncomeListsInUnit } from "../flowsCheckingInflows.js";
 import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "../checkingExpenseRefunds.js";
 import { transferCounterpartiesByMovementSide, withTransferCounterparties } from "../bankTransferNotices.js";
 import {
@@ -80,7 +80,7 @@ import {
   updateRealEstateExpenseMonthsCovered,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
-import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 /**
  * A write that can move an expense deposit link (an income mark, a refund, pieces, a manual
@@ -95,11 +95,12 @@ const linkSyncingWrite = (fn: (req: express.Request, res: express.Response) => v
   );
 
 export function registerFlowsRoutes(app: express.Express): void {
-app.get("/api/flows/deposits", (_req, res) => {
+app.get("/api/flows/deposits", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/deposits" });
   res.json(
-    buildFlowsDepositsPayload({
+    buildFlowsDepositsResponse(unit, {
       excludeCheckingAccounts: true,
-      withMortgageCarrying: { clp: cachedMortgageCarryingEvents("clp"), usd: cachedMortgageCarryingEvents("usd") },
+      withMortgageCarrying: { clp: cachedMortgageCarryingEvents("clp"), unit: cachedMortgageCarryingEvents(unit) },
     })
   );
 });
@@ -111,14 +112,12 @@ app.get("/api/flows/pl", (req, res) => {
     res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
     return;
   }
-  res.json(buildFlowsPlPayload(days != null ? { days } : undefined));
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/pl" });
+  res.json(buildFlowsPlPayload(unit, days != null ? { days } : undefined));
 });
 
 app.get("/api/flows/overview", (req, res) => {
-  const unit = requireLegacyDisplayUnit(
-    requestDisplayUnit(req.query, { surface: "/api/flows/overview", supported: LEGACY_DISPLAY_UNITS }),
-    "/api/flows/overview"
-  );
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/overview" });
   const mode = String(req.query.installment_mode ?? "split");
   if (mode !== "split" && mode !== "total") {
     res.status(400).json({ error: `installment_mode must be split or total, got ${mode}` });
@@ -133,28 +132,30 @@ app.get("/api/flows/overview", (req, res) => {
   res.json(buildFlowsOverviewPayload(unit, mode, days));
 });
 
-app.get("/api/flows/deposits/reconciliation", (_req, res) => {
+app.get("/api/flows/deposits/reconciliation", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/deposits/reconciliation" });
   try {
-    res.json(buildDepositsReconciliationPayload());
+    res.json(depositsReconciliationInUnit(buildDepositsReconciliationPayload(), unit));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
 
 app.get("/api/income", (req, res) => {
-  const unit = requireLegacyDisplayUnit(
-    requestDisplayUnit(req.query, { surface: "/api/income", supported: LEGACY_DISPLAY_UNITS }),
-    "/api/income"
-  );
+  const unit = requestDisplayUnit(req.query, { surface: "/api/income" });
   const payload = buildFlowsCheckingIncomePayload();
+  const inUnit = flowsCheckingIncomeListsInUnit(payload, unit);
   const counterparties = transferCounterpartiesByMovementSide();
   res.json({
     ...payload,
-    lines: withTransferCounterparties(payload.lines, counterparties),
-    excluded_lines: withTransferCounterparties(payload.excluded_lines, counterparties),
-    filtered_lines: withTransferCounterparties(payload.filtered_lines, counterparties),
-    refund_lines: withTransferCounterparties(payload.refund_lines, counterparties),
-    payroll_breakdown: buildPayrollBreakdown(),
+    unit,
+    lines: withTransferCounterparties(inUnit.lines, counterparties),
+    manual: inUnit.manual,
+    work_earnings: inUnit.work_earnings,
+    excluded_lines: withTransferCounterparties(inUnit.excluded_lines, counterparties),
+    filtered_lines: withTransferCounterparties(inUnit.filtered_lines, counterparties),
+    refund_lines: withTransferCounterparties(inUnit.refund_lines, counterparties),
+    payroll_breakdown: buildPayrollBreakdown(unit),
     payslip_checks: buildPayslipChecks(),
     // The page's month rows, day points and total, from the overview's own income rule.
     aggregates: buildFlowsIncomeAggregates(payload, unit),
@@ -337,15 +338,12 @@ app.get("/api/expenses", (_req, res) => {
   res.json({ expenses: rows });
 });
 
-app.get("/api/flows/expenses/credit-card", (_req, res) => {
-  res.json(cachedFlowsExpensesPayload());
+app.get("/api/flows/expenses/credit-card", (req, res) => {
+  res.json(cachedFlowsExpensesPayload(requestDisplayUnit(req.query, { surface: "/api/flows/expenses/credit-card" })));
 });
 
 app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
-  const unitRaw = requireLegacyDisplayUnit(
-    requestDisplayUnit(req.query, { surface: "/api/flows/expenses/credit-card/gastos", supported: LEGACY_DISPLAY_UNITS }),
-    "/api/flows/expenses/credit-card/gastos"
-  );
+  const unitRaw = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/credit-card/gastos" });
   const excluded = new Set(
     String(req.query.exclude_big_groups ?? "")
       .split(",")

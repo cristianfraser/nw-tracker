@@ -14,10 +14,14 @@ export interface FlowDepositRow {
   account_name: string;
   /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …). */
   kind_slug: string;
-  amount_clp: number;
-  amount_usd: number | null;
+  /** The event in the payload's unit at its own day's rate (unrounded). */
+  amount: number;
+  /** Bank posting date when it lies after today: listed under today, already counted. */
+  posted_on?: string;
   /** The mortgage carrying taken back out of the property's dividendo deposit (negative; a gasto). */
   mortgage_carrying?: true;
+  /** One leg of a switch between two pension funds (pre-tax, cancels with its other leg). */
+  pension_switch?: true;
 }
 
 export interface FlowDepositChartPoint {
@@ -47,41 +51,35 @@ export interface FlowsPlChartPoint {
   cumulative_total: number;
 }
 
+/** One account's P/L in the payload's unit. */
 export interface FlowsPlAccountRow {
   account_id: number;
   name: string;
-  pl_month_clp: number;
-  pl_month_usd: number;
-  pl_ytd_clp: number;
-  pl_ytd_usd: number;
-  pl_cumulative_clp: number;
-  pl_cumulative_usd: number;
+  pl_month: number;
+  pl_ytd: number;
+  pl_cumulative: number;
 }
 
 export interface FlowsPlBucketBlock {
   slug: FlowsPlBucketSlug;
   group_slug: string;
   label_i18n_key: string;
-  total_month_clp: number;
-  total_month_usd: number;
-  total_ytd_clp: number;
-  total_ytd_usd: number;
-  total_cumulative_clp: number;
-  total_cumulative_usd: number;
+  total_month: number;
+  total_ytd: number;
+  total_cumulative: number;
   accounts: FlowsPlAccountRow[];
 }
 
 /**
- * `GET /api/flows/pl` — monthly market P/L of the accounts the flows pages count deposits for
- * (the flows overview's P/L, `flowsPl.ts`). Years are
- * rolled up client-side (`rollupFlowsPlChartPointsByYear`), the chart's after its Rango cut.
+ * `GET /api/flows/pl?unit=` — monthly market P/L of the accounts the flows pages count deposits
+ * for (the flows overview's P/L, `flowsPl.ts`), every amount in `unit`. Years are rolled up
+ * client-side (`rollupFlowsPlChartPointsByYear`), the chart's after its Rango cut.
  */
 export interface FlowsPlResponse {
+  unit: string;
   chart_monthly: FlowsPlChartPoint[];
-  chart_monthly_usd: FlowsPlChartPoint[];
   /** Per-calendar-day P/L (Diario), windowed to the requested `days`; present only when requested. */
   chart_daily?: FlowsPlChartPoint[];
-  chart_daily_usd?: FlowsPlChartPoint[];
   by_bucket: FlowsPlBucketBlock[];
 }
 
@@ -260,6 +258,13 @@ export interface LineUnitValue {
   rate_source: LineRateSource;
 }
 
+/** A line's value in the requested display unit (`currency`), with how it was reached. */
+export interface LineConverted {
+  value: number;
+  currency: string;
+  rate_source: LineRateSource;
+}
+
 /** See `FlowCcExpenseLineRow.payment_name`. `card_brand` is the issuer's short brand («Lider», «Santander»). */
 export type ExpenseLinePaymentName =
   | { kind: "pays_card"; card_brand: string; card_last4: string }
@@ -381,11 +386,16 @@ export interface FlowCcExpenseLineRow {
   /** The line in the currency it happened in. */
   amount: Money;
   /**
-   * The line's value in each display unit (`clp`, `usd`, …) with how it was reached: a card's
-   * dollars in pesos at the rate their facturación was paid, anything else at the day's rate. A unit
-   * with no rate on file for the day is absent.
+   * The line's value in the requested display unit with how it was reached: a card's dollars in
+   * pesos at the rate their facturación was paid (in another unit those pesos at the day's mid),
+   * anything else at the day's rate. Null when no rate is on file for the day.
    */
-  values: Record<string, LineUnitValue>;
+  converted: LineConverted | null;
+  /**
+   * The line's pesos as the card's facturado counts them (a dollar line at the rate its facturación
+   * was paid), whatever the display unit: the facturación and month modals' section totals.
+   */
+  value_clp: number;
   merchant: string | null;
   merchant_key: string;
   installment_flag: number;
@@ -544,25 +554,26 @@ export interface DepositReconciliationRow {
   account_id: number;
   account_name: string;
   category: DepositFlowCategory;
-  amount_clp: number;
-  amount_usd: number | null;
+  /** In the payload's unit; null when no rate is on file for the day. */
+  amount: number | null;
   status: DepositReconciliationStatus;
 }
 
 export interface DepositReconciliationStatusTotals {
   count: number;
-  total_clp: number;
-  total_usd: number | null;
+  /** In the payload's unit; null when a row has no value in it. */
+  total: number | null;
 }
 
 export interface DepositReconciliationByMonth {
   month: string;
-  linked_clp: number;
-  resolved_tax_refund_clp: number;
-  resolved_internal_transfer_clp: number;
-  unlinked_no_checking_source_clp: number;
-  unlinked_checking_present_clp: number;
-  total_clp: number;
+  /** In the payload's unit (null when a row has no value in it). */
+  linked: number | null;
+  resolved_tax_refund: number | null;
+  resolved_internal_transfer: number | null;
+  unlinked_no_checking_source: number | null;
+  unlinked_checking_present: number | null;
+  total: number | null;
 }
 
 export type DepositRedemptionStatus =
@@ -576,8 +587,7 @@ export interface DepositRedemptionRow {
   account_id: number;
   account_name: string;
   category: DepositFlowCategory;
-  amount_clp: number;
-  amount_usd: number | null;
+  amount: number | null;
   status: DepositRedemptionStatus;
 }
 
@@ -590,8 +600,7 @@ export interface DepositManualAssertionRow {
   account_name: string;
   occurred_on: string;
   merchant: string | null;
-  amount_clp: number;
-  amount_usd: number | null;
+  amount: number | null;
   deposit_movement_id: number | null;
   deposit_account_id: number | null;
   deposit_account_name: string | null;
@@ -599,7 +608,9 @@ export interface DepositManualAssertionRow {
   status: DepositManualAssertionStatus;
 }
 
+/** `GET /api/flows/deposits/reconciliation?unit=` — every amount in `unit`. */
 export interface DepositsReconciliationPayload {
+  unit: string;
   rows: DepositReconciliationRow[];
   by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals>;
   by_month: DepositReconciliationByMonth[];
@@ -678,41 +689,35 @@ export interface BigGroupUsage {
 export interface AdditionalCardsPeriodRow {
   period_month: string;
   as_of_date: string;
-  charges_clp: number;
-  charges_usd: number | null;
+  /** In the summary's `unit`; null when a line of the period has no value in it. */
+  charges: number | null;
   charge_count: number;
-  reimbursements_clp: number;
-  reimbursements_usd: number | null;
+  reimbursements: number | null;
   reimbursement_count: number;
-  net_clp: number;
-  net_usd: number | null;
-  balance_clp: number;
-  balance_usd: number | null;
+  net: number | null;
+  balance: number | null;
 }
 
 export interface AdditionalCardsSummary {
+  /** The display unit every amount is in (the request's). */
+  unit: string;
   /** Oldest first. */
   by_month: AdditionalCardsPeriodRow[];
   by_year: AdditionalCardsPeriodRow[];
   totals: {
-    charges_clp: number;
-    charges_usd: number | null;
-    reimbursements_clp: number;
-    reimbursements_usd: number | null;
-    balance_clp: number;
-    balance_usd: number | null;
+    charges: number | null;
+    reimbursements: number | null;
+    balance: number | null;
   };
 }
 
-/** `GET /api/income` — cartola abonos + manual income_entries. */
+/** A checking credit the income page lists, its `amount` in the payload's unit (null with no rate on file). */
 export interface FlowCheckingIncomeLine {
   movement_id: number;
   account_id: number;
   account_label: string;
   received_on: string;
-  amount_clp: number;
-  /** CLP ÷ `fx_daily` on or before `received_on`. */
-  amount_usd: number | null;
+  amount: number | null;
   description: string;
   source: "checking";
   transfer_counterparty?: TransferCounterparty;
@@ -723,9 +728,8 @@ export interface FlowExcludedCheckingIncomeLine {
   account_id: number;
   account_label: string;
   received_on: string;
-  amount_clp: number;
-  /** CLP ÷ `fx_daily` on or before `received_on`. */
-  amount_usd: number | null;
+  /** In the payload's unit (null with no rate on file). */
+  amount: number | null;
   description: string;
   note: string | null;
   transfer_counterparty?: TransferCounterparty;
@@ -743,9 +747,8 @@ export interface FlowFilteredCheckingIncomeLine {
   account_id: number;
   account_label: string;
   received_on: string;
-  amount_clp: number;
-  /** CLP ÷ `fx_daily` on or before `received_on`. */
-  amount_usd: number | null;
+  /** In the payload's unit (null with no rate on file). */
+  amount: number | null;
   description: string;
   filter_reason: IncomeAutoFilterReason;
   transfer_counterparty?: TransferCounterparty;
@@ -753,16 +756,17 @@ export interface FlowFilteredCheckingIncomeLine {
 
 export interface FlowManualIncomeLine {
   id: number;
-  amount_clp: number;
   received_on: string;
-  /** CLP ÷ `fx_daily` on or before `received_on`. */
-  amount_usd: number | null;
+  /** In the payload's unit (null with no rate on file). */
+  amount: number | null;
   source: string | null;
   note: string | null;
   origin: "manual";
 }
 
+/** `GET /api/income?unit=` — every line amount in `unit` (a payslip's own figures stay native). */
 export interface FlowsIncomeResponse {
+  unit: string;
   lines: FlowCheckingIncomeLine[];
   manual: FlowManualIncomeLine[];
   work_earnings: FlowWorkEarningRow[];
@@ -854,7 +858,8 @@ export const PAYROLL_BREAKDOWN_FIELDS = [
   "employer_retirement",
 ] as const;
 export type PayrollBreakdownField = (typeof PAYROLL_BREAKDOWN_FIELDS)[number];
-export type PayrollBreakdownValues = Record<PayrollBreakdownField, { clp: number; usd: number }>;
+/** Every field in the payload's unit. */
+export type PayrollBreakdownValues = Record<PayrollBreakdownField, number>;
 export interface PayrollBreakdownRow {
   /** YYYY-MM (month rows) or YYYY (year rows). */
   period: string;
@@ -862,6 +867,8 @@ export interface PayrollBreakdownRow {
   values: PayrollBreakdownValues;
 }
 export interface PayrollBreakdownPayload {
+  /** The display unit every value is in (the request's). */
+  unit: string;
   payslips: {
     payslip_id: number;
     period_month: string;
@@ -918,6 +925,10 @@ export interface FlowWorkEarningRow {
   linked_received_on: string | null;
   linked_amount_clp: number | null;
   linked_account_label: string | null;
+  /** Net pay in the payload's unit (a dollar contract's own dollars; pesos at the pay day's rate). */
+  liquido: number | null;
+  /** The paired deposit's pesos in the payload's unit. */
+  linked_amount: number | null;
 }
 
 export type IncomeKind = PayrollEarningType | "other" | "parent_gift" | "rent";
@@ -1095,7 +1106,8 @@ export interface LatestCardPayment {
   from: { kind: "card"; card_brand: string; card_last4: string } | { kind: "account"; account_name: string };
   to: { card_brand: string; card_last4: string };
   amount: Money;
-  values: Record<string, LineUnitValue>;
+  /** Its value in the requested display unit (null with no rate on file). */
+  converted: LineConverted | null;
   lines: FlowCcExpenseLineRow[];
 }
 
@@ -1110,8 +1122,8 @@ export interface LatestIncomeMovement {
   description: string;
   /** The credit in its own currency: a dollar checking account's in dollars, any other in pesos. */
   amount: Money;
-  /** Its value in each display unit (the other currency at the day's rate; absent with no rate). */
-  values: Record<string, LineUnitValue>;
+  /** Its value in the requested display unit (another currency at the day's rate; null with no rate). */
+  converted: LineConverted | null;
   income_kind: IncomeKind | null;
   transfer_counterparty?: TransferCounterparty;
 }
@@ -1121,24 +1133,17 @@ export interface LatestIncomeMovement {
  * the chart rolls years up after its Rango cut (`clipMonthsThenRollup`).
  */
 export interface FlowsDepositsResponse {
+  /** The display unit every amount is in (the request's). */
+  unit: string;
   rows: FlowDepositRow[];
   chart_monthly: FlowDepositChartPoint[];
-  /** Sum of all row amounts (the flows overview's deposits + deposits_pre_tax). */
-  net_total_clp: number;
-  net_total_usd: number | null;
-  /** AFP/AFC cotizaciones and the rest (Σ = net total). */
-  pre_tax_total_clp: number;
-  pre_tax_total_usd: number;
-  post_tax_total_clp: number;
-  post_tax_total_usd: number;
-  fx_conversion_error?: boolean;
-  fx_conversion_warnings?: FxConversionWarning[];
-  chart_monthly_usd: FlowDepositChartPoint[];
   /** Diario: one point per day carrying a deposit, oldest first (server-built). */
   chart_daily: FlowDepositChartPoint[];
-  chart_daily_usd: FlowDepositChartPoint[];
-  by_category: Record<
-    DepositFlowCategory,
-    { rows: FlowDepositRow[]; total_clp: number; total_usd: number }
-  >;
+  /** Sum of all row amounts (the flows overview's deposits + deposits_pre_tax). */
+  net_total: number;
+  /** AFP/AFC cotizaciones and the rest (Σ = net total). */
+  pre_tax_total: number;
+  post_tax_total: number;
+  fx_conversion_warnings?: FxConversionWarning[];
+  by_category: Record<DepositFlowCategory, { rows: FlowDepositRow[]; total: number }>;
 }

@@ -121,9 +121,11 @@ describe("latestMovementRows", () => {
         income_kind: "salary",
         account_label: "Corriente",
         amount: { value: 900_000, currency: "clp" },
-        values: { clp: { value: 900_000, rate_source: "native" }, usd: { value: 950, rate_source: "day" } },
+        converted: { value: 900_000, currency: "clp", rate_source: "native" },
       },
     });
+    const inUsd = latestMovementRows([], income, known, 10, today, noDollars, [], "usd");
+    expect(inUsd[0]).toMatchObject({ kind: "income", income: { converted: { value: 950, currency: "usd", rate_source: "day" } } });
     // Expense rows go over the wire without the builder fields.
     expect(rows[1]).toMatchObject({ kind: "expense", line: { amount: { value: 10_000, currency: "clp" } } });
     expect(rows[1]!.kind === "expense" && "amount_clp" in rows[1]!.line).toBe(false);
@@ -141,9 +143,11 @@ describe("latestMovementRows", () => {
       kind: "income",
       income: {
         amount: { value: 5_000, currency: "usd" },
-        values: { clp: { value: 4_750_000, rate_source: "day" }, usd: { value: 5_000, rate_source: "native" } },
+        converted: { value: 4_750_000, currency: "clp", rate_source: "day" },
       },
     });
+    const inUsd = latestMovementRows([], income, known, 10, today, new Set([7]), [], "usd");
+    expect(inUsd[0]).toMatchObject({ kind: "income", income: { converted: { value: 5_000, currency: "usd", rate_source: "native" } } });
   });
 
   it("throws on a category the catalog does not know", () => {

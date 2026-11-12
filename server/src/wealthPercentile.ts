@@ -15,12 +15,19 @@
  *   Yahoo `fx_daily` display convention and fails fast when the series has no year-end row.
  * - Years after the newest databook row keep the latest distribution
  *   (`distribution_year` < `year` marks them).
+ * - Display unit (`?unit=`, any core currency): the distributions are USD-native, so the
+ *   percentile is always computed in USD at the observado and the `p*_usd` thresholds stay as
+ *   printed. The user's net worth and the thresholds are then expressed in the unit at the same
+ *   year-end: pesos are the native frame, USD is the observado itself (so a USD threshold reads
+ *   as printed), any other unit its stored CLP rate on or before the as-of day through
+ *   `rates.ts` (EUR: Banco Central's `eur_daily`, the same official source as the observado).
  */
 import { buildDashboardBucketValueTotals } from "./portfolioGroupValueAtDate.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxBcentralRowOnOrBefore } from "./sbifSyncDb.js";
 import { ymdAddDays } from "./fundUnitDaily.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { convertCurrency, type DisplayUnitCode } from "./rates.js";
 import {
   lognormalParamsFor,
   lognormalPercentile,
@@ -55,12 +62,14 @@ export type WealthPercentileCell = {
   /** 0–100, or null when the compared net worth ≤ 0 (`below_support`). */
   percentile: number | null;
   below_support: boolean;
+  /** The distribution's thresholds as printed (USD). */
   p50_usd: number;
   p90_usd: number;
   p99_usd: number;
-  p50_clp: number;
-  p90_clp: number;
-  p99_clp: number;
+  /** The same thresholds in the payload's unit at the row's year-end rate. */
+  p50: number;
+  p90: number;
+  p99: number;
 };
 
 export type WealthPercentileYearRow = {
@@ -75,11 +84,12 @@ export type WealthPercentileYearRow = {
   interpolated: boolean;
   /** CL distribution is an own reconstruction (2025), not an official UBS figure. */
   reconstructed: boolean;
-  net_worth_clp: number;
-  net_worth_usd: number;
-  /** Total − real_estate bucket (ex real estate, ex mortgage). */
-  fin_net_worth_clp: number;
-  fin_net_worth_usd: number;
+  /** CLP per one unit of the payload's `unit` at the row's year-end (1 for CLP, the observado for USD). */
+  clp_per_unit: number;
+  /** Net worth in the payload's unit. */
+  net_worth: number;
+  /** Total − real_estate bucket (ex real estate, ex mortgage), in the payload's unit. */
+  fin_net_worth: number;
   /** Total net worth vs Chile's total-wealth distribution. */
   cl_total: WealthPercentileCell;
   /** Financial net worth vs Chile's financial-wealth distribution. */
@@ -89,11 +99,33 @@ export type WealthPercentileYearRow = {
 };
 
 export type WealthPercentilePayload = {
+  unit: DisplayUnitCode;
   rows: WealthPercentileYearRow[];
 };
 
-function cellFor(params: LognormalParams, netWorthUsd: number, fxClpPerUsd: number): WealthPercentileCell {
-  // CLP thresholds derive from the ROUNDED USD ones so the two unit views stay consistent.
+/**
+ * CLP per one `unit` at `asOfYmd`: 1 for pesos; the observado for USD (the frame the USD
+ * distributions are compared in); any other unit its stored rate on or before the day
+ * (`rates.ts`, read as of the next day so today's row never takes a live quote).
+ */
+function clpPerUnitAt(unit: DisplayUnitCode, asOfYmd: string, observadoClpPerUsd: number): number {
+  if (unit === "clp") return 1;
+  if (unit === "usd") return observadoClpPerUsd;
+  const asOfNextDay = new Date(`${chileCalendarAddDays(asOfYmd, 1)}T16:00:00Z`);
+  const r = convertCurrency(1, unit, "clp", asOfYmd, { side: "mid", now: asOfNextDay });
+  if (r == null || !(r > 0)) {
+    throw new Error(`wealthPercentile: no ${unit}/CLP rate on or before ${asOfYmd}`);
+  }
+  return r;
+}
+
+function cellFor(
+  params: LognormalParams,
+  netWorthUsd: number,
+  fxClpPerUsd: number,
+  clpPerUnit: number
+): WealthPercentileCell {
+  // Unit thresholds derive from the ROUNDED USD ones so the unit views stay consistent.
   const p50Usd = Math.round(lognormalThresholdUsd(params, 0.5));
   const p90Usd = Math.round(lognormalThresholdUsd(params, 0.9));
   const p99Usd = Math.round(lognormalThresholdUsd(params, 0.99));
@@ -104,13 +136,13 @@ function cellFor(params: LognormalParams, netWorthUsd: number, fxClpPerUsd: numb
     p50_usd: p50Usd,
     p90_usd: p90Usd,
     p99_usd: p99Usd,
-    p50_clp: Math.round(p50Usd * fxClpPerUsd),
-    p90_clp: Math.round(p90Usd * fxClpPerUsd),
-    p99_clp: Math.round(p99Usd * fxClpPerUsd),
+    p50: Math.round((p50Usd * fxClpPerUsd) / clpPerUnit),
+    p90: Math.round((p90Usd * fxClpPerUsd) / clpPerUnit),
+    p99: Math.round((p99Usd * fxClpPerUsd) / clpPerUnit),
   };
 }
 
-export function buildWealthPercentilePayload(): WealthPercentilePayload {
+export function buildWealthPercentilePayload(unit: DisplayUnitCode = "clp"): WealthPercentilePayload {
   const todayYmd = chileCalendarTodayYmd();
   const startYear = Number(portfolioStartYmd().slice(0, 4));
   const currentYear = Number(todayYmd.slice(0, 4));
@@ -142,6 +174,7 @@ export function buildWealthPercentilePayload(): WealthPercentilePayload {
     }
 
     const netWorthUsd = netWorthClp / fxRow.clp_per_usd;
+    const clpPerUnit = clpPerUnitAt(unit, asOfYmd, fxRow.clp_per_usd);
     const finNetWorthUsd = finNetWorthClp / fxRow.clp_per_usd;
     const distributionYear = Math.min(year, maxDistYear);
     const clRecord = wealthDistributionRecordFor("CL", distributionYear);
@@ -149,7 +182,7 @@ export function buildWealthPercentilePayload(): WealthPercentilePayload {
     const benchmarks = Object.fromEntries(
       WEALTH_BENCHMARK_COUNTRIES.map((country) => [
         country,
-        cellFor(lognormalParamsFor(country, distributionYear, "total"), netWorthUsd, fxRow.clp_per_usd),
+        cellFor(lognormalParamsFor(country, distributionYear, "total"), netWorthUsd, fxRow.clp_per_usd, clpPerUnit),
       ])
     ) as Record<WealthBenchmarkCountry, WealthPercentileCell>;
 
@@ -161,21 +194,21 @@ export function buildWealthPercentilePayload(): WealthPercentilePayload {
       fx_date: fxRow.date,
       interpolated: clRecord.interpolated === true,
       reconstructed: clRecord.reconstructed === true,
-      net_worth_clp: Math.round(netWorthClp),
-      net_worth_usd: Math.round(netWorthUsd),
-      fin_net_worth_clp: Math.round(finNetWorthClp),
-      fin_net_worth_usd: Math.round(finNetWorthUsd),
-      cl_total: cellFor(lognormalParamsFor("CL", distributionYear, "total"), netWorthUsd, fxRow.clp_per_usd),
+      clp_per_unit: clpPerUnit,
+      net_worth: Math.round(netWorthClp / clpPerUnit),
+      fin_net_worth: Math.round(finNetWorthClp / clpPerUnit),
+      cl_total: cellFor(lognormalParamsFor("CL", distributionYear, "total"), netWorthUsd, fxRow.clp_per_usd, clpPerUnit),
       cl_financial: cellFor(
         lognormalParamsFor("CL", distributionYear, "financial"),
         finNetWorthUsd,
-        fxRow.clp_per_usd
+        fxRow.clp_per_usd,
+        clpPerUnit
       ),
       benchmarks,
     });
   }
 
-  return { rows };
+  return { unit, rows };
 }
 
 export type { WealthCountry, WealthMode };

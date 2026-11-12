@@ -18,31 +18,13 @@ import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
-import type { FlowsPlAccountRow, FlowsPlBucketBlock, FlowsPlBucketSlug } from "../types";
+import type { FlowsPlBucketSlug } from "../types";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
-import type { DisplayUnit } from "../queries/keys";
-import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const PAGE_SIZE = 12;
 
 /** The table's bucket columns, in the server's bucket order (`FLOWS_PL_BUCKETS`). */
 const PL_TABLE_BUCKETS: FlowsPlBucketSlug[] = ["brokerage", "retirement", "cash", "real_estate"];
-
-function accountRowValue(
-  row: FlowsPlAccountRow,
-  field: "pl_month" | "pl_ytd" | "pl_cumulative",
-  unit: DisplayUnit
-): number {
-  return row[`${field}_${legacyDisplayUnit(unit, "Flows P/L")}`];
-}
-
-function bucketTotal(
-  block: FlowsPlBucketBlock,
-  field: "total_month" | "total_ytd" | "total_cumulative",
-  unit: DisplayUnit
-): number {
-  return block[`${field}_${legacyDisplayUnit(unit, "Flows P/L")}`];
-}
 
 /** Flows → PL: monthly market P/L of the buckets (brokerage / retiro / efectivo / inmuebles) — the flows overview's P/L. */
 export function FlowsPlPage() {
@@ -68,6 +50,7 @@ export function FlowsPlPage() {
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
   const { data, error: queryError, isPending, isPlaceholderData } = useFlowsPl(
+    displayUnit,
     isDaily ? timeRangeToDays(timeRange) : undefined
   );
   const error = queryLoadError({ data, error: queryError });
@@ -79,25 +62,25 @@ export function FlowsPlPage() {
     if (!data) return [];
     if (chartGranularity === "day") {
       // Server already windows the daily series to `days`; no client clip.
-      return (displayUnit === "usd" ? data.chart_daily_usd : data.chart_daily) ?? [];
+      return data.chart_daily ?? [];
     }
     // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
     // first year.
     return clipMonthsThenRollup(
-      displayUnit === "usd" ? data.chart_monthly_usd : data.chart_monthly,
+      data.chart_monthly,
       chartGranularity,
       timeRange,
       rollupFlowsPlChartPointsByYear
     );
-  }, [chartGranularity, data, displayUnit, timeRange]);
+  }, [chartGranularity, data, timeRange]);
 
   /** Table rows: FULL history (no range clip), rolled to the table's own período. */
   const tableRows = useMemo(() => {
     if (!data) return [];
-    const monthly = displayUnit === "usd" ? data.chart_monthly_usd : data.chart_monthly;
+    const monthly = data.chart_monthly;
     const rows = tableGranularity === "year" ? rollupFlowsPlChartPointsByYear(monthly) : monthly;
     return [...rows].reverse();
-  }, [data, displayUnit, tableGranularity]);
+  }, [data, tableGranularity]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 
   if (err) {
@@ -201,7 +184,7 @@ export function FlowsPlPage() {
             <h4>
               {flowsPlBucketLabel(block.slug)}
               <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-                {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
+                {formatFlowMoney(block.total_cumulative, displayUnit)}
               </span>
             </h4>
             <Table
@@ -224,26 +207,26 @@ export function FlowsPlPage() {
                     <Link to={`/account/${row.account_id}`}>{row.name}</Link>
                   </td>
                   <td className="mono">
-                    {formatFlowMoney(accountRowValue(row, "pl_month", displayUnit), displayUnit)}
+                    {formatFlowMoney(row.pl_month, displayUnit)}
                   </td>
                   <td className="mono">
-                    {formatFlowMoney(accountRowValue(row, "pl_ytd", displayUnit), displayUnit)}
+                    {formatFlowMoney(row.pl_ytd, displayUnit)}
                   </td>
                   <td className="mono">
-                    {formatFlowMoney(accountRowValue(row, "pl_cumulative", displayUnit), displayUnit)}
+                    {formatFlowMoney(row.pl_cumulative, displayUnit)}
                   </td>
                 </tr>
               ))}
               <tr>
                 <td style={{ fontWeight: 600 }}>{t("flows.pl.totalsLabel")}</td>
                 <td className="mono" style={{ fontWeight: 600 }}>
-                  {formatFlowMoney(bucketTotal(block, "total_month", displayUnit), displayUnit)}
+                  {formatFlowMoney(block.total_month, displayUnit)}
                 </td>
                 <td className="mono" style={{ fontWeight: 600 }}>
-                  {formatFlowMoney(bucketTotal(block, "total_ytd", displayUnit), displayUnit)}
+                  {formatFlowMoney(block.total_ytd, displayUnit)}
                 </td>
                 <td className="mono" style={{ fontWeight: 600 }}>
-                  {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
+                  {formatFlowMoney(block.total_cumulative, displayUnit)}
                 </td>
               </tr>
             </Table>

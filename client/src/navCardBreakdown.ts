@@ -1,6 +1,7 @@
 import type { CardBreakdownLine } from "./dashboardCardBreakdown";
 import {
   accountLineMeta,
+  compareDashboardCardMainDesc,
   dashboardAccountRowsById,
   groupLineMeta,
 } from "./dashboardCardBreakdown";
@@ -34,19 +35,18 @@ function valueRows(rows: DashboardAccountRow[]): DashboardAccountRow[] {
   );
 }
 
-function sortByClpDesc<T extends { clp: number }>(items: T[]): T[] {
-  return [...items].sort((a, b) => b.clp - a.clp);
+function sortByValueDesc<T extends { value: number | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => compareDashboardCardMainDesc(a.value, b.value));
 }
 
 function accountLines(
   rows: DashboardAccountRow[],
   depth: 0 | 1 | 2
 ): CardBreakdownLine[] {
-  return sortByClpDesc(
+  return sortByValueDesc(
     rows.map((r) => ({
       label: r.name,
-      clp: r.current_value_clp ?? 0,
-      usd: r.current_value_usd ?? null,
+      value: r.current_value,
       depth,
       to: accountDetailPath(r.account_id),
       ...accountLineMeta(r),
@@ -70,8 +70,7 @@ function groupLine(
   const gPath = g.route_path?.trim();
   return {
     label: resolveNavTreeLabel(g),
-    clp: members.clp,
-    usd: members.usd,
+    value: members,
     depth,
     ...(gPath ? { to: gPath } : {}),
     ...groupLineMeta(
@@ -106,7 +105,7 @@ function mixedChildLines(
     const line = groupLine(c, rowsUnder(c, rows), depth, dash, rowsById);
     if (line) out.push(line);
   }
-  return sortByClpDesc(out);
+  return sortByValueDesc(out);
 }
 
 function breakdownBlockForNavNode(
@@ -125,8 +124,7 @@ function breakdownBlockForNavNode(
     return [
       {
         label: resolveNavTreeLabel(node),
-        clp: row.current_value_clp ?? 0,
-        usd: row.current_value_usd ?? null,
+        value: row.current_value,
         depth: 0,
         ...(rp ? { to: rp } : {}),
         ...groupLineMeta([row.account_id], rowsById),
@@ -199,7 +197,7 @@ export function buildNavCardBreakdown(
 
   // Beside accounts a sub-bucket is listed as a leaf (Portafolio IPSA among Acciones' stocks).
   const leafLikeGroups = mixedNavChildren(navNode) != null;
-  const blocks: { clp: number; lines: CardBreakdownLine[] }[] = [];
+  const blocks: { value: number | null; lines: CardBreakdownLine[] }[] = [];
   for (const child of childNodes) {
     const block = breakdownBlockForNavNode(
       child,
@@ -209,8 +207,8 @@ export function buildNavCardBreakdown(
       leafLikeGroups && child.account_id == null
     );
     if (!block?.length) continue;
-    blocks.push({ clp: block[0]!.clp, lines: block });
+    blocks.push({ value: block[0]!.value, lines: block });
   }
   if (!blocks.length) return null;
-  return sortByClpDesc(blocks).flatMap((b) => b.lines);
+  return sortByValueDesc(blocks).flatMap((b) => b.lines);
 }

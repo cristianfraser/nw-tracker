@@ -20,8 +20,9 @@ import { investmentRootSlugs } from "./navTreeModel.js";
 import {
   buildDashboardBucketDailySeriesClp,
   buildDashboardBucketDailySeriesInUnit,
-  dashboardBucketsUsdToday,
+  dashboardBucketsTodayInUnit,
 } from "./portfolioGroupValueAtDate.js";
+import type { TsUnit } from "./rates.js";
 import {
   listAccountsForGroupTab,
   milestoneFieldsForDate,
@@ -56,7 +57,7 @@ export type OverviewDailyPoint = {
 };
 
 export type OverviewDailyPayload = {
-  unit: "clp" | "usd";
+  unit: TsUnit;
   days: number;
   end_ymd: string;
   points: OverviewDailyPoint[];
@@ -67,7 +68,7 @@ export type OverviewDailyPayload = {
 };
 
 /** Σ liability-account values per grid day in `unit` (same accounts as the Pasivos group daily view). */
-function liabilitiesByDate(grid: readonly string[], unit: "clp" | "usd"): Map<string, number> {
+function liabilitiesByDate(grid: readonly string[], unit: TsUnit): Map<string, number> {
   const rows = listAccountsForGroupTab("liabilities").filter(
     (r) => r.account_id > 0 && r.exclude_from_group_totals !== 1
   );
@@ -95,13 +96,13 @@ function liabilitiesByDate(grid: readonly string[], unit: "clp" | "usd"): Map<st
   return out;
 }
 
-function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPayload {
+function buildOverviewDaily(unit: TsUnit, days: number): OverviewDailyPayload {
   const endYmd = chileCalendarTodayYmd();
   const count = days === 0 ? totalRangeDays(endYmd) : days;
   const grid = chileCalendarDaysListEndingAt(endYmd, count);
   const byDate = buildDashboardBucketDailySeriesClp(grid);
   const liabByDate = liabilitiesByDate(grid, "clp");
-  // In USD: Σ of each account's own dollars per day (never the bucket's pesos ÷ one rate).
+  // In another unit: Σ of each account's own value in it per day (never the bucket's pesos ÷ one rate).
   const byDateUnit = unit === "clp" ? byDate : buildDashboardBucketDailySeriesInUnit(grid, unit);
   const liabByDateUnit = unit === "clp" ? liabByDate : liabilitiesByDate(grid, unit);
 
@@ -110,15 +111,15 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
   // as data, not absence.
   let reStarted = false;
   let liabStarted = false;
-  // Today in USD is the headline's figure (Σ of each account's own dollars), never the
-  // bucket's pesos ÷ one live rate: a cuota or a pre-open stock is priced on an earlier day.
-  const usdToday = unit === "usd" ? dashboardBucketsUsdToday() : null;
+  // Today in another unit is the headline's figure (Σ of each account's own value in it), never
+  // the bucket's pesos ÷ one live rate: a cuota or a pre-open stock is priced on an earlier day.
+  const unitToday = unit === "clp" ? null : dashboardBucketsTodayInUnit(unit);
   const points: OverviewDailyPoint[] = grid.map((ymd) => {
     const row = byDate.get(ymd)!;
-    const isToday = ymd === endYmd && usdToday != null;
+    const isToday = ymd === endYmd && unitToday != null;
     const rowUnit = byDateUnit.get(ymd)!;
     const bucket = (slug: string): number => {
-      const v = isToday ? usdToday![slug] : rowUnit[slug];
+      const v = isToday ? unitToday![slug] : rowUnit[slug];
       if (v == null) throw new Error(`overview-daily: no value for ${slug} on ${ymd}`);
       return v;
     };
@@ -161,7 +162,7 @@ export const OVERVIEW_DAILY_DEFAULT_DAYS = 90;
 
 /** Validated + aggregation-cached overview series. Throws on an out-of-bounds window. */
 export function getDashboardOverviewDaily(
-  unit: "clp" | "usd",
+  unit: TsUnit,
   days: number
 ): OverviewDailyPayload {
   if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {

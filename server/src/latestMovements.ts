@@ -26,7 +26,7 @@ import type {
   Money,
 } from "nw-tracker-contracts/dto/flows";
 import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
-import { lineAmount } from "./lineMoney.js";
+import { lineAmount, lineConvertedForWire } from "./lineMoney.js";
 import { toWireExpenseLine } from "./wireExpenseLine.js";
 import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type CardPaymentTransfer } from "./latestCardPayments.js";
 import { isPaymentLine } from "./expensePaymentNames.js";
@@ -84,9 +84,23 @@ function incomeMoney(
   return { amount: { value: amountClp, currency: "clp" }, values };
 }
 
+/** An income credit's money in the requested unit: its own amount and `converted`. */
+function incomeMoneyIn(
+  amountClp: number,
+  amountUsd: number | null,
+  inDollars: boolean,
+  key: string,
+  receivedOn: string,
+  unit: string
+): Pick<LatestIncomeMovement, "amount" | "converted"> {
+  const m = incomeMoney(amountClp, amountUsd, inDollars, key);
+  return { amount: m.amount, converted: lineConvertedForWire({ ...m, occurred_on: receivedOn }, unit) };
+}
+
 function incomeMovements(
   income: FlowsOverviewIncome,
-  dollarAccountIds: ReadonlySet<number>
+  dollarAccountIds: ReadonlySet<number>,
+  unit: string
 ): { on: string; income: LatestIncomeMovement; id: number }[] {
   const out: { on: string; income: LatestIncomeMovement; id: number }[] = [];
   for (const l of income.lines) {
@@ -99,7 +113,7 @@ function incomeMovements(
         source: "checking",
         account_label: l.account_label,
         description: l.description,
-        ...incomeMoney(l.amount_clp, l.amount_usd, dollarAccountIds.has(l.account_id), key),
+        ...incomeMoneyIn(l.amount_clp, l.amount_usd, dollarAccountIds.has(l.account_id), key, l.received_on, unit),
         income_kind: income.income_kind_by_movement_id[l.movement_id] ?? null,
       },
     });
@@ -113,7 +127,7 @@ function incomeMovements(
         source: "manual",
         account_label: null,
         description: m.source ?? m.note ?? "",
-        ...incomeMoney(m.amount_clp, m.amount_usd, false, `manual:${m.id}`),
+        ...incomeMoneyIn(m.amount_clp, m.amount_usd, false, `manual:${m.id}`, m.received_on, unit),
         income_kind: null,
       },
     });
@@ -130,7 +144,9 @@ export function latestMovementRows(
   /** The dollar checking accounts (`listDollarCheckingAccountIds`): their income is in dollars. */
   dollarAccountIds: ReadonlySet<number>,
   /** The card payments (`loadCardPaymentTransfers`): each one row, its evidence lines folded in. */
-  cardPayments: readonly CardPaymentTransfer[] = []
+  cardPayments: readonly CardPaymentTransfer[] = [],
+  /** The display unit every row's `converted` is in. */
+  unit: string = "clp"
 ): LatestMovementRow[] {
   type Ranked = { row: LatestMovementRow; tie: number };
   const ranked: Ranked[] = [];
@@ -138,17 +154,19 @@ export function latestMovementRows(
   const evidenceIdx = new Set([...evidence.values()].flat());
   for (const t of cardPayments) {
     if (t.occurred_on > todayYmd) continue;
-    const own = evidence.get(t.movement_id)!.map((i) => toWireExpenseLine(lines[i]!));
-    ranked.push({ row: { kind: "card_payment", on: t.occurred_on, payment: latestCardPayment(t, own) }, tie: t.movement_id * 1000 });
+    const ownIdx = evidence.get(t.movement_id)!;
+    const own = ownIdx.map((i) => toWireExpenseLine(lines[i]!, unit));
+    const payment = latestCardPayment(t, own, unit, ownIdx.map((i) => lines[i]!));
+    ranked.push({ row: { kind: "card_payment", on: t.occurred_on, payment }, tie: t.movement_id * 1000 });
   }
   for (const [i, line] of lines.entries()) {
     if (evidenceIdx.has(i)) continue;
     if (!listedAsLatestMovement(line)) continue;
     const on = movementOn(line, todayYmd);
     if (on > todayYmd) continue;
-    ranked.push({ row: { kind: "expense", on, line: toWireExpenseLine(line) }, tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0) });
+    ranked.push({ row: { kind: "expense", on, line: toWireExpenseLine(line, unit) }, tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0) });
   }
-  for (const m of incomeMovements(income, dollarAccountIds)) {
+  for (const m of incomeMovements(income, dollarAccountIds, unit)) {
     if (m.on > todayYmd) continue;
     ranked.push({ row: { kind: "income", on: m.on, income: m.income }, tie: m.id * 1000 });
   }
@@ -164,7 +182,7 @@ export function latestMovementRows(
   return rows;
 }
 
-export function buildLatestMovements(limit: number): LatestMovementsResponse {
+export function buildLatestMovements(limit: number, unit: string = "clp"): LatestMovementsResponse {
   const categories = listCcExpenseCategories();
   return {
     schema_version: DTO_SCHEMA_VERSIONS.latest_movements,
@@ -175,7 +193,8 @@ export function buildLatestMovements(limit: number): LatestMovementsResponse {
       limit,
       chileCalendarTodayYmd(),
       new Set(listDollarCheckingAccountIds()),
-      loadCardPaymentTransfers()
+      loadCardPaymentTransfers(),
+      unit
     ),
     categories,
     big_groups: listCcExpenseBigGroups(),

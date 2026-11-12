@@ -7,7 +7,6 @@ import {
 import type { NavValueMapColorBounds, NavValueMapNodeDto } from "../../types";
 import { ValueTreemap } from "./ValueTreemap";
 import type { DisplayUnit } from "../../queries/keys";
-import { legacyDisplayUnit } from "../../displayUnitSupport";
 
 /**
  * The value map in the composition chart's slot: Período (the return window, Día by default,
@@ -52,7 +51,7 @@ export function ValueMapPanel({
       root={root}
       bounds={bounds}
       period={prefs.period}
-      unit={root ? legacyDisplayUnit(unit, "Value map") : "clp"}
+      unit={unit}
       loading={loading}
     />
   );
@@ -65,8 +64,7 @@ export function ValueMapPanel({
  */
 export function valueMapRootForPage(
   valueMap: NavValueMapNodeDto | undefined,
-  slug: string,
-  unit: DisplayUnit
+  slug: string
 ): NavValueMapNodeDto | null {
   if (!valueMap) return null;
   const find = (n: NavValueMapNodeDto): NavValueMapNodeDto | null => {
@@ -79,7 +77,7 @@ export function valueMapRootForPage(
   };
   const node = find(valueMap);
   if (!node || !(node.children?.length || node.leaf_accounts?.length)) return null;
-  if ((unit === "usd" ? node.value_usd : node.value_clp) == null) return null;
+  if (node.value == null) return null;
   return node;
 }
 

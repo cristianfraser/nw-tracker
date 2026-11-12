@@ -1,7 +1,7 @@
 import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountMortgageLedgerResponse } from "./mortgage.js";
 
-import type { DataOrigin } from "./core.js";
+import type { DataOrigin, DisplayUnitCode } from "./core.js";
 import type { CcCuotaPurchaseKind, ExpenseLinkLabel, PaymentReceipt } from "./flows.js";
 
 export interface CcBillingDetailMonthDto {
@@ -69,6 +69,10 @@ export type UpcomingPaymentItemDto = {
   amount_clp: number;
   /** The mortgage's maximum cuota. */
   amount_max_clp: number | null;
+  /** `amount_clp` in the block's `unit`, at today's mid rate. */
+  amount_in_unit: number;
+  /** `amount_max_clp` in the block's `unit`. */
+  amount_max_in_unit: number | null;
   /** No document states the amount yet. */
   estimated: boolean;
   overdue: boolean;
@@ -101,12 +105,17 @@ export type AutomaticRecurringDto = {
   matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null;
 };
 
-/** `upcoming_payments` on the dashboard page bundle — pesos in both display units. */
+/**
+ * `upcoming_payments` on the dashboard page bundle: the bills' pesos (`*_clp`, native) and each
+ * amount in the bundle's display unit (`*_in_unit`, at today's mid rate).
+ */
 export type UpcomingPaymentsDto = {
   /** `DTO_SCHEMA_VERSIONS.upcoming_payments`: the client stores this payload under that version. */
   schema_version: (typeof DTO_SCHEMA_VERSIONS)["upcoming_payments"];
+  /** The display unit of the `*_in_unit` figures. */
+  unit: DisplayUnitCode;
   /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
-  months: { pay_month: string; total_clp: number; items: UpcomingPaymentItemDto[] }[];
+  months: { pay_month: string; total_clp: number; total_in_unit: number; items: UpcomingPaymentItemDto[] }[];
   /** Automatic declared payments and their occurrences in the window (never in `months`). */
   automatic_recurring: AutomaticRecurringDto[];
 };

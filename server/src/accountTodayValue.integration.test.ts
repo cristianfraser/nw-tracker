@@ -21,7 +21,7 @@ import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 describe("accountTodayValue — one figure per account today (CLP)", () => {
   it("dashboard row == today mark == current-month perf close == account chart today point", async () => {
     const today = chileCalendarTodayYmd();
-    const rows = await buildDashboardAccountRows(false);
+    const rows = await buildDashboardAccountRows("clp");
     const mismatches: string[] = [];
     let checked = 0;
     for (const r of rows) {
@@ -33,7 +33,7 @@ describe("accountTodayValue — one figure per account today (CLP)", () => {
           mismatches.push(`${r.account_id} ${r.name} ${label}: ${got} vs ${tv.value_clp}`);
         }
       };
-      close("dashboard row", r.current_value_clp);
+      close("dashboard row", r.current_value);
       close("today mark", accountMarkClpAtYmd(r.account_id, today)?.value_clp);
 
       const perf = monthlyPerfRowsForAccount(r.account_id, r.bucket_slug, "clp");
@@ -64,12 +64,12 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
 
   it("dashboard row == current-month perf close == account chart live point, every asset account", async () => {
     const today = chileCalendarTodayYmd();
-    const rows = await buildDashboardAccountRows(true);
+    const rows = await buildDashboardAccountRows("usd");
     const mismatches: string[] = [];
     let checked = 0;
     for (const r of rows) {
       if (isLiabilityAccountId(r.account_id)) continue;
-      const usd = r.current_value_usd;
+      const usd = r.current_value;
       if (usd == null) continue;
       checked += 1;
       const close = (label: string, got: number | null | undefined) => {
@@ -92,13 +92,13 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
 
   it("Σ home bucket cards == headline == Σ dashboard rows per bucket (cash net of linked cards)", async () => {
     const today = chileCalendarTodayYmd();
-    const rows = await buildDashboardAccountRows(true);
-    const totals = buildDashboardNwBucketTotals(true);
+    const rows = await buildDashboardAccountRows("usd");
+    const totals = buildDashboardNwBucketTotals("usd");
     const cardUsd: Record<string, number | null | undefined> = {
-      real_estate: totals.real_estate_usd,
-      retirement: totals.retirement_usd,
-      brokerage: totals.brokerage_usd,
-      cash_eqs: totals.cash_eqs_usd,
+      real_estate: totals.buckets.real_estate,
+      retirement: totals.buckets.retirement,
+      brokerage: totals.buckets.brokerage,
+      cash_eqs: totals.buckets.cash_eqs,
     };
     let sumCards = 0;
     const mismatches: string[] = [];
@@ -109,7 +109,7 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
       let sumRows = 0;
       for (const r of rows) {
         if (r.dashboard_bucket_slug !== slug || r.exclude_from_group_totals === 1) continue;
-        sumRows += r.current_value_usd ?? 0;
+        sumRows += r.current_value ?? 0;
       }
       if (slug === "cash_eqs") {
         const cc = linkedCreditCardClpForCashCardAsOf(today);
@@ -118,16 +118,16 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
       if (Math.abs(sumRows - card!) > TOL_USD) mismatches.push(`${slug}: rows ${sumRows} vs card ${card}`);
     }
     expect(mismatches).toEqual([]);
-    expect(Math.abs(sumCards - (totals.net_worth_usd ?? Number.NaN))).toBeLessThanOrEqual(TOL_USD);
+    expect(Math.abs(sumCards - (totals.net_worth ?? Number.NaN))).toBeLessThanOrEqual(TOL_USD);
   });
   it("the overview charts' today point in USD == the headline (monthly and daily)", () => {
     const today = chileCalendarTodayYmd();
-    const totals = buildDashboardNwBucketTotals(true);
+    const totals = buildDashboardNwBucketTotals("usd");
     const expected: Record<string, number | null | undefined> = {
-      total_nw: totals.net_worth_usd,
-      retirement: totals.retirement_usd,
-      brokerage: totals.brokerage_usd,
-      cash: totals.cash_eqs_usd,
+      total_nw: totals.net_worth,
+      retirement: totals.buckets.retirement,
+      brokerage: totals.buckets.brokerage,
+      cash: totals.buckets.cash_eqs,
     };
     const monthly = getDashboardOverviewBlock("usd").points.find((p) => p.as_of_date === today);
     expect(monthly, "monthly overview has a today point").toBeDefined();

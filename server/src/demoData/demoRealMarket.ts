@@ -66,6 +66,7 @@ import {
 } from "../equityYahooEod.js";
 import { equityMarketKind, equityQuoteCurrency } from "../equityQuote.js";
 import { fetchYahooFxUsdDailyCloses } from "../fxYahooEodSync.js";
+import { syncFxPairsFromYahoo } from "../fxPairsSync.js";
 import {
   insertFxRowsIfMissing,
   upsertEurRows,
@@ -447,6 +448,8 @@ export async function loadDemoRealMarket(
     return rows;
   });
   const fx = insertFxRowsIfMissing(fxRows);
+  // EUR/USD (`currencies` → `fx_rates`): the euro reaches every other currency through it.
+  await withDemoMarketRetries("Yahoo EUR/USD", () => syncFxPairsFromYahoo({ fromYmd: fxFrom, throughYmd: yesterday }));
 
   const ufEnd = chileCalendarAddDays(cl.ymd, 45); // the UF is published up to the 9th of next month
   const usd = await withDemoMarketRetries("Banco Central USD", () => fetchDolarAfterDate(chileCalendarAddDays(fxFrom, -1), creds, yesterday));

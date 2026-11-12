@@ -1,4 +1,5 @@
 /** DTOs for /wealth-percentile (see server wealthPercentile.ts). */
+import type { DisplayUnitCode } from "./core.js";
 
 export type WealthCountry =
   | "CL"
@@ -19,12 +20,14 @@ export interface WealthPercentileCell {
   /** 0–100, or null when the compared net worth ≤ 0 (`below_support`). */
   percentile: number | null;
   below_support: boolean;
+  /** The distribution's thresholds as printed (USD). */
   p50_usd: number;
   p90_usd: number;
   p99_usd: number;
-  p50_clp: number;
-  p90_clp: number;
-  p99_clp: number;
+  /** The same thresholds in the response's `unit` at the row's year-end rate. */
+  p50: number;
+  p90: number;
+  p99: number;
 }
 
 export interface WealthPercentileYearRow {
@@ -39,16 +42,19 @@ export interface WealthPercentileYearRow {
   interpolated: boolean;
   /** CL distribution is an own reconstruction (2025), not an official UBS figure. */
   reconstructed: boolean;
-  net_worth_clp: number;
-  net_worth_usd: number;
-  /** Total − real_estate bucket (ex real estate, ex mortgage). */
-  fin_net_worth_clp: number;
-  fin_net_worth_usd: number;
+  /** CLP per one unit of the response's `unit` at the row's year-end (1 for CLP, the observado for USD). */
+  clp_per_unit: number;
+  /** Net worth in the response's `unit`. */
+  net_worth: number;
+  /** Total − real_estate bucket (ex real estate, ex mortgage), in `unit`. */
+  fin_net_worth: number;
   cl_total: WealthPercentileCell;
   cl_financial: WealthPercentileCell;
   benchmarks: Record<WealthBenchmarkCountry, WealthPercentileCell>;
 }
 
+/** `GET /api/wealth-percentile?unit=` */
 export interface WealthPercentileResponse {
+  unit: DisplayUnitCode;
   rows: WealthPercentileYearRow[];
 }

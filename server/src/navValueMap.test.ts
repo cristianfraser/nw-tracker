@@ -1,32 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { CardMetricsAccountRow } from "./dashboardNavCardMetrics.js";
 import type { NavTreeNodeDto } from "./navTree.js";
-import { buildNavValueMap, type NavValueMapNodeDto } from "./navValueMap.js";
-import type { ProxyBasketBreakdown, ProxyHoldingBreakdown } from "./proxyBasketBreakdownTypes.js";
+import {
+  dualBuildNavValueMap as buildNavValueMap,
+  dualRow,
+  type DualProxyBreakdown as ProxyBasketBreakdown,
+  type DualRow as CardMetricsAccountRow,
+  type DualValueMapNode as NavValueMapNodeDto,
+} from "./test/navCardDual.js";
+
+type ProxyHoldingBreakdown = ProxyBasketBreakdown["holdings"][number];
 
 function row(partial: Partial<CardMetricsAccountRow> & { account_id: number }): CardMetricsAccountRow {
-  return {
-    group_slug: "brokerage",
-    bucket_slug: "brokerage",
-    dashboard_bucket_slug: "brokerage",
-    chart_inactive: false,
-    exclude_from_group_totals: 0,
-    deposits_clp: 0,
-    deposits_usd: null,
-    delta_total_clp: null,
-    delta_total_usd: null,
-    deposits_month_clp: 0,
-    deposits_month_usd: null,
-    deposits_year_clp: 0,
-    deposits_year_usd: null,
-    delta_month_clp: null,
-    delta_month_usd: null,
-    delta_year_clp: null,
-    delta_year_usd: null,
-    current_value_clp: 0,
-    current_value_usd: null,
-    ...partial,
-  };
+  return dualRow(partial);
 }
 
 function navNode(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNodeDto {
@@ -132,7 +117,7 @@ describe("buildNavValueMap", () => {
     expect(new Set(slugs).size).toBe(slugs.length);
     // the hidden −50 account still counts in its frame and every ancestor
     expect(root.value_clp).toBe(1000 + 300 - 50 + 300 + 150);
-    expect(leaves(root).reduce((s, l) => s + l.value_clp, 0)).toBe(root.value_clp + 50);
+    expect(leaves(root).reduce((s, l) => s + l.value_clp!, 0)).toBe(root.value_clp! + 50);
     const acciones = root.children!.find((c) => c.slug === "brokerage_hub")!.children!.find((c) => c.slug === "acciones")!;
     expect(acciones.value_clp).toBe(300 - 50 + 300);
     expect(root.value_usd).toBeNull(); // account 6 has no usd value
@@ -275,7 +260,7 @@ describe("buildNavValueMap proxy breakdown", () => {
     expect(other.pl.day.clp).toBeNull();
     // the accounts are claimed once: the root is Σ of its frames, nothing counted twice
     expect(root.value_clp).toBe(1300);
-    expect(leaves(root).reduce((s, l) => s + l.value_clp, 0)).toBe(1300);
+    expect(leaves(root).reduce((s, l) => s + l.value_clp!, 0)).toBe(1300);
     expect(leaves(root).map((l) => l.slug)).not.toContain("retirement_apv_a");
   });
 

@@ -13,18 +13,20 @@ export const DTO_SCHEMA_VERSIONS = {
    * tiles, v13 `parent_pct` and the liquidated rows, v14 dropped v13 entries without
    * `parent_pct`, v15 added the server `value`, v16 compounded daily % with `on_deposits_*`, v17
    * the account rows' `nav_label`, `has_period_returns` and `loan_account_id`, v18 Retirement by
-   * country (Chile / US slugs), v19 dropped `nav_label` (a card line's label is the row's `name`).
+   * country (Chile / US slugs), v19 dropped `nav_label` (a card line's label is the row's `name`), v20
+   * one value per field in the payload's `unit` (no `_clp` / `_usd` pairs).
    */
-  nav_strip: 19,
+  nav_strip: 20,
   /** `GET /api/meta/sidebar-nav`: v5 `chart_coverage`, v6 `member_account_ids`, v7 Retirement by country. */
   sidebar_nav: 7,
   /** The page bundle's `upcoming_payments` («Próximos pagos»). */
-  upcoming_payments: 5,
+  upcoming_payments: 6,
   /**
    * `GET /api/dashboard/latest-movements` («Últimos movimientos»: expense lines and income, by the
-   * day each happened); v2: rows carry `amount` (native currency) + `values` per unit.
+   * day each happened); v2: rows carry `amount` (native currency) + `values` per unit; v3: `values`
+   * replaced by `converted` in the requested unit (and an expense line's `value_clp`).
    */
-  latest_movements: 2,
+  latest_movements: 3,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
   flows_overview: 2,
 } as const;

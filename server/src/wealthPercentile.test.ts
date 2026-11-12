@@ -7,12 +7,13 @@ import {
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { maxWealthDistributionYear } from "./wealthDistributions.js";
+import { db } from "./db.js";
 
 function expectCellShape(cell: WealthPercentileCell, fx: number) {
   expect(cell.p50_usd).toBeGreaterThan(0);
   expect(cell.p50_usd).toBeLessThan(cell.p90_usd);
   expect(cell.p90_usd).toBeLessThan(cell.p99_usd);
-  expect(cell.p50_clp).toBe(Math.round(cell.p50_usd * fx));
+  expect(cell.p50).toBe(Math.round(cell.p50_usd * fx));
   if (cell.below_support) {
     expect(cell.percentile).toBeNull();
   } else {
@@ -24,6 +25,9 @@ function expectCellShape(cell: WealthPercentileCell, fx: number) {
 describe("buildWealthPercentilePayload (synthetic DB)", () => {
   it("one row per year from portfolio start to today, with all country-mode cells", () => {
     const payload = buildWealthPercentilePayload();
+    const usd = buildWealthPercentilePayload("usd");
+    expect(payload.unit).toBe("clp");
+    expect(usd.unit).toBe("usd");
 
     const startYear = Number(portfolioStartYmd().slice(0, 4));
     const currentYear = Number(chileCalendarTodayYmd().slice(0, 4));
@@ -37,15 +41,21 @@ describe("buildWealthPercentilePayload (synthetic DB)", () => {
       expect(row.fx_clp_per_usd).toBeGreaterThan(0);
       expect(row.fx_date <= row.as_of_date).toBe(true);
       // Financial NW excludes the real-estate bucket, so it never exceeds the total.
-      expect(row.fin_net_worth_clp).toBeLessThanOrEqual(row.net_worth_clp);
+      expect(row.fin_net_worth).toBeLessThanOrEqual(row.net_worth);
+      expect(row.clp_per_unit).toBe(1);
       expectCellShape(row.cl_total, row.fx_clp_per_usd);
       expectCellShape(row.cl_financial, row.fx_clp_per_usd);
       for (const country of WEALTH_BENCHMARK_COUNTRIES) {
         expectCellShape(row.benchmarks[country], row.fx_clp_per_usd);
       }
-      if (!row.cl_total.below_support) {
-        expect(row.net_worth_usd).toBe(Math.round(row.net_worth_clp / row.fx_clp_per_usd));
-      }
+    }
+    for (const [i, row] of usd.rows.entries()) {
+      const clpRow = payload.rows[i]!;
+      // USD is the observado frame: net worth at it, thresholds as printed, same percentiles.
+      expect(row.clp_per_unit).toBe(row.fx_clp_per_usd);
+      expect(row.net_worth).toBe(Math.round(clpRow.net_worth / row.fx_clp_per_usd));
+      expect(row.cl_total.p50).toBe(row.cl_total.p50_usd);
+      expect(row.cl_total.percentile).toBe(clpRow.cl_total.percentile);
     }
 
     // The current-year row values today, not December 31.
@@ -67,6 +77,25 @@ describe("buildWealthPercentilePayload (synthetic DB)", () => {
     for (const row of payload.rows) {
       if (row.year > maxYear) expect(row.distribution_year).toBe(maxYear);
       expect(row.interpolated).toBe(row.distribution_year === 2023 || row.distribution_year === 2024);
+    }
+  });
+
+  it("expresses net worth and thresholds in EUR at the year-end EUR/CLP; percentiles stay USD-framed", () => {
+    // One early EUR/CLP row carries forward to every year-end (on-or-before reads).
+    db.prepare(`INSERT OR IGNORE INTO eur_daily (date, clp_per_eur) VALUES ('2000-01-03', 1000)`).run();
+    try {
+      const clp = buildWealthPercentilePayload("clp");
+      const eur = buildWealthPercentilePayload("eur");
+      expect(eur.unit).toBe("eur");
+      for (const [i, row] of eur.rows.entries()) {
+        const clpRow = clp.rows[i]!;
+        expect(row.clp_per_unit).toBeGreaterThan(0);
+        expect(row.net_worth).toBe(Math.round(clpRow.net_worth / row.clp_per_unit));
+        expect(row.cl_total.p90).toBe(Math.round((row.cl_total.p90_usd * row.fx_clp_per_usd) / row.clp_per_unit));
+        expect(row.cl_total.percentile).toBe(clpRow.cl_total.percentile);
+      }
+    } finally {
+      db.prepare(`DELETE FROM eur_daily WHERE date = '2000-01-03'`).run();
     }
   });
 });

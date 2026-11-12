@@ -35,7 +35,6 @@ import {
 export type { WatchlistSource } from "./marketDisplaySeries.js";
 export type { WatchlistCompositeHoldingRow } from "./watchlistCompositeHoldings.js";
 export type { WatchlistDisplayUnit } from "./watchlistStats.js";
-export { watchlistDisplayUnitParam } from "./watchlistStats.js";
 
 export type WatchlistRow = MarketDisplaySeriesRow &
   WatchlistRowStats & {
@@ -302,7 +301,7 @@ function rowToWatchlist(
 /**
  * DB-only payload — never fetches Yahoo. History depth for the YTD/YoY stats is maintained
  * by {@link ensureWatchlistEquityHistoryDepth} on the live-quotes scheduler tick.
- * Values and changes come back in `unit` (the app's CLP/USD toggle) — see
+ * Values and changes come back in `unit` (the app's display unit) — see
  * {@link watchlistStatsForRow}; the USD/CLP rate row is the one exception.
  */
 export function getWatchlistPayload(

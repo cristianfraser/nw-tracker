@@ -10,29 +10,29 @@ import { portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
 describe("portfolioGroupValueClpAt", () => {
   it("page-bundle bucket totals match consolidated valuation marks", async () => {
     await withPortfolioGroupIndex(async () => {
-      const payload = await buildDashboardPagePayload(false);
+      const payload = await buildDashboardPagePayload("clp");
       const asOf = chileCalendarTodayYmd();
       for (const slug of nwBucketSlugs()) {
-        expect(payload.totals[`${slug}_clp`]).toBe(portfolioGroupValueClpAt(slug, asOf));
+        expect(payload.totals.buckets[slug]).toBe(portfolioGroupValueClpAt(slug, asOf));
       }
       // Headline total = round of the raw bucket sum (must equal the overview chart /
       // consolidated closing exactly — see netWorthConsolidation.test.ts). Cards are
       // rounded per bucket, so their sum may drift from the total by ±1 peso per bucket.
       const cardSum =
-        payload.totals.real_estate_clp +
-        payload.totals.retirement_clp +
-        payload.totals.brokerage_clp +
-        payload.totals.cash_eqs_clp;
-      expect(Math.abs(payload.totals.net_worth_clp - cardSum)).toBeLessThanOrEqual(2);
+        payload.totals.buckets.real_estate! +
+        payload.totals.buckets.retirement! +
+        payload.totals.buckets.brokerage! +
+        payload.totals.buckets.cash_eqs!;
+      expect(Math.abs(payload.totals.net_worth! - cardSum)).toBeLessThanOrEqual(2);
     });
   });
 
   it("prior month net worth delta aligns with overview chart MoM", async () => {
     await withPortfolioGroupIndex(async () => {
-      const payload = await buildDashboardPagePayload(false);
+      const payload = await buildDashboardPagePayload("clp");
       const priorEnd = priorPeriodEndYmd("mtd", chileCalendarTodayYmd());
       const cardDelta =
-        payload.totals.net_worth_clp - payload.totals.prior_closes.month.net_worth_clp;
+        payload.totals.net_worth! - payload.totals.prior_closes.month.net_worth!;
 
       const ts = getDashboardValuationTimeseries("clp");
       const points = ts.overview?.points ?? [];

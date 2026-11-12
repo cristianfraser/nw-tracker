@@ -32,6 +32,7 @@ import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
 import { monthYearSurfacePeriod } from "../../surfaceDisplayPrefs";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto, PeriodReturnsPayload } from "../../types";
+import type { DisplayUnit } from "../../queries/keys";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
 import { queryLoadError } from "../../queries/pageShapeReady";
 
@@ -43,7 +44,8 @@ export type GroupInfoPortfolioStrip = {
     DashboardResponse,
     "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
-  showUsd: boolean;
+  /** The unit the strip's cards are in (every figure of `dash` is in it). */
+  unit: DisplayUnit;
   /**
    * Dims the strip while `dash` is a placeholder of its own (a zero strip from the nav tree).
    * Defaults to the page's `loading`. The numbers themselves are shown as given — a cached
@@ -253,7 +255,7 @@ export function GroupInfoBase({
       <PortfolioNavEntityCardsStrip
         dash={portfolio.dash}
         parentNavNode={portfolio.navNode}
-        showUsd={portfolio.showUsd}
+        unit={portfolio.unit}
         linkedCardNavChildren={portfolio.linkedCardNavChildren}
       />
     </Loadable>

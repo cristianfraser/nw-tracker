@@ -26,7 +26,7 @@ async function time<T>(label: string, fn: () => T | Promise<T>): Promise<T> {
 async function main() {
   console.log("Dashboard profile (CLP) — sequential breakdown\n");
 
-  await time("buildDashboardPagePayload", () => buildDashboardPagePayload(false));
+  await time("buildDashboardPagePayload", () => buildDashboardPagePayload("clp"));
   await time("getDashboardValuationTimeseries", () => getDashboardValuationTimeseries("clp"));
   await time("getDashboardOverviewBlock (nav)", () => getDashboardOverviewBlock("clp"));
   await time("getGroupMonthlyPerformance(retirement)", () =>
@@ -36,7 +36,7 @@ async function main() {
     getGroupMonthlyPlSeries("brokerage", "clp")
   );
   await time("buildFlowsDepositsPayload", () => buildFlowsDepositsPayload());
-  await time("buildDashboardNavSnapshot", () => buildDashboardNavSnapshot(false));
+  await time("buildDashboardNavSnapshot", () => buildDashboardNavSnapshot("clp"));
 
   console.log("\nParallel page-bundle wall time:");
   const t0 = performance.now();

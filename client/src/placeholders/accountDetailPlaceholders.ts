@@ -93,7 +93,7 @@ export function buildPlaceholderAccountDetailBundle(
   unit: DisplayUnit,
   source?: AccountDetailPlaceholderSource
 ): AccountDetailBundleResponse {
-  const unitTs = unit === "usd" ? "usd" : "clp";
+  const unitTs = unit;
   const category_slug = placeholderCategorySlug(source);
   // Nothing identifies the account yet (first-ever visit): a blank title, not a made-up one.
   const name = source?.navNode ? resolveNavTreeLabel(source.navNode) : (source?.dashRow?.name ?? "");

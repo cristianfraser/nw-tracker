@@ -10,15 +10,17 @@
  * deductions» so the stack still adds to gross); its employer 401(k) match is a memo line, shown
  * apart (`employer_retirement`) and outside gross − deductions = net.
  *
- * Every value comes in pesos and dollars, converted per payslip: a peso payslip at the buy rate on
- * its pay day (the paired deposit's day, else the month's last day), a Chilean dollar payslip (the
- * 2021 contract) at the rate its stored peso breakdown used, a US pay stub at the mid on its pay
- * date (`usPayslipClpPerUsd`). A payslip's deductions add up to gross − net, or the build throws.
+ * Every value comes in the requested display unit, converted per payslip: in pesos a dollar payslip
+ * at the rate its stored peso breakdown used (the 2021 contract) or, for a US pay stub, the mid on
+ * its pay date (`usPayslipClpPerUsd`); in dollars a peso payslip at the buy rate on its pay day (the
+ * paired deposit's day, else the month's last day); in any other unit the payslip's own currency at
+ * that day's mid (`rates.ts`). A payslip's deductions add up to gross − net, or the build throws.
  */
 import { db } from "./db.js";
 import { clpToUsdAtPayment } from "./fxRates.js";
 import { payslipHaberIsTaxable, splitPensionLine, type PayrollJurisdiction, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
 import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
+import { convertCurrency } from "./rates.js";
 
 export const PAYROLL_BREAKDOWN_FIELDS = [
   "gross",
@@ -53,8 +55,8 @@ export const PAYROLL_BREAKDOWN_FIELDS = [
 ] as const;
 
 export type PayrollBreakdownField = (typeof PAYROLL_BREAKDOWN_FIELDS)[number];
-export type PayrollAmount = { clp: number; usd: number };
-export type PayrollBreakdownValues = Record<PayrollBreakdownField, PayrollAmount>;
+/** Every field's amount in the payload's unit. */
+export type PayrollBreakdownValues = Record<PayrollBreakdownField, number>;
 
 export type PayrollBreakdownPayslip = {
   payslip_id: number;
@@ -69,6 +71,8 @@ export type PayrollBreakdownPayslip = {
 export type PayrollBreakdownRow = { period: string; payslips: number; values: PayrollBreakdownValues };
 
 export type PayrollBreakdownPayload = {
+  /** The display unit every value is in. */
+  unit: string;
   payslips: PayrollBreakdownPayslip[];
   /** One row per payroll month (YYYY-MM), oldest first. */
   months: PayrollBreakdownRow[];
@@ -136,7 +140,7 @@ type PayslipRow = {
 type LineRow = { payslip_id: number; side: PayslipLineSide; section: string | null; kind: PayslipLineKind | null; amount: number };
 
 function zero(): PayrollBreakdownValues {
-  return Object.fromEntries(PAYROLL_BREAKDOWN_FIELDS.map((f) => [f, { clp: 0, usd: 0 }])) as PayrollBreakdownValues;
+  return Object.fromEntries(PAYROLL_BREAKDOWN_FIELDS.map((f) => [f, 0])) as PayrollBreakdownValues;
 }
 
 function monthEnd(periodMonth: string): string {
@@ -186,7 +190,7 @@ function nativeBreakdown(p: PayslipRow, lines: readonly LineRow[]): Record<Payro
   return v;
 }
 
-export function buildPayrollBreakdown(): PayrollBreakdownPayload {
+export function buildPayrollBreakdown(unit: string = "clp"): PayrollBreakdownPayload {
   const payslipRows = db
     .prepare(
       `SELECT p.id, p.period_month, p.employer_name, p.earning_type, p.origin, p.jurisdiction, p.pay_date, p.liquido, p.liquido_currency,
@@ -208,20 +212,36 @@ export function buildPayrollBreakdown(): PayrollBreakdownPayload {
     if (!lines?.length) throw new Error(`payslip ${p.id} (${p.period_month}) has no lines`);
     const native = nativeBreakdown(p, lines);
     const values = zero();
-    if (p.jurisdiction === "us") {
+    // How one unit of the payslip's own currency reads in the requested unit (the rules above).
+    // `num / den` per native unit, applied as (native × num) / den so the dollar figures are the
+    // ones a peso payslip always had.
+    let factor: number;
+    let den = 1;
+    if (unit === p.liquido_currency) {
+      factor = 1;
+    } else if (p.jurisdiction === "us" && unit === "clp") {
       if (p.liquido_currency !== "usd" || p.pay_date == null) throw new Error(`payslip ${p.id}: a US payslip must be in dollars with a pay date`);
-      const rate = usPayslipClpPerUsd(p.pay_date, p.id);
-      for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = { clp: native[f] * rate, usd: native[f] };
-    } else if (p.liquido_currency === "usd") {
+      factor = usPayslipClpPerUsd(p.pay_date, p.id);
+    } else if (p.liquido_currency === "usd" && unit === "clp") {
       if (p.total_haberes_clp == null || !(native.gross > 0)) throw new Error(`payslip ${p.id}: a dollar payslip without its peso gross`);
-      const rate = p.total_haberes_clp / native.gross;
-      for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = { clp: native[f] * rate, usd: native[f] };
-    } else {
+      factor = p.total_haberes_clp / native.gross;
+    } else if (p.liquido_currency === "clp" && unit === "usd") {
       const day = p.paid_on ?? monthEnd(p.period_month);
       const perClp = clpToUsdAtPayment(1_000_000, day);
       if (perClp == null) throw new Error(`payslip ${p.id}: no USD rate on or before ${day}`);
-      for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = { clp: native[f], usd: (native[f] * perClp) / 1_000_000 };
+      factor = perClp;
+      den = 1_000_000;
+    } else {
+      const day = p.pay_date ?? p.paid_on ?? monthEnd(p.period_month);
+      const per = convertCurrency(1_000_000, p.liquido_currency, unit, day, { side: "mid" });
+      if (per == null) throw new Error(`payslip ${p.id}: no ${p.liquido_currency}→${unit} rate on or before ${day}`);
+      factor = per;
+      den = 1_000_000;
     }
+    if (p.jurisdiction === "us" && (p.liquido_currency !== "usd" || p.pay_date == null)) {
+      throw new Error(`payslip ${p.id}: a US payslip must be in dollars with a pay date`);
+    }
+    for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = factor === 1 && den === 1 ? native[f] : den === 1 ? native[f] * factor : (native[f] * factor) / den;
     payslips.push({
       payslip_id: p.id,
       period_month: p.period_month,
@@ -239,13 +259,10 @@ export function buildPayrollBreakdown(): PayrollBreakdownPayload {
       const k = key(p);
       const row = rows.get(k) ?? { period: k, payslips: 0, values: zero() };
       row.payslips += 1;
-      for (const f of PAYROLL_BREAKDOWN_FIELDS) {
-        row.values[f].clp += p.values[f].clp;
-        row.values[f].usd += p.values[f].usd;
-      }
+      for (const f of PAYROLL_BREAKDOWN_FIELDS) row.values[f] += p.values[f];
       rows.set(k, row);
     }
     return [...rows.values()].sort((a, b) => a.period.localeCompare(b.period));
   };
-  return { payslips, months: sumBy((p) => p.period_month), years: sumBy((p) => p.period_month.slice(0, 4)) };
+  return { unit, payslips, months: sumBy((p) => p.period_month), years: sumBy((p) => p.period_month.slice(0, 4)) };
 }

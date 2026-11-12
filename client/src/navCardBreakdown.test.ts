@@ -47,9 +47,8 @@ function dashRow(
     group_label: "Retiro",
     dashboard_bucket_slug: "retirement",
     bucket_slug: bucketSlug,
-    current_value_clp: clp,
-    current_value_usd: null,
-    deposits_clp: 0,
+    current_value: clp,
+    deposits: 0,
     exclude_from_group_totals: 0,
   } as DashboardAccountRow;
 }
@@ -103,11 +102,11 @@ describe("buildNavCardBreakdown retirement", () => {
 
     expect(lines).not.toBeNull();
     // The group line is the server's balance, never a Σ of the rows here.
-    expect(lines!.find((l) => l.label === "AFP + AFC")?.clp).toBe(28_000_000);
+    expect(lines!.find((l) => l.label === "AFP + AFC")?.value).toBe(28_000_000);
     const afpLine = lines!.find((l) => l.label === "AFP UNO" && l.depth === 1);
     const afcLine = lines!.find((l) => l.label === "AFC Banco" && l.depth === 1);
-    expect(afpLine?.clp).toBe(20_000_000);
-    expect(afcLine?.clp).toBe(8_000_000);
+    expect(afpLine?.value).toBe(20_000_000);
+    expect(afcLine?.value).toBe(8_000_000);
   });
 
   it("nests the APV and AFP+AFC bucket rows over their accounts, largest first", () => {

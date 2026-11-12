@@ -45,7 +45,7 @@ export type MarketTickerValue = {
   day: string;
   value: number;
   /** Currency `value` is expressed in — the payload's `unit`. */
-  currency: "usd" | "clp" | "none";
+  currency: string;
   delta_pct: number | null;
 };
 
@@ -54,7 +54,7 @@ export type MarketTickerEquityRow = {
   trade_date: string;
   value: number;
   /** Currency `value` is expressed in — the payload's `unit` (a `.SN` ticker is converted too; an index is `none`). */
-  currency: "usd" | "clp" | "none";
+  currency: string;
   delta_pct: number | null;
 };
 
@@ -71,10 +71,10 @@ export function equityTickersForMarqueeQuotes(marqueeSeries: MarketDisplaySeries
 
 export type MarketTickerPayload = {
   chile_today: string;
-  /** Display unit every value below is expressed in (the app's CLP/USD toggle), except `usd`. */
+  /** Display unit every value below is expressed in (any core currency), except `usd`. */
   unit: WatchlistDisplayUnit;
   uf: MarketTickerValue | null;
-  /** The USD/CLP rate itself — CLP per USD in both units. */
+  /** The USD/CLP rate itself — CLP per USD in every unit. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: MarketTickerValue | null;
   risky_norris: MarketTickerValue | null;

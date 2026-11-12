@@ -11,7 +11,7 @@ import {
 import { compareDashboardCardMainDesc } from "../../dashboardCardBreakdown";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
-import { legacyCardValue } from "./DashboardCardValue";
+import type { DisplayUnit } from "../../queries/keys";
 
 export type PortfolioNavChildDetailCardsProps = {
   dash: Pick<
@@ -19,7 +19,8 @@ export type PortfolioNavChildDetailCardsProps = {
     "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
   navChildren: NavTreeNodeDto[];
-  showUsd: boolean;
+  /** The payload's unit (every figure of `dash` is in it). */
+  unit: DisplayUnit;
   animated?: boolean;
 };
 
@@ -27,7 +28,7 @@ export type PortfolioNavChildDetailCardsProps = {
 export function PortfolioNavChildDetailCards({
   dash,
   navChildren,
-  showUsd,
+  unit,
   animated = true,
 }: PortfolioNavChildDetailCardsProps) {
   const sorted = useMemo(() => {
@@ -37,18 +38,16 @@ export function PortfolioNavChildDetailCards({
         (c.chart_inactive !== true || navChildCardHasActivity(dash, c))
     );
     return [...filtered].sort((a, b) => {
-      const aMain = mainValueForNavChild(dash, a, showUsd);
-      const bMain = mainValueForNavChild(dash, b, showUsd);
-      return compareDashboardCardMainDesc(aMain.clp, aMain.apiUsd, bMain.clp, bMain.apiUsd, showUsd);
+      return compareDashboardCardMainDesc(mainValueForNavChild(dash, a), mainValueForNavChild(dash, b));
     });
-  }, [navChildren, dash, showUsd]);
+  }, [navChildren, dash]);
 
   if (!sorted.length) return null;
 
   return (
     <>
       {sorted.map((child) => {
-        const { clp, apiUsd } = mainValueForNavChild(dash, child, showUsd);
+        const value = mainValueForNavChild(dash, child);
         const entry = requireNavCardMetrics(dash, child);
         const metricsByPeriod = entry.child;
         const br = breakdownForNavChild(child, dash);
@@ -59,7 +58,7 @@ export function PortfolioNavChildDetailCards({
           child.asset_group_slug?.startsWith("cash_eqs")
             ? "card--cash"
             : "";
-        const fxMissing = showUsd && entry.value.fx_missing;
+        const fxMissing = entry.value.fx_missing;
         const syncStale = entry.value.sync_stale;
 
         return (
@@ -68,7 +67,8 @@ export function PortfolioNavChildDetailCards({
             title={resolveNavTreeLabel(child)}
             titleTo={rp || undefined}
             titleColorRgb={child.color_rgb}
-            {...legacyCardValue(clp, apiUsd, showUsd)}
+            value={value}
+            unit={unit}
             fxMissing={fxMissing}
             syncStale={syncStale}
             animated={animated}
@@ -76,14 +76,14 @@ export function PortfolioNavChildDetailCards({
             valueDelta={
               <CardValueDayPl
                 metricsByPeriod={metricsByPeriod}
-                unit={showUsd ? "usd" : "clp"}
+                unit={unit}
                 animated={animated}
               />
             }
             metrics={
               <DashboardCardGroupMetrics
                 metricsByPeriod={metricsByPeriod}
-                unit={showUsd ? "usd" : "clp"}
+                unit={unit}
                 animated={animated}
               />
             }
@@ -93,7 +93,7 @@ export function PortfolioNavChildDetailCards({
                   lines={br.lines}
                   bottomLines={br.bottomLines}
                   pinBottomToCard={br.pinBottom}
-                  showUsd={showUsd}
+                  unit={unit}
                   animated={false}
                 />
               ) : null

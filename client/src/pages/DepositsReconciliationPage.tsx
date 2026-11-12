@@ -14,7 +14,6 @@ import type {
   DepositRedemptionStatus,
 } from "../types";
 import { queryLoadError } from "../queries/pageShapeReady";
-import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const STATUS_ORDER: DepositReconciliationStatus[] = [
   "unlinked_checking_present",
@@ -54,30 +53,32 @@ function statusEmptyKey(status: DepositReconciliationStatus): string {
   }
 }
 
+/** An amount in the payload's unit; one with no rate on file reads «—». */
+function money(v: number | null, unit: string): string {
+  return v == null ? "—" : formatFlowMoney(v, unit);
+}
+
 function ReconciliationSection({
   status,
   rows,
-  totalClp,
-  totalUsd,
+  total,
   loading,
 }: {
   status: DepositReconciliationStatus;
   rows: DepositReconciliationRow[];
-  totalClp: number;
-  totalUsd: number | null;
+  /** In the payload's unit (null when a row has no value in it). */
+  total: number | null;
   loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
-  const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
     <PageGridTile id={`reconciliation-${status}`}>
       <h3>
         {t(statusSectionKey(status))}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-          {formatFlowMoney(total, displayUnit)}
+          {money(total, displayUnit)}
         </span>
       </h3>
       <Table
@@ -105,7 +106,6 @@ function ReconciliationSection({
           </tr>
         ) : (
           rows.map((r) => {
-            const amount = displayUnit === "usd" ? (r.amount_usd ?? 0) : r.amount_clp;
             return (
               <tr key={r.movement_id}>
                 <td className="mono">{r.occurred_on}</td>
@@ -113,7 +113,7 @@ function ReconciliationSection({
                 <td>
                   <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
                 </td>
-                <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
+                <td className="mono">{money(r.amount, displayUnit)}</td>
               </tr>
             );
           })
@@ -132,22 +132,19 @@ function ManualAssertionsSection({
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
   const unmatched = rows.filter((r) => r.status === "asserted_unmatched");
   const linkedCount = rows.length - unmatched.length;
-  const totalClp = unmatched.reduce((s, r) => s + r.amount_clp, 0);
-  const totalUsd = unmatched.reduce<number | null>(
-    (s, r) => (s == null || r.amount_usd == null ? null : s + r.amount_usd),
+  const total = unmatched.reduce<number | null>(
+    (s, r) => (s == null || r.amount == null ? null : s + r.amount),
     0
   );
-  const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
     <PageGridTile id="asserted">
       <h3>
         {t("depositsReconciliation.assertedTitle")}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-          {formatFlowMoney(total, displayUnit)}
+          {money(total, displayUnit)}
         </span>
       </h3>
       <Table
@@ -176,7 +173,6 @@ function ManualAssertionsSection({
           </tr>
         ) : (
           unmatched.map((r) => {
-            const amount = displayUnit === "usd" ? (r.amount_usd ?? 0) : r.amount_clp;
             return (
               <tr key={r.purchase_key}>
                 <td className="mono">{r.occurred_on}</td>
@@ -184,7 +180,7 @@ function ManualAssertionsSection({
                   <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
                 </td>
                 <td>{r.merchant ?? ""}</td>
-                <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
+                <td className="mono">{money(r.amount, displayUnit)}</td>
                 <td className="mono">{r.candidate_count}</td>
               </tr>
             );
@@ -236,27 +232,24 @@ function redemptionEmptyKey(status: DepositRedemptionStatus): string {
 function RedemptionSection({
   status,
   rows,
-  totalClp,
-  totalUsd,
+  total,
   loading,
 }: {
   status: DepositRedemptionStatus;
   rows: DepositRedemptionRow[];
-  totalClp: number;
-  totalUsd: number | null;
+  /** In the payload's unit (null when a row has no value in it). */
+  total: number | null;
   loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
-  const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
     <PageGridTile id={`redemption-${status}`}>
       <h3>
         {t(redemptionSectionKey(status))}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-          {formatFlowMoney(total, displayUnit)}
+          {money(total, displayUnit)}
         </span>
       </h3>
       <Table
@@ -284,7 +277,6 @@ function RedemptionSection({
           </tr>
         ) : (
           rows.map((r, idx) => {
-            const amount = displayUnit === "usd" ? (r.amount_usd ?? 0) : r.amount_clp;
             return (
               <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
                 <td className="mono">{r.occurred_on}</td>
@@ -292,7 +284,7 @@ function RedemptionSection({
                 <td>
                   <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
                 </td>
-                <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
+                <td className="mono">{money(r.amount, displayUnit)}</td>
               </tr>
             );
           })
@@ -305,8 +297,7 @@ function RedemptionSection({
 export function DepositsReconciliationPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  legacyDisplayUnit(displayUnit, "Deposits reconciliation");
-  const { data, error: queryError } = useFlowsDepositsReconciliation();
+  const { data, error: queryError } = useFlowsDepositsReconciliation(displayUnit);
   const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -342,8 +333,7 @@ export function DepositsReconciliationPage() {
             key={status}
             status={status}
             rows={rows}
-            totalClp={data ? data.by_status[status].total_clp : 0}
-            totalUsd={data ? data.by_status[status].total_usd : null}
+            total={data ? data.by_status[status].total : 0}
             loading={loading}
           />
         );
@@ -378,12 +368,12 @@ export function DepositsReconciliationPage() {
           {(data?.by_month ?? []).map((pt) => (
             <tr key={pt.month}>
               <td className="mono">{pt.month}</td>
-              <td className="mono">{formatFlowMoney(pt.linked_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.resolved_tax_refund_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.resolved_internal_transfer_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.unlinked_no_checking_source_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.unlinked_checking_present_clp, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(pt.total_clp, displayUnit)}</td>
+              <td className="mono">{money(pt.linked, displayUnit)}</td>
+              <td className="mono">{money(pt.resolved_tax_refund, displayUnit)}</td>
+              <td className="mono">{money(pt.resolved_internal_transfer, displayUnit)}</td>
+              <td className="mono">{money(pt.unlinked_no_checking_source, displayUnit)}</td>
+              <td className="mono">{money(pt.unlinked_checking_present, displayUnit)}</td>
+              <td className="mono">{money(pt.total, displayUnit)}</td>
             </tr>
           ))}
         </Table>
@@ -400,8 +390,7 @@ export function DepositsReconciliationPage() {
               key={status}
               status={status}
               rows={rows}
-              totalClp={data ? data.redemptions_by_status[status].total_clp : 0}
-              totalUsd={data ? data.redemptions_by_status[status].total_usd : null}
+              total={data ? data.redemptions_by_status[status].total : 0}
               loading={loading}
             />
           );

@@ -61,6 +61,7 @@ const NAV_STRIP = persistedPayload(
   "nav_strip",
   (v): v is DashboardNavSnapshotResponse =>
     hasSchemaVersion(v, "nav_strip") &&
+    typeof (v as DashboardNavSnapshotResponse).unit === "string" &&
     Array.isArray((v as DashboardNavSnapshotResponse).accounts) &&
     (v as DashboardNavSnapshotResponse).card_metrics_by_slug != null
 );
@@ -69,19 +70,7 @@ const NAV_STRIP = persistedPayload(
 export function nwBucketTotalsFromDashTotals(
   totals: DashboardResponse["totals"]
 ): DashboardNavSnapshotResponse["nw_bucket_totals"] {
-  return {
-    net_worth_clp: totals.net_worth_clp,
-    real_estate_clp: totals.real_estate_clp,
-    retirement_clp: totals.retirement_clp,
-    brokerage_clp: totals.brokerage_clp,
-    cash_eqs_clp: totals.cash_eqs_clp,
-    prior_closes: totals.prior_closes,
-    net_worth_usd: totals.net_worth_usd,
-    real_estate_usd: totals.real_estate_usd,
-    retirement_usd: totals.retirement_usd,
-    brokerage_usd: totals.brokerage_usd,
-    cash_eqs_usd: totals.cash_eqs_usd,
-  };
+  return { net_worth: totals.net_worth, buckets: totals.buckets, prior_closes: totals.prior_closes };
 }
 
 export function readDashboardNavSnapshotCache(

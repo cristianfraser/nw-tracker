@@ -101,9 +101,11 @@ export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amou
  * Marks the two legs of each pension fund switch: a negative and a positive AFP/AFC row of the same
  * day and the same pesos on two different accounts (the transfer's legs; one-to-one).
  */
-export function markPensionSwitchRows(rows: FlowDepositRow[]): void {
+export function markPensionSwitchRows(
+  rows: Pick<FlowDepositRow, "kind_slug" | "amount_clp" | "account_id" | "occurred_on" | "pension_switch">[]
+): void {
   const pension = rows.filter((r) => PAYROLL_FUNDED_KINDS.has(r.kind_slug) && !r.pension_switch);
-  const used = new Set<FlowDepositRow>();
+  const used = new Set<(typeof rows)[number]>();
   for (const out of pension) {
     if (out.amount_clp >= 0 || used.has(out)) continue;
     const into = pension.find(
@@ -333,7 +335,9 @@ export function buildFlowsDepositsPayload(opts?: {
     }
   }
   markPensionSwitchRows(rows);
-  if (opts?.withMortgageCarrying) rows.push(...mortgageCarryingRows(opts.withMortgageCarrying, accounts));
+  if (opts?.withMortgageCarrying) {
+    rows.push(...mortgageCarryingRows({ clp: opts.withMortgageCarrying.clp, inUnit: opts.withMortgageCarrying.usd }, accounts));
+  }
   rows.sort((a, b) => {
     const d = b.occurred_on.localeCompare(a.occurred_on);
     return d !== 0 ? d : a.account_name.localeCompare(b.account_name);
@@ -373,13 +377,16 @@ export function buildFlowsDepositsPayload(opts?: {
   };
 }
 
-/** One negative row per carrying event, on the property account its deposit belongs to. */
+/**
+ * One negative row per carrying event, on the property account its deposit belongs to: its pesos
+ * (`amount_clp`) and its value in the other unit asked for (`amount_usd`; the unit build renames it).
+ */
 function mortgageCarryingRows(
-  carrying: { clp: readonly MortgageCarryingEvent[]; usd: readonly MortgageCarryingEvent[] },
+  carrying: { clp: readonly MortgageCarryingEvent[]; inUnit: readonly MortgageCarryingEvent[] },
   accounts: readonly DepositFlowAccountRow[]
 ): FlowDepositRow[] {
   const usdByDeposit = new Map<number, number>();
-  for (const e of carrying.usd) {
+  for (const e of carrying.inUnit) {
     usdByDeposit.set(e.deposit_movement_id, (usdByDeposit.get(e.deposit_movement_id) ?? 0) + e.amount);
   }
   const clpByDeposit = new Map<number, { occurred_on: string; amount: number }>();
@@ -391,7 +398,7 @@ function mortgageCarryingRows(
     clpByDeposit.set(e.deposit_movement_id, { occurred_on: e.occurred_on, amount: (cur?.amount ?? 0) + e.amount });
   }
   if (usdByDeposit.size !== clpByDeposit.size || [...usdByDeposit.keys()].some((id) => !clpByDeposit.has(id))) {
-    throw new Error("mortgage carrying: the CLP and USD events do not cover the same deposits");
+    throw new Error("mortgage carrying: the CLP and the unit events do not cover the same deposits");
   }
   const byId = new Map(accounts.map((a) => [a.account_id, a]));
   const accountOf = db.prepare(`SELECT COALESCE(account_id, to_account_id) AS account_id FROM movements WHERE id = ?`);
@@ -422,6 +429,14 @@ function aggregateDepositChartPoints(
   unit: "clp" | "usd",
   grain: "month" | "day" = "month"
 ): FlowDepositChartPoint[] {
+  return aggregateDepositChartPointsBy(rows, (r) => (unit === "usd" ? r.amount_usd : r.amount_clp), grain);
+}
+
+function aggregateDepositChartPointsBy<R extends Pick<FlowDepositRow, "occurred_on" | "category">>(
+  rows: readonly R[],
+  amountOf: (r: R) => number,
+  grain: "month" | "day" = "month"
+): FlowDepositChartPoint[] {
   const byPeriod = new Map<string, FlowDepositChartPoint>();
   for (const r of rows) {
     const pe = grain === "day" ? r.occurred_on.slice(0, 10) : monthEndFromOccurredOn(r.occurred_on);
@@ -437,7 +452,7 @@ function aggregateDepositChartPoints(
       };
       byPeriod.set(pe, pt);
     }
-    const amt = unit === "usd" ? r.amount_usd : r.amount_clp;
+    const amt = amountOf(r);
     pt[r.category] += amt;
     pt.total += amt;
   }
@@ -460,3 +475,98 @@ export function inversionesBrokerageDepositsSeries(
   }));
 }
 
+
+// --- one display unit (`GET /api/flows/deposits?unit=`) ----------------------------------------
+
+/** A deposit row in the payload's unit (`amount`); `amount_clp` stays inside the server for the pre-tax rules. */
+export type FlowDepositUnitRow = Omit<FlowDepositRow, "amount_clp" | "amount_usd"> & { amount: number };
+
+type DepositUnitRowInternal = FlowDepositUnitRow & { amount_clp: number };
+
+export type FlowDepositsUnitPayload = {
+  /** The display unit every amount is in. */
+  unit: string;
+  rows: FlowDepositUnitRow[];
+  /** Monthly only (the chart rolls years up after its own Rango cut). */
+  chart_monthly: FlowDepositChartPoint[];
+  /** Diario: one point per day carrying a deposit, oldest first (the chart densifies the rest). */
+  chart_daily: FlowDepositChartPoint[];
+  net_total: number;
+  /** AFP/AFC cotizaciones ({@link isPreTaxDepositRow}) and the rest: Σ = net total. */
+  pre_tax_total: number;
+  post_tax_total: number;
+  fx_conversion_warnings: FxConversionWarning[];
+  by_category: Record<DepositFlowCategory, { rows: FlowDepositUnitRow[]; total: number }>;
+};
+
+/**
+ * The /flows/deposits page in one display unit: the same rows as {@link buildFlowsDepositsPayload},
+ * each event in `unit` at its own day's rate (`flowEventInUnit`), the mortgage carrying of that
+ * unit taken back out of the property's deposits (`withMortgageCarrying`: the pesos, which pair
+ * the events, and the unit's).
+ */
+export function buildFlowsDepositsResponse(
+  unit: string,
+  opts?: {
+    excludeCheckingAccounts?: boolean;
+    withMortgageCarrying?: { clp: readonly MortgageCarryingEvent[]; unit: readonly MortgageCarryingEvent[] };
+  }
+): FlowDepositsUnitPayload {
+  clearFxConversionWarnings();
+  const checking = opts?.excludeCheckingAccounts ? new Set(accountIdsUnderCheckingAccounts()) : null;
+  const accounts = listDepositFlowAccounts(false).filter((a) => checking == null || !checking.has(a.account_id));
+  const eventsByAccount = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
+  const rows: DepositUnitRowInternal[] = [];
+  for (const acc of accounts) {
+    const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
+    if (!category) continue;
+    for (const e of eventsByAccount.get(acc.account_id) ?? []) {
+      if (e.amt === 0) continue;
+      rows.push({
+        occurred_on: e.occurred_on,
+        ...(e.posted_on ? { posted_on: e.posted_on } : {}),
+        category,
+        account_id: acc.account_id,
+        account_name: acc.name,
+        kind_slug: acc.category_slug,
+        amount_clp: flowEventInUnit(e, "clp"),
+        amount: flowEventInUnit(e, unit),
+      });
+    }
+  }
+  markPensionSwitchRows(rows);
+  if (opts?.withMortgageCarrying) {
+    const { clp, unit: inUnit } = opts.withMortgageCarrying;
+    for (const r of mortgageCarryingRows({ clp, inUnit }, accounts)) {
+      const { amount_usd, ...rest } = r;
+      rows.push({ ...rest, amount: amount_usd });
+    }
+  }
+  rows.sort((a, b) => {
+    const d = b.occurred_on.localeCompare(a.occurred_on);
+    return d !== 0 ? d : a.account_name.localeCompare(b.account_name);
+  });
+  const wire = (r: DepositUnitRowInternal): FlowDepositUnitRow => {
+    const { amount_clp: _clp, ...rest } = r;
+    return rest;
+  };
+  const sum = (rs: readonly DepositUnitRowInternal[]) => rs.reduce((s, r) => s + r.amount, 0);
+  const by_category = {} as FlowDepositsUnitPayload["by_category"];
+  for (const cat of DEPOSIT_FLOW_CATEGORIES) {
+    const catRows = rows.filter((r) => r.category === cat);
+    by_category[cat] = { rows: catRows.map(wire), total: sum(catRows) };
+  }
+  const preTax = rows.filter(isPreTaxDepositRow);
+  const postTax = rows.filter((r) => !isPreTaxDepositRow(r));
+  return {
+    unit,
+    rows: rows.map(wire),
+    chart_monthly: aggregateDepositChartPointsBy(rows, (r) => r.amount),
+    chart_daily: aggregateDepositChartPointsBy(rows, (r) => r.amount, "day"),
+    by_category,
+    net_total: sum(rows),
+    pre_tax_total: sum(preTax),
+    post_tax_total: sum(postTax),
+    fx_conversion_warnings: takeFxConversionWarnings(),
+  };
+}

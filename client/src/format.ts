@@ -275,21 +275,30 @@ export function formatMoney(m: { value: number; currency: string }): string {
   return formatCurrencyFine(m.value, m.currency);
 }
 
+/** The parts of a line's amount: its own currency, and its value in the display unit when that is another currency. */
+export function lineAmountParts(
+  line: { amount: { value: number; currency: string }; converted: { value: number; currency: string; rate_source: string } | null },
+  unit: string
+): { own: string; converted: { text: string; live: boolean } | null } {
+  const own = formatMoney(line.amount);
+  if (line.amount.currency === unit) return { own, converted: null };
+  const v = line.converted;
+  if (!v || v.currency !== unit) return { own, converted: null };
+  return { own, converted: { text: formatMoney({ value: v.value, currency: unit }), live: v.rate_source === "live" } };
+}
+
 /**
  * An expense line's amount: in its own currency, and its value in the display unit beside it when
  * the unit is another currency («US$13,30 ($13.083)», «$12.345 (US$12,70)»); «≈» marks a value at
- * today's rate (a facturación not paid yet). The line's money is the server's (`amount`, `values`).
+ * today's rate (a facturación not paid yet). The line's money is the server's (`amount`, `converted`).
  */
 export function formatLineAmount(
-  line: { amount: { value: number; currency: string }; values: Record<string, { value: number; rate_source: string }> },
+  line: { amount: { value: number; currency: string }; converted: { value: number; currency: string; rate_source: string } | null },
   unit: string
 ): string {
-  const own = formatMoney(line.amount);
-  if (line.amount.currency === unit) return own;
-  const v = line.values[unit];
-  if (!v) return own;
-  const shown = formatMoney({ value: v.value, currency: unit });
-  return `${own} (${v.rate_source === "live" ? "≈ " : ""}${shown})`;
+  const parts = lineAmountParts(line, unit);
+  if (!parts.converted) return parts.own;
+  return `${parts.own} (${parts.converted.live ? "≈ " : ""}${parts.converted.text})`;
 }
 
 /** USD with cents — still prefixed `US$`; negatives `(US$1,234.56)`. */

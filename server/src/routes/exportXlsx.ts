@@ -9,7 +9,7 @@ import {
   type ExportSection,
 } from "../exportWorkbook.js";
 import { isKnownClassTabGroup, accountIdFromReq } from "./shared.js";
-import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -18,10 +18,7 @@ function parseExportOptions(
 ): { ok: true; opts: ExportOptions } | { ok: false; error: string } {
   const opts: ExportOptions = {
     sections: [],
-    unit: requireLegacyDisplayUnit(
-      requestDisplayUnit(q, { surface: "XLSX export", supported: LEGACY_DISPLAY_UNITS }),
-      "XLSX export"
-    ),
+    unit: requestDisplayUnit(q, { surface: "XLSX export" }),
   };
   for (const key of ["from", "to"] as const) {
     const v = q[key];

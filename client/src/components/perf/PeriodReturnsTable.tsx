@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { BenchmarkSelectOptions, benchmarkOptionLabel } from "../../benchmarkLabels";
 import { cn } from "../../cn";
-import { formatClp, formatPct, formatUsdFine } from "../../format";
+import { formatClp, formatPct, formatCurrencyFine } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useBenchmarkComparison, useBenchmarks } from "../../queries/hooks";
 import { placeholderPeriodReturnsPayload } from "../../placeholders/periodReturnsPlaceholder";
@@ -85,7 +85,7 @@ export function PeriodReturnsTable({
   // The comparison lands after the returns: its lines (IRR, the benchmark row) stay blank until then.
   const comparisonPending = comparison != null && comparison.data == null;
   const blank = (className: string | undefined) => <div className={className}>{"\u00a0"}</div>;
-  const formatNominal = displayUnit === "usd" ? formatUsdFine : formatClp;
+  const formatNominal = (n: number) => (displayUnit === "clp" ? formatClp(n) : formatCurrencyFine(n, displayUnit));
   const compare = comparison != null;
 
   const cellTitle = (cell: PeriodReturnCell): string => {

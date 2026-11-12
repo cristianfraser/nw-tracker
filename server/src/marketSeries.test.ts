@@ -14,6 +14,7 @@ const restoreTables = snapshotTables([
   "utm_daily",
   "equity_daily",
   "fund_unit_daily",
+  "fx_rates",
 ]);
 afterAll(() => restoreTables());
 
@@ -32,6 +33,7 @@ beforeAll(() => {
     "utm_daily",
     "equity_daily",
     "fund_unit_daily",
+    "fx_rates",
   ]) {
     db.prepare(`DELETE FROM ${t}`).run();
   }
@@ -46,6 +48,11 @@ beforeAll(() => {
   ).run("2024-01-02", 915, 895, "vitest");
   db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`).run("2024-01-03", 36_000);
   db.prepare(`INSERT INTO eur_daily (date, clp_per_eur) VALUES (?, ?)`).run("2024-01-02", 980);
+  const insEurUsd = db.prepare(
+    `INSERT INTO fx_rates (base, quote, date, mid, source) VALUES ('eur', 'usd', ?, ?, 'vitest')`
+  );
+  insEurUsd.run("2024-01-02", 1.09);
+  insEurUsd.run("2024-01-04", 1.1);
   db.prepare(`INSERT INTO ipc_daily (date, ipc_index) VALUES (?, ?)`).run("2024-01-02", 130.5);
   db.prepare(`INSERT INTO utm_daily (date, utm_clp) VALUES (?, ?)`).run("2024-01-02", 65_000);
 
@@ -87,35 +94,50 @@ describe("getMarketSeriesPayload", () => {
     expect(d4.clp_per_uf).toBeNull();
   });
 
-  it("converts usd-quoted closes to CLP and clp-quoted (.SN) closes to USD at carried fx", () => {
-    const p = getMarketSeriesPayload();
-    const [d2, d3, d4] = p.points as [
-      (typeof p.points)[number],
-      (typeof p.points)[number],
-      (typeof p.points)[number],
-    ];
+  it("expresses usd-quoted and clp-quoted (.SN) closes in the requested unit at carried fx", () => {
+    const clp = getMarketSeriesPayload("clp");
+    const usd = getMarketSeriesPayload("usd");
+    expect(clp.unit).toBe("clp");
+    expect(usd.unit).toBe("usd");
+    const [c2, c3, c4] = clp.points as [(typeof clp.points)[number], (typeof clp.points)[number], (typeof clp.points)[number]];
+    const [u2, u3, u4] = usd.points as [(typeof usd.points)[number], (typeof usd.points)[number], (typeof usd.points)[number]];
 
-    expect(d2.equity_usd[USD_TICKER]).toBe(470);
-    expect(d2.equity_clp[USD_TICKER]).toBe(470 * 900);
-    expect(d2.equity_clp[CLP_TICKER]).toBe(5000);
-    expect(d2.equity_usd[CLP_TICKER]).toBeCloseTo(5000 / 900, 10);
+    expect(u2.equity[USD_TICKER]).toBe(470);
+    expect(c2.equity[USD_TICKER]).toBe(470 * 900);
+    expect(c2.equity[CLP_TICKER]).toBe(5000);
+    expect(u2.equity[CLP_TICKER]).toBe(5000 / 900);
 
     // No bar on the date → null, even with an earlier bar (charts skip, no forward-fill).
-    expect(d3.equity_usd[USD_TICKER]).toBeNull();
-    expect(d3.equity_clp[CLP_TICKER]).toBeNull();
+    expect(u3.equity[USD_TICKER]).toBeNull();
+    expect(c3.equity[CLP_TICKER]).toBeNull();
 
-    expect(d4.equity_usd[USD_TICKER]).toBe(480);
-    expect(d4.equity_clp[USD_TICKER]).toBe(480 * 910);
-    expect(d4.equity_usd[CLP_TICKER]).toBeNull();
+    expect(u4.equity[USD_TICKER]).toBe(480);
+    expect(c4.equity[USD_TICKER]).toBe(480 * 910);
+    expect(u4.equity[CLP_TICKER]).toBeNull();
+    // The point set does not depend on the unit.
+    expect(usd.points.map((p) => p.as_of_date)).toEqual(clp.points.map((p) => p.as_of_date));
   });
 
-  it("emits fund units in CLP with a USD leg at carried fx", () => {
-    const p = getMarketSeriesPayload();
-    expect(p.fund_series_keys).toEqual([FUND_KEY]);
-    const d4 = p.points[2]!;
-    expect(d4.fund_unit_clp[FUND_KEY]).toBe(1234.5);
-    expect(d4.fund_unit_usd[FUND_KEY]).toBeCloseTo(1234.5 / 910, 10);
-    expect(p.points[0]!.fund_unit_clp[FUND_KEY]).toBeNull();
+  it("emits fund units in the requested unit at carried fx", () => {
+    const clp = getMarketSeriesPayload("clp");
+    const usd = getMarketSeriesPayload("usd");
+    expect(clp.fund_series_keys).toEqual([FUND_KEY]);
+    expect(clp.points[2]!.fund_unit[FUND_KEY]).toBe(1234.5);
+    expect(usd.points[2]!.fund_unit[FUND_KEY]).toBe(1234.5 / 910);
+    expect(clp.points[0]!.fund_unit[FUND_KEY]).toBeNull();
+  });
+
+  it("expresses closes and cuotas in EUR through the rates walk (EUR/USD, EUR/CLP)", () => {
+    const eur = getMarketSeriesPayload("eur");
+    expect(eur.unit).toBe("eur");
+    const [e2, , e4] = eur.points as [(typeof eur.points)[number], (typeof eur.points)[number], (typeof eur.points)[number]];
+    expect(e2.equity[USD_TICKER]).toBeCloseTo(470 / 1.09, 9);
+    expect(e4.equity[USD_TICKER]).toBeCloseTo(480 / 1.1, 9);
+    expect(e2.equity[CLP_TICKER]).toBeCloseTo(5000 / 980, 9);
+    // 2024-01-04 has no EUR/CLP row: the 2024-01-02 one carries.
+    expect(e4.fund_unit[FUND_KEY]).toBeCloseTo(1234.5 / 980, 9);
+    // Rate fields stay facts in their own quote.
+    expect(e2.clp_per_usd).toBe(900);
   });
 
   it("passes through the FX reference arrays", () => {

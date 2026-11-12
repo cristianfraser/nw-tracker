@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { db } from "./db.js";
+import { snapshotTables } from "./test/snapshotTables.js";
 import {
   buildUpcomingPayments,
   contribucionesUpcomingItems,
@@ -12,6 +14,7 @@ import {
   type RecurringEntry,
   type RecurringLine,
   type UpcomingPaymentItem,
+  upcomingMonthsInUnit,
 } from "./upcomingPayments.js";
 
 const TODAY = "2026-11-02";
@@ -311,6 +314,29 @@ describe("groupUpcomingByMonth", () => {
       6
     );
     expect(months.map((m) => [m.pay_month, m.total_clp, m.items.map((i) => i.key)])).toEqual([["2026-11", 8, ["late", "a", "b"]]]);
+  });
+
+  it("adds each amount in the display unit: pesos as they are, euros at the day's rate", () => {
+    const restore = snapshotTables(["eur_daily", "fx_rates"]);
+    try {
+      db.prepare(`DELETE FROM eur_daily`).run();
+      db.prepare(`DELETE FROM fx_rates WHERE base = 'eur' OR quote = 'eur'`).run();
+      db.prepare(`INSERT OR REPLACE INTO eur_daily (date, clp_per_eur) VALUES (?, 1000)`).run("2026-10-30");
+      const months = groupUpcomingByMonth([it_("a", "2026-11-10", 2000), { ...it_("m", "2026-11-11", 3000), amount_max_clp: 5000 }], TODAY, 6);
+      const clp = upcomingMonthsInUnit(months, "clp", TODAY);
+      expect(clp[0]!.total_in_unit).toBe(5000);
+      expect(clp[0]!.items.map((i) => i.amount_in_unit)).toEqual([2000, 3000]);
+      // A day before Chile today reads the stored rate on or before it (TODAY is in the past here).
+      const eur = upcomingMonthsInUnit(months, "eur", TODAY);
+      expect(eur[0]!.items.map((i) => [i.amount_in_unit, i.amount_max_in_unit])).toEqual([
+        [2, null],
+        [3, 5],
+      ]);
+      expect(eur[0]!.total_in_unit).toBe(5);
+      expect(eur[0]!.total_clp).toBe(5000);
+    } finally {
+      restore();
+    }
   });
 
   it("marks a payment due today or tomorrow, never an overdue one", () => {

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../downloadFile";
 import { Modal } from "../ui/Modal";
 import { Button, Input } from "@crfrsr/ui";
+import { useCurrencies } from "../../queries/hooks";
 import styles from "./ExportModal.module.css";
 
 const SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
@@ -52,7 +53,14 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
   const [preset, setPreset] = useState<RangePreset>("all");
   const [custom, setCustom] = useState({ from: "", to: "" });
   const [sections, setSections] = useState<Set<Section>>(new Set(SECTIONS));
-  const [unit, setUnit] = useState<"clp" | "usd">("clp");
+  const [unit, setUnit] = useState<string>("clp");
+  const { data: currencies } = useCurrencies();
+  // The core currencies the server loads (pesos and dollars until it answers), pesos first.
+  const loadedUnits = currencies?.currencies.filter((c) => c.tier === "core").map((c) => c.code);
+  const unitOptions =
+    loadedUnits && loadedUnits.length > 0
+      ? ["clp", ...loadedUnits.filter((c) => c !== "clp").sort((a, b) => a.localeCompare(b))]
+      : ["clp", "usd"];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +82,7 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
     if (range.from) qs.set("from", range.from);
     if (range.to) qs.set("to", range.to);
     qs.set("sections", [...sections].join(","));
-    if (unit === "usd") qs.set("unit", "usd");
+    if (unit !== "clp") qs.set("unit", unit);
     setBusy(true);
     setError(null);
     try {
@@ -157,9 +165,12 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
         <p>
           <label>
             {t("export.unitLabel")}{" "}
-            <select value={unit} onChange={(e) => setUnit(e.target.value as "clp" | "usd")}>
-              <option value="clp">CLP</option>
-              <option value="usd">USD</option>
+            <select value={unit} onChange={(e) => setUnit(e.target.value)}>
+              {unitOptions.map((code) => (
+                <option key={code} value={code}>
+                  {code.toUpperCase()}
+                </option>
+              ))}
             </select>
           </label>
         </p>

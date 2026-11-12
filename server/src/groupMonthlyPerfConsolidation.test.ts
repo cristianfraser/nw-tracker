@@ -241,15 +241,15 @@ describe("groupMonthlyPerfConsolidation", () => {
 
     const { buildDashboardAccountRows } = await import("./dashboardAccounts.js");
     const { withPortfolioGroupIndex } = await import("./portfolioGroupTree.js");
-    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
+    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows("clp"));
     const ids = new Set(
       listAccountsForGroupTab("brokerage").map((a) => a.account_id)
     );
     let sumYear = 0;
     for (const r of rows) {
       if (!ids.has(r.account_id) || r.exclude_from_group_totals === 1) continue;
-      if (r.delta_year_clp != null && Number.isFinite(r.delta_year_clp)) {
-        sumYear += r.delta_year_clp;
+      if (r.delta_year != null && Number.isFinite(r.delta_year)) {
+        sumYear += r.delta_year;
       }
     }
     expect(sumYear).toBeCloseTo(june.ytd_nominal_pl, 0);

@@ -18,7 +18,7 @@ describe("account page monthly table vs dashboard card", () => {
   for (const unit of ["clp", "usd"] as const satisfies readonly TsUnit[]) {
     it(`every account's card equals its page table summed (${unit})`, async () => {
       const today = chileCalendarTodayYmd();
-      const rows = await buildDashboardAccountRows(unit === "usd");
+      const rows = await buildDashboardAccountRows(unit);
       const tol = unit === "usd" ? 0.011 : 1.01;
       const mismatches: string[] = [];
       const close = (label: string, card: number | null | undefined, page: number | null) => {
@@ -31,10 +31,7 @@ describe("account page monthly table vs dashboard card", () => {
       for (const r of rows) {
         const kind = accountBucketKindSlug(r.bucket_slug);
         if (kind === "credit_card") continue;
-        const card =
-          unit === "usd"
-            ? { m: r.delta_month_usd, y: r.delta_year_usd, t: r.delta_total_usd }
-            : { m: r.delta_month_clp, y: r.delta_year_clp, t: r.delta_total_clp };
+        const card = { m: r.delta_month, y: r.delta_year, t: r.delta_total };
         if (card.m == null && card.y == null && card.t == null) continue;
 
         const bundle = await buildAccountDetailBundle(r.account_id, unit, "monthly");
@@ -45,11 +42,8 @@ describe("account page monthly table vs dashboard card", () => {
         close(`${label} year pl`, card.y, page.delta_year);
         close(`${label} total pl`, card.t, page.delta_total);
 
-        if (kind !== "mortgage" && r.deposits_month_clp !== undefined) {
-          const dep =
-            unit === "usd"
-              ? { m: r.deposits_month_usd, y: r.deposits_year_usd, t: r.deposits_usd }
-              : { m: r.deposits_month_clp, y: r.deposits_year_clp, t: r.deposits_clp };
+        if (kind !== "mortgage" && r.deposits_month !== undefined) {
+          const dep = { m: r.deposits_month, y: r.deposits_year, t: r.deposits };
           close(`${label} month dep`, dep.m, page.deposits_month);
           close(`${label} year dep`, dep.y, page.deposits_year);
           close(`${label} total dep`, dep.t, page.deposits_total);

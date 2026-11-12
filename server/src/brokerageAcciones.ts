@@ -1,6 +1,21 @@
 /** Legacy aggregate account from excel import — excluded from APIs and charts. */
 export const NOTE_STOCKS_LEGACY = "import:excel|key=stocks";
 
+/**
+ * The pesos the structural rules read whatever the display unit — which accounts were liquidated,
+ * which value-map tiles are hidden and their order, whether a unit could not convert a row — so
+ * a row means the same thing in every unit. Server-only: never sent.
+ */
+export type DashboardRowClpBasis = {
+  current_value: number | null;
+  deposits: number;
+  delta_total: number | null;
+};
+
+/**
+ * One account's dashboard row. Every money field is in the listing's display unit (the request's
+ * `unit`); pesos are the ledger's own unit, so in CLP no value is missing.
+ */
 export interface DashboardAccountStats {
   account_id: number;
   name: string;
@@ -10,42 +25,29 @@ export interface DashboardAccountStats {
   bucket_label: string;
   /** Top-level NW dashboard bucket from asset_groups ancestry. */
   dashboard_bucket_slug: string;
-  deposits_clp: number;
-  deposits_usd?: number | null;
+  /** Lifetime net deposits (null: the unit has no rate for them). */
+  deposits: number | null;
   /** Nominal P/L for the current calendar month (or latest month in series). */
-  delta_month_clp?: number | null;
-  delta_month_usd?: number | null;
+  delta_month?: number | null;
   /** Sum of nominal P/L in the current calendar year. */
-  delta_year_clp?: number | null;
-  delta_year_usd?: number | null;
+  delta_year?: number | null;
   /** Cumulative nominal P/L through the latest performance month. */
-  delta_total_clp?: number | null;
-  delta_total_usd?: number | null;
-  deposits_month_clp?: number;
-  deposits_month_usd?: number | null;
-  deposits_year_clp?: number;
-  deposits_year_usd?: number | null;
-  /** Day window = (prior completed NYSE session, Chile today]; see dashboardAccounts.ts. */
-  deposits_day_clp?: number;
-  deposits_day_usd?: number | null;
-  /** Balance change vs prior-session close net of day deposits (null for CC/mortgage). */
-  delta_day_clp?: number | null;
-  delta_day_usd?: number | null;
-  /** Account mark at the prior completed NYSE session (the day window anchor). */
-  prior_day_close_clp?: number | null;
-  prior_day_close_usd?: number | null;
-  /** Performance series month-end close for the calendar month before Chile today. */
-  prior_month_close_clp?: number | null;
-  prior_month_close_usd?: number | null;
-  /** Performance series close for the latest month in the prior calendar year. */
-  prior_year_close_clp?: number | null;
-  prior_year_close_usd?: number | null;
-  current_value_clp: number | null;
+  delta_total?: number | null;
+  deposits_month?: number | null;
+  deposits_year?: number | null;
+  /** Day window = (yesterday, Chile today]; see dashboardAccounts.ts. */
+  deposits_day?: number | null;
+  /** Balance change vs yesterday's close net of day deposits. */
+  delta_day?: number | null;
+  /** Account mark yesterday (the day window anchor). */
+  prior_day_close?: number | null;
+  /** Month-end close for the calendar month before Chile today. */
+  prior_month_close?: number | null;
+  /** Close for the last day of the prior calendar year. */
+  prior_year_close?: number | null;
+  current_value: number | null;
   valuation_as_of: string | null;
-  current_value_usd: number | null;
-  fx_clp_per_usd: number | null;
-  fx_date_used: string | null;
-  /** USD display could not resolve FX for balance or deposits. */
+  /** The unit could not resolve a rate for the balance or the deposits. */
   fx_missing?: boolean;
   /** Leaf kind slug (e.g. cuenta_corriente, fondo_reserva) — client filters on it. */
   category_slug?: string;
@@ -72,19 +74,15 @@ export interface DashboardAccountStats {
   } | null;
   /** True when any linked global sync source is currently stale. */
   sync_stale: boolean;
-  /**
-   * Flow-adjusted period returns from the row's own final legs (shared
-   * `flowAdjustedPct`; ratios, not %). Total = P/L acumulado ÷ lifetime deposits.
-   */
-  pct_day_clp?: number | null;
-  pct_month_clp?: number | null;
-  pct_year_clp?: number | null;
-  pct_total_clp?: number | null;
-  pct_day_usd?: number | null;
-  pct_month_usd?: number | null;
-  pct_year_usd?: number | null;
-  pct_total_usd?: number | null;
-  /** The one-step Total: P/L acumulado ÷ net deposits (the `pct_total_*` cells compound daily). */
-  pct_total_on_deposits_clp?: number | null;
-  pct_total_on_deposits_usd?: number | null;
+  /** Flow-adjusted period returns in the unit (ratios, compounded daily). */
+  pct_day?: number | null;
+  pct_month?: number | null;
+  pct_year?: number | null;
+  pct_total?: number | null;
+  /** The one-step Total: P/L acumulado ÷ net deposits (`pct_total` compounds daily). */
+  pct_total_on_deposits?: number | null;
+  has_period_returns?: boolean;
+  loan_account_id?: number | null;
+  /** Server-only: see {@link DashboardRowClpBasis}. */
+  clp_basis: DashboardRowClpBasis;
 }

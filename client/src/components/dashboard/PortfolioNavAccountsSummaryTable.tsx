@@ -12,10 +12,8 @@ import {
 } from "../../dashboardCardBreakdown";
 import { formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
-import {
-  navCardAmount,
-  requireNavCardMetrics,
-} from "../../portfolioNavDashboardCards";
+import { requireNavCardMetrics } from "../../portfolioNavDashboardCards";
+import type { DisplayUnit } from "../../queries/keys";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type {
   DashboardAccountRow,
@@ -24,7 +22,7 @@ import type {
   NavTreeNodeDto,
 } from "../../types";
 import { cardDeltaFractionDigits, DepositedMetricFlow } from "./DashboardCardGroupMetrics";
-import { DashboardCardValue, legacyCardValue } from "./DashboardCardValue";
+import { DashboardCardValue } from "./DashboardCardValue";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
 import { Table } from "../ui/Table";
 import {
@@ -43,7 +41,8 @@ export type PortfolioNavAccountsSummaryTableProps = {
   liquidatedChildren?: NavTreeNodeDto[];
   /** First row = the page's own figures (when the table replaces the page's summary card). */
   showTotalRow?: boolean;
-  showUsd: boolean;
+  /** The payload's unit (every figure of `dash` is in it). */
+  unit: DisplayUnit;
   animated?: boolean;
 };
 
@@ -56,60 +55,34 @@ type AccountTableRow = {
   key: string;
   kind: RowKind;
   name: ReactNode;
-  clp: number;
-  apiUsd: number | null;
+  /** In the payload's unit. */
+  value: number | null;
   metricsByPeriod: CardGroupMetricsByPeriod;
   /** Per-slice % (server: the account row's pct fields, or a group's server pct). */
-  pct: (slice: PeriodSlice, showUsd: boolean) => number | null;
+  pct: (slice: PeriodSlice) => number | null;
   /** The total cell's return on net deposits: P/L acumulado ÷ net deposits (tooltip on the total %). */
-  pctOnDeposits: (showUsd: boolean) => number | null;
+  pctOnDeposits: () => number | null;
   fxMissing: boolean;
   syncStale: boolean;
   inactive: boolean;
 };
 
-function accountRowPct(
-  row: DashboardAccountRow | null,
-  slice: PeriodSlice,
-  showUsd: boolean
-): number | null {
-  if (!row) return null;
-  const v = showUsd
-    ? {
-        day: row.pct_day_usd,
-        month: row.pct_month_usd,
-        year: row.pct_year_usd,
-        total: row.pct_total_usd,
-      }[slice]
-    : {
-        day: row.pct_day_clp,
-        month: row.pct_month_clp,
-        year: row.pct_year_clp,
-        total: row.pct_total_clp,
-      }[slice];
+function finiteOrNull(v: number | null | undefined): number | null {
   return v != null && Number.isFinite(v) ? v : null;
 }
 
-function accountRowOnDeposits(row: DashboardAccountRow | null, showUsd: boolean): number | null {
+function accountRowPct(row: DashboardAccountRow | null, slice: PeriodSlice): number | null {
   if (!row) return null;
-  const v = showUsd ? row.pct_total_on_deposits_usd : row.pct_total_on_deposits_clp;
-  return v != null && Number.isFinite(v) ? v : null;
+  return finiteOrNull({ day: row.pct_day, month: row.pct_month, year: row.pct_year, total: row.pct_total }[slice]);
 }
 
 function serverPct(pct: PctBySlice) {
-  return (slice: PeriodSlice, usd: boolean): number | null => {
-    const v = pct[slice][usd ? "usd" : "clp"];
-    return v != null && Number.isFinite(v) ? v : null;
-  };
+  return (slice: PeriodSlice): number | null => finiteOrNull(pct[slice].value);
 }
 
 /** The server's total cell carries the on-deposits figure; other cells do not. */
 function serverPctOnDeposits(pct: PctBySlice) {
-  return (usd: boolean): number | null => {
-    const cell = pct.total;
-    const v = usd ? cell.on_deposits_usd : cell.on_deposits_clp;
-    return v != null && Number.isFinite(v) ? v : null;
-  };
+  return (): number | null => finiteOrNull(pct.total.on_deposits);
 }
 
 /**
@@ -130,7 +103,7 @@ export function PortfolioNavAccountsSummaryTable({
   navChildren,
   liquidatedChildren = [],
   showTotalRow = false,
-  showUsd,
+  unit,
   animated = true,
 }: PortfolioNavAccountsSummaryTableProps) {
   const { t } = useTranslation();
@@ -151,11 +124,11 @@ export function PortfolioNavAccountsSummaryTable({
       const entry = requireNavCardMetrics(dash, child);
       return {
         ...base,
-        ...navCardAmount(entry.value.child, showUsd),
+        value: entry.value.child,
         metricsByPeriod: entry.child,
         pct: serverPct(entry.row_pct),
         pctOnDeposits: serverPctOnDeposits(entry.row_pct),
-        fxMissing: showUsd && entry.value.fx_missing,
+        fxMissing: entry.value.fx_missing,
         syncStale: entry.value.sync_stale,
       };
     }
@@ -163,22 +136,19 @@ export function PortfolioNavAccountsSummaryTable({
     const row = dash.accounts.find((r) => r.account_id === accountId) ?? null;
     return {
       ...base,
-      clp: row?.current_value_clp ?? 0,
-      apiUsd:
-        showUsd && row?.current_value_usd != null && Number.isFinite(row.current_value_usd)
-          ? row.current_value_usd
-          : null,
-      metricsByPeriod: cardMetricsByPeriodForAccountRow(row),
-      pct: (slice, usd) => accountRowPct(row, slice, usd),
-      pctOnDeposits: (usd) => accountRowOnDeposits(row, usd),
-      fxMissing: showUsd && row?.fx_missing === true,
+      // Pesos: a row without a value reads 0 (the ledger unit is always present).
+      value: finiteOrNull(row?.current_value) ?? (unit === "clp" ? 0 : null),
+      metricsByPeriod: cardMetricsByPeriodForAccountRow(row, unit),
+      pct: (slice) => accountRowPct(row, slice),
+      pctOnDeposits: () => finiteOrNull(row?.pct_total_on_deposits),
+      fxMissing: row?.fx_missing === true,
       syncStale: row?.sync_stale === true,
     };
   };
 
   const rows: AccountTableRow[] = (() => {
     const sortDesc = (list: AccountTableRow[]) =>
-      list.sort((a, b) => compareDashboardCardMainDesc(a.clp, a.apiUsd, b.clp, b.apiUsd, showUsd));
+      list.sort((a, b) => compareDashboardCardMainDesc(a.value, b.value));
     const grouped = liquidatedChildren.length >= 2;
     const main = sortDesc(
       [...navChildren, ...(grouped ? [] : liquidatedChildren)]
@@ -193,11 +163,11 @@ export function PortfolioNavAccountsSummaryTable({
         key: `total.${pageNode.node_id}`,
         kind: "total",
         name: t("groupPage.accountsTable.totalRow"),
-        ...navCardAmount(metrics.value.parent, showUsd),
+        value: metrics.value.parent,
         metricsByPeriod: metrics.parent,
         pct: serverPct(metrics.parent_pct),
         pctOnDeposits: serverPctOnDeposits(metrics.parent_pct),
-        fxMissing: showUsd && metrics.value.fx_missing,
+        fxMissing: metrics.value.fx_missing,
         syncStale: metrics.value.sync_stale,
         inactive: false,
       });
@@ -213,11 +183,11 @@ export function PortfolioNavAccountsSummaryTable({
         key: `liquidated.${pageNode.node_id}`,
         kind: "liquidated",
         name: t("groupPage.accountsTable.liquidated", { count: liquidatedChildren.length }),
-        ...navCardAmount(liquidated.value, showUsd),
+        value: liquidated.value.value,
         metricsByPeriod: liquidated.metrics,
         pct: serverPct(liquidated.row_pct),
         pctOnDeposits: serverPctOnDeposits(liquidated.row_pct),
-        fxMissing: showUsd && liquidated.value.fx_missing,
+        fxMissing: liquidated.value.fx_missing,
         syncStale: false,
         inactive: true,
       });
@@ -283,7 +253,7 @@ export function PortfolioNavAccountsSummaryTable({
       {rows.map((row) => {
         const { metricsByPeriod } = row;
         const lifetime = metricsByPeriod.month;
-        const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd ? "usd" : "clp");
+        const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, unit);
         const nameCell =
           row.kind === "liquidated" ? (
             <div className={styles.nameStack}>
@@ -306,7 +276,8 @@ export function PortfolioNavAccountsSummaryTable({
         );
         const balanceValue = (variant: CellVariant) => (
           <DashboardCardValue
-            {...legacyCardValue(row.clp, row.apiUsd, showUsd)}
+            value={row.value}
+            unit={unit}
             animated={isAnimated(variant)}
             // Desktop cell aligns left like every other column ("breakdown" is a
             // block-level right-align meant for card sub-balance lists; the mobile
@@ -320,7 +291,6 @@ export function PortfolioNavAccountsSummaryTable({
         const depositsLine = (slice: Exclude<PeriodSlice, "day">, variant: CellVariant) => {
           const value = roundedMetricDeposits(
             slice === "total" ? lifetime : metricsByPeriod[slice],
-            showUsd,
             slice === "total" ? "total" : "period"
           );
           return (
@@ -330,7 +300,7 @@ export function PortfolioNavAccountsSummaryTable({
               ) : null}
               <DepositedMetricFlow
                 value={value}
-                unit={showUsd ? "usd" : "clp"}
+                unit={unit}
                 animated={isAnimated(variant)}
               />
             </span>
@@ -338,16 +308,16 @@ export function PortfolioNavAccountsSummaryTable({
         };
         /** `▲1xx.xxx (2,68%)` — P/L with the flow-adjusted period % as a parenthetical. */
         const plLine = (slice: PeriodSlice, variant: CellVariant) => {
-          const pct = row.pct(slice, showUsd);
+          const pct = row.pct(slice);
           // The total %: the compounded return; its hover gives the return on net deposits.
-          const onDeposits = slice === "total" ? row.pctOnDeposits(showUsd) : null;
+          const onDeposits = slice === "total" ? row.pctOnDeposits() : null;
           return (
             <span className={styles.plLine}>
               <span title={labels.pl[slice]}>
                 <DeltaMetricFlow
                   delta={roundedMetricDelta(
                     slice === "total" ? lifetime : metricsByPeriod[slice],
-                    showUsd,
+                    unit,
                     slice === "total" ? "total" : "period"
                   )}
                   animated={isAnimated(variant)}

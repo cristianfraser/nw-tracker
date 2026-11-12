@@ -3,13 +3,14 @@
 import express from "express";
 import { demoModeEnabled } from "../demoMode.js";
 import { buildWealthPercentilePayload } from "../wealthPercentile.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerWealthPercentileRoutes(app: express.Express): void {
-  app.get("/api/wealth-percentile", (_req, res) => {
+  app.get("/api/wealth-percentile", (req, res) => {
     if (demoModeEnabled()) {
       res.status(404).json({ error: "not_found" });
       return;
     }
-    res.json(buildWealthPercentilePayload());
+    res.json(buildWealthPercentilePayload(requestDisplayUnit(req.query, { surface: "/api/wealth-percentile" })));
   });
 }

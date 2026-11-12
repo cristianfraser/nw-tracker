@@ -105,7 +105,7 @@ afterAll(() => {
 describe("dashboard credit-card row vs its «Detalle por mes» rows", () => {
   for (const unit of ["clp", "usd"] as const satisfies readonly TsUnit[]) {
     it(`month / year / lifetime P/L equal the calendar-month rows (${unit})`, async () => {
-      const rows = await buildDashboardAccountRows(unit === "usd");
+      const rows = await buildDashboardAccountRows(unit);
       const cards = rows.filter((r) => accountBucketKindSlug(r.bucket_slug) === "credit_card");
       expect(cards.some((r) => r.account_id === cardId)).toBe(true);
 
@@ -114,50 +114,48 @@ describe("dashboard credit-card row vs its «Detalle por mes» rows", () => {
           monthlyPerfRowsForAccount(r.account_id, r.bucket_slug, unit),
           today
         );
-        const got =
-          unit === "usd"
-            ? { m: r.delta_month_usd, y: r.delta_year_usd, t: r.delta_total_usd }
-            : { m: r.delta_month_clp, y: r.delta_year_clp, t: r.delta_total_clp };
+        const got = { m: r.delta_month, y: r.delta_year, t: r.delta_total };
         expect(got, `${r.name} (${unit})`).toEqual({
           m: expected.delta_month,
           y: expected.delta_year,
           t: expected.delta_total,
         });
         // A card's flows are not personal capital: the row carries no period deposits.
-        expect(r.deposits_month_clp, r.name).toBeUndefined();
-        expect(r.deposits_year_clp, r.name).toBeUndefined();
+        expect(r.deposits_month, r.name).toBeUndefined();
+        expect(r.deposits_year, r.name).toBeUndefined();
       }
 
       // The synthetic card's figures are the bank's charges, loss-negative.
       const mine = cards.find((r) => r.account_id === cardId)!;
       if (unit === "clp") {
-        expect(mine.delta_month_clp).toBe(-CHARGE_TODAY);
-        expect(mine.delta_year_clp).toBe(
+        expect(mine.delta_month).toBe(-CHARGE_TODAY);
+        expect(mine.delta_year).toBe(
           currentYm.endsWith("-01") ? -CHARGE_TODAY : -(CHARGE_TODAY + CHARGE_EARLIER)
         );
-        expect(mine.delta_total_clp).toBe(-(CHARGE_TODAY + CHARGE_EARLIER + CHARGE_LAST_YEAR));
+        expect(mine.delta_total).toBe(-(CHARGE_TODAY + CHARGE_EARLIER + CHARGE_LAST_YEAR));
       } else {
-        expect(mine.delta_month_usd).toBeLessThan(0);
-        expect(mine.delta_total_usd!).toBeLessThan(mine.delta_month_usd!);
+        expect(mine.delta_month).toBeLessThan(0);
+        expect(mine.delta_total!).toBeLessThan(mine.delta_month!);
       }
     }, 120_000);
   }
 
   it("the day P/L in dollars is the day's cost in dollars, the map the month rows sum", async () => {
-    const rows = await buildDashboardAccountRows(true);
+    const rowsClp = await buildDashboardAccountRows("clp");
+    const rows = await buildDashboardAccountRows("usd");
     const cards = rows.filter((r) => accountBucketKindSlug(r.bucket_slug) === "credit_card");
-    for (const r of cards) {
-      expect(r.delta_day_clp, r.name).not.toBeNull();
-      expect(Number.isFinite(r.delta_day_usd), r.name).toBe(true);
+    for (const r of rowsClp.filter((x) => accountBucketKindSlug(x.bucket_slug) === "credit_card")) {
+      expect(r.delta_day, r.name).not.toBeNull();
     }
+    for (const r of cards) expect(Number.isFinite(r.delta_day), r.name).toBe(true);
     const mine = cards.find((r) => r.account_id === cardId)!;
-    expect(mine.delta_day_clp).toBe(-CHARGE_TODAY);
+    expect(rowsClp.find((r) => r.account_id === cardId)!.delta_day).toBe(-CHARGE_TODAY);
     // The card's cost in dollars per day (`ccFinancingCostByDateInUnit`): its charges at their own
     // day's debt side plus the dollar revaluation of the pesos it owes — whatever the fx did on
     // the days of this month, the row and the day read the same map.
     const costUsd = ccFinancingCostByDateInUnit(cardId!, "usd");
     const revalUsd = ccRevaluationCostByDate(cardId!, "usd");
-    expect(mine.delta_day_usd).toBeCloseTo(-(costUsd.get(today) ?? 0), 9);
+    expect(mine.delta_day).toBeCloseTo(-(costUsd.get(today) ?? 0), 9);
     // Today's charge is in it: a peso charge adds to the peso debt, in dollars at today's debt side.
     expect((costUsd.get(today) ?? 0) - (revalUsd.get(today) ?? 0)).toBeCloseTo(
       convertValue(CHARGE_TODAY, "clp", "usd", today, "debt")!,
@@ -166,6 +164,6 @@ describe("dashboard credit-card row vs its «Detalle por mes» rows", () => {
     // The month row sums the map over the month so far.
     let monthCost = 0;
     for (const [d, v] of costUsd) if (d.slice(0, 7) === currentYm && d <= today) monthCost += v;
-    expect(mine.delta_month_usd).toBeCloseTo(-monthCost, 9);
+    expect(mine.delta_month).toBeCloseTo(-monthCost, 9);
   }, 120_000);
 });

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 /** The step under test records its calls instead of building the nav context. */
 const navContextCalls: string[] = [];
 vi.mock("./dashboardAccounts.js", () => ({
-  buildDashboardNavContext: async (_includeUsd: boolean, unit: string, _root: string) => {
+  buildDashboardNavContext: async (unit: string, _root: string) => {
     navContextCalls.push(unit);
     return {};
   },

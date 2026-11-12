@@ -27,6 +27,22 @@ beforeEach(() => {
   });
 });
 
+function snapshotFixture() {
+  const zeros = () => ({ net_worth: 0, buckets: { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 0 } });
+  return {
+    schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
+    unit: "clp",
+    accounts: [],
+    card_metrics_by_slug: {},
+    liabilities_breakdown: { mortgage: 0, credit_card: 0 },
+    nw_bucket_totals: {
+      net_worth: 1,
+      buckets: { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 1 },
+      prior_closes: { month_end: "", year_end: "", month: zeros(), year: zeros() },
+    },
+  };
+}
+
 describe("hasDashboardNavSnapshotCache", () => {
   it("is false when localStorage is empty", () => {
     expect(hasDashboardNavSnapshotCache("clp")).toBe(false);
@@ -34,70 +50,14 @@ describe("hasDashboardNavSnapshotCache", () => {
 
   it("is true when unit cache exists", () => {
     writeDashboardNavSnapshotCache("clp", {
-      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
-      accounts: [],
-      card_metrics_by_slug: {},
-      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
-      nw_bucket_totals: {
-        net_worth_clp: 1,
-        real_estate_clp: 0,
-        retirement_clp: 0,
-        brokerage_clp: 0,
-        cash_eqs_clp: 1,
-        prior_closes: {
-          month_end: "",
-          year_end: "",
-          month: {
-            net_worth_clp: 0,
-            real_estate_clp: 0,
-            retirement_clp: 0,
-            brokerage_clp: 0,
-            cash_eqs_clp: 0,
-          },
-          year: {
-            net_worth_clp: 0,
-            real_estate_clp: 0,
-            retirement_clp: 0,
-            brokerage_clp: 0,
-            cash_eqs_clp: 0,
-          },
-        },
-      },
+      ...snapshotFixture(),
     });
     expect(hasDashboardNavSnapshotCache("clp")).toBe(true);
   });
 
   it("a CLP cache does not stand in for USD", () => {
     writeDashboardNavSnapshotCache("clp", {
-      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
-      accounts: [],
-      card_metrics_by_slug: {},
-      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
-      nw_bucket_totals: {
-        net_worth_clp: 1,
-        real_estate_clp: 0,
-        retirement_clp: 0,
-        brokerage_clp: 0,
-        cash_eqs_clp: 1,
-        prior_closes: {
-          month_end: "",
-          year_end: "",
-          month: {
-            net_worth_clp: 0,
-            real_estate_clp: 0,
-            retirement_clp: 0,
-            brokerage_clp: 0,
-            cash_eqs_clp: 0,
-          },
-          year: {
-            net_worth_clp: 0,
-            real_estate_clp: 0,
-            retirement_clp: 0,
-            brokerage_clp: 0,
-            cash_eqs_clp: 0,
-          },
-        },
-      },
+      ...snapshotFixture(),
     });
     expect(hasDashboardNavSnapshotCache("usd")).toBe(false);
   });
@@ -106,35 +66,7 @@ describe("hasDashboardNavSnapshotCache", () => {
 describe("prefetchDashboardNavSnapshot", () => {
   it("skips prefetch when cache exists", async () => {
     writeDashboardNavSnapshotCache("clp", {
-      schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
-      accounts: [],
-      card_metrics_by_slug: {},
-      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
-      nw_bucket_totals: {
-        net_worth_clp: 1,
-        real_estate_clp: 0,
-        retirement_clp: 0,
-        brokerage_clp: 0,
-        cash_eqs_clp: 1,
-        prior_closes: {
-          month_end: "",
-          year_end: "",
-          month: {
-            net_worth_clp: 0,
-            real_estate_clp: 0,
-            retirement_clp: 0,
-            brokerage_clp: 0,
-            cash_eqs_clp: 0,
-          },
-          year: {
-            net_worth_clp: 0,
-            real_estate_clp: 0,
-            retirement_clp: 0,
-            brokerage_clp: 0,
-            cash_eqs_clp: 0,
-          },
-        },
-      },
+      ...snapshotFixture(),
     });
     const qc = new QueryClient();
     const fetchSpy = vi.fn();
@@ -152,9 +84,10 @@ describe("stale nav snapshot vs a grown nav tree", () => {
   function snapshotWithSlugs(slugs: string[]): DashboardNavSnapshotResponse {
     return {
       schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
+      unit: "clp",
       accounts: [],
       card_metrics_by_slug: Object.fromEntries(slugs.map((s) => [s, metrics])),
-      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
+      liabilities_breakdown: { mortgage: 0, credit_card: 0 },
     } as unknown as DashboardNavSnapshotResponse;
   }
 

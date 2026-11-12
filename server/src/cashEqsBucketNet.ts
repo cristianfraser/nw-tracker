@@ -47,19 +47,16 @@ export function linkedCardsOwedInUnit(ymd: string, unit: TsUnit, opts: { now?: D
 /** The linked cards' owed in the unit at that day, at the debt side (today: the live rate). NaN without a rate. */
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clp;
-  if (unit === "usd") {
-    const usd = clpToUnitAt(clp, asOf, "usd", { side: "debt" });
-    return usd != null && Number.isFinite(usd) ? usd : Number.NaN;
-  }
-  return clp;
+  const v = clpToUnitAt(clp, asOf, unit, { side: "debt" });
+  return v != null && Number.isFinite(v) ? v : Number.NaN;
 }
 
 export type DashboardLinkedBalanceDto = {
   slug: string;
   label: string;
   label_i18n_key: string;
-  clp: number;
-  usd: number | null;
+  /** In the payload's unit (null: no rate). */
+  value: number | null;
   route_path: string;
 };
 
@@ -69,13 +66,10 @@ export type DashboardLinkedBalanceDto = {
  * Shown whenever the linked total is non-zero, a total in credit too (as a negative owed):
  * the header counts the credit, so hiding it would leave that difference unexplained.
  */
-export function cashSavingsLinkedBalances(
-  asOfYmd: string,
-  includeUsd: boolean
-): DashboardLinkedBalanceDto[] {
+export function cashSavingsLinkedBalances(asOfYmd: string, unit: TsUnit): DashboardLinkedBalanceDto[] {
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc === 0) return [];
-  const usd = includeUsd ? clpToUnitAt(cc, asOfYmd, "usd", { side: "debt" }) : null;
+  const value = clpToUnitAt(cc, asOfYmd, unit, { side: "debt" });
   const linked = nettedGroup();
   const routePath = linked.routePath?.trim();
   if (!routePath) throw new Error(`nav node ${linked.slug} has no route_path (run the nav seed)`);
@@ -84,8 +78,7 @@ export function cashSavingsLinkedBalances(
       slug: "credit_card",
       label: "Credit card",
       label_i18n_key: "liabilities.creditCard",
-      clp: cc,
-      usd: usd != null && Number.isFinite(usd) ? usd : null,
+      value: value != null && Number.isFinite(value) ? value : null,
       route_path: routePath,
     },
   ];

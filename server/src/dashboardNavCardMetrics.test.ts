@@ -2,43 +2,22 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { accountCountsTowardGroupTotals, navMetricsAccountIdSet } from "./dashboardNavCardMetrics.js";
 import {
-  accountCountsTowardGroupTotals,
-  buildNavCardMetricsBySlug,
-  cardMetricsFromRows,
-  liquidatedRowsForNode,
-  navMetricsAccountIdSet,
-  stripMetricsRows,
-  sumCardMetrics,
-  type CardMetricsAccountRow,
-  type NavCardBucketTotals,
-  type NavCardMetricsBuildInput,
-} from "./dashboardNavCardMetrics.js";
+  dualBuildNavCardMetricsBySlug as buildNavCardMetricsBySlug,
+  dualCardMetricsFromRows as cardMetricsFromRows,
+  dualLiquidatedRowsForNode as liquidatedRowsForNode,
+  dualRow,
+  rowIn,
+  dualStripMetricsRows as stripMetricsRows,
+  dualSumCardMetrics as sumCardMetrics,
+  type DualBucketTotals as NavCardBucketTotals,
+  type DualRow as CardMetricsAccountRow,
+} from "./test/navCardDual.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
 function row(partial: Partial<CardMetricsAccountRow> & { account_id: number }): CardMetricsAccountRow {
-  return {
-    group_slug: "brokerage",
-    bucket_slug: "brokerage",
-    dashboard_bucket_slug: "brokerage",
-    chart_inactive: false,
-    exclude_from_group_totals: 0,
-    deposits_clp: 0,
-    deposits_usd: null,
-    delta_total_clp: null,
-    delta_total_usd: null,
-    deposits_month_clp: 0,
-    deposits_month_usd: null,
-    deposits_year_clp: 0,
-    deposits_year_usd: null,
-    delta_month_clp: null,
-    delta_month_usd: null,
-    delta_year_clp: null,
-    delta_year_usd: null,
-    current_value_clp: 0,
-    current_value_usd: null,
-    ...partial,
-  };
+  return dualRow(partial);
 }
 
 function navNode(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNodeDto {
@@ -250,7 +229,7 @@ describe("buildNavCardMetricsBySlug", () => {
     ],
   });
 
-  const input: NavCardMetricsBuildInput = {
+  const input: Parameters<typeof buildNavCardMetricsBySlug>[0] = {
     navRoots: [tree],
     rows: brokerageRows,
     bucketTotals: NO_BUCKETS,
@@ -401,7 +380,7 @@ describe("accountCountsTowardGroupTotals", () => {
       c.exclude_from_group_totals === "absent"
         ? row({ account_id: 1, exclude_from_group_totals: undefined })
         : row({ account_id: 1, exclude_from_group_totals: c.exclude_from_group_totals });
-    expect(accountCountsTowardGroupTotals(r)).toBe(c.counts);
+    expect(accountCountsTowardGroupTotals(rowIn(r, "clp"))).toBe(c.counts);
   });
 });
 

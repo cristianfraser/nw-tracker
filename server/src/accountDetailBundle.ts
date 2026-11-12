@@ -283,7 +283,7 @@ export async function buildAccountDetailBundle(
 
   // Only this account's row: the full listing reads every account's live price.
   const dashboard_account_row = (() => {
-    const row = buildDashboardAccountRow(accountId, unit === "usd");
+    const row = buildDashboardAccountRow(accountId, unit);
     if (!row) return null;
     const { notes, ...rest } = row;
     return { ...rest, notes: notes ?? null };

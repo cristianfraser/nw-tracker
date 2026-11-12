@@ -23,18 +23,20 @@ describe("buildPlaceholderDashboardTimeseries", () => {
 });
 
 describe("buildPlaceholderDashboardDash", () => {
-  it("includes one CLP slice per NW bucket for pie chart", () => {
+  it("includes one slice per NW bucket for pie chart, in the unit it names", () => {
     const dash = buildPlaceholderDashboardDash("clp");
+    expect(dash.unit).toBe("clp");
     expect(dash.allocation.length).toBe(4);
-    expect(dash.allocation.every((a) => a.value_clp === 1)).toBe(true);
-    expect(dash.totals.net_worth_clp).toBe(0);
+    expect(dash.allocation.every((a) => a.value === 1)).toBe(true);
+    expect(dash.totals.net_worth).toBe(0);
   });
 });
 
 describe("buildPlaceholderDashboardBundle", () => {
   it("wraps dash, ts, and null perf", () => {
     const bundle = buildPlaceholderDashboardBundle("usd");
-    expect(bundle.dash.allocation[0]?.value_usd).toBe(1);
+    expect(bundle.dash.allocation[0]?.value).toBe(1);
+    expect(bundle.dash.unit).toBe("usd");
     expect(bundle.ts.unit).toBe("usd");
     expect(bundle.inversionesPerf).toBeNull();
   });
@@ -90,7 +92,7 @@ describe("buildPlaceholderNavStripDash", () => {
   }
 
   it("covers every group node of the sidebar nav, so the strip never throws on a slug", () => {
-    const dash = buildPlaceholderNavStripDash(nav, "clp");
+    const dash = buildPlaceholderNavStripDash(nav);
     expect(navSnapshotCoversNavTree(dash.card_metrics_by_slug, nav)).toBe(true);
     const nodes = groupNodes([nav.net_worth, ...nav.main]);
     expect(new Set(nodes.map((n) => n.slug)).size).toBe(9);
@@ -101,15 +103,13 @@ describe("buildPlaceholderNavStripDash", () => {
     expect(dash.card_metrics_by_slug.account_9001).toBeUndefined();
   });
 
-  it("is all zeros, with USD fields only in USD", () => {
-    const clp = buildPlaceholderNavStripDash(nav, "clp");
-    expect(clp.accounts).toEqual([]);
-    const month = clp.card_metrics_by_slug.tst_brokerage!.child.month;
-    expect(month.delta_period_clp).toBe(0);
-    expect(month.delta_period_usd).toBeNull();
-    expect(clp.card_metrics_by_slug.tst_brokerage!.row_pct.total.clp).toBeNull();
-    const usd = buildPlaceholderNavStripDash(nav, "usd");
-    expect(usd.card_metrics_by_slug.liabilities!.parent.day.deposits_usd).toBe(0);
-    expect(usd.liabilities_breakdown?.credit_card_usd).toBe(0);
+  it("is all zeros (whatever the unit: a zero is a zero in every currency)", () => {
+    const dash = buildPlaceholderNavStripDash(nav);
+    expect(dash.accounts).toEqual([]);
+    const month = dash.card_metrics_by_slug.tst_brokerage!.child.month;
+    expect(month.delta_period).toBe(0);
+    expect(dash.card_metrics_by_slug.tst_brokerage!.row_pct.total.value).toBeNull();
+    expect(dash.card_metrics_by_slug.liabilities!.parent.day.deposits).toBe(0);
+    expect(dash.liabilities_breakdown?.credit_card).toBe(0);
   });
 });

@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { FxCoverageBanner } from "../components/layout/FxCoverageBanner";
 import { FxBidAskGapsTable } from "../components/rates/FxBidAskGapsTable";
 import { useMarketSeries, useRatesInstruments, useSyncStatus } from "../queries/hooks";
-import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
@@ -17,13 +16,12 @@ const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
 const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
 import { Table } from "../components/ui/Table";
 import { loadableClass } from "../components/ui/Loadable";
-import { formatClp, formatGroupedDecimal, formatUsdFine } from "../format";
+import { currencyFormatInfo, formatClp, formatCurrencyFine, formatGroupedDecimal } from "../format";
 import type { MarketSeriesPoint } from "../types";
 import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
 import { useTranslation } from "../i18n";
-import { queryLoadError } from "../queries/pageShapeReady";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 import { DASHBOARD_PATH } from "../dashboardPath";
-import { legacyDisplayUnit } from "../displayUnitSupport";
 
 type RatesTab = "fx" | "tickers";
 
@@ -69,15 +67,9 @@ function seriesFromPoints(
   return rows;
 }
 
-function instrumentValue(
-  p: MarketSeriesPoint,
-  slot: InstrumentSlot,
-  display: DisplayUnit
-): number | null {
-  if (slot.kind === "eq") {
-    return display === "clp" ? p.equity_clp[slot.id] ?? null : p.equity_usd[slot.id] ?? null;
-  }
-  return display === "clp" ? p.fund_unit_clp[slot.id] ?? null : p.fund_unit_usd[slot.id] ?? null;
+/** The slot's value on a point, already in the payload's unit (server-converted). */
+function instrumentValue(p: MarketSeriesPoint, slot: InstrumentSlot): number | null {
+  return (slot.kind === "eq" ? p.equity[slot.id] : p.fund_unit[slot.id]) ?? null;
 }
 
 const RATES_RECENT_ROWS = 5;
@@ -327,7 +319,8 @@ function MiniLineChart({
   title: string;
   footnote?: string;
   data: { date: string; value: number }[];
-  yUnit: "clp" | "usd" | "index";
+  /** A currency code for money axes, or `index` for a unitless level. */
+  yUnit: string;
   valueFormatter: (n: number) => string;
   recentColDate: string;
   recentColValue: string;
@@ -357,7 +350,8 @@ function MiniLineChart({
     return buildNiceYAxisPositiveBand(mm.min, mm.max);
   }, [chartData]);
 
-  const axisW = yUnit === "usd" ? 78 : yUnit === "clp" ? 104 : 62;
+  // Whole-unit currencies (pesos) carry more digits on the axis than ones with cents.
+  const axisW = yUnit === "index" ? 62 : currencyFormatInfo(yUnit).minorDigits === 0 ? 104 : 78;
   const recentTable = (
     <RatesRecentEntriesTable
       data={data}
@@ -406,10 +400,12 @@ export function RatesPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<RatesTab>("fx");
   const { displayUnit } = useDisplayPreferences();
-  legacyDisplayUnit(displayUnit, "Rates");
   // Range-only per-surface control (rates are daily-native): one Rango for every panel.
   const rangePrefs = useSurfacePrefs("rates.range", "month", "1y");
-  const { data: payload, error: queryError, isPending: seriesPending } = useMarketSeries();
+  const seriesQuery = useMarketSeries(displayUnit);
+  const { data: payload, error: queryError } = seriesQuery;
+  // Dim while there is no payload yet or the previous unit's is held.
+  const seriesPending = queryShowsLoading(seriesQuery);
   const error = queryLoadError({ data: payload, error: queryError });
   const { data: syncStatus } = useSyncStatus();
   const { data: ratesInstruments } = useRatesInstruments();
@@ -529,17 +525,18 @@ export function RatesPage() {
         <>
           <div className="chart-grid chart-grid--full-line">
             {instrumentSlots.map((slot) => {
-              const data = seriesFromPoints(points, (p) => instrumentValue(p, slot, displayUnit));
-              const axis: "clp" | "usd" = displayUnit === "clp" ? "clp" : "usd";
-              const fmt = displayUnit === "clp" ? formatClp : formatUsdFine;
-              const suffix = displayUnit === "clp" ? "CLP" : "USD";
+              const data = seriesFromPoints(points, (p) => instrumentValue(p, slot));
+              // The unit the values are in: the payload's (a held one keeps its own while the next loads).
+              const unit = payload?.unit ?? displayUnit;
+              const fmt = (n: number) => formatCurrencyFine(n, unit);
+              const suffix = unit.toUpperCase();
               return (
                 <MiniLineChart
                   timeRange={rangePrefs.range}
                   key={`${slot.kind}:${slot.id}`}
                   title={`${slot.title} (${suffix})`}
                   data={data}
-                  yUnit={axis}
+                  yUnit={unit}
                   valueFormatter={fmt}
                   {...recentTableProps}
                   loading={seriesPending}

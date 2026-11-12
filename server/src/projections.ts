@@ -13,8 +13,9 @@
 import { getDashboardOverviewBlock, type TsUnit } from "./valuationTimeseries.js";
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { accountIdsInPortfolioGroupForTotals } from "./portfolioGroupTree.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
+import { convertCurrency } from "./rates.js";
 
 /** User's birth month — retirement age is measured from here. */
 export const PROJECTION_BIRTH_MONTH = "1992-01";
@@ -255,8 +256,30 @@ const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "re
   { dataKey: "proj_fixed_income", name: "Retiro renta fija", valueSeriesType: "reference" },
 ];
 
+/**
+ * The display unit's inflation input. Only CLP and USD have one today; any other unit (EUR)
+ * takes the USD input, whose default (2,5 %) stands in for a developed-market rate until a
+ * per-currency inflation parameter exists.
+ */
+export function inflationPctForUnit(unit: TsUnit, params: ProjectionParams): number {
+  return unit === "clp" ? params.inflation_clp_pct : params.inflation_usd_pct;
+}
+
+/**
+ * `amount` of `from` in `unit` at today's STORED rate (the close on or before Chile today, never
+ * the live quote — the projection is one rate for the whole horizon, today's money): the
+ * `rates.ts` walk at the mid, read as of tomorrow. Throws when a rate is not on file.
+ */
+function atTodaysStoredRate(amount: number, from: string, unit: TsUnit, today: string): number {
+  const asOfTomorrow = new Date(`${chileCalendarAddDays(today, 1)}T16:00:00Z`);
+  const out = convertCurrency(amount, from, unit, today, { side: "mid", now: asOfTomorrow });
+  if (out == null) throw new Error(`projections: no ${from}→${unit} rate on or before ${today}`);
+  return out;
+}
+
 export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) {
-  const fxRow = fxRowOnOrBefore(chileCalendarTodayYmd());
+  const today = chileCalendarTodayYmd();
+  const fxRow = fxRowOnOrBefore(today);
   if (!fxRow) throw new Error("no fx_daily row available (run backfill:yahoo-fx-usd)");
   const fx = fxRow.clp_per_usd;
 
@@ -269,7 +292,8 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
   const baseTotal = Number(last.total_nw);
   const baseInvested = typeof last.invested === "number" ? last.invested : 0;
 
-  const toUnit = (clp: number) => (unit === "usd" ? clp / fx : clp);
+  // Every CLP input (aporte, income, rent) is today's money: one rate, today's, into the unit.
+  const toUnit = (clp: number) => atTodaysStoredRate(clp, "clp", unit, today);
   const startMonth = monthAdd(String(last.as_of_date).slice(0, 7), 1);
 
   const engine = runProjectionEngine({
@@ -279,7 +303,7 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
     monthly_aporte: toUnit(params.monthly_aporte_clp),
     real_return_pct: params.real_return_pct,
     retire_return_pct: params.retire_return_pct,
-    inflation_pct: unit === "usd" ? params.inflation_usd_pct : params.inflation_clp_pct,
+    inflation_pct: inflationPctForUnit(unit, params),
     end_age: params.end_age,
     swr_pct: params.swr_pct,
     pct_balance_pct: params.pct_balance_pct,
@@ -288,11 +312,11 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
     monthly_rent: toUnit(params.monthly_rent_clp),
   });
 
-  // Milestones as constant reference columns over the whole x-range (USD levels; CLP view
-  // converts at today's fx — every line on this chart is today's money).
+  // Milestones as constant reference columns over the whole x-range (USD levels; another unit
+  // converts at today's rate — every line on this chart is today's money).
   const milestoneCols: Record<string, number> = {};
   for (const usd of PROJECTION_USD_MILESTONES) {
-    milestoneCols[`usd_${usd / 1000}k`] = Math.round(unit === "usd" ? usd : usd * fx);
+    milestoneCols[`usd_${usd / 1000}k`] = Math.round(atTodaysStoredRate(usd, "usd", unit, today));
   }
   const decorate = (row: Record<string, string | number | null>) => ({ ...row, ...milestoneCols });
 

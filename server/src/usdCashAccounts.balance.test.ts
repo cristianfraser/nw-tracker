@@ -59,14 +59,14 @@ describe("USD cash account balance (synthetic)", () => {
 
       // Dashboard rows agree with the balance function and keep the identity.
       const today = chileCalendarTodayYmd();
-      const dashUsd = await buildDashboardAccountRows(true);
+      const dashUsd = await buildDashboardAccountRows("usd");
       const row = dashUsd.find((r) => r.account_id === usdId);
       expect(row).toBeDefined();
-      if (row?.current_value_usd != null) {
-        expect(row.current_value_usd).toBeCloseTo(usdCashBalanceUsdAt(usdId, today), 2);
+      if (row?.current_value != null) {
+        expect(row.current_value).toBeCloseTo(usdCashBalanceUsdAt(usdId, today), 2);
       }
-      if (row?.current_value_usd != null && row.deposits_usd != null && row.delta_total_usd != null) {
-        expect(row.delta_total_usd).toBeCloseTo(row.current_value_usd - row.deposits_usd, 2);
+      if (row?.current_value != null && row.deposits != null && row.delta_total != null) {
+        expect(row.delta_total).toBeCloseTo(row.current_value - row.deposits, 2);
       }
     } finally {
       for (const id of movIds) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);

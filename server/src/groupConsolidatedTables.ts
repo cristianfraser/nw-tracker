@@ -18,7 +18,6 @@ import type { TsUnit } from "./valuationTimeseries.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
 import { withGroupDailyChainedMonthPct } from "./detalleDailyChainedPct.js";
 import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
-import { requireLegacyDisplayUnit } from "./displayUnits.js";
 
 export type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 
@@ -165,7 +164,9 @@ export function getGroupConsolidatedMonthlyPage(
   const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
   const shown =
     groupSlug === "net_worth" && installmentMode != null && unit !== "uf"
-      ? withIncomeAndExpenses(rows, requireLegacyDisplayUnit(unit, "net worth detalle income and expenses"), installmentMode, period)
+      ? // TODO(any-currency, Stream 1): pass `unit` straight through once the flows overview
+        // (`GastosUnit`) is built per any unit; until then a non-CLP/USD unit is refused here.
+        withIncomeAndExpenses(rows, unit, installmentMode, period)
       : rows;
   return { unit, group_slug: groupSlug, period, ...paginate(shown, page, pageSize) };
 }
@@ -173,7 +174,7 @@ export function getGroupConsolidatedMonthlyPage(
 /** Each row's income and expenses: the flows overview's months, summed by year on a yearly row. */
 function withIncomeAndExpenses(
   rows: readonly ConsolidatedMonthlyPerfRow[],
-  unit: "clp" | "usd",
+  unit: string,
   installmentMode: CcInstallmentGastosMode,
   period: ConsolidatedMonthlyPeriod
 ): ConsolidatedMonthlyPageRow[] {

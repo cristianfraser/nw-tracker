@@ -48,29 +48,28 @@ import {
   isKnownClassTabGroup,
   accountIdFromReq,
 } from "./shared.js";
-import { LEGACY_DISPLAY_UNITS, LEGACY_DISPLAY_UNITS_WITH_UF, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerDashboardRoutes(app: express.Express): void {
 app.get("/api/dashboard/nav-snapshot", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/nav-snapshot", supported: LEGACY_DISPLAY_UNITS });
-  const includeUsd = unit === "usd";
-  res.json(await buildDashboardNavSnapshot(includeUsd));
+  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/nav-snapshot" });
+  res.json(await buildDashboardNavSnapshot(unit));
 }));
 
 /** Group, Pasivos and account nav strip: account rows, card metrics, the value map. */
 app.get("/api/dashboard/nav-context", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/nav-context", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/nav-context" });
   const root = typeof req.query.root === "string" ? req.query.root.trim() : "";
   if (!root) {
     res.status(400).json({ error: "root (the page's nav node slug) is required" });
     return;
   }
-  res.json(await buildDashboardNavContext(unit === "usd", unit, root));
+  res.json(await buildDashboardNavContext(unit, root));
 }));
 
 /** Home dashboard: one response (dash + valuation TS + FX + group perf). */
 app.get("/api/dashboard/page-bundle", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/page-bundle", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/page-bundle" });
   res.json(await buildDashboardPageBundle(unit));
 }));
 
@@ -80,7 +79,7 @@ app.get("/api/dashboard/page-bundle", asyncHandler(async (req, res) => {
  * day period view (chart + detalle por día). Fetched lazily while the D toggle is active.
  */
 app.get("/api/daily-series", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/daily-series", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/daily-series" });
   // Calendar days back from today; 0 = since portfolio start ("total" range).
   const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
   if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
@@ -123,13 +122,13 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
 
 /** Daily net-worth series (one point per NYSE session) for the day period view. */
 app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/overview-daily", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/overview-daily" });
   const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
   if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
     res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
     return;
   }
-  res.json(getDashboardOverviewDaily(requireLegacyDisplayUnit(unit, "/api/dashboard/overview-daily"), days));
+  res.json(getDashboardOverviewDaily(unit, days));
 }));
 
 /**
@@ -137,13 +136,13 @@ app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
  * and the YTD / accumulated levels anchored on the monthly inversiones consolidation.
  */
 app.get("/api/dashboard/inversiones-perf-daily", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/inversiones-perf-daily", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/inversiones-perf-daily" });
   const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
   if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
     res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
     return;
   }
-  res.json(buildInversionesPerfDaily(requireLegacyDisplayUnit(unit, "/api/dashboard/inversiones-perf-daily"), days));
+  res.json(buildInversionesPerfDaily(unit, days));
 }));
 
 /**
@@ -151,7 +150,7 @@ app.get("/api/dashboard/inversiones-perf-daily", asyncHandler(async (req, res) =
  * Query: include_usd / include_uf → unit (main dashboard UI only uses CLP+USD; UF kept for other consumers).
  */
 app.get("/api/dashboard/valuation-timeseries", (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/valuation-timeseries", allowUf: true, supported: LEGACY_DISPLAY_UNITS_WITH_UF });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/valuation-timeseries", allowUf: true });
 
   const portfolioGroup =
     typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
@@ -175,7 +174,7 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
     return;
   }
   const tabSlug = slug;
-  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/consolidated-tables", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/consolidated-tables" });
   res.json(groupConsolidatedTablesResponse(tabSlug, unit));
 });
 
@@ -189,7 +188,7 @@ app.get("/api/groups/:slug/period-returns", (req, res) => {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/period-returns", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/period-returns" });
   res.json(groupPeriodReturnsResponse(slug, unit));
 });
 
@@ -230,7 +229,7 @@ app.get("/api/dashboard/latest-movements", (req, res) => {
     res.status(400).json({ error: `limit must be an integer 1..${LATEST_MOVEMENTS_MAX_LIMIT}` });
     return;
   }
-  res.json(buildLatestMovements(limitRaw));
+  res.json(buildLatestMovements(limitRaw, requestDisplayUnit(req.query, { surface: "/api/dashboard/latest-movements" })));
 });
 
 /** Server-paginated consolidated detalle-por-mes rows (dashboard net_worth table). */
@@ -246,7 +245,7 @@ app.get("/api/groups/:slug/consolidated-monthly", (req, res) => {
     res.status(400).json({ error: "invalid period" });
     return;
   }
-  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/consolidated-monthly", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/consolidated-monthly" });
   const modeRaw = req.query.installment_mode;
   if (modeRaw != null && modeRaw !== "split" && modeRaw !== "total") {
     res.status(400).json({ error: "installment_mode must be split or total" });
@@ -319,7 +318,7 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
     return;
   }
   const tabSlug = slug;
-  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/performance-monthly", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/groups/:slug/performance-monthly" });
   res.json(groupMonthlyPlSeriesResponse(tabSlug, unit));
 });
 

@@ -2,7 +2,28 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
 import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
-import { loadProxyBasketBreakdown } from "./proxyBasketBreakdown.js";
+import { loadProxyBasketBreakdown as loadInUnit } from "./proxyBasketBreakdown.js";
+
+type Pair = { clp: number | null; usd: number | null };
+const pairs = (c: Record<"day" | "month" | "year", number | null>, u: Record<"day" | "month" | "year", number | null> | null) => ({
+  day: { clp: c.day, usd: u?.day ?? null } as Pair,
+  month: { clp: c.month, usd: u?.month ?? null } as Pair,
+  year: { clp: c.year, usd: u?.year ?? null } as Pair,
+});
+
+/** The breakdown built per unit (pesos, and dollars when asked), side by side as the tests read it. */
+function loadProxyBasketBreakdown(bucket: string, opts: { now: Date; includeUsd: boolean }) {
+  const clp = loadInUnit(bucket, { now: opts.now, unit: "clp" });
+  const usd = opts.includeUsd ? loadInUnit(bucket, { now: opts.now, unit: "usd" }) : null;
+  if (!clp) return null;
+  return {
+    ...clp,
+    holdings: clp.holdings.map((h, i) => {
+      const u = usd?.holdings[i] ?? null;
+      return { ...h, pct: pairs(h.pct, u?.pct ?? null), contribution_pct: pairs(h.contribution_pct, u?.contribution_pct ?? null) };
+    }),
+  };
+}
 import { recordCompositePositions, type CompositePositionHolding } from "./watchlistCompositeHistory.js";
 
 /**
@@ -139,7 +160,7 @@ describe("loadProxyBasketBreakdown", () => {
     expect(h2.contribution_pct.month.usd).toBeCloseTo(contributionUsd(T2, MONTH_ANCHOR, () => 0.36), 10);
   });
 
-  it("includeUsd=false leaves the usd legs null and keeps the clp ones", () => {
+  it("a pesos build alone reads the clp legs (no dollar build asked)", () => {
     const bucket = `${BUCKET_PREFIX}_all`;
     record(bucket, "2025-12-15", 1, [{ ticker: T1, weight: 1 }]);
 

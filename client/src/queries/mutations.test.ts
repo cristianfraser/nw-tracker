@@ -41,16 +41,10 @@ function sampleData(): FlowsExpensesResponse {
       },
     ],
     additional_cards: {
+      unit: "clp",
       by_month: [],
       by_year: [],
-      totals: {
-        charges_clp: 0,
-        charges_usd: 0,
-        reimbursements_clp: 0,
-        reimbursements_usd: 0,
-        balance_clp: 0,
-        balance_usd: 0,
-      },
+      totals: { charges: 0, reimbursements: 0, balance: 0 },
     },
   };
 }

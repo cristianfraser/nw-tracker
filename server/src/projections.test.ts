@@ -135,3 +135,48 @@ describe("runProjectionEngine", () => {
     expect(() => runProjectionEngine({ ...BASE, start_month: "2058-01" })).toThrow(/past the retirement/);
   });
 });
+
+describe("buildProjectionsPayload in any core unit", () => {
+  it("converts today's-money inputs and USD milestones at today's stored rate; EUR inflation is the USD input", async () => {
+    const { buildProjectionsPayload, inflationPctForUnit, PROJECTION_DEFAULTS } = await import("./projections.js");
+    const { convertCurrency } = await import("./rates.js");
+    const { chileCalendarTodayYmd, chileCalendarAddDays } = await import("./chileDate.js");
+    const params = { ...PROJECTION_DEFAULTS, monthly_aporte_clp: 1_000_000, monthly_rent_clp: 500_000 };
+    expect(inflationPctForUnit("eur", params)).toBe(params.inflation_usd_pct);
+    expect(inflationPctForUnit("usd", params)).toBe(params.inflation_usd_pct);
+    expect(inflationPctForUnit("clp", params)).toBe(params.inflation_clp_pct);
+
+    const clp = buildProjectionsPayload("clp", params);
+    const usd = buildProjectionsPayload("usd", params);
+    const firstClp = clp.chart.points[0]!;
+    const firstUsd = usd.chart.points[0]!;
+    expect(firstClp.usd_250k).toBe(Math.round(250_000 * clp.fx_clp_per_usd));
+    expect(firstUsd.usd_250k).toBe(250_000);
+    expect(usd.summary.monthly_rent).toBe(Math.round(500_000 / usd.fx_clp_per_usd));
+
+    const today = chileCalendarTodayYmd();
+    const { db } = await import("./db.js");
+    // One early row of each EUR pair carries forward over the whole history (on-or-before reads).
+    db.prepare(
+      `INSERT OR IGNORE INTO fx_rates (base, quote, date, mid, source) VALUES ('eur', 'usd', '2000-01-03', 1.08, 'vitest-projections')`
+    ).run();
+    db.prepare(`INSERT OR IGNORE INTO eur_daily (date, clp_per_eur) VALUES ('2000-01-03', 1000)`).run();
+    try {
+    const eurPerUsd = convertCurrency(1, "usd", "eur", today, {
+      side: "mid",
+      now: new Date(`${chileCalendarAddDays(today, 1)}T16:00:00Z`),
+    });
+    expect(eurPerUsd).not.toBeNull();
+    const eur = buildProjectionsPayload("eur", params);
+    expect(eur.unit).toBe("eur");
+    expect(eur.chart.points[0]!.usd_250k).toBe(Math.round(250_000 * eurPerUsd!));
+    expect(eur.summary.monthly_rent).toBe(Math.round(convertCurrency(500_000, "clp", "eur", today, {
+      side: "mid",
+      now: new Date(`${chileCalendarAddDays(today, 1)}T16:00:00Z`),
+    })!));
+    } finally {
+      db.prepare(`DELETE FROM fx_rates WHERE source = 'vitest-projections'`).run();
+      db.prepare(`DELETE FROM eur_daily WHERE date = '2000-01-03'`).run();
+    }
+  });
+});

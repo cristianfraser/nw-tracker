@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatOrDash, formatPct, formatUsdFine } from "../../format";
 import { cn } from "../../cn";
@@ -227,7 +228,8 @@ export function CreditCardFacturacionesTable({
   pendingCuotaPurchases?: readonly CcPendingCuotaPurchaseDto[];
 }) {
   const { t } = useTranslation();
-  const { data: flows, isPending: flowsPending } = useFlowsExpenses();
+  const { displayUnit } = useDisplayPreferences();
+  const { data: flows, isPending: flowsPending } = useFlowsExpenses(displayUnit);
   const categories = flows?.categories ?? [];
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);

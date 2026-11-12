@@ -1,4 +1,4 @@
-import { rollupChartPointsByYear } from "./flowsDisplay";
+import { formatFlowMoney, rollupChartPointsByYear } from "./flowsDisplay";
 import type { DisplayUnit } from "./queries/keys";
 import type {
   FlowCheckingIncomeLine,
@@ -6,7 +6,6 @@ import type {
   FlowIncomeMonthRow,
   FlowManualIncomeLine,
   FlowsIncomeResponse,
-  FlowWorkEarningRow,
   IncomeKind,
 } from "./types";
 
@@ -66,32 +65,9 @@ export function buildIncomeDisplayRows(data: FlowsIncomeResponse): IncomeDisplay
   });
 }
 
-export function incomeCartolaAmount(line: FlowCheckingIncomeLine, unit: DisplayUnit): number {
-  if (unit === "usd") {
-    if (line.amount_usd == null) {
-      throw new Error(`missing amount_usd for checking income movement ${line.movement_id}`);
-    }
-    return line.amount_usd;
-  }
-  return Math.round(line.amount_clp);
-}
-
-export function incomeManualAmount(line: FlowManualIncomeLine, unit: DisplayUnit): number {
-  if (unit === "usd") {
-    if (line.amount_usd == null) {
-      throw new Error(`missing amount_usd for manual income entry ${line.id}`);
-    }
-    return line.amount_usd;
-  }
-  return Math.round(line.amount_clp);
-}
-
-export function workEarningLiquidoDisplayAmount(
-  row: FlowWorkEarningRow,
-  unit: DisplayUnit
-): number {
-  if (row.liquido_usd != null && unit === "usd") return row.liquido_usd;
-  return Math.round(row.liquido_clp);
+/** An income figure in the payload's unit; one with no rate on file for its day reads «—». */
+export function formatIncomeMoney(amount: number | null, unit: DisplayUnit): string {
+  return amount == null ? "—" : formatFlowMoney(amount, unit);
 }
 
 export function incomeKindLabel(t: (key: string) => string, kind: IncomeKind): string {

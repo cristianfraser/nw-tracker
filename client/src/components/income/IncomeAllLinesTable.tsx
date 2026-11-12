@@ -3,14 +3,12 @@ import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import type { IncomeKind } from "../../types";
 import type { IncomeDisplayRow } from "../../incomeAggregates";
 import {
-  incomeCartolaAmount,
+  formatIncomeMoney,
   incomeKindLabel,
-  incomeManualAmount,
 } from "../../incomeAggregates";
 import { useIncomeRefundMutation, usePatchIncomeMovementMutation } from "../../queries/mutations";
 import { useIncomeRentPlaces } from "../../queries/hooks";
@@ -94,7 +92,7 @@ export function IncomeAllLinesTable({
                     ) : null}
                   </td>
                   <td className="mono">
-                    {formatFlowMoney(incomeCartolaAmount(row, displayUnit), displayUnit)}
+                    {formatIncomeMoney(row.amount, displayUnit)}
                   </td>
                   <td>
                     {row.description}
@@ -179,7 +177,7 @@ export function IncomeAllLinesTable({
               <tr key={`manual-${row.id}`}>
                 <td className="mono">{row.received_on}</td>
                 <td className="mono">
-                  {formatFlowMoney(incomeManualAmount(row, displayUnit), displayUnit)}
+                  {formatIncomeMoney(row.amount, displayUnit)}
                 </td>
                 <td>{row.source ?? "—"}</td>
                 <td className="muted">{row.note ?? "—"}</td>

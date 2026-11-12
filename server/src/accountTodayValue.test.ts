@@ -56,6 +56,6 @@ describe("account value today", () => {
 
     const bundle = await buildAccountDetailBundle(accountId, "clp", "monthly");
     expect(bundle?.summary.latest_valuation_clp).toBe(550_000);
-    expect(bundle?.dashboard_account_row?.current_value_clp).toBe(550_000);
+    expect(bundle?.dashboard_account_row?.current_value).toBe(550_000);
   });
 });

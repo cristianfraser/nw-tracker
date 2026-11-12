@@ -18,7 +18,7 @@ import { asyncHandler } from "./shared.js";
 import { invalidateMarketDataAggregations } from "../cacheRegistry.js";
 import { listEquitySplits, recordEquitySplit } from "../equitySplits.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
-import { LEGACY_DISPLAY_UNITS, requestDisplayUnit, requireLegacyDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerMarketRoutes(app: express.Express): void {
 app.get("/api/fx/latest", (_req, res) => {
@@ -92,8 +92,8 @@ app.post("/api/fx", (req, res) => {
 });
 
 /** Upsert UF (CLF): body { date: 'YYYY-MM-DD', clp_per_uf: number } CLP per 1 UF */
-app.get("/api/market-series", (_req, res) => {
-  res.json(getMarketSeriesPayload());
+app.get("/api/market-series", (req, res) => {
+  res.json(getMarketSeriesPayload(requestDisplayUnit(req.query, { surface: "/api/market-series" })));
 });
 
 // When the live prices last moved (published once the dashboard caches carry them); the client
@@ -110,10 +110,11 @@ app.get("/api/live-quotes/stamp", (req, res) => {
   });
 });
 
-// `?unit=usd` returns values and changes in USD (the app's CLP/USD toggle); default CLP.
+// `?unit=<core currency>` returns values and changes in that unit (the app's display unit); default CLP.
 app.get("/api/market-ticker", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/market-ticker" });
   try {
-    res.json(getMarketTickerPayload(new Date(), requireLegacyDisplayUnit(requestDisplayUnit(req.query, { surface: "/api/market-ticker", supported: LEGACY_DISPLAY_UNITS }), "/api/market-ticker")));
+    res.json(getMarketTickerPayload(new Date(), unit));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
   }
@@ -162,8 +163,9 @@ app.post("/api/equity-splits", (req, res) => {
 
 // DB-only: history depth is maintained by the live-quotes scheduler, never on request.
 app.get("/api/watchlist", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/watchlist" });
   try {
-    res.json(getWatchlistPayload(new Date(), requireLegacyDisplayUnit(requestDisplayUnit(req.query, { surface: "/api/watchlist", supported: LEGACY_DISPLAY_UNITS }), "/api/watchlist")));
+    res.json(getWatchlistPayload(new Date(), unit));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "watchlist_failed" });
   }

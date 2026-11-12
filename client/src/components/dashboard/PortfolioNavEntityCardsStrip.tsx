@@ -18,7 +18,7 @@ import {
 } from "../../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
-import { legacyCardValue } from "./DashboardCardValue";
+import type { DisplayUnit } from "../../queries/keys";
 
 type StripDash = Pick<
   DashboardResponse,
@@ -28,7 +28,8 @@ type StripDash = Pick<
 export type PortfolioNavEntityCardsStripProps = {
   dash: StripDash;
   parentNavNode: NavTreeNodeDto;
-  showUsd: boolean;
+  /** The payload's unit (every figure of `dash` is in it). */
+  unit: DisplayUnit;
   animated?: boolean;
   /** Nodes for `parentNavNode.linked_card_slugs`, resolved by the page against the sidebar nav. */
   linkedCardNavChildren?: NavTreeNodeDto[];
@@ -39,7 +40,8 @@ type NavSummaryCardProps = {
   node: NavTreeNodeDto;
   label?: string;
   to?: string;
-  showUsd: boolean;
+  /** The payload's unit (every figure of `dash` is in it). */
+  unit: DisplayUnit;
   animated: boolean;
 };
 
@@ -52,30 +54,31 @@ function NavSummaryCard({
   node,
   label,
   to,
-  showUsd,
+  unit,
   animated,
 }: NavSummaryCardProps) {
-  const totals = navParentMainValue(dash, node, showUsd);
+  const value = navParentMainValue(dash, node);
   const metricsByPeriod = requireNavCardMetrics(dash, node).parent;
   return (
     <CompactEntityCard
       label={label}
       to={to}
       labelColorRgb={node.color_rgb}
-      {...legacyCardValue(totals.clp, totals.apiUsd, showUsd)}
+      value={value}
+      unit={unit}
       animated={animated}
       valueVariant="main"
       valueDelta={
         <CardValueDayPl
           metricsByPeriod={metricsByPeriod}
-          unit={showUsd ? "usd" : "clp"}
+          unit={unit}
           animated={animated}
         />
       }
       metrics={
         <DashboardCardGroupMetrics
           metricsByPeriod={metricsByPeriod}
-          unit={showUsd ? "usd" : "clp"}
+          unit={unit}
           animated={animated}
         />
       }
@@ -90,7 +93,7 @@ function NavSummaryCard({
 export function PortfolioNavEntityCardsStrip({
   dash,
   parentNavNode,
-  showUsd,
+  unit,
   animated = true,
   linkedCardNavChildren = [],
 }: PortfolioNavEntityCardsStripProps) {
@@ -127,7 +130,7 @@ export function PortfolioNavEntityCardsStrip({
           ? true
           : !groupsAsRows && navChildCardHasActivity(dash, c)
       ),
-    [stripGroupChildren, groupsAsRows, dash, showUsd]
+    [stripGroupChildren, groupsAsRows, dash]
   );
 
   const filteredAccountChildren = useMemo(
@@ -186,7 +189,7 @@ export function PortfolioNavEntityCardsStrip({
             dash={dash}
             node={parentNavNode}
             label={parentLabel}
-            showUsd={showUsd}
+            unit={unit}
             animated={animated}
           />
         )
@@ -199,7 +202,7 @@ export function PortfolioNavEntityCardsStrip({
             node={hub}
             label={resolveNavTreeLabel(hub)}
             to={hub.route_path?.trim() || undefined}
-            showUsd={showUsd}
+            unit={unit}
             animated={animated}
           />
         ),
@@ -209,7 +212,7 @@ export function PortfolioNavEntityCardsStrip({
           <PortfolioNavChildDetailCards
             dash={dash}
             navChildren={detailChildren}
-            showUsd={showUsd}
+            unit={unit}
             animated={animated}
           />
         ) : null
@@ -222,7 +225,7 @@ export function PortfolioNavEntityCardsStrip({
             navChildren={accountCardChildren}
             liquidatedChildren={liquidatedChildren}
             showTotalRow={tableCarriesPage}
-            showUsd={showUsd}
+            unit={unit}
             animated={animated}
           />
         ) : null

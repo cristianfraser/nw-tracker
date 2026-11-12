@@ -37,7 +37,7 @@ describe("ccInstallmentPaymentGastosLines", () => {
         ln.source === "cc" &&
         ln.account_id === cardId &&
         ln.line_role === "installment_cuota" &&
-        ln.values.clp!.value > 0
+        ln.value_clp > 0
     );
     const fromLedger = cardCuotas.filter((ln) => ln.statement_line_id < -1_000_000_000);
 

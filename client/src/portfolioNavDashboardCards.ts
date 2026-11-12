@@ -13,7 +13,6 @@ import {
 import type {
   DashboardAccountRow,
   DashboardResponse,
-  NavCardAmountDto,
   NavTreeNodeDto,
 } from "./types";
 
@@ -43,37 +42,26 @@ function cashSavingsLinkedBottomLines(
   if (!linked.length) return undefined;
   return linked.map((lb) => ({
     label: lb.label_i18n_key ? i18n.t(lb.label_i18n_key) : lb.label,
-    clp: lb.clp,
-    usd: lb.usd ?? null,
+    value: lb.value,
     depth: 0,
     to: lb.route_path,
   }));
 }
 
-/** A server balance in the card value shape (`apiUsd` only in the USD view). */
-export function navCardAmount(
-  amount: NavCardAmountDto,
-  showUsd: boolean
-): { clp: number; apiUsd: number | null } {
-  return { clp: amount.clp, apiUsd: showUsd ? amount.usd : null };
-}
-
-/** Main balance of a nav node as a detail card (server `value.child`). */
+/** Main balance of a nav node as a detail card (server `value.child`, in the payload's unit). */
 export function mainValueForNavChild(
   dash: Pick<DashboardResponse, "card_metrics_by_slug">,
-  navChild: NavTreeNodeDto,
-  showUsd: boolean
-): { clp: number; apiUsd: number | null } {
-  return navCardAmount(requireNavCardMetrics(dash, navChild).value.child, showUsd);
+  navChild: NavTreeNodeDto
+): number | null {
+  return requireNavCardMetrics(dash, navChild).value.child;
 }
 
 /** Main balance of a nav node as its own page's summary card (server `value.parent`). */
 export function navParentMainValue(
   dash: Pick<DashboardResponse, "card_metrics_by_slug">,
-  node: NavTreeNodeDto,
-  showUsd: boolean
-): { clp: number; apiUsd: number | null } {
-  return navCardAmount(requireNavCardMetrics(dash, node).value.parent, showUsd);
+  node: NavTreeNodeDto
+): number | null {
+  return requireNavCardMetrics(dash, node).value.parent;
 }
 
 function materialAmount(v: number | null | undefined): boolean {
@@ -90,10 +78,10 @@ export function navChildCardHasActivity(
   navChild: NavTreeNodeDto
 ): boolean {
   const entry = requireNavCardMetrics(dash, navChild);
-  if (materialAmount(entry.value.child.clp)) return true;
+  if (materialAmount(entry.value.child)) return true;
   const variant = entry.child;
   return [variant.day, variant.month, variant.year].some(
-    (m) => materialAmount(m.deposits_period_clp) || materialAmount(m.delta_period_clp)
+    (m) => materialAmount(m.deposits_period) || materialAmount(m.delta_period)
   );
 }
 

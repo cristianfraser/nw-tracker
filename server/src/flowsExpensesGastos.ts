@@ -40,13 +40,14 @@ import { addCalendarMonths } from "nw-tracker-contracts";
 import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { lineValueIn } from "./lineMoney.js";
 
-export type GastosUnit = "clp" | "usd";
+/** The display unit a gastos view is built in: any core currency code. */
+export type GastosUnit = string;
 
 /**
  * A finished expense line as the gastos views read it: wire or server-side (the server's carries
  * the builder fields beside its money). Its value in a unit is `values[unit]` (`lineValueIn`).
  */
-export type GastosLine = Omit<WireExpenseLine, "amount" | "values"> & {
+export type GastosLine = Omit<WireExpenseLine, "amount" | "converted" | "value_clp"> & {
   amount?: Money;
   values?: Record<string, LineUnitValue>;
 };
@@ -151,8 +152,8 @@ export function mortgageLinkCarryingAmount(
   link: { payment_clp: number; carrying_clp: number },
   unit: GastosUnit
 ): number {
-  if (unit === "usd") {
-    // Same fx date as the payment line: allocate the line's USD by the carrying CLP share.
+  if (unit !== "clp") {
+    // Same fx date as the payment line: allocate the line's value by the carrying CLP share.
     return expenseLineGastosAmount(line, unit) * (link.carrying_clp / link.payment_clp);
   }
   return link.carrying_clp;
@@ -164,7 +165,7 @@ function mortgageLinkAmortizationChartAmount(
   link: { payment_clp: number; amortization_clp: number },
   unit: GastosUnit
 ): number {
-  if (unit === "usd") {
+  if (unit !== "clp") {
     if (link.amortization_clp <= 0) return 0;
     return -(expenseLineGastosAmount(line, unit) * (link.amortization_clp / link.payment_clp));
   }

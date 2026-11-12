@@ -14,6 +14,7 @@ import {
 } from "../ccExpenseLineBuckets";
 import { queryKeys, type DisplayUnit } from "./keys";
 import { invalidateResources, resources } from "./resources";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 
 export type PatchCcExpenseLineCategoryVars = {
   lineId: number;
@@ -85,7 +86,8 @@ function cardWriteResources(accountId: string | number, displayUnit: DisplayUnit
 
 export function usePatchCcExpenseLineCategoryMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsExpenses();
+  const { displayUnit: linesUnit } = useDisplayPreferences();
+  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: PatchCcExpenseLineCategoryVars) =>
@@ -178,7 +180,8 @@ export function applyCcPurchaseNotePatchToDetail(
 
 export function usePatchCcExpensePurchaseNoteMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsExpenses();
+  const { displayUnit: linesUnit } = useDisplayPreferences();
+  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: PatchCcExpensePurchaseNoteVars) =>
@@ -275,7 +278,8 @@ export function usePostVendorBranchChoiceMutation() {
 
 export function usePutCcExpensePurchaseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsExpenses();
+  const { displayUnit: linesUnit } = useDisplayPreferences();
+  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: PutCcExpensePurchaseBigGroupVars) =>
@@ -311,7 +315,8 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
 
 export function useCreateCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsExpenses();
+  const { displayUnit: linesUnit } = useDisplayPreferences();
+  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (label: string) => api.createCcExpenseBigGroup(label),
@@ -335,7 +340,8 @@ export function useCreateCcExpenseBigGroupMutation() {
 
 export function useRenameCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsExpenses();
+  const { displayUnit: linesUnit } = useDisplayPreferences();
+  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: { slug: string; label: string }) =>
@@ -367,7 +373,8 @@ export function useRenameCcExpenseBigGroupMutation() {
 
 export function useDeleteCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsExpenses();
+  const { displayUnit: linesUnit } = useDisplayPreferences();
+  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (slug: string) => api.deleteCcExpenseBigGroup(slug),

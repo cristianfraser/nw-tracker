@@ -4,7 +4,7 @@ import { buildFacturacionModalBucket } from "./buildFacturacionModalBucket";
 import type { FlowCcExpenseLineRow } from "../../types";
 
 function line(
-  overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "merchant"> & Partial<Pick<FlowCcExpenseLineRow, "amount" | "values">>
+  overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "merchant"> & Partial<Pick<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp">>
 ): FlowCcExpenseLineRow {
   return {
     source: "cc",

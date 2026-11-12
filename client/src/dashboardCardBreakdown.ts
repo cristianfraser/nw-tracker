@@ -6,29 +6,28 @@ import {
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import i18n from "./i18n";
 import type { SurfacePeriod } from "./surfaceDisplayPrefs";
-import type { DashboardAccountRow, NavCardAmountDto } from "./types";
+import type { DashboardAccountRow } from "./types";
+import type { DisplayUnit } from "./queries/keys";
+import { currencyHasAdaptiveCardDecimals } from "./format";
 
+/** One period of a card's metrics, in the payload's unit (the server's `NavCardPeriodMetricsDto`). */
 export type CardGroupMetrics = {
   /** Lifetime net deposits. */
-  deposits_clp: number;
-  deposits_usd?: number | null;
+  deposits: number | null;
   /** Cumulative nominal P/L (latest performance row). */
-  delta_total_clp: number | null;
-  delta_total_usd?: number | null;
+  delta_total: number | null;
   /** Net deposits in the selected calendar month or year. */
-  deposits_period_clp: number;
-  deposits_period_usd?: number | null;
-  /** Balance change vs prior month/year-end close (Σ current − Σ prior). */
-  delta_period_clp: number | null;
-  delta_period_usd?: number | null;
+  deposits_period: number | null;
+  /** Balance change vs prior month/year-end close. */
+  delta_period: number | null;
 };
 
 export type CardGroupMetricsPeriod = SurfacePeriod;
 
 export type CardBreakdownLine = {
   label: string;
-  clp: number;
-  usd?: number | null;
+  /** In the payload's unit (null: no rate). */
+  value: number | null;
   /** 0 = section; 1 = subgroup or category; 2 = leaf account / metric */
   depth: 0 | 1 | 2;
   /** React Router path when this row is navigable. */
@@ -42,8 +41,7 @@ export type CardBreakdownLine = {
 /** Nested breakdown tree for dashboard detail cards (`ul` > `li` > `ul` > `li`). */
 export type CardBreakdownNode = {
   label: string;
-  clp: number;
-  usd?: number | null;
+  value: number | null;
   to?: string;
   account_ids?: number[];
   sync_stale?: boolean;
@@ -91,8 +89,7 @@ export function nestCardBreakdownLines(lines: CardBreakdownLine[]): CardBreakdow
   for (const line of lines) {
     const node: CardBreakdownNode = {
       label: line.label,
-      clp: line.clp,
-      usd: line.usd,
+      value: line.value,
       to: line.to,
       account_ids: line.account_ids,
       sync_stale: line.sync_stale,
@@ -134,7 +131,7 @@ function mortgageAccountForPropertyRow(
   const loanId = propertyRow?.loan_account_id;
   if (loanId == null) return undefined;
   const loan = allAccounts.find((a) => a.account_id === loanId);
-  return loan?.current_value_clp != null ? loan : undefined;
+  return loan?.current_value != null ? loan : undefined;
 }
 
 export type CardGroupMetricsByPeriod = Record<CardGroupMetricsPeriod, CardGroupMetrics>;
@@ -146,48 +143,31 @@ function finiteOr<T>(v: number | null | undefined, fallback: T): number | T {
 /** One account row's card metrics for a period (a group's are the server's, never summed here). */
 function cardMetricsForAccountRow(
   r: DashboardAccountRow | null,
-  period: CardGroupMetricsPeriod
+  period: CardGroupMetricsPeriod,
+  unit: DisplayUnit
 ): CardGroupMetrics {
-  if (!r) {
-    return {
-      deposits_clp: 0,
-      deposits_usd: null,
-      delta_total_clp: null,
-      delta_total_usd: null,
-      deposits_period_clp: 0,
-      deposits_period_usd: null,
-      delta_period_clp: null,
-      delta_period_usd: null,
-    };
-  }
-  const depClp =
-    period === "month" ? r.deposits_month_clp : period === "day" ? r.deposits_day_clp : r.deposits_year_clp;
-  const depUsd =
-    period === "month" ? r.deposits_month_usd : period === "day" ? r.deposits_day_usd : r.deposits_year_usd;
-  const deltaClp =
-    period === "month" ? r.delta_month_clp : period === "day" ? r.delta_day_clp : r.delta_year_clp;
-  const deltaUsd =
-    period === "month" ? r.delta_month_usd : period === "day" ? r.delta_day_usd : r.delta_year_usd;
+  // Pesos are the ledger's own unit: a row always carries them (a missing leg is a zero).
+  const missing = unit === "clp" ? 0 : null;
+  if (!r) return { deposits: missing, delta_total: null, deposits_period: missing, delta_period: null };
+  const dep = period === "month" ? r.deposits_month : period === "day" ? r.deposits_day : r.deposits_year;
+  const delta = period === "month" ? r.delta_month : period === "day" ? r.delta_day : r.delta_year;
   return {
-    deposits_clp: r.deposits_clp,
-    deposits_usd: finiteOr(r.deposits_usd, null),
-    delta_total_clp: finiteOr(r.delta_total_clp, null),
-    delta_total_usd: finiteOr(r.delta_total_usd, null),
-    deposits_period_clp: finiteOr(depClp, 0),
-    deposits_period_usd: finiteOr(depUsd, null),
-    delta_period_clp: finiteOr(deltaClp, null),
-    delta_period_usd: finiteOr(deltaUsd, null),
+    deposits: finiteOr(r.deposits, missing),
+    delta_total: finiteOr(r.delta_total, null),
+    deposits_period: finiteOr(dep, missing),
+    delta_period: finiteOr(delta, null),
   };
 }
 
 /** All three period slices of one account row — cards render día/mes/año rows at once. */
 export function cardMetricsByPeriodForAccountRow(
-  row: DashboardAccountRow | null
+  row: DashboardAccountRow | null,
+  unit: DisplayUnit
 ): CardGroupMetricsByPeriod {
   return {
-    day: cardMetricsForAccountRow(row, "day"),
-    month: cardMetricsForAccountRow(row, "month"),
-    year: cardMetricsForAccountRow(row, "year"),
+    day: cardMetricsForAccountRow(row, "day", unit),
+    month: cardMetricsForAccountRow(row, "month", unit),
+    year: cardMetricsForAccountRow(row, "year", unit),
   };
 }
 
@@ -201,33 +181,20 @@ function valueRows(accounts: DashboardAccountRow[]): DashboardAccountRow[] {
   );
 }
 
-function sortGroupsDesc<T extends { clp: number }>(items: T[]): T[] {
-  return [...items].sort((a, b) => b.clp - a.clp);
+function sortGroupsDesc<T extends { value: number | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => dashboardCardMainSortKey(b.value) - dashboardCardMainSortKey(a.value));
 }
 
 export type DashboardGroupSlug = "net_worth" | "real_estate" | "retirement" | "brokerage" | "cash_eqs";
 
-/** Sort key for the primary balance shown on a card (matches `DashboardCardValue` / `showUsd`). */
-export function dashboardCardMainSortKey(
-  clp: number,
-  apiUsd: number | null | undefined,
-  showUsd: boolean
-): number {
-  if (showUsd) {
-    return apiUsd != null && Number.isFinite(apiUsd) ? apiUsd : Number.NEGATIVE_INFINITY;
-  }
-  return Number.isFinite(clp) ? clp : Number.NEGATIVE_INFINITY;
+/** Sort key for the primary balance shown on a card (a missing value sorts last). */
+export function dashboardCardMainSortKey(value: number | null | undefined): number {
+  return value != null && Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 }
 
 /** Descending order for detail-row cards by primary balance. */
-export function compareDashboardCardMainDesc(
-  aClp: number,
-  aUsd: number | null | undefined,
-  bClp: number,
-  bUsd: number | null | undefined,
-  showUsd: boolean
-): number {
-  return dashboardCardMainSortKey(bClp, bUsd, showUsd) - dashboardCardMainSortKey(aClp, aUsd, showUsd);
+export function compareDashboardCardMainDesc(a: number | null | undefined, b: number | null | undefined): number {
+  return dashboardCardMainSortKey(b) - dashboardCardMainSortKey(a);
 }
 
 /**
@@ -236,7 +203,7 @@ export function compareDashboardCardMainDesc(
  */
 export function buildRealEstateCardBreakdown(
   accounts: DashboardAccountRow[],
-  total: NavCardAmountDto,
+  total: number | null,
   /** The real-estate node's own page (`route_path`): the head line's link without a property row. */
   nodeRoute: string,
   allAccounts?: DashboardAccountRow[]
@@ -246,6 +213,7 @@ export function buildRealEstateCardBreakdown(
 
   const lines: CardBreakdownLine[] = [];
   const rows = allAccounts ?? accounts;
+  const plus = (x: number | null | undefined, y: number | null | undefined) => (x != null && y != null ? x + y : null);
 
   if (props.length === 1) {
     // One property: the head line IS the property (the group total, net of its loan), with its
@@ -256,24 +224,19 @@ export function buildRealEstateCardBreakdown(
       (a) => a.category_slug === "property" || a.bucket_slug === "real_estate__property"
     );
     const mortgageRow = mortgageAccountForPropertyRow(rows, propertyRow);
-    const netClp = total.clp;
-    const groupUsd = total.usd;
     const propertyTo = propertyRow != null ? accountDetailPath(propertyRow.account_id) : nodeRoute;
-    lines.push({ label: props[0]!.name, clp: netClp, usd: groupUsd, depth: 0, to: propertyTo });
-    if (propertyRow != null && mortgageRow?.current_value_clp != null) {
-      const mortgageClp = mortgageRow.current_value_clp;
-      const mortgageUsd = mortgageRow.current_value_usd ?? null;
+    lines.push({ label: props[0]!.name, value: total, depth: 0, to: propertyTo });
+    if (propertyRow != null && mortgageRow?.current_value != null) {
+      const mortgage = mortgageRow.current_value;
       lines.push({
         label: i18n.t("realEstate.propertyValue"),
-        clp: netClp + mortgageClp,
-        usd: groupUsd != null && mortgageUsd != null ? groupUsd + mortgageUsd : null,
+        value: plus(total, mortgage),
         depth: 1,
         to: propertyTo,
       });
       lines.push({
         label: i18n.t("realEstate.mortgage"),
-        clp: mortgageClp,
-        usd: mortgageUsd,
+        value: mortgage,
         depth: 1,
         to: accountDetailPath(mortgageRow.account_id),
       });
@@ -286,28 +249,18 @@ export function buildRealEstateCardBreakdown(
   // valor and hipoteca (the property's row and its own loan's, `loan_account_id`).
   for (const r of props) {
     const to = accountDetailPath(r.account_id);
-    lines.push({
-      label: r.name,
-      clp: r.current_value_clp ?? 0,
-      usd: r.current_value_usd ?? null,
-      depth: 0,
-      to,
-    });
+    lines.push({ label: r.name, value: r.current_value, depth: 0, to });
     const loan = mortgageAccountForPropertyRow(rows, r);
-    if (loan?.current_value_clp == null || r.current_value_clp == null) continue;
-    const loanUsd = loan.current_value_usd ?? null;
-    const rUsd = r.current_value_usd ?? null;
+    if (loan?.current_value == null || r.current_value == null) continue;
     lines.push({
       label: i18n.t("realEstate.propertyValue"),
-      clp: r.current_value_clp + loan.current_value_clp,
-      usd: rUsd != null && loanUsd != null ? rUsd + loanUsd : null,
+      value: r.current_value + loan.current_value,
       depth: 1,
       to,
     });
     lines.push({
       label: i18n.t("realEstate.mortgage"),
-      clp: loan.current_value_clp,
-      usd: loanUsd,
+      value: loan.current_value,
       depth: 1,
       to: accountDetailPath(loan.account_id),
     });
@@ -322,75 +275,38 @@ const LIABILITY_KEYS = {
 
 /** Liabilities card: mortgage and credit card (aligned with dashboard liabilities total). */
 export function buildLiabilitiesCardBreakdown(breakdown: {
-  mortgage_clp: number;
-  credit_card_clp: number;
-  mortgage_usd?: number | null;
-  credit_card_usd?: number | null;
+  mortgage: number | null;
+  credit_card: number | null;
 }): CardBreakdownLine[] {
-  const rows = (
-    [
-      {
-        key: "mortgage" as const,
-        clp: breakdown.mortgage_clp,
-        usd: breakdown.mortgage_usd,
-      },
-      {
-        key: "credit_card" as const,
-        clp: breakdown.credit_card_clp,
-        usd: breakdown.credit_card_usd,
-      },
-    ] as const
-  ).filter((r) => r.clp > 0);
+  const rows = (["mortgage", "credit_card"] as const)
+    .map((key) => ({ key, value: breakdown[key] }))
+    .filter((r) => r.value != null && r.value > 0);
   return sortGroupsDesc(
     rows.map((r) => ({
       label: i18n.t(LIABILITY_KEYS[r.key]),
-      clp: r.clp,
-      usd: r.usd,
+      value: r.value,
       to: liabilitiesSubgroupPath(r.key),
     }))
   ).map((r) => ({ ...r, depth: 0 as const }));
 }
 
-/** Rounded deposits for card metrics (matches `DashboardCardGroupMetrics`). */
-export function roundedMetricDeposits(
-  metrics: CardGroupMetrics,
-  showUsd: boolean,
-  kind: "total" | "period"
-): number | null {
-  if (kind === "total") {
-    if (showUsd) {
-      if (metrics.deposits_usd != null && Number.isFinite(metrics.deposits_usd)) {
-        return Math.round(metrics.deposits_usd);
-      }
-      return null;
-    }
-    return Math.round(metrics.deposits_clp);
-  }
-  if (showUsd) {
-    if (metrics.deposits_period_usd != null && Number.isFinite(metrics.deposits_period_usd)) {
-      return Math.round(metrics.deposits_period_usd);
-    }
-    return null;
-  }
-  return Math.round(metrics.deposits_period_clp);
+/** Rounded deposits for card metrics (matches `DashboardCardGroupMetrics`): whole units. */
+export function roundedMetricDeposits(metrics: CardGroupMetrics, kind: "total" | "period"): number | null {
+  const v = kind === "total" ? metrics.deposits : metrics.deposits_period;
+  return v != null && Number.isFinite(v) ? Math.round(v) : null;
 }
 
 /**
- * Rounded Δ for card metrics (matches `DashboardCardGroupMetrics`). USD keeps
- * cents (2 decimals) — the red/green delta pair then renders at the card's least
- * adaptive decimals (`minAdaptiveUsdFractionDigits`); CLP stays whole pesos.
+ * Rounded Δ for card metrics (matches `DashboardCardGroupMetrics`). A currency with minor units
+ * keeps cents (2 decimals) — the red/green delta pair then renders at the card's least adaptive
+ * decimals (`minAdaptiveUsdFractionDigits`); pesos stay whole.
  */
 export function roundedMetricDelta(
   metrics: CardGroupMetrics,
-  showUsd: boolean,
+  unit: DisplayUnit,
   kind: "total" | "period"
 ): number | null {
-  const clp = kind === "total" ? metrics.delta_total_clp : metrics.delta_period_clp;
-  if (showUsd) {
-    const usd = kind === "total" ? metrics.delta_total_usd : metrics.delta_period_usd;
-    if (usd != null && Number.isFinite(usd)) return Math.round(usd * 100) / 100;
-    return null;
-  }
-  return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;
+  const v = kind === "total" ? metrics.delta_total : metrics.delta_period;
+  if (v == null || !Number.isFinite(v)) return null;
+  return currencyHasAdaptiveCardDecimals(unit) ? Math.round(v * 100) / 100 : Math.round(v);
 }
-

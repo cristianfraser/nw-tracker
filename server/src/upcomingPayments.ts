@@ -13,6 +13,7 @@
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { convertCurrency, type CurrencyCode } from "./rates.js";
 import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
 import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
@@ -116,6 +117,18 @@ export type UpcomingPaymentsMonth = {
   items: (UpcomingPaymentItem & { due_soon: UpcomingPaymentDueSoon })[];
 };
 
+/** A month and its items with `amount_clp` / `total_clp` also in the block's display unit. */
+export type UpcomingPaymentsMonthInUnit = Omit<UpcomingPaymentsMonth, "items"> & {
+  /** `total_clp` in the block's `unit` (Σ of the items' `amount_in_unit`). */
+  total_in_unit: number;
+  items: (UpcomingPaymentsMonth["items"][number] & {
+    /** `amount_clp` in the block's `unit`, at today's mid rate (what paying it costs now). */
+    amount_in_unit: number;
+    /** `amount_max_clp` in the block's `unit`; null with no maximum. */
+    amount_max_in_unit: number | null;
+  })[];
+};
+
 /** An automatic declared payment's occurrence (charged to the card; never listed in `months`). */
 export type AutomaticRecurringOccurrence = {
   key: string;
@@ -128,13 +141,15 @@ export type AutomaticRecurringOccurrence = {
   amount_clp: number;
   estimated: boolean;
   /** The line that paid it; null while unpaid. */
-  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number } | null;
+  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null;
 };
 
 export type UpcomingPaymentsBlock = {
   schema_version: (typeof DTO_SCHEMA_VERSIONS)["upcoming_payments"];
+  /** The display unit `*_in_unit` are in; the bills themselves are pesos (`*_clp`, native). */
+  unit: CurrencyCode;
   /** Pay months with something due, oldest first, within the horizon; empty = nothing to show. */
-  months: UpcomingPaymentsMonth[];
+  months: UpcomingPaymentsMonthInUnit[];
   /** Automatic declared payments in their window, every occurrence with its status (not listed in `months`). */
   automatic_recurring: AutomaticRecurringOccurrence[];
 };
@@ -587,8 +602,40 @@ function recurringSection(
   return { items, automatic };
 }
 
-/** The dashboard's «Próximos pagos»: every source's items, grouped by pay month within the horizon. */
-export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()): UpcomingPaymentsBlock {
+/**
+ * The months with each peso amount also in `unit`, at `todayYmd`'s mid rate (live today): every
+ * payment still to make is valued at what paying it costs now, as a card's dollars still owed are
+ * (`dashboardCcUpcomingPayments.ts`). In pesos the converted figures are the pesos.
+ */
+export function upcomingMonthsInUnit(
+  months: readonly UpcomingPaymentsMonth[],
+  unit: CurrencyCode,
+  todayYmd: string
+): UpcomingPaymentsMonthInUnit[] {
+  const inUnit = (clp: number): number => {
+    if (unit === "clp") return clp;
+    const v = convertCurrency(clp, "clp", unit, todayYmd, { side: "mid" });
+    if (v == null || !Number.isFinite(v)) throw new Error(`upcoming payments: no clp→${unit} rate on or before ${todayYmd}`);
+    return v;
+  };
+  return months.map((m) => {
+    const items = m.items.map((it) => ({
+      ...it,
+      amount_in_unit: inUnit(it.amount_clp),
+      amount_max_in_unit: it.amount_max_clp == null ? null : inUnit(it.amount_max_clp),
+    }));
+    return { ...m, total_in_unit: items.reduce((a, it) => a + it.amount_in_unit, 0), items };
+  });
+}
+
+/**
+ * The dashboard's «Próximos pagos»: every source's items, grouped by pay month within the horizon.
+ * The amounts are pesos (what the bills state); `unit` adds each one converted (`*_in_unit`).
+ */
+export function buildUpcomingPayments(
+  todayYmd: string = chileCalendarTodayYmd(),
+  unit: CurrencyCode = "clp"
+): UpcomingPaymentsBlock {
   const horizonEnd = addCalendarMonths(todayYmd.slice(0, 7), UPCOMING_PAYMENTS_HORIZON_MONTHS - 1);
   const uf = ufProjector();
   const items: UpcomingPaymentItem[] = [];
@@ -627,7 +674,8 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
 
   return {
     schema_version: DTO_SCHEMA_VERSIONS.upcoming_payments,
-    months: groupUpcomingByMonth(items, todayYmd),
+    unit,
+    months: upcomingMonthsInUnit(groupUpcomingByMonth(items, todayYmd), unit, todayYmd),
     automatic_recurring: recurring.automatic,
   };
 }

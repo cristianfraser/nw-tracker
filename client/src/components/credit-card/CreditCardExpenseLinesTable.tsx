@@ -4,8 +4,8 @@ import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
-import { formatClp, formatLineAmount, parseNumberInput } from "../../format";
-import { lineValueIn } from "../../lineMoney";
+import { formatClp, formatLineAmount, lineAmountParts, parseNumberInput } from "../../format";
+import { linePesos, lineValueIn } from "../../lineMoney";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -53,7 +53,7 @@ export function sortCreditCardExpenseLinesByStatement(
   return (
     lineDate(b).localeCompare(lineDate(a)) ||
     b.occurred_on.localeCompare(a.occurred_on) ||
-    Math.abs(lineValueIn(b, "clp")) - Math.abs(lineValueIn(a, "clp"))
+    Math.abs(linePesos(b)) - Math.abs(linePesos(a))
   );
 }
 
@@ -61,7 +61,7 @@ export function sortCreditCardExpenseLinesByAmountDesc(
   a: FlowCcExpenseLineRow,
   b: FlowCcExpenseLineRow
 ): number {
-  return lineValueIn(b, "clp") - lineValueIn(a, "clp") || b.occurred_on.localeCompare(a.occurred_on);
+  return linePesos(b) - linePesos(a) || b.occurred_on.localeCompare(a.occurred_on);
 }
 
 type SortKey = "date" | "amount" | "category";
@@ -215,13 +215,38 @@ function FixedCategoryPill({
   );
 }
 
+/**
+ * A money amount in its own currency and, when the display unit is another currency, its value in
+ * the unit in parentheses («US$13,30 ($13.083)»; «≈» at today's rate). Two spans: in a list narrower
+ * than 450 px the row shows only the value in the unit (`.amountOwn` and the parentheses hidden).
+ */
+export function MoneyAmount({
+  money,
+}: {
+  money: { amount: { value: number; currency: string }; converted: FlowCcExpenseLineRow["converted"] };
+}) {
+  const { displayUnit } = useDisplayPreferences();
+  const parts = lineAmountParts(money, displayUnit);
+  if (!parts.converted) return <span className={styles.amountOwn}>{parts.own}</span>;
+  return (
+    <>
+      <span className={styles.amountOwn}>{parts.own}</span>
+      <span className={styles.amountConverted}>
+        <span className={styles.amountParen}> (</span>
+        {parts.converted.live ? "≈ " : ""}
+        {parts.converted.text}
+        <span className={styles.amountParen}>)</span>
+      </span>
+    </>
+  );
+}
+
 /** The separator between the parts of a row's text: drawn by the row, never part of a string. */
 /**
  * The amount, with a cuota's detail in superscript («3/6 · $270.000»). A plan's full-price row has
  * none: its cuota count is in the ⓘ card.
  */
 function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
-  const { displayUnit } = useDisplayPreferences();
   let sup: string[] | null = null;
   if (
     line.line_role !== "installment_purchase_total" &&
@@ -237,7 +262,7 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
   }
   return (
     <span className={cn("mono", styles.amount)}>
-      {formatLineAmount(line, displayUnit)}
+      <MoneyAmount money={line} />
       {sup ? (
         <sup className={styles.amountSup}>
           <Joined parts={sup} />

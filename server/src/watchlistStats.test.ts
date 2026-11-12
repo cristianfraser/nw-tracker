@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
-import { watchlistDisplayUnitParam, watchlistStatsForRow } from "./watchlistStats.js";
+import { watchlistStatsForRow } from "./watchlistStats.js";
 
 function row(partial: Partial<MarketDisplaySeriesRow> & Pick<MarketDisplaySeriesRow, "kind">): MarketDisplaySeriesRow {
   return {
@@ -101,10 +101,28 @@ describe("watchlistStatsForRow in the display unit", () => {
     expect(stats.as_of_date).not.toBeNull();
   });
 
-  it("parses the unit query param with CLP as the default", () => {
-    expect(watchlistDisplayUnitParam("usd")).toBe("usd");
-    expect(watchlistDisplayUnitParam("clp")).toBe("clp");
-    expect(watchlistDisplayUnitParam(undefined)).toBe("clp");
-    expect(watchlistDisplayUnitParam("uf")).toBe("clp");
+  it("converts into EUR through the rates walk on each leg's own day", () => {
+    seed();
+    const fxr = db.prepare(`INSERT OR REPLACE INTO fx_rates (base, quote, date, mid, source) VALUES ('eur', 'usd', ?, ?, 'vitest')`);
+    fxr.run("2099-01-05", 1.2);
+    fxr.run("2099-01-06", 1.25);
+    const eurClp = db.prepare(`INSERT OR REPLACE INTO eur_daily (date, clp_per_eur) VALUES (?, ?)`);
+    eurClp.run("2099-01-05", 1000);
+    eurClp.run("2099-01-06", 1100);
+    try {
+      const usd = watchlistStatsForRow(row({ kind: "equity", series_key: USD_TICKER }), now, "eur");
+      expect(usd.value_currency).toBe("eur");
+      expect(usd.value).toBeCloseTo(510 / 1.25, 9);
+      expect(usd.changes?.day_pct).toBeCloseTo((510 / 1.25 / (500 / 1.2) - 1) * 100, 6);
+      // A peso series converts through the direct EUR/CLP pair.
+      const sn = watchlistStatsForRow(row({ kind: "equity", series_key: SN_TICKER }), now, "eur");
+      expect(sn.value).toBeCloseTo(1300 / 1100, 9);
+      expect(sn.changes?.day_pct).toBeCloseTo((1300 / 1100 / (1250 / 1000) - 1) * 100, 6);
+      // The USD/CLP row stays the rate.
+      expect(watchlistStatsForRow(row({ kind: "fx_usd", series_key: null }), now, "eur").value_currency).toBe("clp");
+    } finally {
+      db.prepare(`DELETE FROM fx_rates WHERE source = 'vitest'`).run();
+      db.prepare(`DELETE FROM eur_daily WHERE date >= '2099-01-01'`).run();
+    }
   });
 });

@@ -1,7 +1,6 @@
 import { navAccountIdSet } from "../navCardMetrics";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import type { GroupPageShell } from "../queries/groupPageShell";
-import type { DisplayUnit } from "../queries/keys";
 import type { AccountListRow, DashboardAccountRow, NavTreeNodeDto } from "../types";
 
 export type NavAccountLeaf = {
@@ -53,7 +52,7 @@ function accountListRowFromNavLeaf(leaf: NavAccountLeaf): AccountListRow {
   };
 }
 
-function syntheticDashboardRow(leaf: NavAccountLeaf, unit: DisplayUnit): DashboardAccountRow {
+function syntheticDashboardRow(leaf: NavAccountLeaf): DashboardAccountRow {
   const { node } = leaf;
   const accountId = node.account_id!;
   const category_slug = categorySlugFromNav(node);
@@ -66,32 +65,24 @@ function syntheticDashboardRow(leaf: NavAccountLeaf, unit: DisplayUnit): Dashboa
     group_label: leaf.groupLabel,
     category_slug,
     category_label: category_slug,
-    deposits_clp: 0,
-    deposits_usd: unit === "usd" ? 0 : null,
-    delta_month_clp: 0,
-    delta_month_usd: unit === "usd" ? 0 : null,
-    delta_year_clp: 0,
-    delta_year_usd: unit === "usd" ? 0 : null,
-    deposits_month_clp: 0,
-    deposits_month_usd: unit === "usd" ? 0 : null,
-    deposits_year_clp: 0,
-    deposits_year_usd: unit === "usd" ? 0 : null,
-    prior_month_close_clp: 0,
-    prior_month_close_usd: unit === "usd" ? 0 : null,
-    prior_year_close_clp: 0,
-    prior_year_close_usd: unit === "usd" ? 0 : null,
-    current_value_clp: 0,
+    deposits: 0,
+    delta_month: 0,
+    delta_year: 0,
+    deposits_month: 0,
+    deposits_year: 0,
+    prior_month_close: 0,
+    prior_year_close: 0,
+    current_value: 0,
     valuation_as_of: null,
-    current_value_usd: unit === "usd" ? 0 : null,
     chart_inactive: node.chart_inactive,
     exclude_from_group_totals: node.exclude_from_parent_total ? 1 : undefined,
   };
 }
 
-export function buildGroupPageShellFromNav(navNode: NavTreeNodeDto, unit: DisplayUnit): GroupPageShell {
+export function buildGroupPageShellFromNav(navNode: NavTreeNodeDto): GroupPageShell {
   const leaves = collectNavAccountLeaves(navNode);
   const accounts = leaves.map(accountListRowFromNavLeaf);
-  const dashAccounts = leaves.map((leaf) => syntheticDashboardRow(leaf, unit));
+  const dashAccounts = leaves.map((leaf) => syntheticDashboardRow(leaf));
   return { accounts, dashAccounts };
 }
 

@@ -1,6 +1,6 @@
 import { BenchmarkSelectOptions, benchmarkOptionLabel } from "../../benchmarkLabels";
 import { cn } from "../../cn";
-import { formatClp, formatPct, formatUsdFine } from "../../format";
+import { currencyFormatInfo, formatCurrency, formatCurrencyFine, formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useBenchmarks, useMortgagePrepaymentComparison } from "../../queries/hooks";
 import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
@@ -58,8 +58,13 @@ export function MortgagePrepaymentSection({
 
   if (raw === null || (!mortgage && !loading)) return null;
 
+  // A currency with minor units shows them (dollars and euros with cents); pesos whole.
   const money = (n: number | null) =>
-    n == null ? "—" : displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
+    n == null
+      ? "—"
+      : currencyFormatInfo(displayUnit).minorDigits > 0
+        ? formatCurrencyFine(n, displayUnit)
+        : formatCurrency(n, displayUnit);
   const irr = (pct: number | null) =>
     pct == null || data == null ? null : (
       <span className="muted" title={t("periodReturns.irrTitle")}>

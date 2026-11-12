@@ -10,22 +10,22 @@ describe("accountDetailBundle dashboard_account_row", () => {
     const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle?.dashboard_account_row).toBeTruthy();
 
-    const dashRows = await buildDashboardAccountRows(false);
+    const dashRows = await buildDashboardAccountRows("clp");
     const expected = dashRows.find((r) => r.account_id === row.id);
     if (!expected || !bundle?.dashboard_account_row) throw new Error("SPY has no dashboard row");
 
-    expect(bundle.dashboard_account_row.current_value_clp).toBeCloseTo(
-      expected.current_value_clp ?? 0,
+    expect(bundle.dashboard_account_row.current_value).toBeCloseTo(
+      expected.current_value ?? 0,
       0
     );
-    expect(bundle.dashboard_account_row.delta_month_clp).toBeCloseTo(
-      expected.delta_month_clp ?? 0,
+    expect(bundle.dashboard_account_row.delta_month).toBeCloseTo(
+      expected.delta_month ?? 0,
       0
     );
-    expect(bundle.dashboard_account_row.delta_year_clp).toBeCloseTo(
-      expected.delta_year_clp ?? 0,
+    expect(bundle.dashboard_account_row.delta_year).toBeCloseTo(
+      expected.delta_year ?? 0,
       0
     );
-    expect(bundle.dashboard_account_row.deposits_clp).toBe(expected.deposits_clp);
+    expect(bundle.dashboard_account_row.deposits).toBe(expected.deposits);
   });
 });

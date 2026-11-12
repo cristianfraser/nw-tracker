@@ -16,6 +16,7 @@ import {
   type EquityMarketKind,
 } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
+import { convertCurrency, type DisplayUnitCode } from "./rates.js";
 import { londonSessionsBack, nyseSessionsBack } from "./marketHolidays.js";
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
 import {
@@ -34,26 +35,21 @@ import {
 } from "./watchlistComposite.js";
 
 /**
- * The unit the watchlist and the marquee are asked to express values in — the app's CLP/USD
- * toggle (2026-09-21). A series quoted in the other currency is converted LEG BY LEG: the
- * current value at the fx of its observation day (live CLP=X while that fx day is open, the
- * stored close after), each change anchor at the fx on or before the anchor's own date, and
- * the day anchor at the fx of the calendar day before the observation — the same frame the
- * money surfaces' day P/L uses, so in CLP mode a USD ticker's chip now moves with price ×
- * fx and agrees with the account row (VEA read +1,32% on the marquee against +0,05% in the
- * table on 2026-09-21: the peso had rallied 1,26% that day). A series already quoted in the
- * requested unit is returned untouched, so CLP-mode numbers for CLP series (and USD-mode
- * numbers for USD tickers) are exactly the pre-toggle ones. The USD/CLP rate row is never
- * converted — it IS the rate, CLP per USD in both modes. The closed-day hard 0 of
- * `displayDayPct` stays keyed on the INSTRUMENT's calendar: a US-holiday fx drift still moves
- * the money surfaces while the ticker chip reads 0 (documented ticker-only rule).
+ * The unit the watchlist and the marquee are asked to express values in — the app's display
+ * unit, any core currency (2026-09-21 for CLP/USD, 2026-11-11 any code). A series quoted in
+ * another currency is converted LEG BY LEG through `rates.ts` at the mid: the current value at
+ * the rate of its observation day (live CLP=X while that fx day is open, the stored close
+ * after), each change anchor at the rate on or before the anchor's own date, and the day anchor
+ * at the rate of the calendar day before the observation — the same frame the money surfaces'
+ * day P/L uses, so in CLP mode a USD ticker's chip moves with price × fx and agrees with the
+ * account row (VEA read +1,32% on the marquee against +0,05% in the table on 2026-09-21: the
+ * peso had rallied 1,26% that day). A series already quoted in the requested unit is returned
+ * untouched. The USD/CLP rate row is never converted — it IS the rate, CLP per USD in every
+ * unit. The closed-day hard 0 of `displayDayPct` stays keyed on the INSTRUMENT's calendar: a
+ * US-holiday fx drift still moves the money surfaces while the ticker chip reads 0
+ * (documented ticker-only rule).
  */
-export type WatchlistDisplayUnit = "clp" | "usd";
-
-/** `?unit=` query parsing for the watchlist/marquee routes: anything but `usd` is CLP. */
-export function watchlistDisplayUnitParam(raw: unknown): WatchlistDisplayUnit {
-  return raw === "usd" ? "usd" : "clp";
-}
+export type WatchlistDisplayUnit = DisplayUnitCode;
 
 export type WatchlistChanges = {
   day_pct: number | null;
@@ -73,7 +69,7 @@ export type WatchlistRowStats = {
    * Currency `value` is expressed in — the requested display unit, except the fx rate row
    * (always CLP per USD) and an index (`none`: its level is points in both units).
    */
-  value_currency: "usd" | "clp" | "none";
+  value_currency: string;
   as_of_date: string | null;
   changes: WatchlistChanges | null;
 };
@@ -83,7 +79,7 @@ type DatedValue = { value: number | null; ymd: string };
 
 /** A series' stats in its own quote currency, before display-unit conversion. */
 type NativeRowStats = {
-  quote_currency: "usd" | "clp" | "none";
+  quote_currency: string;
   value: number;
   as_of_date: string;
   /** Day anchor: the prior value and the calendar day its fx leg is read at. */
@@ -168,9 +164,8 @@ function toDisplayUnit(
   const convert = (dv: DatedValue): number | null => {
     if (dv.value == null || !Number.isFinite(dv.value)) return null;
     if (native.quote_currency === "none" || unit === native.quote_currency) return dv.value;
-    const fx = fxValueOnOrBefore(dv.ymd, today, now);
-    if (fx == null || fx <= 0) return null;
-    return native.quote_currency === "usd" ? dv.value * fx : dv.value / fx;
+    if (dv.ymd === "") return null;
+    return convertCurrency(dv.value, native.quote_currency, unit, dv.ymd, { side: "mid", now });
   };
 
   const value = convert({ value: native.value, ymd: native.as_of_date });

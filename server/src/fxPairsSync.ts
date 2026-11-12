@@ -85,21 +85,30 @@ export type FxPairsSyncResult = { pairs: { code: string; inserted: number; lates
  * run before the day end never stores the in-progress bar). A close that is not a positive number
  * throws (a source change must surface).
  */
-export async function syncFxPairsFromYahoo(opts?: { now?: Date; dryRun?: boolean }): Promise<FxPairsSyncResult> {
+export async function syncFxPairsFromYahoo(opts?: {
+  now?: Date;
+  dryRun?: boolean;
+  /** The first day to load (default the portfolio start; the demo loader passes its own). */
+  fromYmd?: string;
+  /** The last day to store (default the newest ended London weekday). */
+  throughYmd?: string;
+}): Promise<FxPairsSyncResult> {
   const now = opts?.now ?? new Date();
-  const due = fxPairDueYmd(now);
+  const start = opts?.fromYmd ?? portfolioStartYmd();
+  const dueByLondon = fxPairDueYmd(now);
+  const due = opts?.throughYmd && opts.throughYmd < dueByLondon ? opts.throughYmd : dueByLondon;
   const out: FxPairsSyncResult["pairs"] = [];
   for (const p of loadedFxPairs()) {
     const latest = latestFxPairDate(p);
     const first = (selFirst.get(p.base, p.quote) as { d: string | null }).d;
-    const fromYmd = first == null || first > portfolioStartYmd() ? portfolioStartYmd() : latest!;
+    const fromYmd = first == null || first > start ? start : latest!;
     const period1 = Math.floor(new Date(`${fromYmd}T00:00:00Z`).getTime() / 1000) - 3 * 86400;
     const period2 = Math.floor(now.getTime() / 1000) + 86400;
     const series = await fetchYahooDailyCloses(p.yahoo_symbol, period1, period2);
     let inserted = 0;
     db.transaction(() => {
       series.dates.forEach((d, i) => {
-        if (isWeekendYmd(d) || d > due || d < portfolioStartYmd()) return;
+        if (isWeekendYmd(d) || d > due || d < start) return;
         const v = series.closes[i];
         if (v == null || !Number.isFinite(v) || !(v > 0)) {
           throw new Error(`fx pair ${p.yahoo_symbol}: close on ${d} is not a positive number (${v})`);

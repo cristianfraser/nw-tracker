@@ -11,7 +11,6 @@ import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode } from "./p
 import type {
   DashboardAccountRow,
   DashboardResponse,
-  NavCardAmountDto,
   NavCardMetricsDto,
   NavCardMetricsVariantDto,
   NavCardPeriodMetricsDto,
@@ -30,14 +29,10 @@ function leafAccount(id: number): NavTreeNodeDto {
 }
 
 const zeroCardPeriodMetrics: NavCardPeriodMetricsDto = {
-  deposits_clp: 0,
-  deposits_usd: null,
-  delta_total_clp: null,
-  delta_total_usd: null,
-  deposits_period_clp: 0,
-  deposits_period_usd: null,
-  delta_period_clp: null,
-  delta_period_usd: null,
+  deposits: 0,
+  delta_total: null,
+  deposits_period: 0,
+  delta_period: null,
 };
 
 function cardMetricsVariantFixture(partial?: {
@@ -55,9 +50,9 @@ function cardMetricsVariantFixture(partial?: {
 function cardMetricsEntryFixture(partial?: {
   child?: Parameters<typeof cardMetricsVariantFixture>[0];
   parent?: Parameters<typeof cardMetricsVariantFixture>[0];
-  value?: { child?: NavCardAmountDto; parent?: NavCardAmountDto; members?: NavCardAmountDto };
+  value?: { child?: number | null; parent?: number | null; members?: number | null };
 }): NavCardMetricsDto {
-  const zero: NavCardAmountDto = { clp: 0, usd: null };
+  const zero = 0;
   return {
     value: {
       child: partial?.value?.child ?? zero,
@@ -68,8 +63,8 @@ function cardMetricsEntryFixture(partial?: {
     },
     child: cardMetricsVariantFixture(partial?.child),
     parent: cardMetricsVariantFixture(partial?.parent),
-    row_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } },
-    parent_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } },
+    row_pct: { day: { value: null }, month: { value: null }, year: { value: null }, total: { value: null } },
+    parent_pct: { day: { value: null }, month: { value: null }, year: { value: null }, total: { value: null } },
   };
 }
 
@@ -88,9 +83,8 @@ function dashRow(
     group_slug: bucketSlug,
     group_label: bucketSlug,
     bucket_slug: bucketSlug,
-    current_value_clp: clp,
-    current_value_usd: null,
-    deposits_clp: 0,
+    current_value: clp,
+    deposits: 0,
     exclude_from_group_totals: 0,
   } as DashboardAccountRow;
 }
@@ -160,9 +154,8 @@ describe("breakdownForNavChild real_estate", () => {
     group_slug: "real_estate",
     group_label: "Inmuebles",
     bucket_slug: "property",
-    current_value_clp: 144_818_228,
-    current_value_usd: null,
-    deposits_clp: 0,
+    current_value: 144_818_228,
+    deposits: 0,
     exclude_from_group_totals: 0,
   } as DashboardAccountRow;
 
@@ -171,7 +164,7 @@ describe("breakdownForNavChild real_estate", () => {
       accounts: [propertyRow],
       liabilities_breakdown: undefined,
       card_metrics_by_slug: {
-        real_estate: cardMetricsEntryFixture({ value: { members: { clp: 144_818_228, usd: null } } }),
+        real_estate: cardMetricsEntryFixture({ value: { members: 144_818_228 } }),
       },
     });
     const labels = br?.lines?.map((l) => l.label) ?? [];
@@ -187,7 +180,7 @@ describe("breakdownForNavChild real_estate", () => {
       name: "Casa propia · Demo",
       category_slug: undefined,
       bucket_slug: "real_estate__property",
-      current_value_clp: 27_110_948,
+      current_value: 27_110_948,
       loan_account_id: 13,
     } as DashboardAccountRow;
     // The server names the property's loan (`loan_account_id`).
@@ -197,26 +190,25 @@ describe("breakdownForNavChild real_estate", () => {
       group_slug: "liabilities__mortgage",
       group_label: "Mortgage",
       bucket_slug: "liabilities__mortgage",
-      current_value_clp: 68_878_583,
-      current_value_usd: null,
-      deposits_clp: 0,
+      current_value: 68_878_583,
+      deposits: 0,
       exclude_from_group_totals: 0,
     } as DashboardAccountRow;
     const br = breakdownForNavChild(realEstateNode, {
       liabilities_breakdown: undefined,
       accounts: [demoProperty, demoMortgage],
       card_metrics_by_slug: {
-        real_estate: cardMetricsEntryFixture({ value: { members: { clp: 27_110_948, usd: null } } }),
+        real_estate: cardMetricsEntryFixture({ value: { members: 27_110_948 } }),
       },
     });
     const lines = br?.lines ?? [];
     expect(lines).toHaveLength(3);
     expect(lines[0]?.label).toBe("Casa propia · Demo");
-    expect(lines[0]?.clp).toBe(27_110_948);
+    expect(lines[0]?.value).toBe(27_110_948);
     expect(lines[1]?.label).toBe("valor");
-    expect(lines[1]?.clp).toBe(27_110_948 + 68_878_583);
+    expect(lines[1]?.value).toBe(27_110_948 + 68_878_583);
     expect(lines[2]?.label).toBe("hipoteca");
-    expect(lines[2]?.clp).toBe(68_878_583);
+    expect(lines[2]?.value).toBe(68_878_583);
   });
 
 });
@@ -228,7 +220,7 @@ describe("breakdownForNavChild cash_savings", () => {
    */
   it("carries no linked tarjeta row, even when the layout declares one", () => {
     const dash = {
-      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 500_000 },
+      liabilities_breakdown: { mortgage: 0, credit_card: 500_000 },
       dashboard_layout: [
         {
           slug: "cash_eqs",
@@ -242,7 +234,7 @@ describe("breakdownForNavChild cash_savings", () => {
               slug: "credit_card",
               label: "Tarjeta",
               label_i18n_key: "liabilities.creditCard",
-              clp: 500_000,
+              value: 500_000,
               route_path: "/liabilities/credit_card",
             },
           ],
@@ -263,7 +255,7 @@ describe("breakdownForNavChild cash_savings", () => {
       }
     );
     expect(br?.lines).toHaveLength(1);
-    expect(br?.lines?.[0]?.clp).toBe(2_000_000);
+    expect(br?.lines?.[0]?.value).toBe(2_000_000);
     expect(br?.bottomLines).toBeUndefined();
   });
 });
@@ -278,12 +270,11 @@ describe("navParentMainValue", () => {
     const dash = {
       card_metrics_by_slug: {
         net_worth: cardMetricsEntryFixture({
-          value: { parent: { clp: 270_525_274, usd: 290_000 } },
+          value: { parent: 270_525_274 },
         }),
       },
     };
-    expect(navParentMainValue(dash, netWorthNode, false)).toEqual({ clp: 270_525_274, apiUsd: null });
-    expect(navParentMainValue(dash, netWorthNode, true)).toEqual({ clp: 270_525_274, apiUsd: 290_000 });
+    expect(navParentMainValue(dash, netWorthNode)).toBe(270_525_274);
   });
 
   it("parent metrics come from the served net_worth entry", () => {
@@ -297,15 +288,15 @@ describe("navParentMainValue", () => {
       card_metrics_by_slug: {
         net_worth: cardMetricsEntryFixture({
           parent: {
-            month: { deposits_clp: 300, delta_total_clp: 130, delta_period_clp: 30 },
+            month: { deposits: 300, delta_total: 130, delta_period: 30 },
           },
         }),
       },
     };
     const metrics = requireNavCardMetrics(dash, netWorthNode).parent.month;
-    expect(metrics.deposits_clp).toBe(300);
-    expect(metrics.delta_total_clp).toBe(130);
-    expect(metrics.delta_period_clp).toBe(30);
+    expect(metrics.deposits).toBe(300);
+    expect(metrics.delta_total).toBe(130);
+    expect(metrics.delta_period).toBe(30);
   });
 
   it("hub parent metrics come from the served entry (consolidated period baked in server-side)", () => {
@@ -320,15 +311,15 @@ describe("navParentMainValue", () => {
       card_metrics_by_slug: {
         inversiones: cardMetricsEntryFixture({
           parent: {
-            month: { deposits_clp: 300, deposits_period_clp: 5_100_000, delta_period_clp: 30 },
+            month: { deposits: 300, deposits_period: 5_100_000, delta_period: 30 },
           },
         }),
       },
     };
     const metrics = requireNavCardMetrics(dash, inversionesNode).parent.month;
-    expect(metrics.deposits_period_clp).toBe(5_100_000);
-    expect(metrics.delta_period_clp).toBe(30);
-    expect(metrics.deposits_clp).toBe(300);
+    expect(metrics.deposits_period).toBe(5_100_000);
+    expect(metrics.delta_period).toBe(30);
+    expect(metrics.deposits).toBe(300);
   });
 
   it("throws on a missing entry instead of re-summing rows", () => {
@@ -351,16 +342,15 @@ describe("mainValueForNavChild", () => {
     const dash = {
       card_metrics_by_slug: {
         brokerage_mutual_funds: cardMetricsEntryFixture({
-          child: { year: { delta_period_clp: 2_300_000 } },
-          value: { child: { clp: 16_000_000, usd: 17_000 } },
+          child: { year: { delta_period: 2_300_000 } },
+          value: { child: 16_000_000 },
         }),
       },
     };
-    expect(mainValueForNavChild(dash, mutualFundsNode, false)).toEqual({ clp: 16_000_000, apiUsd: null });
-    expect(mainValueForNavChild(dash, mutualFundsNode, true).apiUsd).toBe(17_000);
+    expect(mainValueForNavChild(dash, mutualFundsNode)).toBe(16_000_000);
     const variant = requireNavCardMetrics(dash, mutualFundsNode).child;
-    expect(variant.year.delta_period_clp).toBe(2_300_000);
-    expect(variant.month.delta_period_clp).toBeNull();
+    expect(variant.year.delta_period).toBe(2_300_000);
+    expect(variant.month.delta_period).toBeNull();
   });
 });
 
@@ -378,7 +368,7 @@ describe("navChildCardHasActivity", () => {
     card_metrics_by_slug: {
       brokerage_mutual_funds: cardMetricsEntryFixture({
         child: {
-          year: { deposits_period_clp: -21_000_000, delta_period_clp: 300_000 },
+          year: { deposits_period: -21_000_000, delta_period: 300_000 },
         },
       }),
     },
@@ -386,12 +376,12 @@ describe("navChildCardHasActivity", () => {
       {
         ...dashRow(45, 0, "brokerage__mutual_funds"),
         chart_inactive: true,
-        deposits_month_clp: 0,
-        delta_month_clp: 0,
-        prior_month_close_clp: 0,
-        deposits_year_clp: -21_000_000,
-        delta_year_clp: 300_000,
-        prior_year_close_clp: 20_700_000,
+        deposits_month: 0,
+        delta_month: 0,
+        prior_month_close: 0,
+        deposits_year: -21_000_000,
+        delta_year: 300_000,
+        prior_year_close: 20_700_000,
       },
     ],
     dashboard_layout: [],
@@ -404,7 +394,7 @@ describe("navChildCardHasActivity", () => {
   it("reports activity from the served balance alone", () => {
     const funded = {
       card_metrics_by_slug: {
-        brokerage_mutual_funds: cardMetricsEntryFixture({ value: { child: { clp: 5_000, usd: null } } }),
+        brokerage_mutual_funds: cardMetricsEntryFixture({ value: { child: 5_000 } }),
       },
     };
     expect(navChildCardHasActivity(funded, inactiveMutualFundsNode)).toBe(true);
@@ -468,9 +458,9 @@ describe("breakdownForNavChild cash_eqs hub", () => {
       card_metrics_by_slug: {
         // The savings card is CC-netted (child); its breakdown line reads the raw members.
         cash_savings: cardMetricsEntryFixture({
-          value: { child: { clp: 1_500_000, usd: null }, members: { clp: 2_000_000, usd: null } },
+          value: { child: 1_500_000, members: 2_000_000 },
         }),
-        checking_accounts: cardMetricsEntryFixture({ value: { child: { clp: 300_000, usd: null } } }),
+        checking_accounts: cardMetricsEntryFixture({ value: { child: 300_000 } }),
       },
       liabilities_breakdown: undefined,
       dashboard_layout: [
@@ -487,20 +477,20 @@ describe("breakdownForNavChild cash_eqs hub", () => {
               slug: "credit_card",
               label: "Tarjeta",
               label_i18n_key: "liabilities.creditCard",
-              clp: 500_000,
+              value: 500_000,
               route_path: "/liabilities/credit_card",
             },
           ],
         },
       ],
     });
-    expect(br?.lines.map((l) => [l.label, l.depth, l.clp])).toEqual([
+    expect(br?.lines.map((l) => [l.label, l.depth, l.value])).toEqual([
       ["Ahorros y reservas", 0, 2_000_000],
       ["Reserva", 1, 2_000_000],
       ["Cuentas corrientes", 0, 300_000],
       ["Cuenta corriente", 1, 300_000],
     ]);
-    expect(br?.bottomLines?.map((l) => [l.label, l.clp])).toEqual([[i18n.t("liabilities.creditCard"), 500_000]]);
+    expect(br?.bottomLines?.map((l) => [l.label, l.value])).toEqual([[i18n.t("liabilities.creditCard"), 500_000]]);
     expect(br?.pinBottom).toBe(true);
   });
 });

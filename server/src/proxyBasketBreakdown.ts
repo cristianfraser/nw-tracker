@@ -30,7 +30,9 @@
  */
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
-import type { CardMetricsPeriod, NavCardPctDto } from "./dashboardNavCardMetrics.js";
+import type { CardMetricsPeriod } from "./dashboardNavCardMetrics.js";
+import type { TsUnit } from "./rates.js";
+import { convertValue } from "./valueConvert.js";
 import { db } from "./db.js";
 import {
   equityCloseEod,
@@ -105,7 +107,8 @@ function inForceOnOrBefore(history: CompositePositionsRow[], ymd: string): Compo
   return found;
 }
 
-type DayValue = { usd: number; clp: number };
+/** One day's price of a holding in the display unit. */
+type DayValue = number;
 
 /** Prices every day of (yearAnchor, today] for one price ticker, plus the anchor itself. */
 class HoldingValues {
@@ -115,7 +118,7 @@ class HoldingValues {
     private readonly priceTicker: string,
     private readonly today: string,
     private readonly now: Date,
-    private readonly fx: (ymd: string) => number
+    private readonly inUnit: (usd: number, ymd: string) => number
   ) {
     const currency = equityQuoteCurrency(priceTicker);
     if (currency !== "usd") {
@@ -152,8 +155,7 @@ class HoldingValues {
   }
 
   value(ymd: string): DayValue {
-    const usd = this.price(ymd);
-    return { usd, clp: usd * this.fx(ymd) };
+    return this.inUnit(this.price(ymd), ymd);
   }
 }
 
@@ -165,15 +167,7 @@ type PeriodAccumulator = {
 };
 
 function newAccumulator(): PeriodAccumulator {
-  return { held: 0, total: 0, growth: { usd: 1, clp: 1 }, contribution: { usd: 0, clp: 0 } };
-}
-
-function pctDto(value: DayValue, includeUsd: boolean): NavCardPctDto {
-  return { clp: value.clp, usd: includeUsd ? value.usd : null };
-}
-
-function nullPct(): NavCardPctDto {
-  return { clp: null, usd: null };
+  return { held: 0, total: 0, growth: 1, contribution: 0 };
 }
 
 /**
@@ -182,7 +176,7 @@ function nullPct(): NavCardPctDto {
  */
 export function loadProxyBasketBreakdown(
   bucketSlug: string,
-  opts: { now?: Date; includeUsd: boolean }
+  opts: { now?: Date; unit: TsUnit }
 ): ProxyBasketBreakdown | null {
   const now = opts.now ?? new Date();
   const today = chileWallClockAt(now).ymd;
@@ -212,11 +206,22 @@ export function loadProxyBasketBreakdown(
     fxCache.set(ymd, frame.clp_per_usd);
     return frame.clp_per_usd;
   };
+  // The holdings are dollars: in pesos the proxy's own frame (the dólar observado, as the fund
+  // values them), in dollars as they are, in any other unit at the day's rate (an asset).
+  const unit = opts.unit;
+  const inUnit = (usd: number, ymd: string): number => {
+    if (unit === "clp") return usd * fx(ymd);
+    const v = convertValue(usd, "usd", unit, ymd, "asset", ymd === today ? now : undefined);
+    if (v == null || !Number.isFinite(v)) {
+      throw new Error(`proxy basket ${bucketSlug}: no usd→${unit} rate on ${ymd}`);
+    }
+    return v;
+  };
 
   const holdings: ProxyHoldingBreakdown[] = [];
   for (const stated of latest.holdings) {
     const priceTicker = FINTUAL_TICKER_PRICE_PROXY[stated.ticker] ?? stated.ticker;
-    const values = new HoldingValues(priceTicker, today, now, fx);
+    const values = new HoldingValues(priceTicker, today, now, inUnit);
     const acc: Record<CardMetricsPeriod, PeriodAccumulator> = {
       day: newAccumulator(),
       month: newAccumulator(),
@@ -234,31 +239,29 @@ export function loadProxyBasketBreakdown(
       }
       const weight = fundWeightIn(bucketSlug, inForce, stated.ticker);
       const cur = values.value(d);
-      const r: DayValue = { usd: cur.usd / prev.usd - 1, clp: cur.clp / prev.clp - 1 };
+      const r = cur / prev - 1;
       for (const period of PERIODS) {
         if (d <= anchors[period]) continue;
         const a = acc[period];
         a.total += 1;
         if (weight > 0) {
           a.held += 1;
-          a.growth.usd *= 1 + r.usd;
-          a.growth.clp *= 1 + r.clp;
-          a.contribution.usd += weight * r.usd;
-          a.contribution.clp += weight * r.clp;
+          a.growth *= 1 + r;
+          a.contribution += weight * r;
         }
       }
       prevDay = d;
       prev = cur;
     }
 
-    const pct = {} as Record<CardMetricsPeriod, NavCardPctDto>;
-    const contributionPct = {} as Record<CardMetricsPeriod, NavCardPctDto>;
+    const pct = {} as Record<CardMetricsPeriod, number | null>;
+    const contributionPct = {} as Record<CardMetricsPeriod, number | null>;
     const daysHeld = {} as Record<CardMetricsPeriod, { held: number; total: number }>;
     for (const period of PERIODS) {
       const a = acc[period];
       const held = a.held > 0;
-      pct[period] = held ? pctDto({ usd: a.growth.usd - 1, clp: a.growth.clp - 1 }, opts.includeUsd) : nullPct();
-      contributionPct[period] = held ? pctDto(a.contribution, opts.includeUsd) : nullPct();
+      pct[period] = held ? a.growth - 1 : null;
+      contributionPct[period] = held ? a.contribution : null;
       daysHeld[period] = { held: a.held, total: a.total };
     }
 

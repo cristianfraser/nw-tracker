@@ -71,21 +71,21 @@ describe("collectNavAccountLeaves", () => {
 describe("buildGroupPageShellFromNav", () => {
   it("builds matching account and dash rows", () => {
     const root = groupRoot([navLeaf({ account_id: 42, slug: "acc-42" })]);
-    const shell = buildGroupPageShellFromNav(root, "clp");
+    const shell = buildGroupPageShellFromNav(root);
     expect(shell.accounts).toHaveLength(1);
     expect(shell.dashAccounts).toHaveLength(1);
     expect(shell.accounts[0]?.id).toBe(42);
     expect(shell.dashAccounts[0]?.account_id).toBe(42);
-    expect(shell.dashAccounts[0]?.current_value_clp).not.toBeNull();
-    expect(Number.isFinite(shell.dashAccounts[0]?.current_value_clp)).toBe(true);
+    expect(shell.dashAccounts[0]?.current_value).not.toBeNull();
+    expect(Number.isFinite(shell.dashAccounts[0]?.current_value)).toBe(true);
   });
 
   it("uses zero placeholder metrics for loading shell", () => {
     const root = groupRoot([navLeaf({ account_id: 99, slug: "acc-99" })]);
-    const row = buildGroupPageShellFromNav(root, "clp").dashAccounts[0];
-    expect(row?.current_value_clp).toBe(0);
-    expect(row?.delta_month_clp).toBe(0);
-    expect(row?.deposits_clp).toBe(0);
+    const row = buildGroupPageShellFromNav(root).dashAccounts[0];
+    expect(row?.current_value).toBe(0);
+    expect(row?.delta_month).toBe(0);
+    expect(row?.deposits).toBe(0);
   });
 });
 
@@ -135,8 +135,8 @@ describe("extractGroupPageShellFromReal", () => {
         group_label: "Cash",
         category_slug: "checking",
         category_label: "checking",
-        deposits_clp: 0,
-        current_value_clp: 100,
+        deposits: 0,
+        current_value: 100,
         valuation_as_of: null,
       },
       {
@@ -146,8 +146,8 @@ describe("extractGroupPageShellFromReal", () => {
         group_label: "Brokerage",
         category_slug: "checking",
         category_label: "checking",
-        deposits_clp: 0,
-        current_value_clp: 200,
+        deposits: 0,
+        current_value: 200,
         valuation_as_of: null,
       },
     ];

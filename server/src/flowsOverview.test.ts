@@ -240,7 +240,7 @@ describe("aggregateFlowsOverviewMonths", () => {
   it("throws in USD when a deposit has no dollar amount", () => {
     const income = incomePayload();
     income.lines[0]!.amount_usd = 2_000;
-    expect(() => months({ income }, "split", "usd")).toThrow(/amount_usd/);
+    expect(() => months({ income }, "split", "usd")).toThrow(/no usd value/);
   });
 
   it("splits pre-tax AFP/AFC cotizaciones out of post-tax deposits", () => {
@@ -692,10 +692,8 @@ describe("buildFlowsOverviewPayload", () => {
     const today = chileCalendarTodayYmd();
     for (const unit of ["clp", "usd"] as const) {
       const overview = buildFlowsOverviewPayload(unit, "split", null);
-      const page = buildFlowsPlPayload();
-      const pageByMonth = new Map(
-        (unit === "usd" ? page.chart_monthly_usd : page.chart_monthly).map((p) => [p.as_of_date.slice(0, 7), p.total])
-      );
+      const page = buildFlowsPlPayload(unit);
+      const pageByMonth = new Map(page.chart_monthly.map((p) => [p.as_of_date.slice(0, 7), p.total]));
       for (const r of overview.months) {
         if (r.period_month > today.slice(0, 7)) continue;
         const pageTotal = pageByMonth.get(r.period_month) ?? 0;

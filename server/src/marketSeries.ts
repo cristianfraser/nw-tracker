@@ -5,6 +5,8 @@ import { equityQuoteCurrency } from "./equityQuote.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { runFxConversionWarningScan } from "./fxConversionWarningScan.js";
+import { chileCalendarAddDays } from "./chileDate.js";
+import { convertCurrency, type DisplayUnitCode } from "./rates.js";
 
 const MAX_POINTS = 25_000;
 
@@ -43,19 +45,61 @@ function sortFundSeriesKeys(keys: string[]): string[] {
 
 type Bar = { date: string; v: number };
 
-export function getMarketSeriesPayload(): {
-  points: {
-    as_of_date: string;
-    clp_per_usd: number | null;
-    clp_per_uf: number | null;
-    clp_per_eur: number | null;
-    ipc_index: number | null;
-    utm_clp: number | null;
-    equity_usd: Record<string, number | null>;
-    equity_clp: Record<string, number | null>;
-    fund_unit_clp: Record<string, number | null>;
-    fund_unit_usd: Record<string, number | null>;
-  }[];
+/**
+ * Converts a stored value from `quote` into `unit` on its day: the `rates.ts` walk at the mid,
+ * read as of the day after `ymd` so today's point takes the stored close, never the live rate
+ * (this payload reads stored history only and must not refetch on a live fx tick). Null when a
+ * rate the walk needs is not on file on or before the day. The rate is memoized per (quote,
+ * day) and applied as the walk would apply it: times a rate of one or more, else divided by the
+ * reverse rate — so CLP/USD values are exactly close × CLP per USD and close ÷ CLP per USD.
+ */
+function storedValueConverter(unit: DisplayUnitCode): (v: number, quote: string, ymd: string) => number | null {
+  const memo = new Map<string, { op: "mul" | "div"; rate: number } | null>();
+  const rate = (from: string, to: string, ymd: string): number | null => {
+    const asOfNextDay = new Date(`${chileCalendarAddDays(ymd, 1)}T16:00:00Z`);
+    const r = convertCurrency(1, from, to, ymd, { side: "mid", now: asOfNextDay });
+    return r != null && Number.isFinite(r) && r > 0 ? r : null;
+  };
+  return (v, quote, ymd) => {
+    if (quote === unit) return v;
+    const key = `${quote}|${ymd}`;
+    let m = memo.get(key);
+    if (m === undefined) {
+      const fwd = rate(quote, unit, ymd);
+      if (fwd == null) m = null;
+      else if (fwd >= 1) m = { op: "mul", rate: fwd };
+      else {
+        const back = rate(unit, quote, ymd);
+        m = back == null ? null : { op: "div", rate: back };
+      }
+      memo.set(key, m);
+    }
+    if (m == null) return null;
+    return m.op === "mul" ? v * m.rate : v / m.rate;
+  };
+}
+
+type MarketSeriesPointOut = {
+  as_of_date: string;
+  clp_per_usd: number | null;
+  clp_per_uf: number | null;
+  clp_per_eur: number | null;
+  ipc_index: number | null;
+  utm_clp: number | null;
+  /** Each equity's close on the day in `unit` (its own quote converted at the day's stored rate). */
+  equity: Record<string, number | null>;
+  /** Each peso fund series' valor cuota on the day in `unit`. */
+  fund_unit: Record<string, number | null>;
+};
+
+/**
+ * `GET /api/market-series?unit=`: the rates page's history. Rate series (USD/CLP, UF, EUR/CLP,
+ * IPC, UTM) are facts in their own quote; equity closes and fund cuotas are expressed in `unit`
+ * at the stored rate on or before each observation day.
+ */
+export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
+  unit: DisplayUnitCode;
+  points: MarketSeriesPointOut[];
   equity_tickers: string[];
   fund_series_keys: string[];
   /** Yahoo CLP=X EOD (`fx_daily`) for Rates FX charts and conversions. */
@@ -157,18 +201,11 @@ export function getMarketSeriesPayload(): {
     lastFuClp.set(k, null);
   }
 
-  const points: {
-    as_of_date: string;
-    clp_per_usd: number | null;
-    clp_per_uf: number | null;
-    clp_per_eur: number | null;
-    ipc_index: number | null;
-    utm_clp: number | null;
-    equity_usd: Record<string, number | null>;
-    equity_clp: Record<string, number | null>;
-    fund_unit_clp: Record<string, number | null>;
-    fund_unit_usd: Record<string, number | null>;
-  }[] = [];
+  const points: MarketSeriesPointOut[] = [];
+  const convert = storedValueConverter(unit);
+  const quoteOf = new Map(equityTickers.map((t) => [t, equityQuoteCurrency(t)] as const));
+  const inUnit = (v: number | null, quote: string, d: string): number | null =>
+    v == null || !Number.isFinite(v) ? null : convert(v, quote, d);
 
   for (const d of slice) {
     while (fxPtr + 1 < fxRows.length && fxRows[fxPtr + 1]!.date <= d) {
@@ -222,40 +259,28 @@ export function getMarketSeriesPayload(): {
     const ipcOnD = ipcPtr >= 0 && ipcRows[ipcPtr]!.date === d ? lastIpc : null;
     const utmOnD = utmPtr >= 0 && utmRows[utmPtr]!.date === d ? lastUtm : null;
 
-    const equity_usd: Record<string, number | null> = {};
-    const equity_clp: Record<string, number | null> = {};
+    const equity: Record<string, number | null> = {};
+    let hasEquity = false;
     for (const t of equityTickers) {
       const bars = eqBars.get(t);
       const i = eqPtr.get(t) ?? -1;
       const onD = bars != null && i >= 0 && bars[i]!.date === d;
       const close = onD ? (lastEqClose.get(t) ?? null) : null;
-      if (equityQuoteCurrency(t) === "clp") {
-        equity_clp[t] = close;
-        equity_usd[t] =
-          close != null && lastFx != null && lastFx > 0 && Number.isFinite(close) ? close / lastFx : null;
-      } else {
-        equity_usd[t] = close;
-        equity_clp[t] =
-          close != null && lastFx != null && Number.isFinite(close) && Number.isFinite(lastFx)
-            ? close * lastFx
-            : null;
-      }
+      if (close != null) hasEquity = true;
+      equity[t] = inUnit(close, quoteOf.get(t)!, d);
     }
 
-    const fund_unit_clp: Record<string, number | null> = {};
-    const fund_unit_usd: Record<string, number | null> = {};
+    const fund_unit: Record<string, number | null> = {};
+    let hasFund = false;
     for (const k of fundKeys) {
       const bars = fuBars.get(k);
       const i = fuPtr.get(k) ?? -1;
       const onD = bars != null && i >= 0 && bars[i]!.date === d;
       const c = onD ? (lastFuClp.get(k) ?? null) : null;
-      fund_unit_clp[k] = c;
-      fund_unit_usd[k] =
-        c != null && lastFx != null && lastFx > 0 && Number.isFinite(c) ? c / lastFx : null;
+      if (c != null) hasFund = true;
+      fund_unit[k] = inUnit(c, "clp", d);
     }
 
-    const hasEquity = equityTickers.some((t) => equity_usd[t] != null);
-    const hasFund = fundKeys.some((k) => fund_unit_clp[k] != null);
     if (fxOnD == null && ufOnD == null && eurOnD == null && ipcOnD == null && utmOnD == null && !hasEquity && !hasFund) {
       continue;
     }
@@ -267,14 +292,13 @@ export function getMarketSeriesPayload(): {
       clp_per_eur: eurOnD,
       ipc_index: ipcOnD,
       utm_clp: utmOnD,
-      equity_usd,
-      equity_clp,
-      fund_unit_clp,
-      fund_unit_usd,
+      equity,
+      fund_unit,
     });
   }
 
   return {
+    unit,
     points,
     equity_tickers: equityTickers,
     fund_series_keys: fundKeys,

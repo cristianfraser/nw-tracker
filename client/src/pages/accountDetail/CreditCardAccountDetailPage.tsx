@@ -28,18 +28,18 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   // credit-card group pages render (`CreditCardLedgerSurfaces`).
   const ccScope: CcSurfaceScope = { variant: "account", accountId: summary.account_id };
 
-  const heroClp =
-    data.stripUnit === "usd"
-      ? 0
-      : data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? ccLedger.totals.total_remaining_principal_clp;
+  const heroValue =
+    data.accountDashRow?.current_value ??
+    (data.stripUnit === "clp"
+      ? summary.latest_valuation_clp ?? ccLedger.totals.total_remaining_principal_clp
+      : data.chartUnitVal);
 
   return (
     <AccountDetailSharedLayout
       title={ts.name}
       accountMetricsAgg={data.accountMetricsAgg}
       stripUnit={data.stripUnit}
-      heroClp={heroClp}
-      heroApiUsd={data.stripUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null}
+      heroValue={heroValue}
       dash={data.dash}
       accountNavChildren={data.accountNavChildren}
       stripDetailSlots={<CreditCardSummaryCards ccLedger={ccLedger} stripSlots />}

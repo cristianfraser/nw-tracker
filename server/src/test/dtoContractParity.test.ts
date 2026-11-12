@@ -10,7 +10,7 @@ import type { FxCoverage as S_FxCoverage } from "../fxCoverage.js";
 import type { FxConversionWarningCode as S_FxConversionWarningCode, FxConversionWarning as S_FxConversionWarning } from "../fxConversionWarnings.js";
 import type { FxBidAskGapRow as S_FxBidAskGapRow } from "../fxBidAskGaps.js";
 import type { CcCloseSource as S_CcCloseSource } from "../cards/facturacion.js";
-import type { UpcomingPaymentKind as S_UpcomingPaymentKind } from "../upcomingPayments.js";
+import type { UpcomingPaymentKind as S_UpcomingPaymentKind, UpcomingPaymentsBlock as S_UpcomingPaymentsBlock } from "../upcomingPayments.js";
 import type { CcCuotaPurchaseKind as S_CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
 import type { CcInstallmentPurchaseComputed as S_CcInstallmentPurchaseComputed, CcCuotaProgressCuota as S_CcCuotaProgressCuota, CcCuotaProgress as S_CcCuotaProgress, CcInstallmentMonthBreakdown as S_CcInstallmentMonthBreakdown, CcInstallmentCalendarMonthRow as S_CcInstallmentMonthRow } from "../cards/planTypes.js";
 import type { CcFacturadoBarSegments as S_CcFacturadoBarSegments, CcHistorialChartPoint as S_CcHistorialChartPoint } from "../creditCardChartSeries.js";
@@ -30,7 +30,7 @@ import type { FlowsApiRow as S_FlowsApiRow, FlowsFilterOptions as S_FlowsFilterO
 import type { ChartBucketLineMetaDto as S_ChartBucketLineMetaDto, NavNodeChartBucketsDto as S_NavNodeChartBucketsDto } from "../groupChartBuckets.js";
 import type { NavTreeNodeDto as S_NavTreeNodeDto } from "../navTree.js";
 import type { DashboardLayoutCardRow as S_DashboardLayoutCardRow } from "../dashboardLayout.js";
-import type { NavCardMetricsVariantDto as S_NavCardMetricsVariantDto, NavCardAmountDto as S_NavCardAmountDto, NavCardValueDto as S_NavCardValueDto, NavCardMetricsDto as S_NavCardMetricsDto, NavLiquidatedRowsDto as S_NavLiquidatedRowsDto } from "../dashboardNavCardMetrics.js";
+import type { NavCardMetricsVariantDto as S_NavCardMetricsVariantDto, NavCardValueDto as S_NavCardValueDto, NavCardMetricsDto as S_NavCardMetricsDto, NavLiquidatedRowsDto as S_NavLiquidatedRowsDto } from "../dashboardNavCardMetrics.js";
 import type { NavValueMapHoldingDto as S_NavValueMapHoldingDto, NavValueMapNodeDto as S_NavValueMapNodeDto } from "../navValueMap.js";
 import type { NetWorthAthDto as S_NetWorthAthDto, NetWorthAthByPeriod as S_NetWorthAthByPeriod } from "../netWorthAllTimeHigh.js";
 import type { PeriodReturnKey as S_PeriodReturnKey, PeriodReturnCell as S_PeriodReturnCell, PeriodReturnsPayload as S_PeriodReturnsPayload } from "../periodReturns.js";
@@ -38,7 +38,7 @@ import type { BenchmarkComparisonCell as S_BenchmarkComparisonCell, BenchmarkCom
 import type { PrepaymentRow as S_PrepaymentRow, MortgagePrepaymentComparison as S_MortgagePrepaymentComparison } from "../mortgagePrepaymentComparison.js";
 import type { DeptoMortgageSheetRow as S_DeptoMortgageSheetRow, DeptoPaymentScenarioTerm as S_DeptoPaymentScenarioTerm, DeptoPaymentScenarioCell as S_DeptoPaymentScenarioCell, DeptoPaymentScenarioRow as S_DeptoPaymentScenarioRow } from "../deptoDividendosLedger.js";
 import type { MortgageCardLine as S_MortgageCardLine, MortgageCardMatchStatus as S_MortgageCardMatchStatus, MortgagePaymentCardMatch as S_MortgagePaymentCardMatch } from "../mortgagePaymentCardMatch.js";
-import type { DepositFlowCategory as S_DepositFlowCategory, FlowDepositRow as S_FlowDepositRow, FlowDepositChartPoint as S_FlowDepositChartPoint } from "../flowsDeposits.js";
+import type { DepositFlowCategory as S_DepositFlowCategory, FlowDepositUnitRow as S_FlowDepositRow, FlowDepositChartPoint as S_FlowDepositChartPoint } from "../flowsDeposits.js";
 import type { FlowsPlBucketSlug as S_FlowsPlBucketSlug, FlowsPlChartPoint as S_FlowsPlChartPoint, FlowsPlAccountRow as S_FlowsPlAccountRow, FlowsPlBucketBlock as S_FlowsPlBucketBlock } from "../flowsPl.js";
 import type { FlowsOverviewRow as S_FlowsOverviewRow, FlowsOverviewTotals as S_FlowsOverviewTotals, FlowsIncomeAggregates as S_FlowsIncomeAggregates } from "../flowsOverview.js";
 import type { RealEstateChartSeriesDto as S_RealEstateChartSeriesDto, RealEstateChartScopeDto as S_RealEstateChartScopeDto, RealEstateExpenseLinkDto as S_RealEstateExpenseLinkDto, RealEstateBillSlot as S_RealEstateBillSlot, RealEstateUnlinkedPurchaseDto as S_RealEstateUnlinkedPurchaseDto, RealEstatePlaceDto as S_RealEstatePlaceDto, RealEstateExpenseAccountBlock as S_RealEstateExpenseAccountBlock, RealEstateLinkCandidateDto as S_RealEstateLinkCandidateDto } from "../flowsRealEstateExpenses.js";
@@ -48,14 +48,21 @@ import type { CcFacturadoFinancingLink as S_CcFacturadoFinancingLink } from "../
 import type { ExpenseLinkLabel as S_ExpenseLinkLabel } from "../expenseDisplayNames.js";
 import type { ManualExpenseInput as S_ManualExpenseInput } from "../flowsManualExpenses.js";
 import type { ExpenseDepositLinkDto as S_ExpenseDepositLinkDto } from "../expenseDepositLinks.js";
-import type { DepositReconciliationStatus as S_DepositReconciliationStatus, DepositReconciliationRow as S_DepositReconciliationRow, DepositReconciliationStatusTotals as S_DepositReconciliationStatusTotals, DepositReconciliationByMonth as S_DepositReconciliationByMonth, DepositRedemptionStatus as S_DepositRedemptionStatus, DepositRedemptionRow as S_DepositRedemptionRow, DepositManualAssertionStatus as S_DepositManualAssertionStatus, DepositManualAssertionRow as S_DepositManualAssertionRow } from "../flowsDepositsReconciliation.js";
+import type { DepositReconciliationStatus as S_DepositReconciliationStatus, DepositReconciliationUnitPayload as S_DepositReconciliationUnitPayload, DepositReconciliationUnitTotals as S_DepositReconciliationStatusTotals, DepositReconciliationUnitByMonth as S_DepositReconciliationByMonth, DepositRedemptionStatus as S_DepositRedemptionStatus, DepositManualAssertionStatus as S_DepositManualAssertionStatus } from "../flowsDepositsReconciliation.js";
+type S_DepositReconciliationRow = S_DepositReconciliationUnitPayload["rows"][number];
+type S_DepositRedemptionRow = S_DepositReconciliationUnitPayload["redemptions"][number];
+type S_DepositManualAssertionRow = S_DepositReconciliationUnitPayload["manual_assertions"][number];
 import type { ExpenseYearMonthlyAverage as S_ExpenseYearMonthlyAverage, FlowsExpensesGastosView as S_FlowsExpensesGastosView, BigGroupUsage as S_BigGroupUsage } from "../flowsExpensesGastos.js";
 import type { AdditionalCardsPeriodRow as S_AdditionalCardsPeriodRow, AdditionalCardsSummary as S_AdditionalCardsSummary } from "../additionalCardReimbursements.js";
-import type { FlowCheckingIncomeLine as S_FlowCheckingIncomeLine, IncomeAutoFilterReason as S_IncomeAutoFilterReason, FlowFilteredCheckingIncomeLine as S_FlowFilteredCheckingIncomeLine, FlowManualIncomeLine as S_FlowManualIncomeLine } from "../flowsCheckingInflows.js";
-import type { FlowExcludedCheckingIncomeLine as S_FlowExcludedCheckingIncomeLine } from "../flowsCheckingIncomeOverrides.js";
+import type { FlowsCheckingIncomeUnitLists as S_IncomeUnitLists, IncomeAutoFilterReason as S_IncomeAutoFilterReason } from "../flowsCheckingInflows.js";
+type S_FlowCheckingIncomeLine = S_IncomeUnitLists["lines"][number];
+type S_FlowFilteredCheckingIncomeLine = S_IncomeUnitLists["filtered_lines"][number];
+type S_FlowManualIncomeLine = S_IncomeUnitLists["manual"][number];
+type S_FlowExcludedCheckingIncomeLine = S_IncomeUnitLists["excluded_lines"][number];
+type S_FlowWorkEarningRow = S_IncomeUnitLists["work_earnings"][number];
 import type { PayslipCheckName as S_PayslipCheckName, PayslipCheck as S_PayslipCheck, PayslipChecksRow as S_PayslipChecksRow } from "../payslipChecks.js";
 import type { PayrollBreakdownField as S_PayrollBreakdownField, PayrollBreakdownValues as S_PayrollBreakdownValues, PayrollBreakdownRow as S_PayrollBreakdownRow, PayrollBreakdownPayload as S_PayrollBreakdownPayload } from "../payrollBreakdown.js";
-import type { PayrollEarningType as S_PayrollEarningType, FlowWorkEarningRow as S_FlowWorkEarningRow } from "../flowsPayrollWorkEarnings.js";
+import type { PayrollEarningType as S_PayrollEarningType } from "../flowsPayrollWorkEarnings.js";
 import type { UsageReportWindow as S_UsageReportWindow, UsagePageRow as S_UsagePageRow, UsageNotFoundPath as S_UsageNotFoundPath, UsageEndpointRow as S_UsageEndpointRow, UsageReport as S_UsageReport, UsageEndpointTrendPoint as S_UsageEndpointTrendPoint, UsageEndpointTrend as S_UsageEndpointTrend } from "../usageReport.js";
 import type { MarketDisplaySeriesRow as S_MarketDisplaySeriesRow, MarketTickerValue as S_MarketTickerValue } from "../marketDisplaySeries.js";
 import type { WatchlistChanges as S_WatchlistChanges } from "../watchlistStats.js";
@@ -82,7 +89,7 @@ type S_WireExpenseLine = Omit<
   S_FlowCcExpenseLineRow,
   "amount_clp" | "amount_usd" | "amount_usd_at_expense" | "clp_rate_source" | "amount" | "values"
 > &
-  Required<Pick<S_FlowCcExpenseLineRow, "amount" | "values">>;
+  Required<Pick<S_FlowCcExpenseLineRow, "amount">> & { converted: Dto.LineConverted | null; value_clp: number };
 
 /**
  * Not listed: `GroceryReceiptRow` (the server reads `source` as a plain string; the stored values
@@ -97,6 +104,7 @@ export type ServerDtosFitContracts = [
   Fits<S_FxBidAskGapRow, Dto.FxBidAskGapRow>,
   Fits<S_CcCloseSource, Dto.CcCloseSource>,
   Fits<S_UpcomingPaymentKind, Dto.UpcomingPaymentKind>,
+  Fits<S_UpcomingPaymentsBlock, Dto.UpcomingPaymentsDto>,
   Fits<S_CcCuotaPurchaseKind, Dto.CcCuotaPurchaseKind>,
   Fits<S_CcInstallmentPurchaseComputed, Dto.CcInstallmentPurchaseComputed>,
   Fits<S_CcCuotaProgressCuota, Dto.CcCuotaProgressCuota>,
@@ -138,7 +146,6 @@ export type ServerDtosFitContracts = [
   Fits<S_NavTreeNodeDto, Dto.NavTreeNodeDto>,
   Fits<S_DashboardLayoutCardRow, Dto.DashboardLayoutCardRow>,
   Fits<S_NavCardMetricsVariantDto, Dto.NavCardMetricsVariantDto>,
-  Fits<S_NavCardAmountDto, Dto.NavCardAmountDto>,
   Fits<S_NavCardValueDto, Dto.NavCardValueDto>,
   Fits<S_NavCardMetricsDto, Dto.NavCardMetricsDto>,
   Fits<S_NavLiquidatedRowsDto, Dto.NavLiquidatedRowsDto>,

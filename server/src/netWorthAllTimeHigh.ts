@@ -6,7 +6,7 @@ import { ufClpByDateRange, ufRowOnOrBefore } from "./fxRates.js";
 import {
   buildDashboardBucketDailySeriesClp,
   buildDashboardBucketDailySeriesInUnit,
-  dashboardBucketsUsdToday,
+  dashboardBucketsTodayInUnit,
 } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -79,7 +79,7 @@ export function pickAllTimeHighOnCalendarGrid(
   return pickAllTimeHigh([...latestByBucket.values()]);
 }
 
-/** Net worth per grid day in `unit` (null where the day's fx/UF is missing — never a carried guess for usd). */
+/** Net worth per grid day in `unit` (null where the day's rate is missing — never a carried guess, UF aside). */
 function netWorthInUnitByDay(
   grid: readonly string[],
   unit: TsUnit
@@ -97,15 +97,15 @@ function netWorthInUnitByDay(
       return { as_of_date: ymd, value: carry != null && carry > 0 ? clp / carry : null };
     });
   }
-  // Today in USD is the headline's net worth (Σ of each account's own dollars).
+  // Today in another unit is the headline's net worth (Σ of each account's own value in it).
   const todayYmd = grid[grid.length - 1]!;
-  const usdToday = unit === "usd" ? dashboardBucketsUsdToday().net_worth : null;
-  // Σ of each account's own dollars per day, never the net worth's pesos ÷ one rate.
-  const byDateUsd = unit === "usd" ? buildDashboardBucketDailySeriesInUnit(grid, "usd") : null;
+  const unitToday = unit === "clp" ? null : dashboardBucketsTodayInUnit(unit).net_worth;
+  // Σ of each account's own value in the unit per day, never the net worth's pesos ÷ one rate.
+  const byDateUnit = unit === "clp" ? null : buildDashboardBucketDailySeriesInUnit(grid, unit);
   return grid.map((ymd) => {
     const clp = byDate.get(ymd)!.net_worth;
     const value =
-      unit === "clp" ? clp : ymd === todayYmd && usdToday != null ? usdToday : byDateUsd!.get(ymd)!.net_worth;
+      unit === "clp" ? clp : ymd === todayYmd && unitToday != null ? unitToday : byDateUnit!.get(ymd)!.net_worth;
     return { as_of_date: ymd, value: value != null && Number.isFinite(value) ? value : null };
   });
 }

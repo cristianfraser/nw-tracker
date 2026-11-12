@@ -53,7 +53,7 @@ describe("buildInversionesConsolidatedMonthly", () => {
 describe("net worth surfaces reconcile", () => {
   it("page-bundle totals, detalle, and chart total_nw align", async () => {
     await withPortfolioGroupIndex(async () => {
-      const payload = await buildDashboardPagePayload(false);
+      const payload = await buildDashboardPagePayload("clp");
       const ts = getDashboardValuationTimeseries("clp");
       const detalle = getGroupConsolidatedTables("net_worth", "clp");
       const mk = monthKeyFromYmd(chileCalendarTodayYmd());
@@ -68,13 +68,13 @@ describe("net worth surfaces reconcile", () => {
           ? Math.round(lastOverview.total_nw)
           : null;
 
-      if (payload.totals.net_worth_clp <= 0) return;
+      if (payload.totals.net_worth! <= 0) return;
 
       if (consolidated) {
-        expect(Math.round(consolidated.closing_value)).toBe(payload.totals.net_worth_clp);
+        expect(Math.round(consolidated.closing_value)).toBe(payload.totals.net_worth!);
       }
       if (chartNw != null) {
-        expect(chartNw).toBeCloseTo(payload.totals.net_worth_clp, -2);
+        expect(chartNw).toBeCloseTo(payload.totals.net_worth!, -2);
       }
       if (consolidated && chartNw != null) {
         expect(chartNw).toBeCloseTo(Math.round(consolidated.closing_value), -2);
@@ -84,7 +84,7 @@ describe("net worth surfaces reconcile", () => {
 
   it("page-bundle totals and overview chart total_nw align in USD", async () => {
     await withPortfolioGroupIndex(async () => {
-      const payload = await buildDashboardPagePayload(true);
+      const payload = await buildDashboardPagePayload("usd");
       const ts = getDashboardValuationTimeseries("usd");
       const overview = ts.overview?.points ?? [];
       const lastOverview = overview.length ? overview[overview.length - 1] : null;
@@ -93,7 +93,7 @@ describe("net worth surfaces reconcile", () => {
           ? Math.round(lastOverview.total_nw)
           : null;
 
-      const nwUsd = payload.totals.net_worth_usd;
+      const nwUsd = payload.totals.net_worth!;
       if (nwUsd == null || nwUsd <= 0 || chartNw == null) return;
 
       expect(chartNw).toBeCloseTo(Math.round(nwUsd), -2);

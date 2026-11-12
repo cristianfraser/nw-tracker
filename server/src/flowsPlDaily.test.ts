@@ -9,14 +9,13 @@ describe("flows PL daily block (buildFlowsPlPayload with days)", () => {
   it("omits the daily block when days is not passed (M/Y callers unchanged)", () => {
     const payload = buildFlowsPlPayload();
     expect(payload.chart_daily).toBeUndefined();
-    expect(payload.chart_daily_usd).toBeUndefined();
     expect(payload.chart_monthly.length).toBeGreaterThan(0);
   });
 
-  it("adds a contiguous daily block (CLP + USD) when days is passed", () => {
-    const payload = buildFlowsPlPayload({ days: 90 });
+  it("adds a contiguous daily block when days is passed (in the unit asked)", () => {
+    const payload = buildFlowsPlPayload("clp", { days: 90 });
     expect(payload.chart_daily).toBeDefined();
-    expect(payload.chart_daily_usd).toBeDefined();
+    expect(buildFlowsPlPayload("usd", { days: 90 }).chart_daily).toBeDefined();
     const daily = payload.chart_daily!;
     expect(daily.length).toBeGreaterThan(0);
 

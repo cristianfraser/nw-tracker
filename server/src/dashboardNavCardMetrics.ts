@@ -28,16 +28,12 @@ import type { TsUnit } from "./valuationTimeseries.js";
 
 export type CardMetricsPeriod = "day" | "month" | "year";
 
-/** Mirror of the client `CardGroupMetrics` (null-vs-0 semantics preserved exactly). */
+/** One period of a card's metrics in the payload's unit (null = no row contributes that leg). */
 export type CardPeriodMetricsDto = {
-  deposits_clp: number;
-  deposits_usd: number | null;
-  delta_total_clp: number | null;
-  delta_total_usd: number | null;
-  deposits_period_clp: number;
-  deposits_period_usd: number | null;
-  delta_period_clp: number | null;
-  delta_period_usd: number | null;
+  deposits: number | null;
+  delta_total: number | null;
+  deposits_period: number | null;
+  delta_period: number | null;
 };
 
 export type NavCardMetricsVariantDto = {
@@ -46,26 +42,21 @@ export type NavCardMetricsVariantDto = {
   year: CardPeriodMetricsDto;
 };
 
-/** A flow-adjusted % in both units (null = no capital base, or the unit's legs are missing). */
+/** A flow-adjusted % in the unit (null = no capital base, or the unit's legs are missing). */
 export type NavCardPctDto = {
-  clp: number | null;
-  usd: number | null;
+  value: number | null;
   /** Total cell only: the one-step P/L acumulado ÷ net deposits beside the compounded Total. */
-  on_deposits_clp?: number | null;
-  on_deposits_usd?: number | null;
+  on_deposits?: number | null;
 };
-
-/** A balance in both units (usd null = no member carries a dollar value in this payload). */
-export type NavCardAmountDto = { clp: number; usd: number | null };
 
 export type NavCardValueDto = {
   /** The detail card's balance: the dashboard bucket total (CC-netted cash) or Σ member rows. */
-  child: NavCardAmountDto;
+  child: number | null;
   /** The node's own page summary card / accounts-table «Total» row. */
-  parent: NavCardAmountDto;
+  parent: number | null;
   /** Σ of the member rows the `child` metrics cover, never netted (a card breakdown line). */
-  members: NavCardAmountDto;
-  /** Some subtree row has no fx for its USD frame. */
+  members: number | null;
+  /** Some subtree row has no rate for its value in the unit. */
   fx_missing: boolean;
   /** Every subtree row reads a stale sync source. */
   sync_stale: boolean;
@@ -100,11 +91,11 @@ export type NavLiquidatedRowsDto = {
   /** Σ over the rows' accounts (counts-toward-totals only). */
   metrics: NavCardMetricsVariantDto;
   /** Σ balance over the same rows. */
-  value: NavCardAmountDto & { fx_missing: boolean };
+  value: { value: number | null; fx_missing: boolean };
   row_pct: Record<CardMetricsPeriod | "total", NavCardPctDto>;
 };
 
-/** Narrow row view — the fields card metrics read from `DashboardAccountStats`. */
+/** Narrow row view — the fields card metrics read from `DashboardAccountStats` (in one unit). */
 export type CardMetricsAccountRow = Pick<
   DashboardAccountStats,
   | "account_id"
@@ -113,30 +104,19 @@ export type CardMetricsAccountRow = Pick<
   | "dashboard_bucket_slug"
   | "chart_inactive"
   | "exclude_from_group_totals"
-  | "deposits_clp"
-  | "deposits_usd"
-  | "delta_total_clp"
-  | "delta_total_usd"
-  | "deposits_month_clp"
-  | "deposits_month_usd"
-  | "deposits_year_clp"
-  | "deposits_year_usd"
-  | "deposits_day_clp"
-  | "deposits_day_usd"
-  | "delta_month_clp"
-  | "delta_month_usd"
-  | "delta_year_clp"
-  | "delta_year_usd"
-  | "delta_day_clp"
-  | "delta_day_usd"
-  | "current_value_clp"
-  | "current_value_usd"
-  | "prior_day_close_clp"
-  | "prior_day_close_usd"
-  | "prior_month_close_clp"
-  | "prior_month_close_usd"
-  | "prior_year_close_clp"
-  | "prior_year_close_usd"
+  | "deposits"
+  | "delta_total"
+  | "deposits_month"
+  | "deposits_year"
+  | "deposits_day"
+  | "delta_month"
+  | "delta_year"
+  | "delta_day"
+  | "current_value"
+  | "prior_day_close"
+  | "prior_month_close"
+  | "prior_year_close"
+  | "clp_basis"
 > &
   Partial<Pick<DashboardAccountStats, "fx_missing" | "sync_stale">>;
 
@@ -170,157 +150,88 @@ function accountInDashboardGroupScope(
 
 /* --------------------------------- metric sums ----------------------------------- */
 
-function emptyPeriodMetrics(): CardPeriodMetricsDto {
-  return {
-    deposits_clp: 0,
-    deposits_usd: null,
-    delta_total_clp: null,
-    delta_total_usd: null,
-    deposits_period_clp: 0,
-    deposits_period_usd: null,
-    delta_period_clp: null,
-    delta_period_usd: null,
-  };
+/**
+ * Pesos are the ledger's own unit: every row carries its deposits and balance in them, so a sum
+ * of no finite leg is zero; in any other unit it is a missing conversion (null).
+ */
+function emptySumIn(unit: TsUnit): 0 | null {
+  return unit === "clp" ? 0 : null;
+}
+
+/** Σ of the finite values; `empty` when none is finite. */
+function sumLeg(values: Iterable<number | null | undefined>, empty: number | null): number | null {
+  let sum = 0;
+  let any = false;
+  for (const v of values) {
+    if (v != null && Number.isFinite(v)) {
+      sum += v;
+      any = true;
+    }
+  }
+  return any ? sum : empty;
+}
+
+function emptyPeriodMetrics(unit: TsUnit): CardPeriodMetricsDto {
+  const empty = emptySumIn(unit);
+  return { deposits: empty, delta_total: null, deposits_period: empty, delta_period: null };
+}
+
+function periodDeposits(r: CardMetricsAccountRow, period: CardMetricsPeriod): number | null | undefined {
+  return period === "month" ? r.deposits_month : period === "day" ? r.deposits_day : r.deposits_year;
+}
+
+function periodDelta(r: CardMetricsAccountRow, period: CardMetricsPeriod): number | null | undefined {
+  return period === "month" ? r.delta_month : period === "day" ? r.delta_day : r.delta_year;
 }
 
 /** Σ of the rows' card metrics for one period (null = no row contributes that leg). */
 export function cardMetricsFromRows(
   rows: readonly CardMetricsAccountRow[],
-  period: CardMetricsPeriod
+  period: CardMetricsPeriod,
+  unit: TsUnit
 ): CardPeriodMetricsDto {
-  let deposits_clp = 0;
-  let deposits_usd = 0;
-  let delta_total_clp = 0;
-  let delta_total_usd = 0;
-  let deposits_period_clp = 0;
-  let deposits_period_usd = 0;
-  let delta_period_clp = 0;
-  let delta_period_usd = 0;
-  let anyUsdDep = false;
-  let anyUsdTotalDelta = false;
-  let anyUsdPeriodDep = false;
-  let anyTotalDelta = false;
-  let anyPeriodDeltaClp = false;
-  let anyPeriodDeltaUsd = false;
-
-  for (const r of rows) {
-    deposits_clp += r.deposits_clp;
-    if (r.deposits_usd != null && Number.isFinite(r.deposits_usd)) {
-      deposits_usd += r.deposits_usd;
-      anyUsdDep = true;
-    }
-    if (r.delta_total_clp != null && Number.isFinite(r.delta_total_clp)) {
-      delta_total_clp += r.delta_total_clp;
-      anyTotalDelta = true;
-    }
-    if (r.delta_total_usd != null && Number.isFinite(r.delta_total_usd)) {
-      delta_total_usd += r.delta_total_usd;
-      anyUsdTotalDelta = true;
-    }
-
-    const periodDepClp =
-      period === "month"
-        ? r.deposits_month_clp
-        : period === "day"
-          ? r.deposits_day_clp
-          : r.deposits_year_clp;
-    if (periodDepClp != null && Number.isFinite(periodDepClp)) {
-      deposits_period_clp += periodDepClp;
-    }
-
-    const periodDepUsd =
-      period === "month"
-        ? r.deposits_month_usd
-        : period === "day"
-          ? r.deposits_day_usd
-          : r.deposits_year_usd;
-    if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
-      deposits_period_usd += periodDepUsd;
-      anyUsdPeriodDep = true;
-    }
-
-    const periodDeltaClp =
-      period === "month" ? r.delta_month_clp : period === "day" ? r.delta_day_clp : r.delta_year_clp;
-    if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
-      delta_period_clp += periodDeltaClp;
-      anyPeriodDeltaClp = true;
-    }
-    const periodDeltaUsd =
-      period === "month" ? r.delta_month_usd : period === "day" ? r.delta_day_usd : r.delta_year_usd;
-    if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
-      delta_period_usd += periodDeltaUsd;
-      anyPeriodDeltaUsd = true;
-    }
-  }
-
+  const empty = emptySumIn(unit);
   return {
-    deposits_clp,
-    deposits_usd: anyUsdDep ? deposits_usd : null,
-    delta_total_clp: anyTotalDelta ? delta_total_clp : null,
-    delta_total_usd: anyUsdTotalDelta ? delta_total_usd : null,
-    deposits_period_clp,
-    deposits_period_usd: anyUsdPeriodDep ? deposits_period_usd : null,
-    delta_period_clp: anyPeriodDeltaClp ? delta_period_clp : null,
-    delta_period_usd: anyPeriodDeltaUsd ? delta_period_usd : null,
+    deposits: sumLeg(
+      rows.map((r) => r.deposits),
+      empty
+    ),
+    delta_total: sumLeg(
+      rows.map((r) => r.delta_total),
+      null
+    ),
+    deposits_period: sumLeg(
+      rows.map((r) => periodDeposits(r, period)),
+      empty
+    ),
+    delta_period: sumLeg(
+      rows.map((r) => periodDelta(r, period)),
+      null
+    ),
   };
 }
 
 /** Σ of card metrics already summed per part (same null rule). */
-export function sumCardMetrics(parts: readonly CardPeriodMetricsDto[]): CardPeriodMetricsDto {
-  if (parts.length === 0) return emptyPeriodMetrics();
-  let deposits_clp = 0;
-  let deposits_usd = 0;
-  let delta_total_clp = 0;
-  let delta_total_usd = 0;
-  let deposits_period_clp = 0;
-  let deposits_period_usd = 0;
-  let delta_period_clp = 0;
-  let delta_period_usd = 0;
-  let anyUsdDep = false;
-  let anyUsdTotalDelta = false;
-  let anyUsdPeriodDep = false;
-  let anyPeriodDelta = false;
-  let anyUsdPeriodDelta = false;
-  let anyTotalDelta = false;
-
-  for (const m of parts) {
-    deposits_clp += m.deposits_clp;
-    if (m.deposits_usd != null && Number.isFinite(m.deposits_usd)) {
-      deposits_usd += m.deposits_usd;
-      anyUsdDep = true;
-    }
-    if (m.delta_total_clp != null && Number.isFinite(m.delta_total_clp)) {
-      delta_total_clp += m.delta_total_clp;
-      anyTotalDelta = true;
-    }
-    if (m.delta_total_usd != null && Number.isFinite(m.delta_total_usd)) {
-      delta_total_usd += m.delta_total_usd;
-      anyUsdTotalDelta = true;
-    }
-    deposits_period_clp += m.deposits_period_clp;
-    if (m.deposits_period_usd != null && Number.isFinite(m.deposits_period_usd)) {
-      deposits_period_usd += m.deposits_period_usd;
-      anyUsdPeriodDep = true;
-    }
-    if (m.delta_period_clp != null && Number.isFinite(m.delta_period_clp)) {
-      delta_period_clp += m.delta_period_clp;
-      anyPeriodDelta = true;
-    }
-    if (m.delta_period_usd != null && Number.isFinite(m.delta_period_usd)) {
-      delta_period_usd += m.delta_period_usd;
-      anyUsdPeriodDelta = true;
-    }
-  }
-
+export function sumCardMetrics(parts: readonly CardPeriodMetricsDto[], unit: TsUnit): CardPeriodMetricsDto {
+  if (parts.length === 0) return emptyPeriodMetrics(unit);
+  const empty = emptySumIn(unit);
   return {
-    deposits_clp,
-    deposits_usd: anyUsdDep ? deposits_usd : null,
-    delta_total_clp: anyTotalDelta ? delta_total_clp : null,
-    delta_total_usd: anyUsdTotalDelta ? delta_total_usd : null,
-    deposits_period_clp,
-    deposits_period_usd: anyUsdPeriodDep ? deposits_period_usd : null,
-    delta_period_clp: anyPeriodDelta ? delta_period_clp : null,
-    delta_period_usd: anyUsdPeriodDelta ? delta_period_usd : null,
+    deposits: sumLeg(
+      parts.map((m) => m.deposits),
+      empty
+    ),
+    delta_total: sumLeg(
+      parts.map((m) => m.delta_total),
+      null
+    ),
+    deposits_period: sumLeg(
+      parts.map((m) => m.deposits_period),
+      empty
+    ),
+    delta_period: sumLeg(
+      parts.map((m) => m.delta_period),
+      null
+    ),
   };
 }
 
@@ -332,11 +243,13 @@ function bucketCardMetrics(
   rows: readonly CardMetricsAccountRow[],
   bucket: DashboardNwBucketSlug,
   period: CardMetricsPeriod,
+  unit: TsUnit,
   filter?: (row: CardMetricsAccountRow) => boolean
 ): CardPeriodMetricsDto {
   return cardMetricsFromRows(
     rows.filter((a) => accountInDashboardGroupScope(a, bucket, filter)),
-    period
+    period,
+    unit
   );
 }
 
@@ -384,30 +297,25 @@ function groupPctFromLegs(legs: readonly PctLegs[], withPrior: boolean, unit: Ts
   return flowAdjustedPct(nominal, anyPrior ? prior : null, groupStartFrameFlow(flow, endCharged), close, unit);
 }
 
-export function rowPctForRows(rows: readonly CardMetricsAccountRow[]): NavCardMetricsDto["row_pct"] {
-  const both = (clp: PctLegs[], usd: PctLegs[], withPrior: boolean): NavCardPctDto => ({
-    clp: groupPctFromLegs(clp, withPrior, "clp"),
-    usd: groupPctFromLegs(usd, withPrior, "usd"),
+export function rowPctForRows(rows: readonly CardMetricsAccountRow[], unit: TsUnit): NavCardMetricsDto["row_pct"] {
+  const cell = (legs: PctLegs[], withPrior: boolean): NavCardPctDto => ({
+    value: groupPctFromLegs(legs, withPrior, unit),
   });
   return {
-    day: both(
-      rows.map((r) => ({ delta: r.delta_day_clp, prior: r.prior_day_close_clp, flow: r.deposits_day_clp, close: r.current_value_clp })),
-      rows.map((r) => ({ delta: r.delta_day_usd, prior: r.prior_day_close_usd, flow: r.deposits_day_usd, close: r.current_value_usd })),
+    day: cell(
+      rows.map((r) => ({ delta: r.delta_day, prior: r.prior_day_close, flow: r.deposits_day, close: r.current_value })),
       true
     ),
-    month: both(
-      rows.map((r) => ({ delta: r.delta_month_clp, prior: r.prior_month_close_clp, flow: r.deposits_month_clp, close: r.current_value_clp })),
-      rows.map((r) => ({ delta: r.delta_month_usd, prior: r.prior_month_close_usd, flow: r.deposits_month_usd, close: r.current_value_usd })),
+    month: cell(
+      rows.map((r) => ({ delta: r.delta_month, prior: r.prior_month_close, flow: r.deposits_month, close: r.current_value })),
       true
     ),
-    year: both(
-      rows.map((r) => ({ delta: r.delta_year_clp, prior: r.prior_year_close_clp, flow: r.deposits_year_clp, close: r.current_value_clp })),
-      rows.map((r) => ({ delta: r.delta_year_usd, prior: r.prior_year_close_usd, flow: r.deposits_year_usd, close: r.current_value_usd })),
+    year: cell(
+      rows.map((r) => ({ delta: r.delta_year, prior: r.prior_year_close, flow: r.deposits_year, close: r.current_value })),
       true
     ),
-    total: both(
-      rows.map((r) => ({ delta: r.delta_total_clp, prior: null, flow: r.deposits_clp, close: r.current_value_clp })),
-      rows.map((r) => ({ delta: r.delta_total_usd, prior: null, flow: r.deposits_usd, close: r.current_value_usd })),
+    total: cell(
+      rows.map((r) => ({ delta: r.delta_total, prior: null, flow: r.deposits, close: r.current_value })),
       false
     ),
   };
@@ -508,12 +416,13 @@ function material(v: number | null | undefined): boolean {
   return v != null && Number.isFinite(v) && Math.abs(v) >= 0.5;
 }
 
-/** A chart-inactive account that once held money (never-funded accounts are not liquidated). */
+/**
+ * A chart-inactive account that once held money (never-funded accounts are not liquidated) — in
+ * pesos whatever the unit, so the same rows are liquidated in every unit.
+ */
 function accountWasLiquidated(row: CardMetricsAccountRow): boolean {
-  return (
-    row.chart_inactive === true &&
-    (material(row.deposits_clp) || material(row.delta_total_clp) || material(row.current_value_clp))
-  );
+  const b = row.clp_basis;
+  return row.chart_inactive === true && (material(b.deposits) || material(b.delta_total) || material(b.current_value));
 }
 
 /**
@@ -524,6 +433,7 @@ function accountWasLiquidated(row: CardMetricsAccountRow): boolean {
 export function liquidatedRowsForNode(
   node: NavTreeNodeDto,
   rows: readonly CardMetricsAccountRow[],
+  unit: TsUnit,
   chainedGroupPct?: ChainedGroupPct
 ): NavLiquidatedRowsDto | null {
   const children = node.children ?? [];
@@ -564,9 +474,9 @@ export function liquidatedRowsForNode(
   }
   const metricsRows = [...byId.values()];
   const metrics: NavCardMetricsVariantDto = {
-    day: cardMetricsFromRows(metricsRows, "day"),
-    month: cardMetricsFromRows(metricsRows, "month"),
-    year: cardMetricsFromRows(metricsRows, "year"),
+    day: cardMetricsFromRows(metricsRows, "day", unit),
+    month: cardMetricsFromRows(metricsRows, "month", unit),
+    year: cardMetricsFromRows(metricsRows, "year", unit),
   };
   const accountIds = metricsRows.map((r) => r.account_id).sort((a, b) => a - b);
   return {
@@ -574,12 +484,13 @@ export function liquidatedRowsForNode(
     group_slugs: inactiveGroups.map((g) => g.slug),
     metrics,
     value: {
-      ...sumRowValues(metricsRows),
+      value: sumRowValues(metricsRows, unit),
       fx_missing: metricsRows.some((r) => r.fx_missing === true),
     },
     row_pct: withChainedGroupPct(
-      rowPctForRows(metricsRows),
+      rowPctForRows(metricsRows, unit),
       { kind: "liquidated", parentSlug: node.slug, accountIds },
+      unit,
       chainedGroupPct
     ),
   };
@@ -606,57 +517,31 @@ function parentScopeRows(
 /* ------------------------------------ value ------------------------------------- */
 
 /** Dashboard bucket totals (`buildDashboardNwBucketTotals`): the CC-netted cash bucket included. */
-export type NavCardBucketTotals = {
-  [bucketClp: `${string}_clp`]: number;
-  [bucketUsd: `${string}_usd`]: number | null | undefined;
-};
+export type NavCardBucketTotals = { buckets: Readonly<Record<string, number | null>> };
 
-function finiteOrNull(v: number | null | undefined): number | null {
+/** Σ current value in the unit: rows without one count 0 in pesos; null elsewhere when no row carries one. */
+export function sumRowValues(rows: readonly CardMetricsAccountRow[], unit: TsUnit): number | null {
+  return sumLeg(
+    rows.map((r) => r.current_value),
+    emptySumIn(unit)
+  );
+}
+
+function bucketAmount(totals: NavCardBucketTotals, bucket: DashboardNwBucketSlug): number | null {
+  if (!(bucket in totals.buckets)) throw new Error(`nav card metrics: no total for bucket ${bucket}`);
+  const v = totals.buckets[bucket];
   return v != null && Number.isFinite(v) ? v : null;
 }
 
-/** Σ current value: rows without a CLP value count 0; usd null when no row carries one. */
-export function sumRowValues(rows: readonly CardMetricsAccountRow[]): NavCardAmountDto {
-  let clp = 0;
-  let usd = 0;
-  let anyUsd = false;
-  for (const r of rows) {
-    const c = finiteOrNull(r.current_value_clp);
-    if (c != null) clp += c;
-    const u = finiteOrNull(r.current_value_usd);
-    if (u != null) {
-      usd += u;
-      anyUsd = true;
-    }
-  }
-  return { clp, usd: anyUsd ? usd : null };
-}
-
-function bucketAmount(totals: NavCardBucketTotals, bucket: DashboardNwBucketSlug): NavCardAmountDto {
-  const clp = totals[`${bucket}_clp`];
-  if (clp == null) throw new Error(`nav card metrics: no total for bucket ${bucket}`);
-  return { clp, usd: finiteOrNull(totals[`${bucket}_usd`]) };
-}
-
-function sumAmounts(parts: readonly NavCardAmountDto[]): NavCardAmountDto {
-  let clp = 0;
-  let usd = 0;
-  let anyUsd = false;
-  for (const p of parts) {
-    clp += p.clp;
-    if (p.usd != null) {
-      usd += p.usd;
-      anyUsd = true;
-    }
-  }
-  return { clp, usd: anyUsd ? usd : null };
+function sumAmounts(parts: readonly (number | null)[], unit: TsUnit): number | null {
+  return sumLeg(parts, emptySumIn(unit));
 }
 
 function nodeValue(node: NavTreeNodeDto, input: NavCardMetricsBuildInput): NavCardValueDto {
-  const { rows, bucketTotals } = input;
+  const { rows, bucketTotals, unit } = input;
   const subtreeIds = navMetricsAccountIdSet(node);
   const subtreeRows = rows.filter((r) => subtreeIds.has(r.account_id));
-  const members = sumRowValues(stripMetricsRows(node, rows));
+  const members = sumRowValues(stripMetricsRows(node, rows), unit);
   const fullBucket = usesFullDashboardBucketTotals(node);
   const child = fullBucket ? bucketAmount(bucketTotals, fullBucket) : members;
   const mode = parentTitleModeForNavNode(node);
@@ -664,8 +549,11 @@ function nodeValue(node: NavTreeNodeDto, input: NavCardMetricsBuildInput): NavCa
     mode.kind === "dashboard_group"
       ? bucketAmount(bucketTotals, mode.group)
       : mode.kind === "sum_dashboard_groups"
-        ? sumAmounts(mode.groups.map((g) => bucketAmount(bucketTotals, g)))
-        : sumRowValues(subtreeRows);
+        ? sumAmounts(
+            mode.groups.map((g) => bucketAmount(bucketTotals, g)),
+            unit
+          )
+        : sumRowValues(subtreeRows, unit);
   return {
     child,
     parent,
@@ -686,8 +574,10 @@ export type NavCardMetricsBuildInput = {
    */
   navRoots: readonly NavTreeNodeDto[];
   rows: readonly CardMetricsAccountRow[];
-  /** The dashboard bucket totals the payload carries: a bucket node's balance reads them. */
+  /** The dashboard bucket totals the payload carries (same unit): a bucket node's balance reads them. */
   bucketTotals: NavCardBucketTotals;
+  /** The display unit of the rows and the totals. */
+  unit: TsUnit;
   /**
    * A group's period % compounded from its daily returns (`periodPctDailyChain.ts`) — the
    * group's own daily series, or the series over a page's liquidated rows. Absent (tests, pure
@@ -717,22 +607,17 @@ export type ChainedGroupPct = (
 export function withChainedGroupPct(
   pct: NavCardMetricsDto["row_pct"],
   scope: ChainedGroupScope,
+  unit: TsUnit,
   chained: ChainedGroupPct | undefined
 ): NavCardMetricsDto["row_pct"] {
   if (!chained) return pct;
   const out = { ...pct };
   for (const period of ["day", "month", "year", "total"] as const) {
     const cell: NavCardPctDto = { ...pct[period] };
-    let replaced = false;
-    for (const unit of ["clp", "usd"] as const) {
-      const v = chained(scope, period, unit);
-      if (v === undefined) continue;
-      cell[unit] = v;
-      replaced = true;
-    }
-    if (period === "total" && replaced) {
-      cell.on_deposits_clp = pct.total.clp;
-      cell.on_deposits_usd = pct.total.usd;
+    const v = chained(scope, period, unit);
+    if (v !== undefined) {
+      cell.value = v;
+      if (period === "total") cell.on_deposits = pct.total.value;
     }
     out[period] = cell;
   }
@@ -760,12 +645,12 @@ function childVariantForNode(
   node: NavTreeNodeDto,
   input: NavCardMetricsBuildInput
 ): NavCardMetricsVariantDto {
-  const { rows } = input;
+  const { rows, unit } = input;
   const metricsRows = stripMetricsRows(node, rows);
   const fullBucket = usesFullDashboardBucketTotals(node);
 
   const metricsFor = (period: CardMetricsPeriod): CardPeriodMetricsDto =>
-    fullBucket ? bucketCardMetrics(rows, fullBucket, period) : cardMetricsFromRows(metricsRows, period);
+    fullBucket ? bucketCardMetrics(rows, fullBucket, period, unit) : cardMetricsFromRows(metricsRows, period, unit);
 
   return {
     day: metricsFor("day"),
@@ -779,7 +664,7 @@ function parentVariantForNode(
   input: NavCardMetricsBuildInput,
   childVariantBySlug: Map<string, NavCardMetricsVariantDto>
 ): NavCardMetricsVariantDto {
-  const { rows } = input;
+  const { rows, unit } = input;
   const mode = parentTitleModeForNavNode(node);
   const subtreeIds = navMetricsAccountIdSet(node);
   const subtreeRows = rows.filter((a) => subtreeIds.has(a.account_id));
@@ -797,12 +682,12 @@ function parentVariantForNode(
 
   const metricsFor = (period: CardMetricsPeriod): CardPeriodMetricsDto => {
     if (mode.kind === "dashboard_group") {
-      return bucketCardMetrics(rows, mode.group, period, (a) => subtreeIds.has(a.account_id));
+      return bucketCardMetrics(rows, mode.group, period, unit, (a) => subtreeIds.has(a.account_id));
     }
     if (mode.kind === "sum_dashboard_groups") {
-      return sumCardMetrics(childMetricsOfStripChildren(period));
+      return sumCardMetrics(childMetricsOfStripChildren(period), unit);
     }
-    return cardMetricsFromRows(subtreeRows, period);
+    return cardMetricsFromRows(subtreeRows, period, unit);
   };
 
   return {
@@ -836,7 +721,7 @@ export function buildNavCardMetricsBySlug(
     }
 
     for (const node of groupNodes) {
-      const liquidated = liquidatedRowsForNode(node, input.rows, input.chainedGroupPct);
+      const liquidated = liquidatedRowsForNode(node, input.rows, input.unit, input.chainedGroupPct);
       const child = childBySlug.get(node.slug)!;
       const parent = parentVariantForNode(node, input, childBySlug);
       const scope: ChainedGroupScope = { kind: "group", slug: node.slug };
@@ -846,8 +731,13 @@ export function buildNavCardMetricsBySlug(
         value: nodeValue(node, input),
         child,
         parent,
-        row_pct: withChainedGroupPct(rowPctForRows(childRows), scope, input.chainedGroupPct),
-        parent_pct: withChainedGroupPct(rowPctForRows(parentRows), scope, input.chainedGroupPct),
+        row_pct: withChainedGroupPct(rowPctForRows(childRows, input.unit), scope, input.unit, input.chainedGroupPct),
+        parent_pct: withChainedGroupPct(
+          rowPctForRows(parentRows, input.unit),
+          scope,
+          input.unit,
+          input.chainedGroupPct
+        ),
         ...(liquidated ? { liquidated } : {}),
       };
     }

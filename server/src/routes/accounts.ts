@@ -30,7 +30,7 @@ import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
 import { asyncHandler, accountIdFromReq } from "./shared.js";
-import { LEGACY_DISPLAY_UNITS, requestDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerAccountsRoutes(app: express.Express): void {
 app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -41,9 +41,9 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
       res.status(400).json({ error: "unknown portfolio_group" });
       return;
     }
-    const unit = requestDisplayUnit(req.query, { surface: "/api/accounts", supported: LEGACY_DISPLAY_UNITS });
-    const includeUsd = unit === "usd";
-    const rows = await listPortfolioGroupAccountsForApi(portfolioGroupSlug, includeUsd);
+    // The rows carry no money: any display unit is accepted (validated) and changes nothing.
+    requestDisplayUnit(req.query, { surface: "/api/accounts" });
+    const rows = await listPortfolioGroupAccountsForApi(portfolioGroupSlug);
     res.json({ accounts: rows });
     return;
   }
@@ -295,7 +295,7 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/detail-bundle", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/detail-bundle" });
   const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
   const payload = await timeHeavyAsync(`${HeavyWork.accountDetailBundle} ${id} ${unit} ${granularity}`, () =>
     cachedAccountDetailBundle(id, unit, granularity)
@@ -314,7 +314,7 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/performance-monthly", supported: LEGACY_DISPLAY_UNITS });
+  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/performance-monthly" });
   const payload = monthlyPerfForAccountDisplay(id, unit);
   if (!payload) {
     res.status(404).json({ error: "account not found" });

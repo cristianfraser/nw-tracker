@@ -198,7 +198,7 @@ export async function warmVisitedPages(plan: VisitedWarmPlan = visitedWarmPlanFr
   }
   for (const { root, unit } of plan.navContexts) {
     await yieldToRequests();
-    await buildDashboardNavContext(unit === "usd", unit, root);
+    await buildDashboardNavContext(unit, root);
   }
   for (const g of plan.groups) {
     for (const unit of g.units) {

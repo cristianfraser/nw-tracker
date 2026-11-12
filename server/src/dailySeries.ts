@@ -26,7 +26,7 @@ import {
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { dbInTransaction } from "./db.js";
-import { convertFlow, type TsUnit } from "./rates.js";
+import { convertFlow, type CurrencyCode, type TsUnit } from "./rates.js";
 
 /**
  * Daily bucket series on the **calendar-day** grid: one point per Chile calendar day ending
@@ -267,7 +267,7 @@ function ccDerivedFlows(
   accountId: number,
   grid: readonly string[],
   marks: readonly (number | null)[],
-  unit: "clp" | "usd"
+  unit: CurrencyCode
 ): number[] {
   const costByDate = ccFinancingCostByDateInUnit(accountId, unit);
   const out = new Array<number>(grid.length - 1).fill(0);
@@ -524,11 +524,12 @@ export function getBucketDailySeries(
   const liabilityFlows = past.flows.liabilityFlows.slice();
   const flowsByAccount = new Map([...past.flows.byAccount].map(([id, arr]) => [id, arr.slice()]));
   for (const [accountId, marksClp] of ccMarksClp) {
-    // In dollars the card's own dollar values; in pesos (and UF, each day's peso flow converted
-    // at that day's UF) its peso marks.
+    // In a currency other than pesos (dollars, euros) the card's own values in that unit; in
+    // pesos (and UF, each day's peso flow converted at that day's UF) its peso marks.
     const ai = included.findIndex((a) => a.account_id === accountId);
-    const marks = unit === "usd" ? unitByAccount[ai]! : marksClp;
-    const derived = ccDerivedFlows(accountId, grid, marks, unit === "usd" ? "usd" : "clp");
+    const pesoFrame = unit === "clp" || unit === "uf";
+    const marks = pesoFrame ? marksClp : unitByAccount[ai]!;
+    const derived = ccDerivedFlows(accountId, grid, marks, pesoFrame ? "clp" : unit);
     for (let i = 1; i < grid.length; i++) {
       const amt = unit === "uf" ? convertFlow(derived[i - 1]!, "clp", "uf", grid[i]!) : derived[i - 1]!;
       if (amt === 0) continue;

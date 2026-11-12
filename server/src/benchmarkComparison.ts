@@ -25,7 +25,7 @@ import {
 import { windowIrr } from "./irr.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
-import { convertCurrency } from "./rates.js";
+import { convertCurrency, isCurrencyCode } from "./rates.js";
 
 /**
  * The Rentabilidad table's comparison row: for each window, a shadow portfolio that starts with
@@ -136,7 +136,7 @@ export function levelInUnit(
       if (series.currency === unit) {
         out = native;
       } else {
-        if (series.currency !== "clp" && series.currency !== "usd") {
+        if (!isCurrencyCode(series.currency)) {
           throw new Error(`benchmark: a level in ${series.currency} cannot be shown in ${unit}`);
         }
         // A level is a reference, never a held value: the mid, live today (`rates.ts`).

@@ -337,9 +337,9 @@ export const api = {
     j<import("./types").GroupPeriodReturnsResponse>(
       `/api/groups/${encodeURIComponent(slug)}/period-returns${unit !== "clp" ? `?unit=${encodeURIComponent(unit)}` : ""}`
     ),
-  latestMovements: (limit: number) =>
+  latestMovements: (limit: number, unit: DisplayUnit) =>
     j<import("./types").LatestMovementsResponse>(
-      `/api/dashboard/latest-movements?${new URLSearchParams({ limit: String(limit) }).toString()}`
+      `/api/dashboard/latest-movements?${new URLSearchParams({ limit: String(limit), unit }).toString()}`
     ),
   groupConsolidatedMonthly: (
     slug: string,
@@ -532,18 +532,22 @@ export const api = {
       `/api/income/movements/${movementId}/restore`,
       { method: "POST" }
     ),
-  flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
-  flowsPl: (days?: number) =>
-    j<import("./types").FlowsPlResponse>(
-      days != null ? `/api/flows/pl?days=${days}` : "/api/flows/pl"
-    ),
+  flowsDeposits: (unit: DisplayUnit) =>
+    j<import("./types").FlowsDepositsResponse>(`/api/flows/deposits?unit=${encodeURIComponent(unit)}`),
+  flowsPl: (unit: DisplayUnit, days?: number) => {
+    const q = new URLSearchParams({ unit });
+    if (days != null) q.set("days", String(days));
+    return j<import("./types").FlowsPlResponse>(`/api/flows/pl?${q.toString()}`);
+  },
   flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) => {
     const q = new URLSearchParams({ unit, installment_mode: installmentMode });
     if (days != null) q.set("days", String(days));
     return j<import("./types").FlowsOverviewResponse>(`/api/flows/overview?${q.toString()}`);
   },
-  flowsDepositsReconciliation: () =>
-    j<import("./types").DepositsReconciliationPayload>("/api/flows/deposits/reconciliation"),
+  flowsDepositsReconciliation: (unit: DisplayUnit) =>
+    j<import("./types").DepositsReconciliationPayload>(
+      `/api/flows/deposits/reconciliation?unit=${encodeURIComponent(unit)}`
+    ),
   flowsRealEstateExpenses: () =>
     j<import("./types").RealEstateExpensesResponse>("/api/flows/expenses/real-estate"),
   realEstateExpenseLinkCandidates: (expenseEntryId: number) =>
@@ -628,8 +632,8 @@ export const api = {
     }),
   deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
-  flowsExpenses: () =>
-    j<import("./types").FlowsExpensesResponse>("/api/flows/expenses/credit-card"),
+  flowsExpenses: (unit: DisplayUnit) =>
+    j<import("./types").FlowsExpensesResponse>(`/api/flows/expenses/credit-card?unit=${encodeURIComponent(unit)}`),
   flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) => {
     const q = new URLSearchParams({ unit });
     if (includePreTax) q.set("include_pre_tax", "1");
@@ -722,7 +726,11 @@ export const api = {
     }),
   deleteCcFacturadoFinancingLink: (id: number) =>
     j<void>(`/api/flows/expenses/credit-card/financing-links/${id}`, { method: "DELETE" }),
-  marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
+  // Equity closes and fund cuotas come back in the display unit; the rate series are facts.
+  marketSeries: (unit: DisplayUnit) =>
+    j<import("./types").MarketSeriesResponse>(
+      unit !== "clp" ? `/api/market-series?unit=${encodeURIComponent(unit)}` : "/api/market-series"
+    ),
   mortgageUfReminder: () =>
     j<import("./types").MortgageUfReminder>("/api/reminders/mortgage-uf"),
   fxBidAskGaps: () => j<{ gaps: import("./types").FxBidAskGapRow[] }>("/api/fx/bid-ask/gaps"),
@@ -815,8 +823,10 @@ export const api = {
     const q = qs.toString();
     return j<import("./types").ProjectionsResponse>(`/api/projections${q ? `?${q}` : ""}`);
   },
-  wealthPercentile: () =>
-    j<import("./types").WealthPercentileResponse>("/api/wealth-percentile"),
+  wealthPercentile: (unit: DisplayUnit) =>
+    j<import("./types").WealthPercentileResponse>(
+      unit !== "clp" ? `/api/wealth-percentile?unit=${encodeURIComponent(unit)}` : "/api/wealth-percentile"
+    ),
   benchmarks: () =>
     j<{ benchmarks: import("./types").BenchmarkOption[] }>("/api/benchmarks"),
   mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: DisplayUnit) =>

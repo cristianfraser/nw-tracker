@@ -465,7 +465,7 @@ export type FlowsExpensesPayload = {
 
   big_groups: CcExpenseBigGroupRow[];
 
-  /** The lines as they go over the wire (`toWireExpenseLines`: money as `amount` + `values`). */
+  /** The lines as they go over the wire (`toWireExpenseLines`: money as `amount` + `converted` in the requested unit). */
   lines: WireExpenseLine[];
 
   /** Big groups some line carries, sorted: the Expenses page's default chart exclusion. */
@@ -1247,24 +1247,25 @@ export function buildFlowsExpenseLines(accountIds: readonly number[] = listCredi
   return runExpenseLineSteps(expenseLineDrafts(accountIds), EXPENSE_LINE_STEPS);
 }
 
-export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
+export function buildFlowsExpensesPayload(unit: string = "clp"): FlowsExpensesPayload {
   const accountIds = listCreditCardMasterAccountIds();
-  return flowsExpensesPayloadFromLines(accountIds, buildFlowsExpenseLines(accountIds));
+  return flowsExpensesPayloadFromLines(accountIds, buildFlowsExpenseLines(accountIds), unit);
 }
 
 /** The Expenses page payload around already-built lines (`buildFlowsExpenseLines(accountIds)`). */
 export function flowsExpensesPayloadFromLines(
   accountIds: number[],
-  lines: FlowCcExpenseLineRow[]
+  lines: FlowCcExpenseLineRow[],
+  unit: string = "clp"
 ): FlowsExpensesPayload {
   return {
     group_slug: "credit_cards",
     account_ids: accountIds,
     categories: listCcExpenseCategories(),
     big_groups: listCcExpenseBigGroups(),
-    lines: toWireExpenseLines(lines),
+    lines: toWireExpenseLines(lines, unit),
     active_big_group_slugs: [...new Set(lines.flatMap((l) => (l.big_group_slug ? [l.big_group_slug] : [])))].sort(),
     ...(accountIds.length > 0 ? { cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds) } : {}),
-    additional_cards: buildAdditionalCardsSummary(lines),
+    additional_cards: buildAdditionalCardsSummary(lines, unit),
   };
 }

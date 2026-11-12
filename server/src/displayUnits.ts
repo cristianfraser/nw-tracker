@@ -99,7 +99,7 @@ export function requireLegacyDisplayUnit(unit: string, surface: string): LegacyD
   throw new DisplayUnitNotSupportedError(unit, surface, LEGACY_DISPLAY_UNITS);
 }
 
-/** The units the warmers build caches for: every core currency the surfaces support today. */
-export function warmedDisplayUnits(): readonly LegacyDisplayUnit[] {
-  return LEGACY_DISPLAY_UNITS;
+/** The units the warmers build caches for: every core currency. */
+export function warmedDisplayUnits(): readonly string[] {
+  return coreCurrencyCodes();
 }

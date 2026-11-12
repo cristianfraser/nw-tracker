@@ -107,7 +107,7 @@ export function LiabilitiesGroupPage() {
   const {
     navSnapshot,
     contentLoading,
-    stripShowUsd,
+    stripUnit,
     accounts,
     accountsTreeRoot,
     stripIsPlaceholder,
@@ -425,7 +425,7 @@ export function LiabilitiesGroupPage() {
               groupSlug: portfolioGroup,
               subgroup: categoryFilter ?? undefined,
               dash: dashForStrip,
-              showUsd: stripShowUsd,
+              unit: stripUnit,
               // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
               placeholderPhase: stripIsPlaceholder || navCtx == null,
               linkedCardNavChildren,
@@ -498,9 +498,10 @@ function MortgageLoanSection({
   const mortgageSummary = useMemo(
     () => ({
       account_id: mortgageDashRow?.account_id ?? mortgageLedger?.account_id ?? 0,
-      latest_valuation_clp: mortgageDashRow?.current_value_clp ?? null,
+      // The dashboard row is in the display unit: its pesos only when the unit is pesos.
+      latest_valuation_clp: displayUnit === "clp" ? mortgageDashRow?.current_value ?? null : null,
     }),
-    [mortgageDashRow, mortgageLedger?.account_id]
+    [mortgageDashRow, mortgageLedger?.account_id, displayUnit]
   );
   const mortgageColorRgb = useMemo(() => {
     if (accountId == null) return fallbackColorRgb;
@@ -514,7 +515,7 @@ function MortgageLoanSection({
       monthlyPerfRows={mortgagePerf?.monthly ?? []}
       monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
       summary={mortgageSummary}
-      accountDashRow={mortgageDashRow}
+      accountDashRow={displayUnit === "clp" ? mortgageDashRow : null}
       accountColorRgb={mortgageColorRgb}
       {...(linkTo != null ? { linkTo } : {})}
       loading={mortgageLedgerPending}

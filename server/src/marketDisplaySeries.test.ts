@@ -58,6 +58,24 @@ describe("getMarketTickerPayloadFromDb day deltas", () => {
     }
     for (const eq of payload.equities) expect(eq.currency).toBe("usd");
   });
+
+  it("expresses the chips in EUR through EUR/CLP; the USD/CLP rate stays CLP per USD", () => {
+    db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES ('2099-01-05', 950)`).run();
+    db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES ('2099-01-05', 40000)`).run();
+    db.prepare(`INSERT OR REPLACE INTO eur_daily (date, clp_per_eur) VALUES ('2099-01-05', 1100)`).run();
+    try {
+      const payload = getMarketTickerPayloadFromDb(new Date("2099-01-07T04:00:00-03:00"), "eur");
+      expect(payload.unit).toBe("eur");
+      expect(payload.usd?.clp_per_usd).toBe(950);
+      if (payload.uf != null) {
+        expect(payload.uf.currency).toBe("eur");
+        expect(payload.uf.value).toBeCloseTo(40000 / 1100, 9);
+      }
+      for (const eq of payload.equities) expect(["eur", "none"]).toContain(eq.currency);
+    } finally {
+      db.prepare(`DELETE FROM eur_daily WHERE date >= '2099-01-01'`).run();
+    }
+  });
 });
 
 describe("equityTickersForMarqueeQuotes", () => {

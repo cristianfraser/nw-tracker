@@ -4,14 +4,14 @@ import { navNodeFixture } from "./test/navNodeFixture";
 import type { DashboardAccountRow } from "./types";
 
 function cashRow(
-  partial: Partial<DashboardAccountRow> & Pick<DashboardAccountRow, "account_id" | "current_value_clp">
+  partial: Partial<DashboardAccountRow> & Pick<DashboardAccountRow, "account_id" | "current_value">
 ): DashboardAccountRow {
   return {
     name: "Account",
     group_slug: "cash_eqs",
     group_label: "Cash",
     dashboard_bucket_slug: "cash_eqs",
-    deposits_clp: 0,
+    deposits: 0,
     exclude_from_group_totals: 0,
     ...partial,
   } as DashboardAccountRow;
@@ -23,13 +23,13 @@ describe("cash card breakdown", () => {
     name: "Reserva",
     category_slug: "fondo_reserva",
     bucket_slug: "cash_eqs__fondo_reserva",
-    current_value_clp: 2_000_000,
+    current_value: 2_000_000,
   });
   const checking = cashRow({
     account_id: 2,
     category_slug: "cuenta_corriente",
     bucket_slug: "cash_eqs__cuenta_corriente",
-    current_value_clp: 300_000,
+    current_value: 300_000,
   });
 
   /**
@@ -62,6 +62,6 @@ describe("cash card breakdown", () => {
 
     expect(lines).not.toBeNull();
     expect(lines!.map((l) => l.label)).toEqual(["Reserva"]);
-    expect(lines!.some((l) => l.clp === 300_000)).toBe(false);
+    expect(lines!.some((l) => l.value === 300_000)).toBe(false);
   });
 });

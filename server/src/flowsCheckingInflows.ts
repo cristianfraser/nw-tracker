@@ -29,6 +29,8 @@ import {
 } from "./checkingDescriptionPredicates.js";
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import { flowLegsInUnit } from "./flowLegs.js";
+import { monthEndUtcYmd } from "./calendarMonth.js";
 import {
   mergedIncomeKindByMovementIdRecord,
   loadExcludedCheckingIncomeMovementIds,
@@ -462,5 +464,67 @@ function computeCheckingIncome(): CheckingIncomeComputation {
       refund_lines,
     },
     consumedLedgerOutflowKeys: filterCtx.consumedCapitalReturnLedgerOutflowKeys,
+  };
+}
+
+// --- one display unit (`GET /api/income?unit=`) -----------------------------------------------
+
+type InUnit<R> = Omit<R, "amount_clp" | "amount_usd"> & { amount: number | null };
+
+/** A work earning with its net pay (and the deposit that paid it) in the display unit beside the payslip's own figures. */
+export type FlowWorkEarningUnitRow = FlowWorkEarningRow & { liquido: number | null; linked_amount: number | null };
+
+/** The income lists in one display unit: each line's `amount` its legs in the unit (`flowLegsInUnit`; pesos rounded). */
+export type FlowsCheckingIncomeUnitLists = {
+  lines: InUnit<FlowCheckingIncomeLine>[];
+  manual: InUnit<FlowManualIncomeLine>[];
+  work_earnings: FlowWorkEarningUnitRow[];
+  excluded_lines: InUnit<FlowExcludedCheckingIncomeLine>[];
+  filtered_lines: InUnit<FlowFilteredCheckingIncomeLine>[];
+  refund_lines: InUnit<FlowCheckingIncomeLine & { category_slug: string }>[];
+};
+
+function incomeLineInUnit<R extends { amount_clp: number; amount_usd: number | null; received_on: string }>(
+  r: R,
+  unit: string
+): InUnit<R> {
+  const { amount_clp, amount_usd, ...rest } = r;
+  return {
+    ...rest,
+    amount: flowLegsInUnit({ clp: Math.round(amount_clp), usd: amount_usd }, r.received_on, unit),
+  } as InUnit<R>;
+}
+
+/** The day a work earning's pay reached the account: its deposit, its wire, else its month's end. */
+function workEarningPayDay(row: FlowWorkEarningRow): string {
+  return (row.linked_received_on ?? row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10);
+}
+
+function workEarningInUnit(row: FlowWorkEarningRow, unit: string): FlowWorkEarningUnitRow {
+  const day = workEarningPayDay(row);
+  const clp = Math.round(row.liquido_clp);
+  const liquido = flowLegsInUnit({ clp, usd: row.liquido_usd ?? clpToUsdAtDate(clp, day) }, day, unit);
+  const linked_amount =
+    row.linked_amount_clp == null
+      ? null
+      : flowLegsInUnit(
+          { clp: row.linked_amount_clp, usd: clpToUsdAtDate(row.linked_amount_clp, day) },
+          day,
+          unit
+        );
+  return { ...row, liquido, linked_amount };
+}
+
+export function flowsCheckingIncomeListsInUnit(
+  p: Pick<FlowsCheckingIncomePayload, "lines" | "manual" | "work_earnings" | "excluded_lines" | "filtered_lines" | "refund_lines">,
+  unit: string
+): FlowsCheckingIncomeUnitLists {
+  return {
+    lines: p.lines.map((l) => incomeLineInUnit(l, unit)),
+    manual: p.manual.map((l) => incomeLineInUnit(l, unit)),
+    work_earnings: p.work_earnings.map((r) => workEarningInUnit(r, unit)),
+    excluded_lines: p.excluded_lines.map((l) => incomeLineInUnit(l, unit)),
+    filtered_lines: p.filtered_lines.map((l) => incomeLineInUnit(l, unit)),
+    refund_lines: p.refund_lines.map((l) => incomeLineInUnit(l, unit)),
   };
 }

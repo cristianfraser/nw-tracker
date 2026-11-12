@@ -9,7 +9,7 @@ import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 describe("dashboard card closing reconcile", () => {
   it("consolidated NW month row matches bucket title delta and deposits", async () => {
     await withPortfolioGroupIndex(async () => {
-      const payload = await buildDashboardPagePayload(false);
+      const payload = await buildDashboardPagePayload("clp");
       const mk = monthKeyFromYmd(chileCalendarTodayYmd());
       const row = buildNetWorthConsolidatedMonthly("clp").find(
         (r) => monthKeyFromYmd(r.as_of_date) === mk
@@ -17,7 +17,7 @@ describe("dashboard card closing reconcile", () => {
       if (!row || row.prior_closing == null || !Number.isFinite(row.prior_closing)) return;
 
       const titleDelta =
-        payload.totals.net_worth_clp - payload.totals.prior_closes.month.net_worth_clp;
+        payload.totals.net_worth! - payload.totals.prior_closes.month.net_worth!;
       // The payload carries each total rounded to the peso; round the row's two closes the same way
       // (rounding their difference instead failed by a peso whenever the fractions straddled .5).
       expect(titleDelta).toBe(Math.round(row.closing_value) - Math.round(row.prior_closing));
@@ -29,7 +29,7 @@ describe("dashboard card closing reconcile", () => {
               (a) =>
                 a.dashboard_bucket_slug === slug && a.exclude_from_group_totals !== 1
             )
-            .reduce((t, a) => t + (a.deposits_month_clp ?? 0), 0),
+            .reduce((t, a) => t + (a.deposits_month ?? 0), 0),
         0
       );
       expect(Math.round(row.net_capital_flow)).toBeCloseTo(bucketDepSum, 0);
@@ -38,20 +38,20 @@ describe("dashboard card closing reconcile", () => {
 
   it("bucket totals and title Δ match summed account closes and deposits + P/L", async () => {
     await withPortfolioGroupIndex(async () => {
-      const payload = await buildDashboardPagePayload(false);
+      const payload = await buildDashboardPagePayload("clp");
       for (const slug of ["retirement", "brokerage"] as const) {
         const rows = payload.accounts.filter(
           (a) =>
             bucketOfAccount(a.account_id) === slug &&
             a.exclude_from_group_totals !== 1
         );
-        const sumCurrent = rows.reduce((s, a) => s + (a.current_value_clp ?? 0), 0);
-        const sumPrior = rows.reduce((s, a) => s + (a.prior_month_close_clp ?? 0), 0);
-        const sumDep = rows.reduce((s, a) => s + (a.deposits_month_clp ?? 0), 0);
-        const sumPl = rows.reduce((s, a) => s + (a.delta_month_clp ?? 0), 0);
+        const sumCurrent = rows.reduce((s, a) => s + (a.current_value ?? 0), 0);
+        const sumPrior = rows.reduce((s, a) => s + (a.prior_month_close ?? 0), 0);
+        const sumDep = rows.reduce((s, a) => s + (a.deposits_month ?? 0), 0);
+        const sumPl = rows.reduce((s, a) => s + (a.delta_month ?? 0), 0);
 
-        const bucketCurrent = payload.totals[`${slug}_clp`];
-        const bucketPrior = payload.totals.prior_closes.month[`${slug}_clp`];
+        const bucketCurrent = payload.totals.buckets[slug]!;
+        const bucketPrior = payload.totals.prior_closes.month.buckets[slug]!;
         const titleDelta = bucketCurrent - bucketPrior;
 
         // Bucket totals are largest-remainder apportioned so cards sum EXACTLY to the

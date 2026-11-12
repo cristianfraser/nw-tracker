@@ -1,6 +1,6 @@
 # Any display currency (CLP, USD, EUR now; any ISO code later)
 
-Status: in progress (2026-11-11). The global display unit (today the CLP/USD toggle) becomes any
+Status: built 2026-11-12 for CLP, USD and EUR (core currencies). On-demand currencies (any other ISO code, loaded on first use) are the next step. The global display unit (today the CLP/USD toggle) becomes any
 **core currency** of the `currencies` table (migration 312: CLP, USD, EUR; UF stays a series unit of
 its own). Conversions go through `server/src/rates.ts` only: a direct pair first, else through USD,
 else through CLP. EUR/USD lives in `fx_rates` (Yahoo `EURUSD=X`, synced by the `fx_pairs` source);

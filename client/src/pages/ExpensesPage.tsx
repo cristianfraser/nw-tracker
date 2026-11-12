@@ -58,7 +58,7 @@ export function ExpensesPage() {
   const tableGranularity = flowTableGranularity(
     tablePrefs.period
   );
-  const { data, error } = useFlowsExpenses();
+  const { data, error } = useFlowsExpenses(displayUnit);
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();
   const { includePreTax, setIncludePreTax } = useExpensesIncludePreTax();

@@ -63,8 +63,8 @@ import {
   stripMetricsRows,
   type CardMetricsAccountRow,
   type CardMetricsPeriod,
-  type NavCardPctDto,
 } from "./dashboardNavCardMetrics.js";
+import type { TsUnit } from "./rates.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
 /** Full colour at ±bound (fractions: 0.03 = 3%); fixed per period so colours compare across days. */
@@ -74,15 +74,13 @@ export const NAV_VALUE_MAP_COLOR_BOUNDS: Record<CardMetricsPeriod, number> = {
   year: 0.25,
 };
 
-export type NavValueMapAmountDto = { clp: number | null; usd: number | null };
-
 export type NavValueMapHoldingDto = {
   /** The ticker as the fund states it. */
   ticker: string;
   /** Share of the whole fund (the tile is the frame's value × this). */
   weight: number;
-  /** The holding's share of the fund's period return, fraction of the fund, per unit. */
-  contribution_pct: Record<CardMetricsPeriod, NavCardPctDto>;
+  /** The holding's share of the fund's period return, fraction of the fund, in the unit. */
+  contribution_pct: Record<CardMetricsPeriod, number | null>;
   /** Calendar days in the period the fund held it, out of the period's days so far. */
   days_held: Record<CardMetricsPeriod, { held: number; total: number }>;
 };
@@ -95,10 +93,10 @@ export type NavValueMapNodeDto = {
   label: string;
   label_i18n_key: string | null;
   route_path: string;
-  value_clp: number;
-  value_usd: number | null;
-  pct: Record<CardMetricsPeriod, NavCardPctDto>;
-  pl: Record<CardMetricsPeriod, NavValueMapAmountDto>;
+  /** In the payload's unit; null when the unit has no rate for it. */
+  value: number | null;
+  pct: Record<CardMetricsPeriod, number | null>;
+  pl: Record<CardMetricsPeriod, number | null>;
   /** The nav group has group children (a frame). False for tiles and for account nodes. */
   frame: boolean;
   /** Present on frames only (possibly empty when every child was dropped). */
@@ -115,6 +113,26 @@ export type NavValueMapNodeDto = {
   holding?: NavValueMapHoldingDto | null;
 };
 
+/**
+ * A node while the map is built: its value in pesos too, which decides — whatever the unit —
+ * which nodes are hidden (worth <= 0) and their order, so the map has the same tiles in every
+ * unit. Stripped before the payload goes out.
+ */
+type MapNode = Omit<NavValueMapNodeDto, "children" | "leaf_accounts"> & {
+  basis_clp: number;
+  children?: MapNode[];
+  leaf_accounts?: MapNode[];
+};
+
+function toDto(n: MapNode): NavValueMapNodeDto {
+  const { basis_clp: _basis, children, leaf_accounts, ...rest } = n;
+  return {
+    ...rest,
+    ...(children ? { children: children.map(toDto) } : {}),
+    ...(leaf_accounts ? { leaf_accounts: leaf_accounts.map(toDto) } : {}),
+  };
+}
+
 export type NavValueMapProxyInput = {
   /** account id → proxy bucket slug, for every account valued through a basket proxy. */
   bucketByAccountId: ReadonlyMap<number, string>;
@@ -126,8 +144,10 @@ export type NavValueMapInput = {
   /** The net_worth nav root. */
   navRoot: NavTreeNodeDto;
   rows: readonly CardMetricsAccountRow[];
-  /** Linked credit cards' owed total (as `linkedCreditCardClpForCashCardAsOf`); usd null = unavailable. */
-  linkedCreditCards: { clp: number; usd: number | null };
+  /** Linked credit cards' owed total (as `linkedCreditCardClpForCashCardAsOf`), in pesos and in the unit (null = no rate). */
+  linkedCreditCards: { clp: number; value: number | null };
+  /** The display unit of the rows and of the map. */
+  unit: TsUnit;
   /** Proxy baskets to break proxied accounts down into; absent = no breakdowns. */
   proxy?: NavValueMapProxyInput;
   /** The colour % compounded from each node's daily returns; absent (tests): the one-step rule. */
@@ -154,17 +174,26 @@ function sumFinite(values: readonly (number | null | undefined)[]): number | nul
   return any ? sum : null;
 }
 
+function finiteOrNull(v: number | null | undefined): number | null {
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+/** Σ when every part has a value, else null (a frame missing a conversion has none). */
+function sumAll(values: readonly (number | null)[]): number | null {
+  return values.every((v) => v != null) ? (sumFinite(values) ?? 0) : null;
+}
+
 function pctAndPl(
   rows: readonly CardMetricsAccountRow[],
   scope: ChainedGroupScope,
+  unit: TsUnit,
   chainedPct: ChainedGroupPct | undefined
 ) {
-  const row_pct = withChainedGroupPct(rowPctForRows(rows), scope, chainedPct);
-  const pct = { day: row_pct.day, month: row_pct.month, year: row_pct.year };
-  const pl = {} as Record<CardMetricsPeriod, NavValueMapAmountDto>;
+  const row_pct = withChainedGroupPct(rowPctForRows(rows, unit), scope, unit, chainedPct);
+  const pct = { day: row_pct.day.value, month: row_pct.month.value, year: row_pct.year.value };
+  const pl = {} as Record<CardMetricsPeriod, number | null>;
   for (const period of ["day", "month", "year"] as const) {
-    const m = cardMetricsFromRows(rows, period);
-    pl[period] = { clp: m.delta_period_clp, usd: m.delta_period_usd };
+    pl[period] = cardMetricsFromRows(rows, period, unit).delta_period;
   }
   return { pct, pl };
 }
@@ -186,18 +215,14 @@ function holdingTile(
   bucket: string,
   h: ProxyHoldingBreakdown,
   frameClp: number,
-  frameUsd: number | null
-): NavValueMapNodeDto {
-  const value_clp = frameClp * h.weight;
-  const value_usd = frameUsd == null ? null : frameUsd * h.weight;
-  const pct = {} as Record<CardMetricsPeriod, NavCardPctDto>;
-  const pl = {} as Record<CardMetricsPeriod, NavValueMapAmountDto>;
+  frameValue: number | null
+): MapNode {
+  const value = frameValue == null ? null : frameValue * h.weight;
+  const pct = {} as Record<CardMetricsPeriod, number | null>;
+  const pl = {} as Record<CardMetricsPeriod, number | null>;
   for (const period of PERIODS) {
-    pct[period] = { clp: h.pct[period].clp, usd: h.pct[period].usd };
-    pl[period] = {
-      clp: plFromReturn(value_clp, h.pct[period].clp),
-      usd: plFromReturn(value_usd, h.pct[period].usd),
-    };
+    pct[period] = h.pct[period];
+    pl[period] = plFromReturn(value, h.pct[period]);
   }
   return {
     kind: "holding",
@@ -206,8 +231,8 @@ function holdingTile(
     label: h.ticker,
     label_i18n_key: null,
     route_path: base.route_path,
-    value_clp,
-    value_usd,
+    basis_clp: frameClp * h.weight,
+    value,
     pct,
     pl,
     frame: false,
@@ -225,9 +250,9 @@ function otherSleeveTile(
   bucket: string,
   weight: number,
   frameClp: number,
-  frameUsd: number | null
-): NavValueMapNodeDto {
-  const nullPct = () => ({ clp: null, usd: null });
+  frameValue: number | null
+): MapNode {
+  const none = () => ({ day: null, month: null, year: null });
   return {
     kind: "holding",
     slug: holdingSlug(bucket, "other"),
@@ -235,18 +260,19 @@ function otherSleeveTile(
     label: "Otros",
     label_i18n_key: "valueMap.otherSleeve",
     route_path: base.route_path,
-    value_clp: frameClp * weight,
-    value_usd: frameUsd == null ? null : frameUsd * weight,
-    pct: { day: nullPct(), month: nullPct(), year: nullPct() },
-    pl: { day: nullPct(), month: nullPct(), year: nullPct() },
+    basis_clp: frameClp * weight,
+    value: frameValue == null ? null : frameValue * weight,
+    pct: none(),
+    pl: none(),
     frame: false,
     holding: null,
   };
 }
 
 export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
-  const { navRoot, rows, linkedCreditCards, proxy, chainedPct } = input;
+  const { navRoot, rows, linkedCreditCards, proxy, chainedPct, unit } = input;
   const rowById = new Map(rows.map((r) => [r.account_id, r]));
+  const emptySum = unit === "clp" ? 0 : null;
 
   // Accounts the tree names explicitly are claimed by their own group first; chart-inactive
   // bucket members the tree omits (picked up by `stripMetricsRows`) go to the first leaf
@@ -254,7 +280,7 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
   const explicitIds = navLeafAccountIdSet(navRoot);
   const claimed = new Set<number>();
 
-  const accountTile = (n: NavTreeNodeDto, claim = true): NavValueMapNodeDto | null => {
+  const accountTile = (n: NavTreeNodeDto, claim = true): MapNode | null => {
     const row = n.account_id != null ? rowById.get(n.account_id) : undefined;
     if (!row || !accountCountsTowardGroupTotals(row)) return null;
     if (claim) {
@@ -263,8 +289,8 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       }
       claimed.add(row.account_id);
     }
-    const value_clp = row.current_value_clp;
-    if (value_clp == null || !Number.isFinite(value_clp)) return null;
+    const basis = row.clp_basis.current_value;
+    if (basis == null || !Number.isFinite(basis)) return null;
     return {
       kind: "account",
       slug: n.slug,
@@ -272,14 +298,14 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       label: n.label,
       label_i18n_key: n.label_i18n_key,
       route_path: n.route_path,
-      value_clp,
-      value_usd: row.current_value_usd != null && Number.isFinite(row.current_value_usd) ? row.current_value_usd : null,
-      ...pctAndPl([row], { kind: "account", accountId: row.account_id }, chainedPct),
+      basis_clp: basis,
+      value: finiteOrNull(row.current_value),
+      ...pctAndPl([row], { kind: "account", accountId: row.account_id }, unit, chainedPct),
       frame: false,
     };
   };
 
-  const build = (node: NavTreeNodeDto, asLeaf = false): NavValueMapNodeDto | null => {
+  const build = (node: NavTreeNodeDto, asLeaf = false): MapNode | null => {
     const groupKids = (node.children ?? []).filter(isMapGroup);
     const accountKids = (node.children ?? []).filter((c) => c.account_id != null && c.account_id > 0);
     const metricsRows = stripMetricsRows(node, rows);
@@ -297,7 +323,7 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
     if (proxy) {
       const candidates = metricsRows.filter((r) => {
         if (!accountCountsTowardGroupTotals(r)) return false;
-        if (r.current_value_clp == null || !(r.current_value_clp > 0)) return false;
+        if (r.clp_basis.current_value == null || !(r.clp_basis.current_value > 0)) return false;
         if (claimed.has(r.account_id)) return false;
         if (explicitIds.has(r.account_id) && !navLeafAccountIdSet(node).has(r.account_id)) return false;
         return true;
@@ -307,20 +333,17 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       const breakdown = bucket != null ? proxy.breakdowns.get(bucket) : undefined;
       if (candidates.length > 0 && bucket != null && breakdown) {
         for (const r of candidates) claimed.add(r.account_id);
-        const value_clp = sumFinite(candidates.map((r) => r.current_value_clp)) ?? 0;
-        const usdParts = candidates.map((r) => r.current_value_usd);
-        const value_usd = usdParts.every((v) => v != null && Number.isFinite(v))
-          ? (sumFinite(usdParts) as number)
-          : null;
-        const children = breakdown.holdings.map((h) => holdingTile(base, bucket, h, value_clp, value_usd));
+        const basis = sumFinite(candidates.map((r) => r.clp_basis.current_value)) ?? 0;
+        const value = sumAll(candidates.map((r) => finiteOrNull(r.current_value)));
+        const children = breakdown.holdings.map((h) => holdingTile(base, bucket, h, basis, value));
         if (breakdown.other_weight > 0) {
-          children.push(otherSleeveTile(base, bucket, breakdown.other_weight, value_clp, value_usd));
+          children.push(otherSleeveTile(base, bucket, breakdown.other_weight, basis, value));
         }
         return {
           ...base,
-          value_clp,
-          value_usd,
-          ...pctAndPl(candidates, { kind: "group", slug: node.slug }, chainedPct),
+          basis_clp: basis,
+          value,
+          ...pctAndPl(candidates, { kind: "group", slug: node.slug }, unit, chainedPct),
           frame: true,
           children,
         };
@@ -328,7 +351,7 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
     }
 
     if (groupKids.length > 0) {
-      const children: NavValueMapNodeDto[] = [];
+      const children: MapNode[] = [];
       for (const a of accountKids) {
         const t = accountTile(a);
         if (t) children.push(t);
@@ -342,13 +365,11 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
         const t = build(g, mixed);
         if (t) children.push(t);
       }
-      const value_clp = children.reduce((s, c) => s + c.value_clp, 0);
-      const usdParts = children.map((c) => c.value_usd);
       return {
         ...base,
-        value_clp,
-        value_usd: usdParts.every((v) => v != null) ? (sumFinite(usdParts) as number) : null,
-        ...pctAndPl(metricsRows, { kind: "group", slug: node.slug }, chainedPct),
+        basis_clp: children.reduce((s, c) => s + c.basis_clp, 0),
+        value: sumAll(children.map((c) => c.value)),
+        ...pctAndPl(metricsRows, { kind: "group", slug: node.slug }, unit, chainedPct),
         frame: true,
         children,
       };
@@ -361,15 +382,15 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       return true;
     });
     for (const r of leafRows) claimed.add(r.account_id);
-    let value_clp = sumFinite(leafRows.map((r) => r.current_value_clp)) ?? 0;
-    let value_usd: number | null = sumFinite(leafRows.map((r) => r.current_value_usd));
+    let basis = sumFinite(leafRows.map((r) => r.clp_basis.current_value)) ?? 0;
+    let value: number | null = sumFinite(leafRows.map((r) => r.current_value)) ?? emptySum;
     if (isCashSavingsNavNode(node)) {
-      value_clp = cashNetOfLinkedCreditCards(value_clp, linkedCreditCards.clp);
-      value_usd =
-        value_usd != null && linkedCreditCards.usd != null
-          ? cashNetOfLinkedCreditCards(value_usd, linkedCreditCards.usd)
+      basis = cashNetOfLinkedCreditCards(basis, linkedCreditCards.clp);
+      value =
+        value != null && linkedCreditCards.value != null
+          ? cashNetOfLinkedCreditCards(value, linkedCreditCards.value)
           : linkedCreditCards.clp === 0
-            ? value_usd
+            ? value
             : null;
     }
     // The leaf's own accounts, for the page to open it into (Crypto shows Bitcoin and Ether);
@@ -378,31 +399,31 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       ? []
       : accountKids
           .map((a) => accountTile(a, false))
-          .filter((t): t is NavValueMapNodeDto => t != null && t.value_clp > 0)
-          .sort((x, y) => y.value_clp - x.value_clp);
+          .filter((t): t is MapNode => t != null && t.basis_clp > 0)
+          .sort((x, y) => y.basis_clp - x.basis_clp);
     return {
       ...base,
-      value_clp,
-      value_usd,
-      ...pctAndPl(leafRows, { kind: "group", slug: node.slug }, chainedPct),
+      basis_clp: basis,
+      value,
+      ...pctAndPl(leafRows, { kind: "group", slug: node.slug }, unit, chainedPct),
       frame: false,
       leaf_accounts,
     };
   };
 
   // Hide nodes worth <= 0 (their value already counted in every ancestor above).
-  const prune = (n: NavValueMapNodeDto): NavValueMapNodeDto => {
+  const prune = (n: MapNode): MapNode => {
     if (!n.children) return n;
     const children = n.children
-      .filter((c) => c.value_clp > 0)
+      .filter((c) => c.basis_clp > 0)
       .map(prune)
-      .sort((a, b) => b.value_clp - a.value_clp);
+      .sort((a, b) => b.basis_clp - a.basis_clp);
     return { ...n, children };
   };
 
   const root = build(navRoot);
-  if (!root || root.value_clp <= 0) throw new Error("nav value map: net worth is not positive");
-  return prune(root);
+  if (!root || root.basis_clp <= 0) throw new Error("nav value map: net worth is not positive");
+  return toDto(prune(root));
 }
 
 export type NavValueMapPayload = {
@@ -414,10 +435,7 @@ export type NavValueMapPayload = {
  * The proxy baskets behind the rows' accounts (`accounts.fund_series_key` →
  * `proxyBucketSlugForSeriesKey`), with the breakdown of every bucket that has one on record.
  */
-function loadNavValueMapProxyInput(
-  rows: readonly CardMetricsAccountRow[],
-  includeUsd: boolean
-): NavValueMapProxyInput {
+function loadNavValueMapProxyInput(rows: readonly CardMetricsAccountRow[], unit: TsUnit): NavValueMapProxyInput {
   const ids = [...new Set(rows.map((r) => r.account_id))].filter((id) => id > 0);
   const bucketByAccountId = new Map<number, string>();
   if (ids.length > 0) {
@@ -431,7 +449,7 @@ function loadNavValueMapProxyInput(
   }
   const breakdowns = new Map<string, ProxyBasketBreakdown>();
   for (const bucket of new Set(bucketByAccountId.values())) {
-    const b = loadProxyBasketBreakdown(bucket, { includeUsd });
+    const b = loadProxyBasketBreakdown(bucket, { unit });
     if (b) breakdowns.set(bucket, b);
   }
   return { bucketByAccountId, breakdowns };
@@ -440,21 +458,22 @@ function loadNavValueMapProxyInput(
 /** The two payload fields every `card_metrics_by_slug` carrier also carries. */
 export function buildNavValueMapPayload(
   rows: readonly CardMetricsAccountRow[],
-  includeUsd: boolean,
+  unit: TsUnit,
   chainedPct?: ChainedGroupPct
 ): NavValueMapPayload {
   const navRoot = getNetWorthNavGroupNode();
   if (!navRoot) throw new Error("nav value map: net_worth nav tree missing");
   const today = chileCalendarTodayYmd();
   const clp = linkedCreditCardClpForCashCardAsOf(today);
-  const usd = includeUsd ? clpToUnitAt(clp, today, "usd", { side: "debt" }) : null;
+  const inUnit = clpToUnitAt(clp, today, unit, { side: "debt" });
   return {
     value_map: buildNavValueMap({
       navRoot,
       rows,
-      linkedCreditCards: { clp, usd: usd != null && Number.isFinite(usd) ? usd : null },
-      proxy: loadNavValueMapProxyInput(rows, includeUsd),
+      linkedCreditCards: { clp, value: inUnit != null && Number.isFinite(inUnit) ? inUnit : null },
+      proxy: loadNavValueMapProxyInput(rows, unit),
       chainedPct,
+      unit,
     }),
     value_map_color_bounds: NAV_VALUE_MAP_COLOR_BOUNDS,
   };

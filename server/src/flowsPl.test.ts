@@ -186,8 +186,11 @@ describe("buildFlowsPlPayload (test DB invariants)", () => {
   it("chart point totals equal the bucket sum and blocks sum their account rows", () => {
     chileToday.ymd = realChileToday;
     const payload = buildFlowsPlPayload();
+    const payloadUsd = buildFlowsPlPayload("usd");
+    expect(payload.unit).toBe("clp");
+    expect(payloadUsd.unit).toBe("usd");
 
-    for (const series of [payload.chart_monthly, payload.chart_monthly_usd]) {
+    for (const series of [payload.chart_monthly, payloadUsd.chart_monthly]) {
       let year = "";
       let ytd = 0;
       let cumulative = 0;
@@ -208,17 +211,20 @@ describe("buildFlowsPlPayload (test DB invariants)", () => {
       }
     }
 
-    expect(payload.by_bucket.map((b) => b.slug)).toEqual(FLOWS_PL_BUCKETS.map((b) => b.slug));
-    for (const block of payload.by_bucket) {
-      const sum = (pick: (a: (typeof block.accounts)[number]) => number) =>
-        block.accounts.reduce((s, a) => s + pick(a), 0);
-      expect(block.total_month_clp).toBeCloseTo(sum((a) => a.pl_month_clp), 6);
-      expect(block.total_ytd_clp).toBeCloseTo(sum((a) => a.pl_ytd_clp), 6);
-      expect(block.total_cumulative_clp).toBeCloseTo(sum((a) => a.pl_cumulative_clp), 6);
-      expect(block.total_month_usd).toBeCloseTo(sum((a) => a.pl_month_usd), 6);
-      expect(block.total_ytd_usd).toBeCloseTo(sum((a) => a.pl_ytd_usd), 6);
-      expect(block.total_cumulative_usd).toBeCloseTo(sum((a) => a.pl_cumulative_usd), 6);
+    for (const p of [payload, payloadUsd]) {
+      expect(p.by_bucket.map((b) => b.slug)).toEqual(FLOWS_PL_BUCKETS.map((b) => b.slug));
+      for (const block of p.by_bucket) {
+        const sum = (pick: (a: (typeof block.accounts)[number]) => number) =>
+          block.accounts.reduce((s, a) => s + pick(a), 0);
+        expect(block.total_month).toBeCloseTo(sum((a) => a.pl_month), 6);
+        expect(block.total_ytd).toBeCloseTo(sum((a) => a.pl_ytd), 6);
+        expect(block.total_cumulative).toBeCloseTo(sum((a) => a.pl_cumulative), 6);
+      }
     }
+    // Every unit lists the same accounts in the same order (by their pesos).
+    expect(payloadUsd.by_bucket.map((b) => b.accounts.map((a) => a.account_id))).toEqual(
+      payload.by_bucket.map((b) => b.accounts.map((a) => a.account_id))
+    );
   });
 
   it("latest monthly chart point matches the blocks' current-month totals", () => {
@@ -229,9 +235,9 @@ describe("buildFlowsPlPayload (test DB invariants)", () => {
     const currentMk = chileDate.chileCalendarTodayYmd().slice(0, 7);
     if (last.as_of_date.slice(0, 7) !== currentMk) return;
     const bySlug = new Map(payload.by_bucket.map((b) => [b.slug, b]));
-    expect(last.brokerage).toBeCloseTo(bySlug.get("brokerage")!.total_month_clp, 6);
-    expect(last.retirement).toBeCloseTo(bySlug.get("retirement")!.total_month_clp, 6);
-    expect(last.cash).toBeCloseTo(bySlug.get("cash")!.total_month_clp, 6);
-    expect(last.real_estate).toBeCloseTo(bySlug.get("real_estate")!.total_month_clp, 6);
+    expect(last.brokerage).toBeCloseTo(bySlug.get("brokerage")!.total_month, 6);
+    expect(last.retirement).toBeCloseTo(bySlug.get("retirement")!.total_month, 6);
+    expect(last.cash).toBeCloseTo(bySlug.get("cash")!.total_month, 6);
+    expect(last.real_estate).toBeCloseTo(bySlug.get("real_estate")!.total_month, 6);
   });
 });

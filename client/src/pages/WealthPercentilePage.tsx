@@ -16,9 +16,8 @@ import type {
   WealthPercentileCell,
   WealthPercentileYearRow,
 } from "../types";
-import { queryLoadError } from "../queries/pageShapeReady";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 import type { DisplayUnit } from "../queries/keys";
-import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const BENCHMARK_COUNTRIES: readonly WealthBenchmarkCountry[] = [
   "US",
@@ -84,11 +83,9 @@ function yearMarkers(row: WealthPercentileYearRow): string {
   ].join("");
 }
 
-function thresholdOf(cell: WealthPercentileCell, key: ThresholdKey, unit: "clp" | "usd"): number {
-  if (unit === "usd") {
-    return key === "p50" ? cell.p50_usd : key === "p90" ? cell.p90_usd : cell.p99_usd;
-  }
-  return key === "p50" ? cell.p50_clp : key === "p90" ? cell.p90_clp : cell.p99_clp;
+/** The threshold in the payload's unit (server-converted at the row's year-end rate). */
+function thresholdOf(cell: WealthPercentileCell, key: ThresholdKey): number {
+  return key === "p50" ? cell.p50 : key === "p90" ? cell.p90 : cell.p99;
 }
 
 function rowsDescOf(rows: readonly WealthPercentileYearRow[]): WealthPercentileYearRow[] {
@@ -99,16 +96,17 @@ function rowsDescOf(rows: readonly WealthPercentileYearRow[]): WealthPercentileY
 function MyDataTable({
   rows,
   countries,
+  unit,
   loading,
 }: {
   rows: readonly WealthPercentileYearRow[];
   countries: readonly WealthBenchmarkCountry[];
+  /** The unit the rows' amounts are in (the payload's). */
+  unit: DisplayUnit;
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const money = (usd: number, clp: number) =>
-    displayUnit === "usd" ? formatCurrency(usd, "usd") : formatCurrency(clp, "clp");
+  const money = (n: number) => formatCurrency(n, unit);
   const pctText = (cell: WealthPercentileCell) =>
     cell.below_support
       ? t("wealthPercentile.belowSupport")
@@ -120,14 +118,14 @@ function MyDataTable({
       key: "finNetWorth",
       header: t("wealthPercentile.table.finNetWorth"),
       className: "mono",
-      cell: (row) => money(row.fin_net_worth_usd, row.fin_net_worth_clp),
+      cell: (row) => money(row.fin_net_worth),
     },
     { key: "clFin", header: "%CL fin.", className: "mono", cell: (row) => pctText(row.cl_financial) },
     {
       key: "netWorth",
       header: t("wealthPercentile.table.netWorth"),
       className: "mono",
-      cell: (row) => money(row.net_worth_usd, row.net_worth_clp),
+      cell: (row) => money(row.net_worth),
     },
     { key: "cl", header: "%CL", className: "mono", cell: (row) => pctText(row.cl_total) },
     ...countries.map(
@@ -169,17 +167,16 @@ function ownPercentileLabel(percentile: number): string {
  */
 function ThresholdPairsCell({
   cell,
-  ownUsd,
-  ownClp,
-  displayUnit,
+  own,
+  unit,
 }: {
   cell: WealthPercentileCell;
-  ownUsd: number;
-  ownClp: number;
-  displayUnit: DisplayUnit;
+  /** The user's net worth for the cell's mode, in `unit`. */
+  own: number;
+  unit: DisplayUnit;
 }) {
   const { t } = useTranslation();
-  const ownValue = formatCurrency(displayUnit === "usd" ? ownUsd : ownClp, displayUnit);
+  const ownValue = formatCurrency(own, unit);
   const ownLine = (
     <span key="own" className="wealth-own-threshold" style={{ whiteSpace: "nowrap" }}>
       {`${cell.below_support || cell.percentile === null ? t("wealthPercentile.belowSupport") : ownPercentileLabel(cell.percentile)}: ${ownValue}`}
@@ -194,7 +191,7 @@ function ThresholdPairsCell({
     }
     lines.push(
       <span key={k} style={{ whiteSpace: "nowrap" }}>
-        {`${k}: ${formatCurrency(thresholdOf(cell, k, legacyDisplayUnit(displayUnit, "Wealth percentile")), displayUnit)}`}
+        {`${k}: ${formatCurrency(thresholdOf(cell, k), unit)}`}
       </span>
     );
   }
@@ -210,16 +207,17 @@ function ThresholdPairsCell({
 function CountryDataTable({
   rows,
   countries,
+  unit,
   loading,
 }: {
   rows: readonly WealthPercentileYearRow[];
   countries: readonly WealthBenchmarkCountry[];
+  unit: DisplayUnit;
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const pairs = (cell: WealthPercentileCell, ownUsd: number, ownClp: number) => (
-    <ThresholdPairsCell cell={cell} ownUsd={ownUsd} ownClp={ownClp} displayUnit={displayUnit} />
+  const pairs = (cell: WealthPercentileCell, own: number) => (
+    <ThresholdPairsCell cell={cell} own={own} unit={unit} />
   );
 
   const columns: TableColumn<WealthPercentileYearRow>[] = [
@@ -235,15 +233,15 @@ function CountryDataTable({
       key: "clFin",
       header: "CL fin.",
       className: "mono",
-      cell: (row) => pairs(row.cl_financial, row.fin_net_worth_usd, row.fin_net_worth_clp),
+      cell: (row) => pairs(row.cl_financial, row.fin_net_worth),
     },
-    { key: "cl", header: "CL", className: "mono", cell: (row) => pairs(row.cl_total, row.net_worth_usd, row.net_worth_clp) },
+    { key: "cl", header: "CL", className: "mono", cell: (row) => pairs(row.cl_total, row.net_worth) },
     ...countries.map(
       (c): TableColumn<WealthPercentileYearRow> => ({
         key: c,
         header: c,
         className: "mono",
-        cell: (row) => pairs(row.benchmarks[c], row.net_worth_usd, row.net_worth_clp),
+        cell: (row) => pairs(row.benchmarks[c], row.net_worth),
       })
     ),
   ];
@@ -290,9 +288,13 @@ export function WealthPercentilePage() {
   const [enabledBenchmarks, setEnabledBenchmarks] = useState<WealthBenchmarkCountry[]>(
     loadEnabledBenchmarks
   );
-  const { data, error: queryError, isPending } = useWealthPercentile();
+  const { displayUnit } = useDisplayPreferences();
+  const wealthQuery = useWealthPercentile(displayUnit);
+  const { data, error: queryError } = wealthQuery;
   const error = queryLoadError({ data, error: queryError });
-  const loading = isPending;
+  // Dim while nothing has loaded or the previous unit's payload is held (shown in its own unit).
+  const loading = queryShowsLoading(wealthQuery);
+  const amountsUnit = data?.unit ?? displayUnit;
 
   const toggleBenchmark = (country: WealthBenchmarkCountry) => {
     setEnabledBenchmarks((prev) => {
@@ -454,7 +456,7 @@ export function WealthPercentilePage() {
 
       <PageGridTile id="my-data">
         <h2>{t("wealthPercentile.tables.myData")}</h2>
-        <MyDataTable rows={rows} countries={benchmarkOrder} loading={loading} />
+        <MyDataTable rows={rows} countries={benchmarkOrder} unit={amountsUnit} loading={loading} />
       </PageGridTile>
 
       <PageGridTile id="country-data">
@@ -462,6 +464,7 @@ export function WealthPercentilePage() {
         <CountryDataTable
           rows={rows}
           countries={benchmarkOrder}
+          unit={amountsUnit}
           loading={loading}
         />
       </PageGridTile>

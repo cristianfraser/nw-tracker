@@ -155,7 +155,8 @@ export function anchorValue(anchors: readonly Anchor[], d: Ymd): number {
 }
 
 /**
- * Writes the synthetic market from `fromMonth` through `lastDay`: fx (CLP=X and the observado),
+ * Writes the synthetic market from `fromMonth` through `lastDay`: fx (CLP=X and the observado; EUR/USD
+ * around 1,10 in `fx_rates` and EUR/CLP = USD/CLP × EUR/USD in `eur_daily`, so the two pairs agree),
  * UF daily, UTM and IPC monthly, weekday equity closes (BTC every day) with a little seeded noise,
  * and the AFP fund A values (Modelo from the committed snapshot, UNO synthetic from 2019-10).
  */
@@ -168,7 +169,10 @@ export function writeSyntheticMarket(person: Person, fromMonth: Month, lastDay: 
   const insUtm = db.prepare(`INSERT OR REPLACE INTO utm_daily (date, utm_clp) VALUES (?, ?)`);
   const insIpc = db.prepare(`INSERT OR REPLACE INTO ipc_daily (date, ipc_index) VALUES (?, ?)`);
   const insEq = db.prepare(`INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, ?)`);
+  const insEurUsd = db.prepare(`INSERT OR REPLACE INTO fx_rates (base, quote, date, mid, source) VALUES ('eur', 'usd', ?, ?, 'synthetic')`);
+  const insEurClp = db.prepare(`INSERT OR REPLACE INTO eur_daily (date, clp_per_eur) VALUES (?, ?)`);
   const fxNoise = stream(seed, "market|fx");
+  const eurNoise = stream(seed, "market|eurusd");
   const start: Ymd = `${fromMonth}-01`;
   const ufEnd = addDays(lastDay, 40);
   db.transaction(() => {
@@ -178,6 +182,9 @@ export function writeSyntheticMarket(person: Person, fromMonth: Month, lastDay: 
       const fx = Math.round(anchorValue(FX_ANCHORS, d) * (1 + fxNoise.gauss() * 0.004) * 100) / 100;
       insFx.run(d, fx);
       insFxB.run(d, fx);
+      const eurUsd = Math.round(1.1 * (1 + eurNoise.gauss() * 0.003) * 1e5) / 1e5;
+      insEurUsd.run(d, eurUsd);
+      insEurClp.run(d, Math.round(fx * eurUsd * 100) / 100);
     }
     for (let m = fromMonth; `${m}-01` <= ufEnd; m = addMonths(m, 1)) {
       insUtm.run(`${m}-01`, Math.round(anchorValue(UTM_ANCHORS, `${m}-01`)));

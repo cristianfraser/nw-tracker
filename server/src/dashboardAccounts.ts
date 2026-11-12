@@ -19,18 +19,18 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { fxForLiveMtm } from "./fxRates.js";
 import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
 import {
   flowsDepositsNetTotalByAccount,
-  flowsDepositsNetTotalUsdByAccount,
+  listDepositFlowAccounts,
   netDepositFlowBetween,
 } from "./flowsDeposits.js";
+import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
 import { flowAdjustedPct } from "./periodReturns.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
-import { ccFinancingCostBetweenInUnit, ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
+import { ccFinancingCostBetweenInUnit } from "./ccFinancingCostDaily.js";
 import { flowEventInUnit } from "./rates.js";
 import { timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
@@ -57,20 +57,30 @@ import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { db, dbInTransaction } from "./db.js";
 
 /**
- * A prior close in USD is the same anchor-date mark the CLP figure reads, at that date's stored
- * fx (a USD cash account: its ledger dollars that day, as its perf rows read them); the
- * performance series' month-end close is the fallback for an account with no mark there.
- * The USD frame keeps the peso's move inside P/L on every row, as the consolidated monthly
- * rows do — the dashboard card and the «Detalle por año» table must read the same year P/L.
+ * A prior close in the unit is the same anchor-date mark the CLP figure reads, converted at that
+ * date's stored rate and the account's side (a USD cash account: its ledger dollars that day, as
+ * its perf rows read them); the performance series' month-end close is the fallback for an
+ * account with no mark there. The unit's frame keeps the peso's move inside P/L on every row, as
+ * the consolidated monthly rows do — the dashboard card and the «Detalle por año» table must read
+ * the same year P/L.
  */
-function priorCloseUsdFromMark(
+function priorCloseInUnitFromMark(
   accountId: number,
   markClp: number | null | undefined,
   anchorYmd: string,
+  unit: TsUnit,
   fromPerf: number | undefined
 ): number | undefined {
   if (markClp == null || !Number.isFinite(markClp)) return fromPerf;
-  return accountValueClpToUnitAt(accountId, markClp, anchorYmd, "usd") ?? fromPerf;
+  return accountValueClpToUnitAt(accountId, markClp, anchorYmd, unit) ?? fromPerf;
+}
+
+/**
+ * A missing leg of a sum: pesos are the ledger's own unit, every row carries them, so a row
+ * without one counts zero; in any other unit it is a missing conversion (null).
+ */
+function missingLegIn(unit: TsUnit): 0 | null {
+  return unit === "clp" ? 0 : null;
 }
 
 export function listDashboardSourceAccounts(): {
@@ -106,25 +116,21 @@ export function listDashboardSourceAccounts(): {
 }
 
 type MortgageCardDeposits = {
-  total_clp: number;
-  total_usd: number | null;
-  month_clp: number;
-  month_usd: number | null;
-  year_clp: number;
-  year_usd: number | null;
-  day_clp: number;
-  day_usd: number | null;
+  total: number;
+  month: number;
+  year: number;
+  day: number;
 };
 
 /**
  * Aportado on mortgage cards = depto ledger payments (cuotas + prepagos; pie is property
  * capital), not the flows deposit pool — mortgage cash-in carries `flow_kind` mortgage and
- * is excluded there. Null when no ledger (demo/test installs without depto data). USD: each
- * payment at its own date's rate (`flowEventInUnit`), like the performance table's flow.
+ * is excluded there. Null when no ledger (demo/test installs without depto data). In the unit:
+ * each payment at its own date's rate (`flowEventInUnit`), like the performance table's flow.
  */
 function computeMortgageCardDeposits(
   loanAccountId: number,
-  includeUsd: boolean,
+  unit: TsUnit,
   todayYmd: string,
   priorMonthEnd: string,
   priorYearEnd: string,
@@ -134,31 +140,36 @@ function computeMortgageCardDeposits(
   if (!ledger.length) return null;
   const events = mortgageSheetPaymentEventsThroughDate(ledger, todayYmd);
   if (!events.length) return null;
-  let total_clp = 0;
-  let month_clp = 0;
-  let year_clp = 0;
-  let day_clp = 0;
-  let total_usd: number | null = includeUsd ? 0 : null;
-  let month_usd: number | null = includeUsd ? 0 : null;
-  let year_usd: number | null = includeUsd ? 0 : null;
-  let day_usd: number | null = includeUsd ? 0 : null;
+  const out: MortgageCardDeposits = { total: 0, month: 0, year: 0, day: 0 };
   for (const e of events) {
-    total_clp += e.pago_clp;
-    const inMonth = e.occurred_on > priorMonthEnd;
-    const inYear = e.occurred_on > priorYearEnd;
-    const inDay = priorDayAnchor != null && e.occurred_on > priorDayAnchor;
-    if (inMonth) month_clp += e.pago_clp;
-    if (inYear) year_clp += e.pago_clp;
-    if (inDay) day_clp += e.pago_clp;
-    if (total_usd != null) {
-      const usd = flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, "usd");
-      total_usd += usd;
-      if (inMonth && month_usd != null) month_usd += usd;
-      if (inYear && year_usd != null) year_usd += usd;
-      if (inDay && day_usd != null) day_usd += usd;
-    }
+    const v = flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, unit);
+    out.total += v;
+    if (e.occurred_on > priorMonthEnd) out.month += v;
+    if (e.occurred_on > priorYearEnd) out.year += v;
+    if (priorDayAnchor != null && e.occurred_on > priorDayAnchor) out.day += v;
   }
-  return { total_clp, total_usd, month_clp, month_usd, year_clp, year_usd, day_clp, day_usd };
+  return out;
+}
+
+/**
+ * Net deposits per account in the unit (each event at its own date's rate — `flowEventInUnit`),
+ * over the flows deposits page's accounts: the lifetime deposits of the rows whose deposits are
+ * not their series' flows.
+ */
+function netDepositsByAccountInUnit(unit: TsUnit): Map<number, number> {
+  if (unit === "clp") return flowsDepositsNetTotalByAccount();
+  const accounts = listDepositFlowAccounts(true);
+  const eventsByAccount = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
+  const totals = new Map<number, number>();
+  for (const acc of accounts) {
+    let sum = 0;
+    for (const e of eventsByAccount.get(acc.account_id) ?? []) {
+      if (e.amt === 0) continue;
+      sum += flowEventInUnit(e, unit);
+    }
+    totals.set(acc.account_id, sum);
+  }
+  return totals;
 }
 
 /**
@@ -167,90 +178,66 @@ function computeMortgageCardDeposits(
  * value. Total has no prior close, so it reads P/L acumulado ÷ lifetime deposits (the
  * helper's prior-less frame).
  */
-function dashboardRowPeriodPcts(
-  row: DashboardAccountStats,
-  includeUsd: boolean
-): Partial<DashboardAccountStats> {
-  const pctIn =
-    (unit: TsUnit) =>
-    (
-      delta: number | null | undefined,
-      prior: number | null | undefined,
-      flow: number | null | undefined,
-      close: number | null | undefined
-    ) =>
-      flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, close ?? null, unit);
-  const pctClp = pctIn("clp");
-  const pctUsd = pctIn("usd");
-  const clp = row.current_value_clp;
-  const usd = row.current_value_usd;
+function dashboardRowPeriodPcts(frame: RowFrame, unit: TsUnit): Partial<DashboardAccountStats> {
+  const pct = (
+    delta: number | null | undefined,
+    prior: number | null | undefined,
+    flow: number | null | undefined
+  ) => flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, frame.current_value ?? null, unit);
   return {
-    pct_day_clp: pctClp(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp, clp),
-    pct_month_clp: pctClp(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp, clp),
-    pct_year_clp: pctClp(row.delta_year_clp, row.prior_year_close_clp, row.deposits_year_clp, clp),
-    pct_total_clp: pctClp(row.delta_total_clp, null, row.deposits_clp, clp),
-    ...(includeUsd
-      ? {
-          pct_day_usd: pctUsd(row.delta_day_usd, row.prior_day_close_usd, row.deposits_day_usd, usd),
-          pct_month_usd: pctUsd(
-            row.delta_month_usd,
-            row.prior_month_close_usd,
-            row.deposits_month_usd,
-            usd
-          ),
-          pct_year_usd: pctUsd(
-            row.delta_year_usd,
-            row.prior_year_close_usd,
-            row.deposits_year_usd,
-            usd
-          ),
-          pct_total_usd: pctUsd(row.delta_total_usd, null, row.deposits_usd, usd),
-        }
-      : {}),
+    pct_day: pct(frame.delta_day, frame.prior_day_close, frame.deposits_day),
+    pct_month: pct(frame.delta_month, frame.prior_month_close, frame.deposits_month),
+    pct_year: pct(frame.delta_year, frame.prior_year_close, frame.deposits_year),
+    pct_total: pct(frame.delta_total, null, frame.deposits),
   };
 }
 
+/** A dashboard row as the API sends it: the server-only peso basis left out. */
+export type DashboardAccountRowDto = Omit<DashboardAccountStats, "clp_basis">;
+
+export function dashboardAccountRowDto(row: DashboardAccountStats): DashboardAccountRowDto {
+  const { clp_basis: _basis, ...rest } = row;
+  return rest;
+}
+
 /**
- * Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit).
- * Cached for the page bundle's lifetime (`dashboard.page_bundle|account_rows|<unit>`) and shared
- * by its three readers — the home bundle, the nav snapshot and an account page's row — which each
- * built them; built afresh inside a transaction. Callers must not mutate the rows.
+ * Dashboard nav cards: account rows with balances and P/L metrics in `unit` (one perf fetch per
+ * unit, plus the pesos the structural rules read). Cached for the page bundle's lifetime
+ * (`dashboard.page_bundle|account_rows|<unit>`) and shared by its three readers — the home
+ * bundle, the nav snapshot and an account page's row — which each built them; built afresh
+ * inside a transaction. Callers must not mutate the rows.
  *
  * Each row is its own entry (`dashboard.page_bundle|account_row|<id>|<unit>`) on top of the
  * listing's shared inputs (`account_rows_ctx|<unit>`), so a live-quote tick that moves one price
  * rebuilds only the rows that read it (`cacheDependencies.ts`); the list links every row's
  * inputs, goes with any of them, and is reassembled from the rows still cached.
  */
-export function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
-  return getAggregationCached(cacheKeyDashboardAccountRows(`account_rows|${unitKey(includeUsd)}`), () =>
-    buildDashboardAccountRowsUncached(includeUsd)
+export function buildDashboardAccountRows(unit: TsUnit): Promise<DashboardAccountStats[]> {
+  return getAggregationCached(cacheKeyDashboardAccountRows(`account_rows|${unit}`), () =>
+    buildDashboardAccountRowsUncached(unit)
   );
 }
 
 /**
- * One account's dashboard row, the same object the full listing holds (shared cache entry), for a
- * page that shows only its own account: building the whole listing read every account's live
- * price, so the account page refetched on every move (`X-Live-Inputs`). Null when the account is
- * not a dashboard source account.
+ * One account's dashboard row (as sent), the same object the full listing holds (shared cache
+ * entry), for a page that shows only its own account: building the whole listing read every
+ * account's live price, so the account page refetched on every move (`X-Live-Inputs`). Null when
+ * the account is not a dashboard source account.
  */
-export function buildDashboardAccountRow(accountId: number, includeUsd: boolean): DashboardAccountStats | null {
+export function buildDashboardAccountRow(accountId: number, unit: TsUnit): DashboardAccountRowDto | null {
   return withPortfolioGroupIndex(() =>
     withAccountValuationTsCache(() => {
-      const ctx = dashboardAccountRowsContext(includeUsd);
+      const ctx = dashboardAccountRowsContext(unit);
       const a = ctx.accounts.find((x) => x.id === accountId);
       if (!a) return null;
       noteSyncDimmingRead();
       const stale = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale_dimming).has(a.id);
-      const row = pageBundleCachedSync(`account_row|${a.id}|${unitKey(includeUsd)}`, () =>
-        buildDashboardAccountRowFor(ctx, a, includeUsd)
+      const row = pageBundleCachedSync(`account_row|${a.id}|${unit}`, () =>
+        buildDashboardAccountRowFor(ctx, a, unit)
       );
-      return { ...row, sync_stale: stale };
+      return dashboardAccountRowDto({ ...row, sync_stale: stale });
     })
   );
-}
-
-function unitKey(includeUsd: boolean): "usd" | "clp" {
-  return includeUsd ? "usd" : "clp";
 }
 
 /**
@@ -261,28 +248,30 @@ function pageBundleCachedSync<T>(name: `account_row${string}`, build: () => T): 
   return getAggregationCached(cacheKeyDashboardAccountRows(name), build);
 }
 
-function buildDashboardAccountRowsUncached(includeUsd: boolean): Promise<DashboardAccountStats[]> {
-  return withPortfolioGroupIndex(() => withAccountValuationTsCache(() => buildDashboardAccountRowsInner(includeUsd)));
+function buildDashboardAccountRowsUncached(unit: TsUnit): Promise<DashboardAccountStats[]> {
+  return withPortfolioGroupIndex(() => withAccountValuationTsCache(() => buildDashboardAccountRowsInner(unit)));
 }
 
 type DashboardSourceAccount = ReturnType<typeof listDashboardSourceAccounts>[number];
 
 /** What every row of one listing reads: the accounts, their leaves, lifetime deposits, the anchors. */
 type DashboardAccountRowsContext = {
+  unit: TsUnit;
   accounts: DashboardSourceAccount[];
   leafSlugByAccount: ReturnType<typeof leafPortfolioGroupSlugByAccountIds>;
-  depositsNetByAccount: ReturnType<typeof flowsDepositsNetTotalByAccount>;
-  depositsNetUsdByAccount: ReturnType<typeof flowsDepositsNetTotalUsdByAccount> | null;
+  /** Lifetime net deposits per account in pesos (the basis) and in the unit. */
+  depositsNetClpByAccount: Map<number, number>;
+  depositsNetByAccount: Map<number, number>;
   today: string;
   priorMonthEnd: string;
   priorYearEnd: string;
   priorDayYmd: string;
-  /** A mortgage card's deposits (its own property's ledger), once per listing and loan. */
-  mortgageCardDeposits: (loanAccountId: number) => MortgageCardDeposits | null;
+  /** A mortgage card's deposits in a unit (its own property's ledger), once per listing, loan and unit. */
+  mortgageCardDeposits: (loanAccountId: number, unit: TsUnit) => MortgageCardDeposits | null;
 };
 
-function dashboardAccountRowsContext(includeUsd: boolean): DashboardAccountRowsContext {
-  return pageBundleCachedSync(`account_rows_ctx|${unitKey(includeUsd)}`, () => {
+function dashboardAccountRowsContext(unit: TsUnit): DashboardAccountRowsContext {
+  return pageBundleCachedSync(`account_rows_ctx|${unit}`, () => {
     const accounts = listDashboardSourceAccounts();
     const today = chileCalendarTodayYmd();
     const priorMonthEnd = priorPeriodEndYmd("mtd", today);
@@ -293,29 +282,31 @@ function dashboardAccountRowsContext(includeUsd: boolean): DashboardAccountRowsC
      * Day deltas are always balance-change net of flows (no perf series exists at day grain).
      */
     const priorDayYmd = chileCalendarAddDays(today, -1);
-    const computeMortgage = (loanAccountId: number) =>
-      computeMortgageCardDeposits(loanAccountId, includeUsd, today, priorMonthEnd, priorYearEnd, priorDayYmd);
-    // Its own entry per loan, so the row that reads it records what it read; inside a
+    const computeMortgage = (loanAccountId: number, u: TsUnit) =>
+      computeMortgageCardDeposits(loanAccountId, u, today, priorMonthEnd, priorYearEnd, priorDayYmd);
+    // Its own entry per loan and unit, so the row that reads it records what it read; inside a
     // transaction (this context is then not cached) a memo on the context.
-    const mortgageMemo = new Map<number, MortgageCardDeposits | null>();
+    const mortgageMemo = new Map<string, MortgageCardDeposits | null>();
     const mortgageCardDeposits = dbInTransaction()
-      ? (loanAccountId: number) => {
-          if (!mortgageMemo.has(loanAccountId)) mortgageMemo.set(loanAccountId, computeMortgage(loanAccountId));
-          return mortgageMemo.get(loanAccountId)!;
+      ? (loanAccountId: number, u: TsUnit) => {
+          const key = `${loanAccountId}|${u}`;
+          if (!mortgageMemo.has(key)) mortgageMemo.set(key, computeMortgage(loanAccountId, u));
+          return mortgageMemo.get(key)!;
         }
-      : (loanAccountId: number) =>
-          pageBundleCachedSync(
-            `account_rows_mortgage_deposits|${loanAccountId}|${unitKey(includeUsd)}`,
-            () => computeMortgage(loanAccountId)
+      : (loanAccountId: number, u: TsUnit) =>
+          pageBundleCachedSync(`account_rows_mortgage_deposits|${loanAccountId}|${u}`, () =>
+            computeMortgage(loanAccountId, u)
           );
+    // Lifetime deposits for the rows whose deposits are not their series' flows (cards, whose
+    // flows are not personal capital; a liability or reference account): the asset rows read
+    // theirs from their series.
+    const depositsNetClpByAccount = flowsDepositsNetTotalByAccount();
     return {
+      unit,
       accounts,
       leafSlugByAccount: leafPortfolioGroupSlugByAccountIds(accounts.map((a) => a.id)),
-      // Lifetime deposits for the rows whose deposits are not their series' flows (cards, whose
-      // flows are not personal capital; a liability or reference account): the asset rows read
-      // theirs from their series.
-      depositsNetByAccount: flowsDepositsNetTotalByAccount(),
-      depositsNetUsdByAccount: includeUsd ? flowsDepositsNetTotalUsdByAccount() : null,
+      depositsNetClpByAccount,
+      depositsNetByAccount: unit === "clp" ? depositsNetClpByAccount : netDepositsByAccountInUnit(unit),
       today,
       priorMonthEnd,
       priorYearEnd,
@@ -325,8 +316,8 @@ function dashboardAccountRowsContext(includeUsd: boolean): DashboardAccountRowsC
   });
 }
 
-async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<DashboardAccountStats[]> {
-  const ctx = dashboardAccountRowsContext(includeUsd);
+async function buildDashboardAccountRowsInner(unit: TsUnit): Promise<DashboardAccountStats[]> {
+  const ctx = dashboardAccountRowsContext(unit);
   // `stale_dimming`, not `stale`: a source waiting on its publisher (Fintual has not published
   // the expected cuota yet, our poll is current) dims its accounts only once the cuota is overdue —
   // from 18:00 Chile until it lands — never before, when the display holds all the publisher has.
@@ -336,66 +327,52 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   noteSyncDimmingRead();
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale_dimming);
   return ctx.accounts.map((a) => {
-    const row = pageBundleCachedSync(`account_row|${a.id}|${unitKey(includeUsd)}`, () =>
-      buildDashboardAccountRowFor(ctx, a, includeUsd)
-    );
+    const row = pageBundleCachedSync(`account_row|${a.id}|${unit}`, () => buildDashboardAccountRowFor(ctx, a, unit));
     // Overwrites the placeholder in place, so the row's keys keep their order.
     return { ...row, sync_stale: staleAccountIds.has(a.id) };
   });
 }
 
+/** One row's money fields in one unit (see {@link buildDashboardAccountRowFor}). */
+type RowFrame = {
+  deposits: number | null;
+  delta_month: number | null;
+  delta_year: number | null;
+  delta_total: number | null;
+  deposits_month: number | null | undefined;
+  deposits_year: number | null | undefined;
+  deposits_day: number | null | undefined;
+  delta_day: number | null;
+  prior_day_close: number | null;
+  prior_month_close: number | null | undefined;
+  prior_year_close: number | null | undefined;
+  current_value: number | null;
+};
+
 /** One account's dashboard row; `sync_stale` is a placeholder the list sets. */
 function buildDashboardAccountRowFor(
   ctx: DashboardAccountRowsContext,
   a: DashboardSourceAccount,
-  includeUsd: boolean
+  unit: TsUnit
 ): DashboardAccountStats {
-  const {
-    leafSlugByAccount,
-    depositsNetByAccount,
-    depositsNetUsdByAccount,
-    today,
-    priorMonthEnd,
-    priorYearEnd,
-    priorDayYmd,
-    mortgageCardDeposits,
-  } = ctx;
+  const { leafSlugByAccount, today, priorMonthEnd, priorYearEnd, priorDayYmd, mortgageCardDeposits } = ctx;
   const leafSlug = a.bucket_slug;
   const kindSlug = accountBucketKindSlug(leafSlug);
-  const mortgagePayments = kindSlug === "mortgage" ? mortgageCardDeposits(a.id) : null;
+  const isMortgageRow = kindSlug === "mortgage";
+  const isCcRow = kindSlug === "credit_card";
   const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
   const dashboard_bucket_slug = bucketOfAccount(a.id);
   const metricGroup = dashboard_bucket_slug ?? leafSlug;
   const trackAssetMetrics = isNwBucketSlug(metricGroup);
   // The card's deposits and P/L (month, year, lifetime) are read from the same monthly
   // rows the group tables consolidate — one series, one picker, one sum — so the card and
-  // the «Detalle por mes / año» table of the same scope agree by construction, in both
-  // units (a card's USD year P/L keeps the peso's move inside P/L like every table row).
+  // the «Detalle por mes / año» table of the same scope agree by construction, in every
+  // unit (a card's USD year P/L keeps the peso's move inside P/L like every table row).
   // The mortgage and credit-card rows read their P/L from the same rows (the card's is
   // its cost of financing per calendar month, `creditCardMonthPerf`, the account page's
   // «Detalle por mes»); their deposits are not the rows' flows — the mortgage's are the
   // depto ledger's payments, and a card's flows are not personal capital.
   const hasPerfRows = trackAssetMetrics || accountIsDebt(a.id);
-  const rowsClp: AccountMonthlyPerformanceRow[] = hasPerfRows
-    ? monthlyPerfRowsForAccount(a.id, leafSlug, "clp")
-    : [];
-  const rowsUsd: AccountMonthlyPerformanceRow[] =
-    hasPerfRows && includeUsd ? monthlyPerfRowsForAccount(a.id, leafSlug, "usd") : [];
-  const perfClp: AccountPeriodMetrics | null = hasPerfRows
-    ? accountPeriodMetricsFromMonthlyRows(rowsClp, today)
-    : null;
-  const perfUsd: AccountPeriodMetrics | null =
-    hasPerfRows && includeUsd ? accountPeriodMetricsFromMonthlyRows(rowsUsd, today) : null;
-  const deposits = mortgagePayments
-    ? mortgagePayments.total_clp
-    : trackAssetMetrics
-      ? perfClp!.deposits_total
-      : depositsNetByAccount.get(a.id) ?? 0;
-  const deposits_usd = mortgagePayments
-    ? mortgagePayments.total_usd
-    : trackAssetMetrics
-      ? perfUsd?.deposits_total ?? null
-      : depositsNetUsdByAccount?.get(a.id) ?? null;
 
   // Today's value is the account's one today value for every row, liabilities included —
   // the today mark (`accountMarkClpAtYmd` at today reads it too), the account page header,
@@ -410,139 +387,106 @@ function buildDashboardAccountRowFor(
   // Mortgage and CC track day marks too (daily UF cost; per-day owed) — their title
   // deltas move daily, P/L stays their own convention.
   const rowTracksDayMetrics = trackAssetMetrics || accountIsDebt(a.id);
-  const priorDayMark = rowTracksDayMetrics
-    ? accountMarkClpAtYmd(a.id, priorDayYmd)
-    : null;
-  const prior_day_close_clp = priorDayMark?.value_clp ?? null;
-  // Stored fx of the prior day (a USD cash account: its ledger dollars that day).
-  const prior_day_close_usd =
-    includeUsd && prior_day_close_clp != null
-      ? accountValueClpToUnitAt(a.id, prior_day_close_clp, priorDayYmd, "usd")
-      : null;
-  const deposits_day_clp = mortgagePayments
-    ? mortgagePayments.day_clp
-    : trackAssetMetrics
-      ? netDepositFlowBetween(a.id, priorDayYmd, today, "clp")
-      : undefined;
-  const deposits_day_usd = mortgagePayments
-    ? mortgagePayments.day_usd
-    : trackAssetMetrics && includeUsd
-      ? netDepositFlowBetween(a.id, priorDayYmd, today, "usd")
-      : undefined;
-  const prior_month_close_clp =
-    priorMonthMark?.value_clp ??
-    (trackAssetMetrics ? priorCloseFromPerfRows(rowsClp, "mtd", today) ?? undefined : undefined);
-  const prior_year_close_clp =
-    priorYearMark?.value_clp ??
-    (trackAssetMetrics ? priorCloseFromPerfRows(rowsClp, "ytd", today) ?? undefined : undefined);
-  const position = positionSnapshotFromMeta(a.id, positionMeta, deposits, v);
-  const current_value_clp = v?.value_clp ?? null;
-  const valuation_as_of = v?.as_of_date ?? null;
-  // The USD frame of the row is the account's value converted once at today's rate and its
-  // side (`todayValueInUnit`): a USD cash account reads its ledger dollars, a dollar stock its
-  // shares × dollar price, a peso value its pesos at the buy rate (a debt at the sell rate).
-  // The perf live row and the charts' live point read the same value, so the card, its table
-  // and its chart agree. `fx_*` below only report the rate of the day the price was observed.
-  const fxRow = includeUsd ? fxForLiveMtm(v?.priced_on ?? null) : null;
-  const current_value_usd = includeUsd && v != null ? todayValueInUnit(a.id, v, "usd") : null;
+  const priorDayMark = rowTracksDayMetrics ? accountMarkClpAtYmd(a.id, priorDayYmd) : null;
+  const priorDayClp = priorDayMark?.value_clp ?? null;
+
+  /** The row's money fields in `u`: pesos as the ledger states them, any other unit converted. */
+  const frameIn = (u: TsUnit): RowFrame => {
+    const mortgagePayments = isMortgageRow ? mortgageCardDeposits(a.id, u) : null;
+    const rows: AccountMonthlyPerformanceRow[] = hasPerfRows ? monthlyPerfRowsForAccount(a.id, leafSlug, u) : [];
+    const perf: AccountPeriodMetrics | null = hasPerfRows ? accountPeriodMetricsFromMonthlyRows(rows, today) : null;
+    const depositsNet = u === ctx.unit ? ctx.depositsNetByAccount : ctx.depositsNetClpByAccount;
+    const deposits = mortgagePayments
+      ? mortgagePayments.total
+      : trackAssetMetrics
+        ? perf?.deposits_total ?? missingLegIn(u)
+        : depositsNet.get(a.id) ?? missingLegIn(u);
+    // Yesterday's stored rate (a USD cash account: its ledger dollars that day).
+    const prior_day_close = priorDayClp != null ? accountValueClpToUnitAt(a.id, priorDayClp, priorDayYmd, u) : null;
+    const deposits_day = mortgagePayments
+      ? mortgagePayments.day
+      : trackAssetMetrics
+        ? netDepositFlowBetween(a.id, priorDayYmd, today, u)
+        : undefined;
+    // The unit's frame of the row is the account's value converted once at today's rate and its
+    // side (`todayValueInUnit`): a USD cash account reads its ledger dollars, a dollar stock its
+    // shares × dollar price, a peso value its pesos at the buy rate (a debt at the sell rate).
+    // The perf live row and the charts' live point read the same value, so the card, its table
+    // and its chart agree.
+    const current_value = v != null ? todayValueInUnit(a.id, v, u) : null;
+    // Day Δ = live value vs day-anchor close net of day flows — same identity the daily
+    // series uses (pl = delta − flow), so cards and the daily view agree. Both liabilities
+    // keep the loss-negative convention (prior − close − payments, as the monthly
+    // nominal_pl): a UF uptick is a daily financing loss on the mortgage, an amortizing
+    // cuota nets interest+seguros. A card's day cost is the intereses/comisiones charged
+    // that day (`ccFinancingCostDaily.ts`) — its purchases and PAGOs are flows, so they
+    // cancel out and most days read 0 — and the fx revaluation of what it owes in another
+    // currency; in another unit the same cost in it (`ccFinancingCostBetweenInUnit`), the map
+    // its monthly rows sum, so the day and the month share one frame.
+    const delta_day = isCcRow
+      ? -ccFinancingCostBetweenInUnit(a.id, priorDayYmd, today, u)
+      : current_value != null && prior_day_close != null
+        ? isMortgageRow
+          ? prior_day_close - current_value - (deposits_day ?? 0)
+          : current_value - prior_day_close - (deposits_day ?? 0)
+        : null;
+    const fromPerf = (period: "mtd" | "ytd") =>
+      trackAssetMetrics ? priorCloseFromPerfRows(rows, period, today) ?? undefined : undefined;
+    return {
+      deposits,
+      delta_month: perf?.delta_month ?? null,
+      delta_year: perf?.delta_year ?? null,
+      delta_total: perf?.delta_total ?? null,
+      deposits_month: mortgagePayments
+        ? mortgagePayments.month
+        : trackAssetMetrics
+          ? perf?.deposits_month ?? missingLegIn(u)
+          : undefined,
+      deposits_year: mortgagePayments
+        ? mortgagePayments.year
+        : trackAssetMetrics
+          ? perf?.deposits_year ?? missingLegIn(u)
+          : undefined,
+      deposits_day,
+      delta_day,
+      prior_day_close,
+      prior_month_close: priorCloseInUnitFromMark(a.id, priorMonthMark?.value_clp, priorMonthEnd, u, fromPerf("mtd")),
+      prior_year_close: priorCloseInUnitFromMark(a.id, priorYearMark?.value_clp, priorYearEnd, u, fromPerf("ytd")),
+      current_value,
+    };
+  };
+
+  const clpFrame = frameIn("clp");
+  const frame = unit === "clp" ? clpFrame : frameIn(unit);
+  const position = positionSnapshotFromMeta(a.id, positionMeta, clpFrame.deposits ?? 0, v);
+  // A row the unit could not convert (no rate for its balance or its deposits).
   const fx_missing =
-    includeUsd &&
-    ((current_value_clp != null && current_value_usd == null) ||
-      (deposits !== 0 && deposits_usd == null));
-  // Day Δ = live value vs day-anchor close net of day flows — same identity the daily
-  // series uses (pl = delta − flow), so cards and the daily view agree. Both liabilities
-  // keep the loss-negative convention (prior − close − payments, as the monthly
-  // nominal_pl): a UF uptick is a daily financing loss on the mortgage, an amortizing
-  // cuota nets interest+seguros. A card's day cost is the intereses/comisiones charged
-  // that day (`ccFinancingCostDaily.ts`) — its purchases and PAGOs are flows, so they
-  // cancel out and most days read 0 — and the fx revaluation of what it owes in another
-  // currency; in dollars the same cost in dollars (`ccFinancingCostByDateInUnit`), the map its
-  // monthly rows sum, so the day and the month share one frame.
-  const isMortgageRow = kindSlug === "mortgage";
-  const isCcRow = kindSlug === "credit_card";
-  const ccDayFinancingClp = isCcRow ? ccFinancingCostClpBetween(a.id, priorDayYmd, today) : 0;
-  const delta_day_clp = isCcRow
-    ? -ccDayFinancingClp
-    : current_value_clp != null && prior_day_close_clp != null
-      ? isMortgageRow
-        ? prior_day_close_clp - current_value_clp - (deposits_day_clp ?? 0)
-        : current_value_clp - prior_day_close_clp - (deposits_day_clp ?? 0)
-      : null;
-  const delta_day_usd = isCcRow
-    ? includeUsd
-      ? -ccFinancingCostBetweenInUnit(a.id, priorDayYmd, today, "usd")
-      : null
-    : includeUsd && current_value_usd != null && prior_day_close_usd != null
-      ? isMortgageRow
-        ? prior_day_close_usd - current_value_usd - (deposits_day_usd ?? 0)
-        : current_value_usd - prior_day_close_usd - (deposits_day_usd ?? 0)
-      : null;
-  const baseRow = {
+    unit === "clp"
+      ? undefined
+      : (clpFrame.current_value != null && frame.current_value == null) ||
+        (clpFrame.deposits !== 0 && frame.deposits == null);
+  const row: DashboardAccountStats = {
     account_id: a.id,
     name: a.name,
     group_slug: portfolioLeafSlug ?? leafSlug,
     group_label: a.bucket_label,
     bucket_slug: leafSlug,
     bucket_label: a.bucket_label,
-    dashboard_bucket_slug: dashboard_bucket_slug ?? null,
-    deposits_clp: deposits,
-    deposits_usd: includeUsd ? deposits_usd : undefined,
-    delta_month_clp: perfClp?.delta_month ?? null,
-    delta_month_usd: includeUsd ? perfUsd?.delta_month ?? null : undefined,
-    delta_year_clp: perfClp?.delta_year ?? null,
-    delta_year_usd: includeUsd ? perfUsd?.delta_year ?? null : undefined,
-    delta_total_clp: perfClp?.delta_total ?? null,
-    delta_total_usd: includeUsd ? perfUsd?.delta_total ?? null : undefined,
-    deposits_month_clp: mortgagePayments
-      ? mortgagePayments.month_clp
-      : trackAssetMetrics
-        ? perfClp!.deposits_month
-        : undefined,
-    deposits_month_usd: mortgagePayments
-      ? mortgagePayments.month_usd
-      : trackAssetMetrics
-        ? perfUsd?.deposits_month ?? null
-        : undefined,
-    deposits_year_clp: mortgagePayments
-      ? mortgagePayments.year_clp
-      : trackAssetMetrics
-        ? perfClp!.deposits_year
-        : undefined,
-    deposits_year_usd: mortgagePayments
-      ? mortgagePayments.year_usd
-      : trackAssetMetrics
-        ? perfUsd?.deposits_year ?? null
-        : undefined,
-    deposits_day_clp,
-    deposits_day_usd: includeUsd ? deposits_day_usd : undefined,
-    delta_day_clp,
-    delta_day_usd: includeUsd ? delta_day_usd : undefined,
-    prior_day_close_clp,
-    prior_day_close_usd: includeUsd ? prior_day_close_usd : undefined,
-    prior_month_close_clp,
-    prior_month_close_usd: includeUsd
-      ? priorCloseUsdFromMark(
-          a.id,
-          priorMonthMark?.value_clp,
-          priorMonthEnd,
-          trackAssetMetrics ? priorCloseFromPerfRows(rowsUsd, "mtd", today) ?? undefined : undefined
-        )
-      : undefined,
-    prior_year_close_clp,
-    prior_year_close_usd: includeUsd
-      ? priorCloseUsdFromMark(
-          a.id,
-          priorYearMark?.value_clp,
-          priorYearEnd,
-          trackAssetMetrics ? priorCloseFromPerfRows(rowsUsd, "ytd", today) ?? undefined : undefined
-        )
-      : undefined,
-    current_value_clp,
-    valuation_as_of,
-    current_value_usd,
-    fx_clp_per_usd: fxRow?.clp_per_usd ?? null,
-    fx_date_used: fxRow?.date ?? null,
-    fx_missing: includeUsd ? fx_missing : undefined,
+    dashboard_bucket_slug: (dashboard_bucket_slug ?? null) as string,
+    deposits: frame.deposits,
+    delta_month: frame.delta_month,
+    delta_year: frame.delta_year,
+    delta_total: frame.delta_total,
+    deposits_month: frame.deposits_month,
+    deposits_year: frame.deposits_year,
+    deposits_day: frame.deposits_day,
+    delta_day: frame.delta_day,
+    prior_day_close: frame.prior_day_close,
+    prior_month_close: frame.prior_month_close,
+    prior_year_close: frame.prior_year_close,
+    current_value: frame.current_value,
+    valuation_as_of: v?.as_of_date ?? null,
+    fx_missing,
     notes: a.notes ?? null,
     exclude_from_group_totals: a.exclude_from_group_totals,
     chart_inactive: accountChartInactive(a.id),
@@ -552,58 +496,71 @@ function buildDashboardAccountRowFor(
     // What the row is (Rentabilidad, a property's loan): the client picks these (F12).
     has_period_returns: isInvestmentPerformanceAccount(a.id),
     loan_account_id: isPropertyKind(kindSlug) ? loanAccountIdOfProperty(a.id) : null,
+    ...dashboardRowPeriodPcts(frame, unit),
+    clp_basis: {
+      current_value: clpFrame.current_value,
+      deposits: clpFrame.deposits ?? 0,
+      delta_total: clpFrame.delta_total,
+    },
   };
-  const row = baseRow as DashboardAccountStats;
-  const withPcts = { ...row, ...dashboardRowPeriodPcts(row, includeUsd) };
   // Every period % is the account's daily returns compounded (periodPctDailyChain.ts); the
-  // one-step Total stays as `pct_total_on_deposits_*`. Row by row: each reads only its own
+  // one-step Total stays as `pct_total_on_deposits`. Row by row: each reads only its own
   // account's daily series.
-  return withDailyChainedAccountRowPcts([withPcts], includeUsd, accountIsDebt)[0]!;
+  return withDailyChainedAccountRowPcts([row], unit, accountIsDebt)[0]!;
 }
 
 /**
- * Nav cards strip + account detail row lookup (no full dashboard totals/charts). Cached with the
- * page bundle's lifetime (`dashboard.page_bundle|nav_snapshot|<unit>`): every invalidation that
- * drops the bundle drops it, so it is what a fresh build would answer; the cached value is the
- * in-flight promise, and a rejected build evicts itself.
+ * Nav cards strip + account detail row lookup (no full dashboard totals/charts), in `unit`.
+ * Cached with the page bundle's lifetime (`dashboard.page_bundle|nav_snapshot|<unit>`): every
+ * invalidation that drops the bundle drops it, so it is what a fresh build would answer; the
+ * cached value is the in-flight promise, and a rejected build evicts itself.
  */
-export function buildDashboardNavSnapshot(includeUsd: boolean): ReturnType<typeof buildDashboardNavSnapshotUncached> {
-  return cachedWithPageBundleLifetime(`nav_snapshot|${includeUsd ? "usd" : "clp"}`, () =>
-    buildDashboardNavSnapshotUncached(includeUsd)
-  );
+export function buildDashboardNavSnapshot(unit: TsUnit): ReturnType<typeof buildDashboardNavSnapshotUncached> {
+  return cachedWithPageBundleLifetime(`nav_snapshot|${unit}`, () => buildDashboardNavSnapshotUncached(unit));
 }
 
 function cachedWithPageBundleLifetime<T>(name: `nav_${string}`, build: () => Promise<T>): Promise<T> {
   return getAggregationCached(cacheKeyDashboardNav(name), build);
 }
 
-/** @heavy One {@link monthlyPerfRowsForAccount} per unit per tracked account (via {@link buildDashboardAccountRows}). */
-async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
-  const rowsBuilt = await buildDashboardAccountRows(includeUsd);
-  const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
-    ...rest,
-    notes: notes ?? null,
-  }));
-  const asOfToday = chileCalendarTodayYmd();
-  const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
-  const liabilities_breakdown = {
-    mortgage_clp: liabilitiesClp.mortgage_clp,
-    credit_card_clp: liabilitiesClp.credit_card_clp,
-    // Balances owed today, at today's mid (live while the fx day is open), as every USD value
-    // on the page — never the buy rate deposit events use.
-    mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd", { side: "debt" }),
-    credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd", { side: "debt" }),
+/**
+ * The liabilities owed today in `unit` (mortgage, credit cards), at today's rate at the debt
+ * side (live while the fx day is open), as every value on the page — never the buy rate
+ * deposit events use.
+ */
+export function liabilitiesBreakdownInUnit(asOfYmd: string, unit: TsUnit): {
+  mortgage: number | null;
+  credit_card: number | null;
+} {
+  const clp = liabilitiesBreakdownClpAsOf(asOfYmd);
+  return {
+    mortgage: clpToUnitAt(clp.mortgage_clp, asOfYmd, unit, { side: "debt" }),
+    credit_card: clpToUnitAt(clp.credit_card_clp, asOfYmd, unit, { side: "debt" }),
   };
+}
+
+/** The listing's rows as the API sends them (notes normalized, the peso basis left out). */
+export function dashboardAccountRowsDto(rows: readonly DashboardAccountStats[]): DashboardAccountRowDto[] {
+  return rows.map((r) => {
+    const dto = dashboardAccountRowDto(r);
+    return { ...dto, notes: dto.notes ?? null };
+  });
+}
+
+/** @heavy One {@link monthlyPerfRowsForAccount} per unit per tracked account (via {@link buildDashboardAccountRows}). */
+async function buildDashboardNavSnapshotUncached(unit: TsUnit) {
+  const rowsBuilt = await buildDashboardAccountRows(unit);
+  const asOfToday = chileCalendarTodayYmd();
   // A netting bucket's card explains its netting with the linked balances footer.
   const dashboard_layout = getDashboardLayoutCards().map((card) =>
     groupNetsLinkedCards(card.slug)
       ? {
           ...card,
-          linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd),
+          linked_balances: cashSavingsLinkedBalances(asOfToday, unit),
         }
       : card
   );
-  const nw_bucket_totals = buildDashboardNwBucketTotals(includeUsd);
+  const nw_bucket_totals = buildDashboardNwBucketTotals(unit);
   // Nav-strip card metrics, precomputed server-side (see dashboardNavCardMetrics.ts).
   // The Pasivos page renders nav nodes from the liabilities root (DB-driven liability_groups
   // children), so both trees get entries; the liabilities root wins the shared `liabilities` slug.
@@ -611,21 +568,23 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
   if (!navRoot) throw new Error("nav snapshot: net_worth nav tree missing");
   const liabilitiesRoot = getLiabilitiesNavRootNode();
   if (!liabilitiesRoot) throw new Error("nav snapshot: liabilities nav tree missing");
-  const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, accountIsDebt);
+  const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, unit, accountIsDebt);
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
     bucketTotals: nw_bucket_totals,
     chainedGroupPct,
+    unit,
   });
   return {
     schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
-    accounts: clientAccounts,
-    liabilities_breakdown,
+    unit,
+    accounts: dashboardAccountRowsDto(rowsBuilt),
+    liabilities_breakdown: liabilitiesBreakdownInUnit(asOfToday, unit),
     dashboard_layout,
     nw_bucket_totals,
     card_metrics_by_slug,
-    ...buildNavValueMapPayload(rowsBuilt, includeUsd, chainedGroupPct),
+    ...buildNavValueMapPayload(rowsBuilt, unit, chainedGroupPct),
     chart_shape: getDashboardChartShape(),
   };
 }
@@ -637,17 +596,16 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
  * liabilities breakdown are whole (small, read by the strip's totals and footers).
  */
 export function buildDashboardNavContext(
-  includeUsd: boolean,
   unit: TsUnit,
   rootSlug: string
 ): ReturnType<typeof buildDashboardNavContextInner> {
-  return cachedWithPageBundleLifetime(`nav_context|${includeUsd ? "usd" : "clp"}|${unit}|${rootSlug}`, () =>
-    withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd, rootSlug))
+  return cachedWithPageBundleLifetime(`nav_context|${unit}|${rootSlug}`, () =>
+    withPortfolioGroupIndex(() => buildDashboardNavContextInner(unit, rootSlug))
   );
 }
 
-async function buildDashboardNavContextInner(includeUsd: boolean, rootSlug: string) {
-  const nav = await timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd));
+async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
+  const nav = await timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(unit));
   const navRoot = getNetWorthNavGroupNode();
   if (!navRoot) throw new Error("nav-context: net_worth nav tree missing");
   const liabilitiesRoot = getLiabilitiesNavRootNode();
@@ -655,6 +613,7 @@ async function buildDashboardNavContextInner(includeUsd: boolean, rootSlug: stri
   const scope = navContextScope(rootSlug, [liabilitiesRoot, navRoot], liabilitiesRoot);
   return {
     schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
+    unit,
     accounts: nav.accounts.filter((a) => scope.accountIds.has(a.account_id)),
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,

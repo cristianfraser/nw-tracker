@@ -6,8 +6,7 @@ import { listAccountsForGroupTab } from "./valuationTimeseries.js";
  * `GET /api/accounts?portfolio_group=…` — all group members for charts/tables (includes `chart_inactive`).
  */
 export async function listPortfolioGroupAccountsForApi(
-  portfolioGroupSlug: string,
-  _includeUsd: boolean
+  portfolioGroupSlug: string
 ): Promise<Record<string, unknown>[]> {
   const tabRows = listAccountsForGroupTab(portfolioGroupSlug);
   if (!tabRows.length) return [];

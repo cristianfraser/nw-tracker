@@ -96,25 +96,21 @@ export function chainedPctFromSeries(
   return chainDailyPct(points, chainPeriodStartYmd(period, todayYmd), todayYmd);
 }
 
-const PCT_FIELDS: readonly { period: ChainPeriod; unit: "clp" | "usd"; pct: keyof DashboardAccountStats }[] = [
-  { period: "day", unit: "clp", pct: "pct_day_clp" },
-  { period: "month", unit: "clp", pct: "pct_month_clp" },
-  { period: "year", unit: "clp", pct: "pct_year_clp" },
-  { period: "total", unit: "clp", pct: "pct_total_clp" },
-  { period: "day", unit: "usd", pct: "pct_day_usd" },
-  { period: "month", unit: "usd", pct: "pct_month_usd" },
-  { period: "year", unit: "usd", pct: "pct_year_usd" },
-  { period: "total", unit: "usd", pct: "pct_total_usd" },
+const PCT_FIELDS: readonly { period: ChainPeriod; pct: "pct_day" | "pct_month" | "pct_year" | "pct_total" }[] = [
+  { period: "day", pct: "pct_day" },
+  { period: "month", pct: "pct_month" },
+  { period: "year", pct: "pct_year" },
+  { period: "total", pct: "pct_total" },
 ];
 
 /**
- * Dashboard account rows with every period % read from the account's own daily series (the
- * `account:<id>` build its page shares), compounded over the period; the one-step Total (P/L ÷
- * net deposits) moves to `pct_total_on_deposits_*`. Liability rows keep the one-step rule.
+ * Dashboard account rows (in `unit`) with every period % read from the account's own daily series
+ * (the `account:<id>` build its page shares), compounded over the period; the one-step Total
+ * (P/L ÷ net deposits) moves to `pct_total_on_deposits`. Liability rows keep the one-step rule.
  */
 export function withDailyChainedAccountRowPcts(
   rows: DashboardAccountStats[],
-  includeUsd: boolean,
+  unit: TsUnit,
   isLiability: (accountId: number) => boolean
 ): DashboardAccountStats[] {
   const todayYmd = chileCalendarTodayYmd();
@@ -124,15 +120,9 @@ export function withDailyChainedAccountRowPcts(
     const importKey = (importKeyStmt.get(row.account_id) as { import_key: string | null } | undefined)
       ?.import_key ?? null;
     const ref = { account_id: row.account_id, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey };
-    const seriesFor: DailyPctFor = (unit) => accountDailyPctPoints(ref, unit);
-    const chained: Partial<DashboardAccountStats> = {
-      pct_total_on_deposits_clp: row.pct_total_clp ?? null,
-      ...(includeUsd ? { pct_total_on_deposits_usd: row.pct_total_usd ?? null } : {}),
-    };
-    for (const f of PCT_FIELDS) {
-      if (f.unit === "usd" && !includeUsd) continue;
-      (chained as Record<string, number | null>)[f.pct] = chainedPctFromSeries(seriesFor, f.period, f.unit, todayYmd);
-    }
+    const seriesFor: DailyPctFor = (u) => accountDailyPctPoints(ref, u);
+    const chained: Partial<DashboardAccountStats> = { pct_total_on_deposits: row.pct_total ?? null };
+    for (const f of PCT_FIELDS) chained[f.pct] = chainedPctFromSeries(seriesFor, f.period, unit, todayYmd);
     return { ...row, ...chained };
   });
 }
@@ -144,22 +134,24 @@ export function withDailyChainedAccountRowPcts(
  */
 export function chainedGroupPctResolver(
   rows: readonly DashboardAccountStats[],
-  includeUsd: boolean,
+  unit: TsUnit,
   isLiability: (accountId: number) => boolean
 ): ChainedGroupPct {
   const todayYmd = chileCalendarTodayYmd();
   const rowById = new Map(rows.map((r) => [r.account_id, r]));
   const importKeyStmt = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`);
-  return (scope, period, unit) => {
+  const unitOk = (asked: TsUnit) => {
+    if (asked !== unit) throw new Error(`chained %: asked in ${asked} for rows built in ${unit}`);
+  };
+  return (scope, period, asked) => {
+    unitOk(asked);
     if (scope.kind === "group") {
       const members = listAccountsForGroupTab(scope.slug).filter((r) => r.account_id > 0);
       if (isLiabilityOnlyScope(members.map((r) => r.account_id), isLiability)) return undefined;
-      if (unit === "usd" && !includeUsd) return null;
       return chainedPctFromSeries((u) => groupDailyPctPoints(scope.slug, u), period, unit, todayYmd);
     }
     if (scope.kind === "account") {
       if (isLiability(scope.accountId)) return undefined;
-      if (unit === "usd" && !includeUsd) return null;
       const row = rowById.get(scope.accountId);
       if (!row) throw new Error(`chained %: account ${scope.accountId} has no dashboard row`);
       const importKey =
@@ -168,7 +160,6 @@ export function chainedGroupPctResolver(
       return chainedPctFromSeries((u) => accountDailyPctPoints(ref, u), period, unit, todayYmd);
     }
     if (isLiabilityOnlyScope(scope.accountIds, isLiability)) return undefined;
-    if (unit === "usd" && !includeUsd) return null;
     const refs = scope.accountIds.map((id) => {
       const row = rowById.get(id);
       if (!row) throw new Error(`chained %: liquidated account ${id} has no dashboard row`);

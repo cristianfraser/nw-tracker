@@ -2,8 +2,7 @@ import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { Link } from "react-router-dom";
 import { Button } from "@crfrsr/ui";
 import { ccExpenseCategoryLabel, useTranslation } from "../../i18n";
-import { formatFlowMoney } from "../../flowsDisplay";
-import { incomeCartolaAmount } from "../../incomeAggregates";
+import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
 import type { FlowCheckingIncomeLine } from "../../types";
 import { useIncomeRefundMutation } from "../../queries/mutations";
@@ -46,7 +45,7 @@ export function IncomeRefundLinesTable({
         {rows.map((row) => (
           <tr key={row.movement_id}>
             <td className="mono">{row.received_on}</td>
-            <td className="mono">{formatFlowMoney(incomeCartolaAmount(row, displayUnit), displayUnit)}</td>
+            <td className="mono">{formatIncomeMoney(row.amount, displayUnit)}</td>
             <td>
               {row.description}
               <TransferCounterpartyLine counterparty={row.transfer_counterparty} />

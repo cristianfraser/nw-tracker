@@ -40,6 +40,7 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 import { buildFlowsCheckingIncomePayload, type FlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import { buildFlowsDepositsPayload, isPreTaxDepositRow, type FlowDepositRow } from "./flowsDeposits.js";
+import { requireFlowLegsInUnit } from "./flowLegs.js";
 import {
   cuotaPayByIsoByAccountBillingMonth,
   listCreditCardMasterAccountIds,
@@ -259,11 +260,12 @@ function addDeposits(
     // A checking account's own events (a card payment's cash leg, a wire it received) are cash,
     // not deposits: they are in the cash change.
     if (checkingAccountIds.has(row.account_id)) continue;
-    let amount: number = row.amount_clp;
-    if (unit === "usd") {
-      if (row.amount_usd == null) throw new Error(`missing amount_usd for deposit on ${row.occurred_on}`);
-      amount = row.amount_usd;
-    }
+    const amount = requireFlowLegsInUnit(
+      { clp: row.amount_clp, usd: row.amount_usd },
+      row.occurred_on,
+      unit,
+      `deposit of account ${row.account_id}`
+    );
     const bucket = touch(keyOf(row.occurred_on));
     if (isPreTaxDepositRow(row)) {
       bucket.depositsPreTax += amount;
@@ -304,15 +306,11 @@ function kindBucket(kind: string): IncomeKindBucket {
 }
 
 function incomeLineAmount(
-  line: { amount_clp: number; amount_usd: number | null },
+  line: { amount_clp: number; amount_usd: number | null; received_on: string },
   unit: GastosUnit,
   what: string
 ): number {
-  if (unit === "usd") {
-    if (line.amount_usd == null) throw new Error(`missing amount_usd for ${what}`);
-    return line.amount_usd;
-  }
-  return Math.round(line.amount_clp);
+  return requireFlowLegsInUnit({ clp: Math.round(line.amount_clp), usd: line.amount_usd }, line.received_on, unit, what);
 }
 
 /** A USD wire with no checking movement (the dollar contract): income on its own row. */
@@ -322,9 +320,8 @@ function usdSyntheticSalaryRows(income: FlowsOverviewIncome) {
   );
 }
 
-function workEarningSalaryAmount(row: FlowsOverviewIncome["work_earnings"][number], unit: GastosUnit): number {
-  if (unit === "usd") return row.liquido_usd!;
-  return Math.round(row.liquido_clp);
+function workEarningSalaryAmount(row: FlowsOverviewIncome["work_earnings"][number], unit: GastosUnit, day: string): number {
+  return requireFlowLegsInUnit({ clp: Math.round(row.liquido_clp), usd: row.liquido_usd }, day, unit, `work earning ${row.id}`);
 }
 
 /** Every income leg as (bucket key, kind, amount), keyed by `keyOf` of its date / month. */
@@ -360,7 +357,7 @@ function eachIncomeEntry(
       grain === "day"
         ? (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10)
         : row.period_month;
-    visit(key, "salary", workEarningSalaryAmount(row, unit));
+    visit(key, "salary", workEarningSalaryAmount(row, unit, (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10)));
   }
 }
 

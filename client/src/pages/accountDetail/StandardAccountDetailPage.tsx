@@ -193,15 +193,9 @@ export function StandardAccountDetailPage({ data }: Props) {
       title={ts.name}
       accountMetricsAgg={data.accountMetricsAgg}
       stripUnit={data.stripUnit}
-      heroClp={
-        data.stripUnit === "usd"
-          ? 0
-          : data.accountDashRow?.current_value_clp ??
-          summary.latest_valuation_clp ??
-          0
-      }
-      heroApiUsd={
-        data.stripUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null
+      heroValue={
+        data.accountDashRow?.current_value ??
+        (data.stripUnit === "clp" ? summary.latest_valuation_clp ?? 0 : data.chartUnitVal)
       }
       dash={data.dash}
       accountNavChildren={data.accountNavChildren}
@@ -217,7 +211,8 @@ export function StandardAccountDetailPage({ data }: Props) {
             ledger={mortgageLedger}
             summary={summary}
             monthlyPerfRows={monthlyPerfRows}
-            accountDashRow={data.accountDashRow}
+            // Its pesos fallbacks: the dashboard row is in the strip's unit, pesos only in CLP.
+            accountDashRow={data.stripUnit === "clp" ? data.accountDashRow : null}
             loading={loading}
           />
         </PageGridTile>
@@ -377,13 +372,16 @@ export function StandardAccountDetailPage({ data }: Props) {
           >
             <tr>
               <td className="mono">
-                {data.accountDashRow?.current_value_usd != null
-                  ? formatGroupedDecimal(data.accountDashRow.current_value_usd, 2)
+                {/* The row carries the strip's unit only: dollars when the strip is in dollars. */}
+                {data.stripUnit === "usd" && data.accountDashRow?.current_value != null
+                  ? formatGroupedDecimal(data.accountDashRow.current_value, 2)
                   : "—"}
               </td>
               <td className="mono">
                 {formatClp(
-                  data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? 0
+                  (data.stripUnit === "clp" ? data.accountDashRow?.current_value : null) ??
+                    summary.latest_valuation_clp ??
+                    0
                 )}
               </td>
               <td className="muted">

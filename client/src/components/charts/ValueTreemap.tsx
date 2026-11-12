@@ -1,3 +1,4 @@
+import type { DisplayUnit } from "../../queries/keys";
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import i18n from "../../i18n";
@@ -11,7 +12,8 @@ import { useChartStyle } from "./chartStyle";
 import { HATCH_TUNING } from "./hatchTuning";
 import { RoughRect, roughPenFor, tileHatchAngle } from "./roughShapes";
 
-type Unit = "clp" | "usd";
+/** The display unit the map's values are in (the payload's). */
+type Unit = DisplayUnit;
 
 /** The map's node in the display unit: values picked, tiles without a value dropped. */
 type MapNode = {
@@ -20,8 +22,8 @@ type MapNode = {
   children?: MapNode[];
 };
 
-function unitValue(n: NavValueMapNodeDto, unit: Unit): number | null {
-  const v = unit === "usd" ? n.value_usd : n.value_clp;
+function unitValue(n: NavValueMapNodeDto): number | null {
+  const v = n.value;
   return v != null && Number.isFinite(v) ? v : null;
 }
 
@@ -43,7 +45,7 @@ function toMapNode(dto: NavValueMapNodeDto, unit: Unit, depth = 0): MapNode | nu
     const value = children.reduce((s, c) => s + c.value, 0);
     return value > 0 ? { dto, value, children } : null;
   }
-  const value = unitValue(dto, unit);
+  const value = unitValue(dto);
   return value != null && value > 0 ? { dto, value } : null;
 }
 
@@ -222,7 +224,7 @@ export function ValueTreemap({
   }, [mapRoot, size.w, size.h]);
 
   const bound = bounds?.[period] ?? 0;
-  const pctOf = (n: NavValueMapNodeDto) => n.pct[period][unit];
+  const pctOf = (n: NavValueMapNodeDto) => n.pct[period];
 
   const flat = useMemo(() => {
     const out: Placed<MapNode>[] = [];
@@ -271,7 +273,7 @@ export function ValueTreemap({
   }
 
   const tooltipNode = hover?.node ?? null;
-  const tooltipValue = tooltipNode ? unitValue(tooltipNode, unit) : null;
+  const tooltipValue = tooltipNode ? unitValue(tooltipNode) : null;
 
   return (
     <div className={loadableClass(loading, "chart-grid__col")}>
@@ -442,18 +444,18 @@ export function ValueTreemap({
               </div>
               <div>
                 <span className="muted">{i18n.t("valueMap.tooltip.pl")}</span>{" "}
-                {tooltipNode.pl[period][unit] == null
+                {tooltipNode.pl[period] == null
                   ? "—"
-                  : formatCurrency(tooltipNode.pl[period][unit]!, unit)}
+                  : formatCurrency(tooltipNode.pl[period]!, unit)}
               </div>
               {tooltipNode.holding ? (
                 <>
                   <div>
                     <span className="muted">{i18n.t("valueMap.tooltip.contribution")}</span>{" "}
                     {formatPct(
-                      tooltipNode.holding.contribution_pct[period][unit] == null
+                      tooltipNode.holding.contribution_pct[period] == null
                         ? null
-                        : tooltipNode.holding.contribution_pct[period][unit]! * 100
+                        : tooltipNode.holding.contribution_pct[period]! * 100
                     )}
                   </div>
                   <div>

@@ -17,14 +17,12 @@ import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
 import { rollupDepositChartPointsByYear } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
 import { queryLoadError } from "../queries/pageShapeReady";
-import { legacyDisplayUnit } from "../displayUnitSupport";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
 export function DepositsPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  legacyDisplayUnit(displayUnit, "Deposits");
   const chartPrefs = useSurfacePrefs("flows.deposits.chart", "month", "3y");
   const metricsPeriod = chartPrefs.period;
   const timeRange = chartPrefs.range;
@@ -37,7 +35,7 @@ export function DepositsPage() {
     />
   );
   const chartGranularity = metricsPeriod;
-  const { data, error: queryError } = useFlowsDeposits();
+  const { data, error: queryError } = useFlowsDeposits(displayUnit);
   const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // The frame renders with a zero total and empty category tables until the payload arrives.
@@ -46,34 +44,22 @@ export function DepositsPage() {
   const chartPoints = useMemo(() => {
     if (!data) return [];
     if (chartGranularity === "day") {
-      return clipPointsToTimeRange(
-        displayUnit === "usd" ? data.chart_daily_usd : data.chart_daily,
-        timeRange
-      );
+      return clipPointsToTimeRange(data.chart_daily, timeRange);
     }
     // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
     // first year.
     return clipMonthsThenRollup(
-      displayUnit === "usd" ? data.chart_monthly_usd : data.chart_monthly,
+      data.chart_monthly,
       chartGranularity,
       timeRange,
       rollupDepositChartPointsByYear
     );
-  }, [chartGranularity, data, displayUnit, timeRange]);
+  }, [chartGranularity, data, timeRange]);
 
-  const total = useMemo(() => {
-    if (!data) return 0;
-    if (displayUnit === "usd") {
-      if (data.net_total_usd == null) {
-        throw new Error("missing net_total_usd for deposits in USD display");
-      }
-      return data.net_total_usd;
-    }
-    return data.net_total_clp;
-  }, [data, displayUnit]);
+  const total = data ? data.net_total : 0;
   /** The total's two parts, as the flows overview reads them: post-tax deposits and AFP/AFC. */
-  const postTaxTotal = data ? (displayUnit === "usd" ? data.post_tax_total_usd : data.post_tax_total_clp) : 0;
-  const preTaxTotal = data ? (displayUnit === "usd" ? data.pre_tax_total_usd : data.pre_tax_total_clp) : 0;
+  const postTaxTotal = data ? data.post_tax_total : 0;
+  const preTaxTotal = data ? data.pre_tax_total : 0;
 
   /** "En el rango" companion: sum of the clipped chart points (matches the visible bars). */
   const rangeTotal = useMemo(
@@ -129,7 +115,7 @@ export function DepositsPage() {
         // companion total); the section subtotal is the server's.
         const block = data ? data.by_category[cat] : null;
         const blockRows = block ? block.rows : [];
-        const blockTotal = block ? (displayUnit === "usd" ? block.total_usd : block.total_clp) : 0;
+        const blockTotal = block ? block.total : 0;
         return (
           <PageGridTile key={cat} id={`deposits-${cat}`}>
             <h3>
@@ -163,10 +149,7 @@ export function DepositsPage() {
                 </tr>
               ) : (
                 blockRows.map((r, idx) => {
-                  const amount =
-                    displayUnit === "usd"
-                      ? r.amount_usd ?? 0
-                      : r.amount_clp;
+                  const amount = r.amount;
                   return (
                     <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
                       <td className="mono">{r.occurred_on}</td>

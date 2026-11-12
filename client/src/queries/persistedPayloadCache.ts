@@ -15,8 +15,11 @@ import { DTO_SCHEMA_VERSIONS, type DtoSchemaVersionName } from "nw-tracker-contr
 
 const PREFIX = "nw:cache:";
 
-/** Shapes the client builds itself from server payloads. v2: the group shell's `first_month`. */
-const CLIENT_SCHEMA_VERSIONS = { group_shell: 2 } as const;
+/**
+ * Shapes the client builds itself from server payloads. v2: the group shell's `first_month`; v3: its
+ * rows carry one value per field in the shell's unit (no `_clp` / `_usd` pairs).
+ */
+const CLIENT_SCHEMA_VERSIONS = { group_shell: 3 } as const;
 
 export const PERSISTED_PAYLOAD_VERSIONS = { ...DTO_SCHEMA_VERSIONS, ...CLIENT_SCHEMA_VERSIONS };
 

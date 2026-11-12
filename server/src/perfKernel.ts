@@ -37,7 +37,7 @@ export function cardPeriodLegs(legs: { owedStart: number; owedEnd: number; cost:
 
 /**
  * The zero test of the return rules, one per unit: a value at or below the unit's smallest coin
- * (one peso, one US cent, 0,0001 UF) is no capital. It decides whether a period ENDS AT ZERO and
+ * (one peso, one US or euro cent, 0,0001 UF; a currency loaded later adds its coin here) is no capital. It decides whether a period ENDS AT ZERO and
  * whether a capital base exists at all, on every grain — month rows, the dashboard, the daily
  * series, the 1D/1W cells. Until 2026-09-27 each caller passed its own eps (0.01 in either unit
  * for the monthly rows and the dashboard, 1e-9 for the daily series and 1D/1W), so an account
@@ -47,6 +47,7 @@ export function cardPeriodLegs(legs: { owedStart: number; owedEnd: number; cost:
 export const ZERO_CLOSE_EPS: Readonly<Record<TsUnit, number>> = {
   clp: 1,
   usd: 0.01,
+  eur: 0.01,
   uf: 0.0001,
 };
 

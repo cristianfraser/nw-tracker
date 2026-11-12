@@ -15,10 +15,6 @@ import type {
 } from "../types";
 import { monthEndYmdsForSkeleton } from "./placeholderMonthRows";
 
-function unitForTs(unit: DisplayUnit): "clp" | "usd" {
-  return unit === "usd" ? "usd" : "clp";
-}
-
 const OVERVIEW_LINE_SPECS: DashboardChartShapeLine[] = [
   { dataKey: "real_estate", name: "Inmuebles", valueSeriesType: "data" },
   { dataKey: "retirement", name: "Retiro", valueSeriesType: "data" },
@@ -50,7 +46,7 @@ function zeroPointsForKeys(
 /** Zero P/L + deposits combo so the perf section mounts before the bundle resolves. */
 function zeroInversionesPerf(unit: DisplayUnit, monthEnds: string[]): InversionesPerfMonthlyResponse {
   return {
-    unit: unitForTs(unit),
+    unit,
     points: monthEnds.map((as_of_date) => ({
       as_of_date,
       delta_retirement: 0,
@@ -80,7 +76,7 @@ export function buildPlaceholderDashboardTimeseries(
   const monthEnds = monthEndYmdsForSkeleton(shape?.first_month);
   const overviewLines = shape?.overview_lines?.length ? shape.overview_lines : OVERVIEW_LINE_SPECS;
   return {
-    unit: unitForTs(unit),
+    unit,
     overview: {
       lines: overviewLines,
       points: zeroPointsForKeys(overviewLines.map((l) => l.dataKey), monthEnds),
@@ -90,59 +86,31 @@ export function buildPlaceholderDashboardTimeseries(
 
 /** Minimal dash payload so the allocation chart and card strip can mount at zero. */
 export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardResponse {
-  const includeUsd = unit === "usd";
-  const zeroBucketCloses = {
-    net_worth_clp: 0,
-    real_estate_clp: 0,
-    retirement_clp: 0,
-    brokerage_clp: 0,
-    cash_eqs_clp: 0,
-    ...(includeUsd
-      ? {
-          net_worth_usd: 0,
-          real_estate_usd: 0,
-          retirement_usd: 0,
-          brokerage_usd: 0,
-          cash_eqs_usd: 0,
-        }
-      : {}),
-  };
+  const zeroBucketCloses = () => ({
+    net_worth: 0,
+    buckets: Object.fromEntries(DASHBOARD_NET_WORTH_BUCKET_SLUGS.map((slug) => [slug, 0])),
+  });
   return {
     schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
+    unit,
     // Empty map: the strip never mounts from this dash (a cold strip mounts from
     // `buildPlaceholderNavStripDash`); charts/allocation ignore it.
     card_metrics_by_slug: {},
     totals: {
-      net_worth_clp: 0,
-      deposits_clp: 0,
-      real_estate_clp: 0,
-      retirement_clp: 0,
-      brokerage_clp: 0,
-      cash_eqs_clp: 0,
-      liabilities_clp: 0,
+      ...zeroBucketCloses(),
+      deposits: 0,
+      liabilities: 0,
       prior_closes: {
         month_end: "",
         year_end: "",
-        month: zeroBucketCloses,
-        year: zeroBucketCloses,
+        month: zeroBucketCloses(),
+        year: zeroBucketCloses(),
       },
-      ...(includeUsd
-        ? {
-            net_worth_usd: 0,
-            deposits_usd: 0,
-            real_estate_usd: 0,
-            retirement_usd: 0,
-            brokerage_usd: 0,
-            cash_eqs_usd: 0,
-            liabilities_usd: 0,
-          }
-        : {}),
     },
     allocation: DASHBOARD_NET_WORTH_BUCKET_SLUGS.map((group_slug) => ({
       group_slug,
       group_label: group_slug,
-      value_clp: 1,
-      ...(includeUsd ? { value_usd: 1 } : {}),
+      value: 1,
     })),
     accounts: [],
   };
@@ -154,30 +122,19 @@ export type NavStripDash = Pick<
   "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
 >;
 
-function zeroNavCardPeriodMetrics(unit: DisplayUnit): NavCardPeriodMetricsDto {
-  const usd = unit === "usd" ? 0 : null;
-  return {
-    deposits_clp: 0,
-    deposits_usd: usd,
-    delta_total_clp: 0,
-    delta_total_usd: usd,
-    deposits_period_clp: 0,
-    deposits_period_usd: usd,
-    delta_period_clp: 0,
-    delta_period_usd: usd,
-  };
+function zeroNavCardPeriodMetrics(): NavCardPeriodMetricsDto {
+  return { deposits: 0, delta_total: 0, deposits_period: 0, delta_period: 0 };
 }
 
-export function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
+export function zeroNavCardMetrics(): NavCardMetricsDto {
   const variant = () => ({
-    day: zeroNavCardPeriodMetrics(unit),
-    month: zeroNavCardPeriodMetrics(unit),
-    year: zeroNavCardPeriodMetrics(unit),
+    day: zeroNavCardPeriodMetrics(),
+    month: zeroNavCardPeriodMetrics(),
+    year: zeroNavCardPeriodMetrics(),
   });
-  const noPct = () => ({ clp: null, usd: null });
-  const zero = () => ({ clp: 0, usd: unit === "usd" ? 0 : null });
+  const noPct = () => ({ value: null });
   return {
-    value: { child: zero(), parent: zero(), members: zero(), fx_missing: false, sync_stale: false },
+    value: { child: 0, parent: 0, members: 0, fx_missing: false, sync_stale: false },
     child: variant(),
     parent: variant(),
     row_pct: { day: noPct(), month: noPct(), year: noPct(), total: noPct() },
@@ -192,11 +149,11 @@ export function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
  * which is what `requireNavCardMetrics` asks for; there are no account rows.
  * The strip mounts in its placeholder phase and spins once to the real values.
  */
-export function buildPlaceholderNavStripDash(nav: SidebarNavResponse, unit: DisplayUnit): NavStripDash {
+export function buildPlaceholderNavStripDash(nav: SidebarNavResponse): NavStripDash {
   const card_metrics_by_slug: Record<string, NavCardMetricsDto> = {};
   const visit = (n: NavTreeNodeDto) => {
     if (n.account_id == null && n.expense_account_id == null && !card_metrics_by_slug[n.slug]) {
-      card_metrics_by_slug[n.slug] = zeroNavCardMetrics(unit);
+      card_metrics_by_slug[n.slug] = zeroNavCardMetrics();
     }
     for (const c of n.children ?? []) visit(c);
   };
@@ -205,11 +162,7 @@ export function buildPlaceholderNavStripDash(nav: SidebarNavResponse, unit: Disp
   }
   return {
     accounts: [],
-    liabilities_breakdown: {
-      mortgage_clp: 0,
-      credit_card_clp: 0,
-      ...(unit === "usd" ? { mortgage_usd: 0, credit_card_usd: 0 } : {}),
-    },
+    liabilities_breakdown: { mortgage: 0, credit_card: 0 },
     card_metrics_by_slug,
   };
 }

@@ -8,7 +8,7 @@ import {
   totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
-import { flowEventInUnit } from "./rates.js";
+import { convertCurrency, flowEventInUnit } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import {
@@ -877,8 +877,8 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   }
   const topOut = attachDepositSeriesKeys(top, displayDepMovs, slugById);
   const depClpByAccAndDate = new Map<number, Map<string, number>>();
-  const depUfByAccAndDate = new Map<number, Map<string, number>>();
-  const depUsdByAccAndDate = new Map<number, Map<string, number>>();
+  // The display unit's aportes (UF, USD, EUR, …), each event at its own date's rate.
+  const depUnitByAccAndDate = new Map<number, Map<string, number>>();
   // Every account's aportes come from its merged deposit events, each at its own date's rate —
   // ledger cash included (USD cash since 2026-08-04, CLP cash since 2026-09-27; re-pricing the
   // standing balance − interest at each snapshot's rate leaked the fx move on the balance held
@@ -887,11 +887,8 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   for (const id of allIds) {
     const pocketMovs = displayDepMovs.get(id) ?? [];
     depClpByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "clp"));
-    if (unit === "uf") {
-      depUfByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "uf"));
-    }
-    if (unit === "usd") {
-      depUsdByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "usd"));
+    if (unit !== "clp") {
+      depUnitByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, unit));
     }
   }
 
@@ -1006,11 +1003,9 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       const aid = t.account_id;
       const dk = t.depositDataKey;
       let depPlot =
-        unit === "uf"
-          ? (depUfByAccAndDate.get(aid)?.get(d) ?? 0)
-          : unit === "usd"
-            ? (depUsdByAccAndDate.get(aid)?.get(d) ?? 0)
-            : (depClpByAccAndDate.get(aid)?.get(d) ?? 0);
+        unit === "clp"
+          ? (depClpByAccAndDate.get(aid)?.get(d) ?? 0)
+          : (depUnitByAccAndDate.get(aid)?.get(d) ?? 0);
       if (
         unit === "clp" &&
         bucketKindFromSlugMap(slugById, aid) === "property"
@@ -1105,13 +1100,17 @@ function usdMilestoneDataKey(usd: number): string {
  */
 function usdMilestoneLevelInUnit(usd: number, asOfYmd: string, unit: TsUnit): number | null {
   if (unit === "usd") return usd;
-  // A reference level at the stored rates on or before the day (the mid): pesos, then UF.
-  const fx = fxMonthEndForBalanceUsd(asOfYmd);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = usd * fx.clp_per_usd;
-  if (unit === "clp") return clp;
-  const uf = ufRowOnOrBefore(asOfYmd);
-  return uf && uf.clp_per_uf > 0 ? clp / uf.clp_per_uf : null;
+  if (unit === "clp" || unit === "uf") {
+    // A reference level at the stored rates on or before the day (the mid): pesos, then UF.
+    const fx = fxMonthEndForBalanceUsd(asOfYmd);
+    if (!fx || fx.clp_per_usd <= 0) return null;
+    const clp = usd * fx.clp_per_usd;
+    if (unit === "clp") return clp;
+    const uf = ufRowOnOrBefore(asOfYmd);
+    return uf && uf.clp_per_uf > 0 ? clp / uf.clp_per_uf : null;
+  }
+  // Any other unit: the dollars at the day's mid through the rate walk (EUR/USD directly).
+  return convertCurrency(usd, "usd", unit, asOfYmd, { side: "mid" });
 }
 
 function appendUsdMilestoneFields(

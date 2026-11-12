@@ -17,30 +17,20 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
-import { legacyDisplayUnit } from "../../displayUnitSupport";
 
 const PAGE_SIZE = 12;
 
 /** Stands in for the server summary while it loads: the frame renders with zero totals. */
 const EMPTY_SUMMARY: AdditionalCardsSummary = {
+  unit: "clp",
   by_month: [],
   by_year: [],
-  totals: {
-    charges_clp: 0,
-    charges_usd: 0,
-    reimbursements_clp: 0,
-    reimbursements_usd: 0,
-    balance_clp: 0,
-    balance_usd: 0,
-  },
+  totals: { charges: 0, reimbursements: 0, balance: 0 },
 };
 
-function pick(clp: number, usd: number | null, unit: DisplayUnit, what: string): number {
-  if (legacyDisplayUnit(unit, "Additional cards") === "usd") {
-    if (usd == null) throw new Error(`missing USD figure for additional cards ${what}`);
-    return usd;
-  }
-  return clp;
+/** A figure in the summary's unit; a period with no value in it reads «—». */
+function pick(v: number | null, unit: DisplayUnit): string {
+  return v == null ? "—" : formatFlowMoney(v, unit);
 }
 
 /**
@@ -69,11 +59,10 @@ export function AdditionalCardsSection({
 
   if (summary.by_month.length === 0 && !loading) return null;
 
+  // The summary's own unit: a held summary of the other unit keeps its figures in its unit.
+  const unit = loadedSummary ? summary.unit : displayUnit;
   const money = (row: AdditionalCardsPeriodRow, field: "charges" | "reimbursements" | "net" | "balance") =>
-    formatFlowMoney(
-      pick(row[`${field}_clp`], row[`${field}_usd`], displayUnit, `${field} ${row.period_month}`),
-      displayUnit
-    );
+    pick(row[field], unit);
   const labels = {
     charges: t("expenses.additionalCards.colCharges"),
     reimbursements: t("expenses.additionalCards.colReimbursements"),
@@ -88,15 +77,7 @@ export function AdditionalCardsSection({
           {t("expenses.additionalCards.title")}
           <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {t("expenses.additionalCards.balanceLabel")}{" "}
-            {formatFlowMoney(
-              pick(
-                summary.totals.balance_clp,
-                summary.totals.balance_usd,
-                displayUnit,
-                "balance total"
-              ),
-              displayUnit
-            )}
+            {pick(summary.totals.balance, unit)}
           </span>
         </h3>
         <SurfaceControls

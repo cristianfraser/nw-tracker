@@ -27,8 +27,7 @@ export function periodReturnsForDisplay(
   payload: PeriodReturnsPayload,
   displayUnit: DisplayUnit
 ): PeriodReturnsPayload | null {
-  const wanted = displayUnit === "usd" ? "usd" : "clp";
-  return payload.unit === wanted || payload.unit === "uf" ? payload : null;
+  return payload.unit === displayUnit || payload.unit === "uf" ? payload : null;
 }
 
 export function useGroupInfoConsolidatedTables(
