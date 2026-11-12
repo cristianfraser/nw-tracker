@@ -433,7 +433,7 @@ describe("receipts matched to an existing card line (Jumbo)", () => {
       )
       .run(accountId, `${SRC}-${ddmmyyyy}-${merchant}`);
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, parser_row_id)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, parser_row_id)
        VALUES (?, ?, ?, ?, 0, ?)`
     ).run(Number(stmt.lastInsertRowid), ddmmyyyy, merchant, PAID, `${SRC}-${ddmmyyyy}`);
   }

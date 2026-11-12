@@ -27,7 +27,7 @@ describe("normalizedPostCloseLines", () => {
         .run(accountId).lastInsertRowid
     );
     const insertLine = db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, ?, ?, ?, ?, 0, ?)`
     );
     insertLine.run(statementId, "03/09/2026", "05/09/2026", "VITEST BOTH DATES", 10_000, "vitest-both");
@@ -57,7 +57,7 @@ describe("normalizedPostCloseLines", () => {
         .run(accountId).lastInsertRowid
     );
     const insertLine = db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, ?, ?, ?, ?, 0, ?)`
     );
     // A nota de crédito carrying its purchase's date, printed four months later: billed at this close.

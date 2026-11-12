@@ -38,7 +38,7 @@ beforeAll(() => {
       .run(ccId).lastInsertRowid
   );
   const insLine = db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, ?, ?, 0, ?)`
   );
   insLine.run(statementId, "05/04/2037", "SUPERMERCADO X", 45000, "vitest-ccfin-buy");

@@ -22,6 +22,24 @@ export function registerCardLineKindFunction(dbi: DatabaseType): void {
         statement_currency: String(currency ?? ""),
       })
   );
+  // Migration 319: a line stores its amount in its own currency. The same classifier, fed what the
+  // two legacy slots read for it (a dollar line: 0 pesos and its dollars; any other: its amount as
+  // the peso slot, which only decides the sign and the peso section-3 rule).
+  dbi.function(
+    "cc_line_kind_native",
+    { deterministic: true },
+    (flag: unknown, merchant: unknown, amount: unknown, lineCurrency: unknown, currency: unknown) => {
+      const amt = amount == null ? null : Number(amount);
+      const usd = String(lineCurrency ?? "") === "usd";
+      return cardLineKind({
+        installment_flag: Number(flag ?? 0),
+        merchant: merchant == null ? null : String(merchant),
+        amount_clp: usd ? 0 : amt,
+        amount_usd: usd ? amt : null,
+        statement_currency: String(currency ?? ""),
+      });
+    }
+  );
 }
 
 const KIND_EXPR = `cc_line_kind(NEW.installment_flag, NEW.merchant, NEW.amount_clp, NEW.amount_usd,

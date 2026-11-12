@@ -23,7 +23,7 @@ describe("deleteCcWebPasteStatementLine", () => {
       id: Number(
         db
           .prepare(
-            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
              VALUES (?, ?, 'VITEST LINE DELETE', 1234, 0, 'vitest-line-delete')`
           )
           .run(webPasteStmt.id, webPasteStmt.statement_date).lastInsertRowid

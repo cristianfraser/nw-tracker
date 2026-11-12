@@ -45,7 +45,7 @@ describe("purchases views on a card's lines and plans", () => {
 
   function line(statementId: number, date: string, merchant: string, amount: number, parserRowId: string | null = null): number {
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key, parser_row_id)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key, parser_row_id)
        VALUES (?, ?, ?, ?, 0, ?, ?)`
     ).run(statementId, date, merchant, amount, `vitest-views|${merchant}|${date}|${amount}`, parserRowId);
     return (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;

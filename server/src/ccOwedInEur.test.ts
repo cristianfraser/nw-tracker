@@ -80,7 +80,7 @@ describe("a card's owed in euros", () => {
   it("converts each sub-balance into euros at the debt side", () => {
     expect(ccId).not.toBeNull();
     if (ccId == null) return;
-    expect(ccOwedByCurrencyAtYmd(ccId, END)).toMatchObject({ clp: 210_000, usd: 120 });
+    expect(ccOwedByCurrencyAtYmd(ccId, END)?.owed).toEqual({ clp: 210_000, usd: 120 });
     const owedClp = ccOwedClpAtYmd(ccId, END)!.value_clp;
     const eur = cardValueInUnit(ccId, owedClp, END, "eur")!;
     // 210.000 pesos at 1.050 per euro, US$120 at 1,2 dollars per euro.

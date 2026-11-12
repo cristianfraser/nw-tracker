@@ -85,9 +85,9 @@ describe("groceryBranchLearning", () => {
     const r = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, amount_usd,
+           statement_id, transaction_date, merchant, amount, currency,
            installment_flag, dedupe_key, parser_row_id, raw_line
-         ) VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, 'clp', 0, ?, ?, ?)`
       )
       .run(statementId, transactionDate, merchant, amountClp, `vitest-branch|${seq}`, `vitest-branch|${seq}`, rawLine);
     return Number(r.lastInsertRowid);

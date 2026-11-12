@@ -442,12 +442,19 @@ const tx = db.transaction(() => {
        @card_last4, 'WORLDMEMBER_MASTER', @layout, @currency, @saldo_anterior, @abono, @compras_cargos, @deuda_total,
        @monto_facturado, @monto_pagado_anterior, NULL, @next_period_from, @next_period_to)`
   );
-  const insLine = db.prepare(
+  const insLineRow = db.prepare(
     `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, description_merged, country,
-       amount_orig, orig_currency, amount_clp, amount_usd, installment_flag, nro_cuota_current, nro_cuota_total,
-       valor_cuota_mensual_clp, dedupe_key, parser_row_id, raw_line, origin_card_last4)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?)`
+       amount_orig, orig_currency, amount, currency, installment_flag, nro_cuota_current, nro_cuota_total,
+       cuota_amount, dedupe_key, parser_row_id, raw_line, origin_card_last4)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)`
   );
+  // Callers pass the line's pesos and dollars (one of them its amount); the line stores one currency.
+  const insLine = {
+    run: (...a: unknown[]) => {
+      const usd = a[9] != null;
+      return insLineRow.run(...a.slice(0, 8), usd ? a[9] : a[8], usd ? "usd" : "clp", usd ? null : 0, ...a.slice(10));
+    },
+  };
   const last4 = plan.accounts.card.last4;
   let usdBalance = cs.previous.usd_deuda;
   const usdAbonosTotal = [...abonos.values()].flat().reduce((s, a) => s + a.usd, 0);

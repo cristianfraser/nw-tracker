@@ -65,7 +65,7 @@ beforeAll(() => {
   if (!st) throw new Error("the test database has no peso card statement line");
   chargedCard = st.account_id;
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key, raw_line)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key, raw_line)
      VALUES (?, ?, 'INTERESES ROTATIVO', ?, 0, 'test-financing-identity', 'test')`
   ).run(st.id, st.transaction_date, CHARGE_CLP);
 });

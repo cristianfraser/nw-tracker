@@ -97,7 +97,7 @@ describe("credit-card close evidence", () => {
       db
         .prepare(
           `INSERT INTO cc_statement_lines (
-             statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag,
+             statement_id, transaction_date, merchant, amount, currency, installment_flag,
              dedupe_key, parser_row_id, raw_line
            ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'vitest')`
         )
@@ -105,8 +105,8 @@ describe("credit-card close evidence", () => {
           statementId,
           line.date,
           line.merchant,
-          line.clp ?? 0,
-          line.usd ?? null,
+          line.usd ?? line.clp ?? 0,
+          line.usd != null ? "usd" : "clp",
           line.key ?? `vitest-${line.merchant}-${line.date}`,
           line.key ? `web:${line.key}` : null
         ).lastInsertRowid
@@ -1056,7 +1056,7 @@ describe("credit-card close evidence", () => {
     expect(september.facturado_total_clp).toBe(10_000 + september.facturado_usd_clp!);
 
     // A payment read as a charge (a dollar MONTO CANCELADO read as positive) disagrees.
-    db.prepare(`UPDATE cc_statement_lines SET amount_usd = 50 WHERE id = ?`).run(payment);
+    db.prepare(`UPDATE cc_statement_lines SET amount = 50 WHERE id = ? AND currency = 'usd'`).run(payment);
     expect(feedCloseStatementMismatches(accountId)).toEqual([
       expect.stringMatching(/bills 80\.52, the feed's SALDO INICIAL for that close is 30\.52/),
     ]);

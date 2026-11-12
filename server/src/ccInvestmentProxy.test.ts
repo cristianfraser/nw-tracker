@@ -464,7 +464,7 @@ describe("facturación proxy on a card ledger", () => {
       db
         .prepare(
           `INSERT INTO cc_statement_lines (
-             statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key,
+             statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key,
              cuota_purchase_kind, raw_line
            ) VALUES (?, ?, ?, ?, 0, ?, ?, 'vitest')`
         )

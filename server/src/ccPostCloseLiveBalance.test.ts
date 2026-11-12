@@ -37,7 +37,7 @@ describe("postCloseLiveBalanceAdjustmentClp", () => {
 
   function addLine(statementId: number, txnIso: string, merchant: string, amountClp: number): void {
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, installment_flag, transaction_date, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount, installment_flag, transaction_date, dedupe_key)
        VALUES (?, ?, ?, 0, ?, ?)`
     ).run(statementId, merchant, amountClp, txnIso, `vitest-pc-${statementId}-${txnIso}-${amountClp}`);
   }
@@ -98,7 +98,7 @@ describe("unbilledAtMonthEndAdjustmentsClp", () => {
 
   function line(statementId: number, txnIso: string, merchant: string, amountClp: number): void {
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, installment_flag, transaction_date, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount, installment_flag, transaction_date, dedupe_key)
        VALUES (?, ?, ?, 0, ?, ?)`
     ).run(statementId, merchant, amountClp, txnIso, `vitest-ub-${statementId}-${txnIso}-${amountClp}`);
   }

@@ -117,7 +117,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       db
         .prepare(
           `INSERT INTO cc_statement_lines (
-             statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key, parser_row_id, raw_line
+             statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key, parser_row_id, raw_line
            ) VALUES (?, ?, ?, ?, 0, ?, ?, 'vitest')`
         )
         .run(bucketId, `${Number(d)}/${Number(m)}/${y}`, merchant, clp, key, `web:${key}`).lastInsertRowid
@@ -164,8 +164,8 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       db
         .prepare(
           `INSERT INTO cc_statement_lines (
-             statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, parser_row_id, raw_line
-           ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, 'vitest')`
+             statement_id, transaction_date, merchant, currency, amount, installment_flag, dedupe_key, parser_row_id, raw_line
+           ) VALUES (?, ?, ?, 'usd', ?, 0, ?, ?, 'vitest')`
         )
         .run(bucketId, `${Number(d)}/${Number(m)}/${y}`, merchant, usd, key, `web:${key}`).lastInsertRowid
     );
@@ -251,7 +251,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       .prepare(`SELECT id FROM cc_statements WHERE account_id = ? AND currency = 'clp'`)
       .get(accountId) as { id: number };
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, origin_card_last4)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, origin_card_last4)
        VALUES (?, '10/08/2026', 'VITEST ADICIONAL AGOSTO', 5000, 0, '4999')`
     ).run(aug.id);
 
@@ -434,8 +434,8 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const usdLine = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, raw_line)
-           VALUES (?, '10/9/2026', 'APPLE.COM/BILL', 0, 13.79, 0, 'vitest-usd', 'vitest')`
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, raw_line)
+           VALUES (?, '10/9/2026', 'APPLE.COM/BILL', 13.79, 'usd', 0, 'vitest-usd', 'vitest')`
         )
         .run(sept).lastInsertRowid
     );

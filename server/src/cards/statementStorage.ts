@@ -20,12 +20,39 @@ import { storedCardLineDate, type CardCanonicalLine, type CardCanonicalStatement
 import { ccCardGroupOrDefault } from "../ccIssuers.js";
 import { canonicalCcLineDedupeKeys } from "../ccDedupeKey.js";
 
-/** The line's pesos and dollars as the ledger stores them (`amount_clp` 0, `amount_usd` null when absent). */
+/**
+ * The line's pesos and dollars as the legacy columns read them (`amount_clp` 0, `amount_usd` null
+ * when absent; migration 319 derives them from `amount` + `currency`). A line in another currency
+ * has neither: callers that compare pesos or dollars read nothing for it.
+ */
 export function storedCardLineAmounts(line: Pick<CardCanonicalLine, "currency" | "amount">): {
   amount_clp: number;
   amount_usd: number | null;
 } {
-  return line.currency === "clp" ? { amount_clp: line.amount, amount_usd: null } : { amount_clp: 0, amount_usd: line.amount };
+  switch (legacyAmountColumn(line.currency)) {
+    case "amount_clp":
+      return { amount_clp: line.amount, amount_usd: null };
+    case "amount_usd":
+      return { amount_clp: 0, amount_usd: line.amount };
+    default:
+      return { amount_clp: 0, amount_usd: null };
+  }
+}
+
+/**
+ * The legacy two-slot column a line's amount reads in (`amount_clp` for pesos, `amount_usd` for
+ * dollars; generated from `amount` + `currency` since migration 319), or null for a line in any
+ * other currency, which those columns do not carry.
+ */
+export function legacyAmountColumn(currency: string): "amount_clp" | "amount_usd" | null {
+  switch (currency) {
+    case "clp":
+      return "amount_clp";
+    case "usd":
+      return "amount_usd";
+    default:
+      return null;
+  }
 }
 
 /** The ledger's `cc_statements` columns of a canonical statement (header totals as stored). */
@@ -61,6 +88,22 @@ export function storedStatementColumns(statement: CardCanonicalStatement) {
 /** The ledger's `cc_statement_lines` columns of a canonical line (dedupe key and ids apart). */
 export function storedLineColumns(statement: CardCanonicalStatement, line: CardCanonicalLine) {
   const inst = line.installment;
+  return {
+    ...storedLineColumnsForFingerprint(statement, line),
+    amount: line.amount,
+    currency: line.currency,
+    // A one-shot peso line stores a 0 cuota, any other currency none (the legacy slots read 0 / NULL).
+    cuota_amount: inst?.cuota_amount ?? (legacyAmountColumn(line.currency) === "amount_clp" ? 0 : null),
+  };
+}
+
+/**
+ * The line's columns as the fingerprint hashes them: the legacy two-slot amounts (unchanged since
+ * migration 292, so a statement imported before 319 keeps its hash), plus — only for a line in
+ * another currency than pesos or dollars — its currency and amount.
+ */
+function storedLineColumnsForFingerprint(statement: CardCanonicalStatement, line: CardCanonicalLine) {
+  const inst = line.installment;
   const { amount_clp, amount_usd } = storedCardLineAmounts(line);
   return {
     transaction_date: storedCardLineDate(line.printed_transaction_date, line.transaction_date),
@@ -81,6 +124,7 @@ export function storedLineColumns(statement: CardCanonicalStatement, line: CardC
     parser_row_id: line.document.line_id,
     raw_line: line.document.raw_text,
     origin_card_last4: line.origin_card_last4 ?? statement.card_last4,
+    ...(legacyAmountColumn(line.currency) != null ? {} : { other_currency_amount: `${line.currency}:${line.amount}` }),
   };
 }
 
@@ -90,7 +134,8 @@ export function canonicalLineDedupeKeys(cardGroup: string, line: CardCanonicalLi
     installment: line.installment != null,
     dateIso: line.transaction_date ?? line.posting_date,
     merchant: line.merchant,
-    amountClp: storedCardLineAmounts(line).amount_clp,
+    // A line in another currency than pesos or dollars keys on its own amount (the peso slot is 0).
+    amountClp: legacyAmountColumn(line.currency) != null ? storedCardLineAmounts(line).amount_clp : line.amount,
     documentKey: line.document.dedupe_key,
   });
 }
@@ -124,7 +169,7 @@ export function statementLinesLessRepeats(statement: CardCanonicalStatement): Ca
 
 /** The stored columns the fingerprint hashes, per statement and per line (see the module comment). */
 export type StoredStatementForFingerprint = Omit<ReturnType<typeof storedStatementColumns>, "source_pdf" | "statement_date">;
-export type StoredLineForFingerprint = ReturnType<typeof storedLineColumns>;
+export type StoredLineForFingerprint = ReturnType<typeof storedLineColumnsForFingerprint>;
 
 const STATEMENT_FINGERPRINT_COLUMNS = [
   "card_group",
@@ -175,7 +220,14 @@ export function storedStatementFingerprint(
   lines: readonly Record<(typeof LINE_FINGERPRINT_COLUMNS)[number], unknown>[]
 ): string {
   const head = JSON.stringify(STATEMENT_FINGERPRINT_COLUMNS.map((c) => canonicalValue(statement[c])));
-  const body = lines.map((line) => JSON.stringify(LINE_FINGERPRINT_COLUMNS.map((c) => canonicalValue(line[c])))).sort();
+  const body = lines
+    .map((line) => {
+      const values = LINE_FINGERPRINT_COLUMNS.map((c) => canonicalValue(line[c]));
+      const other = (line as { other_currency_amount?: unknown }).other_currency_amount;
+      if (other != null) values.push(String(other));
+      return JSON.stringify(values);
+    })
+    .sort();
   const h = crypto.createHash("sha256");
   h.update(head).update("\n");
   for (const line of body) h.update(line).update("\n");
@@ -189,6 +241,6 @@ export function storedStatementFingerprint(
 export function cardStatementFingerprint(statement: CardCanonicalStatement): string {
   return storedStatementFingerprint(
     storedStatementColumns(statement),
-    statementLinesLessRepeats(statement).map((line) => storedLineColumns(statement, line))
+    statementLinesLessRepeats(statement).map((line) => storedLineColumnsForFingerprint(statement, line))
   );
 }

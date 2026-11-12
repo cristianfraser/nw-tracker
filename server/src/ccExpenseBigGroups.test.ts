@@ -31,7 +31,7 @@ describe("ccExpenseBigGroups", () => {
         .run(accountId).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key, parser_row_id)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key, parser_row_id)
        VALUES (?, '03/09/2026', 'VITEST BIG GROUP', 1000, 0, 'vitest-big-group', 'vitest-big-group')`
     ).run(statementId);
     const manual = createManualExpense({

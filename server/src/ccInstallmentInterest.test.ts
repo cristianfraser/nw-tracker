@@ -32,7 +32,7 @@ function insertCuotaLine(planId: number, key: string, statementDate: string, n: 
   const rowId = `${TAG}|${key}|${n}`;
   db.prepare(
     `INSERT INTO cc_statement_lines
-       (statement_id, transaction_date, merchant, amount_clp, valor_cuota_mensual_clp, nro_cuota_current,
+       (statement_id, transaction_date, merchant, amount, cuota_amount, nro_cuota_current,
         nro_cuota_total, interest_rate_text, parser_row_id)
      VALUES (?, '08/11/2036', ?, ?, ?, ?, 3, ?, ?)`
   ).run(st, `${TAG} ${key}`, principal, cuota, n, rate, rowId);

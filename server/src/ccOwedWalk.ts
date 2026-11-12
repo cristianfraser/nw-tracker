@@ -3,11 +3,12 @@
  * anchor plus the signed evidence dated after it (charges +, PAGOs −, installment contracts at
  * full value on their purchase date).
  *
- * Per currency (docs/holdings-cards-plan.md): the anchors (`cc_owed_anchors`) and the evidence are
- * kept in the currency the bank states them in — pesos, and dollars to the cent — and the value in
- * pesos is each sub-balance converted at the date's rate (`convertCurrency`, debt side: a dollar
- * debt at the buy rate; a currency the card is in credit in at the asset side). An unpaid dollar
- * debt therefore follows the peso until it is paid. A card with no per-currency anchor (no plan
+ * Per currency (docs/holdings-cards-plan.md, docs/any-currency-plan.md C3): the anchors
+ * (`cc_owed_anchors`) and the evidence are kept in the currency the bank states them in — pesos,
+ * dollars to the cent, any other currency to its smallest coin — and the value in pesos is each
+ * sub-balance converted at the date's rate (`convertCurrency`, debt side: a foreign debt at the buy
+ * rate; a currency the card is in credit in at the asset side). An unpaid foreign debt therefore
+ * follows the peso until it is paid. A card with no per-currency anchor (no plan
  * ledger: the anchor writer never ran for it) walks its CLP `valuations` rows as peso anchors.
  *
  * Today used to be valued by the live billing formula instead (facturado + cupo en cuotas −
@@ -21,9 +22,13 @@
  * where the billing frame is the point.
  */
 import {
+  addToCcOwed,
+  ccOwedIn,
+  emptyCcOwed,
   normalizedInstallmentPurchaseEvents,
   normalizedPostCloseLines,
   postCloseNativeAdjustment,
+  sumCcOwed,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
 import { usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
@@ -32,13 +37,14 @@ import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { convertCurrency, convertFlow, type CurrencyCode } from "./rates.js";
+import { roundToCurrency } from "./displayUnits.js";
 import { convertValue } from "./valueConvert.js";
 import { assertValuationCurrency } from "./valuationValue.js";
 
 export type CcOwedWalkMark = { value_clp: number; as_of_date: string };
 
 /** Owed per currency on a date, with the anchor the walk started from. */
-export type CcOwedByCurrencyMark = CcOwedNative & { as_of_date: string };
+export type CcOwedByCurrencyMark = { owed: CcOwedNative; as_of_date: string };
 
 const stmtNativeAnchorDateBefore = db.prepare(
   `SELECT MAX(as_of_date) AS d FROM cc_owed_anchors WHERE account_id = ? AND as_of_date < ?`
@@ -67,9 +73,9 @@ export function ccHasNativeOwedAnchors(accountId: number): boolean {
 }
 
 function nativeAnchorAt(accountId: number, date: string): CcOwedNative {
-  const out: CcOwedNative = { clp: 0, usd: 0 };
-  for (const r of stmtNativeAnchorRows.all(accountId, date) as { currency: "clp" | "usd"; amount: number }[]) {
-    out[r.currency] += r.amount;
+  const out = emptyCcOwed();
+  for (const r of stmtNativeAnchorRows.all(accountId, date) as { currency: string; amount: number }[]) {
+    addToCcOwed(out, r.currency, r.amount);
   }
   return out;
 }
@@ -94,11 +100,7 @@ export function ccOwedByCurrencyAtYmd(
     if (d == null) return null;
     const anchor = nativeAnchorAt(accountId, d);
     const adj = postCloseNativeAdjustment(accountId, d, asOfYmd, { includeInstallmentPurchases: true });
-    return {
-      clp: Math.round(anchor.clp + adj.clp),
-      usd: Math.round((anchor.usd + adj.usd) * 100) / 100,
-      as_of_date: d,
-    };
+    return { owed: sumCcOwed(anchor, adj), as_of_date: d };
   }
   const row = (strict ? stmtClpAnchorBefore : stmtClpAnchorOnOrBefore).get(accountId, asOfYmd) as
     | { as_of_date: string; value_clp: number; currency: string }
@@ -109,23 +111,31 @@ export function ccOwedByCurrencyAtYmd(
   const adj = postCloseNativeAdjustment(accountId, row.as_of_date, asOfYmd, {
     includeInstallmentPurchases: true,
   });
-  return {
-    clp: Math.round(row.value_clp + adj.clp),
-    usd: Math.round(adj.usd * 100) / 100,
-    as_of_date: row.as_of_date,
-  };
+  return { owed: sumCcOwed({ clp: row.value_clp }, adj), as_of_date: row.as_of_date };
 }
 
-/** Pesos per dollar a card's dollar sub-balance is valued at on `ymd`: the buy rate for a debt, the sell rate for a credit. */
+/** Pesos per unit a card's sub-balance in `currency` is valued at on `ymd`: the buy rate for a debt, the sell rate for a credit. */
+export function ccOwedRateClp(currency: CurrencyCode, owed: number, ymd: string): number | null {
+  return convertCurrency(1, currency, "clp", ymd, { side: owed < 0 ? "asset" : "debt" });
+}
+
+/** {@link ccOwedRateClp} for the dollar sub-balance. */
 export function ccUsdOwedRateClp(usdOwed: number, ymd: string): number | null {
-  return convertCurrency(1, "usd", "clp", ymd, { side: usdOwed < 0 ? "asset" : "debt" });
+  return ccOwedRateClp("usd", usdOwed, ymd);
 }
 
-/** A per-currency owed in pesos at `ymd`'s rate. Null when a dollar sub-balance has no rate on file. */
-export function ccOwedNativeValueClp(owed: CcOwedNative, ymd: string): number | null {
-  if (owed.usd === 0) return owed.clp;
-  const rate = ccUsdOwedRateClp(owed.usd, ymd);
-  return rate == null ? null : Math.round(owed.clp + owed.usd * rate);
+/** A per-currency owed in pesos at `ymd`'s rate. Null when a foreign sub-balance has no rate on file. */
+export function ccOwedNativeValueClp(owed: Readonly<CcOwedNative>, ymd: string): number | null {
+  let sum = ccOwedIn(owed, "clp");
+  let foreign = false;
+  for (const [c, qty] of Object.entries(owed)) {
+    if (c === "clp" || qty === 0) continue;
+    const rate = ccOwedRateClp(c, qty, ymd);
+    if (rate == null) return null;
+    sum += qty * rate;
+    foreign = true;
+  }
+  return foreign ? Math.round(sum) : sum;
 }
 
 /** Owed in pesos at `asOfYmd` (see {@link ccOwedByCurrencyAtYmd}); `as_of_date` is the anchor's. */
@@ -134,10 +144,10 @@ export function ccOwedClpAtYmd(
   asOfYmd: string,
   opts?: { strictlyBefore?: boolean }
 ): CcOwedWalkMark | null {
-  const owed = ccOwedByCurrencyAtYmd(accountId, asOfYmd, opts);
-  if (!owed) return null;
-  const value_clp = ccOwedNativeValueClp(owed, asOfYmd);
-  return value_clp == null ? null : { value_clp, as_of_date: owed.as_of_date };
+  const mark = ccOwedByCurrencyAtYmd(accountId, asOfYmd, opts);
+  if (!mark) return null;
+  const value_clp = ccOwedNativeValueClp(mark.owed, asOfYmd);
+  return value_clp == null ? null : { value_clp, as_of_date: mark.as_of_date };
 }
 
 /**
@@ -160,8 +170,8 @@ function isoAddDays(iso: string, days: number): string {
  * owes in another currency than `unit`, re-valued from the previous day's rate to this day's —
  * `owed_c(d−1) · (R_c(d) − R_c(d−1))`, `R_c` the rate of currency `c` into `unit` at the side the
  * sub-balance is valued at (debt while owed, asset while in credit; a day the side flips uses
- * each day's own). In pesos that is the dollar sub-balance (the peso one is the unit); in dollars
- * the peso one (the dollars are dollars). With the value `V(d) = Σ_c owed_c(d) · R_c(d)`,
+ * each day's own). In pesos that is every foreign sub-balance (the peso one is the unit); in
+ * dollars the peso one and any other (the dollars are dollars). With the value `V(d) = Σ_c owed_c(d) · R_c(d)`,
  * `V(d) − V(d−1)` is the day's evidence at the day's rate plus this term, so the card's derived
  * flow (`−ΔV + cost`) is the evidence and its P/L carries the revaluation.
  *
@@ -185,16 +195,12 @@ export function ccRevaluationCostByDate(accountId: number, unit: CurrencyCode): 
   );
   const out = new Map(past.byDate);
   if (past.lastPast != null) {
-    const todayOwed = ccOwedByCurrencyAtYmd(accountId, today);
-    const cur: CcOwedNative = { clp: todayOwed?.clp ?? 0, usd: todayOwed?.usd ?? 0 };
+    const cur: CcOwedNative = ccOwedByCurrencyAtYmd(accountId, today)?.owed ?? emptyCcOwed();
     const term = revaluationTerm(unit, past.lastPast, cur, past.lastPastDay!, today, past.paymentsByDay.get(today));
     if (term != null && term !== 0) out.set(today, term);
   }
   return out;
 }
-
-/** The card's NATIVE sub-balances (what its statements bill in) — not display units; any display unit reads both. */
-const CURRENCIES: readonly ("clp" | "usd")[] = ["clp", "usd"];
 
 /** Rate of one `c` into `unit` on `day` at the side a sub-balance of `qty` is valued at. */
 function subBalanceRate(c: CurrencyCode, unit: CurrencyCode, qty: number, day: string): number | null {
@@ -205,26 +211,28 @@ type RealRatePayments = { usd: number; clp: number };
 
 function revaluationTerm(
   unit: CurrencyCode,
-  prev: CcOwedNative,
-  cur: CcOwedNative,
+  prev: Readonly<CcOwedNative>,
+  cur: Readonly<CcOwedNative>,
   prevDay: string,
   day: string,
   paid: RealRatePayments | undefined
 ): number | null {
   let term = 0;
-  for (const c of CURRENCIES) {
+  // Each sub-balance the card owes in another currency than the unit (the card's NATIVE
+  // currencies, what its statements bill in — not display units).
+  for (const [c, owedPrev] of Object.entries(prev)) {
     if (c === unit) continue;
-    if (prev[c] !== 0) {
-      const rPrev = subBalanceRate(c, unit, prev[c], prevDay);
-      const rCur = subBalanceRate(c, unit, cur[c], day);
+    if (owedPrev !== 0) {
+      const rPrev = subBalanceRate(c, unit, owedPrev, prevDay);
+      const rCur = subBalanceRate(c, unit, ccOwedIn(cur, c), day);
       if (rPrev == null || rCur == null) return null;
-      term += prev[c] * rCur - prev[c] * rPrev;
+      term += owedPrev * rCur - owedPrev * rPrev;
     }
   }
   if (unit !== "usd" && paid && paid.usd !== 0) {
     // The paid dollars leave the debt at the pesos actually paid, in `unit`: the pesos as a flow of
     // the day (identity in pesos), against the dollars at the day's rate into `unit`.
-    const rCur = subBalanceRate("usd", unit, cur.usd, day);
+    const rCur = subBalanceRate("usd", unit, ccOwedIn(cur, "usd"), day);
     if (rCur == null) return null;
     term += convertFlow(paid.clp, "clp", unit, day) - paid.usd * rCur;
   }
@@ -241,16 +249,23 @@ type RevaluationPast = {
 /** The card's walk anchors per currency: the native ones, else its CLP `valuations` rows as peso anchors. */
 function walkAnchorsBefore(accountId: number, today: string): { as_of_date: string; owed: CcOwedNative }[] {
   if (ccHasNativeOwedAnchors(accountId)) {
-    return (
-      db
-        .prepare(
-          `SELECT as_of_date,
-             SUM(CASE WHEN currency = 'clp' THEN amount ELSE 0 END) AS clp,
-             SUM(CASE WHEN currency = 'usd' THEN amount ELSE 0 END) AS usd
-           FROM cc_owed_anchors WHERE account_id = ? AND as_of_date < ? GROUP BY as_of_date ORDER BY as_of_date`
-        )
-        .all(accountId, today) as { as_of_date: string; clp: number; usd: number }[]
-    ).map((r) => ({ as_of_date: r.as_of_date, owed: { clp: r.clp, usd: r.usd } }));
+    const rows = db
+      .prepare(
+        `SELECT as_of_date, currency, SUM(amount) AS amount FROM cc_owed_anchors
+         WHERE account_id = ? AND as_of_date < ? GROUP BY as_of_date, currency
+         ORDER BY as_of_date, CASE currency WHEN 'clp' THEN 0 WHEN 'usd' THEN 1 ELSE 2 END, currency`
+      )
+      .all(accountId, today) as { as_of_date: string; currency: string; amount: number }[];
+    const out: { as_of_date: string; owed: CcOwedNative }[] = [];
+    for (const r of rows) {
+      let last = out.at(-1);
+      if (last?.as_of_date !== r.as_of_date) {
+        last = { as_of_date: r.as_of_date, owed: emptyCcOwed() };
+        out.push(last);
+      }
+      addToCcOwed(last.owed, r.currency, r.amount);
+    }
+    return out;
   }
   const rows = db
     .prepare(
@@ -296,7 +311,7 @@ function buildRevaluation(accountId: number, unit: CurrencyCode, today: string):
     const end = i + 1 < anchors.length ? isoAddDays(anchors[i + 1]!.as_of_date, -1) : yesterday;
     while (entryIdx < entries.length && entries[entryIdx]!.iso <= a.as_of_date) entryIdx++;
     const seen = new Set<string>();
-    const adj: CcOwedNative = { clp: 0, usd: 0 };
+    const adj: CcOwedNative = emptyCcOwed();
     let j = entryIdx;
     for (let d = a.as_of_date; d <= end; d = isoAddDays(d, 1)) {
       if (d > a.as_of_date) {
@@ -304,18 +319,16 @@ function buildRevaluation(accountId: number, unit: CurrencyCode, today: string):
           const e = entries[j]!;
           if (!seen.has(e.key)) {
             seen.add(e.key);
-            adj[e.currency] += e.amount!;
+            addToCcOwed(adj, e.currency, e.amount!);
           }
           j++;
         }
       }
-      owedByDay.push({
-        day: d,
-        owed: {
-          clp: Math.round(a.owed.clp + Math.round(adj.clp)),
-          usd: Math.round((a.owed.usd + Math.round(adj.usd * 100) / 100) * 100) / 100,
-        },
-      });
+      const owed: CcOwedNative = emptyCcOwed();
+      for (const c of new Set([...Object.keys(a.owed), ...Object.keys(adj)])) {
+        owed[c] = roundToCurrency(ccOwedIn(a.owed, c) + roundToCurrency(ccOwedIn(adj, c), c), c);
+      }
+      owedByDay.push({ day: d, owed });
     }
   }
   for (let i = 1; i < owedByDay.length; i++) {

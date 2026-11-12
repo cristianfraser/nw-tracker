@@ -1,7 +1,7 @@
 
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { ccOwedByCurrencyAtYmd, ccOwedNativeValueClp } from "./ccOwedWalk.js";
-import type { CcOwedNative } from "./ccBillingBalances.js";
+import { addToCcOwed, ccOwedIn, emptyCcOwed, type CcOwedNative } from "./ccBillingBalances.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -31,18 +31,24 @@ const insertNativeAnchor = db.prepare(
   `INSERT INTO cc_owed_anchors (account_id, as_of_date, currency, amount) VALUES (?, ?, ?, ?)`
 );
 
-/** Replace a card's per-currency anchor on a date (a peso row always; a dollar row when it owes dollars). */
-export function writeCcOwedAnchor(accountId: number, asOfDate: string, owed: CcOwedNative): void {
+/** Replace a card's per-currency anchor on a date (a peso row always; a row per other currency it owes). */
+export function writeCcOwedAnchor(accountId: number, asOfDate: string, owed: Readonly<CcOwedNative>): void {
   deleteNativeAnchor.run(accountId, asOfDate);
-  insertNativeAnchor.run(accountId, asOfDate, "clp", owed.clp);
-  if (owed.usd !== 0) insertNativeAnchor.run(accountId, asOfDate, "usd", owed.usd);
+  insertNativeAnchor.run(accountId, asOfDate, "clp", ccOwedIn(owed, "clp"));
+  for (const [c, v] of Object.entries(owed)) {
+    if (c !== "clp" && v !== 0) insertNativeAnchor.run(accountId, asOfDate, c, v);
+  }
 }
 
-/** The pesos an owed is valued at on its date; throws when a dollar sub-balance has no rate. */
-export function ccOwedValueClpOrThrow(accountId: number, asOfDate: string, owed: CcOwedNative): number {
+/** The pesos an owed is valued at on its date; throws when a foreign sub-balance has no rate. */
+export function ccOwedValueClpOrThrow(accountId: number, asOfDate: string, owed: Readonly<CcOwedNative>): number {
   const v = ccOwedNativeValueClp(owed, asOfDate);
   if (v == null) {
-    throw new Error(`Account ${accountId} ${asOfDate}: no USD/CLP rate to value US$${owed.usd} of card debt`);
+    const foreign = Object.entries(owed)
+      .filter(([c, q]) => c !== "clp" && q !== 0)
+      .map(([c, q]) => `${q} ${c}`)
+      .join(", ");
+    throw new Error(`Account ${accountId} ${asOfDate}: no rate into pesos to value ${foreign} of card debt`);
   }
   return v;
 }
@@ -56,11 +62,11 @@ export function revalueCcOwedAnchorValuations(accountId: number): number {
     .prepare(
       `SELECT as_of_date, currency, amount FROM cc_owed_anchors WHERE account_id = ? ORDER BY as_of_date`
     )
-    .all(accountId) as { as_of_date: string; currency: "clp" | "usd"; amount: number }[];
+    .all(accountId) as { as_of_date: string; currency: string; amount: number }[];
   const byDate = new Map<string, CcOwedNative>();
   for (const r of rows) {
-    const o = byDate.get(r.as_of_date) ?? { clp: 0, usd: 0 };
-    o[r.currency] += r.amount;
+    const o = byDate.get(r.as_of_date) ?? emptyCcOwed();
+    addToCcOwed(o, r.currency, r.amount);
     byDate.set(r.as_of_date, o);
   }
   const stored = new Map(
@@ -303,7 +309,7 @@ export function upsertCreditCardValuationsFromLedger(
   // number (as pesos) only when there is no anchor to walk from.
   const today = chileCalendarTodayYmd();
   const walkedToday = ccOwedByCurrencyAtYmd(accountId, today, { strictlyBefore: true });
-  let owedToday: CcOwedNative | null = walkedToday ? { clp: walkedToday.clp, usd: walkedToday.usd } : null;
+  let owedToday: CcOwedNative | null = walkedToday ? walkedToday.owed : null;
   if (!owedToday) {
     const liveBalance = latestCreditCardBillingBalanceTotalClp(accountId) ?? liveCreditCardOutstandingClp(accountId);
     if (liveBalance != null && Number.isFinite(liveBalance)) owedToday = { clp: Math.round(liveBalance), usd: 0 };

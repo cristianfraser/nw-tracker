@@ -51,7 +51,7 @@ function charge(key: string, ddmmyyyy: string, amount: number): { lineId: number
   const lineId = Number(
     db
       .prepare(
-        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, kind,
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, kind,
                                          dedupe_key, parser_row_id, raw_line)
          VALUES (?, ?, 'RECAUDACION EX TEST', ?, 0, 'card_purchase', ?, ?, ?)`
       )
@@ -179,7 +179,7 @@ describe("card-to-card facturado payments as transfers", () => {
     // The paid card's PAGOs and a same-pesos checking debit for each.
     const sid = statement(paid, "26/03/2035", "pagos");
     const insPago = db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, ?, 'PAGO', ?, 0, ?)`
     );
     insPago.run(sid, "11/03/2035", -111_111, `${TAG}|pago1`);
@@ -210,7 +210,7 @@ describe("card-to-card facturado payments as transfers", () => {
     const c2 = charge("s2", "05/05/2035", 70_000);
     const sid = statement(paid, "26/05/2035", "pago-sum");
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, '06/05/2035', 'PAGO', -120000, 0, ?)`
     ).run(sid, `${TAG}|pagosum`);
     db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, -120000, 'clp', '2035-05-07', ?)`).run(

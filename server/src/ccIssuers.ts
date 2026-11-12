@@ -164,6 +164,25 @@ export const CC_ISSUERS = [
     merchant_suffixes: null,
     facturado_paid_at_merchant_prefixes: [],
   },
+  {
+    // A fictional European bank (docs/any-currency-plan.md, Phase C3): a card that bills in euros
+    // only, held by tests as the case of a card in a third currency. Its rules copy Lonestar's —
+    // a fixed close, the next cycle the day after, due 25 days later, no cuotas, no listing.
+    slug: "euronova",
+    display_brand: "Euronova",
+    statement_currencies: { primary: "eur", secondary: [] },
+    installments: false,
+    unbilled_listing: false,
+    sort_order: 40,
+    derived_pay_by: { kind: "close_plus_days", days: 25 },
+    web_paste: { card_group: "EURONOVA", sign: "charges_positive" },
+    close_day_offset_days: 1,
+    first_cuota: { cuota_comercio: "purchase_cycle", precio_contado: "purchase_cycle" },
+    parser_layout_prefixes: [],
+    monto_facturado_tolerance_pct: 0.005,
+    merchant_suffixes: null,
+    facturado_paid_at_merchant_prefixes: [],
+  },
 ] as const satisfies readonly CcIssuerDef[];
 
 export type CcIssuer = (typeof CC_ISSUERS)[number];

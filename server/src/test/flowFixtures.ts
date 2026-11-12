@@ -40,7 +40,7 @@ export function fixtureCardLine(id: number, amountClp = 1000): () => void {
       .run(accountId, `vitest fixture line ${id}.pdf`).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO cc_statement_lines (id, statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (id, statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, '03/09/2026', 'VITEST FIXTURE LINE', ?, 0, ?)`
   ).run(id, statementId, amountClp, `vitest-fixture-${id}`);
   return () => {

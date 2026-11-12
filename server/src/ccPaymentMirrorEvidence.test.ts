@@ -162,8 +162,8 @@ describe("converted card payments across statement writes", () => {
     const abonoId = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key)
-           VALUES (?, '05/12/2037', 'ABONO DE DIVISAS', 0, -50, 0, 'vitest-evidence-bucket-abono')`
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
+           VALUES (?, '05/12/2037', 'ABONO DE DIVISAS', -50, 'usd', 0, 'vitest-evidence-bucket-abono')`
         )
         .run(bucketId).lastInsertRowid
     );

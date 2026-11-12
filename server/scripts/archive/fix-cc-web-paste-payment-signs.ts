@@ -23,7 +23,7 @@ const rows = db
   source_pdf: string;
 }[];
 
-const update = db.prepare(`UPDATE cc_statement_lines SET amount_clp = ? WHERE id = ?`);
+const update = db.prepare(`UPDATE cc_statement_lines SET amount = ? WHERE id = ? AND currency = 'clp'`);
 const touchedAccounts = new Set<number>();
 let fixed = 0;
 

@@ -25,10 +25,13 @@ export function cardValueInUnit(
   now?: Date
 ): number | null {
   if (unit === "clp") return owedClp;
-  const owed = ccOwedByCurrencyAtYmd(accountId, ymd);
-  if (owed == null) return subBalanceIn(owedClp, "clp", unit, ymd, now);
-  const clp = subBalanceIn(owed.clp, "clp", unit, ymd, now);
-  const usd = subBalanceIn(owed.usd, "usd", unit, ymd, now);
-  if (clp == null || usd == null) return null;
-  return clp + usd;
+  const mark = ccOwedByCurrencyAtYmd(accountId, ymd);
+  if (mark == null) return subBalanceIn(owedClp, "clp", unit, ymd, now);
+  let sum = 0;
+  for (const [c, qty] of Object.entries(mark.owed)) {
+    const v = subBalanceIn(qty, c, unit, ymd, now);
+    if (v == null) return null;
+    sum += v;
+  }
+  return sum;
 }

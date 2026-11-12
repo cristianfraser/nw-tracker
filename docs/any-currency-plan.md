@@ -229,7 +229,16 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
    module (`f22/usdFx.ts`) applies the same oficios to any foreign currency (they speak of
    «moneda extranjera»), at that currency's official rate; to confirm against the SII before
    building.
-3. **Cards.** `CcOwedNative {clp, usd}` (`ccOwedWalk.ts`, `ccOwedByCurrency.ts`) becomes a map by
+3. **Cards.** *Part 1 done 2026-11-12 (migration 319):* statement lines store `amount` + `currency`
+   + `cuota_amount` (the four legacy names are generated columns with unchanged values; a third
+   currency reads NULL there), the owed walk, its anchors, `cardValueInUnit` and the revaluation term
+   are a map by currency, and a euro card (fictional issuer `euronova`) walks, values and revalues
+   its euros. Card payloads byte-identical in CLP and USD on a copy of the 2026-11-12 database (43
+   payloads + the cupo task). Still open: the readers of the legacy line columns (~70 files: the
+   billing detail, the facturaciones and their dollar rates, the statement-frame split
+   `ccStatementOwedByCurrencyByMonth`, which still splits pesos and dollars only, expense lines), so a
+   euro card's anchors, facturaciones and expense lines are not right yet; and the tables below.
+   `CcOwedNative {clp, usd}` (`ccOwedWalk.ts`, `ccOwedByCurrency.ts`) becomes a map by
    currency, its revaluation term per sub-balance. Statement lines: `cc_statement_lines`
    `amount_clp` / `amount_usd` and `valor_cuota_mensual_*` → `amount` + `currency` (a line is in
    its statement's currency already); `cc_billing_month_balances` → the long table

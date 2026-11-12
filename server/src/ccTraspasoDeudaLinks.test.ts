@@ -54,13 +54,13 @@ describe("ccTraspasoDeudaLinks", () => {
     amounts: { clp?: number; usd?: number }
   ): number {
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, amount_usd, installment_flag, transaction_date, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount, currency, installment_flag, transaction_date, dedupe_key)
        VALUES (?, ?, ?, ?, 0, ?, ?)`
     ).run(
       statementId,
       merchant,
-      amounts.clp ?? 0,
-      amounts.usd ?? null,
+      amounts.usd ?? amounts.clp ?? 0,
+      amounts.usd != null ? "usd" : "clp",
       txnIso,
       `vitest-tras-${statementId}-${merchant}-${amounts.clp ?? amounts.usd}`
     );
@@ -134,7 +134,7 @@ describe("ccTraspasoDeudaLinks", () => {
     const badUsd = addLine(usdStmt, "2026-08-09", "TRASPASO DE DEUDA INTERNACIO", { usd: 176.7 });
     expect(() => computeCcTraspasoDeudaPairsForAccount(id)).toThrow(/negative abono/);
 
-    db.prepare(`UPDATE cc_statement_lines SET amount_usd = ? WHERE id = ?`).run(-1.0, badUsd);
+    db.prepare(`UPDATE cc_statement_lines SET amount = ? WHERE id = ? AND currency = 'usd'`).run(-1.0, badUsd);
     expect(() => computeCcTraspasoDeudaPairsForAccount(id)).toThrow(/implied rate/);
   });
 

@@ -34,11 +34,11 @@ function insertOneShotLine(
   db.prepare(
     `INSERT INTO cc_statement_lines (
        statement_id, transaction_date, posting_date, place, merchant, description_merged,
-       country, amount_orig, orig_currency, amount_clp, amount_usd, installment_flag,
-       nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, valor_cuota_mensual_usd,
+       country, amount_orig, orig_currency, amount, currency, installment_flag,
+       nro_cuota_current, nro_cuota_total, cuota_amount,
        interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line
-     ) VALUES (?, '30/06/2026', NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, NULL, 0,
-       NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, 'raw')`
+     ) VALUES (?, '30/06/2026', NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, 'clp', 0,
+       NULL, NULL, NULL, NULL, NULL, ?, ?, 'raw')`
   ).run(statementId, merchant, amountClp, `dedupe-${parserRowId}`, parserRowId);
   return (
     db

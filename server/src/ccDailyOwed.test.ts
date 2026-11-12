@@ -46,7 +46,7 @@ beforeAll(() => {
       .run(accountId).lastInsertRowid
   );
   const insLine = db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, ?, ?, 0, ?)`
   );
   insLine.run(statementId, "10/04/2026", "VITEST STORE", 120000, "vitest-daily-owed-1");
@@ -91,7 +91,7 @@ describe("CC per-day owed-on-date", () => {
     // Warm the memo, then add a line the memo doesn't know about.
     expect(markAt("2026-04-18")).toBe(120000);
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, '18/04/2026', 'VITEST STORE 2', 50000, 0, 'vitest-daily-owed-3')`
     ).run(statementId);
     expect(markAt("2026-04-18")).toBe(170000);
@@ -154,7 +154,7 @@ describe("CC per-day owed-on-date", () => {
         .run(accountId).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, '09/06/2026', 'MONTO CANCELADO', -60000, 0, 'vitest-daily-owed-4')`
     ).run(legacyStatementId);
     try {

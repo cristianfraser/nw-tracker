@@ -182,21 +182,21 @@ describe("buildBillingDetailByMonth", () => {
     const insA = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key
          ) VALUES (?, ?, 'VITEST SHOP A', ?, 0, ?)`
       )
       .run(stmt.id, `${openBm}-10`, chargeA, `${dedupeBase}-a`);
     const insB = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key
          ) VALUES (?, ?, 'VITEST SHOP B', ?, 0, ?)`
       )
       .run(stmt.id, `${openBm}-11`, chargeB, `${dedupeBase}-b`);
     const insPago = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key
          ) VALUES (?, ?, 'PAGO', ?, 0, ?)`
       )
       .run(stmt.id, `${openBm}-12`, -pagoClp, `${dedupeBase}-pago`);
@@ -254,7 +254,7 @@ describe("buildBillingDetailByMonth", () => {
     const ins = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key
          ) VALUES (?, ?, 'PAGO', ?, 0, ?)`
       )
       .run(stmt.id, `${openBm}-05`, -pagoClp, `vitest-pago-${Date.now()}`);

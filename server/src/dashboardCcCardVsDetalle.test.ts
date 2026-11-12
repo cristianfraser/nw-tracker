@@ -68,7 +68,7 @@ beforeAll(() => {
      VALUES (?, 'santander', ?, ?, ?, ?, 'clp')`
   );
   const insL = db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, ?, ?, 0, ?)`
   );
   // Last year: the middle of the 13th month back. Earlier this year: January 10th, unless

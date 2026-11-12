@@ -66,11 +66,11 @@ beforeAll(() => {
     );
   }
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key)
-     VALUES (?, ?, 'TIENDA VITEST', 0, 50, 0, 'vitest-native-owed-usd')`
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
+     VALUES (?, ?, 'TIENDA VITEST', 50, 'usd', 0, 'vitest-native-owed-usd')`
   ).run(statementIds[1], ddmmyyyy(USD_CHARGE_DATE));
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, 'TIENDA VITEST', 30000, 0, 'vitest-native-owed-clp')`
   ).run(statementIds[0], ddmmyyyy(CLP_CHARGE_DATE));
   writeCcOwedAnchor(ccId, ANCHOR, { clp: 100_000, usd: 100 });
@@ -99,8 +99,8 @@ beforeAll(() => {
   );
   statementIds.push(payStmt);
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key)
-     VALUES (?, ?, 'ABONO DE DIVISAS', 0, -100, 0, 'vitest-real-rate-abono')`
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
+     VALUES (?, ?, 'ABONO DE DIVISAS', -100, 'usd', 0, 'vitest-real-rate-abono')`
   ).run(payStmt, ddmmyyyy(PAY_DATE));
   const from = db
     .prepare(`SELECT id FROM accounts WHERE id NOT IN (?, ?) AND asset_group_id IS NOT NULL ORDER BY id LIMIT 1`)
@@ -136,7 +136,7 @@ afterAll(() => {
 describe("per-currency owed walk", () => {
   it("keeps each currency apart and converts the dollars at the date's debt rate", () => {
     if (ccId == null) return;
-    expect(ccOwedByCurrencyAtYmd(ccId, END)).toMatchObject({ clp: 130_000, usd: 150, as_of_date: ANCHOR });
+    expect(ccOwedByCurrencyAtYmd(ccId, END)).toEqual({ owed: { clp: 130_000, usd: 150 }, as_of_date: ANCHOR });
     const rate = ccUsdOwedRateClp(150, END)!;
     expect(rate).toBeGreaterThan(0);
     expect(ccOwedClpAtYmd(ccId, END)?.value_clp).toBe(Math.round(130_000 + 150 * rate));

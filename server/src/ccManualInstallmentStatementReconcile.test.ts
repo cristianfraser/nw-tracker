@@ -57,11 +57,11 @@ describe("reconcileManualInstallmentPurchasesForStatements", () => {
     db.prepare(
       `INSERT INTO cc_statement_lines (
          statement_id, transaction_date, posting_date, place, merchant, description_merged,
-         country, amount_orig, orig_currency, amount_clp, amount_usd, installment_flag,
-         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, valor_cuota_mensual_usd,
+         country, amount_orig, orig_currency, amount, currency, installment_flag,
+         nro_cuota_current, nro_cuota_total, cuota_amount,
          interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line
-       ) VALUES (?, '25/04/2026', NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, NULL, 1,
-         NULL, ?, NULL, NULL, NULL, NULL, ?, ?, 'raw')`
+       ) VALUES (?, '25/04/2026', NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, 'clp', 1,
+         NULL, ?, NULL, NULL, NULL, ?, ?, 'raw')`
     ).run(statementId, merchant, totalClp, cuotas, `dedupe-o-${suffix}`, `row-o-${suffix}`);
 
     const canon = `manual-out-${suffix}`;
@@ -139,8 +139,8 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
     );
     db.prepare(
       `INSERT INTO cc_statement_lines (
-         statement_id, transaction_date, merchant, amount_clp, installment_flag,
-         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, dedupe_key, parser_row_id, raw_line
+         statement_id, transaction_date, merchant, amount, installment_flag,
+         nro_cuota_current, nro_cuota_total, cuota_amount, dedupe_key, parser_row_id, raw_line
        ) VALUES (?, '25/06/26', 'MP     *MERCADO LIBRE', 544574, 1, 1, 12, 45381, 'vitest-twin-line', 'vitest-twin-line', 'raw')`
     ).run(statementId);
 
@@ -319,8 +319,8 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
     );
     db.prepare(
       `INSERT INTO cc_statement_lines (
-         statement_id, transaction_date, merchant, amount_clp, installment_flag,
-         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, tipo_cuota, dedupe_key, parser_row_id, raw_line
+         statement_id, transaction_date, merchant, amount, installment_flag,
+         nro_cuota_current, nro_cuota_total, cuota_amount, tipo_cuota, dedupe_key, parser_row_id, raw_line
        ) VALUES (?, '28/08/2026', 'ZTIENDA PREAMBLE SPA', ?, 1, NULL, 3, 100000, '03 CUOTAS COMERC',
          'vitest-preamble-line', 'vitest-preamble-line', 'raw')`
     ).run(statementId, lineAmountClp);

@@ -168,7 +168,7 @@ describe("flowsExpenses", () => {
     const line = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag,
+           statement_id, transaction_date, merchant, amount, installment_flag,
            parser_row_id, origin_card_last4, dedupe_key
          ) VALUES (?, '19/05/2026', 'Additional card payload fixture', 12345, 0, ?, '4999', ?)`
       )
@@ -202,7 +202,7 @@ describe("flowsExpenses", () => {
     const line = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag,
+           statement_id, transaction_date, merchant, amount, installment_flag,
            parser_row_id, origin_card_last4, dedupe_key
          ) VALUES (?, '19/05/2026', 'Additional card cleared fixture', 22222, 0, ?, '4999', ?)`
       )

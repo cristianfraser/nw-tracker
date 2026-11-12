@@ -186,9 +186,9 @@ const tx = db.transaction(() => {
   );
   const insLine = db.prepare(
     `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, description_merged, country,
-       amount_orig, orig_currency, amount_clp, amount_usd, installment_flag, nro_cuota_current, nro_cuota_total,
-       valor_cuota_mensual_clp, dedupe_key, parser_row_id, raw_line, origin_card_last4)
-     VALUES (?, ?, ?, ?, ?, 'CL', NULL, NULL, ?, NULL, 0, 0, 0, 0, ?, ?, ?, ?)`
+       amount_orig, orig_currency, amount, currency, installment_flag, nro_cuota_current, nro_cuota_total,
+       cuota_amount, dedupe_key, parser_row_id, raw_line, origin_card_last4)
+     VALUES (?, ?, ?, ?, ?, 'CL', NULL, NULL, ?, 'clp', 0, 0, 0, 0, ?, ?, ?, ?)`
   );
   const lineIdByKey = new Map<string, { id: number; line: Line }>();
   const roundingLineIds: number[] = [];

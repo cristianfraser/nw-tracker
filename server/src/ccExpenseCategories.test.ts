@@ -341,7 +341,7 @@ describe("ccExpenseCategories", () => {
     const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     try {
       db.prepare(
-        `INSERT INTO cc_statement_lines (statement_id, merchant, description_merged, amount_clp, installment_flag, transaction_date)
+        `INSERT INTO cc_statement_lines (statement_id, merchant, description_merged, amount, installment_flag, transaction_date)
          VALUES (?, 'NOTA DE CREDITO', 'SANTIAGO | NOTA DE CREDITO', -54990, 0, '2025-03-10')`
       ).run(sid);
 
@@ -438,7 +438,7 @@ function createMerchantPropagationFixture(tag: string): {
     const r = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key
          ) VALUES (?, ?, ?, ?, 0, ?)`
       )
       .run(statementId, `0${i + 2}/05/2026`, merchant, amount, `vitest-merchant-${tag}-${i}`);
@@ -762,8 +762,8 @@ describe("installment statement lines resolve their plan total for the purchase 
     const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     const insLine = db.prepare(
       `INSERT INTO cc_statement_lines (
-         statement_id, merchant, description_merged, amount_clp, installment_flag,
-         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, transaction_date, parser_row_id
+         statement_id, merchant, description_merged, amount, installment_flag,
+         nro_cuota_current, nro_cuota_total, cuota_amount, transaction_date, parser_row_id
        ) VALUES (?, ?, ?, ?, 1, 1, 3, ?, ?, ?)`
     );
     const line = (amount: number, valor: number | null, txDate: string, prid: string) =>
@@ -846,8 +846,8 @@ describe("installment statement lines resolve their plan total for the purchase 
         db
           .prepare(
             `INSERT INTO cc_statement_lines (
-               statement_id, merchant, description_merged, amount_clp, installment_flag,
-               nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, transaction_date, parser_row_id
+               statement_id, merchant, description_merged, amount, installment_flag,
+               nro_cuota_current, nro_cuota_total, cuota_amount, transaction_date, parser_row_id
              ) VALUES (?, ?, ?, 60000, 1, 0, 3, 20000, '10/01/2025', ?)`
           )
           .run(sid, merchant, merchant, `${tag}-prid`).lastInsertRowid

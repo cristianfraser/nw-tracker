@@ -2,10 +2,10 @@
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
     "currency-formatter": 293,
-    "currency-list-literal": 8,
-    "currency-type-union": 140,
+    "currency-list-literal": 7,
+    "currency-type-union": 136,
     "dto-currency-key": 292,
-    "unit-literal-compare": 355
+    "unit-literal-compare": 354
   },
   "violations": {
     "client/src/api.ts": {
@@ -351,9 +351,6 @@
     "server/src/cardValueInUnit.ts": {
       "unit-literal-compare": 1
     },
-    "server/src/cards/statementStorage.ts": {
-      "unit-literal-compare": 1
-    },
     "server/src/cashEqsBucketNet.ts": {
       "unit-literal-compare": 1
     },
@@ -366,14 +363,11 @@
       "unit-literal-compare": 4
     },
     "server/src/ccBillingBalances.ts": {
-      "currency-type-union": 2,
+      "currency-type-union": 1,
       "unit-literal-compare": 6
     },
     "server/src/ccBillingCloses.ts": {
       "unit-literal-compare": 3
-    },
-    "server/src/ccCreditCardValuations.ts": {
-      "currency-type-union": 1
     },
     "server/src/ccDailyHistorialBlock.ts": {
       "unit-literal-compare": 3
@@ -411,8 +405,6 @@
       "currency-type-union": 1
     },
     "server/src/ccOwedWalk.ts": {
-      "currency-list-literal": 1,
-      "currency-type-union": 2,
       "unit-literal-compare": 2
     },
     "server/src/ccPaymentMirrorEvidence.ts": {

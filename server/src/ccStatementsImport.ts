@@ -212,13 +212,13 @@ export function importCcStatementsMerge(
   const insLine = db.prepare(`
     INSERT INTO cc_statement_lines (
       statement_id, transaction_date, posting_date, place, merchant, description_merged,
-      country, amount_orig, orig_currency, amount_clp, amount_usd, installment_flag,
-      nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, valor_cuota_mensual_usd,
+      country, amount_orig, orig_currency, amount, currency, installment_flag,
+      nro_cuota_current, nro_cuota_total, cuota_amount,
       interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line, origin_card_last4, kind
     ) VALUES (
       @statement_id, @transaction_date, @posting_date, @place, @merchant, @description_merged,
-      @country, @amount_orig, @orig_currency, @amount_clp, @amount_usd, @installment_flag,
-      @nro_cuota_current, @nro_cuota_total, @valor_cuota_mensual_clp, NULL,
+      @country, @amount_orig, @orig_currency, @amount, @currency, @installment_flag,
+      @nro_cuota_current, @nro_cuota_total, @cuota_amount,
       @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4, @kind
     )
   `);
@@ -354,9 +354,16 @@ export function importCcStatementsMerge(
         }
       }
 
+      const {
+        amount_clp: _legacyClp,
+        amount_usd: _legacyUsd,
+        valor_cuota_mensual_clp: _legacyCuota,
+        other_currency_amount: _other,
+        ...stored
+      } = columns as typeof columns & { other_currency_amount?: string };
       const ins = insLine.run({
         statement_id: statementId,
-        ...columns,
+        ...stored,
         orig_currency: ccLineOriginCurrency({ amountOrig: columns.amount_orig, amountUsd: columns.amount_usd, dateIso: lineDateIso }),
         dedupe_key: dedupeKeys[dedupeKeys.length - 1] ?? null,
         kind: line.kind,

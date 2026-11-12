@@ -1,0 +1,9 @@
+-- A card statement line holds its amount in the currency it is stated in (docs/any-currency-plan.md,
+-- Phase C3): `amount` + `currency` (→ currencies) and `cuota_amount` replace the two-slot
+-- amount_clp / amount_usd and valor_cuota_mensual_clp / _usd, which stay as read-only generated
+-- columns derived from them.
+--
+-- The rebuild lives in the paired POST_MIGRATION_HOOKS entry (server/src/cards/statementLineAmount319.ts):
+-- the table is rebuilt, its rows copied and checked against the legacy values, and its triggers
+-- re-created from the ones on file, in their order, reading the stored columns. Runs with
+-- foreign_keys=OFF (db.ts, FOREIGN_KEYS_OFF_MIGRATIONS): five tables reference cc_statement_lines.

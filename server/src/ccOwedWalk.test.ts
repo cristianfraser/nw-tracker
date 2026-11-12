@@ -59,7 +59,7 @@ beforeAll(() => {
       .run(ccId, stmtDate, addDaysIso(stmtDate, -30), stmtDate).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, 'TIENDA VITEST', ?, 0, 'vitest-owed-walk-buy')`
   ).run(statementId, CHARGE_DATE, CHARGE);
   // An installment ledger row is what puts a card on the live-billing path at all.

@@ -189,7 +189,7 @@ describe("applyCardStatement", () => {
   it("only cross-checks a close a PDF holds, and names an unexplained difference", () => {
     const clp = insertStatement("clp", "24/09/2026", "vitest card statement 2026-09-24.pdf");
     const insertLine = db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, installment_flag, transaction_date, dedupe_key) VALUES (?, ?, ?, ?, '05/09/2026', ?)`
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount, installment_flag, transaction_date, dedupe_key) VALUES (?, ?, ?, ?, '05/09/2026', ?)`
     );
     insertLine.run(clp, "VITEST MERCADO", 12_000, 0, "vitest-pdf-1");
     insertLine.run(clp, "VITEST MUEBLES", 30_000, 1, "vitest-pdf-2");

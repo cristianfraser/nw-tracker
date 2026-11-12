@@ -49,9 +49,9 @@ describe("merchantExpenseNotes", () => {
     const pr = `vitest-appstore|${seq}`;
     db.prepare(
       `INSERT INTO cc_statement_lines (
-         statement_id, transaction_date, merchant, amount_clp, amount_usd, amount_orig, orig_currency,
+         statement_id, transaction_date, merchant, currency, amount, amount_orig, orig_currency,
          installment_flag, dedupe_key, parser_row_id, raw_line
-       ) VALUES (?, ?, ?, 0, ?, ?, ?, 0, ?, ?, 'vitest')`
+       ) VALUES (?, ?, ?, 'usd', ?, ?, ?, 0, ?, ?, 'vitest')`
     ).run(
       statementId,
       date,

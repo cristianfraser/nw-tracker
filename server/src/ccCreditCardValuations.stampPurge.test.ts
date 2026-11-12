@@ -87,7 +87,7 @@ beforeAll(() => {
       .run(ccId, MONTH_END, addDaysIso(MONTH_END, -30), MONTH_END).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
      VALUES (?, ?, 'TIENDA VITEST', 50000, 0, 'vitest-stamp-purge-1')`
   ).run(statementId, addDaysIso(MONTH_END, -3));
   clearAggregationCache();

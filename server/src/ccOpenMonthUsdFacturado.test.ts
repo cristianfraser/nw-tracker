@@ -41,10 +41,10 @@ describe("openMonthUsdFacturado", () => {
     const addLine = (merchant: string, clp: number | null, usd: number | null) =>
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, amount_usd, orig_currency, installment_flag, transaction_date, dedupe_key)
+          `INSERT INTO cc_statement_lines (statement_id, merchant, amount, currency, orig_currency, installment_flag, transaction_date, dedupe_key)
            VALUES (?, ?, ?, ?, ?, 0, '25/08/2026', ?)`
         )
-        .run(sid, merchant, clp, usd, usd != null ? "usd" : null, `vitest-openusd-${merchant}`);
+        .run(sid, merchant, usd ?? clp, usd != null ? "usd" : "clp", usd != null ? "usd" : null, `vitest-openusd-${merchant}`);
 
     // `amount_clp = 0` is what the importer actually stores for a foreign line (the CSV cell is
     // empty and `Number("") === 0`); NULL only arises from the one-off web-paste USD backfill.
@@ -77,10 +77,10 @@ describe("openMonthUsdFacturado", () => {
     const addLine = (merchant: string, clp: number | null, usd: number | null) =>
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, amount_usd, orig_currency, installment_flag, transaction_date, dedupe_key)
+          `INSERT INTO cc_statement_lines (statement_id, merchant, amount, currency, orig_currency, installment_flag, transaction_date, dedupe_key)
            VALUES (?, ?, ?, ?, ?, 0, '25/09/2026', ?)`
         )
-        .run(sid, merchant, clp, usd, usd != null ? "usd" : null, `vitest-openusd2-${merchant}`);
+        .run(sid, merchant, usd ?? clp, usd != null ? "usd" : "clp", usd != null ? "usd" : null, `vitest-openusd2-${merchant}`);
 
     addLine("ANTHROPIC USD", 0, 100); // foreign charge → in the split
     addLine("APPLE REFUND USD", 0, -10); // refund = negative consumption → nets in the split

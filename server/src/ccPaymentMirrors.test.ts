@@ -62,7 +62,7 @@ beforeAll(() => {
   pagoLineId = Number(
     db
       .prepare(
-        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
          VALUES (?, '09/04/2037', 'MONTO CANCELADO', -487331, 0, 'vitest-ccpago-line-1')`
       )
       .run(lineStatementId).lastInsertRowid
@@ -170,7 +170,7 @@ describe("listCcPaymentMirrorCandidates", () => {
       Number(
         db
           .prepare(
-            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
              VALUES (?, ?, 'MONTO CANCELADO', ?, 0, ?)`
           )
           .run(lineStatementId, `1${5 + i}/04/2037`, -amount, `vitest-ccpago-line-x${i}`).lastInsertRowid
@@ -203,7 +203,7 @@ describe("a transfer to Khipu", () => {
     const lineId = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
            VALUES (?, '18/04/2037', 'PAGO', -48250, 0, 'vitest-ccpago-khipu')`
         )
         .run(lineStatementId).lastInsertRowid
@@ -395,8 +395,8 @@ describe("convertCcPaymentMirrors", () => {
     const abonoLineId = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_usd, installment_flag, dedupe_key)
-           VALUES (?, '09/06/2037', 'ABONO DE DIVISAS', -123.45, 0, 'vitest-ccpago-usd-1')`
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
+           VALUES (?, '09/06/2037', 'ABONO DE DIVISAS', -123.45, 'usd', 0, 'vitest-ccpago-usd-1')`
         )
         .run(usdStatementId).lastInsertRowid
     );
@@ -467,8 +467,8 @@ describe("convertCcPaymentMirrors", () => {
     const abonoLineId = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_usd, installment_flag, dedupe_key)
-           VALUES (?, '09/07/2037', 'ABONO DE DIVISAS', -900.00, 0, 'vitest-ccpago-usd-2')`
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
+           VALUES (?, '09/07/2037', 'ABONO DE DIVISAS', -900.00, 'usd', 0, 'vitest-ccpago-usd-2')`
         )
         .run(usdStatementId).lastInsertRowid
     );
@@ -513,7 +513,7 @@ describe("a converted pair when its statement rows are replaced", () => {
         .run(ccId).lastInsertRowid
     );
     const insLine = db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, '09/10/2037', 'MONTO CANCELADO', -271000, 0, 'vitest-ccpago-reimport-1')`
     );
     const lineId = Number(insLine.run(statementId).lastInsertRowid);
@@ -538,7 +538,7 @@ describe("a converted pair when its statement rows are replaced", () => {
       // purchase line the parse now emits first.
       db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
       db.prepare(
-        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
          VALUES (?, '03/10/2037', 'VITEST SHOP', 10000, 0, 'vitest-ccpago-reimport-0')`
       ).run(statementId);
       const reimportedId = Number(insLine.run(statementId).lastInsertRowid);
@@ -574,7 +574,7 @@ describe("a converted pair when its statement rows are replaced", () => {
     const pastedId = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
            VALUES (?, '09/11/2037', 'PAGO', -333000, 0, 'vitest-ccpago-bucket-1')`
         )
         .run(bucketId).lastInsertRowid
@@ -636,7 +636,7 @@ describe("CLP payment evidence (mirror pairing and cuota retirement)", () => {
         .run(ccId).lastInsertRowid
     );
     const insLine = db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key)
        VALUES (?, ?, ?, ?, 0, ?)`
     );
     const abonoLineId = Number(

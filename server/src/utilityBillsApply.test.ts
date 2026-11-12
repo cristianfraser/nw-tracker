@@ -56,7 +56,7 @@ function cardLine(merchant: string, ddmmyyyy: string, amount: number): string {
     .run(accountId, `${SOURCE}-${randomUUID()}`, ddmmyyyy, ddmmyyyy);
   const parserRowId = `vitest-util-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   db.prepare(
-    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, parser_row_id, dedupe_key)
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, parser_row_id, dedupe_key)
      VALUES (?, ?, ?, ?, 0, ?, ?)`
   ).run(Number(stmt.lastInsertRowid), ddmmyyyy, merchant, amount, parserRowId, `vitest-util-dedupe-${parserRowId}`);
   const line = loadGastosLinesForRealEstateMatching().find((l) => l.merchant === merchant && l.amount_clp === amount);

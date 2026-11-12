@@ -76,7 +76,7 @@ function line(key: string, ddmmyyyy: string, merchant: string, amount: number, c
   const id = Number(
     db
       .prepare(
-        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, kind,
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, kind,
                                          cuota_purchase_kind, dedupe_key, parser_row_id, raw_line)
          VALUES (?, ?, ?, ?, 0, 'card_purchase', ?, ?, ?, ?)`
       )

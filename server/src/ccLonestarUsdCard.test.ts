@@ -151,8 +151,8 @@ describe("a USD-only card of a US issuer", () => {
   it("the owed walk values the dollars at the day's rate, with no peso side", () => {
     const owed = ccOwedByCurrencyAtYmd(accountId, addDaysIso(TODAY, -1));
     expect(owed).not.toBeNull();
-    expect(owed!.clp).toBe(0);
-    expect(owed!.usd).toBeCloseTo(100, 2);
+    expect(owed!.owed.clp).toBe(0);
+    expect(owed!.owed.usd).toBeCloseTo(100, 2);
     const day = addDaysIso(TODAY, -1);
     const rate = ccUsdOwedRateClp(100, day)!;
     expect(ccOwedClpAtYmd(accountId, day)!.value_clp).toBeCloseTo(100 * rate, 0);

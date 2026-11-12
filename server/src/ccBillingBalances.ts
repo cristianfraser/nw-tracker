@@ -29,6 +29,9 @@ import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { roundToCurrency } from "./displayUnits.js";
+import { convertCurrency } from "./rates.js";
+import { legacyAmountColumn } from "./cards/statementStorage.js";
 import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
@@ -240,8 +243,8 @@ export type PostCloseStreamEntry = {
    * cost — the financing P/L reads it. Values read {@link amount} in {@link currency} instead.
    */
   clp: number | null;
-  /** The currency the evidence is stated in: a dollar line, payment, header leg or traspaso leg is `usd`. */
-  currency: "clp" | "usd";
+  /** The currency the evidence is stated in: a dollar line, payment, header leg or traspaso leg is `usd`; a line in any other currency, its own. */
+  currency: string;
   /** Signed debt-positive amount in {@link currency} (dollars to the cent); null when unreadable. */
   amount: number | null;
   financing?: boolean;
@@ -311,6 +314,26 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // out, a backdated posting at its statement's close).
     for (const r of rows) {
       const iso = r.iso;
+      if (legacyAmountColumn(r.currency) == null) {
+        // A line in another currency: its own amount, and its pesos at the debt side of its
+        // facturación's debt-frame date (what the financing P/L reads).
+        const amount = r.amount != null && Number.isFinite(r.amount) && r.amount !== 0 ? r.amount : null;
+        const fxIso = fxDateFor(r.statement_date);
+        const clp =
+          amount != null && fxIso != null
+            ? convertCurrency(amount, r.currency, "clp", fxIso, { side: amount < 0 ? "asset" : "debt" })
+            : null;
+        lines.push({
+          iso,
+          key: r.dedupe_key ?? `${iso}|${r.merchant}|${r.currency}|${r.amount}`,
+          clp: clp != null ? Math.round(clp) : null,
+          currency: r.currency,
+          amount,
+          ...(isFinancingChargeLine(r) ? { financing: true } : {}),
+          statement_date: r.statement_date,
+        });
+        continue;
+      }
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
         r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined;
@@ -481,8 +504,41 @@ function statementFrameEntryClp(e: PostCloseStreamEntry): number | null {
   return e.currency === "usd" ? Math.round(e.amount * uniform) : e.amount;
 }
 
-/** Owed per currency: pesos and dollars (dollars to the cent). */
-export type CcOwedNative = { clp: number; usd: number };
+/**
+ * What a card owes per currency (docs/any-currency-plan.md, Phase C3): one entry per currency it
+ * owes in — pesos always (first), any other currency once an anchor or a line names it — each to
+ * that currency's smallest coin. A currency with no entry owes 0.
+ */
+export type CcOwedNative = Record<string, number>;
+
+/** An owed of nothing: pesos 0. */
+export function emptyCcOwed(): CcOwedNative {
+  return { clp: 0 };
+}
+
+/** What `owed` owes in `currency` (0 when it has no entry). */
+export function ccOwedIn(owed: Readonly<CcOwedNative>, currency: string): number {
+  return owed[currency] ?? 0;
+}
+
+/** Adds `amount` of `currency` to `owed` in place. */
+export function addToCcOwed(owed: CcOwedNative, currency: string, amount: number): void {
+  owed[currency] = (owed[currency] ?? 0) + amount;
+}
+
+/** Each entry of `owed` rounded to its currency's smallest coin (pesos first, then in entry order). */
+export function roundCcOwed(owed: Readonly<CcOwedNative>): CcOwedNative {
+  const out: CcOwedNative = emptyCcOwed();
+  for (const [c, v] of Object.entries(owed)) out[c] = roundToCurrency(v, c);
+  return out;
+}
+
+/** The sum of two owed maps, each entry rounded (pesos first, then `a`'s currencies, then `b`'s). */
+export function sumCcOwed(a: Readonly<CcOwedNative>, b: Readonly<CcOwedNative>): CcOwedNative {
+  const out: CcOwedNative = emptyCcOwed();
+  for (const c of new Set([...Object.keys(a), ...Object.keys(b)])) out[c] = roundToCurrency(ccOwedIn(a, c) + ccOwedIn(b, c), c);
+  return out;
+}
 
 /**
  * The native change of what a card owes in `(fromIso, toIso]`, per currency: the same evidence and
@@ -495,7 +551,7 @@ export function postCloseNativeAdjustment(
   toIso: string,
   opts?: { includeInstallmentPurchases?: boolean }
 ): CcOwedNative {
-  const out: CcOwedNative = { clp: 0, usd: 0 };
+  const out: CcOwedNative = emptyCcOwed();
   if (!fromIso || !toIso || fromIso >= toIso) return out;
   const lines: readonly PostCloseStreamEntry[] = opts?.includeInstallmentPurchases
     ? [...normalizedPostCloseLines(accountId), ...normalizedInstallmentPurchaseEvents(accountId)]
@@ -506,9 +562,9 @@ export function postCloseNativeAdjustment(
     if (seen.has(l.key)) continue;
     seen.add(l.key);
     if (l.amount == null) continue;
-    out[l.currency] += l.amount;
+    addToCcOwed(out, l.currency, l.amount);
   }
-  return { clp: Math.round(out.clp), usd: Math.round(out.usd * 100) / 100 };
+  return roundCcOwed(out);
 }
 
 /**

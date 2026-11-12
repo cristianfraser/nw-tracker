@@ -437,7 +437,7 @@ function itemizeRebuilt(w: Itemized): void {
     header: EMPTY_CARD_STATEMENT_HEADER,
     lines: [],
   };
-  const upd = db.prepare(`UPDATE cc_statement_lines SET ${w.currency === "usd" ? "amount_usd" : "amount_clp"} = ? WHERE id = ?`);
+  const upd = db.prepare(`UPDATE cc_statement_lines SET amount = ? WHERE id = ? AND currency = '${w.currency}'`);
   for (const lump of w.lumps) {
     upd.run(lump.amount, lump.line_id);
     noteCardLineEvidence(w.account_id, lump.date);
@@ -445,11 +445,11 @@ function itemizeRebuilt(w: Itemized): void {
   const ins = db.prepare(
     `INSERT INTO cc_statement_lines (
        statement_id, transaction_date, posting_date, place, merchant, description_merged, country, amount_orig,
-       amount_clp, amount_usd, installment_flag, nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp,
+       amount, currency, installment_flag, nro_cuota_current, nro_cuota_total, cuota_amount,
        interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line, origin_card_last4, kind
      ) VALUES (
        @statement_id, @transaction_date, @posting_date, @place, @merchant, @description_merged, @country, @amount_orig,
-       @amount_clp, @amount_usd, @installment_flag, @nro_cuota_current, @nro_cuota_total, @valor_cuota_mensual_clp,
+       @amount, @currency, @installment_flag, @nro_cuota_current, @nro_cuota_total, @cuota_amount,
        @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4, @kind
      )`
   );

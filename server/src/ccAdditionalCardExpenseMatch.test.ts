@@ -62,7 +62,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
     const line = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag,
+           statement_id, transaction_date, merchant, amount, installment_flag,
            nro_cuota_current, nro_cuota_total, parser_row_id, origin_card_last4
          ) VALUES (?, '19/05/2026', 'Adicional installment fixture', 5000, 1, 2, 6, 'vitest-addl-inst', '4999')`
       )
@@ -98,7 +98,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
     const line = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag,
+           statement_id, transaction_date, merchant, amount, installment_flag,
            parser_row_id, origin_card_last4
          ) VALUES (?, '19/05/2026', 'Adicional skip category fixture', 1000, 0, 'vitest-addl-skip-cat', '4999')`
       )

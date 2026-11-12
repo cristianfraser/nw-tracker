@@ -31,7 +31,7 @@ describe("liderCardLines", () => {
     const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     created.push(sid);
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, installment_flag, transaction_date, dedupe_key)
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount, installment_flag, transaction_date, dedupe_key)
        VALUES (?, ?, ?, 0, ?, ?)`
     ).run(sid, merchant, amountClp, txDate, `vitest-lider-${sid}`);
   }

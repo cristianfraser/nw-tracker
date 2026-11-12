@@ -72,7 +72,7 @@ describe("reconcileOpenWebPasteAfterPdfClose", () => {
     const insLine = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key, parser_row_id, raw_line
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key, parser_row_id, raw_line
          ) VALUES (?, ?, ?, ?, 0, ?, ?, 'raw')`
       )
       .run(

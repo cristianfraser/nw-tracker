@@ -151,7 +151,7 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
       )
       .run(masterId);
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp)
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount)
        VALUES (?, '2099-06-11', 'TOKU *METLIFE HIPOTE', 1200000)`
     ).run(Number(stmt.lastInsertRowid));
 

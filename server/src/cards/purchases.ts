@@ -778,6 +778,9 @@ export function lineForPayment(paymentId: number): CardLine | null {
 export type DebtEventLine = {
   id: number;
   merchant: string | null;
+  /** The line's amount in its own currency (migration 319). */
+  amount: number | null;
+  currency: string;
   amount_clp: number | null;
   amount_usd: number | null;
   statement_currency: string;
@@ -811,7 +814,7 @@ function backdatedPostingCutoffIso(closeIso: string): string {
 export function debtEventLines(accountId: number): DebtEventLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
+      `SELECT l.id, l.merchant, l.amount, l.currency, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
               l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
               l.transaction_date, l.posting_date, s.statement_date, l.dedupe_key
        FROM cc_statement_lines l

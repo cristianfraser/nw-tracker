@@ -112,8 +112,8 @@ describe("facturación dollars at the rate actually paid", () => {
     insertStatement("24/09/2026", "25/08/2026", "24/09/2026", "clp", 300_000, "09/10/2026");
     insertStatement("24/09/2026", "25/08/2026", "24/09/2026", "usd", 1138.53, "09/10/2026");
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, raw_line)
-       VALUES (?, '10/08/2026', 'VITEST USD SHOP', 0, 100, 0, 'vitest-usd-rate-shop', 'vitest')`
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, raw_line)
+       VALUES (?, '10/08/2026', 'VITEST USD SHOP', 100, 'usd', 0, 'vitest-usd-rate-shop', 'vitest')`
     ).run(augustUsd);
     // The August dollars, bought and credited on 2026-09-08 at 942,30 CLP/USD.
     db.prepare(
@@ -198,15 +198,15 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     return Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, raw_line)
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, raw_line)
            VALUES (?, ?, ?, ?, ?, 0, ?, 'vitest')`
         )
         .run(
           statementIds[statement],
           date,
           merchant,
-          amount.clp ?? 0,
-          amount.usd ?? null,
+          amount.usd ?? amount.clp ?? 0,
+          amount.usd != null ? "usd" : "clp",
           `vitest-usd-payment|${statement}|${merchant}|${date}|${amount.clp ?? amount.usd}`
         ).lastInsertRowid
     );
@@ -315,8 +315,8 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(recordedId);
     const reimported = insertLine("25/08/2026 usd", "07/08/2026", "ABONO DE DIVISAS", { usd: -400 });
     db.prepare(
-      `INSERT INTO cc_statement_lines (id, statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, raw_line)
-       VALUES (?, ?, '20/08/2026', 'ABONO DE DIVISAS', 0, -50, 0, 'vitest-usd-payment|reused-id', 'vitest')`
+      `INSERT INTO cc_statement_lines (id, statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, raw_line)
+       VALUES (?, ?, '20/08/2026', 'ABONO DE DIVISAS', -50, 'usd', 0, 'vitest-usd-payment|reused-id', 'vitest')`
     ).run(recordedId, statementIds["25/08/2026 usd"]);
     clearAggregationCache();
     const july = buildFacturaciones(accountId, []).find((f) => f.billing_month === "2026-07")!;

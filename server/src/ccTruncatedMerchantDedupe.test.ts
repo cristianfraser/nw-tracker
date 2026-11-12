@@ -130,7 +130,7 @@ describe("planTruncatedMerchantDuplicateRemoval through the card-line funnel (we
     const r = db
       .prepare(
         `INSERT INTO cc_statement_lines (
-           statement_id, transaction_date, merchant, amount_clp, amount_usd,
+           statement_id, transaction_date, merchant, amount, currency,
            installment_flag, dedupe_key, parser_row_id, raw_line
          ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'vitest')`
       )
@@ -138,8 +138,8 @@ describe("planTruncatedMerchantDuplicateRemoval through the card-line funnel (we
         statementId,
         transactionDate,
         merchant,
-        amount.clp ?? 0,
-        amount.usd ?? null,
+        amount.usd ?? amount.clp ?? 0,
+        amount.usd != null ? "usd" : "clp",
         `vitest-merchant-dedupe|${key}`,
         `vitest-merchant-dedupe|${key}`
       );

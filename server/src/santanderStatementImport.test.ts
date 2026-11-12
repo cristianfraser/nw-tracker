@@ -333,8 +333,8 @@ describe("santanderStatementImport", () => {
     ).run(id);
     const oldStmt = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, amount_usd, installment_flag, transaction_date, dedupe_key)
-       VALUES (?, 'ABONO DE DIVISAS', 0, -84.77, 0, '31/7/2026', 'vitest-json-echo-old')`
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount, currency, installment_flag, transaction_date, dedupe_key)
+       VALUES (?, 'ABONO DE DIVISAS', -84.77, 'usd', 0, '31/7/2026', 'vitest-json-echo-old')`
     ).run(oldStmt);
 
     const echo = [
