@@ -176,6 +176,14 @@ unions outside the allowlist.
 
 ### Phase B — open storage and contracts
 
+**Done 2026-11-12** (migrations 314 currency references, 315 market tables, 316 expense / piece /
+income amount + currency; ingest contracts take any ISO code and the server checks it on receipt).
+Rehearsed together on a copy of the 2026-11-11 database: row counts, the 464 triggers and their
+order, foreign keys and integrity unchanged; expense, flows and market payloads byte-identical.
+Found on the way, not fixed: real databases carry an older flow-identity trigger on `movements`
+than a fresh one (no `option_*` arms), so option movements on the real database get no flow kind
+from it; a small migration should regenerate that trigger from the current spec.
+
 **Every currency column references `currencies(code)`.** One migration rebuilds the 24 tables
 whose CHECK lists codes (`cc_statements`, `cc_bank_cupo_snapshots`, `cc_header_payment_legs`,
 `cc_planted_payment_lines`, `cc_manual_payments`, `cc_owed_anchors`, `bank_account_numbers`,
