@@ -17,7 +17,7 @@ import {
 import { noteLiveTickerRead } from "./cacheDependencies.js";
 import { getLatestLiveEquityQuoteRow, type LiveMarketQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
-import { requireMarketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
+import { quoteCurrencyLabel, requireMarketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
 
 export type EquityMarketKind = "nyse" | "santiago" | "london" | "crypto24";
 
@@ -26,10 +26,11 @@ export function unknownEquityMarketKind(kind: never): never {
   throw new Error(`Unhandled equity market kind ${String(kind)}`);
 }
 
-export type EquityQuoteCurrency = "usd" | "clp";
+/** The currency a held instrument is priced in: a code of `currencies` (never an index). */
+export type EquityQuoteCurrency = string;
 
 /**
- * The currency `ticker`'s price is quoted in — or `none` for an index level — as the instrument
+ * The currency `ticker`'s price is quoted in — or null for an index level — as the instrument
  * registry states it (`market_symbols`); an unregistered ticker throws, whatever its spelling.
  * Single source of truth: sync writers stamp this into `equity_daily.currency` /
  * `live_market_quotes.currency`, and readers fail fast on a stored mismatch.
@@ -44,7 +45,7 @@ export function marketQuoteCurrency(ticker: string): MarketQuoteCurrency {
  */
 export function equityQuoteCurrency(ticker: string): EquityQuoteCurrency {
   const currency = marketQuoteCurrency(ticker);
-  if (currency === "none") {
+  if (currency == null) {
     throw new Error(`${ticker} is an index (its level has no currency), not something that can be held or priced in money`);
   }
   return currency;
@@ -81,11 +82,11 @@ function utcCalendarPrevYmd(ymd: string): string {
   return new Date(Date.UTC(y!, m! - 1, d! - 1)).toISOString().slice(0, 10);
 }
 
-function requireStoredQuoteCurrency(ticker: string, stored: string): MarketQuoteCurrency {
+function requireStoredQuoteCurrency(ticker: string, stored: string | null): MarketQuoteCurrency {
   const expected = marketQuoteCurrency(ticker);
   if (stored !== expected) {
     throw new Error(
-      `equity quote currency mismatch for ${ticker}: stored '${stored}', expected '${expected}' (fix equity_daily/live_market_quotes rows)`
+      `equity quote currency mismatch for ${ticker}: stored '${quoteCurrencyLabel(stored)}', expected '${quoteCurrencyLabel(expected)}' (fix equity_daily/live_market_quotes rows)`
     );
   }
   return expected;
@@ -93,7 +94,7 @@ function requireStoredQuoteCurrency(ticker: string, stored: string): MarketQuote
 
 function eodCloseOnDate(ticker: string, tradeDate: string): number | null {
   const row = stmtEodCloseOnDate.get(ticker, tradeDate) as
-    | { trade_date: string; close: number; currency: string }
+    | { trade_date: string; close: number; currency: string | null }
     | undefined;
   if (row == null || !Number.isFinite(row.close)) return null;
   requireStoredQuoteCurrency(ticker, row.currency);
@@ -102,7 +103,7 @@ function eodCloseOnDate(ticker: string, tradeDate: string): number | null {
 
 function eodQuote(ticker: string, asOfYmd: string): ResolvedEquityQuote | null {
   const row = stmtEodClose.get(ticker, asOfYmd) as
-    | { trade_date: string; close: number; currency: string }
+    | { trade_date: string; close: number; currency: string | null }
     | undefined;
   if (row == null || !Number.isFinite(row.close)) return null;
   const currency = requireStoredQuoteCurrency(ticker, row.currency);
@@ -258,9 +259,7 @@ function resolveLondonEodQuote(ticker: string, now: Date): ResolvedEquityQuote |
 }
 
 function liveRowToQuote(ticker: string, row: LiveMarketQuoteRow): ResolvedEquityQuote {
-  if (row.currency == null) {
-    throw new Error(`live_market_quotes: equity row for ${ticker} has no currency`);
-  }
+  // A NULL currency is an index level: it must be an instrument registered as one.
   const currency = requireStoredQuoteCurrency(ticker, row.currency);
   return {
     price: row.value,

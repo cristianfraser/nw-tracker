@@ -11,7 +11,7 @@ describe("classifyYahooSymbol", () => {
       fullExchangeName: "ICE Futures",
       shortName: "US Dollar Index",
     });
-    expect(facts).toMatchObject({ quote_currency: "none", market_kind: "nyse", exchange: "ICE Futures", display_symbol: "DX-Y" });
+    expect(facts).toMatchObject({ quote_currency: null, market_kind: "nyse", exchange: "ICE Futures", display_symbol: "DX-Y" });
   });
 
   it("reads a Santiago listing in pesos, and crypto on its own calendar", () => {
@@ -49,14 +49,23 @@ describe("classifyYahooSymbol", () => {
     expect(() => classifyYahooSymbol("ZZGB.L", { ...meta, currency: "GBp" })).toThrow(/quoted in GBp/);
   });
 
-  it("refuses a dead listing, another currency, and another exchange", () => {
+  it("accepts any currency the currencies table holds and refuses the rest", () => {
+    expect(
+      classifyYahooSymbol("ZZ", { regularMarketPrice: 1, currency: "EUR", instrumentType: "EQUITY", exchangeTimezoneName: "America/New_York" })
+    ).toMatchObject({ quote_currency: "eur", market_kind: "nyse" });
+    expect(() =>
+      classifyYahooSymbol("ZZ", { regularMarketPrice: 1, currency: "JPY", instrumentType: "EQUITY", exchangeTimezoneName: "America/New_York" })
+    ).toThrow(/JPY, which is not in the currencies table/);
+    expect(() =>
+      classifyYahooSymbol("ZZ", { regularMarketPrice: 1, currency: null, instrumentType: "EQUITY", exchangeTimezoneName: "America/New_York" })
+    ).toThrow(/no currency/);
+  });
+
+  it("refuses a dead listing and another exchange", () => {
     // Yahoo's `DXY`: a Nasdaq stub with no currency and no price.
     expect(() =>
       classifyYahooSymbol("DXY", { currency: null, instrumentType: "ECNQUOTE", exchangeTimezoneName: "America/New_York" })
     ).toThrow(/no price/);
-    expect(() =>
-      classifyYahooSymbol("ZZ", { regularMarketPrice: 1, currency: "EUR", instrumentType: "EQUITY", exchangeTimezoneName: "America/New_York" })
-    ).toThrow(/EUR/);
     expect(() =>
       classifyYahooSymbol("ZZ.T", { regularMarketPrice: 1, currency: "JPY", instrumentType: "EQUITY", exchangeTimezoneName: "Asia/Tokyo" })
     ).toThrow(/Asia\/Tokyo/);

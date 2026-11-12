@@ -3,9 +3,9 @@
   "totals": {
     "currency-formatter": 296,
     "currency-list-literal": 20,
-    "currency-type-union": 146,
+    "currency-type-union": 143,
     "dto-currency-key": 295,
-    "unit-literal-compare": 359
+    "unit-literal-compare": 357
   },
   "violations": {
     "client/src/api.ts": {
@@ -530,9 +530,6 @@
     "server/src/equityBolsaSantiagoEod.ts": {
       "unit-literal-compare": 1
     },
-    "server/src/equityQuote.ts": {
-      "currency-type-union": 1
-    },
     "server/src/expensePaymentNames.ts": {
       "unit-literal-compare": 3
     },
@@ -610,12 +607,6 @@
     "server/src/lineMoney.ts": {
       "unit-literal-compare": 2
     },
-    "server/src/liveMarketQuotesDb.ts": {
-      "currency-type-union": 1
-    },
-    "server/src/marketSymbols.ts": {
-      "currency-type-union": 1
-    },
     "server/src/merchantExpenseNotes.ts": {
       "currency-type-union": 6,
       "unit-literal-compare": 3
@@ -668,9 +659,6 @@
       "currency-type-union": 1
     },
     "server/src/portfolioGroupValueAtDate.ts": {
-      "unit-literal-compare": 2
-    },
-    "server/src/priceProviders/yahoo.ts": {
       "unit-literal-compare": 2
     },
     "server/src/proxyBasketBreakdown.ts": {

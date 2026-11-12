@@ -45,7 +45,7 @@ export const VITEST_INSTRUMENTS: Readonly<Record<string, Partial<InstrumentFacts
   "VTIPSA.SN": { ...SANTIAGO, display_symbol: "VTIPSA" },
   "VITESTWATERFALLB.SN": { ...SANTIAGO, display_symbol: "VITESTWATERFALLB" },
   // The ICE dollar index: points on the New York calendar.
-  "DX-Y.NYB": { quote_currency: "none", market_kind: "nyse", instrument_type: "INDEX", display_symbol: "DX-Y" },
+  "DX-Y.NYB": { quote_currency: null, market_kind: "nyse", instrument_type: "INDEX", display_symbol: "DX-Y" },
   // US-listed dollar lines (synthetic suites' tickers and a few real ones the suites hold).
   VITEST: {},
   SPY_TEST_DELTA: {},

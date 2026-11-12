@@ -58,7 +58,7 @@ function writeQuotes(at: Date, factor: number | ((ticker: string) => number), fx
   const ymd = at.toISOString().slice(0, 10);
   const chileYmd = chileCalendarTodayYmd();
   const tickers = (
-    db.prepare(`SELECT DISTINCT ticker FROM equity_daily WHERE currency != 'none'`).all() as { ticker: string }[]
+    db.prepare(`SELECT DISTINCT ticker FROM equity_daily WHERE currency IS NOT NULL`).all() as { ticker: string }[]
   ).map((r) => r.ticker);
   for (const ticker of tickers) {
     const last = db

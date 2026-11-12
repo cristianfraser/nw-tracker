@@ -139,10 +139,10 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
     .all() as { date: string; mid: number }[];
   const ipcRows = db.prepare(`SELECT date, ipc_index FROM ipc_daily ORDER BY date ASC`).all() as IpcR[];
   const utmRows = db.prepare(`SELECT date, utm_clp FROM utm_daily ORDER BY date ASC`).all() as UtmR[];
-  // Index levels (currency `none`) are points, not prices with a CLP/USD frame.
+  // Index levels (a NULL currency) are points, not prices to convert into the unit.
   const eqRows = db
     .prepare(
-      `SELECT ticker, trade_date AS date, close FROM equity_daily WHERE currency != 'none' ORDER BY ticker, trade_date ASC`
+      `SELECT ticker, trade_date AS date, close FROM equity_daily WHERE currency IS NOT NULL ORDER BY ticker, trade_date ASC`
     )
     .all() as EqR[];
   // The rates page shows peso fund series: a series quoted in another currency (a 401(k)'s dollar
