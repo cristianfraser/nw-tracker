@@ -2,6 +2,7 @@ import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
 import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import {
+  cardLineNativeAmount,
   debtCcExpenseLineAmountClp,
   debtFrameClpPerUsd,
   effectiveCcExpenseLineAmountClp,
@@ -29,7 +30,7 @@ import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
-import { roundToCurrency } from "./displayUnits.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import { convertCurrency } from "./rates.js";
 import { legacyAmountColumn } from "./cards/statementStorage.js";
 import { cardStoppedBilling } from "./cards/lifecycle.js";
@@ -98,6 +99,9 @@ type RevolvingLineRow = {
   installment_flag: number;
   valor_cuota_mensual_clp: number | null;
   valor_cuota_mensual_usd: number | null;
+  amount: number | null;
+  currency: string;
+  cuota_amount?: number | null;
 };
 
 const stmtPayByMetaByDate = db.prepare(
@@ -668,82 +672,66 @@ export function installmentPurchasesClpAfter(accountId: number, afterIso: string
 }
 
 /**
- * Open-cycle USD (foreign) charges billed so far, in USD and CLP — used to split the open month's
- * facturado into its CLP and US$ stacked components. Reads the same statement dates as
- * {@link incrementalChargesClpForBillingMonth} but keeps only USD-denominated lines (foreign charges
- * that carry `amount_usd` with no CLP amount, or lines on a USD statement). Payment lines (PAGO /
- * MONTO CANCELADO / ABONO DE DIVISAS) are EXCLUDED — same rule as the CLP side
- * (`facturadoClpFromOpenMonthStatementLines`): a payment in the open cycle settles the *prior*
- * facturación, so it must not reduce this cycle's billed US$ (the feed's divisas abono drove the
- * open month to −US$xxx,xx on ·0781, 2026-08). Payments belong to the balance roll-forward only.
- * Non-payment negative lines (refunds) still net in.
- *
- * "No CLP amount" must accept **0 as well as NULL**: the importer parses an empty `amount_clp`
- * CSV cell through `Number("")` → 0, so every stored foreign web-paste line carries 0, never NULL
- * (0-means-absent is the corpus convention — 1361 lines store 0, none store NULL). A NULL-only test
- * matched no real row, so the open cycle's US$ leg silently collapsed into `facturado_clp`.
- * `effectiveCcExpenseLineAmountUsd` is the same null-vs-0 rule the CLP helper below applies, so the
- * two legs of the split can't drift.
+ * Open-cycle foreign charges billed so far, per currency, in that currency and in pesos — used to
+ * split the open month's facturado into its peso part and one part per foreign currency. Reads the
+ * same statement dates as {@link incrementalChargesClpForBillingMonth} and keeps the lines in
+ * another currency than pesos, each in its own (`amount` + `currency`, migration 319; a dollar line
+ * in a peso bucket is a dollar line). Payment lines (PAGO / MONTO CANCELADO / ABONO DE DIVISAS) are
+ * EXCLUDED — same rule as the peso side (`facturadoClpFromOpenMonthStatementLines`): a payment in
+ * the open cycle settles the *prior* facturación, so it must not reduce this cycle's billed amount
+ * (the feed's divisas abono drove the open month to −US$xxx,xx on ·0781, 2026-08). Payments belong
+ * to the balance roll-forward only. Non-payment negative lines (refunds) still net in. A line of
+ * zero bills nothing (the corpus stores an absent amount as 0). The pesos are the debt frame's
+ * (`debtCcExpenseLineAmountClp`: the facturación's pay-by − 1, or a split pass's uniform rate).
  */
-export function openMonthUsdFacturado(
+export function openMonthForeignFacturado(
   accountId: number,
   billingMonth: string
-): { usd: number; clp: number } {
-  let usd = 0;
-  let clp = 0;
+): Map<string, { amount: number; clp: number }> {
+  const out = new Map<string, { amount: number; clp: number }>();
   const addStatement = (statementDate: string) => {
     const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
     for (const r of billedOneShotLines(accountId, statementDate)) {
       if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
-      const oneShot = {
-        ...r,
-        installment_flag: 0,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-      };
-      const u = effectiveCcExpenseLineAmountUsd(oneShot);
-      if (u == null) continue; // CLP-denominated line — not part of the US$ split
-      usd += u;
+      if (isHomeCurrency(r.currency)) continue; // a peso line — not part of the foreign split
+      const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null, cuota_amount: null };
+      const native = cardLineNativeAmount(oneShot);
+      if (!native) continue;
+      const entry = out.get(native.currency) ?? { amount: 0, clp: 0 };
+      entry.amount += native.amount;
       const c = debtCcExpenseLineAmountClp(oneShot, fxDateIso);
-      if (c != null && Number.isFinite(c)) clp += c;
+      if (c != null && Number.isFinite(c)) entry.clp += c;
+      out.set(native.currency, entry);
     }
   };
   withCcOneShotScanCache(() => {
     for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) addStatement(stmtDate);
   });
-  return { usd, clp };
+  return out;
 }
 
 /**
  * The credits of an open facturación (refunds, notas de crédito — negative one-shot lines that
- * are not payments, divisas abonos or traspasos de deuda), positive, per currency: what its
- * facturado nets ({@link openMonthUsdFacturado} for dollars, the open-cycle charge sum for pesos)
+ * are not payments, divisas abonos or traspasos de deuda), positive, per currency (pesos and
+ * dollars always present, any other currency a line is in): what its facturado nets
+ * ({@link openMonthForeignFacturado} for a foreign currency, the open-cycle charge sum for pesos)
  * that a card's still-owed reckoning applies to the previous facturación first, as the bank
  * does (`dashboardCcUpcomingPayments.ts`).
  */
-export function openFacturacionCredits(
-  accountId: number,
-  billingMonth: string
-): { clp: number; usd: number } {
-  let clp = 0;
-  let usd = 0;
+export function openFacturacionCredits(accountId: number, billingMonth: string): Record<string, number> {
+  const credits: Record<string, number> = { clp: 0, usd: 0 };
   withCcOneShotScanCache(() => {
     for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
-      const fxDateIso = balanceUsdFxDateIso(accountId, stmtDate);
       for (const r of billedOneShotLines(accountId, stmtDate)) {
         if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant) || isCcTraspasoDeudaMerchant(r.merchant)) continue;
-        const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null };
-        const u = effectiveCcExpenseLineAmountUsd(oneShot);
-        if (u != null) {
-          if (u < 0) usd -= u;
-          continue;
-        }
-        const c = effectiveCcExpenseLineAmountClp(oneShot, fxDateIso);
-        if (c != null && c < 0) clp -= c;
+        const native = cardLineNativeAmount({ ...r, installment_flag: 0 });
+        if (!native) continue;
+        const amount = isHomeCurrency(native.currency) ? Math.round(native.amount) : native.amount;
+        if (amount < 0) credits[native.currency] = (credits[native.currency] ?? 0) - amount;
       }
     }
   });
-  return { clp: Math.round(clp), usd: Math.round(usd * 100) / 100 };
+  return Object.fromEntries(Object.entries(credits).map(([c, v]) => [c, roundToCurrency(v, c)]));
 }
 
 function installmentCuotaDueForAccountStatementDateClp(

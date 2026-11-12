@@ -877,6 +877,10 @@ export type BilledLine = {
   installment_flag: number;
   valor_cuota_mensual_clp: number | null;
   valor_cuota_mensual_usd: number | null;
+  /** What the line stores, in its own currency (a third currency reads NULL in the four above). */
+  amount: number | null;
+  currency: string;
+  cuota_amount: number | null;
 };
 
 /**
@@ -888,7 +892,8 @@ export function billedOneShotLines(accountId: number, statementDate: string): Bi
   const rows = db
     .prepare(
       `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
-              l.installment_flag, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd
+              l.installment_flag, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
+              l.amount, l.currency, l.cuota_amount
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.statement_date = ? AND l.installment_flag = 0`
@@ -904,7 +909,8 @@ export function linesOfClose(accountId: number, statementDate: string): BilledLi
     .prepare(
       `SELECT l.id, l.merchant, l.installment_flag, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
               s.currency AS statement_currency,
-              ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd
+              ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
+              l.amount, l.currency, l.cuota_amount
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.statement_date = ?`

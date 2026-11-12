@@ -3,9 +3,9 @@
   "totals": {
     "currency-formatter": 287,
     "currency-list-literal": 7,
-    "currency-type-union": 124,
+    "currency-type-union": 117,
     "dto-currency-key": 289,
-    "unit-literal-compare": 319
+    "unit-literal-compare": 301
   },
   "violations": {
     "client/src/api.ts": {
@@ -342,8 +342,8 @@
       "unit-literal-compare": 1
     },
     "server/src/ccBankCupoCheck.ts": {
-      "currency-type-union": 5,
-      "unit-literal-compare": 4
+      "currency-type-union": 2,
+      "unit-literal-compare": 3
     },
     "server/src/ccBillingBalances.ts": {
       "currency-type-union": 1,
@@ -395,8 +395,7 @@
       "unit-literal-compare": 1
     },
     "server/src/ccStatementImportReconcile.ts": {
-      "currency-type-union": 4,
-      "unit-literal-compare": 23
+      "unit-literal-compare": 7
     },
     "server/src/ccStatementJsonSource.ts": {
       "currency-type-union": 2
@@ -432,9 +431,6 @@
     },
     "server/src/dashboardAccounts.ts": {
       "unit-literal-compare": 5
-    },
-    "server/src/dashboardCcUpcomingPayments.ts": {
-      "unit-literal-compare": 1
     },
     "server/src/dashboardNavCardMetrics.ts": {
       "unit-literal-compare": 1

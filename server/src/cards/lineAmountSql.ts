@@ -65,3 +65,8 @@ export function lineLegacyAmounts(line: {
       return { amount_clp: null, amount_usd: null, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null };
   }
 }
+
+/** A line in pesos or dollars, the two currencies the peso / dollar view carries (any other reads NULL there). */
+export function lineHasPesoDollarView(currency: string): boolean {
+  return lineLegacyAmounts({ amount: 1, currency, cuota_amount: 1 }).amount_clp != null;
+}

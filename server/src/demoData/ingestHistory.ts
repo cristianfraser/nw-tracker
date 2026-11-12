@@ -19,7 +19,7 @@
  */
 import { loadCreditCardCupos } from "../cards/config.js";
 import { applyBankAccountBalances, ledgerBalanceInOwnCurrency } from "../bankAccountBalances.js";
-import { ccOwedByCurrency } from "../ccOwedByCurrency.js";
+import { ccOwedByCurrency, foreignOwedIn } from "../ccOwedByCurrency.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock } from "../chileDate.js";
 import { recordDailyRun, recordHourlyEmailRun, type DailyRunStep } from "../dailyRunLog.js";
 import { db } from "../db.js";
@@ -134,7 +134,7 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
         observed_at: observedAt.toISOString(),
         rows: [
           row("clp", Math.round(owed.clp.total), cupos.get("clp") ?? 0),
-          row("usd", Math.round(owed.usd.total * 100) / 100, cupos.get("usd") ?? 0),
+          row("usd", Math.round(foreignOwedIn(owed, "usd").total * 100) / 100, cupos.get("usd") ?? 0),
         ],
       },
       new Map(owed.close_iso ? [[bankAccount, { close_iso: owed.close_iso }]] : [])

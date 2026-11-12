@@ -1,6 +1,7 @@
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { convertCurrency } from "./rates.js";
 import { isHomeCurrency } from "./displayUnits.js";
+import { lineHasPesoDollarView } from "./cards/lineAmountSql.js";
 
 /**
  * One uniform CLP rate per foreign currency in place of every debt-frame rate of that currency,
@@ -67,6 +68,13 @@ export type CcExpenseLineAmountInput = {
   valor_cuota_mensual_usd: number | null;
   /** When `usd`, MONTO US$ is authoritative (origin column is reference only). */
   statement_currency?: string | null;
+  /**
+   * What the line stores (migration 319), when the reader has it: a line in another currency than
+   * pesos or dollars reads NULL in the four fields above, so the debt sums value it from these.
+   */
+  currency?: string;
+  amount?: number | null;
+  cuota_amount?: number | null;
 };
 
 /**
@@ -131,6 +139,16 @@ export function debtCcExpenseLineAmountClp(
   row: CcExpenseLineAmountInput,
   fxDateIso: string | null
 ): number | null {
+  if (row.currency != null && !lineHasPesoDollarView(row.currency)) {
+    // A line in a third currency: what it bills in that currency, at its debt-frame rate.
+    return cardLineAmountClpWith(
+      { installment_flag: row.installment_flag, amount: row.amount ?? null, currency: row.currency, cuota_amount: row.cuota_amount ?? null },
+      (amount, currency) => {
+        const rate = debtFrameClpPerUnit(currency, fxDateIso);
+        return rate == null ? null : Math.round(amount * rate);
+      }
+    );
+  }
   return effectiveCcExpenseLineAmountClpWith(row, (usd) => {
     const fx = debtFrameClpPerUsd(fxDateIso);
     return fx == null ? null : Math.round(usd * fx);

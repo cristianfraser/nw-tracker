@@ -190,7 +190,7 @@ describe("bank cupo check", () => {
       last_closed_billing_month: "2026-09",
       close_iso: "2026-09-24",
       clp: { facturado: 1_500_000, installment_remainder: 400_000, remaining_cuotas: 5, open_cycle_lines: 20_000, total: BANK_CLP_USED },
-      usd: { facturado: 900, open_cycle_lines: 12.34, total: 912.34 },
+      foreign: { usd: { facturado: 900, open_cycle_lines: 12.34, total: 912.34 } },
     });
 
     const run = judgeLatestBankCupoCapture();

@@ -12,7 +12,8 @@ import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { buildCcStatementImportAccountLog, logCcStatementImportRun, type CcStatementImportAccountLog } from "./ccStatementImportLog.js";
 import { db } from "./db.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
+import { requireCardCurrency } from "./cards/cardCurrencies.js";
 
 /**
  * Canonical card statements (`card.statement` statements, a `card.parsed_statements` converted,
@@ -48,10 +49,11 @@ export function applyCanonicalCardStatements(
   statements: readonly CardCanonicalStatement[],
   opts: ApplyParsedCcStatementsOptions
 ): CardParsedStatementsApplyDetails {
-  // A card's sub-balances are pesos and dollars: a statement or line in another currency is refused.
+  // Every currency must be one the app knows; which ones a card takes is its issuer's (checked per
+  // account once the statements are routed).
   for (const st of statements) {
-    pesosOrDollars(st.currency, "card statement");
-    for (const line of st.lines) pesosOrDollars(line.currency, "card statement line");
+    requireLoadedCurrency(st.currency, "card statement");
+    for (const line of st.lines) requireLoadedCurrency(line.currency, "card statement line");
   }
   // Every card's write asks for the expense-link sync: one, when the corpus is in.
   return withExpenseLinkSyncDeferred(() => applyStatements(statements, opts));
@@ -90,6 +92,14 @@ function applyStatements(
     );
   }
   if (discovery.linesWithoutCard > 0) report.push(`# lines without a card_last4 / source_pdf last4: ${discovery.linesWithoutCard}`);
+  // A card bills in pesos, dollars and the currencies its issuer declares — checked for every card
+  // before any is written.
+  for (const accountId of accountIds) {
+    for (const st of discovery.byAccount.get(accountId) ?? []) {
+      requireCardCurrency(st.currency, accountId, "card statement");
+      for (const line of st.lines) requireCardCurrency(line.currency, accountId, "card statement line");
+    }
+  }
   const write = !opts.dryRun && problems.length === 0;
 
   const accounts: CardParsedStatementsApplyDetails["accounts"] = [];

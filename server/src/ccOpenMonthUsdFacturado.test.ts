@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import {
   balanceUsdFxDateIso,
   incrementalChargesClpForBillingMonth,
-  openMonthUsdFacturado,
+  openMonthForeignFacturado,
 } from "./ccBillingBalances.js";
 import { paymentAbonosClpForBillingMonth } from "./ccBillingViews.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
@@ -14,7 +14,7 @@ import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
  * Manually-entered USD purchases in the open cycle must surface as their own US$ facturado
  * component (so the chart shows the CLP + US$ stacked bars), not get lumped into facturado_clp.
  */
-describe("openMonthUsdFacturado", () => {
+describe("openMonthForeignFacturado (dollars)", () => {
   const stmts: number[] = [];
   afterEach(() => {
     for (const sid of stmts.splice(0)) {
@@ -53,7 +53,7 @@ describe("openMonthUsdFacturado", () => {
     addLine("APPLE USD", null, 50); // foreign USD charge, backfill shape
     addLine("JUMBO CLP", 30_000, null); // domestic CLP charge → excluded
 
-    const res = openMonthUsdFacturado(master.id, billingMonth);
+    const res = { usd: openMonthForeignFacturado(master.id, billingMonth).get("usd")?.amount ?? 0, clp: openMonthForeignFacturado(master.id, billingMonth).get("usd")?.clp ?? 0 };
     // Only the two foreign lines (100 + 50), never the CLP 3x.xxx, count toward the USD split.
     expect(res.usd).toBe(150);
     expect(res.clp).toBeGreaterThan(0); // 150 USD × FX
@@ -95,7 +95,7 @@ describe("openMonthUsdFacturado", () => {
     const usdClp = (usd: number) => Math.round(usd * fx!);
 
     // USD split: charges + refunds only — never the divisas abono (was −US$xxx,xx on ·0781 2026-08).
-    const res = openMonthUsdFacturado(master.id, billingMonth);
+    const res = { usd: openMonthForeignFacturado(master.id, billingMonth).get("usd")?.amount ?? 0, clp: openMonthForeignFacturado(master.id, billingMonth).get("usd")?.clp ?? 0 };
     expect(res.usd).toBeCloseTo(90, 6);
     expect(res.clp).toBe(usdClp(100) + usdClp(-10));
 

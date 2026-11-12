@@ -19,13 +19,18 @@ import {
   type CardCanonicalLine,
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { isHomeCurrency } from "./displayUnits.js";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
 
+/**
+ * A reconcile row: `currency` is the statement's — pesos, or the foreign currency of a foreign
+ * statement (dollars, or a third currency a card's issuer bills in), whose amounts ride in the
+ * `amount_usd` / `valor_cuota_mensual_usd` slots and reconcile by the international statement's rules.
+ */
 export type CcReconcileRow = {
-  currency: "clp" | "usd";
+  currency: string;
   installment_flag: boolean;
   merchant: string | null;
   amount_clp: number;
@@ -96,8 +101,8 @@ function installmentCuotaCountsTowardOperaciones(row: CcReconcileRow): boolean {
   return false;
 }
 
-function reconcileCurrencyFromRows(rows: readonly CcReconcileRow[]): "clp" | "usd" {
-  return rows.some((r) => r.currency === "usd") ? "usd" : "clp";
+function reconcileCurrencyFromRows(rows: readonly CcReconcileRow[]): string {
+  return rows.find((r) => !isHomeCurrency(r.currency))?.currency ?? "clp";
 }
 
 function cuotaAmountClp(row: CcReconcileRow): number {
@@ -179,7 +184,7 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
   let traspaso_nacional = 0;
 
   for (const row of rows) {
-    if (row.currency !== "usd") continue;
+    if (isHomeCurrency(row.currency)) continue;
     if (isGarbledUsdStatementMerchant(row.merchant)) continue;
     const dk = reconcileMovementDedupeKey(row);
     if (dk) {
@@ -229,8 +234,8 @@ function closeEnough(a: number, b: number, tol: number): boolean {
  * CLP keeps its wider band: those amounts are whole pesos in the millions and the legacy layouts
  * genuinely round.
  */
-function closeEnoughOperaciones(actual: number, expected: number, currency: "clp" | "usd"): boolean {
-  if (currency === "usd") return Math.abs(actual - expected) <= TOL_USD;
+function closeEnoughOperaciones(actual: number, expected: number, currency: string): boolean {
+  if (!isHomeCurrency(currency)) return Math.abs(actual - expected) <= TOL_USD;
   const pct = 0.03;
   const floor = Math.min(5000, Math.max(500, Math.abs(expected) * pct));
   const band = Math.max(TOL_CLP, floor, Math.abs(expected) * pct);
@@ -273,7 +278,7 @@ export function reconcileBillingMonthMovements(
   const facturadoRows = rows.filter((r) => !r.from_web_paste);
   const currency = reconcileCurrencyFromRows(facturadoRows);
   const parsed =
-    currency === "usd"
+    !isHomeCurrency(currency)
       ? sumParsedSectionsUsd(facturadoRows)
       : sumParsedSectionsClp(facturadoRows);
   const checks: CcImportReconcileCheck[] = [];
@@ -373,7 +378,7 @@ export function reconcileBillingMonthMovements(
     }
   }
 
-  if (currency === "usd") {
+  if (!isHomeCurrency(currency)) {
     const saldo = header.saldo_anterior;
     const abono = header.abono;
     const deuda = header.deuda_total;
@@ -429,7 +434,7 @@ export function reconcileBillingMonthMovements(
    * This is a header-consistency check; the line-level guard is `header_compras_vs_operaciones`
    * above, which is what actually catches a dropped charge.
    */
-  if (currency === "usd" && monto != null && monto > 0) {
+  if (!isHomeCurrency(currency) && monto != null && monto > 0) {
     const saldo = header.saldo_anterior ?? 0;
     const abono = header.abono ?? 0;
     const comprasForMonto = compras ?? parsed.parsed_operaciones;
@@ -489,11 +494,12 @@ function canonicalLineToReconcileRow(statement: CardCanonicalStatement, line: Ca
   const { amount_clp, amount_usd } = storedCardLineAmounts(line);
   const sourcePdf = statement.document.trim();
   return {
-    currency: pesosOrDollars(statement.currency, "card statement reconcile"),
+    currency: statement.currency,
     installment_flag: inst != null,
     merchant: line.merchant || null,
     amount_clp,
-    amount_usd: amount_usd ?? 0,
+    // A third currency's line rides in the foreign slot, in its own statement only.
+    amount_usd: amount_usd ?? (line.currency === statement.currency && !isHomeCurrency(line.currency) ? line.amount : 0),
     valor_cuota_mensual_clp: inst?.cuota_amount ?? 0,
     valor_cuota_mensual_usd: 0,
     nro_cuota_current: inst?.number || null,
@@ -577,11 +583,12 @@ export function dbLineToReconcileRow(
   stmt: { currency: string; layout: string; source_pdf: string; source_kind: string }
 ): CcReconcileRow {
   return {
-    currency: stmt.currency === "usd" ? "usd" : "clp",
+    currency: stmt.currency,
     installment_flag: line.installment_flag,
     merchant: line.merchant,
     amount_clp: line.amount_clp ?? 0,
-    amount_usd: line.amount_usd ?? 0,
+    // A third currency's line rides in the foreign slot, in its own statement only.
+    amount_usd: line.amount_usd ?? (line.currency === stmt.currency && !isHomeCurrency(line.currency) ? (line.amount ?? 0) : 0),
     valor_cuota_mensual_clp: line.valor_cuota_mensual_clp ?? 0,
     valor_cuota_mensual_usd: line.valor_cuota_mensual_usd ?? 0,
     nro_cuota_current: line.nro_cuota_current,
@@ -599,7 +606,7 @@ export function dbLineToReconcileRow(
 function findPdfAnchorForBillingMonth(
   accountId: number,
   billingMonth: string,
-  currency: "clp" | "usd" = "clp",
+  currency: string = "clp",
   sourcePdf?: string | null
 ): CcReconcileHeader | null {
   let best: CcReconcileHeader & { score: number } | null = null;
@@ -609,11 +616,10 @@ function findPdfAnchorForBillingMonth(
     if (st.billing_month !== billingMonth) continue;
     if (pdfFilter && st.source_pdf !== pdfFilter) continue;
     if (isListingSourceKind(st.source_kind)) continue;
-    if (currency === "clp" && st.currency === "usd") continue;
-    if (currency === "usd" && st.currency !== "usd") continue;
+    if (st.currency !== currency) continue;
     const monto = st.monto_facturado;
     const compras = st.compras_cargos;
-    if (currency === "clp") {
+    if (isHomeCurrency(currency)) {
       if ((monto == null || monto <= 0) && (compras == null || compras <= 0)) continue;
     } else {
       const deuda = st.deuda_total;
@@ -626,7 +632,7 @@ function findPdfAnchorForBillingMonth(
       }
     }
     const score =
-      currency === "usd"
+      !isHomeCurrency(currency)
         ? Math.abs(st.deuda_total ?? 0) + Math.abs(compras ?? 0) * 0.01
         : (monto ?? 0) + (compras ?? 0) * 0.01;
     if (!best || score > best.score) {
@@ -676,7 +682,7 @@ export function mergeImportReconcileHeader(
 /** A header amount as the reconcile reads it: dollars to the cent, pesos whole; null when not printed. */
 function headerAmount(statement: CardCanonicalStatement, raw: number | null): number | null {
   if (raw == null) return null;
-  if (statement.currency === "usd") return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : null;
+  if (!isHomeCurrency(statement.currency)) return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : null;
   const n = Math.trunc(raw);
   return n !== 0 ? n : raw === 0 ? 0 : null;
 }
@@ -688,7 +694,7 @@ function headerFromStatement(statement: CardCanonicalStatement | undefined): CcR
   const h = statement.header;
   const montoRaw = h.monto_facturado ?? 0;
   const comprasRaw = h.compras_cargos ?? 0;
-  const usd = statement.currency === "usd";
+  const usd = !isHomeCurrency(statement.currency);
   const monto = usd ? (montoRaw > 0 ? Math.round(montoRaw * 100) / 100 : null) : Math.trunc(montoRaw) > 0 ? Math.trunc(montoRaw) : null;
   const compras = usd
     ? comprasRaw !== 0
@@ -824,7 +830,7 @@ export function assertCcImportReconcilesOrThrow(
 
     for (const sourcePdf of [...new Set(pdfIncoming.map((st) => st.document.trim()).filter(Boolean))].sort()) {
       const stmtPdfIncoming = pdfIncoming.filter((st) => st.document.trim() === sourcePdf);
-      const reconcileCurrencies = [...new Set(stmtPdfIncoming.map((st) => pesosOrDollars(st.currency, "card statement reconcile")))].sort();
+      const reconcileCurrencies = [...new Set(stmtPdfIncoming.map((st) => st.currency))].sort();
 
       for (const headerCurrency of reconcileCurrencies) {
         const csvHeader = headerFromStatement(stmtPdfIncoming.find((st) => st.currency === headerCurrency));
@@ -847,7 +853,7 @@ export function assertCcImportReconcilesOrThrow(
           continue;
         }
         if (
-          headerCurrency === "usd" &&
+          !isHomeCurrency(headerCurrency) &&
           (header.deuda_total ?? 0) === 0 &&
           (header.monto_facturado ?? 0) <= 0 &&
           (header.compras_cargos ?? 0) === 0 &&

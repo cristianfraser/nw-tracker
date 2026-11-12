@@ -1,6 +1,16 @@
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
-import { ccOwedByCurrency, type CcOwedByCurrency } from "./ccOwedByCurrency.js";
+import { ccOwedByCurrency, foreignOwedIn, type CcForeignOwed, type CcOwedByCurrency } from "./ccOwedByCurrency.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
+
+/**
+ * A verdict's foreign side as stored: its `foreign` entry, or — a detail written before the owed
+ * figures were kept per currency — the dollar entry under its old `usd` key.
+ */
+function storedForeignOwed(owed: CcOwedByCurrency, currency: string): CcForeignOwed {
+  const legacy = (owed as { usd?: CcForeignOwed }).usd;
+  return owed.foreign != null ? foreignOwedIn(owed, currency) : (legacy ?? { facturado: 0, open_cycle_lines: 0, total: 0 });
+}
 
 /**
  * The bank's cupo utilizado per card and currency (`santanderBankCupo.ts`) against what the app
@@ -20,7 +30,7 @@ export type BankCupoCheckStatus = "ok" | "mismatch" | "indeterminate";
 export type BankCupoSnapshot = {
   id: number;
   account_id: number;
-  currency: "clp" | "usd";
+  currency: string;
   observed_at: string;
   plastic_last4: string;
   cupo_total: number;
@@ -68,10 +78,11 @@ export function judgeBankCupo(snapshot: BankCupoSnapshot, owed: CcOwedByCurrency
     };
   }
   // `|| 0`: the rounding can yield −0, which would be stored and compared as a distinct value.
-  const diff = Math.round((owed.usd.total - snapshot.cupo_utilizado) * 100) / 100 || 0;
+  const foreign = foreignOwedIn(owed, snapshot.currency);
+  const diff = roundToCurrency(foreign.total - snapshot.cupo_utilizado, snapshot.currency) || 0;
   return {
     status: diff === 0 ? "ok" : "mismatch",
-    app_owed: owed.usd.total,
+    app_owed: foreign.total,
     diff,
     tolerance: 0,
     reason: null,
@@ -201,13 +212,14 @@ export function previousBankCupoVerdict(snapshot: BankCupoSnapshot): { status: B
   );
 }
 
-function fmtAmount(n: number, currency: "clp" | "usd"): string {
-  return currency === "clp"
-    ? `$${Math.round(n).toLocaleString("es-CL")}`
-    : `US$${n.toLocaleString("es-CL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** A log's amount: pesos «$1.234», dollars «US$1,23», any other currency «EUR 1,23». */
+function fmtAmount(n: number, currency: string): string {
+  if (isHomeCurrency(currency)) return `$${Math.round(n).toLocaleString("es-CL")}`; // convention-ok: a server log line, not UI copy
+  const prefix = currency === "usd" ? "US$" : `${currency.toUpperCase()} `; // convention-ok: the report's dollar label is its own
+  return `${prefix}${n.toLocaleString("es-CL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; // convention-ok: a server log line, not UI copy
 }
 
-function fmtSigned(n: number, currency: "clp" | "usd"): string {
+function fmtSigned(n: number, currency: string): string {
   return `${n > 0 ? "+" : n < 0 ? "−" : "±"}${fmtAmount(Math.abs(n), currency)}`;
 }
 
@@ -245,8 +257,8 @@ export function formatBankCupoReport(
         ? `     app = facturado ${fmtAmount(o.clp.facturado, "clp")} (${month}) + cuotas por facturar ` +
             `${fmtAmount(o.clp.installment_remainder, "clp")} (${o.clp.remaining_cuotas}) + later lines ` +
             `${fmtAmount(o.clp.open_cycle_lines, "clp")}`
-        : `     app = facturado ${fmtAmount(o.usd.facturado, "usd")} (${month}) + later lines ` +
-            `${fmtAmount(o.usd.open_cycle_lines, "usd")}`
+        : `     app = facturado ${fmtAmount(storedForeignOwed(o, s.currency).facturado, s.currency)} (${month}) + later lines ` +
+            `${fmtAmount(storedForeignOwed(o, s.currency).open_cycle_lines, s.currency)}`
     );
   }
   return lines.join("\n");

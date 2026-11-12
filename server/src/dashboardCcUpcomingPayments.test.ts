@@ -5,6 +5,8 @@ import {
   buildDashboardCcUpcomingPayments,
   ccUpcomingPaymentsFromCards,
   upcomingPaymentRows,
+  type CcCardPayment,
+  type CcCardPayments,
 } from "./dashboardCcUpcomingPayments.js";
 import { usdForeign } from "./test/facturadoForeign.js";
 
@@ -31,7 +33,13 @@ function fact(over: Partial<CcFacturacionRow> & Pick<CcFacturacionRow, "billing_
 const TODAY = "2026-10-29";
 const RATE = 1000;
 const live = () => RATE;
-const none = { clp: [], usd: [], open_credits: { clp: 0, usd: 0 } };
+type Paid = { clp?: CcCardPayment[]; usd?: CcCardPayment[]; open_credits?: Record<string, number> };
+/** A card's payments in pesos and dollars, as the builder hands them over. */
+const pays = (p: Paid): CcCardPayments => ({
+  paid: { clp: p.clp ?? [], usd: p.usd ?? [] },
+  open_credits: p.open_credits ?? { clp: 0, usd: 0 },
+});
+const none = pays({});
 
 // A card that closed October on the 26th (pesos and dollars) and keeps billing November.
 const october = fact({
@@ -80,15 +88,14 @@ describe("upcoming card payments", () => {
 
   it("takes the payments made since the close off, per currency, and drops a row once paid", () => {
     // The peso side paid in full; the 2026-10-09 dollar payment paid September, not October.
-    const pesosPaid = {
-      ...none,
+    const pesosPaid: Paid = {
       clp: [{ date_iso: "2026-10-29", amount: 2_000_000 }],
       usd: [{ date_iso: "2026-10-09", amount: 300 }],
     };
-    const rows = upcomingPaymentRows(card, pesosPaid, TODAY, live);
+    const rows = upcomingPaymentRows(card, pays(pesosPaid), TODAY, live);
     expect(rows[0]).toMatchObject({ billing_month: "2026-10", amount_clp: 300_000, billed_clp: 2_300_000 });
     const allPaid = { ...pesosPaid, usd: [{ date_iso: "2026-10-30", amount: 300 }] };
-    expect(upcomingPaymentRows(card, allPaid, TODAY, live).map((r) => r.billing_month)).toEqual(["2026-11"]);
+    expect(upcomingPaymentRows(card, pays(allPaid), TODAY, live).map((r) => r.billing_month)).toEqual(["2026-11"]);
   });
 
   it("applies the open cycle's credits to the closed facturación first", () => {
@@ -96,11 +103,11 @@ describe("upcoming card payments", () => {
     // (whose facturado nets the nota) gets it back.
     const rows = upcomingPaymentRows(
       card,
-      {
+      pays({
         clp: [{ date_iso: "2026-10-28", amount: 2_000_000 }],
         usd: [{ date_iso: "2026-10-28", amount: 292.5 }],
         open_credits: { clp: 0, usd: 7.5 },
-      },
+      }),
       TODAY,
       live
     );
@@ -111,7 +118,7 @@ describe("upcoming card payments", () => {
   it("carries an overpayment into the open facturación, same currency", () => {
     const rows = upcomingPaymentRows(
       card,
-      { ...none, clp: [{ date_iso: "2026-10-28", amount: 2_100_000 }], usd: [{ date_iso: "2026-10-28", amount: 300 }] },
+      pays({ clp: [{ date_iso: "2026-10-28", amount: 2_100_000 }], usd: [{ date_iso: "2026-10-28", amount: 300 }] }),
       TODAY,
       live
     );
@@ -143,7 +150,7 @@ describe("upcoming card payments", () => {
   });
 
   it("groups the rows by pay-by month with their total, and leaves out cards with nothing pending", () => {
-    const paid = { ...none, clp: [{ date_iso: "2026-10-01", amount: 900_000 }] };
+    const paid = pays({ clp: [{ date_iso: "2026-10-01", amount: 900_000 }] });
     const block = ccUpcomingPaymentsFromCards(
       [
         { account_id: 1, name: "Card A", facturaciones: card, payments: none },

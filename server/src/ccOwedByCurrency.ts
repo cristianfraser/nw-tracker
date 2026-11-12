@@ -1,12 +1,12 @@
 import { ymCompare } from "./calendarMonth.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import { effectiveCcExpenseLineAmountUsd } from "./ccExpenseAmountClp.js";
+import { cardLineNativeAmount } from "./ccExpenseAmountClp.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import { installmentRemainderAfterFacturacionClp } from "./ccInstallmentLedgerDb.js";
 import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { findLines } from "./cards/purchases.js";
 import { closeDateForBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
-import { facturadoForeignIn } from "./ccBillingViews.js";
 
 /**
  * What a card owes in each currency, in the frame of the bank's own «cupo utilizado» (Santander's
@@ -34,16 +34,22 @@ export type CcOwedByCurrency = {
     open_cycle_lines: number;
     total: number;
   };
-  usd: {
-    facturado: number;
-    open_cycle_lines: number;
-    total: number;
-  };
+  /**
+   * Each foreign currency the card owes in (dollars always, and every currency its latest closed
+   * facturación bills or a later line is in), to the currency's coin: no plans, so no remainder.
+   */
+  foreign: Record<string, CcForeignOwed>;
 };
 
-/** Two decimals for dollars, integer pesos: the precision both sides state. */
-function roundUsd(n: number): number {
-  return Math.round(n * 100) / 100;
+export type CcForeignOwed = {
+  facturado: number;
+  open_cycle_lines: number;
+  total: number;
+};
+
+/** The entry of `currency` (all zeros when the card owes nothing in it). */
+export function foreignOwedIn(owed: CcOwedByCurrency, currency: string): CcForeignOwed {
+  return owed.foreign[currency] ?? { facturado: 0, open_cycle_lines: 0, total: 0 };
 }
 
 export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCurrency {
@@ -54,7 +60,7 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
     : lastClosedBillingMonthForAccount(accountId, asOfIso);
 
   let facturadoClp = 0;
-  let facturadoUsd = 0;
+  const facturadoForeign = new Map<string, number>([["usd", 0]]);
   if (lastClosed) {
     const row = billingDetailCacheForAccount(accountId).facturaciones.find(
       (f) => f.billing_month === lastClosed
@@ -64,26 +70,38 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
     }
     // A currency the facturación never billed carries no figure: nothing owed in it.
     facturadoClp = row.facturado_clp ?? 0;
-    facturadoUsd = facturadoForeignIn(row, "usd")?.amount ?? 0;
+    for (const f of row.facturado_foreign) facturadoForeign.set(f.currency, f.amount ?? 0);
   }
 
   // The lines of every later facturación, by the one rule that files a statement's lines under a
   // facturación (a stale bucket's leftovers belong to the open month). Cuota lines stay out: the
-  // plans carry them in the remainder.
+  // plans carry them in the remainder. A line is in its own currency (migration 319).
   const monthByDate = facturacionMonthByStatementDate(accountId);
   let linesClp = 0;
-  let linesUsd = 0;
+  const linesForeign = new Map<string, number>();
   for (const r of findLines({ accountId })) {
     const bm = monthByDate.get(r.statement_date);
     if (!bm) throw new Error(`Account ${accountId}: statement ${r.statement_date} belongs to no facturación`);
     if (lastClosed && ymCompare(bm, lastClosed) <= 0) continue;
     if (r.installment_flag === 1) continue;
-    const usd = effectiveCcExpenseLineAmountUsd(r);
-    if (usd != null) linesUsd += usd;
-    else linesClp += Math.round(r.amount_clp ?? 0);
+    const native = cardLineNativeAmount({ ...r, installment_flag: 0 });
+    if (!native) continue;
+    if (isHomeCurrency(native.currency)) linesClp += Math.round(native.amount);
+    else linesForeign.set(native.currency, (linesForeign.get(native.currency) ?? 0) + native.amount);
   }
 
   const remainder = installmentRemainderAfterFacturacionClp(accountId, lastClosed, asOfIso);
+
+  const foreign: Record<string, CcForeignOwed> = {};
+  for (const currency of new Set([...facturadoForeign.keys(), ...linesForeign.keys()])) {
+    const facturado = facturadoForeign.get(currency) ?? 0;
+    const lines = linesForeign.get(currency) ?? 0;
+    foreign[currency] = {
+      facturado: roundToCurrency(facturado, currency),
+      open_cycle_lines: roundToCurrency(lines, currency),
+      total: roundToCurrency(facturado + lines, currency),
+    };
+  }
 
   return {
     account_id: accountId,
@@ -96,10 +114,6 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
       open_cycle_lines: linesClp,
       total: Math.round(facturadoClp) + remainder.amount_clp + linesClp,
     },
-    usd: {
-      facturado: roundUsd(facturadoUsd),
-      open_cycle_lines: roundUsd(linesUsd),
-      total: roundUsd(facturadoUsd + linesUsd),
-    },
+    foreign,
   };
 }
