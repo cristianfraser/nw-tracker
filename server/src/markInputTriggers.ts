@@ -472,8 +472,25 @@ const SPECS_321: readonly TriggerSpec[] = [
   CC_FEED_BILLING_CLOSE_AMOUNTS_SPEC,
 ];
 
+/** Migration 322 (frozen): a traspaso link names its legs by direction (`from_*` the leg the debt leaves, `to_*` where it lands). */
+const SPECS_322: readonly TriggerSpec[] = SPECS_321.map((s) =>
+  s.table === "cc_traspaso_deuda_links"
+    ? {
+        ...s,
+        targets: (r: string) => [
+          {
+            account: `${r}.account_id`,
+            date: `(SELECT s.statement_date FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+          WHERE l.id = ${r}.from_line_id)`,
+          },
+        ],
+        watch: ["account_id", "to_line_id", "from_line_id", "to_amount", "from_amount"],
+      }
+    : s
+);
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_321;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_322;
 
 /**
  * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column

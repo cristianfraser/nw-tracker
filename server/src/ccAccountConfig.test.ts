@@ -87,9 +87,12 @@ describe("parseCreditCardConfigPatch (fail-fast validation)", () => {
   it("validates cupo entries", () => {
     expect(() => parseCreditCardConfigPatch({ cupo: {} })).toThrow(/cupo must be an array/);
     expect(() => parseCreditCardConfigPatch({ cupo: [] })).toThrow(/at least one entry/);
-    expect(() => parseCreditCardConfigPatch({ cupo: [{ currency: "eur", value: 1 }] })).toThrow(
-      /'clp' or 'usd'/
+    expect(() => parseCreditCardConfigPatch({ cupo: [{ currency: "EUR", value: 1 }] })).toThrow(
+      /lowercase currency code/
     );
+    expect(parseCreditCardConfigPatch({ cupo: [{ currency: "eur", value: 1.5 }] })).toEqual({
+      cupo: [{ currency: "eur", value: 1.5 }],
+    });
     expect(() =>
       parseCreditCardConfigPatch({
         cupo: [
@@ -106,7 +109,7 @@ describe("parseCreditCardConfigPatch (fail-fast validation)", () => {
     ).toThrow(/finite number >= 0/);
     expect(() =>
       parseCreditCardConfigPatch({ cupo: [{ currency: "clp", value: 1000.5 }] })
-    ).toThrow(/integer amount of pesos/);
+    ).toThrow(/more decimals than the currency's smallest coin/);
     expect(() =>
       parseCreditCardConfigPatch({ cupo: [{ currency: "clp", value: 1, extra: 2 }] })
     ).toThrow(/unknown cupo entry field: extra/);

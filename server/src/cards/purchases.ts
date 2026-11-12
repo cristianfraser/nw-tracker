@@ -648,7 +648,7 @@ const stmtUsdAbonoLines = db.prepare(
    JOIN accounts a ON a.id = s.account_id
    WHERE l.installment_flag = 0 AND l.amount_usd < 0
      AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
-     AND l.id NOT IN (SELECT usd_line_id FROM cc_traspaso_deuda_links)
+     AND l.id NOT IN (SELECT from_line_id FROM cc_traspaso_deuda_links)
      AND (@account_id IS NULL OR s.account_id = @account_id)`
 );
 
@@ -658,10 +658,10 @@ export function usdDebtAbonoLines(accountId?: number): CardPaymentLine[] {
 }
 
 const stmtTraspasoUsdLegs = db.prepare(
-  `SELECT t.id AS link_id, l.transaction_date, t.amount_clp AS clp, t.amount_usd AS usd
+  `SELECT t.id AS link_id, l.transaction_date, t.to_amount AS clp, t.from_amount AS usd
    FROM cc_traspaso_deuda_links t
-   INNER JOIN cc_statement_lines l ON l.id = t.usd_line_id
-   WHERE t.account_id = ?`
+   INNER JOIN cc_statement_lines l ON l.id = t.from_line_id
+   WHERE t.account_id = ? AND t.from_currency = 'usd' AND t.to_currency = 'clp'`
 );
 
 /** Each traspaso de deuda of the card: the dollar leg's date and the pesos the bank moved it at. */

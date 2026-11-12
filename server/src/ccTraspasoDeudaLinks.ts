@@ -1,5 +1,7 @@
 /**
- * Traspaso de deuda USD↔CLP leg links (`cc_traspaso_deuda_links`).
+ * Traspaso de deuda USD↔CLP leg links (`cc_traspaso_deuda_links`: the debt leaves the `from` leg's
+ * currency and enters the `to` leg's, migration 322; every traspaso the banks print moves dollars
+ * onto the peso side, so pairing is pesos and dollars).
  *
  * A «traspaso de deuda internacional» reclassifies USD debt onto the CLP side of the same
  * card: the USD statement carries an abono (negative US$) and the CLP statement of the same
@@ -51,12 +53,13 @@ const listTraspasoLegCandidates = db.prepare(
 const delLinksForAccount = db.prepare(`DELETE FROM cc_traspaso_deuda_links WHERE account_id = ?`);
 
 const insLink = db.prepare(
-  `INSERT INTO cc_traspaso_deuda_links (account_id, clp_line_id, usd_line_id, amount_clp, amount_usd)
-   VALUES (?, ?, ?, ?, ?)`
+  `INSERT INTO cc_traspaso_deuda_links (account_id, to_line_id, to_currency, to_amount, from_line_id, from_currency, from_amount)
+   VALUES (?, ?, 'clp', ?, ?, 'usd', ?)`
 );
 
 const listLinksForAccount = db.prepare(
-  `SELECT usd_line_id, amount_clp FROM cc_traspaso_deuda_links WHERE account_id = ?`
+  `SELECT from_line_id AS usd_line_id, to_amount AS amount_clp FROM cc_traspaso_deuda_links
+   WHERE account_id = ? AND from_currency = 'usd' AND to_currency = 'clp'`
 );
 
 /**
@@ -124,7 +127,7 @@ export function relinkCcTraspasoDeudaLinksForAccount(accountId: number): { links
   db.transaction(() => {
     delLinksForAccount.run(accountId);
     for (const p of pairs) {
-      insLink.run(accountId, p.clp_line_id, p.usd_line_id, p.amount_clp, p.amount_usd);
+      insLink.run(accountId, p.clp_line_id, p.amount_clp, p.usd_line_id, p.amount_usd);
     }
   })();
   // The memoized post-close line stream bakes linked CLP values in.
