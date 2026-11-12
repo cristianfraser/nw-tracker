@@ -2,20 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
-import { facturacionUsdRates, usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
+import { facturacionForeignRates, foreignDebtPaymentsForAccount } from "./ccFacturacionForeignRate.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { facturadoForeignIn } from "./ccBillingViews.js";
 
-describe("facturacionUsdRates", () => {
+describe("facturacionForeignRates", () => {
   const rows = [
     { billing_month: "2026-07", close_date_iso: "2026-07-23", pay_by_iso: "2026-08-10" },
     { billing_month: "2026-08", close_date_iso: "2026-08-25", pay_by_iso: "2026-09-09" },
     { billing_month: "2026-09", close_date_iso: "2026-09-24", pay_by_iso: "2026-10-09" },
   ];
-  const rates = (payments: { date_iso: string; clp: number; usd: number }[], todayYmd = "2026-09-26") => {
+  const rates = (payments: { date_iso: string; clp: number; amount: number }[], todayYmd = "2026-09-26") => {
     let liveCalls = 0;
-    const out = facturacionUsdRates(rows, payments, {
+    const out = facturacionForeignRates(rows, payments, {
       todayYmd,
       payByRate: (payByIso) => (payByIso === "2026-08-10" ? 930 : 940),
       liveRate: () => {
@@ -28,30 +29,30 @@ describe("facturacionUsdRates", () => {
 
   it("uses the weighted rate of the payments made after the close, up to the next close", () => {
     const { out } = rates([
-      { date_iso: "2026-09-08", clp: 400_000, usd: 400 },
-      { date_iso: "2026-09-20", clp: 190_000, usd: 200 },
+      { date_iso: "2026-09-08", clp: 400_000, amount: 400 },
+      { date_iso: "2026-09-20", clp: 190_000, amount: 200 },
     ]);
-    expect(out.get("2026-08")).toEqual({ clp_per_usd: 590_000 / 600, source: "paid", paid_usd: 600 });
+    expect(out.get("2026-08")).toEqual({ clp_per_unit: 590_000 / 600, source: "paid", paid_amount: 600 });
   });
 
   it("a payment on a close day pays the previous facturación", () => {
-    const { out } = rates([{ date_iso: "2026-08-25", clp: 93_000, usd: 100 }]);
-    expect(out.get("2026-07")).toEqual({ clp_per_usd: 930, source: "paid", paid_usd: 100 });
+    const { out } = rates([{ date_iso: "2026-08-25", clp: 93_000, amount: 100 }]);
+    expect(out.get("2026-07")).toEqual({ clp_per_unit: 930, source: "paid", paid_amount: 100 });
     expect(out.get("2026-08")?.source).toBe("pay_by");
   });
 
   it("without payments: the pay-by rate once the pay-by passed, today's rate until then (the pay-by day included)", () => {
     const { out, liveCalls } = rates([]);
-    expect(out.get("2026-07")).toEqual({ clp_per_usd: 930, source: "pay_by", paid_usd: 0 });
-    expect(out.get("2026-08")).toEqual({ clp_per_usd: 940, source: "pay_by", paid_usd: 0 });
-    expect(out.get("2026-09")).toEqual({ clp_per_usd: 950, source: "live", paid_usd: 0 });
+    expect(out.get("2026-07")).toEqual({ clp_per_unit: 930, source: "pay_by", paid_amount: 0 });
+    expect(out.get("2026-08")).toEqual({ clp_per_unit: 940, source: "pay_by", paid_amount: 0 });
+    expect(out.get("2026-09")).toEqual({ clp_per_unit: 950, source: "live", paid_amount: 0 });
     expect(liveCalls).toBe(1);
     expect(rates([], "2026-09-09").out.get("2026-08")?.source).toBe("live");
   });
 
   it("refuses two facturaciones on one close", () => {
     expect(() =>
-      facturacionUsdRates(
+      facturacionForeignRates(
         [rows[0]!, { ...rows[1]!, close_date_iso: "2026-07-23" }],
         [],
         { todayYmd: "2026-09-26", payByRate: () => 1, liveRate: () => 1 }
@@ -134,24 +135,24 @@ describe("facturación dollars at the rate actually paid", () => {
   });
 
   it("reads the divisas purchase as a dollar debt payment", () => {
-    expect(usdDebtPaymentsForAccount(accountId)).toEqual([{ date_iso: "2026-09-08", clp: 524117, usd: 556.21 }]);
+    expect(foreignDebtPaymentsForAccount(accountId, "usd")).toEqual([{ date_iso: "2026-09-08", clp: 524117, amount: 556.21 }]);
   });
 
   it("each facturación's row shows its dollars at its own rate", () => {
     const byMonth = new Map(buildFacturaciones(accountId, []).map((f) => [f.billing_month, f]));
     const august = byMonth.get("2026-08")!;
-    expect(august.usd_rate_source).toBe("paid");
-    expect(august.facturado_usd_clp).toBe(524117);
+    expect(facturadoForeignIn(august, "usd")!.rate_source).toBe("paid");
+    expect(facturadoForeignIn(august, "usd")!.clp).toBe(524117);
     expect(august.facturado_total_clp).toBe(200_000 + 524117);
 
     const july = byMonth.get("2026-07")!;
     const julyRate = fxMonthEndForBalanceUsd("2026-08-09")!.clp_per_usd;
-    expect(july.usd_rate_source).toBe("pay_by");
-    expect(july.facturado_usd_clp).toBe(Math.round(705.5 * julyRate));
+    expect(facturadoForeignIn(july, "usd")!.rate_source).toBe("pay_by");
+    expect(facturadoForeignIn(july, "usd")!.clp).toBe(Math.round(705.5 * julyRate));
 
     const september = byMonth.get("2026-09")!;
-    expect(september.usd_rate_source).toBe("live");
-    expect(september.facturado_usd_clp).toBe(Math.round(1138.53 * september.usd_rate_clp!));
+    expect(facturadoForeignIn(september, "usd")!.rate_source).toBe("live");
+    expect(facturadoForeignIn(september, "usd")!.clp).toBe(Math.round(1138.53 * facturadoForeignIn(september, "usd")!.rate_clp!));
   });
 
   it("the expense lines of a facturación use the rate its row shows", () => {
@@ -324,7 +325,7 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     expect(reimported).not.toBe(recordedId);
     expect(lines.get(reimported)?.amount_clp).toBe(-372_000);
     // The row now under the recorded id is another payment: its facturación's rate, not the pairing.
-    expect(lines.get(recordedId)?.amount_clp).toBe(Math.round(-50 * july.usd_rate_clp!));
+    expect(lines.get(recordedId)?.amount_clp).toBe(Math.round(-50 * facturadoForeignIn(july, "usd")!.rate_clp!));
   });
 
   it("a traspaso de deuda's USD leg: minus its CLP leg", () => {
@@ -345,27 +346,27 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
   it("otherwise the rate of the facturación it paid, not of the one whose statement prints it", () => {
     const byMonth = new Map(buildFacturaciones(accountId, []).map((f) => [f.billing_month, f]));
     const august = byMonth.get("2026-08")!;
-    expect(august.usd_rate_source).toBe("paid");
+    expect(facturadoForeignIn(august, "usd")!.rate_source).toBe("paid");
     const september = byMonth.get("2026-09")!;
-    expect(september.usd_rate_source).toBe("live");
-    expect(september.usd_rate_clp).not.toBe(940);
+    expect(facturadoForeignIn(september, "usd")!.rate_source).toBe("live");
+    expect(facturadoForeignIn(september, "usd")!.rate_clp).not.toBe(940);
     const abono = linesById().get(lineIds.abonoUnpaired!)!;
     expect(abono.billing_month).toBe("2026-09");
     // What August's row shows was paid for its dollars.
-    expect(abono.amount_clp).toBe(-august.facturado_usd_clp!);
+    expect(abono.amount_clp).toBe(-facturadoForeignIn(august, "usd")!.clp!);
     expect(abono.amount_clp).toBe(-470_000);
   });
 
   it("a payment on a close day pays the facturación that closed before it", () => {
     const closeDay = insertLine("24/09/2026 usd", "25/08/2026", "ABONO DE DIVISAS", { usd: -10 });
     const july = buildFacturaciones(accountId, []).find((f) => f.billing_month === "2026-07")!;
-    expect(july.usd_rate_clp).toBe((372_000 + 95_000 + 192_000) / 700);
-    expect(linesById().get(closeDay)?.amount_clp).toBe(Math.round(-10 * july.usd_rate_clp!));
+    expect(facturadoForeignIn(july, "usd")!.rate_clp).toBe((372_000 + 95_000 + 192_000) / 700);
+    expect(linesById().get(closeDay)?.amount_clp).toBe(Math.round(-10 * facturadoForeignIn(july, "usd")!.rate_clp!));
   });
 
   it("charges and credits that are not payments keep their facturación's rate, and the rows add up", () => {
     const byMonth = new Map(buildFacturaciones(accountId, []).map((f) => [f.billing_month, f]));
-    const septemberRate = byMonth.get("2026-09")!.usd_rate_clp!;
+    const septemberRate = facturadoForeignIn(byMonth.get("2026-09")!, "usd")!.rate_clp!;
     const lines = linesById();
     expect(lines.get(lineIds.septemberNota!)?.amount_clp).toBe(Math.round(-20 * septemberRate));
     expect(lines.get(lineIds.septemberShopUsd!)?.amount_clp).toBe(Math.round(100 * septemberRate));

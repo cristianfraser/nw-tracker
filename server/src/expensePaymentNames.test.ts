@@ -80,14 +80,14 @@ describe("nameExpensePaymentLines", () => {
 
   it("names a peso card payment paid from checking", () => {
     const pago = line({ account_id: PAYING, amount_clp: -123_456, purchase_on: "2036-05-02", merchant: "MONTO CANCELADO" });
-    const key = ccPaymentEvidenceKey({ cc_account_id: PAYING, pago_iso: "2036-05-02", currency: "clp", amount_clp: 123_456, amount_usd: null });
+    const key = ccPaymentEvidenceKey({ cc_account_id: PAYING, pago_iso: "2036-05-02", currency: "clp", amount_clp: 123_456, amount_foreign: null });
     const out = nameExpensePaymentLines([pago], facts({ transfers: [{ key, from_account_name: "Cuenta corriente" }] }));
     expect(out[0]!.payment_name).toEqual({ kind: "paid_from_account", account_name: "Cuenta corriente" });
   });
 
   it("names a dollar ABONO DE DIVISAS paid from the dollar account, by its dollars", () => {
     const abono = line({ account_id: PAYING, amount_clp: -950_000, amount_usd: -1000.5, purchase_on: "2036-05-09", merchant: "ABONO DE DIVISAS" });
-    const key = ccPaymentEvidenceKey({ cc_account_id: PAYING, pago_iso: "2036-05-09", currency: "usd", amount_clp: 0, amount_usd: 1000.5 });
+    const key = ccPaymentEvidenceKey({ cc_account_id: PAYING, pago_iso: "2036-05-09", currency: "usd", amount_clp: 0, amount_foreign: 1000.5 });
     const out = nameExpensePaymentLines([abono], facts({ transfers: [{ key, from_account_name: "Santander USD" }] }));
     expect(out[0]!.payment_name).toEqual({ kind: "paid_from_account", account_name: "Santander USD" });
   });
@@ -120,7 +120,7 @@ describe("nameExpensePaymentLines", () => {
     const planted = line({ account_id: PAID, amount_clp: -500_000, purchase_on: "2036-03-06", merchant: "PAGO" });
     const statement = line({ account_id: PAID, amount_clp: -500_000, purchase_on: "2036-03-06", merchant: "MONTO CANCELADO" });
     const pago = line({ account_id: OTHER, amount_clp: -10_000, purchase_on: "2036-03-06", merchant: "PAGO" });
-    const key = ccPaymentEvidenceKey({ cc_account_id: OTHER, pago_iso: "2036-03-06", currency: "clp", amount_clp: 10_000, amount_usd: null });
+    const key = ccPaymentEvidenceKey({ cc_account_id: OTHER, pago_iso: "2036-03-06", currency: "clp", amount_clp: 10_000, amount_foreign: null });
     const out = nameExpensePaymentLines(
       [charge, planted, statement, pago],
       facts({

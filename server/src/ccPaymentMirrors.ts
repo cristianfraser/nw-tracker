@@ -43,6 +43,8 @@ import { MOVEMENT_CLP_LEG_SQL, movementClpLegOrZero, type MovementAmountFields }
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { rankByDistance } from "./matching/pairing.js";
+import { convertCurrency } from "./rates.js";
+import { foreignPaymentAmountLabel } from "./ccPaymentMirrorEvidence.js";
 
 /**
  * Checking legs of USD-debt payments («Egreso por Compra de Divisas»). Cross-currency, so the
@@ -59,8 +61,18 @@ const LINEA_CREDITO_PAYMENT_DESC_RE = /TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[
  * window, one-to-one — like every other wording; an unpaired one stays a plain debit.
  */
 const KHIPU_TRANSFER_DESC_RE = /\bTRANSF\w*\.?\s+A\s+KHIPU\b/i;
-const DIVISAS_IMPLIED_FX_MIN = 300;
-const DIVISAS_IMPLIED_FX_MAX = 2000;
+/**
+ * The implied rate (pesos of the checking debit ÷ the card's abono) a divisas pair may show, as a
+ * multiple of the currency's own rate on the abono's day: the bank's spread and a few days of
+ * movement sit well inside it, a coincidental purchase of a very different size does not.
+ */
+const DIVISAS_IMPLIED_RATE_BAND = [0.5, 2] as const;
+
+/** The pesos one unit of `currency` was worth on `day` (mid), for the divisas band; null with no rate on file. */
+function dayRateClp(currency: string, day: string): number | null {
+  const r = convertCurrency(1, currency, "clp", day, { side: "mid", storedOnly: true });
+  return r != null && r > 0 ? r : null;
+}
 
 export type CcPaymentEvidence = {
   cc_account_id: number;
@@ -74,10 +86,10 @@ export type CcPaymentEvidence = {
    * peso amount; the transfer's pesos come from the checking «Egreso por Compra de Divisas» leg.
    */
   amount_clp: number;
-  /** 'usd' = ABONO DE DIVISAS on the USD statement (the divisas payment's card leg). */
-  currency: "clp" | "usd";
-  /** Positive USD amount for usd evidence; null for clp. */
-  amount_usd: number | null;
+  /** A foreign code = ABONO DE DIVISAS in that currency (the divisas payment's card leg). */
+  currency: string;
+  /** Positive amount of foreign evidence, in `currency`; null for clp. */
+  amount_foreign: number | null;
   label: string;
 };
 
@@ -120,7 +132,7 @@ function dedupeCcPaymentEvidence(rows: ReturnType<typeof listCcPaymentEvidenceRo
       pago_iso: r.pago_iso,
       amount_clp: r.amount_clp,
       currency: r.currency,
-      amount_usd: r.amount_usd,
+      amount_foreign: r.amount_foreign,
       label: r.label,
     });
   }
@@ -143,15 +155,15 @@ function dedupeCcPaymentEvidence(rows: ReturnType<typeof listCcPaymentEvidenceRo
 function manualPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
   const rows = db
     .prepare(`SELECT card_account_id, currency, amount, paid_on FROM cc_manual_payments`)
-    .all() as { card_account_id: number; currency: "clp" | "usd"; amount: number; paid_on: string }[];
+    .all() as { card_account_id: number; currency: string; amount: number; paid_on: string }[];
   if (rows.length === 0) return () => false;
   return (e) =>
     rows.some((r) => {
       if (r.card_account_id !== e.cc_account_id || r.currency !== e.currency) return false;
-      const amount = e.currency === "usd" ? e.amount_usd : e.amount_clp;
+      const amount = e.currency !== "clp" ? e.amount_foreign : e.amount_clp;
       if (amount == null) return false;
-      const same =
-        e.currency === "usd" ? Math.round(amount * 100) === Math.round(r.amount * 100) : Math.round(amount) === Math.round(r.amount);
+      const scale = e.currency !== "clp" ? 100 : 1;
+      const same = Math.round(amount * scale) === Math.round(r.amount * scale);
       if (!same) return false;
       return dayWithinWindow(r.paid_on, e.pago_iso, MATCH_WINDOWS.planted_payment);
     });
@@ -252,10 +264,10 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
     (e) => !converted.has(ccPaymentEvidenceKey(e)) && !claimedByManualPayment(e) && !claimedByCardToCardPayment(e)
   );
   const byAmount = new Map<number, CcPaymentEvidence[]>();
-  const usdEvidence: CcPaymentEvidence[] = [];
+  const foreignEvidence: CcPaymentEvidence[] = [];
   for (const e of evidence) {
-    if (e.currency === "usd") {
-      usdEvidence.push(e);
+    if (e.currency !== "clp") {
+      foreignEvidence.push(e);
       continue;
     }
     const list = byAmount.get(e.amount_clp) ?? [];
@@ -273,10 +285,14 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   for (const out of outs) {
     const amount = Math.round(Math.abs(movementClpLegOrZero(out)));
     const isDivisas = DIVISAS_DESC_RE.test(out.note ?? "");
+    // A divisas debit bought some foreign currency: it pairs with the card's abono in THAT
+    // currency, at an implied rate inside the band around the currency's own rate that day.
     const pool = isDivisas
-      ? usdEvidence.filter((e) => {
-          const fx = amount / (e.amount_usd ?? Number.NaN);
-          return fx >= DIVISAS_IMPLIED_FX_MIN && fx <= DIVISAS_IMPLIED_FX_MAX;
+      ? foreignEvidence.filter((e) => {
+          const rate = dayRateClp(e.currency, e.pago_iso);
+          if (rate == null) return false;
+          const implied = amount / (e.amount_foreign ?? Number.NaN);
+          return implied >= DIVISAS_IMPLIED_RATE_BAND[0] * rate && implied <= DIVISAS_IMPLIED_RATE_BAND[1] * rate;
         })
       : byAmount.get(amount) ?? [];
     const { ranked: near, tiedAtTop } = rankByDistance(
@@ -368,17 +384,17 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
       // USD evidence has no peso amount: the transfer's CLP leg is the checking debit itself
       // (the exact pesos that left the account), and the card side rides as the USD counter
       // leg — the migration-169 cross-currency transfer shape.
-      const isUsd = cand.evidence.currency === "usd";
-      const transferClp = isUsd ? Math.round(Math.abs(cand.out.amount_clp)) : cand.evidence.amount_clp;
-      const note = isUsd
-        ? `Pago tarjeta espejo (divisas: cargo cuenta ${cand.out.occurred_on} → abono tarjeta US$${cand.evidence.amount_usd!.toFixed(2)} ${cand.evidence.pago_iso})`
+      const isForeign = cand.evidence.currency !== "clp";
+      const transferClp = isForeign ? Math.round(Math.abs(cand.out.amount_clp)) : cand.evidence.amount_clp;
+      const note = isForeign
+        ? `Pago tarjeta espejo (divisas: cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${foreignPaymentAmountLabel(cand.evidence.amount_foreign!, cand.evidence.currency)} ${cand.evidence.pago_iso})`
         : `Pago tarjeta espejo (cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${cand.evidence.pago_iso})`;
       const r = insTransfer.run(
         cand.out.account_id,
         cand.evidence.cc_account_id,
         transferClp,
-        isUsd ? cand.evidence.amount_usd : null,
-        isUsd ? "usd" : null,
+        isForeign ? cand.evidence.amount_foreign : null,
+        isForeign ? cand.evidence.currency : null,
         cand.evidence.pago_iso,
         note,
         FLOW_KIND_PAGO_TARJETA

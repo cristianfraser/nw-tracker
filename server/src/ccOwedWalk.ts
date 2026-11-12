@@ -31,7 +31,7 @@ import {
   sumCcOwed,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
-import { usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
+import { cardForeignCurrencies, foreignDebtPaymentsForAccount } from "./ccFacturacionForeignRate.js";
 import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -177,7 +177,7 @@ function isoAddDays(iso: string, days: number): string {
  *
  * **A dollar payment counts at the pesos actually paid** (in any unit but dollars, where the
  * dollars are the payment): where a payment of the
- * dollar debt has its real rate on file (`usdDebtPaymentsForAccount`: the divisas purchase paired
+ * dollar debt has its real rate on file (`foreignDebtPaymentsForAccount`: the divisas purchase paired
  * with it, a traspaso de deuda's peso leg, the traced cost of dollars paid from a USD cash
  * account), the payment day's term adds `pesos paid − dollars paid · R(d)`: the paid dollars are
  * revalued to the real rate instead of the day's, so their fx P/L that day is
@@ -207,7 +207,8 @@ function subBalanceRate(c: CurrencyCode, unit: CurrencyCode, qty: number, day: s
   return convertValue(1, c, unit, day, qty < 0 ? "asset" : "debt");
 }
 
-type RealRatePayments = { usd: number; clp: number };
+/** Per foreign currency, what was paid that day: its amount and the pesos it actually cost. */
+type RealRatePayments = Map<string, { amount: number; clp: number }>;
 
 function revaluationTerm(
   unit: CurrencyCode,
@@ -229,12 +230,13 @@ function revaluationTerm(
       term += owedPrev * rCur - owedPrev * rPrev;
     }
   }
-  if (unit !== "usd" && paid && paid.usd !== 0) {
-    // The paid dollars leave the debt at the pesos actually paid, in `unit`: the pesos as a flow of
-    // the day (identity in pesos), against the dollars at the day's rate into `unit`.
-    const rCur = subBalanceRate("usd", unit, ccOwedIn(cur, "usd"), day);
+  for (const [c, p] of paid ?? []) {
+    if (c === unit || p.amount === 0) continue;
+    // The paid amount leaves the debt at the pesos actually paid, in `unit`: the pesos as a flow of
+    // the day (identity in pesos), against the amount at the day's rate into `unit`.
+    const rCur = subBalanceRate(c, unit, ccOwedIn(cur, c), day);
     if (rCur == null) return null;
-    term += convertFlow(paid.clp, "clp", unit, day) - paid.usd * rCur;
+    term += convertFlow(p.clp, "clp", unit, day) - p.amount * rCur;
   }
   return term;
 }
@@ -280,12 +282,16 @@ function walkAnchorsBefore(accountId: number, today: string): { as_of_date: stri
     });
 }
 
-/** The dollar payments with their real pesos (`usdDebtPaymentsForAccount`), per day. */
+/** The payments of each foreign debt with their real pesos (`foreignDebtPaymentsForAccount`), per day. */
 function realRatePaymentsByDay(accountId: number): Map<string, RealRatePayments> {
   const out = new Map<string, RealRatePayments>();
-  for (const p of usdDebtPaymentsForAccount(accountId)) {
-    const prev = out.get(p.date_iso) ?? { usd: 0, clp: 0 };
-    out.set(p.date_iso, { usd: prev.usd + p.usd, clp: prev.clp + p.clp });
+  for (const currency of cardForeignCurrencies(accountId)) {
+    for (const p of foreignDebtPaymentsForAccount(accountId, currency)) {
+      const day = out.get(p.date_iso) ?? new Map();
+      const prev = day.get(currency) ?? { amount: 0, clp: 0 };
+      day.set(currency, { amount: prev.amount + p.amount, clp: prev.clp + p.clp });
+      out.set(p.date_iso, day);
+    }
   }
   return out;
 }
@@ -298,7 +304,7 @@ function buildRevaluation(accountId: number, unit: CurrencyCode, today: string):
   const entries = [...normalizedPostCloseLines(accountId), ...normalizedInstallmentPurchaseEvents(accountId)]
     .filter((e) => e.amount != null)
     .sort((a, b) => a.iso.localeCompare(b.iso));
-  const paymentsByDay = unit !== "usd" ? realRatePaymentsByDay(accountId) : new Map<string, RealRatePayments>();
+  const paymentsByDay = realRatePaymentsByDay(accountId);
 
   // owed_c(d) for d in [first anchor, yesterday]: the anchor on or before d plus the deduped
   // evidence in (anchor, d] — the walk's own rule (`postCloseNativeAdjustment`), swept window by

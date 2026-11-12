@@ -7,6 +7,7 @@ import type {
   CcBillingDetailMonthRow,
   CcBillingDetailStatementRow,
   CcFacturacionRow,
+  CcFacturadoForeign,
 } from "./ccBillingViews.js";
 import {
   creditCardInstallmentsResponse,
@@ -56,15 +57,41 @@ function weakerCloseSource(a: CcCloseSource, b: CcCloseSource): CcCloseSource {
   return CLOSE_SOURCE_RANK[a] <= CLOSE_SOURCE_RANK[b] ? a : b;
 }
 
-function mergedUsdRate(
-  a: CcFacturacionRow,
-  b: CcFacturacionRow
-): Pick<CcFacturacionRow, "usd_rate_clp" | "usd_rate_source"> {
-  if (a.usd_rate_clp == null) return { usd_rate_clp: b.usd_rate_clp, usd_rate_source: b.usd_rate_source };
-  if (b.usd_rate_clp == null) return { usd_rate_clp: a.usd_rate_clp, usd_rate_source: a.usd_rate_source };
-  return a.usd_rate_clp === b.usd_rate_clp && a.usd_rate_source === b.usd_rate_source
-    ? { usd_rate_clp: a.usd_rate_clp, usd_rate_source: a.usd_rate_source }
-    : { usd_rate_clp: null, usd_rate_source: null };
+function mergedForeignRate(
+  a: CcFacturadoForeign,
+  b: CcFacturadoForeign
+): Pick<CcFacturadoForeign, "rate_clp" | "rate_source"> {
+  if (a.rate_clp == null) return { rate_clp: b.rate_clp, rate_source: b.rate_source };
+  if (b.rate_clp == null) return { rate_clp: a.rate_clp, rate_source: a.rate_source };
+  return a.rate_clp === b.rate_clp && a.rate_source === b.rate_source
+    ? { rate_clp: a.rate_clp, rate_source: a.rate_source }
+    : { rate_clp: null, rate_source: null };
+}
+
+/**
+ * Two members' foreign entries, per currency: amounts and pesos summed (each card's pesos are at its
+ * own rate), a rate named only when the members agree (or just one bills in the currency).
+ */
+function mergeFacturadoForeign(
+  prev: readonly CcFacturadoForeign[],
+  row: readonly CcFacturadoForeign[]
+): CcFacturadoForeign[] {
+  const out = prev.map((f) => ({ ...f }));
+  for (const f of row) {
+    const i = out.findIndex((o) => o.currency === f.currency);
+    if (i < 0) {
+      out.push({ ...f });
+      continue;
+    }
+    const a = out[i]!;
+    out[i] = {
+      currency: a.currency,
+      amount: sumNullable(a.amount, f.amount),
+      clp: sumNullable(a.clp, f.clp),
+      ...mergedForeignRate(a, f),
+    };
+  }
+  return out;
 }
 
 /** Every field of a facturación row, each merged by its own rule in {@link mergeFacturacionRow}. */
@@ -76,8 +103,7 @@ const FACTURACION_ROW_FIELDS = new Set<string>([
   "pay_by_iso",
   "pay_by_source",
   "facturado_clp",
-  "facturado_usd",
-  "facturado_usd_clp",
+  "facturado_foreign",
   "facturado_total_clp",
   "cuota_a_pagar_clp",
   "deuda_en_cuotas_clp",
@@ -85,8 +111,6 @@ const FACTURACION_ROW_FIELDS = new Set<string>([
   "is_provisional_close",
   "close_date_source",
   "provisional_estimate_total_clp",
-  "usd_rate_clp",
-  "usd_rate_source",
 ] satisfies (keyof CcFacturacionRow)[]);
 
 /** A member's row as the merge sees it: a field without a merge rule throws, never takes the first member's value. */
@@ -107,8 +131,7 @@ function mergeFacturacionRow(prev: CcFacturacionRow, row: CcFacturacionRow): CcF
     pay_by_iso: prev.pay_by_iso ?? row.pay_by_iso,
     pay_by_source: prev.pay_by != null ? prev.pay_by_source : row.pay_by_source,
     facturado_clp: sumNullable(prev.facturado_clp, row.facturado_clp),
-    facturado_usd: sumNullable(prev.facturado_usd, row.facturado_usd),
-    facturado_usd_clp: sumNullable(prev.facturado_usd_clp, row.facturado_usd_clp),
+    facturado_foreign: mergeFacturadoForeign(prev.facturado_foreign, row.facturado_foreign),
     facturado_total_clp: sumNullable(prev.facturado_total_clp, row.facturado_total_clp),
     cuota_a_pagar_clp: sumNullable(prev.cuota_a_pagar_clp, row.cuota_a_pagar_clp),
     deuda_en_cuotas_clp: sumNullable(prev.deuda_en_cuotas_clp, row.deuda_en_cuotas_clp),
@@ -122,9 +145,6 @@ function mergeFacturacionRow(prev: CcFacturacionRow, row: CcFacturacionRow): CcF
       prev.provisional_estimate_total_clp != null && row.provisional_estimate_total_clp != null
         ? prev.provisional_estimate_total_clp + row.provisional_estimate_total_clp
         : null,
-    // Each card's dollars are already in pesos at its own rate; a merged row names a rate only
-    // when the members agree (or just one bills in dollars).
-    ...mergedUsdRate(prev, row),
   };
 }
 

@@ -12,7 +12,7 @@
  * and the bars are built in pesos (the card's billing frame) and converted at each point's day at
  * the debt side, as a card's owed converts (a day with no rate on file reads null; the tail's
  * future days read today's rate). The `_clp`-suffixed keys (`plan_debt_clp`, `facturado_*_clp`)
- * are the historial chart's shared shape and hold the series' unit; `facturado_usd` stays the
+ * are the historial chart's shared shape and hold the series' unit; `facturado_foreign` stays the
  * statement's dollars. In pesos nothing is converted. The card pages ask for pesos (their monthly
  * historial is the CLP card ledger), so the two grains agree.
  */
@@ -76,7 +76,7 @@ function barIn(b: CcFacturacionBarPoint, unit: CurrencyCode): CcFacturacionBarPo
     ...b,
     facturado_cuotas_clp: clpOwedIn(b.facturado_cuotas_clp, unit, d, "debt"),
     facturado_rest_clp: clpOwedIn(b.facturado_rest_clp, unit, d, "debt"),
-    facturado_usd_clp: clpOwedIn(b.facturado_usd_clp, unit, d, "debt"),
+    facturado_foreign_clp: clpOwedIn(b.facturado_foreign_clp, unit, d, "debt"),
     facturado_total_clp: clpOwedIn(b.facturado_total_clp, unit, d, "debt"),
   };
 }

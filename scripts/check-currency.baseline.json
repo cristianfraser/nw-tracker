@@ -1,11 +1,11 @@
 {
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
-    "currency-formatter": 290,
+    "currency-formatter": 287,
     "currency-list-literal": 7,
-    "currency-type-union": 128,
-    "dto-currency-key": 291,
-    "unit-literal-compare": 330
+    "currency-type-union": 124,
+    "dto-currency-key": 289,
+    "unit-literal-compare": 319
   },
   "violations": {
     "client/src/api.ts": {
@@ -43,7 +43,7 @@
       "currency-formatter": 5
     },
     "client/src/components/charts/CcInstallmentHistoryChart.tsx": {
-      "currency-formatter": 9
+      "currency-formatter": 8
     },
     "client/src/components/credit-card/CreditCardExpenseLinesTable.tsx": {
       "currency-formatter": 1
@@ -75,7 +75,7 @@
       "currency-formatter": 2
     },
     "client/src/components/liabilities/CreditCardSummaryCards.tsx": {
-      "currency-formatter": 8
+      "currency-formatter": 7
     },
     "client/src/components/panel/BrokerageMovementsSection.tsx": {
       "currency-type-union": 1,
@@ -144,7 +144,7 @@
       "currency-formatter": 1
     },
     "client/src/pages/accountDetail/CreditCardFacturacionesTable.tsx": {
-      "currency-formatter": 6
+      "currency-formatter": 5
     },
     "client/src/pages/accountDetail/CreditCardPurchaseMobileCard.tsx": {
       "currency-formatter": 3
@@ -230,7 +230,7 @@
     },
     "server/contracts/src/dto/creditCard.ts": {
       "currency-type-union": 1,
-      "dto-currency-key": 50
+      "dto-currency-key": 48
     },
     "server/contracts/src/dto/dashboard.ts": {
       "dto-currency-key": 2
@@ -358,9 +358,6 @@
     "server/src/ccDedupeKey.ts": {
       "currency-type-union": 1
     },
-    "server/src/ccFacturacionUsdRate.ts": {
-      "unit-literal-compare": 2
-    },
     "server/src/ccFeedCuotaPurchases.ts": {
       "unit-literal-compare": 3
     },
@@ -387,15 +384,7 @@
     "server/src/ccOriginCurrency.ts": {
       "currency-type-union": 1
     },
-    "server/src/ccOwedWalk.ts": {
-      "unit-literal-compare": 2
-    },
-    "server/src/ccPaymentMirrorEvidence.ts": {
-      "currency-type-union": 2,
-      "unit-literal-compare": 7
-    },
     "server/src/ccPaymentMirrors.ts": {
-      "currency-type-union": 2,
       "unit-literal-compare": 5
     },
     "server/src/ccPlantedPayments.ts": {

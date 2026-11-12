@@ -20,8 +20,8 @@ import {
   type CcStatementLineForInstallmentTotals,
 } from "./ccInstallmentLineDedupe.js";
 import { normalizeTransactionDateIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
-import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
-import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
+import { ccTraspasoLinkedClpByForeignLineId } from "./ccTraspasoDeudaLinks.js";
+import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { db } from "./db.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -121,7 +121,7 @@ export function payByFxDateIso(payByIso: string): string {
  * pay-by date minus one day. A foreign charge settles to CLP at pay-by, so this locks the rate
  * once that date passes (and floats on the latest rate before it), instead of drifting with the
  * statement-close rate. What a facturación SHOWS it cost (its row, the historial bars, its
- * expense lines) is the rate actually paid instead — `ccFacturacionUsdRate.ts`. Import
+ * expense lines) is the rate actually paid instead — `ccFacturacionForeignRate.ts`. Import
  * dedupe/matching keeps the raw statement-date FX (it only compares amounts).
  */
 export function balanceUsdFxDateIso(accountId: number, statementDate: string): string | null {
@@ -324,7 +324,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // pair is one debt reclassification and must net to exactly zero, never an fx estimate.
     // Unlinked traspaso legs (web-paste pastes, twin statement not imported) keep the fx
     // conversion below until the PDF import links the real pair.
-    const traspasoClpByUsdLineId = ccTraspasoLinkedClpByUsdLineId(accountId);
+    const traspasoClpByUsdLineId = ccTraspasoLinkedClpByForeignLineId(accountId, "usd");
 
     // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
     // inside a window (same as the single-window loop did).
@@ -802,7 +802,7 @@ export function facturadoFromStatement(
   if (stmt.currency === "usd") {
     // A dollar statement that prints no total (the Santander international JSON) bills what its
     // own lines bill: summing peso lines for it had left a facturación's dollars out of its total.
-    const usd = headerMonto ?? usdBilledFromStatementLines(stmt.id);
+    const usd = headerMonto ?? foreignBilledFromStatementLines(stmt.id, "usd");
     const fx = debtFrameClpPerUsd(balanceUsdFxDateIso(accountId, statementDate));
     const clp = fx != null ? Math.round(usd * fx) : null;
     return { facturado_clp: clp, facturado_usd: usd };

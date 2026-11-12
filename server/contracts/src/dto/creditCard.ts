@@ -144,8 +144,8 @@ export interface CcFacturacionDto {
   /** The statement's printed PAGAR HASTA, or derived from the close while no statement prints it. */
   pay_by_source: "statement" | "derived" | null;
   facturado_clp: number | null;
-  facturado_usd: number | null;
-  facturado_usd_clp: number | null;
+  /** What it billed in each foreign currency the card bills in, with its pesos and the rate they show at. */
+  facturado_foreign: CcFacturadoForeignDto[];
   facturado_total_clp: number | null;
   cuota_a_pagar_clp: number | null;
   /**
@@ -160,6 +160,18 @@ export interface CcFacturacionDto {
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it. */
   provisional_estimate_total_clp: number | null;
+}
+
+/** A facturación's billing in one foreign currency (docs/any-currency-plan.md C3). */
+export interface CcFacturadoForeignDto {
+  currency: string;
+  /** Null on a closed month with no statement in the currency; an open cycle that billed none reads 0. */
+  amount: number | null;
+  /** Its pesos at the rate it shows. */
+  clp: number | null;
+  /** The rate (pesos per unit) its charges show at: the rate paid, today's while unpaid, else the pay-by − 1 debt rate. */
+  rate_clp: number | null;
+  rate_source: "paid" | "pay_by" | "live" | null;
 }
 
 export interface CreditCardBillingConfigDto {
@@ -277,9 +289,10 @@ export type CcFacturadoBarSegments = {
   facturado_cuotas_clp: number | null;
   /** «Facturado CLP»: the CLP facturado minus those cuotas (negative when credits outweigh it). */
   facturado_rest_clp: number | null;
-  /** «Facturado US$» in pesos. */
-  facturado_usd_clp: number | null;
-  facturado_usd: number | null;
+  /** «Facturado en moneda extranjera»: the foreign currencies it billed, in pesos… */
+  facturado_foreign_clp: number | null;
+  /** …and each currency's amount, for the tooltip (null: nothing billed in a foreign currency). */
+  facturado_foreign: { currency: string; amount: number }[] | null;
   facturado_total_clp: number | null;
 };
 

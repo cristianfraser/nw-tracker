@@ -6,6 +6,7 @@ import {
   type CcHistorialChartPoint,
 } from "./creditCardChartSeries.js";
 import type { CcBillingDetailStatementRow, CcFacturacionRow } from "./ccBillingViews.js";
+import { usdForeign } from "./test/facturadoForeign.js";
 
 const makeDetalle = (
   billing_month: string,
@@ -33,8 +34,7 @@ const makeFacturacion = (
   pay_by_source: null,
   pay_by_iso: null,
   facturado_clp: null,
-  facturado_usd: null,
-  facturado_usd_clp: null,
+  facturado_foreign: usdForeign(null, null),
   facturado_total_clp: null,
   cuota_a_pagar_clp: null,
   deuda_en_cuotas_clp: null,
@@ -42,8 +42,6 @@ const makeFacturacion = (
   is_provisional_close: false,
   close_date_source: "statement",
   provisional_estimate_total_clp: null,
-  usd_rate_clp: null,
-  usd_rate_source: null,
   ...overrides,
 });
 
@@ -51,8 +49,8 @@ const bar = (p: CcHistorialChartPoint | undefined) =>
   p && {
     cuotas: p.facturado_cuotas_clp,
     rest: p.facturado_rest_clp,
-    usd_clp: p.facturado_usd_clp,
-    usd: p.facturado_usd,
+    usd_clp: p.facturado_foreign_clp,
+    usd: p.facturado_foreign?.find((f) => f.currency === "usd")?.amount ?? null,
     total: p.facturado_total_clp,
   };
 
@@ -72,8 +70,7 @@ describe("buildCcHistorialChartSeries", () => {
       [
         makeFacturacion("2025-07", {
           facturado_clp: 2_503_795,
-          facturado_usd: 84.77,
-          facturado_usd_clp: 80_000,
+          facturado_foreign: usdForeign(84.77, 80_000),
           facturado_total_clp: 2_583_795,
           cuota_a_pagar_clp: 50_000,
         }),
@@ -204,7 +201,7 @@ describe("buildCcHistorialChartSeries", () => {
       buildCcHistorialChartSeries(
         [],
         [makeDetalle("2025-07")],
-        [makeFacturacion("2025-07", { facturado_usd: 10, facturado_usd_clp: 9_000, cuota_a_pagar_clp: 50_000 })]
+        [makeFacturacion("2025-07", { facturado_foreign: usdForeign(10, 9_000), cuota_a_pagar_clp: 50_000 })]
       )
     ).toThrow(/no CLP facturado/);
   });
@@ -336,8 +333,8 @@ describe("facturacionBarsOnMonthCloseDates", () => {
     month,
     facturado_cuotas_clp: cuotas,
     facturado_rest_clp: rest,
-    facturado_usd_clp: null,
-    facturado_usd: null,
+    facturado_foreign_clp: null,
+    facturado_foreign: null,
     facturado_total_clp: cuotas == null && rest == null ? null : (cuotas ?? 0) + (rest ?? 0),
     cupo_en_cuotas_clp: null,
     balance_total_clp: null,

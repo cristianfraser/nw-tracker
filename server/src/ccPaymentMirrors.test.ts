@@ -415,7 +415,7 @@ describe("convertCcPaymentMirrors", () => {
       const cand = myCandidates().find((c) => c.out.movement_id === outId)!;
       expect(cand).toBeTruthy();
       expect(cand.evidence.currency).toBe("usd");
-      expect(cand.evidence.amount_usd).toBe(123.45);
+      expect(cand.evidence.amount_foreign).toBe(123.45);
       expect(cand.evidence.statement_line_id).toBe(abonoLineId);
       expect(cand.blocked).toBe(false);
 
@@ -450,6 +450,57 @@ describe("convertCcPaymentMirrors", () => {
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(abonoLineId);
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(usdStatementId);
+      clearAggregationCache();
+    }
+  });
+
+  it("pairs a divisas debit that bought euros with the card's euro ABONO, at the euro's rate band", () => {
+    if (checkingId == null || ccId == null) return;
+    db.prepare(`INSERT OR REPLACE INTO eur_daily (date, clp_per_eur) VALUES ('2037-08-01', 1050)`).run();
+    const eurStatementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+           VALUES (?, 'santander', 'vitest-ccpago-eur.pdf', '22/08/2037', '22/07/2037', '22/08/2037', 'eur')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const abonoLineId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
+           VALUES (?, '09/08/2037', 'ABONO DE DIVISAS', -100, 'eur', 0, 'vitest-ccpago-eur-1')`
+        )
+        .run(eurStatementId).lastInsertRowid
+    );
+    // 106.000 pesos for 100 euros: inside the band around 1.050; as dollars (~950/USD) it would be too.
+    const outId = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+           VALUES (?, -106000, 'clp', '2037-08-10', 'vitest|Egreso por Compra de Divisas|eur')`
+        )
+        .run(checkingId).lastInsertRowid
+    );
+    cleanupMovementIds.push(outId);
+    clearAggregationCache();
+    try {
+      const cand = myCandidates().find((c) => c.out.movement_id === outId)!;
+      expect(cand).toBeTruthy();
+      expect(cand.evidence.currency).toBe("eur");
+      expect(cand.evidence.amount_foreign).toBe(100);
+      expect(cand.blocked).toBe(false);
+      const { converted } = convertCcPaymentMirrors([{ out_movement_id: outId, statement_line_id: abonoLineId }]);
+      const transfer = db
+        .prepare(`SELECT amount, currency, counter_amount, counter_currency, flow_kind FROM movements WHERE id = ?`)
+        .get(converted[0]!.transfer_movement_id);
+      expect(transfer).toEqual({ amount: 106000, currency: "clp", counter_amount: 100, counter_currency: "eur", flow_kind: "pago_tarjeta" });
+      const restored = undoMirrorConversion(converted[0]!.transfer_movement_id);
+      cleanupMovementIds.push(restored.restored_out_id);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(abonoLineId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(eurStatementId);
+      db.prepare(`DELETE FROM eur_daily WHERE date = '2037-08-01'`).run();
       clearAggregationCache();
     }
   });

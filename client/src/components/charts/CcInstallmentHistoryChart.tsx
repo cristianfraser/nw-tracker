@@ -4,7 +4,7 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
-import { formatClp, formatUsdFine } from "../../format";
+import { formatClp, formatMoney } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { AppComposedChart } from "./AppComposedChart";
 import { ChartEmptyState } from "./ChartEmptyState";
@@ -41,7 +41,7 @@ const BAR_SEGMENTS = [
     fill: "#a14e10",
   },
   {
-    dataKey: "facturado_usd_clp",
+    dataKey: "facturado_foreign_clp",
     labelKey: "accountDetail.creditCard.chartFacturadoUsd",
     fill: "#fbbf24",
   },
@@ -60,7 +60,7 @@ function unifiedMinMax(points: CcHistorialChartRow[]) {
     // credits outweighed its únicos) below — real data, so the axis reaches it.
     let up = 0;
     let down = 0;
-    for (const v of [row.facturado_cuotas_clp, row.facturado_rest_clp, row.facturado_usd_clp]) {
+    for (const v of [row.facturado_cuotas_clp, row.facturado_rest_clp, row.facturado_foreign_clp]) {
       if (typeof v !== "number" || !Number.isFinite(v)) continue;
       if (v >= 0) up += v;
       else down += v;
@@ -199,12 +199,12 @@ export function CcInstallmentHistoryChart({
         {bar.facturado_total_clp != null ? formatClp(bar.facturado_total_clp) : "—"}
       </div>
       <div style={{ paddingLeft: 12 }}>
-        {bar.facturado_usd_clp != null ? (
+        {bar.facturado_foreign_clp != null ? (
           <div>
             {t("accountDetail.creditCard.chartFacturadoUsd")}:{" "}
-            {bar.facturado_usd != null
-              ? `${formatUsdFine(bar.facturado_usd)} (${formatClp(bar.facturado_usd_clp)})`
-              : formatClp(bar.facturado_usd_clp)}
+            {bar.facturado_foreign != null
+              ? `${bar.facturado_foreign.map((f) => formatMoney({ value: f.amount, currency: f.currency })).join(" · ")} (${formatClp(bar.facturado_foreign_clp)})`
+              : formatClp(bar.facturado_foreign_clp)}
           </div>
         ) : null}
         {bar.facturado_cuotas_clp != null ? (

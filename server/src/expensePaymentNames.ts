@@ -80,8 +80,8 @@ export function paymentLineIdentityKey(l: PaymentNameLine): string | null {
   if (!day) return null;
   const identity: CcPaymentIdentity =
     l.amount_usd != null
-      ? { cc_account_id: l.account_id, pago_iso: day, currency: "usd", amount_clp: 0, amount_usd: Math.abs(l.amount_usd) }
-      : { cc_account_id: l.account_id, pago_iso: day, currency: "clp", amount_clp: Math.abs(l.amount_clp), amount_usd: null };
+      ? { cc_account_id: l.account_id, pago_iso: day, currency: "usd", amount_clp: 0, amount_foreign: Math.abs(l.amount_usd) }
+      : { cc_account_id: l.account_id, pago_iso: day, currency: "clp", amount_clp: Math.abs(l.amount_clp), amount_foreign: null };
   return ccPaymentEvidenceKey(identity);
 }
 
@@ -299,12 +299,12 @@ export function pagoTarjetaCardLegKey(r: {
   counter_currency: string | null;
 }): string | null {
   let identity: CcPaymentIdentity;
-  if (r.counter_currency === "usd" && r.counter_amount != null) {
-    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "usd", amount_clp: Math.round(r.amount), amount_usd: r.counter_amount };
-  } else if (r.counter_currency == null && r.currency === "usd") {
-    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "usd", amount_clp: 0, amount_usd: r.amount };
+  if (r.counter_currency != null && r.counter_currency !== "clp" && r.counter_amount != null) {
+    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: r.counter_currency, amount_clp: Math.round(r.amount), amount_foreign: r.counter_amount };
+  } else if (r.counter_currency == null && r.currency !== "clp") {
+    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: r.currency, amount_clp: 0, amount_foreign: r.amount };
   } else if (r.counter_currency == null && r.currency === "clp") {
-    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "clp", amount_clp: Math.round(r.amount), amount_usd: null };
+    identity = { cc_account_id: r.to_account_id, pago_iso: r.occurred_on, currency: "clp", amount_clp: Math.round(r.amount), amount_foreign: null };
   } else return null;
   return ccPaymentEvidenceKey(identity);
 }

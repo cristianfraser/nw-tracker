@@ -1,6 +1,6 @@
 import { requireStoredCardLineKind } from "./cards/lineKinds.js";
 import { lineMoneyFromBuilderFields, withLineMoney } from "./lineMoney.js";
-import { currencySmallestCoin, roundToCurrency } from "./displayUnits.js";
+import { currencySmallestCoin, roundToCurrency, isHomeCurrency } from "./displayUnits.js";
 import { toWireExpenseLines } from "./wireExpenseLine.js";
 import type {
   ExpenseLinePaymentName,
@@ -74,12 +74,12 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 
 import {
-  effectiveCcExpenseLineAmountClpWith,
-  effectiveCcExpenseLineAmountUsd,
+  cardLineAmountClpWith,
+  cardLineNativeAmount,
 } from "./ccExpenseAmountClp.js";
-import { facturacionPayByIsoResolver, facturacionUsdRateWithSourceResolver } from "./ccBillingViews.js";
-import { usdPaymentLineClpResolver, type CcUsdPaymentLine } from "./ccFacturacionUsdRate.js";
-import { isCcUsdPaymentLine } from "./ccUsdStatementBilled.js";
+import { facturacionPayByIsoResolver, facturacionForeignRateWithSourceResolver } from "./ccBillingViews.js";
+import { foreignPaymentLineClpResolver, type CcForeignPaymentLine } from "./ccFacturacionForeignRate.js";
+import { isCcForeignPaymentLine } from "./ccForeignStatementBilled.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
@@ -586,30 +586,33 @@ export function buildCcExpenseLines(
     if (!months) facturacionMonthsByAccount.set(accountId, (months = facturacionMonthByStatementDate(accountId)));
     return months;
   };
-  // A line's dollars show at the rate its facturación was paid (today's while unpaid) — the rate
-  // the facturación's row carries — so the facturación modal's lines add up to its row.
-  const usdRateResolverByAccount = new Map<number, ReturnType<typeof facturacionUsdRateWithSourceResolver>>();
-  const usdRateWithSourceFor = (accountId: number, billingMonth: string) => {
-    let resolve = usdRateResolverByAccount.get(accountId);
+  // A line in a foreign currency shows at the rate its facturación's debt in that currency was
+  // paid (today's while unpaid) — the rate the facturación's row carries — so the facturación
+  // modal's lines add up to its row.
+  const foreignRateResolvers = new Map<string, ReturnType<typeof facturacionForeignRateWithSourceResolver>>();
+  const foreignRateWithSourceFor = (accountId: number, currency: string, billingMonth: string) => {
+    const k = `${accountId}|${currency}`;
+    let resolve = foreignRateResolvers.get(k);
     if (!resolve) {
-      resolve = facturacionUsdRateWithSourceResolver(accountId, billingDetailCacheForAccount(accountId).facturaciones);
-      usdRateResolverByAccount.set(accountId, resolve);
+      resolve = facturacionForeignRateWithSourceResolver(accountId, currency, billingDetailCacheForAccount(accountId).facturaciones);
+      foreignRateResolvers.set(k, resolve);
     }
     return resolve(billingMonth);
   };
-  const usdRateFor = (accountId: number, billingMonth: string): number => usdRateWithSourceFor(accountId, billingMonth).clp_per_usd;
-  // A dollar payment pays the facturación before the statement that prints it, so it shows the
-  // pesos actually paid for it instead (`usdPaymentLineClpResolver`).
-  const usdPaymentClpResolverByAccount = new Map<number, (line: CcUsdPaymentLine) => number>();
-  const usdPaymentClpFor = (accountId: number, line: CcUsdPaymentLine): number => {
-    let resolve = usdPaymentClpResolverByAccount.get(accountId);
+  // A foreign payment pays the facturación before the statement that prints it, so it shows the
+  // pesos actually paid for it instead (`foreignPaymentLineClpResolver`).
+  const foreignPaymentClpResolvers = new Map<string, (line: CcForeignPaymentLine) => number>();
+  const foreignPaymentClpFor = (accountId: number, currency: string, line: CcForeignPaymentLine): number => {
+    const k = `${accountId}|${currency}`;
+    let resolve = foreignPaymentClpResolvers.get(k);
     if (!resolve) {
-      resolve = usdPaymentLineClpResolver(
+      resolve = foreignPaymentLineClpResolver(
         accountId,
+        currency,
         billingDetailCacheForAccount(accountId).facturaciones,
-        (billingMonth) => usdRateFor(accountId, billingMonth)
+        (billingMonth) => foreignRateWithSourceFor(accountId, currency, billingMonth).clp_per_unit
       );
-      usdPaymentClpResolverByAccount.set(accountId, resolve);
+      foreignPaymentClpResolvers.set(k, resolve);
     }
     return resolve(line);
   };
@@ -640,25 +643,30 @@ export function buildCcExpenseLines(
 
       isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
 
-    // How the line's pesos were reached when it is in dollars (the line money's CLP rate source).
+    // How the line's pesos were reached when it is in a foreign currency (the line money's CLP rate
+    // source). The line is read in its own currency (`amount` / `currency` / `cuota_amount`).
     let clpRateSource: LineRateSource = "native";
-    const amount = effectiveCcExpenseLineAmountClpWith(row, (usd) => {
-      if (isCcUsdPaymentLine({ id: row.statement_line_id, kind: row.kind, usd })) {
+    const amount = cardLineAmountClpWith(row, (foreign, currency) => {
+      if (isCcForeignPaymentLine({ id: row.statement_line_id, kind: row.kind, amount: foreign })) {
         clpRateSource = "paid";
-        return usdPaymentClpFor(row.account_id, {
+        return foreignPaymentClpFor(row.account_id, currency, {
           statement_line_id: row.statement_line_id,
           date_iso: purchaseOn,
-          usd,
+          amount: foreign,
         });
       }
-      const rate = usdRateWithSourceFor(row.account_id, billingMonth);
+      const rate = foreignRateWithSourceFor(row.account_id, currency, billingMonth);
       clpRateSource = rate.source;
-      return Math.round(usd * rate.clp_per_usd);
+      return Math.round(foreign * rate.clp_per_unit);
     });
 
     if (amount == null || amount === 0) continue;
 
-    const amountUsd = effectiveCcExpenseLineAmountUsd(row);
+    const native = cardLineNativeAmount(row)!;
+    const amountUsd = native.currency === "usd" ? native.amount : null; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
+    // A line in a third currency states its own money; pesos and dollars keep the legacy fields.
+    const thirdCurrencyAmount =
+      !isHomeCurrency(native.currency) && native.currency !== "usd" ? { value: native.amount, currency: native.currency } : null; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
 
     const expenseFxDate = purchaseOn ?? statementDateIso;
     const amountUsdAtExpense =
@@ -795,6 +803,8 @@ export function buildCcExpenseLines(
       amount_usd_at_expense: amountUsdAtExpense,
 
       clp_rate_source: clpRateSource,
+
+      ...(thirdCurrencyAmount ? { amount: thirdCurrencyAmount } : {}),
 
       merchant: row.merchant,
 

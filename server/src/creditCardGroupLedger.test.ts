@@ -6,6 +6,7 @@ import {
   mergeCreditCardLedgers,
 } from "./creditCardGroupLedger.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { usdForeign } from "./test/facturadoForeign.js";
 
 function ledgerStub(
   partial: Partial<ReturnType<typeof creditCardInstallmentsResponse>>
@@ -74,8 +75,7 @@ describe("mergeCreditCardLedgers", () => {
           pay_by_iso: null,
           pay_by_source: null,
           facturado_clp: 100_000,
-          facturado_usd: null,
-          facturado_usd_clp: null,
+          facturado_foreign: usdForeign(null, null),
           facturado_total_clp: 100_000,
           cuota_a_pagar_clp: 50_000,
           deuda_en_cuotas_clp: 120_000,
@@ -83,8 +83,6 @@ describe("mergeCreditCardLedgers", () => {
           is_provisional_close: false,
           close_date_source: "statement" as const,
           provisional_estimate_total_clp: null,
-          usd_rate_clp: null,
-          usd_rate_source: null,
         },
       ] satisfies CcFacturacionRow[],
       totals: {
@@ -105,8 +103,7 @@ describe("mergeCreditCardLedgers", () => {
           pay_by_iso: null,
           pay_by_source: null,
           facturado_clp: 80_000,
-          facturado_usd: null,
-          facturado_usd_clp: null,
+          facturado_foreign: usdForeign(null, null),
           facturado_total_clp: 80_000,
           cuota_a_pagar_clp: 20_000,
           deuda_en_cuotas_clp: null,
@@ -114,8 +111,6 @@ describe("mergeCreditCardLedgers", () => {
           is_provisional_close: false,
           close_date_source: "statement" as const,
           provisional_estimate_total_clp: null,
-          usd_rate_clp: null,
-          usd_rate_source: null,
         },
       ] satisfies CcFacturacionRow[],
       totals: {
@@ -155,8 +150,8 @@ describe("mergeCreditCardLedgers", () => {
       month: "2026-10",
       facturado_cuotas_clp: null,
       facturado_rest_clp: null,
-      facturado_usd_clp: null,
-      facturado_usd: null,
+      facturado_foreign_clp: null,
+      facturado_foreign: null,
       facturado_total_clp: null,
       cupo_en_cuotas_clp: null,
       balance_total_clp: null,
@@ -178,7 +173,7 @@ describe("mergeCreditCardLedgers", () => {
       month: "2026-10",
       facturado_cuotas_clp: 830,
       facturado_rest_clp: 200,
-      facturado_usd_clp: null,
+      facturado_foreign_clp: null,
       facturado_total_clp: 1_030,
     });
   });

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatOrDash, formatPct, formatUsdFine } from "../../format";
+import { formatClp, formatOrDash, formatMoney, formatPct } from "../../format";
 import { cn } from "../../cn";
 import { Loadable } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
@@ -29,16 +29,18 @@ import {
 } from "../../components/ui/TableMobileCard";
 import styles from "../AccountDetailPage.module.css";
 
-function fmtUsd(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return formatUsdFine(n);
-}
-
-/** «US$ X ($Y)» — the USD facturado with its CLP equivalent in one cell. */
-function formatFacturadoUsdCell(row: CcFacturacionDto): string {
-  const usd = fmtUsd(row.facturado_usd);
-  if (row.facturado_usd_clp == null || !Number.isFinite(row.facturado_usd_clp)) return usd;
-  return `${usd} (${formatClp(row.facturado_usd_clp)})`;
+/**
+ * «US$ X ($Y)» — each foreign currency the facturación billed with its CLP equivalent, in one cell
+ * (desktop column and mobile row alike); «—» when it billed in none.
+ */
+function formatFacturadoForeignCell(row: CcFacturacionDto): string {
+  const parts = row.facturado_foreign
+    .filter((f) => f.amount != null && Number.isFinite(f.amount))
+    .map((f) => {
+      const amount = formatMoney({ value: f.amount!, currency: f.currency });
+      return f.clp == null || !Number.isFinite(f.clp) ? amount : `${amount} (${formatClp(f.clp)})`;
+    });
+  return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
 function formatProxyCell(
@@ -146,7 +148,7 @@ function FacturacionMobileCard({
           label={labels.facturado}
           value={formatOrDash(row.facturado_clp, formatClp)}
         />
-        <TableMobileCardRow label={labels.facturadoUsd} value={formatFacturadoUsdCell(row)} />
+        <TableMobileCardRow label={labels.facturadoUsd} value={formatFacturadoForeignCell(row)} />
         <TableMobileCardRow
           label={labels.facturadoTotal}
           value={formatOrDash(row.facturado_total_clp, formatClp)}
@@ -371,7 +373,7 @@ export function CreditCardFacturacionesTable({
                   <PayByCell row={row} />
                 </td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatClp)}</td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoUsdCell(row)}</td>
+                <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoForeignCell(row)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatClp)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatClp)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.deuda_en_cuotas_clp, formatClp)}</td>

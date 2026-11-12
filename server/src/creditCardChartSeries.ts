@@ -20,10 +20,10 @@ export type CcFacturadoBarSegments = {
    * notas de crédito (negative when the credits outweigh them). Null until something is billed.
    */
   facturado_rest_clp: number | null;
-  /** «Facturado US$»: the dollar facturado in pesos (at its pay-by fx)… */
-  facturado_usd_clp: number | null;
-  /** …and in dollars, for the tooltip. */
-  facturado_usd: number | null;
+  /** «Facturado en moneda extranjera»: what the facturación billed in foreign currencies, in pesos… */
+  facturado_foreign_clp: number | null;
+  /** …and each currency's amount, for the tooltip (null: nothing billed in a foreign currency). */
+  facturado_foreign: CcFacturadoForeignAmount[] | null;
   /** Σ of the three pesos segments — the tooltip's total. */
   facturado_total_clp: number | null;
 };
@@ -37,11 +37,14 @@ export type CcHistorialChartPoint = CcFacturadoBarSegments & {
 /** A card's facturación bar on that card's close date — the day-period historial's bars. */
 export type CcFacturacionBarPoint = CcFacturadoBarSegments & { as_of_date: string };
 
+/** One foreign currency's facturado amount in a bar. */
+export type CcFacturadoForeignAmount = { currency: string; amount: number };
+
 const NO_BAR: CcFacturadoBarSegments = {
   facturado_cuotas_clp: null,
   facturado_rest_clp: null,
-  facturado_usd_clp: null,
-  facturado_usd: null,
+  facturado_foreign_clp: null,
+  facturado_foreign: null,
   facturado_total_clp: null,
 };
 
@@ -50,8 +53,37 @@ function sumNullable(a: number | null, b: number | null): number | null {
   return (a ?? 0) + (b ?? 0);
 }
 
+/** Two bars' foreign amounts, summed per currency (null when neither billed in a foreign currency). */
+function sumForeignAmounts(
+  a: readonly CcFacturadoForeignAmount[] | null,
+  b: readonly CcFacturadoForeignAmount[] | null
+): CcFacturadoForeignAmount[] | null {
+  if (a == null && b == null) return null;
+  const out = (a ?? []).map((f) => ({ ...f }));
+  for (const f of b ?? []) {
+    const hit = out.find((o) => o.currency === f.currency);
+    if (hit) hit.amount += f.amount;
+    else out.push({ ...f });
+  }
+  return out;
+}
+
+/** A facturación row's foreign billing as a bar's two fields (the entries that billed something). */
+export function foreignBarFields(
+  fact: Pick<CcFacturacionRow, "facturado_foreign">
+): Pick<CcFacturadoBarSegments, "facturado_foreign_clp" | "facturado_foreign"> {
+  const billed = fact.facturado_foreign.filter((f) => f.amount != null || f.clp != null);
+  if (billed.length === 0) return { facturado_foreign_clp: null, facturado_foreign: null };
+  const clpParts = billed.map((f) => f.clp).filter((v): v is number => v != null);
+  const amounts = billed.filter((f) => f.amount != null).map((f) => ({ currency: f.currency, amount: f.amount! }));
+  return {
+    facturado_foreign_clp: clpParts.length > 0 ? clpParts.reduce((s, v) => s + v, 0) : null,
+    facturado_foreign: amounts.length > 0 ? amounts : null,
+  };
+}
+
 function withTotal(s: Omit<CcFacturadoBarSegments, "facturado_total_clp">): CcFacturadoBarSegments {
-  const parts = [s.facturado_cuotas_clp, s.facturado_rest_clp, s.facturado_usd_clp].filter(
+  const parts = [s.facturado_cuotas_clp, s.facturado_rest_clp, s.facturado_foreign_clp].filter(
     (v): v is number => v != null
   );
   return { ...s, facturado_total_clp: parts.length > 0 ? parts.reduce((a, b) => a + b, 0) : null };
@@ -61,8 +93,8 @@ function sumBars(a: CcFacturadoBarSegments | undefined, b: CcFacturadoBarSegment
   return withTotal({
     facturado_cuotas_clp: sumNullable(a?.facturado_cuotas_clp ?? null, b.facturado_cuotas_clp),
     facturado_rest_clp: sumNullable(a?.facturado_rest_clp ?? null, b.facturado_rest_clp),
-    facturado_usd_clp: sumNullable(a?.facturado_usd_clp ?? null, b.facturado_usd_clp),
-    facturado_usd: sumNullable(a?.facturado_usd ?? null, b.facturado_usd),
+    facturado_foreign_clp: sumNullable(a?.facturado_foreign_clp ?? null, b.facturado_foreign_clp),
+    facturado_foreign: sumForeignAmounts(a?.facturado_foreign ?? null, b.facturado_foreign),
   });
 }
 
@@ -139,8 +171,7 @@ function barForMonth(
     return withTotal({
       facturado_cuotas_clp: cuotas,
       facturado_rest_clp: fact.facturado_clp != null ? fact.facturado_clp - (cuotas ?? 0) : null,
-      facturado_usd_clp: fact.facturado_usd_clp,
-      facturado_usd: fact.facturado_usd,
+      ...foreignBarFields(fact),
     });
   }
   if (detalle?.total_facturado_clp != null) {
@@ -151,8 +182,8 @@ function barForMonth(
     return withTotal({
       facturado_cuotas_clp: cuotas,
       facturado_rest_clp: detalle.total_facturado_clp - (cuotas ?? 0),
-      facturado_usd_clp: null,
-      facturado_usd: null,
+      facturado_foreign_clp: null,
+      facturado_foreign: null,
     });
   }
   const planned = detalle?.cuota_a_pagar_next_mes_clp ?? hist?.installment_payments_clp ?? 0;
@@ -160,8 +191,8 @@ function barForMonth(
     ? withTotal({
         facturado_cuotas_clp: planned,
         facturado_rest_clp: null,
-        facturado_usd_clp: null,
-        facturado_usd: null,
+        facturado_foreign_clp: null,
+        facturado_foreign: null,
       })
     : NO_BAR;
 }
@@ -170,8 +201,8 @@ function barOf(p: CcFacturadoBarSegments): CcFacturadoBarSegments {
   return {
     facturado_cuotas_clp: p.facturado_cuotas_clp,
     facturado_rest_clp: p.facturado_rest_clp,
-    facturado_usd_clp: p.facturado_usd_clp,
-    facturado_usd: p.facturado_usd,
+    facturado_foreign_clp: p.facturado_foreign_clp,
+    facturado_foreign: p.facturado_foreign,
     facturado_total_clp: p.facturado_total_clp,
   };
 }
@@ -246,7 +277,7 @@ export function buildCcHistorialChartSeries(
     const h = histByMonth.get(month);
     const fact = facturacionByMonth.get(month);
     const facturadoTotal = fact
-      ? (fact.facturado_total_clp ?? (fact.facturado_clp ?? 0) + (fact.facturado_usd_clp ?? 0))
+      ? (fact.facturado_total_clp ?? (fact.facturado_clp ?? 0) + (foreignBarFields(fact).facturado_foreign_clp ?? 0))
       : null;
     // Billing frame: pairs with facturado for a month with no detail row's balance.
     const billingCupo = d?.cupo_statement_clp ?? (h != null ? cupoFromHistPoint(h) : null);

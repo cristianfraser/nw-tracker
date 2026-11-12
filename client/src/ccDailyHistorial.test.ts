@@ -7,8 +7,8 @@ const TODAY = "2026-07-01";
 const NO_BAR = {
   facturado_cuotas_clp: null,
   facturado_rest_clp: null,
-  facturado_usd_clp: null,
-  facturado_usd: null,
+  facturado_foreign_clp: null,
+  facturado_foreign: null,
   facturado_total_clp: null,
 };
 
@@ -16,8 +16,8 @@ const facturacionBar = (as_of_date: string, cuotas: number, rest: number) => ({
   as_of_date,
   facturado_cuotas_clp: cuotas,
   facturado_rest_clp: rest,
-  facturado_usd_clp: null,
-  facturado_usd: null,
+  facturado_foreign_clp: null,
+  facturado_foreign: null,
   facturado_total_clp: cuotas + rest,
 });
 

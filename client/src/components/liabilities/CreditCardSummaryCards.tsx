@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatMoney, formatUsdFine } from "../../format";
+import { formatClp, formatMoney } from "../../format";
 import type { AccountCcInstallmentsResponse, CcFacturacionDto } from "../../types";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 
@@ -15,12 +15,14 @@ function FacturacionCardBody({ fact, note }: { fact: CcFacturacionDto | undefine
         {note}
       </div>
       <div className="muted mono">{fact.facturado_clp != null ? formatClp(fact.facturado_clp) : "—"}</div>
-      {fact.facturado_usd != null ? (
-        <div className="muted mono">
-          {formatUsdFine(fact.facturado_usd)}
-          {fact.facturado_usd_clp != null ? ` (${formatClp(fact.facturado_usd_clp)})` : ""}
-        </div>
-      ) : null}
+      {fact.facturado_foreign.map((f) =>
+        f.amount != null ? (
+          <div key={f.currency} className="muted mono">
+            {formatMoney({ value: f.amount, currency: f.currency })}
+            {f.clp != null ? ` (${formatClp(f.clp)})` : ""}
+          </div>
+        ) : null
+      )}
     </>
   );
 }

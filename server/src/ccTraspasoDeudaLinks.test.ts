@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
-import { ccTraspasoLinkedClpByUsdLineId, computeCcTraspasoDeudaPairsForAccount, relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
+import { ccTraspasoLinkedClpByForeignLineId, computeCcTraspasoDeudaPairsForAccount, relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { db } from "./db.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -94,7 +94,7 @@ describe("ccTraspasoDeudaLinks", () => {
     expect(relinkCcTraspasoDeudaLinksForAccount(id)).toEqual({ links: 1 });
     // Relink is a derived-state rebuild — a second run keeps exactly one row.
     expect(relinkCcTraspasoDeudaLinksForAccount(id)).toEqual({ links: 1 });
-    expect(ccTraspasoLinkedClpByUsdLineId(id)).toEqual(new Map([[usdLineId, 167_192]]));
+    expect(ccTraspasoLinkedClpByForeignLineId(id, "usd")).toEqual(new Map([[usdLineId, 167_192]]));
   });
 
   it("nets a linked pair to exactly zero in the post-close walk", () => {

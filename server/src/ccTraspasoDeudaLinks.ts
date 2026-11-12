@@ -58,8 +58,8 @@ const insLink = db.prepare(
 );
 
 const listLinksForAccount = db.prepare(
-  `SELECT from_line_id AS usd_line_id, to_amount AS amount_clp FROM cc_traspaso_deuda_links
-   WHERE account_id = ? AND from_currency = 'usd' AND to_currency = 'clp'`
+  `SELECT from_line_id AS foreign_line_id, to_amount AS amount_clp FROM cc_traspaso_deuda_links
+   WHERE account_id = ? AND from_currency = ? AND to_currency = 'clp'`
 );
 
 /**
@@ -135,7 +135,7 @@ export function relinkCcTraspasoDeudaLinksForAccount(accountId: number): { links
 }
 
 /** Booked CLP by USD-leg line id — the owed walk values a linked USD abono at minus this. */
-export function ccTraspasoLinkedClpByUsdLineId(accountId: number): Map<number, number> {
-  const rows = listLinksForAccount.all(accountId) as { usd_line_id: number; amount_clp: number }[];
-  return new Map(rows.map((r) => [r.usd_line_id, r.amount_clp]));
+export function ccTraspasoLinkedClpByForeignLineId(accountId: number, currency: string): Map<number, number> {
+  const rows = listLinksForAccount.all(accountId, currency) as { foreign_line_id: number; amount_clp: number }[];
+  return new Map(rows.map((r) => [r.foreign_line_id, r.amount_clp]));
 }

@@ -6,6 +6,7 @@ import {
   ccUpcomingPaymentsFromCards,
   upcomingPaymentRows,
 } from "./dashboardCcUpcomingPayments.js";
+import { usdForeign } from "./test/facturadoForeign.js";
 
 function fact(over: Partial<CcFacturacionRow> & Pick<CcFacturacionRow, "billing_month">): CcFacturacionRow {
   return {
@@ -15,8 +16,7 @@ function fact(over: Partial<CcFacturacionRow> & Pick<CcFacturacionRow, "billing_
     pay_by_iso: null,
     pay_by_source: null,
     facturado_clp: null,
-    facturado_usd: null,
-    facturado_usd_clp: null,
+    facturado_foreign: usdForeign(null, null),
     facturado_total_clp: null,
     cuota_a_pagar_clp: null,
     deuda_en_cuotas_clp: null,
@@ -24,8 +24,6 @@ function fact(over: Partial<CcFacturacionRow> & Pick<CcFacturacionRow, "billing_
     is_provisional_close: false,
     close_date_source: "statement",
     provisional_estimate_total_clp: null,
-    usd_rate_clp: null,
-    usd_rate_source: null,
     ...over,
   };
 }
@@ -42,8 +40,7 @@ const october = fact({
   pay_by_iso: "2026-11-10",
   pay_by_source: "statement",
   facturado_clp: 2_000_000,
-  facturado_usd: 300,
-  facturado_usd_clp: 300_000,
+  facturado_foreign: usdForeign(300, 300_000),
   facturado_total_clp: 2_300_000,
 });
 const november = fact({
@@ -53,8 +50,7 @@ const november = fact({
   pay_by_iso: "2026-12-10",
   pay_by_source: "derived",
   facturado_clp: 400_000,
-  facturado_usd: 50,
-  facturado_usd_clp: 50_000,
+  facturado_foreign: usdForeign(50, 50_000),
   facturado_total_clp: 450_000,
   is_open_month: true,
 });

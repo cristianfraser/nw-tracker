@@ -80,6 +80,22 @@ export function rollupCcBillingDetailYearly(
  * Historial chart: each bar segment sums (projected plan cuotas included), lines take the year's
  * last known value.
  */
+/** The months' foreign amounts summed per currency (null when no month billed in a foreign currency). */
+function sumForeignAmounts(
+  months: readonly ({ currency: string; amount: number }[] | null)[]
+): { currency: string; amount: number }[] | null {
+  if (months.every((m) => m == null)) return null;
+  const out: { currency: string; amount: number }[] = [];
+  for (const m of months) {
+    for (const f of m ?? []) {
+      const hit = out.find((o) => o.currency === f.currency);
+      if (hit) hit.amount += f.amount;
+      else out.push({ ...f });
+    }
+  }
+  return out;
+}
+
 export function rollupCcHistorialChartYearly(
   rows: readonly CcHistorialChartPoint[]
 ): CcHistorialChartPoint[] {
@@ -88,8 +104,8 @@ export function rollupCcHistorialChartYearly(
     month: `${year}-12`,
     facturado_cuotas_clp: sumOrNull(months.map((m) => m.facturado_cuotas_clp)),
     facturado_rest_clp: sumOrNull(months.map((m) => m.facturado_rest_clp)),
-    facturado_usd_clp: sumOrNull(months.map((m) => m.facturado_usd_clp)),
-    facturado_usd: sumOrNull(months.map((m) => m.facturado_usd)),
+    facturado_foreign_clp: sumOrNull(months.map((m) => m.facturado_foreign_clp)),
+    facturado_foreign: sumForeignAmounts(months.map((m) => m.facturado_foreign)),
     facturado_total_clp: sumOrNull(months.map((m) => m.facturado_total_clp)),
     cupo_en_cuotas_clp: lastFinite(months.map((m) => m.cupo_en_cuotas_clp)),
     balance_total_clp: lastFinite(months.map((m) => m.balance_total_clp)),
