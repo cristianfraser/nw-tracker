@@ -7,14 +7,16 @@
  * any line's. The mark hangs off the credit's flow (`flow_refunds`, migration 280), so it stays when
  * the cartola row takes over a daily row's flow.
  *
- * A dollar checking account's credit is a refund of a dollar expense: its dollars, priced in pesos
- * at the day's rate as its gastos lines are (`listDollarCheckingMovements`).
+ * A foreign checking account's credit is a refund of an expense in its currency: its own amount,
+ * priced in pesos and dollars at the day's rate as its gastos lines are (`listForeignCheckingMovements`).
  */
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
-import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { foreignCashCurrencyOf } from "./cashCurrency.js";
+import { foreignCheckingAmountIn } from "./checkingCartolaLoaders.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
@@ -24,10 +26,12 @@ export type CheckingExpenseRefund = {
   account_id: number;
   /** ISO day the money arrived. */
   received_on: string;
-  /** The credit, positive; a dollar account's at the day's `fx_daily` rate. */
+  /** The credit, positive; a foreign account's at the day's stored mid. */
   amount_clp: number;
-  /** A dollar checking account's credit: its dollars, positive. Null on a peso account. */
+  /** A foreign checking account's credit: its dollars, positive (a dollar account's own, else at the day's mid). Null on a peso account. */
   amount_usd: number | null;
+  /** A foreign checking account's credit in its own currency, positive. Null on a peso account. */
+  native: { currency: string; amount: number } | null;
   note: string | null;
   category_slug: string;
 };
@@ -35,10 +39,15 @@ export type CheckingExpenseRefund = {
 type RefundMovementRow = MovementTransferRow &
   MovementAmountFields & { movement_id: number; account_id: number | null; received_on: string; note: string | null; category_slug: string };
 
-/** A dollar checking credit's dollars (positive), else null; a listed row that moves no dollars throws. */
-function dollarCreditUsd(row: MovementTransferRow & { account_id: number | null }, dollarAccountIds: ReadonlySet<number>): number | null {
-  if (row.account_id == null || !dollarAccountIds.has(row.account_id)) return null;
-  return signedNativeDeltaForAccountMovement(row, row.account_id, "usd");
+/** A foreign checking credit in its account's currency (signed), else null (not on a foreign checking account). */
+function foreignCredit(
+  row: MovementTransferRow & { account_id: number | null },
+  foreignAccountIds: ReadonlySet<number>
+): { currency: string; amount: number } | null {
+  if (row.account_id == null || !foreignAccountIds.has(row.account_id)) return null;
+  const currency = foreignCashCurrencyOf(row.account_id);
+  if (currency == null) throw new Error(`account ${row.account_id} is not a foreign cash account`);
+  return { currency, amount: signedNativeDeltaForAccountMovement(row, row.account_id, currency) };
 }
 
 export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
@@ -53,19 +62,22 @@ export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
        ORDER BY m.occurred_on, m.id`
     )
     .all() as RefundMovementRow[];
-  const dollarAccountIds = new Set(listDollarCheckingAccountIds());
+  const foreignAccountIds = new Set(listForeignCheckingAccountIds());
   return rows.map((r) => {
-    const usd = dollarCreditUsd(r, dollarAccountIds);
-    if (usd != null) {
-      if (r.account_id == null || !(usd > 0)) throw new Error(`refund movement ${r.movement_id} is not a dollar checking credit (${usd} USD)`);
-      const fx = fxRowOnOrBefore(r.received_on);
-      if (!fx || !(fx.clp_per_usd > 0)) throw new Error(`refund movement ${r.movement_id}: no fx on or before ${r.received_on}`);
+    const foreign = foreignCredit(r, foreignAccountIds);
+    if (foreign != null) {
+      const code = foreign.currency.toUpperCase();
+      if (r.account_id == null || !(foreign.amount > 0)) {
+        throw new Error(`refund movement ${r.movement_id} is not a ${code} checking credit (${foreign.amount} ${code})`);
+      }
+      const what = `refund movement ${r.movement_id}`;
       return {
         movement_id: r.movement_id,
         account_id: r.account_id,
         received_on: r.received_on,
-        amount_clp: Math.round(usd * fx.clp_per_usd),
-        amount_usd: usd,
+        amount_clp: Math.round(foreignCheckingAmountIn(foreign.amount, foreign.currency, HOME_CURRENCY, r.received_on, what)),
+        amount_usd: foreignCheckingAmountIn(foreign.amount, foreign.currency, "usd", r.received_on, what),
+        native: { currency: foreign.currency, amount: foreign.amount },
         note: r.note,
         category_slug: r.category_slug,
       };
@@ -80,6 +92,7 @@ export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
       received_on: r.received_on,
       amount_clp: Math.round(clp),
       amount_usd: null,
+      native: null,
       note: r.note,
       category_slug: r.category_slug,
     };
@@ -100,7 +113,7 @@ function categoryIdFor(slug: string): number {
 
 /**
  * Only a single-leg credit on an account the income and gastos pages read can be a refund: pesos on
- * a peso checking account, dollars on a dollar checking account.
+ * a peso checking account, the account's currency on a foreign checking account.
  */
 function assertCheckingCredit(movementId: number): void {
   const row = db
@@ -110,10 +123,14 @@ function assertCheckingCredit(movementId: number): void {
     )
     .get(movementId) as (MovementTransferRow & MovementAmountFields & { account_id: number | null }) | undefined;
   if (!row) throw Object.assign(new Error(`movement ${movementId} not found`), { status: 404 });
-  const usd = dollarCreditUsd(row, new Set(listDollarCheckingAccountIds()));
-  if (usd != null) {
-    if (usd > 0) return;
-    throw Object.assign(new Error(`movement ${movementId} is not a dollar checking credit (account ${row.account_id}, ${usd} USD)`), { status: 400 });
+  const foreign = foreignCredit(row, new Set(listForeignCheckingAccountIds()));
+  if (foreign != null) {
+    if (foreign.amount > 0) return;
+    const code = foreign.currency.toUpperCase();
+    throw Object.assign(
+      new Error(`movement ${movementId} is not a ${code} checking credit (account ${row.account_id}, ${foreign.amount} ${code})`),
+      { status: 400 }
+    );
   }
   const clp = movementClpLegOrZero(row);
   if (row.account_id == null || !listMovementBalanceCashAccountIds().includes(row.account_id) || !(clp > 0)) {

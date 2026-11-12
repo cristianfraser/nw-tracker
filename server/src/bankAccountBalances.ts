@@ -9,17 +9,23 @@
  * the display readers (a row dated that day or known ahead of it counts), the bank's balance being
  * the one at login: equal to the cent, else a mismatch — a movement the ledger is missing or holds
  * twice. Each snapshot is judged once.
+ *
+ * Any currency the app knows (`currencies`) is recorded and judged in the account's own currency to
+ * its coin: pesos against the peso checking ledger, any other currency against the cash ledger held
+ * in it (`foreignCashBalanceAt`). A declared account whose ledger is held in another currency throws.
  */
 import { foreignCashBalanceAt, isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { normalizeAccountNumber, type BankAccountBalancesApplyDetails, type BankAccountBalancesPayload } from "nw-tracker-contracts";
 import { checkingMovementBalanceClpAt } from "./checkingCartolaBalances.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
+import { currencyMinorDigits, isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import { storeOnce } from "./ingestReceiver.js";
 
 
-type Currency = "clp" | "usd";
+/** A currency code the app knows (`currencies`), lowercase. */
+type Currency = string;
 
 /** The account declared for `number`, compared as account numbers compare everywhere (digits, no leading zeros). */
 function declaredAccountId(issuer: string, number: string, currency: Currency): number | null {
@@ -37,10 +43,10 @@ function declaredAccountId(issuer: string, number: string, currency: Currency): 
  * stating other balances under the same source is an `IngestConflict`.
  */
 export function applyBankAccountBalances(received: BankAccountBalancesPayload, sourceRef: string): BankAccountBalancesApplyDetails {
-  // The check reads peso and dollar ledgers only.
+  // Any currency the app knows; the check reads the account's ledger in it.
   const payload = {
     ...received,
-    accounts: received.accounts.map((a) => ({ ...a, currency: pesosOrDollars(a.currency, "bank_account.balances") })),
+    accounts: received.accounts.map((a) => ({ ...a, currency: requireLoadedCurrency(a.currency, "bank_account.balances") })),
   };
   const details: BankAccountBalancesApplyDetails = { recorded: 0, known: [], unknown: [] };
   const ins = db.prepare(
@@ -89,13 +95,13 @@ export function applyBankAccountBalances(received: BankAccountBalancesPayload, s
   return details;
 }
 
-/** The account's ledger balance in its own currency at `ymd` (pesos whole, dollars to the cent). */
+/** The account's ledger balance in its own currency at `ymd`, to that currency's coin (pesos whole, dollars and euros to the cent). */
 export function ledgerBalanceInOwnCurrency(accountId: number, currency: Currency, ymd: string): number {
-  if (currency === "usd") {
-    if (!isForeignCashAccountIn(accountId, "usd")) throw new Error(`account ${accountId} is declared USD but is not a USD cash account`);
-    return foreignCashBalanceAt(accountId, ymd);
+  if (isHomeCurrency(currency)) return Math.round(checkingMovementBalanceClpAt(accountId, ymd));
+  if (!isForeignCashAccountIn(accountId, currency)) {
+    throw new Error(`account ${accountId} is declared ${currency.toUpperCase()} but is not a ${currency.toUpperCase()} cash account`);
   }
-  return Math.round(checkingMovementBalanceClpAt(accountId, ymd));
+  return foreignCashBalanceAt(accountId, ymd);
 }
 
 export type BankBalanceVerdict = {
@@ -177,7 +183,7 @@ export function judgeLatestBankAccountBalances(opts: { recheck?: boolean } = {})
     }
     const ymd = chileWallClockAt(new Date(r.observed_at)).ymd;
     const ledger = ledgerBalanceInOwnCurrency(r.account_id, r.currency, ymd);
-    const diff = Math.round((ledger - r.balance) * 100) / 100;
+    const diff = roundToCurrency(ledger - r.balance, r.currency);
     const status = diff === 0 ? "ok" : "mismatch";
     upsert.run(r.id, status, ledger, diff);
     verdicts.push({
@@ -198,7 +204,9 @@ export function judgeLatestBankAccountBalances(opts: { recheck?: boolean } = {})
 }
 
 function fmt(n: number, currency: Currency): string {
-  return currency === "usd" ? `US$${n.toFixed(2)}` : `$${Math.round(n)}`;
+  if (isHomeCurrency(currency)) return `$${Math.round(n)}`;
+  if (currency === "usd") return `US$${n.toFixed(2)}`;
+  return `${currency.toUpperCase()} ${n.toFixed(currencyMinorDigits(currency))}`;
 }
 
 export function formatBankBalanceReport(verdicts: readonly BankBalanceVerdict[]): string {

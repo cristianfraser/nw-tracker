@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
-import { listDollarCheckingAccountIds, listDollarCheckingMovements } from "./checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds, listForeignCheckingMovements } from "./checkingCartolaLoaders.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { buildCheckingGastosLinesForAccounts, checkingGastosMovementBelongs } from "./flowsCheckingGastos.js";
@@ -38,7 +38,7 @@ describe("a dollar checking account in the flows", () => {
   };
 
   beforeEach(() => {
-    const dollar = listDollarCheckingAccountIds();
+    const dollar = listForeignCheckingAccountIds();
     expect(dollar.length).toBeGreaterThan(0);
     accountId = dollar[0]!;
     restoreFx = overrideFxDaily([[day, RATE]]);
@@ -58,8 +58,8 @@ describe("a dollar checking account in the flows", () => {
         .run(accountId, day).lastInsertRowid
     );
     ids.push(manual);
-    const ins = listDollarCheckingMovements(accountId, "in").filter((m) => ids.includes(m.id));
-    const outs = listDollarCheckingMovements(accountId, "out").filter((m) => ids.includes(m.id));
+    const ins = listForeignCheckingMovements(accountId, "in").filter((m) => ids.includes(m.id));
+    const outs = listForeignCheckingMovements(accountId, "out").filter((m) => ids.includes(m.id));
     expect(ins).toEqual([expect.objectContaining({ id: credit, amount_usd: 4_000, amount_clp: 4_000 * RATE })]);
     expect(outs).toEqual([expect.objectContaining({ id: debit, amount_usd: 87.34, amount_clp: -Math.round(87.34 * RATE) })]);
   });
@@ -90,7 +90,7 @@ describe("a dollar checking account in the flows", () => {
         .run(accountId, day, `import:cartola|${month}|Austin|VITEST NO KIND|on:${day}|amt:500|idx:950`).lastInsertRowid
     );
     ids.push(id);
-    expect(() => listDollarCheckingMovements(accountId, "out")).toThrow(/moves no dollars/);
+    expect(() => listForeignCheckingMovements(accountId, "out")).toThrow(/moves no USD/);
   });
 });
 

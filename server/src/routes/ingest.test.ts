@@ -9,11 +9,13 @@ import {
   createIngestClient,
   defineIngestKind,
   ingestJsonSchemas,
+  type BankAccountBalancesPayload,
   type IngestKindDefinition,
 } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { INGEST_HANDLERS, type IngestApplyContext, type IngestHandler } from "../ingestHandlers.js";
 import { IngestConflict } from "../ingestReceiver.js";
+import { pesosOrDollars } from "../ingestCurrencies.js";
 import { registerIngestRoutes, type IngestRoutesOptions } from "./ingest.js";
 
 /** A synthetic kind: the route and client are tested on their own, not on a real source. */
@@ -333,19 +335,44 @@ describe("currencies on receipt", () => {
     accounts: [{ number: "900000001", product: "checking" as const, currency, balance: 10.5, label: "Cuenta vitest", status: "VIGENTE" }],
   });
 
-  async function sendBalances(currency: string): Promise<IngestRequestError> {
+  // The balances handler takes any currency the app knows (any-currency C4); a handler that still
+  // reads pesos and dollars only narrows through `pesosOrDollars` — stood in for here.
+  const pesosAndDollarsHandler: IngestHandler<BankAccountBalancesPayload> = {
+    apply: (ctx) => {
+      for (const a of ctx.payload.accounts) pesosOrDollars(a.currency, "bank_account.balances (pesos and dollars)");
+      return INGEST_HANDLERS["bank_account.balances"].apply(ctx);
+    },
+  };
+
+  async function sendBalancesResult(currency: string, handler: IngestHandler<BankAccountBalancesPayload>, ref = `vitest-cur-${currency}`): Promise<unknown> {
     const base = await startApp({
       kinds: [bankAccountBalancesKind],
-      handlers: { "bank_account.balances": INGEST_HANDLERS["bank_account.balances"] },
+      handlers: { "bank_account.balances": handler },
       auth: LOCAL_AUTH,
     });
     const client = createIngestClient({ baseUrl: base, feederId: "vitest", connectionRetryDelaysMs: [] });
-    const err = await client
-      .send(bankAccountBalancesKind, balances(currency), { channel: "file", ref: `vitest-cur-${currency}` })
+    return client
+      .send(bankAccountBalancesKind, balances(currency), { channel: "file", ref })
       .catch((e: unknown) => e);
+  }
+
+  async function sendBalances(currency: string, handler = pesosAndDollarsHandler): Promise<IngestRequestError> {
+    const err = await sendBalancesResult(currency, handler);
     expect(err).toBeInstanceOf(IngestRequestError);
     return err as IngestRequestError;
   }
+
+  it("records a balance in any currency the app knows", async () => {
+    const ref = "vitest-cur-eur-recorded";
+    try {
+      const res = await sendBalancesResult("eur", INGEST_HANDLERS["bank_account.balances"], ref);
+      expect(res).toMatchObject({ status: "applied" });
+      expect(db.prepare(`SELECT currency FROM bank_account_balance_snapshots WHERE source_ref = ?`).all(ref)).toEqual([{ currency: "eur" }]);
+    } finally {
+      db.prepare(`DELETE FROM bank_account_balance_snapshots WHERE source_ref = ?`).run(ref);
+      db.prepare(`DELETE FROM ingest_documents WHERE source_ref = ?`).run(ref);
+    }
+  });
 
   it("refuses a known currency the handler cannot take yet, naming it and the kind", async () => {
     const err = await sendBalances("eur");
@@ -356,7 +383,7 @@ describe("currencies on receipt", () => {
   });
 
   it("refuses a code the currencies table does not know", async () => {
-    const err = await sendBalances("xyz");
+    const err = await sendBalances("xyz", INGEST_HANDLERS["bank_account.balances"]);
     expect(err.httpStatus).toBe(422);
     expect(err.body?.error).toBe("unknown_currency");
     expect(err.body?.message).toMatch(/"xyz"/);

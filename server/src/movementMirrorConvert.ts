@@ -10,6 +10,11 @@
  * `movement_mirror_merges` (keyed by the transfer movement, ON DELETE CASCADE) so the conversion
  * is fully undoable. The transfer's note is a human summary only.
  *
+ * A pair in another currency than pesos (two `withdrawal` / `deposit` rows on cash ledgers held in
+ * it) becomes a transfer in that currency; the merge row's `out_amount_clp` / `in_amount_clp` then
+ * hold the legs signed in the transfer's currency (the columns predate other currencies — the
+ * transfer row names it), and undo writes them back as `withdrawal` / `deposit` rows.
+ *
  * Each deleted leg's date is kept as the transfer's bank posting on that leg's account
  * (`movement_bank_postings`): the cartola files the money under that day, so re-importing the
  * month finds the transfer by it, and the cartola month-end check reads it.
@@ -20,7 +25,8 @@ import { recordBankPosting } from "./movementBankPostings.js";
 import { db } from "./db.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairRef } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
+import { type MovementAmountFields } from "./movementAmounts.js";
+import { HOME_CURRENCY, roundToCurrency } from "./displayUnits.js";
 
 function mirrorMergeHumanNote(outYmd: string, inYmd: string): string {
   return `Traspaso espejo (retiro ${outYmd} → depósito ${inYmd})`;
@@ -53,7 +59,23 @@ type LegRow = MovementAmountFields & {
   occurred_on: string;
   units_delta: number | null;
   note: string | null;
+  flow_kind: string | null;
 };
+
+/**
+ * A mirror leg's amount signed by its direction, in its own currency: a peso leg carries the sign
+ * itself (no flow_kind), a foreign one states it positive under `withdrawal` / `deposit`.
+ */
+function signedMirrorLegAmount(leg: LegRow, side: "out" | "in"): number {
+  if (leg.counter_currency != null) throw new Error(`mirror ${side} leg ${leg.id} is a conversion, not a single-leg row`);
+  if (leg.currency === HOME_CURRENCY) {
+    if (leg.flow_kind != null) throw new Error(`mirror ${side} leg ${leg.id} carries flow_kind ${leg.flow_kind}`);
+    return leg.amount;
+  }
+  const expected = side === "out" ? "withdrawal" : "deposit";
+  if (leg.flow_kind !== expected) throw new Error(`mirror ${side} leg ${leg.id} (${leg.currency}) is ${leg.flow_kind}, not ${expected}`);
+  return side === "out" ? -Math.abs(leg.amount) : Math.abs(leg.amount);
+}
 
 /**
  * Converts pairs in one all-or-nothing transaction. Every requested pair must be a *current*
@@ -64,12 +86,12 @@ type LegRow = MovementAmountFields & {
 export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[] } {
   if (pairs.length === 0) return { converted: [] };
   const legStmt = db.prepare(
-    `SELECT id, account_id, occurred_on, amount, currency, counter_amount, counter_currency, units_delta, note
+    `SELECT id, account_id, occurred_on, amount, currency, counter_amount, counter_currency, units_delta, note, flow_kind
      FROM movements WHERE id = ? AND account_id IS NOT NULL`
   );
   const insTransfer = db.prepare(
     `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
-     VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
+     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`
   );
   const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
   const insMirrorMerge = db.prepare(
@@ -95,9 +117,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const out = legStmt.get(ref.out_movement_id) as LegRow | undefined;
       const inn = legStmt.get(ref.in_movement_id) as LegRow | undefined;
       if (!out || !inn) throw new MirrorConvertStaleError(ref, "leg no longer exists");
-      // Mirror candidates are CLP-only by construction (USD legs excluded upstream) — throw, don't 0.
-      const outAmountClp = requireMovementClp(out, "mirror out leg");
-      const innAmountClp = requireMovementClp(inn, "mirror in leg");
+      // Both legs are in one currency by construction — throw, don't guess.
+      const outAmount = signedMirrorLegAmount(out, "out");
+      const innAmount = signedMirrorLegAmount(inn, "in");
+      if (out.currency !== inn.currency) throw new MirrorConvertStaleError(ref, `legs in ${out.currency} and ${inn.currency}`);
+      const currency = out.currency;
 
       const note = mirrorMergeHumanNote(out.occurred_on, inn.occurred_on);
       const unitsSource = out.units_delta ?? inn.units_delta;
@@ -114,7 +138,8 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const r = insTransfer.run(
         out.account_id,
         inn.account_id,
-        Math.round(Math.abs(outAmountClp)),
+        roundToCurrency(Math.abs(outAmount), currency),
+        currency,
         transferDate,
         note,
         transferUnits
@@ -123,12 +148,12 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         Number(r.lastInsertRowid),
         out.id,
         out.occurred_on,
-        outAmountClp,
+        outAmount,
         out.units_delta,
         out.note,
         inn.id,
         inn.occurred_on,
-        innAmountClp,
+        innAmount,
         inn.units_delta,
         inn.note
       );
@@ -168,11 +193,11 @@ export function undoMirrorConversion(transferMovementId: number): {
 } {
   const row = db
     .prepare(
-      `SELECT id, account_id, from_account_id, to_account_id
+      `SELECT id, account_id, from_account_id, to_account_id, currency
        FROM movements WHERE id = ?`
     )
     .get(transferMovementId) as
-    | { id: number; account_id: number | null; from_account_id: number | null; to_account_id: number | null }
+    | { id: number; account_id: number | null; from_account_id: number | null; to_account_id: number | null; currency: string }
     | undefined;
   if (!row) throw new Error(`movement ${transferMovementId} not found`);
   if (row.account_id != null || row.from_account_id == null || row.to_account_id == null) {
@@ -237,17 +262,34 @@ export function undoMirrorConversion(transferMovementId: number): {
   const fromId = row.from_account_id;
   const toId = row.to_account_id;
 
+  // A peso leg is signed; a foreign one is written back as the withdrawal / deposit it was.
+  const currency = row.currency;
+  const foreign = currency !== HOME_CURRENCY;
   const insLeg = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note, flow_kind) VALUES (?,?,?,?,?,?,?)`
   );
   const run = db.transaction(() => {
     const outId = Number(
-      insLeg.run(fromId, data.out.amount_clp, data.out.occurred_on, data.out.units_delta, data.out.note)
-        .lastInsertRowid
+      insLeg.run(
+        fromId,
+        foreign ? Math.abs(data.out.amount_clp) : data.out.amount_clp,
+        currency,
+        data.out.occurred_on,
+        data.out.units_delta,
+        data.out.note,
+        foreign ? "withdrawal" : null
+      ).lastInsertRowid
     );
     const inId = Number(
-      insLeg.run(toId, data.in.amount_clp, data.in.occurred_on, data.in.units_delta, data.in.note)
-        .lastInsertRowid
+      insLeg.run(
+        toId,
+        foreign ? Math.abs(data.in.amount_clp) : data.in.amount_clp,
+        currency,
+        data.in.occurred_on,
+        data.in.units_delta,
+        data.in.note,
+        foreign ? "deposit" : null
+      ).lastInsertRowid
     );
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
     return { restored_out_id: outId, restored_in_id: inId };

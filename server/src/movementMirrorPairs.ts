@@ -1,6 +1,7 @@
 /**
  * Historical mirror-pair candidates: two single-leg `movements` rows on different accounts,
- * opposite signs, same rounded |amount_clp|, with the inflow 0–5 days after the outflow —
+ * opposite directions, one currency and the same amount to that currency's coin, with the inflow
+ * 0–5 days after the outflow —
  * two legs of one internal move recorded before the single-row transfer model existed
  * (`from_account_id`/`to_account_id`, see movementTransfer.ts). Candidates are reviewed in
  * the panel (/panel/mirror-pairs) and either converted into one transfer row
@@ -17,7 +18,7 @@
  * converts in its place (`resolveMirrorPairRef`): amount and date cannot tell same-day siblings
  * apart, so the greedy pick between them is an id order, never evidence.
  *
- * Scope (2026-07, user-decided): plain CLP pairs, corriente↔vista pairs, and fund↔checking
+ * Scope (2026-07, user-decided; any currency since 2026-11-12): plain pairs in one currency, corriente↔vista pairs, and fund↔checking
  * pairs where exactly one leg carries cuotas (`units_delta` moves onto the transfer row —
  * cuota readers already add transferLegUnitsThroughDate on top of the account_id ledger).
  * AFP/AFC *inflows* are excluded (funded from pre-tax payroll, never from checking); deposits
@@ -42,6 +43,8 @@ import { FLOW_PARTS_BY_LINE_SQL } from "./flows/flowParts.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
+import { isForeignCashAccountIn } from "./cashCurrency.js";
+import { HOME_CURRENCY, roundToCurrency } from "./displayUnits.js";
 
 export type MirrorLegDto = {
   movement_id: number;
@@ -49,7 +52,9 @@ export type MirrorLegDto = {
   account_name: string;
   kind_slug: string | null;
   occurred_on: string;
-  amount_clp: number;
+  /** Signed in `currency` (an outflow negative, an inflow positive). */
+  amount: number;
+  currency: string;
   units_delta: number | null;
   note: string | null;
 };
@@ -122,46 +127,68 @@ type EligibleLegRow = {
   account_id: number;
   account_name: string;
   occurred_on: string;
-  amount_clp: number;
+  /** Signed in `currency`: an outflow negative, an inflow positive. */
+  amount: number;
+  currency: string;
   units_delta: number | null;
   note: string | null;
 };
 
-/**
- * Legs eligible for pairing: single-leg CLP rows, optionally carrying cuotas. Excludes
- * flow_kind / USD legs (brokerage and USD-cash semantics must not be rewritten), anchor/opening
- * calibration rows, rows already explained by a link (a `funded_deposit` flow link), or a payroll liquidación (payroll_work_earnings —
- * income by construction, never a transfer leg), a credit the user classified as income, and
- * Buda buffer rows (budaWallet.ts).
- *
- * Peso-only by nature (2026-11-10), the dollar checking accounts included: a dollar single-leg
- * row carries its direction in `flow_kind` (`fx_purchase` / `withdrawal`, the USD-cash
- * convention) and the pairing reads `flow_kind IS NULL` rows; the conversion writes a peso
- * transfer and `movement_mirror_merges` keeps peso legs; and a dollar transfer between own
- * accounts (US checking ↔ US savings, the broker's wallet) arrives as a transfer row from its
- * document, never as two listed legs. There is nothing to pair in dollars.
- */
-function loadEligibleLegs(): EligibleLegRow[] {
-  return db
-    .prepare(
-      `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
-       FROM movements m
-       JOIN accounts a ON a.id = m.account_id
-       WHERE m.account_id IS NOT NULL
-         AND m.currency = 'clp'
-         AND m.amount != 0
-         AND m.flow_kind IS NULL
-         AND ${movementNotAnchorSql("m")}
-         AND (m.note IS NULL OR (
+/** Note shapes of Buda buffer rows and ahorro-split mirrors, never a transfer leg. */
+const NOT_BUDA_OR_SPLIT_NOTE_SQL = `(m.note IS NULL OR (
                m.note NOT LIKE 'import:buda|%'
            AND m.note NOT LIKE 'buda-abono|%'
-           AND m.note NOT LIKE 'ahorro-split|%'))
+           AND m.note NOT LIKE 'ahorro-split|%'))`;
+
+/**
+ * Legs eligible for pairing. Pesos: single-leg rows with no flow_kind (the sign is the direction),
+ * optionally carrying cuotas. Another currency: single-leg `deposit` / `withdrawal` rows (a foreign
+ * row carries its direction in `flow_kind`, its amount positive) on a cash ledger held in that
+ * currency, with no units — a dollar or euro checking account and its savings account, each
+ * listing one move before the transfer model; a units row there (a 401(k) contribution) is no
+ * cash. Every other flow_kind is excluded (brokerage, conversions and cash semantics must not be
+ * rewritten — an `fx_purchase` credit is a conversion's arrival, never one leg of a move between
+ * own accounts, and an undo could not tell it from a `deposit`), and so are anchor/opening calibration rows, rows already explained by a link (a
+ * `funded_deposit` flow link), a payroll liquidación (payroll_work_earnings — income by
+ * construction, never a transfer leg), a credit the user classified as income, and Buda buffer
+ * rows (budaWallet.ts). Amounts come back signed in the row's currency.
+ */
+function loadEligibleLegs(): EligibleLegRow[] {
+  const shared = `m.account_id IS NOT NULL
+         AND m.amount != 0
+         AND ${movementNotAnchorSql("m")}
+         AND ${NOT_BUDA_OR_SPLIT_NOTE_SQL}
          AND NOT EXISTS (SELECT 1 FROM ${EXPENSE_DEPOSIT_LINKS_SQL} l WHERE l.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
-         AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})
+         AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})`;
+  const pesos = db
+    .prepare(
+      `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount, m.currency, m.units_delta, m.note
+       FROM movements m
+       JOIN accounts a ON a.id = m.account_id
+       WHERE m.currency = '${HOME_CURRENCY}' AND m.flow_kind IS NULL AND ${shared}
        ORDER BY m.occurred_on, m.id`
     )
     .all() as EligibleLegRow[];
+  const foreign = (
+    db
+      .prepare(
+        `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount, m.currency, m.units_delta, m.note,
+                m.flow_kind
+         FROM movements m
+         JOIN accounts a ON a.id = m.account_id
+         WHERE m.currency != '${HOME_CURRENCY}' AND m.counter_currency IS NULL
+           AND m.flow_kind IN ('deposit', 'withdrawal')
+           AND (m.units_delta IS NULL OR m.units_delta = 0)
+           AND ${shared}
+         ORDER BY m.occurred_on, m.id`
+      )
+      .all() as (EligibleLegRow & { flow_kind: "deposit" | "withdrawal" })[]
+  )
+    .filter((r) => isForeignCashAccountIn(r.account_id, r.currency))
+    .map(({ flow_kind, ...r }) => ({ ...r, amount: flow_kind === "withdrawal" ? -Math.abs(r.amount) : Math.abs(r.amount) }));
+  if (foreign.length === 0) return pesos;
+  return [...pesos, ...foreign].sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
 }
 
 /**
@@ -278,7 +305,8 @@ function toLegDto(row: EligibleLegRow, kindSlug: string | null): MirrorLegDto {
     account_name: row.account_name,
     kind_slug: kindSlug,
     occurred_on: row.occurred_on,
-    amount_clp: row.amount_clp,
+    amount: row.amount,
+    currency: row.currency,
     units_delta: row.units_delta,
     note: row.note,
   };
@@ -326,21 +354,18 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
     byDeposit.set(r.deposit_movement_id, (byDeposit.get(r.deposit_movement_id) ?? 0) + 1);
   }
   const depositStmt = db.prepare(
-    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
+    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount, m.currency, m.units_delta, m.note
      FROM movements m JOIN accounts a ON a.id = m.account_id
      WHERE m.id = ? AND m.account_id IS NOT NULL
-       AND m.flow_kind IS NULL AND m.currency = 'clp' AND m.amount > 0
-       AND (m.note IS NULL OR (
-             m.note NOT LIKE 'import:buda|%'
-         AND m.note NOT LIKE 'buda-abono|%'
-         AND m.note NOT LIKE 'ahorro-split|%'))
+       AND m.flow_kind IS NULL AND m.currency = '${HOME_CURRENCY}' AND m.amount > 0
+       AND ${NOT_BUDA_OR_SPLIT_NOTE_SQL}
        AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
        AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})`
   );
   const outMetaStmt = db.prepare(
-    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
+    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount, m.currency, m.units_delta, m.note
      FROM movements m JOIN accounts a ON a.id = m.account_id
-     WHERE m.id = ? AND m.flow_kind IS NULL AND m.currency = 'clp' AND m.amount < 0`
+     WHERE m.id = ? AND m.flow_kind IS NULL AND m.currency = '${HOME_CURRENCY}' AND m.amount < 0`
   );
   const pairs: LinkedLegPair[] = [];
   for (const r of rows) {
@@ -354,7 +379,7 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
     const out = outMetaStmt.get(outId) as EligibleLegRow | undefined;
     const inn = depositStmt.get(r.deposit_movement_id) as EligibleLegRow | undefined;
     if (!out || !inn) continue;
-    if (Math.round(Math.abs(out.amount_clp)) !== Math.round(inn.amount_clp)) continue;
+    if (Math.round(Math.abs(out.amount)) !== Math.round(inn.amount)) continue;
     pairs.push({ out, in: inn, link_source: r.link_source });
   }
   return pairs;
@@ -382,7 +407,7 @@ function loadPairingContext(): PairingContext {
   const ins: EligibleLegRow[] = [];
   for (const leg of legs) {
     const kind = kindSlugFor(leg.account_id);
-    if (leg.amount_clp < 0) {
+    if (leg.amount < 0) {
       if (mirrorLegDirectionAllowed(kind, leg.note, "out")) outs.push(leg);
     } else if (mirrorLegDirectionAllowed(kind, leg.note, "in")) {
       ins.push(leg);
@@ -405,7 +430,8 @@ function pairingWindow(
   inn: EligibleLegRow
 ): { gap: number; monthPrecision: boolean } | null {
   if (inn.account_id === out.account_id) return null;
-  if (Math.round(inn.amount_clp) !== Math.round(Math.abs(out.amount_clp))) return null;
+  if (inn.currency !== out.currency) return null;
+  if (roundToCurrency(inn.amount, inn.currency) !== roundToCurrency(Math.abs(out.amount), out.currency)) return null;
   // One transfer row carries one units_delta — a pair where both legs move cuotas
   // (fund → fund) cannot be represented; leave those as two rows.
   if (legHasUnits(out) && legHasUnits(inn)) return null;
@@ -473,7 +499,7 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
   pairs.sort(
     (a, b) =>
       a.gap - b.gap ||
-      Math.abs(b.out.amount_clp) - Math.abs(a.out.amount_clp) ||
+      Math.abs(b.out.amount) - Math.abs(a.out.amount) ||
       a.out.id - b.out.id ||
       a.in.id - b.in.id
   );
@@ -587,17 +613,22 @@ export function resolveMirrorPairRef(
   return null;
 }
 
+/** A single-leg row's amount signed by its direction: a foreign `withdrawal` states it positive. */
+function signedLegAmount(amount: number, flowKind: string | null): number {
+  return flowKind === "withdrawal" ? -Math.abs(amount) : amount;
+}
+
 /** Rejected pairs whose both legs still exist (FK cascade removes the rest), for the panel's restore list. */
 export function listRejectedMirrorPairs(): RejectedMirrorPair[] {
   const rows = db
     .prepare(
       `SELECT r.out_movement_id, r.in_movement_id, r.created_at,
               mo.account_id AS out_account_id, ao.name AS out_account_name,
-              mo.occurred_on AS out_occurred_on, mo.amount AS out_amount_clp,
-              mo.units_delta AS out_units_delta, mo.note AS out_note,
+              mo.occurred_on AS out_occurred_on, mo.amount AS out_amount, mo.currency AS out_currency,
+              mo.flow_kind AS out_flow_kind, mo.units_delta AS out_units_delta, mo.note AS out_note,
               mi.account_id AS in_account_id, ai.name AS in_account_name,
-              mi.occurred_on AS in_occurred_on, mi.amount AS in_amount_clp,
-              mi.units_delta AS in_units_delta, mi.note AS in_note
+              mi.occurred_on AS in_occurred_on, mi.amount AS in_amount, mi.currency AS in_currency,
+              mi.flow_kind AS in_flow_kind, mi.units_delta AS in_units_delta, mi.note AS in_note
        FROM movement_mirror_pair_rejections r
        JOIN movements mo ON mo.id = r.out_movement_id
        JOIN accounts ao ON ao.id = mo.account_id
@@ -612,13 +643,17 @@ export function listRejectedMirrorPairs(): RejectedMirrorPair[] {
     out_account_id: number;
     out_account_name: string;
     out_occurred_on: string;
-    out_amount_clp: number;
+    out_amount: number;
+    out_currency: string;
+    out_flow_kind: string | null;
     out_units_delta: number | null;
     out_note: string | null;
     in_account_id: number;
     in_account_name: string;
     in_occurred_on: string;
-    in_amount_clp: number;
+    in_amount: number;
+    in_currency: string;
+    in_flow_kind: string | null;
     in_units_delta: number | null;
     in_note: string | null;
   }[];
@@ -629,7 +664,8 @@ export function listRejectedMirrorPairs(): RejectedMirrorPair[] {
       account_name: r.out_account_name,
       kind_slug: accountKindSlugForAccountId(r.out_account_id),
       occurred_on: r.out_occurred_on,
-      amount_clp: r.out_amount_clp,
+      amount: signedLegAmount(r.out_amount, r.out_flow_kind),
+      currency: r.out_currency,
       units_delta: r.out_units_delta,
       note: r.out_note,
     },
@@ -639,7 +675,8 @@ export function listRejectedMirrorPairs(): RejectedMirrorPair[] {
       account_name: r.in_account_name,
       kind_slug: accountKindSlugForAccountId(r.in_account_id),
       occurred_on: r.in_occurred_on,
-      amount_clp: r.in_amount_clp,
+      amount: signedLegAmount(r.in_amount, r.in_flow_kind),
+      currency: r.in_currency,
       units_delta: r.in_units_delta,
       note: r.in_note,
     },

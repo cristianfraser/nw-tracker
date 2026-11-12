@@ -13,6 +13,7 @@
  * days between, and `D` itself). A `consumed` set enforces one-to-one matching, and candidates
  * closest to the bank date win first.
  */
+import { currencyMinorDigits } from "./displayUnits.js";
 import { movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { deleteMovements } from "./movementWrites.js";
 import { adoptMovementFlow } from "./flows/flowIdentity.js";
@@ -88,24 +89,26 @@ export function findMatchingInternalTransferLegId(
   return null;
 }
 
-type UsdTransferLegRow = MovementTransferRow & { id: number };
+type ForeignTransferLegRow = MovementTransferRow & { id: number };
 
 /**
- * The dollar twin of {@link findMatchingInternalTransferLegId}: the id of an existing transfer
- * leg touching `accountId` (a USD cash account) whose signed DOLLAR delta on it
- * (`signedNativeDeltaForAccountMovement` — the USD leg of a wire booking, a `pago_tarjeta` from the
- * dollar account, the counter leg of a conversion) equals `amountUsdSigned` to the cent, inside
- * the same posting window, not yet claimed — else null.
+ * The foreign-currency twin of {@link findMatchingInternalTransferLegId}: the id of an existing
+ * transfer leg touching `accountId` (a cash account held in `currency`) whose signed delta in that
+ * currency on it (`signedNativeDeltaForAccountMovement` — the dollar leg of a wire booking, a
+ * `pago_tarjeta` from the dollar account, the counter leg of a conversion) equals `amountSigned`
+ * to the currency's coin, inside the same posting window, not yet claimed — else null.
  */
-export function findMatchingUsdTransferLegId(
+export function findMatchingForeignTransferLegId(
   accountId: number,
+  currency: string,
   bankDateYmd: string,
-  amountUsdSigned: number,
+  amountSigned: number,
   consumed: Set<number>,
   dbHandle: Database = db
 ): number | null {
-  if (!Number.isFinite(amountUsdSigned) || amountUsdSigned === 0) return null;
-  const targetCents = Math.round(amountUsdSigned * 100);
+  if (!Number.isFinite(amountSigned) || amountSigned === 0) return null;
+  const coins = 10 ** currencyMinorDigits(currency);
+  const target = Math.round(amountSigned * coins);
   const windowStart = priorChileBusinessDayYmd(bankDateYmd) ?? bankDateYmd;
   const rows = dbHandle
     .prepare(
@@ -120,10 +123,10 @@ export function findMatchingUsdTransferLegId(
          )
        ORDER BY (bp.posted_on IS NOT NULL) DESC, m.occurred_on DESC, m.id DESC`
     )
-    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as UsdTransferLegRow[];
+    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as ForeignTransferLegRow[];
   for (const r of rows) {
     if (consumed.has(r.id)) continue;
-    if (Math.round(signedNativeDeltaForAccountMovement(r, accountId, "usd") * 100) === targetCents) return r.id;
+    if (Math.round(signedNativeDeltaForAccountMovement(r, accountId, currency) * coins) === target) return r.id;
   }
   return null;
 }

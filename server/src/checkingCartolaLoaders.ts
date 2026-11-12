@@ -3,7 +3,9 @@
  * (`flowsCheckingGastos.ts`). This layer only SELECTs and shapes rows — classification
  * lives in `checkingDescriptionPredicates.ts`, pairing policy in the engine.
  */
-import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
+import { foreignCashCurrencyOf } from "./cashCurrency.js";
+import { convertCurrency } from "./rates.js";
+import { HOME_CURRENCY, currencySmallestCoin } from "./displayUnits.js";
 import { CHECKING_LISTED_SOURCE_KINDS, movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
@@ -26,7 +28,6 @@ import {
 } from "./checkingDescriptionPredicates.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import {
   accountIdsUnderCheckingAccounts,
@@ -172,29 +173,46 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
 }
 
 /**
- * The dollar checking accounts: dollar ledgers (`usd` kind) filed under Checking accounts — the
- * Chilean bank's dollar cuenta corriente and a US bank account. Their bank-listed rows are read by
- * {@link listDollarCheckingMovements}; a dollar account whose rows no bank document lists (the
- * Chilean one: every row there is a transfer or written from another document) reads empty.
+ * The foreign checking accounts: cash ledgers held in a currency other than pesos (a declared
+ * `cash_currency`, or a legacy `usd` leaf) filed under Checking accounts — the Chilean bank's
+ * dollar cuenta corriente, a US bank account, a euro account. Their bank-listed rows are read by
+ * {@link listForeignCheckingMovements}; such an account whose rows no bank document lists (the
+ * Chilean dollar one: every row there is a transfer or written from another document) reads empty.
  */
-export function listDollarCheckingAccountIds(): number[] {
-  return accountIdsUnderCheckingAccounts().filter((id) => isForeignCashAccountIn(id, "usd"));
+export function listForeignCheckingAccountIds(): number[] {
+  return accountIdsUnderCheckingAccounts().filter((id) => foreignCashCurrencyOf(id) != null);
 }
 
-/** A dollar checking account's bank-listed movement: its dollars, and its pesos at the day's rate. */
-export type DollarCheckingMovementRow = CheckingMovementRow & {
-  /** Dollars, positive (the direction is the list asked for). */
+/** A foreign checking account's bank-listed movement: its own amount, its pesos and dollars at the day's rate. */
+export type ForeignCheckingMovementRow = CheckingMovementRow & {
+  /** The account's currency (`accounts.cash_currency`). */
+  currency: string;
+  /** In the account's currency, positive (the direction is the list asked for). */
+  amount_native: number;
+  /** Dollars, positive: a dollar account's own, else the amount at the day's mid. */
   amount_usd: number;
 };
 
+/** `amount` (in `currency`) at the stored mid of `day` in `to`, through rates.ts; no rate on file throws. */
+export function foreignCheckingAmountIn(amount: number, currency: string, to: string, day: string, what: string): number {
+  if (currency === to) return amount;
+  const v = convertCurrency(amount, currency, to, day, { side: "mid", storedOnly: true });
+  if (v == null || !Number.isFinite(v)) throw new Error(`${what}: no ${currency}→${to} rate on or before ${day}`);
+  return v;
+}
+
 /**
- * {@link listCheckingMovements} for a dollar checking account: the single-leg rows its bank
- * documents list (the same evidence kinds), inflows or outflows by their dollar direction, oldest
- * first. `amount_clp` is the dollars at the day's `fx_daily` rate on or before the movement's day
- * (signed like the peso lists: credits positive, debits negative) — how the peso views price them.
- * A listed row that moves no dollars, or a day with no rate, throws.
+ * {@link listCheckingMovements} for a foreign checking account: the single-leg rows its bank
+ * documents list (the same evidence kinds), inflows or outflows by their direction in the
+ * account's currency, oldest first. `amount_clp` is the amount at the day's stored mid on or
+ * before the movement's day (signed like the peso lists: credits positive, debits negative) — how
+ * the peso views price them. A listed row that moves none of the account's currency, or a day with
+ * no rate, throws.
  */
-export function listDollarCheckingMovements(accountId: number, direction: "in" | "out"): DollarCheckingMovementRow[] {
+export function listForeignCheckingMovements(accountId: number, direction: "in" | "out"): ForeignCheckingMovementRow[] {
+  const currency = foreignCashCurrencyOf(accountId);
+  if (currency == null) throw new Error(`account ${accountId} is not a foreign cash account`);
+  const coin = currencySmallestCoin(currency);
   const rows = db
     .prepare(
       `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
@@ -205,14 +223,23 @@ export function listDollarCheckingMovements(accountId: number, direction: "in" |
        ORDER BY occurred_on, id`
     )
     .all(accountId) as (MovementTransferRow & { id: number; occurred_on: string; note: string | null })[];
-  const out: DollarCheckingMovementRow[] = [];
+  const out: ForeignCheckingMovementRow[] = [];
   for (const r of rows) {
-    const usd = signedNativeDeltaForAccountMovement(r, accountId, "usd");
-    if (!(Math.abs(usd) >= 0.005)) throw new Error(`dollar checking movement ${r.id}: a listed row that moves no dollars`);
-    if (direction === "in" ? usd < 0 : usd > 0) continue;
-    const fx = fxRowOnOrBefore(r.occurred_on);
-    if (!fx || !(fx.clp_per_usd > 0)) throw new Error(`dollar checking movement ${r.id}: no fx on or before ${r.occurred_on}`);
-    out.push({ id: r.id, occurred_on: r.occurred_on, amount_clp: Math.round(usd * fx.clp_per_usd), amount_usd: Math.abs(usd), note: r.note });
+    const native = signedNativeDeltaForAccountMovement(r, accountId, currency);
+    if (!(Math.abs(native) >= coin / 2)) {
+      throw new Error(`${currency.toUpperCase()} checking movement ${r.id}: a listed row that moves no ${currency.toUpperCase()}`);
+    }
+    if (direction === "in" ? native < 0 : native > 0) continue;
+    const what = `${currency.toUpperCase()} checking movement ${r.id}`;
+    out.push({
+      id: r.id,
+      occurred_on: r.occurred_on,
+      amount_clp: Math.round(foreignCheckingAmountIn(native, currency, HOME_CURRENCY, r.occurred_on, what)),
+      currency,
+      amount_native: Math.abs(native),
+      amount_usd: Math.abs(foreignCheckingAmountIn(native, currency, "usd", r.occurred_on, what)),
+      note: r.note,
+    });
   }
   return out;
 }
@@ -306,7 +333,7 @@ export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] 
   // Checking is the funding source, never a capital return: the cartola kinds by kind, the dollar
   // checking accounts (a `usd` kind under Checking accounts) by id — a US checking debit is spending
   // or a transfer, not money leaving an investment.
-  const dollarChecking = new Set(listDollarCheckingAccountIds());
+  const dollarChecking = new Set(listForeignCheckingAccountIds());
   const accounts = listDepositFlowAccounts().filter(
     (a) =>
       !isMovementBalanceCashCategory(a.category_slug) &&
@@ -404,7 +431,7 @@ export function checkingGastosAccountCategorySlug(accountId: number): string {
 export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
   const budaFunded = loadCryptoCoinAccountIdsFundedByBuda();
   // A dollar checking account's credits (a US salary) are never deposits a checking debit funded.
-  const dollarChecking = new Set(listDollarCheckingAccountIds());
+  const dollarChecking = new Set(listForeignCheckingAccountIds());
   const accounts = listDepositFlowAccounts().filter(
     (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug) && !budaFunded.has(a.account_id) && !dollarChecking.has(a.account_id)
   );

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { hasAtMostCents, currencyCodeSchema } from "../formats/index.js";
+import { hasAtMostCents, currencyCodeSchema, type CurrencyCode } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 export const bankAccountBalanceSchema = z
@@ -54,7 +54,7 @@ export type BankAccountBalancesPayload = z.infer<typeof bankAccountBalancesKind.
 export type BankAccountBalancesApplyDetails = {
   recorded: number;
   /** Accounts the server checks (their number is declared on one of its accounts). */
-  known: { account_id: number; number: string; currency: "clp" | "usd"; balance: number }[];
+  known: { account_id: number; number: string; currency: CurrencyCode; balance: number }[];
   /** Numbers no account declares — recorded, not checked. */
-  unknown: { number: string; currency: "clp" | "usd"; label: string }[];
+  unknown: { number: string; currency: CurrencyCode; label: string }[];
 };

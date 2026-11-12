@@ -2,19 +2,20 @@ import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import type { BankAccountMovement, UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
 
 
-import { claimTransferLegForBankRow, findMatchingUsdTransferLegId } from "./checkingTransferLegReconcile.js";
+import { claimTransferLegForBankRow, findMatchingForeignTransferLegId } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { createImportBatch } from "./importBatches.js";
 
 
 /**
- * A dollar bank account's recent movements (`bank_account.movements` in USD, 2026-10-10) CONFIRM
- * the ledger and never insert. Every row the dollar cuenta corriente can show is already on
+ * A foreign-currency bank account's recent movements (`bank_account.movements` in a currency other
+ * than pesos; the Santander dollar account since 2026-10-10, any currency since 2026-11-12)
+ * CONFIRM the ledger and never insert, in the listing's currency to its coin. Every row the dollar cuenta corriente can show is already on
  * file from its own document before the bank lists it: a broker's dollar withdrawal is booked
  * from the wire's notices (`incomingWires.ts`), a card payment from the dollar account is
  * entered by hand (`ccManualPayments.ts`), a conversion to pesos is a transfer the user writes.
  * So the listing is read as evidence, like the peso xlsx against a transfer leg: a row a
- * transfer leg on the account explains to the cent (`findMatchingUsdTransferLegId`, the same
+ * transfer leg on the account explains to the coin (`findMatchingForeignTransferLegId`, the same
  * posting window) is `confirmed` and the bank's posting day recorded; a credit the bank files as
  * an incoming wire (`wire_reference`) whose booking has not landed yet is `awaiting_wire_booking`
  * (the next run brings it again; the wire step itself raises the alarm when the notices never
@@ -22,13 +23,17 @@ import { createImportBatch } from "./importBatches.js";
  * on it, since a dollar row the app does not know about is a row to enter, not to guess at.
  *
  * Re-sending a listing is idempotent: a leg whose posting day is recorded matches that day again.
+ * The import batch keeps its kind `usd_account_feed` whatever the currency (a stored batch kind).
  */
-export function confirmUsdAccountMovements(
+export function confirmForeignAccountMovements(
   accountId: number,
+  currency: string,
   movements: BankAccountMovement[],
   sourceRef: string
 ): UsdAccountMovementsApplyDetails {
-  if (!isForeignCashAccountIn(accountId, "usd")) throw new Error(`account ${accountId} is not a USD cash account`);
+  if (!isForeignCashAccountIn(accountId, currency)) {
+    throw new Error(`account ${accountId} is not a ${currency.toUpperCase()} cash account`);
+  }
   const consumed = new Set<number>();
   const confirmed_flows: UsdAccountMovementsApplyDetails["confirmed_flows"] = [];
   const awaiting_flows: UsdAccountMovementsApplyDetails["awaiting_flows"] = [];
@@ -36,8 +41,10 @@ export function confirmUsdAccountMovements(
   let earliestConfirmed: string | null = null;
   db.transaction(() => {
     for (const mv of movements) {
-      if (mv.currency !== "usd") throw new Error(`a ${mv.currency} row in a dollar account's listing (${mv.date} ${mv.description})`);
-      const legId = findMatchingUsdTransferLegId(accountId, mv.date, mv.amount, consumed);
+      if (mv.currency !== currency) {
+        throw new Error(`a ${mv.currency} row in a ${currency.toUpperCase()} account's listing (${mv.date} ${mv.description})`);
+      }
+      const legId = findMatchingForeignTransferLegId(accountId, currency, mv.date, mv.amount, consumed);
       if (legId != null) {
         consumed.add(legId);
         claimTransferLegForBankRow(legId, accountId, mv.date);

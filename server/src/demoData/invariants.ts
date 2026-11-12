@@ -7,7 +7,7 @@ import type { EmploymentPayslipsApplyDetails } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { accountMarkClpAtYmd } from "../accountMarkClpAtYmd.js";
 import { checkingMovementBalanceClpAt } from "../checkingCartolaBalances.js";
-import { listDollarCheckingAccountIds, listDollarCheckingMovements } from "../checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds, listForeignCheckingMovements } from "../checkingCartolaLoaders.js";
 import { buildCheckingGastosLinesForAccounts } from "../flowsCheckingGastos.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "../movementTransfer.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
@@ -225,13 +225,13 @@ function checkUsChapter(ledger: Ledger, ids: Map<Acct, number>, today: Ymd, prob
     problems.push(`${unclean.length} US pay stub(s) do not check clean: ${JSON.stringify(unclean.slice(0, 2).map((c) => c.differences))}`);
   }
 
-  const debits = listDollarCheckingMovements(usId, "out");
+  const debits = listForeignCheckingMovements(usId, "out");
   const lines = buildCheckingGastosLinesForAccounts([usId], {});
   if (debits.length === 0) problems.push("the US checking account lists no debits");
   if (lines.length !== debits.length) problems.push(`US checking: ${debits.length} debits, ${lines.length} gastos lines`);
   // A transfer to or from savings is a transfer leg, never a listed row (the statement prints it).
   const transferRows = ledger.usBank.filter((r) => r.transfer).length;
-  const listed = listDollarCheckingMovements(usId, "in").length + debits.length;
+  const listed = listForeignCheckingMovements(usId, "in").length + debits.length;
   if (listed !== ledger.usBank.length - transferRows) problems.push(`US checking: ${ledger.usBank.length - transferRows} statement rows to write, ${listed} listed`);
 
   // The savings account: the app's balance is the story's, and it never dips below zero.
@@ -608,7 +608,7 @@ export const CASH_UNEXPLAINED_TOLERANCE_CLP = 1_000;
  */
 function checkCashExplained(problems: string[]): number {
   const checking = new Set(accountIdsUnderCheckingAccounts());
-  const dollar = listDollarCheckingAccountIds();
+  const dollar = listForeignCheckingAccountIds();
   const cards = new Set(listCreditCardMasterAccountIds());
   const sell = (day: string) => {
     const r = convertValue(1, "usd", "clp", day, "asset");

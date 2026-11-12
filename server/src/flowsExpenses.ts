@@ -118,8 +118,8 @@ export type {
   CcExpenseGastosScope,
   CcInstallmentGastosMode,
 } from "./ccExpensePeriodMonth.js";
-import { buildCheckingGastosLinesForAccounts } from "./flowsCheckingGastos.js";
-import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { buildCheckingGastosLinesForAccounts, foreignCheckingLineMoney } from "./flowsCheckingGastos.js";
+import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
@@ -844,7 +844,7 @@ export function buildCcExpenseLines(
 
 function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   // The peso checking members and the dollar checking accounts (a US bank account's debits).
-  const accountIds = [...listMovementBalanceCashAccountIds(), ...listDollarCheckingAccountIds()];
+  const accountIds = [...listMovementBalanceCashAccountIds(), ...listForeignCheckingAccountIds()];
   if (accountIds.length === 0) return [];
 
   const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
@@ -880,9 +880,10 @@ function checkingExpenseRefundLineDrafts(): FlowCcExpenseLineRowDraft[] {
       purchase_on: r.received_on,
       statement_date: "",
       amount_clp: -r.amount_clp,
-      // A dollar account's refund is its own dollars, as its gastos lines are.
-      amount_usd: r.amount_usd == null ? null : -r.amount_usd,
-      amount_usd_at_expense: r.amount_usd == null ? expenseGastosAmountUsdAtDate(-r.amount_clp, null, r.received_on) : -r.amount_usd,
+      // A foreign account's refund is in its own currency, as its gastos lines are.
+      ...(r.native == null
+        ? { amount_usd: null, amount_usd_at_expense: expenseGastosAmountUsdAtDate(-r.amount_clp, null, r.received_on) }
+        : foreignCheckingLineMoney({ currency: r.native.currency, amount_native: r.native.amount, amount_usd: r.amount_usd! }, -1)),
       merchant: description || null,
       installment_flag: 0,
       nro_cuota_current: null,

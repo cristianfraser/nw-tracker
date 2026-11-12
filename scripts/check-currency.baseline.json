@@ -1,11 +1,11 @@
 {
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
-    "currency-formatter": 293,
+    "currency-formatter": 290,
     "currency-list-literal": 7,
-    "currency-type-union": 131,
-    "dto-currency-key": 292,
-    "unit-literal-compare": 335
+    "currency-type-union": 128,
+    "dto-currency-key": 291,
+    "unit-literal-compare": 330
   },
   "violations": {
     "client/src/api.ts": {
@@ -166,7 +166,7 @@
       "unit-literal-compare": 1
     },
     "client/src/pages/panel/MirrorPairsPanelPage.tsx": {
-      "currency-formatter": 5
+      "currency-formatter": 2
     },
     "client/src/useGroupInfoConsolidatedTables.ts": {
       "unit-literal-compare": 2
@@ -246,7 +246,7 @@
       "dto-currency-key": 6
     },
     "server/contracts/src/dto/mirrors.ts": {
-      "dto-currency-key": 3
+      "dto-currency-key": 2
     },
     "server/contracts/src/dto/mortgage.ts": {
       "dto-currency-key": 27
@@ -262,9 +262,6 @@
     },
     "server/contracts/src/formats/schemas.ts": {
       "unit-literal-compare": 1
-    },
-    "server/contracts/src/kinds/bankAccountBalances.ts": {
-      "currency-type-union": 2
     },
     "server/contracts/src/kinds/brokerMovements.ts": {
       "currency-type-union": 1
@@ -319,13 +316,6 @@
       "unit-literal-compare": 2
     },
     "server/src/bankAccountBalances.ts": {
-      "currency-type-union": 1,
-      "unit-literal-compare": 2
-    },
-    "server/src/bankAccountMovementsApply.ts": {
-      "unit-literal-compare": 2
-    },
-    "server/src/bankProductSummaryApply.ts": {
       "unit-literal-compare": 1
     },
     "server/src/brokerAdapter.ts": {
@@ -652,9 +642,6 @@
       "unit-literal-compare": 3
     },
     "server/src/usBankAccounts.ts": {
-      "unit-literal-compare": 1
-    },
-    "server/src/usdAccountMovementsConfirm.ts": {
       "unit-literal-compare": 1
     },
     "server/src/utilityBillsApply.ts": {

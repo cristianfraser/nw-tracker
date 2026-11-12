@@ -1,4 +1,4 @@
-import { foreignCashToClpAt, isForeignCashAccount } from "./foreignCashAccounts.js";
+import { foreignCashToClpAt, isForeignCashAccount, isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -31,8 +31,8 @@ import {
   outflowFlowClaimKey,
 } from "./flowsCheckingGastos.js";
 import {
-  listDollarCheckingAccountIds,
-  listDollarCheckingMovements,
+  listForeignCheckingAccountIds,
+  listForeignCheckingMovements,
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
 import { loadConsumedNetWorthCapitalReturnOutflowKeys } from "./flowsCheckingInflows.js";
@@ -154,12 +154,12 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 // as internal on the checking side, so DAP inflows/outflows are excluded from reconciliation on
 // both sides — including them would demand links for flows the matcher intentionally ignores.
 
-// The checking bucket (cuenta_corriente + cuenta_vista, and the dollar checking accounts) is the
+// The checking bucket (cuenta_corriente + cuenta_vista, and the foreign checking accounts) is the
 // *funding source* for this feature, never a reconciliation target. Its own inflows are income
 // (salary) and internal corriente↔vista transfers — out of scope here (handled by the future
 // liquidaciones / income tab). We reconcile money crossing the checking-bucket boundary into other
 // net-worth buckets, not flows inside it. listMovementBalanceCashAccountIds() is exactly
-// {cuenta_corriente, cuenta_vista}; listDollarCheckingAccountIds() the dollar ones.
+// {cuenta_corriente, cuenta_vista}; listForeignCheckingAccountIds() the foreign ones (any currency).
 //
 // A dollar deposit — a single-leg dollar row buying units of a non-cash account, the deposit event
 // `accountDeposits.ts` counts — reconciles like a peso one, at its dollars priced at the day's rate,
@@ -170,9 +170,10 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 /** The months a dollar checking account lists a movement in (either direction). */
 function loadDollarCheckingMonthsWithData(): Set<string> {
   const months = new Set<string>();
-  for (const accountId of listDollarCheckingAccountIds()) {
+  // Dollar deposits only (the reconciliation prices deposits in pesos and dollars): a dollar account's months.
+  for (const accountId of listForeignCheckingAccountIds().filter((id) => isForeignCashAccountIn(id, "usd"))) {
     for (const direction of ["in", "out"] as const) {
-      for (const m of listDollarCheckingMovements(accountId, direction)) {
+      for (const m of listForeignCheckingMovements(accountId, direction)) {
         const month = monthKeyFromYmd(m.occurred_on);
         if (month != null) months.add(month);
       }
@@ -320,7 +321,7 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
   const accounts = listDepositFlowAccounts(false);
   const accountMap = new Map(accounts.map((a) => [a.account_id, a]));
   const foreignCashIds = new Set(accounts.map((a) => a.account_id).filter((id) => isForeignCashAccount(id)));
-  const checkingBucketIds = new Set([...listMovementBalanceCashAccountIds(), ...listDollarCheckingAccountIds()]);
+  const checkingBucketIds = new Set([...listMovementBalanceCashAccountIds(), ...listForeignCheckingAccountIds()]);
   // Crypto coins are funded internally by the Buda buffer, not directly by checking — exclude them;
   // the buffer's abono deposits are the reconcilable targets (see loadPositiveInflowMovements).
   const cryptoCoinIds = loadCryptoCoinAccountIdsFundedByBuda();

@@ -18,8 +18,8 @@ import {
   listCheckingMovements,
   loadAllCheckingWithdrawals,
   loadCheckingWithdrawals,
-  listDollarCheckingAccountIds,
-  listDollarCheckingMovements,
+  listForeignCheckingAccountIds,
+  listForeignCheckingMovements,
   loadDepositMatchCandidates,
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
@@ -30,7 +30,7 @@ import {
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import { convertFlow } from "./rates.js";
-import { flowLegsInUnit } from "./flowLegs.js";
+import { flowLegsInUnit, type FlowLegs } from "./flowLegs.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import {
   mergedIncomeKindByMovementIdRecord,
@@ -59,6 +59,8 @@ export type FlowCheckingIncomeLine = {
    * its pesos at the day's buy rate, read only when a unit asks ({@link incomeLineUsdLeg}).
    */
   amount_usd: number | null;
+  /** A credit on a checking account in a currency other than pesos and dollars: its own amount (internal; the wire carries `amount`). */
+  native?: { currency: string; amount: number };
   description: string;
   source: "checking";
 };
@@ -155,6 +157,21 @@ function loadManualIncomeEntries(): FlowManualIncomeLine[] {
     amount_usd: convertFlow(amount, currency, "usd", row.received_on),
     origin: "manual" as const,
   }));
+}
+
+/** An income line's legs for {@link flowLegsInUnit}: its pesos, its dollars and, in a third currency, its own amount. */
+export function incomeLineLegs(line: {
+  amount_clp: number;
+  amount_usd: number | null;
+  received_on: string;
+  native?: { currency: string; amount: number };
+}): FlowLegs {
+  const legs: FlowLegs = { clp: Math.round(line.amount_clp), usd: incomeLineUsdLeg(line) };
+  if (line.native != null) {
+    legs.native = line.native.currency;
+    legs.native_amount = line.native.amount;
+  }
+  return legs;
 }
 
 /**
@@ -386,14 +403,14 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     }
   }
 
-  // A dollar checking account's bank-listed credits (a US salary) are income at their dollars,
-  // priced in pesos at the day's rate; one the user marked a refund of spending is listed apart,
-  // like a peso refund. None of the peso matchers applies: a transfer between own accounts is a
-  // transfer row there, never a listed credit.
-  const dollarAccountIds = listDollarCheckingAccountIds();
+  // A foreign checking account's bank-listed credits (a US salary) are income in its currency,
+  // priced in pesos and dollars at the day's rate; one the user marked a refund of spending is
+  // listed apart, like a peso refund. None of the peso matchers applies: a transfer between own
+  // accounts is a transfer row there, never a listed credit.
+  const dollarAccountIds = listForeignCheckingAccountIds();
   const dollarLabels = loadAccountLabels(dollarAccountIds);
   for (const accountId of dollarAccountIds) {
-    for (const m of listDollarCheckingMovements(accountId, "in")) {
+    for (const m of listForeignCheckingMovements(accountId, "in")) {
       if (excludedMovementIds.has(m.id)) continue;
       const base = {
         movement_id: m.id,
@@ -402,6 +419,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
         received_on: m.occurred_on,
         amount_clp: m.amount_clp,
         amount_usd: m.amount_usd,
+        ...(m.currency === "usd" ? {} : { native: { currency: m.currency, amount: m.amount_native } }), // convention-ok: a dollar credit is the own-dollars slot (amount_usd)
         description: cartolaDescriptionFromNote(m.note),
       };
       const refundCategory = refundCategoryByMovementId.get(m.id);
@@ -500,14 +518,13 @@ export type FlowsCheckingIncomeUnitLists = {
   refund_lines: InUnit<FlowCheckingIncomeLine & { category_slug: string }>[];
 };
 
-function incomeLineInUnit<R extends { amount_clp: number; amount_usd: number | null; received_on: string }>(
-  r: R,
-  unit: string
-): InUnit<R> {
-  const { amount_clp, amount_usd, ...rest } = r;
+function incomeLineInUnit<
+  R extends { amount_clp: number; amount_usd: number | null; received_on: string; native?: { currency: string; amount: number } },
+>(r: R, unit: string): InUnit<R> {
+  const { amount_clp: _clp, amount_usd: _usd, native: _native, ...rest } = r;
   return {
     ...rest,
-    amount: flowLegsInUnit({ clp: Math.round(amount_clp), usd: incomeLineUsdLeg(r) }, r.received_on, unit),
+    amount: flowLegsInUnit(incomeLineLegs(r), r.received_on, unit),
   } as InUnit<R>;
 }
 

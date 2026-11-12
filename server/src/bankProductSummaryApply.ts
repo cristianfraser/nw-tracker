@@ -6,7 +6,8 @@
  *
  * A card that disagrees (or a summary with no card rows) reads the card feed; the peso cuenta
  * corriente its «últimos movimientos» xlsx; the dollar account its movements capture. A cuenta
- * vista has no daily listing: it is reported, and the check after the poll notifies. The summary
+ * vista, or an account in a currency the session has no listing for (Santander lists pesos and
+ * dollars), has no daily listing: it is reported, and the check after the poll notifies. The summary
  * carries no feed close, so a card is compared without one — a close the app has not seen yet can
  * read as a mismatch, which costs one card-feed read and settles itself.
  */
@@ -14,6 +15,12 @@ import type { BankProductSummaryApplyDetails, BankProductSummaryFetchStep, BankP
 import { applyBankAccountBalances, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
 import { judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { bankCupoCaptureFromListing, recordBankCupoCapture } from "./santanderBankCupo.js";
+
+/** The session's checking listing for each currency it reads (the fetcher's step names). */
+const CHECKING_LISTING_BY_CURRENCY: Readonly<Record<string, BankProductSummaryFetchStep>> = {
+  clp: "checking-movements",
+  usd: "checking-usd-movements",
+};
 
 export function applyBankProductSummary(
   payload: BankProductSummaryPayload,
@@ -48,7 +55,7 @@ export function applyBankProductSummary(
       if (number == null) continue;
       const product = payload.accounts.find((a) => a.number === number && a.currency === v.currency)!.product;
       const step: BankProductSummaryFetchStep | null =
-        product === "demand_deposit" ? null : v.currency === "usd" ? "checking-usd-movements" : "checking-movements";
+        product === "demand_deposit" ? null : (CHECKING_LISTING_BY_CURRENCY[v.currency] ?? null);
       if (step) fetch.add(step);
       mismatches.push(
         `${v.account_name} ${v.currency.toUpperCase()}: app − bank ${v.diff} — ` +

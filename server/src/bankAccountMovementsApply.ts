@@ -8,8 +8,9 @@ import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { createImportBatch } from "./importBatches.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
-import { confirmUsdAccountMovements } from "./usdAccountMovementsConfirm.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
+import { isHomeCurrency } from "./displayUnits.js";
+import { confirmForeignAccountMovements } from "./usdAccountMovementsConfirm.js";
 
 type DeclaredNumber = { account_id: number; number: string };
 
@@ -21,27 +22,31 @@ function declaredNumbers(issuer: string, currency: string): DeclaredNumber[] {
 
 /**
  * The ledger account an ingested bank-account listing names. A peso checking listing is the
- * cuenta corriente; a dollar one is the account `bank_account_numbers` declares for the number
- * the listing names (2026-10-10) — the dollar account has no other identity, so a dollar listing
- * without a number, or with a number no account declares, is refused.
+ * cuenta corriente; a listing in any other currency is the account `bank_account_numbers` declares
+ * for the number the listing names in that currency (dollars 2026-10-10, any currency 2026-11-12) —
+ * such an account has no other identity, so a foreign listing without a number, or with a number
+ * no account declares, is refused.
  */
 export function accountIdForIssuerBankAccount(account: BankAccountMovementsPayload["account"]): number {
   if (account.product !== "checking") throw new Error(`No ledger account for the ${account.issuer} ${account.product} account`);
-  if (account.currency === "clp") {
+  if (isHomeCurrency(account.currency)) {
     if (account.issuer === "santander") return checkingAccountId();
     throw new Error(`No ledger account for the ${account.issuer} ${account.product} account`);
   }
+  const code = account.currency.toUpperCase();
   if (account.number === undefined) {
-    throw new Error(`A dollar ${account.issuer} ${account.product} listing must name its account number — refused`);
+    throw new Error(`A ${code} ${account.issuer} ${account.product} listing must name its account number — refused`);
   }
-  const named = declaredNumbers(account.issuer, "usd").filter((r) => normalizeAccountNumber(r.number) === normalizeAccountNumber(account.number!));
+  const named = declaredNumbers(account.issuer, account.currency).filter(
+    (r) => normalizeAccountNumber(r.number) === normalizeAccountNumber(account.number!)
+  );
   if (named.length === 0) {
     throw new Error(
-      `No ledger account declares the ${account.issuer} dollar account number ending …${account.number.slice(-4)} (bank_account_numbers) — refused`
+      `No ledger account declares the ${account.issuer} ${code} account number ending …${account.number.slice(-4)} (bank_account_numbers) — refused`
     );
   }
   if (named.length > 1) {
-    throw new Error(`Two ledger accounts declare the ${account.issuer} dollar account number ending …${account.number.slice(-4)} — refused`);
+    throw new Error(`Two ledger accounts declare the ${account.issuer} ${code} account number ending …${account.number.slice(-4)} — refused`);
   }
   return named[0]!.account_id;
 }
@@ -79,23 +84,25 @@ export function assertListingNamesAccount(accountId: number, account: BankAccoun
  * (not a repeat, not covered by the month's cartola, not a transfer leg the ledger already has)
  * are inserted (`importCheckingPartialMovements`), and the import is logged as a
  * `checking_recent_xlsx` batch under `sourceRef` with the rows the feeder could not read — as the
- * xlsx import always did. A DOLLAR account's rows are confirmed against the ledger and never
- * inserted (`confirmUsdAccountMovements`).
+ * xlsx import always did. An account in any other currency has its rows confirmed against the
+ * ledger and never inserted (`confirmForeignAccountMovements`).
  */
 export function applyBankAccountMovements(
   payload: BankAccountMovementsPayload,
   sourceRef: string
 ): BankAccountMovementsApplyDetails | UsdAccountMovementsApplyDetails {
-  // A peso listing is imported, a dollar one confirmed: no other currency has a path yet.
-  pesosOrDollars(payload.account.currency, "bank_account.movements account");
-  for (const m of payload.movements) pesosOrDollars(m.currency, "bank_account.movements movement");
+  // A peso listing is imported, one in any other currency confirmed.
+  requireLoadedCurrency(payload.account.currency, "bank_account.movements account");
+  for (const m of payload.movements) requireLoadedCurrency(m.currency, "bank_account.movements movement");
   const accountId = accountIdForIssuerBankAccount(payload.account);
   assertListingNamesAccount(accountId, payload.account);
-  if (payload.account.currency === "usd") {
+  if (!isHomeCurrency(payload.account.currency)) {
     if (payload.rejected_rows.length > 0) {
-      throw new Error(`a dollar listing with rows the feeder could not read: ${payload.rejected_rows.join("; ")}`);
+      throw new Error(
+        `a ${payload.account.currency.toUpperCase()} listing with rows the feeder could not read: ${payload.rejected_rows.join("; ")}`
+      );
     }
-    return confirmUsdAccountMovements(accountId, payload.movements, sourceRef);
+    return confirmForeignAccountMovements(accountId, payload.account.currency, payload.movements, sourceRef);
   }
   const result = importCheckingPartialMovements(
     accountId,

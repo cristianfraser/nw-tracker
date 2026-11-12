@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatClp, formatGroupedDecimalTrimmed } from "../../format";
+import { formatClp, formatGroupedDecimalTrimmed, formatMoney } from "../../format";
 import { useMovementMirrorCandidates } from "../../queries/hooks";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -129,11 +129,16 @@ function AlternativesCell({
   );
 }
 
+/** A leg's amount, unsigned, in the currency the pair moves. */
+function legAmountText(leg: MirrorLegDto): string {
+  return formatMoney({ value: Math.abs(leg.amount), currency: leg.currency });
+}
+
 function AmountCell({ p }: { p: { out: MirrorLegDto } }) {
   const units = p.out.units_delta;
   return (
     <>
-      {formatClp(Math.round(Math.abs(p.out.amount_clp)))}
+      {legAmountText(p.out)}
       {units != null && units !== 0 ? (
         <span className="muted"> ({formatGroupedDecimalTrimmed(units)} cuotas)</span>
       ) : null}
@@ -514,7 +519,7 @@ export function MirrorPairsPanelPage() {
             {rejected.map((p) => (
               <li key={pairKey(p)} className="muted">
                 {p.out.occurred_on} — {p.out.account_name} → {p.in.account_name},{" "}
-                {formatClp(Math.round(Math.abs(p.out.amount_clp)))}{" "}
+                {legAmountText(p.out)}{" "}
                 <Button variant="secondary" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
                   {t("mirrorPairs.restore")}
                 </Button>
@@ -558,7 +563,7 @@ export function MirrorPairsPanelPage() {
             ? t("mirrorPairs.confirmSingleMessage", {
                 from: confirmSingle.out.account_name,
                 to: confirmSingle.in.account_name,
-                amount: formatClp(Math.round(Math.abs(confirmSingle.out.amount_clp))),
+                amount: legAmountText(confirmSingle.out),
               })
             : ""
         }

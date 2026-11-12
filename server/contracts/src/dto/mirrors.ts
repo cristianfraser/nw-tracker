@@ -5,7 +5,9 @@ export interface MirrorLegDto {
   account_name: string;
   kind_slug: string | null;
   occurred_on: string;
-  amount_clp: number;
+  /** Signed in `currency`: an outflow negative, an inflow positive. */
+  amount: number;
+  currency: string;
   units_delta: number | null;
   note: string | null;
 }

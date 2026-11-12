@@ -2,7 +2,7 @@ import { deleteFlowNote, FLOW_NOTES_SQL, getFlowNote, setFlowNote } from "./flow
 import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
-import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { mergeAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import { mergeAutoAdditionalCardNote } from "./ccAdditionalCardExpenseMatch.js";
@@ -12,12 +12,12 @@ export function purchaseNotesMapKey(accountId: number, purchaseKey: string): str
   return `${accountId}|${purchaseKey}`;
 }
 
-/** The accounts whose lines are expense lines: the card masters, the peso and the dollar checking accounts. */
+/** The accounts whose lines are expense lines: the card masters, the peso and the foreign checking accounts. */
 function accountAllowedForExpensePurchaseNotes(accountId: number): boolean {
   if (listCreditCardMasterAccountIds().includes(accountId)) return true;
   if (listMovementBalanceCashAccountIds().includes(accountId)) return true;
-  // A dollar checking account's listed debits are gastos lines too (`buildDollarCheckingGastosLines`).
-  return listDollarCheckingAccountIds().includes(accountId);
+  // A foreign checking account's listed debits are gastos lines too (`buildForeignCheckingGastosLines`).
+  return listForeignCheckingAccountIds().includes(accountId);
 }
 
 export function loadCcExpensePurchaseNotes(accountIds: number[]): Map<string, string> {

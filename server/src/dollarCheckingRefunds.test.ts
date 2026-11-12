@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getCcExpensePurchaseNote, setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
-import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import {
   loadCheckingExpenseRefunds,
   markCheckingExpenseRefund,
@@ -43,7 +43,7 @@ describe("a dollar checking account's refunds and notes", () => {
   };
 
   beforeEach(() => {
-    const dollar = listDollarCheckingAccountIds();
+    const dollar = listForeignCheckingAccountIds();
     expect(dollar.length).toBeGreaterThan(0);
     accountId = dollar[0]!;
     restoreFx = overrideFxDaily([[day, RATE]]);
@@ -60,7 +60,7 @@ describe("a dollar checking account's refunds and notes", () => {
     const debit = listed("VITEST GROCERY AUSTIN", -87.34, 1);
     markCheckingExpenseRefund(credit, "unclassified");
     // A debit is not a credit, in dollars either.
-    expect(() => markCheckingExpenseRefund(debit)).toThrow(/not a dollar checking credit/);
+    expect(() => markCheckingExpenseRefund(debit)).toThrow(/not a USD checking credit/);
 
     const refund = loadCheckingExpenseRefunds().find((r) => r.movement_id === credit);
     expect(refund).toMatchObject({ account_id: accountId, received_on: day, amount_usd: 120.5, amount_clp: Math.round(120.5 * RATE), category_slug: "unclassified" });

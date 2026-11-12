@@ -14,6 +14,11 @@ export type FlowLegs = {
   usd: number | null | (() => number | null);
   /** The currency the event moved (its own leg); the pesos by default. */
   native?: CurrencyCode;
+  /**
+   * The event's own amount in `native` when that is neither pesos nor dollars (a euro credit): the
+   * unit `native` reads it as is, any other unit converts it.
+   */
+  native_amount?: number;
 };
 
 function usdLeg(legs: FlowLegs): number | null {
@@ -23,6 +28,11 @@ function usdLeg(legs: FlowLegs): number | null {
 export function flowLegsInUnit(legs: FlowLegs, ymd: string, unit: CurrencyCode): number | null {
   if (unit === "clp") return legs.clp;
   if (unit === "usd") return usdLeg(legs);
+  if (legs.native_amount != null && legs.native != null) {
+    if (legs.native === unit) return legs.native_amount;
+    if (legs.native_amount === 0) return 0;
+    return convertCurrency(legs.native_amount, legs.native, unit, ymd, { side: "mid" });
+  }
   if (legs.native === "usd") {
     const usd = usdLeg(legs);
     if (usd == null) return null;

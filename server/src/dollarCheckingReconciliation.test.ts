@@ -3,10 +3,11 @@ import { foreignCashToClpAt } from "./foreignCashAccounts.js";
  * The dollar checking account in the deposits reconciliation and the mirror pairs: a dollar
  * deposit (a single-leg dollar row buying units) reconciles at its dollars priced at the day's rate,
  * its "checking present" read from the dollar checking accounts' listed months; and the mirror
- * pairs stay peso-only — a dollar debit and a same-dollar credit are never offered as a pair.
+ * pairs never offer a dollar debit beside a same-dollar `fx_purchase` credit (a conversion's arrival,
+ * never one leg of a move between own accounts; same-currency `deposit` legs pair, see foreignCheckingEur.test.ts).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { buildDepositsReconciliationPayload, classifyDepositsReconciliation } from "./flowsDepositsReconciliation.js";
@@ -52,7 +53,7 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
     );
 
   beforeEach(() => {
-    const dollar = listDollarCheckingAccountIds();
+    const dollar = listForeignCheckingAccountIds();
     expect(dollar.length).toBeGreaterThan(0);
     checkingUsd = dollar[0]!;
     restoreFx = overrideFxDaily([
@@ -102,7 +103,7 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
     expect(rows.find((r) => r.movement_id === noUnits)).toBeUndefined();
   });
 
-  it("the mirror pairs never offer a dollar debit and a same-dollar credit", () => {
+  it("the mirror pairs never offer a dollar debit and a same-dollar fx_purchase credit", () => {
     const savings = db
       .prepare(`SELECT a.id FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE g.slug LIKE '%\\_\\_usd' ESCAPE '\\' AND a.id != ? LIMIT 1`)
       .get(checkingUsd) as { id: number } | undefined;

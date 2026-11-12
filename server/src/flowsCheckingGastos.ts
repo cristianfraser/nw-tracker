@@ -64,8 +64,8 @@ import {
   loadCheckingCredits,
   loadCheckingWithdrawals,
   listCheckingMovements,
-  listDollarCheckingAccountIds,
-  listDollarCheckingMovements,
+  listForeignCheckingAccountIds,
+  listForeignCheckingMovements,
   loadDepositMatchCandidates,
   loadMovementBalanceCashCredits,
   type CheckingCredit,
@@ -96,8 +96,8 @@ export function checkingGastosMovementBelongs(movementId: number): {
   account_id?: number;
   merchant_key?: string;
 } {
-  const dollar = dollarCheckingGastosMovementBelongs(movementId);
-  if (dollar != null) return dollar;
+  const foreign = foreignCheckingGastosMovementBelongs(movementId);
+  if (foreign != null) return foreign;
   const checkingIds = new Set(listMovementBalanceCashAccountIds());
   if (checkingIds.size === 0) return { ok: false };
 
@@ -172,11 +172,11 @@ export function checkingGastosMovementBelongs(movementId: number): {
   };
 }
 
-/** {@link checkingGastosMovementBelongs} for a movement on a dollar checking account (null: not one). */
-function dollarCheckingGastosMovementBelongs(movementId: number): { ok: boolean; account_id?: number; merchant_key?: string } | null {
+/** {@link checkingGastosMovementBelongs} for a movement on a foreign checking account (null: not one). */
+function foreignCheckingGastosMovementBelongs(movementId: number): { ok: boolean; account_id?: number; merchant_key?: string } | null {
   const row = db.prepare(`SELECT account_id FROM movements WHERE id = ?`).get(movementId) as { account_id: number | null } | undefined;
-  if (row?.account_id == null || !listDollarCheckingAccountIds().includes(row.account_id)) return null;
-  const listed = listDollarCheckingMovements(row.account_id, "out").find((m) => m.id === movementId);
+  if (row?.account_id == null || !listForeignCheckingAccountIds().includes(row.account_id)) return null;
+  const listed = listForeignCheckingMovements(row.account_id, "out").find((m) => m.id === movementId);
   if (!listed) return { ok: false };
   const description = cartolaDescriptionFromNote(listed.note);
   if (isExcludedCheckingWithdrawal(description)) return { ok: false };
@@ -1166,19 +1166,21 @@ export function buildCheckingGastosLinesForAccounts(
   accountIds: readonly number[],
   opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
 ): FlowCcExpenseLineRowDraft[] {
-  const dollarIds = new Set(listDollarCheckingAccountIds());
-  const pesoIds = accountIds.filter((id) => !dollarIds.has(id));
-  const dollarLines = accountIds.filter((id) => dollarIds.has(id)).flatMap((id) => buildDollarCheckingGastosLines(id, opts));
-  return [...buildPesoCheckingGastosLinesForAccounts(pesoIds, opts), ...dollarLines];
+  const foreignIds = new Set(listForeignCheckingAccountIds());
+  const pesoIds = accountIds.filter((id) => !foreignIds.has(id));
+  const foreignLines = accountIds.filter((id) => foreignIds.has(id)).flatMap((id) => buildForeignCheckingGastosLines(id, opts));
+  return [...buildPesoCheckingGastosLinesForAccounts(pesoIds, opts), ...foreignLines];
 }
 
 /**
- * A dollar checking account's gastos lines: every debit its bank lists (a purchase, a bill, a
- * fee), at its dollars, priced in pesos at the day's rate (`listDollarCheckingMovements`). Its
+ * A foreign checking account's gastos lines: every debit its bank lists (a purchase, a bill, a
+ * fee), in the account's currency, priced in pesos and dollars at the day's rate
+ * (`listForeignCheckingMovements`). A dollar line carries its dollars as `amount_usd`; a line in
+ * any other currency states its own `amount` (the «line money» step reads it as native). Its
  * transfers to own accounts are transfer rows, never listed, so there is nothing to pair with a
  * deposit: no deposit matching runs. Category as any checking line's (rules by vendor, «Único»).
  */
-function buildDollarCheckingGastosLines(
+function buildForeignCheckingGastosLines(
   accountId: number,
   opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
 ): FlowCcExpenseLineRowDraft[] {
@@ -1192,11 +1194,11 @@ function buildDollarCheckingGastosLines(
       : loadCcExpenseCategoryMaps([accountId]);
   const lines: FlowCcExpenseLineRowDraft[] = [];
   // Newest first, as the gastos lines are listed.
-  for (const row of listDollarCheckingMovements(accountId, "out").reverse()) {
+  for (const row of listForeignCheckingMovements(accountId, "out").reverse()) {
     const description = cartolaDescriptionFromNote(row.note);
     if (isExcludedCheckingWithdrawal(description)) continue;
     const expenseMonth = monthKeyFromYmd(row.occurred_on);
-    if (!expenseMonth) throw new Error(`dollar checking movement ${row.id}: no month for ${row.occurred_on}`);
+    if (!expenseMonth) throw new Error(`${row.currency.toUpperCase()} checking movement ${row.id}: no month for ${row.occurred_on}`);
     const merchantKey = normalizeCcExpenseMerchantKey(description);
     const purchaseKey = checkingGastosMovementPurchaseKey(row.id, "gastos");
     registerGenericUniquePurchaseMode(accountId, purchaseKey, merchantKey, uniquePurchaseModeKeys, { statementLineId: row.id });
@@ -1222,8 +1224,7 @@ function buildDollarCheckingGastosLines(
       purchase_on: row.occurred_on,
       statement_date: "",
       amount_clp: Math.abs(row.amount_clp),
-      amount_usd: row.amount_usd,
-      amount_usd_at_expense: row.amount_usd,
+      ...foreignCheckingLineMoney(row, 1),
       merchant: description || null,
       installment_flag: 0,
       nro_cuota_current: null,
@@ -1237,6 +1238,22 @@ function buildDollarCheckingGastosLines(
     });
   }
   return lines;
+}
+
+/**
+ * A foreign checking row's money on a gastos line (`sign` 1 a debit, −1 a refund): a dollar row
+ * its dollars as `amount_usd`; any other currency its own `amount`, its dollars at the day's rate.
+ */
+export function foreignCheckingLineMoney(
+  row: { currency: string; amount_native: number; amount_usd: number },
+  sign: 1 | -1
+): { amount_usd: number | null; amount_usd_at_expense: number; amount?: { value: number; currency: string } } {
+  if (row.currency === "usd") return { amount_usd: sign * row.amount_usd, amount_usd_at_expense: sign * row.amount_usd }; // convention-ok: the line's own-dollars slot (amount_usd) of the pesos-and-dollars line model
+  return {
+    amount_usd: null,
+    amount_usd_at_expense: sign * row.amount_usd,
+    amount: { value: sign * row.amount_native, currency: row.currency },
+  };
 }
 
 function buildPesoCheckingGastosLinesForAccounts(

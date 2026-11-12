@@ -2,7 +2,7 @@ import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
+import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { checkingCashByDay } from "./flowsOverviewCash.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
@@ -733,7 +733,7 @@ describe("buildFlowsOverviewPayload", () => {
   it("the cash fx leg is the holdings in the other currency × the rate's move, by the asset-side rate, days adding up to months", () => {
     const today = chileCalendarTodayYmd();
     const checking = accountIdsUnderCheckingAccounts();
-    const dollar = listDollarCheckingAccountIds();
+    const dollar = listForeignCheckingAccountIds();
     const peso = checking.filter((id) => !dollar.includes(id));
     expect(dollar.length).toBeGreaterThan(0);
     const usdInClp = (d: string) => convertValue(1, "usd", "clp", d, "asset")!;
