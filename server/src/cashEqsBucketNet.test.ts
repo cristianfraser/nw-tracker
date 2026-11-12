@@ -251,7 +251,8 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
     // The linked total is a debt: netted in dollars at the debt side of the spread.
     const creditUsd = clpToUnitAt(CREDIT, yesterday, "usd", { side: "debt" });
     expect(creditUsd).not.toBeNull();
-    expect(credit.priorDay.usd.cash_eqs - base.priorDay.usd.cash_eqs).toBeCloseTo(creditUsd!, 6);
+    // Each bucket is rounded to the cent, so the two differ by the credit up to a cent.
+    expect(Math.abs(credit.priorDay.usd.cash_eqs - base.priorDay.usd.cash_eqs - creditUsd!)).toBeLessThanOrEqual(0.01 + 1e-9);
     expect(credit.priorDay.clp.cash_eqs - base.priorDay.clp.cash_eqs).toBe(CREDIT);
   });
 

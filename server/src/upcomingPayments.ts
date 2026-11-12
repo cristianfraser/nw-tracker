@@ -14,6 +14,7 @@ import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { convertCurrency, type CurrencyCode } from "./rates.js";
+import { roundToCurrency } from "./displayUnits.js";
 import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
 import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
@@ -605,24 +606,30 @@ function recurringSection(
 /**
  * The months with each peso amount also in `unit`, at `todayYmd`'s mid rate (live today): every
  * payment still to make is valued at what paying it costs now, as a card's dollars still owed are
- * (`dashboardCcUpcomingPayments.ts`). In pesos the converted figures are the pesos.
+ * (`dashboardCcUpcomingPayments.ts`). In pesos the converted figures are the pesos. A card's
+ * facturación converts what it owes in each currency (`card.owed`), each part rounded to the
+ * unit's minor digits as its pesos are — never its dollars through their pesos.
  */
 export function upcomingMonthsInUnit(
   months: readonly UpcomingPaymentsMonth[],
   unit: CurrencyCode,
   todayYmd: string
 ): UpcomingPaymentsMonthInUnit[] {
-  const inUnit = (clp: number): number => {
-    if (unit === "clp") return clp;
-    const v = convertCurrency(clp, "clp", unit, todayYmd, { side: "mid" });
-    if (v == null || !Number.isFinite(v)) throw new Error(`upcoming payments: no clp→${unit} rate on or before ${todayYmd}`);
+  const convert = (amount: number, from: CurrencyCode): number => {
+    const v = convertCurrency(amount, from, unit, todayYmd, { side: "mid" });
+    if (v == null || !Number.isFinite(v)) throw new Error(`upcoming payments: no ${from}→${unit} rate on or before ${todayYmd}`);
     return v;
+  };
+  const amountInUnit = (it: UpcomingPaymentsMonth["items"][number]): number => {
+    if (it.card == null) return convert(it.amount_clp, "clp");
+    const { clp, usd } = it.card.owed;
+    return roundToCurrency(convert(clp, "clp"), unit) + (usd > 0 ? roundToCurrency(convert(usd, "usd"), unit) : 0);
   };
   return months.map((m) => {
     const items = m.items.map((it) => ({
       ...it,
-      amount_in_unit: inUnit(it.amount_clp),
-      amount_max_in_unit: it.amount_max_clp == null ? null : inUnit(it.amount_max_clp),
+      amount_in_unit: amountInUnit(it),
+      amount_max_in_unit: it.amount_max_clp == null ? null : convert(it.amount_max_clp, "clp"),
     }));
     return { ...m, total_in_unit: items.reduce((a, it) => a + it.amount_in_unit, 0), items };
   });

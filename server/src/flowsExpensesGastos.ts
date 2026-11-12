@@ -37,6 +37,7 @@ import {
   type FlowCcExpenseMonthRow,
 } from "./flowsExpenses.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import { roundToCurrency } from "./displayUnits.js";
 import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { lineValueIn } from "./lineMoney.js";
 
@@ -68,7 +69,7 @@ export type ExpenseYearMonthlyAverage = { from_ym: string; through_ym: string; a
 export type FlowsExpensesGastosView = {
   /** The chart's stack keys, in stack order. */
   chart_category_slugs: string[];
-  /** Full-history headline: every month bucket summed (unrounded in USD). */
+  /** Full-history headline: every month bucket summed, rounded to the unit's minor digits. */
   total: number;
   total_real: number;
   /** Month rows, newest first, through the latest month with real spend in this mode. */
@@ -295,6 +296,7 @@ export function aggregateGastosFromLines(
     }
   }
 
+  const round = (v: number) => roundToCurrency(v, unit);
   const monthsAsc = [...byMonthSum.keys()].sort(ymCompare);
   let runningGastos = 0;
   let runningGastosReal = 0;
@@ -306,31 +308,31 @@ export function aggregateGastosFromLines(
     const bucket = byMonthSum.get(periodMonth)!;
     total += bucket.gastos;
     totalReal += bucket.gastosReal;
-    const gastosMes = Math.round(bucket.gastos);
-    const gastosRealMes = Math.round(bucket.gastosReal);
+    const gastosMes = round(bucket.gastos);
+    const gastosRealMes = round(bucket.gastosReal);
     runningGastos += gastosMes;
     runningGastosReal += gastosRealMes;
     byMonthAsc.push({
       period_month: periodMonth,
       as_of_date: monthEndUtcYmd(periodMonth),
-      gastos_mes_clp: gastosMes,
-      gastos_real_mes_clp: gastosRealMes,
-      abonos_mes_clp: Math.round(bucket.abonos),
-      gastos_acumulado_clp: Math.round(runningGastos),
-      gastos_real_acumulado_clp: Math.round(runningGastosReal),
+      gastos_mes: gastosMes,
+      gastos_real_mes: gastosRealMes,
+      abonos_mes: round(bucket.abonos),
+      gastos_acumulado: round(runningGastos),
+      gastos_real_acumulado: round(runningGastosReal),
       line_count: bucket.line_count,
     });
   }
 
   const chart_monthly: FlowCcExpenseChartPoint[] = byMonthAsc.map((m) => ({
     as_of_date: m.as_of_date,
-    gastos_clp: m.gastos_mes_clp,
+    gastos: m.gastos_mes,
   }));
   const chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[] = byMonthAsc.map((m) => {
     const point: FlowCcExpenseCategoryChartPoint = { as_of_date: m.as_of_date };
     const catSums = byMonthCategory.get(m.period_month) ?? new Map<string, number>();
     for (const slug of chartCategorySlugs) {
-      point[slug] = Math.round(catSums.get(slug) ?? 0);
+      point[slug] = round(catSums.get(slug) ?? 0);
     }
     return point;
   });
@@ -339,8 +341,8 @@ export function aggregateGastosFromLines(
     by_month: [...byMonthAsc].reverse(),
     chart_monthly,
     chart_monthly_by_category,
-    total: unit === "clp" ? Math.round(total) : total,
-    total_real: unit === "clp" ? Math.round(totalReal) : totalReal,
+    total: round(total),
+    total_real: round(totalReal),
   };
 }
 
@@ -375,20 +377,21 @@ export function chartCategorySlugsAtLevel(
 function latestRealSpendMonth(rows: readonly FlowCcExpenseMonthRow[]): string | null {
   let latest: string | null = null;
   for (const row of rows) {
-    if (row.gastos_real_mes_clp !== 0 && (latest == null || row.period_month > latest)) {
+    if (row.gastos_real_mes !== 0 && (latest == null || row.period_month > latest)) {
       latest = row.period_month;
     }
   }
   return latest;
 }
 
-/** Month rows (oldest first) rolled up to calendar years (oldest first), running totals re-run. */
+/** Month rows (oldest first) rolled up to calendar years (oldest first), running totals re-run; sums rounded to the unit's minor digits. */
 export function rollupExpenseMonthRowsByYear(
-  rows: readonly FlowCcExpenseMonthRow[]
+  rows: readonly FlowCcExpenseMonthRow[],
+  unit: GastosUnit
 ): FlowCcExpenseMonthRow[] {
   const byYear = new Map<
     string,
-    Omit<FlowCcExpenseMonthRow, "gastos_acumulado_clp" | "gastos_real_acumulado_clp">
+    Omit<FlowCcExpenseMonthRow, "gastos_acumulado" | "gastos_real_acumulado">
   >();
   for (const row of rows) {
     const year = row.period_month.slice(0, 4);
@@ -397,40 +400,47 @@ export function rollupExpenseMonthRowsByYear(
       byYear.set(year, {
         period_month: `${year}-12`,
         as_of_date: `${year}-12-31`,
-        gastos_mes_clp: row.gastos_mes_clp,
-        gastos_real_mes_clp: row.gastos_real_mes_clp,
-        abonos_mes_clp: row.abonos_mes_clp,
+        gastos_mes: row.gastos_mes,
+        gastos_real_mes: row.gastos_real_mes,
+        abonos_mes: row.abonos_mes,
         line_count: row.line_count,
       });
       continue;
     }
-    cur.gastos_mes_clp += row.gastos_mes_clp;
-    cur.gastos_real_mes_clp += row.gastos_real_mes_clp;
-    cur.abonos_mes_clp += row.abonos_mes_clp;
+    cur.gastos_mes += row.gastos_mes;
+    cur.gastos_real_mes += row.gastos_real_mes;
+    cur.abonos_mes += row.abonos_mes;
     cur.line_count += row.line_count;
   }
   let runningGastos = 0;
   let runningGastosReal = 0;
   return [...byYear.keys()].sort().map((year) => {
     const row = byYear.get(year)!;
-    runningGastos += row.gastos_mes_clp;
-    runningGastosReal += row.gastos_real_mes_clp;
+    runningGastos += row.gastos_mes;
+    runningGastosReal += row.gastos_real_mes;
     return {
       ...row,
-      gastos_acumulado_clp: Math.round(runningGastos),
-      gastos_real_acumulado_clp: Math.round(runningGastosReal),
+      gastos_mes: roundToCurrency(row.gastos_mes, unit),
+      gastos_real_mes: roundToCurrency(row.gastos_real_mes, unit),
+      abonos_mes: roundToCurrency(row.abonos_mes, unit),
+      gastos_acumulado: roundToCurrency(runningGastos, unit),
+      gastos_real_acumulado: roundToCurrency(runningGastosReal, unit),
     };
   });
 }
 
 /** Sum of the visible stacks; the negative amortization segment counts as positive spend. */
-function chartPointTotal(point: FlowCcExpenseCategoryChartPoint, categorySlugs: readonly string[]): number {
+function chartPointTotal(
+  point: FlowCcExpenseCategoryChartPoint,
+  categorySlugs: readonly string[],
+  unit: GastosUnit
+): number {
   let total = 0;
   for (const slug of categorySlugs) {
     const v = point[slug];
     if (typeof v === "number" && Number.isFinite(v)) total += v < 0 ? -v : v;
   }
-  return Math.round(total);
+  return roundToCurrency(total, unit);
 }
 
 /**
@@ -447,13 +457,14 @@ function chartPointTotal(point: FlowCcExpenseCategoryChartPoint, categorySlugs: 
 export function expenseYearMonthlyAverages(
   monthlyPoints: readonly FlowCcExpenseCategoryChartPoint[],
   categorySlugs: readonly string[],
-  todayYm: string
+  todayYm: string,
+  unit: GastosUnit
 ): Record<string, ExpenseYearMonthlyAverage> {
   const lastCompleteYm = addCalendarMonths(todayYm, -1);
   const totalByYm = new Map<string, number>();
   for (const p of monthlyPoints) {
     const ym = p.as_of_date.slice(0, 7);
-    totalByYm.set(ym, (totalByYm.get(ym) ?? 0) + chartPointTotal(p, categorySlugs));
+    totalByYm.set(ym, (totalByYm.get(ym) ?? 0) + chartPointTotal(p, categorySlugs, unit));
   }
   let firstYm: string | null = null;
   for (const [ym, total] of totalByYm) {
@@ -471,7 +482,7 @@ export function expenseYearMonthlyAverages(
       sum += totalByYm.get(ym) ?? 0;
       months++;
     }
-    out[String(year)] = { from_ym: fromYm, through_ym: throughYm, avg: Math.round(sum / months) };
+    out[String(year)] = { from_ym: fromYm, through_ym: throughYm, avg: roundToCurrency(sum / months, unit) };
   }
   return out;
 }
@@ -517,35 +528,36 @@ export function buildFlowsExpensesGastosViews(
         total: table.total,
         total_real: table.total_real,
         by_month,
-        by_year: rollupExpenseMonthRowsByYear([...by_month].reverse()).reverse(),
+        by_year: rollupExpenseMonthRowsByYear([...by_month].reverse(), unit).reverse(),
         chart_monthly_by_category: chartPoints,
         ...(chart !== table
           ? { chart_sort_monthly_by_category: throughChartEnd(table.chart_monthly_by_category) }
           : {}),
-        year_averages: expenseYearMonthlyAverages(chartPoints, slugs, todayYm),
+        year_averages: expenseYearMonthlyAverages(chartPoints, slugs, todayYm, unit),
       };
     }
   }
   return { unit, excluded_big_groups: [...excludedBigGroupSlugs].sort(), views };
 }
 
-/** A big group's spend (pesos, whatever the display unit) and how many purchases it holds. */
+/** A big group's spend in the display unit and how many purchases it holds. */
 export type BigGroupUsage = {
   slug: string;
   label: string;
-  total_clp: number;
+  total: number;
   purchase_count: number;
 };
 
 /**
- * The big groups that hold spend, per installment mode (2026-10-28): Σ pesos of the lines that
+ * The big groups that hold spend, per installment mode (2026-10-28): Σ of the lines (in the unit) that
  * count toward gasto del mes in the mode, purchases counted by (account, purchase key), sorted by
  * label. The Expenses page's «Grandes gastos» section and its chart filter pick it; they used to
  * sum the lines on the client.
  */
 export function bigGroupUsageByMode(
   lines: readonly GastosLine[],
-  catalog: readonly Pick<CcExpenseBigGroupRow, "slug" | "label">[]
+  catalog: readonly Pick<CcExpenseBigGroupRow, "slug" | "label">[],
+  unit: GastosUnit
 ): Record<CcInstallmentGastosMode, BigGroupUsage[]> {
   const labelBySlug = new Map(catalog.map((g) => [g.slug, g.label]));
   const usageFor = (mode: CcInstallmentGastosMode): BigGroupUsage[] => {
@@ -554,7 +566,7 @@ export function bigGroupUsageByMode(
     for (const ln of lines) {
       const slug = ln.big_group_slug;
       if (!slug || !countsTowardGastosMes(ln, mode)) continue;
-      totals.set(slug, (totals.get(slug) ?? 0) + expenseLineGastosAmount(ln, "clp"));
+      totals.set(slug, (totals.get(slug) ?? 0) + expenseLineGastosAmount(ln, unit));
       const set = purchases.get(slug) ?? new Set<string>();
       set.add(`${ln.account_id}|${ln.purchase_key}`);
       purchases.set(slug, set);
@@ -565,7 +577,7 @@ export function bigGroupUsageByMode(
       .map((slug) => ({
         slug,
         label: label(slug),
-        total_clp: Math.round(totals.get(slug) ?? 0),
+        total: roundToCurrency(totals.get(slug) ?? 0, unit),
         purchase_count: purchases.get(slug)?.size ?? 0,
       }));
   };
@@ -596,6 +608,6 @@ export function buildFlowsExpensesGastosPayload(
       excludedBigGroupSlugs,
       chileCalendarTodayYmd().slice(0, 7)
     ),
-    big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups()),
+    big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups(), unit),
   };
 }

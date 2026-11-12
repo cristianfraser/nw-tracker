@@ -62,7 +62,7 @@ export function CreditCardExpenseMonthModalSections({
   bucket: CreditCardExpenseMonthBucket;
   categories: readonly CcExpenseCategoryDto[];
   bigGroups?: readonly CcExpenseBigGroupDto[];
-  /** When set, shown next to the abonos section title (e.g. month row abonos_mes_clp). */
+  /** When set, shown next to the abonos section title (e.g. month row abonos_mes). */
   abonosSumClp?: number;
   enableCheckingNotes?: boolean;
 }) {

@@ -130,8 +130,8 @@ export function ExpensesPage() {
     let total = 0;
     let total_real = 0;
     for (const r of clipPointsToTimeRange(view.by_month, timeRange)) {
-      total += r.gastos_mes_clp;
-      total_real += r.gastos_real_mes_clp;
+      total += r.gastos_mes;
+      total_real += r.gastos_real_mes;
     }
     return { total, total_real };
   }, [view, timeRange]);

@@ -148,8 +148,8 @@ describe("aggregateGastosFromLines", () => {
     });
     const agg = aggregateGastosFromLines([purchase, refund], ["fun"], "split");
     const april = agg.by_month.find((m) => m.period_month === "2025-04")!;
-    expect(april.gastos_mes_clp).toBe(70_000);
-    expect(april.abonos_mes_clp).toBe(0);
+    expect(april.gastos_mes).toBe(70_000);
+    expect(april.abonos_mes).toBe(0);
     expect(agg.chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"))?.fun).toBe(70_000);
   });
 
@@ -171,8 +171,8 @@ describe("aggregateGastosFromLines", () => {
     const agg = aggregateGastosFromLines(lines, ["supermarket", "fun"], "split");
     const april = agg.by_month.find((m) => m.period_month === "2025-04")!;
     // 100.000 − 37.500 (refund) − 2.000 (small unmatched nota); the cine and its nota net out.
-    expect(april.gastos_mes_clp).toBe(100_000 - 37_500 - 2_000);
-    expect(april.abonos_mes_clp).toBe(-500_000 - 60_000 - 70_000);
+    expect(april.gastos_mes).toBe(100_000 - 37_500 - 2_000);
+    expect(april.abonos_mes).toBe(-500_000 - 60_000 - 70_000);
     const stack = agg.chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"))!;
     expect(stack.supermarket).toBe(62_500);
     expect(stack.fun).toBe(-2_000);
@@ -210,13 +210,13 @@ describe("aggregateGastosFromLines", () => {
     ];
 
     const split = aggregateGastosFromLines(lines, ["unclassified"], "split");
-    expect(split.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes_clp).toBe(0);
-    expect(split.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes_clp).toBe(40_000);
-    expect(split.by_month.find((m) => m.period_month === "2025-06")?.gastos_mes_clp).toBe(40_000);
+    expect(split.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes).toBe(0);
+    expect(split.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes).toBe(40_000);
+    expect(split.by_month.find((m) => m.period_month === "2025-06")?.gastos_mes).toBe(40_000);
 
     const total = aggregateGastosFromLines(lines, ["unclassified"], "total");
-    expect(total.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes_clp).toBe(120_000);
-    expect(total.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes_clp).toBe(0);
+    expect(total.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes).toBe(120_000);
+    expect(total.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes).toBe(0);
   });
 
   it("chart category stacks sum to gasto del mes for each month", () => {
@@ -247,7 +247,7 @@ describe("aggregateGastosFromLines", () => {
     const slugs = ["food", "supermarket", "transport"];
     const { by_month, chart_monthly_by_category } = aggregateGastosFromLines(lines, slugs, "split");
     const row = by_month.find((m) => m.period_month === "2025-04");
-    expect(row?.gastos_mes_clp).toBe(35_000);
+    expect(row?.gastos_mes).toBe(35_000);
     const point = chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"));
     const stackSum = slugs.reduce((s, slug) => s + Number(point?.[slug] ?? 0), 0);
     expect(stackSum).toBe(35_000);
@@ -278,7 +278,7 @@ describe("aggregateGastosFromLines", () => {
       excluded
     );
     const row = by_month.find((m) => m.period_month === "2025-04");
-    expect(row?.gastos_mes_clp).toBe(30_000);
+    expect(row?.gastos_mes).toBe(30_000);
     const point = chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"));
     expect(point?.food).toBe(0);
     expect(point?.fun).toBe(20_000);
@@ -335,7 +335,7 @@ describe("aggregateGastosFromLines", () => {
       const agg = aggregateGastosFromLines(lines, ["bills"], mode);
       expect(agg.total).toBe(342_489);
       expect(agg.total_real).toBe(753_333);
-      expect(agg.total).toBe(agg.by_month.reduce((sum, m) => sum + m.gastos_mes_clp, 0));
+      expect(agg.total).toBe(agg.by_month.reduce((sum, m) => sum + m.gastos_mes, 0));
     }
   });
 });
@@ -346,7 +346,7 @@ describe("aggregateGastosFromLines — linked mortgage deposits", () => {
       [baseLine()],
       [BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]
     );
-    expect(by_month[0]?.gastos_mes_clp).toBe(400_000);
+    expect(by_month[0]?.gastos_mes).toBe(400_000);
     expect(chart_monthly_by_category[0]?.[BILLS_CC_EXPENSE_SLUG]).toBe(400_000);
     expect(chart_monthly_by_category[0]?.[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(
       -600_000
@@ -384,8 +384,8 @@ describe("aggregateGastosFromLines — linked mortgage deposits", () => {
       [line],
       [BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]
     );
-    expect(by_month[0]?.gastos_mes_clp).toBe(356_757);
-    expect(by_month[0]?.gastos_real_mes_clp).toBe(3_212_395);
+    expect(by_month[0]?.gastos_mes).toBe(356_757);
+    expect(by_month[0]?.gastos_real_mes).toBe(3_212_395);
     const pt = chart_monthly_by_category[0]!;
     expect(pt[BILLS_CC_EXPENSE_SLUG]).toBe(356_757);
     expect(pt[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-2_855_638);
@@ -406,7 +406,7 @@ describe("aggregateGastosFromLines — linked mortgage deposits", () => {
       "usd"
     );
     // Carrying 4xx.xxx/1.000.000 of the payment → US$xxx; amortización → −US$600.
-    expect(by_month[0]?.gastos_mes_clp).toBe(400);
+    expect(by_month[0]?.gastos_mes).toBe(400);
     expect(chart_monthly_by_category[0]?.[BILLS_CC_EXPENSE_SLUG]).toBe(400);
     expect(chart_monthly_by_category[0]?.[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-600);
   });
@@ -429,7 +429,7 @@ function pt(ym: string, food: number, bills = 0): FlowCcExpenseCategoryChartPoin
       pt("2026-09", 9_999), // current month: left out
       pt("2026-11", 5_000), // projected cuota month: left out
     ];
-    const avgs = expenseYearMonthlyAverages(points, SLUGS, "2026-09");
+    const avgs = expenseYearMonthlyAverages(points, SLUGS, "2026-09", "clp");
     // 2025: 420 over 12 months (the months with no points count as 0).
     expect(avgs["2025"]).toEqual({ from_ym: "2025-01", through_ym: "2025-12", avg: 35 });
     // 2026: 800 over Jan–Aug.
@@ -438,12 +438,12 @@ function pt(ym: string, food: number, bills = 0): FlowCcExpenseCategoryChartPoin
   });
 
   it("starts the first year at its first month with spend", () => {
-    const avgs = expenseYearMonthlyAverages([pt("2024-10", 0), pt("2024-11", 300), pt("2024-12", 100)], SLUGS, "2025-03");
+    const avgs = expenseYearMonthlyAverages([pt("2024-10", 0), pt("2024-11", 300), pt("2024-12", 100)], SLUGS, "2025-03", "clp");
     expect(avgs["2024"]).toEqual({ from_ym: "2024-11", through_ym: "2024-12", avg: 200 });
   });
 
   it("has no current-year entry in January (no complete month yet)", () => {
-    const avgs = expenseYearMonthlyAverages([pt("2025-06", 100), pt("2026-01", 500)], SLUGS, "2026-01");
+    const avgs = expenseYearMonthlyAverages([pt("2025-06", 100), pt("2026-01", 500)], SLUGS, "2026-01", "clp");
     expect(Object.keys(avgs)).toEqual(["2025"]);
   });
 });
@@ -487,7 +487,7 @@ describe("buildFlowsExpensesGastosViews", () => {
     const total = views[gastosViewKey("total", "category")]!;
     expect(total.by_month[0]!.period_month).toBe("2025-11");
     expect(total.chart_monthly_by_category.at(-1)!.as_of_date).toBe("2026-01-31");
-    expect(total.by_year.map((r) => [r.period_month, r.gastos_mes_clp])).toEqual([["2025-12", 130_000]]);
+    expect(total.by_year.map((r) => [r.period_month, r.gastos_mes])).toEqual([["2025-12", 130_000]]);
   });
 
   it("leaves excluded big groups out of the chart only, and sends the unfiltered stacks for ordering", () => {
@@ -498,7 +498,7 @@ describe("buildFlowsExpensesGastosViews", () => {
     const nov = (pts: FlowCcExpenseCategoryChartPoint[]) => pts.find((p) => p.as_of_date.startsWith("2025-11"))!;
     expect(nov(v.chart_monthly_by_category).bills).toBe(0);
     expect(nov(v.chart_sort_monthly_by_category!).bills).toBe(20_000);
-    expect(v.by_month.find((r) => r.period_month === "2025-11")!.gastos_mes_clp).toBe(20_000);
+    expect(v.by_month.find((r) => r.period_month === "2025-11")!.gastos_mes).toBe(20_000);
   });
 });
 
@@ -516,7 +516,7 @@ describe("buildFlowsExpensesGastosPayload — pre-tax deductions", () => {
   });
   const octGastos = (includePreTax: boolean) =>
     buildFlowsExpensesGastosPayload("clp", new Set(), includePreTax, [card, payslip])
-      .views[gastosViewKey("split", "subcategory")]!.by_month.find((r) => r.period_month === "2025-10")!.gastos_mes_clp;
+      .views[gastosViewKey("split", "subcategory")]!.by_month.find((r) => r.period_month === "2025-10")!.gastos_mes;
 
   it("tracks spending from net pay: payslip deductions only when asked", () => {
     expect(octGastos(false)).toBe(10_000);
@@ -570,14 +570,14 @@ describe("bigGroupUsageByMode", () => {
     const usage = bigGroupUsageByMode(lines, [
       { slug: "trip", label: "Viaje" },
       { slug: "boda", label: "Boda" },
-    ]);
+    ], "clp");
     expect(usage.split).toEqual([
-      { slug: "boda", label: "Boda", total_clp: 300, purchase_count: 1 },
-      { slug: "trip", label: "Viaje", total_clp: 1500, purchase_count: 1 },
+      { slug: "boda", label: "Boda", total: 300, purchase_count: 1 },
+      { slug: "trip", label: "Viaje", total: 1500, purchase_count: 1 },
     ]);
     expect(usage.total).toEqual([
-      { slug: "boda", label: "Boda", total_clp: 900, purchase_count: 1 },
-      { slug: "trip", label: "Viaje", total_clp: 1500, purchase_count: 1 },
+      { slug: "boda", label: "Boda", total: 900, purchase_count: 1 },
+      { slug: "trip", label: "Viaje", total: 1500, purchase_count: 1 },
     ]);
   });
 });

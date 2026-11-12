@@ -18,7 +18,7 @@ import type { TsUnit } from "./rates.js";
 export type PeriodReturnKey = "d1" | "w1" | "mtd" | "ytd" | "y1" | "y3" | "y5" | "total";
 
 // The return rules live in the P/L kernel; re-exported for the readers that still import them here.
-export { ZERO_CLOSE_EPS, endChargedFlow, flowAdjustedPct, groupStartFrameFlow, zeroCloseEps } from "./perfKernel.js";
+export { endChargedFlow, flowAdjustedPct, groupStartFrameFlow, zeroCloseEps } from "./perfKernel.js";
 import { compound } from "./perfKernel.js";
 
 export const PERIOD_RETURN_ORDER: readonly PeriodReturnKey[] = [

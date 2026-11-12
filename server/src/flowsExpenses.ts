@@ -404,39 +404,22 @@ export type FlowCcExpenseLineRowDraft = Omit<
 };
 
 export type FlowCcExpenseMonthRow = {
-
   period_month: string;
-
   as_of_date: string;
-
-  /** Sum of positive charges excluding `no_cuenta` and `deposits`. */
-
-  gastos_mes_clp: number;
-
+  /** Sum of positive charges excluding `no_cuenta` and `deposits`, in the view's unit. */
+  gastos_mes: number;
   /** All positive charges in the month (includes excluded categories). */
-
-  gastos_real_mes_clp: number;
-
+  gastos_real_mes: number;
   /** Sum of negative line amounts (abonos, MONTO CANCELADO, etc.). */
-
-  abonos_mes_clp: number;
-
-  gastos_acumulado_clp: number;
-
-  gastos_real_acumulado_clp: number;
-
+  abonos_mes: number;
+  gastos_acumulado: number;
+  gastos_real_acumulado: number;
   line_count: number;
-
 };
 
-
-
 export type FlowCcExpenseChartPoint = {
-
   as_of_date: string;
-
-  gastos_clp: number;
-
+  gastos: number;
 };
 
 

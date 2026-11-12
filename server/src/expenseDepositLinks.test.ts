@@ -121,8 +121,8 @@ describe("expense deposit link aggregate split", () => {
       chartSlugs
     );
 
-    expect(by_month[0]?.gastos_mes_clp).toBe(400_000);
-    expect(by_month[0]?.gastos_real_mes_clp).toBe(1_000_000);
+    expect(by_month[0]?.gastos_mes).toBe(400_000);
+    expect(by_month[0]?.gastos_real_mes).toBe(1_000_000);
     const pt = chart_monthly_by_category[0]!;
     expect(pt[BILLS_CC_EXPENSE_SLUG]).toBe(400_000);
     expect(pt[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-600_000);
@@ -135,7 +135,7 @@ describe("expense deposit link aggregate split", () => {
       [line],
       [BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]
     );
-    expect(by_month[0]?.gastos_mes_clp).toBe(0);
+    expect(by_month[0]?.gastos_mes).toBe(0);
     expect(chart_monthly_by_category[0]?.[BILLS_CC_EXPENSE_SLUG]).toBe(0);
   });
 
@@ -173,8 +173,8 @@ describe("expense deposit link aggregate split", () => {
       [line],
       [BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]
     );
-    expect(by_month[0]?.gastos_mes_clp).toBe(356_757);
-    expect(by_month[0]?.gastos_real_mes_clp).toBe(3_212_395);
+    expect(by_month[0]?.gastos_mes).toBe(356_757);
+    expect(by_month[0]?.gastos_real_mes).toBe(3_212_395);
     const pt = chart_monthly_by_category[0]!;
     expect(pt[BILLS_CC_EXPENSE_SLUG]).toBe(356_757);
     expect(pt[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-2_855_638);
@@ -214,7 +214,7 @@ describe("cuota 4 Jun 2024 MUTUARIA on card 4141", () => {
       [line],
       [BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]
     );
-    expect(by_month[0]?.gastos_mes_clp).toBe(273_619);
+    expect(by_month[0]?.gastos_mes).toBe(273_619);
     const pt = chart_monthly_by_category[0]!;
     expect(pt[BILLS_CC_EXPENSE_SLUG]).toBe(273_619);
     expect(pt[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-926_381);

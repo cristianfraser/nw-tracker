@@ -125,7 +125,7 @@ describe("manual deposits-category assertions", () => {
     expect(link?.deposit_movement_id).toBe(depositId);
     expect(link?.link_source).toBe("auto");
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const depositRow = payload.rows.find((r) => r.movement_id === depositId);
     expect(depositRow?.status).toBe("linked");
 
@@ -150,7 +150,7 @@ describe("manual deposits-category assertions", () => {
     const link = selectDepositLinks("purchase_key = ?", purchaseKey)[0];
     expect(link).toBeUndefined();
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const assertion = payload.manual_assertions.find((a) => a.purchase_key === purchaseKey);
     expect(assertion?.status).toBe("asserted_unmatched");
     expect(assertion?.candidate_count).toBe(2);
@@ -172,7 +172,7 @@ describe("manual deposits-category assertions", () => {
 
     syncExpenseLinksNow();
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const assertion = payload.manual_assertions.find((a) => a.purchase_key === purchaseKey);
     expect(assertion?.status).toBe("asserted_unmatched");
     expect(assertion?.candidate_count).toBe(0);
@@ -192,7 +192,7 @@ describe("manual deposits-category assertions", () => {
 
     syncExpenseLinksNow();
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const depositRow = payload.rows.find((r) => r.movement_id === depositId);
     expect(depositRow?.status).toBe("linked");
 

@@ -503,7 +503,12 @@ function workEarningPayDay(row: FlowWorkEarningRow): string {
 function workEarningInUnit(row: FlowWorkEarningRow, unit: string): FlowWorkEarningUnitRow {
   const day = workEarningPayDay(row);
   const clp = Math.round(row.liquido_clp);
-  const liquido = flowLegsInUnit({ clp, usd: row.liquido_usd ?? clpToUsdAtDate(clp, day) }, day, unit);
+  // A dollar contract's net pay is its own dollars (any other unit converts them, never their pesos).
+  const liquido = flowLegsInUnit(
+    { clp, usd: row.liquido_usd ?? clpToUsdAtDate(clp, day), native: row.liquido_usd != null ? "usd" : "clp" },
+    day,
+    unit
+  );
   const linked_amount =
     row.linked_amount_clp == null
       ? null

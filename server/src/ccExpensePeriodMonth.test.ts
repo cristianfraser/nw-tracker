@@ -143,15 +143,15 @@ describe("ccExpensePeriodMonth", () => {
     const lines = [cuota1, cuota2, total];
 
     const split = aggregateGastosFromLines(lines, ["unclassified"], "split");
-    expect(split.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes_clp).toBe(0);
-    expect(split.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes_clp).toBe(40_000);
-    expect(split.by_month.find((m) => m.period_month === "2025-05")?.gastos_mes_clp).toBe(40_000);
+    expect(split.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes).toBe(0);
+    expect(split.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes).toBe(40_000);
+    expect(split.by_month.find((m) => m.period_month === "2025-05")?.gastos_mes).toBe(40_000);
 
     const totalMode = aggregateGastosFromLines(lines, ["unclassified"], "total");
-    expect(totalMode.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes_clp).toBe(
+    expect(totalMode.by_month.find((m) => m.period_month === "2025-03")?.gastos_mes).toBe(
       120_000
     );
-    expect(totalMode.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes_clp).toBe(0);
+    expect(totalMode.by_month.find((m) => m.period_month === "2025-04")?.gastos_mes).toBe(0);
   });
 
   it("attributes one-shot and checking gastos to purchase month only", () => {
@@ -180,8 +180,8 @@ describe("ccExpensePeriodMonth", () => {
     const mar = by_month.find((m) => m.period_month === "2024-03");
     expect(apr?.line_count).toBe(1);
     expect(mar?.line_count).toBe(1);
-    expect(apr?.gastos_mes_clp).toBe(1_000);
-    expect(mar?.gastos_mes_clp).toBe(3_000);
+    expect(apr?.gastos_mes).toBe(1_000);
+    expect(mar?.gastos_mes).toBe(3_000);
   });
 
   it("one-shot purchases bucket by their real expense month", () => {
@@ -201,8 +201,8 @@ describe("ccExpensePeriodMonth", () => {
     expect(purchaseModalLines([line], "2025-01")).toHaveLength(0);
 
     const { by_month } = aggregateGastosFromLines([line], ["bills"]);
-    expect(by_month.find((m) => m.period_month === "2025-02")?.gastos_mes_clp).toBe(3_071_622);
-    expect(by_month.find((m) => m.period_month === "2025-01")?.gastos_mes_clp ?? 0).toBe(0);
+    expect(by_month.find((m) => m.period_month === "2025-02")?.gastos_mes).toBe(3_071_622);
+    expect(by_month.find((m) => m.period_month === "2025-01")?.gastos_mes ?? 0).toBe(0);
   });
 });
 

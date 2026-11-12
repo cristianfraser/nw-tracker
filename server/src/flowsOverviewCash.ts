@@ -22,8 +22,7 @@ import { accountValueSide } from "./accountMarkClpAtYmd.js";
 import { accountValueCurrency } from "./accountValue.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
-import { convertFlow } from "./rates.js";
+import { convertFlow, type CurrencyCode } from "./rates.js";
 import { convertValue, pastValueRateLookup } from "./valueConvert.js";
 import type { GastosUnit } from "./flowsExpensesGastos.js";
 
@@ -118,10 +117,9 @@ export function checkingCashByDay(
 export type CardPaymentFromChecking = {
   movement_id: number;
   occurred_on: string;
-  /** Pesos that left (+) or entered (−) checking; a dollar leg at that day's rate. */
-  amount_clp: number;
-  /** The dollars when the checking leg is the dollar account; null for a peso leg. */
-  amount_usd: number | null;
+  /** What left (+) or entered (−) checking, in the checking leg's own currency. */
+  amount: number;
+  currency: CurrencyCode;
 };
 
 /** Every transfer between a checking account and a card master, signed from checking's side. */
@@ -155,31 +153,16 @@ export function loadCardPaymentsFromChecking(
     else continue;
     // The from-leg carries the checking side's money for a payment; for a top-up (card → checking)
     // the card's charge equals what checking received in the same currency.
-    if (r.currency === "clp") {
-      out.push({ movement_id: r.id, occurred_on: r.occurred_on, amount_clp: sign * r.amount, amount_usd: null });
-    } else if (r.currency === "usd") {
-      const fx = fxRowOnOrBefore(r.occurred_on);
-      if (!fx || !(fx.clp_per_usd > 0)) {
-        throw new Error(`card payment ${r.id}: no USD rate on or before ${r.occurred_on}`);
-      }
-      out.push({
-        movement_id: r.id,
-        occurred_on: r.occurred_on,
-        amount_clp: sign * r.amount * fx.clp_per_usd,
-        amount_usd: sign * r.amount,
-      });
-    } else {
-      throw new Error(`card payment ${r.id}: unexpected currency ${r.currency}`);
-    }
+    out.push({ movement_id: r.id, occurred_on: r.occurred_on, amount: sign * r.amount, currency: r.currency });
   }
   return out;
 }
 
 /**
- * A card payment in the unit: a FLOW, so its dollars when the leg is in dollars, else its pesos
- * at its own day's flow rate (`convertFlow`: the buy rate, as every deposit and flow reader).
+ * A card payment in the unit: a FLOW, so its own amount when the leg is in the unit, else that
+ * amount at its own day's flow rate (`convertFlow`: pesos to dollars at the buy rate, as every
+ * deposit and flow reader; any other pair at the day's mid). A missing rate throws.
  */
 export function cardPaymentInUnit(p: CardPaymentFromChecking, unit: GastosUnit): number {
-  if (unit === "usd" && p.amount_usd != null) return p.amount_usd;
-  return convertFlow(p.amount_clp, "clp", unit, p.occurred_on);
+  return convertFlow(p.amount, p.currency, unit, p.occurred_on);
 }

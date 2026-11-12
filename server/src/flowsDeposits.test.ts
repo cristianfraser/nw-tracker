@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  buildFlowsDepositsPayload,
+  buildFlowsDepositsResponse,
+  flowDepositRowsInUnit,
   flowsDepositsNetTotalByAccount,
   isPreTaxDepositRow,
   markPensionSwitchRows,
@@ -31,42 +32,42 @@ function insertCashLeaf(slug: string): number {
   return ensureChildAssetGroupId("cash_eqs__cash_savings", slug.slice(prefix.length), "Vitest cash leaf").id;
 }
 
-describe("buildFlowsDepositsPayload", () => {
-  it("net_total_clp matches sum of row amounts", () => {
-    const payload = buildFlowsDepositsPayload();
-    const rowSum = payload.rows.reduce((s, r) => s + r.amount_clp, 0);
-    expect(payload.net_total_clp).toBe(rowSum);
-    expect(payload.net_total_usd).toBe(payload.rows.reduce((s, r) => s + r.amount_usd, 0));
-    expect(Array.isArray(payload.fx_conversion_warnings)).toBe(true);
-  });
+describe("buildFlowsDepositsResponse", () => {
+  for (const unit of ["clp", "usd"] as const) {
+    it(`net_total matches sum of row amounts (${unit})`, () => {
+      const payload = buildFlowsDepositsResponse(unit);
+      expect(payload.net_total).toBe(payload.rows.reduce((s, r) => s + r.amount, 0));
+      expect(Array.isArray(payload.fx_conversion_warnings)).toBe(true);
+    });
 
-  it("by_category totals match filtered rows", () => {
-    const payload = buildFlowsDepositsPayload();
-    for (const cat of Object.keys(payload.by_category) as (keyof typeof payload.by_category)[]) {
-      const block = payload.by_category[cat];
-      const sum = block.rows.reduce((s, r) => s + r.amount_clp, 0);
-      expect(block.total_clp).toBe(sum);
-    }
-  });
+    it(`by_category totals match filtered rows (${unit})`, () => {
+      const payload = buildFlowsDepositsResponse(unit);
+      for (const cat of Object.keys(payload.by_category) as (keyof typeof payload.by_category)[]) {
+        const block = payload.by_category[cat];
+        expect(block.total).toBe(block.rows.reduce((s, r) => s + r.amount, 0));
+      }
+    });
 
-  it("day points carry each day's deposits by category and add up to the month points", () => {
-    const payload = buildFlowsDepositsPayload();
-    for (const [daily, monthly, amountOf] of [
-      [payload.chart_daily, payload.chart_monthly, (r: { amount_clp: number }) => r.amount_clp],
-      [payload.chart_daily_usd, payload.chart_monthly_usd, (r: { amount_usd: number }) => r.amount_usd],
-    ] as const) {
-      const days = daily.map((p) => p.as_of_date);
+    it(`day points carry each day's deposits by category and add up to the month points (${unit})`, () => {
+      const payload = buildFlowsDepositsResponse(unit);
+      const days = payload.chart_daily.map((p) => p.as_of_date);
       expect(days).toEqual([...new Set(payload.rows.map((r) => r.occurred_on.slice(0, 10)))].sort());
-      for (const p of daily) {
+      for (const p of payload.chart_daily) {
         const rows = payload.rows.filter((r) => r.occurred_on.slice(0, 10) === p.as_of_date);
-        expect(p.total).toBeCloseTo(rows.reduce((s, r) => s + amountOf(r as never), 0), 6);
+        expect(p.total).toBeCloseTo(rows.reduce((s, r) => s + r.amount, 0), 6);
         expect(p.total).toBeCloseTo(p.real_estate + p.cash + p.brokerage + p.inversiones, 6);
       }
-      for (const m of monthly) {
-        const inMonth = daily.filter((p) => p.as_of_date.slice(0, 7) === m.as_of_date.slice(0, 7));
+      for (const m of payload.chart_monthly) {
+        const inMonth = payload.chart_daily.filter((p) => p.as_of_date.slice(0, 7) === m.as_of_date.slice(0, 7));
         expect(inMonth.reduce((s, p) => s + p.total, 0)).toBeCloseTo(m.total, 6);
       }
-    }
+    });
+  }
+
+  it("a row's pesos are its value in pesos", () => {
+    const clp = flowDepositRowsInUnit("clp");
+    expect(clp.every((r) => r.amount === r.amount_clp)).toBe(true);
+    expect(flowDepositRowsInUnit("usd").map((r) => r.amount_clp)).toEqual(clp.map((r) => r.amount_clp));
   });
 });
 
@@ -96,8 +97,7 @@ describe("state contributions are P/L, not deposits", () => {
 
   it("excludes aporte_estatal_clp from deposit rows and per-account totals", () => {
     if (accountId == null) return;
-    const payload = buildFlowsDepositsPayload();
-    const rows = payload.rows.filter((r) => r.account_id === accountId);
+    const rows = flowDepositRowsInUnit("clp").filter((r) => r.account_id === accountId);
     expect(rows.map((r) => r.amount_clp)).toEqual([100_000]);
     expect(flowsDepositsNetTotalByAccount().get(accountId)).toBe(100_000);
   });
@@ -135,8 +135,8 @@ describe("forward-posted movements count today and move to their bank date when 
     // As-of-now like the balance (`displayLedgerCutoffYmd`): the giro is already money out.
     expect(flowsDepositsNetTotalByAccount().get(accountId)).toBe(-30_000);
     expect(totalDisplayDepositsClpForAccount(accountId)).toBe(-30_000);
-    const rows = buildFlowsDepositsPayload()
-      .rows.filter((r) => r.account_id === accountId)
+    const rows = flowDepositRowsInUnit("clp")
+      .filter((r) => r.account_id === accountId)
       .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
     expect(rows.map((r) => [r.occurred_on, r.amount_clp, r.posted_on ?? null])).toEqual([
       [fixtureYmd(100), 100_000, null],
@@ -152,10 +152,9 @@ describe("forward-posted movements count today and move to their bank date when 
 
 describe("flowsDepositsNetTotalByAccount", () => {
   it("sums match payload rows per account", () => {
-    const payload = buildFlowsDepositsPayload();
     const byAccount = flowsDepositsNetTotalByAccount();
     const fromRows = new Map<number, number>();
-    for (const r of payload.rows) {
+    for (const r of flowDepositRowsInUnit("clp")) {
       fromRows.set(r.account_id, (fromRows.get(r.account_id) ?? 0) + r.amount_clp);
     }
     // Unrounded amounts summed in a different order: equal up to float noise.
@@ -200,7 +199,7 @@ describe("markPensionSwitchRows", () => {
     account_name: `acct ${account_id}`,
     kind_slug,
     amount_clp,
-    amount_usd: amount_clp / 900,
+    amount: amount_clp / 900,
   });
 
   it("marks a fund switch's two legs pre-tax, so they cancel there", () => {

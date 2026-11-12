@@ -77,17 +77,17 @@ function GroupExpensesMonthMobileCard({
       <TableMobileCardSection>
         <TableMobileCardRow
           label={labels.gastos}
-          value={formatFlowMoney(row.gastos_mes_clp, displayUnit)}
+          value={formatFlowMoney(row.gastos_mes, displayUnit)}
         />
         <TableMobileCardRow
           label={labels.gastosReal}
           value={
-            <span className="muted">{formatFlowMoney(row.gastos_real_mes_clp, displayUnit)}</span>
+            <span className="muted">{formatFlowMoney(row.gastos_real_mes, displayUnit)}</span>
           }
         />
         <TableMobileCardRow
           label={labels.cumulative}
-          value={formatFlowMoney(row.gastos_acumulado_clp, displayUnit)}
+          value={formatFlowMoney(row.gastos_acumulado, displayUnit)}
         />
         <TableMobileCardRow
           label={labels.lineCount}
@@ -222,9 +222,9 @@ export function GroupExpensesMonthTable({
             <tr
               key={row.period_month}
               data-sort-month={row.as_of_date}
-              data-sort-gastos={row.gastos_mes_clp}
-              data-sort-gastos_real={row.gastos_real_mes_clp}
-              data-sort-cumulative={row.gastos_acumulado_clp}
+              data-sort-gastos={row.gastos_mes}
+              data-sort-gastos_real={row.gastos_real_mes}
+              data-sort-cumulative={row.gastos_acumulado}
               data-sort-lines={row.line_count}
             >
               <td className="mono desktop-only">
@@ -239,13 +239,13 @@ export function GroupExpensesMonthTable({
                 ) : null}
               </td>
               <td className="mono desktop-only">
-                {formatFlowMoney(row.gastos_mes_clp, displayUnit)}
+                {formatFlowMoney(row.gastos_mes, displayUnit)}
               </td>
               <td className="mono muted desktop-only">
-                {formatFlowMoney(row.gastos_real_mes_clp, displayUnit)}
+                {formatFlowMoney(row.gastos_real_mes, displayUnit)}
               </td>
               <td className="mono desktop-only">
-                {formatFlowMoney(row.gastos_acumulado_clp, displayUnit)}
+                {formatFlowMoney(row.gastos_acumulado, displayUnit)}
               </td>
               <td className="mono muted desktop-only">{row.line_count}</td>
               <td className="mobile-only">
@@ -288,15 +288,15 @@ export function GroupExpensesMonthTable({
                 <span className="mono">{selected.as_of_date}</span>
                 {" · "}
                 {t("expenses.creditCard.colMonthExpense")}:{" "}
-                {formatFlowMoney(selected.gastos_mes_clp, displayUnit)}
+                {formatFlowMoney(selected.gastos_mes, displayUnit)}
                 {" · "}
                 {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
-                {formatFlowMoney(selected.gastos_real_mes_clp, displayUnit)}
-                {selected.abonos_mes_clp !== 0 ? (
+                {formatFlowMoney(selected.gastos_real_mes, displayUnit)}
+                {selected.abonos_mes !== 0 ? (
                   <>
                     {" · "}
                     {t("expenses.creditCard.modalSectionAbonos")}:{" "}
-                    {formatFlowMoney(selected.abonos_mes_clp, displayUnit)}
+                    {formatFlowMoney(selected.abonos_mes, displayUnit)}
                   </>
                 ) : null}
               </>
@@ -307,7 +307,7 @@ export function GroupExpensesMonthTable({
             bucket={monthBucket}
             categories={categories}
             bigGroups={bigGroups}
-            abonosSumClp={selected?.abonos_mes_clp}
+            abonosSumClp={selected?.abonos_mes}
             enableCheckingNotes
           />
         </Modal>

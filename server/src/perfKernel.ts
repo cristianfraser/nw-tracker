@@ -1,7 +1,7 @@
 /**
  * The P/L kernel (docs/untangle-valuation-core.md, step 3): one place for the arithmetic every
  * period of every scope shares — a day of the daily series, a month row, a 1D/1W cell, a group
- * consolidation. Pure / db-free.
+ * consolidation. Pure but for the currencies table (each unit's smallest coin).
  *
  * - {@link periodPl}: P/L of one period from its value legs and its flow, by the side of the
  *   balance (an asset gains when it grows beyond its flows; a debt when it shrinks beyond them).
@@ -13,6 +13,7 @@
  * - {@link growthFactor}, {@link compound}, {@link runningGrowth}: chaining returns.
  */
 import type { TsUnit } from "./rates.js";
+import { currencySmallestCoin } from "./displayUnits.js";
 
 export type PerfSide = "asset" | "debt";
 
@@ -37,31 +38,23 @@ export function cardPeriodLegs(legs: { owedStart: number; owedEnd: number; cost:
 
 /**
  * The zero test of the return rules, one per unit: a value at or below the unit's smallest coin
- * (one peso, one US or euro cent, 0,0001 UF; a currency loaded later adds its coin here) is no capital. It decides whether a period ENDS AT ZERO and
+ * (`currencySmallestCoin`, from the currency's minor digits: one peso, one US or euro cent,
+ * 0,0001 UF; a currency loaded later brings its own) is no capital. It decides whether a period ENDS AT ZERO and
  * whether a capital base exists at all, on every grain — month rows, the dashboard, the daily
  * series, the 1D/1W cells. Until 2026-09-27 each caller passed its own eps (0.01 in either unit
  * for the monthly rows and the dashboard, 1e-9 for the daily series and 1D/1W), so an account
  * left holding a peso of dust after a withdrawal divided the day's fx move by that peso in USD
  * and read close to −100%, and a day that STARTED on dust read a return on a one-peso base.
  */
-export const ZERO_CLOSE_EPS: Readonly<Record<TsUnit, number>> = {
-  clp: 1,
-  usd: 0.01,
-  eur: 0.01,
-  uf: 0.0001,
-};
-
 export function zeroCloseEps(unit: TsUnit): number {
-  const eps = ZERO_CLOSE_EPS[unit];
-  if (eps == null) throw new Error(`zeroCloseEps: unknown unit ${JSON.stringify(unit)}`);
-  return eps;
+  return currencySmallestCoin(unit);
 }
 
 /**
  * Flow-adjusted return over any period — a month row, a day of the daily series, the 1D/1W
  * cells, the dashboard's day/month/year/total, an equity position's return on deposited:
  * nominal P/L over the capital at work. The default frame charges flows at the period START
- * (`denom = prior + netFlow`). Zero is the unit's coin ({@link ZERO_CLOSE_EPS}).
+ * (`denom = prior + netFlow`). Zero is the unit's coin ({@link zeroCloseEps}).
  *
  * A period that ENDS AT ZERO (`|close| ≤ coin`: a position sold off, a deposit matured, an
  * account emptied, dust left behind) was emptied by a withdrawal at its end, so it charges

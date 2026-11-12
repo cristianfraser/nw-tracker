@@ -68,10 +68,10 @@ export type FlowDepositRow = {
   account_name: string;
   /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …) — see accountBucketKindSlug. */
   kind_slug: string;
-  /** Unrounded, like every deposit amount — the client rounds for display. */
+  /** The event's pesos, unrounded (the pre-tax and pension switch rules read them; never on the wire). */
   amount_clp: number;
-  /** The event in USD at its own date's rate ({@link flowEventInUnit}). */
-  amount_usd: number;
+  /** The event in the rows' unit at its own date's rate ({@link flowEventInUnit}), unrounded. */
+  amount: number;
   /**
    * The mortgage carrying (interés + seguros) the property's dividendo deposit records, taken back
    * out (negative): it is a gasto, so the deposit counts the amortización only (the /flows/deposits
@@ -133,31 +133,6 @@ export type FlowDepositChartPoint = {
   total: number;
 };
 
-export type FlowDepositsPayload = {
-  rows: FlowDepositRow[];
-  /**
-   * Monthly only: a yearly chart rolls these up client-side AFTER cutting the months at its own
-   * Rango (a partial first year), so a pre-rolled yearly block would be clipped whole instead.
-   */
-  chart_monthly: FlowDepositChartPoint[];
-  chart_monthly_usd: FlowDepositChartPoint[];
-  /** Diario: one point per day carrying a deposit, oldest first (the chart densifies the rest). */
-  chart_daily: FlowDepositChartPoint[];
-  chart_daily_usd: FlowDepositChartPoint[];
-  net_total_clp: number;
-  net_total_usd: number;
-  /** AFP/AFC cotizaciones ({@link isPreTaxDepositRow}) and the rest: Σ = net total. */
-  pre_tax_total_clp: number;
-  pre_tax_total_usd: number;
-  post_tax_total_clp: number;
-  post_tax_total_usd: number;
-  fx_conversion_warnings: FxConversionWarning[];
-  by_category: Record<
-    DepositFlowCategory,
-    { rows: FlowDepositRow[]; total_clp: number; total_usd: number }
-  >;
-};
-
 export type DepositFlowAccountRow = {
   account_id: number;
   name: string;
@@ -202,7 +177,7 @@ function monthEndFromOccurredOn(occurredOn: string): string {
 }
 
 function flowsDepositsNetTotalsByAccount(
-  unit: "clp" | "usd",
+  unit: TsUnit,
   opts?: { period?: "month" | "year"; includeExcludedFromGroupTotals?: boolean }
 ): Map<number, number> {
   const accounts = listDepositFlowAccounts(opts?.includeExcludedFromGroupTotals ?? false);
@@ -294,33 +269,34 @@ export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
 }
 
 /**
- * @heavy Scans deposit-flow accounts and merges inflow events for charts + net totals.
- * `excludeCheckingAccounts` (the /flows/deposits page, 2026-10-27) leaves out the accounts under
- * Checking accounts: their events are cash moving in and out of the checking ledger, not deposits,
- * so the page's total is the flows overview's deposits. The dashboard keeps every account.
+ * @heavy The deposit rows of the deposit-flow accounts, each event in `unit` at its own day's rate
+ * (`flowEventInUnit`), newest first. `amount_clp` is the event's pesos (the pre-tax and pension
+ * switch rules read it). `excludeCheckingAccounts` (the /flows/deposits page, 2026-10-27) leaves
+ * out the accounts under Checking accounts: their events are cash moving in and out of the
+ * checking ledger, not deposits, so the page's total is the flows overview's deposits. The
+ * dashboard and the flows overview keep every account (the overview drops the checking rows
+ * itself, and takes the mortgage carrying out on its own).
+ *
+ * `withMortgageCarrying` adds the carrying as negative rows on the property (`mortgage_carrying`)
+ * so its deposits read amortización only — the flows overview's rule; then the total is the
+ * overview's deposits + deposits_pre_tax. Its events must pair one-to-one by deposit movement:
+ * the pesos (`clp`, which pair the events) and the unit's (`unit`).
  */
-export function buildFlowsDepositsPayload(opts?: {
-  excludeCheckingAccounts?: boolean;
-  /**
-   * The mortgage carrying per unit (`flowsMortgageCarrying.ts`), added as negative rows on the
-   * property (`mortgage_carrying`) so its deposits read amortización only — the flows overview's
-   * rule; then the total is the overview's deposits + deposits_pre_tax. The events must pair
-   * one-to-one by deposit movement.
-   */
-  withMortgageCarrying?: { clp: readonly MortgageCarryingEvent[]; usd: readonly MortgageCarryingEvent[] };
-}): FlowDepositsPayload {
-  clearFxConversionWarnings();
+export function flowDepositRowsInUnit(
+  unit: TsUnit,
+  opts?: {
+    excludeCheckingAccounts?: boolean;
+    withMortgageCarrying?: { clp: readonly MortgageCarryingEvent[]; unit: readonly MortgageCarryingEvent[] };
+  }
+): FlowDepositRow[] {
   const checking = opts?.excludeCheckingAccounts ? new Set(accountIdsUnderCheckingAccounts()) : null;
   const accounts = listDepositFlowAccounts(false).filter((a) => checking == null || !checking.has(a.account_id));
-  const ids = accounts.map((a) => a.account_id);
-  const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
-
+  const eventsByAccount = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
   const rows: FlowDepositRow[] = [];
   for (const acc of accounts) {
     const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
     if (!category) continue;
-    const events = eventsByAccount.get(acc.account_id) ?? [];
-    for (const e of events) {
+    for (const e of eventsByAccount.get(acc.account_id) ?? []) {
       if (e.amt === 0) continue;
       rows.push({
         occurred_on: e.occurred_on,
@@ -330,64 +306,30 @@ export function buildFlowsDepositsPayload(opts?: {
         account_name: acc.name,
         kind_slug: acc.category_slug,
         amount_clp: flowEventInUnit(e, "clp"),
-        amount_usd: flowEventInUnit(e, "usd"),
+        amount: flowEventInUnit(e, unit),
       });
     }
   }
   markPensionSwitchRows(rows);
-  if (opts?.withMortgageCarrying) {
-    rows.push(...mortgageCarryingRows({ clp: opts.withMortgageCarrying.clp, inUnit: opts.withMortgageCarrying.usd }, accounts));
-  }
+  if (opts?.withMortgageCarrying) rows.push(...mortgageCarryingRows(opts.withMortgageCarrying, accounts));
   rows.sort((a, b) => {
     const d = b.occurred_on.localeCompare(a.occurred_on);
     return d !== 0 ? d : a.account_name.localeCompare(b.account_name);
   });
-
-  const chart_monthly = aggregateDepositChartPoints(rows, "clp");
-  const chart_monthly_usd = aggregateDepositChartPoints(rows, "usd");
-  const chart_daily = aggregateDepositChartPoints(rows, "clp", "day");
-  const chart_daily_usd = aggregateDepositChartPoints(rows, "usd", "day");
-
-  const by_category = {} as FlowDepositsPayload["by_category"];
-  for (const cat of DEPOSIT_FLOW_CATEGORIES) {
-    const catRows = rows.filter((r) => r.category === cat);
-    by_category[cat] = {
-      rows: catRows,
-      total_clp: catRows.reduce((s, r) => s + r.amount_clp, 0),
-      total_usd: catRows.reduce((s, r) => s + r.amount_usd, 0),
-    };
-  }
-
-  const preTax = rows.filter(isPreTaxDepositRow);
-  const postTax = rows.filter((r) => !isPreTaxDepositRow(r));
-  return {
-    rows,
-    chart_monthly,
-    chart_monthly_usd,
-    chart_daily,
-    chart_daily_usd,
-    by_category,
-    net_total_clp: rows.reduce((s, r) => s + r.amount_clp, 0),
-    net_total_usd: rows.reduce((s, r) => s + r.amount_usd, 0),
-    pre_tax_total_clp: preTax.reduce((s, r) => s + r.amount_clp, 0),
-    pre_tax_total_usd: preTax.reduce((s, r) => s + r.amount_usd, 0),
-    post_tax_total_clp: postTax.reduce((s, r) => s + r.amount_clp, 0),
-    post_tax_total_usd: postTax.reduce((s, r) => s + r.amount_usd, 0),
-    fx_conversion_warnings: takeFxConversionWarnings(),
-  };
+  return rows;
 }
 
 /**
  * One negative row per carrying event, on the property account its deposit belongs to: its pesos
- * (`amount_clp`) and its value in the other unit asked for (`amount_usd`; the unit build renames it).
+ * (`amount_clp`) and its value in the rows' unit (`amount`).
  */
 function mortgageCarryingRows(
-  carrying: { clp: readonly MortgageCarryingEvent[]; inUnit: readonly MortgageCarryingEvent[] },
+  carrying: { clp: readonly MortgageCarryingEvent[]; unit: readonly MortgageCarryingEvent[] },
   accounts: readonly DepositFlowAccountRow[]
 ): FlowDepositRow[] {
-  const usdByDeposit = new Map<number, number>();
-  for (const e of carrying.inUnit) {
-    usdByDeposit.set(e.deposit_movement_id, (usdByDeposit.get(e.deposit_movement_id) ?? 0) + e.amount);
+  const inUnitByDeposit = new Map<number, number>();
+  for (const e of carrying.unit) {
+    inUnitByDeposit.set(e.deposit_movement_id, (inUnitByDeposit.get(e.deposit_movement_id) ?? 0) + e.amount);
   }
   const clpByDeposit = new Map<number, { occurred_on: string; amount: number }>();
   for (const e of carrying.clp) {
@@ -397,7 +339,7 @@ function mortgageCarryingRows(
     }
     clpByDeposit.set(e.deposit_movement_id, { occurred_on: e.occurred_on, amount: (cur?.amount ?? 0) + e.amount });
   }
-  if (usdByDeposit.size !== clpByDeposit.size || [...usdByDeposit.keys()].some((id) => !clpByDeposit.has(id))) {
+  if (inUnitByDeposit.size !== clpByDeposit.size || [...inUnitByDeposit.keys()].some((id) => !clpByDeposit.has(id))) {
     throw new Error("mortgage carrying: the CLP and the unit events do not cover the same deposits");
   }
   const byId = new Map(accounts.map((a) => [a.account_id, a]));
@@ -417,19 +359,11 @@ function mortgageCarryingRows(
       account_name: acc.name,
       kind_slug: acc.category_slug,
       amount_clp: -amount,
-      amount_usd: -usdByDeposit.get(depositId)!,
+      amount: -inUnitByDeposit.get(depositId)!,
       mortgage_carrying: true,
     });
   }
   return out;
-}
-
-function aggregateDepositChartPoints(
-  rows: readonly FlowDepositRow[],
-  unit: "clp" | "usd",
-  grain: "month" | "day" = "month"
-): FlowDepositChartPoint[] {
-  return aggregateDepositChartPointsBy(rows, (r) => (unit === "usd" ? r.amount_usd : r.amount_clp), grain);
 }
 
 function aggregateDepositChartPointsBy<R extends Pick<FlowDepositRow, "occurred_on" | "category">>(
@@ -478,16 +412,17 @@ export function inversionesBrokerageDepositsSeries(
 
 // --- one display unit (`GET /api/flows/deposits?unit=`) ----------------------------------------
 
-/** A deposit row in the payload's unit (`amount`); `amount_clp` stays inside the server for the pre-tax rules. */
-export type FlowDepositUnitRow = Omit<FlowDepositRow, "amount_clp" | "amount_usd"> & { amount: number };
-
-type DepositUnitRowInternal = FlowDepositUnitRow & { amount_clp: number };
+/** A deposit row on the wire: `amount` in the payload's unit; `amount_clp` stays inside the server. */
+export type FlowDepositUnitRow = Omit<FlowDepositRow, "amount_clp">;
 
 export type FlowDepositsUnitPayload = {
   /** The display unit every amount is in. */
   unit: string;
   rows: FlowDepositUnitRow[];
-  /** Monthly only (the chart rolls years up after its own Rango cut). */
+  /**
+   * Monthly only: a yearly chart rolls these up client-side AFTER cutting the months at its own
+   * Rango (a partial first year), so a pre-rolled yearly block would be clipped whole instead.
+   */
   chart_monthly: FlowDepositChartPoint[];
   /** Diario: one point per day carrying a deposit, oldest first (the chart densifies the rest). */
   chart_daily: FlowDepositChartPoint[];
@@ -500,57 +435,20 @@ export type FlowDepositsUnitPayload = {
 };
 
 /**
- * The /flows/deposits page in one display unit: the same rows as {@link buildFlowsDepositsPayload},
- * each event in `unit` at its own day's rate (`flowEventInUnit`), the mortgage carrying of that
- * unit taken back out of the property's deposits (`withMortgageCarrying`: the pesos, which pair
- * the events, and the unit's).
+ * The /flows/deposits page in one display unit: {@link flowDepositRowsInUnit}'s rows, their
+ * charts and totals.
  */
 export function buildFlowsDepositsResponse(
-  unit: string,
-  opts?: {
-    excludeCheckingAccounts?: boolean;
-    withMortgageCarrying?: { clp: readonly MortgageCarryingEvent[]; unit: readonly MortgageCarryingEvent[] };
-  }
+  unit: TsUnit,
+  opts?: Parameters<typeof flowDepositRowsInUnit>[1]
 ): FlowDepositsUnitPayload {
   clearFxConversionWarnings();
-  const checking = opts?.excludeCheckingAccounts ? new Set(accountIdsUnderCheckingAccounts()) : null;
-  const accounts = listDepositFlowAccounts(false).filter((a) => checking == null || !checking.has(a.account_id));
-  const eventsByAccount = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
-  const rows: DepositUnitRowInternal[] = [];
-  for (const acc of accounts) {
-    const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
-    if (!category) continue;
-    for (const e of eventsByAccount.get(acc.account_id) ?? []) {
-      if (e.amt === 0) continue;
-      rows.push({
-        occurred_on: e.occurred_on,
-        ...(e.posted_on ? { posted_on: e.posted_on } : {}),
-        category,
-        account_id: acc.account_id,
-        account_name: acc.name,
-        kind_slug: acc.category_slug,
-        amount_clp: flowEventInUnit(e, "clp"),
-        amount: flowEventInUnit(e, unit),
-      });
-    }
-  }
-  markPensionSwitchRows(rows);
-  if (opts?.withMortgageCarrying) {
-    const { clp, unit: inUnit } = opts.withMortgageCarrying;
-    for (const r of mortgageCarryingRows({ clp, inUnit }, accounts)) {
-      const { amount_usd, ...rest } = r;
-      rows.push({ ...rest, amount: amount_usd });
-    }
-  }
-  rows.sort((a, b) => {
-    const d = b.occurred_on.localeCompare(a.occurred_on);
-    return d !== 0 ? d : a.account_name.localeCompare(b.account_name);
-  });
-  const wire = (r: DepositUnitRowInternal): FlowDepositUnitRow => {
+  const rows = flowDepositRowsInUnit(unit, opts);
+  const wire = (r: FlowDepositRow): FlowDepositUnitRow => {
     const { amount_clp: _clp, ...rest } = r;
     return rest;
   };
-  const sum = (rs: readonly DepositUnitRowInternal[]) => rs.reduce((s, r) => s + r.amount, 0);
+  const sum = (rs: readonly FlowDepositRow[]) => rs.reduce((s, r) => s + r.amount, 0);
   const by_category = {} as FlowDepositsUnitPayload["by_category"];
   for (const cat of DEPOSIT_FLOW_CATEGORIES) {
     const catRows = rows.filter((r) => r.category === cat);

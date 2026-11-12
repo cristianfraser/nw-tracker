@@ -39,7 +39,7 @@ import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 import { buildFlowsCheckingIncomePayload, type FlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
-import { buildFlowsDepositsPayload, isPreTaxDepositRow, type FlowDepositRow } from "./flowsDeposits.js";
+import { flowDepositRowsInUnit, isPreTaxDepositRow, type FlowDepositRow } from "./flowsDeposits.js";
 import { requireFlowLegsInUnit } from "./flowLegs.js";
 import {
   cuotaPayByIsoByAccountBillingMonth,
@@ -77,6 +77,7 @@ import {
   sumMortgageCarryingBy,
 } from "./flowsMortgageCarrying.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import { roundToCurrency } from "./displayUnits.js";
 
 export type FlowsOverviewRow = {
   /** YYYY-MM (month rows) or YYYY-MM-DD (day rows). */
@@ -138,14 +139,16 @@ export type FlowsOverviewIncome = Pick<
   "lines" | "manual" | "work_earnings" | "income_kind_by_movement_id" | "payroll_period_by_movement_id"
 >;
 
-export type FlowsOverviewDepositRow = Pick<FlowDepositRow, "occurred_on" | "account_id" | "kind_slug" | "amount_clp"> & {
-  amount_usd: number | null;
-};
+/** A deposit row in the overview's unit (`amount`); its pesos (`amount_clp`) feed the pre-tax rule. */
+export type FlowsOverviewDepositRow = Pick<
+  FlowDepositRow,
+  "occurred_on" | "account_id" | "kind_slug" | "amount_clp" | "amount" | "pension_switch"
+>;
 
 /** The gastos view's month rows for the installment mode, in the unit. */
 export type FlowsOverviewGastosMonth = Pick<
   FlowCcExpenseMonthRow,
-  "period_month" | "gastos_mes_clp" | "gastos_real_mes_clp"
+  "period_month" | "gastos_mes" | "gastos_real_mes"
 >;
 
 type PlPoint = { as_of_date: string; total: number };
@@ -252,7 +255,6 @@ function mortgageCardAmortizationByKey(
 function addDeposits(
   rows: readonly FlowsOverviewDepositRow[],
   checkingAccountIds: ReadonlySet<number>,
-  unit: GastosUnit,
   touch: (key: string) => Bucket,
   keyOf: (occurredOn: string) => string
 ): void {
@@ -260,12 +262,7 @@ function addDeposits(
     // A checking account's own events (a card payment's cash leg, a wire it received) are cash,
     // not deposits: they are in the cash change.
     if (checkingAccountIds.has(row.account_id)) continue;
-    const amount = requireFlowLegsInUnit(
-      { clp: row.amount_clp, usd: row.amount_usd },
-      row.occurred_on,
-      unit,
-      `deposit of account ${row.account_id}`
-    );
+    const amount = row.amount;
     const bucket = touch(keyOf(row.occurred_on));
     if (isPreTaxDepositRow(row)) {
       bucket.depositsPreTax += amount;
@@ -321,7 +318,12 @@ function usdSyntheticSalaryRows(income: FlowsOverviewIncome) {
 }
 
 function workEarningSalaryAmount(row: FlowsOverviewIncome["work_earnings"][number], unit: GastosUnit, day: string): number {
-  return requireFlowLegsInUnit({ clp: Math.round(row.liquido_clp), usd: row.liquido_usd }, day, unit, `work earning ${row.id}`);
+  return requireFlowLegsInUnit(
+    { clp: Math.round(row.liquido_clp), usd: row.liquido_usd, native: "usd" },
+    day,
+    unit,
+    `work earning ${row.id}`
+  );
 }
 
 /** Every income leg as (bucket key, kind, amount), keyed by `keyOf` of its date / month. */
@@ -364,8 +366,8 @@ function eachIncomeEntry(
 type IncomeKindTotals = Record<IncomeKindBucket, number> & { line_count: number };
 
 /**
- * Income per bucket and kind: each kind is summed, then rounded (always at month grain — the
- * income page's month rows; only in CLP at day grain). `line_count` counts the legs.
+ * Income per bucket and kind: each kind is summed, then rounded to the unit's minor digits (the
+ * income page's month rows and day points). `line_count` counts the legs.
  */
 function incomeKindTotals(
   income: FlowsOverviewIncome,
@@ -382,7 +384,7 @@ function incomeKindTotals(
     b[kind] += amount;
     b.line_count += 1;
   });
-  const round = (v: number) => (grain === "month" || unit === "clp" ? Math.round(v) : v);
+  const round = (v: number) => roundToCurrency(v, unit);
   for (const b of byKey.values()) {
     b.salary = round(b.salary);
     b.severance = round(b.severance);
@@ -408,18 +410,18 @@ function incomeTotals(
   return out;
 }
 
-/** One income month row (amounts in the unit; the `_clp` names are the page's legacy DTO). */
+/** One income month row (amounts in the aggregates' unit, rounded to its minor digits). */
 export type FlowsIncomeMonthRow = {
   period_month: string;
   as_of_date: string;
-  salary_clp: number;
-  severance_clp: number;
-  parent_gift_clp: number;
-  rent_clp: number;
-  other_clp: number;
-  total_clp: number;
+  salary: number;
+  severance: number;
+  parent_gift: number;
+  rent: number;
+  other: number;
+  total: number;
   line_count: number;
-  cumulative_clp: number;
+  cumulative: number;
 };
 
 /** One income chart point (a month-end or a day). */
@@ -457,19 +459,19 @@ export function buildFlowsIncomeAggregates(
   let running = 0;
   for (const ym of monthsAsc) {
     const b = byMonth.get(ym)!;
-    const total = incomeKindSum(b);
+    const total = roundToCurrency(incomeKindSum(b), unit);
     running += total;
     months.push({
       period_month: ym,
       as_of_date: monthEndUtcYmd(ym),
-      salary_clp: b.salary,
-      severance_clp: b.severance,
-      parent_gift_clp: b.parent_gift,
-      rent_clp: b.rent,
-      other_clp: b.other,
-      total_clp: total,
+      salary: b.salary,
+      severance: b.severance,
+      parent_gift: b.parent_gift,
+      rent: b.rent,
+      other: b.other,
+      total,
       line_count: b.line_count,
-      cumulative_clp: Math.round(running),
+      cumulative: roundToCurrency(running, unit),
     });
   }
   const total = running;
@@ -483,14 +485,14 @@ export function buildFlowsIncomeAggregates(
       months.push({
         period_month: ym,
         as_of_date: monthEndUtcYmd(ym),
-        salary_clp: 0,
-        severance_clp: 0,
-        parent_gift_clp: 0,
-        rent_clp: 0,
-        other_clp: 0,
-        total_clp: 0,
+        salary: 0,
+        severance: 0,
+        parent_gift: 0,
+        rent: 0,
+        other: 0,
+        total: 0,
         line_count: 0,
-        cumulative_clp: Math.round(running),
+        cumulative: roundToCurrency(running, unit),
       });
     }
   }
@@ -504,10 +506,10 @@ export function buildFlowsIncomeAggregates(
       parent_gift: b.parent_gift,
       rent: b.rent,
       other: b.other,
-      total: incomeKindSum(b),
+      total: roundToCurrency(incomeKindSum(b), unit),
     };
   });
-  return { unit, months, days, total: unit === "clp" ? Math.round(total) : total };
+  return { unit, months, days, total: roundToCurrency(total, unit) };
 }
 
 // --- rows -----------------------------------------------------------------------------------
@@ -544,7 +546,7 @@ export function derivedFlowsOverviewFields(p: {
 }
 
 function rowFromBucket(periodKey: string, asOfDate: string, b: Bucket, unit: GastosUnit): FlowsOverviewRow {
-  const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
+  const round = (v: number) => roundToCurrency(v, unit);
   return {
     period_month: periodKey,
     as_of_date: asOfDate,
@@ -565,7 +567,7 @@ function rowFromBucket(periodKey: string, asOfDate: string, b: Bucket, unit: Gas
 function latestNonEmptyGastosMonth(byMonth: readonly FlowsOverviewGastosMonth[]): string | null {
   let latest: string | null = null;
   for (const row of byMonth) {
-    if (row.gastos_real_mes_clp !== 0 && (latest == null || row.period_month > latest)) {
+    if (row.gastos_real_mes !== 0 && (latest == null || row.period_month > latest)) {
       latest = row.period_month;
     }
   }
@@ -616,7 +618,7 @@ export function aggregateFlowsOverviewMonths(
   const latestGastosMonth = latestNonEmptyGastosMonth(inputs.gastosByMonth);
   for (const row of inputs.gastosByMonth) {
     if (latestGastosMonth != null && row.period_month > latestGastosMonth) continue;
-    touch(row.period_month).expenses += row.gastos_mes_clp;
+    touch(row.period_month).expenses += row.gastos_mes;
   }
   // Payroll deductions counted as gastos never reached the account: income here is the net pay
   // received plus them (gross less the pension savings), so savings does not count them twice.
@@ -633,7 +635,7 @@ export function aggregateFlowsOverviewMonths(
     if (parts && parts.card !== 0) touch(month).cardSpent += parts.card;
   }
 
-  addDeposits(inputs.deposits, inputs.checkingAccountIds, unit, touch, (d) => d.slice(0, 7));
+  addDeposits(inputs.deposits, inputs.checkingAccountIds, touch, (d) => d.slice(0, 7));
   subtractMortgageCarrying(
     sumMortgageCarryingBy(mortgageCarryingEvents(inputs.lines, unit), (d) => d.slice(0, 7)),
     touch
@@ -726,7 +728,7 @@ export function aggregateFlowsOverviewDays(
     b.cardSpent += parts.card;
   }
 
-  addDeposits(inputs.deposits, inputs.checkingAccountIds, unit, touch, (d) => d.slice(0, 10));
+  addDeposits(inputs.deposits, inputs.checkingAccountIds, touch, (d) => d.slice(0, 10));
   subtractMortgageCarrying(
     sumMortgageCarryingBy(mortgageCarryingEvents(inputs.lines, unit), (d) => d.slice(0, 10)),
     touch
@@ -807,7 +809,8 @@ type OverviewSourceInputs = {
   income: FlowsOverviewIncome;
   lines: FlowCcExpenseLineRow[];
   cuotaPayByIso: Record<string, string> | undefined;
-  deposits: FlowsOverviewDepositRow[];
+  /** The deposit rows per unit, built on first use (`depositsInUnit`). */
+  depositsByUnit: Map<string, FlowsOverviewDepositRow[]>;
   checkingAccountIds: number[];
   cardPayments: CardPaymentFromChecking[];
   gastosByMonthByUnitMode: Map<string, FlowsOverviewGastosMonth[]>;
@@ -823,7 +826,7 @@ function overviewSourceInputs(): OverviewSourceInputs {
       income: buildFlowsCheckingIncomePayload(),
       lines,
       cuotaPayByIso: accountIds.length > 0 ? cuotaPayByIsoByAccountBillingMonth(accountIds) : undefined,
-      deposits: buildFlowsDepositsPayload().rows,
+      depositsByUnit: new Map(),
       checkingAccountIds,
       cardPayments: loadCardPaymentsFromChecking(checkingAccountIds, accountIds),
       gastosByMonthByUnitMode: new Map(),
@@ -837,6 +840,15 @@ export { cachedFlowsExpenseLines };
 /** The income the overview counts (checking credits, manual entries, their kinds), from the cached inputs. */
 export function cachedFlowsIncome(): FlowsOverviewIncome {
   return overviewSourceInputs().income;
+}
+
+/** The deposit rows in `unit`, each event at its own day's rate (built once per unit). */
+function depositsInUnit(src: OverviewSourceInputs, unit: GastosUnit): FlowsOverviewDepositRow[] {
+  const cached = src.depositsByUnit.get(unit);
+  if (cached) return cached;
+  const rows = flowDepositRowsInUnit(unit);
+  src.depositsByUnit.set(unit, rows);
+  return rows;
 }
 
 function gastosByMonth(
@@ -867,6 +879,7 @@ function gastosByMonth(
  */
 function checkingGridStart(
   src: OverviewSourceInputs,
+  deposits: readonly FlowsOverviewDepositRow[],
   gastosMonths: readonly FlowsOverviewGastosMonth[],
   plMonthly: readonly PlPoint[],
   todayYmd: string
@@ -879,7 +892,7 @@ function checkingGridStart(
   for (const row of gastosMonths) consider(row.period_month);
   for (const ln of payslipGastosLines(src.lines)) consider(ln.expense_month);
   for (const ln of src.lines) if (ln.source === "cc") consider(ln.expense_month);
-  for (const row of src.deposits) consider(row.occurred_on.slice(0, 7));
+  for (const row of deposits) consider(row.occurred_on.slice(0, 7));
   for (const p of src.cardPayments) consider(p.occurred_on.slice(0, 7));
   for (const point of plMonthly) consider(point.as_of_date.slice(0, 7));
   return monthEndUtcYmd(addCalendarMonths(earliestYm, -1));
@@ -899,12 +912,13 @@ export function buildFlowsOverviewPayload(
     const today = chileCalendarTodayYmd();
     const src = overviewSourceInputs();
     const gastosMonths = gastosByMonth(src, unit, installmentMode);
+    const deposits = depositsInUnit(src, unit);
     const checkingAccountIds = new Set(src.checkingAccountIds);
     const carrying = cachedMortgageCarryingEvents(unit);
     const plMonthly = buildFlowsPlChartMonthly(unit, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total }));
     const cash = checkingCashByDay(
       src.checkingAccountIds,
-      checkingGridStart(src, gastosMonths, plMonthly, today),
+      checkingGridStart(src, deposits, gastosMonths, plMonthly, today),
       today,
       unit
     );
@@ -914,7 +928,7 @@ export function buildFlowsOverviewPayload(
         income: src.income,
         lines: src.lines,
         gastosByMonth: gastosMonths,
-        deposits: src.deposits,
+        deposits,
         plMonthly,
         checkingAccountIds,
         cardPayments,
@@ -932,7 +946,7 @@ export function buildFlowsOverviewPayload(
           income: src.income,
           lines: src.lines,
           cuotaPayByIso: src.cuotaPayByIso,
-          deposits: src.deposits,
+          deposits,
           plDaily: buildFlowsPlDailyChartSeries(unit, days, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total })),
           checkingAccountIds,
           cardPayments,

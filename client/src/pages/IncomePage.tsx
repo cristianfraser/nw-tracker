@@ -65,12 +65,12 @@ export function IncomePage() {
     return clipMonthsThenRollup(
       aggregates.months.map((m) => ({
         as_of_date: m.as_of_date,
-        salary: m.salary_clp,
-        severance: m.severance_clp,
-        parent_gift: m.parent_gift_clp,
-        rent: m.rent_clp,
-        other: m.other_clp,
-        total: m.total_clp,
+        salary: m.salary,
+        severance: m.severance,
+        parent_gift: m.parent_gift,
+        rent: m.rent,
+        other: m.other,
+        total: m.total,
       })),
       chartGranularity,
       timeRange,

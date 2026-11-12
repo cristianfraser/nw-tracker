@@ -47,7 +47,7 @@ const { accountDailySeriesResponse, groupDailySeriesResponse } = await import(".
 const { getGroupPeriodReturns } = await import("../src/groupConsolidatedTables.js");
 const { getGroupValuationTimeseries } = await import("../src/valuationTimeseries.js");
 const { buildFlowsOverviewPayload } = await import("../src/flowsOverview.js");
-const { buildFlowsDepositsPayload } = await import("../src/flowsDeposits.js");
+const { buildFlowsDepositsResponse } = await import("../src/flowsDeposits.js");
 const { creditCardInstallmentsResponse } = await import("../src/creditCardInstallments.js");
 const { creditCardGroupLedgerResponse } = await import("../src/creditCardGroupLedger.js");
 const { buildInversionesPerfDaily } = await import("../src/inversionesPerfSeries.js");
@@ -135,7 +135,7 @@ for (const unit of coreCurrencyCodes()) {
     flows[`overview|${unit}|${mode}`] = await attempt(() => buildFlowsOverviewPayload(unit, mode, 400));
   }
 }
-flows.deposits = await attempt(() => buildFlowsDepositsPayload());
+for (const unit of ["clp", "usd"] as const) flows[`deposits|${unit}`] = await attempt(() => buildFlowsDepositsResponse(unit));
 out.flows = flows;
 out.cards = Object.fromEntries(await Promise.all(cards.map(async (id) => [id, await attempt(() => creditCardInstallmentsResponse(id))])));
 out.cardGroups = Object.fromEntries(

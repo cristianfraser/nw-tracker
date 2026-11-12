@@ -215,7 +215,7 @@ describe("checking credits as expense refunds", () => {
       expect(after.filtered_lines.some((l) => l.movement_id === movementId)).toBe(false);
       expect(after.refund_lines.find((l) => l.movement_id === movementId)).toMatchObject({ amount_clp: 12_340, category_slug: "food" });
       const may = (p: typeof before) =>
-        buildFlowsIncomeAggregates(p, "clp", "2099-06-01").months.find((m) => m.period_month === "2099-05")?.total_clp ?? 0;
+        buildFlowsIncomeAggregates(p, "clp", "2099-06-01").months.find((m) => m.period_month === "2099-05")?.total ?? 0;
       expect(may(after)).toBe(may(before) - 12_340);
 
       const line = () => buildFlowsExpensesPayload().lines.find((l) => l.source === "checking" && l.statement_line_id === movementId);
