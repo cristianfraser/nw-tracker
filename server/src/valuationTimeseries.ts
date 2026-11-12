@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
 import { accountIsDebt, accountProfile, accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
 import { accountValueAt } from "./accountValue.js";
@@ -8,7 +9,7 @@ import {
   totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
-import { convertCurrency, convertFlow, flowEventInUnit } from "./rates.js";
+import { convertCurrency, convertFlow, flowEventInUnit, type CurrencyCode } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import {
@@ -156,7 +157,7 @@ type GroupTabValuationBlock = {
     color_rgb?: string;
     /** A reference level fixed in a currency (the USD milestones): in that display unit its value
      * is its own name, so the tooltip leaves it out. */
-    level_currency?: "clp" | "usd";
+    level_currency?: CurrencyCode;
   }[];
   synthetic_group_color_rgb?: Record<string, string>;
   /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
@@ -911,7 +912,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     propertyDeptoSheetsById.set(id, {
       closeByDate: deptoPropertyCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate),
       pagoAcumuladoByDate:
-        unit === "clp"
+        isHomeCurrency(unit)
           ? sheetSeries.pagoAcumuladoByDate
           : propertyPagoAcumuladoInUnitByDate(dateStrs, ledger, unit),
     });
@@ -928,7 +929,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   for (const id of allIds) {
     const pocketMovs = displayDepMovs.get(id) ?? [];
     depClpByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "clp"));
-    if (unit !== "clp") {
+    if (!isHomeCurrency(unit)) {
       depUnitByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, unit));
     }
   }
@@ -1044,7 +1045,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       const aid = t.account_id;
       const dk = t.depositDataKey;
       let depPlot =
-        unit === "clp"
+        isHomeCurrency(unit)
           ? (depClpByAccAndDate.get(aid)?.get(d) ?? 0)
           : (depUnitByAccAndDate.get(aid)?.get(d) ?? 0);
       if (bucketKindFromSlugMap(slugById, aid) === "property") {
@@ -1269,7 +1270,7 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
 } {
   const clpTotals = buildDashboardPortfolioGroupTotalsClp();
   const totalsBySlug =
-    unit === "clp" ? clpTotals.totalsBySlug : convertDashboardPortfolioGroupTotals(clpTotals, unit).totalsBySlug;
+    isHomeCurrency(unit) ? clpTotals.totalsBySlug : convertDashboardPortfolioGroupTotals(clpTotals, unit).totalsBySlug;
   const datesAsc = clpTotals.datesAsc;
   const today = chileCalendarTodayYmd();
   const chartDates = datesAsc.filter((d) => d <= today);
@@ -1543,7 +1544,7 @@ function convertDashboardPortfolioGroupTotals(
   for (const [slug, byDate] of clp.totalsBySlug) {
     const converted = new Map<string, number>();
     for (const [d, v] of byDate) {
-      if (unit === "clp") {
+      if (isHomeCurrency(unit)) {
         converted.set(d, v);
         continue;
       }
@@ -1759,7 +1760,7 @@ export type DashboardChartShapeLine = {
   valueSeriesType: "data" | "reference";
   account_id?: number;
   color_rgb?: string;
-  level_currency?: "clp" | "usd";
+  level_currency?: CurrencyCode;
 };
 
 /** Dashboard chart skeleton: line specs + x-axis start + section presence, no points. */

@@ -734,12 +734,12 @@ export function createRecurringPayment(body: Record<string, unknown>): Recurring
   const frequency = body.frequency === undefined ? "yearly" : body.frequency;
   if (frequency !== "yearly" && frequency !== "monthly") fail("frequency must be yearly or monthly");
   const currency = body.currency === undefined ? "clp" : body.currency;
-  if (currency !== "clp" && currency !== "uf") fail("currency must be clp or uf");
+  if (currency !== "clp" && currency !== "uf") fail("currency must be clp or uf"); // convention-ok: a declared payment is stated in pesos or in UF (migration 254)
   const dueDay = integerInRange(body, "due_day", 1, 31);
   const dueMonth = frequency === "yearly" ? integerInRange(body, "due_month", 1, 12) : null;
   const amount = body.amount;
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) fail("amount must be a positive number");
-  if (currency === "clp" && !Number.isInteger(amount)) fail("amount must be whole pesos for a CLP payment");
+  if (currency === "clp" && !Number.isInteger(amount)) fail("amount must be whole pesos for a CLP payment"); // convention-ok: pesos have no minor unit
   const rawPatterns = body.patterns;
   if (!Array.isArray(rawPatterns)) fail("patterns must be a list of merchant patterns");
   const patterns: string[] = [];

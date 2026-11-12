@@ -100,7 +100,7 @@ export function lineConvertedIn(l: LookupFields, unit: string): LineUnitValue | 
   if (!l.values) throw new Error("expense line without its money (the «line money» step has not run)");
   const own = l.values[unit];
   if (own) return own;
-  if (unit === "clp" || unit === "usd") return null;
+  if (isHomeCurrency(unit) || unit === "usd") return null; // convention-ok: every line carries its peso and its dollar value; other units derive from them
   let memo = derived.get(l);
   if (!memo) derived.set(l, (memo = new Map()));
   if (!memo.has(unit)) memo.set(unit, derivedUnitValue(l, unit));

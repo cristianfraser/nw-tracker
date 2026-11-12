@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import { cacheKeyDashboardAccountRows, cacheKeyDashboardNav } from "./cacheFamilies.js";
@@ -81,7 +82,7 @@ function priorCloseInUnitFromMark(
  * without one counts zero; in any other unit it is a missing conversion (null).
  */
 function missingLegIn(unit: TsUnit): 0 | null {
-  return unit === "clp" ? 0 : null;
+  return isHomeCurrency(unit) ? 0 : null;
 }
 
 export function listDashboardSourceAccounts(): {
@@ -158,7 +159,7 @@ function computeMortgageCardDeposits(
  * not their series' flows.
  */
 function netDepositsByAccountInUnit(unit: TsUnit): Map<number, number> {
-  if (unit === "clp") return flowsDepositsNetTotalByAccount();
+  if (isHomeCurrency(unit)) return flowsDepositsNetTotalByAccount();
   const accounts = listDepositFlowAccounts(true);
   const eventsByAccount = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
   const totals = new Map<number, number>();
@@ -307,7 +308,7 @@ function dashboardAccountRowsContext(unit: TsUnit): DashboardAccountRowsContext 
       accounts,
       leafSlugByAccount: leafPortfolioGroupSlugByAccountIds(accounts.map((a) => a.id)),
       depositsNetClpByAccount,
-      depositsNetByAccount: unit === "clp" ? depositsNetClpByAccount : netDepositsByAccountInUnit(unit),
+      depositsNetByAccount: isHomeCurrency(unit) ? depositsNetClpByAccount : netDepositsByAccountInUnit(unit),
       today,
       priorMonthEnd,
       priorYearEnd,
@@ -458,12 +459,12 @@ function buildDashboardAccountRowFor(
   };
 
   const clpFrame = frameIn("clp");
-  const frame = unit === "clp" ? clpFrame : frameIn(unit);
+  const frame = isHomeCurrency(unit) ? clpFrame : frameIn(unit);
   // The position in the row's unit: its deposits and its value as the row converts them.
   const position = positionSnapshotInUnit(a.id, positionMeta, v, frame.deposits ?? null, unit);
   // A row the unit could not convert (no rate for its balance or its deposits).
   const fx_missing =
-    unit === "clp"
+    isHomeCurrency(unit)
       ? undefined
       : (clpFrame.current_value != null && frame.current_value == null) ||
         (clpFrame.deposits !== 0 && frame.deposits == null);

@@ -13,7 +13,7 @@
  *   - In-query sums: interpolate `MOVEMENT_CLP_LEG_SQL` / `MOVEMENT_USD_LEG_SQL`.
  */
 
-export const MOVEMENT_CURRENCIES = ["clp", "usd", "eur"] as const;
+export const MOVEMENT_CURRENCIES = ["clp", "usd", "eur"] as const; // convention-ok: a CLP-only surface reads the peso leg; the create API prices pesos, dollars and euros
 export type MovementCurrency = (typeof MOVEMENT_CURRENCIES)[number];
 
 export function isMovementCurrency(value: unknown): value is MovementCurrency {
@@ -56,7 +56,7 @@ export function requireMovementClp(
   row: MovementAmountFields & { id?: number | null },
   context?: string
 ): number {
-  if (row.currency === "clp") return row.amount;
+  if (row.currency === "clp") return row.amount; // convention-ok: a CLP-only surface reads the peso leg; the create API prices pesos, dollars and euros
   throw new Error(
     `Movement${row.id != null ? ` ${row.id}` : ""} is ${row.currency}-denominated on a CLP-only surface${
       context ? ` (${context})` : ""

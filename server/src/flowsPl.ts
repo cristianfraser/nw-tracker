@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
@@ -321,12 +322,12 @@ function buildFlowsPlBucketBlock(
       );
     }
     const clpSummary = flowsPlAccountPerfSummary(acc.monthly);
-    const unitSummary = unit === "clp" ? clpSummary : flowsPlAccountPerfSummary(inUnit.monthly);
+    const unitSummary = isHomeCurrency(unit) ? clpSummary : flowsPlAccountPerfSummary(inUnit.monthly);
     // The property's mortgage carrying back into its P/L (a gasto already), as in the chart.
     const carrying = carryingByAccount.get(acc.account_id);
     if (carrying) {
       const pairs: (readonly [ReturnType<typeof flowsPlAccountPerfSummary>, readonly MortgageCarryingEvent[]])[] =
-        unit === "clp" ? [[clpSummary, carrying.clp]] : [[clpSummary, carrying.clp], [unitSummary, carrying.unit]];
+        isHomeCurrency(unit) ? [[clpSummary, carrying.clp]] : [[clpSummary, carrying.clp], [unitSummary, carrying.unit]];
       for (const [summary, events] of pairs) {
         const c = carryingSummary(events);
         summary.pl_month += c.pl_month;
@@ -378,7 +379,7 @@ function buildFlowsPlBucketBlock(
 /** @heavy 4 buckets of consolidated monthly perf in the unit (and pesos, the accounts' order). */
 export function buildFlowsPlPayload(unit: string = "clp", opts?: { days?: number }): FlowsPlPayload {
   const carryingClp = cachedMortgageCarryingEvents("clp");
-  const carryingUnit = unit === "clp" ? carryingClp : cachedMortgageCarryingEvents(unit);
+  const carryingUnit = isHomeCurrency(unit) ? carryingClp : cachedMortgageCarryingEvents(unit);
   return withAccountValuationTsCache(() => {
     const carryingByAccount = new Map<number, { clp: MortgageCarryingEvent[]; unit: MortgageCarryingEvent[] }>();
     for (const [leg, events] of [
@@ -405,7 +406,7 @@ export function buildFlowsPlPayload(unit: string = "clp", opts?: { days?: number
         buildFlowsPlBucketBlock(
           bucket,
           accountsClp,
-          unit === "clp" ? accountsClp : getGroupConsolidationAccountMonthly(rows, bucket.group_slug, unit),
+          isHomeCurrency(unit) ? accountsClp : getGroupConsolidationAccountMonthly(rows, bucket.group_slug, unit),
           unit,
           bucket.slug === "real_estate" ? carryingByAccount : new Map()
         )

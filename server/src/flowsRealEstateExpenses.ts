@@ -587,7 +587,7 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
       flow_id: number | null;
     }[];
     const rows = fetched.map((r) => {
-      if (r.payment_currency !== "clp") {
+      if (r.payment_currency !== "clp") { // convention-ok: a mortgage cuota is paid in pesos (loan_payments)
         throw new Error(`mortgage cuota ${r.cuota} (${r.occurred_on}): parts in ${r.payment_currency}, expected pesos`);
       }
       if (r.flow_id == null) throw new Error(`mortgage cuota ${r.cuota} (${r.occurred_on}): the property leg has no flow`);

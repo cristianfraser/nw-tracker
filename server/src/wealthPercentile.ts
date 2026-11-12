@@ -22,6 +22,7 @@
  *   as printed), any other unit its stored CLP rate on or before the as-of day through
  *   `rates.ts` (EUR: Banco Central's `eur_daily`, the same official source as the observado).
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { buildDashboardBucketValueTotals } from "./portfolioGroupValueAtDate.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { fxBcentralRowOnOrBefore } from "./sbifSyncDb.js";
@@ -109,8 +110,8 @@ export type WealthPercentilePayload = {
  * (`rates.ts`, read as of the next day so today's row never takes a live quote).
  */
 function clpPerUnitAt(unit: DisplayUnitCode, asOfYmd: string, observadoClpPerUsd: number): number {
-  if (unit === "clp") return 1;
-  if (unit === "usd") return observadoClpPerUsd;
+  if (isHomeCurrency(unit)) return 1;
+  if (unit === "usd") return observadoClpPerUsd; // convention-ok: the databook is in dollars and compared at the observado
   const asOfNextDay = new Date(`${chileCalendarAddDays(asOfYmd, 1)}T16:00:00Z`);
   const r = convertCurrency(1, unit, "clp", asOfYmd, { side: "mid", now: asOfNextDay });
   if (r == null || !(r > 0)) {

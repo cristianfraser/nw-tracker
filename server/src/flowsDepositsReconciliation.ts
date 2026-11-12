@@ -232,7 +232,7 @@ function loadPositiveInflowMovements(
 
 /** A dollar deposit row's dollars (positive), else null (see `loadPositiveInflowMovements`). */
 function dollarDepositUsd(m: RawMovementRow): number | null {
-  return m.currency === "usd" && m.units_delta != null && m.amount > 0 ? m.amount : null;
+  return m.currency === "usd" && m.units_delta != null && m.amount > 0 ? m.amount : null; // convention-ok: the dollar deposit reconciliation is dollar-only (plan C4 leftover)
 }
 
 /**

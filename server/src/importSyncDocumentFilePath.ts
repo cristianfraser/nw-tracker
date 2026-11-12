@@ -397,7 +397,7 @@ function ccStatementRowHasPdfOnDisk(row: CcStmtRow): boolean {
 
 function ccRowsForCurrencySlot(
   rows: CcStmtRow[],
-  slot: "clp" | "usd" | undefined
+  slot: "clp" | "usd" | undefined // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
 ): CcStmtRow[] {
   const pdfs = rows.filter((r) => isCorpusPdfSourceKind(r.source_kind));
   if (slot == null) return pdfs;
@@ -408,7 +408,7 @@ function ccRowsForCurrencySlot(
 
 function pickPrimaryCcStatement(
   rows: CcStmtRow[],
-  slot?: "clp" | "usd"
+  slot?: "clp" | "usd" // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
 ): CcStmtRow | null {
   const pdfs = ccRowsForCurrencySlot(rows, slot);
   if (pdfs.length === 0) return null;
@@ -486,7 +486,7 @@ function buildCartolaDocumentPathsByMonth(
 
 function buildCcDocumentMonthsSet(
   accountId: number,
-  slot?: "clp" | "usd"
+  slot?: "clp" | "usd" // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
 ): Set<string> {
   const rows = db
     .prepare(
@@ -512,7 +512,7 @@ function buildCcDocumentMonthsSet(
 
 function buildCcDocumentPathsByMonth(
   accountId: number,
-  slot?: "clp" | "usd"
+  slot?: "clp" | "usd" // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
 ): Map<string, string> {
   const rows = db
     .prepare(

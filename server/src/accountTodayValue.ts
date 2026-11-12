@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { holdingPriceAt, instrumentNativeValue } from "./holdingPrices.js";
 import {
@@ -267,7 +268,7 @@ export function todayValueInUnit(
   unit: CurrencyCode,
   now?: Date
 ): number | null {
-  if (unit === "clp") return v.value_clp;
+  if (isHomeCurrency(unit)) return v.value_clp;
   const today = now ? chileWallClockAt(now).ymd : chileCalendarTodayYmd();
   if (accountProfileOptional(accountId)?.quantity.kind === "card") {
     return cardValueInUnit(accountId, v.native_value, today, unit, now);

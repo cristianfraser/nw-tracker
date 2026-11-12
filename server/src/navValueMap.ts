@@ -42,6 +42,7 @@
  * bucket without a breakdown fall through to the shape above (each child group then applies
  * the rule itself).
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -272,7 +273,7 @@ function otherSleeveTile(
 export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
   const { navRoot, rows, linkedCreditCards, proxy, chainedPct, unit } = input;
   const rowById = new Map(rows.map((r) => [r.account_id, r]));
-  const emptySum = unit === "clp" ? 0 : null;
+  const emptySum = isHomeCurrency(unit) ? 0 : null;
 
   // Accounts the tree names explicitly are claimed by their own group first; chart-inactive
   // bucket members the tree omits (picked up by `stripMetricsRows`) go to the first leaf

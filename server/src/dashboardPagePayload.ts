@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { chainedGroupPctResolver } from "./periodPctDailyChain.js";
 import { accountIsDebt } from "./accountProfile.js";
@@ -87,7 +88,7 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
       const liabilitiesNode = card_metrics_by_slug[liabilitiesRoot.slug];
       if (!liabilitiesNode) throw new Error("dashboard payload: no card metrics for the liabilities root");
       const liabilities =
-        unit === "clp" ? liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp : liabilitiesNode.value.parent;
+        isHomeCurrency(unit) ? liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp : liabilitiesNode.value.parent;
       const totals: DashboardPayloadTotals = {
         ...bucketTotals,
         deposits: totalDeposits,
@@ -112,7 +113,7 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
         liabilities_breakdown: liabilitiesBreakdownInUnit(asOfToday, unit),
         // Monthly only: the yearly combos roll it up after cutting the months at their Rango.
         inversiones_deposits_chart: { monthly: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly) },
-        ...(unit === "clp" ? {} : { fx_conversion_warnings: depositsFlow.fx_conversion_warnings }),
+        ...(isHomeCurrency(unit) ? {} : { fx_conversion_warnings: depositsFlow.fx_conversion_warnings }),
       };
     });
   });

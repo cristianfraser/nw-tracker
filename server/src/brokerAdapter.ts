@@ -27,7 +27,7 @@ export const BROKER_SETTLEMENT_WINDOW_DAYS = 5;
 const AMOUNT_TOLERANCE = 0.005;
 
 export type BrokerSlug = "fintual" | "racional";
-export type BrokerCurrency = "clp" | "usd";
+export type BrokerCurrency = "clp" | "usd"; // convention-ok: Fintual and Racional hold broker cash in pesos and dollars only
 
 /** A broker's cash account in a currency: the account holding `broker_cash` `<broker>|<currency>`. */
 function brokerCashAccountId(broker: BrokerSlug, currency: BrokerCurrency): number {
@@ -105,7 +105,7 @@ const ADAPTERS: Record<BrokerSlug, BrokerAdapter> = {
   fintual: {
     broker: "fintual",
     label: "Fintual",
-    cashAccountId: (currency) => (currency === "usd" ? fintualUsdAccountId() : fintualClpBalanceAccountId()),
+    cashAccountId: (currency) => (currency === "usd" ? fintualUsdAccountId() : fintualClpBalanceAccountId()), // convention-ok: Fintual and Racional hold broker cash in pesos and dollars only
     // Among several holders of a ticker, the one trading against Fintual's dollar wallet.
     equityAccountId: (ticker) => accountIdForEquityTicker(ticker, { brokerCashAccountId: fintualUsdAccountId() }),
     dividendPairingWindowDays: BROKER_SETTLEMENT_WINDOW_DAYS,

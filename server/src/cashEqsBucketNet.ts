@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { netsLinkedGroup, nettedGroup } from "./navTreeModel.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
@@ -46,7 +47,7 @@ export function linkedCardsOwedInUnit(ymd: string, unit: TsUnit, opts: { now?: D
 
 /** The linked cards' owed in the unit at that day, at the debt side (today: the live rate). NaN without a rate. */
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
-  if (unit === "clp") return clp;
+  if (isHomeCurrency(unit)) return clp;
   const v = clpToUnitAt(clp, asOf, unit, { side: "debt" });
   return v != null && Number.isFinite(v) ? v : Number.NaN;
 }

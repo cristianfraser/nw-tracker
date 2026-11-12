@@ -20,7 +20,7 @@ function foldUpperAccents(s: string): string {
 }
 
 export type RecurringFrequency = "yearly" | "monthly";
-export type RecurringCurrency = "clp" | "uf";
+export type RecurringCurrency = "clp" | "uf"; // convention-ok: a declared payment is stated in pesos or in UF (migration 254)
 /** `covered`: a payment of the same thing made earlier covers this due date (a whole-year permit paid in March). */
 export type RecurringStatus = "paid" | "covered" | "overdue" | "upcoming";
 
@@ -213,7 +213,7 @@ function amountFits(entry: RecurringEntry, line: DatedLine, expectedClp: number 
   // A line whose document says what it covers (a vehicle permit) is that payment whatever its
   // amount: a whole year paid in March is twice the cuota the placeholder expects.
   if (line.covers_through != null) return true;
-  if (entry.currency === "clp") {
+  if (entry.currency === "clp") { // convention-ok: a declared payment is stated in pesos or in UF (migration 254)
     if (expectedClp == null) throw new Error(`Recurring payment ${entry.id}: no expected pesos to match against`);
     return Math.abs(line.amount_clp - expectedClp) <= (entry.amount_tolerance_pct / 100) * expectedClp;
   }
@@ -246,7 +246,7 @@ function lineFitsOccurrence(
 export function placeholderPesos(entry: RecurringEntry, dueYmd: string, decided: readonly RecurringOccurrence[]): number {
   let best: { date: string; amount: number } | null = null;
   for (const d of decided) {
-    if (d.matched == null || d.entry.currency !== "clp" || d.due_iso >= dueYmd) continue;
+    if (d.matched == null || d.entry.currency !== "clp" || d.due_iso >= dueYmd) continue; // convention-ok: a declared payment is stated in pesos or in UF (migration 254)
     const own = d.entry.id === entry.id;
     const sibling =
       !own &&
@@ -330,7 +330,7 @@ export function matchRecurringPayments(input: RecurringModelInput): RecurringOcc
       });
       continue;
     }
-    const expectedClp = entry.currency === "clp" ? placeholderPesos(entry, due, decided) : null;
+    const expectedClp = entry.currency === "clp" ? placeholderPesos(entry, due, decided) : null; // convention-ok: a declared payment is stated in pesos or in UF (migration 254)
     const pick = nearestFittingLine(entry, due, expectedClp, lines, claimed, input.ufOn);
     if (pick) claimed.add(pick.ref);
     const matched: RecurringMatch | null = pick
@@ -343,7 +343,7 @@ export function matchRecurringPayments(input: RecurringModelInput): RecurringOcc
       status: matched ? "paid" : due < input.todayYmd ? "overdue" : "upcoming",
       matched,
       amount_clp: matched ? matched.amount_clp : unpaidAmount,
-      estimated: matched == null && (entry.currency === "clp" || due > input.ufKnownThrough),
+      estimated: matched == null && (entry.currency === "clp" || due > input.ufKnownThrough), // convention-ok: a declared payment is stated in pesos or in UF (migration 254)
       expected_clp: expectedClp,
       exposed:
         due >= entry.created_at.slice(0, 10) &&

@@ -105,7 +105,7 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
     });
     return {
       id: r.id!,
-      amount: r.currency === "clp" ? signedClpDeltaForAccountMovement(r, accountId) : r.amount,
+      amount: isHomeCurrency(r.currency) ? signedClpDeltaForAccountMovement(r, accountId) : r.amount,
       currency: r.currency,
       counter_amount: r.counter_amount,
       counter_currency: r.counter_currency,

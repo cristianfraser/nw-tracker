@@ -28,6 +28,7 @@
  * - `pct` chains only the held days: a holding that left and came back has the two windows
  *   multiplied together, the days out contribute a factor of 1.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import type { CardMetricsPeriod } from "./dashboardNavCardMetrics.js";
@@ -121,7 +122,7 @@ class HoldingValues {
     private readonly inUnit: (usd: number, ymd: string) => number
   ) {
     const currency = equityQuoteCurrency(priceTicker);
-    if (currency !== "usd") {
+    if (currency !== "usd") { // convention-ok: the Risky Norris basket holds dollar ETFs only
       throw new Error(`proxy basket holding ${priceTicker} is quoted in ${currency}; the breakdown prices USD ETFs only`);
     }
   }
@@ -210,7 +211,7 @@ export function loadProxyBasketBreakdown(
   // values them), in dollars as they are, in any other unit at the day's rate (an asset).
   const unit = opts.unit;
   const inUnit = (usd: number, ymd: string): number => {
-    if (unit === "clp") return usd * fx(ymd);
+    if (isHomeCurrency(unit)) return usd * fx(ymd);
     const v = convertValue(usd, "usd", unit, ymd, "asset", ymd === today ? now : undefined);
     if (v == null || !Number.isFinite(v)) {
       throw new Error(`proxy basket ${bucketSlug}: no usd→${unit} rate on ${ymd}`);

@@ -594,12 +594,12 @@ async function runFintualOfficialSeriesCheck(
 }
 
 
-function markSbifObservedFxSuccess(state: GlobalSyncStateFile, kind: "usd" | "eur"): void {
+function markSbifObservedFxSuccess(state: GlobalSyncStateFile, kind: "usd" | "eur"): void { // convention-ok: Banco Central's observado sync publishes the dollar and the euro
   if (kind === "usd") delete state.sbifUsdLastErrorAt;
   else delete state.sbifEurLastErrorAt;
 }
 
-function markSbifObservedFxError(state: GlobalSyncStateFile, kind: "usd" | "eur"): void {
+function markSbifObservedFxError(state: GlobalSyncStateFile, kind: "usd" | "eur"): void { // convention-ok: Banco Central's observado sync publishes the dollar and the euro
   const at = new Date().toISOString();
   if (kind === "usd") state.sbifUsdLastErrorAt = at;
   else state.sbifEurLastErrorAt = at;
@@ -608,7 +608,7 @@ function markSbifObservedFxError(state: GlobalSyncStateFile, kind: "usd" | "eur"
 /** After a failed/blocked SBIF call, later steps are not attempted — record that in the sync log. */
 function skipSbifStepForBackoff(
   step: string,
-  kind: "usd" | "eur",
+  kind: "usd" | "eur", // convention-ok: Banco Central's observado sync publishes the dollar and the euro
   state: GlobalSyncStateFile,
   notes: SyncStepNote[]
 ): boolean {

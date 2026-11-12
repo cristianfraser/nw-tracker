@@ -114,7 +114,7 @@ export function utilityBillMonthsCovered(b: Pick<UtilityBill, "period_from" | "p
 /** A line's pesos when it happened in pesos (a bill is stated in pesos); null for a line in another currency. */
 function linePesosNative(l: Pick<FlowCcExpenseLineRow, "amount">): number | null {
   const a = lineAmount(l);
-  return a.currency === "clp" ? a.value : null;
+  return a.currency === "clp" ? a.value : null; // convention-ok: a utility bill is matched against a peso line
 }
 
 /** The day a gastos line's charge happened. */

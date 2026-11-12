@@ -37,7 +37,7 @@ import {
   type FlowCcExpenseMonthRow,
 } from "./flowsExpenses.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
-import { roundToCurrency } from "./displayUnits.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { lineValueIn } from "./lineMoney.js";
 
@@ -153,7 +153,7 @@ export function mortgageLinkCarryingAmount(
   link: { payment_clp: number; carrying_clp: number },
   unit: GastosUnit
 ): number {
-  if (unit !== "clp") {
+  if (!isHomeCurrency(unit)) {
     // Same fx date as the payment line: allocate the line's value by the carrying CLP share.
     return expenseLineGastosAmount(line, unit) * (link.carrying_clp / link.payment_clp);
   }
@@ -166,7 +166,7 @@ function mortgageLinkAmortizationChartAmount(
   link: { payment_clp: number; amortization_clp: number },
   unit: GastosUnit
 ): number {
-  if (unit !== "clp") {
+  if (!isHomeCurrency(unit)) {
     if (link.amortization_clp <= 0) return 0;
     return -(expenseLineGastosAmount(line, unit) * (link.amortization_clp / link.payment_clp));
   }

@@ -9,9 +9,8 @@
  */
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
+import { isLoadedCurrency } from "./displayUnits.js";
 import type { CurrencyCode } from "./rates.js";
-
-const FUND_UNIT_CURRENCIES: ReadonlySet<string> = new Set(["clp", "usd", "uf", "eur"]);
 
 const stmtSeriesCurrencies = db.prepare(
   `SELECT MIN(currency) AS lo, MAX(currency) AS hi FROM fund_unit_daily WHERE series_key = ?`
@@ -25,7 +24,7 @@ export function fundSeriesCurrency(seriesKey: string): CurrencyCode | null {
     if (r.lo !== r.hi) {
       throw new Error(`fund_unit_daily: series ${seriesKey} holds rows in two currencies (${r.lo}, ${r.hi})`);
     }
-    if (!FUND_UNIT_CURRENCIES.has(r.lo)) throw new Error(`fund_unit_daily: series ${seriesKey} has currency «${r.lo}»`);
+    if (!isLoadedCurrency(r.lo)) throw new Error(`fund_unit_daily: series ${seriesKey} has currency «${r.lo}»`);
     return r.lo as CurrencyCode;
   });
 }

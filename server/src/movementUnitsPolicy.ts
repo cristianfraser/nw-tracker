@@ -243,7 +243,7 @@ function parsedLeg(fields: ParsedAmountFields, currency: string): number | null 
 }
 
 /** Quote currency of the stock leg on a trade transfer (buy: to_account, sell/dividend: from_account). */
-function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" {
+function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
   const stockAccountId =
     input.flow_kind === "stock_buy" ? input.to_account_id : input.from_account_id;
   const ticker = equityTickerForAccount(stockAccountId);
@@ -283,7 +283,7 @@ function validateOptionTransferEndpoints(input: TransferCreateInput): MovementCr
     );
   }
   if (!isForeignCashAccountIn(cashId, "usd")) return bad(`${fk} settles in USD cash: the ${leaves ? "to" : "from"}_account must be a USD cash account.`);
-  if (input.currency !== "usd" || !(Math.abs(input.amount) > 0)) return bad(`${fk} requires the premium as a USD amount.`);
+  if (input.currency !== "usd" || !(Math.abs(input.amount) > 0)) return bad(`${fk} requires the premium as a USD amount.`); // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
   if (transferInputLeg(input, "clp") != null) return bad(`a CLP amount is not allowed on ${fk} (the premium settles in USD).`);
   const n = Math.abs(input.units_delta ?? 0);
   if (!(n > 0) || !Number.isInteger(n)) return bad(`${fk} requires units_delta: a whole number of contracts.`);
@@ -328,14 +328,14 @@ function validateBrokerageTransferEndpoints(
   // Fail fast on a leg that doesn't belong to the flow kind (e.g. a stale value left in a
   // hidden input on the client): the amount must be in the stock's quote currency, never both.
   if (fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout") {
-    if (tradeQuoteCurrency === "usd" && inputClpLeg != null && inputClpLeg !== 0) {
+    if (tradeQuoteCurrency === "usd" && inputClpLeg != null && inputClpLeg !== 0) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
       return {
         ok: false,
         status: 400,
         error: `a CLP amount is not allowed on ${fk} for a USD-quoted stock (a CLP wire is a separate fx_exchange movement).`,
       };
     }
-    if (tradeQuoteCurrency === "clp" && inputUsdLeg != null && inputUsdLeg !== 0) {
+    if (tradeQuoteCurrency === "clp" && inputUsdLeg != null && inputUsdLeg !== 0) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
       return {
         ok: false,
         status: 400,
@@ -369,7 +369,7 @@ function validateBrokerageTransferEndpoints(
         error: "fx_exchange from_account must be the CLP source account, not foreign cash.",
       };
     }
-    if (input.currency !== "clp" || input.amount === 0) {
+    if (input.currency !== "clp" || input.amount === 0) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
       return {
         ok: false,
         status: 400,
@@ -386,7 +386,7 @@ function validateBrokerageTransferEndpoints(
     return null;
   }
   if (fk === "stock_buy") {
-    if (tradeQuoteCurrency === "clp") {
+    if (tradeQuoteCurrency === "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
       if (!isClpCashAccount(input.from_account_id)) {
         return {
           ok: false,
@@ -419,7 +419,7 @@ function validateBrokerageTransferEndpoints(
     }
   }
   if (fk === "stock_sell") {
-    if (tradeQuoteCurrency === "clp") {
+    if (tradeQuoteCurrency === "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
       if (!isClpCashAccount(input.to_account_id)) {
         return {
           ok: false,
@@ -451,7 +451,7 @@ function validateBrokerageTransferEndpoints(
     }
   }
   if (fk === "dividend_payout") {
-    if (tradeQuoteCurrency === "clp") {
+    if (tradeQuoteCurrency === "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
       return {
         ok: false,
         status: 400,
@@ -671,7 +671,7 @@ function brokerageNativeAmount(
   clpLeg: number | null,
   usdLeg: number | null
 ): { amount: number; currency: MovementCurrency } {
-  if (parsed.currency === "usd" && parsed.amount != null) {
+  if (parsed.currency === "usd" && parsed.amount != null) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
     return { amount: parsed.amount, currency: "usd" };
   }
   return { amount: signedAmountClpForBrokerageFlow(flow_kind, clpLeg, usdLeg), currency: "clp" };
@@ -764,7 +764,7 @@ function validateClpCashMovementCreate(
   if (parsed.counter_amount != null) {
     return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
   }
-  if (parsed.currency != null && parsed.currency !== "clp") {
+  if (parsed.currency != null && parsed.currency !== "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
     return { ok: false, status: 400, error: "CLP cash movements must be denominated in CLP." };
   }
   const amount_clp = parsedLeg(parsed, "clp");
@@ -971,7 +971,7 @@ export function validateMovementCreate(
   if (parsed.counter_amount != null) {
     return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
   }
-  if (parsed.currency != null && parsed.currency !== "clp") {
+  if (parsed.currency != null && parsed.currency !== "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
     return { ok: false, status: 400, error: "This account's movements must be denominated in CLP." };
   }
   const amount_clp = parsed.amount;

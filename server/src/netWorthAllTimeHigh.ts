@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { cacheKeyNetWorthAth } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -85,7 +86,7 @@ function netWorthInUnitByDay(
   unit: TsUnit
 ): { as_of_date: string; value: number | null }[] {
   const byDate = buildDashboardBucketDailySeriesClp(grid);
-  if (unit === "uf") {
+  if (unit === "uf") { // convention-ok: the UF has no on-or-before range reader; it is carried forward from the grid start
     // UF has no on-or-before reader over a range: carry the last published value forward from
     // the grid start, exactly what `ufRowOnOrBefore` would resolve per day.
     const exact = ufClpByDateRange(grid[0]!, grid[grid.length - 1]!);
@@ -99,13 +100,13 @@ function netWorthInUnitByDay(
   }
   // Today in another unit is the headline's net worth (Σ of each account's own value in it).
   const todayYmd = grid[grid.length - 1]!;
-  const unitToday = unit === "clp" ? null : dashboardBucketsTodayInUnit(unit).net_worth;
+  const unitToday = isHomeCurrency(unit) ? null : dashboardBucketsTodayInUnit(unit).net_worth;
   // Σ of each account's own value in the unit per day, never the net worth's pesos ÷ one rate.
-  const byDateUnit = unit === "clp" ? null : buildDashboardBucketDailySeriesInUnit(grid, unit);
+  const byDateUnit = isHomeCurrency(unit) ? null : buildDashboardBucketDailySeriesInUnit(grid, unit);
   return grid.map((ymd) => {
     const clp = byDate.get(ymd)!.net_worth;
     const value =
-      unit === "clp" ? clp : ymd === todayYmd && unitToday != null ? unitToday : byDateUnit!.get(ymd)!.net_worth;
+      isHomeCurrency(unit) ? clp : ymd === todayYmd && unitToday != null ? unitToday : byDateUnit!.get(ymd)!.net_worth;
     return { as_of_date: ymd, value: value != null && Number.isFinite(value) ? value : null };
   });
 }

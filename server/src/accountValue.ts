@@ -12,6 +12,7 @@
  * (`accountHistoricalQtyMark`). Until their own phases the card's owed walk and the depto
  * ledger's figures are peso quantities.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import {
   accountHistoricalQtyMark,
   accountValueSide,
@@ -139,7 +140,7 @@ export function accountValueInUnitFromClp(
   unit: CurrencyCode,
   opts?: { now?: Date }
 ): number | null {
-  if (unit === "clp") return clp;
+  if (isHomeCurrency(unit)) return clp;
   if (accountProfileOptional(accountId)?.quantity.kind === "card") return cardValueInUnit(accountId, clp, ymd, unit, opts?.now);
   if (accountValueCurrency(accountId) === "clp") {
     return convertValue(clp, "clp", unit, ymd, accountValueSide(accountId), opts?.now);

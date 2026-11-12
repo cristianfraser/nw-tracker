@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { accountIsDebt } from "./accountProfile.js";
 import { cacheKeyDailySeries } from "./cacheFamilies.js";
@@ -460,7 +461,7 @@ export function getBucketDailySeries(
   const pastGrid = grid.slice(0, lastGi);
   const unitSeries: ((number | null)[] | undefined)[] = included.map(() => undefined);
   const accountValueInUnit = (ai: number, _clp: number, gi: number): number | null => {
-    if (unit === "clp") return marksByAccount[ai]![gi] ?? null;
+    if (isHomeCurrency(unit)) return marksByAccount[ai]![gi] ?? null;
     if (gi === lastGi) return accountValueSeriesOnGrid(refOf(included[ai]!), [grid[lastGi]!], unit)[0] ?? null;
     let series = unitSeries[ai];
     if (!series) {
@@ -527,11 +528,11 @@ export function getBucketDailySeries(
     // In a currency other than pesos (dollars, euros) the card's own values in that unit; in
     // pesos (and UF, each day's peso flow converted at that day's UF) its peso marks.
     const ai = included.findIndex((a) => a.account_id === accountId);
-    const pesoFrame = unit === "clp" || unit === "uf";
+    const pesoFrame = isHomeCurrency(unit) || unit === "uf"; // convention-ok: the UF is an index of pesos: a UF frame is the peso frame converted per day
     const marks = pesoFrame ? marksClp : unitByAccount[ai]!;
     const derived = ccDerivedFlows(accountId, grid, marks, pesoFrame ? "clp" : unit);
     for (let i = 1; i < grid.length; i++) {
-      const amt = unit === "uf" ? convertFlow(derived[i - 1]!, "clp", "uf", grid[i]!) : derived[i - 1]!;
+      const amt = unit === "uf" ? convertFlow(derived[i - 1]!, "clp", "uf", grid[i]!) : derived[i - 1]!; // convention-ok: the UF is an index of pesos: a UF frame is the peso frame converted per day
       if (amt === 0) continue;
       liabilityFlows[i - 1] += amt;
       const arr = flowsByAccount.get(accountId) ?? new Array<number>(grid.length - 1).fill(0);

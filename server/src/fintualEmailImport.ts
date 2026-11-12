@@ -94,7 +94,7 @@ export type FintualPlannedMovement = {
   to_account_id: number | null;
   account_id: number | null;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: Fintual's mails state pesos or dollars only
   /** The dollars of a peso → dollar conversion (`fx_exchange`); null otherwise. */
   counter_amount: number | null;
   counter_currency: "usd" | null;
@@ -171,7 +171,7 @@ export function planFintualEmailMovement(
     to_account_id: null as number | null,
     account_id: null as number | null,
     amount: event.amount ?? 0,
-    currency: (event.currency ?? "usd") as "clp" | "usd",
+    currency: (event.currency ?? "usd") as "clp" | "usd", // convention-ok: Fintual's mails state pesos or dollars only
     counter_amount: null as number | null,
     counter_currency: null as "usd" | null,
     create_account: null as { ticker: string; bucket_slug: string } | null,
@@ -272,7 +272,7 @@ export function planFintualEmailMovement(
       // invested from there (or returned after 7 days). Written from the mail, like Racional's
       // deposit; the bank's listing of the debit dedupes against this transfer's checking leg
       // (`superseded_by_transfer`) and brings its posting day.
-      if (event.currency !== "clp") {
+      if (event.currency !== "clp") { // convention-ok: a Fintual deposit mail is a peso deposit
         return { ...base, currency: "clp" as const, requires_manual: `deposit in ${event.currency ?? "no currency"} — only peso deposits are mapped` };
       }
       return { ...base, currency: "clp" as const, ...planDepositFromMail(brokerAdapter("fintual"), occurred_on, base.amount) };

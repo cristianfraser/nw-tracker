@@ -48,7 +48,7 @@ export type RacionalEmailPlannedMovement = {
   kind: "deposit" | "conversion" | "buy";
   occurred_on: string;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: Racional holds broker cash in pesos and dollars only
   counter_amount: number | null;
   counter_currency: "usd" | null;
   from_account_id: number | null;
@@ -62,7 +62,7 @@ export type RacionalEmailPlannedMovement = {
   requires_manual: string | null;
 };
 
-function tryRacionalCashAccountId(currency: "clp" | "usd"): number | null {
+function tryRacionalCashAccountId(currency: "clp" | "usd"): number | null { // convention-ok: Racional holds broker cash in pesos and dollars only
   try {
     return racionalCashAccountId(currency);
   } catch {

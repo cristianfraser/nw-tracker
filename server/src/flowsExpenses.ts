@@ -239,7 +239,7 @@ export type FlowCcExpenseLineRow = {
   amount_orig?: number | null;
 
   /** `amount_orig`'s currency when the import labeled it by value (pesos, dollars); null for any other. */
-  amount_orig_currency?: "clp" | "usd" | null;
+  amount_orig_currency?: "clp" | "usd" | null; // convention-ok: the statement prints an origin amount only on dollar statements, labeled pesos or dollars
 
   merchant: string | null;
 
@@ -796,7 +796,7 @@ export function buildCcExpenseLines(
 
       amount_usd: amountUsd,
 
-      ...(row.statement_currency === "usd" && row.amount_orig != null
+      ...(row.statement_currency === "usd" && row.amount_orig != null // convention-ok: the statement prints an origin amount only on dollar statements, labeled pesos or dollars
         ? { amount_orig: row.amount_orig, amount_orig_currency: origCurrencyLabel(row.orig_currency) }
         : {}),
 
@@ -1180,7 +1180,7 @@ export function withSubscriptionCategory<L extends { category_slug: string; cate
   });
 }
 
-function origCurrencyLabel(c: string | null): "clp" | "usd" | null {
+function origCurrencyLabel(c: string | null): "clp" | "usd" | null { // convention-ok: the statement prints an origin amount only on dollar statements, labeled pesos or dollars
   if (c == null) return null;
   if (c === "clp" || c === "usd") return c;
   throw new Error(`cc_statement_lines.orig_currency ${c}: only clp / usd are labeled (ccOriginCurrency.ts)`);

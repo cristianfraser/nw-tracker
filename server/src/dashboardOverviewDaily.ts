@@ -23,7 +23,7 @@ import {
   dashboardBucketsTodayInUnit,
 } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./rates.js";
-import { roundToCurrency } from "./displayUnits.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import {
   listAccountsForGroupTab,
   milestoneFieldsForDate,
@@ -104,8 +104,8 @@ function buildOverviewDaily(unit: TsUnit, days: number): OverviewDailyPayload {
   const byDate = buildDashboardBucketDailySeriesClp(grid);
   const liabByDate = liabilitiesByDate(grid, "clp");
   // In another unit: Σ of each account's own value in it per day (never the bucket's pesos ÷ one rate).
-  const byDateUnit = unit === "clp" ? byDate : buildDashboardBucketDailySeriesInUnit(grid, unit);
-  const liabByDateUnit = unit === "clp" ? liabByDate : liabilitiesByDate(grid, unit);
+  const byDateUnit = isHomeCurrency(unit) ? byDate : buildDashboardBucketDailySeriesInUnit(grid, unit);
+  const liabByDateUnit = isHomeCurrency(unit) ? liabByDate : liabilitiesByDate(grid, unit);
 
   // Same leading-null convention as the monthly overview: real_estate and liabilities stay
   // null (line not drawn) until their first non-zero value — a flat 0 pre-ownership reads
@@ -114,7 +114,7 @@ function buildOverviewDaily(unit: TsUnit, days: number): OverviewDailyPayload {
   let liabStarted = false;
   // Today in another unit is the headline's figure (Σ of each account's own value in it), never
   // the bucket's pesos ÷ one live rate: a cuota or a pre-open stock is priced on an earlier day.
-  const unitToday = unit === "clp" ? null : dashboardBucketsTodayInUnit(unit);
+  const unitToday = isHomeCurrency(unit) ? null : dashboardBucketsTodayInUnit(unit);
   const points: OverviewDailyPoint[] = grid.map((ymd) => {
     const row = byDate.get(ymd)!;
     const isToday = ymd === endYmd && unitToday != null;

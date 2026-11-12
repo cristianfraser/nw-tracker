@@ -63,7 +63,7 @@ export type RacionalPlannedMovement = {
   to_account_id: number | null;
   account_id: number | null;
   amount: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: Racional lists amounts in pesos or dollars only
   units_delta: string | null;
   flow_kind: string | null;
   note: string;
@@ -128,7 +128,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
   const note = [
     `Racional ${movement.title}`,
     movement.order_id ? `orden ${movement.order_id}` : null,
-    movement.price != null ? `${movement.units} @ ${currency === "usd" ? "US$" : "$"}${movement.price}` : null,
+    movement.price != null ? `${movement.units} @ ${currency === "usd" ? "US$" : "$"}${movement.price}` : null, // convention-ok: Racional lists amounts in pesos or dollars only
   ]
     .filter(Boolean)
     .join(" · ");
@@ -189,7 +189,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
       // Racional's monthly comisión is charged to the PORTAFOLIO caja (the app's fee detail says
       // «Distribución por portafolios»), not the Stocks wallet — and it is a P/L cost, so it
       // carries `cash_fee` (nets against interest; never reads as a capital withdrawal).
-      if (currency === "clp") {
+      if (currency === "clp") { // convention-ok: Racional lists amounts in pesos or dollars only
         const caja = portfolioCajaClpAccountId();
         if (caja == null) {
           return {
@@ -235,7 +235,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
       // A liquidated portfolio's caja goes back to the wallet: a plain transfer caja → Racional
       // CLP, the mirror of the transfer that funded the caja when the portfolio was bought
       // (movement 11377). The ETF's sale rides beside it as the `sell` of the same row.
-      if (currency !== "clp") {
+      if (currency !== "clp") { // convention-ok: Racional lists amounts in pesos or dollars only
         throw new Error(
           `Racional portfolio caja withdrawal (${movement.occurred_on}, ${movement.title}) is in ${currency} — ` +
             `only a CLP caja is mapped`

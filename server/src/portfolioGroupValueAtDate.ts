@@ -12,7 +12,7 @@ import {
 import { groupAccountIds, nwBucketSlugs } from "./navTreeModel.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 import { db } from "./db.js";
-import { roundToCurrency } from "./displayUnits.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 
 /** A value per net-worth bucket (`nwBucketSlugs()`, in their order), plus net worth = Σ of them. */
 export type BucketValues = Record<string, number> & { net_worth: number };
@@ -276,7 +276,7 @@ export function dashboardBucketDayPriorClosesInUnit(priorDayYmd: string, unit: T
       // Same netting as the live card (the consolidation) — a linked total in credit counts
       // on both sides of the day delta, so it can't show up as a day change.
       const cc = linkedCardsOwedInUnit(priorDayYmd, unit);
-      if (unit === "clp") raw = cashNetOfLinkedCreditCards(raw, cc!);
+      if (isHomeCurrency(unit)) raw = cashNetOfLinkedCreditCards(raw, cc!);
       else if (cc != null) raw = cashNetOfLinkedCreditCards(raw, cc);
     }
     out[slug] = roundToCurrency(raw, unit);
@@ -310,7 +310,7 @@ export function dashboardBucketsTodayInUnit(unit: TsUnit): BucketValues {
  * cards add up to it there too.
  */
 export function buildDashboardBucketValueTotalsInUnit(asOfYmd: string, unit: TsUnit): DashboardBucketValueTotals {
-  if (unit === "clp") {
+  if (isHomeCurrency(unit)) {
     const { buckets, total } = apportionedBucketClpAt(asOfYmd);
     const out: Record<string, number | null> = {};
     for (const slug of nwBucketSlugs()) out[slug] = buckets[slug]!;

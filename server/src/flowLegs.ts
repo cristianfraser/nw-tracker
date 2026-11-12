@@ -7,6 +7,7 @@
  * `rates.ts` — never dollars through pesos. Null when no rate is on file for the day. Readers pick
  * a leg here instead of branching on the unit themselves.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { convertCurrency, type CurrencyCode } from "./rates.js";
 
 export type FlowLegs = {
@@ -26,8 +27,8 @@ function usdLeg(legs: FlowLegs): number | null {
 }
 
 export function flowLegsInUnit(legs: FlowLegs, ymd: string, unit: CurrencyCode): number | null {
-  if (unit === "clp") return legs.clp;
-  if (unit === "usd") return usdLeg(legs);
+  if (isHomeCurrency(unit)) return legs.clp;
+  if (unit === "usd") return usdLeg(legs); // convention-ok: a flow carries a recorded dollar leg (its own dollars) beside its pesos
   if (legs.native_amount != null && legs.native != null) {
     if (legs.native === unit) return legs.native_amount;
     if (legs.native_amount === 0) return 0;

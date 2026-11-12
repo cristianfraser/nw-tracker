@@ -163,7 +163,7 @@ export function getGroupConsolidatedMonthlyPage(
   );
   const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
   const shown =
-    groupSlug === "net_worth" && installmentMode != null && unit !== "uf"
+    groupSlug === "net_worth" && installmentMode != null && unit !== "uf" // convention-ok: income and expenses have no UF frame (the flows overview builds currencies only)
       ? withIncomeAndExpenses(rows, unit, installmentMode, period)
       : rows;
   return { unit, group_slug: groupSlug, period, ...paginate(shown, page, pageSize) };

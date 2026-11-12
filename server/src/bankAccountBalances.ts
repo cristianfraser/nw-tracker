@@ -205,7 +205,7 @@ export function judgeLatestBankAccountBalances(opts: { recheck?: boolean } = {})
 
 function fmt(n: number, currency: Currency): string {
   if (isHomeCurrency(currency)) return `$${Math.round(n)}`;
-  if (currency === "usd") return `US$${n.toFixed(2)}`;
+  if (currency === "usd") return `US$${n.toFixed(2)}`; // convention-ok: the report prints a dollar account's balance with the US$ sign
   return `${currency.toUpperCase()} ${n.toFixed(currencyMinorDigits(currency))}`;
 }
 

@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "../displayUnits.js";
 import { valuationCurrency, valuationsAreAppraisals } from "../valuationValue.js";
 import { accountKindSlugForAccountId } from "../accountBucket.js";
 /** Manual movement create, valuations upsert, aggregation cache clear. Split verbatim from index.ts; paths unchanged. */
@@ -53,7 +54,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
     // Checking rows are CLP; a non-CLP transfer has no CLP leg to supersede.
     const superseded =
-      validated.currency === "clp"
+      isHomeCurrency(validated.currency)
         ? supersedeImportedCheckingRowsForTransfer(
             id,
             validated.from_account_id,

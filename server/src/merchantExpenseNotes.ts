@@ -80,14 +80,14 @@ type Receipt = {
   issuedOn: string;
   accountId: number | null;
   total: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   items: ReceiptItem[];
 };
 type Notice = {
   app: string;
   plan: string | null;
   price: number;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   period: Period;
   notice: "confirmed" | "renewal" | "expiring" | "price_increase";
   anchors: string[];
@@ -168,8 +168,8 @@ function normalizedPlan(text: string): string {
     .toLowerCase();
 }
 
-function amountsAgree(charge: Charge, price: number, currency: "clp" | "usd", tolerance: number): number | null {
-  if (currency === "usd") return charge.usd != null && Math.abs(charge.usd - price) < 0.005 ? 0 : null;
+function amountsAgree(charge: Charge, price: number, currency: "clp" | "usd", tolerance: number): number | null { // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
+  if (currency === "usd") return charge.usd != null && Math.abs(charge.usd - price) < 0.005 ? 0 : null; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   if (charge.pesos != null) return charge.pesos === Math.round(price) ? 0 : null;
   if (charge.clp == null) return null;
   const err = Math.abs(charge.clp - price) / price;
@@ -194,7 +194,7 @@ function loadCharges(): Charge[] {
     const date = statementLineDateIso(r);
     if (!date) throw new Error(`App Store card line ${r.line_id} has no date`);
     const pesos =
-      r.orig_currency === "clp" && r.amount_orig != null && r.amount_orig > 0
+      r.orig_currency === "clp" && r.amount_orig != null && r.amount_orig > 0 // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
         ? Math.round(r.amount_orig)
         : r.amount_clp != null && r.amount_clp > 0
           ? r.amount_clp
@@ -235,7 +235,7 @@ function loadReceipts(merchant: string): Receipt[] {
        FROM merchant_receipts r JOIN merchant_document_sources s ON s.id = r.source_id
        WHERE r.merchant = ? ORDER BY r.issued_on, r.id`
     )
-    .all(merchant) as { id: number; source_ref: string; issued_on: string; card_last4: string | null; total_amount: number; currency: "clp" | "usd" }[];
+    .all(merchant) as { id: number; source_ref: string; issued_on: string; card_last4: string | null; total_amount: number; currency: "clp" | "usd" }[]; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   const items = db
     .prepare(
       `SELECT i.receipt_id, i.app, i.product, i.amount, i.renews, i.period, i.icon_url
@@ -271,7 +271,7 @@ function loadNotices(merchant: string): Notice[] {
     app: string;
     plan: string | null;
     price: number;
-    currency: "clp" | "usd";
+    currency: "clp" | "usd"; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
     period: Period;
     purchased_on: string | null;
     next_charge_on: string | null;
@@ -323,7 +323,7 @@ export function deriveMerchantChargeLinks(opts?: {
       if (dd < -RECEIPT_DAYS_BEFORE || dd > RECEIPT_DAYS_AFTER) return;
       const err = amountsAgree(c, r.total, r.currency, RECEIPT_FX_TOLERANCE);
       if (err == null) return;
-      candidates.push({ approx: c.pesos != null || r.currency === "usd" ? 0 : 1, order: dd >= 0 ? dd : 10 - dd, err, ri, ci });
+      candidates.push({ approx: c.pesos != null || r.currency === "usd" ? 0 : 1, order: dd >= 0 ? dd : 10 - dd, err, ri, ci }); // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
     });
   });
   candidates.sort((a, b) => a.approx - b.approx || a.order - b.order || a.err - b.err || a.ri - b.ri || a.ci - b.ci);
@@ -404,7 +404,7 @@ export function deriveMerchantChargeLinks(opts?: {
   }
 
   // 3. Cadence evidence: subscription receipts' charges and notices.
-  type Evidence = { app: string; label: string; accountId: number | null; price: number; currency: "clp" | "usd"; period: Period; anchor: string; validFrom: string | null; validBefore: string | null; basis: string };
+  type Evidence = { app: string; label: string; accountId: number | null; price: number; currency: "clp" | "usd"; period: Period; anchor: string; validFrom: string | null; validBefore: string | null; basis: string }; // convention-ok: App Store receipts on the user's cards are in pesos or dollars only
   const evidence: Evidence[] = [];
   for (const [ri, ci] of chargeOfReceipt) {
     const r = receipts[ri]!;

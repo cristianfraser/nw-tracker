@@ -136,7 +136,7 @@ function loadMovementSignedFlowEvents(
     // A dollar purchase of fund units on an account that is not dollar cash (a payroll
     // contribution to a 401(k) or an HSA): its dollars, signed by the row, in pesos at the day's
     // rate. Any other single-leg dollar row keeps reading no peso leg (it moves no capital here).
-    if (r.currency === "usd" && r.units_delta != null) {
+    if (r.currency === "usd" && r.units_delta != null) { // convention-ok: a 401(k)/HSA payroll contribution is a dollar purchase of fund units
       if (!Number.isFinite(r.amount) || r.amount === 0) continue;
       const usd = r.amount;
       const amt = Math.sign(usd) * foreignCashToClpAt(Math.abs(usd), "usd", r.occurred_on, `usdFundDeposit:${r.id}`);

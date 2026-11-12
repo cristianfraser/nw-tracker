@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { equityAsTradedClose, equitySplitFactorAfter } from "./equitySplits.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -335,7 +336,7 @@ function cuotaLedgerPositionMeta(accountId: number, kind: string, series: string
   const px =
     fu == null
       ? undefined
-      : fu.currency === "clp"
+      : isHomeCurrency(fu.currency)
         ? fu.unit_value
         : (convertValue(fu.unit_value, fu.currency, "clp", fu.day, "asset") ?? undefined);
   const pxDay = fu?.day;

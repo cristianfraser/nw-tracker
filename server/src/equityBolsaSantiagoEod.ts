@@ -28,7 +28,7 @@ type BolsaPointHistJson = {
  */
 export function bolsaSantiagoNemoForTicker(ticker: string): string {
   const row = requireMarketSymbol(ticker);
-  if (row.market_kind !== "santiago" || row.quote_currency !== "clp") {
+  if (row.market_kind !== "santiago" || row.quote_currency !== "clp") { // convention-ok: the Bolsa de Santiago quotes in pesos
     throw new Error(`bolsaSantiagoNemoForTicker: ${ticker} is registered as ${row.market_kind}/${row.quote_currency}, not a Bolsa de Santiago peso instrument`);
   }
   const nemo = row.display_symbol;

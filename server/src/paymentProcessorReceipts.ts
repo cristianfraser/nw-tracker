@@ -260,7 +260,7 @@ export type ReceiptCandidateLine = {
   /** A dollar charge's amount in its own currency, as the statement prints it. */
   amount_orig?: number | null;
   /** That amount's currency when the statement labels it (pesos, dollars); null for any other. */
-  amount_orig_currency?: "clp" | "usd" | null;
+  amount_orig_currency?: "clp" | "usd" | null; // convention-ok: a receipt pairs a dollar line to the cent and a peso line to the peso; others by origin
   /** The purchase's own day (a card line's transaction date). */
   purchase_on: string | null;
   merchant: string | null;
@@ -368,17 +368,17 @@ export function pesoReceiptMayBeChargedInDollars(processor: string): boolean {
  * could fit.
  */
 function sameAmount(r: StoredPaymentReceipt, amount: number, l: ReceiptCandidateLine): "exact" | "at_rate" | null {
-  if (r.currency === "usd") return l.amount_usd != null && Math.abs(l.amount_usd - amount) < 0.005 ? "exact" : null;
+  if (r.currency === "usd") return l.amount_usd != null && Math.abs(l.amount_usd - amount) < 0.005 ? "exact" : null; // convention-ok: a receipt pairs a dollar line to the cent and a peso line to the peso; others by origin
   // Abroad: the dollar line's original-currency amount, to the cent (the statement prints it, the
   // receipt states it); never a conversion.
-  if (r.currency !== "clp") {
+  if (r.currency !== "clp") { // convention-ok: a receipt pairs a dollar line to the cent and a peso line to the peso; others by origin
     return l.amount_usd != null && l.amount_orig != null && l.amount_orig_currency == null && Math.abs(l.amount_orig - amount) < 0.005
       ? "exact"
       : null;
   }
   if ((l.principal_clp ?? l.amount_clp) === amount) return "exact";
   // A peso purchase billed on the dollar statement (Airbnb in Chile): its printed peso origin.
-  if (l.amount_usd != null && l.amount_orig_currency === "clp" && l.amount_orig === amount) return "exact";
+  if (l.amount_usd != null && l.amount_orig_currency === "clp" && l.amount_orig === amount) return "exact"; // convention-ok: a receipt pairs a dollar line to the cent and a peso line to the peso; others by origin
   const sender = PESO_RECEIPT_CHARGED_IN_DOLLARS[r.processor];
   if (!sender || l.amount_usd == null || !(l.amount_usd > 0) || !l.purchase_on || !sender.test(l.merchant ?? "")) return null;
   const fx = fxRowOnOrBefore(l.purchase_on);

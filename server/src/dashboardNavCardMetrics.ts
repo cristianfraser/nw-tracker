@@ -14,6 +14,7 @@
  * client keeps no copy of them — it picks these numbers, and only single-account rows
  * (account table rows, account detail) are projected client-side from their own row.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import {
   chartBucketGroupChildren as portfolioStripGroupChildren,
@@ -155,7 +156,7 @@ function accountInDashboardGroupScope(
  * of no finite leg is zero; in any other unit it is a missing conversion (null).
  */
 function emptySumIn(unit: TsUnit): 0 | null {
-  return unit === "clp" ? 0 : null;
+  return isHomeCurrency(unit) ? 0 : null;
 }
 
 /** Σ of the finite values; `empty` when none is finite. */

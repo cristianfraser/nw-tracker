@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
@@ -143,7 +144,7 @@ export function monthEndCloseForAccountInUnit(
 ): number | null {
   const markClp = monthEndMarkClpForAccount(accountId, bucketSlug, monthKey, opts);
   if (markClp == null) return monthEndCloseFromPerfRows(monthlyRows, monthKey);
-  if (unit === "clp") return markClp;
+  if (isHomeCurrency(unit)) return markClp;
   return accountValueClpToUnitAt(accountId, markClp, monthEndUtcYmd(monthKey), unit);
 }
 
@@ -331,7 +332,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
       ? { value_clp: resolved, as_of_date: today }
       : resolved;
   let live: number | null = liveClose?.value_clp ?? null;
-  if (live != null && unit !== "clp") {
+  if (live != null && !isHomeCurrency(unit)) {
     // The dashboard row's frame (`current_value_usd`): the account's value converted once at
     // today's rate (a USD cash account's ledger dollars, a dollar stock's shares × price).
     live = accountValueClpToUnitAt(accountId, live, today, unit);

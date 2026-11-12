@@ -366,7 +366,7 @@ export type LoanPaymentColumns = Omit<LoanPaymentRow, "movement_id" | "loan_acco
 export function assertDeptoLoanPaymentCurrencies(
   row: Pick<LoanPaymentRow, "movement_id" | "loan_currency" | "payment_currency">
 ): void {
-  if (row.loan_currency !== "uf" || row.payment_currency !== "clp") {
+  if (row.loan_currency !== "uf" || row.payment_currency !== "clp") { // convention-ok: a mortgage is stated in UF and paid in pesos (loan_payments)
     throw new Error(
       `loan_payments row ${row.movement_id}: the depto ledger reads a UF loan paid in pesos, got loan ${row.loan_currency} / payment ${row.payment_currency}`
     );
@@ -433,7 +433,7 @@ export function upsertPropertyAppraisalUf(accountId: number, asOfYmd: string, va
     .prepare(`SELECT value, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
     .get(accountId, asOfYmd) as { value: number; currency: string } | undefined;
   if (prev) {
-    if (prev.currency !== "uf" || prev.value !== valueUf) {
+    if (prev.currency !== "uf" || prev.value !== valueUf) { // convention-ok: a mortgage is stated in UF and paid in pesos (loan_payments)
       throw new Error(
         `property appraisal ${accountId} ${asOfYmd}: stored ${prev.value} ${prev.currency}, new ${valueUf} uf`
       );
@@ -451,7 +451,7 @@ export function propertyAppraisalsUfAsc(accountId: number): { as_of_date: string
     .prepare(`SELECT as_of_date, value, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
     .all(accountId) as { as_of_date: string; value: number; currency: string }[];
   return rows.map((r) => {
-    if (r.currency !== "uf") {
+    if (r.currency !== "uf") { // convention-ok: a mortgage is stated in UF and paid in pesos (loan_payments)
       throw new Error(`property appraisal ${accountId} ${r.as_of_date}: the depto ledger reads UF, got ${r.currency}`);
     }
     return { as_of_date: r.as_of_date, value_uf: r.value };

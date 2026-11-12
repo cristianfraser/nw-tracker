@@ -1,3 +1,4 @@
+import { isHomeCurrency } from "./displayUnits.js";
 import {
   accountHistoricalQtyMarkUncached,
   accountMarkClpAtYmd,
@@ -94,7 +95,7 @@ function markClpAt(account: MarkSeriesAccountRef, ymd: string): number | null {
 
 /** A day on or after Chile today: computed on every call (live quotes, the live rate). */
 function liveValueAt(account: MarkSeriesAccountRef, ymd: string, unit: CurrencyCode): number | null {
-  if (unit === "clp") return markClpAt(account, ymd);
+  if (isHomeCurrency(unit)) return markClpAt(account, ymd);
   const v = accountValueAt(account.account_id, ymd, unit)?.value;
   return v != null && Number.isFinite(v) ? v : null;
 }

@@ -102,7 +102,7 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
   }[];
   const out: ExtraPayment[] = [];
   for (const r of rows) {
-    if (r.payment_currency !== "clp") {
+    if (r.payment_currency !== "clp") { // convention-ok: a mortgage cuota is paid in pesos (loan_payments)
       throw new Error(`mortgage payment ${r.cuota} (movement ${r.movement_id}): parts in ${r.payment_currency}, expected pesos`);
     }
     const amortization = r.amortizacion_ext_clp ?? 0;

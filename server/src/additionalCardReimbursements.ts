@@ -7,6 +7,7 @@
  * lines, so the category itself nets to what he still owes. This section shows the two sides per
  * month / year: charges, reimbursements, net and the running balance owed.
  */
+import { isHomeCurrency } from "./displayUnits.js";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import { ADDITIONAL_CARD_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { countsTowardGastosMes, type GastosMesLine } from "./flowsExpensesGastos.js";
@@ -136,7 +137,7 @@ export function buildAdditionalCardsSummary(
   };
   const valueOf = (line: AdditionalCardChargeLineInput): number | null => {
     const v = lineValueIn(line, unit);
-    if (v == null && unit === "clp") throw new Error(`additional-card line ${line.expense_month} without its pesos`);
+    if (v == null && isHomeCurrency(unit)) throw new Error(`additional-card line ${line.expense_month} without its pesos`);
     return v;
   };
   for (const line of lines) {
