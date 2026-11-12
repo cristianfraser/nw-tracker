@@ -141,7 +141,7 @@ export function cardPaymentEvidence<L extends EvidenceLine>(
 
 /**
  * The row, in the requested display unit. A dollar payment's pesos are what its PAGO line on the
- * card shows — the pesos those dollars cost (`usdPaymentLineClpResolver`), not the day's rate —
+ * card shows — the pesos those dollars cost (`foreignPaymentLineClpResolver`), not the day's rate —
  * whenever that line is its evidence (`serverLines`: the evidence lines with their money).
  */
 export function latestCardPayment(

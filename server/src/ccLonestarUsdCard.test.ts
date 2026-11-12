@@ -20,6 +20,7 @@ import {
   ensureVitestLonestarFixture,
   wipeVitestCcFixtureData,
 } from "./test/vitestDbSeed.js";
+import { facturadoForeignIn } from "./ccBillingViews.js";
 
 /**
  * The fictional US issuer (Lonestar): a card with a dollar side only. Two monthly statements go
@@ -164,7 +165,7 @@ describe("a USD-only card of a US issuer", () => {
     expect(closed).toBeDefined();
     expect(closed!.pay_by_iso).toBe(PAY_BY_2);
     expect(closed!.pay_by_source).toBe("statement");
-    expect(closed!.facturado_usd).toBeCloseTo(100, 2);
+    expect(facturadoForeignIn(closed!, "usd")!.amount).toBeCloseTo(100, 2);
     const open = rows.find((r) => r.is_open_month);
     expect(open).toBeDefined();
     expect(open!.pay_by_source).toBe("derived");

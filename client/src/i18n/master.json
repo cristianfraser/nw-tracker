@@ -3256,8 +3256,8 @@
         "es": "Facturado CLP"
       },
       "chartFacturadoUsd": {
-        "en": "Billed US$",
-        "es": "Facturado US$"
+        "en": "Billed in foreign currency",
+        "es": "Facturado en moneda extranjera"
       },
       "tooltipCloseOn": {
         "en": "Close {{date}}",
@@ -3352,8 +3352,8 @@
         "es": "Derivada del cierre (alrededor del 10 del mes siguiente): ningún estado de cuenta imprime aún esta fecha."
       },
       "colFacturadoUsd": {
-        "en": "Billed US$",
-        "es": "Facturado US$"
+        "en": "Billed in foreign currency",
+        "es": "Facturado en moneda extranjera"
       },
       "colFacturadoTotal": {
         "en": "Total billed",

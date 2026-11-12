@@ -14,7 +14,7 @@ import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { ccLedgerStatementClosingPointsClp } from "./ccCreditCardValuations.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
-import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
+import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { facturacionMonthByStatementDate, reconcileOpenWebPasteAfterPdfClose, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { buildCcExpenseLines } from "./flowsExpenses.js";
@@ -22,6 +22,7 @@ import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { listCcBillingMonthBalances, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { listingStatements, webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
+import { facturadoForeignIn } from "./ccBillingViews.js";
 
 /**
  * Synthetic Santander card modelled on the September 2026 close: the August statement announces
@@ -417,11 +418,11 @@ describe("credit-card close evidence", () => {
       close_date_iso: "2026-09-24",
       close_date_source: "feed",
       facturado_clp: 1_892_666,
-      facturado_usd: 577.34,
+      facturado_foreign: [{ currency: "usd", amount: 577.34 }],
       provisional_estimate_total_clp: 15_000,
     });
-    expect(september.facturado_total_clp).toBe(1_892_666 + (september.facturado_usd_clp ?? 0));
-    expect(september.facturado_usd_clp).toBeGreaterThan(0);
+    expect(september.facturado_total_clp).toBe(1_892_666 + (facturadoForeignIn(september, "usd")!.clp ?? 0));
+    expect(facturadoForeignIn(september, "usd")!.clp).toBeGreaterThan(0);
     const october = facturaciones.find((f) => f.billing_month === "2026-10")!;
     expect(october).toMatchObject({ is_open_month: true, is_provisional_close: false, close_date_source: "estimated" });
 
@@ -690,7 +691,7 @@ describe("credit-card close evidence", () => {
     // close's 30.000 = 60.000, the detalle's open-row figure).
     expect(by("2026-10")).toMatchObject({ is_open_month: true, deuda_en_cuotas_clp: 30_000 });
     // The open bucket holds no dollar line: US$0 billed so far, never «—»; the CLP side is whole.
-    expect(by("2026-10")).toMatchObject({ facturado_usd: 0, facturado_usd_clp: 0 });
+    expect(by("2026-10")).toMatchObject({ facturado_foreign: [{ currency: "usd", amount: 0, clp: 0 }] });
     expect(by("2026-10").facturado_total_clp).toBe(by("2026-10").facturado_clp);
     const detail = buildBillingDetailByMonth(accountId, ccInstallmentsDbApiPayload(accountId).months);
     expect(detail.find((d) => d.billing_month === "2026-10")?.cupo_statement_clp).toBe(60_000);
@@ -743,8 +744,7 @@ describe("credit-card close evidence", () => {
     // Nothing billed in dollars so far is US$0, not «—» (a closed month with no USD statement).
     expect(open[0]).toMatchObject({
       facturado_clp: 30_000,
-      facturado_usd: 0,
-      facturado_usd_clp: 0,
+      facturado_foreign: [{ currency: "usd", amount: 0, clp: 0 }],
       facturado_total_clp: 30_000,
       cuota_a_pagar_clp: 30_000,
       deuda_en_cuotas_clp: 30_000,
@@ -1000,7 +1000,7 @@ describe("credit-card close evidence", () => {
     const ledger = ccInstallmentsDbApiPayload(accountId);
     const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
     expect(september.is_open_month).toBe(false);
-    expect(september.facturado_usd).toBeCloseTo(20.93, 2);
+    expect(facturadoForeignIn(september, "usd")!.amount).toBeCloseTo(20.93, 2);
 
     const clp = insertStatement({
       source: "vitest 2026-09-24 clp.pdf",
@@ -1048,12 +1048,12 @@ describe("credit-card close evidence", () => {
     insertLine(usd, { date: "05/09/2026", merchant: "NOTA DE CREDITO", usd: -3 });
     const payment = insertLine(usd, { date: "09/09/2026", merchant: "MONTO CANCELADO", usd: -50 });
 
-    expect(usdBilledFromStatementLines(usd)).toBeCloseTo(30.52, 2);
+    expect(foreignBilledFromStatementLines(usd, "usd")).toBeCloseTo(30.52, 2);
     expect(feedCloseStatementMismatches(accountId)).toEqual([]);
     const ledger = ccInstallmentsDbApiPayload(accountId);
     const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
-    expect(september.facturado_usd).toBeCloseTo(30.52, 2);
-    expect(september.facturado_total_clp).toBe(10_000 + september.facturado_usd_clp!);
+    expect(facturadoForeignIn(september, "usd")!.amount).toBeCloseTo(30.52, 2);
+    expect(september.facturado_total_clp).toBe(10_000 + facturadoForeignIn(september, "usd")!.clp!);
 
     // A payment read as a charge (a dollar MONTO CANCELADO read as positive) disagrees.
     db.prepare(`UPDATE cc_statement_lines SET amount = 50 WHERE id = ? AND currency = 'usd'`).run(payment);

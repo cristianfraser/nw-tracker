@@ -1,9 +1,9 @@
 import { openFacturacionCredits } from "./ccBillingBalances.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { cardStoppedBilling } from "./cards/lifecycle.js";
-import type { CcFacturacionRow } from "./ccBillingViews.js";
+import { facturadoForeignIn, type CcFacturacionRow } from "./ccBillingViews.js";
 import { listCcPaymentEvidenceRows } from "./ccPaymentMirrorEvidence.js";
-import { usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
+import { foreignDebtPaymentsForAccount } from "./ccFacturacionForeignRate.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
@@ -156,14 +156,14 @@ export function upcomingPaymentRows(
     const owedClp =
       (latestClosed.facturado_clp ?? 0) - paidAfter(payments.clp, latestClosed.close_date_iso) - creditsClp;
     const owedUsd =
-      (latestClosed.facturado_usd ?? 0) - paidAfter(payments.usd, latestClosed.close_date_iso) - creditsUsd;
+      (facturadoForeignIn(latestClosed, "usd")?.amount ?? 0) - paidAfter(payments.usd, latestClosed.close_date_iso) - creditsUsd;
     openAdjustClp = creditsClp - Math.max(0, -owedClp);
     openAdjustUsd = creditsUsd - Math.max(0, -owedUsd);
     push(latestClosed, owedClp, owedUsd);
   }
   if (openRow) {
     if (openRow.pay_by_iso == null) throw new Error(`Open facturación ${openRow.billing_month} has no pay-by date`);
-    push(openRow, (openRow.facturado_clp ?? 0) + openAdjustClp, (openRow.facturado_usd ?? 0) + openAdjustUsd);
+    push(openRow, (openRow.facturado_clp ?? 0) + openAdjustClp, (facturadoForeignIn(openRow, "usd")?.amount ?? 0) + openAdjustUsd);
   }
   return out;
 }
@@ -198,7 +198,7 @@ export function ccUpcomingPaymentsFromCards(
 /**
  * A card's payments: the peso payments the card's own lines and statement headers show
  * (`listCcPaymentEvidenceRows`, one per payment — a line and the header naming the same payment
- * share a key), the dollar debt payments (`usdDebtPaymentsForAccount`: divisas purchases,
+ * share a key), the dollar debt payments (`foreignDebtPaymentsForAccount`: divisas purchases,
  * payments from a dollar account, traspasos de deuda) and the open facturación's credits.
  */
 function cardPayments(accountId: number, facturaciones: readonly CcFacturacionRow[]): CcCardPayments {
@@ -209,7 +209,7 @@ function cardPayments(accountId: number, facturaciones: readonly CcFacturacionRo
     seen.add(e.key);
     clp.push({ date_iso: e.pago_iso, amount: e.amount_clp });
   }
-  const usd = usdDebtPaymentsForAccount(accountId).map((p) => ({ date_iso: p.date_iso, amount: p.usd }));
+  const usd = foreignDebtPaymentsForAccount(accountId, "usd").map((p) => ({ date_iso: p.date_iso, amount: p.amount }));
   const open = facturaciones.find((f) => f.is_open_month);
   const open_credits = open ? openFacturacionCredits(accountId, open.billing_month) : { clp: 0, usd: 0 };
   return { clp, usd, open_credits };

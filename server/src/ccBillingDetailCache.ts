@@ -2,8 +2,8 @@ import { cacheKeyCcBillingDetail, cacheKeyCcBillingDetailBase } from "./cacheFam
 import { getAggregationCached } from "./cacheRegistry.js";
 import {
   buildBillingDetailByMonth,
-  buildFacturacionesWithoutUsdRates,
-  withFacturacionUsdRates,
+  buildFacturacionesWithoutForeignRates,
+  withFacturacionForeignRates,
   type CcBillingDetailStatementRow,
   type CcFacturacionRow,
 } from "./ccBillingViews.js";
@@ -55,7 +55,7 @@ export function billingDetailCacheForAccount(accountId: number): CcLedgerBilling
     return {
       payload: base.payload,
       detail: base.detail,
-      facturaciones: withFacturacionUsdRates(accountId, base.facturaciones),
+      facturaciones: withFacturacionForeignRates(accountId, base.facturaciones),
     } satisfies CcLedgerBillingBundle;
   });
 }
@@ -67,7 +67,7 @@ function billingDetailBaseForAccount(accountId: number): CcLedgerBillingBundle {
       return {
         payload: null,
         detail: buildBillingDetailByMonth(accountId, []),
-        facturaciones: buildFacturacionesWithoutUsdRates(accountId, []),
+        facturaciones: buildFacturacionesWithoutForeignRates(accountId, []),
       } satisfies CcLedgerBillingBundle;
     }
     const payload = ccInstallmentsDbApiPayload(accountId);
@@ -75,7 +75,7 @@ function billingDetailBaseForAccount(accountId: number): CcLedgerBillingBundle {
     return {
       payload,
       detail: buildBillingDetailByMonth(accountId, allScheduleMonths),
-      facturaciones: buildFacturacionesWithoutUsdRates(accountId, allScheduleMonths),
+      facturaciones: buildFacturacionesWithoutForeignRates(accountId, allScheduleMonths),
     } satisfies CcLedgerBillingBundle;
   });
 }

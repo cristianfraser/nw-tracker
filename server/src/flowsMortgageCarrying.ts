@@ -74,14 +74,16 @@ export function sumMortgageCarryingBy(
 
 /**
  * The live rates the expense lines priced dollars at: an unpaid facturación whose pay-by is still
- * ahead shows its dollars at today's rate (`usd_rate_source: live`, `ccFacturacionUsdRate.ts`), read
+ * ahead shows its dollars at today's rate (`usd_rate_source: live`, `ccFacturacionForeignRate.ts`), read
  * from the cards' billing-detail bundles — which a live-quote tick rebuilds.
  */
 function liveUsdRatesFingerprint(): string {
   const parts: string[] = [];
   for (const accountId of listCreditCardMasterAccountIds()) {
     for (const row of billingDetailCacheForAccount(accountId).facturaciones) {
-      if (row.usd_rate_source === "live") parts.push(`${accountId}:${row.billing_month}:${row.usd_rate_clp}`);
+      for (const f of row.facturado_foreign) {
+        if (f.rate_source === "live") parts.push(`${accountId}:${row.billing_month}:${f.currency}:${f.rate_clp}`);
+      }
     }
   }
   return parts.join("|");

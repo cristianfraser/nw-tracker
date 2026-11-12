@@ -248,6 +248,24 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
    payment's `owed` a map by currency; parity on a real-data copy for each. Still open: the readers
    named above, the facturación rows' per-currency entries and the currency argument of the dollar
    payment helpers, and retiring the generated legacy line columns.
+   *Part 3 (readers) done 2026-11-12:* facturación rows carry `facturado_foreign` (one entry per
+   currency the card bills in: amount, pesos, rate, rate source) in place of `facturado_usd*` /
+   `usd_rate_*`; the historial bars a `facturado_foreign_clp` segment; `foreignDebtPaymentsForAccount`,
+   `facturacionForeignRatesForAccount`, `foreignPaymentLineClpResolver`, `isCcForeignPaymentLine`,
+   `foreignBilledFromStatementLines` and the revaluation's real-rate term take the currency
+   (`ccFacturacionForeignRate.ts`, `ccForeignStatementBilled.ts`); the statement-frame split varies
+   each currency's uniform rate (`withUniformDebtRates`); the expense lines read `amount` /
+   `currency` / `cuota_amount`. A euro card's closed facturación bills its euros at the rate a euro
+   payment from a euro cash account actually cost (`ccEuroCardFacturacion.test.ts`). Card payloads,
+   the cupo report, the mirror dry run and `verify-cc-billed-cuotas` identical on a copy of the
+   2026-11-12 database (renamed fields mapped back). Leftovers: the open cycle's and a provisional
+   close's third-currency lines (they read 0 / nothing: `openMonthUsdFacturado`, the open-month sums
+   and `debtCcExpenseLineAmountClp` still read the legacy columns), the upcoming payments' reckoning
+   (pesos and dollars only), `ccOwedByCurrency` (the bank cupo check: pesos and dollars). The
+   generated legacy line columns stay: about 58 files still read `amount_clp` / `amount_usd` /
+   `valor_cuota_mensual_*` (the plan ledger, the cuota retirement, the import dedupe and reconcile,
+   the web-paste and feed writers' checks, the open-month and billed-line sums, the grocery and
+   real-estate matchers); they are retired when those move.
    `CcOwedNative {clp, usd}` (`ccOwedWalk.ts`, `ccOwedByCurrency.ts`) becomes a map by
    currency, its revaluation term per sub-balance. Statement lines: `cc_statement_lines`
    `amount_clp` / `amount_usd` and `valor_cuota_mensual_*` → `amount` + `currency` (a line is in
@@ -257,7 +275,11 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
    facturación rows' `facturado_usd*` and `usd_rate_*` become per-currency entries;
    `usdDebtPaymentsForAccount`, `isCcUsdPaymentLine`, `usdPaymentLineClpResolver` take the
    currency (13 files). The issuer's `statement_currencies` already names them.
-4. **Payment mirrors and checking.** The divisas tier of `ccPaymentMirrors.ts` pairs any foreign
+4. **Payment mirrors and checking.** *Cards done 2026-11-12:* the divisas tier pairs a peso debit
+   with the card's ABONO DE DIVISAS in any foreign currency, inside 0,5×–2× that currency's mid rate
+   on the abono's day, and converts to the cross-currency `pago_tarjeta` shape (a `pago_tarjeta`,
+   not `fx_exchange`: the deposit readers and the paid-rate readers key on it); the evidence key
+   counts a foreign amount in its smallest coin. The divisas tier of `ccPaymentMirrors.ts` pairs any foreign
    debt bought with pesos; checking mirror pairs pair two rows of the same currency; the bank
    balance checks and `bank_account_numbers` take any declared currency.
 5. **Market.** (Storage and the adapter done 2026-11-12, migration 315: `market_symbols`,

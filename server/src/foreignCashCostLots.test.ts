@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
-import { facturacionUsdRatesForAccount, usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
+import { facturacionForeignRatesForAccount, foreignDebtPaymentsForAccount } from "./ccFacturacionForeignRate.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { brokerNotification } from "./test/brokerNotificationFixtures.js";
@@ -164,14 +164,14 @@ describe("foreignOutflowPesoCostByMovement", () => {
     // The buy two days later spends what the request left of 10-05 plus all of 10-07's dollars.
     expect(costs.get(soxq)!.clp).toBeCloseTo(900_000 - reservedClp + 500_000, 6);
 
-    expect(usdDebtPaymentsForAccount(card)).toEqual([
-      { date_iso: "2097-10-09", usd: 940, clp: costs.get(payment)!.clp },
+    expect(foreignDebtPaymentsForAccount(card, "usd")).toEqual([
+      { date_iso: "2097-10-09", amount: 940, clp: costs.get(payment)!.clp },
     ]);
-    const rates = facturacionUsdRatesForAccount(card, [
+    const rates = facturacionForeignRatesForAccount(card, "usd", [
       { billing_month: "2097-09", close_date_iso: "2097-09-24", pay_by_iso: "2097-10-10" },
     ]);
     expect(rates.get("2097-09")!.source).toBe("paid");
-    expect(rates.get("2097-09")!.clp_per_usd).toBeCloseTo(reservedClp / 940, 6);
+    expect(rates.get("2097-09")!.clp_per_unit).toBeCloseTo(reservedClp / 940, 6);
   });
 
   it("refuses a request day whose other events on the account have no time", () => {

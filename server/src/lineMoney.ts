@@ -5,7 +5,7 @@
  *
  * The builders reach pesos and dollars (`values.clp`, `values.usd`): a card's dollar line in pesos
  * at the rate its facturación was paid (`facturacionUsdRateWithSourceResolver`: paid / live /
- * pay_by), a dollar payment line at the pesos paid for it (`usdPaymentLineClpResolver`: paid),
+ * pay_by), a dollar payment line at the pesos paid for it (`foreignPaymentLineClpResolver`: paid),
  * anything else at the day's rate (`expenseGastosAmountUsdAtDate`: day). The «line money» step
  * records them from the builders' fields, so `values.clp` is the line's pesos and `values.usd` its
  * dollars as every reader saw them before.
@@ -16,6 +16,7 @@
  */
 import type { LineConverted, LineRateSource, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { convertCurrency } from "./rates.js";
+import { isHomeCurrency } from "./displayUnits.js";
 
 type MoneyFields = {
   amount_clp: number;
@@ -35,7 +36,10 @@ export function lineMoneyFromBuilderFields(l: MoneyFields): { amount: Money; val
     // its pesos and dollars are the day's unless the line is in that currency.
     const preset = l.amount;
     const reached = (code: string): LineRateSource => (preset.currency === code ? "native" : "day");
-    const values: Record<string, LineUnitValue> = { clp: { value: l.amount_clp, rate_source: reached("clp") } };
+    // A card line in a third currency states how its pesos were reached (its facturación's rate).
+    const values: Record<string, LineUnitValue> = {
+      clp: { value: l.amount_clp, rate_source: isHomeCurrency(preset.currency) ? "native" : (l.clp_rate_source ?? "day") },
+    };
     if (l.amount_usd_at_expense != null) values.usd = { value: l.amount_usd_at_expense, rate_source: reached("usd") };
     return { amount: preset, values };
   }

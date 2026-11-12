@@ -6,6 +6,7 @@ import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { findLines } from "./cards/purchases.js";
 import { closeDateForBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
+import { facturadoForeignIn } from "./ccBillingViews.js";
 
 /**
  * What a card owes in each currency, in the frame of the bank's own «cupo utilizado» (Santander's
@@ -63,7 +64,7 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
     }
     // A currency the facturación never billed carries no figure: nothing owed in it.
     facturadoClp = row.facturado_clp ?? 0;
-    facturadoUsd = row.facturado_usd ?? 0;
+    facturadoUsd = facturadoForeignIn(row, "usd")?.amount ?? 0;
   }
 
   // The lines of every later facturación, by the one rule that files a statement's lines under a

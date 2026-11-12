@@ -13,7 +13,7 @@
  * ({@link expenseEvidenceLines}), 4 plans ({@link planRows}, {@link ledgerPlans},
  * {@link ledgerPlanCuotas}, {@link planPrintedCuotaLines}, {@link lineForPayment} — the plan ↔ line
  * join on `parser_row_id` stays inside), 5 payment evidence ({@link clpPaymentLines},
- * {@link usdDebtAbonoLines}, {@link traspasoUsdLegs}), 6 is a filter on 1 and 3 by kind, 7 the
+ * {@link foreignDebtAbonoLines}, {@link traspasoForeignLegs}), 6 is a filter on 1 and 3 by kind, 7 the
  * search the matchers of other domains run ({@link findLines}). {@link effectivePurchases} returns
  * each purchase once. Readers that own rows (writers, import identity, re-key movers) still read the
  * tables; the guard test (`purchasesRawTableGuard.test.ts`) lists them.
@@ -448,6 +448,11 @@ export type CardLine = {
   merchant: string | null;
   transaction_date: string | null;
   posting_date: string | null;
+  /** The line's amount as stored (the legacy `amount_clp` / `amount_usd` value), in its own `currency` (migration 319). */
+  amount: number | null;
+  currency: string;
+  /** A cuota line's cuota, in `currency`. */
+  cuota_amount: number | null;
   amount_clp: number | null;
   amount_usd: number | null;
   amount_orig: number | null;
@@ -470,7 +475,7 @@ export type CardLine = {
 
 const CARD_LINE_COLUMNS = `l.id AS line_id, s.id AS statement_id, s.account_id, s.statement_date,
   s.currency AS statement_currency, s.source_pdf, s.source_kind, l.merchant, l.transaction_date,
-  l.posting_date, l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.installment_flag,
+  l.posting_date, l.amount, l.currency, l.cuota_amount, l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.installment_flag,
   l.nro_cuota_current, l.nro_cuota_total, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
   l.cuota_purchase_kind, l.kind, l.origin_card_last4, l.dedupe_key, l.parser_row_id, l.raw_line, l.flow_id`;
 
@@ -636,39 +641,51 @@ export function clpPaymentLines(accountId?: number): CardPaymentLine[] {
   );
 }
 
-// Matched by the LINE's currency (amount_usd set), not the statement's — the open web-paste bucket
-// is a CLP statement that carries the USD lines too, and an abono must be pairable the day the feed
-// delivers it. Traspaso-linked abonos are not payments: they reclassify USD debt onto the CLP side
-// of the same card, no cash moved.
-const stmtUsdAbonoLines = db.prepare(
+// Matched by the LINE's currency, not the statement's — the open web-paste bucket is a CLP
+// statement that carries the foreign lines too, and an abono must be pairable the day the feed
+// delivers it. Traspaso-linked abonos are not payments: they reclassify foreign debt onto the CLP
+// side of the same card, no cash moved.
+const stmtForeignAbonoLines = db.prepare(
   `SELECT l.id AS line_id, s.id AS statement_id, s.source_pdf, s.account_id, a.name AS account_name,
-          l.transaction_date, l.amount_usd AS amount, l.merchant
+          l.transaction_date, l.amount AS amount, l.currency, l.merchant
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    JOIN accounts a ON a.id = s.account_id
-   WHERE l.installment_flag = 0 AND l.amount_usd < 0
+   WHERE l.installment_flag = 0 AND l.currency <> 'clp' AND l.amount < 0
      AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
      AND l.id NOT IN (SELECT from_line_id FROM cc_traspaso_deuda_links)
      AND (@account_id IS NULL OR s.account_id = @account_id)`
 );
 
-/** The ABONO DE DIVISAS lines (dollar debt paid with bought dollars), traspaso legs left out. */
-export function usdDebtAbonoLines(accountId?: number): CardPaymentLine[] {
-  return stmtUsdAbonoLines.all({ account_id: accountId ?? null }) as CardPaymentLine[];
+/**
+ * The ABONO DE DIVISAS lines (foreign debt paid with bought currency), traspaso legs left out, each
+ * in its own currency (`amount` signed as stored).
+ */
+export function foreignDebtAbonoLines(accountId?: number): (CardPaymentLine & { currency: string })[] {
+  return stmtForeignAbonoLines.all({ account_id: accountId ?? null }) as (CardPaymentLine & { currency: string })[];
 }
 
-const stmtTraspasoUsdLegs = db.prepare(
-  `SELECT t.id AS link_id, l.transaction_date, t.to_amount AS clp, t.from_amount AS usd
+const stmtTraspasoForeignLegs = db.prepare(
+  `SELECT t.id AS link_id, l.transaction_date, t.to_amount AS clp, t.from_amount AS amount
    FROM cc_traspaso_deuda_links t
    INNER JOIN cc_statement_lines l ON l.id = t.from_line_id
-   WHERE t.account_id = ? AND t.from_currency = 'usd' AND t.to_currency = 'clp'`
+   WHERE t.account_id = ? AND t.from_currency = ? AND t.to_currency = 'clp'`
 );
 
-/** Each traspaso de deuda of the card: the dollar leg's date and the pesos the bank moved it at. */
-export function traspasoUsdLegs(
-  accountId: number
-): { link_id: number; transaction_date: string | null; clp: number; usd: number }[] {
-  return stmtTraspasoUsdLegs.all(accountId) as { link_id: number; transaction_date: string | null; clp: number; usd: number }[];
+/**
+ * Each traspaso de deuda of the card out of `currency` into pesos: the foreign leg's date, its
+ * amount in `currency` and the pesos the bank moved it at.
+ */
+export function traspasoForeignLegs(
+  accountId: number,
+  currency: string
+): { link_id: number; transaction_date: string | null; clp: number; amount: number }[] {
+  return stmtTraspasoForeignLegs.all(accountId, currency) as {
+    link_id: number;
+    transaction_date: string | null;
+    clp: number;
+    amount: number;
+  }[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -898,6 +915,9 @@ export type StatementLineSummary = {
   id: number;
   kind: string | null;
   merchant: string | null;
+  /** The line's amount in its own `currency` (migration 319). */
+  amount: number | null;
+  currency: string;
   amount_clp: number | null;
   amount_usd: number | null;
   transaction_date: string | null;
@@ -907,7 +927,7 @@ export type StatementLineSummary = {
 export function linesOfStatement(statementId: number): StatementLineSummary[] {
   return db
     .prepare(
-      `SELECT id, kind, merchant, amount_clp, amount_usd, transaction_date, posting_date FROM cc_statement_lines WHERE statement_id = ?`
+      `SELECT id, kind, merchant, amount, currency, amount_clp, amount_usd, transaction_date, posting_date FROM cc_statement_lines WHERE statement_id = ?`
     )
     .all(statementId) as StatementLineSummary[];
 }
@@ -966,6 +986,11 @@ export type CardExpenseEvidenceLine = {
   transaction_date: string | null;
   posting_date: string | null;
   parser_row_id: string | null;
+  /** The line's amount as stored, in its own `currency` (migration 319). */
+  amount: number | null;
+  currency: string;
+  /** A cuota line's cuota, in `currency`. */
+  cuota_amount: number | null;
   amount_clp: number | null;
   amount_usd: number | null;
   amount_orig: number | null;
@@ -992,6 +1017,7 @@ export function expenseEvidenceLines(accountIds: readonly number[]): CardExpense
       `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date, s.source_pdf, s.source_kind,
               s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
               l.transaction_date, l.posting_date, l.origin_card_last4, l.parser_row_id,
+              l.amount, l.currency, l.cuota_amount,
               l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.merchant, l.installment_flag,
               l.nro_cuota_current, l.nro_cuota_total,
               l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind, l.kind
@@ -999,10 +1025,9 @@ export function expenseEvidenceLines(accountIds: readonly number[]): CardExpense
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id IN (${accountIds.map(() => "?").join(",")})
          AND (
-           l.amount_clp IS NOT NULL
-           OR (l.amount_usd IS NOT NULL AND l.amount_usd != 0)
-           OR (l.installment_flag = 1 AND l.valor_cuota_mensual_clp IS NOT NULL AND l.valor_cuota_mensual_clp != 0)
-           OR (l.installment_flag = 1 AND l.valor_cuota_mensual_usd IS NOT NULL AND l.valor_cuota_mensual_usd != 0)
+           l.currency <> 'clp'
+           OR l.amount IS NOT NULL
+           OR (l.installment_flag = 1 AND l.cuota_amount IS NOT NULL AND l.cuota_amount != 0)
          )
        ORDER BY s.statement_date DESC, l.id DESC`
     )

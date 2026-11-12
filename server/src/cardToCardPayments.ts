@@ -5,7 +5,7 @@
  * master. A part is a one-shot charge (`cc_facturado_payment_charges`, by flow: its line's pesos on
  * its day) or a plan (`finances_facturado` flow links: its principal — the printed one for an
  * interest plan, else its total, the figure the matcher sums — on its purchase day). Pesos only: a
- * dollar part throws (a dollar card→card transfer is not a payment `usdDebtPaymentsForAccount`
+ * dollar part throws (a dollar card→card transfer is not a payment `foreignDebtPaymentsForAccount`
  * can price).
  *
  * Derived state, rebuilt by {@link syncCardToCardPaymentTransfers}: a missing transfer is written,

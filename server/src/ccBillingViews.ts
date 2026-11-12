@@ -6,17 +6,21 @@ import {
   facturadoFromStatement,
   openMonthUsdFacturado,
   payByFxDateIso,
+  statementHeaderFacturado,
   unbilledAtMonthEndAdjustmentsClp,
   usdPaymentPaidStatementDateResolver,
   type CcBillingMonthBalanceRow,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
-import { debtCcExpenseLineAmountClp, debtFrameClpPerUsd, withUniformDebtUsdRate } from "./ccExpenseAmountClp.js";
+import { debtCcExpenseLineAmountClp, debtFrameClpPerUnit, debtFrameClpPerUsd, withUniformDebtRates } from "./ccExpenseAmountClp.js";
 import {
-  accountHasUsdStatements,
-  facturacionUsdRatesForAccount,
-  type FacturacionUsdRateSource,
-} from "./ccFacturacionUsdRate.js";
+  accountHasStatementsIn,
+  cardForeignCurrencies,
+  facturacionForeignRatesForAccount,
+  type FacturacionForeignRateSource,
+} from "./ccFacturacionForeignRate.js";
+import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
+import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
 import { withCcOneShotScanCache, planCount } from "./cards/purchases.js";
 import {
   primaryStatementOfSlot,
@@ -106,8 +110,11 @@ export type CcFacturacionRow = {
    * statement without the field. Null with no pay-by at all. */
   pay_by_source: "statement" | "derived" | null;
   facturado_clp: number | null;
-  facturado_usd: number | null;
-  facturado_usd_clp: number | null;
+  /**
+   * What the facturación billed in each foreign currency the card bills in (`cardForeignCurrencies`),
+   * with its pesos and the rate they show at (docs/any-currency-plan.md C3).
+   */
+  facturado_foreign: CcFacturadoForeign[];
   facturado_total_clp: number | null;
   cuota_a_pagar_clp: number | null;
   /**
@@ -126,14 +133,65 @@ export type CcFacturacionRow = {
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it (únicos + cuotas). */
   provisional_estimate_total_clp: number | null;
-  /**
-   * The USD/CLP rate this facturación's dollar charges show at — `facturado_usd_clp` and its
-   * expense lines: the rate actually paid, today's while unpaid (`ccFacturacionUsdRate.ts`).
-   * Null on a card that never billed in dollars.
-   */
-  usd_rate_clp: number | null;
-  usd_rate_source: FacturacionUsdRateSource | null;
 };
+
+/** A facturación's billing in one foreign currency. */
+export type CcFacturadoForeign = {
+  currency: string;
+  /**
+   * What it billed in the currency: null on a closed month with no statement in it; an open cycle
+   * that has billed nothing in it yet reads 0.
+   */
+  amount: number | null;
+  /** Its pesos: at the rate it shows (`rate_clp`) once rates apply, the debt frame (pay-by − 1) before. */
+  clp: number | null;
+  /**
+   * The rate the charges in this currency show at — `clp` and the expense lines: the rate actually
+   * paid, today's while unpaid (`ccFacturacionForeignRate.ts`). Null on a card that never billed
+   * in the currency, and on the rows before rates apply.
+   */
+  rate_clp: number | null;
+  rate_source: FacturacionForeignRateSource | null;
+};
+
+/** The row's entries, one per foreign currency the card bills in, from what each billed (absent: nothing). */
+function facturadoForeignEntries(
+  accountId: number,
+  billed: ReadonlyMap<string, { amount: number | null; clp: number | null }>
+): CcFacturadoForeign[] {
+  return cardForeignCurrencies(accountId).map((currency) => {
+    const b = billed.get(currency);
+    return { currency, amount: b?.amount ?? null, clp: b?.clp ?? null, rate_clp: null, rate_source: null };
+  });
+}
+
+/** The row's entry in `currency`, if the card bills in it. */
+export function facturadoForeignIn(row: Pick<CcFacturacionRow, "facturado_foreign">, currency: string): CcFacturadoForeign | null {
+  return row.facturado_foreign.find((f) => f.currency === currency) ?? null;
+}
+
+/** Each foreign statement of a slot but dollars (`slotFacturado` keeps those): what it billed, its pesos at the debt frame. */
+function slotThirdCurrencyFacturado(
+  accountId: number,
+  slot: CcStatementSlotByCurrency,
+  payByIso: string | null
+): Map<string, { amount: number; clp: number | null }> {
+  const out = new Map<string, { amount: number; clp: number | null }>();
+  for (const [currency, st] of slot) {
+    if (isHomeCurrency(currency) || currency === "usd") continue; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
+    const amount = statementHeaderFacturado(st) ?? foreignBilledFromStatementLines(st.id, currency);
+    out.set(currency, { amount, clp: foreignToClpAsDebt(amount, currency, payByIso) });
+  }
+  return out;
+}
+
+/** A foreign amount valued as debt for a facturación paid by `payByIso` (pay-by − 1), dollars as {@link usdToClpAsDebt}. */
+function foreignToClpAsDebt(amount: number, currency: string, payByIso: string | null): number | null {
+  if (currency === "usd") return usdToClpAsDebt(amount, payByIso); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
+  if (!Number.isFinite(amount) || !payByIso) return null;
+  const rate = debtFrameClpPerUnit(currency, payByFxDateIso(payByIso));
+  return rate == null ? null : Math.round(amount * rate);
+}
 
 function pickSnapshotRow(
   rows: CcBillingMonthBalanceRow[],
@@ -302,10 +360,11 @@ function facturadoTotalClpForStatementSlot(
     facturadoUsd != null
       ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
       : null;
+  const third = [...slotThirdCurrencyFacturado(accountId, slot, payByIso).values()];
   // A statement in credit bills a negative amount (`statementHeaderFacturado`): the total may be
   // 0 or below, and is still what the statements billed.
-  if (facturadoClp == null && facturadoUsdClp == null) return null;
-  return (facturadoClp ?? 0) + (facturadoUsdClp ?? 0);
+  if (facturadoClp == null && facturadoUsdClp == null && third.every((t) => t.clp == null)) return null;
+  return (facturadoClp ?? 0) + (facturadoUsdClp ?? 0) + third.reduce((s, t) => s + (t.clp ?? 0), 0);
 }
 
 
@@ -447,6 +506,7 @@ type ProvisionalFacturado = {
   close_source: CcCloseSource;
   pay_by_iso: string | null;
   facturado_clp: number;
+  /** The dollars it billed (the feed's SALDO INICIAL, else the open cycle's dollar lines); other currencies: not modelled yet. */
   facturado_usd: number | null;
   facturado_usd_clp: number | null;
   total_clp: number;
@@ -557,41 +617,61 @@ export function buildBillingDetailByMonth(
   return withCcOneShotScanCache(() => buildBillingDetailByMonthInner(accountId, ledgerMonths));
 }
 
-/** The uniform rates of the split passes: multiples of 100, so dollars to the cent convert to whole pesos. */
+/** The uniform rates of the split passes: multiples of 100, so a currency counted to the cent converts to whole pesos. */
 const SPLIT_RATES = [900, 1000, 1100] as const;
 
 /**
  * Each month's statement-frame balance (`balance_statement_clp`, the month-end anchor) split into
- * the pesos and the dollars it is made of. The balance is built from pesos and from dollars
- * converted at debt-frame rates, so it is affine in a uniform rate r: b(r) = pesos + dollars · r.
- * Three builds at 900, 1000 and 1100 give both parts; when the three are not on one line (a clamp
- * or a branch that mixes the currencies) the split is not defined and this throws.
+ * the pesos and each foreign currency it is made of (`cardForeignCurrencies`). The balance is
+ * built from pesos and from foreign amounts converted at debt-frame rates, so it is affine in each
+ * currency's uniform rate r_c: b = pesos + Σ amount_c · r_c. A base build with every currency at
+ * 1000, and per currency two builds with that one at 900 and 1100, give every part; when a
+ * currency's three are not on one line (a clamp or a branch that mixes the currencies) the split is
+ * not defined and this throws.
  */
 export function ccStatementOwedByCurrencyByMonth(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
 ): Map<string, CcOwedNative> {
-  const builds = SPLIT_RATES.map((r) =>
-    withUniformDebtUsdRate(r, () =>
+  const currencies = cardForeignCurrencies(accountId);
+  const build = (rates: Map<string, number>) =>
+    withUniformDebtRates(rates, () =>
       new Map(buildBillingDetailByMonth(accountId, ledgerMonths).map((row) => [row.billing_month, row.balance_statement_clp]))
-    )
-  );
-  const [lo, mid, hi] = builds as [Map<string, number>, Map<string, number>, Map<string, number>];
+    );
+  const base = (over?: [string, number]) => {
+    const rates = new Map(currencies.map((c) => [c, SPLIT_RATES[1] as number]));
+    if (over) rates.set(over[0], over[1]);
+    return rates;
+  };
+  const mid = build(base());
+  const legs = currencies.map((c) => ({
+    currency: c,
+    lo: build(base([c, SPLIT_RATES[0]])),
+    hi: build(base([c, SPLIT_RATES[2]])),
+  }));
   const out = new Map<string, CcOwedNative>();
   for (const [month, bMid] of mid) {
-    const bLo = lo.get(month);
-    const bHi = hi.get(month);
-    if (bLo == null || bHi == null) {
-      throw new Error(`Account ${accountId} ${month}: the statement frame has the month at one rate and not another`);
+    const owed: CcOwedNative = { clp: 0 };
+    let pesos = bMid;
+    for (const leg of legs) {
+      const bLo = leg.lo.get(month);
+      const bHi = leg.hi.get(month);
+      if (bLo == null || bHi == null) {
+        throw new Error(`Account ${accountId} ${month}: the statement frame has the month at one rate and not another`);
+      }
+      if (bHi - bMid !== bMid - bLo) {
+        throw new Error(
+          `Account ${accountId} ${month}: the statement-frame balance is not affine in the ${leg.currency.toUpperCase()} rate ` +
+            `(${bLo} / ${bMid} / ${bHi} at ${SPLIT_RATES.join(" / ")}) — cannot split it by currency`
+        );
+      }
+      const scale = 10 ** currencyMinorDigits(leg.currency);
+      const amount = Math.round(((bHi - bLo) / (SPLIT_RATES[2] - SPLIT_RATES[0])) * scale) / scale;
+      owed[leg.currency] = amount;
+      pesos -= amount * SPLIT_RATES[1];
     }
-    if (bHi - bMid !== bMid - bLo) {
-      throw new Error(
-        `Account ${accountId} ${month}: the statement-frame balance is not affine in the dollar rate ` +
-          `(${bLo} / ${bMid} / ${bHi} at ${SPLIT_RATES.join(" / ")}) — cannot split it by currency`
-      );
-    }
-    const usd = Math.round(((bHi - bLo) / (SPLIT_RATES[2] - SPLIT_RATES[0])) * 100) / 100;
-    out.set(month, { clp: Math.round(bMid - usd * SPLIT_RATES[1]), usd });
+    owed.clp = Math.round(pesos);
+    out.set(month, owed);
   }
   return out;
 }
@@ -848,19 +928,21 @@ function usdToClpAsDebt(usd: number, payByIso: string | null): number | null {
  * which the detalle, the owed walk and the month-end anchors keep). `facturado_clp` is untouched,
  * so the total is its CLP side plus the re-valued dollars.
  */
-function applyFacturacionUsdRates(accountId: number, rows: CcFacturacionRow[]): void {
-  if (!accountHasUsdStatements(accountId)) return;
-  const rates = facturacionUsdRatesForAccount(accountId, rows);
-  for (const row of rows) {
-    const rate = rates.get(row.billing_month);
-    if (!rate) throw new Error(`Account ${accountId}: no USD rate for facturación ${row.billing_month}`);
-    row.usd_rate_clp = rate.clp_per_usd;
-    row.usd_rate_source = rate.source;
-    if (row.facturado_usd == null) continue;
-    const shown = Math.round(row.facturado_usd * rate.clp_per_usd);
-    const total = (row.facturado_clp ?? 0) + shown;
-    row.facturado_usd_clp = shown;
-    row.facturado_total_clp = row.facturado_total_clp == null && total <= 0 ? null : total;
+function applyFacturacionForeignRates(accountId: number, rows: CcFacturacionRow[]): void {
+  for (const currency of cardForeignCurrencies(accountId)) {
+    if (!accountHasStatementsIn(accountId, currency)) continue;
+    const rates = facturacionForeignRatesForAccount(accountId, currency, rows);
+    for (const row of rows) {
+      const rate = rates.get(row.billing_month);
+      if (!rate) throw new Error(`Account ${accountId}: no ${currency.toUpperCase()} rate for facturación ${row.billing_month}`);
+      const entry = facturadoForeignIn(row, currency)!;
+      entry.rate_clp = rate.clp_per_unit;
+      entry.rate_source = rate.source;
+      if (entry.amount == null) continue;
+      entry.clp = Math.round(entry.amount * rate.clp_per_unit);
+      const total = (row.facturado_clp ?? 0) + row.facturado_foreign.reduce((s, f) => s + (f.clp ?? 0), 0);
+      row.facturado_total_clp = row.facturado_total_clp == null && total <= 0 ? null : total;
+    }
   }
 }
 
@@ -896,26 +978,26 @@ export function buildFacturaciones(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {
-  return withFacturacionUsdRates(accountId, buildFacturacionesWithoutUsdRates(accountId, ledgerMonths));
+  return withFacturacionForeignRates(accountId, buildFacturacionesWithoutForeignRates(accountId, ledgerMonths));
 }
 
 /**
- * The facturaciones without the rate their dollars show at (`usd_rate_clp` / `usd_rate_source`
- * null, `facturado_usd_clp` / `facturado_total_clp` in the debt frame): everything but the part an
- * unpaid facturación reads from today's live rate. The billing-detail cache keeps it apart
- * (`ccBillingDetailCache.ts`), so a tick that moves the dollar re-applies only the rates.
+ * The facturaciones without the rates their foreign charges show at (each `facturado_foreign`
+ * entry's `rate_clp` / `rate_source` null, its `clp` and `facturado_total_clp` in the debt frame):
+ * everything but the part an unpaid facturación reads from today's live rate. The billing-detail
+ * cache keeps it apart (`ccBillingDetailCache.ts`), so a tick that moves a rate re-applies only the rates.
  */
-export function buildFacturacionesWithoutUsdRates(
+export function buildFacturacionesWithoutForeignRates(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {
   return withCcOneShotScanCache(() => buildFacturacionesInner(accountId, ledgerMonths));
 }
 
-/** Copies of `rows` with the rates their dollars show at applied (`applyFacturacionUsdRates`). */
-export function withFacturacionUsdRates(accountId: number, rows: readonly CcFacturacionRow[]): CcFacturacionRow[] {
-  const out = rows.map((r) => ({ ...r }));
-  applyFacturacionUsdRates(accountId, out);
+/** Copies of `rows` with the rates their foreign charges show at applied (`applyFacturacionForeignRates`). */
+export function withFacturacionForeignRates(accountId: number, rows: readonly CcFacturacionRow[]): CcFacturacionRow[] {
+  const out = rows.map((r) => ({ ...r, facturado_foreign: r.facturado_foreign.map((f) => ({ ...f })) }));
+  applyFacturacionForeignRates(accountId, out);
   return out;
 }
 
@@ -948,31 +1030,36 @@ export function facturacionPayByIsoResolver(
 }
 
 /**
- * The USD/CLP rate a facturación's dollar lines show at: its row's `usd_rate_clp`, so its expense
+ * The rate a facturación's lines in `currency` show at: its row's entry `rate_clp`, so its expense
  * lines add up to the row. A month the table has no row for yet (the open month before any bucket
  * lands in it, while a stale bucket's leftovers already belong to it) gets the rate its open row
- * would carry. Throws on a card that never billed in dollars (it has no rate).
+ * would carry. Throws on a card that never billed in the currency (it has no rate).
  */
-export function facturacionUsdRateResolver(
+export function facturacionForeignRateResolver(
   accountId: number,
+  currency: string,
   facturaciones: readonly CcFacturacionRow[]
 ): (billingMonth: string) => number {
-  const resolve = facturacionUsdRateWithSourceResolver(accountId, facturaciones);
-  return (billingMonth) => resolve(billingMonth).clp_per_usd;
+  const resolve = facturacionForeignRateWithSourceResolver(accountId, currency, facturaciones);
+  return (billingMonth) => resolve(billingMonth).clp_per_unit;
 }
 
-/** {@link facturacionUsdRateResolver} with the rate's source (paid, live, pay_by), for a line's converted amount. */
-export function facturacionUsdRateWithSourceResolver(
+/** {@link facturacionForeignRateResolver} with the rate's source (paid, live, pay_by), for a line's converted amount. */
+export function facturacionForeignRateWithSourceResolver(
   accountId: number,
+  currency: string,
   facturaciones: readonly CcFacturacionRow[]
-): (billingMonth: string) => { clp_per_usd: number; source: FacturacionUsdRateSource } {
-  const byMonth = new Map<string, { clp_per_usd: number | null; source: FacturacionUsdRateSource | null }>(
-    facturaciones.map((f) => [f.billing_month, { clp_per_usd: f.usd_rate_clp, source: f.usd_rate_source }])
+): (billingMonth: string) => { clp_per_unit: number; source: FacturacionForeignRateSource } {
+  const byMonth = new Map<string, { clp_per_unit: number | null; source: FacturacionForeignRateSource | null }>(
+    facturaciones.map((f) => {
+      const e = facturadoForeignIn(f, currency);
+      return [f.billing_month, { clp_per_unit: e?.rate_clp ?? null, source: e?.rate_source ?? null }];
+    })
   );
   return (billingMonth) => {
     if (!byMonth.has(billingMonth)) {
       const close = closeDateForBillingMonth(accountId, billingMonth).close_iso;
-      const rates = facturacionUsdRatesForAccount(accountId, [
+      const rates = facturacionForeignRatesForAccount(accountId, currency, [
         ...facturaciones,
         {
           billing_month: billingMonth,
@@ -981,13 +1068,15 @@ export function facturacionUsdRateWithSourceResolver(
         },
       ]);
       const r = rates.get(billingMonth)!;
-      byMonth.set(billingMonth, { clp_per_usd: r.clp_per_usd, source: r.source });
+      byMonth.set(billingMonth, { clp_per_unit: r.clp_per_unit, source: r.source });
     }
     const rate = byMonth.get(billingMonth)!;
-    if (rate.clp_per_usd == null || rate.source == null) {
-      throw new Error(`Account ${accountId}: facturación ${billingMonth} has no USD rate for its dollar lines`);
+    if (rate.clp_per_unit == null || rate.source == null) {
+      throw new Error(
+        `Account ${accountId}: facturación ${billingMonth} has no ${currency.toUpperCase()} rate for its ${currency.toUpperCase()} lines`
+      );
     }
-    return { clp_per_usd: rate.clp_per_usd, source: rate.source };
+    return { clp_per_unit: rate.clp_per_unit, source: rate.source };
   };
 }
 
@@ -1022,6 +1111,10 @@ function buildFacturacionesInner(
       facturadoUsd != null
         ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
+    const billedForeign = new Map<string, { amount: number | null; clp: number | null }>([
+      ...slotThirdCurrencyFacturado(accountId, slot, payByIso),
+      ["usd", { amount: facturadoUsd, clp: facturadoUsdClp }],
+    ]);
     const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
     const facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
@@ -1051,8 +1144,7 @@ function buildFacturacionesInner(
       pay_by_iso: payByIso,
       pay_by_source,
       facturado_clp: facturadoClp,
-      facturado_usd: facturadoUsd,
-      facturado_usd_clp: facturadoUsdClp,
+      facturado_foreign: facturadoForeignEntries(accountId, billedForeign),
       facturado_total_clp: facturadoTotal,
       cuota_a_pagar_clp: cuotaAPagar,
       deuda_en_cuotas_clp: deudaEnCuotasClp(billingMonth),
@@ -1060,8 +1152,6 @@ function buildFacturacionesInner(
       is_provisional_close: false,
       close_date_source: "statement",
       provisional_estimate_total_clp: null,
-      usd_rate_clp: null,
-      usd_rate_source: null,
     });
   }
   // A provisional month with no bucket lines still closed at the bank.
@@ -1137,8 +1227,17 @@ function openFacturacionRow(
     pay_by_iso: payByIso,
     pay_by_source: payByIso ? "derived" : null,
     facturado_clp: facturadoTotal - facturadoUsdClp,
-    facturado_usd: facturadoUsd,
-    facturado_usd_clp: facturadoUsdClp,
+    // An open cycle bills 0 in a foreign currency until a line lands in it (the third currencies'
+    // open-cycle lines are not modelled yet: docs/any-currency-plan.md C3 leftovers).
+    facturado_foreign: facturadoForeignEntries(
+      accountId,
+      new Map(
+        cardForeignCurrencies(accountId).map((c) => [
+          c,
+          c === "usd" ? { amount: facturadoUsd, clp: facturadoUsdClp } : { amount: 0, clp: 0 },
+        ])
+      )
+    ),
     facturado_total_clp: facturadoTotal,
     cuota_a_pagar_clp: cuotaAPagar,
     deuda_en_cuotas_clp: deudaEnCuotasClp,
@@ -1146,8 +1245,6 @@ function openFacturacionRow(
     is_provisional_close: false,
     close_date_source: close.source,
     provisional_estimate_total_clp: null,
-    usd_rate_clp: null,
-    usd_rate_source: null,
   };
 }
 
@@ -1166,8 +1263,10 @@ function provisionalFacturacionRow(
     pay_by_iso: pv.pay_by_iso,
     pay_by_source: pv.pay_by_iso ? "derived" : null,
     facturado_clp: pv.facturado_clp,
-    facturado_usd: pv.facturado_usd,
-    facturado_usd_clp: pv.facturado_usd_clp,
+    facturado_foreign: facturadoForeignEntries(
+      accountId,
+      new Map([["usd", { amount: pv.facturado_usd, clp: pv.facturado_usd_clp }]])
+    ),
     facturado_total_clp: pv.total_clp,
     cuota_a_pagar_clp: cuotaAPagarClp > 0 ? cuotaAPagarClp : null,
     deuda_en_cuotas_clp: deudaEnCuotasClp,
@@ -1175,7 +1274,5 @@ function provisionalFacturacionRow(
     is_provisional_close: true,
     close_date_source: pv.close_source,
     provisional_estimate_total_clp: pv.source === "feed" ? pv.estimate_total_clp : null,
-    usd_rate_clp: null,
-    usd_rate_source: null,
   };
 }

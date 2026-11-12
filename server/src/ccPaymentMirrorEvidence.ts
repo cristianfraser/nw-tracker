@@ -20,10 +20,18 @@
  */
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { requireHeaderPagoIso } from "./ccPaymentLines.js";
-import { clpPaymentLines, usdDebtAbonoLines } from "./cards/purchases.js";
+import { clpPaymentLines, foreignDebtAbonoLines } from "./cards/purchases.js";
 import { db } from "./db.js";
+import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
 
-export type CcPaymentEvidenceCurrency = "clp" | "usd";
+/** `clp` for a peso payment; any other code for a payment of the card's debt in that currency. */
+export type CcPaymentEvidenceCurrency = string;
+
+/** `US$12.50`, `EUR 40.50`: a foreign payment's amount as the evidence labels print it. */
+export function foreignPaymentAmountLabel(amount: number, currency: string): string {
+  const digits = amount.toFixed(currencyMinorDigits(currency));
+  return currency === "usd" ? `US$${digits}` : `${currency.toUpperCase()} ${digits}`; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
+}
 
 /** The fields that identify a card payment, on the evidence side and on the pairing side alike. */
 export type CcPaymentIdentity = {
@@ -31,21 +39,22 @@ export type CcPaymentIdentity = {
   pago_iso: string;
   currency: CcPaymentEvidenceCurrency;
   /**
-   * Positive pesos of a peso payment. A dollar payment's key ignores it: 0 on an evidence row (an
+   * Positive pesos of a peso payment. A foreign payment's key ignores it: 0 on an evidence row (an
    * ABONO DE DIVISAS carries no pesos), the pesos the divisas purchase paid on a pairing.
    */
   amount_clp: number;
-  /** Positive dollars of a dollar payment; null for a peso payment. */
-  amount_usd: number | null;
+  /** Positive amount of a foreign payment, in `currency`; null for a peso payment. */
+  amount_foreign: number | null;
 };
 
-/** The payment identity as a map key: pesos to the unit, dollars to the cent. */
+/** The payment identity as a map key: pesos to the unit, a foreign currency to its smallest coin. */
 export function ccPaymentEvidenceKey(p: CcPaymentIdentity): string {
-  if (p.currency === "usd") {
-    if (p.amount_usd == null) {
-      throw new Error(`card payment ${p.cc_account_id} ${p.pago_iso}: a dollar payment needs its dollars`);
+  if (!isHomeCurrency(p.currency)) {
+    if (p.amount_foreign == null) {
+      throw new Error(`card payment ${p.cc_account_id} ${p.pago_iso}: a ${p.currency.toUpperCase()} payment needs its amount`);
     }
-    return `${p.cc_account_id}|${p.pago_iso}|usd|${Math.round(p.amount_usd * 100)}`;
+    const scale = 10 ** currencyMinorDigits(p.currency);
+    return `${p.cc_account_id}|${p.pago_iso}|${p.currency}|${Math.round(p.amount_foreign * scale)}`;
   }
   return `${p.cc_account_id}|${p.pago_iso}|clp|${Math.round(p.amount_clp)}`;
 }
@@ -115,7 +124,7 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       pago_iso: iso,
       currency: "clp",
       amount_clp: amount,
-      amount_usd: null,
+      amount_foreign: null,
       label: (r.merchant ?? "PAGO").trim(),
     });
   }
@@ -140,7 +149,7 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       pago_iso: requireHeaderPagoIso(r.statement_date, r.pago_iso),
       currency: "clp",
       amount_clp: amount,
-      amount_usd: null,
+      amount_foreign: null,
       label: "MONTO CANCELADO",
     });
   }
@@ -149,7 +158,7 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
     account_id: number;
     account_name: string;
     statement_close_iso: string;
-    currency: "clp" | "usd";
+    currency: string;
     paid_on: string;
     amount: number;
     statement_id: number | null;
@@ -168,16 +177,19 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       cc_account_name: r.account_name,
       pago_iso: r.paid_on,
       currency: r.currency,
-      amount_clp: r.currency === "clp" ? r.amount : 0,
-      amount_usd: r.currency === "usd" ? r.amount : null,
-      label: r.currency === "usd" ? `ABONO DE DIVISAS US$${r.amount.toFixed(2)} (header leg)` : "MONTO CANCELADO (header leg)",
+      amount_clp: isHomeCurrency(r.currency) ? r.amount : 0,
+      amount_foreign: !isHomeCurrency(r.currency) ? r.amount : null,
+      label:
+        !isHomeCurrency(r.currency)
+          ? `ABONO DE DIVISAS ${foreignPaymentAmountLabel(r.amount, r.currency)} (header leg)`
+          : "MONTO CANCELADO (header leg)",
     });
   }
-  for (const r of usdDebtAbonoLines(accountId)) {
+  for (const r of foreignDebtAbonoLines(accountId)) {
     const iso = normalizeTransactionDateIso(r.transaction_date);
     if (!iso) continue;
-    const usd = Math.abs(r.amount);
-    if (usd === 0) continue;
+    const foreign = Math.abs(r.amount);
+    if (foreign === 0) continue;
     push({
       kind: "line",
       id: r.line_id,
@@ -186,10 +198,10 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       cc_account_id: r.account_id,
       cc_account_name: r.account_name,
       pago_iso: iso,
-      currency: "usd",
+      currency: r.currency,
       amount_clp: 0,
-      amount_usd: usd,
-      label: `${(r.merchant ?? "ABONO DE DIVISAS").trim()} US$${usd.toFixed(2)}`,
+      amount_foreign: foreign,
+      label: `${(r.merchant ?? "ABONO DE DIVISAS").trim()} ${foreignPaymentAmountLabel(foreign, r.currency)}`,
     });
   }
   return out;
@@ -236,27 +248,27 @@ export function listCcPaymentPairings(accountId?: number): CcPaymentPairing[] {
     counter_currency: string | null;
     flow_kind: string | null;
   }[]) {
-    const usd = r.counter_currency === "usd";
+    const foreign = r.counter_currency != null;
     if (
       r.flow_kind !== "pago_tarjeta" ||
       r.account_id != null ||
       r.to_account_id == null ||
-      r.currency !== "clp" ||
+      !isHomeCurrency(r.currency) ||
       !(r.amount > 0) ||
-      (r.counter_currency != null && !usd) ||
-      (usd && !(r.counter_amount != null && r.counter_amount > 0))
+      (r.counter_currency != null && isHomeCurrency(r.counter_currency)) ||
+      (foreign && !(r.counter_amount != null && r.counter_amount > 0))
     ) {
       throw new Error(
         `movement_mirror_merges ${r.transfer_movement_id}: card evidence on a transfer that is not a ` +
-          `pago_tarjeta payment into a card in pesos (with dollars for a divisas payment)`
+          `pago_tarjeta payment into a card in pesos (with the foreign amount for a divisas payment)`
       );
     }
     const identity: CcPaymentIdentity = {
       cc_account_id: r.to_account_id,
       pago_iso: r.occurred_on,
-      currency: usd ? "usd" : "clp",
+      currency: foreign ? r.counter_currency! : "clp",
       amount_clp: Math.round(r.amount),
-      amount_usd: usd ? r.counter_amount : null,
+      amount_foreign: foreign ? r.counter_amount : null,
     };
     const key = ccPaymentEvidenceKey(identity);
     const other = byKey.get(key);
@@ -279,7 +291,7 @@ export function listCcPaymentPairings(accountId?: number): CcPaymentPairing[] {
 
 /** `transfer 123 (card 45, 2026-01-02, US$10.00)` — for error messages and reports. */
 export function describeCcPaymentPairing(p: CcPaymentPairing): string {
-  const amount = p.currency === "usd" ? `US$${p.amount_usd!.toFixed(2)}` : `$${p.amount_clp}`;
+  const amount = !isHomeCurrency(p.currency) ? foreignPaymentAmountLabel(p.amount_foreign!, p.currency) : `$${p.amount_clp}`;
   return `transfer ${p.transfer_movement_id} (card ${p.cc_account_id}, ${p.pago_iso}, ${amount})`;
 }
 

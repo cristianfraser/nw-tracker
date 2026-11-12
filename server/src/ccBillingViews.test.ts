@@ -28,6 +28,7 @@ import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import * as chileDate from "./chileDate.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import { facturadoForeignIn } from "./ccBillingViews.js";
 
 // The manual-purchase cases run createManualCcInstallmentPurchase on the real 4242 CC master,
 // which upserts valuations (a today-dated row + restated month-ends) via
@@ -387,7 +388,7 @@ describe("buildFacturaciones", () => {
     if (!openRow?.facturado_total_clp) throw new Error("the Vitest person's card lacks the state this test reads");
 
     expect(openRow.facturado_total_clp).toBe(
-      (openRow.facturado_clp ?? 0) + (openRow.facturado_usd_clp ?? 0)
+      (openRow.facturado_clp ?? 0) + (facturadoForeignIn(openRow, "usd")!.clp ?? 0)
     );
   });
 

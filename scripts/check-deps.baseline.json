@@ -1,6 +1,6 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 6581,
+  "edge_count": 6619,
   "largest_cycle": 37,
   "cycle_members": [
     "ingest/src/config.ts",
@@ -43,7 +43,7 @@
     "server/src/ccExpenseOriginLabel.ts",
     "server/src/ccExpensePurchaseKey.ts",
     "server/src/ccExpensePurchaseNotes.ts",
-    "server/src/ccFacturacionUsdRate.ts",
+    "server/src/ccFacturacionForeignRate.ts",
     "server/src/ccFacturadoFinancingProjectionLines.ts",
     "server/src/ccInstallmentPaymentGastosLines.ts",
     "server/src/ccInstallmentPlanGastosLines.ts",

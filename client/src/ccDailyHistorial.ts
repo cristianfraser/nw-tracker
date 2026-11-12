@@ -5,8 +5,8 @@ import type { CcFacturadoBarSegments, CcHistorialChartPoint, DailySeriesResponse
 const NO_BAR: CcFacturadoBarSegments = {
   facturado_cuotas_clp: null,
   facturado_rest_clp: null,
-  facturado_usd_clp: null,
-  facturado_usd: null,
+  facturado_foreign_clp: null,
+  facturado_foreign: null,
   facturado_total_clp: null,
 };
 
