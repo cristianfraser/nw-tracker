@@ -133,6 +133,14 @@ from a copy of the database taken before it, and adds EUR tests on synthetic fix
 
 ### Phase A — display leaks (D / R / L)
 
+**Done 2026-11-12** (all eleven items and the guard). With the unit CLP or UF every payload is
+unchanged; in USD and EUR amounts are now rounded to the currency's minor digits (gastos and income
+rows had been whole dollars: up to ~3 USD per row), and today's dollar card payments and USD
+milestone read the live USD/CLP rate. Known leftovers: the card's upcoming-payment `owed` is still a
+`{clp, usd}` pair (Phase C3); an income line's legacy `amount_usd` leg (Phase B); upcoming items
+other than cards are not rounded; the property summary's value falls back to the summary's
+latest valuation (in the unit) behind the ledger's pesos.
+
 1. Account page (`StandardAccountDetailPage.tsx`): the position table, broker holdings, state
    contribution and the USD cash tile format with `formatClp` whatever the unit; the contracts
    behind them (`AccountPositionSnapshot`, `EquityBrokerHolding`, `AccountSummaryResponse`
