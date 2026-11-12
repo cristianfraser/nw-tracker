@@ -19,7 +19,7 @@ export function loadF22Dividends(incomeYear: number, window: DateWindow = wholeY
   // no Roth on file read `NOT IN (NULL)` and dropped every dividend paid out of an instrument's
   // account — the F22 of a person without a Roth declared no foreign dividends at all.
   return (inYear ? dividendFacts(inYear) : [])
-    .filter((d) => d.currency === "usd" && d.usRetirementAccount !== "roth_ira")
+    .filter((d) => d.currency === "usd" && d.usRetirementAccount !== "roth_ira") // convention-ok: foreign dividends reach the F22 from the dollar broker documents
     .map((d) => ({
       date: d.date,
       movementId: d.movementId,

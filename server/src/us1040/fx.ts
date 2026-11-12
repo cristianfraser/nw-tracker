@@ -41,9 +41,9 @@ export function clpPerUfOn(day: string): number {
 
 /** `amount` in `currency` as dollars on `day` (dollars pass through; pesos at that day's rate; UF through that day's pesos; anything else throws). */
 export function usdOn(amount: number, currency: string, day: string): number {
-  if (currency === "usd") return amount;
-  if (currency === "clp") return amount / usdClpRateOn(day);
-  if (currency === "uf") return (amount * clpPerUfOn(day)) / usdClpRateOn(day);
+  if (currency === "usd") return amount; // convention-ok: the 1040 translates pesos and UF items into dollars (Pub. 514 rates)
+  if (currency === "clp") return amount / usdClpRateOn(day); // convention-ok: the 1040 translates pesos and UF items into dollars (Pub. 514 rates)
+  if (currency === "uf") return (amount * clpPerUfOn(day)) / usdClpRateOn(day); // convention-ok: the 1040 translates pesos and UF items into dollars (Pub. 514 rates)
   throw new Error(`1040: no conversion from ${currency} to dollars (${amount} on ${day})`);
 }
 

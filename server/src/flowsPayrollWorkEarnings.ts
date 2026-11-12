@@ -118,13 +118,13 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
     let liquido_usd: number | null;
     if (row.jurisdiction === "us") {
       // A US pay stub: dollars, shown in pesos at its pay date's rate.
-      if (liquido_currency !== "usd" || row.pay_date == null) throw new Error(`work earning ${row.id}: a US payslip must be in dollars with a pay date`);
+      if (liquido_currency !== "usd" || row.pay_date == null) throw new Error(`work earning ${row.id}: a US payslip must be in dollars with a pay date`); // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       liquido_usd = liquido;
       liquido_clp = Math.round(liquido * usPayslipClpPerUsd(row.pay_date, row.id));
-    } else if (liquido_currency === "clp") {
+    } else if (liquido_currency === "clp") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       liquido_clp = Math.round(liquido);
       liquido_usd = null;
-    } else if (liquido_currency === "usd") {
+    } else if (liquido_currency === "usd") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       // USD-native líquido (Deel): the CLP equivalent is the stored CLP breakdown
       // (haberes/descuentos converted at the wire date when the row was written), so
       // haberes − descuentos keeps the líquido identity exact — no fx call at read.

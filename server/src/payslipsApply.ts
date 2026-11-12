@@ -90,7 +90,7 @@ type PayslipDbRow = {
   pay_period: "monthly" | "biweekly" | "semi_monthly";
   pay_date: string | null;
   w4_filing_status: "single" | "married_jointly" | null;
-  liquido_currency: "clp" | "usd";
+  liquido_currency: "clp" | "usd"; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
   period_month: string;
   employer_name: string;
   employer_rut: string | null;

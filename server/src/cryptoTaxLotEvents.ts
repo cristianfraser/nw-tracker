@@ -86,7 +86,7 @@ export function loadCryptoTaxLotEvents(accountId: number, feePolicy: CryptoFeePo
     .prepare(`SELECT id, occurred_on, amount, currency, units_delta FROM movements WHERE account_id = ?`)
     .all(accountId) as (CryptoTaxLotRow & { currency: string; units_delta: number | null })[];
   for (const r of rows) {
-    if (r.currency !== "clp") throw new Error(`Crypto tax lots: movement ${r.id} is in ${r.currency}`);
+    if (r.currency !== "clp") throw new Error(`Crypto tax lots: movement ${r.id} is in ${r.currency}`); // convention-ok: Buda's crypto trades settle in pesos only
     if (r.units_delta == null) throw new Error(`Crypto tax lots: movement ${r.id} has no units`);
   }
   const ids = rows.map((r) => r.id);

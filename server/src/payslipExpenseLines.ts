@@ -44,7 +44,7 @@ type PayslipRow = {
   employer_name: string;
   jurisdiction: PayrollJurisdiction;
   pay_date: string | null;
-  liquido_currency: "clp" | "usd";
+  liquido_currency: "clp" | "usd"; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
   total_imponible_clp: number | null;
   total_haberes_clp: number | null;
   paid_on: string | null;
@@ -85,7 +85,7 @@ export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
     if (p.jurisdiction === "us") {
       if (p.pay_date == null) throw new Error(`payslip ${p.id}: a US payslip without its pay date`);
       pesosPerUnit = usPayslipClpPerUsd(p.pay_date, p.id);
-    } else if (p.liquido_currency === "usd") {
+    } else if (p.liquido_currency === "usd") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       const grossUsd = lines.filter((l) => l.side === "haber").reduce((s, l) => s + l.amount, 0);
       if (p.total_haberes_clp == null || !(grossUsd > 0)) throw new Error(`payslip ${p.id}: a dollar payslip without its peso gross`);
       pesosPerUnit = p.total_haberes_clp / grossUsd;
@@ -106,7 +106,7 @@ export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
       }
       if (!category || amount <= 0) continue;
       const amountClp = Math.round(amount * pesosPerUnit);
-      const amountUsd = p.liquido_currency === "usd" ? amount : null;
+      const amountUsd = p.liquido_currency === "usd" ? amount : null; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       const merchant = `${label} · ${p.employer_name}`;
       out.push({
         source: "payslip",

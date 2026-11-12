@@ -65,7 +65,7 @@ export type PayslipChecksRow = {
   period_month: string;
   jurisdiction: "cl" | "us";
   /** The currency the checks' amounts are in: pesos for a liquidación, dollars for a US pay stub. */
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: a liquidación's checks are pesos, a US stub's dollars
   pension_fund: string | null;
   origin: "document" | "rebuilt";
   checks: PayslipCheck[];

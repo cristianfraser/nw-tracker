@@ -85,7 +85,7 @@ export function payrollTaxYear(incomeYear: number, window: DateWindow = wholeYea
   const inYear = windowWithinYear(incomeYear, window);
   // A Chilean art. 42 N°1 salary: a peso salary liquidación (a finiquito or a dollar wire is not).
   const rows = (inYear ? chileanPayslipFacts(inYear) : [])
-    .filter((f) => f.earningType === "salary" && f.liquidoCurrency === "clp")
+    .filter((f) => f.earningType === "salary" && f.liquidoCurrency === "clp") // convention-ok: a liquidación pays pesos; a US stub is the 1030 path
     .map(rowOfFact);
   const ipc = ipcReajuste({ round: true, floorAtZero: true });
   const { toMonth, provisional } = ipc.december(incomeYear);

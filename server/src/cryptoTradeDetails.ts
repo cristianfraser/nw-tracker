@@ -19,8 +19,8 @@ export type CryptoTradeDetail = {
 
 /** The commission in pesos; `movementClp` / `movementUnits` are the ledger row's (for a BTC-priced swap). */
 export function cryptoTradeFeeClp(d: CryptoTradeDetail, movementClp: number, movementUnits: number): number {
-  if (d.feeCurrency === "clp") return d.feeAmount;
-  if (d.priceCurrency === "clp") return d.feeAmount * d.price;
+  if (d.feeCurrency === "clp") return d.feeAmount; // convention-ok: Buda states commissions in pesos or in the coin
+  if (d.priceCurrency === "clp") return d.feeAmount * d.price; // convention-ok: Buda states commissions in pesos or in the coin
   if (!(movementUnits > 0)) throw new Error(`Crypto trade ${d.exchangeTradeId}: no units to value its fee`);
   return d.feeAmount * (Math.abs(movementClp) / movementUnits);
 }

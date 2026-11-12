@@ -131,7 +131,7 @@ type PayslipRow = {
   jurisdiction: PayrollJurisdiction;
   pay_date: string | null;
   liquido: number;
-  liquido_currency: "clp" | "usd";
+  liquido_currency: "clp" | "usd"; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
   total_imponible_clp: number | null;
   total_haberes_clp: number | null;
   paid_on: string | null;
@@ -219,13 +219,13 @@ export function buildPayrollBreakdown(unit: string = "clp"): PayrollBreakdownPay
     let den = 1;
     if (unit === p.liquido_currency) {
       factor = 1;
-    } else if (p.jurisdiction === "us" && unit === "clp") {
-      if (p.liquido_currency !== "usd" || p.pay_date == null) throw new Error(`payslip ${p.id}: a US payslip must be in dollars with a pay date`);
+    } else if (p.jurisdiction === "us" && unit === "clp") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
+      if (p.liquido_currency !== "usd" || p.pay_date == null) throw new Error(`payslip ${p.id}: a US payslip must be in dollars with a pay date`); // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       factor = usPayslipClpPerUsd(p.pay_date, p.id);
-    } else if (p.liquido_currency === "usd" && unit === "clp") {
+    } else if (p.liquido_currency === "usd" && unit === "clp") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       if (p.total_haberes_clp == null || !(native.gross > 0)) throw new Error(`payslip ${p.id}: a dollar payslip without its peso gross`);
       factor = p.total_haberes_clp / native.gross;
-    } else if (p.liquido_currency === "clp" && unit === "usd") {
+    } else if (p.liquido_currency === "clp" && unit === "usd") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       const day = p.paid_on ?? monthEnd(p.period_month);
       const perClp = clpToUsdAtPayment(1_000_000, day);
       if (perClp == null) throw new Error(`payslip ${p.id}: no USD rate on or before ${day}`);
@@ -238,7 +238,7 @@ export function buildPayrollBreakdown(unit: string = "clp"): PayrollBreakdownPay
       factor = per;
       den = 1_000_000;
     }
-    if (p.jurisdiction === "us" && (p.liquido_currency !== "usd" || p.pay_date == null)) {
+    if (p.jurisdiction === "us" && (p.liquido_currency !== "usd" || p.pay_date == null)) { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       throw new Error(`payslip ${p.id}: a US payslip must be in dollars with a pay date`);
     }
     for (const f of PAYROLL_BREAKDOWN_FIELDS) values[f] = factor === 1 && den === 1 ? native[f] : den === 1 ? native[f] * factor : (native[f] * factor) / den;

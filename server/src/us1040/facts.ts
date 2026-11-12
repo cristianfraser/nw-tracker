@@ -97,7 +97,7 @@ function dividendItem(f: DividendFact): UsDividendItem {
     withheld = f.detail.withholding;
     jurisdiction = f.detail.withholdingJurisdiction;
     if (withheld > 0 && jurisdiction == null) throw new Error(`1040: dividend ${f.movementId}: tax withheld without the country that withheld it`);
-  } else if (f.currency === "usd") {
+  } else if (f.currency === "usd") { // convention-ok: the 1040 reads dollars, and pesos or UF through its own fx rule
     throw new Error(`1040: dividend ${f.movementId} (${ticker ?? "?"}, ${f.date}) has no broker document with its gross and withholding`);
   } else {
     gross = f.net;

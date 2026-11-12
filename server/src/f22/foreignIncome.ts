@@ -88,7 +88,7 @@ import { usPayStubFacts } from "../taxFacts/salaries.js";
  * cash in any currency), or a US bank's dollar account (`taxFacts/payers.ts`).
  */
 export function isForeignInterestPayerForChile(p: AccountPayer): boolean {
-  return p.kind === "broker" ? p.country !== "CL" : p.country === "US" && p.currency === "usd";
+  return p.kind === "broker" ? p.country !== "CL" : p.country === "US" && p.currency === "usd"; // convention-ok: the F22's foreign-income readers are the US salary and dollar bank interest
 }
 
 /**
@@ -226,7 +226,7 @@ export function foreignInterestForYear(
   const lines = (inYear ? interestFacts(inYear) : [])
     .filter((f) => f.payers.some(isForeignInterestPayerForChile))
     .map((f): F22ForeignInterestLine => {
-      if (f.currency !== "usd") throw new Error(`F22 ${incomeYear}: foreign interest movement ${f.movementId} is in ${f.currency}, expected dollars`);
+      if (f.currency !== "usd") throw new Error(`F22 ${incomeYear}: foreign interest movement ${f.movementId} is in ${f.currency}, expected dollars`); // convention-ok: the F22's foreign-income readers are the US salary and dollar bank interest
       return { date: f.date, movementId: f.movementId, accountId: f.accountId, usd: f.amount };
     });
   const usd = Math.round(lines.reduce((s, l) => s + l.usd, 0) * 100) / 100;

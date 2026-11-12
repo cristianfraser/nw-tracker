@@ -66,5 +66,5 @@ export function loadAccountPayers(): Map<number, AccountPayer[]> {
 
 /** A US bank's dollar account (line 2b of the 1040, `usBankAccounts.ts`). */
 export function isUsBankDollarPayer(p: AccountPayer): boolean {
-  return p.kind === "bank" && p.country === "US" && p.currency === "usd";
+  return p.kind === "bank" && p.country === "US" && p.currency === "usd"; // convention-ok: a US bank account pays dollar interest
 }

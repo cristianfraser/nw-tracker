@@ -207,7 +207,7 @@ export function art107GainsForYear(
       method: lotMethod,
       accounts: [{ accountId: a.id, accountName: a.name, ticker: a.ticker }],
     });
-    if (currency != null && currency !== "clp") {
+    if (currency != null && currency !== "clp") { // convention-ok: art. 107 covers Chilean instruments, paid in pesos
       throw new Error(`Art. 107: account ${a.id} (${a.ticker}) trades in ${currency}, expected pesos`);
     }
     for (const d of disposals) {
@@ -357,7 +357,7 @@ export function art107DistributionsForYear(year: number, window: DateWindow = wh
   const out: Art107Distribution[] = [];
   for (const a of listArt107Accounts()) {
     for (const r of facts.filter((f) => f.fromAccountId === a.id)) {
-      if (r.currency !== "clp") throw new Error(`Art. 107: distribution ${r.movementId} of ${a.ticker} is in ${r.currency}, expected pesos`);
+      if (r.currency !== "clp") throw new Error(`Art. 107: distribution ${r.movementId} of ${a.ticker} is in ${r.currency}, expected pesos`); // convention-ok: art. 107 covers Chilean instruments, paid in pesos
       out.push({ date: r.date, movementId: r.movementId, accountId: a.id, accountName: a.name, amountClp: r.net });
     }
   }

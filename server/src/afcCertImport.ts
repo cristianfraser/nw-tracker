@@ -159,7 +159,7 @@ export function planAfcCertImport(accountId: number, cert: AfcCotizacionesCertif
     const m = match[0];
     if (!m) {
       items.push({ contribution: c, px, units, status: "insert", existing_id: null });
-    } else if (Math.round(m.amount) !== c.amount_clp || m.currency !== "clp" || m.occurred_on !== c.pay_ymd) {
+    } else if (Math.round(m.amount) !== c.amount_clp || m.currency !== "clp" || m.occurred_on !== c.pay_ymd) { // convention-ok: the AFC certificate states pesos only
       items.push({
         contribution: c,
         px,
@@ -270,7 +270,7 @@ export function planAfcWithdrawalUnits(accountId: number): AfcWithdrawalPlanItem
       running = round4(running + (isTransfer ? (m.to_account_id === accountId ? Math.abs(u) : -Math.abs(u)) : u));
       continue;
     }
-    if (m.currency !== "clp") throw new Error(`afc: withdrawal ${m.id} is ${m.currency}`);
+    if (m.currency !== "clp") throw new Error(`afc: withdrawal ${m.id} is ${m.currency}`); // convention-ok: the AFC certificate states pesos only
     const px = requirePx(seriesKey, m.occurred_on);
     // Closing = the account's own next stored valuation reads 0 and nothing else moves the
     // ledger before it (a later row would mean this withdrawal did not empty the account).

@@ -60,7 +60,7 @@ export function nonresidentPart(
   // A US-listed option's premiums are foreign-source for a non-resident (art. 3): shown, not declared.
   const options = optionMovementFacts(window);
   if (options.movements > 0) {
-    if (options.currency != null && options.currency !== "usd") throw new Error(`F22 ${incomeYear}: option premiums in ${options.currency}, expected dollars`);
+    if (options.currency != null && options.currency !== "usd") throw new Error(`F22 ${incomeYear}: option premiums in ${options.currency}, expected dollars`); // convention-ok: options are listed in dollars only
     add("options", "nonresident", options.netPremium * ctx.yearEndObservado, options.movements);
   }
   if (blocks.crypto.sales.length > 0) add("crypto", "treaty_art13_8", blocks.crypto.gainDecemberClp, blocks.crypto.sales.length);

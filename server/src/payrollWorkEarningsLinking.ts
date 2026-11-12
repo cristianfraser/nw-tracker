@@ -197,7 +197,7 @@ export function findUsPayrollAutoLinkMovement(
   const eligible = candidates.filter(
     (c) =>
       !takenMovementIds.has(c.movement_id) &&
-      c.native_currency === "usd" &&
+      c.native_currency === "usd" && // convention-ok: a contractor wire lands in dollars
       Math.abs(c.native_amount - netPayUsd) < 0.005 &&
       c.received_on >= from &&
       c.received_on <= to

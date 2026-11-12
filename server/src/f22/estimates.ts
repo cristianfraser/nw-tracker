@@ -60,7 +60,7 @@ export function mortgageInterestForYear(
   const inYear = windowWithinYear(incomeYear, window);
   const inWindow = (inYear ? loanPaymentFacts(inYear, loanAccountId) : []).filter((p) => p.interest != null);
   for (const p of inWindow) {
-    if (p.currency !== "clp") throw new Error(`mortgage interest ${p.date}: paid in ${p.currency}, expected pesos`);
+    if (p.currency !== "clp") throw new Error(`mortgage interest ${p.date}: paid in ${p.currency}, expected pesos`); // convention-ok: the lender bills a Chilean mortgage in pesos
   }
   return Math.round(inWindow.reduce((s, p) => s + p.interest! * (1 + pct(monthBeforeYmd(p.date), toMonth(incomeYear)) / 100), 0));
 }

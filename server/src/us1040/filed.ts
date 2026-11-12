@@ -104,7 +104,7 @@ export function linkF1040Settlement(input: { taxYear: number; movementId: number
   if (m.account_id == null || m.from_account_id != null || m.to_account_id != null) {
     throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} is not a single-leg movement`);
   }
-  if (m.currency !== "usd") throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} is in ${m.currency}, not dollars`);
+  if (m.currency !== "usd") throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} is in ${m.currency}, not dollars`); // convention-ok: a 1040 settlement is paid in dollars
   const signed = signedNativeDeltaForAccountMovement(m, m.account_id, "usd");
   if (signed === 0) throw new Error(`1040 ${input.taxYear}: movement ${input.movementId} moves no dollars`);
   const kind = signed > 0 ? "refund" : "payment";

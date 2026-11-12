@@ -27,7 +27,7 @@ export function usBankInterestForYear(year: number): UsBankInterest {
   const lines = interestFacts({ fromYmd: `${year}-01-01`, throughYmd: `${year}-12-31` })
     .filter((f) => f.payers.some(isUsBankDollarPayer))
     .map((f): UsBankInterestLine => {
-      if (f.currency !== "usd") throw new Error(`US bank interest: movement ${f.movementId} is in ${f.currency}, expected dollars`);
+      if (f.currency !== "usd") throw new Error(`US bank interest: movement ${f.movementId} is in ${f.currency}, expected dollars`); // convention-ok: a US bank account pays dollar interest
       return { date: f.date, movementId: f.movementId, accountId: f.accountId, usd: f.amount };
     });
   return { lines, usd: Math.round(lines.reduce((s, l) => s + l.usd, 0) * 100) / 100 };
