@@ -5,7 +5,6 @@ import type {
   UpcomingPaymentsDto,
   DashboardNavContextResponse,
   DashboardResponse,
-  FxLatest,
   GroupMonthlyPerformanceResponse,
   InversionesPerfMonthlyResponse,
   ValuationTimeseriesResponse,
@@ -17,7 +16,6 @@ const ACCOUNTS_BY_GROUP_STALE_MS = 5 * 60_000;
 export type DashboardBundle = {
   dash: DashboardResponse;
   ts: ValuationTimeseriesResponse;
-  fx: FxLatest | null;
   /** The P/L + deposits combo; null on a placeholder bundle without perf sections. */
   inversionesPerf: InversionesPerfMonthlyResponse | null;
   /** Null only on a placeholder bundle: unknown until the server answers (pesos in both units). */
@@ -28,7 +26,6 @@ export async function fetchDashboardBundle(unit: DisplayUnit): Promise<Dashboard
   const bundle = await api.dashboardPageBundle(unit);
   return {
     dash: bundle.dash,
-    fx: bundle.fx,
     ts: bundle.ts,
     inversionesPerf: bundle.inversionesPerf,
     upcomingPayments: bundle.upcoming_payments,

@@ -1,25 +1,29 @@
 import type { DisplayUnitCode } from "./core.js";
-/** Adjustable inputs for /projections (CLP amounts are today's money). */
+/**
+ * Adjustable inputs for /projections. Money inputs are today's money in the response's `unit`
+ * (a request may type one in another currency: `<key>=<amount>&<key>_currency=<code>`).
+ */
 export interface ProjectionParams {
   real_return_pct: number;
-  monthly_aporte_clp: number;
-  inflation_clp_pct: number;
-  inflation_usd_pct: number;
+  monthly_aporte: number;
+  /** Annual inflation % per core currency (request keys `inflation_<code>_pct`). */
+  inflation_pct: Record<string, number>;
   retire_return_pct: number;
   end_age: number;
   swr_pct: number;
   pct_balance_pct: number;
-  monthly_income_clp: number;
+  monthly_income: number;
   /** % of the non-invested remainder (RE, cash) liquidated into the drawdown pot at 65. */
   liquidate_other_pct: number;
-  /** Passive real monthly income during retirement (rent), today's CLP. */
-  monthly_rent_clp: number;
+  /** Passive real monthly income during retirement (rent), today's money. */
+  monthly_rent: number;
 }
 
 export interface ProjectionsResponse {
   unit: DisplayUnitCode;
-  fx_clp_per_usd: number;
   params: ProjectionParams;
+  /** The default inflation per core currency: assumptions, not forecasts. */
+  inflation_default_pct: Record<string, number>;
   retire_month: string;
   retire_age: number;
   summary: {

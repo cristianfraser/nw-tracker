@@ -151,6 +151,10 @@ describe("getMarketSeriesPayload", () => {
     expect(p.fx_usd_clp_buy).toEqual([{ date: "2024-01-02", value: 915 }]);
     expect(p.fx_usd_clp_sell).toEqual([{ date: "2024-01-02", value: 895 }]);
     expect(p.eur_clp).toEqual([{ date: "2024-01-02", value: 980 }]);
+    expect(p.eur_usd).toEqual([
+      { date: "2024-01-02", value: 1.09 },
+      { date: "2024-01-04", value: 1.1 },
+    ]);
     expect(p.fx_coverage).toBeTruthy();
     expect(p.fx_coverage.row_count).toBe(2);
   });

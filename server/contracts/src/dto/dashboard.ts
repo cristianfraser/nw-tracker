@@ -251,11 +251,6 @@ export interface InversionesDepositsPoint {
   brokerage: number;
 }
 
-export interface FxLatest {
-  date: string;
-  clp_per_usd: number;
-}
-
 /** `data` = account valuation / flows (tail-clip trailing zeros). `reference` = totals, NW, liquidity overlays. */
 export type ValueSeriesType = "data" | "reference";
 

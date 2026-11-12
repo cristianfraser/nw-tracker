@@ -57,7 +57,7 @@ export function isCurrencyCode(code: string): code is CurrencyCode {
 export type RateOpts = { side: ConvertSide; now?: Date };
 
 /** Quote units per one base unit on a day: the mid and, when the pair has them, bid and ask. */
-type PairQuote = { mid: number; bid: number; ask: number };
+type PairQuote = { mid: number; bid: number; ask: number; date: string };
 
 type PairSource = {
   base: CurrencyCode;
@@ -70,8 +70,8 @@ type PairSource = {
 
 const halfSpreadUsdClp = FX_BID_ASK_SPREAD_CLP / 2;
 
-function usdClpFromMid(mid: number): PairQuote {
-  return { mid, bid: mid - halfSpreadUsdClp, ask: mid + halfSpreadUsdClp };
+function usdClpFromMid(mid: number, date: string): PairQuote {
+  return { mid, bid: mid - halfSpreadUsdClp, ask: mid + halfSpreadUsdClp, date };
 }
 
 /**
@@ -93,44 +93,44 @@ function usdClpStored(ymd: string): PairQuote | null {
     ba.buy_clp_per_usd > 0 &&
     ba.sell_clp_per_usd > 0
   ) {
-    return { mid: midRow.clp_per_usd, bid: ba.sell_clp_per_usd, ask: ba.buy_clp_per_usd };
+    return { mid: midRow.clp_per_usd, bid: ba.sell_clp_per_usd, ask: ba.buy_clp_per_usd, date: midRow.date };
   }
-  return usdClpFromMid(midRow.clp_per_usd);
+  return usdClpFromMid(midRow.clp_per_usd, midRow.date);
 }
 
 function usdClpToday(ymd: string, now: Date | undefined): PairQuote | null {
   const row = fxForLiveMtm(ymd, now);
   if (!row || !(row.clp_per_usd > 0)) return null;
-  return usdClpFromMid(row.clp_per_usd);
+  return usdClpFromMid(row.clp_per_usd, row.date);
 }
 
 const stmtEurOnOrBefore = db.prepare(
-  `SELECT clp_per_eur FROM eur_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
+  `SELECT date, clp_per_eur FROM eur_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
 );
 
 function eurClp(ymd: string): PairQuote | null {
-  const r = stmtEurOnOrBefore.get(ymd) as { clp_per_eur: number } | undefined;
+  const r = stmtEurOnOrBefore.get(ymd) as { date: string; clp_per_eur: number } | undefined;
   const v = r?.clp_per_eur;
-  return v != null && v > 0 ? { mid: v, bid: v, ask: v } : null;
+  return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
 }
 
 const stmtFxRateOnOrBefore = db.prepare(
-  `SELECT mid FROM fx_rates WHERE base = ? AND quote = ? AND date <= ? ORDER BY date DESC LIMIT 1`
+  `SELECT date, mid FROM fx_rates WHERE base = ? AND quote = ? AND date <= ? ORDER BY date DESC LIMIT 1`
 );
 
 /** A pair loaded through `currencies` (`fx_rates`): its mid on or before the day; no spread on file. */
 function fxRatesPair(base: CurrencyCode, quote: CurrencyCode): (ymd: string) => PairQuote | null {
   return (ymd) => {
-    const r = stmtFxRateOnOrBefore.get(base, quote, ymd) as { mid: number } | undefined;
+    const r = stmtFxRateOnOrBefore.get(base, quote, ymd) as { date: string; mid: number } | undefined;
     const v = r?.mid;
-    return v != null && v > 0 ? { mid: v, bid: v, ask: v } : null;
+    return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
   };
 }
 
 function ufClp(ymd: string): PairQuote | null {
   const r = ufRowOnOrBefore(ymd);
   const v = r?.clp_per_uf;
-  return v != null && v > 0 ? { mid: v, bid: v, ask: v } : null;
+  return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
 }
 
 const PAIRS: readonly PairSource[] = [
@@ -193,6 +193,26 @@ function convertHop(
   if (!(rate > 0)) return null;
   const out = sellingBase ? qty * rate : qty / rate;
   return Number.isFinite(out) ? out : null;
+}
+
+/**
+ * The rate of a DIRECT pair on `ymd` (quote units per one base unit, at the mid) and the day it
+ * was observed: the rate a page shows as a rate (the watchlist's EUR/USD row), never a
+ * conversion. Today reads the live rate where the pair has one. A pair registered the other way
+ * round reads as the reciprocal. Null when no row is on or before the day; throws when the two
+ * codes have no direct pair.
+ */
+export function pairRateOnOrBefore(
+  base: CurrencyCode,
+  quote: CurrencyCode,
+  ymd: string,
+  now?: Date
+): { date: string; mid: number } | null {
+  const link = pairFor(base, quote);
+  if (!link) throw new Error(`rates: no direct pair ${base}/${quote}`);
+  const q = quoteAt(link.pair, ymd, now);
+  if (!q || !(q.mid > 0)) return null;
+  return { date: q.date, mid: link.inverted ? 1 / q.mid : q.mid };
 }
 
 /**

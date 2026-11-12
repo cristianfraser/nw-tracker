@@ -14,7 +14,7 @@ import { getDashboardOverviewBlock, type TsUnit } from "./valuationTimeseries.js
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { accountIdsInPortfolioGroupForTotals } from "./portfolioGroupTree.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { coreCurrencyCodes, roundToCurrency } from "./displayUnits.js";
 import { convertCurrency } from "./rates.js";
 
 /** User's birth month — retirement age is measured from here. */
@@ -24,13 +24,18 @@ export const PROJECTION_RETIRE_AGE = 65;
 /** USD reference levels for the projection horizon (superset of the patrimonio milestones). */
 export const PROJECTION_USD_MILESTONES = [250_000, 500_000, 750_000, 1_000_000, 1_500_000, 2_000_000] as const;
 
+/**
+ * The projection's parameters, every money input in the RESPONSE's unit (today's money). A
+ * request may type a money input in another currency (`<key>_currency`); it is converted into
+ * the unit at today's stored rate (`projectionParamsFromQuery`).
+ */
 export type ProjectionParams = {
   /** Annual real return during accumulation (%). */
   real_return_pct: number;
-  /** Monthly aporte in CLP, today's money. */
-  monthly_aporte_clp: number;
-  inflation_clp_pct: number;
-  inflation_usd_pct: number;
+  /** Monthly aporte, today's money. */
+  monthly_aporte: number;
+  /** Annual inflation (%) per core currency: the nominal line of a unit uses its own. */
+  inflation_pct: Record<string, number>;
   /** Annual real return after retirement (%). */
   retire_return_pct: number;
   end_age: number;
@@ -38,28 +43,54 @@ export type ProjectionParams = {
   swr_pct: number;
   /** Strategy 2: Y% of the current balance per year. */
   pct_balance_pct: number;
-  /** Strategy 3: desired TOTAL real monthly income in CLP, today's money (0 = SWR income + rent). */
-  monthly_income_clp: number;
+  /** Strategy 3: desired TOTAL real monthly income, today's money (0 = SWR income + rent). */
+  monthly_income: number;
   /** Share of the non-invested remainder (RE, cash) liquidated into the drawdown pot at retirement. */
   liquidate_other_pct: number;
-  /** Passive real monthly income during retirement (e.g. rent), today's CLP. Adds to every
+  /** Passive real monthly income during retirement (e.g. rent), today's money. Adds to every
    * strategy's income; the fixed-income pot only funds the target minus this. */
-  monthly_rent_clp: number;
+  monthly_rent: number;
 };
 
-export const PROJECTION_PARAM_BOUNDS: Record<keyof ProjectionParams, [number, number]> = {
+/** The plain numeric parameters (no currency), with their bounds. */
+export const PROJECTION_NUMBER_PARAM_BOUNDS = {
   real_return_pct: [-5, 20],
-  monthly_aporte_clp: [0, 1_000_000_000],
-  inflation_clp_pct: [0, 30],
-  inflation_usd_pct: [0, 30],
   retire_return_pct: [-5, 20],
   end_age: [PROJECTION_RETIRE_AGE + 1, 110],
   swr_pct: [0, 25],
   pct_balance_pct: [0, 25],
-  monthly_income_clp: [0, 1_000_000_000],
   liquidate_other_pct: [0, 100],
-  monthly_rent_clp: [0, 1_000_000_000],
+} as const satisfies Record<string, readonly [number, number]>;
+
+export type ProjectionNumberParam = keyof typeof PROJECTION_NUMBER_PARAM_BOUNDS;
+
+/** The money parameters: an amount in the currency the request names (`<key>_currency`, default the unit). */
+export const PROJECTION_MONEY_PARAMS = ["monthly_aporte", "monthly_income", "monthly_rent"] as const;
+export type ProjectionMoneyParam = (typeof PROJECTION_MONEY_PARAMS)[number];
+export const PROJECTION_MONEY_BOUNDS: readonly [number, number] = [0, 1_000_000_000];
+
+/** Bounds of every `inflation_<code>_pct` input. */
+export const PROJECTION_INFLATION_BOUNDS: readonly [number, number] = [0, 30];
+
+/**
+ * Default annual inflation per core currency — ASSUMPTIONS, not forecasts: CLP 3,5 % (the
+ * Banco Central's 3 % target plus the recent overshoot), USD 2,5 % (a developed-market rate a
+ * little above the Fed's 2 %), EUR 2,0 % (the ECB's medium-term target). A core currency
+ * without a default fails the request: add its row here when `currencies` gains one.
+ */
+export const PROJECTION_INFLATION_DEFAULT_PCT: Readonly<Record<string, number>> = {
+  clp: 3.5,
+  usd: 2.5,
+  eur: 2.0,
 };
+
+/** The query key of a currency's inflation input (`inflation_eur_pct`). */
+export function projectionInflationParamKey(code: string): string {
+  return `inflation_${code}_pct`;
+}
+
+/** A request parameter out of its bounds or naming an unknown currency (the route answers 400). */
+export class ProjectionParamError extends Error {}
 
 function monthAdd(mk: string, n: number): string {
   const [y, m] = mk.split("-").map(Number);
@@ -232,18 +263,77 @@ export function defaultMonthlyAporteClp(): number {
   return Math.round(total / 24);
 }
 
-export const PROJECTION_DEFAULTS: Omit<ProjectionParams, "monthly_aporte_clp"> = {
+export const PROJECTION_DEFAULTS = {
   real_return_pct: 5,
-  inflation_clp_pct: 3.5,
-  inflation_usd_pct: 2.5,
   retire_return_pct: 4,
   end_age: 95,
   swr_pct: 4,
   pct_balance_pct: 5,
-  monthly_income_clp: 0,
   liquidate_other_pct: 0,
-  monthly_rent_clp: 0,
-};
+} as const satisfies Record<ProjectionNumberParam, number>;
+
+/** Each core currency's default inflation; throws for a core currency without one. */
+export function projectionInflationDefaults(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const code of coreCurrencyCodes()) {
+    const v = PROJECTION_INFLATION_DEFAULT_PCT[code];
+    if (v == null) throw new Error(`projections: no default inflation for core currency ${code}`);
+    out[code] = v;
+  }
+  return out;
+}
+
+function parseBoundedNumber(key: string, raw: unknown, [min, max]: readonly [number, number]): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw new ProjectionParamError(`${key} must be a number in [${min}, ${max}]`);
+  }
+  return n;
+}
+
+/**
+ * The parameters a `GET /api/projections` query asks for, in `unit`: the numeric inputs as given
+ * (else their defaults), one inflation per core currency (`inflation_<code>_pct`), and each money
+ * input converted from the currency it was typed in (`<key>_currency`, default `unit`) at today's
+ * stored rate. The default aporte (trailing deposits) is pesos, converted the same way. Throws
+ * `ProjectionParamError` on a bad value.
+ */
+export function projectionParamsFromQuery(query: Record<string, unknown>, unit: TsUnit): ProjectionParams {
+  const today = chileCalendarTodayYmd();
+  const numbers = { ...PROJECTION_DEFAULTS } as Record<ProjectionNumberParam, number>;
+  for (const key of Object.keys(PROJECTION_NUMBER_PARAM_BOUNDS) as ProjectionNumberParam[]) {
+    const v = parseBoundedNumber(key, query[key], PROJECTION_NUMBER_PARAM_BOUNDS[key]);
+    if (v != null) numbers[key] = v;
+  }
+  const inflation_pct = projectionInflationDefaults();
+  for (const code of Object.keys(inflation_pct)) {
+    const key = projectionInflationParamKey(code);
+    const v = parseBoundedNumber(key, query[key], PROJECTION_INFLATION_BOUNDS);
+    if (v != null) inflation_pct[code] = v;
+  }
+  const core = coreCurrencyCodes();
+  const money = (key: ProjectionMoneyParam, fallback: () => { amount: number; currency: string }): number => {
+    const amount = parseBoundedNumber(key, query[key], PROJECTION_MONEY_BOUNDS);
+    if (amount == null) {
+      const d = fallback();
+      return atTodaysStoredRate(d.amount, d.currency, unit, today);
+    }
+    const rawCurrency = query[`${key}_currency`];
+    const currency = rawCurrency == null || rawCurrency === "" ? unit : String(rawCurrency);
+    if (!core.includes(currency)) {
+      throw new ProjectionParamError(`${key}_currency must be one of ${core.join(", ")}`);
+    }
+    return atTodaysStoredRate(amount, currency, unit, today);
+  };
+  return {
+    ...numbers,
+    inflation_pct,
+    monthly_aporte: money("monthly_aporte", () => ({ amount: defaultMonthlyAporteClp(), currency: "clp" })),
+    monthly_income: money("monthly_income", () => ({ amount: 0, currency: unit })),
+    monthly_rent: money("monthly_rent", () => ({ amount: 0, currency: unit })),
+  };
+}
 
 const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "reference" }[] = [
   { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
@@ -256,13 +346,11 @@ const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "re
   { dataKey: "proj_fixed_income", name: "Retiro renta fija", valueSeriesType: "reference" },
 ];
 
-/**
- * The display unit's inflation input. Only CLP and USD have one today; any other unit (EUR)
- * takes the USD input, whose default (2,5 %) stands in for a developed-market rate until a
- * per-currency inflation parameter exists.
- */
+/** The display unit's inflation input (every core currency has one). */
 export function inflationPctForUnit(unit: TsUnit, params: ProjectionParams): number {
-  return unit === "clp" ? params.inflation_clp_pct : params.inflation_usd_pct;
+  const v = params.inflation_pct[unit];
+  if (v == null) throw new Error(`projections: no inflation input for ${unit}`);
+  return v;
 }
 
 /**
@@ -279,10 +367,6 @@ function atTodaysStoredRate(amount: number, from: string, unit: TsUnit, today: s
 
 export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) {
   const today = chileCalendarTodayYmd();
-  const fxRow = fxRowOnOrBefore(today);
-  if (!fxRow) throw new Error("no fx_daily row available (run backfill:yahoo-fx-usd)");
-  const fx = fxRow.clp_per_usd;
-
   const overview = getDashboardOverviewBlock(unit);
   const historical = overview.points.filter(
     (p) => typeof p.total_nw === "number" && Number.isFinite(p.total_nw)
@@ -292,24 +376,22 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
   const baseTotal = Number(last.total_nw);
   const baseInvested = typeof last.invested === "number" ? last.invested : 0;
 
-  // Every CLP input (aporte, income, rent) is today's money: one rate, today's, into the unit.
-  const toUnit = (clp: number) => atTodaysStoredRate(clp, "clp", unit, today);
   const startMonth = monthAdd(String(last.as_of_date).slice(0, 7), 1);
 
   const engine = runProjectionEngine({
     base_total: baseTotal,
     base_invested: baseInvested,
     start_month: startMonth,
-    monthly_aporte: toUnit(params.monthly_aporte_clp),
+    monthly_aporte: params.monthly_aporte,
     real_return_pct: params.real_return_pct,
     retire_return_pct: params.retire_return_pct,
     inflation_pct: inflationPctForUnit(unit, params),
     end_age: params.end_age,
     swr_pct: params.swr_pct,
     pct_balance_pct: params.pct_balance_pct,
-    monthly_income: toUnit(params.monthly_income_clp),
+    monthly_income: params.monthly_income,
     liquidate_other_pct: params.liquidate_other_pct,
-    monthly_rent: toUnit(params.monthly_rent_clp),
+    monthly_rent: params.monthly_rent,
   });
 
   // Milestones as constant reference columns over the whole x-range (USD levels; another unit
@@ -336,8 +418,14 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
 
   return {
     unit,
-    fx_clp_per_usd: fx,
-    params,
+    // Echoed in the unit's minor digits (what the form shows); the engine ran on the exact amounts.
+    params: {
+      ...params,
+      monthly_aporte: roundToCurrency(params.monthly_aporte, unit),
+      monthly_income: roundToCurrency(params.monthly_income, unit),
+      monthly_rent: roundToCurrency(params.monthly_rent, unit),
+    },
+    inflation_default_pct: projectionInflationDefaults(),
     retire_month: engine.retire_month,
     retire_age: PROJECTION_RETIRE_AGE,
     summary: {

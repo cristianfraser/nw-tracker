@@ -16,7 +16,7 @@ import {
   type EquityMarketKind,
 } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
-import { convertCurrency, type DisplayUnitCode } from "./rates.js";
+import { convertCurrency, pairRateOnOrBefore, type DisplayUnitCode } from "./rates.js";
 import { londonSessionsBack, nyseSessionsBack } from "./marketHolidays.js";
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
 import {
@@ -273,6 +273,44 @@ function statsForFx(today: string, now: Date): WatchlistRowStats {
   };
 }
 
+/** `eur_usd` → base `eur`, quote `usd`; anything else is a broken row. */
+export function fxPairCodes(seriesKey: string | null): { base: string; quote: string } {
+  const m = /^([a-z]{3})_([a-z]{3})$/.exec(seriesKey ?? "");
+  if (!m) throw new Error(`market_display_series: fx_pair series_key must be <base>_<quote>, got ${seriesKey}`);
+  return { base: m[1]!, quote: m[2]! };
+}
+
+/**
+ * A rate pair's row (EUR/USD, EUR/CLP): quote units per one base unit in every display unit, as
+ * the USD/CLP row (it is the rate, not a value). Read through `rates.ts` on the pair's own rows.
+ */
+function statsForFxPair(row: MarketDisplaySeriesRow, today: string, now: Date): WatchlistRowStats {
+  const { base, quote } = fxPairCodes(row.series_key);
+  const latest = pairRateOnOrBefore(base, quote, today, now);
+  if (latest == null) return nullStats(quote);
+  const asOf = latest.date;
+  const rateAt = (ymd: string): number | null => pairRateOnOrBefore(base, quote, ymd, now)?.mid ?? null;
+  const priorDay = chileCalendarAddDays(asOf, -1);
+  const anchors = datedAnchors(watchlistAnchorYmds(today, asOf, chileCalendarAddDays(asOf, -7)), rateAt);
+  const pctVs = (key: WatchlistAnchorKey) => percentChange(latest.mid, anchors[key].value);
+  return {
+    value: latest.mid,
+    value_currency: quote,
+    as_of_date: asOf,
+    changes: {
+      day_pct: displayDayPct("weekday", today, percentChange(latest.mid, rateAt(priorDay))),
+      week_pct: pctVs("week"),
+      mtd_pct: pctVs("mtd"),
+      mom_pct: pctVs("mom"),
+      ytd_pct: pctVs("ytd"),
+      yoy_pct: pctVs("yoy"),
+      y3_pct: pctVs("y3"),
+      y5_pct: pctVs("y5"),
+      y10_pct: pctVs("y10"),
+    },
+  };
+}
+
 function nativeForFundUnit(row: MarketDisplaySeriesRow, today: string): NativeRowStats | null {
   const seriesKey = row.series_key!;
   const fuRow = fundUnitRowOnOrBefore(seriesKey, today);
@@ -335,6 +373,7 @@ export function watchlistStatsForRow(
 ): WatchlistRowStats {
   const today = chileWallClockAt(now).ymd;
   if (row.kind === "fx_usd") return statsForFx(today, now);
+  if (row.kind === "fx_pair") return statsForFxPair(row, today, now);
 
   let native: NativeRowStats | null = null;
   if (row.kind === "uf") native = nativeForUf(today);

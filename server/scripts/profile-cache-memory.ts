@@ -14,6 +14,7 @@ import { buildDashboardPageBundle } from "../src/dashboardPageBundle.js";
 import { getDashboardOverviewDaily } from "../src/dashboardOverviewDaily.js";
 import { buildFlowsOverviewPayload } from "../src/flowsOverview.js";
 import { warmRentabilidadDailySeries } from "../src/rentabilidadDailyWarm.js";
+import { coreCurrencyCodes } from "../src/displayUnits.js";
 
 const HOME_OVERVIEW_DEFAULT_DAYS = 1096;
 const top = Number(process.argv.find((a) => a.startsWith("--top="))?.slice(6) ?? 30);
@@ -47,16 +48,15 @@ function approxBytes(v: unknown): { bytes: number; entries: number } {
 async function main(): Promise<void> {
   if (!gc) console.log("(run with --expose-gc for retained sizes; without it the figures include garbage)");
   report("boot");
-  await buildDashboardPageBundle("clp");
-  report("after page bundle clp");
-  await buildDashboardPageBundle("usd");
-  report("after page bundle usd");
-  getDashboardOverviewDaily("clp", HOME_OVERVIEW_DEFAULT_DAYS);
-  getDashboardOverviewDaily("usd", HOME_OVERVIEW_DEFAULT_DAYS);
-  report("after overview daily ×2");
-  buildFlowsOverviewPayload("clp", "split", null);
-  buildFlowsOverviewPayload("usd", "split", null);
-  report("after flows overview ×2");
+  const units = coreCurrencyCodes();
+  for (const unit of units) {
+    await buildDashboardPageBundle(unit);
+    report(`after page bundle ${unit}`);
+  }
+  for (const unit of units) getDashboardOverviewDaily(unit, HOME_OVERVIEW_DEFAULT_DAYS);
+  report(`after overview daily ×${units.length}`);
+  for (const unit of units) buildFlowsOverviewPayload(unit, "split", null);
+  report(`after flows overview ×${units.length}`);
   const scopes = await warmRentabilidadDailySeries();
   report(`after ${scopes} Rentabilidad scopes`);
 

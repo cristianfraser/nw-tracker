@@ -457,6 +457,10 @@
       "es": "Sin datos recientes"
     },
     "fx": {
+      "usdPerEur": {
+        "en": "USD per €1 (Yahoo EURUSD=X)",
+        "es": "USD por €1 (Yahoo EURUSD=X)"
+      },
       "yahoo": {
         "en": "Yahoo CLP=X (conversions)",
         "es": "Yahoo CLP=X (conversiones)"
@@ -6348,17 +6352,13 @@
         "en": "Real return % (accum.)",
         "es": "Retorno real % (acum.)"
       },
-      "monthly_aporte_clp": {
-        "en": "Monthly contribution CLP",
-        "es": "Aporte mensual CLP"
+      "monthly_aporte": {
+        "en": "Monthly contribution {{unit}}",
+        "es": "Aporte mensual {{unit}}"
       },
-      "inflation_clp_pct": {
-        "en": "CLP inflation %",
-        "es": "Inflación CLP %"
-      },
-      "inflation_usd_pct": {
-        "en": "USD inflation %",
-        "es": "Inflación USD %"
+      "inflation_pct": {
+        "en": "{{code}} inflation %",
+        "es": "Inflación {{code}} %"
       },
       "retire_return_pct": {
         "en": "Real return % (drawdown)",
@@ -6376,18 +6376,22 @@
         "en": "% of balance",
         "es": "% del saldo"
       },
-      "monthly_income_clp": {
-        "en": "Monthly income CLP (0 = SWR)",
-        "es": "Renta mensual CLP (0 = SWR)"
+      "monthly_income": {
+        "en": "Monthly income {{unit}} (0 = SWR)",
+        "es": "Renta mensual {{unit}} (0 = SWR)"
       },
       "liquidate_other_pct": {
         "en": "% of non-invested liquidated at 65",
         "es": "% no-invertido liquidado a los 65"
       },
-      "monthly_rent_clp": {
-        "en": "Monthly passive rent CLP (drawdown)",
-        "es": "Renta pasiva mensual CLP (retiro)"
+      "monthly_rent": {
+        "en": "Monthly passive rent {{unit}} (drawdown)",
+        "es": "Renta pasiva mensual {{unit}} (retiro)"
       }
+    },
+    "inflationAssumption": {
+      "en": "Default inflation is an assumption, not a forecast: {{list}}. Each currency's nominal line uses its own.",
+      "es": "La inflación por defecto es un supuesto, no un pronóstico: {{list}}. La línea nominal de cada moneda usa la suya."
     },
     "summary": {
       "balanceAtRetire": {

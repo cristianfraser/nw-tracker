@@ -7,7 +7,6 @@ import type {
   DashboardAccountRow,
   DashboardNwBucketTotals,
   DashboardResponse,
-  FxLatest,
   ValuationTimeseriesResponse,
   ValueSeriesType,
 } from "./dashboard.js";
@@ -107,7 +106,6 @@ export interface DashboardNavContextResponse {
 export interface DashboardPageBundleResponse {
   dash: DashboardResponse;
   ts: ValuationTimeseriesResponse;
-  fx: FxLatest | null;
   fx_coverage: FxCoverage | null;
   inversionesPerf: InversionesPerfMonthlyResponse;
   upcoming_payments: UpcomingPaymentsDto;

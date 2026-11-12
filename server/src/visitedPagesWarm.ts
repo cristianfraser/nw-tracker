@@ -35,7 +35,12 @@ export type DailyVariant = { days: number; unit: TsUnit; perfLevels: boolean };
 
 export type VisitedWarmPlan = {
   groups: { slug: string; units: TsUnit[]; daily: DailyVariant[] }[];
-  accounts: { id: number; unit: TsUnit; granularity: "monthly" | "daily" }[];
+  /**
+   * Each visited account page in the units account pages were opened in, most requested first. The
+   * endpoint log keys on the route pattern, not the account id, so the units are the account
+   * bundles' across every account (`/api/accounts/:id/detail-bundle`'s `unit`).
+   */
+  accounts: { id: number; units: TsUnit[]; granularity: "monthly" | "daily" }[];
   /** Each group page's own nav-context (its strip), in the units the page was opened in. */
   navContexts: { root: string; unit: TsUnit }[];
 };
@@ -91,11 +96,14 @@ export function planVisitedWarm(
   }
   let granularityDaily = 0;
   let granularityMonthly = 0;
+  const accountUnits = new Map<TsUnit, number>();
   for (const { route, params, n } of endpoints) {
     const p = paramsOf(params);
     if (route === "/api/accounts/:id/detail-bundle") {
       if (p.get("granularity") === "daily") granularityDaily += n;
       else granularityMonthly += n;
+      const unit = unitOf(p);
+      if (unit != null) accountUnits.set(unit, (accountUnits.get(unit) ?? 0) + n);
       continue;
     }
     const slug = p.get("portfolio_group");
@@ -138,9 +146,11 @@ export function planVisitedWarm(
       return { slug, units: groupUnits.length ? groupUnits : (["clp"] as TsUnit[]), daily: variants };
     });
   const granularity = granularityDaily > granularityMonthly ? "daily" : "monthly";
+  const rankedAccountUnits = byScore(accountUnits).map(([u]) => u);
+  const accountUnitList = rankedAccountUnits.length ? rankedAccountUnits : (["clp"] as TsUnit[]);
   const accounts = byScore(accountScore)
     .slice(0, VISITED_WARM_MAX_ACCOUNTS)
-    .map(([id]) => ({ id, unit: "clp" as TsUnit, granularity: granularity as "monthly" | "daily" }));
+    .map(([id]) => ({ id, units: accountUnitList, granularity: granularity as "monthly" | "daily" }));
   const navContexts = groups.flatMap((g) => g.units.map((unit) => ({ root: g.slug, unit })));
   return { groups, accounts, navContexts };
 }
@@ -219,8 +229,10 @@ export async function warmVisitedPages(plan: VisitedWarmPlan = visitedWarmPlanFr
     pages += 1;
   }
   for (const a of plan.accounts) {
-    await yieldToRequests();
-    await cachedAccountDetailBundle(a.id, a.unit, a.granularity);
+    for (const unit of a.units) {
+      await yieldToRequests();
+      await cachedAccountDetailBundle(a.id, unit, a.granularity);
+    }
     pages += 1;
   }
   return pages;
