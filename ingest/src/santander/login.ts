@@ -123,9 +123,14 @@ async function waitForLandingPage(
       "--- API calls since the redirect ---",
       ...(calls.length > 0 ? calls : ["(none)"]),
     ]);
-    throw new Error(`Landed on ${page.url()} after submitting — expected a /private/ route. Evidence in ${base}.{png,txt}`);
+    throw new LoginBouncedError(`Landed on ${page.url()} after submitting — expected a /private/ route. Evidence in ${base}.{png,txt}`);
   }
   log(`(landing page made no ${ENDPOINT.productSummary} call within ${LANDING_WAIT_MS / 1000}s — continuing, the session is on a private route)`);
+}
+
+/** The private app sent a submitted login back to its own login page (see `waitForLandingPage`). */
+class LoginBouncedError extends Error {
+  override name = "LoginBouncedError";
 }
 
 function redirectedToPrivateApp(page: Page): boolean {
@@ -267,6 +272,19 @@ async function assertNotBotBlocked(page: Page): Promise<void> {
  * (`waitForLandingPage`, recorded through `recorder`).
  */
 export async function login(page: Page, recorder: Recorder, rut: string, password: string): Promise<void> {
+  try {
+    await loginOnce(page, recorder, rut, password);
+  } catch (err) {
+    // The bank bounces about one login in twenty to its own login page with no API call and no
+    // toast (2026-10-31 → 11-12: 7 of ~146 hourly polls), and the next login always went through —
+    // so one more attempt from the homepage, never more: a second bounce fails the step as before.
+    if (!(err instanceof LoginBouncedError)) throw err;
+    log(`${firstLine(err)} — logging in once more`);
+    await loginOnce(page, recorder, rut, password);
+  }
+}
+
+async function loginOnce(page: Page, recorder: Recorder, rut: string, password: string): Promise<void> {
   // Before the homepage: a re-login mid-run already has the first landing's call on record.
   const productSummaryBaseline = countApiCalls(recorder.calls, ENDPOINT.productSummary);
   await page.goto(HOME_URL, { waitUntil: "domcontentloaded" });
