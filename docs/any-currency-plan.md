@@ -315,9 +315,10 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
    USD, EUR) and the tax capture byte-identical on a copy of the 2026-11-12 database (only
    `/api/sync/status`'s clock differed, as between two baseline captures). Leftovers needing real
    work, not annotation: the `_clp` DTO keys of the card billing frame, upcoming payments, real
-   estate and payroll stay pesos by design; `BigGroupUsage.total_clp` and the gastos / income
-   month rows (Phase A item 3) still want one value in the unit; `CreditCardSummaryCards` and
-   `DeptoAccountSummaryCards` draw pesos in every unit (Phase A item 6); the Santander pipelines and
-   the planted-payment and traspaso legs keep their peso/dollar unions until C3's leftovers move.
+   estate and payroll stay pesos by design (so do `CreditCardSummaryCards`' billing figures and
+   `DeptoAccountSummaryCards`' cuota cards; the property's deposited and P/L cards follow the unit);
+   the Santander pipelines and the planted-payment and traspaso legs keep their peso/dollar unions
+   until C3's leftovers move. (`BigGroupUsage.total` and the gastos / income month rows already
+   carry one value in the unit since Phase A item 3.)
 
 Order: A (the guard first), then B, then C1 → C7; C3 is the largest and can split by table.
