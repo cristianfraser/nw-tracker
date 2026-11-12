@@ -1,4 +1,4 @@
-/** The display-unit request param, its deprecated aliases, the refusal of an unsupported unit, `/api/currencies`. */
+/** The display-unit request param, the refusal of an unsupported unit, `/api/currencies`. */
 import express from "express";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
@@ -7,11 +7,8 @@ import type { CurrenciesResponse } from "nw-tracker-contracts/dto";
 import {
   DisplayUnitNotSupportedError,
   DisplayUnitRequestError,
-  LEGACY_DISPLAY_UNITS,
-  LEGACY_DISPLAY_UNITS_WITH_UF,
   parseDisplayUnit,
   requestDisplayUnit,
-  requireLegacyDisplayUnit,
 } from "./displayUnits.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 
@@ -24,14 +21,9 @@ describe("requestDisplayUnit", () => {
     expect(requestDisplayUnit({ unit: "eur" }, { surface })).toBe("eur");
   });
 
-  it("accepts include_usd / include_uf as deprecated aliases", () => {
-    expect(requestDisplayUnit({ include_usd: "1" }, { surface })).toBe("usd");
-    expect(requestDisplayUnit({ include_usd: "true" }, { surface })).toBe("usd");
-    expect(requestDisplayUnit({ include_uf: "1" }, { surface, allowUf: true })).toBe("uf");
-    // Without allowUf the uf flag is not a unit.
-    expect(requestDisplayUnit({ include_uf: "1" }, { surface })).toBe("clp");
-    // An explicit unit wins over the alias.
-    expect(requestDisplayUnit({ unit: "clp", include_usd: "1" }, { surface })).toBe("clp");
+  it("ignores the retired include_usd / include_uf flags", () => {
+    expect(requestDisplayUnit({ include_usd: "1" }, { surface })).toBe("clp");
+    expect(requestDisplayUnit({ include_uf: "1" }, { surface, allowUf: true })).toBe("clp");
   });
 
   it("refuses an unknown code and uf where the surface does not take it", () => {
@@ -41,17 +33,15 @@ describe("requestDisplayUnit", () => {
   });
 
   it("refuses a unit the surface does not support yet, naming the surface", () => {
-    expect(() => requestDisplayUnit({ unit: "eur" }, { surface, supported: LEGACY_DISPLAY_UNITS })).toThrow(
+    expect(() => requestDisplayUnit({ unit: "eur" }, { surface, supported: ["clp", "usd"] })).toThrow(
       DisplayUnitNotSupportedError
     );
-    expect(() => requestDisplayUnit({ unit: "eur" }, { surface, supported: LEGACY_DISPLAY_UNITS })).toThrow(
+    expect(() => requestDisplayUnit({ unit: "eur" }, { surface, supported: ["clp", "usd"] })).toThrow(
       /test surface does not support display unit eur/
     );
-    expect(requestDisplayUnit({ unit: "uf" }, { surface, allowUf: true, supported: LEGACY_DISPLAY_UNITS_WITH_UF })).toBe(
+    expect(requestDisplayUnit({ unit: "uf" }, { surface, allowUf: true, supported: ["clp", "usd", "uf"] })).toBe(
       "uf"
     );
-    expect(() => requireLegacyDisplayUnit("eur", surface)).toThrow(DisplayUnitNotSupportedError);
-    expect(requireLegacyDisplayUnit("usd", surface)).toBe("usd");
   });
 });
 

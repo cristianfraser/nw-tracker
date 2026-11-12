@@ -157,7 +157,7 @@ export function buildWealthPercentilePayload(unit: DisplayUnitCode = "clp"): Wea
   const rows: WealthPercentileYearRow[] = [];
   for (let year = startYear; year <= currentYear; year++) {
     const asOfYmd = year === currentYear ? todayYmd : `${year}-12-31`;
-    const totals = buildDashboardBucketValueTotals(asOfYmd, false);
+    const totals = buildDashboardBucketValueTotals(asOfYmd);
     const netWorthClp = totals.net_worth_clp;
     const finNetWorthClp = totals.net_worth_clp - totals.real_estate_clp;
 

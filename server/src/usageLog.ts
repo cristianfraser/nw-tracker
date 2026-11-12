@@ -40,9 +40,6 @@ export const USAGE_KEY_QUERY_PARAMS = [
   "portfolio_group",
   "group",
   "subgroup",
-  // Deprecated aliases of `unit=usd` / `unit=uf` (`requestDisplayUnit`), kept while older clients send them.
-  "include_usd",
-  "include_uf",
   "installment_mode",
   "perf_levels",
   "exclude_spending",

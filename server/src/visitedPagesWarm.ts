@@ -54,13 +54,12 @@ function paramsOf(params: string): Map<string, string> {
 }
 
 /**
- * The unit a logged request asked for (`unit`, else the deprecated `include_usd` alias, else CLP);
+ * The unit a logged request asked for (`unit`, else CLP);
  * null for a unit the warmers do not build (the surface refuses it).
  */
 function unitOf(p: Map<string, string>): TsUnit | null {
   const raw = p.get("unit");
-  const v = p.get("include_usd");
-  const unit = raw ? raw.toLowerCase() : v === "1" || v === "true" ? "usd" : "clp";
+  const unit = raw ? raw.toLowerCase() : "clp";
   return (warmedDisplayUnits() as readonly string[]).includes(unit) ? unit : null;
 }
 

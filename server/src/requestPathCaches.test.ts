@@ -504,7 +504,7 @@ describe("served JSON of the cached responses", () => {
         );
       }
       out.set(
-        `/api/daily-series?portfolio_group=net_worth&days=365&include_usd=1&perf_levels=1`,
+        `/api/daily-series?portfolio_group=net_worth&days=365&unit=usd&perf_levels=1`,
         JSON.stringify(groupDailySeriesResponse("net_worth", "usd", 365, true))
       );
       for (const id of accountIds) {
@@ -537,7 +537,7 @@ describe("served JSON of the cached responses", () => {
       const out = new Map<string, string>();
       out.set(`/api/dashboard/page-bundle`, JSON.stringify(await buildDashboardPageBundle("clp")));
       out.set(`/api/dashboard/nav-context?root=net_worth`, JSON.stringify(await buildDashboardNavContext("clp", "net_worth")));
-      out.set(`/api/dashboard/nav-snapshot?include_usd=1`, JSON.stringify(await buildDashboardNavSnapshot("usd")));
+      out.set(`/api/dashboard/nav-snapshot?unit=usd`, JSON.stringify(await buildDashboardNavSnapshot("usd")));
       out.set(
         `/api/accounts/${masterId}/detail-bundle`,
         JSON.stringify(await cachedAccountDetailBundle(masterId, "clp", "monthly"))

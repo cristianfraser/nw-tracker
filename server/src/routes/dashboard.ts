@@ -147,7 +147,7 @@ app.get("/api/dashboard/inversiones-perf-daily", asyncHandler(async (req, res) =
 
 /**
  * Valuation time series: main dashboard (no `portfolio_group`) or a group page (`portfolio_group=<slug>`).
- * Query: include_usd / include_uf → unit (main dashboard UI only uses CLP+USD; UF kept for other consumers).
+ * Query: `unit` (any core currency, or `uf`).
  */
 app.get("/api/dashboard/valuation-timeseries", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/valuation-timeseries", allowUf: true });

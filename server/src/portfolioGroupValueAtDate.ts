@@ -336,8 +336,7 @@ export function buildDashboardBucketValueTotalsInUnit(asOfYmd: string, unit: TsU
  * (the wealth percentile); new readers use {@link buildDashboardBucketValueTotalsInUnit}.
  */
 export function buildDashboardBucketValueTotals(
-  asOfYmd: string,
-  _includeUsd: false
+  asOfYmd: string
 ): { net_worth_clp: number; [bucketClp: `${string}_clp`]: number } {
   const { buckets, total } = apportionedBucketClpAt(asOfYmd);
   const out: { net_worth_clp: number; [bucketClp: `${string}_clp`]: number } = { net_worth_clp: total };

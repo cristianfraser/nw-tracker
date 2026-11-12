@@ -34,8 +34,7 @@ Server: `rates.ts` (`CurrencyCode` / `TsUnit` / `CURRENCY_CODES` / `isCurrencyCo
 codes validated against `currencies`; `TsUnit` = core codes + `uf`), `valueConvert.ts`
 (`clpToUnitAt` and its shim `clpToUnitAt.ts`), `flowsDeposits.ts` `flowEventInUnit` (move into the
 conversion layer; the event's own `amt_usd` leg used only when the unit is USD), `cacheFamilies.ts`
-(`CacheUnit`), one `?unit=` param everywhere (`include_usd` / `include_uf` accepted as a deprecated
-alias until the client switches) in `routes/dashboard.ts`, `routes/accounts.ts`, `routes/flows.ts`,
+(`CacheUnit`), one `?unit=` param everywhere (the `include_usd` / `include_uf` flags retired) in `routes/dashboard.ts`, `routes/accounts.ts`, `routes/flows.ts`,
 `routes/benchmarks.ts`, `routes/market.ts`, `routes/projections.ts`, `routes/exportXlsx.ts`;
 `usageLog.ts` params; `visitedPagesWarm.ts`, `dashboardCacheWarmer.ts`, `rentabilidadDailyWarm.ts`
 unit loops. Contracts: one `DisplayUnitCode` type replacing the `"clp"|"usd"(|"uf")` literals in

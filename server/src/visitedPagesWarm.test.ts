@@ -26,9 +26,9 @@ describe("planVisitedWarm", () => {
       [
         { route: "/api/daily-series", params: "days=1096&portfolio_group=liabilities", n: 12 },
         { route: "/api/daily-series", params: "days=0&portfolio_group=liabilities", n: 2 },
-        { route: "/api/daily-series", params: "days=90&include_usd=1&portfolio_group=liabilities", n: 5 },
+        { route: "/api/daily-series", params: "days=90&unit=usd&portfolio_group=liabilities", n: 5 },
         { route: "/api/dashboard/valuation-timeseries", params: "portfolio_group=brokerage", n: 3 },
-        { route: "/api/dashboard/valuation-timeseries", params: "include_usd=1&portfolio_group=brokerage", n: 7 },
+        { route: "/api/dashboard/valuation-timeseries", params: "unit=usd&portfolio_group=brokerage", n: 7 },
         { route: "/api/dashboard/valuation-timeseries", params: "portfolio_group=cash_eqs", n: 2 },
         { route: "/api/accounts/:id/detail-bundle", params: "granularity=daily", n: 1 },
       ],
