@@ -1,8 +1,10 @@
 import { serverConfig } from "./config.js";
 
+/** The live dollar's pair key: an fx row's symbol is its pair, `<BASE>_<QUOTE>` (migration 323). */
 export const LIVE_FX_SYMBOL = "USD_CLP";
 
-export type LiveMarketQuoteKind = "equity" | "fx_clp_per_usd";
+/** `fx`: a live exchange rate, its symbol the pair key and its value quote units per base unit. */
+export type LiveMarketQuoteKind = "equity" | "fx";
 
 /** The live-quote settings, read from the server config (`config.ts`: `LIVE_QUOTES_*`). */
 

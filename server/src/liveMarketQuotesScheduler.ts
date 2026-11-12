@@ -73,7 +73,7 @@ const pollJob = new ScheduledJob({
     loadRootDotenv();
     // Symbols the price stream carries now are its own; the poll fetches the rest.
     const coverage = liveStreamCoverage();
-    const result = await syncAllLiveMarketQuotes(new Date(), { skipTickers: coverage.tickers, skipLiveFx: coverage.fx });
+    const result = await syncAllLiveMarketQuotes(new Date(), { skipTickers: coverage.tickers, skipLiveFxPairs: coverage.fxPairs });
     if (!tickFailedWholesale(result)) return "ok";
     console.warn("live-quotes:scheduler — no Yahoo request succeeded");
     return "failed";

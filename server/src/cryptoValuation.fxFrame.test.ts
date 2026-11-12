@@ -43,7 +43,7 @@ describe("computeCryptoMtmClp fx frame", () => {
     db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES ('2099-01-06', 900)`).run();
     insertLiveMarketQuote({
       symbol: LIVE_FX_SYMBOL,
-      kind: "fx_clp_per_usd",
+      kind: "fx",
       currency: null,
       value: 950,
       session_ymd: TODAY,

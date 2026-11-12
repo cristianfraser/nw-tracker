@@ -28,7 +28,7 @@ afterEach(() => {
 describe("sync dimming as a cache input", () => {
   it("a price tick keeps a figure that read only the dimming", () => {
     cacheDimmingReader();
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["SPY"]), fx: true });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["SPY"]), fx: new Set(["USD_CLP"]) });
     expect(aggregationCacheHasForTest(KEY)).toBe(true);
   });
 

@@ -94,7 +94,7 @@ describe("dashboard rows: one cache entry per account", () => {
     const t1 = new Date(t0.getTime() + 60_000);
     vi.setSystemTime(t1);
     writeBtcQuote(t1, 63_000);
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: false });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: new Set<string>() });
     for (const unit of ["clp", "usd"]) {
       expect(aggregationCacheHasForTest(`${PREFIX}account_row|${btcId}|${unit}`)).toBe(false);
       expect(aggregationCacheHasForTest(`${PREFIX}account_rows|${unit}`)).toBe(false);

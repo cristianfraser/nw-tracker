@@ -3,9 +3,9 @@
   "totals": {
     "currency-formatter": 293,
     "currency-list-literal": 8,
-    "currency-type-union": 140,
+    "currency-type-union": 138,
     "dto-currency-key": 292,
-    "unit-literal-compare": 355
+    "unit-literal-compare": 353
   },
   "violations": {
     "client/src/api.ts": {
@@ -328,9 +328,6 @@
     "server/src/bankProductSummaryApply.ts": {
       "unit-literal-compare": 1
     },
-    "server/src/benchmarkLevels.ts": {
-      "unit-literal-compare": 2
-    },
     "server/src/brokerAdapter.ts": {
       "currency-type-union": 1,
       "unit-literal-compare": 1
@@ -589,9 +586,6 @@
     "server/src/movementAmounts.ts": {
       "currency-list-literal": 1,
       "unit-literal-compare": 1
-    },
-    "server/src/movementDividendDetails.ts": {
-      "currency-type-union": 2
     },
     "server/src/movementFlowType.ts": {
       "unit-literal-compare": 2
