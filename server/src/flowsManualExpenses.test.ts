@@ -34,7 +34,7 @@ describe("flowsManualExpenses", () => {
   it("merges manual expense_entries into gastos payload", () => {
     const r = db
       .prepare(
-        `INSERT INTO expense_entries (amount_clp, spent_on, category, note, merchant)
+        `INSERT INTO expense_entries (amount, spent_on, category, note, merchant)
          VALUES (?, ?, ?, ?, ?)`
       )
       .run(123_456, "2099-03-31", "supermarket", "synthetic:excel-gap|2099-03|supermarket", "Market");

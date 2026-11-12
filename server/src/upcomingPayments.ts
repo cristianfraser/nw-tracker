@@ -12,6 +12,7 @@
  */
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { db } from "./db.js";
+import { placeBillPesosSql, requirePlaceBillPesos } from "./placeBillAmount.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { convertCurrency, type CurrencyCode } from "./rates.js";
 import { roundToCurrency } from "./displayUnits.js";
@@ -510,9 +511,16 @@ function ownedPlaces(): { place: UpcomingPlace; payments: ContribucionesPayment[
     .prepare(`SELECT id, label, slug FROM expense_accounts WHERE property_account_id IS NOT NULL AND active_to IS NULL`)
     .all() as PlaceRow[];
   const payments = db.prepare(
-    `SELECT spent_on, amount_clp AS amount FROM expense_entries WHERE expense_account_id = ? AND category = 'contribuciones'`
+    `SELECT e.id, e.spent_on, ${placeBillPesosSql("e")} AS amount FROM expense_entries e
+     WHERE e.expense_account_id = ? AND e.category = 'contribuciones'`
   );
-  return places.map((row) => ({ place: upcomingPlace(row), payments: payments.all(row.id) as ContribucionesPayment[] }));
+  return places.map((row) => ({
+    place: upcomingPlace(row),
+    payments: (payments.all(row.id) as { id: number; spent_on: string; amount: number | null }[]).map(({ id, ...p }) => ({
+      ...p,
+      amount: requirePlaceBillPesos(id, p.amount),
+    })),
+  }));
 }
 
 // ---------------------------------------------------------------------------------------------

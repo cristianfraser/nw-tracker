@@ -445,7 +445,7 @@ describe("listMirrorPairCandidates", () => {
         db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(row.key);
         expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
         db.prepare(
-          `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 0, ?, 3333331)`
+          `INSERT INTO flow_parts (flow_id, seq, category_id, amount) VALUES ((SELECT flow_id FROM movements WHERE id = ?), 0, ?, 3333331)`
         ).run(out, categoryId("food"));
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
       } finally {

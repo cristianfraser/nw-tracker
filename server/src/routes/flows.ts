@@ -331,7 +331,7 @@ app.post("/api/income/movements/:movement_id/restore", linkSyncingWrite((req, re
 app.get("/api/expenses", (_req, res) => {
   const rows = db
     .prepare(
-      `SELECT id, amount_clp, spent_on, category, note, import_batch_id, expense_account_id
+      `SELECT id, amount, currency, spent_on, category, note, import_batch_id, expense_account_id
        FROM expense_entries ORDER BY spent_on DESC, id DESC`
     )
     .all();

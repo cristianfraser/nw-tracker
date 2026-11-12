@@ -5,7 +5,7 @@ describe("flow kinds of new rows", () => {
   it("a manual expense is a purchase flow, not a card purchase (migration 288)", () => {
     const id = Number(
       db
-        .prepare(`INSERT INTO expense_entries (amount_clp, spent_on, note, merchant) VALUES (1000, '2031-01-15', 'manual: vitest', 'VITEST SHOP')`)
+        .prepare(`INSERT INTO expense_entries (amount, spent_on, note, merchant) VALUES (1000, '2031-01-15', 'manual: vitest', 'VITEST SHOP')`)
         .run().lastInsertRowid
     );
     try {

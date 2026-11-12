@@ -43,7 +43,7 @@ function withdrawal(): FlowCcExpenseLineRowDraft {
 
 function insertPiece(seq: number, slug: string, amount: number, spentOn: string | null): void {
   db.prepare(
-    `INSERT INTO flow_parts (flow_id, seq, category_id, amount_clp, spent_on)
+    `INSERT INTO flow_parts (flow_id, seq, category_id, amount, spent_on)
      VALUES ((SELECT flow_id FROM movements WHERE id = ?), ?, ?, ?, ?)`
   ).run(LINE_ID, seq, getCcExpenseCategoryBySlug(slug)!.id, amount, spentOn);
 }
@@ -97,16 +97,17 @@ describe("manual expenses", () => {
   it("creates, edits and deletes one, showing what was written", () => {
     const { id } = createManualExpense({
       spent_on: "2021-09-25",
-      amount_clp: 12_000,
+      amount: 12_000,
+      currency: "clp",
       category_slug: "food",
       description: "vitest cash lunch",
     });
     const line = () => loadManualExpenseGastosLineDrafts().find((l) => l.statement_line_id === id);
     expect(line()?.merchant).toBe("vitest cash lunch");
-    updateManualExpense(id, { spent_on: "2021-09-26", amount_clp: 13_000, category_slug: "fun", description: "vitest bar" });
+    updateManualExpense(id, { spent_on: "2021-09-26", amount: 13_000, currency: "clp", category_slug: "fun", description: "vitest bar" });
     expect([line()?.purchase_on, line()?.amount_clp, line()?.category_slug]).toEqual(["2021-09-26", 13_000, "fun"]);
     expect(() =>
-      updateManualExpense(id, { spent_on: "2021-09-26", amount_clp: 0, category_slug: "fun", description: "x" })
+      updateManualExpense(id, { spent_on: "2021-09-26", amount: 0, currency: "clp", category_slug: "fun", description: "x" })
     ).toThrow(/above 0/);
     deleteManualExpense(id);
     expect(line()).toBeUndefined();

@@ -5485,8 +5485,8 @@
           "es": "Las piezas suman más que la línea."
         },
         "amountRequired": {
-          "en": "Each piece needs an amount above 0.",
-          "es": "Cada pieza necesita un monto mayor que 0."
+          "en": "Each piece needs an amount above 0, with no more decimals than the line's currency uses.",
+          "es": "Cada pieza necesita un monto mayor que 0, sin más decimales de los que usa la moneda de la línea."
         },
         "save": {
           "en": "Save",
@@ -5531,8 +5531,16 @@
           "es": "Día"
         },
         "amount": {
-          "en": "Amount (CLP)",
-          "es": "Monto (CLP)"
+          "en": "Amount",
+          "es": "Monto"
+        },
+        "currency": {
+          "en": "Currency",
+          "es": "Moneda"
+        },
+        "amountInvalid": {
+          "en": "Enter an amount above 0, with no more decimals than the currency uses.",
+          "es": "Ingresa un monto mayor que 0, sin más decimales de los que usa la moneda."
         },
         "category": {
           "en": "Category",

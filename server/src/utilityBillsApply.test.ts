@@ -69,7 +69,7 @@ function map(provider: string, account: string, placeId: number): void {
 }
 
 function entry(id: number) {
-  return db.prepare(`SELECT amount_clp, spent_on, category, kwh, m3, expense_account_id FROM expense_entries WHERE id = ?`).get(id) as {
+  return db.prepare(`SELECT amount AS amount_clp, spent_on, category, kwh, m3, expense_account_id FROM expense_entries WHERE id = ?`).get(id) as {
     amount_clp: number;
     spent_on: string;
     category: string;
@@ -222,7 +222,7 @@ describe("applyUtilityBills", () => {
     const b = bill({ amount: 33333, issued_on: "2036-06-05", due_on: "2036-06-20", period_to: "2036-06-01" });
     const o = outcomeOf(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-06-15" }), b)!;
     expect(o.outcome).toBe("ambiguous");
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount_clp = 33333`).get(placeId)).toEqual({ n: 0 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount = 33333`).get(placeId)).toEqual({ n: 0 });
   });
 
   it("takes the one of two fitting charges already filed under a bill (a bill paid twice)", () => {
@@ -353,6 +353,6 @@ describe("gastos comunes statements", () => {
     expect(late.unbilled_hoa_payments).toEqual([
       { place: PLACE_SLUG, purchase_key: unbilled, day: "2036-11-26", amount: 61111, merchant: `Transf a ${PATTERN}` },
     ]);
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount_clp = 61111`).get(placeId)).toEqual({ n: 0 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount = 61111`).get(placeId)).toEqual({ n: 0 });
   });
 });

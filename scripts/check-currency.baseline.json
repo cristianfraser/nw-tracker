@@ -1,10 +1,10 @@
 {
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
-    "currency-formatter": 296,
+    "currency-formatter": 293,
     "currency-list-literal": 20,
     "currency-type-union": 146,
-    "dto-currency-key": 295,
+    "dto-currency-key": 292,
     "unit-literal-compare": 359
   },
   "violations": {
@@ -56,9 +56,6 @@
     },
     "client/src/components/credit-card/CreditCardFacturadoFinancingManager.tsx": {
       "currency-formatter": 1
-    },
-    "client/src/components/credit-card/ExpenseLinePiecesDialog.tsx": {
-      "currency-formatter": 3
     },
     "client/src/components/dashboard/PortfolioNavAccountsSummaryTable.tsx": {
       "unit-literal-compare": 1
@@ -243,7 +240,7 @@
     },
     "server/contracts/src/dto/flows.ts": {
       "currency-type-union": 1,
-      "dto-currency-key": 36
+      "dto-currency-key": 33
     },
     "server/contracts/src/dto/groceries.ts": {
       "dto-currency-key": 14

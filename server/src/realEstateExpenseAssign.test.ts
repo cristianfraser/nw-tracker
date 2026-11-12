@@ -34,7 +34,7 @@ function ensureFixtureExpenseAccount(): number {
 function insertFixtureEntry(accountId: number, note: string | null): number {
   const r = db
     .prepare(
-      `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id)
+      `INSERT INTO expense_entries (amount, spent_on, category, note, expense_account_id)
        VALUES (12345, '2024-05-31', 'gas', ?, ?)`
     )
     .run(note, accountId);
@@ -116,7 +116,7 @@ describe("updateRealEstateExpenseConsumption", () => {
     const luzEntryId = Number(
       db
         .prepare(
-          `INSERT INTO expense_entries (amount_clp, spent_on, category, expense_account_id)
+          `INSERT INTO expense_entries (amount, spent_on, category, expense_account_id)
            VALUES (12345, '2024-05-31', 'electricidad', ?)`
         )
         .run(accountId).lastInsertRowid
@@ -273,7 +273,7 @@ describe("assignPurchasesToRealEstateExpenses", () => {
     expect(out).toHaveLength(2);
     expect(count()).toBe(before + 2);
     for (const [i, line] of [a!, b!].entries()) {
-      const row = db.prepare(`SELECT amount_clp, category FROM expense_entries WHERE id = ?`).get(out[i]!.expense_entry_id) as { amount_clp: number; category: string };
+      const row = db.prepare(`SELECT amount AS amount_clp, category FROM expense_entries WHERE id = ?`).get(out[i]!.expense_entry_id) as { amount_clp: number; category: string };
       expect(row.amount_clp).toBe(line.amount_clp);
       expect(row.category).toBe(i === 0 ? "gas" : "gastos_comunes");
       expect(billLinkPurchaseKey(out[i]!.expense_entry_id)).toBe(line.purchase_key);

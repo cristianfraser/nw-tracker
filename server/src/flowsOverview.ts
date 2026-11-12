@@ -38,7 +38,7 @@ import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
-import { buildFlowsCheckingIncomePayload, type FlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
+import { buildFlowsCheckingIncomePayload, incomeLineUsdLeg, type FlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import { flowDepositRowsInUnit, isPreTaxDepositRow, type FlowDepositRow } from "./flowsDeposits.js";
 import { requireFlowLegsInUnit } from "./flowLegs.js";
 import {
@@ -307,7 +307,7 @@ function incomeLineAmount(
   unit: GastosUnit,
   what: string
 ): number {
-  return requireFlowLegsInUnit({ clp: Math.round(line.amount_clp), usd: line.amount_usd }, line.received_on, unit, what);
+  return requireFlowLegsInUnit({ clp: Math.round(line.amount_clp), usd: incomeLineUsdLeg(line) }, line.received_on, unit, what);
 }
 
 /** A USD wire with no checking movement (the dollar contract): income on its own row. */

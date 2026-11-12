@@ -1,6 +1,8 @@
 /**
- * A flow's parts (`flow_parts`, migrations 283 and 293; F20 «Parts»): pieces with their own kind,
- * amount and — for a user's piece — category. Two families:
+ * A flow's parts (`flow_parts`, migrations 283, 293 and 316; F20 «Parts»): pieces with their own
+ * kind, amount and — for a user's piece — category. A part's `amount` is in the currency of the
+ * flow it is of (`flows.currency`): a piece of a dollar line is dollars to the cent, a loan
+ * payment's parts are pesos. Two families:
  * - `piece`: a user's division of a card or checking line («Desglosar»), read by the line it
  *   breaks down through its flow ({@link FLOW_PARTS_BY_LINE_SQL}); pieces need not cover the line.
  * - the loan payment parts (`flows/loanPaymentParts.ts`): what a mortgage dividendo or a prepago
@@ -56,11 +58,11 @@ export const LOAN_CARRYING_PART_KINDS_SQL = `('interest', 'insurance_fire', 'ins
  * its flow. The old `(source, line_id, seq)` shape is what the pieces readers speak.
  */
 export const FLOW_PARTS_BY_LINE_SQL = `(
-  SELECT 'cc' AS source, l.id AS line_id, p.flow_id, p.seq, p.category_id, p.amount_clp, p.note, p.spent_on
-  FROM flow_parts p JOIN cc_statement_lines l ON l.flow_id = p.flow_id WHERE p.kind = 'piece'
+  SELECT 'cc' AS source, l.id AS line_id, p.flow_id, p.seq, p.category_id, p.amount, f.currency, p.note, p.spent_on
+  FROM flow_parts p JOIN flows f ON f.id = p.flow_id JOIN cc_statement_lines l ON l.flow_id = p.flow_id WHERE p.kind = 'piece'
   UNION ALL
-  SELECT 'checking' AS source, m.id AS line_id, p.flow_id, p.seq, p.category_id, p.amount_clp, p.note, p.spent_on
-  FROM flow_parts p JOIN movements m ON m.flow_id = p.flow_id WHERE p.kind = 'piece'
+  SELECT 'checking' AS source, m.id AS line_id, p.flow_id, p.seq, p.category_id, p.amount, f.currency, p.note, p.spent_on
+  FROM flow_parts p JOIN flows f ON f.id = p.flow_id JOIN movements m ON m.flow_id = p.flow_id WHERE p.kind = 'piece'
 )`;
 
 /** The row table of a piece source. */
@@ -95,7 +97,7 @@ export const LOAN_PAYMENT_PART_COLUMN: Readonly<Record<LoanPaymentPartKind, stri
 
 /**
  * The parts a `loan_payments` property-leg row states, as SQL rows `(flow_id, seq, kind,
- * amount_clp)` — one per part column above zero, the pie left out (it is capital, not a
+ * amount_clp)` — pesos, the property leg's flow being in pesos — one per part column above zero, the pie left out (it is capital, not a
  * payment). `where` narrows the rows (an alias `p` for `loan_payments`, `m` for the movement).
  * Shared by the migration hook that seeds them and the runtime writer that keeps them.
  */

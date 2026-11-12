@@ -9,6 +9,7 @@
  * (the demo files it under «bills» by the bank's wording), so no reader can tell whose it is.
  */
 import { db } from "../db.js";
+import { placeBillPesosSql, requirePlaceBillPesos } from "../placeBillAmount.js";
 import type { DateWindow } from "../dateWindow.js";
 import { loanAccountIdOfProperty } from "../accountRoles.js";
 import { loadRentCreditsForYear, type RentCredit } from "../flowsCheckingIncomeOverrides.js";
@@ -59,8 +60,8 @@ export function rentalFacts(window: DateWindow): RentalPlaceFact[] {
     `SELECT id, slug, label, dfl2, dfl2_built_m2, dfl2_reception_year, property_account_id FROM expense_accounts WHERE id = ?`
   );
   const billStmt = db.prepare(
-    `SELECT id, spent_on, category, amount_clp, months_covered FROM expense_entries
-      WHERE expense_account_id = ? AND spent_on >= ? AND spent_on <= ? ORDER BY id`
+    `SELECT e.id, e.spent_on, e.category, ${placeBillPesosSql("e")} AS amount_clp, e.months_covered FROM expense_entries e
+      WHERE e.expense_account_id = ? AND e.spent_on >= ? AND e.spent_on <= ? ORDER BY e.id`
   );
   const appraisalStmt = db.prepare(
     `SELECT as_of_date, value, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date, id LIMIT 1`
@@ -88,10 +89,16 @@ export function rentalFacts(window: DateWindow): RentalPlaceFact[] {
           id: number;
           spent_on: string;
           category: string | null;
-          amount_clp: number;
+          amount_clp: number | null;
           months_covered: number;
         }[]
-      ).map((b) => ({ entryId: b.id, date: b.spent_on, category: b.category, amountClp: b.amount_clp, monthsCovered: b.months_covered })),
+      ).map((b) => ({
+        entryId: b.id,
+        date: b.spent_on,
+        category: b.category,
+        amountClp: requirePlaceBillPesos(b.id, b.amount_clp),
+        monthsCovered: b.months_covered,
+      })),
     };
   });
 }

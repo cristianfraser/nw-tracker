@@ -504,7 +504,10 @@ export type ExpenseMonthModalSection = "purchases" | "installments" | "abonos" |
 export interface ExpenseLinePieces {
   source: "cc" | "checking";
   line_id: number;
-  line_amount_clp: number;
+  /** The line's own currency: the currency of `line_amount` and of every piece. */
+  currency: string;
+  /** The line as it reads without pieces, in `currency`. */
+  line_amount: number;
   line_date: string;
   merchant: string;
   category_slug: string;
@@ -516,13 +519,17 @@ export interface ExpenseLinePiece {
   seq?: number;
   /** The day it was spent; null = the line's own day. */
   spent_on: string | null;
-  amount_clp: number;
+  /** In the line's currency, to its smallest coin (a dollar line's piece in dollars and cents). */
+  amount: number;
   category_slug: string;
 }
 
 export interface ManualExpenseInput {
   spent_on: string;
-  amount_clp: number;
+  /** In `currency`, to its smallest coin. */
+  amount: number;
+  /** A core currency of `currencies` (`GET /api/currencies`). */
+  currency: string;
   category_slug: string;
   description: string;
 }

@@ -191,7 +191,7 @@ registered as an index (`market_symbols`, `equity_daily`, `live_market_quotes`; 
 where they read `'none'`); `crypto_trade_details`' btc / eth stay their own list (coins are
 instruments, not currencies).
 
-**One-currency storage gets `amount` + `currency`:** `expense_entries.amount_clp` (manual expenses
+**One-currency storage gets `amount` + `currency` (done 2026-11-12, migration 316):** `expense_entries.amount_clp` (manual expenses
 in any currency; place bills stay pesos by CHECK; the flow triggers in `flowTables279.ts` read the
 row's currency), `flow_parts.amount_clp` (a piece is held in its flow's currency), and the legacy
 `income_entries.amount_clp` (its `amount_usd` twins in `flowsCheckingInflows.ts` go too).

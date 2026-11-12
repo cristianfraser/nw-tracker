@@ -30,6 +30,15 @@ type MoneyFields = {
 
 /** The line's money derived from the builders' fields (pure). */
 export function lineMoneyFromBuilderFields(l: MoneyFields): { amount: Money; values: Record<string, LineUnitValue> } {
+  if (l.amount) {
+    // A builder that knows the line's own currency states it (a manual expense, in any currency):
+    // its pesos and dollars are the day's unless the line is in that currency.
+    const preset = l.amount;
+    const reached = (code: string): LineRateSource => (preset.currency === code ? "native" : "day");
+    const values: Record<string, LineUnitValue> = { clp: { value: l.amount_clp, rate_source: reached("clp") } };
+    if (l.amount_usd_at_expense != null) values.usd = { value: l.amount_usd_at_expense, rate_source: reached("usd") };
+    return { amount: preset, values };
+  }
   const nativeUsd = l.amount_usd != null && Number.isFinite(l.amount_usd) && l.amount_usd !== 0 ? l.amount_usd : null;
   const amount: Money = nativeUsd != null ? { value: nativeUsd, currency: "usd" } : { value: l.amount_clp, currency: "clp" };
   const values: Record<string, LineUnitValue> = {
@@ -44,7 +53,8 @@ export function lineMoneyFromBuilderFields(l: MoneyFields): { amount: Money; val
 /** The «line money» step: every line gets its `amount` and `values`. */
 export function withLineMoney<L extends MoneyFields>(lines: readonly L[]): L[] {
   return lines.map((l) => {
-    const { clp_rate_source: _hint, ...rest } = l;
+    // The money fields go last (a builder that stated `amount` does not move it on the wire).
+    const { clp_rate_source: _hint, amount: _preset, ...rest } = l;
     return { ...rest, ...lineMoneyFromBuilderFields(l) } as L;
   });
 }

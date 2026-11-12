@@ -58,6 +58,7 @@ import { runMortgageLenderQuotes308 } from "./mortgageLenderQuotes308.js";
 import { runFlowFirstSeen310 } from "./flows/flowFirstSeen310.js";
 import { runCardToCardPayments311 } from "./cardToCardPayments311.js";
 import { runCurrencies312 } from "./currencies312.js";
+import { runExpenseAmountCurrency316 } from "./expenseAmountCurrency316.js";
 import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
@@ -386,6 +387,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "310_flow_first_seen.sql": runFlowFirstSeen310,
   "311_card_to_card_payments.sql": runCardToCardPayments311,
   "312_currencies_fx_rates.sql": runCurrencies312,
+  "316_expense_amount_currency.sql": runExpenseAmountCurrency316,
 };
 
 /**
@@ -400,6 +402,7 @@ const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
   "178_grocery_receipt_key.sql",
   "234_payment_receipt_any_currency.sql",
   "239_watchlist_composite_positions_cmf_source.sql",
+  "316_expense_amount_currency.sql",
 ]);
 
 export function runMigrations() {

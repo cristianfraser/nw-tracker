@@ -283,8 +283,8 @@ function copyAssignments(move: CcLineMove, out: CardLineAdoptionResult): void {
       copied =
         db
           .prepare(
-            `INSERT INTO flow_parts (flow_id, seq, kind, category_id, amount_clp, note, spent_on)
-             SELECT ?, seq, kind, category_id, amount_clp, note, spent_on FROM flow_parts WHERE flow_id = ?`
+            `INSERT INTO flow_parts (flow_id, seq, kind, category_id, amount, note, spent_on)
+             SELECT ?, seq, kind, category_id, amount, note, spent_on FROM flow_parts WHERE flow_id = ?`
           )
           .run(toFlow, fromPartsFlow).changes > 0 || copied;
     }
@@ -376,7 +376,7 @@ function assignmentSignature(ref: CcLineRef): string | null {
     ...["flow_categories", "flow_big_groups", "flow_notes"].map((t) =>
       db.prepare(`SELECT portion, piece_seq, ${t === "flow_categories" ? "category_id" : t === "flow_notes" ? "notes" : "group_slug"} AS v FROM ${t} WHERE flow_id = ? ORDER BY portion, piece_seq`).all(flowId)
     ),
-    db.prepare(`SELECT seq, kind, category_id, amount_clp, note FROM flow_parts WHERE flow_id = ? ORDER BY seq`).all(partsFlowId),
+    db.prepare(`SELECT seq, kind, category_id, amount, note FROM flow_parts WHERE flow_id = ? ORDER BY seq`).all(partsFlowId),
   ];
   return parts.every((p) => p.length === 0) ? null : JSON.stringify(parts);
 }
