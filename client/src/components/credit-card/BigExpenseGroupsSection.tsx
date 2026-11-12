@@ -160,7 +160,7 @@ export function BigExpenseGroupsSection({
           key={g.slug}
           slug={g.slug}
           label={g.label}
-          total={g.total_clp}
+          total={g.total}
           unit={unit}
           purchaseCount={g.purchase_count}
           lines={lines}

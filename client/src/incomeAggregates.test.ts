@@ -11,26 +11,26 @@ function monthRow(period_month: string, salary: number, other = 0): FlowIncomeMo
   return {
     period_month,
     as_of_date,
-    salary_clp: salary,
-    severance_clp: 0,
-    parent_gift_clp: 0,
-    rent_clp: 0,
-    other_clp: other,
-    total_clp: salary + other,
+    salary: salary,
+    severance: 0,
+    parent_gift: 0,
+    rent: 0,
+    other: other,
+    total: salary + other,
     line_count: (salary ? 1 : 0) + (other ? 1 : 0),
-    cumulative_clp: 0,
+    cumulative: 0,
   };
 }
 
 function chartPoint(r: FlowIncomeMonthRow): FlowIncomeChartPoint {
   return {
     as_of_date: r.as_of_date,
-    salary: r.salary_clp,
-    severance: r.severance_clp,
-    parent_gift: r.parent_gift_clp,
-    rent: r.rent_clp,
-    other: r.other_clp,
-    total: r.total_clp,
+    salary: r.salary,
+    severance: r.severance,
+    parent_gift: r.parent_gift,
+    rent: r.rent,
+    other: r.other,
+    total: r.total,
   };
 }
 
@@ -46,7 +46,7 @@ const MONTHS = [
 describe("rollupIncomeMonthRowsByYear", () => {
   it("sums each year's months and runs the cumulative over the years", () => {
     const years = rollupIncomeMonthRowsByYear(MONTHS);
-    expect(years.map((y) => [y.period_month, y.total_clp, y.line_count, y.cumulative_clp])).toEqual([
+    expect(years.map((y) => [y.period_month, y.total, y.line_count, y.cumulative])).toEqual([
       ["2023-12", 2_350_000, 4, 2_350_000],
       ["2024-12", 1_200_000, 1, 3_550_000],
       ["2026-12", 1_300_000, 1, 4_850_000],

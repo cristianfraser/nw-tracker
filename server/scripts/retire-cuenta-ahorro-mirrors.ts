@@ -70,7 +70,7 @@ function linkedClp(depositId: number): number {
 const movementsFingerprint = () =>
   JSON.stringify(db.prepare(`SELECT COUNT(*) AS n, SUM(id) AS ids, SUM(amount) AS amt, MAX(occurred_on) AS d FROM movements`).get());
 
-const before = buildDepositsReconciliationPayload();
+const before = buildDepositsReconciliationPayload("clp");
 const statusBefore = new Map(before.rows.map((r) => [r.movement_id, r.status]));
 const movementsBefore = movementsFingerprint();
 const candidates = loadDepositMatchCandidates();
@@ -133,7 +133,7 @@ const run = db.transaction(() => {
   }
 
   if (movementsFingerprint() !== movementsBefore) throw new Error("the movements table changed");
-  const after = buildDepositsReconciliationPayload();
+  const after = buildDepositsReconciliationPayload("clp");
   const moved: string[] = [];
   for (const r of after.rows) {
     const was = statusBefore.get(r.movement_id);

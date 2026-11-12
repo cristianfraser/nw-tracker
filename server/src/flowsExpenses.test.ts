@@ -385,8 +385,8 @@ describe("flowsExpenses", () => {
     const asc = [...byMonth].reverse();
     let expected = 0;
     for (const row of asc) {
-      expected += row.gastos_mes_clp;
-      expect(row.gastos_acumulado_clp).toBe(expected);
+      expected += row.gastos_mes;
+      expect(row.gastos_acumulado).toBe(expected);
       expect(row.period_month).toMatch(/^\d{4}-\d{2}$/);
       expect(row.as_of_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
@@ -444,7 +444,7 @@ describe("flowsExpenses", () => {
     expect(checking.length).toBeGreaterThan(0);
   });
 
-  it("gastos_mes_clp reflects NOTA DE CREDITO pairing and unmatched adjustments", () => {
+  it("gastos_mes reflects NOTA DE CREDITO pairing and unmatched adjustments", () => {
     const payload = buildFlowsExpensesPayload();
     for (const row of splitView(payload).by_month) {
       const monthLines = payload.lines.filter(
@@ -473,8 +473,8 @@ describe("flowsExpenses", () => {
         }
         return s;
       }, 0);
-      expect(row.gastos_real_mes_clp).toBe(Math.round(sumPositive));
-      expect(row.gastos_mes_clp).toBe(Math.round(sumCounted));
+      expect(row.gastos_real_mes).toBe(Math.round(sumPositive));
+      expect(row.gastos_mes).toBe(Math.round(sumCounted));
     }
   });
 
@@ -515,7 +515,7 @@ describe("flowsExpenses", () => {
       .filter((ln) => ln.expense_month === "2024-12" && ln.value_clp < 0 && ln.checking_refund !== true)
       .filter((ln) => ln.nota_credito_role !== "matched_nota" && ln.nota_credito_role !== "unmatched_nota")
       .reduce((s, ln) => s + ln.value_clp, 0);
-    expect(dec!.abonos_mes_clp).toBe(Math.round(decAbonosFromLines));
+    expect(dec!.abonos_mes).toBe(Math.round(decAbonosFromLines));
   });
 
   it("includes USD-only statement lines converted to CLP", () => {

@@ -12,6 +12,7 @@ import {
 import { groupAccountIds, nwBucketSlugs } from "./navTreeModel.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 import { db } from "./db.js";
+import { roundToCurrency } from "./displayUnits.js";
 
 /** A value per net-worth bucket (`nwBucketSlugs()`, in their order), plus net worth = Σ of them. */
 export type BucketValues = Record<string, number> & { net_worth: number };
@@ -231,7 +232,7 @@ export function buildDashboardBucketDailySeriesInUnit(
       ),
     ] as const)
   );
-  const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
+  const round = (v: number) => roundToCurrency(v, unit);
   const out = new Map<string, BucketValues>();
   sessionsAsc.forEach((ymd, gi) => {
     const row = emptyBucketValues();
@@ -278,7 +279,7 @@ export function dashboardBucketDayPriorClosesInUnit(priorDayYmd: string, unit: T
       if (unit === "clp") raw = cashNetOfLinkedCreditCards(raw, cc!);
       else if (cc != null) raw = cashNetOfLinkedCreditCards(raw, cc);
     }
-    out[slug] = unit === "clp" ? Math.round(raw) : raw;
+    out[slug] = roundToCurrency(raw, unit);
   }
   out.net_worth = sumBuckets(out);
   return out;

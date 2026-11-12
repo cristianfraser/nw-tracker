@@ -7,7 +7,8 @@ import { checkingCashByDay } from "./flowsOverviewCash.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { convertValue } from "./valueConvert.js";
-import { buildFlowsDepositsPayload } from "./flowsDeposits.js";
+import { buildFlowsDepositsResponse } from "./flowsDeposits.js";
+import { roundToCurrency } from "./displayUnits.js";
 import { cachedMortgageCarryingEvents } from "./flowsMortgageCarrying.js";
 import { buildFlowsPlPayload } from "./flowsPl.js";
 import {
@@ -103,15 +104,10 @@ function incomePayload(): FlowsOverviewIncome {
   };
 }
 
+/** A deposit row in pesos: its `amount` (the unit's) is its pesos unless given. */
 function depositRow(overrides: Partial<FlowsOverviewDepositRow> = {}): FlowsOverviewDepositRow {
-  return {
-    occurred_on: "2024-03-11",
-    account_id: 30,
-    kind_slug: "property",
-    amount_clp: 1_000_000,
-    amount_usd: null,
-    ...overrides,
-  };
+  const row = { occurred_on: "2024-03-11", account_id: 30, kind_slug: "property", amount_clp: 1_000_000, ...overrides };
+  return { ...row, amount: overrides.amount ?? row.amount_clp };
 }
 
 const NO_FX: ReadonlyMap<string, number> = new Map();
@@ -119,8 +115,8 @@ const DAY_EXTRA = { checkingAccountIds: CHECKING, cardPayments: [], checkingValu
 
 const marchDeposits = [depositRow(), depositRow({ kind_slug: "spy", amount_clp: 500_000 })];
 
-function gastosMonth(period_month: string, gastos_mes_clp: number, gastos_real_mes_clp = gastos_mes_clp) {
-  return { period_month, gastos_mes_clp, gastos_real_mes_clp };
+function gastosMonth(period_month: string, gastos_mes: number, gastos_real_mes = gastos_mes) {
+  return { period_month, gastos_mes, gastos_real_mes };
 }
 /** One mortgageLine(): 1.000.000 paid, 400.000 of it carrying (the gasto). */
 const MORTGAGE_MARCH = [gastosMonth("2024-03", 400_000, 1_000_000)];
@@ -235,12 +231,6 @@ describe("aggregateFlowsOverviewMonths", () => {
     for (const mode of ["split", "total"] as const) {
       expect(march(months({ lines, gastosByMonth: MORTGAGE_MARCH }, mode)).deposits).toBe(1_500_000 - 400_000);
     }
-  });
-
-  it("throws in USD when a deposit has no dollar amount", () => {
-    const income = incomePayload();
-    income.lines[0]!.amount_usd = 2_000;
-    expect(() => months({ income }, "split", "usd")).toThrow(/no usd value/);
   });
 
   it("splits pre-tax AFP/AFC cotizaciones out of post-tax deposits", () => {
@@ -359,7 +349,7 @@ describe("buildFlowsIncomeAggregates", () => {
       const overview = months({ income, deposits: [] }, "split", unit);
       for (const row of agg.months) {
         const o = overview.find((r) => r.period_month === row.period_month);
-        expect(o?.income ?? 0).toBe(row.total_clp);
+        expect(o?.income ?? 0).toBe(row.total);
       }
       expect(agg.total).toBe(flowsOverviewTotals(overview).income);
       const days = aggregateFlowsOverviewDays(
@@ -376,17 +366,17 @@ describe("buildFlowsIncomeAggregates", () => {
   it("splits by kind, counts legs and runs the months through today", () => {
     const agg = buildFlowsIncomeAggregates(mixedIncome(), "clp", TODAY);
     expect(agg.months.map((m) => m.period_month)).toEqual(["2024-01", "2024-02", "2024-03", "2024-04"]);
-    expect(agg.months[1]).toMatchObject({ salary_clp: 2_000_000, total_clp: 2_000_000, line_count: 1 });
+    expect(agg.months[1]).toMatchObject({ salary: 2_000_000, total: 2_000_000, line_count: 1 });
     // A rent credit lands in its own bucket, on the month it arrived, and never in «other».
     expect(agg.months[2]).toMatchObject({
-      salary_clp: 900_001,
-      parent_gift_clp: 150_000,
-      rent_clp: 380_000,
-      other_clp: 0,
-      total_clp: 1_430_001,
+      salary: 900_001,
+      parent_gift: 150_000,
+      rent: 380_000,
+      other: 0,
+      total: 1_430_001,
       line_count: 3,
     });
-    expect(agg.months[3]).toMatchObject({ total_clp: 0, line_count: 0, cumulative_clp: 3_460_001 });
+    expect(agg.months[3]).toMatchObject({ total: 0, line_count: 0, cumulative: 3_460_001 });
     expect(agg.total).toBe(3_460_001);
     expect(agg.days.map((d) => d.as_of_date)).toEqual(["2024-01-10", "2024-03-02", "2024-03-05", "2024-03-20", "2024-03-28"]);
     expect(agg.days[1]).toMatchObject({ rent: 380_000, other: 0, total: 380_000 });
@@ -697,24 +687,30 @@ describe("buildFlowsOverviewPayload", () => {
       for (const r of overview.months) {
         if (r.period_month > today.slice(0, 7)) continue;
         const pageTotal = pageByMonth.get(r.period_month) ?? 0;
-        expect(r.pl).toBeCloseTo(unit === "clp" ? Math.round(pageTotal) : pageTotal, 6);
+        expect(r.pl).toBeCloseTo(roundToCurrency(pageTotal, unit), 6);
       }
     }
   });
 
-  it("deposits + pre-tax equal the /flows/deposits page, month by month", () => {
-    const overview = buildFlowsOverviewPayload("clp", "split", null);
-    const page = buildFlowsDepositsPayload({
-      excludeCheckingAccounts: true,
-      withMortgageCarrying: { clp: cachedMortgageCarryingEvents("clp"), usd: cachedMortgageCarryingEvents("usd") },
+  for (const unit of ["clp", "usd"] as const) {
+    it(`deposits + pre-tax equal the /flows/deposits page, month by month (${unit})`, () => {
+      const overview = buildFlowsOverviewPayload(unit, "split", null);
+      const page = buildFlowsDepositsResponse(unit, {
+        excludeCheckingAccounts: true,
+        withMortgageCarrying: { clp: cachedMortgageCarryingEvents("clp"), unit: cachedMortgageCarryingEvents(unit) },
+      });
+      const byMonth = new Map<string, number>();
+      for (const r of page.rows) byMonth.set(r.occurred_on.slice(0, 7), (byMonth.get(r.occurred_on.slice(0, 7)) ?? 0) + r.amount);
+      // The overview rounds deposits and pre-tax deposits apart, each to the unit's coin.
+      const coin = unit === "clp" ? 1 : 0.01;
+      for (const r of overview.months) {
+        const page_ = byMonth.get(r.period_month) ?? 0;
+        if (unit === "clp") expect(r.deposits + r.deposits_pre_tax).toBe(Math.round(page_));
+        else expect(Math.abs(r.deposits + r.deposits_pre_tax - page_)).toBeLessThanOrEqual(coin);
+      }
+      expect(Math.abs(page.pre_tax_total - overview.totals.deposits_pre_tax)).toBeLessThanOrEqual(coin * overview.months.length);
     });
-    const byMonth = new Map<string, number>();
-    for (const r of page.rows) byMonth.set(r.occurred_on.slice(0, 7), (byMonth.get(r.occurred_on.slice(0, 7)) ?? 0) + r.amount_clp);
-    for (const r of overview.months) {
-      expect(r.deposits + r.deposits_pre_tax).toBe(Math.round(byMonth.get(r.period_month) ?? 0));
-    }
-    expect(Math.round(page.pre_tax_total_clp)).toBe(overview.totals.deposits_pre_tax);
-  });
+  }
 
   it("serves month rows with consistent totals and the closed periods, day rows on request", () => {
     const today = chileCalendarTodayYmd();
@@ -763,7 +759,7 @@ describe("buildFlowsOverviewPayload", () => {
       const prev = chileCalendarAddDays(r.as_of_date, -1);
       let expected = 0;
       for (const id of peso) expected += pesosAt(id, prev) * (clpInUsd(r.as_of_date) - clpInUsd(prev));
-      expect(r.cash_fx).toBeCloseTo(expected, 6);
+      expect(Math.abs(r.cash_fx - expected)).toBeLessThanOrEqual(0.0051); // rounded to the cent
     }
     // A month's leg is the Σ of its days' (the day rows round apart; the unrounded days add up).
     const start = monthEndUtcYmd(addCalendarMonths(clp.months[0]!.period_month, -1));

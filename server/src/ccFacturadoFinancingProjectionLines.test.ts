@@ -111,8 +111,8 @@ const GAP = T - F; // 8x.xxx
 const FACTURADO = () => F;
 const CATS = ["supermarket", "restaurants", "bills"];
 
-function monthGastos(rows: { period_month: string; gastos_mes_clp: number }[], m: string): number {
-  return rows.find((r) => r.period_month === m)?.gastos_mes_clp ?? 0;
+function monthGastos(rows: { period_month: string; gastos_mes: number }[], m: string): number {
+  return rows.find((r) => r.period_month === m)?.gastos_mes ?? 0;
 }
 
 describe("ccFacturadoFinancingProjection", () => {

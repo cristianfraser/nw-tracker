@@ -57,13 +57,13 @@ export function IncomeMonthTable({
             <td className="mono">
               {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
             </td>
-            <td className="mono">{formatFlowMoney(row.salary_clp, displayUnit)}</td>
-            <td className="mono muted">{formatFlowMoney(row.severance_clp, displayUnit)}</td>
-            <td className="mono muted">{formatFlowMoney(row.parent_gift_clp, displayUnit)}</td>
-            <td className="mono muted">{formatFlowMoney(row.rent_clp, displayUnit)}</td>
-            <td className="mono muted">{formatFlowMoney(row.other_clp, displayUnit)}</td>
-            <td className="mono">{formatFlowMoney(row.total_clp, displayUnit)}</td>
-            <td className="mono muted">{formatFlowMoney(row.cumulative_clp, displayUnit)}</td>
+            <td className="mono">{formatFlowMoney(row.salary, displayUnit)}</td>
+            <td className="mono muted">{formatFlowMoney(row.severance, displayUnit)}</td>
+            <td className="mono muted">{formatFlowMoney(row.parent_gift, displayUnit)}</td>
+            <td className="mono muted">{formatFlowMoney(row.rent, displayUnit)}</td>
+            <td className="mono muted">{formatFlowMoney(row.other, displayUnit)}</td>
+            <td className="mono">{formatFlowMoney(row.total, displayUnit)}</td>
+            <td className="mono muted">{formatFlowMoney(row.cumulative, displayUnit)}</td>
             <td className="muted">{row.line_count}</td>
           </tr>
         ))}

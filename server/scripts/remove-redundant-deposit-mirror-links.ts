@@ -56,7 +56,7 @@ function readState(): State {
     ).map((r) => `deposit ${r.deposit_movement_id}  ${r.link_source}  ${mirrorLabel(r.purchase_key)}`)
   );
   const status = new Map(
-    buildDepositsReconciliationPayload().rows.map((r) => [r.movement_id, r.status] as [number, string])
+    buildDepositsReconciliationPayload("clp").rows.map((r) => [r.movement_id, r.status] as [number, string])
   );
   return { mirrors, links, status };
 }

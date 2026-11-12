@@ -182,20 +182,21 @@ export interface RealEstateChartScopeDto {
   points: FlowExpenseChartPoint[];
 }
 
+/** One month (or year) of gastos, in the view's unit, rounded to its minor digits. */
 export interface FlowCcExpenseMonthRow {
   period_month: string;
   as_of_date: string;
-  gastos_mes_clp: number;
-  gastos_real_mes_clp: number;
-  abonos_mes_clp: number;
-  gastos_acumulado_clp: number;
-  gastos_real_acumulado_clp: number;
+  gastos_mes: number;
+  gastos_real_mes: number;
+  abonos_mes: number;
+  gastos_acumulado: number;
+  gastos_real_acumulado: number;
   line_count: number;
 }
 
 export interface FlowCcExpenseChartPoint {
   as_of_date: string;
-  gastos_clp: number;
+  gastos: number;
 }
 
 export interface CcExpenseCategoryDto {
@@ -650,7 +651,7 @@ export interface ExpenseYearMonthlyAverage {
 export interface FlowsExpensesGastosView {
   /** The chart's stack keys, in stack order. */
   chart_category_slugs: string[];
-  /** Full-history headline (unrounded in USD). */
+  /** Full-history headline, rounded to the unit's minor digits. */
   total: number;
   total_real: number;
   /** Newest first, through the latest month with real spend in this mode. */
@@ -673,7 +674,7 @@ export interface FlowsExpensesGastosResponse {
   excluded_big_groups: string[];
   /** Keyed `<split|total>|<category|subcategory>`. */
   views: Record<string, FlowsExpensesGastosView>;
-  /** Big groups that hold spend, per installment mode (pesos, whatever the unit), sorted by label. */
+  /** Big groups that hold spend, per installment mode (in the unit), sorted by label. */
   big_group_usage: Record<"split" | "total", BigGroupUsage[]>;
 }
 
@@ -681,7 +682,8 @@ export interface FlowsExpensesGastosResponse {
 export interface BigGroupUsage {
   slug: string;
   label: string;
-  total_clp: number;
+  /** In the payload's unit, rounded to its minor digits. */
+  total: number;
   purchase_count: number;
 }
 
@@ -933,18 +935,19 @@ export interface FlowWorkEarningRow {
 
 export type IncomeKind = PayrollEarningType | "other" | "parent_gift" | "rent";
 
+/** One month of income, in the aggregates' unit, rounded to its minor digits. */
 export interface FlowIncomeMonthRow {
   period_month: string;
   as_of_date: string;
-  salary_clp: number;
-  severance_clp: number;
-  parent_gift_clp: number;
+  salary: number;
+  severance: number;
+  parent_gift: number;
   /** Rent of the tracked places (income kind `rent`). */
-  rent_clp: number;
-  other_clp: number;
-  total_clp: number;
+  rent: number;
+  other: number;
+  total: number;
   line_count: number;
-  cumulative_clp: number;
+  cumulative: number;
 }
 
 export interface FlowIncomeChartPoint {

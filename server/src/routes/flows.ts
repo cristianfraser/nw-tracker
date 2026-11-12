@@ -9,7 +9,7 @@ import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { saveVendorBranchChoice } from "../vendorCatalog.js";
 import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
-import { buildDepositsReconciliationPayload, depositsReconciliationInUnit } from "../flowsDepositsReconciliation.js";
+import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsResponse } from "../flowsDeposits.js";
 import {
   cachedFlowsExpensesGastosPayload,
@@ -135,7 +135,7 @@ app.get("/api/flows/overview", (req, res) => {
 app.get("/api/flows/deposits/reconciliation", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/flows/deposits/reconciliation" });
   try {
-    res.json(depositsReconciliationInUnit(buildDepositsReconciliationPayload(), unit));
+    res.json(buildDepositsReconciliationPayload(unit));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

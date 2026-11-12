@@ -14,7 +14,7 @@ import { db } from "./db.js";
 
 describe("buildDepositsReconciliationPayload", () => {
   it("classifies every row into exactly one status consistent with the link table", () => {
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const linkSourceByMovementId = loadBestLinkSourceByMovementId();
 
     // Coverage is decided by cuenta_corriente specifically (see
@@ -41,12 +41,12 @@ describe("buildDepositsReconciliationPayload", () => {
         // An otherwise-unlinked row may instead be netted out as an internal net-worth transfer.
         expect([expected, "resolved_internal_transfer"]).toContain(row.status);
       }
-      expect(row.amount_clp).toBeGreaterThan(0);
+      expect(row.amount!).toBeGreaterThan(0);
     }
   });
 
   it("by_status totals match the sum of classified rows", () => {
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const sums = {
       linked: 0,
       resolved_tax_refund: 0,
@@ -62,43 +62,43 @@ describe("buildDepositsReconciliationPayload", () => {
       unlinked_checking_present: 0,
     };
     for (const row of payload.rows) {
-      sums[row.status] += row.amount_clp;
+      sums[row.status] += row.amount!;
       counts[row.status] += 1;
     }
     for (const status of Object.keys(sums) as (keyof typeof sums)[]) {
-      expect(payload.by_status[status].total_clp).toBe(sums[status]);
+      expect(payload.by_status[status].total).toBe(sums[status]);
       expect(payload.by_status[status].count).toBe(counts[status]);
     }
   });
 
   it("by_month rows sum to the same totals as by_status across all rows", () => {
-    const payload = buildDepositsReconciliationPayload();
-    const monthLinked = payload.by_month.reduce((s, m) => s + m.linked_clp, 0);
-    const monthInternal = payload.by_month.reduce((s, m) => s + m.resolved_internal_transfer_clp, 0);
+    const payload = buildDepositsReconciliationPayload("clp");
+    const monthLinked = payload.by_month.reduce((s, m) => s + m.linked!, 0);
+    const monthInternal = payload.by_month.reduce((s, m) => s + m.resolved_internal_transfer!, 0);
     const monthNoChecking = payload.by_month.reduce(
-      (s, m) => s + m.unlinked_no_checking_source_clp,
+      (s, m) => s + m.unlinked_no_checking_source!,
       0
     );
     const monthChecking = payload.by_month.reduce(
-      (s, m) => s + m.unlinked_checking_present_clp,
+      (s, m) => s + m.unlinked_checking_present!,
       0
     );
-    expect(monthLinked).toBe(payload.by_status.linked.total_clp);
-    expect(monthInternal).toBe(payload.by_status.resolved_internal_transfer.total_clp);
-    expect(monthNoChecking).toBe(payload.by_status.unlinked_no_checking_source.total_clp);
-    expect(monthChecking).toBe(payload.by_status.unlinked_checking_present.total_clp);
+    expect(monthLinked).toBe(payload.by_status.linked.total);
+    expect(monthInternal).toBe(payload.by_status.resolved_internal_transfer.total);
+    expect(monthNoChecking).toBe(payload.by_status.unlinked_no_checking_source.total);
+    expect(monthChecking).toBe(payload.by_status.unlinked_checking_present.total);
     for (const m of payload.by_month) {
-      expect(m.total_clp).toBe(
-        m.linked_clp +
-          m.resolved_internal_transfer_clp +
-          m.unlinked_no_checking_source_clp +
-          m.unlinked_checking_present_clp
+      expect(m.total).toBe(
+        m.linked! +
+          m.resolved_internal_transfer! +
+          m.unlinked_no_checking_source! +
+          m.unlinked_checking_present!
       );
     }
   });
 
   it("excludes AFP and AFC payroll inflows from every row", () => {
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const afpAfcAccount = payload.rows.find(
       (r) => r.account_name === "AFP" || r.account_name === "AFC"
     );
@@ -131,9 +131,9 @@ describe("buildDepositsReconciliationPayload", () => {
          VALUES (NULL, ?, ?, ?, 'clp', ?, 'vitest-internal-transfer-row')`
       ).run(fromAcc.id, toAcc.id, 7_777_333, "2025-06-16");
 
-      const after = buildDepositsReconciliationPayload();
+      const after = buildDepositsReconciliationPayload("clp");
       const leg = after.redemptions.find(
-        (r) => r.account_id === fromAcc.id && Math.round(r.amount_clp) === 7_777_333
+        (r) => r.account_id === fromAcc.id && Math.round(r.amount!) === 7_777_333
       );
       expect(leg?.status).toBe("resolved_internal_transfer");
     });
@@ -141,22 +141,22 @@ describe("buildDepositsReconciliationPayload", () => {
 
   describe("negative deposits (redemptions)", () => {
     it("every redemption classifies into exactly one status with a positive amount", () => {
-      const payload = buildDepositsReconciliationPayload();
+      const payload = buildDepositsReconciliationPayload("clp");
       const sums = { linked: 0, resolved_internal_transfer: 0, unlinked_no_checking_source: 0, unlinked_checking_present: 0 };
       const counts = { linked: 0, resolved_internal_transfer: 0, unlinked_no_checking_source: 0, unlinked_checking_present: 0 };
       for (const r of payload.redemptions) {
-        expect(r.amount_clp).toBeGreaterThan(0);
-        sums[r.status] += r.amount_clp;
+        expect(r.amount!).toBeGreaterThan(0);
+        sums[r.status] += r.amount!;
         counts[r.status] += 1;
       }
       for (const status of Object.keys(sums) as (keyof typeof sums)[]) {
-        expect(payload.redemptions_by_status[status].total_clp).toBe(sums[status]);
+        expect(payload.redemptions_by_status[status].total).toBe(sums[status]);
         expect(payload.redemptions_by_status[status].count).toBe(counts[status]);
       }
     });
 
     it("does not classify any checking-bucket account as a redemption target", () => {
-      const payload = buildDepositsReconciliationPayload();
+      const payload = buildDepositsReconciliationPayload("clp");
       for (const r of payload.redemptions) {
         expect(accountKindSlugForAccountId(r.account_id)).not.toBe("cuenta_corriente");
         expect(accountKindSlugForAccountId(r.account_id)).not.toBe("cuenta_vista");

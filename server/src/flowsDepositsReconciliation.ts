@@ -56,26 +56,21 @@ export type DepositReconciliationRow = {
   account_id: number;
   account_name: string;
   category: DepositFlowCategory;
+  /** Legs the unit payload picks from (`flowLegsInUnit`): the pesos (the matching reads them) and the dollars. */
   amount_clp: number;
   amount_usd: number | null;
+  /** A dollar deposit: its dollars are the event's own leg (another unit converts them, not their pesos). */
+  native?: "usd";
   status: DepositReconciliationStatus;
 };
 
-export type DepositReconciliationStatusTotals = {
-  count: number;
-  total_clp: number;
-  total_usd: number | null;
-};
-
-export type DepositReconciliationByMonth = {
-  month: string;
-  linked_clp: number;
-  resolved_tax_refund_clp: number;
-  resolved_internal_transfer_clp: number;
-  unlinked_no_checking_source_clp: number;
-  unlinked_checking_present_clp: number;
-  total_clp: number;
-};
+const DEPOSIT_RECONCILIATION_STATUSES: readonly DepositReconciliationStatus[] = [
+  "linked",
+  "resolved_tax_refund",
+  "resolved_internal_transfer",
+  "unlinked_no_checking_source",
+  "unlinked_checking_present",
+];
 
 // Negative deposits (redemptions): net-worth capital *leaving* a non-checking account and returning
 // to checking. No synthetic-mirror concept here — a redemption is either matched to a checking inflow
@@ -117,12 +112,17 @@ export type DepositManualAssertionRow = {
   status: DepositManualAssertionStatus;
 };
 
-export type DepositReconciliationPayload = {
+const DEPOSIT_REDEMPTION_STATUSES: readonly DepositRedemptionStatus[] = [
+  "linked",
+  "resolved_internal_transfer",
+  "unlinked_no_checking_source",
+  "unlinked_checking_present",
+];
+
+/** The classified rows, each with its legs; {@link buildDepositsReconciliationPayload} puts them in a unit. */
+export type DepositReconciliationLedger = {
   rows: DepositReconciliationRow[];
-  by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals>;
-  by_month: DepositReconciliationByMonth[];
   redemptions: DepositRedemptionRow[];
-  redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals>;
   manual_assertions: DepositManualAssertionRow[];
   fx_conversion_error: boolean;
   fx_conversion_warnings: FxConversionWarning[];
@@ -314,7 +314,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
 }
 
 /** @heavy Classify all net-worth positive inflows against the deposit links (`funded_deposit` flow links). */
-export function buildDepositsReconciliationPayload(): DepositReconciliationPayload {
+export function classifyDepositsReconciliation(): DepositReconciliationLedger {
   clearFxConversionWarnings();
 
   const accounts = listDepositFlowAccounts(false);
@@ -395,6 +395,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
       category,
       amount_clp,
       amount_usd,
+      ...(usd != null ? { native: "usd" as const } : {}),
       status,
     });
   }
@@ -522,71 +523,9 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     (a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.account_name.localeCompare(b.account_name)
   );
 
-  const emptyTotals = (): DepositReconciliationStatusTotals => ({ count: 0, total_clp: 0, total_usd: 0 });
-  const by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals> = {
-    linked: emptyTotals(),
-    resolved_tax_refund: emptyTotals(),
-    resolved_internal_transfer: emptyTotals(),
-    unlinked_no_checking_source: emptyTotals(),
-    unlinked_checking_present: emptyTotals(),
-  };
-  for (const r of rows) {
-    const bucket = by_status[r.status];
-    bucket.count += 1;
-    bucket.total_clp += r.amount_clp;
-    if (bucket.total_usd != null) {
-      if (r.amount_usd == null) bucket.total_usd = null;
-      else bucket.total_usd += r.amount_usd;
-    }
-  }
-
-  const byMonthMap = new Map<string, DepositReconciliationByMonth>();
-  for (const r of rows) {
-    const month = monthKeyFromYmd(r.occurred_on) ?? r.occurred_on.slice(0, 7);
-    let pt = byMonthMap.get(month);
-    if (!pt) {
-      pt = {
-        month,
-        linked_clp: 0,
-        resolved_tax_refund_clp: 0,
-        resolved_internal_transfer_clp: 0,
-        unlinked_no_checking_source_clp: 0,
-        unlinked_checking_present_clp: 0,
-        total_clp: 0,
-      };
-      byMonthMap.set(month, pt);
-    }
-    pt.total_clp += r.amount_clp;
-    if (r.status === "linked") pt.linked_clp += r.amount_clp;
-    else if (r.status === "resolved_tax_refund") pt.resolved_tax_refund_clp += r.amount_clp;
-    else if (r.status === "resolved_internal_transfer") pt.resolved_internal_transfer_clp += r.amount_clp;
-    else if (r.status === "unlinked_no_checking_source") pt.unlinked_no_checking_source_clp += r.amount_clp;
-    else pt.unlinked_checking_present_clp += r.amount_clp;
-  }
-  const by_month = [...byMonthMap.values()].sort((a, b) => b.month.localeCompare(a.month));
-
-  const redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals> = {
-    linked: emptyTotals(),
-    resolved_internal_transfer: emptyTotals(),
-    unlinked_no_checking_source: emptyTotals(),
-    unlinked_checking_present: emptyTotals(),
-  };
-  for (const r of redemptions) {
-    const bucket = redemptions_by_status[r.status];
-    bucket.count += 1;
-    bucket.total_clp += r.amount_clp;
-    if (bucket.total_usd != null) {
-      if (r.amount_usd == null) bucket.total_usd = null;
-      else bucket.total_usd += r.amount_usd;
-    }
-  }
-
   return {
     rows,
-    by_status,
-    by_month,
     redemptions,
-    redemptions_by_status,
     manual_assertions,
     fx_conversion_error: fxError,
     fx_conversion_warnings: takeFxConversionWarnings(),
@@ -619,16 +558,22 @@ export type DepositReconciliationUnitPayload = {
   redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationUnitTotals>;
   manual_assertions: Unitless<DepositManualAssertionRow>[];
   fx_conversion_error: boolean;
-  fx_conversion_warnings: DepositReconciliationPayload["fx_conversion_warnings"];
+  fx_conversion_warnings: FxConversionWarning[];
 };
 
 function addOrNull(total: number | null, v: number | null): number | null {
   return total == null || v == null ? null : total + v;
 }
 
-function inUnit<R extends { amount_clp: number; amount_usd: number | null; occurred_on: string }>(r: R, unit: string): Unitless<R> {
-  const { amount_clp, amount_usd, ...rest } = r;
-  return { ...rest, amount: flowLegsInUnit({ clp: amount_clp, usd: amount_usd }, r.occurred_on, unit) } as Unitless<R>;
+function inUnit<R extends { amount_clp: number; amount_usd: number | null; occurred_on: string; native?: "usd" }>(
+  r: R,
+  unit: string
+): Unitless<R> {
+  const { amount_clp, amount_usd, native, ...rest } = r;
+  return {
+    ...rest,
+    amount: flowLegsInUnit({ clp: amount_clp, usd: amount_usd, native: native ?? "clp" }, r.occurred_on, unit),
+  } as Unitless<R>;
 }
 
 function statusTotals<S extends string>(
@@ -645,7 +590,12 @@ function statusTotals<S extends string>(
   return out;
 }
 
-export function depositsReconciliationInUnit(p: DepositReconciliationPayload, unit: string): DepositReconciliationUnitPayload {
+/** `GET /api/flows/deposits/reconciliation?unit=`: the classified rows, each amount in `unit`, and their totals. */
+export function buildDepositsReconciliationPayload(unit: string): DepositReconciliationUnitPayload {
+  return depositsReconciliationInUnit(classifyDepositsReconciliation(), unit);
+}
+
+export function depositsReconciliationInUnit(p: DepositReconciliationLedger, unit: string): DepositReconciliationUnitPayload {
   const rows = p.rows.map((r) => inUnit(r, unit));
   const redemptions = p.redemptions.map((r) => inUnit(r, unit));
   const byMonth = new Map<string, DepositReconciliationUnitByMonth>();
@@ -670,10 +620,10 @@ export function depositsReconciliationInUnit(p: DepositReconciliationPayload, un
   return {
     unit,
     rows,
-    by_status: statusTotals(Object.keys(p.by_status) as DepositReconciliationStatus[], rows),
+    by_status: statusTotals(DEPOSIT_RECONCILIATION_STATUSES, rows),
     by_month: [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month)),
     redemptions,
-    redemptions_by_status: statusTotals(Object.keys(p.redemptions_by_status) as DepositRedemptionStatus[], redemptions),
+    redemptions_by_status: statusTotals(DEPOSIT_REDEMPTION_STATUSES, redemptions),
     manual_assertions: p.manual_assertions.map((r) => inUnit(r, unit)),
     fx_conversion_error: p.fx_conversion_error,
     fx_conversion_warnings: p.fx_conversion_warnings,

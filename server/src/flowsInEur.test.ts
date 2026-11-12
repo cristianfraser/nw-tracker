@@ -4,13 +4,23 @@ import { db } from "./db.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { lineConvertedIn, lineMoneyFromBuilderFields } from "./lineMoney.js";
 import { toWireExpenseLine } from "./wireExpenseLine.js";
-import { buildFlowsDepositsPayload, buildFlowsDepositsResponse } from "./flowsDeposits.js";
+import { buildFlowsDepositsResponse, flowDepositRowsInUnit } from "./flowsDeposits.js";
 import { cachedMortgageCarryingEvents } from "./flowsMortgageCarrying.js";
 import { buildAdditionalCardsSummary } from "./additionalCardReimbursements.js";
-import { buildDepositsReconciliationPayload, depositsReconciliationInUnit } from "./flowsDepositsReconciliation.js";
+import {
+  buildDepositsReconciliationPayload,
+  classifyDepositsReconciliation,
+  depositsReconciliationInUnit,
+} from "./flowsDepositsReconciliation.js";
 import { buildFlowsCheckingIncomePayload, flowsCheckingIncomeListsInUnit } from "./flowsCheckingInflows.js";
 import { buildFlowsOverviewPayload, flowsOverviewTotals } from "./flowsOverview.js";
 import { buildPayrollBreakdown } from "./payrollBreakdown.js";
+import { buildFlowsExpensesGastosPayload } from "./flowsExpensesGastos.js";
+import { buildFlowsIncomeAggregates } from "./flowsOverview.js";
+import { upcomingMonthsInUnit, type UpcomingPaymentsMonth } from "./upcomingPayments.js";
+
+/** True when `v` carries at most `digits` decimals (float noise aside). */
+const roundedTo = (v: number, digits: number) => Math.abs(v * 10 ** digits - Math.round(v * 10 ** digits)) < 1e-6;
 
 /**
  * EUR as a display unit on the expense, deposit and reconciliation surfaces. The synthetic
@@ -125,28 +135,30 @@ describe("the deposits page in EUR", () => {
     expect(eur.pre_tax_total + eur.post_tax_total).toBeCloseTo(eur.net_total, 6);
   });
 
-  it("in pesos and dollars the unit payload reads the legacy payload's figures", () => {
-    const carrying = { clp: cachedMortgageCarryingEvents("clp"), usd: cachedMortgageCarryingEvents("usd") };
-    const legacy = buildFlowsDepositsPayload({ excludeCheckingAccounts: true, withMortgageCarrying: carrying });
-    for (const unit of ["clp", "usd"] as const) {
-      const p = buildFlowsDepositsResponse(unit, {
-        excludeCheckingAccounts: true,
-        withMortgageCarrying: { clp: carrying.clp, unit: carrying[unit] },
-      });
-      expect(p.rows.map((r) => r.amount)).toEqual(legacy.rows.map((r) => (unit === "usd" ? r.amount_usd : r.amount_clp)));
-      expect(p.net_total).toBe(unit === "usd" ? legacy.net_total_usd : legacy.net_total_clp);
-      expect(p.chart_monthly).toEqual(unit === "usd" ? legacy.chart_monthly_usd : legacy.chart_monthly);
+  it("in every unit the rows are the same events, each at its own day's rate", () => {
+    const opts = { excludeCheckingAccounts: true } as const;
+    const pesos = flowDepositRowsInUnit("clp", opts);
+    for (const unit of ["clp", "usd", "eur"] as const) {
+      const rows = flowDepositRowsInUnit(unit, opts);
+      expect(rows.map((r) => [r.occurred_on, r.account_id, r.amount_clp])).toEqual(
+        pesos.map((r) => [r.occurred_on, r.account_id, r.amount_clp])
+      );
+      expect(rows.map((r) => Math.sign(r.amount))).toEqual(pesos.map((r) => Math.sign(r.amount)));
     }
   });
 });
 
 describe("the deposits reconciliation in EUR", () => {
   it("each amount is its pesos at the day's mid; status totals add them", () => {
-    const base = buildDepositsReconciliationPayload();
+    const base = classifyDepositsReconciliation();
     const clp = depositsReconciliationInUnit(base, "clp");
-    const eur = depositsReconciliationInUnit(base, "eur");
+    const eur = buildDepositsReconciliationPayload("eur");
     expect(eur.unit).toBe("eur");
-    eur.rows.forEach((r, i) => expect(r.amount).toBeCloseTo(clp.rows[i]!.amount! / CLP_PER_EUR, 9));
+    // A dollar deposit converts its own dollars (EUR/USD), every other row its pesos.
+    eur.rows.forEach((r, i) => {
+      if (base.rows[i]!.native === "usd") return;
+      expect(r.amount).toBeCloseTo(clp.rows[i]!.amount! / CLP_PER_EUR, 9);
+    });
     for (const [status, t] of Object.entries(eur.by_status)) {
       const sum = eur.rows.filter((r) => r.status === status).reduce((s, r) => s + r.amount!, 0);
       expect(t.total).toBeCloseTo(sum, 6);
@@ -180,6 +192,88 @@ describe("income, payroll and the flows overview in EUR", () => {
       const fromDollars = Math.abs(p.values.net - inUsd / USD_PER_EUR) < 1e-6;
       expect(fromPesos || fromDollars).toBe(true);
     }
+  });
+
+  it("the income month rows are euros rounded to the cent, the same months as in pesos", () => {
+    const base = buildFlowsCheckingIncomePayload();
+    const clp = buildFlowsIncomeAggregates(base, "clp");
+    const eur = buildFlowsIncomeAggregates(base, "eur");
+    expect(eur.unit).toBe("eur");
+    expect(eur.months.length).toBe(clp.months.length);
+    for (const [i, m] of eur.months.entries()) {
+      for (const v of [m.salary, m.severance, m.parent_gift, m.rent, m.other, m.total, m.cumulative]) expect(roundedTo(v, 2)).toBe(true);
+      expect(m.period_month).toBe(clp.months[i]!.period_month);
+      expect(m.line_count).toBe(clp.months[i]!.line_count);
+    }
+    expect(roundedTo(eur.total, 2)).toBe(true);
+  });
+
+  it("the gastos month rows and big groups are euros rounded to the cent", () => {
+    const clp = buildFlowsExpensesGastosPayload("clp", new Set(), true);
+    const eur = buildFlowsExpensesGastosPayload("eur", new Set(), true);
+    const view = eur.views["split|category"]!;
+    expect(view.by_month.length).toBeGreaterThan(0);
+    for (const r of [...view.by_month, ...view.by_year]) {
+      for (const v of [r.gastos_mes, r.gastos_real_mes, r.abonos_mes, r.gastos_acumulado, r.gastos_real_acumulado]) {
+        expect(roundedTo(v, 2)).toBe(true);
+      }
+    }
+    expect(roundedTo(view.total, 2)).toBe(true);
+    const clpView = clp.views["split|category"]!;
+    expect(view.by_month.map((r) => r.period_month)).toEqual(clpView.by_month.map((r) => r.period_month));
+    for (const mode of ["split", "total"] as const) {
+      expect(eur.big_group_usage[mode].map((g) => g.slug)).toEqual(clp.big_group_usage[mode].map((g) => g.slug));
+      for (const g of eur.big_group_usage[mode]) expect(roundedTo(g.total, 2)).toBe(true);
+    }
+  });
+
+  it("a card's upcoming facturación converts what it owes per currency, never its dollars through pesos", () => {
+    const card = {
+      billing_month: "2099-10",
+      close_date_iso: "2099-10-24",
+      close_observed: true,
+      close_date_source: "statement" as const,
+      pay_by_iso: "2099-11-10",
+      pay_by_source: "statement" as const,
+      // 100.000 pesos + US$110 at 950 pesos.
+      amount_clp: 100_000 + 104_500,
+      owed: { clp: 100_000, usd: 110 },
+      billed_clp: 204_500,
+      overdue: false,
+      is_open_month: false,
+      is_provisional_close: false,
+    };
+    const months: UpcomingPaymentsMonth[] = [
+      {
+        pay_month: "2099-11",
+        total_clp: card.amount_clp,
+        items: [
+          {
+            key: "card|1|2099-10",
+            kind: "card",
+            name: "Card",
+            due_iso: "2099-11-10",
+            due_kind: "by",
+            amount_clp: card.amount_clp,
+            amount_max_clp: null,
+            estimated: false,
+            overdue: false,
+            cuota: null,
+            cuota_count: null,
+            bill_month: null,
+            card,
+            detail: null,
+            wip: false,
+            route_path: null,
+            due_soon: null,
+          },
+        ],
+      },
+    ];
+    const [eur] = upcomingMonthsInUnit(months, "eur", "2099-11-01");
+    // 100.000 pesos at 1.000 = 100 €; US$110 at 1,1 = 100 €.
+    expect(eur!.items[0]!.amount_in_unit).toBeCloseTo(200, 9);
+    expect(eur!.total_in_unit).toBeCloseTo(200, 9);
   });
 
   it("the overview builds in EUR with its identities holding", () => {

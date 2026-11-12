@@ -61,7 +61,7 @@ import { db } from "./db.js";
 import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { groupHasPropertyOverlay, investmentRootSlugs, navGroup } from "./navTreeModel.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
 import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
@@ -1132,22 +1132,11 @@ function usdMilestoneDataKey(usd: number): string {
 }
 
 /**
- * A USD amount expressed in `unit` on `asOfYmd`. USD is the amount itself (flat lines); any
- * other unit converts the amount at that date's rate — a unit with its own direct USD rate
- * (e.g. EUR/USD) takes it here, never a cross through CLP. Null when the rate is missing.
+ * A USD amount expressed in `unit` on `asOfYmd`: the dollars at the day's mid through `rates.ts`
+ * (USD is the amount itself — flat lines; a unit with its own direct USD rate, e.g. EUR/USD, takes
+ * it, never a cross through CLP; UF walks through pesos). Null when the rate is missing.
  */
 function usdMilestoneLevelInUnit(usd: number, asOfYmd: string, unit: TsUnit): number | null {
-  if (unit === "usd") return usd;
-  if (unit === "clp" || unit === "uf") {
-    // A reference level at the stored rates on or before the day (the mid): pesos, then UF.
-    const fx = fxMonthEndForBalanceUsd(asOfYmd);
-    if (!fx || fx.clp_per_usd <= 0) return null;
-    const clp = usd * fx.clp_per_usd;
-    if (unit === "clp") return clp;
-    const uf = ufRowOnOrBefore(asOfYmd);
-    return uf && uf.clp_per_uf > 0 ? clp / uf.clp_per_uf : null;
-  }
-  // Any other unit: the dollars at the day's mid through the rate walk (EUR/USD directly).
   return convertCurrency(usd, "usd", unit, asOfYmd, { side: "mid" });
 }
 

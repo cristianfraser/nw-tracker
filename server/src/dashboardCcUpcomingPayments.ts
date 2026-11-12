@@ -7,7 +7,7 @@ import { usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
-import { fxForLiveMtm } from "./fxLive.js";
+import { convertCurrency } from "./rates.js";
 import { getLiabilitiesNavRootNode } from "./navTree.js";
 
 /** One facturación still to pay (or still billing) on the dashboard's «próximos pagos» panel. */
@@ -24,6 +24,12 @@ export type CcUpcomingPaymentRow = {
    * its close, plus its dollars less the dollar payments, the dollars left at today's rate.
    */
   amount_clp: number;
+  /**
+   * What is still owed per currency the facturación bills in: the pesos (whole) and the dollars
+   * (to the cent), each ≥ 0. `amount_clp` is their pesos; a display unit converts each one
+   * (`upcomingMonthsInUnit`), never the dollars through pesos.
+   */
+  owed: { clp: number; usd: number };
   /** The facturación's total in pesos (CLP + the dollars in pesos), as its facturaciones row shows it. */
   billed_clp: number;
   /** Its pay-by has passed with something still owed. */
@@ -119,7 +125,8 @@ export function upcomingPaymentRows(
   };
   const out: CcUpcomingPaymentRow[] = [];
   const push = (f: CcFacturacionRow, owedClp: number, owedUsd: number): void => {
-    const amount = Math.max(0, Math.round(owedClp)) + pesosOfDollars(centsOf(owedUsd));
+    const owed = { clp: Math.max(0, Math.round(owedClp)), usd: Math.max(0, centsOf(owedUsd)) };
+    const amount = owed.clp + pesosOfDollars(owed.usd);
     if (amount <= 0) return;
     if (f.pay_by_iso == null || f.pay_by_source == null) {
       throw new Error(`Facturación ${f.billing_month} owes ${amount} and has no pay-by date`);
@@ -132,6 +139,7 @@ export function upcomingPaymentRows(
       pay_by_iso: f.pay_by_iso,
       pay_by_source: f.pay_by_source,
       amount_clp: amount,
+      owed,
       billed_clp: Math.round(f.facturado_total_clp ?? 0),
       overdue: f.pay_by_iso < todayYmd,
       is_open_month: f.is_open_month,
@@ -239,9 +247,10 @@ export function buildDashboardCcUpcomingPayments(): CcUpcomingPaymentsBlock {
     cards,
     today,
     () => {
-      const fx = fxForLiveMtm(today);
-      if (!fx) throw new Error(`No USD/CLP rate for ${today}`);
-      return fx.clp_per_usd;
+      // Today's mid (live while the fx day is open), through `rates.ts`.
+      const rate = convertCurrency(1, "usd", "clp", today, { side: "mid" });
+      if (rate == null || !(rate > 0)) throw new Error(`No USD/CLP rate for ${today}`);
+      return rate;
     },
     getLiabilitiesNavRootNode()?.route_path ?? null
   );

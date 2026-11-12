@@ -75,7 +75,7 @@ export function incomeKindLabel(t: (key: string) => string, kind: IncomeKind): s
 }
 
 export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[]): FlowIncomeMonthRow[] {
-  const byYear = new Map<string, Omit<FlowIncomeMonthRow, "cumulative_clp">>();
+  const byYear = new Map<string, Omit<FlowIncomeMonthRow, "cumulative">>();
   for (const row of rows) {
     const year = row.period_month.slice(0, 4);
     const cur = byYear.get(year);
@@ -83,29 +83,29 @@ export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[])
       byYear.set(year, {
         period_month: `${year}-12`,
         as_of_date: `${year}-12-31`,
-        salary_clp: row.salary_clp,
-        severance_clp: row.severance_clp,
-        parent_gift_clp: row.parent_gift_clp,
-        rent_clp: row.rent_clp,
-        other_clp: row.other_clp,
-        total_clp: row.total_clp,
+        salary: row.salary,
+        severance: row.severance,
+        parent_gift: row.parent_gift,
+        rent: row.rent,
+        other: row.other,
+        total: row.total,
         line_count: row.line_count,
       });
       continue;
     }
-    cur.salary_clp += row.salary_clp;
-    cur.severance_clp += row.severance_clp;
-    cur.parent_gift_clp += row.parent_gift_clp;
-    cur.rent_clp += row.rent_clp;
-    cur.other_clp += row.other_clp;
-    cur.total_clp += row.total_clp;
+    cur.salary += row.salary;
+    cur.severance += row.severance;
+    cur.parent_gift += row.parent_gift;
+    cur.rent += row.rent;
+    cur.other += row.other;
+    cur.total += row.total;
     cur.line_count += row.line_count;
   }
   let running = 0;
   return [...byYear.keys()].sort().map((year) => {
     const row = byYear.get(year)!;
-    running += row.total_clp;
-    return { ...row, cumulative_clp: Math.round(running) };
+    running += row.total;
+    return { ...row, cumulative: running };
   });
 }
 

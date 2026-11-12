@@ -5,7 +5,7 @@ import { performance } from "node:perf_hooks";
 import { getGroupMonthlyPlSeries } from "../src/groupMonthlyPlSeries.js";
 import { buildDashboardNavSnapshot } from "../src/dashboardAccounts.js";
 import { buildDashboardPagePayload } from "../src/dashboardPagePayload.js";
-import { buildFlowsDepositsPayload } from "../src/flowsDeposits.js";
+import { buildFlowsDepositsResponse } from "../src/flowsDeposits.js";
 import {
   getDashboardOverviewBlock,
   getDashboardValuationTimeseries,
@@ -35,7 +35,7 @@ async function main() {
   await time("getGroupMonthlyPerformance(brokerage)", () =>
     getGroupMonthlyPlSeries("brokerage", "clp")
   );
-  await time("buildFlowsDepositsPayload", () => buildFlowsDepositsPayload());
+  await time("buildFlowsDepositsResponse", () => buildFlowsDepositsResponse("clp"));
   await time("buildDashboardNavSnapshot", () => buildDashboardNavSnapshot("clp"));
 
   console.log("\nParallel page-bundle wall time:");
@@ -47,7 +47,7 @@ async function main() {
   console.log("\nFunctions marked @heavy in source: getDashboardValuationTimeseries,");
   console.log("buildDashboardPrimaryFromPortfolioGroups, getGroupValuationTimeseries,");
   console.log("valuationSeriesMonthlyPerformance, getGroupMonthlyPlSeries,");
-  console.log("buildDashboardAccountRows, buildFlowsDepositsPayload.");
+  console.log("buildDashboardAccountRows, buildFlowsDepositsResponse.");
   console.log("\nServer: DEBUG_VERBOSE=1 or DEBUG_PERF=1 logs [heavy] spans per HTTP request.");
 }
 

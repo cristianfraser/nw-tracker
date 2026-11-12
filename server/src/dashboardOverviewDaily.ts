@@ -23,6 +23,7 @@ import {
   dashboardBucketsTodayInUnit,
 } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./rates.js";
+import { roundToCurrency } from "./displayUnits.js";
 import {
   listAccountsForGroupTab,
   milestoneFieldsForDate,
@@ -91,7 +92,7 @@ function liabilitiesByDate(grid: readonly string[], unit: TsUnit): Map<string, n
       const v = values[gi];
       if (v != null && Number.isFinite(v)) raw += v;
     }
-    out.set(ymd, unit === "clp" ? Math.round(raw) : raw);
+    out.set(ymd, roundToCurrency(raw, unit));
   });
   return out;
 }

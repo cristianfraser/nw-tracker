@@ -42,6 +42,8 @@ export type CcUpcomingPaymentRowDto = {
   pay_by_source: "statement" | "derived";
   /** What is still owed, in pesos (the dollars left at today's rate). */
   amount_clp: number;
+  /** What is still owed per currency (pesos whole, dollars to the cent): what the display unit converts. */
+  owed: { clp: number; usd: number };
   /** The facturación's total in pesos (CLP + the dollars in pesos). */
   billed_clp: number;
   /** Its pay-by has passed with something still owed. */

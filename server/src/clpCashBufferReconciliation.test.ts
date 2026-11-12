@@ -147,15 +147,15 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
     insertLedgerMovement(fundId, "2099-05-02", -13_000_000);
     insertLedgerMovement(bufferId, "2099-05-03", 13_000_000, "deposit_clp");
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
 
     const depositRow = payload.rows.find(
-      (r) => r.account_id === bufferId && Math.round(r.amount_clp) === 13_000_000
+      (r) => r.account_id === bufferId && Math.round(r.amount!) === 13_000_000
     );
     expect(depositRow?.status).toBe("resolved_internal_transfer");
 
     const redemptionRow = payload.redemptions.find(
-      (r) => r.account_id === fundId && Math.round(r.amount_clp) === 13_000_000
+      (r) => r.account_id === fundId && Math.round(r.amount!) === 13_000_000
     );
     expect(redemptionRow?.status).toBe("resolved_internal_transfer");
   });
@@ -166,17 +166,17 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
        VALUES (NULL, ?, ?, ?, 'clp', ?, ?)`
     ).run(fundId, bufferId, 13_000_000, "2099-05-02", FIXTURE_NOTE);
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
 
     // The from-leg is internal by construction (the row itself names the destination).
     const redemptionRow = payload.redemptions.find(
-      (r) => r.account_id === fundId && Math.round(r.amount_clp) === 13_000_000
+      (r) => r.account_id === fundId && Math.round(r.amount!) === 13_000_000
     );
     expect(redemptionRow?.status).toBe("resolved_internal_transfer");
 
     // The to-leg is a transfer leg, not a movement — nothing shows up demanding a checking link.
     const depositRow = payload.rows.find(
-      (r) => r.account_id === bufferId && Math.round(r.amount_clp) === 13_000_000
+      (r) => r.account_id === bufferId && Math.round(r.amount!) === 13_000_000
     );
     expect(depositRow).toBeUndefined();
   });
@@ -204,9 +204,9 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
     expect(income.lines.some((l) => l.movement_id === wire7)).toBe(false);
     expect(income.lines.some((l) => l.movement_id === wire6)).toBe(false);
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const bufferRedemptions = payload.redemptions.filter((r) => r.account_id === bufferId);
-    expect(bufferRedemptions.map((r) => Math.round(r.amount_clp)).sort()).toEqual([
+    expect(bufferRedemptions.map((r) => Math.round(r.amount!)).sort()).toEqual([
       6_000_000, 7_000_000,
     ]);
     for (const r of bufferRedemptions) {
@@ -234,10 +234,10 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
       9973004
     );
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
 
     const depositRow = payload.rows.find(
-      (r) => r.account_id === bufferId && Math.round(r.amount_clp) === 13_000_000
+      (r) => r.account_id === bufferId && Math.round(r.amount!) === 13_000_000
     );
     expect(depositRow?.status).toBe("resolved_internal_transfer");
 
@@ -264,7 +264,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
     // Gastos build runs the matcher and syncs expense_deposit_links.
     syncExpenseLinksNow();
 
-    const payload = buildDepositsReconciliationPayload();
+    const payload = buildDepositsReconciliationPayload("clp");
     const depositRow = payload.rows.find((r) => r.movement_id === bufferIn);
     expect(depositRow?.status).toBe("linked");
   });

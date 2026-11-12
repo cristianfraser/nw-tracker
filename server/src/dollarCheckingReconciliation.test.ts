@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listDollarCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
+import { buildDepositsReconciliationPayload, classifyDepositsReconciliation } from "./flowsDepositsReconciliation.js";
 import { listMirrorPairCandidates } from "./movementMirrorPairs.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
@@ -83,7 +83,7 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
     // A dollar row moving no units is not a deposit (as the deposit events read it).
     const noUnits = movement(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 70, 'usd', ?, 'vitest no units')`, stock, recent);
 
-    const rows = buildDepositsReconciliationPayload().rows;
+    const rows = classifyDepositsReconciliation().rows;
     expect(rows.find((r) => r.movement_id === present)).toMatchObject({
       account_id: stock,
       category: "brokerage",
@@ -98,7 +98,7 @@ describe("a dollar checking account in the deposits reconciliation and the mirro
       status: "unlinked_no_checking_source",
     });
     // The dollar checking's own debit is the funding source, never a redemption to reconcile.
-    expect(buildDepositsReconciliationPayload().redemptions.some((r) => r.account_id === checkingUsd)).toBe(false);
+    expect(buildDepositsReconciliationPayload("clp").redemptions.some((r) => r.account_id === checkingUsd)).toBe(false);
     expect(rows.find((r) => r.movement_id === noUnits)).toBeUndefined();
   });
 
