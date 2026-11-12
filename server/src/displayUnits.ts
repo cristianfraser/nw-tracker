@@ -72,6 +72,35 @@ export function requestDisplayUnit(
   return unit;
 }
 
+const selMinorDigits = db.prepare(`SELECT code, minor_digits FROM currencies`);
+
+/** Minor digits of every loaded currency (UF included), memoized until the table changes. */
+function minorDigitsByCode(): ReadonlyMap<string, number> {
+  return dbStateMemo("currencies|minor_digits", "all", () => {
+    const out = new Map<string, number>();
+    for (const r of selMinorDigits.all() as { code: string; minor_digits: number }[]) out.set(r.code, r.minor_digits);
+    return out;
+  });
+}
+
+/** How many decimals `code` is counted in (CLP 0, USD 2, UF 4); throws for an unknown code. */
+export function currencyMinorDigits(code: string): number {
+  const d = minorDigitsByCode().get(code);
+  if (d == null) throw new Error(`currencyMinorDigits: ${JSON.stringify(code)} is not in currencies`);
+  return d;
+}
+
+/** `value` rounded to `code`'s smallest coin (a peso, a cent, a ten-thousandth of a UF). */
+export function roundToCurrency(value: number, code: string): number {
+  const f = 10 ** currencyMinorDigits(code);
+  return Math.round(value * f) / f;
+}
+
+/** `code`'s smallest coin: 1 peso, 0,01 dollars, 0,0001 UF. */
+export function currencySmallestCoin(code: string): number {
+  return 10 ** -currencyMinorDigits(code);
+}
+
 /** The units the warmers build caches for: every core currency. */
 export function warmedDisplayUnits(): readonly string[] {
   return coreCurrencyCodes();
