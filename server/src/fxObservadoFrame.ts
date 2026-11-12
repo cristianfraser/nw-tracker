@@ -57,7 +57,7 @@ const stmtLatestPublishedOnOrBefore = db.prepare(
 );
 const stmtWindowPrints = db.prepare(
   `SELECT AVG(value) AS avg, COUNT(*) AS n FROM live_market_quotes
-   WHERE symbol = ? AND kind = 'fx_clp_per_usd' AND fetched_at >= ? AND fetched_at <= ?`
+   WHERE symbol = ? AND kind = 'fx' AND fetched_at >= ? AND fetched_at <= ?`
 );
 
 type ObservadoRow = { date: string; clp_per_usd: number };
@@ -92,7 +92,7 @@ export function interbankWindowAverageClpPerUsd(
 ): { clp_per_usd: number; prints: number } | null {
   // Reported before the window check: a figure built before the window opened must go with the
   // first tick that moves the rate inside it (`cacheDependencies.ts`).
-  noteLiveFxRead();
+  noteLiveFxRead(LIVE_FX_SYMBOL);
   const { start, end } = interbankWindowBounds(ymd, now);
   if (end.getTime() <= start.getTime()) return null;
   const row = stmtWindowPrints.get(LIVE_FX_SYMBOL, start.toISOString(), end.toISOString()) as

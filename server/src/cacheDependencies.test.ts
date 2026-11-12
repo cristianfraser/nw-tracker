@@ -9,7 +9,7 @@ import {
 
 afterEach(() => clearAggregationCache());
 
-const noMoves = { tickers: new Set<string>(), fx: false };
+const noMoves = { tickers: new Set<string>(), fx: new Set<string>() };
 
 describe("cache dependencies", () => {
   it("a node is affected through any linked child, cycles included", () => {
@@ -21,19 +21,19 @@ describe("cache dependencies", () => {
     top.children.add(mid);
     mid.children.add(top); // a cycle must not loop
     const other = newCacheDepNode();
-    other.fx = true;
-    const moves = { tickers: new Set(["BTC-USD"]), fx: false };
+    other.fx.add("USD_CLP");
+    const moves = { tickers: new Set(["BTC-USD"]), fx: new Set<string>() };
     const memo = new Map();
     expect(cacheDepNodeAffected(top, moves, memo)).toBe(true);
     expect(cacheDepNodeAffected(other, moves, memo)).toBe(false);
-    expect(cacheDepNodeAffected(other, { tickers: new Set<string>(), fx: true }, new Map())).toBe(true);
+    expect(cacheDepNodeAffected(other, { tickers: new Set<string>(), fx: new Set(["USD_CLP"]) }, new Map())).toBe(true);
     expect(cacheDepNodeAffected(top, noMoves, new Map())).toBe(false);
   });
 
   it("a scoped live tick drops only the entries that read a moved price, through nested hits", () => {
     // Keys under prefixes an unscoped tick drops.
     const coin = () => getAggregationCached("daily.series|t:coin", () => (noteLiveTickerRead("btc-usd"), 1));
-    const dollar = () => getAggregationCached("daily.series|t:dollar", () => (noteLiveFxRead(), 2));
+    const dollar = () => getAggregationCached("daily.series|t:dollar", () => (noteLiveFxRead("USD_CLP"), 2));
     const plain = () => getAggregationCached("daily.series|t:plain", () => 3);
     // Built after `coin` is already cached: depends on it through the hit.
     coin();
@@ -45,14 +45,14 @@ describe("cache dependencies", () => {
     parent();
     viaLiveTier();
 
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: false });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: new Set<string>() });
     expect(aggregationCacheHasForTest("daily.series|t:coin")).toBe(false);
     expect(aggregationCacheHasForTest("daily.series|t:parent")).toBe(false);
     expect(aggregationCacheHasForTest("daily.series|t:plain")).toBe(true);
     expect(aggregationCacheHasForTest("daily.series|t:dollar")).toBe(true);
     expect(aggregationCacheHasForTest("daily.series|t:live")).toBe(true);
 
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["ETH-USD"]), fx: true });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["ETH-USD"]), fx: new Set(["USD_CLP"]) });
     expect(aggregationCacheHasForTest("daily.series|t:dollar")).toBe(false);
     expect(aggregationCacheHasForTest("daily.series|t:live")).toBe(false);
     expect(aggregationCacheHasForTest("daily.series|t:plain")).toBe(true);
@@ -60,13 +60,13 @@ describe("cache dependencies", () => {
 
   it("keeps what an unscoped tick keeps and never drops more", () => {
     getAggregationCached("depto.ledger|t", () => (noteLiveTickerRead("BTC-USD"), 1));
-    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: true });
+    invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: new Set(["USD_CLP"]) });
     expect(aggregationCacheHasForTest("depto.ledger|t")).toBe(true);
   });
 
   it("a history-tier build that reads a live input throws", () => {
     expect(buildHistoryTierValue("plain", () => 1)).toBe(1);
-    expect(() => buildHistoryTierValue("dollar", () => (noteLiveFxRead(), 1))).toThrow(/read a live input/);
+    expect(() => buildHistoryTierValue("dollar", () => (noteLiveFxRead("USD_CLP"), 1))).toThrow(/read a live input/);
     // Through a cached part it hit, too.
     getAggregationCached("daily.series|t:coin-part", () => (noteLiveTickerRead("BTC-USD"), 1));
     expect(() =>

@@ -36,7 +36,7 @@ describe("fxForLiveMtm and the live-dollar dependency", () => {
     try {
       insertLiveMarketQuote({
         symbol: LIVE_FX_SYMBOL,
-        kind: "fx_clp_per_usd",
+        kind: "fx",
         value: 1234.5,
         currency: null,
         session_ymd: today,

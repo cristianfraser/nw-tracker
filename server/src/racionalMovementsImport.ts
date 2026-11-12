@@ -30,6 +30,7 @@ import { brokerCleanThrough, recordBrokerCleanRead } from "./brokerReadCoverage.
 import { db } from "./db.js";
 import { brokerAdapter, pairDividendPayout, racionalCashAccountId, racionalEquityAccountId } from "./brokerAdapter.js";
 import {
+  dividendMovementCurrency,
   getMovementDividendDetail,
   upsertMovementDividendDetail,
   type DividendDetailUpsertOutcome,
@@ -409,7 +410,8 @@ function dividendDetailInput(
     movement_id: movementId,
     gross_amount: dividend.gross,
     withholding_amount: dividend.withholding,
-    currency: "usd",
+    // The API states no currency: the breakdown is in the currency the dividend was credited in.
+    currency: dividendMovementCurrency(movementId),
     // Racional's own detail labels the deduction «Withholding tax USA»; no rate is printed.
     withholding_jurisdiction: dividend.withholding > 0 ? "US" : null,
     pay_date: racionalDividendChileYmd(dividend.execution_date),

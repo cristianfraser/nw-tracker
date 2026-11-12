@@ -121,7 +121,7 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     const node = newCacheDepNode();
     expect(runInCacheDepNode(node, () => shouldUseRiskyNorrisProxyMtm())).toBe(false);
     expect([...node.tickers].sort()).toEqual(["SPY", "VEA"]);
-    expect(node.fx).toBe(true);
+    expect(node.fx.has("USD_CLP")).toBe(true);
   });
 
   it("is false when NYSE is not trading today (and the last session was a Chile business day)", () => {

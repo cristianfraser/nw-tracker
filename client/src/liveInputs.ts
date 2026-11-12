@@ -48,7 +48,7 @@ export function queryReadsMovedPrice(data: unknown, moves: LiveQuoteMoves): bool
   if (moves.all) return true;
   const inputs = liveInputsOf(data);
   if (inputs == null) return true;
-  if (moves.fx && inputs.fx) return true;
+  if (moves.fx.some((pair) => inputs.fx.has(pair))) return true;
   if (moves.dimming && inputs.dimming) return true;
   return moves.tickers.some((t) => inputs.tickers.has(t.toUpperCase()));
 }

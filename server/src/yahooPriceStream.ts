@@ -4,13 +4,13 @@
  * The poll fetched every ticker at once, so every moved balance changed — and flashed — in the
  * same render. The server now keeps one socket to `wss://streamer.finance.yahoo.com/?version=2`
  * (no key; frames decoded by `yahooPricingData.ts`) subscribed to every symbol it prices plus
- * CLP=X, keeps the latest in-session price per symbol, and writes them by the rule in
+ * every live exchange-rate pair (`CLP=X`, `EURUSD=X`: `liveFxPairs`), keeps the latest in-session price per symbol, and writes them by the rule in
  * `liveQuotesFlushPolicy.ts`: a holding is written when its price really moved, then not again
  * for 30–60 s (random, so holdings drift apart), so each flash is a real move at its own moment. Writes go through `writeStreamQuotes`,
  * the poll's own rows, stamp and scoped invalidation.
  *
  * Only regular-session prices inside the app's own gates are kept (NYSE / Santiago session,
- * crypto always, the dollar while its fx day is open); pre- and post-market prints are dropped,
+ * crypto always, an exchange rate while its fx day is open); pre- and post-market prints are dropped,
  * so the post-close held print and the fx day end keep their poll-based rules. A symbol with a
  * kept tick in the last {@link STREAM_COVER_MS} is "covered": the poll does not fetch it
  * (`liveStreamCoverage`), and its row is re-stamped so readers never see it stale. Anything
@@ -21,7 +21,7 @@
 import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
 import { equityMarketKind, isEquityRegularSessionOpen } from "./equityQuote.js";
 import { yahooBarYmdFromUnix } from "./equityYahooEod.js";
-import { LIVE_FX_YAHOO_SYMBOL, shouldUseLiveFxQuote } from "./fxLive.js";
+import { liveFxPairForYahooSymbol, liveFxPairs, shouldUseLivePairQuote } from "./fxLive.js";
 import { liveQuotesFlushGapMs, liveQuotesStreamEnabled, liveQuotesStreamUrl } from "./liveMarketQuotesConfig.js";
 import { writeStreamQuotes } from "./liveMarketQuotesSync.js";
 import { nextUnitDueAtMs, pickNextFlush, type StreamPrice, type WrittenPrice } from "./liveQuotesFlushPolicy.js";
@@ -63,7 +63,8 @@ let lastChangeWriteAtMs: number | null = null;
  */
 export function streamTickInSession(tick: YahooPricingTick, now: Date): boolean {
   if (tick.marketHours !== "regular") return false;
-  if (tick.symbol === LIVE_FX_YAHOO_SYMBOL) return shouldUseLiveFxQuote(now);
+  const pair = liveFxPairForYahooSymbol(tick.symbol);
+  if (pair != null) return shouldUseLivePairQuote(pair.key, now);
   const kind = equityMarketKind(tick.symbol);
   if (kind === "crypto24") return true;
   if (!isEquityRegularSessionOpen(kind, now)) return false;
@@ -75,17 +76,24 @@ export function streamTickInSession(tick: YahooPricingTick, now: Date): boolean 
   );
 }
 
-/** What the stream covers now: the poll skips these (`liveMarketQuotesScheduler.ts`). */
-export function liveStreamCoverage(nowMs = Date.now()): { tickers: Set<string>; fx: boolean } {
+/**
+ * What the stream covers now: the poll skips these (`liveMarketQuotesScheduler.ts`). `fxPairs`:
+ * the live pairs it carries, by pair key (`USD_CLP`); `symbols`: every covered Yahoo symbol, the
+ * pairs' included (the flush policy's re-stamp set).
+ */
+export function liveStreamCoverage(nowMs = Date.now()): { tickers: Set<string>; fxPairs: Set<string>; symbols: Set<string> } {
   const tickers = new Set<string>();
-  let fx = false;
-  if (!connected) return { tickers, fx };
+  const fxPairs = new Set<string>();
+  const symbols = new Set<string>();
+  if (!connected) return { tickers, fxPairs, symbols };
   for (const [symbol, at] of lastKeptAtMs) {
     if (nowMs - at > STREAM_COVER_MS || !subscribed.has(symbol)) continue;
-    if (symbol === LIVE_FX_YAHOO_SYMBOL) fx = true;
+    symbols.add(symbol);
+    const pair = liveFxPairForYahooSymbol(symbol);
+    if (pair != null) fxPairs.add(pair.key);
     else tickers.add(symbol);
   }
-  return { tickers, fx };
+  return { tickers, fxPairs, symbols };
 }
 
 export function liveStreamConnected(): boolean {
@@ -93,7 +101,10 @@ export function liveStreamConnected(): boolean {
 }
 
 function desiredSymbols(): Set<string> {
-  return new Set([...listWatchlistEquitySeriesKeys().map((s) => s.toUpperCase()), LIVE_FX_YAHOO_SYMBOL]);
+  return new Set([
+    ...listWatchlistEquitySeriesKeys().map((s) => s.toUpperCase()),
+    ...liveFxPairs().map((p) => p.yahooSymbol),
+  ]);
 }
 
 function refreshSymbols(): void {
@@ -195,8 +206,9 @@ function disconnect(reason: string): void {
 /** Whether a subscribed symbol trades now, i.e. silence means a dead socket. */
 function subscribedMarketOpen(now: Date): boolean {
   for (const symbol of subscribed) {
-    if (symbol === LIVE_FX_YAHOO_SYMBOL) {
-      if (shouldUseLiveFxQuote(now)) return true;
+    const pair = liveFxPairForYahooSymbol(symbol);
+    if (pair != null) {
+      if (shouldUseLivePairQuote(pair.key, now)) return true;
       continue;
     }
     if (isEquityRegularSessionOpen(equityMarketKind(symbol), now)) return true;
@@ -215,7 +227,6 @@ function flushCheck(): void {
     return;
   }
   const covered = liveStreamCoverage(nowMs);
-  if (covered.fx) covered.tickers.add(LIVE_FX_YAHOO_SYMBOL);
   const plan = pickNextFlush({
     nowMs,
     pending,
@@ -223,7 +234,7 @@ function flushCheck(): void {
     unitOf,
     unitDueAtMs,
     lastChangeWriteAtMs,
-    covered: covered.tickers,
+    covered: covered.symbols,
     minFlushGapMs: liveQuotesFlushGapMs(),
     restampAfterMs: RESTAMP_AFTER_MS,
   });
@@ -236,7 +247,7 @@ function flushCheck(): void {
     }
     if (plan.changes.length > 0) {
       lastChangeWriteAtMs = nowMs;
-      const moved = [...result.changedTickers, ...(result.fxChanged ? [LIVE_FX_YAHOO_SYMBOL] : [])];
+      const moved = [...result.changedTickers, ...result.fxChanged];
       if (moved.length > 0) console.log(`live-quotes:stream — wrote ${moved.join(", ")}`);
     }
   } catch (e) {

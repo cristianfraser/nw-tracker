@@ -15,19 +15,20 @@ describe("liveQuotesStamp", () => {
     expect(liveQuotesStamp()).toBeNull();
     noteLiveQuotesChanged("2026-11-04T13:30:20.000Z", { tickers: ["SPY"] });
     expect(liveQuotesStamp()).toBe("2026-11-04T13:30:20.000Z");
-    noteLiveQuotesChanged("2026-11-04T13:30:10.000Z", { fx: true });
+    noteLiveQuotesChanged("2026-11-04T13:30:10.000Z", { fx: ["USD_CLP"] });
     expect(liveQuotesStamp()).toBe("2026-11-04T13:30:20.000Z");
   });
 
   it("answers the union of what moved after a stamp the client saw", () => {
     noteLiveQuotesChanged("2026-11-04T13:30:00.000Z", { tickers: ["btc-usd"] });
     noteLiveQuotesChanged("2026-11-04T13:30:05.000Z", { tickers: ["SPY", "VEA"] });
-    noteLiveQuotesChanged("2026-11-04T13:30:10.000Z", { fx: true });
+    noteLiveQuotesChanged("2026-11-04T13:30:10.000Z", { fx: ["EUR_USD"] });
+    noteLiveQuotesChanged("2026-11-04T13:30:12.000Z", { fx: ["USD_CLP"] });
     noteLiveQuotesChanged("2026-11-04T13:30:15.000Z", { tickers: ["SPY"], dimming: true });
     expect(liveQuoteMovesSince("2026-11-04T13:30:00.000Z")).toEqual({
       all: false,
       tickers: ["SPY", "VEA"],
-      fx: true,
+      fx: ["USD_CLP", "EUR_USD"],
       dimming: true,
     });
     expect(liveQuoteMovesSince("2026-11-04T13:30:15.000Z")).toBeNull();

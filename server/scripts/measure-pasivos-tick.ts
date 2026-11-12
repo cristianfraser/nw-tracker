@@ -99,7 +99,7 @@ function writeQuotes(factor: (t: string) => number, fxFactor: number): Set<strin
   };
   insertLiveMarketQuote({
     symbol: LIVE_FX_SYMBOL,
-    kind: "fx_clp_per_usd",
+    kind: "fx",
     value: fx.clp_per_usd * fxFactor ** step,
     currency: null,
     session_ymd: day,
@@ -150,11 +150,11 @@ for (let r = 0; r < rounds; r++) {
   results.warm!.push(await timeAll(`round ${r + 1} warm`));
   offset += 60_000;
   const coins = writeQuotes((t) => (isCoin(t) ? 1.01 : 1), 1);
-  invalidateMarketDataAggregations("live_tail", { tickers: coins, fx: false });
+  invalidateMarketDataAggregations("live_tail", { tickers: coins, fx: new Set<string>() });
   results.coin!.push(await timeAll(`round ${r + 1} after a coin-only tick`));
   offset += 60_000;
   const all = writeQuotes(() => 1.01, 1.002);
-  invalidateMarketDataAggregations("live_tail", { tickers: all, fx: true });
+  invalidateMarketDataAggregations("live_tail", { tickers: all, fx: new Set(["USD_CLP"]) });
   results.fx!.push(await timeAll(`round ${r + 1} after a tick that moves the dollar`));
 }
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;

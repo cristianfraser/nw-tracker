@@ -4,6 +4,7 @@ import {
   clearLiveMarketQuotesForTest,
   getLatestLiveEquityQuoteRow,
   getLatestLiveFxQuoteRow,
+  getLatestLivePairQuoteRow,
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { syncAllLiveMarketQuotes, writeStreamQuotes } from "./liveMarketQuotesSync.js";
@@ -13,8 +14,8 @@ import { snapshotTables } from "./test/snapshotTables.js";
 vi.mock("./equityYahooEod.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./equityYahooEod.js")>()),
   fetchYahooLiveQuote: vi.fn(async (symbol: string) => ({
-    price: symbol === "CLP=X" ? 950 : symbol === "SPY" ? 600 : 270,
-    previous_close: symbol === "CLP=X" ? 945 : symbol === "SPY" ? 590 : 268,
+    price: symbol === "CLP=X" ? 950 : symbol === "EURUSD=X" ? 1.1 : symbol === "SPY" ? 600 : 270,
+    previous_close: symbol === "CLP=X" ? 945 : symbol === "EURUSD=X" ? 1.09 : symbol === "SPY" ? 590 : 268,
     session_ymd: "2026-06-01",
     splits: [],
   })),
@@ -37,6 +38,11 @@ vi.mock("./fxLive.js", async (importOriginal) => {
       session_ymd: "2026-05-19",
       previous_clp_per_usd: 945,
     })),
+    fetchYahooLivePairRate: vi.fn(async (_pair: unknown, now?: Date) => ({
+      rate: 1.1,
+      session_ymd: "2026-05-19",
+      previous_rate: 1.09,
+    })),
   };
 });
 
@@ -50,7 +56,11 @@ vi.mock("./bcentralApi.js", async (importOriginal) => {
 
 // This file mutates fx_daily + live_market_quotes for controlled fixtures; snapshot both and
 // restore in afterAll so it doesn't poison other files sharing the DB.
-const restoreTables = snapshotTables(["fx_daily", "live_market_quotes"]);
+// No request leaves the test: every Yahoo call is mocked above.
+globalThis.fetch = (async (u: unknown) => {
+  throw new Error(`network in test: ${String(u)}`);
+}) as typeof fetch;
+const restoreTables = snapshotTables(["fx_daily", "fx_rates", "live_market_quotes"]);
 afterAll(() => restoreTables());
 
 // Each test asserts on the *latest* EOD / live quote, so it needs an empty slate: fx_daily
@@ -122,6 +132,33 @@ describe("syncAllLiveMarketQuotes", () => {
     }
   });
 
+  it("stores EUR/USD live while the fx day is open, and its close once at the day end", async () => {
+    const day = "2026-05-19";
+    db.prepare(`DELETE FROM fx_rates WHERE base = 'eur' AND quote = 'usd' AND date >= ?`).run(day);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(`${day}T15:00:00.000Z`));
+      const open = await syncAllLiveMarketQuotes(new Date(`${day}T15:00:00.000Z`));
+      expect(open.fx_pairs).toEqual([{ pair: "EUR_USD", ok: true, rows: 1, changed: true, wrote_close: false }]);
+      const row = getLatestLivePairQuoteRow("EUR_USD", 600_000);
+      expect(row?.value).toBe(1.1);
+      expect(row?.previous_value).toBe(1.09);
+      expect(row?.session_ymd).toBe(day);
+      // 17:10 New York: the fx day has ended — the last live rate becomes the stored close.
+      vi.setSystemTime(new Date(`${day}T21:10:00.000Z`));
+      const closed = await syncAllLiveMarketQuotes(new Date(`${day}T21:10:00.000Z`));
+      expect(closed.fx_pairs[0]).toMatchObject({ pair: "EUR_USD", rows: 1, wrote_close: true });
+      const stored = db
+        .prepare(`SELECT mid, source FROM fx_rates WHERE base = 'eur' AND quote = 'usd' AND date = ?`)
+        .get(day) as { mid: number; source: string };
+      expect(stored).toEqual({ mid: 1.1, source: "live:EURUSD=X" });
+      const again = await syncAllLiveMarketQuotes(new Date(`${day}T21:15:00.000Z`));
+      expect(again.fx_pairs[0]).toMatchObject({ rows: 0, wrote_close: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("leaves the symbols and the dollar the stream covers to the stream", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
@@ -129,12 +166,14 @@ describe("syncAllLiveMarketQuotes", () => {
       vi.mocked(fetchYahooLiveQuote).mockClear();
       const result = await syncAllLiveMarketQuotes(new Date("2026-05-19T15:00:00.000Z"), {
         skipTickers: new Set(["SPY"]),
-        skipLiveFx: true,
+        skipLiveFxPairs: new Set(["USD_CLP", "EUR_USD"]),
       });
       const fetched = vi.mocked(fetchYahooLiveQuote).mock.calls.map((c) => c[0]);
       expect(fetched).not.toContain("SPY");
       expect(result.equities.some((r) => r.ticker === "SPY")).toBe(false);
       expect(result.fx.rows).toBe(0);
+      expect(fetched).not.toContain("EURUSD=X");
+      expect(result.fx_pairs).toEqual([{ pair: "EUR_USD", ok: true, rows: 0, changed: false, wrote_close: false }]);
       expect(getLatestLiveFxQuoteRow(600_000)).toBeNull();
     } finally {
       vi.useRealTimers();
@@ -155,12 +194,26 @@ describe("writeStreamQuotes", () => {
         ],
         now
       );
-      expect(result).toEqual({ changedTickers: ["SPY"], fxChanged: true });
+      expect(result).toEqual({ changedTickers: ["SPY"], fxChanged: ["USD_CLP"] });
       const row = getLatestLiveEquityQuoteRow("SPY", 600_000);
       expect(row?.value).toBe(601.25);
       expect(row?.previous_value).toBe(590);
       expect(row?.session_ymd).toBe("2026-06-01");
       expect(getLatestLiveFxQuoteRow(600_000)?.value).toBe(951.5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("writes a streamed EUR/USD as its pair's live rate", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-01T16:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const result = writeStreamQuotes([{ symbol: "EURUSD=X", price: 1.1234, timeMs: now.getTime(), previousClose: 1.12 }], now);
+      expect(result).toEqual({ changedTickers: [], fxChanged: ["EUR_USD"] });
+      expect(getLatestLivePairQuoteRow("EUR_USD", 600_000)?.value).toBe(1.1234);
+      expect(getLatestLiveFxQuoteRow(600_000)).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -175,7 +228,7 @@ describe("writeStreamQuotes", () => {
       const t1 = new Date("2026-06-01T16:03:00Z");
       vi.setSystemTime(t1);
       const again = writeStreamQuotes([{ symbol: "SPY", price: 601.25, timeMs: t0.getTime(), previousClose: 590 }], t1);
-      expect(again).toEqual({ changedTickers: [], fxChanged: false });
+      expect(again).toEqual({ changedTickers: [], fxChanged: [] });
       expect(getLatestLiveEquityQuoteRow("SPY", 600_000)?.fetched_at).toBe(t1.toISOString());
     } finally {
       vi.useRealTimers();

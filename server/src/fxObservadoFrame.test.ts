@@ -22,7 +22,7 @@ function seedPrint(ymd: string, hour: number, minute: number, value: number): vo
   const fetchedAt = dateAtTimeZoneWallClock(ymd, hour, minute, CHILE_TZ).toISOString();
   db.prepare(
     `INSERT INTO live_market_quotes (symbol, kind, value, currency, session_ymd, previous_value, fetched_at)
-     VALUES (?, 'fx_clp_per_usd', ?, NULL, ?, NULL, ?)`
+     VALUES (?, 'fx', ?, NULL, ?, NULL, ?)`
   ).run(LIVE_FX_SYMBOL, value, ymd, fetchedAt);
 }
 
@@ -33,7 +33,7 @@ function chileInstant(ymd: string, hour: number, minute: number): Date {
 afterEach(() => {
   db.prepare(`DELETE FROM fx_daily_bcentral WHERE date >= '2091-01-01' AND date < '2092-01-01'`).run();
   db.prepare(
-    `DELETE FROM live_market_quotes WHERE kind = 'fx_clp_per_usd' AND session_ymd >= '2091-01-01' AND session_ymd < '2092-01-01'`
+    `DELETE FROM live_market_quotes WHERE kind = 'fx' AND session_ymd >= '2091-01-01' AND session_ymd < '2092-01-01'`
   ).run();
 });
 
