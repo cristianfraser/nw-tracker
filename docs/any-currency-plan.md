@@ -292,8 +292,32 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
 6. **Live rates.** The poll and the price stream carry every core pair, not only `CLP=X`
    (EUR/USD live, so a euro holding moves during the day). *Done 2026-11-12* (migration 323; see
    «Live rates» above and AGENTS.md «Every core pair has a live rate»).
-7. **Type unions.** The remaining `"clp" | "usd"` literals (about 50 server files, 13 contract,
+7. **Done 2026-11-12** (the guard's baseline is empty and removed; rules 8–12 fail on every
+   unannotated hit). **Type unions.** The remaining `"clp" | "usd"` literals (about 50 server files, 13 contract,
    8 ingest, 4 client) become `CurrencyCode`, file by file as the steps above reach them; the
    guard's allowlist shrinks to what stays native by nature.
+   Counts before → after (unannotated): currency-formatter 287 → 0, unit-literal-compare 301 → 0,
+   dto-currency-key 289 → 0, currency-type-union 117 → 0, currency-list-literal 7 → 0. Fixed:
+   display-unit and home-vs-foreign comparisons ask `isHomeCurrency` (about 60 server sites, 30
+   client; `HOME_CURRENCY` moved to the contracts so both share it); the perf tables and the flow
+   legs format through `formatMoney`; the fund-series currency check reads `currencies`
+   (`isLoadedCurrency`); the milestone `level_currency` and the bank cupo status's currency are
+   any code. Native, each line annotated with its reason: the F22 (pesos by law; a foreign
+   document's dollars beside them) and the 1040 (dollars by law); the card billing frame
+   (facturado, cuotas, cupo, the modal totals) and the mortgage (UF paid in pesos); cartolas,
+   receipts, place bills (pesos); the Santander feed, statement JSON, receipts, product summary
+   and the manual card-payment task (a peso and a dollar side); the parsed-PDF corpus (clp/ and
+   usd/ folders); Chilean cuota products (pesos); Fintual / Racional cash and mails (pesos and
+   dollars); payslips (a liquidación pesos, a US stub dollars); declared payments (pesos or UF);
+   the UF as an index; «pesos have no minor unit» checks; the demo story; the movement create API
+   (pesos, dollars, euros); the panel's cash form (plan C1 leftover). In the client a native
+   figure formats through a named wrapper in `formatNative.ts`. All 115 captured payloads (CLP,
+   USD, EUR) and the tax capture byte-identical on a copy of the 2026-11-12 database (only
+   `/api/sync/status`'s clock differed, as between two baseline captures). Leftovers needing real
+   work, not annotation: the `_clp` DTO keys of the card billing frame, upcoming payments, real
+   estate and payroll stay pesos by design; `BigGroupUsage.total_clp` and the gastos / income
+   month rows (C3 above) still want one value in the unit; `CreditCardSummaryCards` and
+   `DeptoAccountSummaryCards` (C6 above) draw pesos in every unit; the Santander pipelines and
+   the planted-payment and traspaso legs keep their peso/dollar unions until C3's leftovers move.
 
 Order: A (the guard first), then B, then C1 → C7; C3 is the largest and can split by table.
