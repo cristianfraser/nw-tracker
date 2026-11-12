@@ -1,0 +1,784 @@
+{
+  "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
+  "totals": {
+    "currency-formatter": 308,
+    "currency-list-literal": 21,
+    "currency-type-union": 153,
+    "dto-currency-key": 331,
+    "unit-literal-compare": 385
+  },
+  "violations": {
+    "client/src/api.ts": {
+      "unit-literal-compare": 19
+    },
+    "client/src/chartColors.ts": {
+      "currency-type-union": 1
+    },
+    "client/src/components/account/AccountBookValuationForm.tsx": {
+      "currency-formatter": 2,
+      "unit-literal-compare": 3
+    },
+    "client/src/components/account/AccountImportPanel.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/components/account/CheckingLedgerAnchorForm.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/components/account/CreditCardConfigSection.tsx": {
+      "unit-literal-compare": 2
+    },
+    "client/src/components/account/DailyPerfDetailTable.tsx": {
+      "currency-formatter": 1,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/account/FlowsPanel.tsx": {
+      "unit-literal-compare": 1
+    },
+    "client/src/components/account/FlowsTable.tsx": {
+      "currency-formatter": 2,
+      "unit-literal-compare": 2
+    },
+    "client/src/components/account/MonthlyPerfDetailTable.tsx": {
+      "currency-formatter": 1,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/account/MortgagePaymentForm.tsx": {
+      "currency-formatter": 5
+    },
+    "client/src/components/charts/CcInstallmentHistoryChart.tsx": {
+      "currency-formatter": 9
+    },
+    "client/src/components/charts/StackedExpensesChart.tsx": {
+      "unit-literal-compare": 1
+    },
+    "client/src/components/credit-card/BigExpenseGroupsSection.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/components/credit-card/CreditCardExpenseLinesTable.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/components/credit-card/CreditCardExpenseMonthModalSections.tsx": {
+      "currency-formatter": 4
+    },
+    "client/src/components/credit-card/CreditCardFacturacionModalSections.tsx": {
+      "currency-formatter": 3
+    },
+    "client/src/components/credit-card/CreditCardFacturadoFinancingManager.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/components/credit-card/ExpenseLinePiecesDialog.tsx": {
+      "currency-formatter": 3
+    },
+    "client/src/components/dashboard/PortfolioNavAccountsSummaryTable.tsx": {
+      "unit-literal-compare": 1
+    },
+    "client/src/components/dashboard/UpcomingPaymentsPanel.tsx": {
+      "currency-formatter": 6,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/export/ExportModal.tsx": {
+      "currency-list-literal": 1,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/layout/AppDisplayPreferencesBar.tsx": {
+      "currency-list-literal": 1
+    },
+    "client/src/components/layout/MortgageUfReminderToast.tsx": {
+      "currency-formatter": 2
+    },
+    "client/src/components/liabilities/CreditCardSummaryCards.tsx": {
+      "currency-formatter": 8,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/panel/BrokerageMovementsSection.tsx": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 5
+    },
+    "client/src/components/perf/PeriodReturnsTable.tsx": {
+      "currency-formatter": 1,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/rates/FxBidAskGapsTable.tsx": {
+      "currency-formatter": 3
+    },
+    "client/src/components/real-estate/RealEstateAssignPurchaseModal.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/components/real-estate/RealEstateExpenseLinkModal.tsx": {
+      "currency-formatter": 2
+    },
+    "client/src/components/sync/AvailableDocumentsTable.tsx": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 1
+    },
+    "client/src/components/sync/availableDocumentsColumns.ts": {
+      "unit-literal-compare": 2
+    },
+    "client/src/components/tax/UsTaxReturnSections.tsx": {
+      "currency-formatter": 80
+    },
+    "client/src/context/DisplayPreferencesContext.tsx": {
+      "unit-literal-compare": 1
+    },
+    "client/src/dashboardCardBreakdown.ts": {
+      "unit-literal-compare": 1
+    },
+    "client/src/format.ts": {
+      "unit-literal-compare": 1
+    },
+    "client/src/lineMoney.ts": {
+      "unit-literal-compare": 1
+    },
+    "client/src/pages/GroceriesPage.tsx": {
+      "currency-formatter": 22
+    },
+    "client/src/pages/LiabilitiesGroupPage.tsx": {
+      "unit-literal-compare": 2
+    },
+    "client/src/pages/RealEstateExpensesPage.tsx": {
+      "currency-formatter": 8
+    },
+    "client/src/pages/TaxReturnPage.tsx": {
+      "currency-formatter": 81
+    },
+    "client/src/pages/accountDetail/CheckingCartolaMonthTable.tsx": {
+      "currency-formatter": 6
+    },
+    "client/src/pages/accountDetail/ClpUfSuperscriptAmount.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/pages/accountDetail/CreditCardAccountDetailPage.tsx": {
+      "unit-literal-compare": 1
+    },
+    "client/src/pages/accountDetail/CreditCardCuotaProgress.tsx": {
+      "currency-formatter": 7
+    },
+    "client/src/pages/accountDetail/CreditCardDetallePorMesTable.tsx": {
+      "currency-formatter": 1
+    },
+    "client/src/pages/accountDetail/CreditCardFacturacionesTable.tsx": {
+      "currency-formatter": 6
+    },
+    "client/src/pages/accountDetail/CreditCardPurchaseMobileCard.tsx": {
+      "currency-formatter": 3
+    },
+    "client/src/pages/accountDetail/CreditCardSections.tsx": {
+      "currency-formatter": 10
+    },
+    "client/src/pages/accountDetail/DeptoAccountSummaryCards.tsx": {
+      "currency-formatter": 3
+    },
+    "client/src/pages/accountDetail/MortgageTables.tsx": {
+      "currency-formatter": 7
+    },
+    "client/src/pages/accountDetail/StandardAccountDetailPage.tsx": {
+      "currency-formatter": 10,
+      "unit-literal-compare": 4
+    },
+    "client/src/pages/accountDetail/useAccountDetailPageData.ts": {
+      "unit-literal-compare": 1
+    },
+    "client/src/pages/panel/MirrorPairsPanelPage.tsx": {
+      "currency-formatter": 5
+    },
+    "client/src/panelAccounts/brokerageFlowKinds.ts": {
+      "currency-type-union": 1
+    },
+    "client/src/useGroupInfoConsolidatedTables.ts": {
+      "unit-literal-compare": 2
+    },
+    "ingest/src/apple/appStoreMail.ts": {
+      "currency-type-union": 3,
+      "unit-literal-compare": 1
+    },
+    "ingest/src/brokers/brokerEmail.ts": {
+      "currency-type-union": 1
+    },
+    "ingest/src/cards/webPaste.ts": {
+      "currency-type-union": 1
+    },
+    "ingest/src/ccManualPaymentMain.ts": {
+      "unit-literal-compare": 2
+    },
+    "ingest/src/payments/latamMails.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 2
+    },
+    "ingest/src/payments/stayMails.ts": {
+      "unit-literal-compare": 1
+    },
+    "ingest/src/payments/uberMails.ts": {
+      "unit-literal-compare": 2
+    },
+    "ingest/src/racional/movements.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 2
+    },
+    "ingest/src/santander/cardFeed.ts": {
+      "currency-type-union": 6,
+      "unit-literal-compare": 5
+    },
+    "ingest/src/santander/cards.ts": {
+      "currency-type-union": 3
+    },
+    "ingest/src/santander/importCardMovementsMain.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 1
+    },
+    "ingest/src/santander/statementJson.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 2
+    },
+    "ingest/src/santander/statementSchedule.ts": {
+      "unit-literal-compare": 1
+    },
+    "ingest/src/wires/incomingWireMails.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/contracts/src/cards/canonicalLine.ts": {
+      "currency-list-literal": 2
+    },
+    "server/contracts/src/cards/parsedStatementRows.ts": {
+      "currency-type-union": 2
+    },
+    "server/contracts/src/dto/accounts.ts": {
+      "currency-type-union": 1,
+      "dto-currency-key": 20
+    },
+    "server/contracts/src/dto/core.ts": {
+      "dto-currency-key": 10
+    },
+    "server/contracts/src/dto/creditCard.ts": {
+      "currency-type-union": 2,
+      "dto-currency-key": 50
+    },
+    "server/contracts/src/dto/dashboard.ts": {
+      "currency-type-union": 1,
+      "dto-currency-key": 3
+    },
+    "server/contracts/src/dto/flows.ts": {
+      "currency-type-union": 1,
+      "dto-currency-key": 50
+    },
+    "server/contracts/src/dto/groceries.ts": {
+      "dto-currency-key": 14
+    },
+    "server/contracts/src/dto/groups.ts": {
+      "currency-type-union": 1
+    },
+    "server/contracts/src/dto/market.ts": {
+      "dto-currency-key": 6
+    },
+    "server/contracts/src/dto/mirrors.ts": {
+      "dto-currency-key": 3
+    },
+    "server/contracts/src/dto/mortgage.ts": {
+      "dto-currency-key": 36
+    },
+    "server/contracts/src/dto/projections.ts": {
+      "dto-currency-key": 4
+    },
+    "server/contracts/src/dto/sync.ts": {
+      "currency-type-union": 1
+    },
+    "server/contracts/src/dto/taxReturn.ts": {
+      "dto-currency-key": 131
+    },
+    "server/contracts/src/dto/wealthPercentile.ts": {
+      "dto-currency-key": 4
+    },
+    "server/contracts/src/formats/schemas.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 1
+    },
+    "server/contracts/src/kinds/bankAccountBalances.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 2
+    },
+    "server/contracts/src/kinds/bankAccountMovements.ts": {
+      "currency-list-literal": 1
+    },
+    "server/contracts/src/kinds/brokerMovements.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 1
+    },
+    "server/contracts/src/kinds/brokerNotifications.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 1
+    },
+    "server/contracts/src/kinds/cardPaymentReceipt.ts": {
+      "currency-list-literal": 1,
+      "unit-literal-compare": 1
+    },
+    "server/contracts/src/kinds/cardStatement.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 2
+    },
+    "server/contracts/src/kinds/cardUnbilledMovements.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 3,
+      "unit-literal-compare": 1
+    },
+    "server/contracts/src/kinds/merchantPurchaseDocument.ts": {
+      "currency-list-literal": 1,
+      "unit-literal-compare": 2
+    },
+    "server/contracts/src/kinds/paymentProcessorReceipts.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/contracts/src/pastedListing.ts": {
+      "currency-list-literal": 1,
+      "unit-literal-compare": 1
+    },
+    "server/contracts/src/tasks.ts": {
+      "currency-list-literal": 1
+    },
+    "server/src/accountDeposits.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/accountMarkDailyCache.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/accountMovementsApi.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/accountPerformance.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/accountPosition.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/accountTodayValue.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/accountValue.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/additionalCardReimbursements.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/afcCertImport.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/bankAccountBalances.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 2
+    },
+    "server/src/bankAccountMovementsApply.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 2
+    },
+    "server/src/bankProductSummaryApply.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/benchmarkLevels.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/brokerAdapter.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 1
+    },
+    "server/src/cardStatementApply.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/cardStatementCrossCheck.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 2
+    },
+    "server/src/cardToCardPayments.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/cardUnbilledMovementsApply.ts": {
+      "currency-type-union": 2
+    },
+    "server/src/cardValueInUnit.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/cards/statementStorage.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/cashEqsBucketNet.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/ccAccountConfig.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 5
+    },
+    "server/src/ccBankCupoCheck.ts": {
+      "currency-type-union": 5,
+      "unit-literal-compare": 4
+    },
+    "server/src/ccBillingBalances.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 6
+    },
+    "server/src/ccBillingCloses.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/ccCreditCardValuations.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/ccDailyHistorialBlock.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/ccDedupeKey.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/ccFacturacionUsdRate.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/ccFeedCuotaPurchases.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/ccFeedMirror.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 12,
+      "unit-literal-compare": 2
+    },
+    "server/src/ccFinancingCostDaily.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/ccInvestmentProxy.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/ccManualPayments.ts": {
+      "currency-type-union": 3,
+      "unit-literal-compare": 6
+    },
+    "server/src/ccOpenWebPastePdfReconcile.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 4,
+      "unit-literal-compare": 3
+    },
+    "server/src/ccOriginCurrency.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/ccOwedWalk.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 2,
+      "unit-literal-compare": 2
+    },
+    "server/src/ccPaymentMirrorEvidence.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 7
+    },
+    "server/src/ccPaymentMirrors.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 5
+    },
+    "server/src/ccPlantedPayments.ts": {
+      "currency-type-union": 8,
+      "unit-literal-compare": 2
+    },
+    "server/src/ccRecurringPendingLines.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/ccStatementImportReconcile.ts": {
+      "currency-type-union": 4,
+      "unit-literal-compare": 23
+    },
+    "server/src/ccStatementJsonSource.ts": {
+      "currency-type-union": 2
+    },
+    "server/src/ccStatementPdfUpload.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/ccStatementSection3.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 1
+    },
+    "server/src/ccStatementsImport.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/ccWebPasteInstallmentNudge.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/ccWebPasteParse.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 4
+    },
+    "server/src/creditCardInstallments.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/cryptoTaxLotEvents.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/cryptoTradeDetails.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/dailySeries.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/dashboardAccounts.ts": {
+      "unit-literal-compare": 5
+    },
+    "server/src/dashboardCcUpcomingPayments.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/dashboardNavCardMetrics.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/dashboardOverviewDaily.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/dashboardPageBundle.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/dashboardPagePayload.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/demoData/costOfLiving.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/demoData/generate.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/demoData/ingestHistory.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 1
+    },
+    "server/src/demoData/invariants.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/demoData/render.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/demoData/simulate.ts": {
+      "currency-list-literal": 1,
+      "currency-type-union": 4,
+      "unit-literal-compare": 6
+    },
+    "server/src/deptoDividendosLedger.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/equityBolsaSantiagoEod.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/equityQuote.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/expensePaymentNames.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/exportWorkbook.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/f22/art107.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/f22/dividends.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/f22/estimates.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/f22/foreignIncome.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/f22/nonresident.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/f22/salary.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/fintualEmailImport.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 1
+    },
+    "server/src/fintualWalletInterestApply.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/flowLegs.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/flowsDeposits.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 1
+    },
+    "server/src/flowsDepositsReconciliation.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/flowsExpenses.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 1
+    },
+    "server/src/flowsExpensesGastos.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/flowsOverview.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/flowsOverviewCash.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/flowsPayrollWorkEarnings.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/flowsPl.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/flowsRealEstateExpenses.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/fundUnitDaily.ts": {
+      "currency-list-literal": 1
+    },
+    "server/src/globalSyncAll.ts": {
+      "currency-type-union": 3
+    },
+    "server/src/groupConsolidatedTables.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/importSyncDocumentCoverage.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/importSyncDocumentFilePath.ts": {
+      "currency-type-union": 4
+    },
+    "server/src/incomingWires.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/latestCardPayments.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/liderCardLines.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/lineMoney.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/liveMarketQuotesDb.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/marketSymbols.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/merchantExpenseNotes.ts": {
+      "currency-type-union": 6,
+      "unit-literal-compare": 3
+    },
+    "server/src/mortgagePrepaymentComparison.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/movementAmounts.ts": {
+      "currency-list-literal": 1,
+      "unit-literal-compare": 1
+    },
+    "server/src/movementDividendDetails.ts": {
+      "currency-type-union": 2
+    },
+    "server/src/movementFlowType.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/movementUnitsPolicy.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 14
+    },
+    "server/src/navValueMap.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/netWorthAllTimeHigh.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/panelAccountNotes.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/paymentProcessorReceipts.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 3
+    },
+    "server/src/payrollBreakdown.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 7
+    },
+    "server/src/payrollWorkEarningsLinking.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/payslipChecks.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/payslipExpenseLines.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 2
+    },
+    "server/src/payslipsApply.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/portfolioGroupValueAtDate.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/priceProviders/yahoo.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/projections.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/proxyBasketBreakdown.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/racionalEmailImport.ts": {
+      "currency-type-union": 2
+    },
+    "server/src/racionalMovementsImport.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 3
+    },
+    "server/src/recurringPaymentMatch.ts": {
+      "currency-type-union": 1,
+      "unit-literal-compare": 4
+    },
+    "server/src/routes/movements.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/routes/projections.ts": {
+      "currency-list-literal": 1
+    },
+    "server/src/santanderBankCupo.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/santanderCcPaymentReceipts.ts": {
+      "currency-type-union": 1
+    },
+    "server/src/santanderStatementImport.ts": {
+      "currency-type-union": 5,
+      "unit-literal-compare": 11
+    },
+    "server/src/taxFacts/payers.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/upcomingPayments.ts": {
+      "unit-literal-compare": 4
+    },
+    "server/src/us1040/facts.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/us1040/filed.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/us1040/fx.ts": {
+      "unit-literal-compare": 3
+    },
+    "server/src/usBankAccounts.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/usdAccountMovementsConfirm.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/usdCashLotWalk.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/usdCashTaxLotEvents.ts": {
+      "unit-literal-compare": 2
+    },
+    "server/src/utilityBillsApply.ts": {
+      "unit-literal-compare": 1
+    },
+    "server/src/valuationTimeseries.ts": {
+      "currency-type-union": 2,
+      "unit-literal-compare": 9
+    },
+    "server/src/wealthPercentile.ts": {
+      "unit-literal-compare": 2
+    }
+  }
+}
