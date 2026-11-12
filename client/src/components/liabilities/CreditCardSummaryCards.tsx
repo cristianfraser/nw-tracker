@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatUsdFine } from "../../format";
+import { formatClp, formatMoney, formatUsdFine } from "../../format";
 import type { AccountCcInstallmentsResponse, CcFacturacionDto } from "../../types";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 
@@ -53,7 +53,8 @@ export function CreditCardSummaryCards({
   const bankCupo = ccLedger.bank_cupo ?? null;
   const cupoLines: { key: string; available: string; total: string }[] = bankCupo
     ? bankCupo.currencies.map((c) => {
-        const fmt = c.currency === "clp" ? formatClp : formatUsdFine;
+        // The bank states each cupo in its own currency: shown as stated, never converted.
+        const fmt = (value: number) => formatMoney({ value, currency: c.currency });
         return { key: c.currency, available: fmt(c.cupo_disponible), total: fmt(c.cupo_total) };
       })
     : cupo?.available_clp != null && cupo.total_clp != null

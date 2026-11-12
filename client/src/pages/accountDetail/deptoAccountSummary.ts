@@ -19,9 +19,13 @@ export type MortgageSummaryCardsData = {
 export type PropertySummaryCardsData = {
   valueUf: number | null;
   valueClp: number | null;
+  /** Pesos deposited (the account summary's figure, pesos whatever the display unit). */
   depositedClp: number;
-  plYtdClp: number | null;
-  plTotalClp: number | null;
+  /** P/L this year and all-time, in `plUnit`. */
+  plYtd: number | null;
+  plTotal: number | null;
+  /** The unit the P/L figures are in: the monthly performance rows', else pesos (the dashboard row fallback). */
+  plUnit: string;
 };
 
 function sortRowsByOccurredDesc(rows: readonly DeptoMortgageSheetRow[]): DeptoMortgageSheetRow[] {
@@ -125,8 +129,10 @@ export function buildPropertySummaryCardsData(
       accountDashRow?.current_value ??
       null,
     depositedClp: summary.deposits_clp,
-    plYtdClp: latestPerf?.ytd_nominal_pl ?? accountDashRow?.delta_year ?? null,
-    plTotalClp:
-      latestPerf?.cumulative_nominal_pl ?? accountDashRow?.delta_total ?? null,
+    plYtd: latestPerf?.ytd_nominal_pl ?? accountDashRow?.delta_year ?? null,
+    plTotal: latestPerf?.cumulative_nominal_pl ?? accountDashRow?.delta_total ?? null,
+    // The performance rows carry their unit; the dashboard row fallback is pesos (callers pass it
+    // only in CLP).
+    plUnit: latestPerf?.unit ?? "clp",
   };
 }

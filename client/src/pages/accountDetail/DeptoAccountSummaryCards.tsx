@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
+import { formatClp, formatCurrency } from "../../format";
 import { loadableClass } from "../../components/ui/Loadable";
 import type {
   AccountMortgageLedgerResponse,
@@ -14,9 +14,9 @@ import {
   buildPropertySummaryCardsData,
 } from "./deptoAccountSummary";
 
-function formatPlClp(value: number | null): string {
+function formatPl(value: number | null, unit: string): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return formatClp(value);
+  return formatCurrency(value, unit);
 }
 
 function PaymentCardValue({
@@ -128,11 +128,11 @@ export function DeptoAccountSummaryCards({
         </div>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.property.plYtd")}</div>
-          <div className="value mono">{formatPlClp(propertyData.plYtdClp)}</div>
+          <div className="value mono">{formatPl(propertyData.plYtd, propertyData.plUnit)}</div>
         </div>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.property.plTotal")}</div>
-          <div className="value mono">{formatPlClp(propertyData.plTotalClp)}</div>
+          <div className="value mono">{formatPl(propertyData.plTotal, propertyData.plUnit)}</div>
         </div>
       </div>
     );

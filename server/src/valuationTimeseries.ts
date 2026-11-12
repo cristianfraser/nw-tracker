@@ -8,7 +8,7 @@ import {
   totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
-import { convertCurrency, flowEventInUnit } from "./rates.js";
+import { convertCurrency, convertFlow, flowEventInUnit } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import {
@@ -671,6 +671,37 @@ function propertyDeptoClpSeriesBySnapshotDate(
 }
 
 /**
+ * The property's aportes in a display unit other than pesos: Σ pesos paid (the ledger's
+ * `pago_clp`, what its pesos line `pago_acumulado_clp` sums), each payment converted at its own
+ * date's rate (`convertFlow`), forward-filled to each snapshot date — the line the pesos chart
+ * draws, never the pesos re-converted at a later rate.
+ */
+export function propertyPagoAcumuladoInUnitByDate(
+  dateStrsAsc: string[],
+  ledger: DeptoMortgageSheetRow[],
+  unit: TsUnit
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (dateStrsAsc.length === 0 || ledger.length === 0) return out;
+  const sorted = [...ledger].sort((a, b) => {
+    const c = a.occurred_on.localeCompare(b.occurred_on);
+    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
+  });
+  let j = 0;
+  let cum: number | null = null;
+  for (const d of dateStrsAsc) {
+    const cut = depositCutoffForSnapshotRow(d);
+    while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
+      const row = sorted[j]!;
+      cum = (cum ?? 0) + convertFlow(row.pago_clp, "clp", unit, row.occurred_on);
+      j++;
+    }
+    if (cum != null) out.set(d, cum);
+  }
+  return out;
+}
+
+/**
  * Drop future `as_of_date` labels and append Chile `today` so charts end on the current calendar day.
  *
  * Keeps the **current month's month-end** row when present (e.g. tarjeta de crédito cierre from the PDF ledger
@@ -864,7 +895,14 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   dateStrs = augmentChartDatesForCuotaLedgerAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   // Each property line reads its own depto ledger (one per `property` role holder).
-  const propertyDeptoSheetsById = new Map<number, { closeByDate: Map<string, number>; pagoAcumuladoByDate: Map<string, number> }>();
+  const propertyDeptoSheetsById = new Map<
+    number,
+    {
+      closeByDate: Map<string, number>;
+      /** Aportes in the display unit: the sheet's pesos in CLP, each payment at its rate otherwise. */
+      pagoAcumuladoByDate: Map<string, number>;
+    }
+  >();
   for (const id of allIds) {
     if (bucketKindFromSlugMap(slugById, id) !== "property") continue;
     const ledger = deptoLedgerForAccount(id);
@@ -872,7 +910,10 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
     propertyDeptoSheetsById.set(id, {
       closeByDate: deptoPropertyCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate),
-      pagoAcumuladoByDate: sheetSeries.pagoAcumuladoByDate,
+      pagoAcumuladoByDate:
+        unit === "clp"
+          ? sheetSeries.pagoAcumuladoByDate
+          : propertyPagoAcumuladoInUnitByDate(dateStrs, ledger, unit),
     });
   }
   const topOut = attachDepositSeriesKeys(top, displayDepMovs, slugById);
@@ -1006,10 +1047,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         unit === "clp"
           ? (depClpByAccAndDate.get(aid)?.get(d) ?? 0)
           : (depUnitByAccAndDate.get(aid)?.get(d) ?? 0);
-      if (
-        unit === "clp" &&
-        bucketKindFromSlugMap(slugById, aid) === "property"
-      ) {
+      if (bucketKindFromSlugMap(slugById, aid) === "property") {
         const fromSheet = propertyDeptoSheetsById.get(aid)?.pagoAcumuladoByDate.get(d);
         if (fromSheet != null && Number.isFinite(fromSheet)) depPlot = fromSheet;
       }

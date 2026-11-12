@@ -210,7 +210,8 @@ describe("buildPropertySummaryCardsData", () => {
     expect(data.valueUf).toBe(1200);
     expect(data.valueClp).toBe(45_000_000);
     expect(data.depositedClp).toBe(94_511_320);
-    expect(data.plYtdClp).toBe(350_000);
-    expect(data.plTotalClp).toBe(1_650_000);
+    expect(data.plYtd).toBe(350_000);
+    expect(data.plTotal).toBe(1_650_000);
+    expect(data.plUnit).toBe("clp");
   });
 });
