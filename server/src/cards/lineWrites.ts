@@ -22,6 +22,7 @@ import { upsertCreditCardValuationsFromLedger } from "../ccCreditCardValuations.
 import { keepingCcPaymentEvidence } from "../ccPaymentMirrorEvidence.js";
 import { applyCardLinePlan } from "../ccCrossImportDedupe.js";
 import { applyFacturadoFinancingLinks } from "../ccFacturadoFinancingAuto.js";
+import { syncCardToCardPaymentTransfers } from "../cardToCardPayments.js";
 import { requestExpenseLinkSync } from "../expenseLinkSync.js";
 // Registers the expense-link sync the finish asks for.
 import "../expenseAssignmentWrites.js";
@@ -62,6 +63,9 @@ export const CARD_LINE_WRITE_FRAME: CardLineWriteFrame = {
     // facturado (or the facturado's close): link them, and plant the paid card's PAGO when no feed
     // of its own will show it.
     if (followUps.financingLinks) applyFacturadoFinancingLinks(plantFinancingPayment);
+    // A card-to-card facturado payment is one transfer per part: keep them in step with the
+    // records (a match just made, a charge or plan just changed or gone).
+    syncCardToCardPaymentTransfers();
     requestExpenseLinkSync();
   },
 };
@@ -211,4 +215,5 @@ export function insertLines(
 /** The facturado-financing pass on its own (the card feed's last step, after every card's write). */
 export function runFinancingLinks(): void {
   applyFacturadoFinancingLinks(plantFinancingPayment);
+  syncCardToCardPaymentTransfers();
 }

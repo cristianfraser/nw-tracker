@@ -1,4 +1,5 @@
 /** Flows: deposits, income, work earnings, expenses (manual, CC, real estate). Split verbatim from index.ts; paths unchanged. */
+import { syncCardToCardPaymentTransfers } from "../cardToCardPayments.js";
 import { assertDemoManualExpenseDescription } from "../demoWritePolicy.js";
 import express from "express";
 import { writeHandler } from "../inputError.js";
@@ -431,6 +432,7 @@ app.post("/api/flows/expenses/credit-card/financing-links", writeHandler((req, r
     financedBillingMonth,
     financing,
   });
+  syncCardToCardPaymentTransfers();
   res.json({ ok: true, id: link.id });
 }));
 
@@ -441,6 +443,7 @@ app.delete("/api/flows/expenses/credit-card/financing-links/:id", writeHandler((
     return;
   }
   deleteCcFacturadoFinancingLink(id);
+  syncCardToCardPaymentTransfers();
   res.status(204).send();
 }));
 

@@ -12,6 +12,7 @@ import { db } from "../db.js";
 const ROW_ID_REFERENCES: Record<string, string> = {
   cc_expense_line_categories: "a line's own category override: names one line, not its purchase (cuota lines share a plan's flow)",
   cc_installment_purchases: "a plan's source line (conversion keeps the line, F11)",
+  card_to_card_payments: "the transfer a card-to-card facturado payment part wrote (derived from its record)",
   cc_manual_payments: "the transfer and planted line a hand-recorded card payment wrote",
   cc_planted_payment_lines: "a planted payment line's registry, until the bank's line replaces it",
   cc_traspaso_deuda_links: "the two legs of one debt reclassification (derived per import)",

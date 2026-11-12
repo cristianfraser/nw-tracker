@@ -17,6 +17,11 @@ function insertFinancingPurchase(linkId: number, accountId: number, key: string)
   ).run(...targetParams(at), linkId, accountId);
 }
 
+/** The facturado the fixture plans paid sits on another card master (a card never pays its own). */
+function otherCardMaster(): number {
+  return (db.prepare(`SELECT id FROM accounts WHERE import_key LIKE 'credit_card_master|bci|%' ORDER BY id LIMIT 1`).get() as { id: number }).id;
+}
+
 function financingKeys(linkId: number): string[] {
   return listCcFacturadoFinancingLinks()
     .filter((l) => l.id === linkId)
@@ -104,7 +109,10 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
   });
 
   function makeFixture(): { accountId: number; statementId: number; manualId: number } {
-    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    // A card master (the link's paying card): its plans become a card-to-card payment transfer.
+    const group = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`)
+      .get() as { id: number };
     const accountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`)
@@ -186,7 +194,7 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
         .prepare(
           `INSERT INTO cc_facturado_financing_links (financed_account_id, financed_billing_month) VALUES (?, '2026-06')`
         )
-        .run(accountId).lastInsertRowid
+        .run(otherCardMaster()).lastInsertRowid
     );
     insertFinancingPurchase(linkId, accountId, manualKey);
     setFlowNote(accountId, manualKey, "vitest twin note");
@@ -259,7 +267,10 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
   afterEach(() => {
     for (const id of accountIds) {
       db.prepare(`DELETE FROM flow_links WHERE kind = 'finances_facturado' AND account_id = ?`).run(id);
-      db.prepare(`DELETE FROM cc_facturado_financing_links WHERE financed_account_id = ?`).run(id);
+      db.prepare(
+        `DELETE FROM cc_facturado_financing_links WHERE financed_account_id = ?
+            OR id IN (SELECT financing_link_id FROM flow_links WHERE kind = 'finances_facturado' AND account_id = ?)`
+      ).run(id, id);
       db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(id);
       db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(id);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
@@ -278,7 +289,10 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
     statementId: number;
     manualId: number;
   } {
-    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    // A card master (the link's paying card): its plans become a card-to-card payment transfer.
+    const group = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`)
+      .get() as { id: number };
     const accountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`)
@@ -344,7 +358,7 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
         .prepare(
           `INSERT INTO cc_facturado_financing_links (financed_account_id, financed_billing_month) VALUES (?, '2026-08')`
         )
-        .run(accountId).lastInsertRowid
+        .run(otherCardMaster()).lastInsertRowid
     );
     insertFinancingPurchase(linkId, accountId, keyFor("ZTIENDA PREAMBL"));
 

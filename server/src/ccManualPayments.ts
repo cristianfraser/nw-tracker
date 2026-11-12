@@ -17,6 +17,7 @@ import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPa
 import { listingLineFromCardListingLine } from "./cardListingLines.js";
 
 import { db } from "./db.js";
+import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
@@ -92,6 +93,12 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
   if (currency !== "clp" && currency !== "usd") throw new Error(`currency must be clp or usd, got ${currency}`);
   const magnitude = currency === "usd" ? Number(input.amount.toFixed(2)) : Math.round(input.amount);
   if (fromId === cardId) throw new Error("A card payment needs a source account other than the card");
+  // A card paying another card's facturado is the payment record's own transfer (`cardToCardPayments.ts`).
+  if (listCreditCardMasterAccountIds().includes(fromId)) {
+    throw new Error(
+      `Account ${fromId} is a card: a facturado paid with another card is recorded by its facturado payment record, not by hand`
+    );
+  }
   const cardGroup = creditCardMasterMetaForAccount(cardId).cardGroup;
   const fromIsUsd = isUsdCashAccount(fromId);
   if ((currency === "usd") !== fromIsUsd) {

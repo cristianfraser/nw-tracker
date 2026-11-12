@@ -157,6 +157,48 @@ function manualPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
     });
 }
 
+/**
+ * Card evidence a card-to-card facturado payment (`card_to_card_payments`, `cardToCardPayments.ts`)
+ * accounts for: a peso payment on the paid card dated inside the financing-payment window of the
+ * transfers, for the pesos of one part, of a day's parts of one record (the matcher's combinations
+ * are one day's purchases, and the PAGO it plants is their sum) or of the whole record. Such a PAGO
+ * was paid by the other card, never by a checking debit.
+ */
+function cardToCardPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
+  const rows = db
+    .prepare(
+      `SELECT c.financing_link_id, m.to_account_id, m.amount, m.occurred_on
+         FROM card_to_card_payments c JOIN movements m ON m.id = c.movement_id`
+    )
+    .all() as { financing_link_id: number; to_account_id: number; amount: number; occurred_on: string }[];
+  if (rows.length === 0) return () => false;
+  /** (card, pesos, anchor day) the evidence may match. */
+  const claims: { card: number; amount: number; day: string }[] = [];
+  const byRecord = new Map<number, typeof rows>();
+  for (const r of rows) {
+    claims.push({ card: r.to_account_id, amount: Math.round(r.amount), day: r.occurred_on });
+    byRecord.set(r.financing_link_id, [...(byRecord.get(r.financing_link_id) ?? []), r]);
+  }
+  for (const parts of byRecord.values()) {
+    if (parts.length < 2) continue;
+    const total = parts.reduce((s, p) => s + Math.round(p.amount), 0);
+    const byDay = new Map<string, number>();
+    for (const p of parts) byDay.set(p.occurred_on, (byDay.get(p.occurred_on) ?? 0) + Math.round(p.amount));
+    for (const [day, sum] of byDay) {
+      claims.push({ card: parts[0]!.to_account_id, amount: sum, day });
+      claims.push({ card: parts[0]!.to_account_id, amount: total, day });
+    }
+  }
+  return (e) =>
+    e.currency === "clp" &&
+    claims.some(
+      (c) =>
+        c.card === e.cc_account_id &&
+        c.amount === Math.round(e.amount_clp) &&
+        dayWithinWindow(c.day, e.pago_iso, MATCH_WINDOWS.financing_payment)
+    );
+}
+
 export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const movements = db
     .prepare(
@@ -204,8 +246,10 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   // A card payment entered by hand already has its transfer (from the account that paid): its
   // card line — planted, or the bank's line that replaced it — is not evidence for a checking debit.
   const claimedByManualPayment = manualPaymentEvidenceClaim();
+  // A facturado another card paid: its PAGO is that card's transfer, not a checking debit's.
+  const claimedByCardToCardPayment = cardToCardPaymentEvidenceClaim();
   const evidence = dedupeCcPaymentEvidence(evidenceRows).filter(
-    (e) => !converted.has(ccPaymentEvidenceKey(e)) && !claimedByManualPayment(e)
+    (e) => !converted.has(ccPaymentEvidenceKey(e)) && !claimedByManualPayment(e) && !claimedByCardToCardPayment(e)
   );
   const byAmount = new Map<number, CcPaymentEvidence[]>();
   const usdEvidence: CcPaymentEvidence[] = [];
