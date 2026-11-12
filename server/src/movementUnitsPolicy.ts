@@ -262,7 +262,12 @@ function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" {
     input.flow_kind === "stock_buy" ? input.to_account_id : input.from_account_id;
   const ticker = equityTickerForAccount(stockAccountId);
   if (!ticker) return "usd";
-  return equityQuoteCurrency(ticker);
+  const quote = equityQuoteCurrency(ticker);
+  // Trades settle against a broker's peso or dollar cash (any-currency plan, Phase C1 opens the rest).
+  if (quote !== "usd" && quote !== "clp") {
+    throw new Error(`${ticker} is quoted in ${quote}: a stock trade settles against peso or dollar cash only for now`);
+  }
+  return quote;
 }
 
 function transferInputLeg(input: TransferCreateInput, currency: MovementCurrency): number | null {

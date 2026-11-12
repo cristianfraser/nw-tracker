@@ -20,6 +20,7 @@ import {
   type MarketQuoteCurrency,
   type MarketSymbolKind,
 } from "../marketSymbols.js";
+import { isCurrencyCode } from "../rates.js";
 import type { PriceProvider, ProviderSymbolSearchResult } from "./types.js";
 import { yahooDisplaySymbol } from "./yahooSymbol.js";
 
@@ -64,10 +65,11 @@ const YAHOO_TIMEZONE_MARKET: Readonly<Record<string, MarketSymbolKind>> = {
 
 /**
  * What a chart `meta` says about `symbol`, or why the app cannot value it. The app values on four
- * calendars (NYSE, Bolsa de Santiago, the London Stock Exchange, crypto around the clock) and in two
- * currencies, so a listing on another exchange or quoted in another currency is refused rather than
- * valued on the wrong calendar or at the wrong rate — an LSE line quoted in pence (`GBp`) included:
- * only its USD lines (CSPX.L, VWRA.L) can be valued. An index has no currency.
+ * calendars (NYSE, Bolsa de Santiago, the London Stock Exchange, crypto around the clock) and in
+ * any currency the `currencies` table holds, so a listing on another exchange, or quoted in a
+ * currency the app has no rates for, is refused rather than valued on the wrong calendar or at no
+ * rate. Pence (`GBp`, how the LSE quotes many lines) is a hundredth of a pound, not a currency, and
+ * is refused by name. An index has no currency (null).
  */
 export function classifyYahooSymbol(symbol: string, meta: YahooChartMeta): InstrumentFacts {
   const price = meta.regularMarketPrice;
@@ -85,13 +87,18 @@ export function classifyYahooSymbol(symbol: string, meta: YahooChartMeta): Instr
   }
 
   let quoteCurrency: MarketQuoteCurrency;
-  if (type === "INDEX") quoteCurrency = "none";
-  else if (meta.currency === "USD") quoteCurrency = "usd";
-  else if (meta.currency === "CLP") quoteCurrency = "clp";
+  if (type === "INDEX") quoteCurrency = null;
   else {
-    throw new Error(
-      `${symbol} is quoted in ${meta.currency ?? "no currency"}; only USD and CLP prices (or an index) are supported`
-    );
+    const printed = meta.currency ?? null;
+    if (printed == null) throw new Error(`${symbol} is quoted in no currency (and is not an index)`);
+    if (printed === "GBp" || printed === "GBX") {
+      throw new Error(`${symbol} is quoted in ${printed} (pence), not a currency; hold a line quoted in a currency the app loads (CSPX.L, VWRA.L in USD)`);
+    }
+    const code = printed.toLowerCase();
+    if (!/^[a-z]{3}$/.test(code) || code === "uf" || !isCurrencyCode(code)) {
+      throw new Error(`${symbol} is quoted in ${printed}, which is not in the currencies table; the app has no rates for it`);
+    }
+    quoteCurrency = code;
   }
 
   return {
@@ -120,6 +127,7 @@ export async function describeYahooSymbol(symbol: string): Promise<InstrumentFac
  */
 export function checkYahooSeriesCurrency(ticker: string, meta: { currency?: string | null } | undefined): void {
   const expected = requireMarketSymbol(ticker).quote_currency;
+  if (expected == null) throw new Error(`${ticker} is registered as an index; its series has no currency to check`);
   const printed = meta?.currency ?? null;
   if (printed == null) throw new Error(`Yahoo prints no currency for ${ticker}; expected ${expected.toUpperCase()}`);
   if (printed.toLowerCase() !== expected) {

@@ -214,11 +214,11 @@ describe("getWatchlistPayload", () => {
 describe("addManualWatchlistTickerFromYahoo", () => {
   it("asks Yahoo, records what it says, and lists the symbol", async () => {
     syncWatchlistFromApp();
-    const verify = vi.fn(async (t: string) => symbolFacts(t, { quote_currency: "none", instrument_type: "INDEX" }));
+    const verify = vi.fn(async (t: string) => symbolFacts(t, { quote_currency: null, instrument_type: "INDEX" }));
     const row = await addManualWatchlistTickerFromYahoo(" ^zzwlix ", verify);
     expect(verify).toHaveBeenCalledWith(TEST_INDEX);
     expect(row.series_key).toBe(TEST_INDEX);
-    expect(marketQuoteCurrency(TEST_INDEX)).toBe("none");
+    expect(marketQuoteCurrency(TEST_INDEX)).toBeNull();
   });
 
   it("refuses a listed symbol without asking Yahoo", async () => {
@@ -245,14 +245,14 @@ describe("index symbols (no currency)", () => {
   const NOW = new Date("2026-01-07T23:00:00Z");
 
   function seedIndexBars(): void {
-    const ins = db.prepare(`INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'none')`);
+    const ins = db.prepare(`INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, NULL)`);
     ins.run(TEST_INDEX, "2026-01-06", 100);
     ins.run(TEST_INDEX, "2026-01-07", 101);
   }
 
   it("shows the same points in both display units", () => {
     syncWatchlistFromApp();
-    addManualWatchlistTicker(TEST_INDEX, symbolFacts(TEST_INDEX, { quote_currency: "none", instrument_type: "INDEX" }));
+    addManualWatchlistTicker(TEST_INDEX, symbolFacts(TEST_INDEX, { quote_currency: null, instrument_type: "INDEX" }));
     seedIndexBars();
     for (const unit of ["clp", "usd"] as const) {
       const row = getWatchlistPayload(NOW, unit).manual.find((r) => r.series_key === TEST_INDEX)!;
@@ -263,7 +263,7 @@ describe("index symbols (no currency)", () => {
   });
 
   it("is never valued as money", () => {
-    addManualWatchlistTicker(TEST_INDEX, symbolFacts(TEST_INDEX, { quote_currency: "none", instrument_type: "INDEX" }));
+    addManualWatchlistTicker(TEST_INDEX, symbolFacts(TEST_INDEX, { quote_currency: null, instrument_type: "INDEX" }));
     expect(() => equityQuoteCurrency(TEST_INDEX)).toThrow(/index/);
   });
 

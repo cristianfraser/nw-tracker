@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currencyCodeSchema } from "./formats/index.js";
 
 /**
  * A card's movements pasted by hand from the issuer's web table (`POST /parse/card.web_paste`).
@@ -16,7 +17,7 @@ export const pastedListingLineSchema = z
     merchant: z.string().min(1).max(200),
     /** Signed as printed; pesos are whole, dollars carry cents. */
     amount: z.number().refine((n) => n !== 0, { message: "a zero amount is not a movement" }),
-    currency: z.enum(["clp", "usd"]),
+    currency: currencyCodeSchema,
     /** The pasted line, verbatim: provenance. */
     raw_line: z.string().min(1).max(1000),
   })

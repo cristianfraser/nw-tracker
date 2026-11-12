@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { isoDateSchema } from "../formats/index.js";
+import { isoDateSchema, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 import { issuerCardAccountSchema } from "./cardUnbilledMovements.js";
 import { cardCanonicalStatementSchema } from "../cards/canonicalLine.js";
 
-const currency = z.enum(["clp", "usd"]);
+const currency = currencyCodeSchema;
 
 /**
  * What a statement line is:

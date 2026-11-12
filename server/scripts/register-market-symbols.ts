@@ -34,7 +34,7 @@ function table(items: PlannedRegistration[]): string {
     i.ticker,
     i.provider,
     i.facts.market_kind,
-    i.facts.quote_currency,
+    i.facts.quote_currency ?? "index",
     i.facts.display_symbol,
     i.facts.name ?? "-",
     i.changes.join("; ") || "-",

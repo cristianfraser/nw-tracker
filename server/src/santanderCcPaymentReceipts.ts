@@ -55,6 +55,7 @@ import {
   syntheticCcPaymentMovementIdForMessageId,
 } from "./santanderSyntheticCcPayments.js";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 export type ParsedPaymentReceipt = {
   kind: "clp" | "usd";
@@ -283,7 +284,7 @@ export function applyCardPaymentReceipt(
   if (payload.issuer !== "santander") throw new Error(`No payment-receipt handling for issuer "${payload.issuer}"`);
   const applied = applyPaymentReceipt(
     {
-      kind: payload.debt_currency,
+      kind: pesosOrDollars(payload.debt_currency, "card.payment_receipt"),
       paid_on: payload.paid_on,
       amount_clp: payload.amount_clp,
       amount_usd: payload.amount_usd,

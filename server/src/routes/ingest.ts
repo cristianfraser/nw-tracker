@@ -16,10 +16,11 @@ import {
 } from "nw-tracker-contracts";
 import { ingestAuthMiddleware, type IngestAuthConfig } from "../ingestAuth.js";
 import { INGEST_HANDLERS, type IngestHandler } from "../ingestHandlers.js";
-import { receiveIngestDocument } from "../ingestReceiver.js";
+import { IngestRefusal, receiveIngestDocument } from "../ingestReceiver.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "../ingestRuns.js";
 import { runIngestTask } from "../ingestTasks.js";
 import { recordManualCardPayment } from "../ccManualPayments.js";
+import { pesosOrDollars } from "../ingestCurrencies.js";
 
 export interface IngestRoutesOptions {
   kinds?: readonly IngestKindDefinition[];
@@ -101,8 +102,12 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
     }
     let result: ReturnType<typeof recordManualCardPayment>;
     try {
-      result = recordManualCardPayment(request.data);
+      result = recordManualCardPayment({ ...request.data, currency: pesosOrDollars(request.data.currency, CC_MANUAL_PAYMENT_TASK) });
     } catch (err) {
+      if (err instanceof IngestRefusal) {
+        res.status(422).json({ error: err.code, message: err.message } satisfies IngestErrorBody);
+        return;
+      }
       res.status(422).json({ error: "task_refused", message: err instanceof Error ? err.message : String(err) } satisfies IngestErrorBody);
       return;
     }
@@ -161,7 +166,12 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
       });
       return;
     }
-    res.json(receiveIngestDocument(kind, { ...envelope.data, payload: payload.data }, (ctx) => handler.apply(ctx)));
+    try {
+      res.json(receiveIngestDocument(kind, { ...envelope.data, payload: payload.data }, (ctx) => handler.apply(ctx)));
+    } catch (err) {
+      if (!(err instanceof IngestRefusal)) throw err;
+      refuse(422, { error: err.code, message: err.message });
+    }
   });
 
   app.use(INGEST_API_PATH, router);

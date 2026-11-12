@@ -32,6 +32,7 @@ import { db } from "./db.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { fintualUsdAccountId } from "./brokerAdapter.js";
+import { dollarsOnly } from "./ingestCurrencies.js";
 
 /** How long after its pay day a request waits for its wire before it is reported overdue. */
 const OVERDUE_AFTER_DUE_DAYS = MATCH_WINDOWS.incoming_wire_overdue.daysAfter;
@@ -59,7 +60,8 @@ const cents = (n: number) => Math.round(n * 100);
 /** The broker notification as a request, or a throw when it lacks what a request needs. */
 export function withdrawalRequestFromNotification(n: BrokerNotification, broker: "fintual"): WithdrawalRequest {
   if (n.kind !== "withdrawal_requested") throw new Error(`notification ${n.message_id} is not a withdrawal request`);
-  if (n.currency !== "usd") throw new Error(`withdrawal request ${n.message_id}: only dollar withdrawals are mapped (got ${n.currency})`);
+  if (n.currency == null) throw new Error(`withdrawal request ${n.message_id}: the notification states no currency`);
+  dollarsOnly(n.currency, "broker.notifications withdrawal request");
   if (n.amount == null || n.gross_amount == null || !n.destination_account || !n.due_on) {
     throw new Error(`withdrawal request ${n.message_id} does not state net, gross, destination account and pay day`);
   }
@@ -398,6 +400,8 @@ function writeBooking(b: Booking, r: WithdrawalRequest): void {
 
 /** `bank_account.incoming_wires`: stores the notices and books what they pay. */
 export function applyIncomingWires(payload: BankAccountIncomingWiresPayload): BankAccountIncomingWiresApplyDetails {
+  // Wires are booked into the dollar account from a dollar broker withdrawal.
+  for (const n of payload.notices) dollarsOnly(n.currency, "bank_account.incoming_wires");
   const new_notices = storeIncomingWireNotices(payload.notices);
   return { received: payload.notices.length, new_notices, bookings: bookIncomingWires() };
 }

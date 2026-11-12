@@ -14,6 +14,7 @@ import { db } from "./db.js";
 import { fintualUsdAccountId } from "./brokerAdapter.js";
 import { SAVINGS_EARNINGS_FLOW_KIND } from "./cashAccountInterest.js";
 import { MOVEMENT_USD_LEG_SQL } from "./movementAmounts.js";
+import { dollarsOnly } from "./ingestCurrencies.js";
 
 
 const cents = (usd: number): number => Math.round(usd * 100);
@@ -44,12 +45,13 @@ export function applyFintualWalletRead(payload: BrokerMovementsPayload): BrokerM
 
   const toWrite: { occurred_on: string; amount: number; note: string }[] = [];
   for (const m of payload.movements ?? []) {
-    if (m.kind !== "interest" || m.currency !== "usd" || !(m.amount > 0)) {
+    const currency = dollarsOnly(m.currency, "broker.movements (fintual wallet)");
+    if (m.kind !== "interest" || !(m.amount > 0)) {
       throw new Error(`Fintual wallet movement ${m.movement_id}: expected positive usd interest, got ${m.kind} ${m.amount} ${m.currency}`);
     }
     const rows = sameDay.all(accountId, SAVINGS_EARNINGS_FLOW_KIND, m.occurred_on) as { id: number; usd: number }[];
     const legs = `→ ${accountId}`;
-    const row = { occurred_on: m.occurred_on, kind: m.kind, amount: m.amount, currency: m.currency, legs, units: null };
+    const row = { occurred_on: m.occurred_on, kind: m.kind, amount: m.amount, currency, legs, units: null };
     const match = rows.find((r) => cents(Math.abs(r.usd)) === cents(m.amount));
     if (match) {
       out.duplicates += 1;

@@ -284,7 +284,7 @@ function applyCardListing(
   }
   const proof =
     windowStartIso && closeOnRecord
-      ? feedMirrorCurrencies({ stated, closeOnRecord, lines: card.lines, bankUsed })
+      ? feedMirrorCurrencies({ stated, closeOnRecord, lines, bankUsed })
       : {};
   let mirror: CcFeedMirrorResult | null = null;
   if (windowStartIso && Object.keys(proof).length > 0) {

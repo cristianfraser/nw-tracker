@@ -41,7 +41,7 @@ export function providerForTicker(ticker: string): "yahoo" | "coingecko" {
 function factChanges(row: MarketSymbolRow, facts: InstrumentFacts): string[] {
   const out: string[] = [];
   if (row.market_kind !== facts.market_kind) out.push(`market_kind: ${row.market_kind} → ${facts.market_kind}`);
-  if (row.quote_currency !== facts.quote_currency) out.push(`quote_currency: ${row.quote_currency} → ${facts.quote_currency}`);
+  if (row.quote_currency !== facts.quote_currency) out.push(`quote_currency: ${row.quote_currency ?? "index"} → ${facts.quote_currency ?? "index"}`);
   const display = facts.display_symbol.trim().toUpperCase();
   if (row.display_symbol !== display) out.push(`display_symbol: ${row.display_symbol} → ${display}`);
   return out;

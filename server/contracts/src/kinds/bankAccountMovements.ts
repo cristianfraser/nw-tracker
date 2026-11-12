@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { amountFitsCurrency } from "../formats/index.js";
+import { amountFitsCurrency, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
-export const bankAccountCurrencySchema = z.enum(["clp", "usd"]);
+export const bankAccountCurrencySchema = currencyCodeSchema;
 export type BankAccountCurrency = z.infer<typeof bankAccountCurrencySchema>;
 
 /** A bank account as the feeder knows it; the server maps it to its own account. */

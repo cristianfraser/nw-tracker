@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { amountFitsCurrency, isoDateSchema } from "../formats/index.js";
+import { amountFitsCurrency, isoDateSchema, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
-const currency = z.enum(["clp", "usd"]);
+const currency = currencyCodeSchema;
 
 /** A card account as the issuer numbers it; the server maps it to its own card account. */
 export const issuerCardAccountSchema = z

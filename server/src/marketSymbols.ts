@@ -1,9 +1,9 @@
 import { db } from "./db.js";
 
 /**
- * The instrument registry (`market_symbols`, migrations 210 / 303 / 305): the one source of an
- * instrument's facts — the currency its price is quoted in (`none` for an index level: points, not
- * money, never converted between CLP and USD), the market whose calendar and sessions it trades on,
+ * The instrument registry (`market_symbols`, migrations 210 / 303 / 305 / 315): the one source of an
+ * instrument's facts — the currency its price is quoted in (any code `currencies` holds; null for an
+ * index level: points, not money, never converted), the market whose calendar and sessions it trades on,
  * the exchange's ISO 10383 code, the symbol a position shows, and who stated them (a price provider,
  * or the demo generator's declaration). A reader never parses a ticker's spelling: an instrument
  * with no row throws ({@link requireMarketSymbol}).
@@ -13,7 +13,12 @@ import { db } from "./db.js";
  * the live-quotes tick and each watchlist read, and once more before a miss throws, which picks up
  * a symbol another process registered.
  */
-export type MarketQuoteCurrency = "usd" | "clp" | "none";
+/**
+ * The currency an instrument's price is quoted in: a code of `currencies` (`usd`, `clp`, `eur`, …;
+ * the column references it, migration 315), or null for an index level (points, not money). The
+ * same null is stored in `equity_daily.currency` and `live_market_quotes.currency`.
+ */
+export type MarketQuoteCurrency = string | null;
 export type MarketSymbolKind = "nyse" | "santiago" | "london" | "crypto24";
 
 /** Who stated an instrument's facts: a price provider's adapter, or a declaration (the demo, a fixture). */
@@ -58,11 +63,17 @@ const stmtUpsert = db.prepare(
      exchange = excluded.exchange, instrument_type = excluded.instrument_type, source = excluded.source,
      verified_at = excluded.verified_at`
 );
+const stmtKnownCurrency = db.prepare(`SELECT 1 FROM currencies WHERE code = ?`);
 const stmtStoredBarCurrencies = db.prepare(
   `SELECT currency, COUNT(*) AS n FROM equity_daily WHERE ticker = ? GROUP BY currency`
 );
 
 let cache: Map<string, MarketSymbolRow> | null = null;
+
+/** A quote currency for a message: the code, or «index» for an index level (null). */
+export function quoteCurrencyLabel(currency: MarketQuoteCurrency): string {
+  return currency ?? "index";
+}
 
 export function reloadMarketSymbols(): void {
   cache = new Map((stmtAll.all() as MarketSymbolRow[]).map((r) => [r.ticker, r]));
@@ -107,20 +118,23 @@ export function registerInstrument(
   const key = ticker.trim().toUpperCase();
   if (!key) throw new Error("registerInstrument: empty ticker");
   if (!facts.display_symbol.trim()) throw new Error(`registerInstrument: ${key} has no display symbol`);
-  const bars = stmtStoredBarCurrencies.all(key) as { currency: string; n: number }[];
+  if (facts.quote_currency != null && stmtKnownCurrency.get(facts.quote_currency) == null) {
+    throw new Error(`registerInstrument: ${key} is quoted in ${facts.quote_currency}, which is not in the currencies table`);
+  }
+  const bars = stmtStoredBarCurrencies.all(key) as { currency: string | null; n: number }[];
   if (bars.length > 0) {
     const existing = stmtOne.get(key) as MarketSymbolRow | undefined;
     if (existing != null && (existing.market_kind !== facts.market_kind || existing.quote_currency !== facts.quote_currency)) {
       throw new Error(
-        `registerInstrument: ${key} is registered as ${existing.market_kind}/${existing.quote_currency} with stored ` +
-          `equity_daily bars; ${source} now states ${facts.market_kind}/${facts.quote_currency} — fix the stored series, never reframe it`
+        `registerInstrument: ${key} is registered as ${existing.market_kind}/${quoteCurrencyLabel(existing.quote_currency)} with stored ` +
+          `equity_daily bars; ${source} now states ${facts.market_kind}/${quoteCurrencyLabel(facts.quote_currency)} — fix the stored series, never reframe it`
       );
     }
     const other = bars.filter((b) => b.currency !== facts.quote_currency);
     if (other.length > 0) {
       throw new Error(
-        `registerInstrument: ${key} has ${other.map((b) => `${b.n} equity_daily bar(s) in ${b.currency}`).join(", ")}; ` +
-          `${source} states ${facts.quote_currency} — fix the stored series, never reframe it`
+        `registerInstrument: ${key} has ${other.map((b) => `${b.n} equity_daily bar(s) in ${quoteCurrencyLabel(b.currency)}`).join(", ")}; ` +
+          `${source} states ${quoteCurrencyLabel(facts.quote_currency)} — fix the stored series, never reframe it`
       );
     }
   }

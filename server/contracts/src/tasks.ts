@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currencyCodeSchema } from "./formats/index.js";
 
 /**
  * Server tasks a feeder run asks for: work on the server's own data that belongs in a
@@ -53,7 +54,7 @@ export const ccManualPaymentRequestSchema = z
     from_account_id: z.number().int().positive(),
     card_account_id: z.number().int().positive(),
     amount: z.number().positive(),
-    currency: z.enum(["clp", "usd"]),
+    currency: currencyCodeSchema,
     paid_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     note: z.string().min(1).nullable().optional(),
     /** Adopt this existing `pago_tarjeta` transfer instead of writing one. */

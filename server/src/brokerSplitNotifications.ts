@@ -77,7 +77,11 @@ export function applyBrokerSplitNotifications(
     const exDate = notificationChileYmd(n);
     const stock = adapter.equityAccountId(n.ticker!);
     const ticker = equityTickerForAccount(stock)!;
-    const cash = adapter.cashAccountId(equityQuoteCurrency(ticker));
+    const quote = equityQuoteCurrency(ticker);
+    if (quote !== "usd" && quote !== "clp") {
+      throw new Error(`${ticker} is quoted in ${quote}: ${adapter.label} keeps peso and dollar cash only`);
+    }
+    const cash = adapter.cashAccountId(quote);
     const legs = `${stock}`;
     const near = listEquitySplits(ticker).find(
       (s) => Math.abs(Date.parse(s.ex_date) - Date.parse(exDate)) <= SAME_SPLIT_WINDOW_DAYS * 86_400_000

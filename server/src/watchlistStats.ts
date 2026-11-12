@@ -79,7 +79,8 @@ type DatedValue = { value: number | null; ymd: string };
 
 /** A series' stats in its own quote currency, before display-unit conversion. */
 type NativeRowStats = {
-  quote_currency: string;
+  /** The series' quote currency; null for an index level (points, `market_symbols` NULL). */
+  quote_currency: string | null;
   value: number;
   as_of_date: string;
   /** Day anchor: the prior value and the calendar day its fx leg is read at. */
@@ -159,13 +160,15 @@ function toDisplayUnit(
   today: string,
   now: Date
 ): WatchlistRowStats {
-  // An index level has no currency: the same points in both units.
-  const valueCurrency = native.quote_currency === "none" ? "none" : unit;
+  // An index level has no currency: the same points in every unit. Stored as a NULL currency, it
+  // reaches the client as `value_currency: "none"`.
+  const quote = native.quote_currency;
+  const valueCurrency = quote == null ? "none" : unit;
   const convert = (dv: DatedValue): number | null => {
     if (dv.value == null || !Number.isFinite(dv.value)) return null;
-    if (native.quote_currency === "none" || unit === native.quote_currency) return dv.value;
+    if (quote == null || unit === quote) return dv.value;
     if (dv.ymd === "") return null;
-    return convertCurrency(dv.value, native.quote_currency, unit, dv.ymd, { side: "mid", now });
+    return convertCurrency(dv.value, quote, unit, dv.ymd, { side: "mid", now });
   };
 
   const value = convert({ value: native.value, ymd: native.as_of_date });

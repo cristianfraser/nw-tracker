@@ -695,3 +695,30 @@ export function runMarketDisplaySeriesFxPair313(dbi: DatabaseType): void {
   if (columns.length === 0) throw new Error(`migration 313: table ${table} does not exist`);
   for (const sql of writeLogTriggerSql(table, columns, null)) dbi.exec(sql);
 }
+
+/**
+ * Migration 315 hook: `market_symbols`, `equity_daily` and `live_market_quotes` were rebuilt so
+ * their currency references `currencies(code)` (NULL for an index level). The dropped tables took
+ * their triggers with them: the mark-input and write-log triggers of `market_symbols` and
+ * `equity_daily` are re-created from the current specs (only these two tables, as in 303, so the
+ * firing order of every other table's triggers is untouched; `live_market_quotes` is not logged).
+ * Foreign keys were off for the rebuild: the new references are checked before commit.
+ */
+export function runMarketTablesAnyCurrency315(dbi: DatabaseType): void {
+  for (const table of ["market_symbols", "equity_daily"] as const) {
+    const spec = CURRENT_MARK_INPUT_SPECS.find((s) => s.table === table);
+    if (!spec) throw new Error(`migration 315: no mark-input spec for ${table}`);
+    for (const suffix of ["ai", "ad", "au"]) {
+      dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_${table}_${suffix}"`);
+      dbi.exec(`DROP TRIGGER IF EXISTS "write_log_${table}_${suffix}"`);
+    }
+    for (const sql of markInputTriggerSql(spec)) dbi.exec(sql);
+    const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
+    if (columns.length === 0) throw new Error(`migration 315: table ${table} does not exist`);
+    for (const sql of writeLogTriggerSql(table, columns, spec.watch)) dbi.exec(sql);
+  }
+  const violations = dbi.pragma("foreign_key_check") as unknown[];
+  if (violations.length > 0) {
+    throw new Error(`migration 315: foreign_key_check found ${violations.length} violation(s): ${JSON.stringify(violations.slice(0, 5))}`);
+  }
+}

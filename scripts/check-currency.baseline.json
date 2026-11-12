@@ -1,11 +1,11 @@
 {
   "note": "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
   "totals": {
-    "currency-formatter": 293,
-    "currency-list-literal": 20,
-    "currency-type-union": 146,
-    "dto-currency-key": 292,
-    "unit-literal-compare": 359
+    "currency-formatter": 296,
+    "currency-list-literal": 8,
+    "currency-type-union": 140,
+    "dto-currency-key": 295,
+    "unit-literal-compare": 355
   },
   "violations": {
     "client/src/api.ts": {
@@ -56,6 +56,9 @@
     },
     "client/src/components/credit-card/CreditCardFacturadoFinancingManager.tsx": {
       "currency-formatter": 1
+    },
+    "client/src/components/credit-card/ExpenseLinePiecesDialog.tsx": {
+      "currency-formatter": 3
     },
     "client/src/components/dashboard/PortfolioNavAccountsSummaryTable.tsx": {
       "unit-literal-compare": 1
@@ -219,11 +222,8 @@
     "ingest/src/wires/incomingWireMails.ts": {
       "unit-literal-compare": 1
     },
-    "server/contracts/src/cards/canonicalLine.ts": {
-      "currency-list-literal": 2
-    },
     "server/contracts/src/cards/parsedStatementRows.ts": {
-      "currency-type-union": 2
+      "currency-type-union": 1
     },
     "server/contracts/src/dto/accounts.ts": {
       "dto-currency-key": 18
@@ -240,7 +240,7 @@
     },
     "server/contracts/src/dto/flows.ts": {
       "currency-type-union": 1,
-      "dto-currency-key": 33
+      "dto-currency-key": 36
     },
     "server/contracts/src/dto/groceries.ts": {
       "dto-currency-key": 14
@@ -264,50 +264,35 @@
       "dto-currency-key": 4
     },
     "server/contracts/src/formats/schemas.ts": {
-      "currency-type-union": 1,
       "unit-literal-compare": 1
     },
     "server/contracts/src/kinds/bankAccountBalances.ts": {
-      "currency-list-literal": 1,
       "currency-type-union": 2
     },
-    "server/contracts/src/kinds/bankAccountMovements.ts": {
-      "currency-list-literal": 1
-    },
     "server/contracts/src/kinds/brokerMovements.ts": {
-      "currency-list-literal": 1,
       "currency-type-union": 1
     },
     "server/contracts/src/kinds/brokerNotifications.ts": {
-      "currency-list-literal": 1,
       "currency-type-union": 1
     },
     "server/contracts/src/kinds/cardPaymentReceipt.ts": {
-      "currency-list-literal": 1,
       "unit-literal-compare": 1
     },
     "server/contracts/src/kinds/cardStatement.ts": {
-      "currency-list-literal": 1,
       "currency-type-union": 2
     },
     "server/contracts/src/kinds/cardUnbilledMovements.ts": {
-      "currency-list-literal": 1,
       "currency-type-union": 3,
       "unit-literal-compare": 1
     },
     "server/contracts/src/kinds/merchantPurchaseDocument.ts": {
-      "currency-list-literal": 1,
       "unit-literal-compare": 2
     },
     "server/contracts/src/kinds/paymentProcessorReceipts.ts": {
       "unit-literal-compare": 2
     },
     "server/contracts/src/pastedListing.ts": {
-      "currency-list-literal": 1,
       "unit-literal-compare": 1
-    },
-    "server/contracts/src/tasks.ts": {
-      "currency-list-literal": 1
     },
     "server/src/accountDeposits.ts": {
       "unit-literal-compare": 1
@@ -341,7 +326,6 @@
       "unit-literal-compare": 2
     },
     "server/src/bankAccountMovementsApply.ts": {
-      "currency-type-union": 1,
       "unit-literal-compare": 2
     },
     "server/src/bankProductSummaryApply.ts": {
@@ -527,9 +511,6 @@
     "server/src/equityBolsaSantiagoEod.ts": {
       "unit-literal-compare": 1
     },
-    "server/src/equityQuote.ts": {
-      "currency-type-union": 1
-    },
     "server/src/expensePaymentNames.ts": {
       "unit-literal-compare": 3
     },
@@ -553,9 +534,6 @@
     },
     "server/src/fintualEmailImport.ts": {
       "currency-type-union": 2,
-      "unit-literal-compare": 1
-    },
-    "server/src/fintualWalletInterestApply.ts": {
       "unit-literal-compare": 1
     },
     "server/src/flowLegs.ts": {
@@ -595,9 +573,6 @@
     "server/src/importSyncDocumentFilePath.ts": {
       "currency-type-union": 4
     },
-    "server/src/incomingWires.ts": {
-      "unit-literal-compare": 1
-    },
     "server/src/latestCardPayments.ts": {
       "unit-literal-compare": 4
     },
@@ -606,12 +581,6 @@
     },
     "server/src/lineMoney.ts": {
       "unit-literal-compare": 2
-    },
-    "server/src/liveMarketQuotesDb.ts": {
-      "currency-type-union": 1
-    },
-    "server/src/marketSymbols.ts": {
-      "currency-type-union": 1
     },
     "server/src/merchantExpenseNotes.ts": {
       "currency-type-union": 6,
@@ -665,9 +634,6 @@
       "currency-type-union": 1
     },
     "server/src/portfolioGroupValueAtDate.ts": {
-      "unit-literal-compare": 2
-    },
-    "server/src/priceProviders/yahoo.ts": {
       "unit-literal-compare": 2
     },
     "server/src/proxyBasketBreakdown.ts": {

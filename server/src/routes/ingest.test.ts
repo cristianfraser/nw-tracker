@@ -5,13 +5,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   IngestRequestError,
+  bankAccountBalancesKind,
   createIngestClient,
   defineIngestKind,
   ingestJsonSchemas,
   type IngestKindDefinition,
 } from "nw-tracker-contracts";
 import { db } from "../db.js";
-import type { IngestApplyContext, IngestHandler } from "../ingestHandlers.js";
+import { INGEST_HANDLERS, type IngestApplyContext, type IngestHandler } from "../ingestHandlers.js";
 import { IngestConflict } from "../ingestReceiver.js";
 import { registerIngestRoutes, type IngestRoutesOptions } from "./ingest.js";
 
@@ -322,5 +323,42 @@ describe("ingestJsonSchemas", () => {
       type: "object",
       required: ["text", "amount"],
     });
+  });
+});
+
+describe("currencies on receipt", () => {
+  const balances = (currency: string) => ({
+    issuer: "santander",
+    observed_at: "2026-11-12T10:00:00-03:00",
+    accounts: [{ number: "900000001", product: "checking" as const, currency, balance: 10.5, label: "Cuenta vitest", status: "VIGENTE" }],
+  });
+
+  async function sendBalances(currency: string): Promise<IngestRequestError> {
+    const base = await startApp({
+      kinds: [bankAccountBalancesKind],
+      handlers: { "bank_account.balances": INGEST_HANDLERS["bank_account.balances"] },
+      auth: LOCAL_AUTH,
+    });
+    const client = createIngestClient({ baseUrl: base, feederId: "vitest", connectionRetryDelaysMs: [] });
+    const err = await client
+      .send(bankAccountBalancesKind, balances(currency), { channel: "file", ref: `vitest-cur-${currency}` })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(IngestRequestError);
+    return err as IngestRequestError;
+  }
+
+  it("refuses a known currency the handler cannot take yet, naming it and the kind", async () => {
+    const err = await sendBalances("eur");
+    expect(err.httpStatus).toBe(422);
+    expect(err.body?.error).toBe("unsupported_currency");
+    expect(err.body?.message).toMatch(/bank_account\.balances.*EUR/);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM bank_account_balance_snapshots WHERE source_ref = 'vitest-cur-eur'`).get()).toEqual({ n: 0 });
+  });
+
+  it("refuses a code the currencies table does not know", async () => {
+    const err = await sendBalances("xyz");
+    expect(err.httpStatus).toBe(422);
+    expect(err.body?.error).toBe("unknown_currency");
+    expect(err.body?.message).toMatch(/"xyz"/);
   });
 });

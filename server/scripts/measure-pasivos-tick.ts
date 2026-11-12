@@ -74,7 +74,7 @@ function writeQuotes(factor: (t: string) => number, fxFactor: number): Set<strin
   step += 1;
   const at = new Date();
   const moved = new Set<string>();
-  const tickers = (db.prepare(`SELECT DISTINCT ticker FROM equity_daily WHERE currency != 'none'`).all() as {
+  const tickers = (db.prepare(`SELECT DISTINCT ticker FROM equity_daily WHERE currency IS NOT NULL`).all() as {
     ticker: string;
   }[]).map((r) => r.ticker);
   for (const ticker of tickers) {

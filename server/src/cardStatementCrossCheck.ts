@@ -2,6 +2,7 @@ import { normalizeMerchantText } from "nw-tracker-contracts";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { padCcStatementDate } from "./ccStatementJsonSource.js";
 import { db } from "./db.js";
+import { pesosOrDollars } from "./ingestCurrencies.js";
 
 /**
  * The cross-check of a `card.statement` against the statement already in the ledger: which lines
@@ -167,7 +168,8 @@ export function diffStatementAgainstLedger(
   statementDate: string,
   statement: Pick<CardStatementCurrency, "currency" | "document" | "lines">
 ): StatementDiff {
-  const imported = loadImportedLines(accountId, statementDate, statement.currency);
+  const currency = pesosOrDollars(statement.currency, "card statement cross-check");
+  const imported = loadImportedLines(accountId, statementDate, currency);
   const jsonLines: StatementJsonLine[] = statement.lines.map((line) => ({
     merchant: line.merchant,
     amount: line.installment ? line.installment.total_amount : line.amount,
@@ -176,7 +178,7 @@ export function diffStatementAgainstLedger(
   const pairing = pairStatementLines(jsonLines, imported ?? []);
   return {
     file: statement.document,
-    currency: statement.currency,
+    currency,
     statement_date: statementDate,
     account_id: accountId,
     json_lines: statement.lines.length,
