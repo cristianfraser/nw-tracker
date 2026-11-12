@@ -13,10 +13,9 @@
  * - a `purchase` (a transfer in with a CLP leg and a counter leg in the account's currency) is
  *   priced at its pesos; a `conversion` from another foreign currency at the pesos the slices it
  *   consumed carried (the cost passes through the conversion); a `market` inflow (dividends,
- *   sales, interest, plain deposits) at the stored rate on or before its date — for the dollar
- *   the USD/CLP close (`fxRowOnOrBefore`, the reference rate the dollar cash capital flows use for
- *   dollars with no pesos of their own), for another currency its mid through `rates.ts`; a
- *   missing rate throws.
+ *   sales, interest, plain deposits) at the stored mid of its currency on or before its date
+ *   (`rates.ts`: the dollar's is the `fx_daily` close, the reference rate the dollar cash capital
+ *   flows use for dollars with no pesos of their own); a missing rate throws.
  *
  * Each outflow lists the slices it consumed as lots: a slice still on the account that acquired
  * it is a `purchase` / `conversion` / `market` lot naming the acquisition; a slice that came
@@ -25,7 +24,6 @@
  */
 import { foreignCashCurrencyOf } from "./cashCurrency.js";
 import { db } from "./db.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
 import { movementLeg } from "./movementAmounts.js";
 import { convertCurrency } from "./rates.js";
 
@@ -78,15 +76,8 @@ function scopeAccounts(sources: readonly number[]): Map<number, string> {
   return scope;
 }
 
-/** A market inflow's pesos: the dollar at its stored USD/CLP close, any other currency at its mid. */
+/** A market inflow's pesos: the stored mid of its currency on or before its day (the dollar's is the `fx_daily` close). */
 function marketPesos(amount: number, currency: string, ymd: string, movementId: number): number {
-  if (currency === "usd") {
-    const fx = fxRowOnOrBefore(ymd);
-    if (!fx || !(fx.clp_per_usd > 0)) {
-      throw new Error(`movement ${movementId}: no USD/CLP rate on or before ${ymd} to value its dollars`);
-    }
-    return amount * fx.clp_per_usd;
-  }
   const clp = convertCurrency(amount, currency, "clp", ymd, { side: "mid", storedOnly: true });
   if (clp == null || !(clp >= 0)) {
     throw new Error(`movement ${movementId}: no ${currency.toUpperCase()}/CLP rate on or before ${ymd} to value it`);

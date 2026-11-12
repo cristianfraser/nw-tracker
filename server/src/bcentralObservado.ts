@@ -11,17 +11,12 @@ import { db } from "./db.js";
 /** Days the observado may lag a date (weekends and holidays carry the last published value). */
 export const OBSERVADO_MAX_CARRY_DAYS = 7;
 
-const OBSERVADO_SERIES: Readonly<Record<string, { table: string; column: string; sync: string }>> = {
-  usd: { table: "fx_daily_bcentral", column: "clp_per_usd", sync: "sbif_usd" },
-  eur: { table: "eur_daily", column: "clp_per_eur", sync: "sbif_eur" },
+const OBSERVADO_SERIES: Readonly<Record<string, { table: string; column: string; sync: string; name: string }>> = {
+  usd: { table: "fx_daily_bcentral", column: "clp_per_usd", sync: "sbif_usd", name: "dólar observado" },
+  eur: { table: "eur_daily", column: "clp_per_eur", sync: "sbif_eur", name: "euro observado" },
 };
 
 const statements = new Map<string, ReturnType<typeof db.prepare>>();
-
-/** Whether the Banco Central publishes an observado for `currency` the app stores. */
-export function hasBcentralObservado(currency: string): boolean {
-  return Object.hasOwn(OBSERVADO_SERIES, currency);
-}
 
 /** The observado of `currency` in force on `ymd` (the last one published on or before it); throws past the carry limit. */
 export function observadoClpOnOrBefore(currency: string, ymd: string): number {
@@ -35,7 +30,7 @@ export function observadoClpOnOrBefore(currency: string, ymd: string): number {
     statements.set(currency, stmt);
   }
   const r = stmt.get(ymd) as { date: string; clp: number } | undefined;
-  const name = currency === "usd" ? "dólar observado" : `${currency.toUpperCase()} observado`;
+  const name = series.name;
   if (!r) throw new Error(`No ${name} on or before ${ymd}`);
   const gapDays = (Date.parse(`${ymd}T00:00:00Z`) - Date.parse(`${r.date}T00:00:00Z`)) / 86_400_000;
   if (gapDays > OBSERVADO_MAX_CARRY_DAYS) {

@@ -214,10 +214,10 @@ describe("foreignCashTaxDisposalsFromRows with euros", () => {
   });
 
   it("throws for a currency the Banco Central does not publish", () => {
-    const gbp = new Map<number, string>([[EUR, "gbp"]]);
-    const gbpRows = [row({ id: 40, occurred_on: "2026-04-01", from_account_id: CLP, to_account_id: EUR, flow_kind: "fx_exchange", amount: 10_000, currency: "clp", counter_amount: 10, counter_currency: "gbp" })];
+    const uf = new Map<number, string>([[EUR, "uf"]]);
+    const ufRows = [row({ id: 40, occurred_on: "2026-04-01", from_account_id: CLP, to_account_id: EUR, flow_kind: "fx_exchange", amount: 10_000, currency: "clp", counter_amount: 10, counter_currency: "uf" })];
     expect(() =>
-      foreignCashTaxDisposalsFromRows({ scope: gbp, rows: gbpRows, requests: [], eventTimes: new Map(), posture: "oficio_2573", purchaseCost: "observado", observadoOn: observado })
-    ).toThrow(/no gbp observado/);
+      foreignCashTaxDisposalsFromRows({ scope: uf, rows: ufRows, requests: [], eventTimes: new Map(), posture: "oficio_2573", purchaseCost: "observado", observadoOn: observado })
+    ).toThrow(/no uf observado/);
   });
 });

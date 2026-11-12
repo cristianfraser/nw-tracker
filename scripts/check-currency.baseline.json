@@ -5,7 +5,7 @@
     "currency-list-literal": 7,
     "currency-type-union": 131,
     "dto-currency-key": 292,
-    "unit-literal-compare": 339
+    "unit-literal-compare": 335
   },
   "violations": {
     "client/src/api.ts": {
@@ -656,12 +656,6 @@
     },
     "server/src/usdAccountMovementsConfirm.ts": {
       "unit-literal-compare": 1
-    },
-    "server/src/usdCashLotWalk.ts": {
-      "unit-literal-compare": 2
-    },
-    "server/src/usdCashTaxLotEvents.ts": {
-      "unit-literal-compare": 2
     },
     "server/src/utilityBillsApply.ts": {
       "unit-literal-compare": 1

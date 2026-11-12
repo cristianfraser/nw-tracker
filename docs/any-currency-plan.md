@@ -226,7 +226,7 @@ model by one keyed by currency; parity for CLP / USD as above, and a synthetic E
    files) become currency-neutral kinds whose legs carry their currencies; a migration renames
    stored rows. The capital-flow rules (`equityBrokerageCapitalFlows.ts`), the cash ledger walks,
    the deposits and the cash fx leg of the flows overview read the account's currency.
-2. **Foreign-currency lots.** `usdCashLotWalk.ts` / `usdCashCostLots.ts` walk lots of any foreign
+2. **Done 2026-11-12** (`foreignCashLotWalk.ts`, `foreignCashCostLots.ts`, `foreignCashTaxLotEvents.ts`, `f22/foreignFx.ts`, `bcentralObservado.ts`; AGENTS.md «Foreign currency is tax lots»; CLP / USD tax and card payloads byte-identical on a copy of the 2026-11-12 database). A conversion between two foreign currencies is a disposal of one and a purchase of the other. Leftovers: `usdDebtPaymentsForAccount` and the facturación rate resolvers still read only dollar payments (C3); the broker withdrawal requests are Fintual's dollar account only. **Foreign-currency lots.** `usdCashLotWalk.ts` / `usdCashCostLots.ts` walk lots of any foreign
    currency; the card payment cost tracer prices a payment in its currency. The F22's dollar-lot
    module (`f22/usdFx.ts`) applies the same oficios to any foreign currency (they speak of
    «moneda extranjera»), at that currency's official rate. Checked 2026-11-12 against the text of

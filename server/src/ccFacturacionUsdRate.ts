@@ -153,7 +153,7 @@ export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
       }
       const cost = costs.get(r.id);
       if (!cost) throw new Error(`pago_tarjeta movement ${r.id}: the dollar cost tracer did not price it`);
-      if (cost.currency !== "usd" || Math.round(cost.amount * 100) !== Math.round(r.usd * 100) || !(r.usd > 0)) {
+      if (Math.round(cost.amount * 100) !== Math.round(r.usd * 100) || !(r.usd > 0)) {
         throw new Error(`pago_tarjeta movement ${r.id}: priced ${cost.amount} ${cost.currency.toUpperCase()} for a US\$${r.usd} payment`);
       }
       out.push({ date_iso: r.date_iso, clp: cost.clp, usd: r.usd });

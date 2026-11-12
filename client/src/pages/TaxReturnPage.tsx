@@ -615,8 +615,8 @@ function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
                   <p key={c.currency} className="muted">
                     {t("taxReturn.foreignFx.byCurrency", {
                       currency: c.currency.toUpperCase(),
-                      result: formatClp(c.result_clp),
-                      resultDecember: formatClp(c.result_december_clp),
+                      result: formatClp(c.result),
+                      resultDecember: formatClp(c.result_december),
                       count: c.disposals,
                     })}
                   </p>

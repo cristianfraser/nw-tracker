@@ -455,7 +455,7 @@ export function walkForeignCashLots(input: ForeignWalkInput): ForeignWalkResult 
 
 // ---- DB loaders (thin; the walk itself is pure) ----
 
-/** Every foreign cash account (held in `currency` when given), each with its currency: a walk's scope. */
+/** The given foreign cash accounts, each with the currency it holds: a walk's scope (throws on any other account). */
 export function foreignCashScope(accountIds: Iterable<number>): Map<number, string> {
   const scope = new Map<number, string>();
   for (const id of accountIds) {

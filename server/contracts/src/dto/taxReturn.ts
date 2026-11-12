@@ -141,14 +141,14 @@ export type TaxReturnForeignFx = {
   /** What the other posture would have realized (information only). */
   deferred: { date: string; account_name: string; currency: string; amount: number; gain_clp: number }[];
   deferred_clp: number;
-  /** Each currency's share of the year (the codes take their sum). */
+  /** Each currency's share of the year, in pesos (the codes take their sum). */
   by_currency: {
     currency: string;
     disposals: number;
-    result_clp: number;
-    result_december_clp: number;
-    fees_lost_clp: number;
-    deferred_clp: number;
+    result: number;
+    result_december: number;
+    fees_lost: number;
+    deferred: number;
   }[];
   result_clp: number;
   result_december_clp: number;
