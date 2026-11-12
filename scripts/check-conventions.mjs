@@ -29,8 +29,7 @@
  *    `.endsWith(".XX")` / `.endsWith("-USD")`, `lastIndexOf(".")` on a ticker or symbol, a
  *    `\.SN$`-style regex, and `LIKE '%.SN'` / `'%.L'` / `'%-USD'` in SQL strings.
  *
- * 8–13. Currency hardcoding — see the block above the currency rules below; 8–12 ratchet against
- *    scripts/check-currency.baseline.json (`--write-baseline [--force]` rewrites it).
+ * 8–13. Currency hardcoding — see the block above the currency rules below (hard fails).
  *
  * Escape hatch: append `// convention-ok: <reason>` to a line to exempt it.
  * Run: `npm run check:conventions` (root) — part of `npm run typecheck`.
@@ -191,14 +190,15 @@ if (fs.existsSync(MIGRATIONS_DIR)) {
 /**
  * Currency hardcoding (rules 8–13, docs/any-currency-plan.md «Guard, landing with A1»). A display
  * unit is any currency of `currencies`; code must not name a fixed set of them. Scans server/src,
- * client/src, server/contracts/src and ingest/src (tests and server/src/test excluded). Rules 8–12
- * are a ratchet like check-deps: `scripts/check-currency.baseline.json` lists the counts per file
- * and rule that exist today, and the check fails only when a file has more than its baseline
- * allows. `--write-baseline` rewrites it — refused when any count grew, unless `--force`.
+ * client/src, server/contracts/src and ingest/src (tests and server/src/test excluded). Every hit
+ * fails, unless its line says why the currency is native to its source (`// convention-ok: …`:
+ * the F22 states pesos, a Santander feed has a peso and a dollar side). The ratchet baseline these
+ * rules started with emptied on 2026-11-12 (docs/any-currency-plan.md C7) and was removed.
  *
  *  8. currency-formatter: formatClp / formatClpUfDay / formatUsd / formatUsdFine in
  *     client/src/components or client/src/pages — format through the unit (formatCurrency,
- *     formatMoney), never a formatter named after one currency.
+ *     formatMoney), never a formatter named after one currency; a figure one currency by its nature
+ *     (an F22 code, a card's billing pesos, a receipt) uses its named wrapper in client/src/formatNative.ts.
  *  9. unit-literal-compare: `unit === "clp"`, `currency !== "usd"` (an identifier containing
  *     unit/currency against a currency literal), outside rates.ts / valueConvert.ts / displayUnits.ts.
  * 10. currency-list-literal: an array literal of two or more currency codes (`["clp", "usd"]`),
@@ -208,7 +208,6 @@ if (fs.existsSync(MIGRATIONS_DIR)) {
  * 13. migration-currency-check (hard fail, no baseline): a migration numbered above
  *     CURRENCY_CHECK_FROM_MIGRATION with `CHECK (… IN ('clp' …))` — reference currencies(code).
  */
-const CURRENCY_BASELINE = path.join(process.cwd(), "scripts", "check-currency.baseline.json");
 const CURRENCY_ROOTS = ["server/src", "client/src", "server/contracts/src", "ingest/src"].map((d) =>
   path.join(process.cwd(), d)
 );
@@ -226,7 +225,7 @@ const CURRENCY_RULES = [
     id: "currency-formatter",
     applies: (file) => VIEW_DIRS.some((d) => file.startsWith(d + path.sep)),
     re: /\b(formatClp|formatClpUfDay|formatUsd|formatUsdFine)\s*\(/g,
-    why: "a formatter named after one currency in a view — format through the unit (formatCurrency / formatMoney)",
+    why: "a formatter named after one currency in a view — format through the unit (formatCurrency / formatMoney), or a native figure through its formatNative.ts wrapper",
   },
   {
     id: "unit-literal-compare",
@@ -257,9 +256,6 @@ const CURRENCY_RULES = [
   },
 ];
 
-/** counts[rel][rule] and the matching lines, for the ratchet. */
-const currencyCounts = {};
-const currencyHits = [];
 for (const root of CURRENCY_ROOTS) {
   if (!fs.existsSync(root)) continue;
   for (const file of walk(root)) {
@@ -272,73 +268,10 @@ for (const root of CURRENCY_ROOTS) {
     stripComments(raw).split("\n").forEach((line, i) => {
       if (/\/\/ convention-ok/.test(rawLines[i] ?? "")) return;
       for (const rule of rules) {
-        const n = [...line.matchAll(rule.re)].length;
-        if (n === 0) continue;
-        currencyCounts[rel] ??= {};
-        currencyCounts[rel][rule.id] = (currencyCounts[rel][rule.id] ?? 0) + n;
-        currencyHits.push({ rel, line: i + 1, rule, text: line.trim().slice(0, 100) });
+        if ([...line.matchAll(rule.re)].length === 0) continue;
+        problems.push(`${rel}:${i + 1}: ${rule.id} — ${rule.why}\n    ${line.trim().slice(0, 100)}`);
       }
     });
-  }
-}
-
-const currencyBaseline = fs.existsSync(CURRENCY_BASELINE)
-  ? JSON.parse(fs.readFileSync(CURRENCY_BASELINE, "utf8")).violations
-  : null;
-const grown = [];
-let currencyShrunk = false;
-for (const [f, byRule] of Object.entries(currencyCounts)) {
-  for (const [r, n] of Object.entries(byRule)) {
-    const allowed = currencyBaseline?.[f]?.[r] ?? 0;
-    if (n > allowed) grown.push({ f, r, n, allowed });
-  }
-}
-if (currencyBaseline) {
-  for (const [f, byRule] of Object.entries(currencyBaseline)) {
-    for (const [r, n] of Object.entries(byRule)) if ((currencyCounts[f]?.[r] ?? 0) < n) currencyShrunk = true;
-  }
-}
-
-if (process.argv.includes("--write-baseline")) {
-  if (currencyBaseline && grown.length > 0 && !process.argv.includes("--force")) {
-    console.error("check-conventions: currency counts grew; refusing to write the baseline (pass --force to accept them)");
-    for (const g of grown) console.error(`  ${g.f}: ${g.r} ${g.n} (baseline ${g.allowed})`);
-    process.exit(1);
-  }
-  const totals = {};
-  const violations = {};
-  for (const f of Object.keys(currencyCounts).sort()) {
-    violations[f] = {};
-    for (const r of Object.keys(currencyCounts[f]).sort()) {
-      violations[f][r] = currencyCounts[f][r];
-      totals[r] = (totals[r] ?? 0) + currencyCounts[f][r];
-    }
-  }
-  fs.writeFileSync(
-    CURRENCY_BASELINE,
-    JSON.stringify(
-      {
-        note: "Written by `node scripts/check-conventions.mjs --write-baseline`. Counts per file and rule may only shrink.",
-        totals: Object.fromEntries(Object.keys(totals).sort().map((r) => [r, totals[r]])),
-        violations,
-      },
-      null,
-      2
-    ) + "\n"
-  );
-  console.log(`check-conventions: currency baseline written ${JSON.stringify(totals)}`);
-} else if (!currencyBaseline) {
-  problems.push("scripts/check-currency.baseline.json missing — run `node scripts/check-conventions.mjs --write-baseline`");
-} else {
-  const grownKeys = new Set(grown.map((g) => `${g.f}|${g.r}`));
-  for (const g of grown) {
-    problems.push(`${g.f}: ${g.r} ${g.n} > baseline ${g.allowed} — ${CURRENCY_RULES.find((r) => r.id === g.r).why}`);
-  }
-  for (const h of currencyHits) {
-    if (grownKeys.has(`${h.rel}|${h.rule.id}`)) problems.push(`  ${h.rel}:${h.line}: ${h.rule.id}\n      ${h.text}`);
-  }
-  if (currencyShrunk && grown.length === 0) {
-    console.log("check-conventions: currency violations shrank below the baseline: run with --write-baseline to lock it in");
   }
 }
 
