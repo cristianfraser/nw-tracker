@@ -1,0 +1,7 @@
+-- Re-creates the movements flow-insert trigger from the current specs where a database still has the
+-- version migration 290 installed before the options work (migration 304): that version has no
+-- `option_*` flow kinds, so an option movement got the generic kind instead. The work is in the paired
+-- POST_MIGRATION_HOOKS entry (server/src/flows/movementFlowTrigger317.ts), which keeps every
+-- movements trigger in its creation order. A fresh database already has the current trigger and is
+-- left as it is. No option movement exists on a database old enough to have the stale trigger, so no
+-- flow needs a new kind.

@@ -242,6 +242,13 @@ function flowDeleteTriggerSql(spec: SourceSpec, keepIfIn: readonly string[]): st
 END`;
 }
 
+/** The insert trigger `table` would get from the current specs (migration 317 compares it with the installed one). */
+export function currentFlowInsertTriggerSql(table: SourceSpec["table"]): string {
+  const spec = FLOW_SOURCES.find((s) => s.table === table);
+  if (!spec) throw new Error(`no flow source ${table}`);
+  return flowInsertTriggerSql(spec);
+}
+
 /** Re-creates one table's insert trigger (its flow values changed: migration 288). */
 export function reinstallFlowInsertTrigger(dbi: DatabaseType, table: SourceSpec["table"]): void {
   const spec = FLOW_SOURCES.find((s) => s.table === table);

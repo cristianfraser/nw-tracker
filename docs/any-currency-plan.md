@@ -180,9 +180,10 @@ unions outside the allowlist.
 income amount + currency; ingest contracts take any ISO code and the server checks it on receipt).
 Rehearsed together on a copy of the 2026-11-11 database: row counts, the 464 triggers and their
 order, foreign keys and integrity unchanged; expense, flows and market payloads byte-identical.
-Found on the way, not fixed: real databases carry an older flow-identity trigger on `movements`
-than a fresh one (no `option_*` arms), so option movements on the real database get no flow kind
-from it; a small migration should regenerate that trigger from the current spec.
+Found on the way: real databases carried an older flow-identity trigger on `movements` than a fresh
+one (no `option_*` arms: migration 290 installed it before the options work). Migration 317
+re-creates it from the current spec where it differs, keeping the table's trigger order; no option
+movement existed on such a database, so no flow needed a new kind.
 
 **Every currency column references `currencies(code)`.** One migration rebuilds the 24 tables
 whose CHECK lists codes (`cc_statements`, `cc_bank_cupo_snapshots`, `cc_header_payment_legs`,
