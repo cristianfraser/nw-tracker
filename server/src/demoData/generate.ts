@@ -569,7 +569,7 @@ function writePlaceBills(ledger: Ledger): void {
   for (const l of lines) {
     // The places' bills are stated in pesos and paid from the peso checking account.
     const amount = lineAmount(l);
-    if (amount.currency !== "clp") continue;
+    if (amount.currency !== "clp") continue; // convention-ok: the demo story's documents are in pesos and dollars
     const k = `${l.purchase_on}|${Math.round(amount.value)}|${l.merchant}`;
     byKey.set(k, [...(byKey.get(k) ?? []), l.purchase_key]);
   }

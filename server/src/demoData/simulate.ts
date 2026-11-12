@@ -120,7 +120,7 @@ export type DirectMovement =
       account: Acct;
       date: Ymd;
       amount: number;
-      currency: "clp" | "usd";
+      currency: "clp" | "usd"; // convention-ok: the demo story's money is in pesos and dollars
       note: string;
       units?: number;
       flowKind?: string;
@@ -136,7 +136,7 @@ export type DirectMovement =
       date: Ymd;
       /** The from-leg: CLP when the transfer has one (a dollar sale names its dollars first). */
       amount: number;
-      currency: "clp" | "usd";
+      currency: "clp" | "usd"; // convention-ok: the demo story's money is in pesos and dollars
       counterUsd?: number;
       /** A dollar sale (USD from-leg): the pesos the to-leg received. */
       counterClp?: number;
@@ -171,7 +171,7 @@ export type CardLine = {
   date: Ymd;
   merchant: string;
   category: string;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the demo story's money is in pesos and dollars
   amount: number;
   cuotas?: number;
   /** The issuer's own charge (a yearly fee): the statement bills it apart from the purchases. */
@@ -193,7 +193,7 @@ export type InstallmentPlan = {
 
 export type CardStatement = {
   card: CardDef["key"];
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the demo story's money is in pesos and dollars
   close: Ymd;
   periodFrom: Ymd;
   payBy: Ymd;
@@ -917,10 +917,10 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     st.pendingByClose.set(close, list);
     // The US card's spending is the US chapter's (its band, its wire), never the Chilean months'.
     if (card.issuer === "lonestar") {
-      if (line.currency !== "usd") throw new Error(`demo: ${line.merchant} in pesos on the US card`);
+      if (line.currency !== "usd") throw new Error(`demo: ${line.merchant} in pesos on the US card`); // convention-ok: the demo story's money is in pesos and dollars
       const m = monthOf(line.date);
       usExpenseByMonth.set(m, cents((usExpenseByMonth.get(m) ?? 0) + line.amount));
-    } else addExpense(line.date, line.currency === "usd" ? line.amount * market.fx(line.date) : line.amount);
+    } else addExpense(line.date, line.currency === "usd" ? line.amount * market.fx(line.date) : line.amount); // convention-ok: the demo story's money is in pesos and dollars
   };
   const cardPlan = (card: CardDef["key"], day: Ymd, merchant: string, category: string, totalClp: number, cuotas: number) => {
     if (day > today) return;
@@ -2152,7 +2152,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       }
       const payDay = businessDayOnOrBefore(addDays(s.payBy, -2));
       if (payDay > today) continue;
-      if (s.currency === "clp") {
+      if (s.currency === "clp") { // convention-ok: the demo story's money is in pesos and dollars
         ensureClp(payDay, s.facturado);
         book.bankRow("checking", payDay, `PAGO TARJETA CREDITO ${card.last4}`, -s.facturado);
         st.paid.clp = { amount: s.facturado, date: payDay };
@@ -2190,15 +2190,15 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
       .filter((p) => p.card === card.key && p.firstClose <= close)
       .map((p) => ({ plan: p, n: monthsBetween(monthOf(p.firstClose), month) + 1 }))
       .filter((x) => x.n >= 1 && x.n <= x.plan.cuotas);
-    for (const currency of ["clp", "usd"] as const) {
+    for (const currency of ["clp", "usd"] as const) { // convention-ok: the demo story's money is in pesos and dollars
       const ls = lines.filter((l) => l.currency === currency);
-      const cs = currency === "clp" ? cuotas : [];
-      if (card.issuer === "lonestar" && currency === "clp") {
+      const cs = currency === "clp" ? cuotas : []; // convention-ok: the demo story's money is in pesos and dollars
+      if (card.issuer === "lonestar" && currency === "clp") { // convention-ok: the demo story's money is in pesos and dollars
         if (ls.length + cs.length > 0) throw new Error(`demo: peso lines on the US card ${card.last4}`);
         continue;
       }
       const facturado =
-        currency === "clp"
+        currency === "clp" // convention-ok: the demo story's money is in pesos and dollars
           ? ls.reduce((a, l) => a + l.amount, 0) + cs.reduce((a, c) => a + c.plan.cuotaClp, 0)
           : cents(ls.reduce((a, l) => a + l.amount, 0));
       if (ls.length === 0 && cs.length === 0 && st.prevFacturado[currency] === 0) continue;

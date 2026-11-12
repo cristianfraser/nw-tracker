@@ -118,7 +118,7 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
     const cupos = loadCreditCardCupos(cardId);
     const owed = ccOwedByCurrency(cardId, ymd);
     const bankAccount = `8000${card.last4}`;
-    const row = (currency: "clp" | "usd", used: number, limit: number) => ({
+    const row = (currency: "clp" | "usd", used: number, limit: number) => ({ // convention-ok: the demo replays Santander's peso and dollar products
       account_id: cardId,
       currency,
       bank_account: bankAccount,
@@ -142,7 +142,7 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
   }
   const declared = db
     .prepare(`SELECT account_id, number, currency FROM bank_account_numbers WHERE issuer = 'santander' ORDER BY account_id`)
-    .all() as { account_id: number; number: string; currency: "clp" | "usd" }[];
+    .all() as { account_id: number; number: string; currency: "clp" | "usd" }[]; // convention-ok: the demo replays Santander's peso and dollar products
   if (declared.length > 0) {
     applyBankAccountBalances(
       {
@@ -154,7 +154,7 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
           currency: d.currency,
           // The reader the check uses, so the stated balance is the ledger's to the cent.
           balance: ledgerBalanceInOwnCurrency(d.account_id, d.currency, ymd),
-          label: d.currency === "usd" ? "Cuenta Corriente USD" : "Cuenta Corriente",
+          label: d.currency === "usd" ? "Cuenta Corriente USD" : "Cuenta Corriente", // convention-ok: the demo replays Santander's peso and dollar products
           status: "active",
         })),
       },

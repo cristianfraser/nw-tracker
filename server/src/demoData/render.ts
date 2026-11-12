@@ -160,7 +160,7 @@ export function renderCardStatements(ledger: Ledger): CardCanonicalStatement[] {
 
 function statementRecords(s: CardStatement, cards: readonly CardDef[]): ParsedRecord[] {
   const card = cards.find((c) => c.key === s.card)!;
-  const clp = s.currency === "clp";
+  const clp = s.currency === "clp"; // convention-ok: the demo story's documents are in pesos and dollars
   const source = `import:demo-statement|${card.last4}|${s.currency}|${s.close}`;
   const fees = s.lines.filter((l) => l.fee).reduce((a, l) => a + l.amount, 0);
   if (fees > 0 && clp) throw new Error(`demo: a fee on the peso statement ${source}`);

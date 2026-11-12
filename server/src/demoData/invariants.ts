@@ -622,8 +622,8 @@ function checkCashExplained(problems: string[]): number {
     return r.clp_per_usd;
   };
   const inClp = (amount: number, currency: string, day: string) => {
-    if (currency === "clp") return amount;
-    if (currency === "usd") return amount * sell(day);
+    if (currency === "clp") return amount; // convention-ok: the demo story's money is in pesos and dollars
+    if (currency === "usd") return amount * sell(day); // convention-ok: the demo story's money is in pesos and dollars
     throw new Error(`demo invariants: unexpected currency ${currency} on ${day}`);
   };
   const knownByMonth = new Map<string, number>();

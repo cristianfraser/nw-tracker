@@ -58,7 +58,7 @@ export type CostRow = {
 
 export type CityCostOfLiving = {
   city: CityKey;
-  currency: "clp" | "usd";
+  currency: "clp" | "usd"; // convention-ok: the demo's cities are Santiago (pesos) and Austin (dollars)
   /** The month the baselines are priced at; null = the person's `realBaseMonth` (Santiago's real pesos). */
   referenceMonth: string | null;
   /** The yearly price rise (Austin); null where the IPC is read (Santiago). */
