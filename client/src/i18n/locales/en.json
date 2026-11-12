@@ -2409,7 +2409,7 @@
         "foreign_dividends": "Foreign dividends (net)",
         "foreign_interest": "Foreign interest",
         "foreign_shares": "Foreign share gains",
-        "usd_fx": "Exchange result on dollars",
+        "foreign_fx": "Exchange result on foreign currency",
         "crypto": "Crypto gain",
         "fund_redemptions": "Chilean fund redemptions",
         "fund_distributions": "Chilean fund distributions",
@@ -2579,7 +2579,7 @@
         "foreign_shares": "foreign shares",
         "foreign_dividends": "foreign dividends",
         "funds_interest": "funds and interest",
-        "usd_fx": "exchange differences"
+        "foreign_fx": "exchange differences"
       },
       "taxedOpenNoTax": "With the income recorded so far it pays no IGC.",
       "foreignUnusedOpen": "Foreign share loss in {{year}}: {{amount}}. It offsets only foreign share gains of the same year, not salary, funds or crypto: selling foreign shares at a gain of up to {{amount}} by {{year}}-12-31 would pay no tax.",
@@ -2624,18 +2624,18 @@
         "offset_paid": "Paid with the AT{{year}} refund (Tesorería offset)"
       }
     },
-    "usdFx": {
-      "title": "Exchange differences (dollars bought with pesos)",
-      "explain": "The dollars held in cash are tax lots (FIFO per account): each outflow realizes the difference between the dólar observado of the day it left and of the day it was bought, cost without reajuste (Oficio 2390/2021); the result is reajustado to December. Posture: {{posture}}. Cost: {{cost}}. Route: {{route}}.",
+    "foreignFx": {
+      "title": "Exchange differences (foreign currency bought with pesos)",
+      "explain": "Foreign currency held in cash is tax lots (FIFO per account): each outflow realizes the difference between the Banco Central observado of its currency on the day it left and on the day it was bought, cost without reajuste (Oficio 2390/2021); the result is reajustado to December. Posture: {{posture}}. Cost: {{cost}}. Route: {{route}}.",
       "estimateNote": "Report only: the app's own reading of the lots, not filed anywhere yet.",
       "provisional": "The reajuste to December runs to {{month}}, the latest IPC published.",
       "posture": {
-        "oficio_2573": "Oficio 2573/2022 — spending dollars on an instrument sells them",
-        "oficio_2390": "Oficio 2390/2021 — only dollars paid to a third party or converted back to pesos",
+        "oficio_2573": "Oficio 2573/2022 — spending foreign currency on an instrument sells it",
+        "oficio_2390": "Oficio 2390/2021 — only currency paid to a third party or converted back to pesos",
         "none": "none — only a reconversion to pesos"
       },
       "costOption": {
-        "observado": "dólar observado of the purchase day",
+        "observado": "the observado of the purchase day",
         "pesos_paid": "the pesos actually paid"
       },
       "route": {
@@ -2644,7 +2644,7 @@
       },
       "date": "Date",
       "account": "Account",
-      "usd": "US$",
+      "amount": "Amount",
       "purchaseDates": "Bought on",
       "proceeds": "Proceeds",
       "cost": "Cost",
@@ -2652,11 +2652,12 @@
       "decemberPct": "IPC to December",
       "resultDecember": "Result at December",
       "totals": "Result of the year: {{result}} nominal, {{resultDecember}} reajustado to December.",
-      "feesTitle": "Fees charged in dollars",
+      "feesTitle": "Fees charged in foreign currency",
       "feesExplain": "Their cost is lost: not a deductible loss for a persona natural (SII FAQ citing Oficio 1474/2020; Oficio 2208/2022).",
       "costLost": "Cost lost",
       "feesTotal": "Fees: {{amount}} of cost lost.",
       "deferredTotal": "Deferred under this posture ({{count}} outflows): {{amount}} that the other posture would realize.",
+      "byCurrency": "{{currency}}: {{result}} nominal, {{resultDecember}} reajustado to December ({{count}} outflows).",
       "codes1901": "Code 1901: {{amount}} · IDPC (line 58 d) {{idpc}}, credited back in line 5 — net zero on the result.",
       "lossLost1901": "A loss on this route offsets only other art. 20 N°5 income and is otherwise lost: no code.",
       "codes1032": "Code 1032: {{amount}}, added to the crypto gain.",

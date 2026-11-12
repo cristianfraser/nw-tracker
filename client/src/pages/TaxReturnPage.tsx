@@ -6,7 +6,7 @@ import { PageGridTile } from "../components/layout/PageGridTile";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Pill } from "../components/ui/Pill";
 import { ColumnTable } from "../components/ui/ColumnTable";
-import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
+import { formatClp, formatCurrencyFine, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
 import { useTaxReturn, useUsTaxReturn } from "../queries/hooks";
 import { UsTaxReturnSections } from "../components/tax/UsTaxReturnSections";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
@@ -538,41 +538,41 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
 }
 
 /**
- * The exchange result on the dollars bought with pesos: each realized outflow (date, dollars, the
- * lots' purchase dates, proceeds and cost at the dólar observado, result and its December
+ * The exchange result on the foreign currency bought with pesos: each realized outflow (date, amount, the
+ * lots' purchase dates, proceeds and cost at its currency's observado, result and its December
  * reajuste), the fees whose cost is lost, the deferred total, the posture and the route, and the
  * codes the route gives (1901 + IDPC credited back, or 1032 / 169). Report-only. Server:
- * f22/usdFx.ts, f22/draft.ts.
+ * f22/foreignFx.ts, f22/draft.ts.
  */
-function UsdFxSection({ data }: { data: TaxReturnResponse }) {
+function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
-  const f = data.usd_fx;
+  const f = data.foreign_fx;
   if (!f) return null;
   if (f.disposals.length === 0 && f.fees.length === 0 && f.deferred.length === 0) return null;
   const codes =
     f.route === "idpc_1901" ? (
       f.codes[1901] != null && f.codes.idpc_clp != null ? (
-        <p>{t("taxReturn.usdFx.codes1901", { amount: formatClp(f.codes[1901]), idpc: formatClp(f.codes.idpc_clp) })}</p>
+        <p>{t("taxReturn.foreignFx.codes1901", { amount: formatClp(f.codes[1901]), idpc: formatClp(f.codes.idpc_clp) })}</p>
       ) : f.result_december_clp < 0 ? (
-        <p style={{ color: "var(--negative)" }}>{t("taxReturn.usdFx.lossLost1901")}</p>
+        <p style={{ color: "var(--negative)" }}>{t("taxReturn.foreignFx.lossLost1901")}</p>
       ) : null
     ) : f.codes[1032] != null ? (
-      <p>{t("taxReturn.usdFx.codes1032", { amount: formatClp(f.codes[1032]) })}</p>
+      <p>{t("taxReturn.foreignFx.codes1032", { amount: formatClp(f.codes[1032]) })}</p>
     ) : f.codes.loss169 != null ? (
-      <p>{t("taxReturn.usdFx.loss169", { amount: formatClp(f.codes.loss169) })}</p>
+      <p>{t("taxReturn.foreignFx.loss169", { amount: formatClp(f.codes.loss169) })}</p>
     ) : null;
   return (
-    <PageGridTile id="usd-fx">
-      <h2>{t("taxReturn.usdFx.title")}</h2>
+    <PageGridTile id="foreign-fx">
+      <h2>{t("taxReturn.foreignFx.title")}</h2>
       <p className="muted">
-        {t("taxReturn.usdFx.explain", {
-          posture: t(`taxReturn.usdFx.posture.${f.posture}`),
-          cost: t(`taxReturn.usdFx.costOption.${f.purchase_cost}`),
-          route: t(`taxReturn.usdFx.route.${f.route}`),
+        {t("taxReturn.foreignFx.explain", {
+          posture: t(`taxReturn.foreignFx.posture.${f.posture}`),
+          cost: t(`taxReturn.foreignFx.costOption.${f.purchase_cost}`),
+          route: t(`taxReturn.foreignFx.route.${f.route}`),
         })}
       </p>
-      <p className="muted">{t("taxReturn.usdFx.estimateNote")}</p>
-      {f.provisional ? <p className="muted">{t("taxReturn.usdFx.provisional", { month: f.reajuste_to_month.slice(0, 7) })}</p> : null}
+      <p className="muted">{t("taxReturn.foreignFx.estimateNote")}</p>
+      {f.provisional ? <p className="muted">{t("taxReturn.foreignFx.provisional", { month: f.reajuste_to_month.slice(0, 7) })}</p> : null}
       {f.disposals.length > 0 ? (
         <>
           <ColumnTable
@@ -582,39 +582,53 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
             columns={[
               {
                 key: "date",
-                header: t("taxReturn.usdFx.date"),
+                header: t("taxReturn.foreignFx.date"),
                 className: "mono",
                 cell: (s) => s.date,
                 title: (s) => `${s.date} · ${s.account_name}`,
               },
-              { key: "account", header: t("taxReturn.usdFx.account"), cell: (s) => s.account_name, desktopOnly: true },
-              { key: "usd", header: t("taxReturn.usdFx.usd"), headerClassName: "num", className: "num", cell: (s) => formatUsdFine(s.usd) },
+              { key: "account", header: t("taxReturn.foreignFx.account"), cell: (s) => s.account_name, desktopOnly: true },
+              { key: "amount", header: t("taxReturn.foreignFx.amount"), headerClassName: "num", className: "num", cell: (s) => formatCurrencyFine(s.amount, s.currency) },
               {
                 key: "purchaseDates",
-                header: t("taxReturn.usdFx.purchaseDates"),
+                header: t("taxReturn.foreignFx.purchaseDates"),
                 className: "mono",
                 cell: (s) => s.purchase_dates.join(", "),
               },
-              { key: "proceeds", header: t("taxReturn.usdFx.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
-              { key: "cost", header: t("taxReturn.usdFx.cost"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
-              { key: "result", header: t("taxReturn.usdFx.result"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_clp) },
-              { key: "decemberPct", header: t("taxReturn.usdFx.decemberPct"), headerClassName: "num", className: "num", cell: (s) => formatPct(s.december_pct, 1) },
-              { key: "resultDecember", header: t("taxReturn.usdFx.resultDecember"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_december_clp) },
+              { key: "proceeds", header: t("taxReturn.foreignFx.proceeds"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.proceeds_clp) },
+              { key: "cost", header: t("taxReturn.foreignFx.cost"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.cost_clp) },
+              { key: "result", header: t("taxReturn.foreignFx.result"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_clp) },
+              { key: "decemberPct", header: t("taxReturn.foreignFx.decemberPct"), headerClassName: "num", className: "num", cell: (s) => formatPct(s.december_pct, 1) },
+              { key: "resultDecember", header: t("taxReturn.foreignFx.resultDecember"), headerClassName: "num", className: "num", cell: (s) => formatClp(s.gain_december_clp) },
             ]}
           />
           <p>
-            {t("taxReturn.usdFx.totals", {
+            {t("taxReturn.foreignFx.totals", {
               result: formatClp(f.result_clp),
               resultDecember: formatClp(f.result_december_clp),
             })}
           </p>
+          {f.by_currency.length > 1
+            ? f.by_currency
+                .filter((c) => c.disposals > 0)
+                .map((c) => (
+                  <p key={c.currency} className="muted">
+                    {t("taxReturn.foreignFx.byCurrency", {
+                      currency: c.currency.toUpperCase(),
+                      result: formatClp(c.result_clp),
+                      resultDecember: formatClp(c.result_december_clp),
+                      count: c.disposals,
+                    })}
+                  </p>
+                ))
+            : null}
         </>
       ) : null}
       {codes}
       {f.fees.length > 0 ? (
         <>
-          <h3>{t("taxReturn.usdFx.feesTitle")}</h3>
-          <p className="muted">{t("taxReturn.usdFx.feesExplain")}</p>
+          <h3>{t("taxReturn.foreignFx.feesTitle")}</h3>
+          <p className="muted">{t("taxReturn.foreignFx.feesExplain")}</p>
           <ColumnTable
             rows={f.fees}
             rowKey={(x) => `${x.date}-${x.account_name}-${f.fees.indexOf(x)}`}
@@ -622,22 +636,22 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
             columns={[
               {
                 key: "date",
-                header: t("taxReturn.usdFx.date"),
+                header: t("taxReturn.foreignFx.date"),
                 className: "mono",
                 cell: (x) => x.date,
                 title: (x) => `${x.date} · ${x.account_name}`,
               },
-              { key: "account", header: t("taxReturn.usdFx.account"), cell: (x) => x.account_name, desktopOnly: true },
-              { key: "usd", header: t("taxReturn.usdFx.usd"), headerClassName: "num", className: "num", cell: (x) => formatUsdFine(x.usd) },
-              { key: "costLost", header: t("taxReturn.usdFx.costLost"), headerClassName: "num", className: "num", cell: (x) => formatClp(x.cost_lost_clp) },
+              { key: "account", header: t("taxReturn.foreignFx.account"), cell: (x) => x.account_name, desktopOnly: true },
+              { key: "amount", header: t("taxReturn.foreignFx.amount"), headerClassName: "num", className: "num", cell: (x) => formatCurrencyFine(x.amount, x.currency) },
+              { key: "costLost", header: t("taxReturn.foreignFx.costLost"), headerClassName: "num", className: "num", cell: (x) => formatClp(x.cost_lost_clp) },
             ]}
           />
-          <p>{t("taxReturn.usdFx.feesTotal", { amount: formatClp(f.fees_lost_clp) })}</p>
+          <p>{t("taxReturn.foreignFx.feesTotal", { amount: formatClp(f.fees_lost_clp) })}</p>
         </>
       ) : null}
       {f.deferred.length > 0 ? (
         <p className="muted">
-          {t("taxReturn.usdFx.deferredTotal", { count: f.deferred.length, amount: formatClp(f.deferred_clp) })}
+          {t("taxReturn.foreignFx.deferredTotal", { count: f.deferred.length, amount: formatClp(f.deferred_clp) })}
         </p>
       ) : null}
     </PageGridTile>
@@ -839,7 +853,7 @@ export function TaxReturnPage() {
                   <RentalsSection data={data} />
                   <ForeignIncomeSection data={data} />
                   <Art107Section data={data} />
-                  <UsdFxSection data={data} />
+                  <ForeignFxSection data={data} />
                 </>
               ) : null}
             </>

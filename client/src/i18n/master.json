@@ -8016,9 +8016,9 @@
           "en": "Foreign share gains",
           "es": "Mayor valor en acciones extranjeras"
         },
-        "usd_fx": {
-          "en": "Exchange result on dollars",
-          "es": "Diferencia de cambio en dólares"
+        "foreign_fx": {
+          "en": "Exchange result on foreign currency",
+          "es": "Diferencia de cambio en moneda extranjera"
         },
         "crypto": {
           "en": "Crypto gain",
@@ -8582,7 +8582,7 @@
           "en": "funds and interest",
           "es": "fondos e intereses"
         },
-        "usd_fx": {
+        "foreign_fx": {
           "en": "exchange differences",
           "es": "diferencias de cambio"
         }
@@ -8720,14 +8720,14 @@
         }
       }
     },
-    "usdFx": {
+    "foreignFx": {
       "title": {
-        "en": "Exchange differences (dollars bought with pesos)",
-        "es": "Diferencias de cambio (dólares comprados con pesos)"
+        "en": "Exchange differences (foreign currency bought with pesos)",
+        "es": "Diferencias de cambio (moneda extranjera comprada con pesos)"
       },
       "explain": {
-        "en": "The dollars held in cash are tax lots (FIFO per account): each outflow realizes the difference between the dólar observado of the day it left and of the day it was bought, cost without reajuste (Oficio 2390/2021); the result is reajustado to December. Posture: {{posture}}. Cost: {{cost}}. Route: {{route}}.",
-        "es": "Los dólares en caja son lotes tributarios (FIFO por cuenta): cada salida realiza la diferencia entre el dólar observado del día en que salieron y el del día de compra, costo sin reajuste (Oficio 2390/2021); el resultado se reajusta a diciembre. Criterio: {{posture}}. Costo: {{cost}}. Vía: {{route}}."
+        "en": "Foreign currency held in cash is tax lots (FIFO per account): each outflow realizes the difference between the Banco Central observado of its currency on the day it left and on the day it was bought, cost without reajuste (Oficio 2390/2021); the result is reajustado to December. Posture: {{posture}}. Cost: {{cost}}. Route: {{route}}.",
+        "es": "La moneda extranjera en caja son lotes tributarios (FIFO por cuenta): cada salida realiza la diferencia entre el observado del Banco Central de su moneda del día en que salió y el del día de compra, costo sin reajuste (Oficio 2390/2021); el resultado se reajusta a diciembre. Criterio: {{posture}}. Costo: {{cost}}. Vía: {{route}}."
       },
       "estimateNote": {
         "en": "Report only: the app's own reading of the lots, not filed anywhere yet.",
@@ -8739,12 +8739,12 @@
       },
       "posture": {
         "oficio_2573": {
-          "en": "Oficio 2573/2022 — spending dollars on an instrument sells them",
-          "es": "Oficio 2573/2022 — usar los dólares en un instrumento es venderlos"
+          "en": "Oficio 2573/2022 — spending foreign currency on an instrument sells it",
+          "es": "Oficio 2573/2022 — usar la moneda extranjera en un instrumento es venderla"
         },
         "oficio_2390": {
-          "en": "Oficio 2390/2021 — only dollars paid to a third party or converted back to pesos",
-          "es": "Oficio 2390/2021 — solo los dólares pagados a un tercero o vueltos a pesos"
+          "en": "Oficio 2390/2021 — only currency paid to a third party or converted back to pesos",
+          "es": "Oficio 2390/2021 — solo la moneda pagada a un tercero o vuelta a pesos"
         },
         "none": {
           "en": "none — only a reconversion to pesos",
@@ -8753,8 +8753,8 @@
       },
       "costOption": {
         "observado": {
-          "en": "dólar observado of the purchase day",
-          "es": "dólar observado del día de compra"
+          "en": "the observado of the purchase day",
+          "es": "el observado del día de compra"
         },
         "pesos_paid": {
           "en": "the pesos actually paid",
@@ -8779,9 +8779,9 @@
         "en": "Account",
         "es": "Cuenta"
       },
-      "usd": {
-        "en": "US$",
-        "es": "US$"
+      "amount": {
+        "en": "Amount",
+        "es": "Monto"
       },
       "purchaseDates": {
         "en": "Bought on",
@@ -8812,8 +8812,8 @@
         "es": "Resultado del año: {{result}} nominal, {{resultDecember}} reajustado a diciembre."
       },
       "feesTitle": {
-        "en": "Fees charged in dollars",
-        "es": "Comisiones cobradas en dólares"
+        "en": "Fees charged in foreign currency",
+        "es": "Comisiones cobradas en moneda extranjera"
       },
       "feesExplain": {
         "en": "Their cost is lost: not a deductible loss for a persona natural (SII FAQ citing Oficio 1474/2020; Oficio 2208/2022).",
@@ -8830,6 +8830,10 @@
       "deferredTotal": {
         "en": "Deferred under this posture ({{count}} outflows): {{amount}} that the other posture would realize.",
         "es": "Diferido bajo este criterio ({{count}} salidas): {{amount}} que el otro criterio realizaría."
+      },
+      "byCurrency": {
+        "en": "{{currency}}: {{result}} nominal, {{resultDecember}} reajustado to December ({{count}} outflows).",
+        "es": "{{currency}}: {{result}} nominal, {{resultDecember}} reajustado a diciembre ({{count}} salidas)."
       },
       "codes1901": {
         "en": "Code 1901: {{amount}} · IDPC (line 58 d) {{idpc}}, credited back in line 5 — net zero on the result.",

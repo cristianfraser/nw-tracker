@@ -12,7 +12,7 @@ import {
 } from "../flowsCheckingIncomeOverrides.js";
 import { createRealEstatePlace, listRealEstatePlaces, setRealEstatePlaceDfl2 } from "../flowsRealEstateExpenses.js";
 import { dfl2ContribucionesHalvedThroughYear, dfl2ContribucionesHalvingYears } from "../legalParameters.js";
-import type { UsdFxDisposalLoader } from "./usdFx.js";
+import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 const UTA = 800_000;
 // A synthetic year the Vitest person does not reach; the IPC reajuste is zero past the latest month.
@@ -20,7 +20,7 @@ const INCOME_YEAR = 2098;
 const TODAY = `${INCOME_YEAR}-12-15`;
 const DJ_YEAR = 2097;
 const NOTE = "vitest:f22-rentals";
-const noUsd: UsdFxDisposalLoader = () => ({ disposals: [], openLots: [] });
+const noUsd: ForeignFxDisposalLoader = () => ({ disposals: [], openLots: [] });
 
 describe("DFL-2 legal parameters", () => {
   it("halves contribuciones 20 / 15 / 10 years by built area, none above 140 m²", () => {
@@ -132,7 +132,7 @@ describe("rents in the F22 draft", () => {
   });
 
   it("drafts 1849 / 955 for the taxable rent and the 1637 credit; the DFL-2 rent enters no code", () => {
-    const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(INCOME_YEAR + 1, TODAY, { foreignFx: { load: noUsd } });
     expect(d.taxComputed).toBe(true);
     expect(d.draft[1849]).toBe(2_000_000);
     expect(d.draft[955]).toBe(2_000_000);
@@ -144,7 +144,7 @@ describe("rents in the F22 draft", () => {
   });
 
   it("files a negative real interest (DJ 1890) as a line-17 loss, never a negative 152", () => {
-    const d = buildF22Draft(DJ_YEAR + 1, TODAY, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(DJ_YEAR + 1, TODAY, { foreignFx: { load: noUsd } });
     expect(d.informed[152]).toBeUndefined();
     expect(d.informed[169]).toBe(200_000);
     expect(d.draft[152]).toBeUndefined();

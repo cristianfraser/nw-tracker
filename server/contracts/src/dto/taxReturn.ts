@@ -104,13 +104,15 @@ export type TaxReturnArt107 = {
   distributions_clp: number;
 };
 
-export type TaxReturnLossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "usd_fx";
+export type TaxReturnLossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "foreign_fx";
 
-/** A realized disposal of dollars bought with pesos (server: f22/usdFx.ts): proceeds and cost at the dólar observado. */
-export type TaxReturnUsdFxDisposal = {
+/** A realized disposal of foreign currency bought with pesos (server: f22/foreignFx.ts): proceeds and cost at its Banco Central observado. */
+export type TaxReturnForeignFxDisposal = {
   date: string;
   account_name: string;
-  usd: number;
+  /** ISO code of the currency that left (lowercase). */
+  currency: string;
+  amount: number;
   /** Distinct purchase dates of the lots consumed, oldest first. */
   purchase_dates: string[];
   proceeds_clp: number;
@@ -122,23 +124,32 @@ export type TaxReturnUsdFxDisposal = {
   gain_december_clp: number;
 };
 
-/** GET /api/tax-return `usd_fx`: the year's exchange result on the dollars bought with pesos. */
-export type TaxReturnUsdFx = {
+/** GET /api/tax-return `foreign_fx`: the year's exchange result on the foreign currency bought with pesos, every currency. */
+export type TaxReturnForeignFx = {
   /** Where it goes on the form: art. 20 N°5 income (line 58 d, code 1901 + IDPC credited back) or the crypto's 1032 / 169. */
   route: "idpc_1901" | "igc_1032";
-  /** Which outflows realize it: Oficio 2573 (spending dollars sells them), Oficio 2390 (only to a third party / pesos), none. */
+  /** Which outflows realize it: Oficio 2573 (spending foreign currency sells it), Oficio 2390 (only to a third party / pesos), none. */
   posture: "oficio_2573" | "oficio_2390" | "none";
   purchase_cost: "observado" | "pesos_paid";
   /** The income year's November IPC is not published: the reajuste runs to `reajuste_to_month`. */
   provisional: boolean;
   reajuste_to_month: string;
-  disposals: TaxReturnUsdFxDisposal[];
-  /** Dollars charged as fees: their cost is lost, never deducted. */
-  fees: { date: string; account_name: string; usd: number; cost_lost_clp: number }[];
+  disposals: TaxReturnForeignFxDisposal[];
+  /** Money charged as fees: its cost is lost, never deducted. */
+  fees: { date: string; account_name: string; currency: string; amount: number; cost_lost_clp: number }[];
   fees_lost_clp: number;
   /** What the other posture would have realized (information only). */
-  deferred: { date: string; account_name: string; usd: number; gain_clp: number }[];
+  deferred: { date: string; account_name: string; currency: string; amount: number; gain_clp: number }[];
   deferred_clp: number;
+  /** Each currency's share of the year (the codes take their sum). */
+  by_currency: {
+    currency: string;
+    disposals: number;
+    result_clp: number;
+    result_december_clp: number;
+    fees_lost_clp: number;
+    deferred_clp: number;
+  }[];
   result_clp: number;
   result_december_clp: number;
   /** The pesos the route puts in each code; null when the code is not used (a loss under 1901 states nothing). */
@@ -244,7 +255,7 @@ export type TaxReturnExcludedKind =
   | "foreign_interest"
   | "foreign_shares"
   | "options"
-  | "usd_fx"
+  | "foreign_fx"
   | "crypto"
   | "fund_redemptions"
   | "fund_distributions"
@@ -378,7 +389,7 @@ export type TaxReturnResponse = {
   art107: TaxReturnArt107;
   rentals: TaxReturnRentals;
   foreign_income: TaxReturnForeignIncome;
-  usd_fx: TaxReturnUsdFx;
+  foreign_fx: TaxReturnForeignFx;
 };
 
 /** GET /api/tax-return/us — the local Form 1040 (server: us1040/payload.ts). */

@@ -3,14 +3,14 @@
  */
 import type { DateWindow } from "../dateWindow.js";
 import type { YearResidency } from "../taxResidency.js";
-import type { UsdFxPosture, UsdPurchaseCost } from "../usdCashTaxLotEvents.js";
+import type { ForeignFxPosture, ForeignPurchaseCost } from "../foreignCashTaxLotEvents.js";
 import type { Art107Distribution, Art107TaxYear } from "./art107.js";
 import type { CryptoYearTaxResult } from "./crypto.js";
 import type { F22ForeignInterest, F22ForeignSalary } from "./foreignIncome.js";
 import type { ForeignShareYearResult } from "./foreignShares.js";
 import type { F22Rentals } from "./rentals.js";
 import type { PayrollTaxYear } from "./salary.js";
-import type { UsdFxDisposalLoader, UsdFxRoute, UsdFxYearTaxResult } from "./usdFx.js";
+import type { ForeignFxDisposalLoader, ForeignFxRoute, ForeignFxYearTaxResult } from "./foreignFx.js";
 
 export type F22Codes = Record<number, number>;
 
@@ -33,7 +33,7 @@ export type F22TaxOptions = {
 /** The regime of an income year under the declared residency (`taxResidency.ts`). */
 export type F22Regime = "resident" | "nonresident" | "split";
 
-export type F22LossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "usd_fx";
+export type F22LossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "foreign_fx";
 
 /** Gains and losses that offset each other within one year, and what is left on either side. */
 export type F22OffsetBalance = {
@@ -96,7 +96,7 @@ export type F22ExcludedKind =
   | "foreign_shares"
   /** US-listed option premiums (net received), foreign-source. */
   | "options"
-  | "usd_fx"
+  | "foreign_fx"
   | "crypto"
   | "fund_redemptions"
   | "fund_distributions"
@@ -184,9 +184,9 @@ export type F22Draft = {
   /** DJ 1922's art. 107 difference (section B1, actualizada); null without the DJ. */
   art107InformedResultClp: number | null;
   /** The exchange result on the dollars bought with pesos, under the route and posture the draft took (report-only). */
-  usdFx: UsdFxYearTaxResult;
+  foreignFx: ForeignFxYearTaxResult;
   /** Route `idpc_1901`: first-category tax on 1901 (line 58 d) and its line-5 credit — equal, net zero; 0 on the other route. */
-  usdFxIdpcClp: number;
+  foreignFxIdpcClp: number;
   /** The year's rents by place: taxable (1849 → 955, credit 1637) and DFL-2 exempt (not declared). */
   rentals: F22Rentals;
   /** 1637 before its cap (the contribuciones on the taxable places) and the cap; null when no taxable rent. */
@@ -201,11 +201,11 @@ export type F22Draft = {
 
 /** What {@link buildF22Draft} may be told beyond the year: the dollars' exchange-result parameters and its loader (tests). */
 export type F22DraftOptions = {
-  usdFx?: {
-    route?: UsdFxRoute;
-    posture?: UsdFxPosture;
-    purchaseCost?: UsdPurchaseCost;
+  foreignFx?: {
+    route?: ForeignFxRoute;
+    posture?: ForeignFxPosture;
+    purchaseCost?: ForeignPurchaseCost;
     /** The tax-lot disposals; the DB walk (`usdCashTaxDisposals`) unless injected. */
-    load?: UsdFxDisposalLoader;
+    load?: ForeignFxDisposalLoader;
   };
 };

@@ -9,26 +9,27 @@
 import { wholeYearWindow, type DateWindow } from "../dateWindow.js";
 import { F22_RESIDENCY_ASSUMPTION, residencyForIncomeYear, type YearResidency } from "../taxResidency.js";
 import type { InformedDjField } from "../siiInformedDj.js";
-import { observadoOnOrBefore, type UsdFxPosture, type UsdPurchaseCost } from "../usdCashTaxLotEvents.js";
+import { dollarObservadoOnOrBefore } from "../bcentralObservado.js";
+import type { ForeignFxPosture, ForeignPurchaseCost } from "../foreignCashTaxLotEvents.js";
 import { loadWindowBlocks, type F22WindowBlocks, type F22YearContext } from "./blocks.js";
 import { assertFiledReproduces } from "./chain.js";
 import type { F22UsTaxReader } from "./foreignIncome.js";
 import { nonresidentPart } from "./nonresident.js";
 import { informedCodes, latestUta, loadFiled, loadInformed, utaDecember } from "./sources.js";
 import type { F22Codes, F22DraftOptions, F22NonresidentPart, F22Regime, F22Residency } from "./types.js";
-import type { UsdFxRoute } from "./usdFx.js";
+import type { ForeignFxRoute } from "./foreignFx.js";
 
 /**
- * How the exchange result on dollars bought with pesos is drafted (`f22/usdFx`): the route it
+ * How the exchange result on dollars bought with pesos is drafted (`f22/foreignFx`): the route it
  * takes on the form (art. 20 N°5 income in line 58 d), code 1901, IDPC credited back — the AT2026
  * instructions' line for it; `igc_1032` would reuse the crypto codes), when a dollar is sold
  * (Oficio 2573/2022: spending dollars on an instrument sells them) and what a purchase cost
  * (the oficio's dólar observado of the purchase day). Parameters of `buildF22Draft`, so a
  * later UI switch is a parameter change; report-only until the user files them.
  */
-export const USD_FX_DEFAULT_ROUTE: UsdFxRoute = "idpc_1901";
-export const USD_FX_DEFAULT_POSTURE: UsdFxPosture = "oficio_2573";
-export const USD_FX_DEFAULT_PURCHASE_COST: UsdPurchaseCost = "observado";
+export const FOREIGN_FX_DEFAULT_ROUTE: ForeignFxRoute = "idpc_1901";
+export const FOREIGN_FX_DEFAULT_POSTURE: ForeignFxPosture = "oficio_2573";
+export const FOREIGN_FX_DEFAULT_PURCHASE_COST: ForeignPurchaseCost = "observado";
 
 export type F22Year = {
   taxYear: number;
@@ -70,18 +71,18 @@ export function f22Year(taxYear: number, todayYmd: string, options: F22DraftOpti
   }
   const dj = loadInformed(taxYear);
   const informed = informedCodes(dj, incomeYear);
-  const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
+  const yearEndObservado = dollarObservadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
   const ctx: F22YearContext = {
     taxYear,
     incomeYear,
     todayYmd,
     provisional,
     yearEndObservado,
-    usdFx: {
-      route: options.usdFx?.route ?? USD_FX_DEFAULT_ROUTE,
-      posture: options.usdFx?.posture ?? USD_FX_DEFAULT_POSTURE,
-      purchaseCost: options.usdFx?.purchaseCost ?? USD_FX_DEFAULT_PURCHASE_COST,
-      load: options.usdFx?.load,
+    foreignFx: {
+      route: options.foreignFx?.route ?? FOREIGN_FX_DEFAULT_ROUTE,
+      posture: options.foreignFx?.posture ?? FOREIGN_FX_DEFAULT_POSTURE,
+      purchaseCost: options.foreignFx?.purchaseCost ?? FOREIGN_FX_DEFAULT_PURCHASE_COST,
+      load: options.foreignFx?.load,
     },
     usTax,
   };

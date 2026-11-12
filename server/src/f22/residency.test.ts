@@ -9,7 +9,7 @@ import { deleteCheckingIncomeMovementOverride, upsertCheckingIncomeMovementOverr
 import { createRealEstatePlace } from "../flowsRealEstateExpenses.js";
 import { IMPUESTO_ADICIONAL_RATE } from "../legalParameters.js";
 import { applyEmploymentPayslips } from "../payslipsApply.js";
-import type { UsdFxDisposalLoader } from "./usdFx.js";
+import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 // Synthetic far years no other suite reaches (the IPC reajuste is zero past the latest month, and a
 // 1040 is drafted under the latest listed US law while the year is open).
@@ -19,7 +19,7 @@ const DEPARTURE = `${SPLIT_YEAR}-04-15`;
 const UTA = 800_000;
 const OBSERVADO = 900;
 const PREFIX = "vitest-f22-residency/";
-const noUsd: UsdFxDisposalLoader = () => ({ disposals: [], openLots: [] });
+const noUsd: ForeignFxDisposalLoader = () => ({ disposals: [], openLots: [] });
 
 function stub(payDate: string): UsPayslip {
   const gross = 20_000;
@@ -128,7 +128,7 @@ describe("the F22 under a declared residency", () => {
   afterAll(cleanup);
 
   it("drafts a non-resident year under the Impuesto Adicional: the rent in 32 / 34, the DFL-2 rent exempt, the US salary excluded", () => {
-    const d = buildF22Draft(NR_YEAR + 1, `${NR_YEAR}-12-15`, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(NR_YEAR + 1, `${NR_YEAR}-12-15`, { foreignFx: { load: noUsd } });
     expect(d.regime).toBe("nonresident");
     expect(d.residency.year).toMatchObject({ cl: "none", us: "full", declared: true });
     expect(d.residency.assumption).toMatch(/Declared, not inferred/);
@@ -152,7 +152,7 @@ describe("the F22 under a declared residency", () => {
   });
 
   it("splits the departure year: the resident part as today through the declared day, the Adicional on the rent after it, art. 103 noted", () => {
-    const d = buildF22Draft(SPLIT_YEAR + 1, `${SPLIT_YEAR}-12-15`, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(SPLIT_YEAR + 1, `${SPLIT_YEAR}-12-15`, { foreignFx: { load: noUsd } });
     expect(d.regime).toBe("split");
     expect(d.residency.year).toMatchObject({ cl: { through: `${SPLIT_YEAR}-04-14` }, us: { from: DEPARTURE } });
     expect(d.residency.residentWindow).toEqual({ fromYmd: `${SPLIT_YEAR}-01-01`, throughYmd: `${SPLIT_YEAR}-04-14` });
@@ -182,7 +182,7 @@ describe("the F22 under a declared residency", () => {
   });
 
   it("keeps a year before the declaration as it always was", () => {
-    const d = buildF22Draft(SPLIT_YEAR, `${SPLIT_YEAR - 1}-12-15`, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(SPLIT_YEAR, `${SPLIT_YEAR - 1}-12-15`, { foreignFx: { load: noUsd } });
     expect(d.regime).toBe("resident");
     expect(d.residency.year.declared).toBe(false);
     expect(d.residency.assumption).toBeNull();

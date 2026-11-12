@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { UsdWalkRequest, UsdWalkRow } from "./usdCashLotWalk.js";
-import { usdCashTaxDisposalsFromRows, type UsdFxPosture, type UsdPurchaseCost } from "./usdCashTaxLotEvents.js";
+import type { ForeignWalkRequest, ForeignWalkRow } from "./foreignCashLotWalk.js";
+import { foreignCashTaxDisposalsFromRows, type ForeignFxPosture, type ForeignPurchaseCost } from "./foreignCashTaxLotEvents.js";
 
 const USD = 8001;
 const CLP = 8002;
 const STOCK = 8003;
 const CARD = 8004;
 const BANK_USD = 8005;
-const SCOPE = new Set([USD, BANK_USD]);
+const SCOPE = new Map([[USD, "usd"], [BANK_USD, "usd"]]);
 
-function row(r: Partial<UsdWalkRow> & { id: number; occurred_on: string; amount: number; currency: string }): UsdWalkRow {
+function row(r: Partial<ForeignWalkRow> & { id: number; occurred_on: string; amount: number; currency: string }): ForeignWalkRow {
   return {
     id: r.id,
     account_id: r.account_id ?? null,
@@ -26,7 +26,7 @@ function row(r: Partial<UsdWalkRow> & { id: number; occurred_on: string; amount:
   };
 }
 
-const ROWS: UsdWalkRow[] = [
+const ROWS: ForeignWalkRow[] = [
   // Buy 1.000 dollars for 950.000 pesos on a day the observado is 940.
   row({ id: 1, occurred_on: "2026-03-03", from_account_id: CLP, to_account_id: USD, flow_kind: "fx_exchange", amount: 950_000, currency: "clp", counter_amount: 1000, counter_currency: "usd" }),
   // Spend 600 of them on a stock when the observado is 960.
@@ -43,17 +43,18 @@ const OBSERVADO: Record<string, number> = {
   "2026-07-03": 990,
   "2026-07-04": 1000,
 };
-const observadoOn = (d: string) => {
+const observadoOn = (currency: string, d: string) => {
+  if (currency !== "usd") throw new Error(`no observado for ${currency}`);
   const v = OBSERVADO[d];
   if (v == null) throw new Error(`no observado for ${d}`);
   return v;
 };
 
 function run(
-  rows: UsdWalkRow[],
-  o: { posture?: UsdFxPosture; purchaseCost?: UsdPurchaseCost; requests?: UsdWalkRequest[]; times?: [number, string][] } = {}
+  rows: ForeignWalkRow[],
+  o: { posture?: ForeignFxPosture; purchaseCost?: ForeignPurchaseCost; requests?: ForeignWalkRequest[]; times?: [number, string][] } = {}
 ) {
-  return usdCashTaxDisposalsFromRows({
+  return foreignCashTaxDisposalsFromRows({
     scope: SCOPE,
     rows,
     requests: o.requests ?? [],
@@ -64,7 +65,7 @@ function run(
   });
 }
 
-describe("usdCashTaxDisposalsFromRows", () => {
+describe("foreignCashTaxDisposalsFromRows", () => {
   it("under Oficio 2573 spending dollars on a stock realizes the exchange difference", () => {
     const { disposals, openLots } = run(ROWS);
     expect(disposals).toHaveLength(1);
@@ -123,7 +124,7 @@ describe("usdCashTaxDisposalsFromRows", () => {
       { acquiredOn: "2026-07-01", acquireMovementId: 6, units: 40, cost: 39_200 },
     ]);
     expect(d).toMatchObject({ accountId: BANK_USD, proceeds: 445_500, cost: 424_900, tag: "realized" });
-    expect(openLots).toEqual([{ accountId: BANK_USD, acquiredOn: "2026-07-01", acquireMovementId: 6, units: 60, cost: 58_800 }]);
+    expect(openLots).toEqual([{ accountId: BANK_USD, currency: "usd", acquiredOn: "2026-07-01", acquireMovementId: 6, units: 60, cost: 58_800 }]);
   });
 
   it("a withdrawal request reserves its dollars, so a buy after it cannot spend them", () => {
@@ -131,8 +132,8 @@ describe("usdCashTaxDisposalsFromRows", () => {
       row({ id: 10, occurred_on: "2026-07-01", from_account_id: CLP, to_account_id: USD, flow_kind: "fx_exchange", amount: 98_000, currency: "clp", counter_amount: 100, counter_currency: "usd" }),
       row({ id: 11, occurred_on: "2026-07-02", from_account_id: USD, to_account_id: STOCK, flow_kind: "stock_buy", amount: 10, currency: "usd", units_delta: 1 }),
     ];
-    const request: UsdWalkRequest = { message_id: "<r@test>", requested_at: "2026-07-01T20:00:00Z", gross_cents: 10_000, net_cents: 9_000, account_id: USD, booking: null };
-    expect(() => run(rows, { requests: [request], times: [[10, "2026-07-01T15:00:00Z"]] })).toThrow(/needs US\$10\.00 but only US\$0\.00/);
+    const request: ForeignWalkRequest = { message_id: "<r@test>", requested_at: "2026-07-01T20:00:00Z", gross_minor: 10_000, net_minor: 9_000, account_id: USD, booking: null };
+    expect(() => run(rows, { requests: [request], times: [[10, "2026-07-01T15:00:00Z"]] })).toThrow(/needs 10\.00 USD but only 0\.00 USD/);
   });
 
   it("a booked withdrawal's fee keeps its own cost; the delivered dollars carry only theirs", () => {
@@ -142,7 +143,7 @@ describe("usdCashTaxDisposalsFromRows", () => {
       row({ id: 22, occurred_on: "2026-07-02", from_account_id: USD, to_account_id: BANK_USD, amount: 90, currency: "usd" }),
       row({ id: 23, occurred_on: "2026-07-03", from_account_id: BANK_USD, to_account_id: CARD, flow_kind: "pago_tarjeta", amount: 90, currency: "usd" }),
     ];
-    const request: UsdWalkRequest = { message_id: "<w@test>", requested_at: "2026-07-01T20:00:00Z", gross_cents: 10_000, net_cents: 9_000, account_id: USD, booking: { transfer_movement_id: 22, fee_movement_id: 21 } };
+    const request: ForeignWalkRequest = { message_id: "<w@test>", requested_at: "2026-07-01T20:00:00Z", gross_minor: 10_000, net_minor: 9_000, account_id: USD, booking: { transfer_movement_id: 22, fee_movement_id: 21 } };
     const { disposals, openLots } = run(rows, { requests: [request], times: [[20, "2026-07-01T15:00:00Z"]] });
     expect(disposals.map((d) => d.movementId)).toEqual([21, 23]);
     // The fee's 10 dollars cost 10 × 980; the payment's 90 cost 90 × 980 — the fee is not in them.
@@ -166,5 +167,57 @@ describe("usdCashTaxDisposalsFromRows", () => {
     expect(() => run([...ROWS, odd])).toThrow(/movement 9/);
     const noDollars = row({ id: 13, occurred_on: "2026-03-06", account_id: USD, flow_kind: null, amount: 5, currency: "clp" });
     expect(() => run([...ROWS, noDollars])).toThrow(/movement 13/);
+  });
+});
+
+describe("foreignCashTaxDisposalsFromRows with euros", () => {
+  const EUR = 8006;
+  const scope = new Map<number, string>([[USD, "usd"], [EUR, "eur"]]);
+  // Euro observado: 1.000 on the purchase, 1.050 / 1.040 / 1.020 later; the dollar's on the conversion day 960.
+  const EUR_OBSERVADO: Record<string, number> = { "2026-04-01": 1000, "2026-04-10": 1050, "2026-04-20": 1040, "2026-04-25": 1020 };
+  const observado = (currency: string, d: string) => {
+    const v = currency === "eur" ? EUR_OBSERVADO[d] : currency === "usd" ? { "2026-04-25": 960 }[d] : undefined;
+    if (v == null) throw new Error(`no ${currency} observado for ${d}`);
+    return v;
+  };
+  const rows: ForeignWalkRow[] = [
+    // 1.000 euros bought for 1.010.000 pesos.
+    row({ id: 30, occurred_on: "2026-04-01", from_account_id: CLP, to_account_id: EUR, flow_kind: "fx_exchange", amount: 1_010_000, currency: "clp", counter_amount: 1000, counter_currency: "eur" }),
+    // 300 euros pay a card; 200 go back to pesos; 100 are converted into 106 dollars.
+    row({ id: 31, occurred_on: "2026-04-10", from_account_id: EUR, to_account_id: CARD, flow_kind: "pago_tarjeta", amount: 300, currency: "eur" }),
+    row({ id: 32, occurred_on: "2026-04-20", from_account_id: EUR, to_account_id: CLP, flow_kind: "fx_exchange", amount: 200, currency: "eur", counter_amount: 208_000, counter_currency: "clp" }),
+    row({ id: 33, occurred_on: "2026-04-25", from_account_id: EUR, to_account_id: USD, flow_kind: "fx_exchange", amount: 100, currency: "eur", counter_amount: 106, counter_currency: "usd" }),
+  ];
+  const runEur = (posture: ForeignFxPosture, purchaseCost: ForeignPurchaseCost = "observado") =>
+    foreignCashTaxDisposalsFromRows({ scope, rows, requests: [], eventTimes: new Map(), posture, purchaseCost, observadoOn: observado });
+
+  it("prices euro lots at the euro observado of the purchase and of each disposal", () => {
+    const { disposals, openLots } = runEur("oficio_2573");
+    expect(disposals.map((d) => [d.movementId, d.currency, d.units, d.proceeds, d.cost, d.gain, d.tag])).toEqual([
+      [31, "eur", 300, 315_000, 300_000, 15_000, "realized"],
+      [32, "eur", 200, 208_000, 200_000, 8_000, "realized"],
+      [33, "eur", 100, 102_000, 100_000, 2_000, "realized"],
+    ]);
+    // The conversion bought 106 dollars at their own observado (960), whatever the cost option.
+    expect(openLots).toEqual([
+      { accountId: USD, currency: "usd", acquiredOn: "2026-04-25", acquireMovementId: 33, units: 106, cost: 101_760 },
+      { accountId: EUR, currency: "eur", acquiredOn: "2026-04-01", acquireMovementId: 30, units: 400, cost: 400_000 },
+    ]);
+    expect(runEur("oficio_2573", "pesos_paid").openLots[0]!.cost).toBe(101_760);
+  });
+
+  it("pesos paid sets the euro cost; a conversion defers only under none", () => {
+    const paid = runEur("oficio_2390", "pesos_paid");
+    expect(paid.disposals.find((d) => d.movementId === 31)).toMatchObject({ cost: 303_000, tag: "realized" });
+    expect(runEur("oficio_2390").disposals.find((d) => d.movementId === 33)!.tag).toBe("realized");
+    expect(runEur("none").disposals.map((d) => d.tag)).toEqual(["deferred", "deferred", "deferred"]);
+  });
+
+  it("throws for a currency the Banco Central does not publish", () => {
+    const gbp = new Map<number, string>([[EUR, "gbp"]]);
+    const gbpRows = [row({ id: 40, occurred_on: "2026-04-01", from_account_id: CLP, to_account_id: EUR, flow_kind: "fx_exchange", amount: 10_000, currency: "clp", counter_amount: 10, counter_currency: "gbp" })];
+    expect(() =>
+      foreignCashTaxDisposalsFromRows({ scope: gbp, rows: gbpRows, requests: [], eventTimes: new Map(), posture: "oficio_2573", purchaseCost: "observado", observadoOn: observado })
+    ).toThrow(/no gbp observado/);
   });
 });

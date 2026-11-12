@@ -5,7 +5,7 @@ import { buildF22Draft } from "./draft.js";
 import { informedDj1922Codes } from "./sources.js";
 import type { F22Codes } from "./types.js";
 import { IDPC_RATE, igcTax } from "../legalParameters.js";
-import type { UsdFxDisposalLoader } from "./usdFx.js";
+import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 const UTA = 800_000;
 
@@ -124,7 +124,7 @@ describe("informedDj1922Codes", () => {
 
 /**
  * The dollars' exchange result on the draft, both routes, with the tax-lot disposals injected
- * (synthetic — the DB walk is `usdCashTaxLotEvents`' own concern). An informed DJ 1887 salary
+ * (synthetic — the DB walk is `foreignCashTaxLotEvents`' own concern). An informed DJ 1887 salary
  * gives the year a base so the tax chain runs; the reference rows the chain needs (official IPC,
  * December UTM, year-end observado) are inserted only where the test DB has none and removed
  * afterwards. A year the art. 107 draft test does not use, so the two never share rows.
@@ -168,10 +168,11 @@ describe("the dollars' exchange result on the F22 draft", () => {
 
   // One realized outflow of 1.000 dollars on 2022-07-15: bought at 800 on 2022-03-10, left at 900 (a gain
   // of 100.000) or at 700 (a loss of 100.000); a fee is listed apart whatever the sign.
-  const loaderOf = (proceedsPerUsd: number): UsdFxDisposalLoader => () => ({
+  const loaderOf = (proceedsPerUsd: number): ForeignFxDisposalLoader => () => ({
     disposals: [
       {
         accountId: ACCOUNT,
+        currency: "usd",
         date: `${INCOME_YEAR}-07-15`,
         movementId: 50,
         units: 1000,
@@ -183,6 +184,7 @@ describe("the dollars' exchange result on the F22 draft", () => {
       },
       {
         accountId: ACCOUNT,
+        currency: "usd",
         date: `${INCOME_YEAR}-08-01`,
         movementId: 51,
         units: 10,
@@ -195,9 +197,9 @@ describe("the dollars' exchange result on the F22 draft", () => {
     ],
     openLots: [],
   });
-  const none: UsdFxDisposalLoader = () => ({ disposals: [], openLots: [] });
-  const draftWith = (load: UsdFxDisposalLoader, route: "idpc_1901" | "igc_1032") =>
-    buildF22Draft(TAX_YEAR, TODAY, { usdFx: { route, load } });
+  const none: ForeignFxDisposalLoader = () => ({ disposals: [], openLots: [] });
+  const draftWith = (load: ForeignFxDisposalLoader, route: "idpc_1901" | "igc_1032") =>
+    buildF22Draft(TAX_YEAR, TODAY, { foreignFx: { route, load } });
   const chainCodes = [158, 170, 157, 136, 304, 305, 31];
   const sameButChain = (a: F22Codes, b: F22Codes, except: number[]) => {
     for (const c of new Set([...Object.keys(a), ...Object.keys(b)].map(Number))) {
@@ -212,12 +214,12 @@ describe("the dollars' exchange result on the F22 draft", () => {
     expect(zero.base).toBe("informed");
     expect(zero.taxComputed).toBe(true);
     expect(zero.draft[1901] ?? 0).toBe(0);
-    expect(zero.usdFxIdpcClp).toBe(0);
-    const december = gain.usdFx.resultDecemberClp;
-    expect(gain.usdFx.resultClp).toBe(100_000);
+    expect(zero.foreignFxIdpcClp).toBe(0);
+    const december = gain.foreignFx.resultDecemberClp;
+    expect(gain.foreignFx.resultClp).toBe(100_000);
     expect(december).toBeGreaterThan(100_000);
     expect(gain.draft[1901]).toBe(Math.round(december));
-    expect(gain.usdFxIdpcClp).toBe(Math.round(Math.round(december) * IDPC_RATE));
+    expect(gain.foreignFxIdpcClp).toBe(Math.round(Math.round(december) * IDPC_RATE));
     expect(gain.estimatedCodes).toContain(1901);
     expect(gain.draft[158]! - zero.draft[158]!).toBe(Math.round(december));
     // Nothing but 1901 and the chain changed: no 169, no 1032, no credit code.
@@ -226,16 +228,16 @@ describe("the dollars' exchange result on the F22 draft", () => {
     const recomputed = computeF22Tax(gain.draft, gain.utaClp, TAX_YEAR);
     expect(recomputed[304]).toBe(gain.draft[304]);
     expect(gain.draft[304]! - zero.draft[304]!).toBe(gain.draft[157]! - zero.draft[157]! - (gain.draft[136]! - zero.draft[136]!));
-    expect(gain.usdFx.feesLostClp).toBe(8_000);
-    expect(gain.lossOffset.parts.find((p) => p.source === "usd_fx")).toEqual({ source: "usd_fx", gainClp: 0, lossClp: 0 });
+    expect(gain.foreignFx.feesLostClp).toBe(8_000);
+    expect(gain.lossOffset.parts.find((p) => p.source === "foreign_fx")).toEqual({ source: "foreign_fx", gainClp: 0, lossClp: 0 });
   });
 
   it("under idpc_1901 a loss adds nothing: no code, no 169, the IDPC at zero", () => {
     const zero = draftWith(none, "idpc_1901");
     const loss = draftWith(loaderOf(700), "idpc_1901");
-    expect(loss.usdFx.resultClp).toBe(-100_000);
-    expect(loss.usdFx.codes).toEqual({});
-    expect(loss.usdFxIdpcClp).toBe(0);
+    expect(loss.foreignFx.resultClp).toBe(-100_000);
+    expect(loss.foreignFx.codes).toEqual({});
+    expect(loss.foreignFxIdpcClp).toBe(0);
     expect(loss.draft).toEqual(zero.draft);
     expect(loss.estimatedCodes).toEqual(zero.estimatedCodes);
     expect(loss.lossOffset.lossesClp).toBe(zero.lossOffset.lossesClp);
@@ -244,25 +246,25 @@ describe("the dollars' exchange result on the F22 draft", () => {
   it("under igc_1032 a gain sums with the crypto's 1032", () => {
     const zero = draftWith(none, "igc_1032");
     const gain = draftWith(loaderOf(900), "igc_1032");
-    const december = Math.round(gain.usdFx.resultDecemberClp);
+    const december = Math.round(gain.foreignFx.resultDecemberClp);
     expect(gain.draft[1901] ?? 0).toBe(0);
-    expect(gain.usdFxIdpcClp).toBe(0);
+    expect(gain.foreignFxIdpcClp).toBe(0);
     expect(gain.draft[1032]! - (zero.draft[1032] ?? 0)).toBe(december);
     expect(gain.draft[158]! - zero.draft[158]!).toBe(december);
     expect(gain.estimatedCodes).toContain(1032);
     sameButChain(zero.draft, gain.draft, [1032]);
-    expect(gain.lossOffset.parts.find((p) => p.source === "usd_fx")).toEqual({ source: "usd_fx", gainClp: december, lossClp: 0 });
+    expect(gain.lossOffset.parts.find((p) => p.source === "foreign_fx")).toEqual({ source: "foreign_fx", gainClp: december, lossClp: 0 });
   });
 
   it("under igc_1032 a loss joins 169 within the line-17 pool cap", () => {
     const zero = draftWith(none, "igc_1032");
     const loss = draftWith(loaderOf(700), "igc_1032");
-    const december = Math.round(-loss.usdFx.resultDecemberClp);
+    const december = Math.round(-loss.foreignFx.resultDecemberClp);
     expect(december).toBeGreaterThan(100_000);
-    expect(loss.usdFx.codes).toEqual({ loss169: december });
+    expect(loss.foreignFx.codes).toEqual({ loss169: december });
     expect(loss.draft[1032] ?? 0).toBe(zero.draft[1032] ?? 0);
     expect(loss.lossOffset.lossesClp).toBe(zero.lossOffset.lossesClp + december);
-    expect(loss.lossOffset.parts.find((p) => p.source === "usd_fx")).toEqual({ source: "usd_fx", gainClp: 0, lossClp: december });
+    expect(loss.lossOffset.parts.find((p) => p.source === "foreign_fx")).toEqual({ source: "foreign_fx", gainClp: 0, lossClp: december });
     // Capped at the pool: a loss never reaches the salary.
     expect(loss.draft[169] ?? 0).toBe(Math.min(loss.lossOffset.lossesClp, loss.lossOffset.gainsClp));
     expect(loss.draft[169] ?? 0).toBeLessThanOrEqual(capitalLossPoolClp(loss.draft));

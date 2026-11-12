@@ -3,7 +3,7 @@ import { db } from "../db.js";
 import { buildF22Draft } from "./draft.js";
 import { igcTax } from "../legalParameters.js";
 import { mortgageInterestDeduction } from "./estimates.js";
-import type { UsdFxDisposalLoader } from "./usdFx.js";
+import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 // Two synthetic years the Vitest person does not reach: fees alone (income 2018) and a salary with
 // the lender's DJ 1898 (income 2019).
@@ -13,8 +13,8 @@ const DJ_YEAR = 2019;
 const UTM = 48_000;
 const UTA = UTM * 12;
 const TODAY = "2026-06-01";
-const noUsd: UsdFxDisposalLoader = () => ({ disposals: [], openLots: [] });
-const draft = (taxYear: number) => buildF22Draft(taxYear, TODAY, { usdFx: { load: noUsd } });
+const noUsd: ForeignFxDisposalLoader = () => ({ disposals: [], openLots: [] });
+const draft = (taxYear: number) => buildF22Draft(taxYear, TODAY, { foreignFx: { load: noUsd } });
 
 describe("F22 draft: the fees box and the lender's mortgage interest", () => {
   const inserted: { table: string; key: string; value: string }[] = [];

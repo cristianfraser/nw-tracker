@@ -4,7 +4,7 @@ import { facturacionUsdRatesForAccount, usdDebtPaymentsForAccount } from "./ccFa
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { brokerNotification } from "./test/brokerNotificationFixtures.js";
-import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
+import { foreignOutflowPesoCostByMovement } from "./foreignCashCostLots.js";
 
 const FINTUAL_USD_KEY = "import:panel|kind=usd|key=fintual_usd";
 const FINTUAL_CLP_KEY = "import:panel|kind=clp|key=fintual_clp";
@@ -47,9 +47,9 @@ function movement(m: {
   to?: number | null;
   account?: number | null;
   amount: number;
-  currency: "clp" | "usd";
+  currency: string;
   counter_amount?: number | null;
-  counter_currency?: "usd" | null;
+  counter_currency?: string | null;
   flow_kind?: string | null;
   units?: number | null;
 }): number {
@@ -152,12 +152,12 @@ function realCase(opts: { stampPurchase: boolean }) {
   return { card, soxq, wire, fee, payment };
 }
 
-describe("usdOutflowPesoCostByMovement", () => {
+describe("foreignOutflowPesoCostByMovement", () => {
   it("prices a dollar card payment at the pesos the withdrawal reserved at request time", () => {
     const { card, soxq, fee, payment } = realCase({ stampPurchase: true });
     const reservedClp = (950 * 900_000) / 1000;
-    const costs = usdOutflowPesoCostByMovement();
-    expect(costs.get(payment)!.usd).toBe(940);
+    const costs = foreignOutflowPesoCostByMovement();
+    expect(costs.get(payment)!.amount).toBe(940);
     expect(costs.get(payment)!.clp).toBeCloseTo(reservedClp, 6);
     expect(costs.get(payment)!.lots.map((l) => l.source)).toEqual(["own_transfer"]);
     expect(costs.get(fee)!.clp).toBe(0);
@@ -176,7 +176,7 @@ describe("usdOutflowPesoCostByMovement", () => {
 
   it("refuses a request day whose other events on the account have no time", () => {
     realCase({ stampPurchase: false });
-    expect(() => usdOutflowPesoCostByMovement()).toThrow(/has no time/);
+    expect(() => foreignOutflowPesoCostByMovement()).toThrow(/has no time/);
   });
 
   it("keeps reserved dollars from a later buy", () => {
@@ -196,7 +196,7 @@ describe("usdOutflowPesoCostByMovement", () => {
     stampTime(buy, "2097-11-02T12:00:00Z");
     request({ at: "2097-11-02T15:00:00Z", gross: 100, net: 100 });
     movement({ date: "2097-11-03", from: fintualUsd, to: card, amount: 10, currency: "usd", flow_kind: "pago_tarjeta" });
-    expect(() => usdOutflowPesoCostByMovement()).toThrow(/needs US\$10\.00 but only US\$0\.00/);
+    expect(() => foreignOutflowPesoCostByMovement()).toThrow(/needs 10\.00 USD but only 0\.00 USD/);
   });
 
   it("consumes FIFO without a request", () => {
@@ -207,9 +207,9 @@ describe("usdOutflowPesoCostByMovement", () => {
       movement({ date, from: clp, to: usd, amount: pesos, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     }
     const payment = movement({ date: "2097-12-03", from: usd, to: card, amount: 150, currency: "usd", flow_kind: "pago_tarjeta" });
-    const cost = usdOutflowPesoCostByMovement().get(payment)!;
+    const cost = foreignOutflowPesoCostByMovement().get(payment)!;
     expect(cost.clp).toBeCloseTo(140_000, 6);
-    expect(cost.lots.map((l) => [l.source, l.usd])).toEqual([["purchase", 100], ["purchase", 50]]);
+    expect(cost.lots.map((l) => [l.source, l.amount])).toEqual([["purchase", 100], ["purchase", 50]]);
   });
 
   it("prices a partly spent moved batch at the older purchase rate first, one lot per carried slice", () => {
@@ -222,12 +222,12 @@ describe("usdOutflowPesoCostByMovement", () => {
     // The whole batch moves to the bank account, then 150 of its 200 dollars pay the card.
     const wire = movement({ date: "2097-08-03", from: fintualUsd, to: santanderUsd, amount: 200, currency: "usd" });
     const payment = movement({ date: "2097-08-04", from: santanderUsd, to: card, amount: 150, currency: "usd", flow_kind: "pago_tarjeta" });
-    const costs = usdOutflowPesoCostByMovement();
+    const costs = foreignOutflowPesoCostByMovement();
     expect(costs.get(wire)!.clp).toBeCloseTo(190_000, 6);
-    expect(costs.get(wire)!.lots.map((l) => [l.source, l.usd, l.clp])).toEqual([["purchase", 100, 90_000], ["purchase", 100, 100_000]]);
+    expect(costs.get(wire)!.lots.map((l) => [l.source, l.amount, l.clp])).toEqual([["purchase", 100, 90_000], ["purchase", 100, 100_000]]);
     const cost = costs.get(payment)!;
     expect(cost.clp).toBeCloseTo(140_000, 6);
-    expect(cost.lots.map((l) => [l.source, l.usd, l.clp, l.movement_id])).toEqual([
+    expect(cost.lots.map((l) => [l.source, l.amount, l.clp, l.movement_id])).toEqual([
       ["own_transfer", 100, 90_000, wire],
       ["own_transfer", 50, 50_000, wire],
     ]);
@@ -243,7 +243,7 @@ describe("usdOutflowPesoCostByMovement", () => {
     movement({ date: "2097-11-10", from: clp, to: usd, amount: 95_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     movement({ date: "2097-11-11", from: clp, to: usd, amount: 97_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     const payment = movement({ date: "2097-11-12", from: usd, to: card, amount: 100, currency: "usd", flow_kind: "pago_tarjeta" });
-    expect(usdOutflowPesoCostByMovement().get(payment)!.clp).toBeCloseTo(97_000, 6);
+    expect(foreignOutflowPesoCostByMovement().get(payment)!.clp).toBeCloseTo(97_000, 6);
   });
 
   it("values a dollar inflow without pesos at the stored rate of its date", () => {
@@ -254,7 +254,7 @@ describe("usdOutflowPesoCostByMovement", () => {
     createdFx.push("2096-01-02");
     movement({ date: "2096-01-05", from: stock, to: usd, amount: 50, currency: "usd", flow_kind: "dividend_payout" });
     const payment = movement({ date: "2096-01-06", from: usd, to: card, amount: 50, currency: "usd", flow_kind: "pago_tarjeta" });
-    const cost = usdOutflowPesoCostByMovement().get(payment)!;
+    const cost = foreignOutflowPesoCostByMovement().get(payment)!;
     expect(cost.clp).toBeCloseTo(47_500, 6);
     expect(cost.lots[0]!.source).toBe("market");
   });
@@ -265,7 +265,7 @@ describe("usdOutflowPesoCostByMovement", () => {
     const card = account("card", "credit_cards__credit_card");
     movement({ date: "2097-12-01", from: clp, to: usd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
     movement({ date: "2097-12-03", from: usd, to: card, amount: 200, currency: "usd", flow_kind: "pago_tarjeta" });
-    expect(() => usdOutflowPesoCostByMovement()).toThrow(/needs US\$200\.00 but only US\$100\.00/);
+    expect(() => foreignOutflowPesoCostByMovement()).toThrow(/needs 200\.00 USD but only 100\.00 USD/);
   });
 });
 

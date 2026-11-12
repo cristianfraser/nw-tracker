@@ -31,7 +31,7 @@ export type F22ResidentResult = Pick<
   | "estimatedCodes"
   | "lossOffset"
   | "foreignShareOffset"
-  | "usdFxIdpcClp"
+  | "foreignFxIdpcClp"
   | "propertyTaxCredit"
   | "foreignSalaryCredit"
 >;
@@ -56,7 +56,7 @@ export type F22ResidentInput = {
 export function residentPart(input: F22ResidentInput): F22ResidentResult {
   const { taxYear, incomeYear, split, residentWindow, blocks, filed, dj, informed, utaClp, yearEndObservado, art107DistributionsClp, nonresident } =
     input;
-  const { salary, crypto, dividends, foreignShares, art107, usdFx, rentals, foreignSalary, foreignInterest } = blocks;
+  const { salary, crypto, dividends, foreignShares, art107, foreignFx, rentals, foreignSalary, foreignInterest } = blocks;
   // A return that already declared the APV as a worker independiente (code 770, AT2022) must not
   // get it again as an employee's rebate.
   // A year with fee income declares the APV as a worker independiente (code 770, in the fees box,
@@ -84,10 +84,10 @@ export function residentPart(input: F22ResidentInput): F22ResidentResult {
   const foreignResult = Math.round(foreignShares.totalClp[foreignShares.defaultMode]);
   const foreignGain = Math.max(0, foreignResult);
   // The route decides the codes: 1901 (+ IDPC beside) or the crypto's 1032 / 169.
-  const usdFx1901 = usdFx.codes[1901] ?? 0;
-  const usdFx1032 = usdFx.codes[1032] ?? 0;
-  const usdFxLoss = usdFx.codes.loss169 ?? 0;
-  const usdFxIdpcClp = usdFx.codes.idpcClp ?? 0;
+  const foreignFx1901 = foreignFx.codes[1901] ?? 0;
+  const foreignFx1032 = foreignFx.codes[1032] ?? 0;
+  const foreignFxLoss = foreignFx.codes.loss169 ?? 0;
+  const foreignFxIdpcClp = foreignFx.codes.idpcClp ?? 0;
   const foreignSalaryIncomeClp = foreignSalary.netClp + foreignSalary.creditClp;
   // With taxable rent the app states 1849 / 955 and derives 1637; without, a filed form keeps its own.
   // A foreign salary's credit enters 1018 capped by the chain (no refund).
@@ -124,12 +124,12 @@ export function residentPart(input: F22ResidentInput): F22ResidentResult {
   const taxClp = detailed.reduce((s, d) => s + d.withholdingUsd!, 0) * yearEndObservado;
   const dividendsNetClp = Math.round(grossClp - taxClp);
   const appCodes: F22Codes = {
-    1032: Math.max(0, cryptoGain) + usdFx1032,
+    1032: Math.max(0, cryptoGain) + foreignFx1032,
     1104: dividendsNetClp + foreignGain + foreignInterest.clp,
     // The gross-up: the dividends' foreign tax and the foreign salary's credit (art. 41 A).
     748: Math.round(taxClp) + foreignSalary.creditClp,
     1018: Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp)),
-    1901: usdFx1901,
+    1901: foreignFx1901,
     ...art107.codes,
   };
   for (const [c, v] of Object.entries(appCodes)) {
@@ -150,15 +150,15 @@ export function residentPart(input: F22ResidentInput): F22ResidentResult {
     if (clp > 0) draftInput[169] = (draftInput[169] ?? 0) + clp;
   };
   addLoss(-cryptoGain);
-  addLoss(usdFxLoss);
+  addLoss(foreignFxLoss);
 
   // Without a filed form or informed DJs, the codes third parties report in March come from the
   // ledger too (f22/estimates): fund redemptions and mortgage interest.
   const estimatedCodes: number[] = [];
   // The dollars' exchange result is the app's own reading of the lots, not yet filed anywhere.
-  if (usdFx1901 > 0) estimatedCodes.push(1901);
-  if (usdFx1032 > 0) estimatedCodes.push(1032);
-  if (usdFxLoss > 0) estimatedCodes.push(169);
+  if (foreignFx1901 > 0) estimatedCodes.push(1901);
+  if (foreignFx1032 > 0) estimatedCodes.push(1032);
+  if (foreignFxLoss > 0) estimatedCodes.push(169);
   let fundLossClp = 0;
   let mortgageInterest = informedMortgageInterest ?? 0;
   // Over a filed form the lender's figure replaces the filed 751, and 750 is drafted from it; in a
@@ -233,8 +233,8 @@ export function residentPart(input: F22ResidentInput): F22ResidentResult {
     dividendsNetClp,
     declaredLossClp,
     fundLossClp,
-    usdFx1032,
-    usdFxLoss,
+    foreignFx1032,
+    foreignFxLoss,
   });
   const foreignOffset = foreignShareOffset({ foreignShares, foreignResult, draftInput, draft, taxOf, taxed: residentTaxComputed });
   // The payment section (reajuste art. 72, total to pay, filing-date surcharges) depends on when a
@@ -250,7 +250,7 @@ export function residentPart(input: F22ResidentInput): F22ResidentResult {
     estimatedCodes,
     lossOffset,
     foreignShareOffset: foreignOffset,
-    usdFxIdpcClp,
+    foreignFxIdpcClp,
     propertyTaxCredit:
       residentTaxComputed && rentals.taxableRentClp > 0
         ? {

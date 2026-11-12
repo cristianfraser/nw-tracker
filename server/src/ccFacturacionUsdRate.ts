@@ -12,7 +12,7 @@ import { traspasoUsdLegs } from "./cards/purchases.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { fxForLiveMtm } from "./fxLive.js";
 
-import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
+import { foreignOutflowPesoCostByMovement } from "./foreignCashCostLots.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
@@ -123,7 +123,7 @@ const stmtDollarPayments = db.prepare(
  * (`pago_tarjeta` transfers with a USD counter leg — the pesos that left checking and the
  * dollars the card was credited), the payments made in dollars from a USD cash account
  * (`pago_tarjeta` with `currency = 'usd'` and no counter leg: the pesos those dollars cost, traced
- * by `usdCashCostLots.ts`) and the traspasos de deuda (the bank moving the dollar debt to the peso
+ * by `foreignCashCostLots.ts`) and the traspasos de deuda (the bank moving the dollar debt to the peso
  * side at its own rate, `cc_traspaso_deuda_links`).
  */
 export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
@@ -146,15 +146,15 @@ export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
     usd: number;
   }[];
   if (dollarPayments.length > 0) {
-    const costs = usdOutflowPesoCostByMovement();
+    const costs = foreignOutflowPesoCostByMovement();
     for (const r of dollarPayments) {
       if (r.from_account_id == null || !isForeignCashAccountIn(r.from_account_id, "usd")) {
         throw new Error(`pago_tarjeta movement ${r.id}: a payment in dollars must leave a USD cash account`);
       }
       const cost = costs.get(r.id);
       if (!cost) throw new Error(`pago_tarjeta movement ${r.id}: the dollar cost tracer did not price it`);
-      if (Math.round(cost.usd * 100) !== Math.round(r.usd * 100) || !(r.usd > 0)) {
-        throw new Error(`pago_tarjeta movement ${r.id}: priced US$${cost.usd} for a US$${r.usd} payment`);
+      if (cost.currency !== "usd" || Math.round(cost.amount * 100) !== Math.round(r.usd * 100) || !(r.usd > 0)) {
+        throw new Error(`pago_tarjeta movement ${r.id}: priced ${cost.amount} ${cost.currency.toUpperCase()} for a US\$${r.usd} payment`);
       }
       out.push({ date_iso: r.date_iso, clp: cost.clp, usd: r.usd });
     }

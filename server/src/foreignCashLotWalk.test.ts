@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { walkUsdCashLots, type UsdWalkInput, type UsdWalkRequest, type UsdWalkRow } from "./usdCashLotWalk.js";
+import { walkForeignCashLots, type ForeignWalkInput, type ForeignWalkRequest, type ForeignWalkRow } from "./foreignCashLotWalk.js";
 
 const USD_A = 9101;
 const USD_B = 9102;
 const CLP = 9103;
 const STOCK = 9104;
 const CARD = 9105;
-const SCOPE = new Set([USD_A, USD_B]);
+const SCOPE = new Map([[USD_A, "usd"], [USD_B, "usd"]]);
 
 let nextId = 1;
-function row(r: Partial<UsdWalkRow> & { occurred_on: string; amount: number; currency: string }): UsdWalkRow {
+function row(r: Partial<ForeignWalkRow> & { occurred_on: string; amount: number; currency: string }): ForeignWalkRow {
   return {
     id: r.id ?? nextId++,
     account_id: r.account_id ?? null,
@@ -31,10 +31,10 @@ const spend = (on: string, from: number, to: number, usd: number, flow_kind: str
   row({ id, occurred_on: on, from_account_id: from, to_account_id: to, amount: usd, currency: "usd", flow_kind, units_delta: flow_kind === "stock_buy" ? 1 : null });
 
 /** Purchases at their pesos, anything else at 1.000 pesos per dollar. */
-const price: UsdWalkInput["priceInflow"] = ({ row: r, cents, source }) => (source === "purchase" ? r.amount : cents * 10);
+const price: ForeignWalkInput["priceInflow"] = ({ row: r, minor, source }) => (source === "purchase" ? r.amount : minor * 10);
 
-const walk = (rows: UsdWalkRow[], requests: UsdWalkRequest[] = [], eventTimes: [number, string][] = [], feeCostToNet = true) =>
-  walkUsdCashLots({
+const walk = (rows: ForeignWalkRow[], requests: ForeignWalkRequest[] = [], eventTimes: [number, string][] = [], feeCostToNet = true) =>
+  walkForeignCashLots({
     scope: SCOPE,
     rows,
     requests,
@@ -43,15 +43,15 @@ const walk = (rows: UsdWalkRow[], requests: UsdWalkRequest[] = [], eventTimes: [
     feeCostToNet,
   });
 
-describe("walkUsdCashLots", () => {
+describe("walkForeignCashLots", () => {
   it("consumes FIFO across purchases and reports the slices", () => {
     const r = walk([buyUsd("2097-01-01", USD_A, 100, 90_000), buyUsd("2097-01-02", USD_A, 100, 100_000), spend("2097-01-03", USD_A, CARD, 150, "pago_tarjeta")]);
     expect(r.outflows).toHaveLength(1);
-    expect(r.outflows[0]!.slices.map((s) => [s.acquiredOn, s.cents, s.clp, s.source])).toEqual([
+    expect(r.outflows[0]!.slices.map((s) => [s.acquiredOn, s.minor, s.clp, s.source])).toEqual([
       ["2097-01-01", 10_000, 90_000, "purchase"],
       ["2097-01-02", 5_000, 50_000, "purchase"],
     ]);
-    expect(r.queues.get(USD_A)!.map((s) => [s.cents, s.clp])).toEqual([[5_000, 50_000]]);
+    expect(r.queues.get(USD_A)!.map((s) => [s.minor, s.clp])).toEqual([[5_000, 50_000]]);
     expect(r.inflows.map((i) => i.source)).toEqual(["purchase", "purchase"]);
   });
 
@@ -61,12 +61,12 @@ describe("walkUsdCashLots", () => {
     const [transfer, payment] = r.outflows;
     expect(transfer!.carriedTo).toBe(USD_B);
     expect(payment!.carriedTo).toBeNull();
-    expect(payment!.slices.map((s) => [s.acquiredOn, s.acquireMovementId, s.cents, s.clp, s.carriedBy])).toEqual([
+    expect(payment!.slices.map((s) => [s.acquiredOn, s.acquireMovementId, s.minor, s.clp, s.carriedBy])).toEqual([
       ["2097-01-01", 1, 10_000, 90_000, 50],
       ["2097-01-02", 2, 2_000, 20_000, 50],
     ]);
-    expect(r.queues.get(USD_B)!.map((s) => s.cents)).toEqual([3_000]);
-    expect(r.queues.get(USD_A)!.map((s) => s.cents)).toEqual([5_000]);
+    expect(r.queues.get(USD_B)!.map((s) => s.minor)).toEqual([3_000]);
+    expect(r.queues.get(USD_A)!.map((s) => s.minor)).toEqual([5_000]);
     // An own transfer is not an acquisition.
     expect(r.inflows).toHaveLength(2);
   });
@@ -75,7 +75,7 @@ describe("walkUsdCashLots", () => {
     const dividend = row({ occurred_on: "2097-02-01", from_account_id: STOCK, to_account_id: USD_A, amount: 10, currency: "usd", flow_kind: "dividend_payout" });
     const noDollars = row({ occurred_on: "2097-02-02", account_id: USD_A, amount: 5, currency: "clp" });
     const r = walk([dividend, noDollars]);
-    expect(r.inflows[0]).toMatchObject({ source: "market", cents: 1_000, clp: 10_000 });
+    expect(r.inflows[0]).toMatchObject({ source: "market", minor: 1_000, clp: 10_000 });
     expect(r.skippedRows.map((x) => x.id)).toEqual([noDollars.id]);
   });
 
@@ -87,34 +87,34 @@ describe("walkUsdCashLots", () => {
   it("orders a day that carries a request by time (and arrivals first by id without one)", () => {
     const rows = [buyUsd("2097-03-01", USD_A, 100, 90_000, 1), buyUsd("2097-03-01", USD_A, 100, 100_000, 2), spend("2097-03-01", USD_A, CARD, 100, "pago_tarjeta", 3)];
     const times: [number, string][] = [[1, "2097-03-01T15:00:00Z"], [2, "2097-03-01T12:00:00Z"], [3, "2097-03-01T13:00:00Z"]];
-    const request: UsdWalkRequest = { message_id: "<r@test>", requested_at: "2097-03-01T16:00:00Z", gross_cents: 5_000, net_cents: 5_000, account_id: USD_A, booking: null };
+    const request: ForeignWalkRequest = { message_id: "<r@test>", requested_at: "2097-03-01T16:00:00Z", gross_minor: 5_000, net_minor: 5_000, account_id: USD_A, booking: null };
     const timed = walk(rows, [request], times);
     // By time, purchase 2 is the only one on hand when the payment runs; the request then reserves from purchase 1.
     expect(timed.outflows[0]!.slices.map((s) => [s.acquireMovementId, s.clp])).toEqual([[2, 100_000]]);
-    expect(timed.reservations.get("<r@test>")!.net.map((s) => [s.acquireMovementId, s.cents])).toEqual([[1, 5_000]]);
+    expect(timed.reservations.get("<r@test>")!.net.map((s) => [s.acquireMovementId, s.minor])).toEqual([[1, 5_000]]);
     // Without a request the times do not order the day: arrivals first, then by id.
     expect(walk(rows, [], times).outflows[0]!.slices.map((s) => s.acquireMovementId)).toEqual([1]);
   });
 
   it("throws on a shortfall above one cent", () => {
     expect(() => walk([buyUsd("2097-01-01", USD_A, 100, 90_000), spend("2097-01-02", USD_A, CARD, 200, "pago_tarjeta")])).toThrow(
-      /needs US\$200\.00 but only US\$100\.00/
+      /needs 200\.00 USD but only 100\.00 USD/
     );
   });
 
   describe("withdrawal requests", () => {
-    const request = (o: Partial<UsdWalkRequest> & { gross: number; net: number }): UsdWalkRequest => ({
+    const request = (o: Partial<ForeignWalkRequest> & { gross: number; net: number }): ForeignWalkRequest => ({
       message_id: o.message_id ?? "<req@test>",
       requested_at: o.requested_at ?? "2097-04-01T18:00:00Z",
-      gross_cents: o.gross * 100,
-      net_cents: o.net * 100,
+      gross_minor: o.gross * 100,
+      net_minor: o.net * 100,
       account_id: USD_A,
       booking: o.booking ?? null,
     });
 
     it("reserves the gross FIFO at request time so a later buy cannot spend it", () => {
       const rows = [buyUsd("2097-04-01", USD_A, 100, 90_000, 1), spend("2097-04-02", USD_A, STOCK, 10, "stock_buy", 2)];
-      expect(() => walk(rows, [request({ gross: 100, net: 100 })], [[1, "2097-04-01T12:00:00Z"]])).toThrow(/needs US\$10\.00 but only US\$0\.00/);
+      expect(() => walk(rows, [request({ gross: 100, net: 100 })], [[1, "2097-04-01T12:00:00Z"]])).toThrow(/needs 10\.00 USD but only 0\.00 USD/);
     });
 
     it("refuses a request day whose other events on the account have no time", () => {
@@ -137,10 +137,10 @@ describe("walkUsdCashLots", () => {
       const payment = r.outflows.find((o) => o.row.id === 5)!;
       expect(fee.draw).toEqual({ message_id: "<req@test>", role: "fee" });
       // The fee takes the LAST reserved dollars (purchase 2), at no pesos.
-      expect(fee.slices.map((s) => [s.acquireMovementId, s.cents, s.clp])).toEqual([[2, 1_000, 0]]);
+      expect(fee.slices.map((s) => [s.acquireMovementId, s.minor, s.clp])).toEqual([[2, 1_000, 0]]);
       expect(wire.draw).toEqual({ message_id: "<req@test>", role: "transfer" });
       expect(wire.slices.reduce((s, x) => s + x.clp, 0)).toBeCloseTo(95_000, 6);
-      expect(wire.slices.map((s) => [s.acquireMovementId, s.cents])).toEqual([[1, 5_000], [2, 4_000]]);
+      expect(wire.slices.map((s) => [s.acquireMovementId, s.minor])).toEqual([[1, 5_000], [2, 4_000]]);
       expect(payment.slices.map((s) => [s.acquireMovementId, s.acquiredOn, s.carriedBy])).toEqual([[1, "2097-04-01", 4], [2, "2097-04-01", 4]]);
       expect(payment.slices.reduce((s, x) => s + x.clp, 0)).toBeCloseTo(95_000, 6);
       expect(r.queues.get(USD_A) ?? []).toEqual([]);
@@ -156,8 +156,8 @@ describe("walkUsdCashLots", () => {
       const r = walk(rows, [request({ gross: 100, net: 90, booking: { transfer_movement_id: 4, fee_movement_id: 3 } })], [[1, "2097-04-01T12:00:00Z"], [2, "2097-04-01T12:30:00Z"]], false);
       const fee = r.outflows.find((o) => o.row.id === 3)!;
       const wire = r.outflows.find((o) => o.row.id === 4)!;
-      expect(fee.slices.map((s) => [s.acquireMovementId, s.cents, s.clp])).toEqual([[2, 1_000, 10_000]]);
-      expect(wire.slices.map((s) => [s.acquireMovementId, s.cents, s.clp])).toEqual([[1, 5_000, 45_000], [2, 4_000, 40_000]]);
+      expect(fee.slices.map((s) => [s.acquireMovementId, s.minor, s.clp])).toEqual([[2, 1_000, 10_000]]);
+      expect(wire.slices.map((s) => [s.acquireMovementId, s.minor, s.clp])).toEqual([[1, 5_000, 45_000], [2, 4_000, 40_000]]);
       expect(r.queues.get(USD_B)!.reduce((s, x) => s + x.clp, 0)).toBe(85_000);
     });
 
@@ -165,14 +165,75 @@ describe("walkUsdCashLots", () => {
       const rows = [buyUsd("2097-04-01", USD_A, 100, 90_000, 1), spend("2097-04-03", USD_A, USD_B, 90, null, 4)];
       expect(() =>
         walk(rows, [request({ gross: 100, net: 90, booking: { transfer_movement_id: 4, fee_movement_id: 3 } })], [[1, "2097-04-01T12:00:00Z"]])
-      ).toThrow(/US\$10\.00 of the reserved gross unaccounted for/);
+      ).toThrow(/10\.00 USD of the reserved gross unaccounted for/);
     });
 
     it("throws when the booked transfer moves something other than the net", () => {
       const rows = [buyUsd("2097-04-01", USD_A, 100, 90_000, 1), spend("2097-04-03", USD_A, USD_B, 95, null, 4)];
       expect(() =>
         walk(rows, [request({ gross: 100, net: 100, booking: { transfer_movement_id: 4, fee_movement_id: null } })], [[1, "2097-04-01T12:00:00Z"]])
-      ).toThrow(/moves US\$95\.00, not its net US\$100\.00/);
+      ).toThrow(/moves 95\.00 USD, not its net 100\.00 USD/);
     });
+  });
+});
+
+describe("walkForeignCashLots across currencies", () => {
+  const EUR = 9106;
+  const scope = new Map<number, string>([[USD_A, "usd"], [USD_B, "usd"], [EUR, "eur"]]);
+  const buyEur = (on: string, eur: number, clp: number, id?: number) =>
+    row({ id, occurred_on: on, from_account_id: CLP, to_account_id: EUR, amount: clp, currency: "clp", counter_amount: eur, counter_currency: "eur", flow_kind: "fx_exchange" });
+  /** EUR → USD between two foreign cash accounts: the euros leave, the dollars arrive. */
+  const eurToUsd = (on: string, eur: number, usd: number, id?: number) =>
+    row({ id, occurred_on: on, from_account_id: EUR, to_account_id: USD_A, amount: eur, currency: "eur", counter_amount: usd, counter_currency: "usd", flow_kind: "fx_exchange" });
+  const seen: { source: string; currency: string; consumedClp: number | null }[] = [];
+  const run = (rows: ForeignWalkRow[]) =>
+    walkForeignCashLots({
+      scope,
+      rows,
+      requests: [],
+      eventTimes: new Map(),
+      feeCostToNet: true,
+      priceInflow: ({ row: r, minor, source, currency, consumed }) => {
+        seen.push({ source, currency, consumedClp: consumed ? consumed.reduce((s, l) => s + l.clp, 0) : null });
+        if (source === "purchase") return r.amount;
+        if (source === "conversion") return consumed!.reduce((s, l) => s + l.clp, 0);
+        return minor * 10;
+      },
+    });
+
+  it("keeps euro lots in euro cents on the euro account's own queue", () => {
+    const pay = row({ id: 2, occurred_on: "2097-05-02", from_account_id: EUR, to_account_id: CARD, amount: 40, currency: "eur", flow_kind: "pago_tarjeta" });
+    const dollarsOnEur = row({ id: 3, occurred_on: "2097-05-02", from_account_id: EUR, to_account_id: CARD, amount: 40, currency: "usd", flow_kind: "pago_tarjeta" });
+    const r = run([buyEur("2097-05-01", 100, 105_000, 1), pay, dollarsOnEur]);
+    expect(r.outflows).toHaveLength(1);
+    expect(r.outflows[0]!).toMatchObject({ accountId: EUR, currency: "eur", minor: 4_000, carriedTo: null, convertedTo: null });
+    expect(r.outflows[0]!.slices.map((s) => [s.minor, s.clp])).toEqual([[4_000, 42_000]]);
+    expect(r.queues.get(EUR)!.map((s) => s.minor)).toEqual([6_000]);
+    // A row in another currency moves none of the euro account's euros.
+    expect(r.skippedRows.map((x) => x.id)).toEqual([3]);
+  });
+
+  it("treats a conversion between two foreign currencies as a disposal of one and a purchase of the other", () => {
+    seen.length = 0;
+    const r = run([buyEur("2097-05-01", 100, 105_000, 1), eurToUsd("2097-05-03", 50, 55, 2)]);
+    const out = r.outflows[0]!;
+    expect(out).toMatchObject({ accountId: EUR, currency: "eur", minor: 5_000, carriedTo: null, convertedTo: { accountId: USD_A, currency: "usd" } });
+    expect(r.inflows.map((i) => [i.accountId, i.currency, i.source, i.minor, i.clp])).toEqual([
+      [EUR, "eur", "purchase", 10_000, 105_000],
+      [USD_A, "usd", "conversion", 5_500, 52_500],
+    ]);
+    expect(seen.at(-1)).toEqual({ source: "conversion", currency: "usd", consumedClp: 52_500 });
+    expect(r.queues.get(USD_A)!.map((s) => [s.acquireMovementId, s.source, s.carriedBy])).toEqual([[2, "conversion", null]]);
+    expect(r.queues.get(EUR)!.map((s) => [s.minor, s.clp])).toEqual([[5_000, 52_500]]);
+  });
+
+  it("throws when a conversion spends euros the account does not hold", () => {
+    expect(() => run([eurToUsd("2097-05-03", 50, 55, 2)])).toThrow(/needs 50\.00 EUR but only 0\.00 EUR/);
+  });
+
+  it("refuses a peso account in the scope", () => {
+    expect(() =>
+      walkForeignCashLots({ scope: new Map([[CLP, "clp"]]), rows: [], requests: [], eventTimes: new Map(), feeCostToNet: true, priceInflow: () => 0 })
+    ).toThrow(/holds no clp/);
   });
 });

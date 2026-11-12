@@ -44,7 +44,7 @@ beforeAll(() => {
     .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, 'Vitest USD cash', 'vitest:manual-payment|usd')`)
     .run(Number(ag.lastInsertRowid));
   usdAccountId = Number(acc.lastInsertRowid);
-  // Fund it: a dollar card payment is priced at the pesos its dollars cost (usdCashCostLots.ts),
+  // Fund it: a dollar card payment is priced at the pesos its dollars cost (foreignCashCostLots.ts),
   // and an account with no dollars behind it refuses the payment.
   db.prepare(
     `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,

@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../db.js";
 import { buildF22Draft } from "./draft.js";
-import type { UsdFxDisposalLoader } from "./usdFx.js";
+import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 // Synthetic far years no other suite reaches.
 const NR_YEAR = 2089; // a declared US-resident year (non-resident of Chile)
 const RES_YEAR = 2091; // undeclared: a Chilean-resident year
 const OBSERVADO = 900;
 const NOTE = "vitest-f22-options";
-const noUsd: UsdFxDisposalLoader = () => ({ disposals: [], openLots: [] });
+const noUsd: ForeignFxDisposalLoader = () => ({ disposals: [], openLots: [] });
 const accounts: number[] = [];
 
 function account(name: string): number {
@@ -46,11 +46,11 @@ describe("options on the F22", () => {
   });
 
   it("throws on an option movement inside a Chilean-resident window (Ley 20.544 not modelled)", () => {
-    expect(() => buildF22Draft(RES_YEAR + 1, `${RES_YEAR}-12-15`, { usdFx: { load: noUsd } })).toThrow(/1 option movement\(s\) inside the resident window .* Ley 20\.544 are not modelled/);
+    expect(() => buildF22Draft(RES_YEAR + 1, `${RES_YEAR}-12-15`, { foreignFx: { load: noUsd } })).toThrow(/1 option movement\(s\) inside the resident window .* Ley 20\.544 are not modelled/);
   });
 
   it("lists a non-resident window's option movements as one excluded item: their count and the net premium", () => {
-    const d = buildF22Draft(NR_YEAR + 1, `${NR_YEAR}-12-15`, { usdFx: { load: noUsd } });
+    const d = buildF22Draft(NR_YEAR + 1, `${NR_YEAR}-12-15`, { foreignFx: { load: noUsd } });
     expect(d.regime).toBe("nonresident");
     const item = d.excluded.find((x) => x.kind === "options");
     expect(item).toMatchObject({ kind: "options", reason: "nonresident", count: 2, clp: (300 - 120) * OBSERVADO });
