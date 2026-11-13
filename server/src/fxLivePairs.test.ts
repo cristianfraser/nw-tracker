@@ -46,14 +46,18 @@ function writeLive(symbol: string, value: number): void {
   });
 }
 
+// The live row read is the latest by `fetched_at`, so a fx quote another file left with a later
+// real timestamp would outrank this file's fixtures. Clear every live fx row before and after each
+// test; this file owns the live fx rows it asserts on.
 beforeEach(() => {
+  db.prepare(`DELETE FROM live_market_quotes WHERE kind = 'fx'`).run();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(instant);
   clearAggregationCache();
 });
 
 afterEach(() => {
-  db.prepare(`DELETE FROM live_market_quotes WHERE kind = 'fx' AND session_ymd = ?`).run(today);
+  db.prepare(`DELETE FROM live_market_quotes WHERE kind = 'fx'`).run();
   clearAggregationCache();
   vi.useRealTimers();
 });

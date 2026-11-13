@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, beforeEach, afterAll } from "vitest";
 import { db } from "./db.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { getMarketSeriesPayload } from "./marketSeries.js";
@@ -22,7 +22,10 @@ const USD_TICKER = "VTST";
 const CLP_TICKER = "VITEST.SN"; // .SN → quoted in CLP (equityQuoteCurrency)
 const FUND_KEY = "vitest_fund";
 
-beforeAll(() => {
+// Seeds every table the payload reads, wiping it first. The payload reads whole tables, so a row
+// another writer adds during this file (a crypto history, a fx backfill) would reach the date and
+// ticker lists; re-seeding before each test keeps every assertion on this file's own fixtures.
+function seedFixtures(): void {
   for (const t of [
     "fx_daily",
     "fx_daily_bcentral",
@@ -68,7 +71,10 @@ beforeAll(() => {
     "2024-01-04",
     1234.5
   );
-});
+}
+
+beforeAll(seedFixtures);
+beforeEach(seedFixtures);
 
 describe("getMarketSeriesPayload", () => {
   it("emits one point per date with data, on-date values only for scalar series", () => {
