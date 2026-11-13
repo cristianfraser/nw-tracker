@@ -17,6 +17,7 @@ import {
   decideMetlifeRead,
   decidePayslipsRun,
   metlifeQuoteSlotAtOrBefore,
+  decideLiderPoll,
   decideSantanderBalancePoll,
   type IngestSchedulerDecision,
 } from "./ingestRunPolicy.js";
@@ -27,6 +28,7 @@ import {
   lastAnsweredSlot,
   lastJobSlot,
   lastMetlifeReadRequestedAt,
+  latestLiderState,
   latestSantanderState,
   markIngestRunNotStarted,
   markIngestRunRequested,
@@ -127,6 +129,7 @@ type RunRequestExtras = {
   afcFetch: IngestRunRequest["afc_fetch"];
   payslips: IngestRunRequest["payslips"];
   metlifeRead: IngestRunRequest["metlife_read"];
+  liderFetch: IngestRunRequest["lider_fetch"];
 };
 
 /** What a run of `kind` requested now carries besides its kind: the same rules for a slot and a manual run. */
@@ -147,6 +150,9 @@ function runRequestExtras(kind: IngestRunKind, now: Date): RunRequestExtras {
     // Either kind reads the mortgage lender's portal while the cycle's quote is missing (from 07:00
     // on the 11th) or a payment receipt names a cuota the ledger lacks; at most once an hour.
     metlifeRead: decideMetlifeRead({ now, ...metlifeReadInputs(), lastReadRequestedAt: lastMetlifeReadRequestedAt() }),
+    // An hourly poll reads Lider BCI's card site (the nightly always does) unless a latch stands,
+    // the site was tried moments ago, or the 22:00 slot is near (`decideLiderPoll`).
+    liderFetch: kind === "hourly" ? decideLiderPoll({ now, state: latestLiderState() }) : null,
   };
 }
 
@@ -156,7 +162,8 @@ function extrasNote(e: RunRequestExtras): string {
     (e.afpUnoFetch ? `; AFP UNO: ${e.afpUnoFetch.reason}` : "") +
     (e.afcFetch ? `; AFC: ${e.afcFetch.reason}` : "") +
     (e.payslips ? `; payslips: ${e.payslips.reason}` : "") +
-    (e.metlifeRead ? `; MetLife ${e.metlifeRead.mode}: ${e.metlifeRead.reason}` : "")
+    (e.metlifeRead ? `; MetLife ${e.metlifeRead.mode}: ${e.metlifeRead.reason}` : "") +
+    (e.liderFetch ? `; Lider BCI: ${e.liderFetch.reason}` : "")
   );
 }
 
@@ -270,7 +277,7 @@ export type IngestDispatchOutcome = "started" | "superseded" | "released" | "not
 
 /**
  * Start queue job `job` (an ingest run `pickNextJobs` let start): claim it, write its run (the
- * request extras — Santander balance poll, AFP, AFC, payslips, the MetLife read — decided now,
+ * request extras — Santander balance poll, Lider BCI, AFP, AFC, payslips, the MetLife read — decided now,
  * at start, from the state as it is now) and hand it to the ingest service. A service that is busy
  * or does not answer gets it back in the queue, offered again shortly.
  */
@@ -287,7 +294,7 @@ export async function dispatchIngestJob(job: JobRow, now: Date, ctx: IngestDispa
   }
   if (!claimJob(job.id, INGEST_SERVICE_WORKER, now)) return "not_claimed";
   const extras = runRequestExtras(kind, now);
-  const runId = markIngestRunRequested(kind, slot, job.reason, now, extras.santanderFetch, job.id, extras.metlifeRead);
+  const runId = markIngestRunRequested(kind, slot, job.reason, now, extras.santanderFetch, job.id, extras.metlifeRead, extras.liderFetch);
   const answer = await ctx.request({
     run_id: runId,
     job_id: job.id,
@@ -298,6 +305,7 @@ export async function dispatchIngestJob(job: JobRow, now: Date, ctx: IngestDispa
     afc_fetch: extras.afcFetch,
     payslips: extras.payslips,
     metlife_read: extras.metlifeRead,
+    lider_fetch: extras.liderFetch,
   });
   if (answer.status === "accepted") {
     console.log(`ingest-runs: ${kind} run ${runId} (job ${job.id}) started (${job.reason}${extrasNote(extras)})`);

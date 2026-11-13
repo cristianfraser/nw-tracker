@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StepResult } from "../stepResult.js";
 import { runHourly, type HourlyOptions } from "./hourly.js";
 import { runNightly, type NightlyOptions } from "./nightly.js";
+import { liderVeto, readLiderState, recordLiderFetch } from "./liderState.js";
 import { santanderVeto } from "./runRequest.js";
 import type { StepRunner } from "./steps.js";
 
@@ -9,7 +13,7 @@ import type { StepRunner } from "./steps.js";
  * A runner that executes nothing: records each ingest command («script args»), plays the given
  * step results (keyed by script, or by «server-task <task>») and failures.
  */
-function fakeRunner(results: Record<string, StepResult> = {}, failing: string[] = []) {
+function fakeRunner(results: Record<string, StepResult> = {}, failing: string[] = [], codes: Record<string, number> = {}) {
   const calls: string[] = [];
   const notes: string[] = [];
   const x: StepRunner = {
@@ -18,9 +22,10 @@ function fakeRunner(results: Record<string, StepResult> = {}, failing: string[] 
     async step(label, command) {
       calls.push([command.script, ...command.args].join(" "));
       const key = command.script === "server-task" ? `server-task ${command.args[0]}` : command.script;
-      const ok = !failing.includes(key);
+      const code = codes[key] ?? (failing.includes(key) ? 1 : 0);
+      const ok = code === 0;
       x.steps.push({ label, ok, seconds: 0 });
-      return { ok, result: results[key] ?? {} };
+      return { ok, code, result: results[key] ?? {} };
     },
   };
   return { x, calls, notes };
@@ -55,6 +60,8 @@ describe("runNightly", () => {
       "import:cfraser-inbox",
       "import:santander-movements",
       "import:checking-usd-movements",
+      "fetch:lider-bci --retry-turnstile",
+      "import:lider-movements",
       "server-task cc_payment_mirrors",
       "server-task cc_bank_cupo_check",
       "server-task mortgage_card_match_check",
@@ -72,6 +79,18 @@ describe("runNightly", () => {
       "import:santander-statements --apply",
     ]);
     expect(result.santander).toEqual({ mode: "nightly", outcome: "ok", note: null });
+    expect(result.lider).toEqual({ mode: "nightly", outcome: "ok", note: null });
+  });
+
+  it("imports what is staged and goes on when the Lider fetch fails, naming a failed Turnstile", async () => {
+    const turnstile = fakeRunner({}, [], { "fetch:lider-bci": 3 });
+    const result = await runNightly(turnstile.x, NIGHTLY);
+    expect(result.lider).toEqual({ mode: "nightly", outcome: "turnstile", note: "Cloudflare Turnstile did not pass" });
+    expect(turnstile.calls).toContain("import:lider-movements");
+    expect(turnstile.calls).toContain("server-task cc_bank_cupo_check");
+    expect(turnstile.calls.at(-1)).toBe("import:santander-statements --apply");
+    const rejected = fakeRunner({}, ["fetch:lider-bci"]);
+    expect((await runNightly(rejected.x, NIGHTLY)).lider).toEqual({ mode: "nightly", outcome: "failed", note: "exit 1" });
   });
 
   it("fetches Racional only when the e-mail check named it, and keeps going after a failure", async () => {
@@ -157,6 +176,8 @@ describe("runNightly", () => {
     const { x, calls } = fakeRunner();
     expect((await runNightly(x, { ...NIGHTLY, dryRun: true })).santander).toBeNull();
     expect(calls.some((c) => c.split(" ")[0] === "fetch:santander" || c.includes("cc_bank_cupo_check"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("fetch:lider-bci"))).toBe(false);
+    expect(calls).toContain("import:lider-movements --dry-run");
   });
 });
 
@@ -168,12 +189,14 @@ const HOURLY: HourlyOptions = {
   santanderVeto: () => null,
   groceryInboxCount: () => 0,
   metlifeRead: null,
+  liderFetch: null,
+  liderVeto: () => null,
 };
 
 describe("runHourly", () => {
   it("fetches mail only, and imports nothing in a quiet hour", async () => {
     const { x, calls, notes } = fakeRunner({ "fetch:emails": { staged: 0 } });
-    expect(await runHourly(x, HOURLY)).toEqual({ santander: null, activity: false });
+    expect(await runHourly(x, HOURLY)).toEqual({ santander: null, lider: null, activity: false });
     expect(calls).toEqual([
       "fetch:santander-docs",
       "fetch:lider-statements",
@@ -285,6 +308,7 @@ describe("runHourly", () => {
     const result = await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
     expect(result).toEqual({
       santander: { mode: "balance-poll", outcome: "ok", note: "read card-movements, checking-movements, checking-usd-movements" },
+      lider: null,
       activity: true,
     });
     expect(calls.slice(6)).toEqual([
@@ -324,6 +348,93 @@ describe("runHourly", () => {
     });
     expect(calls).not.toContain("fetch:santander --balance-poll");
     expect(notes).toContain("=== Santander balance-poll (declined — login latched off after a credentials rejection)");
+  });
+});
+
+describe("runHourly — Lider BCI", () => {
+  const asked = { reason: "hourly: the Lider BCI card's open cycle and cupo" };
+
+  it("reads, imports and judges the capture when the server asks; rows written are activity", async () => {
+    const { x, calls } = fakeRunner({ "import:lider-movements": { inserted: 2 } });
+    const result = await runHourly(x, { ...HOURLY, liderFetch: asked });
+    expect(result.lider).toEqual({ mode: "poll", outcome: "ok", note: null });
+    expect(result.activity).toBe(true);
+    expect(calls.slice(6)).toEqual([
+      "fetch:lider-bci",
+      "import:lider-movements",
+      "server-task cc_bank_cupo_check",
+      "import:transfer-mails --days=2",
+      "import:utility-bills --only-if-new",
+      "import:metlife-receipts --days=3",
+      "import:fintual-wallet --apply",
+    ]);
+  });
+
+  it("is quiet when the listing wrote nothing, and judges once when Santander differs too", async () => {
+    const quiet = fakeRunner();
+    expect((await runHourly(quiet.x, { ...HOURLY, liderFetch: asked })).activity).toBe(false);
+    const both = fakeRunner({ "fetch:santander": { fetch: [], differs: true } });
+    await runHourly(both.x, { ...HOURLY, liderFetch: asked, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
+    expect(both.calls.filter((c) => c.includes("cc_bank_cupo_check"))).toEqual(["server-task cc_bank_cupo_check --recheck"]);
+  });
+
+  it("declines a requested read while a latch stands, and reads nothing unasked", async () => {
+    const { x, calls, notes } = fakeRunner();
+    const result = await runHourly(x, { ...HOURLY, liderFetch: asked, liderVeto: () => "login latched off after the clave was rejected" });
+    expect(result.lider).toEqual({ mode: "poll", outcome: "vetoed", note: "login latched off after the clave was rejected" });
+    expect(calls.some((c) => c.includes("lider-bci") || c.includes("lider-movements"))).toBe(false);
+    expect(notes).toContain("=== Lider BCI (declined — login latched off after the clave was rejected)");
+    const unasked = fakeRunner();
+    await runHourly(unasked.x, HOURLY);
+    expect(unasked.calls.some((c) => c.includes("lider-bci"))).toBe(false);
+  });
+
+  it("names a failed Turnstile", async () => {
+    const { x } = fakeRunner({}, [], { "fetch:lider-bci": 3 });
+    expect((await runHourly(x, { ...HOURLY, liderFetch: asked })).lider).toEqual({
+      mode: "poll",
+      outcome: "turnstile",
+      note: "Cloudflare Turnstile did not pass",
+    });
+  });
+});
+
+describe("Lider state", () => {
+  const now = new Date("2026-09-30T15:00:00Z");
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "nw-lider-state-"));
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const latch = (name: string, at: Date) => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, "{}");
+    fs.utimesSync(file, at, at);
+  };
+
+  it("records attempts and successes, never a vetoed read", () => {
+    expect(readLiderState(now, dir)).toEqual({ last_attempt_at: null, last_success_at: null, latched: null });
+    recordLiderFetch({ mode: "poll", outcome: "vetoed", note: "x" }, now, dir);
+    expect(readLiderState(now, dir).last_attempt_at).toBeNull();
+    recordLiderFetch({ mode: "nightly", outcome: "ok", note: null }, new Date("2026-09-30T01:00:00Z"), dir);
+    recordLiderFetch({ mode: "poll", outcome: "failed", note: "exit 1" }, new Date("2026-09-30T14:40:00Z"), dir);
+    expect(readLiderState(now, dir)).toEqual({
+      last_attempt_at: "2026-09-30T14:40:00.000Z",
+      last_success_at: "2026-09-30T01:00:00.000Z",
+      latched: null,
+    });
+    expect(liderVeto(readLiderState(now, dir), now)).toBe("last attempt 20 min ago — waiting 35 min");
+  });
+
+  it("reads the fetcher's latches: a rejected clave until a later success, a Turnstile for 20 h", () => {
+    latch(".lider-turnstile-failed.json", new Date("2026-09-30T02:00:00Z"));
+    expect(readLiderState(now, dir).latched).toBe("turnstile");
+    expect(liderVeto(readLiderState(now, dir), now)).toMatch(/Turnstile/);
+    expect(readLiderState(new Date("2026-09-30T22:01:00Z"), dir).latched).toBeNull();
+    latch(".lider-login-rejected.json", new Date("2026-09-30T03:00:00Z"));
+    expect(readLiderState(now, dir).latched).toBe("login_rejected");
+    recordLiderFetch({ mode: "nightly", outcome: "ok", note: null }, new Date("2026-09-30T04:00:00Z"), dir);
+    expect(readLiderState(now, dir).latched).toBeNull();
   });
 });
 

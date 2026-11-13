@@ -30,6 +30,18 @@ export const SANTANDER_FETCH_MODES = ["balance-poll"] as const;
 
 export type SantanderFetchMode = (typeof SANTANDER_FETCH_MODES)[number];
 
+/**
+ * Lider BCI's card site (`fetch:lider-bci` + `import:lider-movements`): the nightly always reads
+ * it; an hourly poll reads it when the server asks (`lider_fetch`). A bank session the feeder
+ * opens no sooner than this after the last attempt, and never while a latch stands: a rejected
+ * clave (the bank blocks it after three failures) until the clave is replaced, a failed
+ * Cloudflare Turnstile for `LIDER_TURNSTILE_LATCH_HOURS` (the nightly retries past that one).
+ */
+export const LIDER_MIN_GAP_AFTER_ATTEMPT_MINUTES = 35;
+export const LIDER_TURNSTILE_LATCH_HOURS = 20;
+export const LIDER_LATCHES = ["login_rejected", "turnstile"] as const;
+export type LiderLatch = (typeof LIDER_LATCHES)[number];
+
 export const ingestRunRequestSchema = z
   .object({
     run_id: z.number().int().positive(),
@@ -81,8 +93,13 @@ export const ingestRunRequestSchema = z
       .strict()
       .nullable()
       .default(null),
+    /** Hourly only: read Lider BCI's card site this poll, and why (`decideLiderPoll`). Absent = no. */
+    lider_fetch: z.object({ reason: z.string().min(1) }).strict().nullable().default(null),
   })
   .strict()
+  .refine((r) => r.kind === "hourly" || r.lider_fetch === null, {
+    message: "only an hourly run takes a lider_fetch (the nightly always reads Lider BCI)",
+  })
   .refine((r) => r.kind === "hourly" || r.santander_fetch === null, {
     message: "only an hourly run takes a santander_fetch",
   })
@@ -148,6 +165,37 @@ export const santanderFetchOutcomeSchema = z
 
 export type SantanderFetchOutcome = z.infer<typeof santanderFetchOutcomeSchema>;
 
+/**
+ * The feeder's facts about Lider BCI's site, read when the run ends; the server decides the next
+ * hourly read from them. `last_attempt_at`: the newest fetch the runner started (any outcome);
+ * `last_success_at`: the newest fetch that staged a listing; `latched`: a latch the fetcher wrote
+ * that still stands (`LIDER_LATCHES`), or null.
+ */
+export const liderStateSchema = z
+  .object({
+    last_attempt_at: z.iso.datetime({ offset: true }).nullable(),
+    last_success_at: z.iso.datetime({ offset: true }).nullable(),
+    latched: z.enum(LIDER_LATCHES).nullable(),
+  })
+  .strict();
+
+export type LiderState = z.infer<typeof liderStateSchema>;
+
+/**
+ * What became of the run's Lider BCI fetch. `turnstile`: Cloudflare's check did not pass (the
+ * fetcher latched itself off); `vetoed`: the feeder declined a read the server asked for (a latch,
+ * or the site was tried moments ago) — not an attempt.
+ */
+export const liderFetchOutcomeSchema = z
+  .object({
+    mode: z.enum(["nightly", "poll"]),
+    outcome: z.enum(["ok", "failed", "turnstile", "vetoed"]),
+    note: z.string().nullable(),
+  })
+  .strict();
+
+export type LiderFetchOutcome = z.infer<typeof liderFetchOutcomeSchema>;
+
 export const ingestRunCompletionSchema = z
   .object({
     started_at: z.iso.datetime({ offset: true }),
@@ -163,6 +211,10 @@ export const ingestRunCompletionSchema = z
     /** Null when the run did not try the bank. */
     santander: santanderFetchOutcomeSchema.nullable(),
     santander_state: santanderStateSchema,
+    /** Null when the run did not try Lider BCI. */
+    lider: liderFetchOutcomeSchema.nullable().default(null),
+    /** Null from a feeder before the Lider BCI read. */
+    lider_state: liderStateSchema.nullable().default(null),
   })
   .strict();
 

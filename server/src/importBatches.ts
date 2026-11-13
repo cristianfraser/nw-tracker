@@ -2,7 +2,7 @@ import { db } from "./db.js";
 
 export type ImportBatchKind =
   | "cc_web_paste"
-  /** Same lines as a web paste, but fetched from the bank's own API by `ingest/`. */
+  /** Same lines as a web paste, but fetched from Santander's own API by `ingest/` (`card.unbilled_movements`). */
   | "cc_santander_fetch"
   /** One line per card-paid Lider boleta e-mail (the grocery-receipt importer). */
   | "cc_lider_boleta"
@@ -17,7 +17,10 @@ export type ImportBatchKind =
   | "cc_lender_receipt"
   /** A card's PAGO, planted when cuota purchases on another card paid its facturado. */
   | "cc_financing_payment"
-  /** Same lines as a web paste, from the scheduled Lider «últimos movimientos» CSV drop. */
+  /**
+   * Same lines as a web paste, from the Lider BCI card site's unbilled listing read by `ingest/`
+   * (`card.unbilled_movements`). Until 2026-10-03 the kind of the retired «últimos movimientos» CSV drop.
+   */
   | "cc_lider_fetch"
   | "cuenta_vista_web_paste"
   | "cc_statement_pdf"

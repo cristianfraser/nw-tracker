@@ -39,6 +39,8 @@ const REPORT = {
   activity: false,
   santander: null,
   santander_state: { last_attempt_at: null, last_success_at: null, login_latched: false, last_catch_up_attempt_at: null, last_payday_attempt_ymd: null },
+  lider: null,
+  lider_state: null,
 };
 
 beforeEach(() => {

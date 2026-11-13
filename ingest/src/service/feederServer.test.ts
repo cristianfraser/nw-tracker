@@ -16,6 +16,8 @@ const DONE: IngestRunCompletion = {
     last_success_at: null,
     login_latched: false,
   },
+  lider: { mode: "nightly", outcome: "ok", note: null },
+  lider_state: { last_attempt_at: "2026-09-30T01:05:00.000Z", last_success_at: "2026-09-30T01:05:00.000Z", latched: null },
 };
 
 let close: (() => Promise<void>) | null = null;
@@ -36,6 +38,7 @@ async function start(over: Partial<FeederDeps> = {}) {
     },
     report: async (runId, completion) => void reports.push({ runId, completion }),
     santanderState: () => DONE.santander_state,
+    liderState: () => DONE.lider_state!,
     log: () => {},
     ...over,
   });

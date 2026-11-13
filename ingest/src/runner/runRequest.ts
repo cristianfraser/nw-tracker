@@ -7,6 +7,7 @@ import { lastRunAt } from "../runGuard.js";
 import { lastSuccessfulSantanderFetchAt } from "../santander/fetchHistory.js";
 import { santanderLoginLatch } from "../santander/loginLatch.js";
 import { runHourly } from "./hourly.js";
+import { liderVeto, readLiderState, recordLiderFetch } from "./liderState.js";
 import { runNightly } from "./nightly.js";
 import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
 
@@ -99,7 +100,10 @@ export async function runRequestedRun(
             santanderVeto: () => santanderVeto(readSantanderState()),
             groceryInboxCount,
             metlifeRead: request.metlife_read,
+            liderFetch: request.lider_fetch,
+            liderVeto: () => liderVeto(readLiderState()),
           });
+    recordLiderFetch(result.lider);
     const failed = x.steps.filter((s) => !s.ok).length;
     x.note(`${request.kind} run ${request.run_id} finished with ${failed} failed step(s)`);
     if (request.kind === "nightly" && failed > 0 && !dryRun) notifyNightlyFailure(failed);
@@ -112,6 +116,8 @@ export async function runRequestedRun(
       activity: result.activity,
       santander: result.santander,
       santander_state: readSantanderState(),
+      lider: result.lider,
+      lider_state: readLiderState(),
     };
   } catch (err) {
     fs.writeSync(logFd, `${logStamp()} *** run crashed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
@@ -124,6 +130,8 @@ export async function runRequestedRun(
       activity: false,
       santander: null,
       santander_state: readSantanderState(),
+      lider: null,
+      lider_state: readLiderState(),
     };
   } finally {
     fs.closeSync(logFd);

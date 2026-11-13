@@ -80,6 +80,15 @@ export const MATCH_WINDOWS = {
     unit: "days",
     amount: "exact",
   },
+  planted_charge: {
+    anchor: "planted charge line (a grocery receipt's, a lender receipt's)",
+    candidate: "the bank's listing of the same purchase",
+    daysBefore: 0,
+    daysAfter: 3,
+    unit: "days",
+    amount: "exact",
+    note: "merchant also has to match; the bank may list the purchase on a later posting day (a Saturday boleta listed on Monday)",
+  },
   recurring_pending: {
     anchor: "pending listing under the entry's first name",
     candidate: "posted line under another of its names",

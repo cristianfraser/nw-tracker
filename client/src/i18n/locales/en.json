@@ -921,6 +921,7 @@
       "resultSkipReasonDuplicate": "duplicate",
       "resultSkipReasonDuplicateApprox": "approx. duplicate",
       "resultSkipReasonInstallmentOverlap": "already in installments",
+      "resultSkipReasonPlantedSamePurchase": "already on file from a receipt",
       "resultSkipReasonCuotaBilling": "cuota billing, already scheduled",
       "resultSkipReasonAlreadyPresent": "already in the statement",
       "resultSkipReasonSupersededByCartola": "already covered by the statement",

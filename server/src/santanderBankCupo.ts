@@ -3,6 +3,8 @@ import { db } from "./db.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
 import { pesosOrDollars } from "./ingestCurrencies.js";
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
+import type { CcIssuerSlug } from "./ccIssuers.js";
 
 /**
  * The issuer's own credit line per card and currency, as a `card.unbilled_movements` listing
@@ -37,12 +39,12 @@ export function bankCupoRowsFromListing(
     const byPlastic = resolveMasterAccountIdForImportCardLast4(r.card_last4);
     if (byPlastic !== accountId) {
       throw new Error(
-        `Santander cupo ${where}: the bank account routes to card master ${accountId} but plastic ` +
+        `Bank cupo ${where}: the bank account routes to card master ${accountId} but plastic ` +
           `·${r.card_last4} to ${byPlastic ?? "no master"} — fix cfraser/organize-identifiers.json or cc-cards.json`
       );
     }
     const key = `${accountId}|${r.currency}`;
-    if (seen.has(key)) throw new Error(`Santander cupo: two ${r.currency} rows for card master ${accountId}`);
+    if (seen.has(key)) throw new Error(`Bank cupo: two ${r.currency} rows for card master ${accountId}`);
     seen.add(key);
     out.push({
       account_id: accountId,
@@ -76,7 +78,7 @@ export function bankCupoCaptureFromListing(balances: IssuerBalances | undefined)
   return { status: "present", observed_at: balances.observed_at, rows: bankCupoRowsFromListing(balances.rows) };
 }
 
-type CaptureRow = { id: number; observed_at: string | null; error: string | null };
+type CaptureRow = { id: number; issuer: string; observed_at: string | null; error: string | null };
 type SnapshotRow = {
   account_id: number;
   currency: string;
@@ -88,9 +90,9 @@ type SnapshotRow = {
   feed_close_iso: string | null;
 };
 
-const selCapture = db.prepare(`SELECT id, observed_at, error FROM cc_bank_cupo_captures WHERE source_file = ?`);
+const selCapture = db.prepare(`SELECT id, issuer, observed_at, error FROM cc_bank_cupo_captures WHERE source_file = ?`);
 const insCapture = db.prepare(
-  `INSERT INTO cc_bank_cupo_captures (source_file, observed_at, error) VALUES (?, ?, ?)`
+  `INSERT INTO cc_bank_cupo_captures (issuer, source_file, observed_at, error) VALUES (?, ?, ?, ?)`
 );
 const selSnapshots = db.prepare(
   `SELECT account_id, currency, bank_account, plastic_last4, cupo_total, cupo_utilizado, cupo_disponible,
@@ -122,11 +124,14 @@ function snapshotSignature(rows: readonly SnapshotRow[]): string {
 }
 
 /**
- * Record one listing's balances. `feedCloses` is the close the same listing states per
- * bank account — the close the check must share with the app. Re-importing a file is a no-op when
- * it says the same thing and throws when it does not (one file is one observation).
+ * Record one listing's balances as `issuer`'s capture (each issuer's latest capture is judged on
+ * its own: two banks posting hourly must not hide each other's). `feedCloses` is the close the
+ * same listing states per bank account — the close the check must share with the app.
+ * Re-importing a file is a no-op when it says the same thing and throws when it does not (one file
+ * is one observation). A row whose card is another issuer's throws.
  */
 export function recordBankCupoCapture(
+  issuer: CcIssuerSlug,
   sourceFile: string,
   parsed: ParsedBankCupoCapture,
   feedCloses: ReadonlyMap<string, { close_iso: string }>
@@ -134,15 +139,24 @@ export function recordBankCupoCapture(
   if (parsed.status === "absent") return { status: "absent" };
   return db.transaction((): BankCupoCaptureResult => {
     const existing = selCapture.get(sourceFile) as CaptureRow | undefined;
+    if (existing && existing.issuer !== issuer) {
+      throw new Error(`Bank cupo capture ${sourceFile} was already recorded as ${existing.issuer}'s, not ${issuer}'s`);
+    }
     if (parsed.status === "missing") {
       if (existing) {
         if (existing.error !== parsed.error) {
           throw new Error(`Bank cupo capture ${sourceFile} was already recorded differently`);
         }
       } else {
-        insCapture.run(sourceFile, null, parsed.error);
+        insCapture.run(issuer, sourceFile, null, parsed.error);
       }
       return { status: "missing", error: parsed.error };
+    }
+    for (const r of parsed.rows) {
+      const cardIssuer = ccIssuerSlugForMasterAccount(r.account_id);
+      if (cardIssuer !== issuer) {
+        throw new Error(`Bank cupo capture ${sourceFile} (${issuer}): card master ${r.account_id} is ${cardIssuer}'s`);
+      }
     }
     const rows: SnapshotRow[] = parsed.rows.map((r) => ({
       account_id: r.account_id,
@@ -161,7 +175,7 @@ export function recordBankCupoCapture(
       }
       return { status: "seen", capture_id: existing.id, observed_at: parsed.observed_at, snapshots: stored.length };
     }
-    const captureId = Number(insCapture.run(sourceFile, parsed.observed_at, null).lastInsertRowid);
+    const captureId = Number(insCapture.run(issuer, sourceFile, parsed.observed_at, null).lastInsertRowid);
     for (const r of rows) {
       insSnapshot.run(
         captureId,

@@ -2,6 +2,14 @@ import { db } from "./db.js";
 import { recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
+import {
+  isPlantedChargeSource,
+  plantedChargeAbsorber,
+  recordPlantedChargeLine,
+  type ChargeFacts,
+  type PlantedSamePurchase,
+} from "./ccPlantedCharges.js";
+import { isPlantingBatchKind } from "./ccPlantedPayments.js";
 import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
   adoptReimportedCardLines,
@@ -54,7 +62,9 @@ export type CcImportSkipReason =
   /** Dropped before the merge: bank's «CUOT: N OPER: M» re-listing of a cuota being billed. */
   | "cuota_billing"
   /** Dropped before the merge: the table's «SALDO INICIAL» row (the previous bill's total). */
-  | "saldo_inicial";
+  | "saldo_inicial"
+  /** The bank's later-day listing of a purchase the app already planted (`ccPlantedCharges.ts`). */
+  | "planted_same_purchase";
 
 export type SkippedCcImportFlowItem = CcImportFlowItem & { reason: CcImportSkipReason };
 
@@ -101,6 +111,8 @@ export type CcStatementsMergeResult = {
    * added for a past day invalidates the frozen stamps written after it.
    */
   earliestInsertedTxDate: string | null;
+  /** Listing lines skipped as a planted charge's later listing (`ccPlantedCharges.ts`). */
+  planted_same_purchase: PlantedSamePurchase[];
   /** Per-line outcomes for the import panel — strip from `createImportBatch` payloads. */
   inserted_flows: CcImportFlowItem[];
   skipped_flows: SkippedCcImportFlowItem[];
@@ -113,6 +125,12 @@ export type CcStatementsMergeOpts = {
   replaceStatementKeys?: Set<string>;
   /** Skip line when dedupe_key already exists on any statement for this account. */
   skipGlobalDedupeKeys?: boolean;
+  /**
+   * A listing import's batch kind: a planting source's lines are registered as planted charges
+   * (`ccPlantedCharges.ts`); any other listing's lines that are a planted charge's later listing
+   * are skipped. Unset for statement imports.
+   */
+  listingBatchKind?: string;
 };
 
 const findStmtId = db.prepare(
@@ -237,6 +255,22 @@ export function importCcStatementsMerge(
   const inserted_flows: CcImportFlowItem[] = [];
   const skipped_flows: SkippedCcImportFlowItem[] = [];
 
+  // A listing's charges: a planting source registers what it writes; the bank's own listing skips
+  // the later-day listing of a purchase a planting source already wrote.
+  const listingKind = opts?.listingBatchKind ?? null;
+  const plantedSource = isPlantedChargeSource(listingKind) ? listingKind : null;
+  const absorber =
+    listingKind != null && !plantedSource && !isPlantingBatchKind(listingKind)
+      ? plantedChargeAbsorber(
+          accountId,
+          [...byStmt.values()].flatMap(({ statement, lines }) =>
+            lines
+              .filter((l) => l.installment == null)
+              .map((l) => chargeFacts(statement, l))
+          )
+        )
+      : null;
+
   for (const [key, { statement, lines }] of byStmt) {
     assertStatementHeader(statement);
     const stored = storedStatementColumns(statement);
@@ -354,6 +388,11 @@ export function importCcStatementsMerge(
         }
       }
 
+      if (!inst && absorber && absorber.absorb(chargeFacts(statement, line))) {
+        skipped_flows.push({ ...flowItem, reason: "planted_same_purchase" });
+        continue;
+      }
+
       const {
         amount_clp: _legacyClp,
         amount_usd: _legacyUsd,
@@ -369,6 +408,7 @@ export function importCcStatementsMerge(
         kind: line.kind,
       });
       const statementLineId = Number(ins.lastInsertRowid);
+      if (plantedSource && !inst && columns.amount > 0) recordPlantedChargeLine(statementLineId, accountId, plantedSource);
       // The day the purchase reached the ledger (kept when its flow already has one: a cuota line of
       // a plan on file, or a re-import whose adoption below carries the vanished line's day).
       recordCardLineFlowFirstSeen(statementLineId);
@@ -402,8 +442,19 @@ export function importCcStatementsMerge(
     additionalCardCategoriesApplied,
     categoriesRestored: restored,
     earliestInsertedTxDate,
+    planted_same_purchase: absorber?.absorbed ?? [],
     inserted_flows,
     skipped_flows,
+  };
+}
+
+function chargeFacts(statement: CardCanonicalStatement, line: CardCanonicalLine): ChargeFacts {
+  const columns = storedLineColumns(statement, line);
+  return {
+    currency: columns.currency,
+    amount: columns.amount,
+    merchant: columns.merchant,
+    date: line.transaction_date ?? line.posting_date ?? null,
   };
 }
 

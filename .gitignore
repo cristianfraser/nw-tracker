@@ -52,3 +52,4 @@ version.json
 __pycache__/
 # Live-database copies parked by a machine move (personal data)
 server/data/*.moved-to-*
+ingest/python/.scrapling-venv

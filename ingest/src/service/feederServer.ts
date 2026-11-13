@@ -11,6 +11,7 @@ import {
   type FeederParseResult,
   type IngestRunCompletion,
   type IngestRunRequest,
+  type LiderState,
   type SantanderState,
 } from "nw-tracker-contracts";
 
@@ -30,6 +31,8 @@ export type FeederDeps = {
   heartbeatMs?: number;
   /** The bank facts every report carries, also when the run could not start. */
   santanderState: () => SantanderState;
+  /** The Lider BCI facts for a report written here (a run that could not start). */
+  liderState: () => LiderState;
   log: (message: string) => void;
   token?: string | null;
   /** Upload formats (`POST /parse/<format>`); `NotThisFormatError` from one is a 422 `not_this_format`. */
@@ -94,6 +97,8 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
           activity: false,
           santander: null,
           santander_state: deps.santanderState(),
+          lider: null,
+          lider_state: deps.liderState(),
         };
       }
     } finally {

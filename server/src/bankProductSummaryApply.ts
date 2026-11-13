@@ -15,6 +15,7 @@ import type { BankProductSummaryApplyDetails, BankProductSummaryFetchStep, BankP
 import { applyBankAccountBalances, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
 import { judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { bankCupoCaptureFromListing, recordBankCupoCapture } from "./santanderBankCupo.js";
+import { requireCcIssuerSlug } from "./ccIssuers.js";
 
 /** The session's checking listing for each currency it reads (the fetcher's step names). */
 const CHECKING_LISTING_BY_CURRENCY: Readonly<Record<string, BankProductSummaryFetchStep>> = {
@@ -29,12 +30,13 @@ export function applyBankProductSummary(
   const fetch = new Set<BankProductSummaryFetchStep>();
   const mismatches: string[] = [];
 
-  const cupo = recordBankCupoCapture(sourceRef, bankCupoCaptureFromListing(payload.cards), new Map());
+  const issuer = requireCcIssuerSlug(payload.issuer, "bank.product_summary");
+  const cupo = recordBankCupoCapture(issuer, sourceRef, bankCupoCaptureFromListing(payload.cards), new Map());
   if (cupo.status === "missing") {
     fetch.add("card-movements");
     mismatches.push(`card cupos not stated (${cupo.error}) — reading the card feed`);
   } else {
-    for (const v of judgeLatestBankCupoCapture().verdicts) {
+    for (const v of judgeLatestBankCupoCapture({ issuer }).verdicts) {
       if (v.status === "ok") continue;
       fetch.add("card-movements");
       const what = v.status === "mismatch" ? `app − bank ${v.diff}` : (v.reason ?? "not comparable");

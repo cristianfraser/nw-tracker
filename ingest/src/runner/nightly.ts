@@ -1,4 +1,5 @@
-import type { IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
+import type { IngestRunRequest, LiderFetchOutcome, SantanderFetchOutcome } from "nw-tracker-contracts";
+import { runLiderFetchAndImport } from "./liderState.js";
 import { ingest, serverTask, type StepOutcome, type StepRunner } from "./steps.js";
 
 /**
@@ -37,7 +38,7 @@ export type NightlyOptions = {
   metlifeRead: IngestRunRequest["metlife_read"];
 };
 
-export type NightlyResult = { santander: SantanderFetchOutcome | null };
+export type NightlyResult = { santander: SantanderFetchOutcome | null; lider: LiderFetchOutcome | null };
 
 export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<NightlyResult> {
   const dry = (label: string) => `${label} (dry run)`;
@@ -75,16 +76,20 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   else if (o.fullReimport) await x.step("inbox pipeline (full re-reconcile)", ingest("import:cfraser-inbox", "--full"));
   else await x.step("inbox pipeline", ingest("import:cfraser-inbox"));
 
-  // 3. The card movements step 1 staged; 3b the second payment-mirror pass (a same-day payment's
-  // card evidence only lands with the feed); 3c the bank's own cupo against the app's.
+  // 3. The card movements step 1 staged; 3a Lider BCI's card listing (its own session, fetched and
+  // imported here); 3b the second payment-mirror pass (a same-day payment's card evidence only
+  // lands with the feeds); 3c the banks' own cupos against the app's.
+  let lider: LiderFetchOutcome | null = null;
   if (o.dryRun) {
     await x.step(dry("Santander movements"), ingest("import:santander-movements", "--dry-run"));
     await x.step(dry("Santander USD movements"), ingest("import:checking-usd-movements", "--dry-run"));
+    await runLiderFetchAndImport(x, "nightly", { dryRun: true });
     await x.step(dry("Convert CC payment mirrors after card feed"), serverTask("cc_payment_mirrors", "--dry-run"));
   } else {
     await x.step("Santander movements", ingest("import:santander-movements"));
     // The dollar account's capture from the same session: confirms its ledger rows, inserts nothing.
     await x.step("Santander USD movements", ingest("import:checking-usd-movements"));
+    lider = (await runLiderFetchAndImport(x, "nightly", { dryRun: false })).outcome;
     await x.step("Convert CC payment mirrors after card feed", serverTask("cc_payment_mirrors"));
     await x.step("CC bank cupo check", serverTask("cc_bank_cupo_check"));
     // The mortgage cuota in the ledger against the card line that paid it (the feed just
@@ -195,7 +200,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step("Santander statements (apply)", ingest("import:santander-statements", "--apply"));
   }
 
-  return { santander };
+  return { santander, lider };
 }
 
 /** `<label> (apply)` with `--apply`, or `<label> (report only)`. */

@@ -1,4 +1,11 @@
-import { SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES, type IngestRunKind, type SantanderFetchMode, type SantanderState } from "nw-tracker-contracts";
+import {
+  LIDER_MIN_GAP_AFTER_ATTEMPT_MINUTES,
+  SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES,
+  type IngestRunKind,
+  type LiderState,
+  type SantanderFetchMode,
+  type SantanderState,
+} from "nw-tracker-contracts";
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { DAILY_RUN_REPEAT_WINDOW_MINUTES } from "./dailyRunLog.js";
 
@@ -126,6 +133,22 @@ export function decideSantanderBalancePoll(i: SantanderBalancePollInputs): { mod
   const nextNightly = nightlySlotAtOrBefore(new Date(i.now.getTime() + 24 * HOUR_MS));
   if (nextNightly.getTime() - i.now.getTime() < BALANCE_POLL_NIGHTLY_CLEARANCE_MINUTES * 60_000) return null;
   return { mode: "balance-poll", reason: "hourly: the bank's balances against the app" };
+}
+
+/**
+ * Whether an hourly poll reads Lider BCI's card site (its open-cycle listing, then the cupo
+ * check): every hour, except when a latch the fetcher wrote stands (a rejected clave — three
+ * failures block it at the bank — or a failed Turnstile), when the site was tried moments ago,
+ * or when the 22:00 slot is near (the nightly reads it anyway). The facts are the feeder's, from
+ * its latest run report; none yet (a feeder before the read, or no report) asks.
+ */
+export function decideLiderPoll(i: { now: Date; state: LiderState | null }): { reason: string } | null {
+  if (i.state?.latched) return null;
+  const lastAttempt = i.state?.last_attempt_at ? new Date(i.state.last_attempt_at) : null;
+  if (lastAttempt && i.now.getTime() - lastAttempt.getTime() < LIDER_MIN_GAP_AFTER_ATTEMPT_MINUTES * 60_000) return null;
+  const nextNightly = nightlySlotAtOrBefore(new Date(i.now.getTime() + 24 * HOUR_MS));
+  if (nextNightly.getTime() - i.now.getTime() < BALANCE_POLL_NIGHTLY_CLEARANCE_MINUTES * 60_000) return null;
+  return { reason: "hourly: the Lider BCI card's open cycle and cupo" };
 }
 
 /**

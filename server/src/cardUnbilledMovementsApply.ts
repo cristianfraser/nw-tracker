@@ -22,6 +22,7 @@ import {
 } from "./ccFeedCuotaPurchases.js";
 import { feedMirrorCurrencies, planOpenBucketMirror, type CcFeedMirrorResult } from "./ccFeedMirror.js";
 import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
+import type { PlantedSamePurchase } from "./ccPlantedCharges.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
 import {
   bankCupoCaptureFromListing,
@@ -29,6 +30,13 @@ import {
   type BankCupoCaptureResult,
 } from "./santanderBankCupo.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
+import {
+  ccIssuerBySlug,
+  requireCcIssuerSlug,
+  type CcIssuer,
+  type CcIssuerSlug,
+  type CcListingFeedBatchKind,
+} from "./ccIssuers.js";
 
 /** A card's latest close as a listing states it: date + billed total per currency (debt-positive). */
 export type CardListingClose = {
@@ -74,6 +82,8 @@ export type CardListingAccountImportResult = {
   skipped_duplicate: number;
   /** Cuota-billing reference rows (`CUOT: N OPER: M`) the feed lists at a facturación close. */
   skipped_cuota_billing: number;
+  /** Rows that are the later-day listing of a purchase the app planted (`ccPlantedCharges.ts`). */
+  skipped_planted_same_purchase: PlantedSamePurchase[];
   batch_id: number | null;
   feed_close: CardListingCloseImport | null;
   /** Feed cuota purchases with a known count, turned into plans (`ccFeedCuotaPurchases.ts`). */
@@ -216,6 +226,7 @@ export function applyCardUnbilledMovements(
   // Validated before any write, recorded after the lines: the check compares it with the ledger
   // this listing leaves behind.
   const bankCupo = bankCupoCaptureFromListing(payload.issuer_balances);
+  const issuer = listingIssuer(payload);
 
   const accounts: CardListingAccountImportResult[] = [];
   withExpenseLinkSyncDeferred(() => {
@@ -223,7 +234,9 @@ export function applyCardUnbilledMovements(
       const accountId = cardAccountForIssuerNumber(card.account);
       // One card-line write per card: the close, the plans, the lines, the tags and the mirror
       // land together and the card re-syncs once.
-      const listed = cardLineWrite(accountId, "card feed", () => applyCardListing(accountId, card, closes, bankCupo, sourceRef));
+      const listed = cardLineWrite(accountId, "card feed", () =>
+        applyCardListing(accountId, card, closes, bankCupo, sourceRef, listingFeedOf(card.account.issuer).batch_kind)
+      );
       // After the write's re-sync: the check reads the facturación the write left.
       accounts.push({
         ...listed,
@@ -239,8 +252,35 @@ export function applyCardUnbilledMovements(
   return {
     source: sourceRef,
     accounts,
-    bank_cupo: recordBankCupoCapture(sourceRef, bankCupo, closes),
+    bank_cupo: issuer ? recordBankCupoCapture(issuer, sourceRef, bankCupo, closes) : { status: "absent" },
   };
+}
+
+/** The issuer's listing feed (`CC_ISSUERS`); an issuer no feeder reads throws. */
+function listingFeedOf(issuerSlug: string): NonNullable<CcIssuer["listing_feed"]> {
+  const feed = ccIssuerBySlug(issuerSlug)?.listing_feed;
+  if (!feed) throw new Error(`card.unbilled_movements: issuer «${issuerSlug}» has no listing feed`);
+  return feed;
+}
+
+/**
+ * The one issuer a listing is from: its cards' and its balance rows' (a feeder reads one bank per
+ * session, so the cupo capture is that issuer's). Null when the listing names no card and states no
+ * balances; a listing with balances it cannot attribute (no card, no row) or naming two issuers
+ * throws.
+ */
+function listingIssuer(payload: CardUnbilledMovementsPayload): CcIssuerSlug | null {
+  const balances = payload.issuer_balances;
+  const named = new Set<string>(payload.cards.map((c) => c.account.issuer));
+  if (balances?.status === "observed") for (const r of balances.rows) named.add(r.account.issuer);
+  if (named.size > 1) throw new Error(`card.unbilled_movements: one listing names several issuers (${[...named].sort().join(", ")})`);
+  const only = [...named][0];
+  if (only == null) {
+    if (balances === undefined) return null;
+    throw new Error("card.unbilled_movements: the balances name no issuer and the listing has no card");
+  }
+  listingFeedOf(only);
+  return requireCcIssuerSlug(only, "card.unbilled_movements");
 }
 
 /** One card of a listing, inside its card-line write. */
@@ -249,7 +289,8 @@ function applyCardListing(
   card: CardUnbilledMovementsPayload["cards"][number],
   closes: Map<string, CardListingClose>,
   bankCupo: ReturnType<typeof bankCupoCaptureFromListing>,
-  sourceRef: string
+  sourceRef: string,
+  batchKind: CcListingFeedBatchKind
 ): Omit<CardListingAccountImportResult, "feed_close"> & { feed_close: Omit<CardListingCloseImport, "provisional_check"> | null } {
   const lines = card.lines.map((line) => listingLineFromCardListingLine(line));
   const close = closes.get(card.account.number);
@@ -260,7 +301,7 @@ function applyCardListing(
   const result = insertLines(
     accountId,
     { lines, errors: [] },
-    "cc_santander_fetch",
+    batchKind,
     applied
       ? { targetBillingMonth: applied.close.rows_billing_month, lineBillingMonths: applied.lineBillingMonths }
       : undefined
@@ -299,6 +340,7 @@ function applyCardListing(
     inserted: result.inserted,
     skipped_duplicate: result.skipped_duplicate,
     skipped_cuota_billing: result.skipped_cuota_billing,
+    skipped_planted_same_purchase: result.skipped_planted_same_purchase,
     batch_id: result.batch_id,
     feed_close: feedClose,
     plans_created: plansCreated,

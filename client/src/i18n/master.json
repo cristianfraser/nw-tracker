@@ -3015,6 +3015,10 @@
         "en": "already in installments",
         "es": "ya en cuotas"
       },
+      "resultSkipReasonPlantedSamePurchase": {
+        "en": "already on file from a receipt",
+        "es": "ya registrada por una boleta o comprobante"
+      },
       "resultSkipReasonCuotaBilling": {
         "en": "cuota billing, already scheduled",
         "es": "cobro de cuota, ya agendado"

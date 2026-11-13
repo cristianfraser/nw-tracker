@@ -2,10 +2,11 @@
  * The one resolver for card documents (docs/untangle-plan.md F13): which card master a document
  * belongs to. A document names its card one of two ways —
  *
- * - by the issuer's account number (`{ issuer, number }`: the feed listing, the statement JSON,
- *   the issuer's balances), mapped through gitignored `cfraser/organize-identifiers.json`
- *   (`santander_80_account_to_card_last4`, the same identity table the inbox organizer files the
- *   statement PDFs by) to the card's last4;
+ * - as its issuer does (`{ issuer, number }`: the feed listing, the statement JSON, the issuer's
+ *   balances): Santander by its account (contract) number, mapped through gitignored
+ *   `cfraser/organize-identifiers.json` (`santander_80_account_to_card_last4`, the same identity
+ *   table the inbox organizer files the statement PDFs by) to the card's last4; BCI, whose site
+ *   shows no contract number, by the plastic's last4 itself;
  * - by the plastic's last4 (a parsed statement's `card_last4`, else the last4 in its file name).
  *
  * Either way the last4 goes through the card registry's consolidation redirects
@@ -18,7 +19,8 @@ import path from "node:path";
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
 import { resolveCfraserCsvDir } from "../cfraserPaths.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../ccConsolidatedCards.js";
-import type { CcIssuerSlug } from "../ccIssuers.js";
+import { ccIssuerBySlug, type CcIssuerSlug } from "../ccIssuers.js";
+import { ccIssuerSlugForMasterAccount } from "../ccIssuerForAccount.js";
 import { listCreditCardMasterAccountIdsForIssuer } from "../creditCardTree.js";
 
 type OrganizeIdentifiers = {
@@ -50,21 +52,45 @@ export function cardLast4ForSantanderAccount(account: string): string | null {
   return map[key] ?? null;
 }
 
-/** The card master a document naming the issuer's account number belongs to. */
+/**
+ * The card master a document naming the card as its issuer does belongs to. How the issuer names
+ * it is its `listing_feed.names_card_by` (`CC_ISSUERS`): Santander by its contract number, BCI by
+ * the plastic's last4. Either way the master found must carry that issuer
+ * (`credit_card_account_config.issuer`) — a last4 another issuer's card carries is a data problem,
+ * never a card to write to.
+ */
 export function cardAccountForIssuerNumber(account: { issuer: string; number: string }): number {
-  if (account.issuer !== "santander") {
+  const issuer = ccIssuerBySlug(account.issuer);
+  const namesCardBy = issuer?.listing_feed?.names_card_by;
+  if (!issuer || !namesCardBy) {
     throw new Error(`No card-account mapping for issuer "${account.issuer}" (account ${account.number})`);
   }
-  const last4 = cardLast4ForSantanderAccount(account.number);
-  if (!last4) {
-    throw new Error(
-      `Santander account ${account.number} is not in santander_80_account_to_card_last4 ` +
-        `(cfraser/organize-identifiers.json) — add its card last4.`
-    );
+  let last4: string;
+  if (namesCardBy === "contract_number") {
+    // The one contract-number table on file is Santander's (the inbox organizer's).
+    const mapped = issuer.slug === "santander" ? cardLast4ForSantanderAccount(account.number) : null;
+    if (!mapped) {
+      throw new Error(
+        `${issuer.display_brand} account ${account.number} is not in santander_80_account_to_card_last4 ` +
+          `(cfraser/organize-identifiers.json) — add its card last4.`
+      );
+    }
+    last4 = mapped;
+  } else {
+    if (!/^\d{4}$/.test(account.number)) {
+      throw new Error(`${issuer.display_brand} names its card by the plastic's last4, not «${account.number}»`);
+    }
+    last4 = account.number;
   }
   const accountId = resolveMasterAccountIdForImportCardLast4(last4);
   if (!accountId) {
-    throw new Error(`No credit-card master account has card_last4 ${last4} (Santander account ${account.number}).`);
+    throw new Error(`No credit-card master account has card_last4 ${last4} (${issuer.display_brand} account ${account.number}).`);
+  }
+  const masterIssuer = ccIssuerSlugForMasterAccount(accountId);
+  if (masterIssuer !== issuer.slug) {
+    throw new Error(
+      `${issuer.display_brand} account ${account.number} routes to card master ${accountId}, whose issuer is ${masterIssuer}`
+    );
   }
   return accountId;
 }

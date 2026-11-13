@@ -632,6 +632,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "cc_billing_month_metrics",
   "credit_card_cupos",
   "cc_feed_billing_close_amounts",
+  "cc_planted_charge_lines",
 ];
 
 /**

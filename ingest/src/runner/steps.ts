@@ -24,7 +24,8 @@ export function serverTask(task: string, ...args: string[]): IngestCommand {
   return ingest("server-task", task, ...args);
 }
 
-export type StepOutcome = { ok: boolean; result: StepResult };
+/** `code`: the command's exit status (0 = ok), for a command whose failures say different things. */
+export type StepOutcome = { ok: boolean; code: number; result: StepResult };
 
 export interface StepRunner {
   /** Run one command, record it as a step, and return whether it passed and what it reported. */
@@ -75,7 +76,7 @@ export function processStepRunner(opts: { cwd: string; logFd: number; env?: Node
       steps.push({ label, ok, seconds });
       const result = readStepResult(resultFile);
       fs.rmSync(resultFile, { force: true });
-      return { ok, result };
+      return { ok, code, result };
     },
   };
 }

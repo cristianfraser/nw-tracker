@@ -39,10 +39,11 @@ export function listingLine(
 export function listingCard(
   number: string,
   lines: CardListingLine[],
-  close?: { date: string; clp?: number | null; usd?: number | null }
+  close?: { date: string; clp?: number | null; usd?: number | null } | null,
+  issuer = "santander"
 ): Card {
   return {
-    account: { issuer: "santander", number },
+    account: { issuer, number },
     close: close ? { date: close.date, billed: { clp: close.clp ?? null, usd: close.usd ?? null } } : null,
     lines,
   };
@@ -54,9 +55,10 @@ export function balanceRow(
   currency: "clp" | "usd",
   limit: number,
   used: number,
-  available = limit - used
+  available = limit - used,
+  issuer = "santander"
 ): BalanceRow {
-  return { account: { issuer: "santander", number }, card_last4: last4, currency, limit, used, available };
+  return { account: { issuer, number }, card_last4: last4, currency, limit, used, available };
 }
 
 export function listing(

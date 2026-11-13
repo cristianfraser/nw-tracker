@@ -30,7 +30,7 @@ import { clearJobs } from "./test/jobQueueTestUtils.js";
  */
 const NIGHTLY = new Date("2099-06-11T02:00:00Z");
 
-type Call = { runId: number; jobId: number | null; kind: IngestRunKind; reason: string; santanderFetch: IngestRunRequest["santander_fetch"] };
+type Call = { runId: number; jobId: number | null; kind: IngestRunKind; reason: string; santanderFetch: IngestRunRequest["santander_fetch"]; liderFetch: IngestRunRequest["lider_fetch"] };
 
 /** A stand-in ingest service; `answer` can be changed between steps. */
 function fakeFeeder(answer: FeederAnswer) {
@@ -39,7 +39,7 @@ function fakeFeeder(answer: FeederAnswer) {
     answer,
     calls,
     request: async (r: IngestRunRequest): Promise<FeederAnswer> => {
-      calls.push({ runId: r.run_id, jobId: r.job_id, kind: r.kind, reason: r.reason, santanderFetch: r.santander_fetch });
+      calls.push({ runId: r.run_id, jobId: r.job_id, kind: r.kind, reason: r.reason, santanderFetch: r.santander_fetch, liderFetch: r.lider_fetch });
       return feeder.answer;
     },
   };
@@ -78,6 +78,8 @@ function report(over: Partial<IngestRunCompletion> = {}): IngestRunCompletion {
     activity: false,
     santander: { mode: "nightly", outcome: "ok", note: null },
     santander_state: STATE,
+    lider: null,
+    lider_state: null,
     ...over,
   };
 }
@@ -108,7 +110,7 @@ describe("scheduler + executor", () => {
     const feeder = fakeFeeder({ status: "accepted" });
     const first = await step("2099-06-11T02:00:10Z", feeder);
     expect(first.decision).toMatchObject({ action: "request", kind: "nightly", slot: NIGHTLY });
-    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: first.job_id, kind: "nightly", reason: "22:00 slot, on time", santanderFetch: null }]);
+    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: first.job_id, kind: "nightly", reason: "22:00 slot, on time", santanderFetch: null, liderFetch: null }]);
     const runId = lastRunId(feeder);
     expect(ingestRunById(runId)).toMatchObject({ status: "requested", slot_at: NIGHTLY.toISOString(), job_id: first.job_id });
     expect(jobById(first.job_id!)).toMatchObject({ status: "running", worker: "ingest-service" });
@@ -226,6 +228,28 @@ describe("scheduler + executor", () => {
     expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: { mode: "balance-poll" } });
     expect(ingestRunById(lastRunId(ok))).toMatchObject({ santander_request: "balance-poll" });
   });
+
+  it("asks each hourly poll for a Lider BCI read from the feeder's facts, never while a latch stands", async () => {
+    const ok = fakeFeeder({ status: "accepted" });
+    await step("2099-06-11T02:00:10Z", ok);
+    expect(ok.calls.at(-1)).toMatchObject({ kind: "nightly", liderFetch: null });
+    const liderFacts = { last_attempt_at: "2099-06-11T02:05:00.000Z", last_success_at: "2099-06-11T02:05:00.000Z", latched: null };
+    completeIngestRun(lastRunId(ok), report({ lider: { mode: "nightly", outcome: "ok", note: null }, lider_state: liderFacts }));
+    expect(ingestRunById(lastRunId(ok))).toMatchObject({ lider_outcome: "ok", lider_state_json: JSON.stringify(liderFacts) });
+    // Tried 25 min ago by the nightly: this poll does not ask.
+    await step("2099-06-11T02:30:05Z", ok);
+    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", liderFetch: null });
+    completeIngestRun(lastRunId(ok), report({ santander: null, lider_state: { ...liderFacts, latched: "turnstile" } }));
+    await step("2099-06-11T03:30:05Z", ok);
+    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", liderFetch: null });
+    completeIngestRun(lastRunId(ok), report({ santander: null, lider_state: liderFacts }));
+    await step("2099-06-11T04:30:05Z", ok);
+    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", liderFetch: { reason: expect.any(String) } });
+    expect(ingestRunById(lastRunId(ok))).toMatchObject({ lider_request: "poll" });
+    // A feeder report with no Lider facts leaves the latest ones standing.
+    completeIngestRun(lastRunId(ok), report({ santander: null, lider: { mode: "poll", outcome: "vetoed", note: "x" }, lider_state: null }));
+    expect(ingestRunById(lastRunId(ok))).toMatchObject({ lider_outcome: "vetoed", lider_state_json: null });
+  });
 });
 
 describe("startManualIngestRun", () => {
@@ -249,7 +273,7 @@ describe("startManualIngestRun", () => {
     const out = startManualIngestRun("hourly", AT, true);
     expect(out).toMatchObject({ status: "queued", coalesced: false });
     await jobQueueTick(AT, { request: feeder.request, notified: new Set() });
-    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: (out as { job_id: number }).job_id, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: { mode: "balance-poll", reason: expect.any(String) } }]);
+    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: (out as { job_id: number }).job_id, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: { mode: "balance-poll", reason: expect.any(String) }, liderFetch: { reason: expect.any(String) } }]);
     const runId = lastRunId(feeder);
     expect(ingestRunById(runId)).toMatchObject({ kind: "hourly", status: "requested", slot_at: AT.toISOString() });
 
@@ -383,7 +407,7 @@ describe("requestFeederRun", () => {
     for (const [status, body, expected] of cases) {
       const svc = await stubService(status, body);
       try {
-        const request = { run_id: 50, job_id: 7, kind: "nightly" as const, reason: "x", santander_fetch: null, afp_uno_fetch: null, afc_fetch: null, payslips: null, metlife_read: null };
+        const request = { run_id: 50, job_id: 7, kind: "nightly" as const, reason: "x", santander_fetch: null, afp_uno_fetch: null, afc_fetch: null, payslips: null, metlife_read: null, lider_fetch: null };
         expect((await requestFeederRun(request, svc.env)).status).toBe(expected);
       } finally {
         await svc.close();

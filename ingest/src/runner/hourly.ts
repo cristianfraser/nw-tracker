@@ -1,4 +1,5 @@
-import type { BankProductSummaryFetchStep, IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
+import type { BankProductSummaryFetchStep, IngestRunRequest, LiderFetchOutcome, SantanderFetchOutcome } from "nw-tracker-contracts";
+import { runLiderFetchAndImport } from "./liderState.js";
 import { applyOrReport, runMetlifeRead } from "./nightly.js";
 import { ingest, serverTask, type StepRunner } from "./steps.js";
 
@@ -6,7 +7,8 @@ import { ingest, serverTask, type StepRunner } from "./steps.js";
  * The hourly poll — the e-mail fetches and imports, plus the Santander balance poll when the
  * server asks for it: log in, send the product summary, read the movements of only
  * the products whose balance disagrees with the app, import them, and judge again (the check
- * notifies a difference the movements did not explain). This poll only declines a bank session it
+ * notifies a difference the movements did not explain) — and Lider BCI's card listing when the
+ * server asks. This poll only declines a bank session it
  * cannot safely open (the login is latched, or the bank was tried moments ago).
  */
 
@@ -21,9 +23,13 @@ export type HourlyOptions = {
   groceryInboxCount: () => number;
   /** The server's request to read MetLife's portal this hour (`quote` | `posted`), or null. */
   metlifeRead: IngestRunRequest["metlife_read"];
+  /** The server's request to read Lider BCI's card site this hour, or null. */
+  liderFetch: IngestRunRequest["lider_fetch"];
+  /** A reason to decline the requested Lider read, or null to go ahead (`liderVeto`). */
+  liderVeto: () => string | null;
 };
 
-export type HourlyResult = { santander: SantanderFetchOutcome | null; activity: boolean };
+export type HourlyResult = { santander: SantanderFetchOutcome | null; lider: LiderFetchOutcome | null; activity: boolean };
 
 export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<HourlyResult> {
   const fetches = [
@@ -80,6 +86,25 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     }
   }
 
+  // Lider BCI's card site, when the server asks: its open-cycle listing, imported at once (the
+  // cupo check after the imports judges its capture).
+  let lider: LiderFetchOutcome | null = null;
+  let liderInserted = 0;
+  let liderRead = false;
+  if (!o.dryRun && o.liderFetch) {
+    const veto = o.liderVeto();
+    if (veto) {
+      x.note(`=== Lider BCI (declined — ${veto})`);
+      lider = { mode: "poll", outcome: "vetoed", note: veto };
+    } else {
+      x.note(`Lider BCI — ${o.liderFetch.reason}`);
+      const read = await runLiderFetchAndImport(x, "poll", { dryRun: false });
+      lider = read.outcome;
+      liderInserted = read.inserted;
+      liderRead = true;
+    }
+  }
+
   // Imports only when a fetch staged something new this hour (or a photo is waiting); anything
   // the gate misses is retried by the nightly, whose pipeline runs unconditionally.
   if (!o.dryRun) {
@@ -91,8 +116,10 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     } else {
       x.note("=== inbox pipeline (skipped — nothing new staged)");
     }
-    // After every import: a difference the bank's movements did not explain is notified.
+    // After every import: a difference the bank's movements did not explain is notified, and a
+    // new Lider capture is judged.
     if (differs) await x.step("CC bank cupo check (balance poll)", serverTask("cc_bank_cupo_check", "--recheck"));
+    else if (liderRead) await x.step("CC bank cupo check (Lider BCI)", serverTask("cc_bank_cupo_check"));
     if (beMsgs > 0) {
       await applyOrReport(x, "Fintual e-mail movements", "import:fintual-emails", o.fintualApply);
       await applyOrReport(x, "Racional e-mail movements", "import:racional-emails", o.racionalApply);
@@ -153,6 +180,7 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     amSaved > 0 ||
     beMsgs > 0 ||
     listings.length > 0 ||
+    liderInserted > 0 ||
     mailMovements > 0 ||
     billMails > 0 ||
     metlifeReceipts > 0 ||
@@ -162,10 +190,10 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, ` +
+        `santander listings read=${listings.length}, lider rows=${liderInserted}, movements from transfer mails=${mailMovements}, new bill mails=${billMails}, ` +
         `metlife receipts=${metlifeReceipts}, metlife portal writes=${metlifeRead}, ` +
         `fintual wallet interest=${walletInterest}`
     );
   }
-  return { santander, activity };
+  return { santander, lider, activity };
 }

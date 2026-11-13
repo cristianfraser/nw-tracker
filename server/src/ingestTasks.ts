@@ -6,7 +6,13 @@
 import type { IngestTaskName, IngestTaskResult } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
 import { formatBankBalanceReport, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
-import { formatBankCupoReport, judgeLatestBankCupoCapture, previousBankCupoVerdict } from "./ccBankCupoCheck.js";
+import {
+  bankCupoCaptureIssuers,
+  formatBankCupoReport,
+  judgeLatestBankCupoCapture,
+  previousBankCupoVerdict,
+} from "./ccBankCupoCheck.js";
+import { ccIssuerBySlug } from "./ccIssuers.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -101,13 +107,22 @@ function isNewMismatch(diff: number | null, previous: { status: string; diff: nu
  * is reported again but raises nothing.
  */
 function ccBankCupoCheck(o: TaskOptions): TaskOutcome {
+  const issuers = bankCupoCaptureIssuers();
+  if (issuers.length === 0) return { ok: true, report: ["No bank cupo captured yet — the fetcher records it from 2026-09-27 on."] };
+  // Each issuer's latest capture on its own (two banks posting hourly must not hide each other).
+  const outcomes = issuers.map((issuer) => ccBankCupoCheckForIssuer(issuer, o));
+  return { ok: outcomes.every((x) => x.ok), report: outcomes.flatMap((x, i) => (i === 0 ? x.report : ["", ...x.report])) };
+}
+
+function ccBankCupoCheckForIssuer(issuer: string, o: TaskOptions): TaskOutcome {
   const accountName = (accountId: number): string =>
     (db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(accountId) as { name: string } | undefined)?.name ??
     `account ${accountId}`;
-  const run = judgeLatestBankCupoCapture({ recheck: o.recheck });
-  if (!run.capture) return { ok: true, report: ["No bank cupo captured yet — the fetcher records it from 2026-09-27 on."] };
+  const brand = ccIssuerBySlug(issuer)?.display_brand ?? issuer;
+  const run = judgeLatestBankCupoCapture({ issuer, recheck: o.recheck });
+  if (!run.capture) return { ok: true, report: [`No ${brand} bank cupo captured yet.`] };
   if (run.capture_error != null) {
-    const body = `The latest Santander feed (${run.capture.source_file}) carried no cupo summary: ${run.capture_error}`;
+    const body = `The latest ${brand} feed (${run.capture.source_file}) carried no cupo summary: ${run.capture_error}`;
     if (run.capture.already_checked) return { ok: true, report: [body, "(already reported — nothing new)"] };
     insertAppMessage("log", CUPO_TITLE, body);
     return { ok: false, report: [body] };

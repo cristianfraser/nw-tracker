@@ -45,6 +45,9 @@ export type CcFirstCuotaTiming = "purchase_cycle" | "next_cycle";
  */
 export type CcStatementCurrencies = { primary: string; secondary: readonly string[] };
 
+/** The import batch kinds a fetched listing is logged under (a subset of `ImportBatchKind`). */
+export type CcListingFeedBatchKind = "cc_santander_fetch" | "cc_lider_fetch";
+
 type CcIssuerDef = {
   slug: string;
   /** The card's short brand as a payment line names it («Pago Lider ·0101»). */
@@ -58,6 +61,13 @@ type CcIssuerDef = {
    * issuer without one shows nothing of the current cycle until its statement.
    */
   unbilled_listing: boolean;
+  /**
+   * The issuer's fetched unbilled listing (`card.unbilled_movements`): how it names a card —
+   * Santander by its contract number (mapped through `cfraser/organize-identifiers.json`), BCI by
+   * the plastic's last4 (its site shows no contract number) — and the import batch kind its lines
+   * are logged under. Null for an issuer no feeder reads.
+   */
+  listing_feed: { names_card_by: "contract_number" | "card_last4"; batch_kind: CcListingFeedBatchKind } | null;
   derived_pay_by: CcDerivedPayByRule;
   /** The bucket card_group a pasted or fed line is stored under, and how its web table signs it. */
   web_paste: { card_group: string; sign: CcWebPasteSign };
@@ -103,6 +113,7 @@ export const CC_ISSUERS = [
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
     unbilled_listing: true,
+    listing_feed: { names_card_by: "contract_number", batch_kind: "cc_santander_fetch" },
     sort_order: 0,
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: true },
     web_paste: { card_group: "santander", sign: "charges_negative" },
@@ -119,6 +130,7 @@ export const CC_ISSUERS = [
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
     unbilled_listing: true,
+    listing_feed: { names_card_by: "card_last4", batch_kind: "cc_lider_fetch" },
     sort_order: 10,
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: false },
     web_paste: { card_group: "BCI", sign: "charges_positive" },
@@ -135,6 +147,7 @@ export const CC_ISSUERS = [
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
     unbilled_listing: false,
+    listing_feed: null,
     sort_order: 20,
     derived_pay_by: { kind: "close_plus_days", days: 16 },
     web_paste: { card_group: "CMR", sign: "charges_positive" },
@@ -154,6 +167,7 @@ export const CC_ISSUERS = [
     statement_currencies: { primary: "usd", secondary: [] },
     installments: false,
     unbilled_listing: false,
+    listing_feed: null,
     sort_order: 30,
     derived_pay_by: { kind: "close_plus_days", days: 25 },
     web_paste: { card_group: "LONESTAR", sign: "charges_positive" },
@@ -173,6 +187,7 @@ export const CC_ISSUERS = [
     statement_currencies: { primary: "eur", secondary: [] },
     installments: false,
     unbilled_listing: false,
+    listing_feed: null,
     sort_order: 40,
     derived_pay_by: { kind: "close_plus_days", days: 25 },
     web_paste: { card_group: "EURONOVA", sign: "charges_positive" },

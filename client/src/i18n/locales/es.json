@@ -921,6 +921,7 @@
       "resultSkipReasonDuplicate": "duplicado",
       "resultSkipReasonDuplicateApprox": "duplicado aprox.",
       "resultSkipReasonInstallmentOverlap": "ya en cuotas",
+      "resultSkipReasonPlantedSamePurchase": "ya registrada por una boleta o comprobante",
       "resultSkipReasonCuotaBilling": "cobro de cuota, ya agendado",
       "resultSkipReasonAlreadyPresent": "ya en cartola",
       "resultSkipReasonSupersededByCartola": "ya cubierto por cartola",

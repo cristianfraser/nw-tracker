@@ -128,6 +128,7 @@ function nightlyBankChecks(ids: Map<Acct, number>, person: Person, ymd: Ymd, obs
       cupo_disponible: Math.max(limit, used) - used,
     });
     recordBankCupoCapture(
+      "santander",
       source,
       {
         status: "present",

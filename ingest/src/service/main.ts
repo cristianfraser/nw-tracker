@@ -12,6 +12,7 @@ import { log } from "../log.js";
 import { envValue, ingestClient } from "../serverApi.js";
 import { createFeederServer, reportWithRetry } from "./feederServer.js";
 import { readSantanderState, runRequestedRun } from "../runner/runRequest.js";
+import { readLiderState } from "../runner/liderState.js";
 import { PARSE_FORMATS } from "../parse/formats.js";
 
 const port = Number(process.env.INGEST_SERVICE_PORT ?? DEFAULT_INGEST_SERVICE_PORT);
@@ -22,6 +23,7 @@ const { server } = createFeederServer({
   report: (runId, completion) => reportWithRetry((id, c) => client.completeRun(id, c), runId, completion, log),
   heartbeat: (jobId) => client.heartbeatJob(jobId),
   santanderState: readSantanderState,
+  liderState: () => readLiderState(),
   log,
   token: envValue("INGEST_TOKEN") ?? null,
   parse: PARSE_FORMATS,

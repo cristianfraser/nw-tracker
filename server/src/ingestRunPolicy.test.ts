@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SantanderState } from "nw-tracker-contracts";
+import type { LiderState, SantanderState } from "nw-tracker-contracts";
 import {
   decideAfcFetch,
   decideMetlifeRead,
@@ -7,6 +7,7 @@ import {
   metlifeQuoteMissing,
   metlifeQuoteSlotAtOrBefore,
   decideIngestRun,
+  decideLiderPoll,
   decideSantanderBalancePoll,
   hourlySlotAtOrBefore,
   nightlySlotAtOrBefore,
@@ -97,6 +98,36 @@ describe("decideIngestRun", () => {
       kind: "hourly",
       slot: at("2026-09-30T17:30:00Z"),
     });
+  });
+});
+
+describe("decideLiderPoll", () => {
+  const state = (over: Partial<LiderState> = {}): LiderState => ({
+    last_attempt_at: "2026-09-30T14:30:30.000Z",
+    last_success_at: "2026-09-30T14:30:30.000Z",
+    latched: null,
+    ...over,
+  });
+
+  it("reads every hour, before the first report too", () => {
+    expect(decideLiderPoll({ now: at("2026-09-30T15:30:00Z"), state: state() })).toEqual({
+      reason: "hourly: the Lider BCI card's open cycle and cupo",
+    });
+    expect(decideLiderPoll({ now: at("2026-09-30T15:30:00Z"), state: null })).not.toBeNull();
+  });
+
+  it("skips while a latch stands and right after an attempt", () => {
+    const now = at("2026-09-30T15:30:00Z");
+    expect(decideLiderPoll({ now, state: state({ latched: "login_rejected" }) })).toBeNull();
+    expect(decideLiderPoll({ now, state: state({ latched: "turnstile" }) })).toBeNull();
+    expect(decideLiderPoll({ now, state: state({ last_attempt_at: "2026-09-30T15:00:00.000Z" }) })).toBeNull();
+    expect(decideLiderPoll({ now, state: state({ last_attempt_at: "2026-09-30T14:55:00.000Z" }) })).not.toBeNull();
+  });
+
+  it("leaves the 22:00 slot to the nightly, which always reads the site", () => {
+    expect(decideLiderPoll({ now: at("2026-10-01T00:30:00Z"), state: state() })).toBeNull();
+    expect(decideLiderPoll({ now: at("2026-10-01T00:14:00Z"), state: state() })).not.toBeNull();
+    expect(decideLiderPoll({ now: at("2026-09-30T23:30:00Z"), state: state() })).not.toBeNull();
   });
 });
 

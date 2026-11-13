@@ -34,6 +34,7 @@ import {
   creditCardMasterMetaForAccount,
   listingStatements,
   newWebPasteBatchId,
+  webPasteLineDedupeKey,
   type CcListingParseResult,
   type CcListingStatementsOpts,
 } from "../ccWebPasteParse.js";
@@ -41,7 +42,8 @@ import { applyWebPasteInstallmentFirstDueNudges, type CcInstallmentFirstDueNudge
 import type { RecurringPendingResult } from "../ccRecurringPendingLines.js";
 import { createImportBatch, type ImportBatchKind } from "../importBatches.js";
 import type { GroceryBranchLearningResult } from "../groceryBranchLearning.js";
-import type { PlantedPaymentMatchResult } from "../ccPlantedPayments.js";
+import { recordPlantedPaymentLine, type PlantedPaymentMatchResult } from "../ccPlantedPayments.js";
+import type { PlantedSamePurchase } from "../ccPlantedCharges.js";
 import { accountProfileOptional } from "../accountProfile.js";
 import {
   registerCardLineWriteFrame,
@@ -71,8 +73,26 @@ export const CARD_LINE_WRITE_FRAME: CardLineWriteFrame = {
 };
 registerCardLineWriteFrame(CARD_LINE_WRITE_FRAME);
 
-function plantFinancingPayment(accountId: number, parsed: CcListingParseResult): void {
-  insertLines(accountId, parsed, "cc_financing_payment");
+/**
+ * The paid card's PAGO, planted and registered as a planted payment (`ccPlantedPayments.ts`): the
+ * bank's own listing of it, under its wording and a few days later, replaces it — a card with a
+ * feed (the Lider card's listing, Santander's) would otherwise count the payment twice.
+ */
+export function plantFinancingPayment(accountId: number, parsed: CcListingParseResult): void {
+  const planted = insertLines(accountId, parsed, "cc_financing_payment");
+  const cardGroup = creditCardMasterMetaForAccount(accountId).cardGroup;
+  for (const line of parsed.lines) {
+    if (line.currency !== "clp" || line.amount >= 0) { // convention-ok: a facturado-financing PAGO is in pesos (the facturado it pays)
+      throw new Error(`Account ${accountId}: a planted financing PAGO must be a peso credit`);
+    }
+    recordPlantedPaymentLine(
+      accountId,
+      "cc_financing_payment",
+      { currency: "clp", amount: -line.amount, paid_on: line.transaction_date }, // convention-ok: a facturado-financing PAGO is in pesos
+      webPasteLineDedupeKey(cardGroup, line),
+      planted.inserted > 0
+    );
+  }
 }
 
 /** Runs `body` as one card-line write on the account (plan writers, repairs, scripts). */
@@ -142,6 +162,7 @@ export function insertLines(
       skipped_duplicate: 0,
       skipped_cuota_billing: 0,
       skipped_saldo_inicial: 0,
+      skipped_planted_same_purchase: [] as PlantedSamePurchase[],
       inserted_flows: [] as CcImportFlowItem[],
       skipped_flows: [] as SkippedCcImportFlowItem[],
       grocery_branch_learning: { learned: [], ambiguous: [] } as GroceryBranchLearningResult,
@@ -170,13 +191,14 @@ export function insertLines(
     const firstDueNudges = applyWebPasteInstallmentFirstDueNudges(accountId, parsed.lines);
 
     // Per-line arrays stay out of the batch log — counters only.
-    const { inserted_flows, skipped_flows, ...statementCounters } = merged.statements;
+    const { inserted_flows, skipped_flows, planted_same_purchase, ...statementCounters } = merged.statements;
     const batch_id = createImportBatch(batchKind, `web-paste|${batchId}`, {
       account_id: accountId,
       lines_parsed: parsed.lines.length,
       ...statementCounters,
       skipped_cuota_billing: skipped_cuota_billing.length,
       skipped_saldo_inicial: skipped_saldo_inicial.length,
+      skipped_planted_same_purchase: planted_same_purchase.length,
       ledger: merged.ledger,
       installment_first_due_nudges: firstDueNudges,
       truncated_merchant_dedupe: merged.bucket.truncated_merchant_dedupe,
@@ -195,6 +217,7 @@ export function insertLines(
       skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
       skipped_cuota_billing: skipped_cuota_billing.length,
       skipped_saldo_inicial: skipped_saldo_inicial.length,
+      skipped_planted_same_purchase: planted_same_purchase,
       overlap_removed: merged.overlap_removed ?? 0,
       installment_first_due_nudges: firstDueNudges,
       truncated_merchant_dedupe: merged.bucket.truncated_merchant_dedupe,

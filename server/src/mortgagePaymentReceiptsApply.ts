@@ -9,7 +9,12 @@
  * (`LENDER_CARD_MERCHANT`), so the card balance and the mortgage card-match check read the payment
  * at once. The statement settles the planted line when it prints the same charge
  * (`reconcileOpenWebPasteAfterPdfClose`: same merchant once BCI's « (T)» is stripped, same pesos,
- * the same day). A charge, not a payment: it is not registered in `cc_planted_payment_lines`.
+ * the same day). The card's own unbilled listing (`card.unbilled_movements`, the Lider site) shows
+ * the same charge under its cut name («TOKU *METLIFE HIPOTE»), the same pesos, the same day: the
+ * listing import skips it as the planted line's fuzzy twin (`oneShotLineFuzzyMatchExists`, the
+ * installment stem rule: one name a prefix of the other), so the planted line stays the card's
+ * one charge until the statement settles it. A charge, not a payment: it is not registered in
+ * `cc_planted_payment_lines`.
  */
 import type { MortgagePaymentReceiptApplyDetails, MortgagePaymentReceiptPayload } from "nw-tracker-contracts";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";

@@ -4,7 +4,8 @@
  *
  * A card's owed balance comes only from the bank's card lines; a `pago_tarjeta` transfer's card
  * leg is inert. So when the app knows of a payment before the bank lists it — a receipt mail
- * (`santanderCcPaymentReceipts.ts`), a payment entered by hand (`ccManualPayments.ts`) — it plants
+ * (`santanderCcPaymentReceipts.ts`), a payment entered by hand (`ccManualPayments.ts`), the PAGO
+ * the facturado-financing matcher plants on a paid card (`cards/lineWrites.ts`) — it plants
  * the card's credit line in the open web-paste bucket and records it here, keyed by line, with
  * the import batch kind that planted it as `source`.
  *
@@ -30,7 +31,7 @@ import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
 /** Import batch kinds that plant a payment line (never matched against themselves). */
-export const PLANTING_BATCH_KINDS = ["cc_santander_receipt", "cc_manual_payment"] as const;
+export const PLANTING_BATCH_KINDS = ["cc_santander_receipt", "cc_manual_payment", "cc_financing_payment"] as const;
 export type PlantingBatchKind = (typeof PLANTING_BATCH_KINDS)[number];
 
 export function isPlantingBatchKind(kind: string): kind is PlantingBatchKind {

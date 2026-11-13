@@ -26,6 +26,8 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccStatementPdfUpload.ts": "raw: renames a plan's source on upload",
   "ccStatementLineDelete.ts": "raw: deletes a bucket line by id",
   "ccPlantedPayments.ts": "raw: replaces planted payment lines by id",
+  "ccPlantedCharges.ts": "raw: the planted charge lines a listing line may be the later listing of",
+  "ccPlantedCharges328.ts": "raw: migration 328 registers the planted charge lines already on file",
   // Identity between arriving evidence and stored lines (F9 step 4 / F17).
   "ccExpenseLineDedupe.ts": "raw: import dedupe (exact and fuzzy twins)",
   "ccCrossImportDedupe.ts": "raw: import-time fuzzy line lookup and the superseded-line remover",

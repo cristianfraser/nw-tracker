@@ -193,7 +193,7 @@ describe("bank cupo check", () => {
       foreign: { usd: { facturado: 900, open_cycle_lines: 12.34, total: 912.34 } },
     });
 
-    const run = judgeLatestBankCupoCapture();
+    const run = judgeLatestBankCupoCapture({ issuer: "santander" });
     expect(run.capture_error).toBeNull();
     expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff, v.fresh])).toEqual([
       ["clp", "ok", 0, true],
@@ -208,7 +208,7 @@ describe("bank cupo check", () => {
     });
 
     // A second run on the same capture reports the stored verdicts, fresh no more.
-    const again = judgeLatestBankCupoCapture();
+    const again = judgeLatestBankCupoCapture({ issuer: "santander" });
     expect(again.capture?.already_checked).toBe(true);
     expect(again.verdicts.every((v) => !v.fresh)).toBe(true);
   });
@@ -216,7 +216,7 @@ describe("bank cupo check", () => {
   it("flags a card the app over-counts, then reports the recovery", () => {
     // The bank owes 3xx.xxx less than the app counts — a plan the bank never had.
     applyListing(feed(cupos(BANK_CLP_USED - 300_000)), "card-movements-vitest-1.json");
-    const bad = judgeLatestBankCupoCapture();
+    const bad = judgeLatestBankCupoCapture({ issuer: "santander" });
     const clp = bad.verdicts.find((v) => v.snapshot.currency === "clp")!;
     expect(clp).toMatchObject({ status: "mismatch", diff: 300_000, tolerance: 5 });
     const report = formatBankCupoReport(bad.verdicts, () => "Vitest card");
@@ -225,13 +225,13 @@ describe("bank cupo check", () => {
     expect(report).toContain("USD: bank US$912,34 · app US$912,34 · ±US$0,00 ok");
 
     applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T12:00:00.000Z")), "card-movements-vitest-2.json");
-    const fixed = judgeLatestBankCupoCapture();
+    const fixed = judgeLatestBankCupoCapture({ issuer: "santander" });
     expect(fixed.verdicts.every((v) => v.status === "ok")).toBe(true);
   });
 
   it("tolerates a peso per unbilled cuota and nothing in dollars", () => {
     applyListing(feed(cupos(BANK_CLP_USED - 5, BANK_USD_USED - 0.01)), "card-movements-vitest-round.json");
-    const run = judgeLatestBankCupoCapture();
+    const run = judgeLatestBankCupoCapture({ issuer: "santander" });
     expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff])).toEqual([
       ["clp", "ok", 5],
       ["usd", "mismatch", 0.01],
@@ -259,7 +259,7 @@ describe("bank cupo check", () => {
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(`${keys[0]}#dup1`);
 
-    const run = judgeLatestBankCupoCapture();
+    const run = judgeLatestBankCupoCapture({ issuer: "santander" });
     expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff])).toEqual([
       ["clp", "ok", 0],
       ["usd", "ok", 0],
@@ -274,7 +274,7 @@ describe("bank cupo check", () => {
     const dropped = applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T13:00:00.000Z")), "card-movements-vitest-twins-3.json");
     expect(dropped.accounts[0]?.mirror?.removed).toHaveLength(1);
     expect(usdLines()).toHaveLength(1);
-    expect(judgeLatestBankCupoCapture().verdicts.every((v) => v.status === "ok")).toBe(true);
+    expect(judgeLatestBankCupoCapture({ issuer: "santander" }).verdicts.every((v) => v.status === "ok")).toBe(true);
   });
 
   it("does not compare across different closes", () => {
@@ -304,10 +304,10 @@ describe("bank cupo check", () => {
       status: "missing",
       error: "the landing page made no cruceProductosOnline call this session",
     });
-    const first = judgeLatestBankCupoCapture();
+    const first = judgeLatestBankCupoCapture({ issuer: "santander" });
     expect(first.capture_error).toMatch(/no cruceProductosOnline call/);
     expect(first.capture?.already_checked).toBe(false);
-    expect(judgeLatestBankCupoCapture().capture?.already_checked).toBe(true);
+    expect(judgeLatestBankCupoCapture({ issuer: "santander" }).capture?.already_checked).toBe(true);
   });
 
   it("ignores a listing without balances, and re-applies idempotently", () => {

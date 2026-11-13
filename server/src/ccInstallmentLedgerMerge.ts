@@ -622,6 +622,7 @@ function mergeInSession(
     replaceAll: false,
     replaceStatementKeys: effectiveReplaceKeys,
     skipGlobalDedupeKeys: true,
+    ...(opts?.listingBatchKind ? { listingBatchKind: opts.listingBatchKind } : {}),
     ...opts?.statements,
   });
   // A statement for a close the card feed already observed must bill exactly the feed's

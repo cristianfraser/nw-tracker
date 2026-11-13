@@ -99,8 +99,15 @@ type CaptureRow = {
 };
 
 const selLatestCapture = db.prepare(
-  `SELECT id, source_file, observed_at, error, checked_at FROM cc_bank_cupo_captures ORDER BY id DESC LIMIT 1`
+  `SELECT id, source_file, observed_at, error, checked_at FROM cc_bank_cupo_captures
+   WHERE issuer = ? ORDER BY id DESC LIMIT 1`
 );
+const selCaptureIssuers = db.prepare(`SELECT DISTINCT issuer FROM cc_bank_cupo_captures ORDER BY issuer`);
+
+/** The issuers with a cupo capture on record, by slug. */
+export function bankCupoCaptureIssuers(): string[] {
+  return (selCaptureIssuers.all() as { issuer: string }[]).map((r) => r.issuer);
+}
 const markCaptureChecked = db.prepare(`UPDATE cc_bank_cupo_captures SET checked_at = datetime('now') WHERE id = ?`);
 const selCaptureSnapshots = db.prepare(
   `SELECT s.id, s.account_id, s.currency, c.observed_at, s.plastic_last4, s.cupo_total, s.cupo_utilizado,
@@ -124,6 +131,7 @@ const upsertCheck = db.prepare(
 type CheckDetail = { reason: string | null; owed: CcOwedByCurrency | null };
 
 export type BankCupoRun = {
+  issuer: string;
   capture: {
     id: number;
     source_file: string;
@@ -137,32 +145,35 @@ export type BankCupoRun = {
 };
 
 /**
- * Judge the latest capture's snapshots — only the latest: an older one describes a ledger state
- * that later imports have moved on from. A snapshot is judged once; `recheck` judges it again
- * against the ledger as it stands now.
+ * Judge an issuer's latest capture's snapshots — only the latest: an older one describes a ledger
+ * state that later imports have moved on from. Each issuer's captures are judged apart (two banks
+ * posting hourly would otherwise hide each other). A snapshot is judged once; `recheck` judges it
+ * again against the ledger as it stands now.
  */
-export function judgeLatestBankCupoCapture(opts?: {
+export function judgeLatestBankCupoCapture(opts: {
+  issuer: string;
   recheck?: boolean;
   owedFor?: (accountId: number, asOfIso: string) => CcOwedByCurrency;
 }): BankCupoRun {
-  const owedFor = opts?.owedFor ?? ccOwedByCurrency;
-  const capture = selLatestCapture.get() as CaptureRow | undefined;
-  if (!capture) return { capture: null, capture_error: null, verdicts: [] };
+  const owedFor = opts.owedFor ?? ccOwedByCurrency;
+  const issuer = opts.issuer;
+  const capture = selLatestCapture.get(issuer) as CaptureRow | undefined;
+  if (!capture) return { issuer, capture: null, capture_error: null, verdicts: [] };
   const header = {
     id: capture.id,
     source_file: capture.source_file,
     observed_at: capture.observed_at,
-    already_checked: capture.checked_at != null && !opts?.recheck,
+    already_checked: capture.checked_at != null && !opts.recheck,
   };
   markCaptureChecked.run(capture.id);
-  if (capture.error != null) return { capture: header, capture_error: capture.error, verdicts: [] };
+  if (capture.error != null) return { issuer, capture: header, capture_error: capture.error, verdicts: [] };
 
   const verdicts: BankCupoVerdict[] = [];
   for (const snapshot of selCaptureSnapshots.all(capture.id) as BankCupoSnapshot[]) {
     const stored = selCheck.get(snapshot.id) as
       | { status: BankCupoCheckStatus; app_owed: number | null; diff: number | null; tolerance: number | null; detail: string }
       | undefined;
-    if (stored && !opts?.recheck) {
+    if (stored && !opts.recheck) {
       const detail = JSON.parse(stored.detail) as CheckDetail;
       verdicts.push({
         snapshot,
@@ -189,7 +200,7 @@ export function judgeLatestBankCupoCapture(opts?: {
     );
     verdicts.push({ ...judgement, snapshot, owed, fresh: true });
   }
-  return { capture: header, capture_error: null, verdicts };
+  return { issuer, capture: header, capture_error: null, verdicts };
 }
 
 const selPreviousVerdict = db.prepare(

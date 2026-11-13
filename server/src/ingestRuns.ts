@@ -1,8 +1,10 @@
 import {
+  liderStateSchema,
   santanderStateSchema,
   type IngestRunCompletion,
   type IngestRunKind,
   type IngestRunRequest,
+  type LiderState,
   type SantanderState,
 } from "nw-tracker-contracts";
 import { recordDailyRun, recordHourlyEmailRun, type DailyRunStep } from "./dailyRunLog.js";
@@ -41,6 +43,12 @@ export type IngestRunRow = {
   /** The run asked for a read of the mortgage lender's portal (migration 308). */
   metlife_request: "quote" | "posted" | null;
   metlife_request_reason: string | null;
+  /** The hourly poll asked for a Lider BCI read (migration 327); null on the nightly, which always reads it. */
+  lider_request: "poll" | null;
+  lider_request_reason: string | null;
+  lider_outcome: "ok" | "failed" | "turnstile" | "vetoed" | null;
+  lider_note: string | null;
+  lider_state_json: string | null;
 };
 
 function parseInstant(value: string | null | undefined): Date | null {
@@ -88,17 +96,19 @@ export function markIngestRunRequested(
   now: Date,
   santanderFetch: IngestRunRequest["santander_fetch"],
   jobId: number,
-  metlifeRead: IngestRunRequest["metlife_read"] = null
+  metlifeRead: IngestRunRequest["metlife_read"] = null,
+  liderFetch: IngestRunRequest["lider_fetch"] = null
 ): number {
   const row = db
     .prepare(
       `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at, santander_request, santander_request_reason, job_id,
-                                metlife_request, metlife_request_reason)
-       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?)
+                                metlife_request, metlife_request_reason, lider_request, lider_request_reason)
+       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (kind, slot_at) DO UPDATE SET status = 'requested', reason = excluded.reason,
          requested_at = excluded.requested_at, error = NULL, santander_request = excluded.santander_request,
          santander_request_reason = excluded.santander_request_reason, job_id = excluded.job_id,
-         metlife_request = excluded.metlife_request, metlife_request_reason = excluded.metlife_request_reason
+         metlife_request = excluded.metlife_request, metlife_request_reason = excluded.metlife_request_reason,
+         lider_request = excluded.lider_request, lider_request_reason = excluded.lider_request_reason
        RETURNING id`
     )
     .get(
@@ -110,7 +120,9 @@ export function markIngestRunRequested(
       santanderFetch?.reason ?? null,
       jobId,
       metlifeRead?.mode ?? null,
-      metlifeRead?.reason ?? null
+      metlifeRead?.reason ?? null,
+      liderFetch ? "poll" : null,
+      liderFetch?.reason ?? null
     ) as {
     id: number;
   };
@@ -146,6 +158,17 @@ export function latestSantanderState(): SantanderState | null {
     )
     .get() as { j: string } | undefined;
   return row ? santanderStateSchema.parse(JSON.parse(row.j)) : null;
+}
+
+/** The feeder's Lider BCI facts from the latest run that reported them. */
+export function latestLiderState(): LiderState | null {
+  const row = db
+    .prepare(
+      `SELECT lider_state_json AS j FROM ingest_runs
+       WHERE lider_state_json IS NOT NULL ORDER BY finished_at DESC, id DESC LIMIT 1`
+    )
+    .get() as { j: string } | undefined;
+  return row ? liderStateSchema.parse(JSON.parse(row.j)) : null;
 }
 
 /** The run's app message, as `record:daily-run` / `record:email-run` wrote it for the shell runners. */
@@ -188,7 +211,7 @@ export function completeIngestRun(id: number, completion: IngestRunCompletion): 
     db.prepare(
       `UPDATE ingest_runs SET status = ?, started_at = ?, finished_at = ?, exit_code = ?, failed_steps = ?,
          steps_json = ?, error = NULL, santander_outcome = ?, santander_note = ?, santander_state_json = ?,
-         activity = ?, dry_run = ?
+         lider_outcome = ?, lider_note = ?, lider_state_json = ?, activity = ?, dry_run = ?
        WHERE id = ?`
     ).run(
       ok ? "done" : "failed",
@@ -200,6 +223,9 @@ export function completeIngestRun(id: number, completion: IngestRunCompletion): 
       completion.santander?.outcome ?? null,
       completion.santander?.note ?? null,
       JSON.stringify(completion.santander_state),
+      completion.lider?.outcome ?? null,
+      completion.lider?.note ?? null,
+      completion.lider_state ? JSON.stringify(completion.lider_state) : null,
       completion.activity ? 1 : 0,
       completion.dry_run ? 1 : 0,
       id

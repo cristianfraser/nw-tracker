@@ -15,6 +15,7 @@ const ROW_ID_REFERENCES: Record<string, string> = {
   card_to_card_payments: "the transfer a card-to-card facturado payment part wrote (derived from its record)",
   cc_manual_payments: "the transfer and planted line a hand-recorded card payment wrote",
   cc_planted_payment_lines: "a planted payment line's registry, until the bank's line replaces it",
+  cc_planted_charge_lines: "a planted charge line's registry (a receipt's line), so the bank's later-day listing of it is skipped",
   cc_traspaso_deuda_links: "the two legs of one debt reclassification (derived per import)",
   crypto_movement_kinds: "a coin row's kind (structured state of that row)",
   crypto_trade_details: "the exchange's record of that trade",
