@@ -8,6 +8,7 @@ import {
   daysBetweenIso,
   ddMmYyyyFromIso,
   isIsoDate,
+  isoDayNumber,
   parseDdMmYyToIso,
   requireIsoDate,
 } from "./dates.js";
@@ -87,5 +88,20 @@ describe("addBusinessDaysIso", () => {
     expect(addBusinessDaysIso("2026-03-06", 1, weekday)).toBe("2026-03-09");
     expect(addBusinessDaysIso("2026-03-06", 0, weekday)).toBe("2026-03-06");
     expect(addBusinessDaysIso("2026-03-06", 5, weekday)).toBe("2026-03-13");
+  });
+});
+
+describe("remembered parses", () => {
+  it("give the same answers on every call, and a bad day still throws after good ones", () => {
+    expect(isoDayNumber("2026-03-05")).toBe(Date.parse("2026-03-05T00:00:00Z") / 86_400_000);
+    expect(isoDayNumber("2026-03-05")).toBe(isoDayNumber("2026-03-05"));
+    expect(isIsoDate("2026-03-05")).toBe(true);
+    for (let i = 0; i < 2; i++) {
+      expect(() => isoDayNumber("2026-02-30")).toThrow(/YYYY-MM-DD/);
+      expect(isIsoDate("2026-02-30")).toBe(false);
+      expect(parseDdMmYyToIso("05/03/26")).toBe("2026-03-05");
+      expect(parseDdMmYyToIso("31/13/26")).toBeNull();
+      expect(parseDdMmYyToIso(" 05/03/2026 ")).toBe("2026-03-05");
+    }
   });
 });

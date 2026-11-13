@@ -9,6 +9,15 @@ export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const MS_PER_DAY = 86_400_000;
 
+/**
+ * Day numbers of the `YYYY-MM-DD` strings already read. A day is a pure function of its string, so
+ * each is validated and parsed once: the expense-line build compares the same dates in hot loops
+ * (a receipt or a recurring payment's window against every candidate line). Only real days are
+ * remembered, so a malformed string still throws on every call. Bounded by the days in use
+ * (about 365 a year).
+ */
+const DAY_NUMBER_BY_ISO = new Map<string, number>();
+
 /** `YYYY-MM-DD` for a real calendar day, else null (month 13, February 30). */
 export function calendarDateIso(year: number, month: number, day: number): string | null {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
@@ -20,7 +29,9 @@ export function calendarDateIso(year: number, month: number, day: number): strin
 
 /** Whether `raw` is a `YYYY-MM-DD` real calendar day. */
 export function isIsoDate(raw: string): boolean {
-  if (typeof raw !== "string" || !ISO_DATE_PATTERN.test(raw)) return false;
+  if (typeof raw !== "string") return false;
+  if (DAY_NUMBER_BY_ISO.has(raw)) return true;
+  if (!ISO_DATE_PATTERN.test(raw)) return false;
   return calendarDateIso(Number(raw.slice(0, 4)), Number(raw.slice(5, 7)), Number(raw.slice(8, 10))) === raw;
 }
 
@@ -32,7 +43,11 @@ export function requireIsoDate(raw: string, what = "date"): string {
 
 /** Days since 1970-01-01 of a `YYYY-MM-DD` day. */
 export function isoDayNumber(ymd: string): number {
-  return Date.parse(`${requireIsoDate(ymd)}T00:00:00Z`) / MS_PER_DAY;
+  const known = DAY_NUMBER_BY_ISO.get(ymd);
+  if (known !== undefined) return known;
+  const day = Date.parse(`${requireIsoDate(ymd)}T00:00:00Z`) / MS_PER_DAY;
+  DAY_NUMBER_BY_ISO.set(ymd, day);
+  return day;
 }
 
 /** `ymd` moved by `days` calendar days. */
@@ -95,7 +110,24 @@ function normalizeTxDateDdMm(raw: string): string {
  * digits. Python's `parse_dd_mm_yy_to_iso` and this assert `server/contracts/data/ddMmYyToIsoCases.json`.
  */
 export function parseDdMmYyToIso(raw: string): string | null {
-  const t = normalizeTxDateDdMm(String(raw ?? "").trim());
+  const key = String(raw ?? "");
+  // A date cell is short, and the same cells are read again and again: remember those.
+  if (key.length <= MAX_REMEMBERED_DATE_CELL) {
+    const known = ISO_BY_DATE_CELL.get(key);
+    if (known !== undefined) return known;
+    const iso = parseDdMmYyToIsoUncached(key);
+    ISO_BY_DATE_CELL.set(key, iso);
+    return iso;
+  }
+  return parseDdMmYyToIsoUncached(key);
+}
+
+/** Longest input {@link parseDdMmYyToIso} remembers (`dd/mm/yyyy` with spaces around it). */
+const MAX_REMEMBERED_DATE_CELL = 16;
+const ISO_BY_DATE_CELL = new Map<string, string | null>();
+
+function parseDdMmYyToIsoUncached(raw: string): string | null {
+  const t = normalizeTxDateDdMm(raw.trim());
   if (ISO_DATE_PATTERN.test(t)) return t;
   const m = DD_MM.exec(t);
   if (!m) return null;

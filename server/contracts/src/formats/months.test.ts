@@ -47,3 +47,19 @@ describe("Spanish month names (shared case table)", () => {
     expect(() => spanishMonthName(13)).toThrow(/no month/);
   });
 });
+
+describe("addCalendarMonths arithmetic", () => {
+  it("moves months exactly like a UTC date's month, across years and both directions", () => {
+    const viaDate = (ym: string, delta: number) => {
+      const d = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + delta, 1));
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    };
+    for (const ym of ["1999-01", "2015-06", "2024-12", "2026-11", "2100-02"]) {
+      for (let delta = -400; delta <= 400; delta += 7) {
+        expect(addCalendarMonths(ym, delta)).toBe(viaDate(ym, delta));
+      }
+    }
+    expect(() => addCalendarMonths("2026-1", 1)).toThrow(/YYYY-MM/);
+    expect(() => addCalendarMonths("2026-01", 0.5)).toThrow(/whole number/);
+  });
+});

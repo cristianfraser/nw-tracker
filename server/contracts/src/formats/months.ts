@@ -18,8 +18,10 @@ export function parseYearMonth(s: string): string | null {
 export function addCalendarMonths(ym: string, delta: number): string {
   if (!YEAR_MONTH_PATTERN.test(ym)) throw new Error(`addCalendarMonths: expected YYYY-MM, got ${JSON.stringify(ym)}`);
   if (!Number.isInteger(delta)) throw new Error(`addCalendarMonths: ${delta} is not a whole number of months`);
-  const d = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Months since year 0, then back: the same as moving a UTC date's month, without a Date.
+  const index = Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1 + delta;
+  const year = Math.floor(index / 12);
+  return `${year}-${String(index - year * 12 + 1).padStart(2, "0")}`;
 }
 
 /** `YYYY-MM` from `YYYY-MM-DD`. */
