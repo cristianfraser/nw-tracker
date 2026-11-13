@@ -32,7 +32,7 @@ import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { redateMovementKeepingBankDay } from "./movementWrites.js";
-import { recordBankPosting } from "./movementBankPostings.js";
+import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
 
 const WINDOW_DAYS = MATCH_WINDOWS.transfer_notice.daysAfter;
 
@@ -467,7 +467,9 @@ function redatePairedRowsToMailDay(
     (db.prepare(`SELECT account_id FROM credit_card_account_config`).all() as { account_id: number }[]).map((r) => r.account_id)
   );
   const movementRow = db.prepare(`SELECT occurred_on, account_id, from_account_id, to_account_id FROM movements WHERE id = ?`);
-  const postingsOf = db.prepare(`SELECT account_id, posted_on FROM movement_bank_postings WHERE movement_id = ?`);
+  const postingsOf = db.prepare(
+    `SELECT account_id, posted_on, occurred_on_basis FROM movement_bank_postings WHERE movement_id = ?`
+  );
   for (const { message_id, movement_id, accounts } of byMovement.values()) {
     const day = mailDay.get(message_id);
     if (day == null) throw new Error(`pairing names notice ${message_id}, which is not stored`);
@@ -475,17 +477,30 @@ function redatePairedRowsToMailDay(
       | { occurred_on: string; account_id: number | null; from_account_id: number | null; to_account_id: number | null }
       | undefined;
     if (!mv) throw new Error(`pairing names movement ${movement_id}, which does not exist`);
-    if (mv.occurred_on === day) continue;
+    const postingRows = postingsOf.all(movement_id) as { account_id: number; posted_on: string; occurred_on_basis: OccurredOnBasis }[];
+    if (mv.occurred_on === day) {
+      // The mail confirms a listing's fetch day: the day now rests on the mail.
+      for (const r of postingRows) {
+        if (r.occurred_on_basis === "fetch" && accounts.includes(r.account_id)) {
+          recordBankPosting(movement_id, r.account_id, r.posted_on, db, "evidence");
+        }
+      }
+      continue;
+    }
     const bankDays = accounts.map((a) => {
       const d = legDay.get(`${movement_id}|${a}`);
       if (d == null) throw new Error(`pairing names movement ${movement_id} on account ${a}, which no candidate leg holds`);
       return d;
     });
     if (!bankDays.every((d) => bankDateMatchesTransferDate(d, day))) continue;
-    const postings = new Map(
-      (postingsOf.all(movement_id) as { account_id: number; posted_on: string }[]).map((r) => [r.account_id, r.posted_on])
-    );
-    if (accounts.some((a) => postings.has(a))) {
+    const postings = new Map(postingRows.map((r) => [r.account_id, r.posted_on]));
+    const basisOf = new Map(postingRows.map((r) => [r.account_id, r.occurred_on_basis]));
+    // A posting on a paired leg means a document already set `occurred_on`. A listing's fetch day
+    // is only the latest day the money could have moved, so a mail stating an earlier day replaces
+    // it; any other disagreement is a conflict.
+    const replacesFetchDay =
+      day < mv.occurred_on && accounts.every((a) => !postings.has(a) || basisOf.get(a) === "fetch");
+    if (accounts.some((a) => postings.has(a)) && !replacesFetchDay) {
       out.conflicts.push({ message_id, movement_id, occurred_on: mv.occurred_on, mail_day: day });
       continue;
     }

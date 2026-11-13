@@ -178,6 +178,7 @@ export function applyForwardPostedRedates(redates: readonly ForwardPostedRedate[
             accountId: r.account_id,
             occurredOn: r.new_occurred_on,
             bankPostedOn: r.bank_date,
+            basis: "fetch",
           });
         }
       })

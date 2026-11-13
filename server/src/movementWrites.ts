@@ -10,7 +10,7 @@
  */
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
-import { recordBankPosting } from "./movementBankPostings.js";
+import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
 import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { adoptRetiredMovementFlow, type RetiredMovementAdoption } from "./flows/flowAdoption.js";
 
@@ -66,11 +66,12 @@ export function deleteMovements(ids: readonly number[], dbHandle: Database = db)
 /**
  * Moves a movement to the day the money moved (`occurred_on`), keeping the day a bank document
  * filed it on the account as its posting day (`movement_bank_postings`), which reconciliation reads.
+ * `basis` says what the new day rests on (default `evidence`; `fetch` for a listing's fetch day).
  */
 export function redateMovementKeepingBankDay(
-  row: { movementId: number; accountId: number; occurredOn: string; bankPostedOn: string },
+  row: { movementId: number; accountId: number; occurredOn: string; bankPostedOn: string; basis?: OccurredOnBasis },
   dbHandle: Database = db
 ): void {
   dbHandle.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(row.occurredOn, row.movementId);
-  recordBankPosting(row.movementId, row.accountId, row.bankPostedOn, dbHandle);
+  recordBankPosting(row.movementId, row.accountId, row.bankPostedOn, dbHandle, row.basis ?? "evidence");
 }

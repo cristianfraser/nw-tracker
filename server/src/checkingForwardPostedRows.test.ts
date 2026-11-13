@@ -13,7 +13,7 @@ import {
 } from "./checkingPartialMovementsImport.js";
 import { applyForwardPostedRedates, planForwardPostedRedates } from "./forwardPostedCheckingRedate.js";
 import { IngestRefusal } from "./ingestReceiver.js";
-import { bankPostedOn } from "./movementBankPostings.js";
+import { bankPostedOn, occurredOnBasis } from "./movementBankPostings.js";
 
 // Santander's bank day ends at 14:00: a movement after the cutoff is listed under the next
 // workday. The listing is stored on the day it was read, the bank's day kept as posting day.
@@ -65,6 +65,7 @@ describe("a recent-movements row the bank dated after the day the listing was re
     const lateRow = stored(account, late)!;
     expect(lateRow.occurred_on).toBe("1801-03-15");
     expect(bankPostedOn(lateRow.id, account)).toBe("1801-03-16");
+    expect(occurredOnBasis(lateRow.id, account)).toBe("fetch");
     const sameRow = stored(account, sameDay)!;
     expect(sameRow.occurred_on).toBe("1801-03-15");
     expect(db.prepare(`SELECT 1 FROM movement_bank_postings WHERE movement_id = ?`).get(sameRow.id)).toBeUndefined();
@@ -119,6 +120,7 @@ describe("a recent-movements row the bank dated after the day the listing was re
         .get(account, `import:cartola|1801-03|%${PREFIX}%`) as { id: number; occurred_on: string };
       expect(official.occurred_on).toBe("1801-03-15");
       expect(bankPostedOn(official.id, account)).toBe("1801-03-16");
+      expect(occurredOnBasis(official.id, account)).toBe("fetch");
       // A later listing that still shows the row is covered by the cartola, on the bank's day.
       expect(importCheckingPartialMovements(account, [late], readOnChileDay("1801-03-17"))).toMatchObject({
         inserted: 0,
@@ -205,6 +207,7 @@ describe("re-dating rows stored before the fetch-day rule", () => {
       const d = stored(account, daily)!;
       expect(d.occurred_on).toBe("1801-06-10");
       expect(bankPostedOn(d.id, account)).toBe("1801-06-11");
+      expect(occurredOnBasis(d.id, account)).toBe("fetch");
       // Applied once: a second plan finds nothing left to move.
       const again = planForwardPostedRedates(listings);
       expect(again.redates).toEqual([]);

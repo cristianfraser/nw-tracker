@@ -6,7 +6,8 @@ import { nonAnchorClpFlowTotals } from "./checkingCartolaBalances.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { rolledBack } from "./ingestReceiver.js";
-import { bankPostedOn } from "./movementBankPostings.js";
+import { bankPostedOn, occurredOnBasis } from "./movementBankPostings.js";
+import { READ_AFTER_ROWS, readOnChileDay } from "./test/listingFetch.js";
 
 /** A bank row of the bank listed after the transfer's mail: dated the mail's day, bank day kept as posting. */
 
@@ -61,9 +62,9 @@ describe("transfer notices re-date bank rows the bank listed after the mail", ()
   });
 
   /** The daily listing's row for `day`; returns its movement id. */
-  function bankRow(day: string, amount: number, desc: string): number {
+  function bankRow(day: string, amount: number, desc: string, fetch = READ_AFTER_ROWS): number {
     const description = `${NOTE_TAG} ${desc}`;
-    expect(importCheckingPartialMovements(account, [{ occurred_on: day, description, amount_clp: amount, document_no: "" }])).toMatchObject({
+    expect(importCheckingPartialMovements(account, [{ occurred_on: day, description, amount_clp: amount, document_no: "" }], fetch)).toMatchObject({
       inserted: 1,
     });
     return (db.prepare(`SELECT id FROM movements WHERE account_id = ? AND note LIKE ?`).get(account, `%|${description}%`) as { id: number }).id;
@@ -93,8 +94,32 @@ describe("transfer notices re-date bank rows the bank listed after the mail", ()
     expect(occurredOn(id)).toBe("2026-10-08");
     // The feed re-lists the row the next night: its note is the identity, still one row.
     expect(
-      importCheckingPartialMovements(account, [{ occurred_on: "2026-10-09", description: `${NOTE_TAG} Transf a COMUNIDAD`, amount_clp: -41_239, document_no: "" }])
+      importCheckingPartialMovements(account, [{ occurred_on: "2026-10-09", description: `${NOTE_TAG} Transf a COMUNIDAD`, amount_clp: -41_239, document_no: "" }], READ_AFTER_ROWS)
     ).toMatchObject({ inserted: 0, skipped_duplicate: 1 });
+  });
+
+  it("moves a listing's fetch day to the earlier day its mail states", () => {
+    // Friday 23:50 transfer, first listed by a Saturday 00:30 fetch with Monday's bank date.
+    const id = bankRow("2026-10-12", -41_245, "Transf a COMUNIDAD fetch", readOnChileDay("2026-10-10", 0));
+    expect(occurredOn(id)).toBe("2026-10-10");
+    expect(occurredOnBasis(id, account)).toBe("fetch");
+    const notice = outgoing("2026-10-09 23:50", 41_245);
+    const res = applyBankTransferNotices({ issuer: "santander", notices: [notice] });
+    expect(res.redate_conflicts).toEqual([]);
+    expect(res.redated).toMatchObject([{ movement_id: id, from: "2026-10-10", to: "2026-10-09" }]);
+    expect(bankPostedOn(id, account)).toBe("2026-10-12");
+    expect(occurredOnBasis(id, account)).toBe("evidence");
+  });
+
+  it("lets a mail confirm a listing's fetch day", () => {
+    const id = bankRow("2026-10-09", -41_247, "Transf a COMUNIDAD same", readOnChileDay("2026-10-08"));
+    expect(occurredOnBasis(id, account)).toBe("fetch");
+    const res = applyBankTransferNotices({ issuer: "santander", notices: [outgoing("2026-10-08 15:10", 41_247)] });
+    expect(res.redated).toEqual([]);
+    expect(res.redate_conflicts).toEqual([]);
+    expect(occurredOn(id)).toBe("2026-10-08");
+    expect(bankPostedOn(id, account)).toBe("2026-10-09");
+    expect(occurredOnBasis(id, account)).toBe("evidence");
   });
 
   it("shows the re-date in a dry run without writing it", () => {

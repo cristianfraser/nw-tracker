@@ -28,6 +28,12 @@ export const BANK_POSTING_JOIN_SQL =
 export const BANK_POSTED_ON_SQL = "COALESCE(bp.posted_on, m.occurred_on)";
 
 /**
+ * What the movement's `occurred_on` rests on (migration 329): `evidence` = a document stated the
+ * day; `fetch` = the day the bank's listing was fetched, the latest day the money could have moved.
+ */
+export type OccurredOnBasis = "evidence" | "fetch";
+
+/**
  * Record that the bank posted `movementId` on `accountId` at `postedOn`. A posting on the
  * movement's own date removes any stored row (sparse). Throws when the movement does not touch
  * the account — a posting can only belong to one of the movement's own legs.
@@ -36,7 +42,8 @@ export function recordBankPosting(
   movementId: number,
   accountId: number,
   postedOn: string,
-  dbHandle: Database = db
+  dbHandle: Database = db,
+  basis: OccurredOnBasis = "evidence"
 ): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(postedOn)) {
     throw new Error(`Bank posting date must be YYYY-MM-DD, got "${postedOn}" (movement ${movementId})`);
@@ -58,10 +65,11 @@ export function recordBankPosting(
   }
   dbHandle
     .prepare(
-      `INSERT INTO movement_bank_postings (movement_id, account_id, posted_on) VALUES (?, ?, ?)
-       ON CONFLICT (movement_id, account_id) DO UPDATE SET posted_on = excluded.posted_on`
+      `INSERT INTO movement_bank_postings (movement_id, account_id, posted_on, occurred_on_basis) VALUES (?, ?, ?, ?)
+       ON CONFLICT (movement_id, account_id) DO UPDATE SET posted_on = excluded.posted_on,
+         occurred_on_basis = excluded.occurred_on_basis`
     )
-    .run(movementId, accountId, postedOn);
+    .run(movementId, accountId, postedOn, basis);
 }
 
 /** The bank's posting day of a movement on an account (its own date when none is stored). */
@@ -73,4 +81,12 @@ export function bankPostedOn(movementId: number, accountId: number, dbHandle: Da
     .get(accountId, movementId) as { posted_on: string } | undefined;
   if (!row) throw new Error(`Bank posting for missing movement ${movementId}`);
   return row.posted_on;
+}
+
+/** What a movement's `occurred_on` rests on, read from its posting on the account (none = `evidence`). */
+export function occurredOnBasis(movementId: number, accountId: number, dbHandle: Database = db): OccurredOnBasis {
+  const row = dbHandle
+    .prepare(`SELECT occurred_on_basis FROM movement_bank_postings WHERE movement_id = ? AND account_id = ?`)
+    .get(movementId, accountId) as { occurred_on_basis: OccurredOnBasis } | undefined;
+  return row?.occurred_on_basis ?? "evidence";
 }

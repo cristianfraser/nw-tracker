@@ -13,7 +13,7 @@ import {
 import { adoptMovementFlow } from "./flows/flowIdentity.js";
 import { buildExpenseKey } from "./expenseKeys.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
-import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, occurredOnBasis } from "./movementBankPostings.js";
 import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
 
 export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
@@ -167,7 +167,13 @@ export function prunePartialMovementsSupersededByCartola(
         // evidence is silently lost every month.
         if (partial.occurred_on !== parsed.occurred_on) {
           redateMovementKeepingBankDay(
-            { movementId: official.id, accountId, occurredOn: partial.occurred_on, bankPostedOn: matchingMv.occurred_on },
+            {
+              movementId: official.id,
+              accountId,
+              occurredOn: partial.occurred_on,
+              bankPostedOn: matchingMv.occurred_on,
+              basis: occurredOnBasis(partial.id, accountId, dbHandle),
+            },
             dbHandle
           );
         }

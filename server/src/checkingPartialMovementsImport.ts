@@ -171,7 +171,7 @@ function importPartialMovements(
         note,
         flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
       });
-      if (occurredOn !== mv.occurred_on) recordBankPosting(id, accountId, mv.occurred_on);
+      if (occurredOn !== mv.occurred_on) recordBankPosting(id, accountId, mv.occurred_on, db, "fetch");
       inserted += 1;
       inserted_flows.push(flowOf(mv));
     }
