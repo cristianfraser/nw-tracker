@@ -660,8 +660,23 @@ export interface FlowsExpenseLinesResponse {
   unit: DisplayUnitCode;
   selector: FlowsExpenseLinesSelector;
   lines: FlowCcExpenseLineRow[];
+  /**
+   * Present on `list=uncategorized`, the one list the server pages (`page`, `page_size`; default
+   * 1 and 10, at most 100): its lines largest in pesos first, then newest, and `lines` is that page.
+   * Paging params with any other selector are a 400.
+   */
+  page?: FlowsExpenseLinesPage;
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
+}
+
+/** One page of a paged expense-lines list. */
+export interface FlowsExpenseLinesPage {
+  /** 1-based, clamped to the last page. */
+  page: number;
+  page_size: number;
+  /** Lines in the whole list. */
+  total: number;
 }
 
 /** `GET /api/flows/expenses/summary?unit=`: what the Expenses page needs besides the lists. */

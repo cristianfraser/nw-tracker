@@ -127,8 +127,9 @@ export const queryKeys = {
    * One selector's expense lines in a unit (each line's `converted`); nested under
    * `flowsExpensesLinesAll()`, the prefix every optimistic line patch walks.
    */
-  flowsExpenseLines: (unit: DisplayUnit, selector: FlowsExpenseLinesSelector) =>
-    ["flowsExpenses", "lines", unit, expenseLinesSelectorKey(selector)] as const,
+  /** One expense-lines list; a paged list (uncategorized) adds `<page>/<page size>`. */
+  flowsExpenseLines: (unit: DisplayUnit, selector: FlowsExpenseLinesSelector, page?: { page: number; pageSize: number }) =>
+    ["flowsExpenses", "lines", unit, expenseLinesSelectorKey(selector), page ? `${page.page}/${page.pageSize}` : "all"] as const,
   flowsExpensesLinesAll: () => ["flowsExpenses", "lines"] as const,
   /** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
   flowsExpensesSummaryAll: () => ["flowsExpenses", "summary"] as const,

@@ -9,6 +9,7 @@
 import type {
   FinancedAccountDto,
   FinancingCandidateDto,
+  FlowsExpenseLinesPage,
   FlowsExpenseLinesResponse,
   FlowsExpenseLinesSelector,
   FlowsExpensesFinancingCandidatesResponse,
@@ -106,6 +107,58 @@ export function parseExpenseLinesSelector(query: Record<string, unknown>): Flows
   return { kind: "big_group", slug, include_pre_tax: includePreTax };
 }
 
+/** The paged list's page size when the request names none, and its ceiling. */
+export const UNCATEGORIZED_DEFAULT_PAGE_SIZE = 10;
+const UNCATEGORIZED_MAX_PAGE_SIZE = 100;
+
+function positiveIntParam(query: Record<string, unknown>, name: string): number | undefined {
+  const raw = singleParam(query, name);
+  if (raw === undefined) return undefined;
+  if (!POSITIVE_INT_RE.test(raw)) throw new ExpenseLinesRequestError(400, `${name} must be a positive integer, got ${raw}`);
+  return Number(raw);
+}
+
+/**
+ * The page a request asks for: `list=uncategorized` is always paged (`page`, `page_size`, default
+ * 1 and {@link UNCATEGORIZED_DEFAULT_PAGE_SIZE}, at most 100); any other selector takes no paging
+ * params (null), and naming one is a 400.
+ */
+export function parseExpenseLinesPage(
+  query: Record<string, unknown>,
+  selector: FlowsExpenseLinesSelector
+): { page: number; pageSize: number } | null {
+  const page = positiveIntParam(query, "page");
+  const pageSize = positiveIntParam(query, "page_size");
+  if (selector.kind !== "uncategorized") {
+    if (page !== undefined || pageSize !== undefined) {
+      throw new ExpenseLinesRequestError(400, `paging applies only to list=uncategorized, not ${selector.kind}`);
+    }
+    return null;
+  }
+  if (pageSize !== undefined && pageSize > UNCATEGORIZED_MAX_PAGE_SIZE) {
+    throw new ExpenseLinesRequestError(400, `page_size must be at most ${UNCATEGORIZED_MAX_PAGE_SIZE}, got ${pageSize}`);
+  }
+  return { page: page ?? 1, pageSize: pageSize ?? UNCATEGORIZED_DEFAULT_PAGE_SIZE };
+}
+
+/** The uncategorized list's order: largest in pesos first, then newest (sorts in place). */
+export function sortLargestFirst<T extends { value_clp: number; occurred_on: string }>(lines: T[]): T[] {
+  return lines.sort((a, b) => b.value_clp - a.value_clp || b.occurred_on.localeCompare(a.occurred_on));
+}
+
+/** One page of a cached list (the page clamped to the last one). */
+export function pageOfExpenseLinesList(
+  list: FlowsExpenseLinesResponse,
+  request: { page: number; pageSize: number }
+): FlowsExpenseLinesResponse {
+  const total = list.lines.length;
+  const lastPage = Math.max(1, Math.ceil(total / request.pageSize));
+  const page = Math.min(request.page, lastPage);
+  const start = (page - 1) * request.pageSize;
+  const info: FlowsExpenseLinesPage = { page, page_size: request.pageSize, total };
+  return { ...list, lines: list.lines.slice(start, start + request.pageSize), page: info };
+}
+
 type FacturacionFlags = { billing_month: string; is_open_month: boolean; is_provisional_close: boolean };
 
 /**
@@ -180,13 +233,18 @@ export function cachedFlowsExpenseLinesList(unit: string, selector: FlowsExpense
   syncFlowsInputsWithLiveUsdRates();
   // Resolve the facturación before the cache, so a missing one is never cached as a value.
   if (selector.kind === "facturacion") facturacionRow(selector.account_id, selector.billing_month);
-  return getAggregationCached(cacheKeyFlowsInputs(`expense_lines|${unit}|${selectorCacheKey(selector)}`), () => ({
-    unit,
-    selector,
-    lines: toWireExpenseLines(selectExpenseLines(cachedFlowsExpenseLines(), selector), unit),
-    categories: listCcExpenseCategories(),
-    big_groups: listCcExpenseBigGroups(),
-  }));
+  return getAggregationCached(cacheKeyFlowsInputs(`expense_lines|${unit}|${selectorCacheKey(selector)}`), () => {
+    const lines = toWireExpenseLines(selectExpenseLines(cachedFlowsExpenseLines(), selector), unit);
+    // The paged list is ordered here, once, so every page reads the same order.
+    if (selector.kind === "uncategorized") sortLargestFirst(lines);
+    return {
+      unit,
+      selector,
+      lines,
+      categories: listCcExpenseCategories(),
+      big_groups: listCcExpenseBigGroups(),
+    };
+  });
 }
 
 /** `GET /api/flows/expenses/summary`, cached per unit. */

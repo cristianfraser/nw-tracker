@@ -17,6 +17,8 @@ import {
   cachedFlowsExpensesFinancingCandidates,
   cachedFlowsExpensesSummary,
   ExpenseLinesRequestError,
+  pageOfExpenseLinesList,
+  parseExpenseLinesPage,
   parseExpenseLinesSelector,
 } from "../flowsExpenseLineLists.js";
 import { buildFlowsPlPayload } from "../flowsPl.js";
@@ -344,7 +346,10 @@ app.get("/api/expenses", (_req, res) => {
 app.get("/api/flows/expenses/lines", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/lines" });
   try {
-    res.json(cachedFlowsExpenseLinesList(unit, parseExpenseLinesSelector(req.query)));
+    const selector = parseExpenseLinesSelector(req.query);
+    const page = parseExpenseLinesPage(req.query, selector);
+    const list = cachedFlowsExpenseLinesList(unit, selector);
+    res.json(page ? pageOfExpenseLinesList(list, page) : list);
   } catch (err) {
     if (err instanceof ExpenseLinesRequestError) {
       res.status(err.status).json({ error: err.message });

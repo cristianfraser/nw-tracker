@@ -694,17 +694,31 @@ export function useRealEstatePropertyAccounts(enabled: boolean) {
  * `converted` in `unit`. No placeholder: a list never shows another selector's lines while its
  * own load; one already cached shows at once.
  */
+/**
+ * One expense-lines list. A list never shows another list's rows while it loads; a paged list
+ * (`page`) keeps its previous page, dimmed, while the next page loads (same unit and selector).
+ */
 export function useFlowsExpenseLines(
   unit: DisplayUnit,
   selector: import("../types").FlowsExpenseLinesSelector | null,
-  enabled = true
+  enabled = true,
+  page?: { page: number; pageSize: number }
 ) {
+  const queryKey = selector
+    ? queryKeys.flowsExpenseLines(unit, selector, page)
+    : [...queryKeys.flowsExpensesLinesAll(), unit, "none"];
   return useQuery({
-    queryKey: selector
-      ? queryKeys.flowsExpenseLines(unit, selector)
-      : [...queryKeys.flowsExpensesLinesAll(), unit, "none"],
-    queryFn: () => api.flowsExpenseLines(unit, selector!),
+    queryKey,
+    queryFn: () => api.flowsExpenseLines(unit, selector!, page),
     enabled: enabled && selector != null,
+    placeholderData: page
+      ? <T,>(previousData: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
+          previousQuery &&
+          previousQuery.queryKey.length === queryKey.length &&
+          previousQuery.queryKey.slice(0, 4).every((k, i) => Object.is(k, queryKey[i]))
+            ? previousData
+            : undefined
+      : undefined,
   });
 }
 

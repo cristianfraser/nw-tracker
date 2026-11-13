@@ -634,7 +634,11 @@ export const api = {
   deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
   /** Expense lines of one selector (a month, a facturación, a list, a big group), in `unit`. */
-  flowsExpenseLines: (unit: DisplayUnit, selector: import("./types").FlowsExpenseLinesSelector) => {
+  flowsExpenseLines: (
+    unit: DisplayUnit,
+    selector: import("./types").FlowsExpenseLinesSelector,
+    page?: { page: number; pageSize: number }
+  ) => {
     const q = new URLSearchParams({ unit });
     switch (selector.kind) {
       case "month":
@@ -653,6 +657,10 @@ export const api = {
         break;
     }
     if (selector.kind !== "facturacion" && selector.include_pre_tax) q.set("include_pre_tax", "1");
+    if (page) {
+      q.set("page", String(page.page));
+      q.set("page_size", String(page.pageSize));
+    }
     return j<import("./types").FlowsExpenseLinesResponse>(`/api/flows/expenses/lines?${q.toString()}`);
   },
   flowsExpensesSummary: (unit: DisplayUnit) =>

@@ -11,7 +11,11 @@ import {
   financedAccountsFromLines,
   financingCandidatesFromLines,
   flowLinesForFacturacionMonth,
+  pageOfExpenseLinesList,
+  parseExpenseLinesPage,
   parseExpenseLinesSelector,
+  sortLargestFirst,
+  UNCATEGORIZED_DEFAULT_PAGE_SIZE,
   selectExpenseLines,
 } from "./flowsExpenseLineLists.js";
 
@@ -291,5 +295,56 @@ describe("cached expense list payloads", () => {
     expect(fin.financed_accounts.map((a) => a.account_id)).toEqual([
       ...new Set(lines.filter((l) => l.line_role === "purchase").map((l) => l.account_id)),
     ]);
+  });
+});
+
+describe("paging the uncategorized list", () => {
+  const unc = { kind: "uncategorized", include_pre_tax: false } as const;
+  const pageRejects = (query: Record<string, unknown>, selector: Parameters<typeof parseExpenseLinesPage>[1]) => {
+    let err: unknown;
+    try {
+      parseExpenseLinesPage(query, selector);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ExpenseLinesRequestError);
+    expect((err as ExpenseLinesRequestError).status).toBe(400);
+  };
+
+  it("pages only list=uncategorized, with defaults, and refuses bad values", () => {
+    expect(parseExpenseLinesPage({}, unc)).toEqual({ page: 1, pageSize: UNCATEGORIZED_DEFAULT_PAGE_SIZE });
+    expect(parseExpenseLinesPage({ page: "3", page_size: "25" }, unc)).toEqual({ page: 3, pageSize: 25 });
+    expect(parseExpenseLinesPage({}, { kind: "month", period_month: "2026-03", include_pre_tax: false })).toBeNull();
+    pageRejects({ page: "2" }, { kind: "month", period_month: "2026-03", include_pre_tax: false });
+    pageRejects({ page_size: "10" }, { kind: "deposit_matched", include_pre_tax: false });
+    pageRejects({ page: "0" }, unc);
+    pageRejects({ page: "x" }, unc);
+    pageRejects({ page_size: "101" }, unc);
+    pageRejects({ page: ["1", "2"] }, unc);
+  });
+
+  it("orders largest in pesos first, then newest", () => {
+    const row = (value_clp: number, occurred_on: string) => ({ value_clp, occurred_on });
+    expect(
+      sortLargestFirst([row(10, "2026-01-01"), row(50, "2026-01-01"), row(10, "2026-03-01"), row(30, "2026-02-01")])
+    ).toEqual([row(50, "2026-01-01"), row(30, "2026-02-01"), row(10, "2026-03-01"), row(10, "2026-01-01")]);
+  });
+
+  it("slices pages of the cached list, clamps past the end and leaves the list as it was", () => {
+    clearAggregationCache();
+    const base = cachedFlowsExpenseLinesList("clp", { kind: "month", period_month: "2026-01", include_pre_tax: true });
+    const lines = buildFlowsExpenseLines().slice(0, 5) as unknown as typeof base.lines;
+    const list = { ...base, selector: unc, lines };
+    const p1 = pageOfExpenseLinesList(list, { page: 1, pageSize: 2 });
+    const p2 = pageOfExpenseLinesList(list, { page: 2, pageSize: 2 });
+    expect(p1.lines).toEqual(lines.slice(0, 2));
+    expect(p2.lines).toEqual(lines.slice(2, 4));
+    expect(p1.page).toEqual({ page: 1, page_size: 2, total: 5 });
+    const last = pageOfExpenseLinesList(list, { page: 99, pageSize: 2 });
+    expect(last.page).toEqual({ page: 3, page_size: 2, total: 5 });
+    expect(last.lines).toEqual(lines.slice(4));
+    expect(pageOfExpenseLinesList({ ...list, lines: [] }, { page: 4, pageSize: 2 }).page).toEqual({ page: 1, page_size: 2, total: 0 });
+    expect(list.lines).toBe(lines);
+    expect("page" in list).toBe(false);
   });
 });
