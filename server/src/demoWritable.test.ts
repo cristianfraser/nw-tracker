@@ -19,9 +19,9 @@ afterEach(() => resetDemoWritableStateForTest());
 
 describe("demo write policy", () => {
   it("opens the edits without free text", () => {
-    expect(demoWriteAllowedByPolicy("PATCH", "/api/flows/expenses/credit-card/lines/412/category")).toBe(true);
-    expect(demoWriteAllowedByPolicy("PATCH", "/api/flows/expenses/credit-card/lines/-7/category")).toBe(true);
-    expect(demoWriteAllowedByPolicy("PUT", "/api/flows/expenses/credit-card/purchase-big-group")).toBe(true);
+    expect(demoWriteAllowedByPolicy("PATCH", "/api/flows/expenses/lines/412/category")).toBe(true);
+    expect(demoWriteAllowedByPolicy("PATCH", "/api/flows/expenses/lines/-7/category")).toBe(true);
+    expect(demoWriteAllowedByPolicy("PUT", "/api/flows/expenses/purchase-big-group")).toBe(true);
     expect(demoWriteAllowedByPolicy("POST", "/api/income/movements/12/refund")).toBe(true);
     expect(demoWriteAllowedByPolicy("DELETE", "/api/income/movements/12/refund")).toBe(true);
     expect(demoWriteAllowedByPolicy("POST", "/api/accounts/3/cc-statement-lines/88/make-installment")).toBe(true);
@@ -32,8 +32,8 @@ describe("demo write policy", () => {
   });
 
   it("keeps free text, creation and deletes of imported data closed", () => {
-    expect(demoWriteAllowedByPolicy("PATCH", "/api/flows/expenses/credit-card/purchase-notes")).toBe(false);
-    expect(demoWriteAllowedByPolicy("POST", "/api/flows/expenses/credit-card/big-groups")).toBe(false);
+    expect(demoWriteAllowedByPolicy("PATCH", "/api/flows/expenses/purchase-notes")).toBe(false);
+    expect(demoWriteAllowedByPolicy("POST", "/api/flows/expenses/big-groups")).toBe(false);
     expect(demoWriteAllowedByPolicy("DELETE", "/api/accounts/3/cc-statement-lines/88")).toBe(false);
     expect(demoWriteAllowedByPolicy("POST", "/api/movements")).toBe(false);
     expect(demoWriteAllowedByPolicy("GET", "/api/flows/expenses/manual")).toBe(false);

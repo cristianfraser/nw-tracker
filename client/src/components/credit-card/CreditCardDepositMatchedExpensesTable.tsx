@@ -1,7 +1,9 @@
 import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
+import type { FlowCcExpenseLineRow } from "../../types";
+import { useFlowsExpenseLines } from "../../queries/hooks";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
 import {
@@ -19,21 +21,19 @@ function isDepositLinkedExpenseLine(line: FlowCcExpenseLineRow): boolean {
   return (line.deposit_match?.length ?? 0) > 0 || (line.expense_deposit_links?.length ?? 0) > 0;
 }
 
-export function CreditCardDepositMatchedExpensesTable({
-  lines,
-  categories,
-  loading,
-}: {
-  lines: readonly FlowCcExpenseLineRow[];
-  categories: readonly CcExpenseCategoryDto[];
-  loading?: boolean;
-}) {
+/** Lines paired with a deposit (`list=deposit_matched`), largest first. */
+export function CreditCardDepositMatchedExpensesTable({ includePreTax }: { includePreTax: boolean }) {
   const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const query = useFlowsExpenseLines(displayUnit, { kind: "deposit_matched", include_pre_tax: includePreTax });
+  const loading = query.data == null;
+  const categories = query.data?.categories ?? [];
+  const lines = query.data?.lines;
 
   const depositMatched = useMemo(
     () =>
-      lines
+      (lines ?? [])
         .filter(
           (ln) =>
             ln.line_role !== "installment_purchase_total" &&

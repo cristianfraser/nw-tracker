@@ -1,3 +1,4 @@
+import type { FlowsExpenseLinesSelector } from "../types";
 /**
  * A display unit: a lowercase core currency code the server loads (`clp`, `usd`, `eur`, …;
  * `GET /api/currencies`). Data, not a closed union. The unit a page was showing before a switch
@@ -8,6 +9,21 @@ export type DisplayUnit = string;
 /** A string that can name a display unit (three lowercase letters); the server decides if it is loaded. */
 export function isDisplayUnitCode(v: unknown): v is DisplayUnit {
   return typeof v === "string" && /^[a-z]{3}$/.test(v);
+}
+
+/** A stable key segment for an expense-lines selector (its fields in a fixed order). */
+function expenseLinesSelectorKey(selector: FlowsExpenseLinesSelector): string {
+  switch (selector.kind) {
+    case "month":
+      return `month|${selector.period_month}|${selector.include_pre_tax ? 1 : 0}`;
+    case "facturacion":
+      return `facturacion|${selector.account_id}|${selector.billing_month}`;
+    case "uncategorized":
+    case "deposit_matched":
+      return `${selector.kind}|${selector.include_pre_tax ? 1 : 0}`;
+    case "big_group":
+      return `big_group|${selector.slug}|${selector.include_pre_tax ? 1 : 0}`;
+  }
 }
 
 const ENTITY = Symbol("entityKeyLength");
@@ -21,6 +37,9 @@ function withEntity<K extends readonly unknown[]>(key: K, entityLength: number):
   Object.defineProperty(key, ENTITY, { value: entityLength, enumerable: false });
   return key;
 }
+
+/** Which surface an account's flows list belongs to (see `queryKeys.accountFlows`). */
+export type AccountFlowsScope = "panel" | "cartola_month";
 
 /** The entity length a key was declared with; a key without one is not a display-unit query. */
 export function entityKeyLength(key: readonly unknown[]): number {
@@ -104,9 +123,19 @@ export const queryKeys = {
     ["realEstateUnlinkedPurchases", params] as const,
   realEstatePropertyAccounts: () => ["realEstatePropertyAccounts"] as const,
   flowsExpenses: () => ["flowsExpenses"] as const,
-  /** The Expenses page's lines in a unit (each line's `converted`); nested under `flowsExpenses()`. */
-  flowsExpensesLines: (unit: DisplayUnit) => ["flowsExpenses", "lines", unit] as const,
+  /**
+   * One selector's expense lines in a unit (each line's `converted`); nested under
+   * `flowsExpensesLinesAll()`, the prefix every optimistic line patch walks.
+   */
+  flowsExpenseLines: (unit: DisplayUnit, selector: FlowsExpenseLinesSelector) =>
+    ["flowsExpenses", "lines", unit, expenseLinesSelectorKey(selector)] as const,
   flowsExpensesLinesAll: () => ["flowsExpenses", "lines"] as const,
+  /** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
+  flowsExpensesSummaryAll: () => ["flowsExpenses", "summary"] as const,
+  flowsExpensesSummary: (unit: DisplayUnit) => ["flowsExpenses", "summary", unit] as const,
+  /** The financing manager's pickers; under `flowsExpenses()`, so every line write refreshes them. */
+  flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
+    ["flowsExpenses", "financingCandidates", unit] as const,
   /** Nested under `flowsExpenses()`: every invalidation of the lines refetches the gastos views too. */
   flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
   flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) =>
@@ -134,8 +163,13 @@ export const queryKeys = {
   groupFlows: (slug: string, filtersKey: string) =>
     withEntity(["groupFlows", slug, filtersKey] as const, 2),
   accountFlowsAll: () => ["accountFlows"] as const,
-  accountFlows: (id: string, filtersKey: string) =>
-    withEntity(["accountFlows", id, filtersKey] as const, 2),
+  /**
+   * One account's flows rows. `scope` names the surface: the page's flows panel and the
+   * cartola month modal never share a cache entry, so the modal can never be handed the
+   * page's full list as held data (entity = account + scope).
+   */
+  accountFlows: (id: string, scope: AccountFlowsScope, filtersKey: string) =>
+    withEntity(["accountFlows", id, scope, filtersKey] as const, 3),
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
   wealthPercentile: (unit: DisplayUnit) => ["wealth-percentile", unit] as const,

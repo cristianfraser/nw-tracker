@@ -21,10 +21,14 @@ export const resources = {
     { queryKey: queryKeys.flowsExpensesLinesAll() },
     { queryKey: queryKeys.latestMovementsAll() },
   ],
-  /** A big group on a line: the rows, the gastos views (chart filter, usage), «Últimos gastos». */
+  /**
+   * A big group on a line: the rows, the gastos views (chart filter, usage), the summary (the
+   * active groups, the chart's default exclusion), «Últimos gastos».
+   */
   expenseBigGroups: (): Invalidation[] => [
     { queryKey: queryKeys.flowsExpensesGastosAll() },
     { queryKey: queryKeys.flowsExpensesLinesAll() },
+    { queryKey: queryKeys.flowsExpensesSummaryAll() },
     { queryKey: queryKeys.latestMovementsAll() },
   ],
   /** The big-group catalog (labels) on the Expenses page. */

@@ -2,7 +2,9 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { flowPeriodLabel, formatFlowMoney, type FlowChartGranularity } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
-import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow, FlowCcExpenseMonthRow } from "../../types";
+import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseMonthRow } from "../../types";
+import { useFlowsExpenseLines } from "../../queries/hooks";
+import { Loadable } from "../ui/Loadable";
 import type { CcInstallmentGastosMode } from "../../expenseLineShape";
 import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../ui/PaginatedTable";
 import { chileTodayYmd } from "../../calendarMonth";
@@ -102,7 +104,7 @@ const PAGE_SIZE = 12;
 
 export function GroupExpensesMonthTable({
   rows,
-  lines,
+  includePreTax,
   categories,
   bigGroups = [],
   installmentMode,
@@ -111,7 +113,8 @@ export function GroupExpensesMonthTable({
   loading,
 }: {
   rows: readonly FlowCcExpenseMonthRow[];
-  lines: readonly FlowCcExpenseLineRow[];
+  /** The page's «Include pre-tax expenses»: the month modal lists the payroll deductions too. */
+  includePreTax: boolean;
   categories: readonly CcExpenseCategoryDto[];
   bigGroups?: readonly CcExpenseBigGroupDto[];
   installmentMode: CcInstallmentGastosMode;
@@ -143,10 +146,19 @@ export function GroupExpensesMonthTable({
 
   const currentYm = chileTodayYmd().slice(0, 7);
 
+  // The selected period's lines, fetched while the modal is open. In year mode a row's
+  // `period_month` is the year's closing month and the modal lists that month's lines, as before.
+  const monthLines = useFlowsExpenseLines(
+    displayUnit,
+    selected ? { kind: "month", period_month: selected.period_month, include_pre_tax: includePreTax } : null,
+    modalOpen
+  );
+  const monthLinesLoading = selected != null && monthLines.data == null;
+
   const monthBucket = useMemo(() => {
-    if (!selected) return emptyCreditCardExpenseMonthBucket();
-    return buildCreditCardExpenseMonthBucket(lines, selected.period_month, installmentMode);
-  }, [lines, selected, installmentMode]);
+    if (!selected || !monthLines.data) return emptyCreditCardExpenseMonthBucket();
+    return buildCreditCardExpenseMonthBucket(monthLines.data.lines, selected.period_month, installmentMode);
+  }, [monthLines.data, selected, installmentMode]);
 
   const monthModalLines = useMemo(
     () => [
@@ -303,13 +315,20 @@ export function GroupExpensesMonthTable({
             ) : null
           }
         >
-          <CreditCardExpenseMonthModalSections
-            bucket={monthBucket}
-            categories={categories}
-            bigGroups={bigGroups}
-            abonosSumClp={selected?.abonos_mes}
-            enableCheckingNotes
-          />
+          {monthLines.error && !monthLines.data ? (
+            <p className="error">{t("common.loadFailed")}</p>
+          ) : monthLinesLoading ? (
+            // The month's lines are not in yet: an empty dimmed body, never the «no lines» copy.
+            <Loadable loading />
+          ) : (
+            <CreditCardExpenseMonthModalSections
+              bucket={monthBucket}
+              categories={categories}
+              bigGroups={bigGroups}
+              abonosSumClp={selected?.abonos_mes}
+              enableCheckingNotes
+            />
+          )}
         </Modal>
       </CreditCardExpenseLinesSelectionProvider>
     </>

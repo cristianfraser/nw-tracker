@@ -21,9 +21,19 @@ import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardAccountRows, buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { db } from "./db.js";
-import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
+import { buildFlowsExpenseLines, buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { buildFlowsExpensesGastosPayload } from "./flowsExpensesGastos.js";
-import { cachedFlowsExpensesGastosPayload, cachedFlowsExpensesPayload } from "./flowsMortgageCarrying.js";
+import { cachedFlowsExpensesGastosPayload } from "./flowsMortgageCarrying.js";
+import {
+  cachedFlowsExpenseLinesList,
+  cachedFlowsExpensesFinancingCandidates,
+  cachedFlowsExpensesSummary,
+  financedAccountsFromLines,
+  financingCandidatesFromLines,
+  selectExpenseLines,
+} from "./flowsExpenseLineLists.js";
+import { toWireExpenseLines } from "./wireExpenseLine.js";
+import type { FlowsExpenseLinesSelector } from "nw-tracker-contracts/dto/flows";
 import { MOVEMENT_AMOUNT_COLUMNS_SQL } from "./movementAmounts.js";
 import { signedClpDeltaForAccountMovement, sumClpThroughDate, transferFromLegUnits, transferLegUnitsThroughDate, transferToLegUnits, type MovementTransferRow, signedNativeDeltaForAccountMovement, sumNativeThroughDate } from "./movementTransfer.js";
 import { getDashboardOverviewBlock, getGroupValuationTimeseries } from "./valuationTimeseries.js";
@@ -193,8 +203,36 @@ async function requestPathPayloads(): Promise<Map<string, string>> {
     out.set(`overview|${unit}`, JSON.stringify(getDashboardOverviewBlock(unit)));
     out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set(), false)));
   }
-  out.set("expenses", JSON.stringify(cachedFlowsExpensesPayload()));
+  out.set("expenses", JSON.stringify(cachedExpenseLists()));
   return out;
+}
+
+const UNCATEGORIZED: FlowsExpenseLinesSelector = { kind: "uncategorized", include_pre_tax: false };
+
+/** The Expenses page's server-filtered payloads, through their caches. */
+function cachedExpenseLists() {
+  return {
+    summary: cachedFlowsExpensesSummary("clp"),
+    uncategorized: cachedFlowsExpenseLinesList("clp", UNCATEGORIZED).lines,
+    financing: cachedFlowsExpensesFinancingCandidates("clp"),
+  };
+}
+
+/** The same payloads built from freshly built lines, no cache. */
+function uncachedExpenseLists() {
+  const lines = buildFlowsExpenseLines();
+  const payload = buildFlowsExpensesPayload();
+  return {
+    summary: {
+      unit: "clp",
+      categories: payload.categories,
+      big_groups: payload.big_groups,
+      active_big_group_slugs: payload.active_big_group_slugs,
+      additional_cards: payload.additional_cards,
+    },
+    uncategorized: toWireExpenseLines(selectExpenseLines(lines, UNCATEGORIZED), "clp"),
+    financing: { unit: "clp", financed_accounts: financedAccountsFromLines(lines), candidates: financingCandidatesFromLines(lines) },
+  };
 }
 
 describe("request-path caches", () => {
@@ -202,7 +240,7 @@ describe("request-path caches", () => {
     clearAggregationCache();
     const first = await requestPathPayloads();
     // The cached expense payloads are the uncached builds.
-    expect(first.get("expenses")).toBe(JSON.stringify(buildFlowsExpensesPayload()));
+    expect(first.get("expenses")).toBe(JSON.stringify(uncachedExpenseLists()));
     expect(first.get("gastos|clp")).toBe(JSON.stringify(buildFlowsExpensesGastosPayload("clp", new Set(), false)));
 
     const accountId = (

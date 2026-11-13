@@ -12,8 +12,10 @@ import type {
 } from "../../types";
 import {
   useDeleteCcExpenseBigGroupMutation,
+  useFlowsExpenseLines,
   useRenameCcExpenseBigGroupMutation,
 } from "../../queries/hooks";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
@@ -26,7 +28,7 @@ function BigGroupBlock({
   total,
   unit,
   purchaseCount,
-  lines,
+  includePreTax,
   categories,
   bigGroups,
   excludedFromChart,
@@ -38,7 +40,8 @@ function BigGroupBlock({
   total: number;
   unit: DisplayUnit;
   purchaseCount: number;
-  lines: readonly FlowCcExpenseLineRow[];
+  /** The page's «Include pre-tax expenses». */
+  includePreTax: boolean;
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
   excludedFromChart: boolean;
@@ -48,10 +51,20 @@ function BigGroupBlock({
   const rename = useRenameCcExpenseBigGroupMutation();
   const del = useDeleteCcExpenseBigGroupMutation();
   const [open, setOpen] = useState(false);
+  const { displayUnit } = useDisplayPreferences();
 
-  const groupLines = useMemo(
-    () => lines.filter((ln) => ln.big_group_slug === slug),
-    [lines, slug]
+  // The group's lines, fetched once the block is opened.
+  const linesQuery = useFlowsExpenseLines(
+    displayUnit,
+    { kind: "big_group", slug, include_pre_tax: includePreTax },
+    open
+  );
+  const linesLoading = open && linesQuery.data == null && !linesQuery.error;
+
+  // A line moved out of the group (optimistic big-group patch) leaves the list at once.
+  const groupLines = useMemo<readonly FlowCcExpenseLineRow[]>(
+    () => (linesQuery.data?.lines ?? []).filter((ln) => ln.big_group_slug === slug),
+    [linesQuery.data, slug]
   );
 
   const onRename = () => {
@@ -110,20 +123,25 @@ function BigGroupBlock({
         </label>
       </div>
       {open ? (
-        <CreditCardExpenseLinesTable
-          lines={groupLines}
-          categories={categories}
-          bigGroups={bigGroups}
-          showBigGroupControls
-          emptyLabel={t("expenses.creditCard.bigGroups.emptyGroup")}
-        />
+        linesQuery.error && !linesQuery.data ? (
+          <p className="error">{t("common.loadFailed")}</p>
+        ) : (
+          <CreditCardExpenseLinesTable
+            lines={groupLines}
+            categories={categories}
+            bigGroups={bigGroups}
+            showBigGroupControls
+            emptyLabel={t("expenses.creditCard.bigGroups.emptyGroup")}
+            loading={linesLoading}
+          />
+        )
       ) : null}
     </section>
   );
 }
 
 export function BigExpenseGroupsSection({
-  lines,
+  includePreTax,
   categories,
   bigGroups,
   usage,
@@ -132,7 +150,8 @@ export function BigExpenseGroupsSection({
   toggleExcluded,
   loading,
 }: {
-  lines: readonly FlowCcExpenseLineRow[];
+  /** The page's «Include pre-tax expenses»: an opened group lists the payroll deductions too. */
+  includePreTax: boolean;
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
   /** The groups that hold spend in the page's installment mode (server-built, gastos payload). */
@@ -163,7 +182,7 @@ export function BigExpenseGroupsSection({
           total={g.total}
           unit={unit}
           purchaseCount={g.purchase_count}
-          lines={lines}
+          includePreTax={includePreTax}
           categories={categories}
           bigGroups={bigGroups}
           excludedFromChart={isExcluded(g.slug)}

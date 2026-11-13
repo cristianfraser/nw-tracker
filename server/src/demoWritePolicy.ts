@@ -10,9 +10,9 @@ import { InputError } from "./inputError.js";
  */
 const DEMO_WRITE_ALLOWLIST: readonly { method: string; path: RegExp }[] = [
   // An expense line's category, «Único» included (the route takes a slug, never a new category).
-  { method: "PATCH", path: /^\/api\/flows\/expenses\/credit-card\/lines\/-?\d+\/category$/ },
+  { method: "PATCH", path: /^\/api\/flows\/expenses\/lines\/-?\d+\/category$/ },
   // An existing big group on a purchase (creating one is closed).
-  { method: "PUT", path: /^\/api\/flows\/expenses\/credit-card\/purchase-big-group$/ },
+  { method: "PUT", path: /^\/api\/flows\/expenses\/purchase-big-group$/ },
   // A checking credit marked as a refund of spending, and back.
   { method: "POST", path: /^\/api\/income\/movements\/\d+\/refund$/ },
   { method: "DELETE", path: /^\/api\/income\/movements\/\d+\/refund$/ },

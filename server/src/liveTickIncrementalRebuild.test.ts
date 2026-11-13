@@ -7,7 +7,12 @@ import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 import { db } from "./db.js";
 import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
-import { cachedFlowsExpensesGastosPayload, cachedFlowsExpensesPayload } from "./flowsMortgageCarrying.js";
+import { cachedFlowsExpensesGastosPayload } from "./flowsMortgageCarrying.js";
+import {
+  cachedFlowsExpenseLinesList,
+  cachedFlowsExpensesFinancingCandidates,
+  cachedFlowsExpensesSummary,
+} from "./flowsExpenseLineLists.js";
 import { getGroupConsolidatedMonthlyRows } from "./groupConsolidatedTables.js";
 import { resolveGroupDailySeries } from "./groupDailySeries.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
@@ -120,7 +125,12 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
   // The synthetic gap-mirror ids are numbered per build; the lines are the comparison.
   out.set(
     "expenses",
-    JSON.stringify(cachedFlowsExpensesPayload()).replace(/synthetic-checking-gap-mirror:\d+|"statement_line_id":-\d+/g, "~")
+    JSON.stringify({
+      summary: cachedFlowsExpensesSummary("clp"),
+      uncategorized: cachedFlowsExpenseLinesList("clp", { kind: "uncategorized", include_pre_tax: false }),
+      deposit_matched: cachedFlowsExpenseLinesList("clp", { kind: "deposit_matched", include_pre_tax: true }),
+      financing: cachedFlowsExpensesFinancingCandidates("clp"),
+    }).replace(/synthetic-checking-gap-mirror:\d+|"statement_line_id":-\d+/g, "~")
   );
   return out;
 }

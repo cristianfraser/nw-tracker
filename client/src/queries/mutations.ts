@@ -1,11 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient, type QueryFilters } from "@tanstack/react-query";
 import { api } from "../api";
 import type {
   ManualExpenseInput,
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
-  FlowsExpensesResponse,
   AccountDetailBundleResponse,
+  CcExpenseBigGroupDto,
 } from "../types";
 import {
   expenseLineMatchesCategoryPatch,
@@ -14,7 +14,47 @@ import {
 } from "../ccExpenseLineBuckets";
 import { queryKeys, type DisplayUnit } from "./keys";
 import { invalidateResources, resources } from "./resources";
-import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+
+/** Any cached payload carrying expense lines (every `GET /api/flows/expenses/lines` selector). */
+type WithLines = { lines: FlowCcExpenseLineRow[] };
+/** Any cached payload carrying the big-group catalog (the lines lists and the summary). */
+type WithBigGroups = { big_groups: CcExpenseBigGroupDto[] };
+
+/** Every cached lines list, whatever its unit or selector. */
+const LINE_QUERIES: QueryFilters = { queryKey: queryKeys.flowsExpensesLinesAll() };
+/** The caches holding the big-group catalog. */
+const BIG_GROUP_CATALOG_QUERIES: readonly QueryFilters[] = [
+  LINE_QUERIES,
+  { queryKey: queryKeys.flowsExpensesSummaryAll() },
+];
+
+/** The cached data of a set of queries, to restore on a failed write. */
+type QueriesSnapshot = (readonly [readonly unknown[], unknown])[];
+
+/**
+ * Cancels every query of `filters`, snapshots them and applies `update` to each that holds data:
+ * an optimistic patch reaches every list a line shows in (a month, a facturación, a big group …).
+ */
+async function patchQueries<T>(
+  queryClient: QueryClient,
+  filters: readonly QueryFilters[],
+  update: (data: T) => T
+): Promise<QueriesSnapshot> {
+  await Promise.all(filters.map((f) => queryClient.cancelQueries(f)));
+  const previous: QueriesSnapshot = filters.flatMap((f) => queryClient.getQueriesData(f));
+  setQueries(queryClient, filters, update);
+  return previous;
+}
+
+function setQueries<T>(queryClient: QueryClient, filters: readonly QueryFilters[], update: (data: T) => T): void {
+  for (const f of filters) {
+    queryClient.setQueriesData<T>(f, (old) => (old == null ? old : update(old)));
+  }
+}
+
+function restoreQueries(queryClient: QueryClient, previous: QueriesSnapshot | undefined): void {
+  for (const [key, data] of previous ?? []) queryClient.setQueryData(key, data);
+}
 
 export type PatchCcExpenseLineCategoryVars = {
   lineId: number;
@@ -34,12 +74,27 @@ function findCcExpenseCategoryPatchAnchor(
   return lines.find((ln) => ln.source === source && expenseLineMatchesCategoryPatch(ln, targetLineId));
 }
 
-export function applyCcExpenseLineCategoryPatch(
-  data: FlowsExpensesResponse | undefined,
-  vars: PatchCcExpenseLineCategoryVars
-): FlowsExpensesResponse | undefined {
+/** The edited line as any cached list holds it (the anchor that names its purchase). */
+function findCcExpenseCategoryPatchAnchorInCache(
+  queryClient: QueryClient,
+  targetLineId: number,
+  source: FlowCcExpenseLineSource
+): FlowCcExpenseLineRow | undefined {
+  for (const [, data] of queryClient.getQueriesData<WithLines>(LINE_QUERIES)) {
+    if (!data) continue;
+    const anchor = findCcExpenseCategoryPatchAnchor(data.lines, targetLineId, source);
+    if (anchor) return anchor;
+  }
+  return undefined;
+}
+
+export function applyCcExpenseLineCategoryPatch<T extends WithLines>(
+  data: T | undefined,
+  vars: PatchCcExpenseLineCategoryVars,
+  anchor?: FlowCcExpenseLineRow
+): T | undefined {
   if (!data) return data;
-  const anchorLine = findCcExpenseCategoryPatchAnchor(data.lines, vars.lineId, vars.source);
+  const anchorLine = anchor ?? findCcExpenseCategoryPatchAnchor(data.lines, vars.lineId, vars.source);
   return {
     ...data,
     lines: data.lines.map((ln) => {
@@ -54,15 +109,15 @@ export function applyCcExpenseLineCategoryPatch(
   };
 }
 
-export function applyCcExpenseLineCategoryPatchFromServer(
-  data: FlowsExpensesResponse | undefined,
+export function applyCcExpenseLineCategoryPatchFromServer<T extends WithLines>(
+  data: T | undefined,
   opts: {
     accountId: number;
     purchaseKey: string;
     category_slug: string;
     unique: boolean;
   }
-): FlowsExpensesResponse | undefined {
+): T | undefined {
   if (!data) return data;
   return {
     ...data,
@@ -86,8 +141,6 @@ function cardWriteResources(accountId: string | number, displayUnit: DisplayUnit
 
 export function usePatchCcExpenseLineCategoryMutation() {
   const queryClient = useQueryClient();
-  const { displayUnit: linesUnit } = useDisplayPreferences();
-  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: PatchCcExpenseLineCategoryVars) =>
@@ -98,24 +151,24 @@ export function usePatchCcExpenseLineCategoryMutation() {
         ...(vars.clear_category ? { clear_category: true } : {}),
       }),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey, exact: true });
-      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
-        applyCcExpenseLineCategoryPatch(old, vars)
+      // One anchor for every list: a sibling line of the purchase may sit in a list the edited
+      // line is not in.
+      const anchor = findCcExpenseCategoryPatchAnchorInCache(queryClient, vars.lineId, vars.source);
+      const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
+        applyCcExpenseLineCategoryPatch(old, vars, anchor)!
       );
-      return { previous };
+      return { previous, anchor };
     },
-    onSuccess: (result, vars) => {
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
-        if (!old) return old;
-        const anchor = findCcExpenseCategoryPatchAnchor(old.lines, vars.lineId, vars.source);
+    onSuccess: (result, vars, context) => {
+      const anchor = context?.anchor;
+      setQueries<WithLines>(queryClient, [LINE_QUERIES], (old) => {
         if (anchor && result.purchase_key) {
           return applyCcExpenseLineCategoryPatchFromServer(old, {
             accountId: anchor.account_id,
             purchaseKey: result.purchase_key,
             category_slug: result.category_slug,
             unique: result.unique,
-          });
+          })!;
         }
         return applyCcExpenseLineCategoryPatch(old, {
           lineId: vars.lineId,
@@ -123,13 +176,11 @@ export function usePatchCcExpenseLineCategoryMutation() {
           unique: result.unique,
           category_slug: result.category_slug,
           clear_category: vars.clear_category,
-        });
+        })!;
       });
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKey, context.previous);
-      }
+      restoreQueries(queryClient, context?.previous);
     },
     onSettled: () => {
       void invalidateResources(queryClient, resources.expenseLines());
@@ -144,10 +195,10 @@ export type PatchCcExpensePurchaseNoteVars = {
   notes: string;
 };
 
-export function applyCcExpensePurchaseNotePatch(
-  data: FlowsExpensesResponse | undefined,
+export function applyCcExpensePurchaseNotePatch<T extends WithLines>(
+  data: T | undefined,
   vars: PatchCcExpensePurchaseNoteVars & { purchase_key: string }
-): FlowsExpensesResponse | undefined {
+): T | undefined {
   if (!data) return data;
   return {
     ...data,
@@ -180,46 +231,38 @@ export function applyCcPurchaseNotePatchToDetail(
 
 export function usePatchCcExpensePurchaseNoteMutation() {
   const queryClient = useQueryClient();
-  const { displayUnit: linesUnit } = useDisplayPreferences();
-  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: PatchCcExpensePurchaseNoteVars) =>
       api.patchCcExpensePurchaseNote(vars),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey, exact: true });
-      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       const purchaseKey = vars.purchase_key ?? "";
       if (purchaseKey) {
-        queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
-          applyCcExpensePurchaseNotePatch(old, { ...vars, purchase_key: purchaseKey })
+        const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
+          applyCcExpensePurchaseNotePatch(old, { ...vars, purchase_key: purchaseKey })!
         );
-      } else if (vars.statement_line_id != null && vars.statement_line_id > 0) {
-        queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            lines: old.lines.map((ln) => {
-              if (
-                ln.account_id !== vars.account_id ||
-                ln.statement_line_id !== vars.statement_line_id
-              ) {
-                return ln;
-              }
-              return { ...ln, purchase_notes: vars.notes };
-            }),
-          };
-        });
+        return { previous };
       }
-      return { previous };
+      if (vars.statement_line_id != null && vars.statement_line_id > 0) {
+        const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) => ({
+          ...old,
+          lines: old.lines.map((ln) =>
+            ln.account_id !== vars.account_id || ln.statement_line_id !== vars.statement_line_id
+              ? ln
+              : { ...ln, purchase_notes: vars.notes }
+          ),
+        }));
+        return { previous };
+      }
+      return { previous: undefined };
     },
     onSuccess: (result) => {
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
+      setQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
         applyCcExpensePurchaseNotePatch(old, {
           account_id: result.account_id,
           purchase_key: result.purchase_key,
           notes: result.notes,
-        })
+        })!
       );
       // The card page's purchase tables show the same note (a plan's `expense_purchase_key`).
       queryClient.setQueriesData<AccountDetailBundleResponse>(
@@ -232,9 +275,7 @@ export function usePatchCcExpensePurchaseNoteMutation() {
       void invalidateResources(queryClient, [{ queryKey: queryKeys.latestMovementsAll() }]);
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKey, context.previous);
-      }
+      restoreQueries(queryClient, context?.previous);
     },
   });
 }
@@ -249,10 +290,10 @@ export type PutCcExpensePurchaseBigGroupVars = {
   group_slug: string | null;
 };
 
-export function applyCcExpensePurchaseBigGroupPatch(
-  data: FlowsExpensesResponse | undefined,
+export function applyCcExpensePurchaseBigGroupPatch<T extends WithLines>(
+  data: T | undefined,
   vars: PutCcExpensePurchaseBigGroupVars
-): FlowsExpensesResponse | undefined {
+): T | undefined {
   if (!data) return data;
   return {
     ...data,
@@ -278,51 +319,42 @@ export function usePostVendorBranchChoiceMutation() {
 
 export function usePutCcExpensePurchaseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const { displayUnit: linesUnit } = useDisplayPreferences();
-  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: PutCcExpensePurchaseBigGroupVars) =>
       api.putCcExpensePurchaseBigGroup(vars),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey, exact: true });
-      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
-        applyCcExpensePurchaseBigGroupPatch(old, vars)
+      const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
+        applyCcExpensePurchaseBigGroupPatch(old, vars)!
       );
       return { previous };
     },
     onSuccess: (result) => {
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
+      setQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
         applyCcExpensePurchaseBigGroupPatch(old, {
           purchase_key: result.purchase_key,
           group_slug: result.group_slug,
-        })
+        })!
       );
     },
     onSettled: () => {
       // The gastos views leave excluded big groups out of the chart and carry each group's
-      // usage; the lines payload lists the active groups: recompute both.
+      // usage; the summary lists the active groups: recompute both.
       void invalidateResources(queryClient, resources.expenseBigGroups());
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKey, context.previous);
-      }
+      restoreQueries(queryClient, context?.previous);
     },
   });
 }
 
 export function useCreateCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const { displayUnit: linesUnit } = useDisplayPreferences();
-  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (label: string) => api.createCcExpenseBigGroup(label),
     onSuccess: (group) => {
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
-        if (!old) return old;
+      setQueries<WithBigGroups>(queryClient, BIG_GROUP_CATALOG_QUERIES, (old) => {
         if (old.big_groups.some((g) => g.slug === group.slug)) return old;
         return {
           ...old,
@@ -340,30 +372,19 @@ export function useCreateCcExpenseBigGroupMutation() {
 
 export function useRenameCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const { displayUnit: linesUnit } = useDisplayPreferences();
-  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (vars: { slug: string; label: string }) =>
       api.renameCcExpenseBigGroup(vars.slug, vars.label),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey, exact: true });
-      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          big_groups: old.big_groups.map((g) =>
-            g.slug === vars.slug ? { ...g, label: vars.label } : g
-          ),
-        };
-      });
+      const previous = await patchQueries<WithBigGroups>(queryClient, BIG_GROUP_CATALOG_QUERIES, (old) => ({
+        ...old,
+        big_groups: old.big_groups.map((g) => (g.slug === vars.slug ? { ...g, label: vars.label } : g)),
+      }));
       return { previous };
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKey, context.previous);
-      }
+      restoreQueries(queryClient, context?.previous);
     },
     onSettled: () => {
       void invalidateResources(queryClient, resources.expenseBigGroupCatalog());
@@ -373,30 +394,29 @@ export function useRenameCcExpenseBigGroupMutation() {
 
 export function useDeleteCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const { displayUnit: linesUnit } = useDisplayPreferences();
-  const queryKey = queryKeys.flowsExpensesLines(linesUnit);
 
   return useMutation({
     mutationFn: (slug: string) => api.deleteCcExpenseBigGroup(slug),
     onMutate: async (slug) => {
-      await queryClient.cancelQueries({ queryKey, exact: true });
-      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
-        if (!old) return old;
-        return {
+      const previous = await patchQueries<WithBigGroups & Partial<WithLines>>(
+        queryClient,
+        BIG_GROUP_CATALOG_QUERIES,
+        (old) => ({
           ...old,
           big_groups: old.big_groups.filter((g) => g.slug !== slug),
-          lines: old.lines.map((ln) =>
-            ln.big_group_slug === slug ? { ...ln, big_group_slug: null } : ln
-          ),
-        };
-      });
+          ...(old.lines
+            ? {
+                lines: old.lines.map((ln) =>
+                  ln.big_group_slug === slug ? { ...ln, big_group_slug: null } : ln
+                ),
+              }
+            : {}),
+        })
+      );
       return { previous };
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKey, context.previous);
-      }
+      restoreQueries(queryClient, context?.previous);
     },
     onSettled: () => {
       void invalidateResources(queryClient, resources.expenseBigGroupCatalog());

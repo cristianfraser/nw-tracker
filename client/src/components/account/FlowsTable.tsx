@@ -6,6 +6,7 @@ import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatInstrumentUnits, formatMoney } from "../../format";
 import { useCurrencies } from "../../queries/hooks";
 import { PaginatedTable } from "../ui/PaginatedTable";
+import { loadableClass } from "../ui/Loadable";
 import { FlowRows, flowAccountsCell, type FlowRowItem } from "./FlowRows";
 import styles from "./FlowsTable.module.css";
 
@@ -80,28 +81,14 @@ export function amountFilterCurrencyCodes(loaded: readonly string[] | undefined,
   return [...codes];
 }
 
-export function FlowsTable({
-  rows,
-  total,
-  page,
-  pageSize,
-  onPageChange,
-  loading,
-  showAccountColumn = false,
-  showUnitsColumn = true,
-  unitsKind,
-  emptyMessage,
-  filteredEmptyMessage,
-  filterOptions,
-  filterState,
-  onFilterChange,
-  amountFilterError,
-}: {
+/** A paged list (the server's page), or the whole list on one page with no pager. */
+type FlowsTablePaging =
+  | { paged?: true; page: number; pageSize: number; onPageChange: (page: number) => void }
+  | { paged: false };
+
+type FlowsTableProps = {
   rows: readonly FlowsApiRow[];
   total: number;
-  page: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
   /** Rows pending or held prior data: the table dims; with no rows yet it shows its header only, not the empty message. */
   loading?: boolean;
   showAccountColumn?: boolean;
@@ -115,7 +102,23 @@ export function FlowsTable({
   onFilterChange?: (patch: Partial<FlowsFilterState>) => void;
   /** Why a typed amount filter isn't a number (that filter is left out of the query). */
   amountFilterError?: string | null;
-}) {
+} & FlowsTablePaging;
+
+export function FlowsTable(props: FlowsTableProps) {
+  const {
+    rows,
+    total,
+    loading,
+    showAccountColumn = false,
+    showUnitsColumn = true,
+    unitsKind,
+    emptyMessage,
+    filteredEmptyMessage,
+    filterOptions,
+    filterState,
+    onFilterChange,
+    amountFilterError,
+  } = props;
   const { t } = useTranslation();
   const { data: currencies } = useCurrencies();
   const amountCurrencyCodes = amountFilterCurrencyCodes(
@@ -298,26 +301,40 @@ export function FlowsTable({
     ? (filteredEmptyMessage ?? t("accountDetail.flowsFilteredEmpty"))
     : (emptyMessage ?? t("accountDetail.flowsEmpty"));
 
+  const list = (placeholderRows: number) => (
+    <FlowRows
+      rows={items}
+      bothAccounts={showAccountColumn}
+      accountsLabel={
+        showAccountColumn
+          ? t("accountDetail.flowAccountsColumn")
+          : t("accountDetail.movements.counterpartAccount")
+      }
+      emptyMessage={loading ? null : emptyText}
+      placeholderRows={loading ? placeholderRows : 0}
+    />
+  );
+
+  if (props.paged === false) {
+    // One page: no pager, and no placeholder rows while loading (the list's length is unknown).
+    return (
+      <div className={loadableClass(loading)}>
+        {filterBar}
+        {list(0)}
+      </div>
+    );
+  }
+
   return (
     <PaginatedTable
-      page={page}
-      pageSize={pageSize}
+      page={props.page}
+      pageSize={props.pageSize}
       total={total}
-      onPageChange={onPageChange}
+      onPageChange={props.onPageChange}
       filters={filterBar}
       loading={loading}
     >
-      <FlowRows
-        rows={items}
-        bothAccounts={showAccountColumn}
-        accountsLabel={
-          showAccountColumn
-            ? t("accountDetail.flowAccountsColumn")
-            : t("accountDetail.movements.counterpartAccount")
-        }
-        emptyMessage={loading ? null : emptyText}
-        placeholderRows={loading ? pageSize : 0}
-      />
+      {list(props.pageSize)}
     </PaginatedTable>
   );
 }

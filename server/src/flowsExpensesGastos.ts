@@ -1,5 +1,5 @@
 /**
- * Gastos by month and category for the Expenses page (`GET /api/flows/expenses/credit-card/gastos`).
+ * Gastos by month and category for the Expenses page (`GET /api/flows/expenses/gastos`).
  *
  * The page offers two installment modes (Por cuota / Total) × two category levels (Categorías /
  * Subcategorías), in the display unit, with some big groups left out of the chart. Every

@@ -1,11 +1,9 @@
 import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import type {
-  CcExpenseBigGroupDto,
-  CcExpenseCategoryDto,
-  FlowCcExpenseLineRow,
-} from "../../types";
+import type { FlowCcExpenseLineRow } from "../../types";
+import { useFlowsExpenseLines } from "../../queries/hooks";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
 import {
@@ -19,26 +17,23 @@ import {
 
 const UNCLASSIFIED_PAGE_SIZE = 10;
 
-export function CreditCardUnclassifiedExpensesTable({
-  lines,
-  categories,
-  bigGroups = [],
-  loading,
-}: {
-  lines: readonly FlowCcExpenseLineRow[];
-  categories: readonly CcExpenseCategoryDto[];
-  bigGroups?: readonly CcExpenseBigGroupDto[];
-  loading?: boolean;
-}) {
+/** «Sin categoría»: the lines waiting for a category (`list=uncategorized`), largest first. */
+export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { includePreTax: boolean }) {
   const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const query = useFlowsExpenseLines(displayUnit, { kind: "uncategorized", include_pre_tax: includePreTax });
+  const loading = query.data == null;
+  const categories = query.data?.categories ?? [];
+  const bigGroups = query.data?.big_groups ?? [];
 
   const unclassifiedGastos = useMemo(
     () =>
-      lines
+      // The server lists them; the flag keeps the list as the optimistic edits leave it.
+      [...(query.data?.lines ?? [])]
         .filter((ln) => ln.pending_classification === true)
         .sort(sortCreditCardExpenseLinesByAmountDesc),
-    [lines]
+    [query.data]
   );
 
   const paged = useMemo(() => {

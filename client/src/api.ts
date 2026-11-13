@@ -633,14 +633,42 @@ export const api = {
     }),
   deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
-  flowsExpenses: (unit: DisplayUnit) =>
-    j<import("./types").FlowsExpensesResponse>(`/api/flows/expenses/credit-card?unit=${encodeURIComponent(unit)}`),
+  /** Expense lines of one selector (a month, a facturación, a list, a big group), in `unit`. */
+  flowsExpenseLines: (unit: DisplayUnit, selector: import("./types").FlowsExpenseLinesSelector) => {
+    const q = new URLSearchParams({ unit });
+    switch (selector.kind) {
+      case "month":
+        q.set("month", selector.period_month);
+        break;
+      case "facturacion":
+        q.set("account_id", String(selector.account_id));
+        q.set("billing_month", selector.billing_month);
+        break;
+      case "uncategorized":
+      case "deposit_matched":
+        q.set("list", selector.kind);
+        break;
+      case "big_group":
+        q.set("big_group", selector.slug);
+        break;
+    }
+    if (selector.kind !== "facturacion" && selector.include_pre_tax) q.set("include_pre_tax", "1");
+    return j<import("./types").FlowsExpenseLinesResponse>(`/api/flows/expenses/lines?${q.toString()}`);
+  },
+  flowsExpensesSummary: (unit: DisplayUnit) =>
+    j<import("./types").FlowsExpensesSummaryResponse>(
+      `/api/flows/expenses/summary?unit=${encodeURIComponent(unit)}`
+    ),
+  flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
+    j<import("./types").FlowsExpensesFinancingCandidatesResponse>(
+      `/api/flows/expenses/financing-candidates?unit=${encodeURIComponent(unit)}`
+    ),
   flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) => {
     const q = new URLSearchParams({ unit });
     if (includePreTax) q.set("include_pre_tax", "1");
     if (excludedBigGroups.length > 0) q.set("exclude_big_groups", [...excludedBigGroups].sort().join(","));
     return j<import("./types").FlowsExpensesGastosResponse>(
-      `/api/flows/expenses/credit-card/gastos?${q.toString()}`
+      `/api/flows/expenses/gastos?${q.toString()}`
     );
   },
   assignCcExpenseLineCategory: (
@@ -654,7 +682,7 @@ export const api = {
     }
   ) =>
     j<{ category_slug: string; unique: boolean; merchant_key: string; purchase_key: string }>(
-      `/api/flows/expenses/credit-card/lines/${lineId}/category`,
+      `/api/flows/expenses/lines/${lineId}/category`,
       { method: "PATCH", body: JSON.stringify(body) }
     ),
   patchCcExpensePurchaseNote: (body: {
@@ -664,7 +692,7 @@ export const api = {
     notes: string;
   }) =>
     j<{ account_id: number; purchase_key: string; notes: string }>(
-      "/api/flows/expenses/credit-card/purchase-notes",
+      "/api/flows/expenses/purchase-notes",
       { method: "PATCH", body: JSON.stringify(body) }
     ),
   expenseLinePieces: (source: "cc" | "checking", lineId: number) =>
@@ -693,40 +721,40 @@ export const api = {
     }),
   putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
     j<{ purchase_key: string; group_slug: string | null }>(
-      "/api/flows/expenses/credit-card/purchase-big-group",
+      "/api/flows/expenses/purchase-big-group",
       { method: "PUT", body: JSON.stringify(body) }
     ),
   createCcExpenseBigGroup: (label: string) =>
     j<import("./types").CcExpenseBigGroupDto>(
-      "/api/flows/expenses/credit-card/big-groups",
+      "/api/flows/expenses/big-groups",
       { method: "POST", body: JSON.stringify({ label }) }
     ),
   renameCcExpenseBigGroup: (slug: string, label: string) =>
     j<import("./types").CcExpenseBigGroupDto>(
-      `/api/flows/expenses/credit-card/big-groups/${encodeURIComponent(slug)}`,
+      `/api/flows/expenses/big-groups/${encodeURIComponent(slug)}`,
       { method: "PATCH", body: JSON.stringify({ label }) }
     ),
   deleteCcExpenseBigGroup: (slug: string) =>
     j<void>(
-      `/api/flows/expenses/credit-card/big-groups/${encodeURIComponent(slug)}`,
+      `/api/flows/expenses/big-groups/${encodeURIComponent(slug)}`,
       { method: "DELETE" }
     ),
   ccFacturadoFinancingLinks: () =>
     j<{ links: import("./types").CcFacturadoFinancingLink[] }>(
-      "/api/flows/expenses/credit-card/financing-links"
+      "/api/flows/expenses/financing-links"
     ),
   upsertCcFacturadoFinancingLink: (body: {
     financed_account_id: number;
     financed_billing_month: string;
     financing: { account_id: number; purchase_key: string }[];
   }) =>
-    j<{ ok: boolean; id: number }>("/api/flows/expenses/credit-card/financing-links", {
+    j<{ ok: boolean; id: number }>("/api/flows/expenses/financing-links", {
       method: "POST",
       body: JSON.stringify(body),
       headers: { "Content-Type": "application/json" },
     }),
   deleteCcFacturadoFinancingLink: (id: number) =>
-    j<void>(`/api/flows/expenses/credit-card/financing-links/${id}`, { method: "DELETE" }),
+    j<void>(`/api/flows/expenses/financing-links/${id}`, { method: "DELETE" }),
   // Equity closes and fund cuotas come back in the display unit; the rate series are facts.
   marketSeries: (unit: DisplayUnit) =>
     j<import("./types").MarketSeriesResponse>(

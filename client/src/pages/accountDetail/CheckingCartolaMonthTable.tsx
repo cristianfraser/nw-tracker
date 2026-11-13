@@ -13,9 +13,23 @@ import { useModalPeriodNav } from "../../periodModalNav";
 import { monthEndUtcYmd } from "../../calendarMonth";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 
-const MODAL_PAGE_SIZE = 20;
+/**
+ * The modal lists a whole month on one page: the server's largest page. A checking month is
+ * far below it; one that is not throws rather than hiding the rest.
+ */
+const MONTH_ROWS_LIMIT = 500;
 
 const periodKeyOf = (row: CheckingCartolaMonthRowDto) => row.period_month;
+
+/** One month's movements, as the modal lists them (one page). */
+function monthFlowFilters(periodMonth: string): FlowsQueryFilters {
+  return {
+    page: 1,
+    pageSize: MONTH_ROWS_LIMIT,
+    date_from: `${periodMonth}-01`,
+    date_to: monthEndUtcYmd(periodMonth),
+  };
+}
 
 /** Abonos/cargos are ledger-derived for every month; dash only when the month has no movements at all. */
 function fmtMoney(n: number, hasMovements: boolean): string {
@@ -52,11 +66,9 @@ export function CheckingCartolaMonthTable({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CheckingCartolaMonthRowDto | null>(null);
-  const [modalPage, setModalPage] = useState(1);
 
   const openMonth = useCallback((row: CheckingCartolaMonthRowDto) => {
     setSelected(row);
-    setModalPage(1);
     setModalOpen(true);
   }, []);
 
@@ -67,7 +79,6 @@ export function CheckingCartolaMonthTable({
 
   const selectMonth = useCallback((row: CheckingCartolaMonthRowDto) => {
     setSelected(row);
-    setModalPage(1);
   }, []);
 
   const titleNav = useModalPeriodNav({
@@ -79,20 +90,22 @@ export function CheckingCartolaMonthTable({
   });
 
   const flowFilters = useMemo(
-    (): FlowsQueryFilters => ({
-      page: modalPage,
-      pageSize: MODAL_PAGE_SIZE,
-      date_from: selected ? `${selected.period_month}-01` : undefined,
-      date_to: selected ? monthEndUtcYmd(selected.period_month) : undefined,
-    }),
-    [modalPage, selected]
+    (): FlowsQueryFilters =>
+      selected ? monthFlowFilters(selected.period_month) : { page: 1, pageSize: MONTH_ROWS_LIMIT },
+    [selected]
   );
   const flowsQuery = useAccountFlows(
     String(accountId),
     flowFilters,
-    modalOpen && selected != null && accountId > 0
+    modalOpen && selected != null && accountId > 0,
+    "cartola_month"
   );
   const flows = flowsQuery.data;
+  if (flows && flows.total > flows.rows.length) {
+    throw new Error(
+      `Cartola month ${selected?.period_month}: ${flows.total} movements, more than the ${MONTH_ROWS_LIMIT} one page holds`
+    );
+  }
 
   const selectedDiff = selected ? cartolaBalanceDiff(selected) : null;
 
@@ -235,9 +248,7 @@ export function CheckingCartolaMonthTable({
         <FlowsTable
           rows={flows?.rows ?? []}
           total={flows?.total ?? 0}
-          page={flows?.page ?? modalPage}
-          pageSize={MODAL_PAGE_SIZE}
-          onPageChange={setModalPage}
+          paged={false}
           loading={queryShowsLoading(flowsQuery)}
           showUnitsColumn={false}
         />

@@ -11,11 +11,14 @@ import { saveVendorBranchChoice } from "../vendorCatalog.js";
 import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsResponse } from "../flowsDeposits.js";
+import { cachedFlowsExpensesGastosPayload, cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
 import {
-  cachedFlowsExpensesGastosPayload,
-  cachedFlowsExpensesPayload,
-  cachedMortgageCarryingEvents,
-} from "../flowsMortgageCarrying.js";
+  cachedFlowsExpenseLinesList,
+  cachedFlowsExpensesFinancingCandidates,
+  cachedFlowsExpensesSummary,
+  ExpenseLinesRequestError,
+  parseExpenseLinesSelector,
+} from "../flowsExpenseLineLists.js";
 import { buildFlowsPlPayload } from "../flowsPl.js";
 import { buildFlowsIncomeAggregates, buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
@@ -338,12 +341,33 @@ app.get("/api/expenses", (_req, res) => {
   res.json({ expenses: rows });
 });
 
-app.get("/api/flows/expenses/credit-card", (req, res) => {
-  res.json(cachedFlowsExpensesPayload(requestDisplayUnit(req.query, { surface: "/api/flows/expenses/credit-card" })));
+app.get("/api/flows/expenses/lines", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/lines" });
+  try {
+    res.json(cachedFlowsExpenseLinesList(unit, parseExpenseLinesSelector(req.query)));
+  } catch (err) {
+    if (err instanceof ExpenseLinesRequestError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
-app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
-  const unitRaw = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/credit-card/gastos" });
+app.get("/api/flows/expenses/summary", (req, res) => {
+  res.json(cachedFlowsExpensesSummary(requestDisplayUnit(req.query, { surface: "/api/flows/expenses/summary" })));
+});
+
+app.get("/api/flows/expenses/financing-candidates", (req, res) => {
+  res.json(
+    cachedFlowsExpensesFinancingCandidates(
+      requestDisplayUnit(req.query, { surface: "/api/flows/expenses/financing-candidates" })
+    )
+  );
+});
+
+app.get("/api/flows/expenses/gastos", (req, res) => {
+  const unitRaw = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/gastos" });
   const excluded = new Set(
     String(req.query.exclude_big_groups ?? "")
       .split(",")
@@ -394,7 +418,7 @@ app.delete("/api/flows/expenses/manual/:id", linkSyncingWrite((req, res) => {
   res.status(204).send();
 }));
 
-app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {
+app.get("/api/flows/expenses/financing-links", (_req, res) => {
   // The manager lists financing by cuotas: a facturado paid outright (charges only) is not one.
   res.json({
     links: listCcFacturadoFinancingLinks()
@@ -408,7 +432,7 @@ app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {
   });
 });
 
-app.post("/api/flows/expenses/credit-card/financing-links", writeHandler((req, res) => {
+app.post("/api/flows/expenses/financing-links", writeHandler((req, res) => {
   const body = req.body as {
     financed_account_id?: number;
     financed_billing_month?: string;
@@ -432,7 +456,7 @@ app.post("/api/flows/expenses/credit-card/financing-links", writeHandler((req, r
   res.json({ ok: true, id: link.id });
 }));
 
-app.delete("/api/flows/expenses/credit-card/financing-links/:id", writeHandler((req, res) => {
+app.delete("/api/flows/expenses/financing-links/:id", writeHandler((req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid link id" });
@@ -629,7 +653,7 @@ app.delete("/api/flows/expenses/real-estate/entries/:expenseEntryId", writeHandl
   res.status(204).send();
 }));
 
-app.patch("/api/flows/expenses/credit-card/purchase-notes", writeHandler((req, res) => {
+app.patch("/api/flows/expenses/purchase-notes", writeHandler((req, res) => {
   const body = req.body as {
     account_id?: number;
     purchase_key?: string;
@@ -670,7 +694,7 @@ app.post("/api/flows/expenses/vendor-branch-choice", writeHandler((req, res) => 
   res.json({ ok: true });
 }));
 
-app.put("/api/flows/expenses/credit-card/purchase-big-group", writeHandler((req, res) => {
+app.put("/api/flows/expenses/purchase-big-group", writeHandler((req, res) => {
   const body = req.body as {
     purchase_key?: string;
     group_slug?: string | null;
@@ -690,7 +714,7 @@ app.put("/api/flows/expenses/credit-card/purchase-big-group", writeHandler((req,
   });
 }));
 
-app.post("/api/flows/expenses/credit-card/big-groups", writeHandler((req, res) => {
+app.post("/api/flows/expenses/big-groups", writeHandler((req, res) => {
   const body = req.body as { label?: string };
   const label = String(body.label ?? "").trim();
   if (!label) {
@@ -701,7 +725,7 @@ app.post("/api/flows/expenses/credit-card/big-groups", writeHandler((req, res) =
   res.status(201).json(group);
 }));
 
-app.patch("/api/flows/expenses/credit-card/big-groups/:slug", writeHandler((req, res) => {
+app.patch("/api/flows/expenses/big-groups/:slug", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
   const body = req.body as { label?: string };
   const label = String(body.label ?? "").trim();
@@ -713,7 +737,7 @@ app.patch("/api/flows/expenses/credit-card/big-groups/:slug", writeHandler((req,
   res.json(group);
 }));
 
-app.delete("/api/flows/expenses/credit-card/big-groups/:slug", writeHandler((req, res) => {
+app.delete("/api/flows/expenses/big-groups/:slug", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
   if (!slug) {
     res.status(400).json({ error: "slug required" });
@@ -723,8 +747,8 @@ app.delete("/api/flows/expenses/credit-card/big-groups/:slug", writeHandler((req
   res.status(204).send();
 }));
 
-app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", writeHandler((req, res) => {
-  const route = "PATCH /api/flows/expenses/credit-card/lines/:lineId/category";
+app.patch("/api/flows/expenses/lines/:lineId/category", writeHandler((req, res) => {
+  const route = "PATCH /api/flows/expenses/lines/:lineId/category";
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId === 0) {
     console.error(route, { lineId: req.params.lineId, reason: "line id must be non-zero finite" });

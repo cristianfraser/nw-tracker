@@ -17,7 +17,7 @@ import {
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor, keepPreviousDataSameEntity } from "./displayUnitQueries";
-import { queryKeys, type DisplayUnit } from "./keys";
+import { queryKeys, type AccountFlowsScope, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
@@ -689,11 +689,39 @@ export function useRealEstatePropertyAccounts(enabled: boolean) {
   });
 }
 
-/** The Expenses page's lines and catalogs, each line's `converted` in `unit`. */
-export function useFlowsExpenses(unit: DisplayUnit) {
+/**
+ * One selector's expense lines (a month, a facturación, a list, a big group), each line's
+ * `converted` in `unit`. No placeholder: a list never shows another selector's lines while its
+ * own load; one already cached shows at once.
+ */
+export function useFlowsExpenseLines(
+  unit: DisplayUnit,
+  selector: import("../types").FlowsExpenseLinesSelector | null,
+  enabled = true
+) {
   return useQuery({
-    queryKey: queryKeys.flowsExpensesLines(unit),
-    queryFn: () => api.flowsExpenses(unit),
+    queryKey: selector
+      ? queryKeys.flowsExpenseLines(unit, selector)
+      : [...queryKeys.flowsExpensesLinesAll(), unit, "none"],
+    queryFn: () => api.flowsExpenseLines(unit, selector!),
+    enabled: enabled && selector != null,
+  });
+}
+
+/** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
+export function useFlowsExpensesSummary(unit: DisplayUnit) {
+  return useQuery({
+    queryKey: queryKeys.flowsExpensesSummary(unit),
+    queryFn: () => api.flowsExpensesSummary(unit),
+  });
+}
+
+/** The financing manager's pickers: financed cards with their facturaciones, and the plans. */
+export function useFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.flowsExpensesFinancingCandidates(unit),
+    queryFn: () => api.flowsExpensesFinancingCandidates(unit),
+    enabled,
   });
 }
 
@@ -886,27 +914,44 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
   });
 }
 
-export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilters, enabled = true) {
+function fetchAccountFlows(id: string, filters: FlowsQueryFilters) {
+  return api.accountFlows(id, {
+    page: filters.page,
+    pageSize: filters.pageSize,
+    year: filters.year,
+    type: filters.type,
+    q: filters.q,
+    personal_only: filters.personal_only,
+    date_from: filters.date_from,
+    date_to: filters.date_to,
+    amount_min: filters.amount_min,
+    amount_max: filters.amount_max,
+    amount_exact: filters.amount_exact,
+    amount_currency: filters.amount_currency,
+  });
+}
+
+/**
+ * One account's flows rows. The page's panel holds the previous page / filter's rows while
+ * the next load (a filter change on one list). The cartola month modal holds nothing: a
+ * month is its own list, and a month not in the cache yet shows its empty frame, never
+ * another month's rows (a month already loaded comes straight from the cache).
+ */
+export function useAccountFlows(
+  id: string | undefined,
+  filters: FlowsQueryFilters,
+  enabled = true,
+  scope: AccountFlowsScope = "panel"
+) {
   const filtersKey = useMemo(() => serializeFlowFilters(filters), [filters]);
+  const queryKey = queryKeys.accountFlows(id ?? "", scope, filtersKey);
+  const behavior = displayUnitQueryBehaviorFor(queryKey);
   return useQuery({
-    queryKey: queryKeys.accountFlows(id ?? "", filtersKey),
-    queryFn: () =>
-      api.accountFlows(id!, {
-        page: filters.page,
-        pageSize: filters.pageSize,
-        year: filters.year,
-        type: filters.type,
-        q: filters.q,
-        personal_only: filters.personal_only,
-        date_from: filters.date_from,
-        date_to: filters.date_to,
-        amount_min: filters.amount_min,
-        amount_max: filters.amount_max,
-        amount_exact: filters.amount_exact,
-        amount_currency: filters.amount_currency,
-      }),
+    queryKey,
+    queryFn: () => fetchAccountFlows(id!, filters),
     enabled: enabled && Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountFlows(id ?? "", filtersKey)),
+    ...behavior,
+    placeholderData: scope === "panel" ? behavior.placeholderData : undefined,
   });
 }
 

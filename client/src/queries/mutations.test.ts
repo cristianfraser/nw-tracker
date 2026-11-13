@@ -4,15 +4,14 @@ import {
   applyCcExpenseLineCategoryPatch,
   applyCcExpenseLineCategoryPatchFromServer,
 } from "./mutations";
-import type { FlowsExpensesResponse } from "../types";
+import type { FlowsExpenseLinesResponse } from "../types";
 
-function sampleData(): FlowsExpensesResponse {
+function sampleData(): FlowsExpenseLinesResponse {
   return {
-    group_slug: "pasivos",
-    account_ids: [32],
+    unit: "clp",
+    selector: { kind: "month", period_month: "2025-05", include_pre_tax: false },
     categories: [],
     big_groups: [],
-    active_big_group_slugs: [],
     lines: [
       {
         source: "cc",
@@ -40,12 +39,6 @@ function sampleData(): FlowsExpensesResponse {
         origin: { kind: "card", account_name: null, card_last4: null, additional: false },
       },
     ],
-    additional_cards: {
-      unit: "clp",
-      by_month: [],
-      by_year: [],
-      totals: { charges: 0, reimbursements: 0, balance: 0 },
-    },
   };
 }
 
@@ -72,7 +65,7 @@ describe("applyCcExpenseLineCategoryPatch", () => {
   });
 
   it("patches by category_statement_line_id anchor (installment total row)", () => {
-    const data: FlowsExpensesResponse = {
+    const data: FlowsExpenseLinesResponse = {
       ...sampleData(),
       lines: [
         {
@@ -101,7 +94,7 @@ describe("applyCcExpenseLineCategoryPatch", () => {
   });
 
   it("does not patch cc line when source is checking (id collision)", () => {
-    const data: FlowsExpensesResponse = {
+    const data: FlowsExpenseLinesResponse = {
       ...sampleData(),
       lines: [
         { ...sampleData().lines[0], source: "cc", statement_line_id: 999, category_unique: false },
@@ -125,7 +118,7 @@ describe("applyCcExpenseLineCategoryPatch", () => {
   });
 
   it("applyCcExpenseLineCategoryPatchFromServer updates all lines with purchase_key", () => {
-    const data: FlowsExpensesResponse = {
+    const data: FlowsExpenseLinesResponse = {
       ...sampleData(),
       lines: [
         { ...sampleData().lines[0], statement_line_id: 10, purchase_key: "pk-a", category_unique: false },

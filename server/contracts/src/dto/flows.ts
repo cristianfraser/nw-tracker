@@ -629,22 +629,81 @@ export interface DepositsReconciliationPayload {
   fx_conversion_warnings: unknown[];
 }
 
-/** `GET /api/flows/expenses/credit-card` — Pasivos tarjeta de crédito (grupo, líneas de estado de cuenta). */
-export interface FlowsExpensesResponse {
-  group_slug: string;
-  account_ids: number[];
+/**
+ * Which expense lines `GET /api/flows/expenses/lines` returns. Exactly one selector per request:
+ *  - `month`: every line shown in a month of the Expenses page (`period_month`), every modal
+ *    section; the client splits the sections from each line's `month_modal_sections`.
+ *  - `facturacion`: the lines a card's facturación lists (the rule `flowLinesForFacturacionMonth`
+ *    held on the client: the card's lines whose `billing_month` is the facturación; a closed
+ *    facturación lists its statements' own lines, an open or provisional one adds the ledger's
+ *    cuotas for the month except `split_only` financing slices; never an installment purchase total).
+ *  - `uncategorized`: `pending_classification` lines.
+ *  - `deposit_matched`: lines with a `deposit_match` or an `expense_deposit_links` entry.
+ *  - `big_group`: lines of one big group (`big_group_slug`).
+ * `include_pre_tax` (every selector but `facturacion`) keeps the payroll deductions (`pre_tax`);
+ * off, they are left out, as the Expenses page's sections leave them out.
+ */
+export type FlowsExpenseLinesSelector =
+  | { kind: "month"; period_month: string; include_pre_tax: boolean }
+  | { kind: "facturacion"; account_id: number; billing_month: string }
+  | { kind: "uncategorized"; include_pre_tax: boolean }
+  | { kind: "deposit_matched"; include_pre_tax: boolean }
+  | { kind: "big_group"; slug: string; include_pre_tax: boolean };
+
+/**
+ * `GET /api/flows/expenses/lines?unit=&<selector>[&include_pre_tax=1]`, the selector being one of
+ * `month=YYYY-MM`, `account_id=<id>&billing_month=YYYY-MM`, `list=uncategorized|deposit_matched`,
+ * `big_group=<slug>`. Lines in the order the expense-line pipeline emits them; the client sorts.
+ * Categories and big groups ride along for the pickers on each line.
+ */
+export interface FlowsExpenseLinesResponse {
+  unit: DisplayUnitCode;
+  selector: FlowsExpenseLinesSelector;
+  lines: FlowCcExpenseLineRow[];
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
-  lines: FlowCcExpenseLineRow[];
+}
+
+/** `GET /api/flows/expenses/summary?unit=`: what the Expenses page needs besides the lists. */
+export interface FlowsExpensesSummaryResponse {
+  unit: DisplayUnitCode;
+  categories: CcExpenseCategoryDto[];
+  big_groups: CcExpenseBigGroupDto[];
   /** Big groups some line carries, sorted: the default chart exclusion. */
   active_big_group_slugs: string[];
-  /**
-   * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO), for the Diario
-   * gastos view (cuotas land on the day their facturación is paid).
-   */
-  cuota_pay_by_iso?: Record<string, string>;
-  /** Additional-card charges (`no_cuenta`) vs the reimbursements paying them back. */
+  /** Additional-card charges vs the reimbursements paying them back. */
   additional_cards: AdditionalCardsSummary;
+}
+
+/** An installment purchase a facturado can be financed with (one per `account_id|purchase_key`). */
+export interface FinancingCandidateDto {
+  /** `${account_id}|${purchase_key}` */
+  key: string;
+  account_id: number;
+  purchase_key: string;
+  merchant: string;
+  /** Identical purchases sharing the key (same-statement twins): one financing target. */
+  purchase_count: number;
+  /** Combined principal of those purchases, in pesos (a financing pays a peso facturado). */
+  amount_clp: number; // convention-ok: a financing link pays a card's peso facturado
+  purchase_month: string;
+  origin_label: string;
+}
+
+/** A card whose facturado can be financed, with the facturaciones (newest first) it billed purchases in. */
+export interface FinancedAccountDto {
+  account_id: number;
+  label: string;
+  billing_months: string[];
+}
+
+/** `GET /api/flows/expenses/financing-candidates?unit=`: the financing manager's two pickers. */
+export interface FlowsExpensesFinancingCandidatesResponse {
+  unit: DisplayUnitCode;
+  /** Cards with a positive one-shot purchase («purchase» line), in line order. */
+  financed_accounts: FinancedAccountDto[];
+  /** Newest purchase month first. */
+  candidates: FinancingCandidateDto[];
 }
 
 /** One calendar year's average monthly gastos and the months it covers (YYYY-MM, inclusive). */
@@ -673,7 +732,7 @@ export interface FlowsExpensesGastosView {
   year_averages: Record<string, ExpenseYearMonthlyAverage>;
 }
 
-/** `GET /api/flows/expenses/credit-card/gastos?unit=&exclude_big_groups=&include_pre_tax=`. */
+/** `GET /api/flows/expenses/gastos?unit=&exclude_big_groups=&include_pre_tax=`. */
 export interface FlowsExpensesGastosResponse {
   unit: DisplayUnitCode;
   /** Whether the payslip deductions (pre-tax expenses) are counted; off by default. */

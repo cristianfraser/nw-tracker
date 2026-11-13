@@ -15,10 +15,8 @@ import { dropFamiliesWhenInputChanged, getAggregationCached } from "./cacheRegis
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import {
   buildFlowsExpenseLines,
-  flowsExpensesPayloadFromLines,
   listCreditCardMasterAccountIds,
   type FlowCcExpenseLineRow,
-  type FlowsExpensesPayload,
 } from "./flowsExpenses.js";
 import {
   buildFlowsExpensesGastosPayload,
@@ -105,19 +103,7 @@ export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
   return getAggregationCached(cacheKeyFlowsInputs("lines"), () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
 }
 
-/**
- * The Expenses page payload (`GET /api/flows/expenses/credit-card`) over the cached lines, cached
- * beside them: its other parts (categories, big groups, the cards' pay-by dates) change only
- * through writes, which drop the `flows_inputs` family (`cacheFamilies.ts`).
- */
-export function cachedFlowsExpensesPayload(unit: string = "clp"): FlowsExpensesPayload {
-  syncFlowsInputsWithLiveUsdRates();
-  return getAggregationCached(cacheKeyFlowsInputs(`expenses_payload|${unit}`), () =>
-    flowsExpensesPayloadFromLines(listCreditCardMasterAccountIds(), cachedFlowsExpenseLines(), unit)
-  );
-}
-
-/** The Expenses page's gastos view (`GET /api/flows/expenses/credit-card/gastos`), cached the same way. */
+/** The Expenses page's gastos view (`GET /api/flows/expenses/gastos`), cached the same way. */
 export function cachedFlowsExpensesGastosPayload(
   unit: GastosUnit,
   excludedBigGroupSlugs: ReadonlySet<string>,

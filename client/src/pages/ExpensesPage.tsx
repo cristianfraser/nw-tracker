@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@crfrsr/ui";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { ManualExpenseDialog } from "../components/credit-card/ManualExpenseDialog";
-import { useFlowsExpenses, useFlowsExpensesGastos } from "../queries/hooks";
+import { useFlowsExpensesGastos, useFlowsExpensesSummary } from "../queries/hooks";
 import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
 import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpensesMonthTable";
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
@@ -58,16 +58,10 @@ export function ExpensesPage() {
   const tableGranularity = flowTableGranularity(
     tablePrefs.period
   );
-  const { data, error } = useFlowsExpenses(displayUnit);
+  const { data, error } = useFlowsExpensesSummary(displayUnit);
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();
   const { includePreTax, setIncludePreTax } = useExpensesIncludePreTax();
-
-  /** The lines the sections list: payslip deductions (server `pre_tax`) only when asked, like the views. */
-  const pageLines = useMemo(() => {
-    const lines = data?.lines ?? [];
-    return includePreTax ? lines : lines.filter((l) => !l.pre_tax);
-  }, [data?.lines, includePreTax]);
 
   /** The chart's categories at the chosen level: at «Categorías» a subcategory folds into its parent. */
   const chartCategories = useMemo(
@@ -80,7 +74,7 @@ export function ExpensesPage() {
   const { excludedBigGroups, isExcluded, toggleExcluded } =
     useCcExpenseExcludedBigGroups(activeBigGroups);
   const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
-  // The default exclusion is every big group the lines carry: wait for them before asking.
+  // The default exclusion is every big group the lines carry: wait for the summary before asking.
   const gastos = useFlowsExpensesGastos(displayUnit, excludedBigGroupList, includePreTax, data != null);
   const loadError = queryLoadError({ data, error }) ?? queryLoadError(gastos);
   const err =
@@ -138,9 +132,10 @@ export function ExpensesPage() {
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 
-  // Two flags: the expense lines (sections below the table) and the gastos view (chart, month
-  // table, totals), which waits for the lines and holds the prior view across an exclusion change.
-  const linesLoading = !data;
+  // Two flags: the summary (catalogs, additional cards) and the gastos view (chart, month table,
+  // totals), which waits for the summary and holds the prior view across an exclusion change. The
+  // line lists below fetch their own lines.
+  const summaryLoading = !data;
   const gastosLoading = !data || !view || gastos.isPlaceholderData;
 
   if (err) {
@@ -210,7 +205,7 @@ export function ExpensesPage() {
           <Button variant="secondary" onClick={() => setManualOpen(true)}>
             {t("expenses.creditCard.manualExpense.add")}
           </Button>
-          <CreditCardFacturadoFinancingManager lines={data?.lines ?? []} loading={linesLoading} />
+          <CreditCardFacturadoFinancingManager />
         </span>
         <ManualExpenseDialog
           open={manualOpen}
@@ -240,7 +235,7 @@ export function ExpensesPage() {
       ) : null}
 
       <BigExpenseGroupsSection
-        lines={pageLines}
+        includePreTax={includePreTax}
         categories={data?.categories ?? []}
         bigGroups={data?.big_groups ?? []}
         usage={bigGroupUsage}
@@ -286,7 +281,7 @@ export function ExpensesPage() {
         </div>
         <GroupExpensesMonthTable
           rows={monthTableRows}
-          lines={pageLines}
+          includePreTax={includePreTax}
           categories={data?.categories ?? []}
           bigGroups={data?.big_groups ?? []}
           installmentMode={installmentMode}
@@ -299,21 +294,12 @@ export function ExpensesPage() {
       <AdditionalCardsSection
         summary={data?.additional_cards}
         displayUnit={displayUnit}
-        loading={linesLoading}
+        loading={summaryLoading}
       />
 
-      <CreditCardUnclassifiedExpensesTable
-        lines={pageLines}
-        categories={data?.categories ?? []}
-        bigGroups={data?.big_groups ?? []}
-        loading={linesLoading}
-      />
+      <CreditCardUnclassifiedExpensesTable includePreTax={includePreTax} />
 
-      <CreditCardDepositMatchedExpensesTable
-        lines={pageLines}
-        categories={data?.categories ?? []}
-        loading={linesLoading}
-      />
+      <CreditCardDepositMatchedExpensesTable includePreTax={includePreTax} />
     </>
   );
 }

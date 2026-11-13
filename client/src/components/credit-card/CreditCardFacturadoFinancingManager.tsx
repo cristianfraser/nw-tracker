@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import type { FlowCcExpenseLineRow } from "../../types";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatCardBillingPesos } from "../../formatNative";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
-import { financingCandidatesFromLines } from "./financingCandidates";
 import {
   useCcFacturadoFinancingLinks,
+  useFlowsExpensesFinancingCandidates,
   useDeleteCcFacturadoFinancingLinkMutation,
   useUpsertCcFacturadoFinancingLinkMutation,
 } from "../../queries/hooks";
@@ -17,15 +17,9 @@ import {
  * Tooling to declare a facturado paid in cuotas via one or more installment purchases.
  * Drives the expenses-tab projection (see server ccFacturadoFinancingProjectionLines.ts).
  */
-export function CreditCardFacturadoFinancingManager({
-  lines,
-  loading,
-}: {
-  lines: readonly FlowCcExpenseLineRow[];
-  /** The expense lines are still loading: the candidate list is empty and dimmed. */
-  loading?: boolean;
-}) {
+export function CreditCardFacturadoFinancingManager() {
   const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
   const [open, setOpen] = useState(false);
   const [financedAccountId, setFinancedAccountId] = useState<number | "">("");
   const [financedMonth, setFinancedMonth] = useState("");
@@ -36,30 +30,21 @@ export function CreditCardFacturadoFinancingManager({
   const upsert = useUpsertCcFacturadoFinancingLinkMutation();
   const del = useDeleteCcFacturadoFinancingLinkMutation();
 
-  /** Accounts that have plain purchases (candidate financed facturados). */
-  const financedAccounts = useMemo(() => {
-    const byId = new Map<number, string>();
-    for (const ln of lines) {
-      if (ln.line_role === "purchase" && !byId.has(ln.account_id)) {
-        byId.set(ln.account_id, ln.origin_label);
-      }
-    }
-    return [...byId.entries()].map(([account_id, label]) => ({ account_id, label }));
-  }, [lines]);
+  // The pickers (server-built: financed cards with their facturaciones, the plans), while open.
+  const candidatesQuery = useFlowsExpensesFinancingCandidates(displayUnit, open);
+  const loading = candidatesQuery.data == null;
+  const financedAccounts = useMemo(() => candidatesQuery.data?.financed_accounts ?? [], [candidatesQuery.data]);
 
-  const monthsForAccount = useMemo(() => {
-    if (financedAccountId === "") return [];
-    const set = new Set<string>();
-    for (const ln of lines) {
-      if (ln.line_role === "purchase" && ln.account_id === financedAccountId && ln.amount.value > 0) {
-        set.add(ln.billing_month);
-      }
-    }
-    return [...set].sort().reverse();
-  }, [lines, financedAccountId]);
+  const monthsForAccount = useMemo(
+    () =>
+      financedAccountId === ""
+        ? []
+        : (financedAccounts.find((a) => a.account_id === financedAccountId)?.billing_months ?? []),
+    [financedAccounts, financedAccountId]
+  );
 
   /** Installment purchases (candidate financing legs), one row per purchase key. */
-  const financingCandidates = useMemo(() => financingCandidatesFromLines(lines), [lines]);
+  const financingCandidates = candidatesQuery.data?.candidates ?? [];
 
   const toggleFinancing = (key: string) => {
     setSelectedFinancing((prev) => {

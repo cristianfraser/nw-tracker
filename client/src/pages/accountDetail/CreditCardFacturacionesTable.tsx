@@ -7,7 +7,7 @@ import { cn } from "../../cn";
 import { Loadable } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
 import { useModalPeriodNav } from "../../periodModalNav";
-import { useFlowsExpenses } from "../../queries/hooks";
+import { useFlowsExpenseLines } from "../../queries/hooks";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import type {
   CcFacturacionDto,
@@ -22,7 +22,6 @@ import {
   buildFacturacionModalBucket,
   emptyFacturacionModalBucket,
 } from "../../components/credit-card/buildFacturacionModalBucket";
-import { flowLinesForFacturacionMonth } from "../../components/credit-card/flowLinesForStatementMonth";
 import {
   TableMobileCard,
   TableMobileCardRow,
@@ -232,10 +231,17 @@ export function CreditCardFacturacionesTable({
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const { data: flows, isPending: flowsPending } = useFlowsExpenses(displayUnit);
-  const categories = flows?.categories ?? [];
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
+  // The facturación's lines (the server's rule for which lines a facturación lists), while open.
+  const facturacionLines = useFlowsExpenseLines(
+    displayUnit,
+    selected ? { kind: "facturacion", account_id: accountId, billing_month: selected.billing_month } : null,
+    modalOpen
+  );
+  const flows = facturacionLines.data;
+  const flowsPending = selected != null && flows == null && !facturacionLines.error;
+  const categories = flows?.categories ?? [];
 
   const proxyByMonth = useMemo(() => {
     const map = new Map<string, CcProxyFacturacionAggregate>();
@@ -266,10 +272,7 @@ export function CreditCardFacturacionesTable({
     setModalOpen(true);
   }, []);
 
-  const scopedLines = useMemo(() => {
-    if (!selected || !flows) return [];
-    return flowLinesForFacturacionMonth(flows.lines, accountId, selected);
-  }, [accountId, flows, selected]);
+  const scopedLines = useMemo(() => (selected && flows ? flows.lines : []), [flows, selected]);
 
   const facturacionLineCount = useMemo(() => scopedLines.length, [scopedLines]);
 
@@ -408,7 +411,9 @@ export function CreditCardFacturacionesTable({
         }
         subtitle={modalSubtitle}
       >
-        {flowsPending ? (
+        {facturacionLines.error && !flows ? (
+          <p className="error">{t("common.loadFailed")}</p>
+        ) : flowsPending ? (
           // The lines are not in yet: an empty dimmed body, never the «no lines» copy.
           <Loadable loading />
         ) : facturacionLineCount === 0 ? (
