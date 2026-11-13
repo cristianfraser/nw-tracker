@@ -90,4 +90,23 @@ export type BankAccountTransferNoticesApplyDetails = {
   synthesized: { message_id: string; movement_id: number; account_id: number; date: string; amount: number }[];
   /** Such movements no bank feed has listed by their deadline: the money never moved as mailed. */
   overdue: { message_id: string; movement_id: number; date: string; amount: number; deadline: string | null }[];
+  /**
+   * Bank rows the bank listed after the day their mail was sent, inside its posting window (a
+   * transfer after Santander's 14:00 cutoff is listed the next business day): dated the mail's day,
+   * the bank's day kept as each paired side's posting day.
+   */
+  redated: {
+    message_id: string;
+    movement_id: number;
+    from: string;
+    to: string;
+    postings: { account_id: number; posted_on: string }[];
+  }[];
+  /**
+   * Paired bank rows another document already dated (a posting day on file) to another day than
+   * the mail's: two documents disagree on when the money moved. Nothing is written; the step fails.
+   */
+  redate_conflicts: { message_id: string; movement_id: number; occurred_on: string; mail_day: string }[];
+  /** Transfers left on their date because their other side holds its own evidence for that day. */
+  redate_skipped: { message_id: string; movement_id: number; occurred_on: string; mail_day: string; reason: string }[];
 };

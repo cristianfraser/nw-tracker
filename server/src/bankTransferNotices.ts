@@ -15,6 +15,10 @@
  * counterparty is (`transfer_counterparty_accounts`, by RUT or account number), a single-leg row,
  * a transfer to some other account. Rows left tied that differ only by id are twins and pair in
  * order; any other tie is left unpaired and reported.
+ *
+ * A paired row the bank filed after the mail's day, inside its posting window, is dated the mail's
+ * day with the bank's day kept as its posting (`redatePairedRowsToMailDay`); the pairing reads the
+ * posting, so it holds on every later apply.
  */
 import { movementNotAnchorSql } from "./flows/flowEvidence.js";
 import { addDaysIso, normalizeAccountNumber, normalizeRut } from "nw-tracker-contracts";
@@ -26,6 +30,9 @@ import { db } from "./db.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
+import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
+import { redateMovementKeepingBankDay } from "./movementWrites.js";
+import { recordBankPosting } from "./movementBankPostings.js";
 
 const WINDOW_DAYS = MATCH_WINDOWS.transfer_notice.daysAfter;
 
@@ -423,6 +430,89 @@ function writeMovementsFromMails(
   return out;
 }
 
+type RedateDetails = Pick<BankAccountTransferNoticesApplyDetails, "redated"> & {
+  conflicts: BankAccountTransferNoticesApplyDetails["redate_conflicts"];
+  skipped: BankAccountTransferNoticesApplyDetails["redate_skipped"];
+};
+
+/**
+ * A paired bank row the bank filed after the mail's day moves to the mail's day: the mail states
+ * when the transfer was made, the bank's day (after Santander's 14:00 cutoff, the next business
+ * day) stays as each paired side's posting day, which is what the pairing, the cartola dedupe and
+ * the month tables read. Only inside the bank's posting window of the mail's day
+ * (`bankDateMatchesTransferDate`): a row listed days later is not a cutoff case. Never over a date
+ * another document set (a posting on file means `occurred_on` was already moved by evidence — a
+ * receipt, a broker mail, the mail itself): that is a conflict when it disagrees with the mail.
+ * A transfer has one date for both sides, so it moves only when its unpaired side has no evidence
+ * of its own on that date (a numbered bank account or a card, with no posting of its own).
+ */
+function redatePairedRowsToMailDay(
+  pairs: readonly TransferNoticePair[],
+  notices: readonly TransferNotice[],
+  legs: readonly TransferCandidateLeg[],
+  trackedIds: ReadonlySet<number>
+): RedateDetails {
+  const out: RedateDetails = { redated: [], conflicts: [], skipped: [] };
+  const mailDay = new Map(notices.map((n) => [n.message_id, n.sent_at_chile.slice(0, 10)]));
+  const legDay = new Map(legs.map((l) => [`${l.movement_id}|${l.account_id}`, l.day]));
+  const byMovement = new Map<string, { message_id: string; movement_id: number; accounts: number[] }>();
+  for (const p of pairs) {
+    const k = `${p.message_id}|${p.movement_id}`;
+    (byMovement.get(k) ?? byMovement.set(k, { message_id: p.message_id, movement_id: p.movement_id, accounts: [] }).get(k)!).accounts.push(
+      p.account_id
+    );
+  }
+  if (byMovement.size === 0) return out;
+  const cards = new Set(
+    (db.prepare(`SELECT account_id FROM credit_card_account_config`).all() as { account_id: number }[]).map((r) => r.account_id)
+  );
+  const movementRow = db.prepare(`SELECT occurred_on, account_id, from_account_id, to_account_id FROM movements WHERE id = ?`);
+  const postingsOf = db.prepare(`SELECT account_id, posted_on FROM movement_bank_postings WHERE movement_id = ?`);
+  for (const { message_id, movement_id, accounts } of byMovement.values()) {
+    const day = mailDay.get(message_id);
+    if (day == null) throw new Error(`pairing names notice ${message_id}, which is not stored`);
+    const mv = movementRow.get(movement_id) as
+      | { occurred_on: string; account_id: number | null; from_account_id: number | null; to_account_id: number | null }
+      | undefined;
+    if (!mv) throw new Error(`pairing names movement ${movement_id}, which does not exist`);
+    if (mv.occurred_on === day) continue;
+    const bankDays = accounts.map((a) => {
+      const d = legDay.get(`${movement_id}|${a}`);
+      if (d == null) throw new Error(`pairing names movement ${movement_id} on account ${a}, which no candidate leg holds`);
+      return d;
+    });
+    if (!bankDays.every((d) => bankDateMatchesTransferDate(d, day))) continue;
+    const postings = new Map(
+      (postingsOf.all(movement_id) as { account_id: number; posted_on: string }[]).map((r) => [r.account_id, r.posted_on])
+    );
+    if (accounts.some((a) => postings.has(a))) {
+      out.conflicts.push({ message_id, movement_id, occurred_on: mv.occurred_on, mail_day: day });
+      continue;
+    }
+    const others = [mv.account_id, mv.from_account_id, mv.to_account_id].filter(
+      (a): a is number => a != null && !accounts.includes(a)
+    );
+    const held = others.find((a) => !postings.has(a) && (trackedIds.has(a) || cards.has(a)));
+    if (held != null) {
+      out.skipped.push({
+        message_id,
+        movement_id,
+        occurred_on: mv.occurred_on,
+        mail_day: day,
+        reason: `the transfer's other side, account ${held}, is dated by its own ${cards.has(held) ? "card" : "bank"} evidence`,
+      });
+      continue;
+    }
+    const [first, ...rest] = accounts.map((a, i) => ({ account_id: a, posted_on: bankDays[i]! }));
+    redateMovementKeepingBankDay({ movementId: movement_id, accountId: first!.account_id, occurredOn: day, bankPostedOn: first!.posted_on });
+    for (const p of rest) recordBankPosting(movement_id, p.account_id, p.posted_on);
+    // An unpaired side's own posting on the new date is no longer a difference: drop it (sparse).
+    for (const a of others) if (postings.get(a) === day) recordBankPosting(movement_id, a, day);
+    out.redated.push({ message_id, movement_id, from: mv.occurred_on, to: day, postings: [first!, ...rest] });
+  }
+  return out;
+}
+
 /**
  * Stores the notices (a resent notice must state the same; a different one is an `IngestConflict`), rebuilds every
  * pairing from all stored notices of every mailer, so a bank row that lands after its mail pairs on
@@ -452,7 +542,11 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
     }));
     const notices = stored.map((s) => s.notice);
     const counterparties = loadCounterpartyAccounts();
-    const matchAll = () => matchTransferNotices(notices, tracked, loadTransferCandidateLegs([...new Set(tracked.values())]), counterparties);
+    let legs: TransferCandidateLeg[] = [];
+    const matchAll = () => {
+      legs = loadTransferCandidateLegs([...new Set(tracked.values())]);
+      return matchTransferNotices(notices, tracked, legs, counterparties);
+    };
     let match = matchAll();
     const today = chileCalendarTodayYmd();
     const synthesized = writeMovementsFromMails(stored, match, tracked, counterparties, today);
@@ -461,6 +555,8 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
     db.prepare(`DELETE FROM movement_transfer_notices`).run();
     const pair = db.prepare(`INSERT INTO movement_transfer_notices (movement_id, account_id, message_id) VALUES (?, ?, ?)`);
     for (const p of match.pairs) pair.run(p.movement_id, p.account_id, p.message_id);
+    // Re-dating keeps every leg's bank day (its posting), so the pairing above holds on every later apply.
+    const redates = redatePairedRowsToMailDay(match.pairs, notices, legs, new Set(tracked.values()));
     return {
       received: payload.notices.length,
       new_notices: added,
@@ -469,6 +565,9 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
       ambiguous: match.ambiguous,
       synthesized,
       overdue: listOverdueTransferNoticeMovements(today),
+      redated: redates.redated,
+      redate_conflicts: redates.conflicts,
+      redate_skipped: redates.skipped,
     };
   }).immediate();
 }

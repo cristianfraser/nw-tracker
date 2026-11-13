@@ -114,7 +114,16 @@ async function runSource(source: Source, file: string): Promise<number> {
     for (const o of d.overdue) {
       log(`OVERDUE: movement ${o.movement_id} ($${o.amount}, mailed ${o.date}) — no bank feed has listed it by ${o.deadline}`);
     }
-    return failed + (d.overdue.length > 0 ? 1 : 0);
+    for (const r of d.redated) {
+      log(`  re-dated to the mail's day: movement ${r.movement_id}, ${r.from} → ${r.to} (bank day kept as posting)`);
+    }
+    for (const s of d.redate_skipped) {
+      log(`  left on ${s.occurred_on} (mailed ${s.mail_day}): movement ${s.movement_id} — ${s.reason}`);
+    }
+    for (const c of d.redate_conflicts) {
+      log(`CONFLICT: movement ${c.movement_id} is dated ${c.occurred_on} by another document, its mail says ${c.mail_day}`);
+    }
+    return failed + (d.overdue.length > 0 || d.redate_conflicts.length > 0 ? 1 : 0);
   } catch (err) {
     log(`FAILED: ${describeIngestFailure(err)}`);
     return failed + 1;
