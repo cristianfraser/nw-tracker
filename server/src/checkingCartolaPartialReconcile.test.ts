@@ -1,4 +1,5 @@
 import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { describe, expect, it } from "vitest";
 import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { db } from "./db.js";
@@ -363,7 +364,7 @@ describe("checkingCartolaPartialReconcile", () => {
         description,
         document_no: "",
       },
-    ]);
+    ], READ_AFTER_ROWS);
     expect(result.inserted).toBe(0);
     expect(result.skipped_superseded_by_cartola).toBe(1);
 

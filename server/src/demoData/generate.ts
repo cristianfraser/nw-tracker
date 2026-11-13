@@ -897,7 +897,8 @@ function writeLife(
     if (errors.length) throw new Error(`demo: cartola import failed: ${errors.map((e) => `${e.file}: ${e.error}`).join("; ")}`);
   }
   const listing = renderCurrentMonthListing(cartolas.currentMonth);
-  if (listing) applyBankAccountMovements(listing, `demo-ultimos-movimientos-${today}.xlsx`);
+  // Read the evening of `today` (23:00 UTC is that Chile day in either offset).
+  if (listing) applyBankAccountMovements(listing, `demo-ultimos-movimientos-${today}.xlsx`, new Date(`${today}T23:00:00Z`));
 
   const cards = applyCanonicalCardStatements(renderCardStatements(ledger), { dryRun: false, full: true });
   if (cards.problems.length) throw new Error(`demo: card statements: ${cards.problems.join("; ")}`);

@@ -45,7 +45,7 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
-import { recordBankPosting } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
@@ -217,17 +217,18 @@ export function applyPaymentReceipt(receipt: ParsedPaymentReceipt, messageId: st
     };
   }
 
-  // Single-leg checking debits dated after the payment inside the posting window.
+  // Single-leg checking debits the bank posted after the payment inside the posting window (a
+  // post-cutoff daily row may already be stored on an earlier day, its bank day as posting).
   const rows = db
     .prepare(
-      `SELECT id, occurred_on FROM movements
-       WHERE account_id = ? AND from_account_id IS NULL AND to_account_id IS NULL
-         AND currency = 'clp' AND ROUND(amount) = ROUND(?)
-         AND occurred_on > ?
-       ORDER BY occurred_on`
+      `SELECT m.id, m.occurred_on, ${BANK_POSTED_ON_SQL} AS bank_posted_on FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE m.account_id = ? AND m.from_account_id IS NULL AND m.to_account_id IS NULL
+         AND m.currency = 'clp' AND ROUND(m.amount) = ROUND(?)
+         AND ${BANK_POSTED_ON_SQL} > ?
+       ORDER BY ${BANK_POSTED_ON_SQL}`
     )
-    .all(checkingId, target, receipt.paid_on) as CandidateRow[];
-  const inWindow = rows.filter((r) => bankDateMatchesTransferDate(r.occurred_on, receipt.paid_on));
+    .all(checkingId, checkingId, target, receipt.paid_on) as (CandidateRow & { bank_posted_on: string })[];
+  const inWindow = rows.filter((r) => bankDateMatchesTransferDate(r.bank_posted_on, receipt.paid_on));
   if (inWindow.length === 0) {
     // This exact receipt already produced a transfer (the `already` query above misses it only
     // when that transfer was later moved) — never a second synthesis for one mail.
@@ -262,7 +263,7 @@ export function applyPaymentReceipt(receipt: ParsedPaymentReceipt, messageId: st
   const match = inWindow[0]!;
   db.transaction(() => {
     db.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(receipt.paid_on, match.id);
-    recordBankPosting(match.id, checkingId, match.occurred_on);
+    recordBankPosting(match.id, checkingId, match.bank_posted_on);
   })();
   return {
     receipt,

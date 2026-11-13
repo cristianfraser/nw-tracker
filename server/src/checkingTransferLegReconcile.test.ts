@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import {
   findMatchingInternalTransferLegId,
@@ -86,7 +87,7 @@ describe("checking import dedup against manual internal transfer legs", () => {
       mv(6_000_000, "TRASPASO DESDE INVERSIONES"),
       mv(-5_000_000, "TRASPASO A INVERSIONES"),
       mv(-42_000, "PANADERIA"),
-    ]);
+    ], READ_AFTER_ROWS);
     expect(res.skipped_superseded_by_transfer).toBe(2);
     expect(res.inserted).toBe(1);
     // Only the unrelated bank row got inserted; the two transfers still stand as the single record.

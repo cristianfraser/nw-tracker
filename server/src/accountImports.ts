@@ -73,7 +73,8 @@ function assertCuentaVistaAccount(accountId: number): void {
   }
 }
 
-export function importCuentaVistaWebPaste(accountId: number, text: string) {
+/** `pastedAt` is when the user copied the rows: the listing's fetch instant. */
+export function importCuentaVistaWebPaste(accountId: number, text: string, pastedAt: Date) {
   assertCuentaVistaAccount(accountId);
   const parsed = parseCuentaVistaWebPasteText(text);
   if (parsed.movements.length === 0) {
@@ -86,7 +87,7 @@ export function importCuentaVistaWebPaste(accountId: number, text: string) {
     };
   }
 
-  const result = importCheckingPartialMovements(accountId, parsed.movements);
+  const result = importCheckingPartialMovements(accountId, parsed.movements, { fetchedAt: pastedAt });
   const batch_id = createImportBatch(
     "cuenta_vista_web_paste",
     `web-paste|${newWebPasteBatchId()}`,

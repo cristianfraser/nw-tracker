@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
@@ -48,7 +49,7 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, existing.amount_clp, existing.occurred_on, notes[0]);
 
-    const result = importCheckingPartialMovements(accountId, [existing, fresh]);
+    const result = importCheckingPartialMovements(accountId, [existing, fresh], READ_AFTER_ROWS);
     expect(result.inserted).toBe(1);
     expect(result.skipped_duplicate).toBe(1);
     expect(result.inserted_flows).toEqual([
@@ -96,7 +97,7 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
       db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?, ?)`).run(accountId, ...notes);
     del();
 
-    importCheckingPartialMovements(accountId, [fee, interest, spend]);
+    importCheckingPartialMovements(accountId, [fee, interest, spend], READ_AFTER_ROWS);
     const kinds = notes.map(
       (note) =>
         (
@@ -135,7 +136,7 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, mv.amount_clp, mv.occurred_on, officialNote);
 
-    const result = importCheckingPartialMovements(accountId, [mv]);
+    const result = importCheckingPartialMovements(accountId, [mv], READ_AFTER_ROWS);
     expect(result.inserted).toBe(0);
     expect(result.inserted_flows).toEqual([]);
     expect(result.skipped_flows).toEqual([
@@ -256,7 +257,8 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
         ],
         rejected_rows: [],
       },
-      "vitest-ultimos.xlsx"
+      "vitest-ultimos.xlsx",
+      READ_AFTER_ROWS.fetchedAt
     ) as BankAccountMovementsApplyDetails;
     try {
       expect(result.account_id).toBe(accountId);

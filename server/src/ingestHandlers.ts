@@ -170,7 +170,10 @@ const HANDLERS: IngestHandlerMap = {
     },
   },
   "bank_account.movements": {
-    apply: ({ payload, envelope }) => ({ details: applyBankAccountMovements(payload, envelope.source.ref) }),
+    apply: ({ payload, envelope }) => {
+      const fetched = envelope.source.fetched_at;
+      return { details: applyBankAccountMovements(payload, envelope.source.ref, fetched ? new Date(fetched) : undefined) };
+    },
   },
   "mortgage.lender_statement": { apply: ({ payload }) => ({ details: applyMortgageLenderStatement(payload) }) },
   "mortgage.payment_receipt": {

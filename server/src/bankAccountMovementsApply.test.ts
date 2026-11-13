@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import type { UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
@@ -150,7 +151,8 @@ describe("applyBankAccountMovements for a dollar account", () => {
         ],
         rejected_rows: [],
       },
-      `${PREFIX} capture`
+      `${PREFIX} capture`,
+      READ_AFTER_ROWS.fetchedAt
     ) as UsdAccountMovementsApplyDetails;
     expect(result.account_id).toBe(usdAccountId);
     expect(result.confirmed).toBe(2);
@@ -167,7 +169,8 @@ describe("applyBankAccountMovements for a dollar account", () => {
     // Sent again: the same legs match on their recorded posting day, nothing changes.
     const again = applyBankAccountMovements(
       { account: { ...account_, number: NUMBER }, movements: [row("2097-10-08", 1138.53, "Rec Or de Pago REC OR DE PAGO 1", "1")], rejected_rows: [] },
-      `${PREFIX} capture again`
+      `${PREFIX} capture again`,
+      READ_AFTER_ROWS.fetchedAt
     ) as UsdAccountMovementsApplyDetails;
     expect(again.confirmed).toBe(1);
     expect(again.confirmed_flows[0]!.movement_id).toBe(Number(wire.lastInsertRowid));
@@ -176,7 +179,7 @@ describe("applyBankAccountMovements for a dollar account", () => {
 
   it("refuses a dollar listing with rows the feeder could not read", () => {
     expect(() =>
-      applyBankAccountMovements({ account: { ...account_, number: NUMBER }, movements: [], rejected_rows: ["Fila 3: ?"] }, `${PREFIX} bad`)
+      applyBankAccountMovements({ account: { ...account_, number: NUMBER }, movements: [], rejected_rows: ["Fila 3: ?"] }, `${PREFIX} bad`, READ_AFTER_ROWS.fetchedAt)
     ).toThrow(/could not read/);
   });
 });

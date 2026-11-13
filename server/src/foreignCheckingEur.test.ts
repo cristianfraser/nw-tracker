@@ -6,6 +6,7 @@
  * and a euro listing confirms the transfer leg it lists.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { addDaysIso } from "nw-tracker-contracts";
 import { applyBankAccountBalances, formatBankBalanceReport, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
@@ -204,7 +205,8 @@ describe("a euro checking account on the bank side", () => {
         ],
         rejected_rows: [],
       },
-      "vitest-eur-listing-1"
+      "vitest-eur-listing-1",
+      READ_AFTER_ROWS.fetchedAt
     );
     expect(result).toMatchObject({ confirmed: 1, unexplained: 1 });
     expect(count()).toBe(n);

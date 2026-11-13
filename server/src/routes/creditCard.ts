@@ -130,7 +130,8 @@ app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", writeHandler((req, 
     res.status(400).json({ error: "text is required" });
     return;
   }
-  res.json(importCuentaVistaWebPaste(id, text));
+  // The pasted rows were read now: a row the bank dated after today is stored today.
+  res.json(importCuentaVistaWebPaste(id, text, new Date()));
 }));
 
 app.post(
@@ -164,6 +165,9 @@ app.post(
   // uploaded here instead (not an «últimos movimientos» workbook) stays on the server's own path
   // until the cartolas move to ingest.
   writeHandler(async (req, res) => {
+    // The listing was read when the user uploaded it: a row the bank dated after that day is a
+    // post-cutoff movement and is stored on it.
+    const uploadedAt = new Date();
     const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
@@ -188,7 +192,7 @@ app.post(
       throw new Error(`ingest answered ${parsed.result.kind} v${parsed.result.schema_version}, not ${bankAccountMovementsKind.kind}`);
     }
     const payload = bankAccountMovementsKind.payload.parse(parsed.result.payload);
-    const { account_id: _accountId, ...applied } = applyBankAccountMovements(payload, f.originalname);
+    const { account_id: _accountId, ...applied } = applyBankAccountMovements(payload, f.originalname, uploadedAt);
     res.json({ format: "ultimos_movimientos" as const, ...applied, parse_errors: payload.rejected_rows });
   })
 );

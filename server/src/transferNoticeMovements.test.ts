@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import type { TransferNotice } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import {
@@ -154,7 +155,7 @@ describe("movements written from transfer mails", () => {
     // The bank's feed lists it the next business day: the mail's row stays, the bank's day is its posting.
     const bankDay = chileCalendarAddDays(today, 1);
     const feed = [{ occurred_on: bankDay, description: "0099999 TRANSF. JUAN PEREZ VITEST TN", amount_clp: 41_237, document_no: "" }];
-    const imported = importCheckingPartialMovements(account, feed);
+    const imported = importCheckingPartialMovements(account, feed, READ_AFTER_ROWS);
     expect(imported).toMatchObject({ inserted: 0, skipped_superseded_by_mail: 1 });
     const confirmed = db
       .prepare(`SELECT confirmed_on, confirmed_source, bank_description FROM transfer_notice_movements WHERE message_id = ?`)
@@ -164,12 +165,12 @@ describe("movements written from transfer mails", () => {
       posted_on: bankDay,
     });
     // The feed re-lists the row the next night, and the cartola lists it once more: still one row.
-    expect(importCheckingPartialMovements(account, feed)).toMatchObject({ inserted: 0, skipped_superseded_by_mail: 1 });
+    expect(importCheckingPartialMovements(account, feed, READ_AFTER_ROWS)).toMatchObject({ inserted: 0, skipped_superseded_by_mail: 1 });
     expect(findTransferNoticeMovementForBankRow(account, bankDay, 41_237, new Set())).toBe(credit.movement_id);
     // Another credit of the same pesos on another day is someone else's money.
     const later = chileCalendarAddDays(today, 6);
     expect(
-      importCheckingPartialMovements(account, [{ occurred_on: later, description: "VITEST TN OTHER", amount_clp: 41_237, document_no: "" }])
+      importCheckingPartialMovements(account, [{ occurred_on: later, description: "VITEST TN OTHER", amount_clp: 41_237, document_no: "" }], READ_AFTER_ROWS)
     ).toMatchObject({ inserted: 1, skipped_superseded_by_mail: 0 });
   });
 
@@ -179,12 +180,12 @@ describe("movements written from transfer mails", () => {
     const written = applyBankTransferNotices({ issuer: "bancochile", notices: [a, b] }).synthesized;
     expect(written).toHaveLength(2);
     const row = (desc: string) => ({ occurred_on: today, description: desc, amount_clp: 20_000, document_no: "" });
-    expect(importCheckingPartialMovements(account, [row("VITEST TN A"), row("VITEST TN B")])).toMatchObject({
+    expect(importCheckingPartialMovements(account, [row("VITEST TN A"), row("VITEST TN B")], READ_AFTER_ROWS)).toMatchObject({
       inserted: 0,
       skipped_superseded_by_mail: 2,
     });
     // A third, unmailed wire of the same pesos is the bank's own row.
-    expect(importCheckingPartialMovements(account, [row("VITEST TN A"), row("VITEST TN B"), row("VITEST TN C")])).toMatchObject({
+    expect(importCheckingPartialMovements(account, [row("VITEST TN A"), row("VITEST TN B"), row("VITEST TN C")], READ_AFTER_ROWS)).toMatchObject({
       inserted: 1,
       skipped_superseded_by_mail: 2,
     });
@@ -211,7 +212,7 @@ describe("movements written from transfer mails", () => {
     expect(
       importCheckingPartialMovements(account, [
         { occurred_on: bankDay, description: "VITEST TN Transf a COMUNIDAD EDIFICIO", amount_clp: -76_282, document_no: "" },
-      ])
+      ], READ_AFTER_ROWS)
     ).toMatchObject({ inserted: 0, skipped_superseded_by_mail: 1 });
   });
 
@@ -236,7 +237,7 @@ describe("movements written from transfer mails", () => {
       expect(
         importCheckingPartialMovements(account, [
           { occurred_on: bankDay, description: "VITEST TN Transf a FONDO", amount_clp: -700_000, document_no: "" },
-        ])
+        ], READ_AFTER_ROWS)
       ).toMatchObject({ inserted: 0, skipped_superseded_by_transfer: 1 });
       expect(db.prepare(`SELECT confirmed_on, confirmed_source FROM transfer_notice_movements WHERE message_id = ?`).get(notice.message_id)).toEqual({
         confirmed_on: bankDay,

@@ -19,7 +19,7 @@
  * (`movement_bank_postings`): the cartola files the money under that day, so re-importing the
  * month finds the transfer by it, and the cartola month-end check reads it.
  */
-import { recordBankPosting } from "./movementBankPostings.js";
+import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
 
 import { db } from "./db.js";
@@ -157,10 +157,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         inn.units_delta,
         inn.note
       );
-      // Each deleted leg was its account's own listing of the money: its date stays as the
-      // transfer's posting day there (a bank cartola files it under that day).
-      recordBankPosting(Number(r.lastInsertRowid), out.account_id, out.occurred_on);
-      recordBankPosting(Number(r.lastInsertRowid), inn.account_id, inn.occurred_on);
+      // Each deleted leg was its account's own listing of the money: its bank day (its own
+      // posting row, else its date — a post-cutoff daily row is stored on an earlier day) stays
+      // as the transfer's posting day there (a bank cartola files it under that day).
+      recordBankPosting(Number(r.lastInsertRowid), out.account_id, bankPostedOn(out.id, out.account_id));
+      recordBankPosting(Number(r.lastInsertRowid), inn.account_id, bankPostedOn(inn.id, inn.account_id));
       delIncomeOverride.run(out.id);
       delIncomeOverride.run(inn.id);
       delLeg.run(out.id);
@@ -180,6 +181,19 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
   });
 
   return { converted: run(pairs) };
+}
+
+/**
+ * A restored leg takes back the bank day its transfer kept for it: a stored posting row of the
+ * transfer on the leg's account (written at conversion when the leg's bank day differed from the
+ * transfer's date — a post-cutoff daily row is stored before the day the bank filed it). Without
+ * a stored row there is nothing to carry (conversions before migration 199 recorded none).
+ */
+function carryStoredBankPosting(transferMovementId: number, restoredId: number, accountId: number): void {
+  const stored = db
+    .prepare(`SELECT posted_on FROM movement_bank_postings WHERE movement_id = ? AND account_id = ?`)
+    .get(transferMovementId, accountId) as { posted_on: string } | undefined;
+  if (stored) recordBankPosting(restoredId, accountId, stored.posted_on);
 }
 
 /**
@@ -238,6 +252,8 @@ export function undoMirrorConversion(transferMovementId: number): {
           merge.out_note
         ).lastInsertRowid
       );
+      // The restored leg takes back its bank day (the transfer's posting on that account).
+      carryStoredBankPosting(transferMovementId, outId, row.from_account_id!);
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
       return { restored_out_id: outId, restored_in_id: outId };
     })();
@@ -291,6 +307,10 @@ export function undoMirrorConversion(transferMovementId: number): {
         foreign ? "deposit" : null
       ).lastInsertRowid
     );
+    // Each restored leg takes back its bank day (the transfer's posting on its account; a
+    // post-cutoff daily row is stored before the day the bank filed it).
+    carryStoredBankPosting(transferMovementId, outId, fromId);
+    carryStoredBankPosting(transferMovementId, inId, toId);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
     return { restored_out_id: outId, restored_in_id: inId };
   });

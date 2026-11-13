@@ -97,6 +97,8 @@ export const INGEST_ERROR_CODES = [
   "unknown_currency",
   /** A known currency the kind's handler cannot apply yet (it handles pesos and dollars only). */
   "unsupported_currency",
+  /** A kind whose handler dates rows by when the document was read, sent without `source.fetched_at`. */
+  "missing_fetched_at",
   "unknown_ingest_run",
   "invalid_run_report",
   "run_not_waiting",

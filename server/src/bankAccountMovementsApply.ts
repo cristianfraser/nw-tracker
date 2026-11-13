@@ -9,6 +9,7 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { createImportBatch } from "./importBatches.js";
 import { requireLoadedCurrency } from "./ingestCurrencies.js";
+import { IngestRefusal } from "./ingestReceiver.js";
 import { isHomeCurrency } from "./displayUnits.js";
 import { confirmForeignAccountMovements } from "./usdAccountMovementsConfirm.js";
 
@@ -86,10 +87,16 @@ export function assertListingNamesAccount(accountId: number, account: BankAccoun
  * `checking_recent_xlsx` batch under `sourceRef` with the rows the feeder could not read — as the
  * xlsx import always did. An account in any other currency has its rows confirmed against the
  * ledger and never inserted (`confirmForeignAccountMovements`).
+ *
+ * `fetchedAt` is when the listing was read (the envelope's `source.fetched_at`, or the upload's
+ * request time): a peso row the bank dated after that Chile day is a post-14:00 movement listed
+ * under the next workday and is stored on the fetch day, its bank date kept as posting day. A
+ * peso listing without it is refused (`missing_fetched_at`).
  */
 export function applyBankAccountMovements(
   payload: BankAccountMovementsPayload,
-  sourceRef: string
+  sourceRef: string,
+  fetchedAt: Date | undefined
 ): BankAccountMovementsApplyDetails | UsdAccountMovementsApplyDetails {
   // A peso listing is imported, one in any other currency confirmed.
   requireLoadedCurrency(payload.account.currency, "bank_account.movements account");
@@ -104,6 +111,12 @@ export function applyBankAccountMovements(
     }
     return confirmForeignAccountMovements(accountId, payload.account.currency, payload.movements, sourceRef);
   }
+  if (fetchedAt === undefined) {
+    throw new IngestRefusal(
+      "missing_fetched_at",
+      `a ${payload.account.issuer} peso ${payload.account.product} listing must say when it was read (source.fetched_at) — refused`
+    );
+  }
   const result = importCheckingPartialMovements(
     accountId,
     payload.movements.map((m) => ({
@@ -111,7 +124,8 @@ export function applyBankAccountMovements(
       description: m.description,
       amount_clp: m.amount,
       document_no: m.document_no ?? "",
-    }))
+    })),
+    { fetchedAt }
   );
   const batch_id = createImportBatch("checking_recent_xlsx", sourceRef, {
     format: "ultimos_movimientos",

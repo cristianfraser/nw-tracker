@@ -1,6 +1,8 @@
 
 import { insertBankPesoMovement, movementWrite } from "./movementWrites.js";
 import { db } from "./db.js";
+import { chileWallClockAt } from "./chileDate.js";
+import { recordBankPosting } from "./movementBankPostings.js";
 
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
@@ -14,8 +16,10 @@ import {
 } from "./transferNoticeMovements.js";
 
 /**
- * One row of a bank account's recent-movements listing, as the import stores it: the posting date,
- * the bank's description, the signed peso amount, the document number ("" when the row prints none).
+ * One row of a bank account's recent-movements listing, as the bank lists it: the bank's posting
+ * date, the bank's description, the signed peso amount, the document number ("" when the row
+ * prints none). The posting date is the row's identity (note key, cartola and transfer matching);
+ * the stored `occurred_on` may be earlier (see {@link importCheckingPartialMovements}).
  */
 export type PartialBankMovement = {
   occurred_on: string;
@@ -59,15 +63,50 @@ export type PartialMovementsImportResult = {
   skipped_flows: SkippedImportFlowItem[];
 };
 
-export function importCheckingPartialMovements(
-  accountId: number,
-  movements: PartialBankMovement[]
-): PartialMovementsImportResult {
-  // One movement write: the expense deposit links re-sync once, when the listing is in.
-  return movementWrite(() => importPartialMovements(accountId, movements));
+/** When the listing was read: the feeder's download time, or the moment the user pasted/uploaded it. */
+export type PartialListingFetch = { fetchedAt: Date };
+
+/**
+ * The day a listed row's money moved, as far as the listing can tell: its posting date, except
+ * that Santander's bank day ends at 14:00 and a movement after the cutoff is listed under the
+ * NEXT workday — a row dated after the day the listing was read happened on or before that day,
+ * and the read is usually the same evening (the nightly fetch at 22:00), so it takes the fetch
+ * day. Rows dated on or before the fetch day keep their date.
+ */
+export function partialRowOccurredOn(bankDate: string, fetchDay: string): string {
+  return bankDate > fetchDay ? fetchDay : bankDate;
 }
 
-function importPartialMovements(accountId: number, movements: PartialBankMovement[]): PartialMovementsImportResult {
+/** The Chile calendar day of the instant a listing was read. */
+export function listingFetchDay(fetch: PartialListingFetch): string {
+  if (!(fetch.fetchedAt instanceof Date) || !Number.isFinite(fetch.fetchedAt.getTime())) {
+    throw new Error(`A listing's fetch instant must be a valid date, got ${String(fetch.fetchedAt)}`);
+  }
+  return chileWallClockAt(fetch.fetchedAt).ymd;
+}
+
+/**
+ * Insert the rows of a recent-movements listing the ledger does not hold yet. A row the bank
+ * dated after the fetch day ({@link partialRowOccurredOn}) is stored on the fetch day with its
+ * bank date as its posting day on the account (`movement_bank_postings`), which every
+ * reconciliation against a bank document reads; everything that identifies the row (the note
+ * key, the cartola and transfer-leg matching, the mail supersede) keeps the bank date.
+ */
+export function importCheckingPartialMovements(
+  accountId: number,
+  movements: PartialBankMovement[],
+  fetch: PartialListingFetch
+): PartialMovementsImportResult {
+  const fetchDay = listingFetchDay(fetch);
+  // One movement write: the expense deposit links re-sync once, when the listing is in.
+  return movementWrite(() => importPartialMovements(accountId, movements, fetchDay));
+}
+
+function importPartialMovements(
+  accountId: number,
+  movements: PartialBankMovement[],
+  fetchDay: string
+): PartialMovementsImportResult {
   let inserted = 0;
   let skipped_duplicate = 0;
   let skipped_superseded_by_cartola = 0;
@@ -124,24 +163,20 @@ function importPartialMovements(accountId: number, movements: PartialBankMovemen
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_mail" });
         continue;
       }
-      insertBankPesoMovement({
+      const occurredOn = partialRowOccurredOn(mv.occurred_on, fetchDay);
+      const id = insertBankPesoMovement({
         accountId,
         amount: mv.amount_clp,
-        occurredOn: mv.occurred_on,
+        occurredOn,
         note,
         flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
       });
+      if (occurredOn !== mv.occurred_on) recordBankPosting(id, accountId, mv.occurred_on);
       inserted += 1;
       inserted_flows.push(flowOf(mv));
     }
   });
   tx();
-  if (inserted > 0 && movements.length > 0) {
-    let minOn = movements[0]!.occurred_on;
-    for (const mv of movements) {
-      if (mv.occurred_on < minOn) minOn = mv.occurred_on;
-    }
-  }
   return {
     inserted,
     skipped_duplicate,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
@@ -299,7 +300,7 @@ describe("bank posting day: a transfer the bank posted in the next month", () =>
       // now carries that day as its bank posting on checking.
       const imported = importCheckingPartialMovements(accountId, [
         { occurred_on: `${TEST_MONTH_LATE}-02`, amount_clp: -200000, description: "PAGO TARJETA", document_no: "" },
-      ]);
+      ], READ_AFTER_ROWS);
       expect(imported.skipped_superseded_by_transfer).toBe(1);
       expect(bankPostedOn(transferId, accountId)).toBe(`${TEST_MONTH_LATE}-02`);
 

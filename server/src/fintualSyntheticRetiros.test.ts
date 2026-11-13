@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import {
   confirmSyntheticRetiroForTransferLeg,
@@ -106,7 +107,7 @@ describe("fintualSyntheticRetiros", () => {
 
     const res = importCheckingPartialMovements(bank, [
       { occurred_on: "2099-07-10", description: "vitest Transf Fintual", amount_clp: 654400, document_no: "1" },
-    ]);
+    ], READ_AFTER_ROWS);
     expect(res.skipped_superseded_by_transfer).toBe(1);
     expect(res.inserted).toBe(0);
     const row = db

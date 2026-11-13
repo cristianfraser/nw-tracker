@@ -55,12 +55,13 @@ export class IngestConflict extends Error {
 
 /**
  * The document cannot be applied as it stands (a currency the server does not know, or one the
- * kind's handler cannot take yet): nothing is written and the route answers a 4xx with `code` —
- * the payload is refused like an invalid one, never a 500.
+ * kind's handler cannot take yet; a listing sent without the instant it was read): nothing is
+ * written and the route answers a 4xx with `code` — the payload is refused like an invalid one,
+ * never a 500.
  */
 export class IngestRefusal extends Error {
   constructor(
-    readonly code: Extract<IngestErrorCode, "unknown_currency" | "unsupported_currency">,
+    readonly code: Extract<IngestErrorCode, "unknown_currency" | "unsupported_currency" | "missing_fetched_at">,
     message: string
   ) {
     super(message);

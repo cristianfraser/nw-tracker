@@ -48,6 +48,7 @@
     "test:python": "cd python && for t in *_test.py; do PYTHONPATH=.pdf_deps python3 \"$t\" || exit 1; done",
     "service": "tsx src/service/main.ts",
     "import:checking-movements": "tsx src/santander/importCheckingMovementsMain.ts",
+    "dump:checking-listings": "tsx src/santander/dumpCheckingListingsMain.ts",
     "import:checking-usd-movements": "tsx src/santander/importCheckingUsdMovementsMain.ts",
     "import:santander-receipts": "tsx src/santander/importPaymentReceiptsMain.ts",
     "import:apple-mail": "tsx src/apple/importMain.ts",

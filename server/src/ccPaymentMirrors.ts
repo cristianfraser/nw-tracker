@@ -28,7 +28,7 @@
  */
 import { isHomeCurrency } from "./displayUnits.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
-import { recordBankPosting } from "./movementBankPostings.js";
+import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
 
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
@@ -415,7 +415,7 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
       );
       // The deleted checking row was the bank's listing: its date is the transfer's posting
       // day on checking, while the transfer itself takes the card's credit date.
-      recordBankPosting(Number(r.lastInsertRowid), cand.out.account_id, cand.out.occurred_on);
+      recordBankPosting(Number(r.lastInsertRowid), cand.out.account_id, bankPostedOn(cand.out.movement_id, cand.out.account_id));
       delIncomeOverride.run(cand.out.movement_id);
       delLeg.run(cand.out.movement_id);
       converted.push({

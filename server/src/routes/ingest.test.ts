@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   IngestRequestError,
   bankAccountBalancesKind,
+  bankAccountMovementsKind,
   createIngestClient,
   defineIngestKind,
   ingestJsonSchemas,
@@ -387,5 +388,32 @@ describe("currencies on receipt", () => {
     expect(err.httpStatus).toBe(422);
     expect(err.body?.error).toBe("unknown_currency");
     expect(err.body?.message).toMatch(/"xyz"/);
+  });
+});
+
+describe("bank_account.movements without the instant it was read", () => {
+  it("refuses a peso listing with no source.fetched_at (422 missing_fetched_at), writing nothing", async () => {
+    const base = await startApp({
+      kinds: [bankAccountMovementsKind],
+      handlers: { "bank_account.movements": INGEST_HANDLERS["bank_account.movements"] },
+      auth: LOCAL_AUTH,
+    });
+    const client = createIngestClient({ baseUrl: base, feederId: "vitest", connectionRetryDelaysMs: [] });
+    const description = "vitest-fwd-route no fetch";
+    const err = await client
+      .send(
+        bankAccountMovementsKind,
+        {
+          account: { issuer: "santander", product: "checking", currency: "clp" },
+          movements: [{ date: "1801-03-16", description, currency: "clp", amount: -1, document_no: null, wire_reference: null }],
+          rejected_rows: [],
+        },
+        { channel: "file", ref: "vitest-fwd-route.xlsx" }
+      )
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(IngestRequestError);
+    expect((err as IngestRequestError).httpStatus).toBe(422);
+    expect((err as IngestRequestError).body?.error).toBe("missing_fetched_at");
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM movements WHERE note LIKE ?`).get(`%${description}%`)).toEqual({ n: 0 });
   });
 });

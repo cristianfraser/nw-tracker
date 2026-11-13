@@ -31,7 +31,7 @@ import { bucketSlugForAccountId } from "./accountBucket.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 
 
-import { BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
 type TransferLegRow = {
@@ -141,8 +141,6 @@ export function claimTransferLegForBankRow(
   recordBankPosting(transferMovementId, accountId, bankDateYmd, dbHandle);
 }
 
-type ImportedCheckingRow = { id: number; occurred_on: string };
-
 /** True when a bank movement dated `bankDate` could be a transfer effective on `transferDate`
  * (`priorChileBusinessDay(bankDate) <= transferDate <= bankDate`). Exported for the mirror-pair
  * high-confidence tier (movementMirrorPairs.ts), which reuses this exact window so batch
@@ -181,26 +179,28 @@ export function supersedeImportedCheckingRowsForTransfer(
   ]) {
     const slug = bucketSlugForAccountId(endpoint);
     if (!slug || !isMovementBalanceCashCategory(slug)) continue;
+    // Matched on the bank's day: a post-cutoff daily row is stored on an earlier day with the
+    // bank's day as its posting row.
     const candidates = dbHandle
       .prepare(
-        `SELECT id, occurred_on FROM movements
-         WHERE account_id = ?
+        `SELECT m.id, ${BANK_POSTED_ON_SQL} AS bank_posted_on FROM movements m ${BANK_POSTING_JOIN_SQL}
+         WHERE m.account_id = ?
            AND ABS(${MOVEMENT_CLP_LEG_SQL} - ?) < 0.5
-           AND occurred_on >= ?
-           AND occurred_on <= date(?, '+10 days')
-           AND ${movementSourceKindInSql("movements", ["cartola", "daily_listing"])}
-         ORDER BY occurred_on ASC, id ASC`
+           AND ${BANK_POSTED_ON_SQL} >= ?
+           AND ${BANK_POSTED_ON_SQL} <= date(?, '+10 days')
+           AND ${movementSourceKindInSql("m", ["cartola", "daily_listing"])}
+         ORDER BY ${BANK_POSTED_ON_SQL} ASC, m.id ASC`
       )
-      .all(endpoint, Math.round(signed), occurredOn, occurredOn) as ImportedCheckingRow[];
-    const match = candidates.find((r) => bankDateMatchesTransferDate(r.occurred_on, occurredOn));
+      .all(endpoint, endpoint, Math.round(signed), occurredOn, occurredOn) as { id: number; bank_posted_on: string }[];
+    const match = candidates.find((r) => bankDateMatchesTransferDate(r.bank_posted_on, occurredOn));
     if (!match) continue;
     // Adoption (F9 step 4): the transfer is the money the bank row listed, so it takes over the
     // row's flow and whatever the user hung off it (a category, a refund mark, a note).
     adoptMovementFlow(match.id, transferMovementId, checkingMovementPurchaseKey(transferMovementId), dbHandle);
     deleteMovements([match.id], dbHandle);
     removed_ids.push(match.id);
-    // The deleted row was the bank's listing: its date is the transfer's posting day here.
-    recordBankPosting(transferMovementId, endpoint, match.occurred_on, dbHandle);
+    // The deleted row was the bank's listing: its bank day is the transfer's posting day here.
+    recordBankPosting(transferMovementId, endpoint, match.bank_posted_on, dbHandle);
   }
   return { removed_ids };
 }

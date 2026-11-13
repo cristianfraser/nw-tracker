@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import { importCcListingLines } from "./accountImports.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -283,7 +284,7 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
     const checkingId = checkingAccountId();
     const imported = importCheckingPartialMovements(checkingId, [
       { occurred_on: "2026-08-03", amount_clp: -111222, description: "VITEST PAGO TARJETA", document_no: "" },
-    ]);
+    ], READ_AFTER_ROWS);
     expect(imported.skipped_superseded_by_transfer).toBe(1);
     expect(bankPostedOn(result.movement_id!, checkingId)).toBe("2026-08-03");
     expect(
