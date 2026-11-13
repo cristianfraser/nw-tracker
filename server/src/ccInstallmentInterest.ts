@@ -46,6 +46,43 @@ type LineRow = {
   rate_text: string | null;
 };
 
+/** The one principal a plan's printed cuota lines state (each line prints it); throws when they disagree. */
+function principalOfPrintedCuotaLines(purchaseId: number, lines: readonly { principal_clp: number | null }[]): number {
+  const principals = new Set(lines.map((l) => l.principal_clp));
+  if (principals.size !== 1 || lines[0]!.principal_clp == null) {
+    throw new Error(`installment plan ${purchaseId}: its cuota lines print different principals`);
+  }
+  return lines[0]!.principal_clp!;
+}
+
+/**
+ * The principal the bank holds for each plan of the account its statements have printed: every
+ * cuota line prints it (`amount_clp`, «Monto operación»). It is the bank's «saldo capital cuotas»
+ * base, which is not always `total_amount_clp`: BCI stores «Total a pagar» = N × cuota, a few
+ * pesos above the principal (say a principal of 17.993 billed as 18 × 1.000 = 18.000), and an interest
+ * plan's total carries its interest. A plan no statement has printed is absent (its principal is
+ * its total). A plan whose lines disagree is listed by id in `conflicting` for the reader to refuse.
+ */
+export function ccInstallmentPrintedPrincipalByPlan(accountId: number): {
+  principal: Map<number, number>;
+  conflicting: Set<number>;
+} {
+  return getAggregationCached(cacheKeyCcBillingPart(accountId, `inst_printed_principal`), () => {
+    const byPlan = new Map<number, { principal_clp: number | null }[]>();
+    for (const r of planPrintedCuotaLines(accountId)) {
+      byPlan.set(r.purchase_id, [...(byPlan.get(r.purchase_id) ?? []), r]);
+    }
+    const principal = new Map<number, number>();
+    const conflicting = new Set<number>();
+    for (const [purchaseId, lines] of byPlan) {
+      const stated = new Set(lines.map((l) => l.principal_clp));
+      if (stated.size === 1 && lines[0]!.principal_clp != null) principal.set(purchaseId, Math.round(lines[0]!.principal_clp));
+      else conflicting.add(purchaseId);
+    }
+    return { principal, conflicting };
+  });
+}
+
 /** Plans of the account whose statement prints a rate above zero, with their interest. */
 export function ccInstallmentInterestForAccount(accountId: number): CcInstallmentInterest[] {
   return getAggregationCached(cacheKeyCcBillingPart(accountId, `inst_interest`), () => {
@@ -61,11 +98,7 @@ export function ccInstallmentInterestForAccount(accountId: number): CcInstallmen
       if (positive.length !== rated.length) {
         throw new Error(`installment plan ${purchaseId}: its statements print both a zero and a positive rate`);
       }
-      const principals = new Set(lines.map((l) => l.principal_clp));
-      if (principals.size !== 1 || lines[0]!.principal_clp == null) {
-        throw new Error(`installment plan ${purchaseId}: its cuota lines print different principals`);
-      }
-      const principal = lines[0]!.principal_clp!;
+      const principal = principalOfPrintedCuotaLines(purchaseId, lines);
       const total = Math.round(lines[0]!.total_amount_clp);
       const interest = total - Math.round(principal);
       if (!(interest > 0)) {

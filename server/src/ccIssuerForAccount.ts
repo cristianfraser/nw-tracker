@@ -6,7 +6,13 @@
  */
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
-import { ccIssuerBySlug, requireCcIssuerSlug, type CcDerivedPayByRule, type CcIssuerSlug } from "./ccIssuers.js";
+import {
+  ccIssuerBySlug,
+  requireCcIssuerSlug,
+  type CcCuotaSplit,
+  type CcDerivedPayByRule,
+  type CcIssuerSlug,
+} from "./ccIssuers.js";
 
 const stmtIssuer = db.prepare(`SELECT issuer FROM credit_card_account_config WHERE account_id = ?`);
 
@@ -21,6 +27,11 @@ export function ccIssuerSlugForMasterAccount(accountId: number): CcIssuerSlug {
 /** The rule that derives a facturación's pay-by from its close when no statement printed one. */
 export function ccDerivedPayByRuleForAccount(accountId: number): CcDerivedPayByRule {
   return ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.derived_pay_by;
+}
+
+/** How the card's issuer splits a plan's principal into the cuotas it has not printed yet. */
+export function ccCuotaSplitForAccount(accountId: number): CcCuotaSplit {
+  return ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.cuota_split;
 }
 
 /** Where the card is paid with another card in one charge (merchant prefixes; empty: never). */

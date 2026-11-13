@@ -20,9 +20,9 @@ function storedForeignOwed(owed: CcOwedByCurrency, currency: string): CcForeignO
  * mismatch.
  *
  * The two sides share the bank's identity (utilizado = SALDO INICIAL + saldo capital cuotas +
- * unbilled feed rows), so they agree to the cent in dollars and within a peso per unbilled cuota
- * in pesos — the app splits a plan's unbilled cuotas with the remainder on the last one, the bank
- * rounds each; everything else is a real difference. A snapshot whose feed states another close
+ * unbilled feed rows), so they agree to the cent in dollars and to the peso in pesos: the app's
+ * saldo capital cuotas is each plan's printed principal less the cuotas already billed, which is
+ * the bank's (`installmentRemainderAfterFacturacionClp`). Any difference is a real one. A snapshot whose feed states another close
  * than the app's latest is not comparable (`indeterminate`): the two sides would frame the debt
  * across different facturaciones.
  */
@@ -44,6 +44,10 @@ export type BankCupoJudgement = {
   status: BankCupoCheckStatus;
   app_owed: number | null;
   diff: number | null;
+  /**
+   * 0 when judged: pesos and dollars are compared exactly. A verdict stored before 2026-11-12
+   * carries the old allowance of a peso per unbilled cuota, which the report still prints.
+   */
   tolerance: number | null;
   reason: string | null;
 };
@@ -68,13 +72,13 @@ export function judgeBankCupo(snapshot: BankCupoSnapshot, owed: CcOwedByCurrency
     };
   }
   if (isHomeCurrency(snapshot.currency)) {
-    const diff = Math.round(owed.clp.total - snapshot.cupo_utilizado);
-    const tolerance = owed.clp.remaining_cuotas;
+    // `|| 0`: the rounding can yield −0, which would be stored and compared as a distinct value.
+    const diff = Math.round(owed.clp.total - snapshot.cupo_utilizado) || 0;
     return {
-      status: Math.abs(diff) <= tolerance ? "ok" : "mismatch",
+      status: diff === 0 ? "ok" : "mismatch",
       app_owed: owed.clp.total,
       diff,
-      tolerance,
+      tolerance: 0,
       reason: null,
     };
   }

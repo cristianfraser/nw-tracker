@@ -48,6 +48,15 @@ export type CcStatementCurrencies = { primary: string; secondary: readonly strin
 /** The import batch kinds a fetched listing is logged under (a subset of `ImportBatchKind`). */
 export type CcListingFeedBatchKind = "cc_santander_fetch" | "cc_lider_fetch";
 
+/**
+ * How the issuer splits a plan's principal into cuotas it has not printed yet (a printed cuota
+ * always keeps its printed amount): every cuota the principal ÷ N rounded down
+ * (`floor_last_absorbs`) or half up (`round_half_up_last_absorbs`), the last cuota taking what is
+ * left. Santander rounds half up — 30 of its 32 finished plans on 2026-11-12 (120.006 in 12 would bill
+ * 11 × 10.001 + 9.995); the default for an issuer not checked is floor.
+ */
+export type CcCuotaSplit = "floor_last_absorbs" | "round_half_up_last_absorbs";
+
 type CcIssuerDef = {
   slug: string;
   /** The card's short brand as a payment line names it («Pago Lider ·0101»). */
@@ -56,6 +65,7 @@ type CcIssuerDef = {
   statement_currencies: CcStatementCurrencies;
   /** The issuer offers cuota products: a card of an issuer without them has its statements as the whole evidence. */
   installments: boolean;
+  cuota_split: CcCuotaSplit;
   /**
    * A feed or a web paste lists the open cycle before its statement closes (Santander, BCI); an
    * issuer without one shows nothing of the current cycle until its statement.
@@ -112,6 +122,7 @@ export const CC_ISSUERS = [
     display_brand: "Santander",
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
+    cuota_split: "round_half_up_last_absorbs",
     unbilled_listing: true,
     listing_feed: { names_card_by: "contract_number", batch_kind: "cc_santander_fetch" },
     sort_order: 0,
@@ -129,6 +140,7 @@ export const CC_ISSUERS = [
     display_brand: "Lider",
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
+    cuota_split: "floor_last_absorbs",
     unbilled_listing: true,
     listing_feed: { names_card_by: "card_last4", batch_kind: "cc_lider_fetch" },
     sort_order: 10,
@@ -146,6 +158,7 @@ export const CC_ISSUERS = [
     display_brand: "CMR",
     statement_currencies: { primary: "clp", secondary: ["usd"] },
     installments: true,
+    cuota_split: "floor_last_absorbs",
     unbilled_listing: false,
     listing_feed: null,
     sort_order: 20,
@@ -166,6 +179,7 @@ export const CC_ISSUERS = [
     display_brand: "Lonestar",
     statement_currencies: { primary: "usd", secondary: [] },
     installments: false,
+    cuota_split: "floor_last_absorbs",
     unbilled_listing: false,
     listing_feed: null,
     sort_order: 30,
@@ -186,6 +200,7 @@ export const CC_ISSUERS = [
     display_brand: "Euronova",
     statement_currencies: { primary: "eur", secondary: [] },
     installments: false,
+    cuota_split: "floor_last_absorbs",
     unbilled_listing: false,
     listing_feed: null,
     sort_order: 40,

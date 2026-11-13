@@ -10,6 +10,7 @@ import { ccOwedByCurrency } from "./ccOwedByCurrency.js";
 import {
   installmentRemainderAfterFacturacionClp,
   installmentRemainingClpByCalendarMonth,
+  splitPrincipalIntoCuotaAmounts,
 } from "./ccInstallmentLedgerDb.js";
 import {
   formatBankCupoReport,
@@ -218,9 +219,9 @@ describe("bank cupo check", () => {
     applyListing(feed(cupos(BANK_CLP_USED - 300_000)), "card-movements-vitest-1.json");
     const bad = judgeLatestBankCupoCapture({ issuer: "santander" });
     const clp = bad.verdicts.find((v) => v.snapshot.currency === "clp")!;
-    expect(clp).toMatchObject({ status: "mismatch", diff: 300_000, tolerance: 5 });
+    expect(clp).toMatchObject({ status: "mismatch", diff: 300_000, tolerance: 0 });
     const report = formatBankCupoReport(bad.verdicts, () => "Vitest card");
-    expect(report).toContain("CLP: bank $1.620.000 · app $1.920.000 · +$300.000 (tolerance $5) MISMATCH");
+    expect(report).toContain("CLP: bank $1.620.000 · app $1.920.000 · +$300.000 MISMATCH");
     expect(report).toContain("cuotas por facturar $400.000 (5)");
     expect(report).toContain("USD: bank US$912,34 · app US$912,34 · ±US$0,00 ok");
 
@@ -229,13 +230,81 @@ describe("bank cupo check", () => {
     expect(fixed.verdicts.every((v) => v.status === "ok")).toBe(true);
   });
 
-  it("tolerates a peso per unbilled cuota and nothing in dollars", () => {
-    applyListing(feed(cupos(BANK_CLP_USED - 5, BANK_USD_USED - 0.01)), "card-movements-vitest-round.json");
+  it("tolerates nothing: a peso or a cent apart is a mismatch", () => {
+    applyListing(feed(cupos(BANK_CLP_USED - 1, BANK_USD_USED - 0.01)), "card-movements-vitest-round.json");
     const run = judgeLatestBankCupoCapture({ issuer: "santander" });
-    expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff])).toEqual([
-      ["clp", "ok", 5],
-      ["usd", "mismatch", 0.01],
+    expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff, v.tolerance])).toEqual([
+      ["clp", "mismatch", 1, 0],
+      ["usd", "mismatch", 0.01, 0],
     ]);
+  });
+
+  it("counts each plan's printed principal less its billed cuotas, as the bank's saldo capital cuotas", () => {
+    // Cuota 1 of each plan printed on the 25/08 statement (August billed, the rest not).
+    const statementId = (
+      db
+        .prepare(`SELECT id FROM cc_statements WHERE account_id = ? AND currency = 'clp'`)
+        .get(accountId) as { id: number }
+    ).id;
+    const plan = (key: string, iso: string, total: number, count: number, principal: number, cuota: number, rate: string): void => {
+      const id = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_installment_purchases (
+               account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, source
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pdf')`
+          )
+          .run(accountId, CARD_GROUP, `vitest-bank-cupo-${key}`, iso, total, count, `VITEST ${key}`).lastInsertRowid
+      );
+      const rowId = `vitest-bank-cupo-${key}|1`;
+      db.prepare(
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, cuota_amount,
+           installment_flag, nro_cuota_current, nro_cuota_total, interest_rate_text, parser_row_id)
+         VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)`
+      ).run(statementId, `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`, `VITEST ${key}`, principal, cuota, count, rate, rowId);
+      db.prepare(
+        `INSERT INTO cc_installment_payments (purchase_id, pay_by_date, amount_clp, cuota_current, cuota_total,
+           parser_row_id, statement_date, statement_period_month)
+         VALUES (?, '2026-09-10', ?, 1, ?, ?, '25/08/2026', '2026-08')`
+      ).run(id, cuota, count, rowId);
+    };
+    // Santander bills each cuota half up (120.006 / 12 = 10.000,5 → 10.001); the split rounded down
+    // left 110.006 unbilled, a peso above the bank's 120.006 − 10.001.
+    plan("santander-half-up", "2026-07-05", 120_006, 12, 120_006, 10_001, "0,00 %");
+    // BCI stores «Total a pagar» = 18 × 1.000 = 18.000 but its principal is the printed 17.993:
+    // summing the unbilled cuotas left 17.000, seven pesos above the bank's 17.993 − 1.000.
+    plan("bci-total-a-pagar", "2026-07-06", 18_000, 18, 17_993, 1_000, "0,00% (T)");
+    // 2,50 %: cuota 1 (40.000) carries 4.000 of interest, which is not principal.
+    plan("interest", "2026-07-07", 120_000, 3, 108_000, 40_000, "2,50 %");
+
+    const fixturePlans = 400_000;
+    expect(installmentRemainderAfterFacturacionClp(accountId, "2026-08", "2026-10-02")).toEqual({
+      amount_clp: fixturePlans + (120_006 - 10_001) + (17_993 - 1_000) + (108_000 - 40_000 + 4_000),
+      cuotas: 5 + 11 + 17 + 2,
+    });
+
+    // So the bank's figure is the app's to the peso.
+    const owed = ccOwedByCurrency(accountId, "2026-10-02");
+    const snapshot: BankCupoSnapshot = {
+      id: 1,
+      account_id: accountId,
+      currency: "clp",
+      observed_at: "2026-10-02T00:59:40.000Z",
+      plastic_last4: LAST4,
+      cupo_total: 50_000_000,
+      cupo_utilizado: owed.clp.total,
+      cupo_disponible: 50_000_000 - owed.clp.total,
+      feed_close_iso: null,
+    };
+    expect(judgeBankCupo(snapshot, owed)).toMatchObject({ status: "ok", diff: 0, tolerance: 0 });
+  });
+
+  it("splits Santander's unprinted cuotas half up, every other issuer's down", () => {
+    expect(splitPrincipalIntoCuotaAmounts(120_006, 12, "round_half_up_last_absorbs")).toEqual([
+      ...Array(11).fill(10_001),
+      9_995,
+    ]);
+    expect(splitPrincipalIntoCuotaAmounts(120_006, 12)).toEqual([...Array(11).fill(10_000), 10_006]);
   });
 
   it("imports a row the listing shows twice as two charges, which the bank's cupo counts too", () => {

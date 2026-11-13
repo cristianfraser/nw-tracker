@@ -29,7 +29,7 @@ export type CcOwedByCurrency = {
   clp: {
     facturado: number;
     installment_remainder: number;
-    /** Unbilled cuotas behind `installment_remainder` — each may round a peso off the bank's. */
+    /** Unbilled cuotas behind `installment_remainder` (the report shows the count). */
     remaining_cuotas: number;
     open_cycle_lines: number;
     total: number;

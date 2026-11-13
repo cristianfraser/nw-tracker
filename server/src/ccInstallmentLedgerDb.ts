@@ -18,7 +18,8 @@ import {
   listClpCcPaymentEventsForAccount,
 } from "./ccCuotaRetirement.js";
 import { derivedPayByIso, normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
+import { ccCuotaSplitForAccount, ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
+import type { CcCuotaSplit } from "./ccIssuers.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -41,7 +42,11 @@ import {
   ccPurchaseSourceLegacyFromOrigin,
   dataOriginFromCcPurchaseSource,
 } from "./dataOrigin.js";
-import { ccInstallmentInterestBillingEvents, ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
+import {
+  ccInstallmentInterestBillingEvents,
+  ccInstallmentInterestForAccount,
+  ccInstallmentPrintedPrincipalByPlan,
+} from "./ccInstallmentInterest.js";
 import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
 type PurchaseRow = LedgerPlan;
@@ -280,7 +285,8 @@ function unindexedPaymentCompletesContract(
 export function ledgerInstallmentsPaid(
   pr: PurchaseRow,
   payList: PaymentRow[],
-  referenceYm?: string
+  referenceYm?: string,
+  split?: CcCuotaSplit
 ): number {
   const nowYm = referenceYm ?? currentCalendarYm();
   const principal = pr.total_amount_clp;
@@ -308,7 +314,7 @@ export function ledgerInstallmentsPaid(
     }
   }
 
-  const cuotaAmounts = cuotaAmountsForPurchase(pr, payList);
+  const cuotaAmounts = cuotaAmountsForPurchase(pr, payList, split);
   for (const p of payList) {
     if (p.cuota_current != null && p.cuota_current > 0) continue;
     // cuota 00/N preamble: cuota_current null but cuota_total known → informational only, not paid
@@ -334,15 +340,19 @@ export function ledgerInstallmentsPaid(
 export function planInstallmentsConsumed(
   pr: PurchaseRow,
   payList: PaymentRow[],
-  referenceYm?: string
+  referenceYm?: string,
+  split?: CcCuotaSplit
 ): number {
-  return ledgerInstallmentsPaid(pr, payList, referenceYm);
+  return ledgerInstallmentsPaid(pr, payList, referenceYm, split);
 }
 
-/** Per-cuota amounts: indexed PDF payment rows when present, else equal split of principal. */
-export function cuotaAmountsForPurchase(pr: PurchaseRow, payList: PaymentRow[]): number[] {
+/**
+ * Per-cuota amounts: indexed PDF payment rows when present, else the plan's total split by the
+ * issuer's rule (`split`, `CcIssuerDef.cuota_split`; floor when the account is not known).
+ */
+export function cuotaAmountsForPurchase(pr: PurchaseRow, payList: PaymentRow[], split?: CcCuotaSplit): number[] {
   const n = pr.cuotas_totales;
-  const amounts = splitPrincipalIntoCuotaAmounts(pr.total_amount_clp, n);
+  const amounts = splitPrincipalIntoCuotaAmounts(pr.total_amount_clp, n, split);
   for (const p of installmentProgressPayments(payList)) {
     const k = p.cuota_current!;
     if (k >= 1 && k <= n) amounts[k - 1] = p.amount_clp;
@@ -350,10 +360,19 @@ export function cuotaAmountsForPurchase(pr: PurchaseRow, payList: PaymentRow[]):
   return amounts;
 }
 
-/** Split principal into `n` cuotas; last cuota absorbs rounding remainder (±few pesos vs equal division). */
-export function splitPrincipalIntoCuotaAmounts(principal: number, installmentCount: number): number[] {
+/**
+ * Split principal into `n` cuotas by the issuer's rule: each cuota principal ÷ n rounded down
+ * (`floor_last_absorbs`, the default) or half up (`round_half_up_last_absorbs`, Santander), the
+ * last cuota absorbing what is left.
+ */
+export function splitPrincipalIntoCuotaAmounts(
+  principal: number,
+  installmentCount: number,
+  split: CcCuotaSplit = "floor_last_absorbs"
+): number[] {
   if (installmentCount <= 0 || principal <= 0) return [];
-  const base = Math.floor(principal / installmentCount);
+  const share = principal / installmentCount;
+  const base = split === "round_half_up_last_absorbs" ? Math.floor(share + 0.5) : Math.floor(share);
   const out = Array.from({ length: installmentCount }, () => base);
   out[installmentCount - 1] = principal - base * (installmentCount - 1);
   return out;
@@ -378,12 +397,13 @@ function buildPurchaseInstallmentSchedule(
   const n = pr.cuotas_totales;
   if (n <= 0 || pr.total_amount_clp <= 0) return null;
   const firstDueYm = purchaseFirstDueYm(pr, payList, accountId);
-  const installmentsPaid = ledgerInstallmentsPaid(pr, payList, referenceYm);
-  const planSlotsConsumed = planInstallmentsConsumed(pr, payList, referenceYm);
+  const split = accountId != null ? ccCuotaSplitForAccount(accountId) : undefined;
+  const installmentsPaid = ledgerInstallmentsPaid(pr, payList, referenceYm, split);
+  const planSlotsConsumed = planInstallmentsConsumed(pr, payList, referenceYm, split);
   return {
     purchase: pr,
     firstDueYm,
-    cuotaAmounts: cuotaAmountsForPurchase(pr, payList),
+    cuotaAmounts: cuotaAmountsForPurchase(pr, payList, split),
     installmentsPaid,
     planSlotsConsumed,
   };
@@ -812,12 +832,21 @@ export function installmentRemainingClpByCalendarMonth(accountId: number): Map<s
 }
 
 /**
- * Plan cuotas no close has billed yet after facturación `billingMonth` (their billing month is
- * later), over every plan bought through `purchasedThroughIso` — the bank's «saldo capital
- * cuotas» frame. Unlike {@link installmentRemainingClpByCalendarMonth} there is no calendar
- * month-end cut: a plan bought in the open cycle bills after the last close whatever calendar
- * month it was bought in. `cuotas` counts the unbilled cuotas (each may round a peso apart from
- * the bank's split). A null `billingMonth` (no facturación closed yet) leaves every cuota unbilled.
+ * The principal no close has billed yet after facturación `billingMonth`, over every plan bought
+ * through `purchasedThroughIso` — the bank's «saldo capital cuotas» frame. Unlike
+ * {@link installmentRemainingClpByCalendarMonth} there is no calendar month-end cut: a plan bought
+ * in the open cycle bills after the last close whatever calendar month it was bought in.
+ *
+ * A plan with a cuota left to bill contributes its principal less the cuotas already billed (a
+ * cuota is billed when its billing month is `billingMonth` or earlier; it counts at its printed
+ * amount, or the issuer's split while unprinted). The principal is what its statements print on
+ * every cuota line (`ccInstallmentPrintedPrincipalByPlan`), else its total. Summing the unbilled
+ * cuotas instead was a few pesos off the bank in two ways: Santander bills each cuota rounded
+ * half up and the split rounded down (+53 on ·7817, 2026-11-12), and BCI stores «Total a pagar» =
+ * N × cuota above its principal (+7 on the BCI card, 2026-11-12). An interest plan's billed cuotas carry their share
+ * of the interest (`ccInstallmentInterestBillingEvents`'s split), which is not principal, so
+ * those shares are added back. `cuotas` counts the unbilled cuotas. A null `billingMonth` (no
+ * facturación closed yet) leaves every cuota unbilled.
  */
 export function installmentRemainderAfterFacturacionClp(
   accountId: number,
@@ -827,15 +856,40 @@ export function installmentRemainderAfterFacturacionClp(
   if (planCount(accountId) === 0) return { amount_clp: 0, cuotas: 0 };
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const schedules = buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, undefined, accountId);
+  const printed = ccInstallmentPrintedPrincipalByPlan(accountId);
+  const interestByPlan = new Map(ccInstallmentInterestForAccount(accountId).map((p) => [p.purchase_id, p]));
   let amount = 0;
   let cuotas = 0;
   for (const sched of schedules.values()) {
-    if (String(sched.purchase.purchase_date).trim() > purchasedThroughIso) continue;
-    for (let i = 0; i < sched.cuotaAmounts.length; i++) {
-      if (billingMonth && ymCompare(installmentDueYm(sched.firstDueYm, i), billingMonth) <= 0) continue;
-      amount += sched.cuotaAmounts[i]!;
-      cuotas += 1;
+    const pr = sched.purchase;
+    if (String(pr.purchase_date).trim() > purchasedThroughIso) continue;
+    let billed = 0;
+    let billedInterest = 0;
+    let unbilled = 0;
+    const n = sched.cuotaAmounts.length;
+    const interest = interestByPlan.get(pr.id)?.interest_clp ?? 0;
+    for (let i = 0; i < n; i++) {
+      if (billingMonth && ymCompare(installmentDueYm(sched.firstDueYm, i), billingMonth) <= 0) {
+        billed += sched.cuotaAmounts[i]!;
+        billedInterest += Math.round((interest * (i + 1)) / n) - Math.round((interest * i) / n);
+      } else {
+        unbilled += 1;
+      }
     }
+    if (unbilled === 0) continue;
+    if (printed.conflicting.has(pr.id)) {
+      throw new Error(`installment plan ${pr.id}: its cuota lines print different principals`);
+    }
+    const principal = printed.principal.get(pr.id) ?? Math.round(pr.total_amount_clp);
+    const remainder = principal - billed + billedInterest;
+    if (remainder <= 0) {
+      throw new Error(
+        `installment plan ${pr.id}: ${unbilled} cuota(s) left to bill but its billed cuotas (${billed}) ` +
+          `cover its principal ${principal}`
+      );
+    }
+    amount += remainder;
+    cuotas += unbilled;
   }
   return { amount_clp: Math.round(amount), cuotas };
 }
@@ -956,13 +1010,14 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     const payList = paymentsByPurchase.get(pr.id) ?? [];
     const principal = pr.total_amount_clp;
     const sched = schedules.get(pr.id);
+    const split = ccCuotaSplitForAccount(accountId);
     const installments_paid =
-      sched?.installmentsPaid ?? ledgerInstallmentsPaid(pr, payList, nowYm);
+      sched?.installmentsPaid ?? ledgerInstallmentsPaid(pr, payList, nowYm, split);
     const first_due_month = sched?.firstDueYm ?? purchaseFirstDueYm(pr, payList, accountId);
     const cuotaAmounts =
-      sched?.cuotaAmounts ?? cuotaAmountsForPurchase(pr, payList);
+      sched?.cuotaAmounts ?? cuotaAmountsForPurchase(pr, payList, split);
     const planSlotsConsumed =
-      sched?.planSlotsConsumed ?? planInstallmentsConsumed(pr, payList, nowYm);
+      sched?.planSlotsConsumed ?? planInstallmentsConsumed(pr, payList, nowYm, split);
     const nextIndex = planSlotsConsumed;
     const cuota_clp =
       nextIndex < cuotaAmounts.length
