@@ -16,6 +16,8 @@
  */
 import fs from "node:fs";
 import { db } from "../src/db.js";
+// Registers the expense deposit-link sync the movement writes ask for once they commit.
+import "../src/expenseAssignmentWrites.js";
 import { checkingAccountId } from "../src/checkingCartolaImport.js";
 import {
   applyForwardPostedRedates,
