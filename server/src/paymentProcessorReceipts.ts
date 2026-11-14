@@ -6,6 +6,7 @@
  * expense lines are built, because a card line's id changes on every statement re-import. Pairing
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
+import { MERCADOPAGO_PREFIX_CHARGE } from "./receiptStatementNames.js";
 import { foldAccents, isoDayNumber } from "nw-tracker-contracts";
 import { paymentProcessorSlug, type PaymentProcessorSlug } from "nw-tracker-contracts/dto/paymentProcessors";
 import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip, ReceiptVehiclePermit } from "nw-tracker-contracts";
@@ -683,6 +684,20 @@ export function matchPaymentReceipts(
         .filter((l) => !taken.has(l.purchase_key) && (name.test(l.merchant ?? "") || chargeNamesSeller(r, l.merchant ?? "")))
         .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
         .filter((c) => c.d >= -DAYS_BEFORE && c.d <= DAYS_AFTER);
+      if (fits.length === 0) {
+        // No store-named charge: the one unclaimed MercadoPago-prefixed charge of the window, when alone.
+        const prefix = MERCADOPAGO_PREFIX_CHARGE[r.processor];
+        const lone = prefix
+          ? [...candidates.values()].filter(
+              (l) =>
+                !taken.has(l.purchase_key) &&
+                prefix.test((l.merchant ?? "").trim()) &&
+                dayDiff(l.purchase_on!, paidOn) >= -DAYS_BEFORE &&
+                dayDiff(l.purchase_on!, paidOn) <= DAYS_AFTER
+            )
+          : [];
+        return { r, lines: lone.length === 1 ? lone : [] };
+      }
       const nearest = Math.min(...fits.map((f) => Math.abs(f.d)));
       return { r, lines: fits.filter((f) => Math.abs(f.d) === nearest).map((f) => f.l) };
     });

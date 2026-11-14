@@ -33,6 +33,7 @@ import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { TransferCounterpartyDto } from "./bankTransferNotices.js";
 import type { PaymentReceiptDto } from "./paymentProcessorReceipts.js";
+import { MERCADOPAGO_PREFIX_CHARGE, STORE_STATEMENT_NAME_FOR_PREFIX_CHARGE } from "./receiptStatementNames.js";
 import {
   hostOfUrl,
   isEmailAddress,
@@ -278,13 +279,17 @@ export function inEventCharge(day: string | null | undefined, byDay: ReadonlyMap
   return names.size === 1 ? found[0]! : null;
 }
 
-/** The folded merchants each card account's lines print. */
+/**
+ * The folded merchants each card account's lines print. A refund line paired with its purchase by
+ * structured state (`refund_of_line_id`: a prepayment's credit, an annulment, a paired nota) is the
+ * same purchase under another printed name, so its merchant is no evidence of another one.
+ */
 export function cardMerchantsByAccount(
-  lines: readonly Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id">[]
+  lines: readonly (Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id"> & { refund_of_line_id?: number })[]
 ): Map<number, string[]> {
   const sets = new Map<number, Set<string>>();
   for (const l of lines) {
-    if (l.source !== "cc" || !l.merchant) continue;
+    if (l.source !== "cc" || !l.merchant || l.refund_of_line_id != null) continue;
     const folded = foldVendorName(l.merchant);
     if (!folded) continue;
     let set = sets.get(l.account_id);
@@ -295,7 +300,7 @@ export function cardMerchantsByAccount(
 }
 
 export function loadDisplayNameContext(
-  lines: readonly Pick<FlowCcExpenseLineRow, "payment_receipt" | "source" | "merchant" | "account_id">[]
+  lines: readonly (Pick<FlowCcExpenseLineRow, "payment_receipt" | "source" | "merchant" | "account_id"> & { refund_of_line_id?: number })[]
 ): DisplayNameContext {
   const payees = lines.flatMap((l) =>
     l.payment_receipt && l.payment_receipt.processor !== "apple_app_store" ? [l.payment_receipt.payee] : []
@@ -407,7 +412,13 @@ export function expenseLineDisplayNames(
   } else if (raw) {
     const { name, processor, listed, choices, brand } = catalogMerchant(raw, ctx.catalog);
     ownBrand = brand;
-    const known = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null);
+    let known = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null);
+    // A marketplace receipt proves the store behind a bare processor-prefix charge («MP *MERCADOPAGO NT»).
+    const proof = line.payment_receipt;
+    if (known == null && proof && !proof.guess && MERCADOPAGO_PREFIX_CHARGE[proof.processor]?.test(raw.trim())) {
+      const store = STORE_STATEMENT_NAME_FOR_PREFIX_CHARGE[proof.processor];
+      known = store ? catalogMerchant(store, ctx.catalog).listed : null;
+    }
     ownListed = known;
     shown = known ?? name;
     if (processor) out.merchant_processor = processor;

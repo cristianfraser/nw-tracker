@@ -10,6 +10,8 @@ export type NotaDeCreditoPairingResult = {
   annulledPurchaseIds: Set<number>;
   matchedNotaIds: Set<number>;
   unmatchedNotaIds: Set<number>;
+  /** Each matched nota's line → the line of the purchase it was paired with. */
+  purchaseLineByNotaId: Map<number, number>;
 };
 
 
@@ -31,6 +33,7 @@ export function pairNotaDeCreditoAnnulments(
   const annulledPurchaseIds = new Set<number>();
   const matchedNotaIds = new Set<number>();
   const unmatchedNotaIds = new Set<number>();
+  const purchaseLineByNotaId = new Map<number, number>();
 
   const usedPurchaseIds = new Set<number>();
 
@@ -81,9 +84,10 @@ export function pairNotaDeCreditoAnnulments(
     usedPurchaseIds.add(bestPurchase.statement_line_id);
     annulledPurchaseIds.add(bestPurchase.statement_line_id);
     matchedNotaIds.add(nota.statement_line_id);
+    purchaseLineByNotaId.set(nota.statement_line_id, bestPurchase.statement_line_id);
   }
 
-  return { annulledPurchaseIds, matchedNotaIds, unmatchedNotaIds };
+  return { annulledPurchaseIds, matchedNotaIds, unmatchedNotaIds, purchaseLineByNotaId };
 }
 
 export function notaDeCreditoRoleForLine(
@@ -102,6 +106,8 @@ export function enrichLinesWithNotaDeCreditoPairing(
   const pairing = pairNotaDeCreditoAnnulments(lines);
   return lines.map((line) => {
     const role = notaDeCreditoRoleForLine(line, pairing);
-    return role == null ? line : { ...line, nota_credito_role: role };
+    if (role == null) return line;
+    const purchaseLine = role === "matched_nota" ? pairing.purchaseLineByNotaId.get(line.statement_line_id) : undefined;
+    return { ...line, nota_credito_role: role, ...(purchaseLine == null ? {} : { refund_of_line_id: purchaseLine }) };
   });
 }

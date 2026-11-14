@@ -474,6 +474,21 @@ export interface FlowCcExpenseLineRow {
    * the bank dropped it, in the purchase's category. Absent on every other line.
    */
   annulment?: { annulled_purchase_id: number; purchase_date: string };
+  /**
+   * A refund whose purchase structured state names (the credit of a plan the bank prepaid, an
+   * annulment, a nota de crédito paired with its purchase): the purchase as its line finally reads —
+   * its names and receipt, so the refund shows as that purchase's. Absent on every other line.
+   */
+  refund_of?: {
+    line_id: number;
+    purchase_key: string;
+    purchase_date: string;
+    merchant: string | null;
+    display_merchant?: string;
+    payment_name?: ExpenseLinePaymentName;
+    link_label?: ExpenseLinkLabel;
+    payment_receipt?: PaymentReceipt;
+  };
   /** A card line the bank charged as financing (section 3), as the card's P/L counts it. */
   is_financing_cost?: true;
   /** Deducted from a payslip before the pay reached the account: the Expenses page shows it only when asked. */

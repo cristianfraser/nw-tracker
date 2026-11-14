@@ -29,6 +29,7 @@ export type ExpenseVendorSource = {
     | "nro_cuota_total"
     | "annulled"
     | "annulment"
+    | "refund_of"
   >
 >;
 
@@ -116,9 +117,19 @@ export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
       />
     );
   }
+  // A refund of a known purchase: the purchase's day (an annulment's own block already says it) and,
+  // below, the purchase's receipt.
+  if (source.refund_of && !source.annulment) {
+    blocks.push(
+      <InfoBlock
+        key="refundOf"
+        lines={[t("expenses.creditCard.lineRow.refundOfPurchase", { date: source.refund_of.purchase_date })]}
+      />
+    );
+  }
   const c = source.transfer_counterparty;
   if (c) blocks.push(<InfoBlock key="counterparty" lines={transferCounterpartyDetailLines(c)} />);
-  const r = source.payment_receipt;
+  const r = source.payment_receipt ?? source.refund_of?.payment_receipt;
   if (r) {
     const lines = paymentReceiptDetailLines(r);
     lines[0] = `${r.guess ? "≈" : "→"} ${lines[0]}`;
@@ -144,7 +155,7 @@ export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
  */
 export function useExpenseVendorLinkLabel(source: ExpenseVendorSource): ExpenseVendorLinkLabel | null {
   const { t } = useTranslation();
-  const l = source.link_label;
+  const l = source.link_label ?? source.refund_of?.link_label;
   if (l) {
     // «→» (paid to) is what a link on an expense means; only the other directions are shown.
     const parts = [l.arrow === "→" ? l.text : `${l.arrow} ${l.text}`];
@@ -183,6 +194,14 @@ export function expensePaymentName(p: ExpenseLinePaymentName): string {
 /** The name a row shows for its source: a card payment's name, else the server's display name, else the bank's. */
 export function expenseVendorName(source: ExpenseVendorSource): string {
   if (source.payment_name) return expensePaymentName(source.payment_name);
+  const refunded = source.refund_of;
+  if (refunded) {
+    // A refund reads as the purchase it refunds, under the purchase's own name.
+    const purchase = refunded.payment_name
+      ? expensePaymentName(refunded.payment_name)
+      : (refunded.display_merchant ?? refunded.merchant ?? "—");
+    return i18n.t("expenses.creditCard.lineRow.refundOf", { name: purchase });
+  }
   return source.display_merchant ?? source.merchant ?? "—";
 }
 

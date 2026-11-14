@@ -1617,6 +1617,8 @@
         "paidFromAccount": "Payment from {{account}}"
       },
       "lineRow": {
+        "refundOf": "Refund · {{name}}",
+        "refundOfPurchase": "Refund of the purchase of {{date}}",
         "annulled": {
           "action": "Annulled by the bank",
           "dateLabel": "Annulled on (YYYY-MM-DD)",

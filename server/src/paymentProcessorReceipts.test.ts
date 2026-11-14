@@ -304,6 +304,24 @@ describe("matchPaymentReceipts: tickets", () => {
     expect(unpaired).toEqual({});
   });
 
+  it("pairs an amountless MercadoLibre receipt with the one MercadoPago-prefixed charge of its window, never with two", () => {
+    const amountless: StoredPaymentReceipt = { ...receipt("n", "2036-03-10 15:03", 0, "mercadolibre"), amount: null };
+    const one = matchPaymentReceipts(
+      [amountless],
+      [line("cut", "2036-03-10", 71300, "MP *MERCADO", { line_role: "installment_purchase_total" }), line("bare", "2036-03-10", 5000, "MERPAGO*STREAT BURGER"), line("far", "2036-03-20", 9000, "MP *MERCADOPAGO NT")]
+    );
+    expect(one.byPurchaseKey.get("cut")?.message_id).toBe("n");
+    expect(one.byPurchaseKey.size).toBe(1);
+
+    const two = matchPaymentReceipts([amountless], [line("a", "2036-03-10", 71300, "MP *MERCADOPAGO NT"), line("b", "2036-03-12", 9000, "MP *MERCADOPAGO")]);
+    expect(two.byPurchaseKey.size).toBe(0);
+    expect(two.unpaired).toEqual({ no_line: 1 });
+
+    // A store-named charge still wins over the prefix rule.
+    const named = matchPaymentReceipts([amountless], [line("store", "2036-03-11", 1000, "MP *MERCADO LIBRE"), line("pre", "2036-03-10", 71300, "MP *MERCADOPAGO NT")]);
+    expect([...named.byPurchaseKey.keys()]).toEqual(["store"]);
+  });
+
   it("pairs a Ticketplus purchase, which states no amount, with the charge named after it that day", () => {
     const ticketplus: StoredPaymentReceipt = { ...receipt("tp", "2036-12-29 22:07", 0, "ticketplus"), amount: null };
     const { byPurchaseKey } = matchPaymentReceipts(

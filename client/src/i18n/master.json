@@ -5565,6 +5565,8 @@
         "paidFromAccount": { "en": "Payment from {{account}}", "es": "Pago desde {{account}}" }
       },
       "lineRow": {
+        "refundOf": { "en": "Refund · {{name}}", "es": "Reembolso · {{name}}" },
+        "refundOfPurchase": { "en": "Refund of the purchase of {{date}}", "es": "Reembolso de la compra del {{date}}" },
         "annulled": {
           "action": { "en": "Annulled by the bank", "es": "Anulada por el banco" },
           "dateLabel": { "en": "Annulled on (YYYY-MM-DD)", "es": "Anulada el (AAAA-MM-DD)" },

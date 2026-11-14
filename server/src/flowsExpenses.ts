@@ -137,7 +137,8 @@ import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 import { withExpenseLineFlowIds } from "./flows/flowIdentity.js";
-import { dropPlanPrepaymentLines, refundPlanPrepaymentCredits } from "./ccPlanPrepaymentLines.js";
+import { withRefundLinks } from "./expenseRefundLinks.js";
+import { dropPlanPrepaymentLines, markPlanPrepaymentCreditRefunds, refundPlanPrepaymentCredits } from "./ccPlanPrepaymentLines.js";
 import { annulledPurchaseLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
@@ -364,6 +365,22 @@ export type FlowCcExpenseLineRow = {
   annulled?: { annulled_purchase_id: number; annulled_on: string; basis: "feed_drop" | "cupo_gap" | "statement_close" | "manual" };
   /** The annulment of that purchase: a refund of the same amount on the day the bank dropped it. */
   annulment?: { annulled_purchase_id: number; purchase_date: string };
+  /**
+   * Server-only, until the «refund links» step: the line of the purchase this refund refunds, known
+   * from structured state (a plan's prepayment credit, an annulment, a paired nota). Never sent.
+   */
+  refund_of_line_id?: number;
+  /** The purchase this refund refunds, as its line finally reads (set by the «refund links» step). */
+  refund_of?: {
+    line_id: number;
+    purchase_key: string;
+    purchase_date: string;
+    merchant: string | null;
+    display_merchant?: string;
+    payment_name?: ExpenseLinePaymentName;
+    link_label?: ExpenseLinkLabel;
+    payment_receipt?: PaymentReceiptDto;
+  };
   /**
    * A card line the bank charged as the cost of financing (section 3: intereses, comisiones,
    * impuestos, administración) — the lines the card's P/L counts ({@link markFinancingCostLines}).
@@ -941,7 +958,11 @@ function annulledPurchaseLineDrafts(
           primary_card_last4: null,
           ...(role === "purchase"
             ? { annulled: { annulled_purchase_id: a.id, annulled_on: a.annulled_on, basis: a.basis } }
-            : { card_refund: true as const, annulment: { annulled_purchase_id: a.id, purchase_date: a.purchase_date } }),
+            : {
+                card_refund: true as const,
+                annulment: { annulled_purchase_id: a.id, purchase_date: a.purchase_date },
+                refund_of_line_id: annulledPurchaseLineId(a.id, "purchase"),
+              }),
         };
       };
       out.push(leg(1, a.purchase_date, "purchase"));
@@ -1160,6 +1181,7 @@ const asRows = <T,>(f: (lines: T[]) => unknown) => (lines: readonly FlowCcExpens
  * - pieces before notes (a piece carries its own note key);
  * - big groups and origin labels on the final keys;
  * - deposit links, counterparties and receipts before the names and categories they decide;
+ * - refund links last among the names: a refund copies its purchase's final names and receipt;
  * - the prepayment lines out first, their refund credits netted against the plan's purchase after
  *   the categories are final (`ccPlanPrepaymentLines.ts`);
  * - the subscription category before the specific rules (which drop the bank-name marker);
@@ -1169,6 +1191,7 @@ const asRows = <T,>(f: (lines: T[]) => unknown) => (lines: readonly FlowCcExpens
 export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "plan prepayment lines", run: dropPlanPrepaymentLines },
   { name: "nota de crédito pairing", run: asRows(enrichLinesWithNotaDeCreditoPairing) },
+  { name: "plan prepayment credit links", run: markPlanPrepaymentCreditRefunds },
   { name: "card refunds", run: asRows(markCardRefunds) },
   { name: "line pieces", run: asRows(expandLineSplitsInDrafts) },
   { name: "purchase notes", run: asRows(enrichFlowLinesWithPurchaseNotes) },
@@ -1187,6 +1210,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   },
   { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
   { name: "plan prepayment refunds", run: refundPlanPrepaymentCredits },
+  { name: "refund links", run: withRefundLinks },
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
   { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },

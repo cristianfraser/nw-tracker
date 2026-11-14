@@ -464,3 +464,39 @@ describe("expenseLineDisplayNames", () => {
     });
   });
 });
+
+describe("a refund paired with its purchase is no other merchant", () => {
+  const ml = vendorCatalogFromEntries([seed("prefix", "MERCADO LIBRE", "Mercadolibre (Chile)")]);
+  const ctxWith = (lines: Parameters<typeof cardMerchantsByAccount>[0]): DisplayNameContext => ({
+    catalog: ml,
+    counterparties: new Map(),
+    brands: [],
+    cardMerchantsByAccount: cardMerchantsByAccount(lines),
+  });
+  const plan = { source: "cc" as const, merchant: "VITEST MP *MERCADO", account_id: 1 };
+
+  it("a cut merchant keeps reading as the one longer merchant when a paired refund prints another", () => {
+    const lines = [
+      { source: "cc" as const, merchant: "MP *MERCADO", account_id: 1 },
+      { source: "cc" as const, merchant: "MP *MERCADO LIBRE", account_id: 1 },
+      { source: "cc" as const, merchant: "MP *MERCADOPAGO NT", account_id: 1, refund_of_line_id: -5 },
+    ];
+    expect(expenseLineDisplayNames({ ...lines[0]!, account_id: 1 }, ctxWith(lines)).display_merchant).toBe("Mercadolibre (Chile)");
+    // Unpaired, the same credit is evidence of another merchant and the rule gives up.
+    const unpaired = lines.map(({ refund_of_line_id: _r, ...l }) => l);
+    expect(expenseLineDisplayNames(lines[0]!, ctxWith(unpaired)).display_merchant).toBe("MERCADO");
+    expect(plan.account_id).toBe(1);
+  });
+
+  it("a MercadoLibre receipt proves the store behind a bare MercadoPago-prefix charge, not behind a seller's", () => {
+    const withReceipt = (merchant: string, guess = false) =>
+      expenseLineDisplayNames(
+        { source: "cc", merchant, account_id: 1, payment_receipt: receipt("mercadolibre", "Tienda Uno SpA", { guess }) },
+        ctxWith([])
+      );
+    expect(withReceipt("MP *MERCADOPAGO NT").display_merchant).toBe("Mercadolibre (Chile)");
+    expect(withReceipt("MP *MERCADO").display_merchant).toBe("Mercadolibre (Chile)");
+    expect(withReceipt("MERCADOPAGO *TIENDAUNO").display_merchant).toBe("TIENDAUNO");
+    expect(withReceipt("MP *MERCADOPAGO NT", true).display_merchant).toBe("MERCADOPAGO NT");
+  });
+});
