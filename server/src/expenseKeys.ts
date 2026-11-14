@@ -16,6 +16,8 @@
  * - `synthetic-checking-gap-mirror:<mirror id>` — the line a checking gap mirror renders as.
  * - `manual:<expense entry id>`, `payslip:<payslip line id>`.
  * - `installment:<plan id>`, `line:<line id>` — retired forms; still parsed so movers can recognise them.
+ * - `annulled:<annulled purchase id>` — the annulment (refund) line of a card purchase the bank annulled
+ *   before billing it (`cc_annulled_purchases`); the purchase itself keeps the key its bucket line carried.
  * - `<any key>#split:<seq>` — a piece of a line.
  */
 
@@ -50,6 +52,7 @@ export type ExpenseKey =
   | { kind: "gap_mirror"; mirrorId: number }
   | { kind: "manual"; entryId: number }
   | { kind: "payslip"; lineId: number }
+  | { kind: "annulment"; annulledPurchaseId: number }
   | { kind: "split"; base: ExpenseKey; seq: number };
 
 export type ExpenseKeyKind = ExpenseKey["kind"];
@@ -70,6 +73,7 @@ export const EXPENSE_KEY_PREFIXES = {
   gap_mirror: "synthetic-checking-gap-mirror:",
   manual: "manual:",
   payslip: "payslip:",
+  annulment: "annulled:",
 } as const;
 
 const PREFIX = EXPENSE_KEY_PREFIXES;
@@ -119,6 +123,8 @@ export function buildExpenseKey(key: ExpenseKey): string {
       return `${PREFIX.manual}${key.entryId}`;
     case "payslip":
       return `${PREFIX.payslip}${key.lineId}`;
+    case "annulment":
+      return `${PREFIX.annulment}${key.annulledPurchaseId}`;
     case "split":
       if (key.base.kind === "split") throw new Error("a piece key cannot split a piece");
       return `${buildExpenseKey(key.base)}${SPLIT_MARK}${key.seq}`;
@@ -194,7 +200,7 @@ function parseCheckingCartola(rest: string): ExpenseKey | null {
   };
 }
 
-function parseIdKey<K extends "installment" | "line" | "gap_mirror" | "manual" | "payslip">(
+function parseIdKey<K extends "installment" | "line" | "gap_mirror" | "manual" | "payslip" | "annulment">(
   kind: K,
   rest: string
 ): ExpenseKey | null {
@@ -211,6 +217,8 @@ function parseIdKey<K extends "installment" | "line" | "gap_mirror" | "manual" |
       return { kind, entryId: id };
     case "payslip":
       return { kind, lineId: id };
+    case "annulment":
+      return { kind, annulledPurchaseId: id };
   }
   return null;
 }
@@ -238,6 +246,7 @@ function parseBaseExpenseKey(text: string): ExpenseKey | null {
   if (text.startsWith(PREFIX.gap_mirror)) return parseIdKey("gap_mirror", text.slice(PREFIX.gap_mirror.length));
   if (text.startsWith(PREFIX.manual)) return parseIdKey("manual", text.slice(PREFIX.manual.length));
   if (text.startsWith(PREFIX.payslip)) return parseIdKey("payslip", text.slice(PREFIX.payslip.length));
+  if (text.startsWith(PREFIX.annulment)) return parseIdKey("annulment", text.slice(PREFIX.annulment.length));
   return null;
 }
 

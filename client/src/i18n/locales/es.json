@@ -1617,6 +1617,25 @@
         "paidFromAccount": "Pago desde {{account}}"
       },
       "lineRow": {
+        "annulled": {
+          "action": "Anulada por el banco",
+          "dateLabel": "Anulada el (AAAA-MM-DD)",
+          "confirm": "Marcar como anulada",
+          "dateInvalid": "Ingresa el día como AAAA-MM-DD.",
+          "badge": "Anulada {{date}}",
+          "annulmentBadge": "Anulación",
+          "annulmentOf": "Anulación de la compra del {{date}}",
+          "undo": "Deshacer anulación",
+          "undoConfirmTitle": "¿Deshacer la anulación?",
+          "undoConfirmBody": "{{merchant}} volverá a figurar como compra de la facturación abierta.",
+          "decided": "Anulada el {{date}} · {{basis}}",
+          "basis": {
+            "feed_drop": "el listado del banco dejó de mostrarla",
+            "cupo_gap": "el cupo del banco bajó por su monto",
+            "statement_close": "el estado de cuenta que cerró su ciclo no la facturó",
+            "manual": "marcada por ti"
+          }
+        },
         "planCountSave": "Cambiar cuotas",
         "planRemove": "Quitar cuotas",
         "planRemoveConfirmTitle": "¿Quitar las cuotas?",

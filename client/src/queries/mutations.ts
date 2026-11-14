@@ -462,6 +462,27 @@ export function useDeleteCcStatementLineMutation(opts: {
   });
 }
 
+export function useAnnulCcPurchaseMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, annulledOn }: { lineId: number; annulledOn: string }) =>
+      api.annulCcPurchase(opts.accountId, lineId, annulledOn),
+    onSettled: () => {
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+    },
+  });
+}
+
+export function useUndoCcAnnulledPurchaseMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (annulId: number) => api.undoCcAnnulledPurchase(opts.accountId, annulId),
+    onSettled: () => {
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+    },
+  });
+}
+
 export function useMakeStatementLineInstallmentMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;

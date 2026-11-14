@@ -251,6 +251,14 @@ export const api = {
     }),
   deleteCcStatementLine: (id: string | number, lineId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-statement-lines/${lineId}`, { method: "DELETE" }),
+  annulCcPurchase: (id: string | number, lineId: number, annulledOn: string) =>
+    j<{ ok: boolean; annulled_purchase_id: number }>(`/api/accounts/${id}/annulled-purchases`, {
+      method: "POST",
+      body: JSON.stringify({ line_id: lineId, annulled_on: annulledOn }),
+      headers: { "Content-Type": "application/json" },
+    }),
+  undoCcAnnulledPurchase: (id: string | number, annulId: number) =>
+    j<{ ok: boolean }>(`/api/accounts/${id}/annulled-purchases/${annulId}`, { method: "DELETE" }),
   makeStatementLineInstallment: (id: string | number, lineId: number, cuotas_totales: number) =>
     j<{ ok: boolean; purchase_id: number }>(
       `/api/accounts/${id}/cc-statement-lines/${lineId}/make-installment`,

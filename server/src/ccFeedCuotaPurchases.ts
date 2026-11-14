@@ -56,7 +56,7 @@ export function bucketLinePurchaseIso(line: Pick<CcOpenBucketLine, "transaction_
 }
 
 /** A manual paste cuts merchants at exactly 15 characters; the feed prints them whole. */
-function merchantsSame(a: string | null | undefined, b: string | null | undefined): boolean {
+export function merchantsSame(a: string | null | undefined, b: string | null | undefined): boolean {
   const na = normalizeMerchantText(a);
   const nb = normalizeMerchantText(b);
   if (!na || !nb) return false;

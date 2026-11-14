@@ -7,6 +7,11 @@ import {
   updateManualCcInstallmentPurchase,
 } from "../ccInstallmentManual.js";
 import { deleteCcWebPasteStatementLine } from "../ccStatementLineDelete.js";
+import {
+  AnnulmentConflictError,
+  markAnnulledPurchaseManually,
+  undoManualAnnulledPurchase,
+} from "../ccAnnulledPurchaseManual.js";
 import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
 import {
   applyCreditCardConfigPatch,
@@ -71,6 +76,37 @@ app.delete("/api/accounts/:id/cc-statement-lines/:lineId", writeHandler((req, re
     return;
   }
   deleteCcWebPasteStatementLine(id, lineId);
+  res.json({ ok: true });
+}));
+
+app.post("/api/accounts/:id/annulled-purchases", writeHandler((req, res) => {
+  const id = accountIdFromReq(req);
+  const body = req.body as Record<string, unknown>;
+  const lineId = Number(body.line_id);
+  if (!Number.isInteger(lineId) || lineId <= 0) {
+    res.status(400).json({ error: "invalid statement line id" });
+    return;
+  }
+  const annulled = markAnnulledPurchaseManually(id, lineId, String(body.annulled_on ?? ""));
+  res.json({ ok: true, annulled_purchase_id: annulled.id });
+}));
+
+app.delete("/api/accounts/:id/annulled-purchases/:annulId", writeHandler((req, res) => {
+  const id = accountIdFromReq(req);
+  const annulId = Number(req.params.annulId);
+  if (!Number.isInteger(annulId) || annulId <= 0) {
+    res.status(400).json({ error: "invalid annulled purchase id" });
+    return;
+  }
+  try {
+    undoManualAnnulledPurchase(id, annulId);
+  } catch (err) {
+    if (err instanceof AnnulmentConflictError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
   res.json({ ok: true });
 }));
 

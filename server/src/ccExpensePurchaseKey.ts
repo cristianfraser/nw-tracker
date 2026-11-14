@@ -3,6 +3,7 @@ import {
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
+import { annulledPurchaseKeyFor } from "./ccAnnulledPurchasesRead.js";
 import { buildExpenseKey } from "./expenseKeys.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
@@ -19,8 +20,12 @@ export function resolvePurchaseKeyForGastosLine(
     | "merchant_key"
     | "nro_cuota_total"
     | "installment_total_clp"
-  > & { checking_purchase_portion?: "deposit" }
+  > & { checking_purchase_portion?: "deposit"; annulled?: { annulled_purchase_id: number }; annulment?: { annulled_purchase_id: number } }
 ): string {
+  // An annulled card purchase: the key its bucket line carried (so the flow's category, note and big
+  // group still reach it); its annulment is the refund line of the same purchase.
+  if (line.annulment) return buildExpenseKey({ kind: "annulment", annulledPurchaseId: line.annulment.annulled_purchase_id });
+  if (line.annulled) return annulledPurchaseKeyFor(line.annulled.annulled_purchase_id);
   if (line.source === "manual" && line.statement_line_id > 0) {
     return buildExpenseKey({ kind: "manual", entryId: line.statement_line_id });
   }

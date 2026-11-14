@@ -21,6 +21,7 @@ import {
   type CcStatementLineForInstallmentTotals,
 } from "./ccInstallmentLineDedupe.js";
 import { normalizeTransactionDateIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
+import { annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { ccTraspasoLinkedClpByForeignLineId } from "./ccTraspasoDeudaLinks.js";
 import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { db } from "./db.js";
@@ -37,7 +38,7 @@ import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
-import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
+import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { primaryStatementOfSlot, statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant, isCcTraspasoDeudaMerchant, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
@@ -446,6 +447,44 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
         amount: -g.amount,
         statement_date: statementDate,
       });
+    }
+
+    // Card purchases the bank annulled before billing them (`cc_annulled_purchases`): the card owed
+    // the amount from the purchase day until the day the bank dropped it. Two events with no
+    // statement row (`statement_date` null, like an installment purchase event): the billing readers
+    // that file entries by statement never see them, and neither is a financing charge, so the
+    // derived flow carries both and the card's P/L stays 0. A foreign amount is valued at the
+    // purchase day's debt rate on both legs so the pair nets to exactly zero in pesos.
+    for (const a of annulledPurchaseRowsForAccount(accountId)) {
+      const clp =
+        isHomeCurrency(a.currency)
+          ? Math.round(a.amount)
+          : (() => {
+              const v = convertCurrency(a.amount, a.currency, "clp", a.purchase_date, { side: "debt" });
+              if (v == null || !Number.isFinite(v)) {
+                throw new Error(`annulled purchase ${a.id}: no ${a.currency}→clp debt rate on ${a.purchase_date}`);
+              }
+              return Math.round(v);
+            })();
+      lines.push({
+        iso: a.purchase_date,
+        key: `annulled|${a.id}|purchase`,
+        clp,
+        currency: a.currency,
+        amount: a.amount,
+        statement_date: null,
+      });
+      // A purchase the bank later refunded with a real credit: that statement line is its refund.
+      if (!a.bank_credit) {
+        lines.push({
+          iso: a.annulled_on,
+          key: `annulled|${a.id}|annulment`,
+          clp: -clp,
+          currency: a.currency,
+          amount: -a.amount,
+          statement_date: null,
+        });
+      }
     }
 
     return lines;

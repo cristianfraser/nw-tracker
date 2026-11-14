@@ -54,11 +54,14 @@ export function listedAsLatestMovement(
 
 /** The day an expense line happened (see the module comment). */
 export function movementOn(
-  line: Pick<FlowCcExpenseLineRow, "source" | "purchase_on" | "occurred_on" | "first_seen_on" | "posting_on" | "amount">,
+  line: Pick<FlowCcExpenseLineRow, "source" | "purchase_on" | "occurred_on" | "first_seen_on" | "posting_on" | "amount"> & {
+    annulment?: unknown;
+  },
   todayYmd: string
 ): string {
   const purchaseOn = line.purchase_on ?? line.occurred_on;
-  if (line.source !== "cc" || lineAmount(line).value >= 0) return purchaseOn;
+  // An annulment is dated the day the bank dropped the purchase, never by arrival.
+  if (line.source !== "cc" || line.annulment != null || lineAmount(line).value >= 0) return purchaseOn;
   if (line.first_seen_on) return line.first_seen_on;
   if (line.posting_on && line.posting_on > purchaseOn) return line.posting_on;
   return line.occurred_on <= todayYmd ? line.occurred_on : purchaseOn;

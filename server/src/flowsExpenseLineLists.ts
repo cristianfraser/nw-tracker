@@ -172,12 +172,17 @@ type FacturacionFlags = { billing_month: string; is_open_month: boolean; is_prov
  * facturación.
  */
 export function flowLinesForFacturacionMonth<
-  L extends Pick<FlowCcExpenseLineRow, "account_id" | "billing_month" | "line_role" | "statement_line_id" | "gastos_scope">,
+  L extends Pick<FlowCcExpenseLineRow, "account_id" | "billing_month" | "line_role" | "statement_line_id" | "gastos_scope"> & {
+    annulled?: unknown;
+    annulment?: unknown;
+  },
 >(lines: readonly L[], accountId: number, row: FacturacionFlags): L[] {
   const statementLinesOnly = !row.is_open_month && !row.is_provisional_close;
   return lines.filter((ln) => {
     if (ln.account_id !== accountId || ln.billing_month !== row.billing_month) return false;
     if (ln.line_role === "installment_purchase_total") return false;
+    // A purchase the bank annulled before billing it, and its annulment, are on no facturación.
+    if (ln.annulled != null || ln.annulment != null) return false;
     if (ln.statement_line_id > 0) return true;
     return !statementLinesOnly && ln.line_role === "installment_cuota" && ln.gastos_scope !== "split_only";
   });

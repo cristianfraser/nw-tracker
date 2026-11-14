@@ -463,6 +463,17 @@ export interface FlowCcExpenseLineRow {
   checking_refund?: true;
   /** A card credit no purchase annuls (merchant refund, unpaired nota): a negative line in its category. */
   card_refund?: true;
+  /**
+   * The purchase of a card purchase the bank annulled before billing it (`cc_annulled_purchases`):
+   * the purchase on its own day, in its own category. Its annulment is the line with `annulment`.
+   * Absent on every other line.
+   */
+  annulled?: { annulled_purchase_id: number; annulled_on: string; basis: "feed_drop" | "cupo_gap" | "statement_close" | "manual" };
+  /**
+   * The annulment of a card purchase the bank never billed: a refund of the same amount on the day
+   * the bank dropped it, in the purchase's category. Absent on every other line.
+   */
+  annulment?: { annulled_purchase_id: number; purchase_date: string };
   /** A card line the bank charged as financing (section 3), as the card's P/L counts it. */
   is_financing_cost?: true;
   /** Deducted from a payslip before the pay reached the account: the Expenses page shows it only when asked. */

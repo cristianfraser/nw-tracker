@@ -28,8 +28,10 @@ import {
   bucketLineMatchesFeedLine,
   bucketLinePurchaseIso,
   listOpenBucketLines,
+  merchantsSame,
   type CcOpenBucketLine,
 } from "./ccFeedCuotaPurchases.js";
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
 import { pairOneToOne } from "./matching/pairing.js";
@@ -48,12 +50,22 @@ export type CcFeedMirrorRemoved = {
 /** How a currency's listing was proved complete, so its missing lines may be removed. */
 export type FeedMirrorCurrencyProof = "saldo_inicial" | "cupo_identity";
 
+/** An unlisted line kept as an annulled purchase (`ccAnnulledPurchases.ts`) instead of deleted. */
+export type CcFeedMirrorAnnulled = CcFeedMirrorRemoved & {
+  /** The `cc_annulled_purchases` row written for it. */
+  annulled_purchase_id: number;
+  basis: "feed_drop" | "cupo_gap";
+};
+
 export type CcFeedMirrorResult = {
   window_start: string;
   currencies: ("clp" | "usd")[]; // convention-ok: Santander's card feed has a peso and a dollar slide only
   /** Per mirrored currency, what proved its listing complete. */
   proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
+  /** Restatements deleted: the bank re-listed the purchase under another amount, name or date. */
   removed: CcFeedMirrorRemoved[];
+  /** Lines the bank dropped without restating them: kept as purchase + annulment. */
+  annulled: CcFeedMirrorAnnulled[];
 };
 
 function lineCurrency(line: CcOpenBucketLine): "clp" | "usd" { // convention-ok: Santander's card feed has a peso and a dollar slide only
@@ -130,7 +142,89 @@ export function planFeedMirror(
   return unlisted;
 }
 
-/** The lines the bank dropped from its listing, as the card-line funnel's plan (nothing carried). */
+/**
+ * What an unlisted line became (pure):
+ *  - `re_settlement`: the listing has a row of the same currency with a matching merchant and
+ *    ANOTHER amount within `MATCH_WINDOWS.feed_mirror` days — a pre-authorization that settled;
+ *  - `restatement`: the listing has a row of the same currency and amount within the window that
+ *    is not the line's own same-day, same-merchant duplicate — the bank restated the purchase under
+ *    another name («CONVENIO P.A.T.» → «SEG AUTO SANTANDER») or a day later (pending → posted).
+ *    Every such row is also paired to a bucket line of its own (the import inserted it), so «no
+ *    other line accounts for it» cannot be asked literally; the same-day same-merchant row is the
+ *    one that does NOT count, because it is a genuine twin purchase (one of two identical
+ *    purchases voided). Each row restates at most one line;
+ *  - `credit`: not a charge (a pasted credit or payment) — there is no purchase to keep, deleted;
+ *  - `dropped`: none of those — the bank voided the purchase.
+ * Restatements change no history (the line they replace is deleted); dropped lines are annulled.
+ */
+export type UnlistedLineKind = "re_settlement" | "restatement" | "credit" | "dropped";
+
+export function classifyUnlistedLines(
+  unlisted: readonly CcOpenBucketLine[],
+  feedLines: readonly CcListingLine[]
+): { line: CcOpenBucketLine; kind: UnlistedLineKind }[] {
+  const window = MATCH_WINDOWS.feed_mirror.daysAfter;
+  const taken = new Set<number>();
+  return unlisted.map((line) => {
+    const iso = bucketLinePurchaseIso(line);
+    const usd = line.amount_usd != null && line.amount_usd !== 0;
+    if (!((usd ? line.amount_usd : line.amount_clp) ?? 0) || ((usd ? line.amount_usd! : line.amount_clp!) < 0)) {
+      return { line, kind: "credit" as const };
+    }
+    const currency = usd ? "usd" : "clp"; // convention-ok: Santander's card feed has a peso and a dollar slide only
+    const amount = Math.abs(usd ? line.amount_usd! : (line.amount_clp ?? 0));
+    const sameAmount = (f: CcListingLine): boolean =>
+      usd ? Math.abs(Math.abs(f.amount) - amount) <= 0.005 : Math.round(Math.abs(f.amount)) === Math.round(amount);
+    const nearIdx: number[] = [];
+    feedLines.forEach((f, i) => {
+      if (f.currency === currency && iso != null && Math.abs(daysBetweenIso(iso, f.transaction_date)) <= window) nearIdx.push(i);
+    });
+    if (nearIdx.some((i) => !sameAmount(feedLines[i]!) && merchantsSame(line.merchant, feedLines[i]!.merchant))) {
+      return { line, kind: "re_settlement" as const };
+    }
+    const hit = nearIdx.find((i) => {
+      const f = feedLines[i]!;
+      return !taken.has(i) && sameAmount(f) && !(f.transaction_date === iso && merchantsSame(line.merchant, f.merchant));
+    });
+    if (hit != null) {
+      taken.add(hit);
+      return { line, kind: "restatement" as const };
+    }
+    return { line, kind: "dropped" as const };
+  });
+}
+
+export function mirrorRemovedRow(l: CcOpenBucketLine): CcFeedMirrorRemoved {
+  return {
+    id: l.id,
+    date: bucketLinePurchaseIso(l) ?? String(l.transaction_date ?? ""),
+    merchant: l.merchant,
+    amount_clp: l.amount_clp,
+    amount_usd: l.amount_usd,
+  };
+}
+
+/** More lines than {@link MIRROR_MAX_DELETIONS} throws with the list: a lost feed is no day of voids. */
+export function assertMirrorWithinLimit(accountId: number, windowStartIso: string, lines: readonly CcOpenBucketLine[]): void {
+  if (lines.length <= MIRROR_MAX_DELETIONS) return;
+  throw new Error(
+    `Account ${accountId}: the card feed no longer lists ${lines.length} open-bucket lines dated from ` +
+      `${windowStartIso} — more than ${MIRROR_MAX_DELETIONS}, so nothing was removed. A feed that ` +
+      `lost this many rows is more likely a fetch failure than voided authorizations: ` +
+      lines
+        .map((l) => {
+          const r = mirrorRemovedRow(l);
+          return `${r.date} ${r.merchant} ${r.amount_usd ? `US$${r.amount_usd}` : r.amount_clp}`;
+        })
+        .join("; ")
+  );
+}
+
+/**
+ * The lines the bank dropped from its listing (read-only planner): restatements to delete as
+ * before (`plan`), the rest to annul (`toAnnul`; the caller writes the annulments and applies the
+ * deletions in one card-line write). More than {@link MIRROR_MAX_DELETIONS} lines in all throws.
+ */
 export function planOpenBucketMirror(
   accountId: number,
   opts: {
@@ -138,32 +232,19 @@ export function planOpenBucketMirror(
     proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
     feedLines: readonly CcListingLine[];
   }
-): { result: CcFeedMirrorResult; plan: CardLinePlan } {
+): { result: CcFeedMirrorResult; plan: CardLinePlan; toAnnul: CcOpenBucketLine[] } {
   const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null)); // convention-ok: Santander's card feed has a peso and a dollar slide only
   const unlisted = planFeedMirror(accountId, { windowStartIso: opts.windowStartIso, currencies, feedLines: opts.feedLines });
-  const removed = unlisted.map((l) => ({
-    id: l.id,
-    date: bucketLinePurchaseIso(l) ?? String(l.transaction_date ?? ""),
-    merchant: l.merchant,
-    amount_clp: l.amount_clp,
-    amount_usd: l.amount_usd,
-  }));
+  assertMirrorWithinLimit(accountId, opts.windowStartIso, unlisted);
+  const classified = classifyUnlistedLines(unlisted, opts.feedLines);
+  const restated = classified.filter((c) => c.kind !== "dropped").map((c) => c.line);
+  const toAnnul = classified.filter((c) => c.kind === "dropped").map((c) => c.line);
   const result: CcFeedMirrorResult = {
     window_start: opts.windowStartIso,
     currencies: [...currencies].sort(),
     proof: opts.proof,
-    removed,
+    removed: restated.map(mirrorRemovedRow),
+    annulled: [],
   };
-  if (removed.length === 0) return { result, plan: { deleteLineIds: [], carry: [] } };
-  if (removed.length > MIRROR_MAX_DELETIONS) {
-    throw new Error(
-      `Account ${accountId}: the card feed no longer lists ${removed.length} open-bucket lines dated from ` +
-        `${opts.windowStartIso} — more than ${MIRROR_MAX_DELETIONS}, so nothing was removed. A feed that ` +
-        `lost this many rows is more likely a fetch failure than voided authorizations: ` +
-        removed
-          .map((r) => `${r.date} ${r.merchant} ${r.amount_usd ? `US$${r.amount_usd}` : r.amount_clp}`)
-          .join("; ")
-    );
-  }
-  return { result, plan: { deleteLineIds: removed.map((r) => r.id), carry: [] } };
+  return { result, plan: { deleteLineIds: restated.map((l) => l.id), carry: [] }, toAnnul };
 }

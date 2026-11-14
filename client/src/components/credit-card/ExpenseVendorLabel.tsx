@@ -27,6 +27,8 @@ export type ExpenseVendorSource = {
     | "expense_deposit_links"
     | "line_role"
     | "nro_cuota_total"
+    | "annulled"
+    | "annulment"
   >
 >;
 
@@ -90,6 +92,27 @@ export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
       <InfoBlock
         key="cuotas"
         lines={[t("expenses.creditCard.installmentPurchaseTotalLabel", { count: source.nro_cuota_total ?? 0 })]}
+      />
+    );
+  }
+  if (source.annulled) {
+    blocks.push(
+      <InfoBlock
+        key="annulled"
+        lines={[
+          t("expenses.creditCard.lineRow.annulled.decided", {
+            date: source.annulled.annulled_on,
+            basis: t(`expenses.creditCard.lineRow.annulled.basis.${source.annulled.basis}`),
+          }),
+        ]}
+      />
+    );
+  }
+  if (source.annulment) {
+    blocks.push(
+      <InfoBlock
+        key="annulment"
+        lines={[t("expenses.creditCard.lineRow.annulled.annulmentOf", { date: source.annulment.purchase_date })]}
       />
     );
   }

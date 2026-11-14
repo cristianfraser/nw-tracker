@@ -32,7 +32,7 @@ import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { billingMonthForManualLedgerPurchase, closeDateForBillingMonth, pdfClosedBillingMonthsForAccount, provisionallyClosedBillingMonthsForAccount } from "./cards/facturacion.js";
 import { feedBillingCloseForMonth, type CcCloseSource } from "./cards/facturacion.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
+import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
 import { linesOfStatement, openCycleCuotaPurchaseLines } from "./cards/purchases.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";

@@ -28,6 +28,9 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccPlantedPayments.ts": "raw: replaces planted payment lines by id",
   "ccPlantedCharges.ts": "raw: the planted charge lines a listing line may be the later listing of",
   "ccPlantedCharges328.ts": "raw: migration 328 registers the planted charge lines already on file",
+  "ccAnnulledPurchases.ts": "raw: snapshots a bucket line by id into an annulled purchase before its line is deleted",
+  "ccAnnulmentWriters.ts": "raw: a bucket line's cuota tag, and the statement line an annulment's flow folds into",
+  "ccAnnulledPurchaseManual.ts": "raw: the line a manual annulment names, and the line an undo re-listed",
   // Identity between arriving evidence and stored lines (F9 step 4 / F17).
   "ccExpenseLineDedupe.ts": "raw: import dedupe (exact and fuzzy twins)",
   "ccCrossImportDedupe.ts": "raw: import-time fuzzy line lookup and the superseded-line remover",

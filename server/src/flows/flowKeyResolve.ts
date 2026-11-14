@@ -150,6 +150,9 @@ function rowsForBaseKey(dbi: DatabaseType, key: ExpenseKey): FlowSourceRow[] {
     case "payslip":
       // Payslip deduction lines carry no assignment (their category is fixed); no flow in step 3.
       return [];
+    case "annulment":
+      // The refund half of an annulled purchase is derived from `cc_annulled_purchases`: no row, no flow.
+      return [];
     case "split":
       return rowsForBaseKey(dbi, key.base);
   }

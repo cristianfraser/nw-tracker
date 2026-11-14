@@ -20,7 +20,19 @@ import {
   tagFeedCuotaPurchaseLines,
   type CcFeedPlanCreated,
 } from "./ccFeedCuotaPurchases.js";
-import { feedMirrorCurrencies, planOpenBucketMirror, type CcFeedMirrorResult } from "./ccFeedMirror.js";
+import {
+  feedMirrorCurrencies,
+  planOpenBucketMirror,
+  type CcFeedMirrorAnnulled,
+  type CcFeedMirrorResult,
+} from "./ccFeedMirror.js";
+import {
+  annulUnlistedLines,
+  chileDayOf,
+  removeRelistedAnnulments,
+  type CcRelistedAnnulment,
+} from "./ccAnnulmentWriters.js";
+import { planCupoGap, type CcCupoGapReport } from "./ccAnnulmentCupoGap.js";
 import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 import type { PlantedSamePurchase } from "./ccPlantedCharges.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
@@ -92,8 +104,17 @@ export type CardListingAccountImportResult = {
   first_due_nudges: CcInstallmentFirstDueNudge[];
   /** Bucket lines tagged as cuota purchases whose count is not known yet. */
   cuota_lines_tagged: number;
-  /** Lines the bank no longer lists, removed (`ccFeedMirror.ts`); null when the feed had no close. */
+  /**
+   * Lines the bank no longer lists (`ccFeedMirror.ts`): restatements deleted, voided purchases
+   * annulled (`mirror.annulled`); null when no currency's listing was proved complete.
+   */
   mirror: CcFeedMirrorResult | null;
+  /** Every purchase this listing annulled, by either proof (the feed mirror's or the cupo gap's). */
+  annulled: CcFeedMirrorAnnulled[];
+  /** Per currency the cupo gap judged (no proof from the listing itself, a bank cupo in hand). */
+  cupo_gap: CcCupoGapReport[];
+  /** Annulments undone because the listing shows the purchase again. */
+  relisted_annulments: CcRelistedAnnulment[];
   /** Planted payment lines the listing replaced or confirmed (`ccPlantedPayments.ts`). */
   planted_payments: PlantedPaymentMatchResult;
 };
@@ -235,7 +256,7 @@ export function applyCardUnbilledMovements(
       // One card-line write per card: the close, the plans, the lines, the tags and the mirror
       // land together and the card re-syncs once.
       const listed = cardLineWrite(accountId, "card feed", () =>
-        applyCardListing(accountId, card, closes, bankCupo, sourceRef, listingFeedOf(card.account.issuer).batch_kind)
+        applyCardListing(accountId, card, closes, bankCupo, sourceRef, listingFeedOf(card.account.issuer).batch_kind, payload.observed_at)
       );
       // After the write's re-sync: the check reads the facturación the write left.
       accounts.push({
@@ -290,7 +311,8 @@ function applyCardListing(
   closes: Map<string, CardListingClose>,
   bankCupo: ReturnType<typeof bankCupoCaptureFromListing>,
   sourceRef: string,
-  batchKind: CcListingFeedBatchKind
+  batchKind: CcListingFeedBatchKind,
+  observedAt: string
 ): Omit<CardListingAccountImportResult, "feed_close"> & { feed_close: Omit<CardListingCloseImport, "provisional_check"> | null } {
   const lines = card.lines.map((line) => listingLineFromCardListingLine(line));
   const close = closes.get(card.account.number);
@@ -298,6 +320,8 @@ function applyCardListing(
   const feedClose = applied?.close ?? null;
   // Before the lines: a plan makes its purchase row import as an installment overlap.
   const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
+  // Before the lines: a purchase the bank lists again is not annulled any more.
+  const relistedAnnulments = removeRelistedAnnulments(accountId, lines);
   const result = insertLines(
     accountId,
     { lines, errors: [] },
@@ -327,11 +351,45 @@ function applyCardListing(
     windowStartIso && closeOnRecord
       ? feedMirrorCurrencies({ stated, closeOnRecord, lines, bankUsed })
       : {};
+  const fetchedOnIso = chileDayOf(observedAt);
+  const annulled: CcFeedMirrorAnnulled[] = [];
   let mirror: CcFeedMirrorResult | null = null;
   if (windowStartIso && Object.keys(proof).length > 0) {
     const planned = planOpenBucketMirror(accountId, { windowStartIso, proof, feedLines: lines });
-    applyLinePlan(accountId, "card feed mirror", planned.plan);
+    // The annulment rows are written before their lines go.
+    const dropped = annulUnlistedLines(accountId, planned.toAnnul, { fetchedOnIso, basis: "feed_drop", evidence: sourceRef });
+    applyLinePlan(accountId, "card feed mirror", {
+      deleteLineIds: [...planned.plan.deleteLineIds, ...dropped.plan.deleteLineIds],
+      carry: [],
+    });
+    planned.result.annulled = dropped.annulled;
+    annulled.push(...dropped.annulled);
     mirror = planned.result;
+  }
+  // A currency the listing could not prove complete, with the bank's own cupo in hand: judged by
+  // the change in the gap between the bank and the app (`ccAnnulmentCupoGap.planCupoGap`), after
+  // everything above is written, so the app's side is the ledger this listing leaves behind.
+  const cupoGap: CcCupoGapReport[] = [];
+  if (bankCupo.status === "present") {
+    for (const currency of ["clp", "usd"] as const) { // convention-ok: Santander's card feed has a peso and a dollar slide only
+      const used = bankUsed[currency];
+      if (used == null || proof[currency] != null) continue;
+      const gap = planCupoGap(accountId, {
+        currency,
+        bankUsed: used,
+        observedAt: bankCupo.observed_at,
+        feedCloseIso: close?.close_iso ?? null,
+        feedLines: lines,
+      });
+      cupoGap.push(gap.report);
+      if (gap.toAnnul) {
+        const one = annulUnlistedLines(accountId, [gap.toAnnul], { fetchedOnIso, basis: "cupo_gap", evidence: sourceRef });
+        applyLinePlan(accountId, "card feed cupo gap", one.plan);
+        annulled.push(...one.annulled);
+      } else if (gap.toRemove) {
+        applyLinePlan(accountId, "card feed cupo gap", { deleteLineIds: [gap.toRemove.id], carry: [] });
+      }
+    }
   }
   return {
     account: card.account.number,
@@ -347,6 +405,9 @@ function applyCardListing(
     first_due_nudges: result.installment_first_due_nudges ?? [],
     cuota_lines_tagged: tagged.length,
     mirror,
+    annulled,
+    cupo_gap: cupoGap,
+    relisted_annulments: relistedAnnulments,
     planted_payments: result.planted_payments,
   };
 }

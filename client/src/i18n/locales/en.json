@@ -1617,6 +1617,25 @@
         "paidFromAccount": "Payment from {{account}}"
       },
       "lineRow": {
+        "annulled": {
+          "action": "Annulled by the bank",
+          "dateLabel": "Annulled on (YYYY-MM-DD)",
+          "confirm": "Mark as annulled",
+          "dateInvalid": "Enter the day as YYYY-MM-DD.",
+          "badge": "Annulled {{date}}",
+          "annulmentBadge": "Annulment",
+          "annulmentOf": "Annulment of the purchase of {{date}}",
+          "undo": "Undo annulment",
+          "undoConfirmTitle": "Undo the annulment?",
+          "undoConfirmBody": "{{merchant}} will be listed again as a purchase of the open facturación.",
+          "decided": "Annulled {{date}} · {{basis}}",
+          "basis": {
+            "feed_drop": "the bank's listing stopped showing it",
+            "cupo_gap": "the bank's cupo dropped by its amount",
+            "statement_close": "the statement that closed its cycle did not bill it",
+            "manual": "marked by you"
+          }
+        },
         "planCountSave": "Change installments",
         "planRemove": "Undo installments",
         "planRemoveConfirmTitle": "Undo the installments?",

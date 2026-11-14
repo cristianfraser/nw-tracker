@@ -13,7 +13,7 @@ import { balanceUsdFxDateIso } from "./ccBillingBalances.js";
 import { ccSection3FinancingClpByDate } from "./ccFinancingCostDaily.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
-import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
+import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { fxRowOnOrBefore } from "./fxRates.js";

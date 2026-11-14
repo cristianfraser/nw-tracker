@@ -25,6 +25,7 @@ import {
 import { isCheckingExpenseRefund, setCheckingExpenseRefundCategory } from "./checkingExpenseRefunds.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 import { clearExpenseCategoryRule, setExpenseCategoryRule, type CategoryRuleLink } from "./expenseCategoryRules.js";
+import { annulledPurchaseOfLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 import { syncExpenseDepositLinksFromGastosLines } from "./expenseDepositLinks.js";
 import { expenseLinesForDepositLinkSync } from "./flowsExpenses.js";
@@ -126,6 +127,27 @@ export function assignExpenseCategory(target: ExpenseCategoryTarget, given: Assi
   };
 }
 
+/**
+ * Where a category change on an annulled purchase lands: the «Único» row or merchant rule of the
+ * purchase key its bucket line carried (the line, and so its per-line override, is gone).
+ */
+function annulledPurchaseCategoryTarget(annulledPurchaseId: number): ExpenseCategoryTarget {
+  const row = db.prepare(`SELECT account_id FROM cc_annulled_purchases WHERE id = ?`).get(annulledPurchaseId) as
+    | { account_id: number }
+    | undefined;
+  if (!row) throw new InputError("annulled purchase not found");
+  const a = annulledPurchaseRowsForAccount(row.account_id).find((r) => r.id === annulledPurchaseId)!;
+  return {
+    accountId: a.account_id,
+    merchantKey: normalizeCcExpenseMerchantKey(a.merchant),
+    purchaseKey: a.purchase_key,
+    siblingPurchaseKeys: [],
+    lineCategoryRowIds: [],
+    marksDeclinedAuto: true,
+    clearsDeclinedAuto: true,
+  };
+}
+
 export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual" | "payslip";
 
 /** A category change on an expense line of the Expenses page (`PATCH /api/flows/expenses/…/category`). */
@@ -140,6 +162,11 @@ export function assignFlowExpenseLineCategory(opts: AssignOpts & {
   if (opts.source === "payslip") {
     throw new InputError("payslip deductions have a fixed category");
   }
+
+  // An annulled purchase (either of its lines — the annulment's category follows the purchase)
+  // files its category under the key its deleted bucket line carried.
+  const annulled = annulledPurchaseOfLineId(opts.lineId);
+  if (annulled != null) return assignExpenseCategory(annulledPurchaseCategoryTarget(annulled.annulledPurchaseId), opts);
 
   if (opts.lineId < 0) {
     const purchaseId = purchaseIdFromPlanGastosLineId(opts.lineId) ?? -opts.lineId;

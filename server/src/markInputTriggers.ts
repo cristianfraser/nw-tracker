@@ -500,8 +500,30 @@ const SPECS_324: readonly TriggerSpec[] = SPECS_322.map((s) =>
     : s
 );
 
+/**
+ * Migration 332: an annulled card purchase moves its card's owed walk from the purchase day (the
+ * purchase, then its annulment on `annulled_on`).
+ */
+export const CC_ANNULLED_PURCHASES_SPEC: TriggerSpec = {
+  table: "cc_annulled_purchases",
+  targets: (r) => [{ account: `${r}.account_id`, date: `${r}.purchase_date` }],
+  watch: ["account_id", "currency", "amount", "purchase_date", "annulled_on"],
+};
+
+const SPECS_332: readonly TriggerSpec[] = [...SPECS_324, CC_ANNULLED_PURCHASES_SPEC];
+
+/** Migration 333: `bank_credit` drops the annulment leg from the owed walk, so it is watched too. */
+const CC_ANNULLED_PURCHASES_SPEC_333: TriggerSpec = {
+  ...CC_ANNULLED_PURCHASES_SPEC,
+  watch: [...CC_ANNULLED_PURCHASES_SPEC.watch, "bank_credit"],
+};
+
+const SPECS_333: readonly TriggerSpec[] = SPECS_332.map((s) =>
+  s.table === CC_ANNULLED_PURCHASES_SPEC.table ? CC_ANNULLED_PURCHASES_SPEC_333 : s
+);
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_324;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_333;
 
 /**
  * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column
@@ -633,6 +655,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "credit_card_cupos",
   "cc_feed_billing_close_amounts",
   "cc_planted_charge_lines",
+  "cc_annulled_purchases",
 ];
 
 /**
@@ -713,6 +736,28 @@ export function runMarkInputChangeTriggers265(dbi: DatabaseType): void {
 export function runMarkInputChangeTriggers304(dbi: DatabaseType): void {
   for (const k of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_${OPTION_CONTRACTS_SPEC.table}_${k}"`);
   for (const sql of markInputTriggerSql(OPTION_CONTRACTS_SPEC)) dbi.exec(sql);
+}
+
+/**
+ * Migration 332 hook: watch `cc_annulled_purchases` — its mark triggers (only the new table's, as
+ * in 304) and the write-log UPDATE trigger for the columns the mark trigger does not watch.
+ */
+export function runMarkInputChangeTriggers332(dbi: DatabaseType): void {
+  installAnnulledPurchaseTriggers(dbi, CC_ANNULLED_PURCHASES_SPEC, "332");
+}
+
+/** Migration 333 hook: the same triggers over the new `bank_credit` column (watched). */
+export function runMarkInputChangeTriggers333(dbi: DatabaseType): void {
+  installAnnulledPurchaseTriggers(dbi, CC_ANNULLED_PURCHASES_SPEC_333, "333");
+}
+
+function installAnnulledPurchaseTriggers(dbi: DatabaseType, spec: TriggerSpec, migration: string): void {
+  const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(spec.table) as { name: string }[]).map((c) => c.name);
+  if (columns.length === 0) throw new Error(`migration ${migration}: table ${spec.table} does not exist`);
+  for (const k of ["ai", "ad", "au"]) dbi.exec(`DROP TRIGGER IF EXISTS "mark_input_${spec.table}_${k}"`);
+  for (const sql of markInputTriggerSql(spec)) dbi.exec(sql);
+  dbi.exec(`DROP TRIGGER IF EXISTS "write_log_${spec.table}_au"`);
+  for (const sql of writeLogTriggerSql(spec.table, columns, spec.watch)) dbi.exec(sql);
 }
 
 /** Migration 312 hook: watch `fx_rates` (only the new table's triggers, as in 304). */

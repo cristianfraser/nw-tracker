@@ -1,5 +1,6 @@
 import { requireStoredCardLineKind } from "./cards/lineKinds.js";
 import { lineMoneyFromBuilderFields, withLineMoney } from "./lineMoney.js";
+import { convertCurrency } from "./rates.js";
 import { currencySmallestCoin, roundToCurrency, isHomeCurrency } from "./displayUnits.js";
 import { toWireExpenseLines } from "./wireExpenseLine.js";
 import type {
@@ -23,7 +24,7 @@ import {
 import { monthKeyFromYmd } from "./calendarMonth.js";
 
 import { isListingSourceKind } from "./ccStatementSourceKind.js";
-import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
+import { facturacionMonthByStatementDate } from "./cards/facturacionByStatementDate.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 
 import {
@@ -136,6 +137,7 @@ import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 import { withExpenseLineFlowIds } from "./flows/flowIdentity.js";
+import { annulledPurchaseLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
 import { isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine } from "./ccExpenseCategories.js";
@@ -354,6 +356,13 @@ export type FlowCcExpenseLineRow = {
    * ({@link markCardRefunds}).
    */
   card_refund?: true;
+  /**
+   * The purchase of a card purchase the bank annulled before billing it (`cc_annulled_purchases`,
+   * {@link annulledPurchaseLineDrafts}): on its own day, under the key its bucket line carried.
+   */
+  annulled?: { annulled_purchase_id: number; annulled_on: string; basis: "feed_drop" | "cupo_gap" | "statement_close" | "manual" };
+  /** The annulment of that purchase: a refund of the same amount on the day the bank dropped it. */
+  annulment?: { annulled_purchase_id: number; purchase_date: string };
   /**
    * A card line the bank charged as the cost of financing (section 3: intereses, comisiones,
    * impuestos, administración) — the lines the card's P/L counts ({@link markFinancingCostLines}).
@@ -844,12 +853,102 @@ export function buildCcExpenseLines(
   const planGastosLines = buildInstallmentPlanGastosLines(accountIds, withPaymentCuotas);
   const withLedgerCuotas = [...withPaymentCuotas, ...planGastosLines];
   const cuotaLines = dedupeDisplay ? dedupeFlowCcExpenseLines(withLedgerCuotas) : withLedgerCuotas;
-  return mergeInstallmentPurchaseTotalsIntoLines(cuotaLines, accountIds, {
+  const merged = mergeInstallmentPurchaseTotalsIntoLines(cuotaLines, accountIds, {
     lineOverrides,
     merchantRules,
     uniquePurchases,
     uniquePurchaseModeKeys,
   });
+  return [
+    ...merged,
+    ...annulledPurchaseLineDrafts(accountIds, { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys }),
+  ];
+}
+
+/**
+ * The two expense lines of each card purchase the bank annulled before billing it
+ * (`cc_annulled_purchases`): the purchase on its own day and its annulment — a refund of the same
+ * amount on the day the bank dropped it, in the same category — so the category nets what was
+ * spent against what never was. The purchase keeps the key its bucket line carried (its «Único»
+ * category, note, big group and flow answer to it); the annulment has a key of its own and is no
+ * line anyone can categorize. Neither is on a statement, so the facturación modal never lists them.
+ * Both are valued at the purchase day's rate, so the pair nets to exactly zero in every unit.
+ */
+function annulledPurchaseLineDrafts(
+  accountIds: readonly number[],
+  maps: Pick<ReturnType<typeof loadCcExpenseCategoryMaps>, "lineOverrides" | "merchantRules" | "uniquePurchases" | "uniquePurchaseModeKeys">
+): FlowCcExpenseLineRowDraft[] {
+  const out: FlowCcExpenseLineRowDraft[] = [];
+  for (const accountId of accountIds) {
+    for (const a of annulledPurchaseRowsForAccount(accountId)) {
+      const merchantKey = normalizeCcExpenseMerchantKey(a.merchant);
+      const resolution = resolveCcExpenseCategory({
+        statementLineId: annulledPurchaseLineId(a.id, "purchase"),
+        accountId,
+        merchantKey,
+        purchaseKey: a.purchase_key,
+        ...maps,
+      });
+      const categoryUnique = categoryUniqueForExpenseLine(
+        accountId,
+        a.purchase_key,
+        merchantKey,
+        maps.uniquePurchases,
+        maps.uniquePurchaseModeKeys
+      );
+      const home = isHomeCurrency(a.currency);
+      const clpAbs = home
+        ? Math.round(a.amount)
+        : (() => {
+            const v = convertCurrency(a.amount, a.currency, "clp", a.purchase_date, { side: "mid" });
+            if (v == null || !Number.isFinite(v)) {
+              throw new Error(`annulled purchase ${a.id}: no ${a.currency}→clp rate on or before ${a.purchase_date}`);
+            }
+            return Math.round(v);
+          })();
+      const usdAbs = a.currency === "usd" ? a.amount : null; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels), as card dollar lines do
+      const thirdCurrency = !home && a.currency !== "usd"; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels), as card dollar lines do
+      const leg = (sign: 1 | -1, day: string, role: "purchase" | "annulment"): FlowCcExpenseLineRowDraft => {
+        const month = monthKeyFromYmd(day);
+        const clp = sign * clpAbs;
+        return {
+          source: "cc",
+          statement_line_id: annulledPurchaseLineId(a.id, role),
+          account_id: accountId,
+          expense_month: month,
+          billing_month: month,
+          purchase_month: month,
+          line_role: "purchase",
+          occurred_on: day,
+          purchase_on: day,
+          statement_date: "",
+          amount_clp: clp,
+          amount_usd: usdAbs == null ? null : sign * usdAbs,
+          amount_usd_at_expense: expenseGastosAmountUsdAtDate(clp, usdAbs == null ? null : sign * usdAbs, a.purchase_date),
+          clp_rate_source: "day",
+          ...(thirdCurrency ? { amount: { value: sign * a.amount, currency: a.currency } } : {}),
+          merchant: a.merchant,
+          merchant_key: merchantKey,
+          category_slug: resolution.slug,
+          category_unique: categoryUnique,
+          // No `category_from_bank_name`: a receipt or specific rule must not move the purchase away
+          // from its annulment.
+          installment_flag: 0,
+          nro_cuota_current: null,
+          nro_cuota_total: null,
+          origin_card_last4: a.origin_card_last4,
+          primary_card_last4: null,
+          ...(role === "purchase"
+            ? { annulled: { annulled_purchase_id: a.id, annulled_on: a.annulled_on, basis: a.basis } }
+            : { card_refund: true as const, annulment: { annulled_purchase_id: a.id, purchase_date: a.purchase_date } }),
+        };
+      };
+      out.push(leg(1, a.purchase_date, "purchase"));
+      // A purchase the bank later refunded with a real credit line: that line is its refund.
+      if (!a.bank_credit) out.push(leg(-1, a.annulled_on, "annulment"));
+    }
+  }
+  return out;
 }
 
 function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {

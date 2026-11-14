@@ -339,9 +339,13 @@ describe("bank cupo check", () => {
     const again = applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED + 12.34, "2026-10-02T12:00:00.000Z"), [twin]), "card-movements-vitest-twins-2.json");
     expect(again.accounts[0]).toMatchObject({ inserted: 0, skipped_duplicate: 3 });
     expect(usdLines()).toEqual(keys);
-    // A listing that shows the row once again is the bank dropping one: the mirror removes one twin.
+    // A listing that shows the row once again is the bank dropping one: the mirror keeps that twin
+    // as an annulled purchase (a same-day, same-merchant twin is no restatement), not a deletion.
     const dropped = applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T13:00:00.000Z")), "card-movements-vitest-twins-3.json");
-    expect(dropped.accounts[0]?.mirror?.removed).toHaveLength(1);
+    expect(dropped.accounts[0]?.mirror?.removed).toHaveLength(0);
+    expect(dropped.accounts[0]?.mirror?.annulled).toHaveLength(1);
+    expect(dropped.accounts[0]?.annulled[0]).toMatchObject({ basis: "feed_drop", amount_usd: 12.34 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM cc_annulled_purchases WHERE account_id = ?`).get(accountId)).toEqual({ n: 1 });
     expect(usdLines()).toHaveLength(1);
     expect(judgeLatestBankCupoCapture({ issuer: "santander" }).verdicts.every((v) => v.status === "ok")).toBe(true);
   });

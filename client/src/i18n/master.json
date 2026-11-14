@@ -5565,6 +5565,25 @@
         "paidFromAccount": { "en": "Payment from {{account}}", "es": "Pago desde {{account}}" }
       },
       "lineRow": {
+        "annulled": {
+          "action": { "en": "Annulled by the bank", "es": "Anulada por el banco" },
+          "dateLabel": { "en": "Annulled on (YYYY-MM-DD)", "es": "Anulada el (AAAA-MM-DD)" },
+          "confirm": { "en": "Mark as annulled", "es": "Marcar como anulada" },
+          "dateInvalid": { "en": "Enter the day as YYYY-MM-DD.", "es": "Ingresa el día como AAAA-MM-DD." },
+          "badge": { "en": "Annulled {{date}}", "es": "Anulada {{date}}" },
+          "annulmentBadge": { "en": "Annulment", "es": "Anulación" },
+          "annulmentOf": { "en": "Annulment of the purchase of {{date}}", "es": "Anulación de la compra del {{date}}" },
+          "undo": { "en": "Undo annulment", "es": "Deshacer anulación" },
+          "undoConfirmTitle": { "en": "Undo the annulment?", "es": "¿Deshacer la anulación?" },
+          "undoConfirmBody": { "en": "{{merchant}} will be listed again as a purchase of the open facturación.", "es": "{{merchant}} volverá a figurar como compra de la facturación abierta." },
+          "decided": { "en": "Annulled {{date}} · {{basis}}", "es": "Anulada el {{date}} · {{basis}}" },
+          "basis": {
+            "feed_drop": { "en": "the bank's listing stopped showing it", "es": "el listado del banco dejó de mostrarla" },
+            "cupo_gap": { "en": "the bank's cupo dropped by its amount", "es": "el cupo del banco bajó por su monto" },
+            "statement_close": { "en": "the statement that closed its cycle did not bill it", "es": "el estado de cuenta que cerró su ciclo no la facturó" },
+            "manual": { "en": "marked by you", "es": "marcada por ti" }
+          }
+        },
         "planCountSave": {
           "en": "Change installments",
           "es": "Cambiar cuotas"

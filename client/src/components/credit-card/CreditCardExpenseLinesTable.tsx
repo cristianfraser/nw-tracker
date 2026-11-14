@@ -1,4 +1,5 @@
 import { DEMO_EDITS_LIMITED } from "../../demoEdits";
+import { chileTodayYmd } from "../../calendarMonth";
 import { Fragment, type ReactNode, useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
@@ -31,6 +32,8 @@ import {
   useAssignCcExpenseLineCategory,
   useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
+  useAnnulCcPurchaseMutation,
+  useUndoCcAnnulledPurchaseMutation,
   useUpdateCcPurchaseCuotasMutation,
   useMakeStatementLineInstallmentMutation,
   usePostVendorBranchChoiceMutation,
@@ -318,6 +321,75 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
   );
 }
 
+/** «Anulada por el banco»: the bank dropped this unbilled purchase; the day it did, entered here. */
+function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const annul = useAnnulCcPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const [day, setDay] = useState(() => chileTodayYmd());
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(day);
+  const submit = () => {
+    if (!valid) return;
+    annul.mutate(
+      { lineId: line.statement_line_id, annulledOn: day },
+      { onError: (err) => window.alert(err instanceof Error ? err.message : String(err)) }
+    );
+  };
+  return (
+    <div className={styles.panelBigGroup}>
+      <span className="muted">{t("expenses.creditCard.lineRow.annulled.action")}</span>
+      <Input
+        type="text"
+        inputMode="numeric"
+        value={day}
+        placeholder="YYYY-MM-DD"
+        aria-label={t("expenses.creditCard.lineRow.annulled.dateLabel")}
+        aria-invalid={!valid || undefined}
+        disabled={annul.isPending}
+        onChange={(e) => setDay(e.target.value.trim())}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        style={{ width: "8.5rem" }}
+      />
+      <Button size="sm" disabled={!valid || annul.isPending} onClick={submit}>
+        {t("expenses.creditCard.lineRow.annulled.confirm")}
+      </Button>
+      {!valid ? <span className="error">{t("expenses.creditCard.lineRow.annulled.dateInvalid")}</span> : null}
+    </div>
+  );
+}
+
+/** Undo for an annulment the user marked: confirm, then the purchase is listed again. */
+function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; annulId: number }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const undo = useUndoCcAnnulledPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <Button variant="ghost" size="sm" disabled={undo.isPending} onClick={() => setConfirming(true)}>
+        {t("expenses.creditCard.lineRow.annulled.undo")}
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title={t("expenses.creditCard.lineRow.annulled.undoConfirmTitle")}
+        message={t("expenses.creditCard.lineRow.annulled.undoConfirmBody", { merchant: expenseVendorName(line) })}
+        confirmLabel={t("expenses.creditCard.lineRow.annulled.undo")}
+        cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
+        confirmDisabled={undo.isPending}
+        onConfirm={() =>
+          undo.mutate(annulId, {
+            onSuccess: () => setConfirming(false),
+            onError: (err) => window.alert(err instanceof Error ? err.message : String(err)),
+          })
+        }
+        onCancel={() => setConfirming(false)}
+      />
+    </>
+  );
+}
+
 /** The installment count, entered right where the row asks for it. */
 function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
@@ -444,12 +516,16 @@ function ExpenseLineRow({
   const linkLabel = useExpenseVendorLinkLabel(ln);
   // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
   const fixedCategory = ln.source === "payslip";
-  const canSelect = selectable && selection != null && !fixedCategory;
+  const canSelect = selectable && selection != null && !fixedCategory && !ln.annulment;
   const selected = canSelect && selection.isSelected(ln);
 
   // What the row may do is the server's call (`can_*`, `expenseLineShapes.ts`); the demo keeps
   // deletions closed on top of it.
   const canDelete = !DEMO_EDITS_LIMITED && ln.can_delete === true;
+  const { annulled, annulment } = ln;
+  // A pasted / fed one-shot charge may be marked annulled by the bank; its mark, when the user's, undone.
+  const canAnnul = canDelete && !annulled && !annulment && !ln.installment_flag && linePesos(ln) > 0;
+  const canUndoAnnul = !DEMO_EDITS_LIMITED && annulled?.basis === "manual";
   const canMakeInstallment = ln.can_make_installment === true;
   const canEditInstallment = ln.can_edit_installment === true;
   const canEditPieces = ln.can_edit_pieces === true;
@@ -478,6 +554,8 @@ function ExpenseLineRow({
     canEditManual ||
     canMakeInstallment ||
     canEditInstallment ||
+    canAnnul ||
+    canUndoAnnul ||
     canDelete;
   const merchant = expenseVendorName(ln);
 
@@ -509,7 +587,17 @@ function ExpenseLineRow({
         {bigGroupOnRow ? (
           <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
         ) : null}
-        {showCategoryControls && !fixedCategory ? (
+        {annulled ? (
+          <Pill
+            size="small"
+            label={t("expenses.creditCard.lineRow.annulled.badge", { date: annulled.annulled_on })}
+            backgroundColor="#6b7280"
+          />
+        ) : null}
+        {annulment ? (
+          <Pill size="small" label={t("expenses.creditCard.lineRow.annulled.annulmentBadge")} backgroundColor="#6b7280" />
+        ) : null}
+        {showCategoryControls && !fixedCategory && !annulment ? (
           <ExpenseLineCategoryPicker line={ln} categories={categories} />
         ) : (
           <FixedCategoryPill line={ln} categories={categories} />
@@ -576,8 +664,10 @@ function ExpenseLineRow({
               />
             </div>
           ) : null}
-          {canEditPieces || canEditManual || canDelete ? (
+          {canAnnul ? <AnnulPurchaseControl line={ln} /> : null}
+          {canEditPieces || canEditManual || canDelete || canUndoAnnul ? (
             <div className={styles.panelActions}>
+              {canUndoAnnul && annulled ? <UndoAnnulmentButton line={ln} annulId={annulled.annulled_purchase_id} /> : null}
               {canEditPieces ? (
                 <Button variant="ghost" size="sm" onClick={() => actions.onEditPieces(ln)}>
                   {hasPieces

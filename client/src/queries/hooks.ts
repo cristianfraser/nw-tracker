@@ -797,6 +797,8 @@ export {
   useAssignCcExpenseLineCategory,
   useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
+  useAnnulCcPurchaseMutation,
+  useUndoCcAnnulledPurchaseMutation,
   useMakeStatementLineInstallmentMutation,
   useUpdateCcPurchaseCuotasMutation,
   useAccountImportMutation,

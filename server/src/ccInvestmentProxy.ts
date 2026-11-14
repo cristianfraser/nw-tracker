@@ -12,7 +12,7 @@ import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
+import { facturacionMonthByStatementDate } from "./cards/facturacionByStatementDate.js";
 import { findLines, supersededOneShotLineIds } from "./cards/purchases.js";
 import { facturacionPayByIsoResolver, type CcFacturacionRow } from "./ccBillingViews.js";
 import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";

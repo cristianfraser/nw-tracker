@@ -6,7 +6,8 @@ import { installmentRemainderAfterFacturacionClp } from "./ccInstallmentLedgerDb
 import { cardStoppedBilling } from "./cards/lifecycle.js";
 import { findLines } from "./cards/purchases.js";
 import { closeDateForBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
-import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
+import { annulledOwedAtYmd } from "./ccAnnulledPurchasesRead.js";
+import { facturacionMonthByStatementDate } from "./cards/facturacionByStatementDate.js";
 
 /**
  * What a card owes in each currency, in the frame of the bank's own «cupo utilizado» (Santander's
@@ -88,6 +89,13 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
     if (!native) continue;
     if (isHomeCurrency(native.currency)) linesClp += Math.round(native.amount);
     else linesForeign.set(native.currency, (linesForeign.get(native.currency) ?? 0) + native.amount);
+  }
+
+  // A purchase the bank annulled before billing it: the bank's cupo held it from its purchase day
+  // until it dropped it from the listing (`cc_annulled_purchases`).
+  for (const [currency, amount] of annulledOwedAtYmd(accountId, asOfIso)) {
+    if (isHomeCurrency(currency)) linesClp += Math.round(amount);
+    else linesForeign.set(currency, (linesForeign.get(currency) ?? 0) + amount);
   }
 
   const remainder = installmentRemainderAfterFacturacionClp(accountId, lastClosed, asOfIso);

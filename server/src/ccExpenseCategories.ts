@@ -1,4 +1,5 @@
 import { FLOW_CATEGORIES_SQL, getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
+import { oneShotCardLineExpenseKey } from "./cards/oneShotLineKey.js";
 import { InputError } from "./inputError.js";
 import { db } from "./db.js";
 import {
@@ -534,15 +535,11 @@ export function stableCcExpensePurchaseKeyFromCtx(ctx: CcStatementLineExpenseCtx
       return buildExpenseKey({ kind: "installment_pr", parserRowId });
     }
   }
-  const parserRowId = String(ctx.parser_row_id ?? "").trim();
-  if (parserRowId && !parserRowId.startsWith("synthetic:")) {
-    return buildExpenseKey({ kind: "line_pr", parserRowId });
-  }
-  return buildExpenseKey({
-    kind: "line_fallback",
+  return oneShotCardLineExpenseKey({
     accountId: ctx.account_id,
-    merchantKey: normalizeCcExpenseMerchantKey(ctx.merchant),
-    purchaseIso: purchaseDateIsoFromLine(ctx) ?? "",
+    parserRowId: ctx.parser_row_id,
+    merchant: ctx.merchant,
+    purchaseIso: purchaseDateIsoFromLine(ctx),
   });
 }
 
