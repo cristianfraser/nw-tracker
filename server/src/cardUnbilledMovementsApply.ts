@@ -33,6 +33,7 @@ import {
   type CcRelistedAnnulment,
 } from "./ccAnnulmentWriters.js";
 import { planCupoGap, type CcCupoGapReport } from "./ccAnnulmentCupoGap.js";
+import { matchPlanPrepayments, recordPlanPrepayments, type CcPlanPrepaymentPaired } from "./ccPlanPrepayments.js";
 import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 import type { PlantedSamePurchase } from "./ccPlantedCharges.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
@@ -117,6 +118,8 @@ export type CardListingAccountImportResult = {
   relisted_annulments: CcRelistedAnnulment[];
   /** Planted payment lines the listing replaced or confirmed (`ccPlantedPayments.ts`). */
   planted_payments: PlantedPaymentMatchResult;
+  /** Every plan of the card the bank paid off at once, as the listing now shows (`ccPlanPrepayments.ts`). */
+  plan_prepayments: CcPlanPrepaymentPaired[];
 };
 
 export type CardUnbilledMovementsImportResult = {
@@ -315,6 +318,8 @@ function applyCardListing(
   observedAt: string
 ): Omit<CardListingAccountImportResult, "feed_close"> & { feed_close: Omit<CardListingCloseImport, "provisional_check"> | null } {
   const lines = card.lines.map((line) => listingLineFromCardListingLine(line));
+  // Before any write: a prepayment no plan (or several) explains throws, the document stays staged.
+  const prepaymentMatches = matchPlanPrepayments(accountId, lines);
   const close = closes.get(card.account.number);
   const applied = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
   const feedClose = applied?.close ?? null;
@@ -331,6 +336,7 @@ function applyCardListing(
       : undefined
   );
   const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
+  const planPrepayments = recordPlanPrepayments(accountId, lines, prepaymentMatches);
   // A close with nothing to write (no movements, or only repeats) changed the facturación state
   // all the same: the card re-syncs.
   if (feedClose && (feedClose.status === "new" || feedClose.lines_moved_forward > 0)) noteCardLineWritten(accountId);
@@ -409,5 +415,6 @@ function applyCardListing(
     cupo_gap: cupoGap,
     relisted_annulments: relistedAnnulments,
     planted_payments: result.planted_payments,
+    plan_prepayments: planPrepayments,
   };
 }

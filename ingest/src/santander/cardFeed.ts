@@ -7,6 +7,8 @@ import {
   STAMP_TAX_FEED_TYPE,
   cuotaCountFromStampTax,
   cuotaPurchaseTypeFromFeedDescription,
+  isCreditNoteFeedDescription,
+  isPlanPrepaymentFeedDescription,
 } from "./cuotaPurchases.js";
 
 /**
@@ -140,11 +142,19 @@ export function santanderMovementRowToLine(
   const cuotaType = isCuotaBillingReference(merchant)
     ? null
     : cuotaPurchaseTypeFromFeedDescription(row.Descripcion);
+  const planPrepayment = isPlanPrepaymentFeedDescription(row.Descripcion);
+  if (planPrepayment && (sign !== 1 || currency !== "clp")) { // convention-ok: Santander's card feed has a peso and a dollar slide only
+    throw new Error(`Santander plan prepayment "${merchant}" must be a peso debit`);
+  }
+  const creditNote = isCreditNoteFeedDescription(row.Descripcion);
+  if (creditNote && sign !== -1) throw new Error(`Santander credit note "${merchant}" must be a credit (H)`);
   return {
     date,
     merchant,
     currency,
     amount: sign * magnitude,
+    ...(planPrepayment ? { plan_prepayment: true as const } : {}),
+    ...(creditNote ? { credit_note: true as const } : {}),
     raw_text: [row.Fecha, row.Descripcion ?? "", merchant, row.Importe].filter(Boolean).join(" "),
     ...(holder ? { holder } : {}),
     ...(cuotaType

@@ -20,6 +20,7 @@ import {
   runMarkInputChangeTriggers303,
   runMarkInputChangeTriggers332,
   runMarkInputChangeTriggers333,
+  runMarkInputChangeTriggers334,
   runMarketDisplaySeriesFxPair313,
   runMarketTablesAnyCurrency315,
 } from "./markInputTriggers.js";
@@ -418,6 +419,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "331_vendor_catalog_cosecha_del_mar.sql": runVendorCatalog331,
   "332_cc_annulled_purchases.sql": runMarkInputChangeTriggers332,
   "333_cc_annulled_purchase_bank_credit.sql": runMarkInputChangeTriggers333,
+  "334_cc_plan_prepayments.sql": runMarkInputChangeTriggers334,
 };
 
 /**

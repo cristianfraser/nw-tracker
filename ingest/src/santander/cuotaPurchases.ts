@@ -25,6 +25,20 @@ export type SantanderCuotaPurchaseType = {
 export const STAMP_TAX_FEED_TYPE = "IMPTO. DECRETO LEY 3475";
 
 /**
+ * «PREPAGO EN CUOTAS»: the bank pays a plan's whole outstanding principal off at once (2026-11-13: a
+ * mercado-pago purchase refunded by a nota de crédito, then prepaid). Not a cuota purchase and no
+ * purchase at all — the server pairs the debit with the plan it pays off.
+ */
+export function isPlanPrepaymentFeedDescription(descripcion: string | null | undefined): boolean {
+  return /^PREPAGO EN CUOTAS$/.test(String(descripcion ?? "").trim().toUpperCase().replace(/\s+/g, " "));
+}
+
+/** The feed's type for a refund of a purchase. */
+export function isCreditNoteFeedDescription(descripcion: string | null | undefined): boolean {
+  return /^NOTA DE CREDITO$/.test(String(descripcion ?? "").trim().toUpperCase().replace(/\s+/g, " "));
+}
+
+/**
  * Cuota-purchase type of a feed row, or null for anything else. A description that mentions
  * cuotas but matches no known shape throws: its billing timing is unknown, and guessing it would
  * put the purchase in the wrong facturación. (The «CUOT: … OPER: …» billing-reference rows share
@@ -35,6 +49,7 @@ export function cuotaPurchaseTypeFromFeedDescription(
 ): SantanderCuotaPurchaseType | null {
   const d = String(descripcion ?? "").trim().toUpperCase().replace(/\s+/g, " ");
   if (!d || !/CUOTA/.test(d)) return null;
+  if (isPlanPrepaymentFeedDescription(d)) return null;
   if (/^CUOTAS? COMERCIO$/.test(d)) return { first_cuota_bills: "next_cycle", cuota_count: null };
   if (/^N\/CUOTAS PRECIO CONTADO$/.test(d)) return { first_cuota_bills: "purchase_cycle", cuota_count: null };
   if (/^TRES CUOTAS (PRECIO )?CONTADO$/.test(d)) return { first_cuota_bills: "purchase_cycle", cuota_count: 3 };

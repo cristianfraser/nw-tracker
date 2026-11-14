@@ -522,8 +522,25 @@ const SPECS_333: readonly TriggerSpec[] = SPECS_332.map((s) =>
   s.table === CC_ANNULLED_PURCHASES_SPEC.table ? CC_ANNULLED_PURCHASES_SPEC_333 : s
 );
 
+/**
+ * Migration 334: a prepaid plan leaves its card's installment remainders and cuota schedule (from
+ * the plan's purchase day on, every anchor that held it) and adds its payoff event on `paid_on`.
+ */
+export const CC_PLAN_PREPAYMENTS_SPEC: TriggerSpec = {
+  table: "cc_plan_prepayments",
+  targets: (r) => [
+    {
+      account: `${r}.account_id`,
+      date: `COALESCE((SELECT p.purchase_date FROM cc_installment_purchases p WHERE p.id = ${r}.purchase_id), ${r}.paid_on)`,
+    },
+  ],
+  watch: ["account_id", "purchase_id", "paid_on", "amount_clp"],
+};
+
+const SPECS_334: readonly TriggerSpec[] = [...SPECS_333, CC_PLAN_PREPAYMENTS_SPEC];
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_333;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_334;
 
 /**
  * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column
@@ -656,6 +673,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "cc_feed_billing_close_amounts",
   "cc_planted_charge_lines",
   "cc_annulled_purchases",
+  "cc_plan_prepayments",
 ];
 
 /**
@@ -749,6 +767,11 @@ export function runMarkInputChangeTriggers332(dbi: DatabaseType): void {
 /** Migration 333 hook: the same triggers over the new `bank_credit` column (watched). */
 export function runMarkInputChangeTriggers333(dbi: DatabaseType): void {
   installAnnulledPurchaseTriggers(dbi, CC_ANNULLED_PURCHASES_SPEC_333, "333");
+}
+
+/** Migration 334 hook: watch `cc_plan_prepayments` (only the new table's triggers, as in 332). */
+export function runMarkInputChangeTriggers334(dbi: DatabaseType): void {
+  installAnnulledPurchaseTriggers(dbi, CC_PLAN_PREPAYMENTS_SPEC, "334");
 }
 
 function installAnnulledPurchaseTriggers(dbi: DatabaseType, spec: TriggerSpec, migration: string): void {

@@ -20,6 +20,8 @@ import {
   listClpCcPaymentEventsForAccount,
   type CuotaRetirementMonth,
 } from "./ccCuotaRetirement.js";
+import { planPrepaymentRows } from "./ccPlanPrepaymentsRead.js";
+import { planRows } from "./cards/purchases.js";
 import { ccLedgerMonthEndIso, listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
 import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { buildCcInstallmentDebtDailySeries, type CcHistorialMonthLines } from "./creditCardChartSeries.js";
@@ -55,6 +57,14 @@ function ccInstallmentDebtEvents(
     iso: p.purchase_date,
     clp: Math.round(p.amount_clp),
   }));
+  // A prepaid plan is out of the schedule (`schedulePurchases`) but was plan debt from its purchase
+  // day until the bank paid it off at once.
+  const purchaseDayByPlan = new Map(planRows([accountId]).map((p) => [p.id, String(p.purchase_date).slice(0, 10)]));
+  for (const r of planPrepaymentRows(accountId)) {
+    const purchaseIso = purchaseDayByPlan.get(r.purchase_id);
+    if (!purchaseIso) throw new Error(`prepaid plan ${r.purchase_id} has no purchase day`);
+    pending.push({ iso: purchaseIso, clp: r.amount_clp }, { iso: r.paid_on, clp: -r.amount_clp });
+  }
   if (purchases.length === 0 && pending.length === 0) return null;
   const { detail, facturaciones } = billingDetailCacheForAccount(accountId);
   const factByMonth = new Map(facturaciones.map((f) => [f.billing_month, f] as const));

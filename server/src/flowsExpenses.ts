@@ -137,6 +137,7 @@ import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 import { withExpenseLineFlowIds } from "./flows/flowIdentity.js";
+import { dropPlanPrepaymentLines, refundPlanPrepaymentCredits } from "./ccPlanPrepaymentLines.js";
 import { annulledPurchaseLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
@@ -1159,11 +1160,14 @@ const asRows = <T,>(f: (lines: T[]) => unknown) => (lines: readonly FlowCcExpens
  * - pieces before notes (a piece carries its own note key);
  * - big groups and origin labels on the final keys;
  * - deposit links, counterparties and receipts before the names and categories they decide;
+ * - the prepayment lines out first, their refund credits netted against the plan's purchase after
+ *   the categories are final (`ccPlanPrepaymentLines.ts`);
  * - the subscription category before the specific rules (which drop the bank-name marker);
  * - the facturado-financing projection on the categorized lines, the financing-cost stamp last
  *   (it drops the internal kind marker).
  */
 export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
+  { name: "plan prepayment lines", run: dropPlanPrepaymentLines },
   { name: "nota de crédito pairing", run: asRows(enrichLinesWithNotaDeCreditoPairing) },
   { name: "card refunds", run: asRows(markCardRefunds) },
   { name: "line pieces", run: asRows(expandLineSplitsInDrafts) },
@@ -1182,6 +1186,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
     run: asRows((lines: FlowCcExpenseLineRow[]) => withExpensePaymentNames(lines, statementFacturadoClpForBillingMonth)),
   },
   { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
+  { name: "plan prepayment refunds", run: refundPlanPrepaymentCredits },
   { name: "facturado financing projection", run: (lines) => applyCcFacturadoFinancingProjection(lines) },
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
   { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },

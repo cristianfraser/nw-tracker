@@ -34,6 +34,8 @@ import {
   type CcAnnulmentSettled,
 } from "./ccAnnulmentWriters.js";
 import { findPlanForOneShotLine } from "./cards/purchases.js";
+import { carryPlanPrepaymentLines } from "./ccPlanPrepayments.js";
+import { planPrepaymentRows } from "./ccPlanPrepaymentsRead.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
 function fieldToIso(raw: string | null | undefined): string | null {
@@ -83,6 +85,11 @@ export type CcOpenWebPastePdfReconcileResult = {
   annulled_line_ids: number[];
   /** Annulled purchases the statement billed after all or refunded with a real credit. */
   annulments_settled: CcAnnulmentSettled[];
+  /**
+   * Bucket lines of a plan the bank paid off at once (the prepayment, its refund credit) that the
+   * statement does not print: kept, never deleted or annulled — they are no purchases (`ccPlanPrepayments.ts`).
+   */
+  kept_plan_prepayment_line_ids: number[];
   skipped: boolean;
   skip_reason: string | null;
 };
@@ -141,6 +148,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
       moved_line_ids: [],
       annulled_line_ids: [],
       annulments_settled: [],
+      kept_plan_prepayment_line_ids: [],
       skipped: true,
       skip_reason: "no_pdf_lines_for_billing_month",
     };
@@ -187,6 +195,12 @@ export function reconcileOpenWebPasteAfterPdfClose(
     return true;
   };
 
+  const prepaymentLineIds = new Set<number>();
+  for (const r of planPrepaymentRows(accountId)) {
+    if (r.line_id != null) prepaymentLineIds.add(r.line_id);
+    if (r.credit_line_id != null) prepaymentLineIds.add(r.credit_line_id);
+  }
+  const keptPrepaymentLines: number[] = [];
   const toDelete: number[] = [];
   const toMove: number[] = [];
   const inCycleUnmatched: { line: CcStatementLineRow; purchaseIso: string; st: CcStatementRow }[] = [];
@@ -224,6 +238,11 @@ export function reconcileOpenWebPasteAfterPdfClose(
       }
       if (closedPeriod == null || purchaseIso == null) continue;
       if (purchaseIso >= closedPeriod.from && purchaseIso < nextStart) {
+        // Not on the statement: the prepayment and its credit are no purchases the bank can void.
+        if (prepaymentLineIds.has(line.id)) {
+          keptPrepaymentLines.push(line.id);
+          continue;
+        }
         inCycleUnmatched.push({ line, purchaseIso, st });
       } else {
         toMove.push(line.id);
@@ -288,6 +307,8 @@ export function reconcileOpenWebPasteAfterPdfClose(
         }
       }
       annulmentsSettled = settleAnnulmentsAgainstStatement(accountId, matchable, new Set());
+      // The prepayment and its credit follow their line onto the statement line that bills it.
+      carryPlanPrepaymentLines(accountId, settledBy);
       applyCardLinePlan(accountId, { deleteLineIds: toDelete, carry: settledBy });
       if (toMove.length > 0) {
         const openBm = billingMonthForManualLedgerPurchase(accountId);
@@ -308,6 +329,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
     moved_line_ids: toMove,
     annulled_line_ids: toAnnul.map((a) => a.id),
     annulments_settled: annulmentsSettled,
+    kept_plan_prepayment_line_ids: keptPrepaymentLines,
     skipped: false,
     skip_reason: null,
   };

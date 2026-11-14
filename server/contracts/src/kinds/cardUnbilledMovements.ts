@@ -49,6 +49,13 @@ export const cardListingLineSchema = z
      * additional cardholder's. Absent when the listing does not state it (a pending authorization).
      */
     holder: z.enum(["titular", "additional"]).optional(),
+    /**
+     * The bank paid a plan's whole outstanding principal off at once (the feed's «PREPAGO EN
+     * CUOTAS»): a peso debit, no purchase and no new debt. The server pairs it with one plan.
+     */
+    plan_prepayment: z.literal(true).optional(),
+    /** The issuer types this credit a nota de crédito: a refund of a purchase (a credit, never a payment). */
+    credit_note: z.literal(true).optional(),
   })
   .strict()
   .superRefine((line, ctx) => {
@@ -58,6 +65,12 @@ export const cardListingLineSchema = z
         path: ["amount"],
         message: `amount ${line.amount} is not a non-zero ${line.currency} amount`,
       });
+    }
+    if (line.plan_prepayment && (line.currency !== "clp" || line.amount <= 0)) { // convention-ok: Chilean cuota products bill in pesos only
+      ctx.addIssue({ code: "custom", path: ["plan_prepayment"], message: "a plan prepayment is a peso debit" });
+    }
+    if (line.credit_note && line.amount >= 0) {
+      ctx.addIssue({ code: "custom", path: ["credit_note"], message: "a credit note is a credit" });
     }
     if (line.cuota_purchase && line.currency !== "clp") { // convention-ok: Chilean cuota products bill in pesos only
       ctx.addIssue({ code: "custom", path: ["cuota_purchase"], message: "cuota purchases are in pesos" });

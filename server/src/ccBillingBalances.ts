@@ -22,6 +22,7 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { normalizeTransactionDateIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
+import { planPrepaymentPayoffEvents } from "./ccPlanPrepaymentsRead.js";
 import { ccTraspasoLinkedClpByForeignLineId } from "./ccTraspasoDeudaLinks.js";
 import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { db } from "./db.js";
@@ -514,6 +515,9 @@ export function normalizedInstallmentPurchaseEvents(
         if (!Number.isFinite(amt) || amt === 0) continue;
         events.push({ iso, key: `inst-purchase|${pu.id}`, clp: amt, currency: "clp", amount: amt, statement_date: null });
       }
+      // A plan the bank paid off at once leaves the plan frame on that day; its prepayment line is
+      // billed (`ccPlanPrepaymentsRead.ts`).
+      events.push(...planPrepaymentPayoffEvents(accountId));
       return events;
     }
   );

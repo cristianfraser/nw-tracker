@@ -44,6 +44,13 @@ export type CcListingLine = {
    * import like the statement's line will be. Absent on pasted lines and pending authorizations.
    */
   holder?: "titular" | "additional";
+  /**
+   * Card feed only: the bank paid a plan's whole outstanding principal off at once (the feed's
+   * «PREPAGO EN CUOTAS»), a debit. Paired with its plan by `ccPlanPrepayments.ts`.
+   */
+  plan_prepayment?: true;
+  /** Card feed only: this credit is a nota de crédito (the feed types it), a refund of a purchase. */
+  credit_note?: true;
 };
 
 export type CcFeedCuotaPurchase = {

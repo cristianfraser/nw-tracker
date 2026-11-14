@@ -160,6 +160,36 @@ describe("cuota purchases", () => {
   });
 });
 
+describe("plan prepayments and credit notes", () => {
+  it("decodes «PREPAGO EN CUOTAS» as a flagged peso debit with no cuota purchase, and the nota de crédito as a flagged credit", () => {
+    const prepago = santanderMovementRowToLine(
+      row({ Fecha: "13/11/2026", Descripcion: "PREPAGO EN CUOTAS", Comercio: "VITEST SHOP NT", Importe: "71.300" }),
+      "clp"
+    );
+    expect(prepago.plan_prepayment).toBe(true);
+    expect(prepago.cuota_purchase).toBeUndefined();
+    expect(prepago.amount).toBe(71300);
+    const nota = santanderMovementRowToLine(
+      row({ Fecha: "05/11/2026", Descripcion: "NOTA DE CREDITO", Comercio: "VITEST SHOP NT", Importe: "71.300", IndicadorDebeHaber: "H" }),
+      "clp"
+    );
+    expect(nota.credit_note).toBe(true);
+    expect(nota.amount).toBe(-71300);
+    expect(nota.plan_prepayment).toBeUndefined();
+    const payload = santanderCardFeedPayload(file([{ account: "800099990022", currency: "CLP", rows: [row(), row({ Fecha: "13/11/2026", Descripcion: "PREPAGO EN CUOTAS", Comercio: "VITEST SHOP NT", Importe: "71.300" })] }]));
+    expect(cardUnbilledMovementsKind.payload.safeParse(payload).success).toBe(true);
+  });
+
+  it("refuses a prepayment that is a credit or a dollar row, and still refuses an unknown cuota-ish type", () => {
+    expect(() =>
+      santanderMovementRowToLine(row({ Descripcion: "PREPAGO EN CUOTAS", IndicadorDebeHaber: "H" }), "clp")
+    ).toThrow(/must be a peso debit/);
+    expect(() => santanderMovementRowToLine(row({ Descripcion: "PREPAGO EN CUOTAS", Importe: "10,00" }), "usd")).toThrow(/must be a peso debit/);
+    expect(() => santanderMovementRowToLine(row({ Descripcion: "PREPAGO PARCIAL EN CUOTAS" }), "clp")).toThrow(/Unknown Santander cuota-purchase type/);
+    expect(cuotaPurchaseTypeFromFeedDescription("PREPAGO EN CUOTAS")).toBeNull();
+  });
+});
+
 describe("santanderCardFeedPayload", () => {
   it("merges a card's CLP and USD slides into one card, in slide order", () => {
     const payload = santanderCardFeedPayload(

@@ -24,6 +24,8 @@ export function listingLineFromCardListingLine(line: CardListingLine): CcListing
     amount: line.amount,
     raw_line: line.raw_text,
     ...(line.holder ? { holder: line.holder } : {}),
+    ...(line.plan_prepayment ? { plan_prepayment: true as const } : {}),
+    ...(line.credit_note ? { credit_note: true as const } : {}),
     ...(cp
       ? {
           cuota_purchase: {

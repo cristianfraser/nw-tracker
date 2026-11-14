@@ -17,8 +17,11 @@ Modes:
 Safety, since the bank blocks the clave after 3 failed logins:
   * the form is sent once, and only when the Turnstile token is issued, both fields hold exactly
     what was typed and the button is enabled;
-  * a login that stays on /login writes cfraser/.lider-login-rejected.json, and later runs refuse
-    to log in until the Keychain item is newer than the rejection (or --force);
+  * a login that stays on /login writes cfraser/.lider-login-rejected.json ONLY when the page
+    states a wrong credential (`lider_login_failure.classify_login_failure`, unverified wording);
+    later runs then refuse to log in until the Keychain item is newer than the rejection (or
+    --force). Any other failure (generic site error, unknown text) is transient: diagnostics
+    saved, no latch, non-zero exit, the page text logged so a human can add real wording;
   * a Turnstile box that never issues a token writes cfraser/.lider-turnstile-failed.json and
     exits 3; later runs refuse for 20 hours, unless --retry-turnstile (the nightly run: one retry a
     day) or --force. --retry-turnstile never overrides the rejected-login latch.
@@ -40,6 +43,8 @@ from pathlib import Path
 from typing import Any
 
 from scrapling.fetchers import StealthySession
+
+from lider_login_failure import classify_login_failure
 
 REPO = Path(__file__).resolve().parents[2]
 CFRASER = REPO / "cfraser"
@@ -270,11 +275,18 @@ def main() -> None:
                 out_dir.mkdir(parents=True, exist_ok=True)
                 (out_dir / "login-rejected.txt").write_text(text)
                 shot(page, "login-rejected", always=True)
-                LATCH_PATH.write_text(json.dumps({
-                    "rejected_at": datetime.now(timezone.utc).isoformat(),
-                    "message": " ".join(text.split())[:300],
-                }, ensure_ascii=False, indent=2))
-                raise RuntimeError("still on /login after submitting; latched further logins")
+                message = " ".join(text.split())[:300]
+                if classify_login_failure(text) == "wrong_clave":
+                    LATCH_PATH.write_text(json.dumps({
+                        "rejected_at": datetime.now(timezone.utc).isoformat(),
+                        "message": message,
+                    }, ensure_ascii=False, indent=2))
+                    raise RuntimeError("the bank rejected the clave; latched further logins")
+                log(f"login failure not recognised as a wrong clave (no latch); page text: {message!r}")
+                raise RuntimeError(
+                    "still on /login after submitting, page does not state a wrong clave "
+                    "(transient site error?); NOT latched, see login-rejected.txt and the screenshot"
+                )
             result["logged_in"] = True
             log(f"logged in: {page.url}")
             page.wait_for_timeout(4000)

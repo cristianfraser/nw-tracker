@@ -1,3 +1,4 @@
+import { prepaidPlanIds } from "./ccPlanPrepaymentsRead.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import {
   installmentPurchaseLedgerDedupeKey,
@@ -624,7 +625,9 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   purchasesRaw: PurchaseRow[];
   paymentsByPurchase: Map<number, PaymentRow[]>;
   cancelledPurchaseIds: Set<number>;
-  /** `purchasesRaw` minus nota-cancelled plans — the only set schedule math may see. */
+  /** Plans the bank paid off at once (`cc_plan_prepayments`): no cuota left to bill, still bought. */
+  prepaidPurchaseIds: Set<number>;
+  /** `purchasesRaw` minus nota-cancelled and prepaid plans — the only set schedule math may see. */
   schedulePurchases: PurchaseRow[];
 } {
   const purchasesDb = ledgerPlans(accountId);
@@ -656,11 +659,14 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
     purchasesRaw,
     paymentsByPurchase
   );
+  // A prepaid plan has no cuota left either (`ccPlanPrepaymentsRead.ts`); unlike a cancelled one its
+  // purchase stays a purchase, so it is not in `cancelledPurchaseIds` (the gastos readers).
+  const prepaidPurchaseIds = prepaidPlanIds(accountId);
   const schedulePurchases =
-    cancelledPurchaseIds.size === 0
+    cancelledPurchaseIds.size === 0 && prepaidPurchaseIds.size === 0
       ? purchasesRaw
-      : purchasesRaw.filter((p) => !cancelledPurchaseIds.has(p.id));
-  return { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, schedulePurchases };
+      : purchasesRaw.filter((p) => !cancelledPurchaseIds.has(p.id) && !prepaidPurchaseIds.has(p.id));
+  return { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, prepaidPurchaseIds, schedulePurchases };
 }
 
 /**
@@ -996,8 +1002,10 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     next_calendar_month: string | null;
   };
 } {
-  const { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, schedulePurchases } =
+  const { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds: nota_cancelled_ids, prepaidPurchaseIds, schedulePurchases } =
     loadLedgerPurchasesAndPayments(accountId);
+  // Neither has a cuota left to show: «Compras activas» lists neither.
+  const cancelledPurchaseIds = new Set([...nota_cancelled_ids, ...prepaidPurchaseIds]);
   let db_payment_count = 0;
   for (const pays of paymentsByPurchase.values()) db_payment_count += pays.length;
   const nowYm = currentCalendarYm();

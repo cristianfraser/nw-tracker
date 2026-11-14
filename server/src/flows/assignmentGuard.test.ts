@@ -16,6 +16,7 @@ const ROW_ID_REFERENCES: Record<string, string> = {
   cc_manual_payments: "the transfer and planted line a hand-recorded card payment wrote",
   cc_planted_payment_lines: "a planted payment line's registry, until the bank's line replaces it",
   cc_planted_charge_lines: "a planted charge line's registry (a receipt's line), so the bank's later-day listing of it is skipped",
+  cc_plan_prepayments: "the bucket lines of a plan the bank paid off at once: the prepayment and its refund credit (a document's record, follows the line through a statement)",
   cc_traspaso_deuda_links: "the two legs of one debt reclassification (derived per import)",
   crypto_movement_kinds: "a coin row's kind (structured state of that row)",
   crypto_trade_details: "the exchange's record of that trade",

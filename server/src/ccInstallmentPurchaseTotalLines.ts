@@ -8,7 +8,9 @@ import {
   registerGenericUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
   resolveCcExpensePurchaseKey,
+  stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
+import { prepaidPlanIds } from "./ccPlanPrepaymentsRead.js";
 import {
   isInstallmentContractSummaryMerchant,
   isUnindexedInstallmentResumenLine,
@@ -441,6 +443,9 @@ export function buildInstallmentPurchaseTotalLines(
   const purchases = loadInstallmentPurchases(accountIds);
   const { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys } = maps;
   const synthetics: FlowCcExpenseLineBeforeNotes[] = [];
+  // A plan the bank paid off has no cuota line to carry its key: its category was assigned under
+  // the with-total key (`ccPlanCategoryTarget`), which the synthetic key never reaches.
+  const prepaid = new Set(accountIds.flatMap((a) => [...prepaidPlanIds(a)]));
 
   for (const pr of purchases) {
     const purchaseOn = purchaseOnIso(pr.purchase_date);
@@ -450,7 +455,15 @@ export function buildInstallmentPurchaseTotalLines(
     const merchant = pr.merchant ?? matchCuota?.merchant ?? null;
     const purchaseKey = matchCuota
       ? resolveCcExpensePurchaseKey(matchCuota.statement_line_id)
-      : syntheticPurchaseKey(pr.account_id, purchaseOn, pr.cuotas_totales, merchantKey);
+      : (prepaid.has(pr.id)
+          ? stableInstallmentHPurchaseKeyFromLedgerArgs({
+              accountId: pr.account_id,
+              purchaseDateIso: purchaseOn,
+              cuotasTotales: pr.cuotas_totales,
+              totalAmountClp: pr.total_amount_clp,
+              merchant: pr.merchant,
+            })
+          : null) ?? syntheticPurchaseKey(pr.account_id, purchaseOn, pr.cuotas_totales, merchantKey);
 
     if (!matchCuota) {
       registerGenericUniquePurchaseMode(
