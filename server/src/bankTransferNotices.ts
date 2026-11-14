@@ -501,6 +501,25 @@ function redatePairedRowsToMailDay(
     const replacesFetchDay =
       day < mv.occurred_on && accounts.every((a) => !postings.has(a) || basisOf.get(a) === "fetch");
     if (accounts.some((a) => postings.has(a)) && !replacesFetchDay) {
+      // A transfer's `occurred_on` may rest on its OTHER side's document (a broker's credit day, a
+      // receipt): the paired side's bank day is already its posting, and the date is not the bank
+      // row's to give up for the mail, so it stays and nothing is in conflict.
+      const otherSide = [mv.from_account_id, mv.to_account_id].filter((a): a is number => a != null && !accounts.includes(a));
+      const datedByOtherSide =
+        mv.from_account_id != null &&
+        mv.to_account_id != null &&
+        otherSide.length > 0 &&
+        accounts.every((a) => !postings.has(a) || postings.get(a) !== mv.occurred_on);
+      if (datedByOtherSide) {
+        out.skipped.push({
+          message_id,
+          movement_id,
+          occurred_on: mv.occurred_on,
+          mail_day: day,
+          reason: `the transfer's date rests on its other side, account ${otherSide[0]}; the paired side keeps its own bank day as posting`,
+        });
+        continue;
+      }
       out.conflicts.push({ message_id, movement_id, occurred_on: mv.occurred_on, mail_day: day });
       continue;
     }

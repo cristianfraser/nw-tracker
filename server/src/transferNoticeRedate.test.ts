@@ -199,4 +199,28 @@ describe("transfer notices re-date bank rows the bank listed after the mail", ()
     expect(res.redate_skipped).toMatchObject([{ movement_id: toCard, occurred_on: "2026-10-09", mail_day: "2026-10-08" }]);
     expect(occurredOn(toCard)).toBe("2026-10-09");
   });
+
+  it("leaves a transfer dated by its broker side alone: skipped, not a conflict", () => {
+    const fund = db
+      .prepare(
+        `SELECT id FROM accounts WHERE id <> ? AND id NOT IN (SELECT account_id FROM credit_card_account_config)
+           AND id NOT IN (SELECT account_id FROM bank_account_numbers) ORDER BY id LIMIT 1`
+      )
+      .get(account) as { id: number };
+    // Mail: left Tuesday after the cutoff; bank posted Wednesday; the broker credited Thursday.
+    const id = Number(
+      db
+        .prepare(`INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, 41253, 'clp', '2026-10-08', ?)`)
+        .run(account, fund.id, `${NOTE_TAG} broker credit`).lastInsertRowid
+    );
+    written.push(id);
+    db.prepare(`INSERT INTO movement_bank_postings (movement_id, account_id, posted_on, occurred_on_basis) VALUES (?, ?, '2026-10-07', 'evidence')`).run(id, account);
+    const notice = outgoing("2026-10-06 15:10", 41_253);
+    const res = applyBankTransferNotices({ issuer: "santander", notices: [notice] });
+    expect(res.redate_conflicts).toEqual([]);
+    expect(res.redated).toEqual([]);
+    expect(res.redate_skipped).toMatchObject([{ movement_id: id, occurred_on: "2026-10-08", mail_day: "2026-10-06" }]);
+    expect(occurredOn(id)).toBe("2026-10-08");
+    expect(bankPostedOn(id, account)).toBe("2026-10-07");
+  });
 });
