@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 /** What the funnel's frame called, in order. */
 const calls: string[] = [];
 
-vi.mock("../ccBillingBalances.js", async (orig) => ({
-  ...(await orig<typeof import("../ccBillingBalances.js")>()),
+vi.mock("../ccBillingMonthBalancesRecompute.js", async (orig) => ({
+  ...(await orig<typeof import("../ccBillingMonthBalancesRecompute.js")>()),
   recomputeCcBillingMonthBalances: (accountId: number) => {
     calls.push(`recompute ${accountId}`);
     return 0;

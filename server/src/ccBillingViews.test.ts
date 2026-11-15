@@ -24,7 +24,7 @@ import {
   wipeVitestCcFixtureData,
 } from "./test/vitestDbSeed.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "./ccBillingMonthBalancesRecompute.js";
 import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
 import { ymCompare } from "./calendarMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";

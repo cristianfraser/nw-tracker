@@ -12,7 +12,7 @@ import {
   markAnnulledPurchaseManually,
   undoManualAnnulledPurchase,
 } from "../ccAnnulledPurchaseManual.js";
-import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../ccBillingMonthBalancesRecompute.js";
 import {
   applyCreditCardConfigPatch,
   getCreditCardAccountConfig,

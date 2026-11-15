@@ -5,7 +5,7 @@
  *   npx tsx server/scripts/list-missing-cc-statement-pdfs.ts --prune
  *   npx tsx server/scripts/list-missing-cc-statement-pdfs.ts --prune --dry-run
  */
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../src/ccBillingMonthBalancesRecompute.js";
 import { db } from "../src/db.js";
 import { requireCcStatementPdfPath } from "../src/importSyncDocumentFilePath.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";

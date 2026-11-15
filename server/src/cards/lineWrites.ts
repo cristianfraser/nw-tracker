@@ -17,7 +17,7 @@
  * Planners (dedupe, mirror, planted, recurring, reconcile) only plan; the funnel applies their plans.
  */
 import { db } from "../db.js";
-import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../ccBillingMonthBalancesRecompute.js";
 import { upsertCreditCardValuationsFromLedger } from "../ccCreditCardValuations.js";
 import { keepingCcPaymentEvidence } from "../ccPaymentMirrorEvidence.js";
 import { applyCardLinePlan } from "../ccCrossImportDedupe.js";
