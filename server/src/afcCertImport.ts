@@ -329,16 +329,13 @@ export type AfcCartola = {
  * One true-up per printed saldo DAY: a period's saldo final is the next period's saldo inicial,
  * the same figure, so both cartolas describe one row (2026-10-17 — the mailed cartolas arriving
  * three a year had been giving a boundary two rows, «inicial» from one and «final» from the
- * other). Rows written before carry the legacy `saldo inicial|final <day>` key and are matched
- * and rekeyed on their next update.
+ * other).
  */
 export function afcCartolaTrueUpNoteKey(dayYmd: string): string {
   return `AFC ajuste cartola — saldo ${dayYmd}`;
 }
 
-function legacyTrueUpNoteKeys(dayYmd: string): string[] {
-  return [`AFC ajuste cartola — saldo inicial ${dayYmd}`, `AFC ajuste cartola — saldo final ${dayYmd}`];
-}
+
 
 export type AfcCartolaTrueUp = {
   which: "inicial" | "final";
@@ -365,11 +362,10 @@ export type AfcCartolaPlan = {
 };
 
 function trueUpRowFor(accountId: number, dayYmd: string): AfcMovementRow | null {
-  const keys = [afcCartolaTrueUpNoteKey(dayYmd), ...legacyTrueUpNoteKeys(dayYmd)];
   const rows = db
     .prepare(`SELECT id, occurred_on, amount, currency, units_delta, flow_kind, note, account_id, from_account_id, to_account_id
-              FROM movements WHERE account_id = ? AND (note LIKE ? OR note LIKE ? OR note LIKE ?) ORDER BY id`)
-    .all(accountId, ...keys.map((k) => `${k} %`)) as AfcMovementRow[];
+              FROM movements WHERE account_id = ? AND note LIKE ? ORDER BY id`)
+    .all(accountId, `${afcCartolaTrueUpNoteKey(dayYmd)} %`) as AfcMovementRow[];
   if (rows.length > 1) throw new Error(`afc: ${rows.length} true-up rows carry the saldo of ${dayYmd}`);
   return rows[0] ?? null;
 }
@@ -414,9 +410,8 @@ export function planAfcCartolaTrueUps(accountId: number, cartola: AfcCartola): A
     if (Math.abs(amount) < 1) status = existing ? "delete" : "none";
     else if (!existing) status = "insert";
     else if (Math.abs((existing.units_delta ?? 0) - units) > 0.00005 || Math.round(existing.amount) !== amount) status = "update";
-    // A legacy-keyed row with the right figures is rekeyed in place.
-    else if (!(existing.note ?? "").startsWith(`${afcCartolaTrueUpNoteKey(day)} `)) status = "update";
     else status = "unchanged";
+
     if (which === "inicial") {
       // What the final boundary will see: the planned inicial units replace the stored ones.
       carriedInicialUnits = round4(units - existingUnits);
