@@ -23,6 +23,7 @@ import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
 
 import { db } from "./db.js";
+import { deleteMovements, insertMovement } from "./movementWrites.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairRef } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { type MovementAmountFields } from "./movementAmounts.js";
@@ -89,11 +90,6 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
     `SELECT id, account_id, occurred_on, amount, currency, counter_amount, counter_currency, units_delta, note, flow_kind
      FROM movements WHERE id = ? AND account_id IS NOT NULL`
   );
-  const insTransfer = db.prepare(
-    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
-     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
   const insMirrorMerge = db.prepare(
     `INSERT INTO movement_mirror_merges (
        transfer_movement_id,
@@ -135,17 +131,17 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const inMonthPrecision = mirrorLegIsMonthPrecision(accountKindSlugForAccountId(inn.account_id));
       const transferDate =
         outMonthPrecision && !inMonthPrecision ? inn.occurred_on : out.occurred_on;
-      const r = insTransfer.run(
-        out.account_id,
-        inn.account_id,
-        roundToCurrency(Math.abs(outAmount), currency),
+      const transferId = insertMovement({
+        fromAccountId: out.account_id,
+        toAccountId: inn.account_id,
+        amount: roundToCurrency(Math.abs(outAmount), currency),
         currency,
-        transferDate,
+        occurredOn: transferDate,
         note,
-        transferUnits
-      );
+        unitsDelta: transferUnits,
+      });
       insMirrorMerge.run(
-        Number(r.lastInsertRowid),
+        transferId,
         out.id,
         out.occurred_on,
         outAmount,
@@ -160,14 +156,13 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       // Each deleted leg was its account's own listing of the money: its bank day (its own
       // posting row, else its date — a post-cutoff daily row is stored on an earlier day) stays
       // as the transfer's posting day there (a bank cartola files it under that day).
-      recordBankPosting(Number(r.lastInsertRowid), out.account_id, bankPostedOn(out.id, out.account_id));
-      recordBankPosting(Number(r.lastInsertRowid), inn.account_id, bankPostedOn(inn.id, inn.account_id));
+      recordBankPosting(transferId, out.account_id, bankPostedOn(out.id, out.account_id));
+      recordBankPosting(transferId, inn.account_id, bankPostedOn(inn.id, inn.account_id));
       delIncomeOverride.run(out.id);
       delIncomeOverride.run(inn.id);
-      delLeg.run(out.id);
-      delLeg.run(inn.id);
+      deleteMovements([out.id, inn.id]);
       converted.push({
-        transfer_movement_id: Number(r.lastInsertRowid),
+        transfer_movement_id: transferId,
         out_movement_id: out.id,
         in_movement_id: inn.id,
         from_account_id: out.account_id,
@@ -239,22 +234,18 @@ export function undoMirrorConversion(transferMovementId: number): {
   // CC-payment mirrors (ccPaymentMirrors.ts): the "in" side is statement evidence that was
   // never deleted — undo restores only the checking leg.
   if (merge.in_movement_id == null) {
-    const insOut = db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`
-    );
     const restored = db.transaction(() => {
-      const outId = Number(
-        insOut.run(
-          row.from_account_id,
-          merge.out_amount_clp,
-          merge.out_occurred_on,
-          merge.out_units_delta,
-          merge.out_note
-        ).lastInsertRowid
-      );
+      const outId = insertMovement({
+        accountId: row.from_account_id!,
+        amount: merge.out_amount_clp,
+        currency: HOME_CURRENCY,
+        occurredOn: merge.out_occurred_on,
+        unitsDelta: merge.out_units_delta,
+        note: merge.out_note,
+      });
       // The restored leg takes back its bank day (the transfer's posting on that account).
       carryStoredBankPosting(transferMovementId, outId, row.from_account_id!);
-      db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
+      deleteMovements([transferMovementId]);
       return { restored_out_id: outId, restored_in_id: outId };
     })();
     return restored;
@@ -281,37 +272,30 @@ export function undoMirrorConversion(transferMovementId: number): {
   // A peso leg is signed; a foreign one is written back as the withdrawal / deposit it was.
   const currency = row.currency;
   const foreign = currency !== HOME_CURRENCY;
-  const insLeg = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note, flow_kind) VALUES (?,?,?,?,?,?,?)`
-  );
   const run = db.transaction(() => {
-    const outId = Number(
-      insLeg.run(
-        fromId,
-        foreign ? Math.abs(data.out.amount_clp) : data.out.amount_clp,
-        currency,
-        data.out.occurred_on,
-        data.out.units_delta,
-        data.out.note,
-        foreign ? "withdrawal" : null
-      ).lastInsertRowid
-    );
-    const inId = Number(
-      insLeg.run(
-        toId,
-        foreign ? Math.abs(data.in.amount_clp) : data.in.amount_clp,
-        currency,
-        data.in.occurred_on,
-        data.in.units_delta,
-        data.in.note,
-        foreign ? "deposit" : null
-      ).lastInsertRowid
-    );
+    const outId = insertMovement({
+      accountId: fromId,
+      amount: foreign ? Math.abs(data.out.amount_clp) : data.out.amount_clp,
+      currency,
+      occurredOn: data.out.occurred_on,
+      unitsDelta: data.out.units_delta,
+      note: data.out.note,
+      flowKind: foreign ? "withdrawal" : null,
+    });
+    const inId = insertMovement({
+      accountId: toId,
+      amount: foreign ? Math.abs(data.in.amount_clp) : data.in.amount_clp,
+      currency,
+      occurredOn: data.in.occurred_on,
+      unitsDelta: data.in.units_delta,
+      note: data.in.note,
+      flowKind: foreign ? "deposit" : null,
+    });
     // Each restored leg takes back its bank day (the transfer's posting on its account; a
     // post-cutoff daily row is stored before the day the bank filed it).
     carryStoredBankPosting(transferMovementId, outId, fromId);
     carryStoredBankPosting(transferMovementId, inId, toId);
-    db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
+    deleteMovements([transferMovementId]);
     return { restored_out_id: outId, restored_in_id: inId };
   });
   return run();

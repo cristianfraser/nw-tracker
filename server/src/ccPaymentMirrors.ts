@@ -26,7 +26,7 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
-import { isHomeCurrency } from "./displayUnits.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
@@ -40,6 +40,7 @@ import {
   listCcPaymentPairings,
 } from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
+import { deleteMovements, insertMovement } from "./movementWrites.js";
 import { MOVEMENT_CLP_LEG_SQL, movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -352,10 +353,6 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
   converted: ConvertedCcPaymentMirror[];
 } {
   if (refs.length === 0) return { converted: [] };
-  const insTransfer = db.prepare(
-    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
-     VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?, ?, ?)`
-  );
   const insMerge = db.prepare(
     `INSERT INTO movement_mirror_merges (
        transfer_movement_id,
@@ -366,7 +363,6 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
   const delIncomeOverride = db.prepare(
     `DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
   );
-  const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
 
   const run = db.transaction((requested: CcPaymentMirrorRef[]): ConvertedCcPaymentMirror[] => {
     const candidates = new Map(
@@ -390,18 +386,19 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
       const note = isForeign
         ? `Pago tarjeta espejo (divisas: cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${foreignPaymentAmountLabel(cand.evidence.amount_foreign!, cand.evidence.currency)} ${cand.evidence.pago_iso})`
         : `Pago tarjeta espejo (cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${cand.evidence.pago_iso})`;
-      const r = insTransfer.run(
-        cand.out.account_id,
-        cand.evidence.cc_account_id,
-        transferClp,
-        isForeign ? cand.evidence.amount_foreign : null,
-        isForeign ? cand.evidence.currency : null,
-        cand.evidence.pago_iso,
+      const transferId = insertMovement({
+        fromAccountId: cand.out.account_id,
+        toAccountId: cand.evidence.cc_account_id,
+        amount: transferClp,
+        currency: HOME_CURRENCY,
+        counterAmount: isForeign ? cand.evidence.amount_foreign : null,
+        counterCurrency: isForeign ? cand.evidence.currency : null,
+        occurredOn: cand.evidence.pago_iso,
         note,
-        FLOW_KIND_PAGO_TARJETA
-      );
+        flowKind: FLOW_KIND_PAGO_TARJETA,
+      });
       insMerge.run(
-        Number(r.lastInsertRowid),
+        transferId,
         cand.out.movement_id,
         cand.out.occurred_on,
         cand.out.amount_clp,
@@ -415,11 +412,11 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
       );
       // The deleted checking row was the bank's listing: its date is the transfer's posting
       // day on checking, while the transfer itself takes the card's credit date.
-      recordBankPosting(Number(r.lastInsertRowid), cand.out.account_id, bankPostedOn(cand.out.movement_id, cand.out.account_id));
+      recordBankPosting(transferId, cand.out.account_id, bankPostedOn(cand.out.movement_id, cand.out.account_id));
       delIncomeOverride.run(cand.out.movement_id);
-      delLeg.run(cand.out.movement_id);
+      deleteMovements([cand.out.movement_id]);
       converted.push({
-        transfer_movement_id: Number(r.lastInsertRowid),
+        transfer_movement_id: transferId,
         out_movement_id: cand.out.movement_id,
         from_account_id: cand.out.account_id,
         to_account_id: cand.evidence.cc_account_id,
