@@ -4,7 +4,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { bucketValueInUnitAt } from "./periodReturnsShortHorizon.js";
-import type { TsUnit } from "./valuationTimeseries.js";
+import type { TsUnit } from "./rates.js";
 
 /**
  * The one valuation the dashboard charts (overview, patrimonio-vs-invested, cuentas

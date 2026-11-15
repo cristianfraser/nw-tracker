@@ -25,7 +25,7 @@ import type { NavTreeNodeDto } from "./navTree.js";
 import { isNwBucketSlug, nwBucketSlugs } from "./navTreeModel.js";
 import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
-import type { TsUnit } from "./valuationTimeseries.js";
+import type { TsUnit } from "./rates.js";
 
 export type CardMetricsPeriod = "day" | "month" | "year";
 

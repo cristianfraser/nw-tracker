@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 import { liabilityGroups } from "./navTreeModel.js";
-import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
+import type { GroupTabAccountRow } from "./groupPerfTypes.js";
 
 /**
  * Pasivos tab rows: the accounts of the Pasivos groups (`liability_group_items`, attached to the nav

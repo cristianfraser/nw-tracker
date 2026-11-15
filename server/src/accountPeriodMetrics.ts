@@ -1,7 +1,7 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
-import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
+import type { AccountMonthlyPerformanceRow } from "./accountPerformanceTypes.js";
 
 /**
  * One row per calendar month out of an account's monthly performance rows: the representative

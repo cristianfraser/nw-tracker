@@ -1,6 +1,7 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import type { NavTreeNodeDto } from "./navTree.js";
+export type { ChartBucketLineMetaDto, NavNodeChartBucketsDto } from "./navTreeTypes.js";
+import type { ChartBucketLineMetaDto, NavNodeChartBucketsDto, NavTreeNodeDto } from "./navTreeTypes.js";
 import { isNwBucketSlug } from "./navTreeModel.js";
 
 /**
@@ -285,25 +286,6 @@ export function pageChartPlan(navNode: NavTreeNodeDto): PageChartPlan | null {
   const ungrouped = shouldAggregateNavCharts(navNode, false) ? buildNavChartBucketPlan(navNode, false) : null;
   return grouped || ungrouped ? { kind: "nav", grouped, ungrouped } : null;
 }
-
-/** Client projection of {@link ChartBucketMeta} — one grouped chart line, emitted on the nav tree. */
-export type ChartBucketLineMetaDto = {
-  data_key: string;
-  /** Synthetic negative account id — same id the real grouped block's line carries. */
-  account_id: number;
-  dep_key: string;
-  bar_data_key: string;
-  name: string;
-  name_i18n_key: string | null;
-  color_rgb: string | null;
-};
-
-export type NavNodeChartBucketsDto = {
-  grouped?: ChartBucketLineMetaDto[];
-  ungrouped?: ChartBucketLineMetaDto[];
-  /** Pasivos pages: single grouped mode, no Agrupado toggle. */
-  liab?: ChartBucketLineMetaDto[];
-};
 
 function planLineMetaDtos(plan: ChartBucketPlan): ChartBucketLineMetaDto[] {
   return plan.orderedKeys.map((key) => {

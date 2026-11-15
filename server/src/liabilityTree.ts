@@ -4,7 +4,7 @@ import { colorRgbOfLargestBalanceAccount, getAccountColorRgb, rgbTripletToCss } 
 import { cardNavRetired } from "./cards/lifecycle.js";
 import { db } from "./db.js";
 import { groupAccountIds, nettedGroup } from "./navTreeModel.js";
-import type { NavTreeNodeDto } from "./navTree.js";
+import type { NavTreeNodeDto } from "./navTreeTypes.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
