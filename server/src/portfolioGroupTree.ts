@@ -104,53 +104,6 @@ export function dashboardBucketSlugForAccountId(accountId: number): string | nul
   return bucketOfAccount(accountId);
 }
 
-const LEGACY_SUBGROUP_ALIASES: Record<string, string> = {
-  fondos_mutuos: "mutual_funds",
-};
-
-/** Legacy `?subgroup=` query value (empty → undefined, invalid type → null). */
-export function normalizeLegacyTabSubgroup(raw: unknown): string | undefined | null {
-  if (raw == null || raw === "") return undefined;
-  if (typeof raw !== "string") return null;
-  const t = raw.trim();
-  if (t === "") return undefined;
-  return LEGACY_SUBGROUP_ALIASES[t] ?? t;
-}
-
-/**
- * Map deprecated `group` + `subgroup` tab params to a `portfolio_groups.slug`.
- * Returns null when the combination is unknown.
- */
-export function resolvePortfolioGroupSlugForLegacyTab(
-  groupSlug: string,
-  tabSubgroup?: string
-): string | null {
-  if (groupSlug === "liabilities") {
-    if (!tabSubgroup) return portfolioGroupBySlug("liabilities") ? "liabilities" : null;
-    if (tabSubgroup === "credit_card" && portfolioGroupBySlug("liabilities_credit_card")) {
-      return "liabilities_credit_card";
-    }
-    if (tabSubgroup === "mortgage" && portfolioGroupBySlug("liabilities_mortgage")) {
-      return "liabilities_mortgage";
-    }
-    return null;
-  }
-  if (!tabSubgroup) {
-    return portfolioGroupBySlug(groupSlug) ? groupSlug : null;
-  }
-  const row = db
-    .prepare(
-      `SELECT slug FROM portfolio_groups
-       WHERE api_group = ? AND (api_subgroup = ? OR kind_slug = ?)
-       ORDER BY LENGTH(slug) DESC
-       LIMIT 1`
-    )
-    .get(groupSlug, tabSubgroup, tabSubgroup) as { slug: string } | undefined;
-  if (row) return row.slug;
-  const composed = `${groupSlug}_${tabSubgroup}`;
-  return portfolioGroupBySlug(composed) ? composed : null;
-}
-
 export function portfolioGroupIdForAccount(accountId: number): number | null {
   return leafGroupOfAccount(accountId)?.id ?? null;
 }

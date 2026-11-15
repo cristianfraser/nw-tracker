@@ -1,11 +1,6 @@
 /** Account CRUD, colors, portfolio groups, detail bundle, monthly performance. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
-import {
-  isResolvablePortfolioGroupSlug,
-  normalizeLegacyTabSubgroup,
-  portfolioGroupBySlug,
-  resolvePortfolioGroupSlugForLegacyTab,
-} from "../portfolioGroupTree.js";
+import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
 import { syncEquityEodFromYahoo } from "../equityEodSync.js";
 import {
   createPanelAccount,
@@ -19,7 +14,6 @@ import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
 import { db } from "../db.js";
-import { listAccountsForGroupTab } from "../valuationTimeseries.js";
 import { monthlyPerfForAccountDisplay } from "../detalleDailyChainedPct.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
 import { cachedAccountDetailBundle } from "../accountDetailBundle.js";
@@ -48,57 +42,17 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
     return;
   }
 
-  const groupSlug = req.query.group as string | undefined;
-  if (!groupSlug) {
-    const rows = db
-      .prepare(
-        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
-                g.slug AS bucket_slug, g.label AS bucket_label
-         FROM accounts a
-         INNER JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE (a.import_key IS NULL OR a.import_key != ?)
-           AND g.slug != 'individual_stocks'
-         ORDER BY g.sort_order, a.id, a.name`
-      )
-      .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];
-    res.json({ accounts: rows });
-    return;
-  }
-
-  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
-  if (subRaw === null) {
-    res.status(400).json({ error: "invalid subgroup" });
-    return;
-  }
-  const resolvedSlug =
-    resolvePortfolioGroupSlugForLegacyTab(groupSlug, subRaw) ??
-    (portfolioGroupBySlug(groupSlug) ? groupSlug : null);
-  if (!resolvedSlug) {
-    res.status(400).json({ error: "unknown group or subgroup" });
-    return;
-  }
-
-  const tabRows = listAccountsForGroupTab(resolvedSlug);
-  const ids = tabRows.map((r) => r.account_id);
-  if (!ids.length) {
-    res.json({ accounts: [] });
-    return;
-  }
-  const ph = ids.map(() => "?").join(",");
-  const fetched = db
+  const rows = db
     .prepare(
       `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
               g.slug AS bucket_slug, g.label AS bucket_label
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id IN (${ph})`
+       WHERE (a.import_key IS NULL OR a.import_key != ?)
+         AND g.slug != 'individual_stocks'
+       ORDER BY g.sort_order, a.id, a.name`
     )
-    .all(...ids) as Record<string, unknown>[];
-  // Preserve the group-tab ordering (bucket-major, valuation desc) — the single ordering authority.
-  const byId = new Map(fetched.map((row) => [row.id as number, row]));
-  const rows = ids
-    .map((id) => byId.get(id))
-    .filter((row): row is Record<string, unknown> => row != null);
+    .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];
   res.json({ accounts: rows });
 }));
 

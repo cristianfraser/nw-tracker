@@ -7,8 +7,6 @@ import { computeMortgagePrepaymentComparison } from "../mortgagePrepaymentCompar
 import {
   groupHasPeriodReturns,
   isResolvablePortfolioGroupSlug,
-  normalizeLegacyTabSubgroup,
-  resolvePortfolioGroupSlugForLegacyTab,
 } from "../portfolioGroupTree.js";
 import { isKnownClassTabGroup } from "./shared.js";
 import { coreCurrencyCodes, requestDisplayUnit } from "../displayUnits.js";
@@ -70,14 +68,11 @@ export function registerBenchmarkRoutes(app: express.Express): void {
     }
 
     const group = typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
-    const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
-    if (!group || subRaw === null) {
+    if (!group) {
       res.status(400).json({ error: "account_id or portfolio_group required" });
       return;
     }
-    const tabSlug =
-      resolvePortfolioGroupSlugForLegacyTab(group, subRaw) ??
-      (isResolvablePortfolioGroupSlug(group) ? group : null);
+    const tabSlug = isResolvablePortfolioGroupSlug(group) ? group : null;
     if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
       res.status(400).json({ error: "unknown group slug" });
       return;
