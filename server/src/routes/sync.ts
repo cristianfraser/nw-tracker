@@ -20,6 +20,7 @@ import {
 } from "../expenseGenericUniqueMerchants.js";
 import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
+import { writeHandler } from "../inputError.js";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot, notifyGlobalSyncScheduler } from "../globalSyncScheduler.js";
 import { INGEST_RUN_KINDS, type IngestRunKind } from "nw-tracker-contracts";
@@ -131,7 +132,7 @@ app.get("/api/import-sync/generic-unique-merchants", (_req, res) => {
   res.json({ merchants: listExpenseGenericUniqueMerchants() });
 });
 
-app.post("/api/import-sync/generic-unique-merchants", (req, res) => {
+app.post("/api/import-sync/generic-unique-merchants", writeHandler((req, res) => {
   const raw = req.body?.merchant;
   if (typeof raw !== "string") {
     res.status(400).json({ error: "merchant required" });
@@ -142,17 +143,13 @@ app.post("/api/import-sync/generic-unique-merchants", (req, res) => {
     res.status(400).json({ error: "merchant required" });
     return;
   }
-  try {
-    const row = createExpenseGenericUniqueMerchant(merchantKey);
-    const backfill = backfillGenericTransferUniquePurchases();
-    res.json({ row, backfill });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    res.status(msg.includes("already exists") ? 409 : 400).json({ error: msg });
-  }
-});
+  // A key already listed is an `InputError` → 409; a failing backfill is a 500.
+  const row = createExpenseGenericUniqueMerchant(merchantKey);
+  const backfill = backfillGenericTransferUniquePurchases();
+  res.json({ row, backfill });
+}));
 
-app.patch("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
+app.patch("/api/import-sync/generic-unique-merchants/:id", writeHandler((req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "invalid id" });
@@ -168,31 +165,21 @@ app.patch("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
     res.status(400).json({ error: "merchant required" });
     return;
   }
-  try {
-    const row = updateExpenseGenericUniqueMerchant(id, merchantKey);
-    const backfill = backfillGenericTransferUniquePurchases();
-    res.json({ row, backfill });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const status = msg === "not found" ? 404 : msg.includes("already exists") ? 409 : 400;
-    res.status(status).json({ error: msg });
-  }
-});
+  // An id that is not listed is an `InputError` → 404, a key another row holds → 409.
+  const row = updateExpenseGenericUniqueMerchant(id, merchantKey);
+  const backfill = backfillGenericTransferUniquePurchases();
+  res.json({ row, backfill });
+}));
 
-app.delete("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
+app.delete("/api/import-sync/generic-unique-merchants/:id", writeHandler((req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "invalid id" });
     return;
   }
-  try {
-    deleteExpenseGenericUniqueMerchant(id);
-    res.status(204).send();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    res.status(msg === "not found" ? 404 : 400).json({ error: msg });
-  }
-});
+  deleteExpenseGenericUniqueMerchant(id);
+  res.status(204).send();
+}));
 
 app.get("/api/messages/unread-count", (_req, res) => {
   res.json({ count: unreadNotificationCount() });

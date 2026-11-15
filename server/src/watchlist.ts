@@ -26,6 +26,7 @@ import {
   type WatchlistRowStats,
 } from "./watchlistStats.js";
 import { describeSymbol, priceProvider, type ProviderSymbolSearchResult } from "./priceProviders/index.js";
+import { InputError } from "./inputError.js";
 import {
   listCompositeConstituentTickers,
   loadCompositeHoldings,
@@ -393,7 +394,7 @@ const TICKER_RE = /^\^?[A-Z0-9][A-Z0-9.=-]{0,19}$/;
 export function normalizeManualWatchlistTicker(raw: string): string {
   const ticker = raw.trim().toUpperCase();
   if (!ticker || !TICKER_RE.test(ticker)) {
-    throw new Error("invalid ticker symbol");
+    throw new InputError("invalid ticker symbol");
   }
   return ticker;
 }
@@ -402,7 +403,7 @@ function assertNotOnWatchlist(ticker: string): void {
   const existing = stmtEquityBySeriesKey.get(ticker) as { id: number } | undefined;
   const slugTaken = db.prepare(`SELECT 1 FROM market_display_series WHERE slug = ?`).get(equitySlug(ticker));
   if (existing != null || slugTaken) {
-    throw new Error(`ticker ${ticker} is already on the watchlist`);
+    throw new InputError(`ticker ${ticker} is already on the watchlist`, 409);
   }
 }
 
@@ -441,14 +442,31 @@ export function addManualWatchlistTicker(
   return rowToWatchlist(row, new Date());
 }
 
-/** The add box's path: refuse a symbol already listed before asking Yahoo, then add what Yahoo states. */
+/**
+ * The price provider did not describe the symbol the user typed: it does not know it, prints no
+ * price or a currency the app has no rates for, or did not answer. The provider's message is the
+ * error's; the add route answers it 502, like the search beside it.
+ */
+export class WatchlistSymbolLookupError extends Error {}
+
+/**
+ * The add box's path: refuse a symbol already listed before asking Yahoo, then add what Yahoo
+ * states. A malformed symbol and one already listed are `InputError`s (400, 409); what Yahoo
+ * refuses is a {@link WatchlistSymbolLookupError}; anything else is an integrity failure.
+ */
 export async function addManualWatchlistTickerFromYahoo(
   raw: string,
   describe: (ticker: string) => Promise<InstrumentFacts> = (t) => describeSymbol(t, "yahoo")
 ): Promise<WatchlistRow> {
   const ticker = normalizeManualWatchlistTicker(raw);
   assertNotOnWatchlist(ticker);
-  return addManualWatchlistTicker(ticker, await describe(ticker), "yahoo");
+  let facts: InstrumentFacts;
+  try {
+    facts = await describe(ticker);
+  } catch (e) {
+    throw new WatchlistSymbolLookupError(e instanceof Error ? e.message : String(e), { cause: e });
+  }
+  return addManualWatchlistTicker(ticker, facts, "yahoo");
 }
 
 export type WatchlistSymbolSearchResult = ProviderSymbolSearchResult & { on_watchlist: boolean };

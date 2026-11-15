@@ -7,7 +7,72 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
  * The routes that used to answer every throw with a 400: a request the user can fix still answers
  * 400 with its message; a throw that is not about the request reaches the 500 middleware.
  */
-const failing = vi.hoisted(() => ({ fxBidAsk: false, payrollCandidates: false, refundMark: null as Error | null }));
+const failing = vi.hoisted(() => ({
+  fxBidAsk: false,
+  payrollCandidates: false,
+  refundMark: null as Error | null,
+  merchantBackfill: false,
+  marketTicker: false,
+  depositsReconciliation: false,
+  /** What the provider answers for a symbol: an error to throw, or null for the real provider. */
+  describeSymbol: null as Error | null,
+  instrumentRegistry: false,
+}));
+
+vi.mock("../ccExpenseGenericTransferBackfill.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../ccExpenseGenericTransferBackfill.js")>();
+  return {
+    ...actual,
+    backfillGenericTransferUniquePurchases: () => {
+      if (failing.merchantBackfill) throw new Error("vitest: the backfill failed");
+      return actual.backfillGenericTransferUniquePurchases();
+    },
+  };
+});
+
+vi.mock("../marketTicker.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../marketTicker.js")>();
+  return {
+    ...actual,
+    getMarketTickerPayload: (...args: Parameters<typeof actual.getMarketTickerPayload>) => {
+      if (failing.marketTicker) throw new Error("vitest: the ticker could not be built");
+      return actual.getMarketTickerPayload(...args);
+    },
+  };
+});
+
+vi.mock("../flowsDepositsReconciliation.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../flowsDepositsReconciliation.js")>();
+  return {
+    ...actual,
+    buildDepositsReconciliationPayload: (...args: Parameters<typeof actual.buildDepositsReconciliationPayload>) => {
+      if (failing.depositsReconciliation) throw new Error("vitest: the reconciliation could not be built");
+      return actual.buildDepositsReconciliationPayload(...args);
+    },
+  };
+});
+
+vi.mock("../priceProviders/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../priceProviders/index.js")>();
+  return {
+    ...actual,
+    describeSymbol: async (symbol: string) => {
+      if (failing.describeSymbol) throw failing.describeSymbol;
+      return { quote_currency: "usd", market_kind: "nyse", name: null, exchange: null, instrument_type: "EQUITY", display_symbol: symbol };
+    },
+  };
+});
+
+vi.mock("../marketSymbols.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../marketSymbols.js")>();
+  return {
+    ...actual,
+    registerInstrument: (...args: Parameters<typeof actual.registerInstrument>) => {
+      if (failing.instrumentRegistry) throw new Error("vitest: the registry write failed");
+      return actual.registerInstrument(...args);
+    },
+  };
+});
 
 vi.mock("../fxBidAskGaps.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../fxBidAskGaps.js")>();
@@ -48,6 +113,8 @@ const { registerMortgageRoutes } = await import("./mortgage.js");
 const { registerUsageRoutes } = await import("./usage.js");
 const { registerCreditCardRoutes } = await import("./creditCard.js");
 const { registerFlowsRoutes } = await import("./flows.js");
+const { registerSyncRoutes } = await import("./sync.js");
+const { registerMovementMirrorsRoutes } = await import("./movementMirrors.js");
 
 let server: Server;
 let base = "";
@@ -60,6 +127,8 @@ beforeAll(async () => {
   registerUsageRoutes(app);
   registerCreditCardRoutes(app);
   registerFlowsRoutes(app);
+  registerSyncRoutes(app);
+  registerMovementMirrorsRoutes(app);
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err), terminal: true });
   });
@@ -121,6 +190,116 @@ describe("market routes", () => {
     } finally {
       db.prepare(`DELETE FROM market_display_series WHERE slug = ?`).run(slug);
     }
+  });
+});
+
+describe("routes that used to answer a failing read by hand", () => {
+  it("market ticker and deposits reconciliation: a failing build reaches the 500 middleware", async () => {
+    failing.marketTicker = true;
+    failing.depositsReconciliation = true;
+    try {
+      const ticker = await call("GET", "/api/market-ticker");
+      expect(ticker).toMatchObject({ status: 500, json: { error: "vitest: the ticker could not be built", terminal: true } });
+      const reconciliation = await call("GET", "/api/flows/deposits/reconciliation");
+      expect(reconciliation).toMatchObject({
+        status: 500,
+        json: { error: "vitest: the reconciliation could not be built", terminal: true },
+      });
+    } finally {
+      failing.marketTicker = false;
+      failing.depositsReconciliation = false;
+    }
+  });
+});
+
+describe("watchlist add route", () => {
+  const TICKER = "ZZVTADD";
+  const clean = () => {
+    db.prepare(`DELETE FROM market_display_series WHERE series_key = ?`).run(TICKER);
+    db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(TICKER);
+  };
+
+  it("a malformed symbol is a 400, a listed one a 409, a symbol the provider refuses a 502, a failing add a 500", async () => {
+    clean();
+    try {
+      const malformed = await call("POST", "/api/watchlist", { ticker: "not a ticker!" });
+      expect(malformed).toMatchObject({ status: 400, json: { error: "invalid ticker symbol" } });
+
+      failing.describeSymbol = new Error(`Yahoo has no price for ${TICKER}`);
+      const refused = await call("POST", "/api/watchlist", { ticker: TICKER });
+      expect(refused).toMatchObject({ status: 502, json: { error: `Yahoo has no price for ${TICKER}` } });
+      expect(refused.json.terminal).toBeUndefined();
+      failing.describeSymbol = null;
+
+      failing.instrumentRegistry = true;
+      const broken = await call("POST", "/api/watchlist", { ticker: TICKER });
+      expect(broken).toMatchObject({ status: 500, json: { error: "vitest: the registry write failed", terminal: true } });
+      failing.instrumentRegistry = false;
+      expect(db.prepare(`SELECT 1 FROM market_display_series WHERE series_key = ?`).get(TICKER)).toBeUndefined();
+
+      db.prepare(
+        `INSERT INTO market_display_series (slug, label, kind, series_key, source) VALUES (?, ?, 'equity', ?, 'manual')`
+      ).run(`vitest_input_errors_${TICKER.toLowerCase()}`, TICKER, TICKER);
+      const listed = await call("POST", "/api/watchlist", { ticker: TICKER.toLowerCase() });
+      expect(listed).toMatchObject({ status: 409, json: { error: `ticker ${TICKER} is already on the watchlist` } });
+    } finally {
+      failing.describeSymbol = null;
+      failing.instrumentRegistry = false;
+      clean();
+    }
+  });
+});
+
+describe("generic unique merchants routes", () => {
+  const KEY = "VITEST INPUT ERRORS MERCHANT";
+  const clean = () => db.prepare(`DELETE FROM cc_expense_generic_unique_merchants WHERE merchant_key LIKE 'VITEST INPUT ERRORS%'`).run();
+
+  it("a listed key is a 409, an unknown id a 404, a failing backfill a 500", async () => {
+    clean();
+    try {
+      const created = await call("POST", "/api/import-sync/generic-unique-merchants", { merchant: KEY });
+      expect(created.status).toBe(200);
+      const id = (created.json as unknown as { row: { id: number; merchant_key: string } }).row.id;
+      const key = (created.json as unknown as { row: { merchant_key: string } }).row.merchant_key;
+
+      const twice = await call("POST", "/api/import-sync/generic-unique-merchants", { merchant: KEY });
+      expect(twice).toMatchObject({ status: 409, json: { error: "merchant_key already exists" } });
+      const noBody = await call("POST", "/api/import-sync/generic-unique-merchants", {});
+      expect(noBody).toMatchObject({ status: 400, json: { error: "merchant required" } });
+
+      const missing = await call("PATCH", `/api/import-sync/generic-unique-merchants/${UNKNOWN_ID}`, { merchant: `${KEY} 2` });
+      expect(missing).toMatchObject({ status: 404, json: { error: "not found" } });
+      const other = await call("POST", "/api/import-sync/generic-unique-merchants", { merchant: `${KEY} 2` });
+      const otherId = (other.json as unknown as { row: { id: number } }).row.id;
+      const clash = await call("PATCH", `/api/import-sync/generic-unique-merchants/${otherId}`, { merchant: key });
+      expect(clash).toMatchObject({ status: 409, json: { error: "merchant_key already exists" } });
+
+      failing.merchantBackfill = true;
+      const broken = await call("PATCH", `/api/import-sync/generic-unique-merchants/${id}`, { merchant: `${KEY} 3` });
+      expect(broken).toMatchObject({ status: 500, json: { error: "vitest: the backfill failed", terminal: true } });
+      failing.merchantBackfill = false;
+
+      const res = await fetch(`${base}/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" });
+      expect(res.status).toBe(204);
+      const gone = await call("DELETE", `/api/import-sync/generic-unique-merchants/${id}`);
+      expect(gone).toMatchObject({ status: 404, json: { error: "not found" } });
+    } finally {
+      failing.merchantBackfill = false;
+      clean();
+    }
+  });
+});
+
+describe("card-payment mirror conversion route", () => {
+  it("a pair that is no current candidate is a 409", async () => {
+    const stale = await call("POST", "/api/movement-mirrors/convert-cc-payments", {
+      pairs: [{ out_movement_id: UNKNOWN_ID, statement_line_id: null, statement_id: null }],
+    });
+    expect(stale.status).toBe(409);
+    expect(stale.json.error).toMatch(/not a current candidate/);
+    expect(stale.json.terminal).toBeUndefined();
+    const noPairs = await call("POST", "/api/movement-mirrors/convert-cc-payments", { pairs: [] });
+    expect(noPairs.status).toBe(400);
   });
 });
 

@@ -3,6 +3,7 @@ import { currentJobQueueDecision } from "./jobQueueExecutor.js";
 import { JOB_KINDS, claimJob, completeJob, enqueueJob, isJobKind, jobById, listJobsByStatus, type JobRow } from "./jobQueue.js";
 import { describeJobWait } from "./jobQueuePolicy.js";
 import { notifyJobQueue } from "./jobQueueSignal.js";
+import { InputError } from "./inputError.js";
 
 /**
  * Jobs an outside worker runs (docs/job-queue-plan.md): today the deploy agent
@@ -57,7 +58,7 @@ export function completeClaimedJob(id: number, request: JobCompleteRequest, now:
   const job = jobById(id);
   if (!job) throw new Error(`No job ${id}`);
   if (!isJobKind(job.kind) || JOB_KINDS[job.kind].dispatch !== "claim") {
-    throw new Error(`Job ${id} (${job.kind}) is not completed by an outside worker`);
+    throw new InputError(`Job ${id} (${job.kind}) is not completed by an outside worker`, 409);
   }
   const done = completeJob(id, { ok: request.ok, result: request.result ?? undefined, error: request.error }, now);
   console.log(`job-queue: ${job.kind} job ${id} ${done.status}${request.error ? ` — ${request.error}` : ""}`);

@@ -116,7 +116,7 @@ app.delete("/api/accounts/:id", (req, res) => {
       });
       return;
     }
-    res.status(500).json({ error: msg });
+    throw e;
   }
 });
 

@@ -13,6 +13,7 @@ import {
   getWatchlistPayload,
   patchWatchlistRow,
   searchWatchlistSymbols,
+  WatchlistSymbolLookupError,
 } from "../watchlist.js";
 import { asyncHandler } from "./shared.js";
 import { writeHandler } from "../inputError.js";
@@ -123,11 +124,7 @@ app.get("/api/live-quotes/stamp", (req, res) => {
 // `?unit=<core currency>` returns values and changes in that unit (the app's display unit); default CLP.
 app.get("/api/market-ticker", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/market-ticker" });
-  try {
-    res.json(getMarketTickerPayload(new Date(), unit));
-  } catch (e) {
-    res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
-  }
+  res.json(getMarketTickerPayload(new Date(), unit));
 });
 
 app.get("/api/equity-splits", (req, res) => {
@@ -172,11 +169,7 @@ app.post("/api/equity-splits", writeHandler((req, res) => {
 // DB-only: history depth is maintained by the live-quotes scheduler, never on request.
 app.get("/api/watchlist", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/watchlist" });
-  try {
-    res.json(getWatchlistPayload(new Date(), unit));
-  } catch (e) {
-    res.status(500).json({ error: e instanceof Error ? e.message : "watchlist_failed" });
-  }
+  res.json(getWatchlistPayload(new Date(), unit));
 });
 
 app.patch("/api/watchlist/:id", (req, res) => {
@@ -225,9 +218,11 @@ app.get(
   })
 );
 
+// A malformed symbol is an `InputError` → 400, one already listed → 409; a symbol Yahoo does not
+// describe (unknown, no price, a currency without rates, Yahoo down) → 502; a failing add is a 500.
 app.post(
   "/api/watchlist",
-  asyncHandler(async (req, res) => {
+  writeHandler(async (req, res) => {
     const ticker = typeof req.body?.ticker === "string" ? req.body.ticker : "";
     if (!ticker.trim()) {
       res.status(400).json({ error: "ticker required" });
@@ -236,9 +231,8 @@ app.post(
     try {
       res.status(201).json(await addManualWatchlistTickerFromYahoo(ticker));
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "watchlist_add_failed";
-      const status = msg.includes("already") ? 409 : 400;
-      res.status(status).json({ error: msg });
+      if (!(e instanceof WatchlistSymbolLookupError)) throw e;
+      res.status(502).json({ error: e.message });
     }
   })
 );

@@ -1,5 +1,6 @@
 /** Mirror-pair admin: candidates, batch conversion, rejection (/panel/mirror-pairs). */
 import express from "express";
+import { writeHandler } from "../inputError.js";
 import {
   convertMirrorPairs,
   MirrorConvertStaleError,
@@ -53,7 +54,7 @@ export function registerMovementMirrorsRoutes(app: express.Express): void {
     }
   });
 
-  app.post("/api/movement-mirrors/convert-cc-payments", (req, res) => {
+  app.post("/api/movement-mirrors/convert-cc-payments", writeHandler((req, res) => {
     const raw = (req.body as { pairs?: unknown } | null)?.pairs;
     if (!Array.isArray(raw) || raw.length === 0) {
       res.status(400).json({ error: "pairs must be a non-empty array" });
@@ -74,12 +75,10 @@ export function registerMovementMirrorsRoutes(app: express.Express): void {
         statement_id: stmtId == null ? null : Number(stmtId),
       });
     }
-    try {
-      res.json(convertCcPaymentMirrors(refs));
-    } catch (e) {
-      res.status(409).json({ error: e instanceof Error ? e.message : String(e) });
-    }
-  });
+    // A pair that is no longer a candidate (or is blocked) is an `InputError` → 409; a failing
+    // conversion is a 500.
+    res.json(convertCcPaymentMirrors(refs));
+  }));
 
   app.post("/api/movement-mirrors/reject", (req, res) => {
     const pairs = parsePairRefs(req.body);
