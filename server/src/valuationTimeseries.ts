@@ -19,7 +19,6 @@ import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   averageRgbTriplets,
   getAccountColorRgb,
-  syntheticGroupColorRgbMapForValuationGroup,
 } from "./chartColorRgb.js";
 import {
   type ChartBucketPlan,
@@ -102,7 +101,6 @@ type GroupTabValuationBlock = {
      * is its own name, so the tooltip leaves it out. */
     level_currency?: CurrencyCode;
   }[];
-  synthetic_group_color_rgb?: Record<string, string>;
   /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
   referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
 };
@@ -1088,7 +1086,6 @@ function aggregateBlockByBuckets(
     accounts: [...(totalLine ? [totalLine] : []), ...synth, ...unmappedMembers],
     points,
     ...(base.lines?.length ? { lines: base.lines } : {}),
-    ...(base.synthetic_group_color_rgb ? { synthetic_group_color_rgb: base.synthetic_group_color_rgb } : {}),
     ...(base.referenceMilestoneByDate ? { referenceMilestoneByDate: base.referenceMilestoneByDate } : {}),
   };
 }
@@ -1265,11 +1262,6 @@ function getGroupValuationTimeseriesInnerUncached(
   }
   // Composition timeseries: shares of the pre-clip per-account lines.
   const group_allocation_proportional = buildProportionalFromBlock(accounts_in_group);
-
-  const synthColors = syntheticGroupColorRgbMapForValuationGroup(groupSlug);
-  if (Object.keys(synthColors).length > 0) {
-    accounts_in_group = { ...accounts_in_group, synthetic_group_color_rgb: synthColors };
-  }
 
   // Server-side "Agrupado" blocks built from the pre-clip consolidated block (grouped totals
   // must equal the raw view); each grouped block is display-clipped inside the helper.
