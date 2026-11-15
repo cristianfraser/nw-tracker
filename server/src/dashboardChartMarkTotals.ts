@@ -2,7 +2,7 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
-import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
+import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 import { bucketValueInUnitAt } from "./periodReturnsShortHorizon.js";
 import type { TsUnit } from "./rates.js";
 

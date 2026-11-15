@@ -1,7 +1,7 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { netsLinkedGroup, nettedGroup } from "./navTreeModel.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
-import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
+import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { priorCalendarMonthKey } from "./periodAnchorDates.js";
 import type { ConsolidatedMonthlyPerfRow } from "./groupPerfTypes.js";
