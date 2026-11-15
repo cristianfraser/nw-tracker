@@ -106,18 +106,13 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       }
       return m ?? bookMark(profile, asOfYmd);
     }
-    case "checking_ledger": {
-      const clp = checkingMovementBalanceClpAtCached(accountId, asOfYmd);
-      return Number.isFinite(clp) ? currency("clp", clp, asOfYmd) : bookMark(profile, asOfYmd);
-    }
-    case "foreign_ledger": {
-      const native = foreignCashBalanceAt(accountId, asOfYmd);
-      return Number.isFinite(native) ? currency(q.currency, native, asOfYmd) : bookMark(profile, asOfYmd);
-    }
-    case "clp_ledger": {
-      const clp = clpCashBalanceClpAt(accountId, asOfYmd);
-      return Number.isFinite(clp) ? currency("clp", clp, asOfYmd) : bookMark(profile, asOfYmd);
-    }
+    // A cash ledger's balance is the sum of its stored amounts: always a number, never a stored mark.
+    case "checking_ledger":
+      return currency("clp", finiteLedgerBalance(checkingMovementBalanceClpAtCached(accountId, asOfYmd), accountId, asOfYmd), asOfYmd);
+    case "foreign_ledger":
+      return currency(q.currency, finiteLedgerBalance(foreignCashBalanceAt(accountId, asOfYmd), accountId, asOfYmd), asOfYmd);
+    case "clp_ledger":
+      return currency("clp", finiteLedgerBalance(clpCashBalanceClpAt(accountId, asOfYmd), accountId, asOfYmd), asOfYmd);
     case "stock": {
       const asset: InstrumentHolding = { kind: "stock", ticker: q.ticker, quote: equityQuoteCurrency(q.ticker) };
       const units = equityShareUnitsThroughYmd(accountId, asOfYmd);
@@ -193,6 +188,13 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
     case "book_mark":
       return bookMark(profile, asOfYmd);
   }
+}
+
+function finiteLedgerBalance(balance: number, accountId: number, asOfYmd: string): number {
+  if (!Number.isFinite(balance)) {
+    throw new Error(`accountMarkClpAtYmd: cash ledger of account ${accountId} sums to a non-finite balance on ${asOfYmd}`);
+  }
+  return balance;
 }
 
 const stmtStoredMarkOnOrBefore = db.prepare(
