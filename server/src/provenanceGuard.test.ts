@@ -31,7 +31,7 @@ const RULES: { name: string; pattern: RegExp; allowedIn: readonly string[] }[] =
   {
     name: "a movement's document kind tested by note prefix (read flow_evidence.source_kind, flows/flowEvidence.ts)",
     pattern: /LIKE\s+'import:cartola(\|anchor|\|opening|-partial)?\|%'/,
-    allowedIn: ["flowTables279.ts"],
+    allowedIn: ["flowTriggerSpecs.ts"],
   },
 ];
 

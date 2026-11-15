@@ -7,7 +7,7 @@
  *   npx tsx scripts/report-expense-category-rule-migration.ts --db=data/nw-tracker.db
  */
 import Database from "better-sqlite3";
-import { planExpenseCategoryRuleMigration } from "../src/expenseCategoryRulesMigration.js";
+import { planExpenseCategoryRuleMigration } from "../src/migrationHooks/expenseCategoryRulesMigration.js";
 
 const dbArg = process.argv.find((a) => a.startsWith("--db="))?.slice(5);
 if (!dbArg) throw new Error("pass --db=<path to the database file>");

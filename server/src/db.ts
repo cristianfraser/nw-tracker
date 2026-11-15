@@ -1,4 +1,3 @@
-import { runCardStatementFingerprint292 } from "./cards/statementFingerprint292.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,10 +5,10 @@ import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
 import { noteDbWrite } from "./dbWriteCounter.js";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
-import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
-import { runMovementsAmountCurrency169 } from "./movementsAmountCurrency169.js";
-import { runGroceryReceiptKey178 } from "./groceryReceiptKey178.js";
-import { runExpenseCategoryRuleMigration252 } from "./expenseCategoryRulesMigration.js";
+import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./migrationHooks/legacyNoteBackfills.js";
+import { runMovementsAmountCurrency169 } from "./migrationHooks/movementsAmountCurrency169.js";
+import { runGroceryReceiptKey178 } from "./migrationHooks/groceryReceiptKey178.js";
+import { runExpenseCategoryRuleMigration252 } from "./migrationHooks/expenseCategoryRulesMigration.js";
 import {
   runMarkInputChangeTriggers211,
   runMarkInputChangeTriggers242,
@@ -24,15 +23,17 @@ import {
   runMarketDisplaySeriesFxPair313,
   runMarketTablesAnyCurrency315,
 } from "./markInputTriggers.js";
-import { runLoanPayments258 } from "./loanPayments258.js";
-import { runDropMarketSymbolsMic306, runInstrumentRegistry305 } from "./instrumentRegistry305.js";
-import { runAccountRoles271 } from "./accountRoles271.js";
-import { runAccountRoles298 } from "./accountRoles299.js";
-import { runNavTreeRoles272 } from "./navTreeRoles272.js";
-import { runExpenseKeyLegacyRewrite273 } from "./expenseKeyLegacyRewrite273.js";
-import { runManualExpenseMerchant275 } from "./manualExpenseMerchant275.js";
-import { registerCardLineKindFunction, runCardLineKind276 } from "./cardLineKind276.js";
-import { runFlowTables279 } from "./flows/flowTables279.js";
+import { runLoanPayments258 } from "./migrationHooks/loanPayments258.js";
+import { runDropMarketSymbolsMic306, runInstrumentRegistry305 } from "./migrationHooks/instrumentRegistry305.js";
+import { runAccountRoles271 } from "./migrationHooks/accountRoles271.js";
+import { runAccountRoles299 } from "./migrationHooks/accountRoles299.js";
+import { runNavTreeRoles272 } from "./migrationHooks/navTreeRoles272.js";
+import { runExpenseKeyLegacyRewrite273 } from "./migrationHooks/expenseKeyLegacyRewrite273.js";
+import { runManualExpenseMerchant275 } from "./migrationHooks/manualExpenseMerchant275.js";
+import { registerCardLineKindFunction } from "./cardLineKindFunction.js";
+import { assertMovementFlowTriggerCurrent } from "./flows/flowTriggerCheck.js";
+import { runCardLineKind276 } from "./migrationHooks/cardLineKind276.js";
+import { runFlowTables279 } from "./migrationHooks/flowTables279.js";
 import {
   runFlowBigGroups282,
   runFlowIncomeOverrides281,
@@ -44,39 +45,40 @@ import {
   runFlowCategories289,
   runFlowParts283,
   runFlowRefunds280,
-} from "./flows/flowAssignments280.js";
-import { runFlowRetirement290 } from "./flows/flowRetirement290.js";
-import { runFlowPartKinds293 } from "./flows/flowParts293.js";
-import { runRetireDepositMirrors294 } from "./flows/retireDepositMirrors294.js";
-import { runFlowEvidenceEstimateKind295 } from "./flows/flowEvidenceEstimate295.js";
-import { runMovementEvidenceKind291 } from "./flows/flowEvidenceKind291.js";
-import { runOwnerIdentity277 } from "./ownerIdentity277.js";
-import { runSiiIssuedFeeReceipts296 } from "./siiIssuedFeeReceipts296.js";
-import { runFacturadoPaymentCharges297 } from "./ccFacturadoPaymentCharges297.js";
-import { runRentalPlaces299 } from "./rentalPlaces300.js";
-import { runF1040Filed300 } from "./us1040/filed301.js";
-import { runTaxResidency302 } from "./taxResidency302.js";
-import { runOptionContracts304 } from "./optionContracts304.js";
-import { runMortgagePaymentReceipts307 } from "./mortgagePaymentReceipts307.js";
-import { runMortgageLenderQuotes308 } from "./mortgageLenderQuotes308.js";
-import { runFlowFirstSeen310 } from "./flows/flowFirstSeen310.js";
-import { runCardToCardPayments311 } from "./cardToCardPayments311.js";
-import { runCurrencies312 } from "./currencies312.js";
-import { runCurrencyReferences314 } from "./currencyReferences314.js";
-import { runVendorCatalog325 } from "./vendorCatalog325.js";
-import { runVendorCatalog331 } from "./vendorCatalog331.js";
-import { runVendorCatalog335 } from "./vendorCatalog335.js";
-import { runCcListingIssuer326 } from "./ccListingIssuer326.js";
-import { runPlantedChargeLines328 } from "./ccPlantedCharges328.js";
-import { runExpenseAmountCurrency316 } from "./expenseAmountCurrency316.js";
-import { runStatementLineAmount319 } from "./cards/statementLineAmount319.js";
-import { runBillingMetrics320 } from "./cards/billingMetrics320.js";
-import { runCardAmountsByCurrency321 } from "./cards/cardAmountsByCurrency321.js";
-import { runTraspasoLegs322 } from "./cards/traspasoLegs322.js";
-import { runMovementFlowTrigger317 } from "./flows/movementFlowTrigger317.js";
-import { runCashCurrency318 } from "./cashCurrency318.js";
-import { runPayrollJurisdiction297 } from "./payrollJurisdiction298.js";
-import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
+} from "./migrationHooks/flowAssignments280.js";
+import { runFlowRetirement290 } from "./migrationHooks/flowRetirement290.js";
+import { runFlowPartKinds293 } from "./migrationHooks/flowParts293.js";
+import { runRetireDepositMirrors294 } from "./migrationHooks/retireDepositMirrors294.js";
+import { runFlowEvidenceEstimateKind295 } from "./migrationHooks/flowEvidenceEstimate295.js";
+import { runMovementEvidenceKind291 } from "./migrationHooks/flowEvidenceKind291.js";
+import { runOwnerIdentity277 } from "./migrationHooks/ownerIdentity277.js";
+import { runSiiIssuedFeeReceipts296 } from "./migrationHooks/siiIssuedFeeReceipts296.js";
+import { runFacturadoPaymentCharges297 } from "./migrationHooks/ccFacturadoPaymentCharges297.js";
+import { runRentalPlaces300 } from "./migrationHooks/rentalPlaces300.js";
+import { runF1040Filed301 } from "./migrationHooks/filed301.js";
+import { runTaxResidency302 } from "./migrationHooks/taxResidency302.js";
+import { runOptionContracts304 } from "./migrationHooks/optionContracts304.js";
+import { runMortgagePaymentReceipts307 } from "./migrationHooks/mortgagePaymentReceipts307.js";
+import { runMortgageLenderQuotes308 } from "./migrationHooks/mortgageLenderQuotes308.js";
+import { runFlowFirstSeen310 } from "./migrationHooks/flowFirstSeen310.js";
+import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311.js";
+import { runCurrencies312 } from "./migrationHooks/currencies312.js";
+import { runCurrencyReferences314 } from "./migrationHooks/currencyReferences314.js";
+import { runVendorCatalog325 } from "./migrationHooks/vendorCatalog325.js";
+import { runVendorCatalog331 } from "./migrationHooks/vendorCatalog331.js";
+import { runVendorCatalog335 } from "./migrationHooks/vendorCatalog335.js";
+import { runCcListingIssuer326 } from "./migrationHooks/ccListingIssuer326.js";
+import { runPlantedChargeLines328 } from "./migrationHooks/ccPlantedCharges328.js";
+import { runExpenseAmountCurrency316 } from "./migrationHooks/expenseAmountCurrency316.js";
+import { runCardStatementFingerprint292 } from "./migrationHooks/statementFingerprint292.js";
+import { runStatementLineAmount319 } from "./migrationHooks/statementLineAmount319.js";
+import { runBillingMetrics320 } from "./migrationHooks/billingMetrics320.js";
+import { runCardAmountsByCurrency321 } from "./migrationHooks/cardAmountsByCurrency321.js";
+import { runTraspasoLegs322 } from "./migrationHooks/traspasoLegs322.js";
+import { runMovementFlowTrigger317 } from "./migrationHooks/movementFlowTrigger317.js";
+import { runCashCurrency318 } from "./migrationHooks/cashCurrency318.js";
+import { runPayrollJurisdiction298 } from "./migrationHooks/payrollJurisdiction298.js";
+import { runValuationsAnyCurrency260 } from "./migrationHooks/valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -340,8 +342,10 @@ function execMigrationSql(sql: string): void {
 
 /**
  * Data transforms too complex for the naive SQL splitter, keyed by migration filename and
- * run inside that migration's transaction. Hook modules must be pure (no imports from
- * modules that import `db` — the module graph here is still initializing).
+ * run inside that migration's transaction. Hook modules live in `migrationHooks/` and must be pure
+ * (no imports from modules that import `db` — the module graph here is still initializing). A hook
+ * keeps producing what it produced when its migration was written: logic it needs from a module
+ * that keeps changing is copied into the hook or `migrationHooks/frozen/`, not imported.
  */
 const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "157_depto_payments_and_mirror_merges.sql": runLegacyNoteBackfill157,
@@ -364,7 +368,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "305_instrument_registry.sql": runInstrumentRegistry305,
   "306_drop_market_symbols_mic.sql": runDropMarketSymbolsMic306,
   "271_account_roles.sql": runAccountRoles271,
-  "299_property_loan_identity_roles.sql": runAccountRoles298,
+  "299_property_loan_identity_roles.sql": runAccountRoles299,
   "272_nav_tree_roles.sql": runNavTreeRoles272,
   "273_expense_key_legacy_rewrite.sql": (dbi) => {
     runExpenseKeyLegacyRewrite273(dbi);
@@ -393,9 +397,9 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "295_flow_evidence_estimate_kind.sql": runFlowEvidenceEstimateKind295,
   "296_sii_issued_fee_receipts.sql": runSiiIssuedFeeReceipts296,
   "297_cc_facturado_payment_charges.sql": runFacturadoPaymentCharges297,
-  "298_payroll_jurisdiction.sql": runPayrollJurisdiction297,
-  "300_rental_places_dfl2_and_rent_income.sql": runRentalPlaces299,
-  "301_us_f1040_filed.sql": runF1040Filed300,
+  "298_payroll_jurisdiction.sql": runPayrollJurisdiction298,
+  "300_rental_places_dfl2_and_rent_income.sql": runRentalPlaces300,
+  "301_us_f1040_filed.sql": runF1040Filed301,
   "302_tax_residency_periods.sql": runTaxResidency302,
   "304_option_contracts.sql": runOptionContracts304,
   "307_mortgage_payment_receipts.sql": runMortgagePaymentReceipts307,
@@ -598,6 +602,8 @@ export function dbInTransaction(): boolean {
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();
+// A migrated database must carry the movements flow trigger the code specifies (fail fast, no repair).
+assertMovementFlowTriggerCurrent(dbInternal);
 // account_sync_sources backfill runs from index.ts / scripts via
 // ensureAccountSyncSourcesSeeded() (accountSyncSources.ts): the createRequire cycle from
 // inside this module never worked under tsx for the "accounts exist, links empty" case.

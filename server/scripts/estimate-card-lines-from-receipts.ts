@@ -50,7 +50,7 @@ import { listCcStatementLinesForStatement, listCcStatementsForAccount, type CcSt
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import { creditCardMasterMetaForAccount } from "../src/ccWebPasteParse.js";
 import { db } from "../src/db.js";
-import { ESTIMATE_DOCUMENT_PREFIX, ESTIMATE_LINE_ID_PREFIX } from "../src/flows/flowTables279.js";
+import { ESTIMATE_DOCUMENT_PREFIX, ESTIMATE_LINE_ID_PREFIX } from "../src/flows/flowTriggerSpecs.js";
 import { buildFlowsExpenseLines, listCreditCardMasterAccountIds } from "../src/flowsExpenses.js";
 import { cachedFlowsExpenseLines } from "../src/flowsMortgageCarrying.js";
 import { fxRowOnOrBefore } from "../src/fxRates.js";
