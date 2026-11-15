@@ -1826,6 +1826,63 @@ Open from wave 6:
 | `ut-client-tables` | the 12 hand-paired tables onto `ColumnTable` | screenshots at 375 / 880 / 1440 |
 | then `ut-matching-2` | `pairOneToOne` for planted payments, planted charges, recurring pending lines; `MATCH_WINDOWS.same_split`; money compared to the currency's coin | stored pairings identical |
 
+**Wave 7 status (2026-11-15): merged into `untangle-2`, not into `main`.** No merge conflicts.
+Rehearsed on a copy of the live database of 2026-11-15 with `scripts/dump-api-payloads.mjs` /
+`scripts/diff-api-payloads.mjs` (1530 GET payloads in CLP, USD and EUR; two cold runs of the same
+code diff clean).
+- `ut-movement-writes`: every INSERT, UPDATE and DELETE on `movements` in runtime `server/src` goes
+  through `movementWrites.ts` (`insertMovement` with `amount` + `currency`, the counter leg and units;
+  the delete and restate shapes in use); `movementWritesGuard.test.ts` fails on a raw write. 0 of
+  1531 payload files differ; the generated `movements`, `flows`, `flow_evidence`, posting, loan-payment
+  and mirror tables are byte-identical for the test and demo persons.
+- `ut-payment-kind`: stored-line readers read `cc_statement_lines.kind` (`isCardPaymentLine`,
+  `isCardDebtTransferLine`, `isDivisasAbonoPaymentLine` in `ccPaymentLines.ts`); the SQL `LIKE` on the
+  abono wording is gone; the `uniformDebtRates` global is gone (`DebtFrameRates`, a map by currency,
+  passed down). On the live copy kind and merchant rule agree on all 254 payment lines and all 18
+  traspaso lines. 0 payload files differ; a full re-stamp of the card anchors is byte-identical
+  (`cc_owed_anchors` and the cards' `valuations`) with the old and the new code.
+- `ut-client-tables`: 15 tables in 9 components on `ColumnTable` (which gained `cardClassName`,
+  `headerProps`, the index in `rowKey`, `rowExpansion`). Compared with the old client on the live
+  copy at 1440 and 375 px over eight pages: same rows and text, no new overflow.
+- `ut-matching-2`: planted payments, planted charges and recurring pending listings pair through
+  `pairOneToOne` (new strategy `mutual_unique`; `matching/money.ts` `sameCoin`); each keeps a property
+  test against «the pre-wave-7 rule»; `MATCH_WINDOWS.same_split` read by both split writers;
+  `mortgage_cuota_card_line` deleted. 0 payload files differ.
+Merged tip: typecheck and conventions ok; check-deps 1358 files, largest cycle 37, 62 files in
+cycles; client 479, ingest 481, contracts 133 passing; server 3733 of 3735 (the two failures below).
+
+Behaviour changes in wave 7 (the user has not reviewed them yet):
+- The additional-cards table and the four grocery tables carry `table--parallel-mobile`: their
+  cards are styled and they flip to cards when the desktop columns do not fit.
+- `insertMovement` refuses a malformed row with its own message before SQLite's CHECK would, and
+  refuses a non-finite amount.
+- `statementFrameEntryClp` looks a split-pass rate up by the entry's own currency (it read the dollar
+  slot); only a card billing a third currency is affected, and only the test issuer does.
+- Planted charges compare amounts to the currency's coin (pesos to the peso; they compared to the cent).
+
+Decision for the user: `ccBillingViews.test.ts` fails two tests on one equality — the open card
+month's `balance_statement_clp` against `accountTodayValue`. The open row converts the cycle's dollars
+at the statement frame (fx mid at pay-by − 1); `accountTodayValue` at the debt side (2 pesos per
+dollar apart). Either the open row follows today's debt-side rate or the tests follow the statement frame.
+
+Found on the live copy, outside the wave:
+- `GET /api/flows/expenses/real-estate/property-accounts` answers 500 (`no such column:
+  i.portfolio_group_id`): the route's SQL names a column `portfolio_group_items` does not have.
+- `GET /api/mortgage-prepayment-comparison` answers 500 for the mortgage account: one stored prepago's
+  parts do not add up to its payment (the fail-fast rule of migration 293 on real data).
+- `/api/flows/deposits?unit=clp` returns `fx_conversion_warnings` on the first request after a start
+  and none on a warm server: the payload depends on cache state.
+- The offline demo generator (`generate-demo-data.ts` with the synthetic market) exits 1 in its last
+  step on an installment-plan consistency error, at the wave's base commit too.
+- Three pages overflow sideways at 375 px on the old client too: home by 9 px, Flows P/L by 86 px
+  (its per-bucket tables have no cards), groceries by 40 px.
+
+Rehearsal notes: a worktree has no `server/data/.global-sync-state.json`, and without it every
+historical Chile holiday is valued through today's proxy basket (the dashboard and daily endpoints
+answer 500); the rehearsal installs a small synthetic one. The dump follows the wall clock, so the
+baseline and the after-dump must be taken on the same Chile day. Not checked: the tables at 880 px
+and their interactive parts (sort headers, month modals, the receipt detail row, pagination).
+
 ### Wave 8 — the two big cycles, then node values
 
 | Stream | Does | Done when |
@@ -1934,6 +1991,39 @@ Found by wave 6:
   decoder; dd/mm/yyyy built by hand in four decoders; `email/fetch.ts` mixes the fetch with staging
   paths; `parsedCartolaPdfEntrySchema.skipped` should carry the `CartolaSkippedRow` shape.
 
+Found by wave 7:
+
+- Movements: 13 live scripts under `server/scripts/` write `movements` with raw SQL (the guard covers
+  `server/src`); each writer repeats «insert the movement, then its side row» by hand (loan payments,
+  mirror merges, contribution periods, synthetic-transfer records, dividend details,
+  `card_to_card_payments`, `option_assignments`) — one paired writer per aggregate;
+  `convertMirrorPairs` and `convertCcPaymentMirrors` duplicate one sequence; the checking anchor is
+  written by two near-identical upserts; `deleteAccountMovementsByNote` finds anchor and cartola-month
+  rows by note prefix (`flow_evidence.source_kind` could); units arrive as strings from the broker
+  planners and numbers elsewhere; `repointMovementReferences` updates `payroll_work_earnings`;
+  `movementWrite` sessions are used by 7 writers only (wrapping the rest adds a deposit-link sync).
+- Card kinds: `card_payment` cannot tell a divisas abono from a named payment (117 lines on the live
+  copy), hence `isDivisasAbonoPaymentLine`; `expensePaymentNames.isPaymentLine` stays on text because
+  `markFinancingCostLines` drops the line kind before finished lines reach it and `latestMovements`;
+  `isFinancingChargeLine` in `ccBillingBalances.ts` re-derives the kind from the merchant;
+  `ccExpenseCategories.ts` has 4 traspaso-merchant tests on stored lines;
+  `isPaymentLikeCreditMerchant` is wider than the classifier (a credit opening with PAGO / ABONO is
+  stored `card_refund`); `ccFeedCuotaPurchases.ts` `CcOpenBucketLine` belongs to no stream.
+- Matching: the recurring occurrence matcher is sequential (each occurrence's expected pesos depend
+  on earlier decisions) and needs a helper mode for that; `ccPlantedCharges.absorb` is asked one line
+  at a time because the importer decides as it goes; `ccPaymentMirrors` (fx band),
+  `ccFacturadoFinancingAuto` (subset sums) and the receipt matchers (split charges, guesses) need a
+  sum or band matcher; `equitySplits.ts` keeps `SPLIT_GUARD_MAX_GAP_DAYS`.
+- Client tables: `ColumnTable` needs a column shown in both renderings (the mirror-pairs checkbox), a
+  bare unlabelled card cell (active plans), a merged desktop cell built from sub-fields (the
+  dividendos sheet); `ProductConfigPanel` needs its per-row form state lifted; the three income line
+  tables and the Flows P/L per-bucket tables are raw tables with no cards; `PaginatedTable` +
+  `useClientPagination` + `ColumnTable` is repeated seven times; `GroceriesPage` fetches outside
+  react-query; two `colFacturadoTotal` keys. Desktop and mobile disagree in about a dozen places
+  (a field in one only: barcode, alias count, city; muted in one only; the dividendos subtotals).
+- Rehearsal: `server/data/.global-sync-state.json` has no env override, so a worktree or a fresh
+  checkout cannot serve the daily surfaces without a hand-made file.
+
 ### Backlog: what is still not currency agnostic after wave 9
 
 Source and legal facts stay as they are (the F22 in pesos, the 1040 in dollars, a cartola in pesos, the
@@ -1978,3 +2068,23 @@ Found by wave 6 (fold into the wave 9 streams where they fit):
   `apple/appStoreMail.ts`, `brokers/brokerEmail.ts`, the peso-only payment and transfer decoders
   (`stayMails.ts` is the one with a currency table); the Python output shapes are `*_clp`
   (payslip, grocery receipt, cartola entry).
+
+Found by wave 7:
+
+- Movement writers that are pesos only or hardcode a currency: `insertBankPesoMovement` and both
+  checking anchor writers; `mortgagePaymentCreate`; `cardToCardPayments` (a dollar part throws);
+  `ccPaymentMirrors` and `santanderCcPaymentReceipts` (the from-leg is always pesos, the receipt path
+  knows only dollars); `incomingWires`, `fintualWalletInterestApply`, `optionAssignment` (dollars);
+  the mail-written transfer movements, `pensionAccountCertificatesApply`, `afcCertImport`,
+  `fintualCertImport` (pesos); `routes/movements.ts` supersedes imported checking rows only for a
+  peso transfer; the demo generator's `counterUsd` / `counterClp` fields.
+- Card readers: `normalizedPostCloseLines` (traspaso links, header payments and legs are peso/dollar;
+  `usdPaymentPaidStatementDateResolver`); `facturadoFromStatement` and the slot readers
+  (`facturado_clp` / `facturado_usd`); `provisionalFacturado` (`saldo_inicial_clp` / `_usd`);
+  `ccFeedMirror` and `ccPlantedPayments` typed `"clp" | "usd"`; `clpPaymentLines`, `ccCuotaRetirement`
+  and the financing matcher's payment readers (pesos); `BilledLine` and `DebtEventLine` carry the four
+  legacy peso/dollar columns beside `amount` + `currency`; `ccRecurringPendingLines` and
+  `recurringPaymentMatch` (peso lines, UF or peso entries).
+- Client tables still on `_clp` columns: the facturaciones, detalle por mes, card plans and cuotas
+  tables, the mortgage tables (UF + pesos), groceries, the mirror-pairs card payments,
+  `CheckingCartolaMonthTable`.

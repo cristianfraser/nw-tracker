@@ -1,6 +1,6 @@
 {
   "note": "Written by `node scripts/check-deps.mjs --write-baseline`. Cycles and the listed edges may only shrink.",
-  "edge_count": 6921,
+  "edge_count": 6956,
   "largest_cycle": 37,
   "cycle_members": [
     "server/src/accountChartInactive.ts",
