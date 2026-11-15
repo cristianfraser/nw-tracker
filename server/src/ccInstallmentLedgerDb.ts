@@ -848,7 +848,7 @@ export function installmentRemainingClpByCalendarMonth(accountId: number): Map<s
  * amount, or the issuer's split while unprinted). The principal is what its statements print on
  * every cuota line (`ccInstallmentPrintedPrincipalByPlan`), else its total. Summing the unbilled
  * cuotas instead was a few pesos off the bank in two ways: Santander bills each cuota rounded
- * half up and the split rounded down (+53 on ·7817, 2026-11-12), and BCI stores «Total a pagar» =
+ * half up and the split rounded down (+53 on a Santander card, 2026-11-12), and BCI stores «Total a pagar» =
  * N × cuota above its principal (+7 on the BCI card, 2026-11-12). An interest plan's billed cuotas carry their share
  * of the interest (`ccInstallmentInterestBillingEvents`'s split), which is not principal, so
  * those shares are added back. `cuotas` counts the unbilled cuotas. A null `billingMonth` (no

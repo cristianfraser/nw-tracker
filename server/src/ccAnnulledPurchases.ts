@@ -2,7 +2,7 @@
  * Card purchases the bank annulled before billing them (migration 332, `cc_annulled_purchases`).
  *
  * A bank that voids an unbilled purchase drops it from its «por facturar» listing instead of posting
- * a refund credit (MercadoLibre 8x.xxx on ·7817, 2026-11-05: listed, then gone, the bank's cupo
+ * a refund credit (MercadoLibre 8x.xxx on a Santander card, 2026-11-05: listed, then gone, the bank's cupo
  * exactly that much below the app). Deleting the bucket line, as the feed mirror and the statement
  * reconcile did, also deleted the purchase from history. Instead the purchase is kept as two events:
  *  - the purchase, on its own day, under the expense key its line carried (`purchase_key`), so the
