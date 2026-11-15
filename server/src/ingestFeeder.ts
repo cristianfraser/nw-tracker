@@ -7,15 +7,16 @@ import {
   type FeederParseFormat,
   type FeederParseResult,
 } from "nw-tracker-contracts";
+import { liveEnvText } from "./config.js";
 
 /** The ingest service's base URL (`INGEST_URL`). */
-export function resolveIngestServiceUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.INGEST_URL?.trim() || DEFAULT_INGEST_SERVICE_URL).replace(/\/+$/, "");
+export function resolveIngestServiceUrl(env?: NodeJS.ProcessEnv): string {
+  return (liveEnvText("INGEST_URL", env) ?? DEFAULT_INGEST_SERVICE_URL).replace(/\/+$/, "");
 }
 
-export function ingestFeederHeaders(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function ingestFeederHeaders(env?: NodeJS.ProcessEnv): Record<string, string> {
   const headers: Record<string, string> = { "content-type": "application/json" };
-  const token = env.INGEST_TOKEN?.trim();
+  const token = liveEnvText("INGEST_TOKEN", env);
   if (token) headers.authorization = `Bearer ${token}`;
   return headers;
 }
@@ -39,7 +40,7 @@ export async function requestFeederParse(
   format: FeederParseFormat,
   content: Buffer,
   filename: string,
-  env: NodeJS.ProcessEnv = process.env
+  env?: NodeJS.ProcessEnv
 ): Promise<FeederParseAnswer> {
   let res: Response;
   try {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BACKGROUND_JOB_FLAGS, parseEnvFlag, parseServerConfig } from "./config.js";
+import { BACKGROUND_JOB_FLAGS, liveEnvFlag, liveEnvRaw, liveEnvText, parseEnvFlag, parseServerConfig } from "./config.js";
+import { ingestAuthConfigFromEnv } from "./ingestAuth.js";
+import { resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { DEMO_SYNC_DISABLED_SOURCES } from "./syncSourceIds.js";
 
 describe("parseEnvFlag", () => {
@@ -62,5 +64,44 @@ describe("parseServerConfig defaults, in order: explicit, demo, background jobs,
   it("debug channels: DEBUG_VERBOSE turns them all on", () => {
     expect(parseServerConfig({ DEBUG_VERBOSE: "1" }).log).toMatchObject({ http: true, httpOut: true, db: true, perf: true, dbAll: false });
     expect(parseServerConfig({ DEBUG_VERBOSE: "1", DEBUG_DB_SLOW_MS: "0" }).log.dbAll).toBe(true);
+  });
+});
+
+describe("live variables", () => {
+  it("are read on each call, trimmed, null when unset or empty", () => {
+    const env: NodeJS.ProcessEnv = { INGEST_TOKEN: "  abc  ", INGEST_URL: "   ", FINTUAL_PASSWORD: " p w " };
+    expect(liveEnvText("INGEST_TOKEN", env)).toBe("abc");
+    expect(liveEnvText("INGEST_URL", env)).toBeNull();
+    expect(liveEnvText("COINGECKO_API_KEY", env)).toBeNull();
+    expect(liveEnvRaw("FINTUAL_PASSWORD", env)).toBe(" p w ");
+    env.INGEST_TOKEN = "later";
+    expect(liveEnvText("INGEST_TOKEN", env)).toBe("later");
+  });
+
+  it("read the process environment as it is now, not as it was at boot", () => {
+    const before = process.env.PORTFOLIO_START_YMD;
+    try {
+      process.env.PORTFOLIO_START_YMD = "2019-01-01";
+      expect(liveEnvText("PORTFOLIO_START_YMD")).toBe("2019-01-01");
+      process.env.PORTFOLIO_START_YMD = "2020-02-02";
+      expect(liveEnvText("PORTFOLIO_START_YMD")).toBe("2020-02-02");
+    } finally {
+      if (before === undefined) delete process.env.PORTFOLIO_START_YMD;
+      else process.env.PORTFOLIO_START_YMD = before;
+    }
+  });
+
+  it("flags follow the one truthiness rule and are off when unset", () => {
+    expect(liveEnvFlag("SERVE_CLIENT_DIST", {})).toBe(false);
+    expect(liveEnvFlag("SERVE_CLIENT_DIST", { SERVE_CLIENT_DIST: "1" })).toBe(true);
+    expect(liveEnvFlag("SERVE_CLIENT_DIST", { SERVE_CLIENT_DIST: "0" })).toBe(false);
+    expect(() => liveEnvFlag("SERVE_CLIENT_DIST", { SERVE_CLIENT_DIST: "on" })).toThrow(/SERVE_CLIENT_DIST/);
+  });
+
+  it("ingest: the service URL and the access rule come from the given environment", () => {
+    expect(resolveIngestServiceUrl({ INGEST_URL: "http://10.0.0.2:3002//" })).toBe("http://10.0.0.2:3002");
+    expect(ingestAuthConfigFromEnv({ INGEST_TOKEN: "t", INGEST_ALLOW_REMOTE: "1" })).toEqual({ token: "t", allowRemote: true, demoMode: false });
+    expect(ingestAuthConfigFromEnv({ DEMO_MODE: "1" }).demoMode).toBe(true);
+    expect(() => ingestAuthConfigFromEnv({ INGEST_ALLOW_REMOTE: "1" })).toThrow(/requires INGEST_TOKEN/);
   });
 });

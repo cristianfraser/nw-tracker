@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeCcImportCardLast4 } from "./ccConsolidatedCards.js";
+import { liveEnvText } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +21,7 @@ function hasDeptoCsv(dir: string): boolean {
  * next to `server/`, then `process.cwd()/cfraser`, then `../cfraser` from cwd.
  */
 export function resolveCfraserCsvDir(): string {
-  const env = process.env.CFRASER_CSV_DIR?.trim();
+  const env = liveEnvText("CFRASER_CSV_DIR");
   if (env) {
     const resolved = path.resolve(env);
     if (hasDeptoCsv(resolved)) return resolved;
@@ -41,7 +42,7 @@ export function resolveDeptoDividendosCsvPath(): string {
 
 /** Credit-card statement PDF root (`cfraser/credit-card-statements/`). */
 export function resolveCfraserPdfsDir(): string {
-  const env = process.env.CFRASER_PDFS_DIR?.trim();
+  const env = liveEnvText("CFRASER_PDFS_DIR");
   if (env) return path.resolve(env);
   return path.resolve(__dirname, "..", "..", "cfraser", "credit-card-statements");
 }
@@ -85,7 +86,7 @@ export function resolveCcStatementPendingReviewDir(): string {
 
 /** Drop zone for new PDFs, cartola xlsx, etc. (`cfraser/inbox/`; legacy `cfraser/pdfs/`). */
 export function resolveCfraserInboxDir(): string {
-  const env = process.env.CFRASER_INBOX_DIR?.trim();
+  const env = liveEnvText("CFRASER_INBOX_DIR");
   if (env) return path.resolve(env);
   const cfraser = resolveCfraserCsvDir();
   const inbox = path.join(cfraser, "inbox");
@@ -97,21 +98,21 @@ export function resolveCfraserInboxDir(): string {
 
 /** Santander checking-account cartola `.xlsx` files (`cfraser/excels/cuenta corriente/`). */
 export function resolveCfraserCheckingCartolasDir(): string {
-  const env = process.env.CFRASER_CHECKING_CARTOLAS_DIR?.trim();
+  const env = liveEnvText("CFRASER_CHECKING_CARTOLAS_DIR");
   if (env) return path.resolve(env);
   return path.resolve(__dirname, "..", "..", "cfraser", "excels", "cuenta corriente");
 }
 
 /** Santander checking-account cartola PDFs (`cfraser/cartolas-cuenta-corriente/`). */
 export function resolveCfraserCheckingCartolaPdfsDir(): string {
-  const env = process.env.CFRASER_CHECKING_CARTOLA_PDFS_DIR?.trim();
+  const env = liveEnvText("CFRASER_CHECKING_CARTOLA_PDFS_DIR");
   if (env) return path.resolve(env);
   return path.resolve(__dirname, "..", "..", "cfraser", "cartolas-cuenta-corriente");
 }
 
 /** Santander cuenta vista (CUENTAMATICA) cartola PDFs (`cfraser/cartolas-cuenta-vista/`). */
 export function resolveCfraserCuentaVistaCartolaPdfsDir(): string {
-  const env = process.env.CFRASER_CUENTA_VISTA_PDFS_DIR?.trim();
+  const env = liveEnvText("CFRASER_CUENTA_VISTA_PDFS_DIR");
   if (env) return path.resolve(env);
   return path.resolve(__dirname, "..", "..", "cfraser", "cartolas-cuenta-vista");
 }

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ccCardRegistrySchema, type CcCardRegistry } from "nw-tracker-contracts";
+import { liveEnvText } from "./config.js";
 
 export type { CcCardRegistry };
 
@@ -19,7 +20,7 @@ export type { CcCardRegistry };
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function registryFilePath(): string {
-  const override = process.env.NW_TRACKER_CC_CARDS?.trim();
+  const override = liveEnvText("NW_TRACKER_CC_CARDS");
   if (override) return path.resolve(override);
   return path.join(__dirname, "..", "..", "cfraser", "cc-cards.json");
 }

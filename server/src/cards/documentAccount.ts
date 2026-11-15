@@ -22,13 +22,14 @@ import { resolveMasterAccountIdForImportCardLast4 } from "../ccConsolidatedCards
 import { ccIssuerBySlug, type CcIssuerSlug } from "../ccIssuers.js";
 import { ccIssuerSlugForMasterAccount } from "../ccIssuerForAccount.js";
 import { listCreditCardMasterAccountIdsForIssuer } from "../creditCardTree.js";
+import { liveEnvText } from "../config.js";
 
 type OrganizeIdentifiers = {
   santander_80_account_to_card_last4?: Record<string, string>;
 };
 
 export function resolveOrganizeIdentifiersPath(): string {
-  const override = process.env.NW_TRACKER_ORGANIZE_IDENTIFIERS?.trim();
+  const override = liveEnvText("NW_TRACKER_ORGANIZE_IDENTIFIERS");
   if (override) return path.resolve(override);
   return path.join(resolveCfraserCsvDir(), "organize-identifiers.json");
 }

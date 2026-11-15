@@ -5,6 +5,7 @@
 
 import { fetchOut } from "./httpOut.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
+import { liveEnvText } from "./config.js";
 
 const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 
@@ -25,7 +26,7 @@ type CoinGeckoMarketChart = {
 };
 
 function coingeckoApiHeaders(): Record<string, string> {
-  const key = process.env.COINGECKO_API_KEY?.trim();
+  const key = liveEnvText("COINGECKO_API_KEY");
   if (!key) return { Accept: "application/json" };
   return { Accept: "application/json", "x-cg-demo-api-key": key };
 }

@@ -1,8 +1,9 @@
 import { db } from "./db.js";
+import { liveEnvText } from "./config.js";
 
 /** Earliest `YYYY-MM-DD` touch in DB, or `PORTFOLIO_START_YMD` env, or fallback. */
 export function portfolioStartYmd(): string {
-  const env = process.env.PORTFOLIO_START_YMD?.trim();
+  const env = liveEnvText("PORTFOLIO_START_YMD");
   if (env && /^\d{4}-\d{2}-\d{2}$/.test(env)) return env;
   const m = db
     .prepare(
