@@ -42,8 +42,8 @@
  * bucket without a breakdown fall through to the shape above (each child group then applies
  * the rule itself).
  */
-import { isHomeCurrency } from "./displayUnits.js";
-import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
+import { nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { clpToUnitAt } from "./valueConvert.js";
@@ -163,6 +163,18 @@ function isMapGroup(n: NavTreeNodeDto): boolean {
   );
 }
 
+/**
+ * A leaf tile in pesos (its basis, and its value when the unit is pesos): 0 when no row has a
+ * value, unrounded.
+ */
+const LEAF_TILE_BASIS: NodeValueRules = { empty: "zero", missingCardRate: "null", rounding: "none" };
+
+/**
+ * A leaf tile's value in another unit: absent when no row has a value in it or the linked cards
+ * have no rate, unrounded.
+ */
+const LEAF_TILE_VALUE_IN_UNIT: NodeValueRules = { empty: "null", missingCardRate: "null", rounding: "none" };
+
 function sumFinite(values: readonly (number | null | undefined)[]): number | null {
   let sum = 0;
   let any = false;
@@ -273,7 +285,6 @@ function otherSleeveTile(
 export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
   const { navRoot, rows, linkedCreditCards, proxy, chainedPct, unit } = input;
   const rowById = new Map(rows.map((r) => [r.account_id, r]));
-  const emptySum = isHomeCurrency(unit) ? 0 : null;
 
   // Accounts the tree names explicitly are claimed by their own group first; chart-inactive
   // bucket members the tree omits (picked up by `stripMetricsRows`) go to the first leaf
@@ -383,17 +394,23 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       return true;
     });
     for (const r of leafRows) claimed.add(r.account_id);
-    let basis = sumFinite(leafRows.map((r) => r.clp_basis.current_value)) ?? 0;
-    let value: number | null = sumFinite(leafRows.map((r) => r.current_value)) ?? emptySum;
-    if (isCashSavingsNavNode(node)) {
-      basis = cashNetOfLinkedCreditCards(basis, linkedCreditCards.clp);
-      value =
-        value != null && linkedCreditCards.value != null
-          ? cashNetOfLinkedCreditCards(value, linkedCreditCards.value)
-          : linkedCreditCards.clp === 0
-            ? value
-            : null;
-    }
+    // The tile's value from its rows' today values: the cash child nets the linked cards.
+    const nets = isCashSavingsNavNode(node);
+    const basis = nodeValueFromSum(
+      sumFinite(leafRows.map((r) => r.clp_basis.current_value)),
+      nets ? linkedCreditCards.clp : undefined,
+      HOME_CURRENCY,
+      LEAF_TILE_BASIS,
+      node.slug
+    )!;
+    const value = nodeValueFromSum(
+      sumFinite(leafRows.map((r) => r.current_value)),
+      // Cards owing nothing need no rate.
+      nets ? (linkedCreditCards.clp === 0 ? 0 : linkedCreditCards.value) : undefined,
+      unit,
+      isHomeCurrency(unit) ? LEAF_TILE_BASIS : LEAF_TILE_VALUE_IN_UNIT,
+      node.slug
+    );
     // The leaf's own accounts, for the page to open it into (Crypto shows Bitcoin and Ether);
     // none when the sidebar shows it as a leaf (IPSA, SOXX among Acciones' stocks).
     const leaf_accounts = asLeaf
