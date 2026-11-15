@@ -1,7 +1,7 @@
-import { accountIdsInPortfolioGroup, portfolioGroupBySlug } from "./portfolioGroupTree.js";
+import { portfolioGroupBySlug } from "./portfolioGroupIndex.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
-import { navTreeModel, nwBucketOfGroup } from "./navTreeModel.js";
+import { groupAccountIds, navTreeModel, nwBucketOfGroup } from "./navTreeModel.js";
 
 export type AssetGroupRow = {
   id: number;
@@ -221,7 +221,7 @@ export function listAccountsForBucketSlug(
   excludeLegacyStocksNote: string
 ): BucketAccountRow[] {
   if (portfolioGroupBySlug(bucketSlug)) {
-    const ids = accountIdsInPortfolioGroup(bucketSlug);
+    const ids = groupAccountIds(bucketSlug);
     if (ids.length === 0) return [];
     const ph = ids.map(() => "?").join(",");
     const sql = LIST_BY_ACCOUNT_IDS.replace("__IDS__", ph);

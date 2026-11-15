@@ -14,20 +14,13 @@ import { importSyncCartolaSinMovimientosForMonth } from "./importSyncCartolaSinM
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
-export type ImportSyncDocumentKind =
-  | "checking_cartola"
-  | "cuenta_vista_cartola"
-  | "cc_statement";
+import type { ImportSyncDocumentAccount } from "./importSyncDocumentTypes.js";
 
-export type CcStatementCoverageCurrency = "clp" | "usd"; // convention-ok: the statement PDF corpus is filed in clp/ and usd/ folders per card
-
-export type ImportSyncDocumentAccount = {
-  account_id: number;
-  label: string;
-  document_kind: ImportSyncDocumentKind;
-  /** CLP/USD column when this card has at least one USD PDF statement. */
-  cc_statement_currency?: CcStatementCoverageCurrency;
-};
+export type {
+  CcStatementCoverageCurrency,
+  ImportSyncDocumentAccount,
+  ImportSyncDocumentKind,
+} from "./importSyncDocumentTypes.js";
 
 export type ImportSyncDocumentCell = {
   imported: boolean;

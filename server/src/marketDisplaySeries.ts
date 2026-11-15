@@ -1,6 +1,7 @@
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import type { MarketDisplaySeriesRow } from "./marketDisplaySeriesTypes.js";
 import { syncWatchlistFromApp } from "./watchlist.js";
 import { RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
 import {
@@ -10,21 +11,7 @@ import {
   type WatchlistRowStats,
 } from "./watchlistStats.js";
 
-export type WatchlistSource = "builtin" | "account" | "manual";
-
-export type MarketDisplaySeriesRow = {
-  id: number;
-  slug: string;
-  label: string;
-  label_i18n_key: string | null;
-  sort_order: number;
-  kind: "equity" | "fund_unit" | "fx_usd" | "fx_pair" | "uf" | "composite";
-  series_key: string | null;
-  show_in_marquee: number;
-  show_in_rates: number;
-  rates_chart_title: string | null;
-  source: WatchlistSource;
-};
+export type { MarketDisplaySeriesRow, WatchlistSource } from "./marketDisplaySeriesTypes.js";
 
 const stmtAll = db.prepare(
   `SELECT id, slug, label, label_i18n_key, sort_order, kind, series_key,

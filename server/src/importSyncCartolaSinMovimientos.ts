@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { db } from "./db.js";
-import type { ImportSyncDocumentKind } from "./importSyncDocumentCoverage.js";
+import type { ImportSyncDocumentKind } from "./importSyncDocumentTypes.js";
 import {
   loadCartolaParsedPdfJsonEntries,
   resolveCartolaParsedPdfJsonPath,

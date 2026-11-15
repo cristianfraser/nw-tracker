@@ -19,7 +19,7 @@ import { fetchYahooLiveQuote, YAHOO_USD_CLP_SYMBOL } from "./equityYahooEod.js";
 import { getLatestLivePairQuoteRow } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL, liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 import { isFxDayOpen } from "./forexDay.js";
-import { fxMonthEndForBalanceUsd, type FxRow } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd, type FxRow } from "./fxStoredRates.js";
 import { loadedFxPairs } from "./fxPairsSync.js";
 
 /** Yahoo chart symbol: CLP per 1 USD (tipo de cambio observado intraday). */

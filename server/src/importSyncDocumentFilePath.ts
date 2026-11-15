@@ -19,7 +19,7 @@ import {
 import { cartolaPdfPreferenceScore } from "./cartolaSinMovimientos.js";
 import { normalizeCcImportCardLast4 } from "./ccConsolidatedCards.js";
 import { db } from "./db.js";
-import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
+import type { ImportSyncDocumentAccount } from "./importSyncDocumentTypes.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

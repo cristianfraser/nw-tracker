@@ -17,11 +17,12 @@ import {
 } from "./watchlist.js";
 import { RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
 
-vi.mock("./globalSyncScheduler.js", () => ({
+vi.mock("./globalSyncSchedulerSignal.js", () => ({
   notifyGlobalSyncScheduler: vi.fn(),
+  registerGlobalSyncSchedulerNotifier: vi.fn(),
 }));
 
-import { notifyGlobalSyncScheduler } from "./globalSyncScheduler.js";
+import { notifyGlobalSyncScheduler } from "./globalSyncSchedulerSignal.js";
 
 const TEST_TICKER = "ZZZWL";
 const TEST_INDEX = "^ZZWLIX";

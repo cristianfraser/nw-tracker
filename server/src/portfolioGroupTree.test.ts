@@ -6,7 +6,6 @@ import {
   assetGroupIdForImportKind,
   accountIdsInPortfolioGroupForTotals,
   portfolioGroupBySlug,
-  resolvePortfolioGroupSlugForLegacyTab,
 } from "./portfolioGroupTree.js";
 import { bucketOfAccount } from "./navTreeModel.js";
 
@@ -21,16 +20,6 @@ describe("portfolioGroupTree", () => {
     seedNavTree();
     const agId = assetGroupIdForImportKind("afc");
     expect(agId).toBeGreaterThan(0);
-  });
-
-  it("maps legacy group+subgroup tab params to portfolio slugs", () => {
-    seedNavTree();
-    expect(resolvePortfolioGroupSlugForLegacyTab("brokerage", "mutual_funds")).toBe(
-      "brokerage_mutual_funds"
-    );
-    expect(resolvePortfolioGroupSlugForLegacyTab("retirement", "afp_afc")).toBe(
-      "retirement_afp_afc"
-    );
   });
 
   it("rolls up brokerage total from nested portfolio groups (tree, not per-account slug tags)", () => {

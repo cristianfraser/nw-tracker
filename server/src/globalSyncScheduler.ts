@@ -23,6 +23,7 @@ import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
 import { chileWallClockAt, chileWallClockNow } from "./chileDate.js";
 import { serverConfig } from "./config.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
+import { notifyGlobalSyncScheduler, registerGlobalSyncSchedulerNotifier } from "./globalSyncSchedulerSignal.js";
 import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
 import { equityEodLondonSyncDue, equityEodNyseSyncDue, equityEodSantiagoSyncDue } from "./equityEodSync.js";
 import { londonWallClock } from "./londonSession.js";
@@ -161,12 +162,13 @@ export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
   };
 }
 
-/** Call after force-stale or other events that may require immediate polling. */
-export function notifyGlobalSyncScheduler(): void {
+registerGlobalSyncSchedulerNotifier(() => {
   if (!job.isEnabled) return;
   if (polling) job.trigger();
   else job.reschedule();
-}
+});
+
+export { notifyGlobalSyncScheduler };
 
 export function startGlobalSyncScheduler(): void {
   polling = null;

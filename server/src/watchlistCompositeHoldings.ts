@@ -1,4 +1,4 @@
-import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
+import type { MarketDisplaySeriesRow } from "./marketDisplaySeriesTypes.js";
 import { loadCompositeHoldings } from "./watchlistComposite.js";
 import {
   watchlistStatsForRow,

@@ -13,13 +13,13 @@ import {
   type InstrumentSource,
   type MarketSymbolFetchError,
 } from "./marketSymbols.js";
-import { notifyGlobalSyncScheduler } from "./globalSyncScheduler.js";
+import { notifyGlobalSyncScheduler } from "./globalSyncSchedulerSignal.js";
 import { pairRateOnOrBefore } from "./rates.js";
 import {
   compositeHoldingsWithStats,
   type WatchlistCompositeHoldingRow,
 } from "./watchlistCompositeHoldings.js";
-import type { MarketDisplaySeriesRow, WatchlistSource } from "./marketDisplaySeries.js";
+import type { MarketDisplaySeriesRow, WatchlistSource } from "./marketDisplaySeriesTypes.js";
 import {
   watchlistStatsForRow,
   type WatchlistDisplayUnit,
@@ -33,7 +33,7 @@ import {
   RISKY_NORRIS_PROXY_BUCKET,
 } from "./watchlistComposite.js";
 
-export type { WatchlistSource } from "./marketDisplaySeries.js";
+export type { WatchlistSource } from "./marketDisplaySeriesTypes.js";
 export type { WatchlistCompositeHoldingRow } from "./watchlistCompositeHoldings.js";
 export type { WatchlistDisplayUnit } from "./watchlistStats.js";
 

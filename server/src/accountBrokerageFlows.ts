@@ -1,5 +1,5 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
-import type { AccountRow } from "./movementUnitsPolicy.js";
+import type { AccountRow } from "./movementAccountRow.js";
 
 const BROKERAGE_BUCKET_SLUGS = new Set(["brokerage_acciones", "brokerage_crypto"]);
 const LEGACY_EQUITY_LEAF_KINDS = new Set(["spy", "vea", "oilk"]);

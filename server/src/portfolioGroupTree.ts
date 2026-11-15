@@ -8,49 +8,13 @@ import {
   leafGroupOfAccount,
   navGroupById,
 } from "./navTreeModel.js";
-import { getPortfolioGroupIndex } from "./portfolioGroupIndex.js";
+import { portfolioGroupBySlug } from "./portfolioGroupIndex.js";
 
-export type PortfolioGroupRow = {
-  id: number;
-  slug: string;
-  label: string;
-  parent_id: number | null;
-  group_kind: string;
-  asset_group_slug: string | null;
-  kind_slug: string | null;
-  dashboard_bucket_slug: string | null;
-  exclude_from_parent_total: number;
-  api_group: string | null;
-  api_subgroup: string | null;
-};
-
-const groupBySlugStmt = db.prepare(
-  `SELECT id, slug, label, parent_id, group_kind, asset_group_slug, kind_slug,
-          dashboard_bucket_slug, exclude_from_parent_total, api_group, api_subgroup
-   FROM portfolio_groups WHERE slug = ?`
-);
-
-const groupByIdStmt = db.prepare(
-  `SELECT id, slug, label, parent_id, group_kind, asset_group_slug, kind_slug,
-          dashboard_bucket_slug, exclude_from_parent_total, api_group, api_subgroup
-   FROM portfolio_groups WHERE id = ?`
-);
-
-export function portfolioGroupBySlug(slug: string): PortfolioGroupRow | null {
-  const idx = getPortfolioGroupIndex();
-  if (idx) return idx.groupBySlug.get(slug) ?? null;
-  return (groupBySlugStmt.get(slug) as PortfolioGroupRow | undefined) ?? null;
-}
+export { portfolioGroupById, portfolioGroupBySlug, type PortfolioGroupRow } from "./portfolioGroupIndex.js";
 
 /** A portfolio group tab's slug. */
 export function isResolvablePortfolioGroupSlug(slug: string): boolean {
   return portfolioGroupBySlug(slug) != null;
-}
-
-export function portfolioGroupById(id: number): PortfolioGroupRow | null {
-  const idx = getPortfolioGroupIndex();
-  if (idx) return idx.groupById.get(id) ?? null;
-  return (groupByIdStmt.get(id) as PortfolioGroupRow | undefined) ?? null;
 }
 
 export { withPortfolioGroupIndex } from "./portfolioGroupIndex.js";
@@ -138,53 +102,6 @@ export function isInvestmentPerformanceAccount(accountId: number): boolean {
 /** The net-worth bucket an account sits in (nearest `nw_bucket` ancestor of its nav leaf). */
 export function dashboardBucketSlugForAccountId(accountId: number): string | null {
   return bucketOfAccount(accountId);
-}
-
-const LEGACY_SUBGROUP_ALIASES: Record<string, string> = {
-  fondos_mutuos: "mutual_funds",
-};
-
-/** Legacy `?subgroup=` query value (empty → undefined, invalid type → null). */
-export function normalizeLegacyTabSubgroup(raw: unknown): string | undefined | null {
-  if (raw == null || raw === "") return undefined;
-  if (typeof raw !== "string") return null;
-  const t = raw.trim();
-  if (t === "") return undefined;
-  return LEGACY_SUBGROUP_ALIASES[t] ?? t;
-}
-
-/**
- * Map deprecated `group` + `subgroup` tab params to a `portfolio_groups.slug`.
- * Returns null when the combination is unknown.
- */
-export function resolvePortfolioGroupSlugForLegacyTab(
-  groupSlug: string,
-  tabSubgroup?: string
-): string | null {
-  if (groupSlug === "liabilities") {
-    if (!tabSubgroup) return portfolioGroupBySlug("liabilities") ? "liabilities" : null;
-    if (tabSubgroup === "credit_card" && portfolioGroupBySlug("liabilities_credit_card")) {
-      return "liabilities_credit_card";
-    }
-    if (tabSubgroup === "mortgage" && portfolioGroupBySlug("liabilities_mortgage")) {
-      return "liabilities_mortgage";
-    }
-    return null;
-  }
-  if (!tabSubgroup) {
-    return portfolioGroupBySlug(groupSlug) ? groupSlug : null;
-  }
-  const row = db
-    .prepare(
-      `SELECT slug FROM portfolio_groups
-       WHERE api_group = ? AND (api_subgroup = ? OR kind_slug = ?)
-       ORDER BY LENGTH(slug) DESC
-       LIMIT 1`
-    )
-    .get(groupSlug, tabSubgroup, tabSubgroup) as { slug: string } | undefined;
-  if (row) return row.slug;
-  const composed = `${groupSlug}_${tabSubgroup}`;
-  return portfolioGroupBySlug(composed) ? composed : null;
 }
 
 export function portfolioGroupIdForAccount(accountId: number): number | null {
