@@ -1682,3 +1682,189 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
 - Whether to rewrite the public history for the relatives' names and RUT digits masked in wave 5.
 - Where the receipt-estimated statements show in the UI (they carry the `import:estimate|` source like the
   2019 rebuild's `import:santander-mail|` ones; the card page labels neither yet).
+
+## Follow-up waves (2026-11-15)
+
+Waves 1–5 are in `main` (2026-11-09). This section re-checks the leftover notes above against the code
+323 commits later and plans waves 6–11. Where it disagrees with a note above, this section is current.
+
+### State (2026-11-14, `main` at `4454ad99`)
+
+- `node scripts/check-deps.mjs`: 1344 files, 6879 edges (baseline 6849), largest cycle 37, 101 files in
+  cycles. Twelve cycles: expenses 37 (hubs `ccExpenseCategories`, `flowsExpenses`), valuation 25
+  (`accountMarkClpAtYmd`, `accountValue`, `navTree`), sync/watchlist 10, ingest payments 7,
+  `movementUnitsPolicy` 4, importSync 4, ingest email 3, `portfolioGroupTree` 3, and four pairs
+  (`ingest config↔paths`, `movementTransfer↔brokerageFlowMovement`, `fxRates↔fxLive`,
+  `checkingCartolaPartialReconcile↔checkingPartialMovementsImport`).
+- `server/src` holds 603 files in the flat folder (743 with `cards/`, `flows/`, `f22/`, `us1040/`,
+  `taxFacts/`, `matching/`, `priceProviders/`, `routes/`, `demoData/`).
+
+### Status of each fix
+
+| Fix | Status | Left |
+|---|---|---|
+| F1 | partly | 603 flat files; 12 cycles; 10 catch-all 400s in 5 route files; 45 migration hooks, about 10 importing live domain code |
+| F2 | done | 7 `invalidateMarketDataAggregations` and 2 `clearAggregationCache` hand calls stay (same-connection sync writes) |
+| F3 | done | `__` slug parsing in 4 files; `credit_card_master\|` tests in 4 |
+| F4 | partly | 7 «Σ marks + net cards» loops; four-bucket literals in 6 files; synthetic colour tables; `seedNavTree()` places accounts; legacy `group=`/`subgroup=` |
+| F5 | done, leftovers | `fxRates.ts` (34 importers); the `clpToUnitAt.ts` shim; the dollar debt-frame path; the `uniformDebtRates` global; `afp_override_*` |
+| F6 | done, leftover | liability blocks in `accountPerformance.ts`; `periodPl` takes one flow number |
+| F7 | partly | ingest keeps 3 copied format files and 22 inline number parsers in 18 files |
+| F8 | done, leftover | ingest re-declares `ParsedPayrollRow`, `ParsedReceipt`, `CartolaPdfEntry` |
+| F9 | partly | `purchase_key` on the wire (45 server files; no `flow_id` in routes or client); `legacy_key`; `cc_expense_line_categories` by line id; note-derived identity (25 `note LIKE` in 8 files); `movements` beside `flows` |
+| F10 | done, leftover | about 12 callers classify payments by merchant, not the stored `kind` |
+| F11 | partly | card lines on the funnel; 35 raw `INSERT INTO movements` in 20 files |
+| F12 | partly | 67 `invalidateQueries` in 19 files; 12 hand-paired tables; about 128 slug literals; routes in `App.tsx`; `RatesPage` strings |
+| F13 | done | 3 Mains keep their own archive loop |
+| F14 | done, leftover | 46 `process.env` reads in 25 files; the sync/watchlist cycle |
+| F15, F16, F18, F19, Comments, Tests | done | |
+| F17 | partly | `pairOneToOne` in 3 modules; 13 keep their loops |
+| F20 | partly | cost out of P/L, pre-tax account, card-day capital flows, opening balances, instrument events not started |
+
+### Corrections to the notes above
+
+- **F20 cost:** a card's P/L is the fx move on its unpaid foreign debt (`ccRevaluationCostByDate`, the
+  user's decision of 2026-11-02); section-3 charges and plan interest become cost. A peso-only card
+  reads 0 on ordinary days. `periodPl` must receive capital and cost apart first.
+- **F20 pre-tax account:** both jurisdictions. Chile: cotización and AFC are internal transfers, tax
+  and health spending. US: 401(k) and HSA deferrals are internal transfers, FICA, withholding and
+  premiums spending. `taxFacts/`, `f22/`, `us1040/` keep reading payslips directly. Payslip readers:
+  22 files; the `pre_tax` surface: 13 server files and the client.
+- **F20 instrument events:** only facts about an instrument (split, ticker change, spin-off, merger
+  ratio). `option_expire` / `option_assign` stay per-holder rows. 15 files read `stock_split`.
+- **F20 opening balances:** done with `docs/standalone-app-plan.md` phase 2 (derived opening anchors).
+- **F5:** the dollar sell-rate rule lives in `foreignCashAccounts.ts` (`usdCashAccounts.ts` is gone);
+  `ccOwedTerms.ts` was never created; `usdToClpAsDebt` and `debtFrameClpPerUsd` are a dollar-only
+  twin of `debtFrameClpPerUnit` and go in wave 9.
+- **F3 lenders:** done (`lenderMerchantPatterns()` from the `lender_pattern` roles).
+- **F8 `ccCardRegistry`:** a lazy memoized read now; moving it to the database is the standalone plan's phase 1.
+- **F9 «movements become flows»:** as built, `flows` is an identity table and the `flow_movements_ai`
+  trigger mirrors each movement. Migrations 317 and 318 had to re-create the trigger (317 because
+  migrated databases carried one without the option kinds). The merge is a wave 11 decision.
+- **F11:** modules added since the merge use the card-line funnel but write movements directly
+  (`cardToCardPayments`, `optionAssignment`).
+- **F1:** the annulment, prepayment, planted-charge, card-to-card and mortgage-lender modules were added to the flat folder.
+- **AGENTS.md:** rule text is moving to `.claude/rules/<topic>.md` (`docs/agents-split-plan.md`). The
+  notes above that call AGENTS.md stale on the cache, re-import and card-statement sections now point
+  at `market-data.md`, `valuation-series.md` and `cards.md`.
+
+### How the waves run
+
+- Integration branch `untangle-2` (worktree `.claude/worktrees/untangle-2`), one worktree per stream
+  on `ut-<stream>` cut from it. `main` moves once per wave; the user says go per wave.
+- A stream owns the files its row names. In another stream's file it may change an import line only;
+  anything else is a note in its report.
+- Streams do not edit `AGENTS.md`, `.claude/rules/`, this file or `scripts/check-deps.baseline.json`.
+  The coordinator regenerates the baseline and does one docs pass per wave, in the topic file of the area.
+- New or moved code names money as `amount` + `currency`; no new `convention-ok` marks.
+- Checks: `npm run typecheck` (root), `cd server && npm run test`, `npm run test -w nw-tracker-client`,
+  `npm run test -w nw-tracker-ingest`, `node scripts/check-deps.mjs`.
+- From wave 7 on, a copy of the live database for before/after payload dumps in CLP, USD and EUR.
+
+### Wave 6 — mechanical, five streams in parallel
+
+| Stream | Does | Owns | Done when |
+|---|---|---|---|
+| `ut-ingest-leafs` | cut the 3 ingest cycles; the contracts formats replace `ingest/src/formats/{chileanNumber,ddMmYy,cartolaMovementDate}.ts` and the inline number parsers; parsed-output types come from contracts | `ingest/src/**` | 12 fewer files in cycles; ingest tests pass; no Python file touched |
+| `ut-small-cycles` | cut the server cycles of 10, 4, 4, 3, 2, 2, 2; drop `group=`/`subgroup=` and its two resolvers | the files of those cycles, `routes/accounts.ts`, `routes/benchmarks.ts` | 27 fewer files in cycles |
+| `ut-routes-failfast` | the 10 catch-all 400s onto `writeHandler` / `InputError`; the `catch {}` / `return {}` swallows; `process.env` reads into `config.ts` | `routes/{market,mortgage,usage,creditCard,flows}.ts`, the catch blocks of `checkingCartola{Balances,Import,MonthSummary}.ts`, `globalSyncState.ts`, `sbifApiGate.ts`, `config.ts`, the env readers except hooks and `db.ts` | no catch-all 400 left |
+| `ut-hooks-freeze` | the migration hooks in one folder, frozen from live domain code where the logic is small; the two misnamed exports; a boot check that the installed `flow_movements_ai` trigger equals the current spec | `db.ts`, the hook files | a fresh test database has the same schema; server suite passes |
+| `ut-client-resources` | `invalidateQueries` through `queries/resources.ts`; `RatesPage` strings through i18n | `client/src/**` | none left outside `queries/` |
+
+### Wave 7 — write funnels and stored kinds (three in parallel, then one)
+
+| Stream | Does | Done when |
+|---|---|---|
+| `ut-movement-writes` | the 35 raw inserts through `movementWrites.ts`, which gains a general `amount` + `currency` insert (today only `insertBankPesoMovement`); a guard test | identical payloads; each importer idempotent; demo invariants pass |
+| `ut-payment-kind` | payment readers use `cc_statement_lines.kind`; the `uniformDebtRates` global becomes a parameter keyed by currency | a report shows kind and merchant rule never disagree; identical card payloads |
+| `ut-client-tables` | the 12 hand-paired tables onto `ColumnTable` | screenshots at 375 / 880 / 1440 |
+| then `ut-matching-2` | `pairOneToOne` for planted payments, planted charges, recurring pending lines; `MATCH_WINDOWS.same_split`; money compared to the currency's coin | stored pairings identical |
+
+### Wave 8 — the two big cycles, then node values
+
+| Stream | Does | Done when |
+|---|---|---|
+| `ut-cycle-expenses` | break the 37-file cycle (types and leaf predicates out of the two hubs) | largest cycle ≤ 10 |
+| `ut-cycle-valuation` | break the 25-file cycle; delete the `clpToUnitAt.ts` shim; the liability blocks into the kernel | ≤ 15 files in cycles overall |
+| then `ut-node-value` | one `nodeValue(node, date, unit)` and its series form for the 7 netting loops; buckets from the tree; placement without `seedNavTree()` | identical payloads in every unit, or each difference listed |
+
+### Wave 9 — currency agnostic (one first, three in parallel, one last)
+
+The codebase is ours to change: a dollar figure may move by a peso where the legacy dollar path and
+`rates.ts` disagree, with each difference listed in the rehearsal.
+
+| Stream | Does | Done when |
+|---|---|---|
+| `ut-fx-rates` (first) | `fxRates.ts` into `rates.ts`; bid/ask per pair (`BID_ASK_FOREIGN_CURRENCY`); the dollar sell-rate rule in `foreignCashAccounts.ts`; the 34 importers | no importer of `fxRates.ts` |
+| `ut-card-currency` | one debt-frame path (`usdToClpAsDebt`, `debtFrameClpPerUsd` go); `facturado_foreign` only; owed per currency in «Próximos pagos»; the statement JSON apply, listing, receipt, planted-payment, traspaso, header-leg and manual-payment paths take any currency the issuer declares; a provisional close per currency; `usdDebtPaymentsForAccount` per currency | the euro-card and dollar-primary fixtures pass through every path |
+| `ut-trade-currency` | trades, dividends, option premiums and a split's cash leg settle in the cash account's currency (`equity_dividends` CHECK); the movement create API and the cash form take any core currency; the legacy `usd` leaf slugs; broker withdrawal requests | a euro-settled trade fixture values and reports P/L |
+| `ut-bank-currency` | the mirror-merge `_clp` columns renamed; the deposits reconciliation per currency; the `usd_account_feed` batch kind | identical reconciliation and mirror payloads |
+| then `ut-dto-money` | `_clp` / `_usd` DTO keys that are not a legal or source-format fact become `{value, currency}` (card billing frame, upcoming payments, real estate, payroll, mortgage); `afp_override_*` renamed; upcoming items rounded by currency; the client reads follow | `convention-ok` marks only on legal and source-format facts |
+
+### Wave 10 — optional structural, each needs a yes
+
+`ut-flow-id` (`flow_id` on the wire, `legacy_key` retired, line categories on the flow),
+`ut-movement-provenance` (cartola, daily-feed and mail identity out of notes), `ut-folders` (the flat
+folder by domain, one domain per commit, alone; also rewrites the topic files' `paths:` globs),
+`ut-client-slugs` (slug branches and colour-by-name, with the server fields they need).
+
+### Wave 11 — behaviour and schema, each its own rehearsal and decision
+
+Cost out of P/L and the pre-tax account (as corrected above), and the `movements` → `flows` merge:
+105 server files read `movements`, 33 foreign keys reference it. It needs wave 7's single writer first;
+decide after wave 8.
+
+### Dropped (with what is given up)
+
+- Instrument events: one split on file; the first spin-off or merger reopens it.
+- Card-day capital flows and the card-line claim rule: no case on the real data.
+- The other nine `pairOneToOne` adoptions (transfer notices, wires, the deposit matcher, mirror pairs,
+  receipts, bills, …): each keeps its own ambiguity handling.
+
+### Backlog: refactors for later waves
+
+Kept here so each wave adds what it finds. Not scheduled.
+
+- `valuationTimeseries.ts` (2342 lines, fan-out 52), `flowsCheckingGastos.ts` (1583), `globalSyncAll.ts`
+  (1443), `flowsExpenses.ts` (1407, fan-out 59), `ccBillingViews.ts` (1288), `ccInstallmentLedgerDb.ts`
+  (1270), `cards/purchases.ts` (1208), `seedNavTree.ts` (1049), `movementUnitsPolicy.ts` (1045): split by concern.
+- `db.ts` fan-in 337 and fan-out 51: the connection apart from migrations and seeds.
+- `chileDate.ts` fan-in 158: into the contracts formats.
+- The ~128 nav slug literals on the client and the four-bucket literals on the server.
+- `credit_card_master|` import-key tests (4 files) and `__` slug parsing (4 files, 3 SQL `LIKE`s): a
+  kind column on `asset_groups`, the issuer from `credit_card_account_config`.
+- Note-text branches left after wave 10: `afpUnoValuation.ts`, `fintualFundUnitDaily.ts`,
+  `merchantExpenseNotes.ts`, `afcCertImport.ts`, `fintualCertImport.ts`, `budaWallet.ts`,
+  `checkingDescriptionPredicates.ts`, `checkingCartola{Balances,Import}.ts`.
+- 7 `UPDATE cc_statement_lines` sites in 5 files and the importer's own insert / delete, outside `cards/lineWrites.ts`.
+- Merchant-string payment writers (`"PAGO"`, `"ABONO DE DIVISAS"` literals in 3 writers) onto the stored kind.
+- Routes hardcoded in `client/src/App.tsx` beside the server's `route_path`.
+- localStorage readers outside `usePersistedPref` (sidebar, tour, wealth percentile, projections, the three preference files).
+- Ingest: `santander/importStatementsMain.ts`, `afpUno/fetchMain.ts`, `grocery/inbox.ts` onto `sendStaged`;
+  `commaCsv.ts` has no contracts counterpart; 55 pass-through root npm scripts.
+- Ports 3001 / 5173 / 4173 hardcoded in `server/src/config.ts`, `client/vite.config.ts`, `client/src/api.ts`.
+- `DTO_SCHEMA_VERSIONS` covers 5 persisted payloads; the other DTO files carry none.
+- Client re-summing: `ccYearlyRollup.ts`, `DepositsReconciliationPage` total, `ccExpenseLineBuckets.ts`
+  (`CC_EXPENSE_TOTALS_EXCLUDED_SLUGS`, `sumLineAmountsClp`).
+- Internals-bound tests (`liveTickIncrementalRebuild`, `visitedPagesWarm`, `syncDimmingWatch`,
+  `dashboardAccountRowCache`, `markInputChanges`) and the behaviours with no synthetic coverage listed in «Notes from wave 5».
+
+### Backlog: what is still not currency agnostic after wave 9
+
+Source and legal facts stay as they are (the F22 in pesos, the 1040 in dollars, a cartola in pesos, the
+UF as an index). These are code limits to come back to, most needing a real case to test against:
+
+- Peso-native value paths: the AFP and Fintual marks (`afp_override_value_clp`), the depto ledger's
+  pesos behind a UF loan, book marks with a flow carry (a non-peso book mark with a carry window throws).
+- Card: Chilean cuota plans, the stamp tax and the cuota split are pesos only; the cupo «used» figure
+  mixes pesos with dollars at the debt frame; `cc_feed_billing_closes` is Santander's two currencies.
+- Feeds whose source has a peso and a dollar side decode into two slots (Santander feed, product
+  summary, receipts; Lider's listing): the decoders could emit `{amount, currency}` lines only.
+- Brokers: Fintual and Racional cash and mails are pesos and dollars; the Risky Norris proxy basket
+  is dollars; option underlyings must quote dollars; art. 107 is pesos; pence (`GBp`) is refused.
+- Tax lots: the dollar postures (`oficio_2573` / `oficio_2390`) for other currencies; the 1040 translates through dollars.
+- Payroll: a liquidación is pesos and a stub or contractor wire dollars (`liquido_currency`); a third payroll currency has no path.
+- Declared recurring payments: pesos or UF only. Place bills: pesos by CHECK. Groceries: pesos.
+- Projections: EUR uses the USD inflation default. USD milestones are fixed in dollars by design.
+- The demo story's money is pesos and dollars.
+- Client: `formatNative.ts` wrappers and the ~360 `_clp` / `_usd` field reads that remain after `ut-dto-money` (tax pages, groceries).
