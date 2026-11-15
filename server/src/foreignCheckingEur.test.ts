@@ -154,6 +154,11 @@ describe("a euro checking account on the bank side", () => {
     expect(transfer).toEqual({ amount: 250.75, currency: "eur", from_account_id: checkingEur, to_account_id: savingsEur });
     expect(foreignCashBalanceAt(checkingEur, today)).toBe(before.checking);
     expect(foreignCashBalanceAt(savingsEur, today)).toBe(before.savings);
+    // The merge keeps each leg signed in its own currency.
+    const merge = db
+      .prepare(`SELECT out_amount, out_currency, in_amount, in_currency FROM movement_mirror_merges WHERE transfer_movement_id = ?`)
+      .get(converted[0]!.transfer_movement_id);
+    expect(merge).toEqual({ out_amount: -250.75, out_currency: "eur", in_amount: 250.75, in_currency: "eur" });
 
     const restored = undoMirrorConversion(converted[0]!.transfer_movement_id);
     movements.push(restored.restored_out_id, restored.restored_in_id);

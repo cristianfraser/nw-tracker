@@ -70,9 +70,9 @@ describe("mirror-merged transfer aportes bucketing", () => {
     const transferId = insertTransfer(outAccountId, inAccountId, 800_000, "2026-01-07");
     db.prepare(
       `INSERT INTO movement_mirror_merges
-         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount_clp, out_note,
-          in_movement_id, in_occurred_on, in_amount_clp, in_note)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount, out_currency, out_note,
+          in_movement_id, in_occurred_on, in_amount, in_currency, in_note)
+       VALUES (?,?,?,?,'clp',?,?,?,?,'clp',?)`
     ).run(
       transferId,
       900_000_001,
@@ -101,9 +101,9 @@ describe("mirror-merged transfer aportes bucketing", () => {
     const transferId = insertTransfer(outAccountId, fintualAccountId, 18_000_000, "2026-04-21");
     db.prepare(
       `INSERT INTO movement_mirror_merges
-         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount_clp, out_note,
-          in_movement_id, in_occurred_on, in_amount_clp, in_note)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount, out_currency, out_note,
+          in_movement_id, in_occurred_on, in_amount, in_currency, in_note)
+       VALUES (?,?,?,?,'clp',?,?,?,?,'clp',?)`
     ).run(
       transferId,
       900_000_005,
@@ -155,9 +155,9 @@ describe("mirror-merged transfer aportes bucketing", () => {
     const transferId = insertTransfer(outAccountId, inAccountId, 800_000, "2026-01-07");
     db.prepare(
       `INSERT INTO movement_mirror_merges
-         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount_clp, out_note,
-          in_movement_id, in_occurred_on, in_amount_clp, in_note)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount, out_currency, out_note,
+          in_movement_id, in_occurred_on, in_amount, in_currency, in_note)
+       VALUES (?,?,?,?,'clp',?,?,?,?,'clp',?)`
     ).run(
       transferId,
       900_000_003,

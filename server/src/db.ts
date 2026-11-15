@@ -76,6 +76,7 @@ import { runStatementLineAmount319 } from "./migrationHooks/statementLineAmount3
 import { runBillingMetrics320 } from "./migrationHooks/billingMetrics320.js";
 import { runCardAmountsByCurrency321 } from "./migrationHooks/cardAmountsByCurrency321.js";
 import { runTraspasoLegs322 } from "./migrationHooks/traspasoLegs322.js";
+import { runMirrorMergeAmountCurrency359 } from "./migrationHooks/mirrorMergeAmountCurrency359.js";
 import { runMovementFlowTrigger317 } from "./migrationHooks/movementFlowTrigger317.js";
 import { runCashCurrency318 } from "./migrationHooks/cashCurrency318.js";
 import { runPayrollJurisdiction298 } from "./migrationHooks/payrollJurisdiction298.js";
@@ -414,6 +415,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "321_cc_card_amounts_by_currency.sql": runCardAmountsByCurrency321,
   "322_cc_traspaso_legs_by_direction.sql": runTraspasoLegs322,
   "337_investment_deposit_target_role.sql": runInvestmentDepositTarget337,
+  "359_mirror_merge_amount_currency.sql": runMirrorMergeAmountCurrency359,
   "325_vendor_catalog_more_names.sql": runVendorCatalog325,
   "326_cc_bank_cupo_issuer_planted_sources.sql": runCcListingIssuer326,
   "328_cc_planted_charge_lines.sql": runPlantedChargeLines328,

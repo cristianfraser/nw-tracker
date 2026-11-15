@@ -313,13 +313,15 @@ describe("convertCcPaymentMirrors", () => {
       .prepare(`SELECT * FROM movement_mirror_merges WHERE transfer_movement_id = ?`)
       .get(converted[0]!.transfer_movement_id) as {
       out_occurred_on: string;
-      out_amount_clp: number;
+      out_amount: number;
+      out_currency: string;
       in_movement_id: number | null;
       in_statement_line_id: number | null;
       in_occurred_on: string;
     };
     expect(merge.out_occurred_on).toBe("2037-04-10"); // cartola date preserved
-    expect(merge.out_amount_clp).toBe(-487331);
+    expect(merge.out_amount).toBe(-487331);
+    expect(merge.out_currency).toBe("clp");
     expect(merge.in_movement_id).toBeNull();
     expect(merge.in_statement_line_id).toBe(pagoLineId);
 
