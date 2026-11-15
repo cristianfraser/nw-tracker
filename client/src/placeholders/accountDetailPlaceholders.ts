@@ -1,3 +1,4 @@
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { isCreditCardAccountNavNode } from "../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import type { AccountDetailBundleResponse, DashboardAccountRow, NavTreeNodeDto } from "../types";
@@ -62,6 +63,7 @@ export function emptyMortgageLedger(accountId: number): AccountDetailBundleRespo
 export function emptyCcLedger(accountId: number): AccountDetailBundleResponse["ccLedger"] {
   return {
     account_id: accountId,
+    billing_currency: HOME_CURRENCY,
     has_installment_ledger: false,
     has_imported_statements: false,
     meta: null,
@@ -69,8 +71,8 @@ export function emptyCcLedger(accountId: number): AccountDetailBundleResponse["c
     purchases_completed: [],
     months: [],
     totals: {
-      total_remaining_principal_clp: 0,
-      next_calendar_month_total_clp: null,
+      total_remaining_principal: 0,
+      next_calendar_month_total: null,
       next_calendar_month: null,
     },
   };

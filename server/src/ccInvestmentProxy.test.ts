@@ -71,23 +71,23 @@ describe("installmentPurchaseToLot", () => {
   it("returns null when no payment_statements", () => {
     expect(
       installmentPurchaseToLot({
-        principal_clp: 100_000,
+        principal: 100_000,
         purchase_date: "2025-07-15",
         first_due_month: "2025-07",
         payment_statements: [],
       })
     ).toBeNull();
     expect(
-      installmentPurchaseToLot({ principal_clp: 100_000, purchase_date: "2025-07-15", first_due_month: "2025-07" })
+      installmentPurchaseToLot({ principal: 100_000, purchase_date: "2025-07-15", first_due_month: "2025-07" })
     ).toBeNull();
   });
 
   it("throws when the purchase has no purchase_date", () => {
     expect(() =>
       installmentPurchaseToLot({
-        principal_clp: 90_000,
+        principal: 90_000,
         first_due_month: "2025-07",
-        payment_statements: [{ pay_by_date: "2025-08-08", cuota_current: 1, amount_clp: 30_000 }],
+        payment_statements: [{ pay_by_date: "2025-08-08", cuota_current: 1, amount: 30_000 }],
       })
     ).toThrow(/purchase_date/);
   });
@@ -95,13 +95,13 @@ describe("installmentPurchaseToLot", () => {
   it("deposits on purchase_date and keys each cuota by the facturación that billed it, withdrawn on its pay-by", () => {
     // First cuota billed at the July close; each facturación is paid on the 8th of the next month.
     const lot = installmentPurchaseToLot({
-      principal_clp: 90_000,
+      principal: 90_000,
       purchase_date: "2025-07-15",
       first_due_month: "2025-07",
       payment_statements: [
-        { pay_by_date: "2025-09-08", cuota_current: 2, amount_clp: 30_000 },
-        { pay_by_date: "2025-08-08", cuota_current: 1, amount_clp: 30_000 },
-        { pay_by_date: "2025-10-08", cuota_current: 3, amount_clp: 30_000 },
+        { pay_by_date: "2025-09-08", cuota_current: 2, amount: 30_000 },
+        { pay_by_date: "2025-08-08", cuota_current: 1, amount: 30_000 },
+        { pay_by_date: "2025-10-08", cuota_current: 3, amount: 30_000 },
       ],
     });
     expect(lot).not.toBeNull();
@@ -116,24 +116,24 @@ describe("installmentPurchaseToLot", () => {
   });
 
   it("throws on a cuota with no index or pay-by, or a plan with no first_due_month", () => {
-    const base = { principal_clp: 90_000, purchase_date: "2025-07-15", first_due_month: "2025-07" };
+    const base = { principal: 90_000, purchase_date: "2025-07-15", first_due_month: "2025-07" };
     expect(() =>
       installmentPurchaseToLot({
         ...base,
-        payment_statements: [{ pay_by_date: "2025-08-08", cuota_current: null, amount_clp: 30_000 }],
+        payment_statements: [{ pay_by_date: "2025-08-08", cuota_current: null, amount: 30_000 }],
       })
     ).toThrow(/cuota index/);
     expect(() =>
       installmentPurchaseToLot({
         ...base,
-        payment_statements: [{ pay_by_date: "not a date", cuota_current: 1, amount_clp: 30_000 }],
+        payment_statements: [{ pay_by_date: "not a date", cuota_current: 1, amount: 30_000 }],
       })
     ).toThrow(/pay-by/);
     expect(() =>
       installmentPurchaseToLot({
         ...base,
         first_due_month: "",
-        payment_statements: [{ pay_by_date: "2025-08-08", cuota_current: 1, amount_clp: 30_000 }],
+        payment_statements: [{ pay_by_date: "2025-08-08", cuota_current: 1, amount: 30_000 }],
       })
     ).toThrow(/first_due_month/);
   });
@@ -345,11 +345,11 @@ describe("aggregateProxyByFacturacion", () => {
     expect(agg).toHaveLength(2);
 
     const aug = agg.find((a) => a.billing_month === "2025-08")!;
-    expect(aug.by_ticker["reserva"]!.total_gain_clp).toBeCloseTo(300, 2);
+    expect(aug.by_ticker["reserva"]!.total_gain).toBeCloseTo(300, 2);
     expect(aug.by_ticker["reserva"]!.blended_return_pct).toBeCloseTo((300 / 30_000) * 100, 4);
 
     const sep = agg.find((a) => a.billing_month === "2025-09")!;
-    expect(sep.by_ticker["reserva"]!.total_gain_clp).toBeCloseTo(600, 2);
+    expect(sep.by_ticker["reserva"]!.total_gain).toBeCloseTo(600, 2);
   });
 
   it("sums multiple purchases in the same month", () => {
@@ -357,7 +357,7 @@ describe("aggregateProxyByFacturacion", () => {
     const lot2 = makeLotResult([{ billing_month: "2025-08", amount: 20_000, gain: 200 }]);
     const agg = aggregateProxyByFacturacion([lot1, lot2], ["reserva"]);
     expect(agg).toHaveLength(1);
-    expect(agg[0]!.by_ticker["reserva"]!.total_gain_clp).toBeCloseTo(500, 2);
+    expect(agg[0]!.by_ticker["reserva"]!.total_gain).toBeCloseTo(500, 2);
     expect(agg[0]!.by_ticker["reserva"]!.blended_return_pct).toBeCloseTo((500 / 50_000) * 100, 4);
   });
 
@@ -365,8 +365,8 @@ describe("aggregateProxyByFacturacion", () => {
     const lot = makeLotResult([{ billing_month: "2025-08", amount: 30_000, gain: 300 }]);
     const agg = aggregateProxyByFacturacion([lot], ["reserva"], ["2025-09", "2025-08"]);
     expect(agg.map((a) => a.billing_month)).toEqual(["2025-08", "2025-09"]);
-    expect(agg[0]!.by_ticker["reserva"]).toMatchObject({ total_gain_clp: 300, blended_return_pct: 1 });
-    expect(agg[1]!.by_ticker["reserva"]).toEqual({ total_gain_clp: 0, blended_return_pct: null, projected: false });
+    expect(agg[0]!.by_ticker["reserva"]).toMatchObject({ total_gain: 300, blended_return_pct: 1 });
+    expect(agg[1]!.by_ticker["reserva"]).toEqual({ total_gain: 0, blended_return_pct: null, projected: false });
     // No proxy ticker at all: the row carries no figure (the cell's «—»).
     expect(aggregateProxyByFacturacion([], [], ["2025-09"])).toEqual([{ billing_month: "2025-09", by_ticker: {} }]);
   });
@@ -383,10 +383,10 @@ describe("aggregateProxyByFacturacion", () => {
     // billed with it. Keyed by its pay-by month it showed on September's row instead.
     const prices = { reserva: { "2026-08-03": 1000, "2026-09-10": 1010 } };
     const cuotaLot = installmentPurchaseToLot({
-      principal_clp: 60_000,
+      principal: 60_000,
       purchase_date: "2026-08-03",
       first_due_month: "2026-08",
-      payment_statements: [{ pay_by_date: "2026-09-10", cuota_current: 1, amount_clp: 30_000 }],
+      payment_statements: [{ pay_by_date: "2026-09-10", cuota_current: 1, amount: 30_000 }],
     })!;
     const oneShotLot = normalPurchaseToLot({
       amount_clp: 20_000,
@@ -399,7 +399,7 @@ describe("aggregateProxyByFacturacion", () => {
       ["reserva"]
     );
     expect(agg.map((a) => a.billing_month)).toEqual(["2026-08"]);
-    expect(agg[0]!.by_ticker["reserva"]!.total_gain_clp).toBeCloseTo(30_000 * 0.01 + 20_000 * 0.01, 6);
+    expect(agg[0]!.by_ticker["reserva"]!.total_gain).toBeCloseTo(30_000 * 0.01 + 20_000 * 0.01, 6);
     expect(agg[0]!.by_ticker["reserva"]!.blended_return_pct).toBeCloseTo(1, 6);
   });
 });
@@ -621,13 +621,13 @@ describe("facturación proxy on a card ledger", () => {
     );
     expect([...byMonth.keys()]).toEqual(["2026-08", "2026-09", "2026-10"]);
     // August: both statement rows and the cuota, all bought at 1.000 and paid at 1.010 → 1%.
-    expect(byMonth.get("2026-08")!.total_gain_clp).toBeCloseTo((20_000 + 11_000 + 10_000) * 0.01, 6);
+    expect(byMonth.get("2026-08")!.total_gain).toBeCloseTo((20_000 + 11_000 + 10_000) * 0.01, 6);
     expect(byMonth.get("2026-08")!.blended_return_pct).toBeCloseTo(1, 6);
     expect(byMonth.get("2026-08")!.projected).toBe(false);
     // September and October pay ahead of today: priced at today, projected.
-    expect(byMonth.get("2026-09")!.total_gain_clp).toBeCloseTo(13_000 * 0.02, 6);
+    expect(byMonth.get("2026-09")!.total_gain).toBeCloseTo(13_000 * 0.02, 6);
     expect(byMonth.get("2026-09")!.projected).toBe(true);
-    expect(byMonth.get("2026-10")!.total_gain_clp).toBeCloseTo(4_000 * (1020 / 1010 - 1) + 3_000 * 0.02, 6);
+    expect(byMonth.get("2026-10")!.total_gain).toBeCloseTo(4_000 * (1020 / 1010 - 1) + 3_000 * 0.02, 6);
     // Every month the client looks up is a row of the facturaciones table.
     const rows = new Set((ledger.facturaciones ?? []).map((f) => f.billing_month));
     expect([...byMonth.keys()].every((m) => rows.has(m))).toBe(true);
@@ -652,10 +652,10 @@ describe("facturación proxy on a card ledger", () => {
     expect(ledger.facturaciones!.find((f) => f.billing_month === "2026-10")?.is_open_month).toBe(true);
     const byMonth = new Map((ledger.facturacion_proxy ?? []).map((a) => [a.billing_month, a.by_ticker[SERIES]!]));
     expect([...byMonth.keys()].sort()).toEqual(rows);
-    expect(byMonth.get("2026-10")).toEqual({ total_gain_clp: 0, blended_return_pct: null, projected: false });
+    expect(byMonth.get("2026-10")).toEqual({ total_gain: 0, blended_return_pct: null, projected: false });
     // The months that billed money keep their figures and a return over what they floated.
     expect(byMonth.get("2026-08")!.blended_return_pct).toBeCloseTo(1, 6);
-    expect(byMonth.get("2026-09")!.total_gain_clp).toBeCloseTo(13_000 * 0.02, 6);
+    expect(byMonth.get("2026-09")!.total_gain).toBeCloseTo(13_000 * 0.02, 6);
   });
 
   it("throws on a line whose purchase date cannot be parsed instead of dropping it", () => {

@@ -32,17 +32,17 @@ const BALANCE_TOTAL_STROKE = "#38bdf8";
  */
 const BAR_SEGMENTS = [
   {
-    dataKey: "facturado_rest_clp",
+    dataKey: "facturado_rest",
     labelKey: "accountDetail.creditCard.chartFacturadoClp",
     fill: "#d97706",
   },
   {
-    dataKey: "facturado_cuotas_clp",
+    dataKey: "facturado_cuotas",
     labelKey: "accountDetail.creditCard.chartFacturadoCuotasClp",
     fill: "#a14e10",
   },
   {
-    dataKey: "facturado_foreign_clp",
+    dataKey: "facturado_foreign_total",
     labelKey: "accountDetail.creditCard.chartFacturadoUsd",
     fill: "#fbbf24",
   },
@@ -54,14 +54,14 @@ function unifiedMinMax(points: CcHistorialChartRow[]) {
   for (const row of points) {
     // Credit-card balances are debts (≥ 0); a rare negative month is an artifact, so the lines
     // never stretch the axis below zero for a single outlier.
-    for (const v of [row.cupo_en_cuotas_clp, row.balance_total_clp]) {
+    for (const v of [row.cupo_en_cuotas, row.balance_total]) {
       if (typeof v === "number" && Number.isFinite(v)) maxV = Math.max(maxV, v);
     }
     // stackOffset="sign": positive segments stack above zero, a negative one (a month whose
     // credits outweighed its únicos) below — real data, so the axis reaches it.
     let up = 0;
     let down = 0;
-    for (const v of [row.facturado_cuotas_clp, row.facturado_rest_clp, row.facturado_foreign_clp]) {
+    for (const v of [row.facturado_cuotas, row.facturado_rest, row.facturado_foreign_total]) {
       if (typeof v !== "number" || !Number.isFinite(v)) continue;
       if (v >= 0) up += v;
       else down += v;
@@ -151,7 +151,7 @@ export function CcInstallmentHistoryChart({
   const dailyBarLookup = useMemo(() => {
     if (!isDailyMode) return null;
     const indexByDay = new Map(displayRows.map((r, i) => [r.month, i] as const));
-    const barIndices = displayRows.flatMap((r, i) => (r.facturado_total_clp != null ? [i] : []));
+    const barIndices = displayRows.flatMap((r, i) => (r.facturado_total != null ? [i] : []));
     return { indexByDay, barIndices, tolerance: athTooltipIndexTolerance(displayRows.length) };
   }, [isDailyMode, displayRows]);
   const periodLabel = (ym: string) =>
@@ -184,7 +184,7 @@ export function CcInstallmentHistoryChart({
   }
 
   const tooltipBars = (label: string, row: CcHistorialChartRow): CcHistorialChartRow[] => {
-    if (!dailyBarLookup) return row.facturado_total_clp != null ? [row] : [];
+    if (!dailyBarLookup) return row.facturado_total != null ? [row] : [];
     const at = dailyBarLookup.indexByDay.get(label);
     if (at == null) return [];
     return dailyBarLookup.barIndices
@@ -197,25 +197,25 @@ export function CcInstallmentHistoryChart({
     <>
       <div>
         {t("accountDetail.creditCard.colTotalFacturado")}:{" "}
-        {bar.facturado_total_clp != null ? formatCardBillingPesos(bar.facturado_total_clp) : "—"}
+        {bar.facturado_total != null ? formatCardBillingPesos(bar.facturado_total) : "—"}
       </div>
       <div style={{ paddingLeft: 12 }}>
-        {bar.facturado_foreign_clp != null ? (
+        {bar.facturado_foreign_total != null ? (
           <div>
             {t("accountDetail.creditCard.chartFacturadoUsd")}:{" "}
             {bar.facturado_foreign != null
-              ? `${bar.facturado_foreign.map((f) => formatMoney({ value: f.amount, currency: f.currency })).join(" · ")} (${formatCardBillingPesos(bar.facturado_foreign_clp)})`
-              : formatCardBillingPesos(bar.facturado_foreign_clp)}
+              ? `${bar.facturado_foreign.map((f) => formatMoney({ value: f.amount, currency: f.currency })).join(" · ")} (${formatCardBillingPesos(bar.facturado_foreign_total)})`
+              : formatCardBillingPesos(bar.facturado_foreign_total)}
           </div>
         ) : null}
-        {bar.facturado_cuotas_clp != null ? (
+        {bar.facturado_cuotas != null ? (
           <div>
-            {t("accountDetail.creditCard.chartFacturadoCuotasClp")}: {formatCardBillingPesos(bar.facturado_cuotas_clp)}
+            {t("accountDetail.creditCard.chartFacturadoCuotasClp")}: {formatCardBillingPesos(bar.facturado_cuotas)}
           </div>
         ) : null}
-        {bar.facturado_rest_clp != null ? (
+        {bar.facturado_rest != null ? (
           <div>
-            {t("accountDetail.creditCard.chartFacturadoClp")}: {formatCardBillingPesos(bar.facturado_rest_clp)}
+            {t("accountDetail.creditCard.chartFacturadoClp")}: {formatCardBillingPesos(bar.facturado_rest)}
           </div>
         ) : null}
       </div>
@@ -242,11 +242,11 @@ export function CcInstallmentHistoryChart({
                   <div style={{ marginBottom: 6, fontWeight: 600 }}>{periodLabel(String(label))}</div>
                   <div>
                     {t("accountDetail.creditCard.saldoTotal")}:{" "}
-                    {d.balance_total_clp != null ? formatCardBillingPesos(d.balance_total_clp) : "—"}
+                    {d.balance_total != null ? formatCardBillingPesos(d.balance_total) : "—"}
                   </div>
                   <div>
                     {t("accountDetail.creditCard.colCupoEnCuotas")}:{" "}
-                    {d.cupo_en_cuotas_clp != null ? formatCardBillingPesos(d.cupo_en_cuotas_clp) : "—"}
+                    {d.cupo_en_cuotas != null ? formatCardBillingPesos(d.cupo_en_cuotas) : "—"}
                   </div>
                   {bars.map((bar) => (
                     <div key={bar.month} style={{ marginTop: 6 }}>
@@ -318,7 +318,7 @@ export function CcInstallmentHistoryChart({
           ))}
           <Line
             type="monotone"
-            dataKey="cupo_en_cuotas_clp"
+            dataKey="cupo_en_cuotas"
             name={t("accountDetail.creditCard.colCupoEnCuotas")}
             stroke={CUPO_STROKE}
             strokeWidth={2}
@@ -327,7 +327,7 @@ export function CcInstallmentHistoryChart({
           />
           <Line
             type="monotone"
-            dataKey="balance_total_clp"
+            dataKey="balance_total"
             name={t("accountDetail.creditCard.saldoTotal")}
             stroke={BALANCE_TOTAL_STROKE}
             strokeWidth={2}

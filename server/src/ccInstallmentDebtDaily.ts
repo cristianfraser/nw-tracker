@@ -30,9 +30,9 @@ import { buildCcInstallmentDebtDailySeries, type CcHistorialMonthLines } from ".
 export type CcPlanTailPoint = {
   as_of_date: string;
   /** Plan «deuda en cuotas» that day (continues the historical daily cupo walk). */
-  plan_debt_clp: number;
+  plan_debt: number;
   /** Saldo total owed that day = plan debt + the open cycle's unpaid non-installment carry. */
-  balance_clp: number;
+  balance: number;
 };
 
 function tenthOfNextMonthIso(billingMonth: string): string | null {
@@ -55,7 +55,7 @@ function ccInstallmentDebtEvents(
   // purchase event takes over on the same date.
   const pending = pendingCuotaPurchaseLines(accountId).map((p) => ({
     iso: p.purchase_date,
-    clp: Math.round(p.amount_clp),
+    clp: Math.round(p.amount),
   }));
   // A prepaid plan is out of the schedule (`schedulePurchases`) but was plan debt from its purchase
   // day until the bank paid it off at once.
@@ -82,11 +82,11 @@ function ccInstallmentDebtEvents(
       cuota_clp: Number.isFinite(cuotaClp) && cuotaClp > 0 ? Math.round(cuotaClp) : 0,
       pay_by_iso: f?.pay_by_iso ?? tenthOfNextMonthIso(billingMonth),
       close_iso: closed ? (f.close_date_iso ?? null) : null,
-      facturado_clp: closed ? (f.facturado_clp ?? null) : null,
+      facturado_clp: closed ? (f.facturado ?? null) : null,
     };
   };
   for (const d of detail) {
-    months.push(monthInput(d.billing_month, d.cuota_a_pagar_next_mes_clp));
+    months.push(monthInput(d.billing_month, d.cuota_a_pagar_next_mes));
     seen.add(d.billing_month);
   }
   for (const f of facturaciones) {
@@ -172,7 +172,7 @@ export function buildCcInstallmentPlanTail(
     const planDebt = series[i + 1] ?? 0;
     const owedOpen = openPayByIso != null && d < openPayByIso ? openCarry : 0;
     const owedClosed = closed != null && d < closed.payByIso ? closedCarry : 0;
-    return { as_of_date: d, plan_debt_clp: planDebt, balance_clp: planDebt + owedOpen + owedClosed };
+    return { as_of_date: d, plan_debt: planDebt, balance: planDebt + owedOpen + owedClosed };
   });
 }
 
@@ -281,10 +281,10 @@ export function sumCcPlanTails(tails: readonly (readonly CcPlanTailPoint[])[]): 
       if (p == null || p.as_of_date !== p0.as_of_date) {
         throw new Error(`sumCcPlanTails: member grids differ at ${p0.as_of_date}`);
       }
-      planDebt += p.plan_debt_clp;
-      balance += p.balance_clp;
+      planDebt += p.plan_debt;
+      balance += p.balance;
     }
-    return { as_of_date: p0.as_of_date, plan_debt_clp: planDebt, balance_clp: balance };
+    return { as_of_date: p0.as_of_date, plan_debt: planDebt, balance };
   });
 }
 
@@ -344,10 +344,10 @@ export function ccHistorialLinesAtMonthEndsClp(
     } else {
       // The tail's saldo, which continues the owed walk until the last pay-by; past it every
       // facturación is paid and what is still owed is the plan debt.
-      balance = tailByDate.get(d)?.balance_clp ?? planDebt;
+      balance = tailByDate.get(d)?.balance ?? planDebt;
     }
     if (balance != null || planDebt != null) any = true;
-    out.set(m, { balance_clp: balance != null ? Math.round(balance) : null, plan_debt_clp: planDebt });
+    out.set(m, { balance_clp: balance != null ? Math.round(balance) : null, plan_debt: planDebt });
   });
   return any ? out : null;
 }

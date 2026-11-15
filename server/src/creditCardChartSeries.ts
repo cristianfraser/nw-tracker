@@ -14,24 +14,24 @@ import type {
  */
 export type CcFacturadoBarSegments = {
   /** «Facturado CLP (cuotas)»: the cuotas the facturación bills — a future month's, what the plan will bill. */
-  facturado_cuotas_clp: number | null;
+  facturado_cuotas: number | null;
   /**
    * «Facturado CLP»: the CLP facturado minus those cuotas — únicos and the bank's charges, net of
    * notas de crédito (negative when the credits outweigh them). Null until something is billed.
    */
-  facturado_rest_clp: number | null;
+  facturado_rest: number | null;
   /** «Facturado en moneda extranjera»: what the facturación billed in foreign currencies, in pesos… */
-  facturado_foreign_clp: number | null;
+  facturado_foreign_total: number | null;
   /** …and each currency's amount, for the tooltip (null: nothing billed in a foreign currency). */
   facturado_foreign: CcFacturadoForeignAmount[] | null;
   /** Σ of the three pesos segments — the tooltip's total. */
-  facturado_total_clp: number | null;
+  facturado_total: number | null;
 };
 
 export type CcHistorialChartPoint = CcFacturadoBarSegments & {
   month: string;
-  cupo_en_cuotas_clp: number | null;
-  balance_total_clp: number | null;
+  cupo_en_cuotas: number | null;
+  balance_total: number | null;
 };
 
 /** A card's facturación bar on that card's close date — the day-period historial's bars. */
@@ -41,11 +41,11 @@ export type CcFacturacionBarPoint = CcFacturadoBarSegments & { as_of_date: strin
 export type CcFacturadoForeignAmount = { currency: string; amount: number };
 
 const NO_BAR: CcFacturadoBarSegments = {
-  facturado_cuotas_clp: null,
-  facturado_rest_clp: null,
-  facturado_foreign_clp: null,
+  facturado_cuotas: null,
+  facturado_rest: null,
+  facturado_foreign_total: null,
   facturado_foreign: null,
-  facturado_total_clp: null,
+  facturado_total: null,
 };
 
 function sumNullable(a: number | null, b: number | null): number | null {
@@ -71,48 +71,48 @@ function sumForeignAmounts(
 /** A facturación row's foreign billing as a bar's two fields (the entries that billed something). */
 export function foreignBarFields(
   fact: Pick<CcFacturacionRow, "facturado_foreign">
-): Pick<CcFacturadoBarSegments, "facturado_foreign_clp" | "facturado_foreign"> {
-  const billed = fact.facturado_foreign.filter((f) => f.amount != null || f.clp != null);
-  if (billed.length === 0) return { facturado_foreign_clp: null, facturado_foreign: null };
-  const clpParts = billed.map((f) => f.clp).filter((v): v is number => v != null);
+): Pick<CcFacturadoBarSegments, "facturado_foreign_total" | "facturado_foreign"> {
+  const billed = fact.facturado_foreign.filter((f) => f.amount != null || f.billing_amount != null);
+  if (billed.length === 0) return { facturado_foreign_total: null, facturado_foreign: null };
+  const clpParts = billed.map((f) => f.billing_amount).filter((v): v is number => v != null);
   const amounts = billed.filter((f) => f.amount != null).map((f) => ({ currency: f.currency, amount: f.amount! }));
   return {
-    facturado_foreign_clp: clpParts.length > 0 ? clpParts.reduce((s, v) => s + v, 0) : null,
+    facturado_foreign_total: clpParts.length > 0 ? clpParts.reduce((s, v) => s + v, 0) : null,
     facturado_foreign: amounts.length > 0 ? amounts : null,
   };
 }
 
-function withTotal(s: Omit<CcFacturadoBarSegments, "facturado_total_clp">): CcFacturadoBarSegments {
-  const parts = [s.facturado_cuotas_clp, s.facturado_rest_clp, s.facturado_foreign_clp].filter(
+function withTotal(s: Omit<CcFacturadoBarSegments, "facturado_total">): CcFacturadoBarSegments {
+  const parts = [s.facturado_cuotas, s.facturado_rest, s.facturado_foreign_total].filter(
     (v): v is number => v != null
   );
-  return { ...s, facturado_total_clp: parts.length > 0 ? parts.reduce((a, b) => a + b, 0) : null };
+  return { ...s, facturado_total: parts.length > 0 ? parts.reduce((a, b) => a + b, 0) : null };
 }
 
 function sumBars(a: CcFacturadoBarSegments | undefined, b: CcFacturadoBarSegments): CcFacturadoBarSegments {
   return withTotal({
-    facturado_cuotas_clp: sumNullable(a?.facturado_cuotas_clp ?? null, b.facturado_cuotas_clp),
-    facturado_rest_clp: sumNullable(a?.facturado_rest_clp ?? null, b.facturado_rest_clp),
-    facturado_foreign_clp: sumNullable(a?.facturado_foreign_clp ?? null, b.facturado_foreign_clp),
+    facturado_cuotas: sumNullable(a?.facturado_cuotas ?? null, b.facturado_cuotas),
+    facturado_rest: sumNullable(a?.facturado_rest ?? null, b.facturado_rest),
+    facturado_foreign_total: sumNullable(a?.facturado_foreign_total ?? null, b.facturado_foreign_total),
     facturado_foreign: sumForeignAmounts(a?.facturado_foreign ?? null, b.facturado_foreign),
   });
 }
 
 type HistMonthPoint = {
   month: string;
-  remaining_balance_clp: number;
-  installment_payments_clp: number;
-  ledger_remaining_installments_clp?: number;
+  remaining_balance: number;
+  installment_payments: number;
+  ledger_remaining_installments?: number;
 };
 
 function cupoFromHistPoint(h: HistMonthPoint): number | null {
-  const cupo = h.ledger_remaining_installments_clp ?? h.remaining_balance_clp;
+  const cupo = h.ledger_remaining_installments ?? h.remaining_balance;
   return cupo != null && Number.isFinite(cupo) ? cupo : null;
 }
 
 function histHasProjectedInstallmentData(h: HistMonthPoint): boolean {
   const cupo = cupoFromHistPoint(h);
-  return h.installment_payments_clp > 0 || (cupo != null && cupo > 0);
+  return h.installment_payments > 0 || (cupo != null && cupo > 0);
 }
 
 function collectHistorialBaseMonths(
@@ -154,7 +154,7 @@ function collectHistorialBaseMonths(
 
 /**
  * One card's bar for a month. A facturación splits its CLP facturado into the cuotas it bills
- * (`cuota_a_pagar_clp`, the plan schedule — the statement's billed cuotas) and the rest; a month
+ * (`cuota_a_pagar`, the plan schedule — the statement's billed cuotas) and the rest; a month
  * the plan only projects carries just what it will bill.
  */
 function barForMonth(
@@ -164,34 +164,34 @@ function barForMonth(
   hist: HistMonthPoint | undefined
 ): CcFacturadoBarSegments {
   if (fact) {
-    const cuotas = fact.cuota_a_pagar_clp;
-    if (cuotas != null && fact.facturado_clp == null) {
+    const cuotas = fact.cuota_a_pagar;
+    if (cuotas != null && fact.facturado == null) {
       throw new Error(`Historial ${month}: ${cuotas} of cuotas billed with no CLP facturado to hold them`);
     }
     return withTotal({
-      facturado_cuotas_clp: cuotas,
-      facturado_rest_clp: fact.facturado_clp != null ? fact.facturado_clp - (cuotas ?? 0) : null,
+      facturado_cuotas: cuotas,
+      facturado_rest: fact.facturado != null ? fact.facturado - (cuotas ?? 0) : null,
       ...foreignBarFields(fact),
     });
   }
-  if (detalle?.total_facturado_clp != null) {
+  if (detalle?.total_facturado != null) {
     // Billing detail knows the month but facturaciones do not: an open month no line has landed
     // in yet (no statement, no bucket). With no lines there is nothing in dollars — its facturado
     // is the open-month estimate, the plan's cuotas plus any bucket únicos, all CLP.
-    const cuotas = detalle.cuota_a_pagar_next_mes_clp > 0 ? detalle.cuota_a_pagar_next_mes_clp : null;
+    const cuotas = detalle.cuota_a_pagar_next_mes > 0 ? detalle.cuota_a_pagar_next_mes : null;
     return withTotal({
-      facturado_cuotas_clp: cuotas,
-      facturado_rest_clp: detalle.total_facturado_clp - (cuotas ?? 0),
-      facturado_foreign_clp: null,
+      facturado_cuotas: cuotas,
+      facturado_rest: detalle.total_facturado - (cuotas ?? 0),
+      facturado_foreign_total: null,
       facturado_foreign: null,
     });
   }
-  const planned = detalle?.cuota_a_pagar_next_mes_clp ?? hist?.installment_payments_clp ?? 0;
+  const planned = detalle?.cuota_a_pagar_next_mes ?? hist?.installment_payments ?? 0;
   return planned > 0
     ? withTotal({
-        facturado_cuotas_clp: planned,
-        facturado_rest_clp: null,
-        facturado_foreign_clp: null,
+        facturado_cuotas: planned,
+        facturado_rest: null,
+        facturado_foreign_total: null,
         facturado_foreign: null,
       })
     : NO_BAR;
@@ -199,16 +199,16 @@ function barForMonth(
 
 function barOf(p: CcFacturadoBarSegments): CcFacturadoBarSegments {
   return {
-    facturado_cuotas_clp: p.facturado_cuotas_clp,
-    facturado_rest_clp: p.facturado_rest_clp,
-    facturado_foreign_clp: p.facturado_foreign_clp,
+    facturado_cuotas: p.facturado_cuotas,
+    facturado_rest: p.facturado_rest,
+    facturado_foreign_total: p.facturado_foreign_total,
     facturado_foreign: p.facturado_foreign,
-    facturado_total_clp: p.facturado_total_clp,
+    facturado_total: p.facturado_total,
   };
 }
 
 /** The historial's two lines on a month's last day (today for the current month). */
-export type CcHistorialMonthLines = { balance_clp: number | null; plan_debt_clp: number | null };
+export type CcHistorialMonthLines = { balance_clp: number | null; plan_debt: number | null };
 
 export type CcHistorialChartOptions = {
   /**
@@ -260,7 +260,7 @@ export function buildCcHistorialChartSeries(
     memberBarByMonth = new Map();
     for (const series of opts.memberSeries) {
       for (const p of series) {
-        if (p.facturado_total_clp == null) continue;
+        if (p.facturado_total == null) continue;
         memberBarByMonth.set(p.month, sumBars(memberBarByMonth.get(p.month), p));
       }
     }
@@ -277,15 +277,15 @@ export function buildCcHistorialChartSeries(
     const h = histByMonth.get(month);
     const fact = facturacionByMonth.get(month);
     const facturadoTotal = fact
-      ? (fact.facturado_total_clp ?? (fact.facturado_clp ?? 0) + (foreignBarFields(fact).facturado_foreign_clp ?? 0))
+      ? (fact.facturado_total ?? (fact.facturado ?? 0) + (foreignBarFields(fact).facturado_foreign_total ?? 0))
       : null;
     // Billing frame: pairs with facturado for a month with no detail row's balance.
-    const billingCupo = d?.cupo_statement_clp ?? (h != null ? cupoFromHistPoint(h) : null);
+    const billingCupo = d?.cupo_statement ?? (h != null ? cupoFromHistPoint(h) : null);
     const lines = linesByMonth?.get(month);
-    const cupo = linesByMonth != null ? (lines?.plan_debt_clp ?? null) : billingCupo;
-    let balance_total_clp = linesByMonth != null ? (lines?.balance_clp ?? null) : (d?.balance_statement_clp ?? null);
-    if (linesByMonth == null && balance_total_clp == null && billingCupo != null) {
-      balance_total_clp = (facturadoTotal ?? 0) + billingCupo;
+    const cupo = linesByMonth != null ? (lines?.plan_debt ?? null) : billingCupo;
+    let balance_total = linesByMonth != null ? (lines?.balance_clp ?? null) : (d?.balance_statement ?? null);
+    if (linesByMonth == null && balance_total == null && billingCupo != null) {
+      balance_total = (facturadoTotal ?? 0) + billingCupo;
     }
     const bar = memberBarByMonth
       ? (memberBarByMonth.get(month) ?? NO_BAR)
@@ -293,8 +293,8 @@ export function buildCcHistorialChartSeries(
     return {
       month,
       ...bar,
-      cupo_en_cuotas_clp: cupo,
-      balance_total_clp,
+      cupo_en_cuotas: cupo,
+      balance_total,
     };
   });
 }
@@ -319,8 +319,8 @@ export function overlayBillingDetailMonthLines(
     }
     return {
       ...row,
-      cupo_en_cuotas_clp: l?.plan_debt_clp ?? null,
-      balance_total_clp: l?.balance_clp ?? null,
+      cupo_en_cuotas: l?.plan_debt ?? null,
+      balance_total: l?.balance_clp ?? null,
     };
   });
 }
@@ -343,7 +343,7 @@ export function facturacionBarsOnMonthCloseDates(
   const byMonth = new Map<string, { close: string; bar: CcFacturadoBarSegments }>();
   for (const card of cards) {
     for (const p of card.points) {
-      if (p.facturado_total_clp == null) continue;
+      if (p.facturado_total == null) continue;
       const close = card.closeIsoForMonth(p.month);
       const prev = byMonth.get(p.month);
       byMonth.set(p.month, {

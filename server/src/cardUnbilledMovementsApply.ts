@@ -239,10 +239,10 @@ function provisionalCheck(
   const row = billingDetailCacheForAccount(accountId).facturaciones.find(
     (f) => f.billing_month === billingMonth
   );
-  if (!row?.is_provisional_close || row.provisional_estimate_total_clp == null) return null;
+  if (!row?.is_provisional_close || row.provisional_estimate_total == null) return null;
   return {
-    bank_total_clp: row.facturado_total_clp ?? 0,
-    app_estimate_clp: row.provisional_estimate_total_clp,
+    bank_total_clp: row.facturado_total ?? 0,
+    app_estimate_clp: row.provisional_estimate_total,
   };
 }
 

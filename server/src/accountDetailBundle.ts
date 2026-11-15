@@ -1,3 +1,4 @@
+import { CARD_BILLING_CURRENCY } from "./cards/cardCurrencies.js";
 import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
@@ -224,6 +225,7 @@ export async function buildAccountDetailBundle(
 
   let ccLedger: Awaited<ReturnType<typeof creditCardInstallmentsResponse>> = {
     account_id: accountId,
+    billing_currency: CARD_BILLING_CURRENCY,
     has_installment_ledger: false,
     has_imported_statements: false,
     meta: null,
@@ -231,8 +233,8 @@ export async function buildAccountDetailBundle(
     purchases_completed: [],
     months: [],
     totals: {
-      total_remaining_principal_clp: 0,
-      next_calendar_month_total_clp: null,
+      total_remaining_principal: 0,
+      next_calendar_month_total: null,
       next_calendar_month: null,
     },
   };

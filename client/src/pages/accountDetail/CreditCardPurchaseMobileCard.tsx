@@ -28,7 +28,7 @@ export function CreditCardPurchaseMobileCard({
       title={
         <div className="mono">
           {purchase.purchase_date ?? "—"}
-          {purchase.cuota_progress ? null : ` · ${formatCardBillingPesos(purchase.cuota_clp)}`}
+          {purchase.cuota_progress ? null : ` · ${formatCardBillingPesos(purchase.cuota)}`}
         </div>
       }
     >
@@ -44,7 +44,7 @@ export function CreditCardPurchaseMobileCard({
         <TableMobileCardSection>
           <CreditCardCuotaProgress
             progress={purchase.cuota_progress}
-            cuotaClp={purchase.cuota_clp}
+            cuotaClp={purchase.cuota}
             maxInstallments={maxInstallments}
           />
         </TableMobileCardSection>

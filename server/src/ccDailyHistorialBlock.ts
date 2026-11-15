@@ -11,7 +11,7 @@
  * In the series' unit: the owed lines come from the series itself; the plan debt, the plan tail
  * and the bars are built in pesos (the card's billing frame) and converted at each point's day at
  * the debt side, as a card's owed converts (a day with no rate on file reads null; the tail's
- * future days read today's rate). The `_clp`-suffixed keys (`plan_debt_clp`, `facturado_*_clp`)
+ * future days read today's rate). The `_clp`-suffixed keys (`plan_debt`, `facturado_*_clp`)
  * are the historial chart's shared shape and hold the series' unit; `facturado_foreign` stays the
  * statement's dollars. In pesos nothing is converted. The card pages ask for pesos (their monthly
  * historial is the CLP card ledger), so the two grains agree.
@@ -61,12 +61,12 @@ function clpOwedIn(clp: number | null, unit: CurrencyCode, ymd: string, side?: "
 
 function tailPointIn(p: CcPlanTailPoint, unit: CurrencyCode): CcPlanTailPoint {
   if (isHomeCurrency(unit)) return p;
-  const plan = clpOwedIn(p.plan_debt_clp, unit, p.as_of_date);
-  const balance = clpOwedIn(p.balance_clp, unit, p.as_of_date);
+  const plan = clpOwedIn(p.plan_debt, unit, p.as_of_date);
+  const balance = clpOwedIn(p.balance, unit, p.as_of_date);
   if (plan == null || balance == null) {
     throw new Error(`CC plan tail ${p.as_of_date}: no clp→${unit} rate`);
   }
-  return { as_of_date: p.as_of_date, plan_debt_clp: plan, balance_clp: balance };
+  return { as_of_date: p.as_of_date, plan_debt: plan, balance };
 }
 
 function barIn(b: CcFacturacionBarPoint, unit: CurrencyCode): CcFacturacionBarPoint {
@@ -75,10 +75,10 @@ function barIn(b: CcFacturacionBarPoint, unit: CurrencyCode): CcFacturacionBarPo
   // One rate per bar (the debt side, what it billed), so the segments still add up to the total.
   return {
     ...b,
-    facturado_cuotas_clp: clpOwedIn(b.facturado_cuotas_clp, unit, d, "debt"),
-    facturado_rest_clp: clpOwedIn(b.facturado_rest_clp, unit, d, "debt"),
-    facturado_foreign_clp: clpOwedIn(b.facturado_foreign_clp, unit, d, "debt"),
-    facturado_total_clp: clpOwedIn(b.facturado_total_clp, unit, d, "debt"),
+    facturado_cuotas: clpOwedIn(b.facturado_cuotas, unit, d, "debt"),
+    facturado_rest: clpOwedIn(b.facturado_rest, unit, d, "debt"),
+    facturado_foreign_total: clpOwedIn(b.facturado_foreign_total, unit, d, "debt"),
+    facturado_total: clpOwedIn(b.facturado_total, unit, d, "debt"),
   };
 }
 

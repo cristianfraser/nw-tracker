@@ -9,10 +9,10 @@ import type { DataOrigin } from "../dataOrigin.js";
 export type CcInstallmentPurchaseRow = {
   purchase_id: string;
   label: string;
-  principal_clp: number;
+  principal: number;
   installment_count: number;
   installments_paid: number;
-  cuota_clp: number;
+  cuota: number;
   /** Calendar month (YYYY-MM) of installment index 0 (first cuota of the contract). */
   first_due_month: string;
   purchase_month: string | null;
@@ -28,17 +28,17 @@ export type CcCuotaProgressCuota = {
   pay_by_date: string | null;
   /** Statement close that billed it (ISO); null until a statement prints it. */
   statement_date: string | null;
-  amount_clp: number;
+  amount: number;
   /** paid = settled by the schedule; billed = printed on a statement not yet counted paid; pending = not billed yet. */
   status: "paid" | "billed" | "pending";
 };
 
 export type CcCuotaProgress = {
   /** Σ printed cuotas: above the principal on an interest plan, which is what is actually paid. */
-  total_clp: number;
-  paid_clp: number;
-  billed_clp: number;
-  pending_clp: number;
+  total: number;
+  paid: number;
+  billed: number;
+  pending: number;
   paid_count: number;
   cuotas: CcCuotaProgressCuota[];
 };
@@ -47,24 +47,24 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   /** SQLite row id (DB ledger only). */
   purchase_db_id?: number;
   remaining_installments: number;
-  remaining_principal_clp: number;
+  remaining_principal: number;
   next_due_month: string | null;
   next_installment_index: number | null;
   /** Calendar month (YYYY-MM) of the last recorded installment payment (`pay_by` / schedule). */
   last_paid_month: string | null;
   /** Constant cuota for upcoming months (CLP). */
-  upcoming_cuota_clp: number;
+  upcoming_cuota: number;
   /** Payment rows linked to this purchase (DB source only), for manual audit in UI. */
   payment_statements?: {
     pay_by_date: string;
     statement_date: string | null;
     source_pdf: string | null;
     cuota_current: number | null;
-    amount_clp: number;
+    amount: number;
   }[];
   /**
    * The plan cuota by cuota, for the purchase's progress bar (DB source only; null without a
-   * schedule). Σ `amount_clp` over the cuotas = `total_clp` = paid + billed + pending.
+   * schedule). Σ `amount` over the cuotas = `total` = paid + billed + pending.
    */
   cuota_progress?: CcCuotaProgress | null;
   /**
@@ -93,13 +93,13 @@ export type CcInstallmentMonthBreakdown = {
   label: string;
   installment_index: number;
   installment_count: number;
-  amount_clp: number;
+  amount: number;
 };
 
 export type CcInstallmentMonthRow = {
   /** Facturación (statement) month — the close that bills these cuotas. */
   month: string;
-  total_clp: number;
+  total: number;
   breakdown: CcInstallmentMonthBreakdown[];
 };
 
@@ -108,5 +108,5 @@ export type CcInstallmentCalendarMonthRow = CcInstallmentMonthRow & {
   /** Statement `PAGAR HASTA` when the facturación is closed; derived (~10th of next month) for open/projected. */
   pay_by_date: string;
   /** Plan debt remaining after this facturación's cuotas are paid (suffix sum; last row = 0). */
-  debt_after_clp: number;
+  debt_after: number;
 };

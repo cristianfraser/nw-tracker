@@ -70,7 +70,7 @@ export function ccOwedByCurrency(accountId: number, asOfIso: string): CcOwedByCu
       throw new Error(`Account ${accountId}: no facturación row for the closed month ${lastClosed}`);
     }
     // A currency the facturación never billed carries no figure: nothing owed in it.
-    facturadoClp = row.facturado_clp ?? 0;
+    facturadoClp = row.facturado ?? 0;
     for (const f of row.facturado_foreign) facturadoForeign.set(f.currency, f.amount ?? 0);
   }
 

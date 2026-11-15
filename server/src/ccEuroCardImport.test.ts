@@ -265,8 +265,8 @@ describe("the open cycle of a euro card", () => {
     expect(foreign.get("eur")!.clp).toBeGreaterThan(0);
     const open = billingDetailCacheForAccount(cardId).facturaciones.find((r) => r.is_open_month)!;
     expect(facturadoForeignIn(open, "eur")!.amount).toBeCloseTo(30, 2);
-    expect(open.facturado_clp).toBe(0);
-    expect(open.facturado_total_clp).toBe(foreign.get("eur")!.clp);
+    expect(open.facturado).toBe(0);
+    expect(open.facturado_total).toBe(foreign.get("eur")!.clp);
   });
 
   it("counts the open cycle's credit in euros", () => {

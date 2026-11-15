@@ -158,7 +158,7 @@ for (const fx of FIXTURES) {
       const rows = buildFacturaciones(cardId, []);
       const a = rows.find((r) => r.billing_month === monthA)!;
       const b = rows.find((r) => r.billing_month === monthB)!;
-      expect(a.facturado_clp).toBeNull();
+      expect(a.facturado).toBeNull();
       expect(facturadoForeignIn(a, fx.currency)!.amount).toBe(200);
       expect(facturadoForeignIn(b, fx.currency)!.amount).toBe(80);
       // Every foreign entry is the card's own currency: no dollar twin on a euro card.
@@ -167,8 +167,8 @@ for (const fx of FIXTURES) {
 
     it("values a facturación's statement frame at the stored close of its pay-by − 1", () => {
       const detail = buildBillingDetailByMonth(cardId, []);
-      expect(detail.find((r) => r.billing_month === monthA)!.total_facturado_clp).toBe(200 * fx.rateA);
-      expect(detail.find((r) => r.billing_month === monthB)!.total_facturado_clp).toBe(80 * fx.rateB);
+      expect(detail.find((r) => r.billing_month === monthA)!.total_facturado).toBe(200 * fx.rateA);
+      expect(detail.find((r) => r.billing_month === monthB)!.total_facturado).toBe(80 * fx.rateB);
     });
 
     it("splits the statement frame into the currency it is owed in", () => {
@@ -212,7 +212,7 @@ for (const fx of FIXTURES) {
       const row = buildFacturaciones(cardId, []).find((r) => r.close_date_iso === days.feedClose)!;
       expect(row.is_provisional_close).toBe(true);
       expect(facturadoForeignIn(row, fx.currency)!.amount).toBe(55);
-      expect(row.facturado_clp).toBe(0);
+      expect(row.facturado).toBe(0);
       db.prepare(`DELETE FROM cc_feed_billing_closes WHERE account_id = ?`).run(cardId);
       clearAggregationCache();
     });

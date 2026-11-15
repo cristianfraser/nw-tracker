@@ -7,5 +7,5 @@ export function usdForeign(
   rate_clp: number | null = null,
   rate_source: CcFacturadoForeign["rate_source"] = null
 ): CcFacturadoForeign[] {
-  return [{ currency: "usd", amount, clp, rate_clp, rate_source }];
+  return [{ currency: "usd", amount, billing_amount: clp, rate: rate_clp, rate_source }];
 }

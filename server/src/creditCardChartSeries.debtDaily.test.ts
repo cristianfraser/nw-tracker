@@ -70,19 +70,19 @@ describe("buildCcInstallmentPlanTail", () => {
     // owed today (350k) = plan debt (300k) + 50k of unpaid únicos billed this open cycle.
     const tail = buildCcInstallmentPlanTail("2026-01-15", future, events, 350000, "2026-02-10");
     expect(tail).toEqual([
-      { as_of_date: "2026-01-20", plan_debt_clp: 300000, balance_clp: 350000 },
-      { as_of_date: "2026-02-09", plan_debt_clp: 300000, balance_clp: 350000 },
+      { as_of_date: "2026-01-20", plan_debt: 300000, balance: 350000 },
+      { as_of_date: "2026-02-09", plan_debt: 300000, balance: 350000 },
       // On the open pay-by the cuota leaves plan debt AND the carry is paid off → lines meet.
-      { as_of_date: "2026-02-10", plan_debt_clp: 200000, balance_clp: 200000 },
-      { as_of_date: "2026-02-11", plan_debt_clp: 200000, balance_clp: 200000 },
-      { as_of_date: "2026-03-10", plan_debt_clp: 100000, balance_clp: 100000 },
-      { as_of_date: "2026-04-10", plan_debt_clp: 0, balance_clp: 0 },
+      { as_of_date: "2026-02-10", plan_debt: 200000, balance: 200000 },
+      { as_of_date: "2026-02-11", plan_debt: 200000, balance: 200000 },
+      { as_of_date: "2026-03-10", plan_debt: 100000, balance: 100000 },
+      { as_of_date: "2026-04-10", plan_debt: 0, balance: 0 },
     ]);
   });
 
   it("has no carry when owed today is unknown (balance == plan debt everywhere)", () => {
     const tail = buildCcInstallmentPlanTail("2026-01-15", future, events, null, "2026-02-10");
-    expect(tail.every((p) => p.balance_clp === p.plan_debt_clp)).toBe(true);
+    expect(tail.every((p) => p.balance === p.plan_debt)).toBe(true);
   });
 
   it("returns an empty tail when there are no future dates", () => {
@@ -98,10 +98,10 @@ describe("buildCcInstallmentPlanTail", () => {
       openCycleChargesClp: 20000,
     });
     expect(tail).toEqual([
-      { as_of_date: "2026-01-19", plan_debt_clp: 300000, balance_clp: 470000 },
-      { as_of_date: "2026-01-20", plan_debt_clp: 300000, balance_clp: 320000 },
-      { as_of_date: "2026-02-09", plan_debt_clp: 300000, balance_clp: 320000 },
-      { as_of_date: "2026-02-10", plan_debt_clp: 200000, balance_clp: 200000 },
+      { as_of_date: "2026-01-19", plan_debt: 300000, balance: 470000 },
+      { as_of_date: "2026-01-20", plan_debt: 300000, balance: 320000 },
+      { as_of_date: "2026-02-09", plan_debt: 300000, balance: 320000 },
+      { as_of_date: "2026-02-10", plan_debt: 200000, balance: 200000 },
     ]);
   });
 
@@ -116,7 +116,7 @@ describe("buildCcInstallmentPlanTail", () => {
       "2026-02-10",
       { payByIso: "2026-01-20", openCycleChargesClp: 20000 }
     );
-    expect(tail.map((p) => p.balance_clp)).toEqual([310000, 310000, 200000]);
+    expect(tail.map((p) => p.balance)).toEqual([310000, 310000, 200000]);
   });
 });
 
@@ -152,16 +152,16 @@ describe("sumCcPlanTails — group-scope plan tail over one shared grid", () => 
     const a = buildCcInstallmentPlanTail("2026-01-15", grid, eventsA, 350000, "2026-02-10");
     const b = buildCcInstallmentPlanTail("2026-01-15", grid, eventsB, 20000, "2026-02-10");
     expect(b).toEqual([
-      { as_of_date: "2026-01-20", plan_debt_clp: 0, balance_clp: 20000 },
-      { as_of_date: "2026-02-10", plan_debt_clp: 0, balance_clp: 0 },
-      { as_of_date: "2026-03-10", plan_debt_clp: 0, balance_clp: 0 },
-      { as_of_date: "2026-04-10", plan_debt_clp: 0, balance_clp: 0 },
+      { as_of_date: "2026-01-20", plan_debt: 0, balance: 20000 },
+      { as_of_date: "2026-02-10", plan_debt: 0, balance: 0 },
+      { as_of_date: "2026-03-10", plan_debt: 0, balance: 0 },
+      { as_of_date: "2026-04-10", plan_debt: 0, balance: 0 },
     ]);
     expect(sumCcPlanTails([a, b])).toEqual([
-      { as_of_date: "2026-01-20", plan_debt_clp: 300000, balance_clp: 370000 },
-      { as_of_date: "2026-02-10", plan_debt_clp: 200000, balance_clp: 200000 },
-      { as_of_date: "2026-03-10", plan_debt_clp: 100000, balance_clp: 100000 },
-      { as_of_date: "2026-04-10", plan_debt_clp: 0, balance_clp: 0 },
+      { as_of_date: "2026-01-20", plan_debt: 300000, balance: 370000 },
+      { as_of_date: "2026-02-10", plan_debt: 200000, balance: 200000 },
+      { as_of_date: "2026-03-10", plan_debt: 100000, balance: 100000 },
+      { as_of_date: "2026-04-10", plan_debt: 0, balance: 0 },
     ]);
   });
 

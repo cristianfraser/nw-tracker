@@ -82,7 +82,7 @@ function CreditCardInstallmentsSection({
           <Trans
             i18nKey="account.creditCard.monthCuotasBreakdownLine"
             values={{
-              amount: formatCardBillingPesos(b.amount_clp),
+              amount: formatCardBillingPesos(b.amount),
               current: b.installment_index + 1,
               total:
                 b.installment_count ??
@@ -143,7 +143,7 @@ function CreditCardInstallmentsSection({
         <td className="desktop-only">
           <div className="mono">
             {p.purchase_date ?? "—"}
-            {p.cuota_progress ? null : ` · ${formatCardBillingPesos(p.cuota_clp)}`}
+            {p.cuota_progress ? null : ` · ${formatCardBillingPesos(p.cuota)}`}
           </div>
           {purchaseVendor(p)}
         </td>
@@ -151,7 +151,7 @@ function CreditCardInstallmentsSection({
           {p.cuota_progress ? (
             <CreditCardCuotaProgress
               progress={p.cuota_progress}
-              cuotaClp={p.cuota_clp}
+              cuotaClp={p.cuota}
               maxInstallments={maxActiveInstallments}
             />
           ) : null}
@@ -181,7 +181,7 @@ function CreditCardInstallmentsSection({
       key: "principal",
       header: t("account.creditCard.colPrincipal"),
       className: "mono",
-      cell: (p) => formatCardBillingPesos(p.principal_clp),
+      cell: (p) => formatCardBillingPesos(p.principal),
     },
     {
       key: "purchaseDate",
@@ -203,7 +203,7 @@ function CreditCardInstallmentsSection({
       header: t("account.creditCard.colCuotaClp"),
       className: "mono",
       section: 2,
-      cell: (p) => formatCardBillingPesos(p.cuota_clp),
+      cell: (p) => formatCardBillingPesos(p.cuota),
     },
     {
       key: "lastPaid",
@@ -231,14 +231,14 @@ function CreditCardInstallmentsSection({
       key: "total",
       header: t("account.creditCard.colMonthCuotaTotal"),
       className: "mono",
-      cell: (row) => formatCardBillingPesos(row.total_clp),
+      cell: (row) => formatCardBillingPesos(row.total),
     },
     {
       key: "debtAfter",
       header: t("account.creditCard.colDebtAfterPayment"),
       className: "mono muted",
       cardClassName: "muted",
-      cell: (row) => formatCardBillingPesos(row.debt_after_clp),
+      cell: (row) => formatCardBillingPesos(row.debt_after),
     },
     // On the card the breakdown is a section of its own under a bare label (`cardTail`), and
     // only when the month has cuotas.
@@ -287,13 +287,13 @@ function CreditCardInstallmentsSection({
           <div className="cards">
             <div className="card">
               <div className="label">{t("account.creditCard.totalRemainingLabel")}</div>
-              <div className="value mono">{formatCardBillingPesos(ledger.totals.total_remaining_principal_clp)}</div>
+              <div className="value mono">{formatCardBillingPesos(ledger.totals.total_remaining_principal)}</div>
             </div>
             <div className="card">
               <div className="label">{t("account.creditCard.nextMonthWithCharges")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
                 {ledger.totals.next_calendar_month
-                  ? `${formatYearMonthLabel(ledger.totals.next_calendar_month)} · ${formatCardBillingPesos(ledger.totals.next_calendar_month_total_clp ?? 0)}`
+                  ? `${formatYearMonthLabel(ledger.totals.next_calendar_month)} · ${formatCardBillingPesos(ledger.totals.next_calendar_month_total ?? 0)}`
                   : "—"}
               </div>
             </div>

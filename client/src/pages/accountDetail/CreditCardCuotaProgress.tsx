@@ -46,7 +46,7 @@ export function CreditCardCuotaProgress({
 
   const segments = Math.max(maxInstallments, total, 1);
   // What is still owed, written as a minus: «-$400.000» (none left reads «$0»).
-  const owed = progress.pending_clp + progress.billed_clp;
+  const owed = progress.pending + progress.billed;
   const owedLabel = owed > 0 ? `-${formatCardBillingPesos(owed)}` : formatCardBillingPesos(0);
 
   return (
@@ -59,8 +59,8 @@ export function CreditCardCuotaProgress({
           cuota: formatCardBillingPesos(cuotaClp),
           paidCount: progress.paid_count,
           total,
-          paid: formatCardBillingPesos(progress.paid_clp),
-          totalClp: formatCardBillingPesos(progress.total_clp),
+          paid: formatCardBillingPesos(progress.paid),
+          totalClp: formatCardBillingPesos(progress.total),
           pending: owedLabel,
         })}
       </div>
@@ -109,7 +109,7 @@ export function CreditCardCuotaProgress({
                       {c.index}/{total}
                     </td>
                     <td>{formatYearMonthLabel(c.billing_month)}</td>
-                    <td className={styles.num}>{formatCardBillingPesos(c.amount_clp)}</td>
+                    <td className={styles.num}>{formatCardBillingPesos(c.amount)}</td>
                     <td>
                       {t(STATUS_KEY[c.status])}
                       {c.statement_date ? <span className={styles.statementDate}>{c.statement_date}</span> : null}
@@ -120,7 +120,7 @@ export function CreditCardCuotaProgress({
               <tfoot>
                 <tr>
                   <td colSpan={2}>{t("account.creditCard.cuotaProgress.total")}</td>
-                  <td className={styles.num}>{formatCardBillingPesos(progress.total_clp)}</td>
+                  <td className={styles.num}>{formatCardBillingPesos(progress.total)}</td>
                   <td />
                 </tr>
               </tfoot>

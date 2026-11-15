@@ -105,7 +105,7 @@ describe("mergeInstallmentLedgerFromStatements canonical fingerprint", () => {
 
     const plan = ccInstallmentsDbApiPayload(masterId).purchases.find((p) => p.purchase_db_id === purchase.id)!;
     expect(plan.installments_paid).toBe(0);
-    expect(plan.remaining_principal_clp).toBe(300_000);
+    expect(plan.remaining_principal).toBe(300_000);
     expect(plan.cuota_progress?.cuotas.map((c) => c.status)).toEqual(["pending", "pending", "pending"]);
 
     // A stored cuota 0 is bad data: the ledger refuses it instead of counting it as cuota 1.

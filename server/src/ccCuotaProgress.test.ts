@@ -41,13 +41,13 @@ describe("cuotaProgressForPurchase", () => {
       [5, "2026-09", "paid"],
       [6, "2026-10", "pending"],
     ]);
-    expect(p.cuotas[0]).toMatchObject({ statement_date: "2026-05-25", pay_by_date: "2026-06-09", amount_clp: 82_000 });
-    expect(p.cuotas[5]).toMatchObject({ statement_date: null, pay_by_date: null, amount_clp: 82_000 });
+    expect(p.cuotas[0]).toMatchObject({ statement_date: "2026-05-25", pay_by_date: "2026-06-09", amount: 82_000 });
+    expect(p.cuotas[5]).toMatchObject({ statement_date: null, pay_by_date: null, amount: 82_000 });
     expect(p.paid_count).toBe(5);
-    expect(p.paid_clp).toBe(410_000);
-    expect(p.billed_clp).toBe(0);
-    expect(p.pending_clp).toBe(82_000);
-    expect(p.total_clp).toBe(492_000);
+    expect(p.paid).toBe(410_000);
+    expect(p.billed).toBe(0);
+    expect(p.pending).toBe(82_000);
+    expect(p.total).toBe(492_000);
   });
 
   it("a printed cuota whose facturación is not paid yet is billed; printed amounts win over the split", () => {
@@ -60,10 +60,10 @@ describe("cuotaProgressForPurchase", () => {
     const pays = [row(1, "2026-08", 400_000), row(2, "2026-09", 400_002, { payBy: "2026-11-10" })];
     const p = cuotaProgressForPurchase(plan, pays, paidByToday);
     expect(p.cuotas.map((c) => c.status)).toEqual(["paid", "billed", "pending"]);
-    expect(p.cuotas[1]!.amount_clp).toBe(400_002);
-    expect(p.billed_clp).toBe(400_002);
-    expect(p.pending_clp).toBe(400_000);
-    expect(p.total_clp).toBe(p.paid_clp + p.billed_clp + p.pending_clp);
+    expect(p.cuotas[1]!.amount).toBe(400_002);
+    expect(p.billed).toBe(400_002);
+    expect(p.pending).toBe(400_000);
+    expect(p.total).toBe(p.paid + p.billed + p.pending);
   });
 
   it("a cuota the schedule counts billed stays billed until its facturación is paid (2026-10-28)", () => {
@@ -76,7 +76,7 @@ describe("cuotaProgressForPurchase", () => {
     const p = cuotaProgressForPurchase(plan, pays, paidByToday);
     expect(p.cuotas.map((c) => c.status)).toEqual(["paid", "billed"]);
     expect(p.paid_count).toBe(1);
-    expect(p.billed_clp).toBe(82_000);
+    expect(p.billed).toBe(82_000);
   });
 
   it("collapses a duplicate statement copy of a cuota, and throws on a differing twin or an index above N", () => {

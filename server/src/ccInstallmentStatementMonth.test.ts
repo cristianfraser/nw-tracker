@@ -284,7 +284,7 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
     expect(jul).toHaveLength(1);
     expect(jul[0]!.installment_index).toBe(0);
     expect(jul[0]!.installment_count).toBe(3);
-    expect(jul[0]!.amount_clp).toBe(63_300);
+    expect(jul[0]!.amount).toBe(63_300);
     expect(breakdown.get("2026-08") ?? []).toHaveLength(1);
   });
 });

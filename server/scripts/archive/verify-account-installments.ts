@@ -37,7 +37,7 @@ function main() {
         found: Boolean(row),
         installments_paid: row?.installments_paid,
         remaining_installments: row?.remaining_installments,
-        remaining_principal_clp: row?.remaining_principal_clp,
+        remaining_principal: row?.remaining_principal,
         in_active: payload.purchases.some((p) => p.purchase_id === canonical),
         in_hidden: payload.hidden_cancelled_purchases.some((p) => p.purchase_id === canonical),
         payments: row?.payment_statements?.length ?? 0,

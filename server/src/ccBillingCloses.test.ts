@@ -252,7 +252,7 @@ describe("credit-card close evidence", () => {
     expect(pdfClosedBillingMonthsForAccount(accountId).has("2026-07")).toBe(true);
     expect(buildFacturaciones(accountId, []).find((f) => f.billing_month === "2026-07")).toMatchObject({
       is_open_month: false,
-      facturado_clp: 900_000,
+      facturado: 900_000,
     });
     // September's CLP twin lands first: nothing later is closed, so its USD twin is still due.
     insertStatement({
@@ -418,12 +418,12 @@ describe("credit-card close evidence", () => {
       close_date: "24/09/2026",
       close_date_iso: "2026-09-24",
       close_date_source: "feed",
-      facturado_clp: 1_892_666,
+      facturado: 1_892_666,
       facturado_foreign: [{ currency: "usd", amount: 577.34 }],
-      provisional_estimate_total_clp: 15_000,
+      provisional_estimate_total: 15_000,
     });
-    expect(september.facturado_total_clp).toBe(1_892_666 + (facturadoForeignIn(september, "usd")!.clp ?? 0));
-    expect(facturadoForeignIn(september, "usd")!.clp).toBeGreaterThan(0);
+    expect(september.facturado_total).toBe(1_892_666 + (facturadoForeignIn(september, "usd")!.billing_amount ?? 0));
+    expect(facturadoForeignIn(september, "usd")!.billing_amount).toBeGreaterThan(0);
     const october = facturaciones.find((f) => f.billing_month === "2026-10")!;
     expect(october).toMatchObject({ is_open_month: true, is_provisional_close: false, close_date_source: "estimated" });
 
@@ -432,7 +432,7 @@ describe("credit-card close evidence", () => {
       as_of_kind: "statement",
       as_of_date: "2026-09-24",
       provisional: true,
-      total_facturado_clp: september.facturado_total_clp,
+      total_facturado: september.facturado_total,
     });
 
     // The feed repeats the same close every day; a different figure for it is a contradiction.
@@ -590,10 +590,10 @@ describe("credit-card close evidence", () => {
     const detail = buildBillingDetailByMonth(accountId, ledger.months);
     const september = detail.find((d) => d.billing_month === "2026-09")!;
     const october = detail.find((d) => d.billing_month === "2026-10")!;
-    expect(september).toMatchObject({ provisional: true, cuota_a_pagar_next_mes_clp: 30_000, cupo_statement_clp: 60_000 });
-    expect(september.balance_statement_clp).toBe((september.total_facturado_clp ?? 0) + 60_000);
+    expect(september).toMatchObject({ provisional: true, cuota_a_pagar_next_mes: 30_000, cupo_statement: 60_000 });
+    expect(september.balance_statement).toBe((september.total_facturado ?? 0) + 60_000);
     expect(liveCreditCardOutstandingClp(accountId)).toBe(90_000);
-    expect(october.cupo_statement_clp).toBe(60_000);
+    expect(october.cupo_statement).toBe(60_000);
   });
 
   it("stores the detalle's cupo and saldo in the balances snapshot, the open month's bucket included", () => {
@@ -612,8 +612,8 @@ describe("credit-card close evidence", () => {
     ]);
     for (const row of stored) {
       const d = detail.find((x) => x.billing_month === row.billing_month)!;
-      expect(row.cupo_utilizado_clp).toBe(d.cupo_statement_clp);
-      expect(row.saldo_total_clp).toBe(d.balance_statement_clp);
+      expect(row.cupo_utilizado_clp).toBe(d.cupo_statement);
+      expect(row.saldo_total_clp).toBe(d.balance_statement);
     }
     // The open month's bucket row carries every cuota still unbilled — the snapshot used to store
     // the plan remainder after October there (3x.xxx), keyed on the calendar month.
@@ -624,7 +624,7 @@ describe("credit-card close evidence", () => {
   it("plots the monthly «deuda en cuotas» where the daily line sits at each month-end", () => {
     insertSeptemberPlan();
     const chart = creditCardInstallmentsResponse(accountId).historial_chart ?? [];
-    const line = (month: string) => chart.find((p) => p.month === month)?.cupo_en_cuotas_clp;
+    const line = (month: string) => chart.find((p) => p.month === month)?.cupo_en_cuotas;
     // Billed on 24/09 but unpaid until 10/10: still debt at 30/09 (the September row's STATEMENT
     // cupo, 6x.xxx, has the cuota inside its facturado instead).
     expect(line("2026-09")).toBe(90_000);
@@ -632,7 +632,7 @@ describe("credit-card close evidence", () => {
     expect(line("2026-11")).toBe(30_000);
     const months = chart.map((p) => p.month);
     const daily = ccInstallmentDebtDailyClp(accountId, months.map(ccLedgerMonthEndIso));
-    expect(chart.map((p) => p.cupo_en_cuotas_clp)).toEqual(daily);
+    expect(chart.map((p) => p.cupo_en_cuotas)).toEqual(daily);
   });
 
   /** Every detalle row's month frame equals the historial chart point of its month. */
@@ -643,10 +643,10 @@ describe("credit-card close evidence", () => {
     for (const row of rows) {
       const point = chart.get(row.billing_month);
       expect(point, `chart point for ${row.billing_month}`).toBeDefined();
-      expect([row.billing_month, row.cupo_en_cuotas_clp, row.balance_total_clp]).toEqual([
+      expect([row.billing_month, row.cupo_en_cuotas, row.balance_total]).toEqual([
         row.billing_month,
-        point!.cupo_en_cuotas_clp,
-        point!.balance_total_clp,
+        point!.cupo_en_cuotas,
+        point!.balance_total,
       ]);
     }
   }
@@ -659,15 +659,15 @@ describe("credit-card close evidence", () => {
     const september = rows.find((r) => r.billing_month === "2026-09")!;
     // Month frame on the 30th: the September cuota is billed but unpaid until 10/10, so all
     // three cuotas are still plan debt; the statement frame keeps the post-close remainder.
-    expect(september).toMatchObject({ cupo_en_cuotas_clp: 90_000, cupo_statement_clp: 60_000 });
-    expect(september.balance_statement_clp).toBe((september.total_facturado_clp ?? 0) + 60_000);
-    expect(september.balance_total_clp).not.toBeNull();
+    expect(september).toMatchObject({ cupo_en_cuotas: 90_000, cupo_statement: 60_000 });
+    expect(september.balance_statement).toBe((september.total_facturado ?? 0) + 60_000);
+    expect(september.balance_total).not.toBeNull();
     // A projected month reads the plan tail: owed at month-end, cuota 3 after cuota 2's pay-by.
     const november = rows.find((r) => r.billing_month === "2026-11")!;
-    expect(november).toMatchObject({ projected: true, cupo_en_cuotas_clp: 30_000, balance_total_clp: 30_000 });
+    expect(november).toMatchObject({ projected: true, cupo_en_cuotas: 30_000, balance_total: 30_000 });
     // The stored month-end anchors read the statement frame, unchanged by the overlay.
     const anchors = new Map(ccLedgerStatementClosingPointsClp(accountId)!.map((p) => [p.as_of_date, p.value_clp]));
-    expect(anchors.get("2026-09-30")).toBe(Math.round(september.balance_statement_clp));
+    expect(anchors.get("2026-09-30")).toBe(Math.round(september.balance_statement));
   });
 
   /** An October purchase in the open bucket, so October has a facturación row (the open month). */
@@ -683,20 +683,20 @@ describe("credit-card close evidence", () => {
     const facturaciones = creditCardInstallmentsResponse(accountId).facturaciones ?? [];
     const by = (month: string) => facturaciones.find((f) => f.billing_month === month)!;
     // August closed before the plan was bought (10/09): nothing of it was left unbilled then.
-    expect(by("2026-08").deuda_en_cuotas_clp).toBe(0);
+    expect(by("2026-08").deuda_en_cuotas).toBe(0);
     // September (provisional close) billed cuota 1: two left.
-    expect(by("2026-09")).toMatchObject({ is_provisional_close: true, deuda_en_cuotas_clp: 60_000 });
+    expect(by("2026-09")).toMatchObject({ is_provisional_close: true, deuda_en_cuotas: 60_000 });
     // The open month reads the post-close rule too — never the live cupo (90.000 − the provisional
     // close's 30.000 = 60.000, the detalle's open-row figure).
-    expect(by("2026-10")).toMatchObject({ is_open_month: true, deuda_en_cuotas_clp: 30_000 });
+    expect(by("2026-10")).toMatchObject({ is_open_month: true, deuda_en_cuotas: 30_000 });
     // The open bucket holds no dollar line: US$0 billed so far, never «—»; the CLP side is whole.
-    expect(by("2026-10")).toMatchObject({ facturado_foreign: [{ currency: "usd", amount: 0, clp: 0 }] });
-    expect(by("2026-10").facturado_total_clp).toBe(by("2026-10").facturado_clp);
+    expect(by("2026-10")).toMatchObject({ facturado_foreign: [{ currency: "usd", amount: 0, billing_amount: 0 }] });
+    expect(by("2026-10").facturado_total).toBe(by("2026-10").facturado);
     const detail = buildBillingDetailByMonth(accountId, ccInstallmentsDbApiPayload(accountId).months);
-    expect(detail.find((d) => d.billing_month === "2026-10")?.cupo_statement_clp).toBe(60_000);
+    expect(detail.find((d) => d.billing_month === "2026-10")?.cupo_statement).toBe(60_000);
     // A card with no plan ledger has no figure to show.
     db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
-    expect(buildFacturaciones(accountId, []).map((f) => f.deuda_en_cuotas_clp)).toEqual([null, null, null]);
+    expect(buildFacturaciones(accountId, []).map((f) => f.deuda_en_cuotas)).toEqual([null, null, null]);
   });
 
   it("a group's merged detalle rows show the group chart's lines", () => {
@@ -710,8 +710,8 @@ describe("credit-card close evidence", () => {
     // The merged September row carries this card's three unpaid cuotas on top of the other masters'.
     const september = group.billing_detail_by_month!.find((r) => r.billing_month === "2026-09")!;
     const own = creditCardInstallmentsResponse(accountId).billing_detail_by_month!.find((r) => r.billing_month === "2026-09")!;
-    expect(september.cupo_en_cuotas_clp!).toBeGreaterThanOrEqual(own.cupo_en_cuotas_clp!);
-    expect(group.facturaciones!.find((f) => f.billing_month === "2026-10")!.deuda_en_cuotas_clp).toBeGreaterThanOrEqual(30_000);
+    expect(september.cupo_en_cuotas!).toBeGreaterThanOrEqual(own.cupo_en_cuotas!);
+    expect(group.facturaciones!.find((f) => f.billing_month === "2026-10")!.deuda_en_cuotas).toBeGreaterThanOrEqual(30_000);
   });
 
   /**
@@ -742,11 +742,11 @@ describe("credit-card close evidence", () => {
     expect(open.map((f) => f.billing_month)).toEqual(["2026-10"]);
     // Nothing billed in dollars so far is US$0, not «—» (a closed month with no USD statement).
     expect(open[0]).toMatchObject({
-      facturado_clp: 30_000,
-      facturado_foreign: [{ currency: "usd", amount: 0, clp: 0 }],
-      facturado_total_clp: 30_000,
-      cuota_a_pagar_clp: 30_000,
-      deuda_en_cuotas_clp: 30_000,
+      facturado: 30_000,
+      facturado_foreign: [{ currency: "usd", amount: 0, billing_amount: 0 }],
+      facturado_total: 30_000,
+      cuota_a_pagar: 30_000,
+      deuda_en_cuotas: 30_000,
       close_date: "24/10/2026",
       close_date_iso: "2026-10-24",
       close_date_source: "estimated",
@@ -769,15 +769,15 @@ describe("credit-card close evidence", () => {
     expect(october).toMatchObject({
       as_of_kind: "manual",
       as_of_date: "2026-09-24",
-      total_facturado_clp: 30_000,
-      cuota_a_pagar_next_mes_clp: 30_000,
-      cupo_statement_clp: 60_000,
-      balance_statement_clp: september.balance_statement_clp,
+      total_facturado: 30_000,
+      cuota_a_pagar_next_mes: 30_000,
+      cupo_statement: 60_000,
+      balance_statement: september.balance_statement,
     });
     expect(september).toMatchObject({ provisional: true, as_of_kind: "statement" });
     // The month frame beside it: the chart's lines sampled on the same months.
     expectDetalleShowsChart(response);
-    expect(october.cupo_en_cuotas_clp).toBe(60_000);
+    expect(october.cupo_en_cuotas).toBe(60_000);
     expect(rows.find((r) => r.billing_month === "2026-11")).toMatchObject({ projected: true });
 
     // The next card write stamps the snapshot row the detalle already stood for.
@@ -788,8 +788,8 @@ describe("credit-card close evidence", () => {
     )!;
     expect([stored.as_of_date, stored.cupo_utilizado_clp, stored.saldo_total_clp]).toEqual([
       "2026-09-24",
-      october.cupo_statement_clp,
-      october.balance_statement_clp,
+      october.cupo_statement,
+      october.balance_statement,
     ]);
     const after = creditCardInstallmentsResponse(accountId);
     expect(after.facturaciones).toEqual(facturacionesBefore);
@@ -805,21 +805,21 @@ describe("credit-card close evidence", () => {
 
     const openRows = after.facturaciones!.filter((f) => f.billing_month === "2026-10");
     expect(openRows).toHaveLength(1);
-    const { facturado_clp: _clp, facturado_total_clp: _total, ...shape } = openRows[0]!;
-    const { facturado_clp: _clpBefore, facturado_total_clp: _totalBefore, ...shapeBefore } = before.facturaciones!.find(
+    const { facturado: _clp, facturado_total: _total, ...shape } = openRows[0]!;
+    const { facturado: _clpBefore, facturado_total: _totalBefore, ...shapeBefore } = before.facturaciones!.find(
       (f) => f.billing_month === "2026-10"
     )!;
     expect(shape).toEqual(shapeBefore);
-    expect(openRows[0]).toMatchObject({ is_open_month: true, facturado_clp: 45_500, facturado_total_clp: 45_500 });
+    expect(openRows[0]).toMatchObject({ is_open_month: true, facturado: 45_500, facturado_total: 45_500 });
 
     const detailRows = after.billing_detail_by_month!.filter((r) => r.billing_month === "2026-10");
     expect(detailRows).toHaveLength(1);
     expect(detailRows[0]).toMatchObject({
       as_of_kind: "manual",
-      total_facturado_clp: 45_500,
-      cupo_statement_clp: 60_000,
-      balance_statement_clp:
-        before.billing_detail_by_month!.find((r) => r.billing_month === "2026-10")!.balance_statement_clp + 15_500,
+      total_facturado: 45_500,
+      cupo_statement: 60_000,
+      balance_statement:
+        before.billing_detail_by_month!.find((r) => r.billing_month === "2026-10")!.balance_statement + 15_500,
     });
     expect(detailRows[0]!.projected).toBeUndefined();
   });
@@ -854,7 +854,7 @@ describe("credit-card close evidence", () => {
         close_date_iso: "2026-10-26",
         close_date_source: "announced",
         pay_by_iso: "2026-11-10",
-        facturado_clp: 30_000,
+        facturado: 30_000,
       }),
     ]);
 
@@ -874,15 +874,15 @@ describe("credit-card close evidence", () => {
     expect(facturaciones[0]).toMatchObject({
       close_date_iso: "2026-11-26",
       close_date_source: "estimated",
-      facturado_clp: 30_000,
-      cuota_a_pagar_clp: 30_000,
-      deuda_en_cuotas_clp: 30_000,
+      facturado: 30_000,
+      cuota_a_pagar: 30_000,
+      deuda_en_cuotas: 30_000,
     });
     const detail = buildBillingDetailByMonth(accountId, ledger.months);
     expect(detail.find((d) => d.billing_month === "2026-11")).toMatchObject({
       as_of_kind: "manual",
       as_of_date: "2026-10-26",
-      total_facturado_clp: 30_000,
+      total_facturado: 30_000,
     });
     expect(detail.find((d) => d.billing_month === "2026-11")!.projected).toBeUndefined();
   });
@@ -915,11 +915,11 @@ describe("credit-card close evidence", () => {
     // This fixture's statements print no PAGAR HASTA: a statement-closed month derives its pay-by too.
     expect(statementClosed.length).toBeGreaterThan(0);
     for (const f of statementClosed) expect(f.pay_by_source).toBe("derived");
-    expect(october.facturado_total_clp!).toBeGreaterThanOrEqual(30_000);
-    expect(october.deuda_en_cuotas_clp!).toBeGreaterThanOrEqual(30_000);
+    expect(october.facturado_total!).toBeGreaterThanOrEqual(30_000);
+    expect(october.deuda_en_cuotas!).toBeGreaterThanOrEqual(30_000);
     const row = group.billing_detail_by_month!.find((r) => r.billing_month === "2026-10")!;
     expect(row.projected).toBeUndefined();
-    expect(row.total_facturado_clp!).toBeGreaterThanOrEqual(30_000);
+    expect(row.total_facturado!).toBeGreaterThanOrEqual(30_000);
   });
 
   it("skips a pasted SALDO INICIAL row instead of importing the previous bill as a charge", () => {
@@ -1051,7 +1051,7 @@ describe("credit-card close evidence", () => {
     const ledger = ccInstallmentsDbApiPayload(accountId);
     const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
     expect(facturadoForeignIn(september, "usd")!.amount).toBeCloseTo(30.52, 2);
-    expect(september.facturado_total_clp).toBe(10_000 + facturadoForeignIn(september, "usd")!.clp!);
+    expect(september.facturado_total).toBe(10_000 + facturadoForeignIn(september, "usd")!.billing_amount!);
 
     // A payment read as a charge (a dollar MONTO CANCELADO read as positive) disagrees.
     db.prepare(`UPDATE cc_statement_lines SET amount = 50 WHERE id = ? AND currency = 'usd'`).run(payment);

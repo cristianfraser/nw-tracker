@@ -66,14 +66,14 @@ describe("appendProjectedBillingDetailRows pay-frame", () => {
     const payload = ccInstallmentsDbApiPayload(master.id);
     const allScheduleMonths: CcInstallmentMonthRow[] = payload.installment_history_months.map((h) => ({
       month: h.month,
-      total_clp: h.installment_payments_clp,
+      total: h.installment_payments,
       breakdown: [],
     }));
     const detail = buildBillingDetailByMonth(master.id, allScheduleMonths);
     const byMonth = new Map(detail.map((r) => [r.billing_month, r] as const));
 
     // Closed month keeps the bank frame: cupo after its own close (cuota 1 billed → 20k left).
-    expect(byMonth.get("2030-01")?.cupo_statement_clp).toBe(20_000);
+    expect(byMonth.get("2030-01")?.cupo_statement).toBe(20_000);
 
     // 2030-02 is the OPEN facturación (the month after the last close), a row of its own even
     // before a line or a snapshot row lands in it, in the live frame: the live cupo (cuotas 2–3,
@@ -82,20 +82,20 @@ describe("appendProjectedBillingDetailRows pay-frame", () => {
     const feb = byMonth.get("2030-02");
     expect(feb?.projected).toBeUndefined();
     expect(feb?.as_of_kind).toBe("manual");
-    expect(feb?.cupo_statement_clp).toBe(20_000);
-    expect(feb?.balance_statement_clp).toBe(30_000);
+    expect(feb?.cupo_statement).toBe(20_000);
+    expect(feb?.balance_statement).toBe(30_000);
 
     // Projected months are pay-frame: owed at month-end = remainder after the PREVIOUS close.
     // 2030-03: cuota 2 (billed feb) pays 10-mar → 1x.xxx owed.
     expect(byMonth.get("2030-03")?.projected).toBe(true);
-    expect(byMonth.get("2030-03")?.cupo_statement_clp).toBe(10_000);
-    expect(byMonth.get("2030-03")?.balance_statement_clp).toBe(10_000);
+    expect(byMonth.get("2030-03")?.cupo_statement).toBe(10_000);
+    expect(byMonth.get("2030-03")?.balance_statement).toBe(10_000);
 
     // 2030-04: final cuota (billed 20-mar) paid 10-abr → trailing zero month lands the series.
     const apr = byMonth.get("2030-04");
     expect(apr?.projected).toBe(true);
-    expect(apr?.balance_statement_clp).toBe(0);
-    expect(apr?.cupo_statement_clp).toBe(0);
+    expect(apr?.balance_statement).toBe(0);
+    expect(apr?.cupo_statement).toBe(0);
 
     // Nothing beyond the landing month.
     expect(byMonth.has("2030-05")).toBe(false);

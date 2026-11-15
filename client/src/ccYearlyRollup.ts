@@ -43,9 +43,9 @@ function groupByYearAsc<T>(rows: readonly T[], ymOf: (row: T) => string): Map<st
 
 /**
  * One Detalle row per year (`billing_month` = `YYYY-12`), years ascending.
- * `total_facturado_clp` is the plain sum only when every month closed; a year with
+ * `total_facturado` is the plain sum only when every month closed; a year with
  * open/projected months reports null facturado and carries the full-year estimate in
- * `cuota_a_pagar_next_mes_clp` (closed facturado + each unclosed month's cuota-a-pagar —
+ * `cuota_a_pagar_next_mes` (closed facturado + each unclosed month's cuota-a-pagar —
  * the same substitution the monthly rows render as `≈`). `projected` only when the
  * whole year is plan-only, so the default page still lands on the current year.
  */
@@ -55,22 +55,22 @@ export function rollupCcBillingDetailYearly(
   const byYear = groupByYearAsc(rows, (r) => r.billing_month);
   return [...byYear.entries()].map(([year, months]) => {
     const latest = months[months.length - 1]!;
-    const closedFacturado = sumOrNull(months.map((m) => m.total_facturado_clp));
-    const unclosed = months.filter((m) => m.total_facturado_clp == null);
+    const closedFacturado = sumOrNull(months.map((m) => m.total_facturado));
+    const unclosed = months.filter((m) => m.total_facturado == null);
     const estimatedFacturado =
-      (closedFacturado ?? 0) + unclosed.reduce((s, m) => s + m.cuota_a_pagar_next_mes_clp, 0);
+      (closedFacturado ?? 0) + unclosed.reduce((s, m) => s + m.cuota_a_pagar_next_mes, 0);
     return {
       billing_month: `${year}-12`,
       as_of_date: latest.as_of_date,
       as_of_kind: latest.as_of_kind,
-      total_facturado_actual_clp: sumOrNull(months.map((m) => m.total_facturado_actual_clp)),
-      total_facturado_clp: unclosed.length === 0 ? closedFacturado : null,
+      total_facturado_actual: sumOrNull(months.map((m) => m.total_facturado_actual)),
+      total_facturado: unclosed.length === 0 ? closedFacturado : null,
       // Month-frame lines: the year's last month WITH a point (a month may have none).
-      cupo_en_cuotas_clp: lastFinite(months.map((m) => m.cupo_en_cuotas_clp)),
-      cuota_a_pagar_next_mes_clp: estimatedFacturado,
-      balance_total_clp: lastFinite(months.map((m) => m.balance_total_clp)),
-      cupo_statement_clp: latest.cupo_statement_clp,
-      balance_statement_clp: latest.balance_statement_clp,
+      cupo_en_cuotas: lastFinite(months.map((m) => m.cupo_en_cuotas)),
+      cuota_a_pagar_next_mes: estimatedFacturado,
+      balance_total: lastFinite(months.map((m) => m.balance_total)),
+      cupo_statement: latest.cupo_statement,
+      balance_statement: latest.balance_statement,
       projected: months.every((m) => m.projected === true),
     } satisfies CcBillingDetailMonthDto;
   });
@@ -102,12 +102,12 @@ export function rollupCcHistorialChartYearly(
   const byYear = groupByYearAsc(rows, (r) => r.month);
   return [...byYear.entries()].map(([year, months]) => ({
     month: `${year}-12`,
-    facturado_cuotas_clp: sumOrNull(months.map((m) => m.facturado_cuotas_clp)),
-    facturado_rest_clp: sumOrNull(months.map((m) => m.facturado_rest_clp)),
-    facturado_foreign_clp: sumOrNull(months.map((m) => m.facturado_foreign_clp)),
+    facturado_cuotas: sumOrNull(months.map((m) => m.facturado_cuotas)),
+    facturado_rest: sumOrNull(months.map((m) => m.facturado_rest)),
+    facturado_foreign_total: sumOrNull(months.map((m) => m.facturado_foreign_total)),
     facturado_foreign: sumForeignAmounts(months.map((m) => m.facturado_foreign)),
-    facturado_total_clp: sumOrNull(months.map((m) => m.facturado_total_clp)),
-    cupo_en_cuotas_clp: lastFinite(months.map((m) => m.cupo_en_cuotas_clp)),
-    balance_total_clp: lastFinite(months.map((m) => m.balance_total_clp)),
+    facturado_total: sumOrNull(months.map((m) => m.facturado_total)),
+    cupo_en_cuotas: lastFinite(months.map((m) => m.cupo_en_cuotas)),
+    balance_total: lastFinite(months.map((m) => m.balance_total)),
   }));
 }

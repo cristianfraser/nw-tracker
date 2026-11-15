@@ -136,7 +136,7 @@ export function upcomingPaymentRows(
     return Math.round(amount * rate);
   };
   const billedIn = (f: CcFacturacionRow, currency: string): number =>
-    isHomeCurrency(currency) ? (f.facturado_clp ?? 0) : (facturadoForeignIn(f, currency)?.amount ?? 0);
+    isHomeCurrency(currency) ? (f.facturado ?? 0) : (facturadoForeignIn(f, currency)?.amount ?? 0);
   const out: CcUpcomingPaymentRow[] = [];
   const push = (f: CcFacturacionRow, owedBy: ReadonlyMap<string, number>): void => {
     const owed: Record<string, number> = {};
@@ -158,7 +158,7 @@ export function upcomingPaymentRows(
       pay_by_source: f.pay_by_source,
       amount_clp: amount,
       owed,
-      billed_clp: Math.round(f.facturado_total_clp ?? 0),
+      billed_clp: Math.round(f.facturado_total ?? 0),
       overdue: f.pay_by_iso < todayYmd,
       is_open_month: f.is_open_month,
       is_provisional_close: f.is_provisional_close,

@@ -80,7 +80,7 @@ function liveUsdRatesFingerprint(): string {
   for (const accountId of listCreditCardMasterAccountIds()) {
     for (const row of billingDetailCacheForAccount(accountId).facturaciones) {
       for (const f of row.facturado_foreign) {
-        if (f.rate_source === "live") parts.push(`${accountId}:${row.billing_month}:${f.currency}:${f.rate_clp}`);
+        if (f.rate_source === "live") parts.push(`${accountId}:${row.billing_month}:${f.currency}:${f.rate}`);
       }
     }
   }

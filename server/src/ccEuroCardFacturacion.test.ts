@@ -98,10 +98,10 @@ describe("a euro card's facturaciones", () => {
 
   it("shows the facturación's euros at the rate they were paid", () => {
     const row = buildFacturaciones(cardId, []).find((f) => f.close_date_iso === days.close)!;
-    expect(row.facturado_clp).toBeNull();
-    expect(facturadoForeignIn(row, "eur")).toEqual({ currency: "eur", amount: 200, clp: 204_000, rate_clp: 1020, rate_source: "paid" });
+    expect(row.facturado).toBeNull();
+    expect(facturadoForeignIn(row, "eur")).toEqual({ currency: "eur", amount: 200, billing_amount: 204_000, rate: 1020, rate_source: "paid" });
     expect(facturadoForeignIn(row, "usd")).toBeNull();
-    expect(row.facturado_total_clp).toBe(204_000);
+    expect(row.facturado_total).toBe(204_000);
   });
 
   it("splits the statement frame into its euros", () => {
