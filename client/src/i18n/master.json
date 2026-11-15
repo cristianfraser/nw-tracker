@@ -456,7 +456,31 @@
       "en": "No recent data",
       "es": "Sin datos recientes"
     },
+    "noData": {
+      "en": "No data",
+      "es": "Sin datos"
+    },
     "fx": {
+      "clpPerUsd": {
+        "en": "CLP per US$1",
+        "es": "CLP por US$1"
+      },
+      "clpPerUf": {
+        "en": "CLP per 1 UF",
+        "es": "CLP por 1 UF"
+      },
+      "clpPerEur": {
+        "en": "CLP per €1",
+        "es": "CLP por €1"
+      },
+      "ipcTitle": {
+        "en": "IPC",
+        "es": "IPC"
+      },
+      "ipcFootnote": {
+        "en": "Index level (optional CSV)",
+        "es": "Nivel del índice (CSV opcional)"
+      },
       "usdPerEur": {
         "en": "USD per €1 (Yahoo EURUSD=X)",
         "es": "USD por €1 (Yahoo EURUSD=X)"
