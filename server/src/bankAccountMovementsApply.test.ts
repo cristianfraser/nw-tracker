@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import type { UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
+import type { ForeignAccountMovementsApplyDetails } from "nw-tracker-contracts";
 import { accountIdForIssuerBankAccount, applyBankAccountMovements, assertListingNamesAccount } from "./bankAccountMovementsApply.js";
 
 /**
@@ -107,7 +107,7 @@ describe("applyBankAccountMovements for a dollar account", () => {
   afterAll(() => {
     db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${PREFIX}%`);
     db.prepare(`DELETE FROM bank_account_numbers WHERE number = ?`).run(NUMBER);
-    db.prepare(`DELETE FROM import_batches WHERE kind = 'usd_account_feed' AND filename LIKE ?`).run(`${PREFIX}%`);
+    db.prepare(`DELETE FROM import_batches WHERE kind = 'foreign_account_feed' AND filename LIKE ?`).run(`${PREFIX}%`);
     for (const id of createdAccounts) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   });
 
@@ -153,7 +153,7 @@ describe("applyBankAccountMovements for a dollar account", () => {
       },
       `${PREFIX} capture`,
       READ_AFTER_ROWS.fetchedAt
-    ) as UsdAccountMovementsApplyDetails;
+    ) as ForeignAccountMovementsApplyDetails;
     expect(result.account_id).toBe(usdAccountId);
     expect(result.confirmed).toBe(2);
     expect(result.confirmed_flows.map((f) => f.movement_id)).toEqual([Number(wire.lastInsertRowid), Number(payment.lastInsertRowid)]);
@@ -171,7 +171,7 @@ describe("applyBankAccountMovements for a dollar account", () => {
       { account: { ...account_, number: NUMBER }, movements: [row("2097-10-08", 1138.53, "Rec Or de Pago REC OR DE PAGO 1", "1")], rejected_rows: [] },
       `${PREFIX} capture again`,
       READ_AFTER_ROWS.fetchedAt
-    ) as UsdAccountMovementsApplyDetails;
+    ) as ForeignAccountMovementsApplyDetails;
     expect(again.confirmed).toBe(1);
     expect(again.confirmed_flows[0]!.movement_id).toBe(Number(wire.lastInsertRowid));
     expect(movementsOf(usdAccountId).n).toBe(before);

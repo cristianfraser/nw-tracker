@@ -2,7 +2,7 @@ import { normalizeAccountNumber } from "nw-tracker-contracts";
 import type {
   BankAccountMovementsApplyDetails,
   BankAccountMovementsPayload,
-  UsdAccountMovementsApplyDetails,
+  ForeignAccountMovementsApplyDetails,
 } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -11,7 +11,7 @@ import { createImportBatch } from "./importBatches.js";
 import { requireLoadedCurrency } from "./ingestCurrencies.js";
 import { IngestRefusal } from "./ingestReceiver.js";
 import { isHomeCurrency } from "./displayUnits.js";
-import { confirmForeignAccountMovements } from "./usdAccountMovementsConfirm.js";
+import { confirmForeignAccountMovements } from "./foreignAccountMovementsConfirm.js";
 
 type DeclaredNumber = { account_id: number; number: string };
 
@@ -97,7 +97,7 @@ export function applyBankAccountMovements(
   payload: BankAccountMovementsPayload,
   sourceRef: string,
   fetchedAt: Date | undefined
-): BankAccountMovementsApplyDetails | UsdAccountMovementsApplyDetails {
+): BankAccountMovementsApplyDetails | ForeignAccountMovementsApplyDetails {
   // A peso listing is imported, one in any other currency confirmed.
   requireLoadedCurrency(payload.account.currency, "bank_account.movements account");
   for (const m of payload.movements) requireLoadedCurrency(m.currency, "bank_account.movements movement");

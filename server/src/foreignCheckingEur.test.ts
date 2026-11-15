@@ -80,6 +80,7 @@ describe("a euro checking account on the bank side", () => {
       checkingEur, savingsEur, checkingEur, savingsEur, checkingEur, savingsEur
     );
     db.prepare(`DELETE FROM bank_account_numbers WHERE issuer = ?`).run(ISSUER);
+    db.prepare(`DELETE FROM import_batches WHERE filename LIKE 'vitest-eur-listing-%'`).run();
     for (const c of created) {
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(c.account_id);
       if (c.created_leaf_bucket) db.prepare(`DELETE FROM asset_groups WHERE id = ?`).run(c.asset_group_id);
@@ -215,5 +216,9 @@ describe("a euro checking account on the bank side", () => {
     );
     expect(result).toMatchObject({ confirmed: 1, unexplained: 1 });
     expect(count()).toBe(n);
+    // The batch names the account and the currency it is held in.
+    const batch = db.prepare(`SELECT kind, raw_text FROM import_batches WHERE id = ?`).get(result.batch_id) as { kind: string; raw_text: string };
+    expect(batch.kind).toBe("foreign_account_feed");
+    expect(JSON.parse(batch.raw_text)).toMatchObject({ account_id: checkingEur, currency: "eur", confirmed: 1, unexplained: 1 });
   });
 });
