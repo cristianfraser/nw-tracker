@@ -1849,7 +1849,7 @@ code diff clean).
   test against «the pre-wave-7 rule»; `MATCH_WINDOWS.same_split` read by both split writers;
   `mortgage_cuota_card_line` deleted. 0 payload files differ.
 Merged tip: typecheck and conventions ok; check-deps 1358 files, largest cycle 37, 62 files in
-cycles; client 479, ingest 481, contracts 133 passing; server 3733 of 3735 (the two failures below).
+cycles; client 479, ingest 481, contracts 133 passing; server 3733 of 3735 at the merge (both fixed below).
 
 Behaviour changes in wave 7 (the user has not reviewed them yet):
 - The additional-cards table and the four grocery tables carry `table--parallel-mobile`: their
@@ -1860,16 +1860,20 @@ Behaviour changes in wave 7 (the user has not reviewed them yet):
   slot); only a card billing a third currency is affected, and only the test issuer does.
 - Planted charges compare amounts to the currency's coin (pesos to the peso; they compared to the cent).
 
-Decision for the user: `ccBillingViews.test.ts` fails two tests on one equality — the open card
-month's `balance_statement_clp` against `accountTodayValue`. The open row converts the cycle's dollars
-at the statement frame (fx mid at pay-by − 1); `accountTodayValue` at the debt side (2 pesos per
-dollar apart). Either the open row follows today's debt-side rate or the tests follow the statement frame.
+Fixed after the wave (2026-11-15, same branch; server suite 3737 of 3737):
+- The open card month stays in the statement frame; the two `ccBillingViews.test.ts` assertions now
+  state the invariant they meant — with every foreign currency at one stand-in rate
+  (`debtFrameRates`), the open row's balance equals the card's owed today per currency
+  (`ccOwedByCurrencyAtYmd`): pesos + Σ foreign × rate. Peso-exact on the synthetic card.
+- `GET /api/flows/expenses/real-estate/property-accounts` reads the `property` role
+  (`listPropertyAccounts` in `accountRoles.ts`); its SQL named a column that does not exist.
+- `mortgagePrepaymentComparison.ts` counts a prepago's `prepayment_charge` among its parts (all three
+  prepagos on the live copy failed the parts check without it and pass with it); the charge is part of
+  what was paid above the minimum and pays nothing down.
+On the live copy only those two endpoints' payloads changed (500 → 200); the one non-200 left is the
+expected `no_us_tax_year` 404.
 
 Found on the live copy, outside the wave:
-- `GET /api/flows/expenses/real-estate/property-accounts` answers 500 (`no such column:
-  i.portfolio_group_id`): the route's SQL names a column `portfolio_group_items` does not have.
-- `GET /api/mortgage-prepayment-comparison` answers 500 for the mortgage account: one stored prepago's
-  parts do not add up to its payment (the fail-fast rule of migration 293 on real data).
 - `/api/flows/deposits?unit=clp` returns `fx_conversion_warnings` on the first request after a start
   and none on a warm server: the payload depends on cache state.
 - The offline demo generator (`generate-demo-data.ts` with the synthetic market) exits 1 in its last
