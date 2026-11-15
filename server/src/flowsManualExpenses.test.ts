@@ -25,9 +25,8 @@ describe("flowsManualExpenses", () => {
 
   it("normalizeManualExpenseNote prefixes manual rows", () => {
     expect(normalizeManualExpenseNote(null)).toBe("manual:");
-    expect(normalizeManualExpenseNote("synthetic:excel-gap|2019-08|bills")).toBe(
-      "synthetic:excel-gap|2019-08|bills"
-    );
+    // No other prefix is special: whatever the user types is the description of a manual row.
+    expect(normalizeManualExpenseNote("synthetic:typed by hand")).toBe("manual:synthetic:typed by hand");
     expect(normalizeManualExpenseNote("rent backfill")).toBe("manual:rent backfill");
   });
 
