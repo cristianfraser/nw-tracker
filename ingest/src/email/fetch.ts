@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
+import { readJsonStateFile } from "../stateFile.js";
 import { withImapSession } from "./imapSession.js";
 import { searchMailSince, withAllMail } from "./mailFetcher.js";
 import { mimeBodyToText } from "./mime.js";
@@ -44,14 +45,9 @@ export type BrokerEmailState = {
   updated_at: string;
 };
 
+/** No file is «nothing scanned yet»; a corrupt one throws — read as none, the whole window is scanned again. */
 export function readBrokerEmailState(): BrokerEmailState | null {
-  const file = resolveBrokerEmailStatePath();
-  if (!fs.existsSync(file)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as BrokerEmailState;
-  } catch {
-    return null;
-  }
+  return readJsonStateFile(resolveBrokerEmailStatePath()) as BrokerEmailState | null;
 }
 
 export function writeBrokerEmailState(lastSeenAt: string, nowIso: string): void {

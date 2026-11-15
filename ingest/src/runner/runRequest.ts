@@ -9,6 +9,7 @@ import { santanderLoginLatch } from "../santander/loginLatch.js";
 import { runHourly } from "./hourly.js";
 import { liderVeto, readLiderState, recordLiderFetch } from "./liderState.js";
 import { runNightly } from "./nightly.js";
+import { readRunGates, type RunGates } from "./runGates.js";
 import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
 
 /**
@@ -19,10 +20,6 @@ import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
 const LOG_BY_KIND = { nightly: "daily-run.log", hourly: "email-run.log" } as const;
 /** The hourly log rotates at 5 MB (24 runs a day), one generation kept. */
 const HOURLY_LOG_ROTATE_BYTES = 5 * 1024 * 1024;
-
-function envFlag(name: string): boolean {
-  return process.env[name] === "1";
-}
 
 /** The bank facts the server decides the next balance poll from. */
 export function readSantanderState(): SantanderState {
@@ -69,26 +66,28 @@ function notifyNightlyFailure(failed: number): void {
 
 export async function runRequestedRun(
   request: IngestRunRequest,
-  deps: { makeRunner?: (logFd: number) => StepRunner } = {}
+  deps: { makeRunner?: (logFd: number) => StepRunner; gates?: RunGates } = {}
 ): Promise<IngestRunCompletion> {
-  const dryRun = envFlag("INGEST_RUN_DRY");
+  // The service reads its gates once at start and hands them in; a run started any other way reads them now.
+  const gates = deps.gates ?? readRunGates();
+  const dryRun = gates.dryRun;
   const logFd = openRunLog(request.kind);
   const x = deps.makeRunner?.(logFd) ?? processStepRunner({ cwd: path.join(resolveRepoRoot(), "ingest"), logFd });
   const startedAt = new Date().toISOString();
   try {
     x.note(`${request.kind} run ${request.run_id} starting (${request.reason}; dry-run=${dryRun ? 1 : 0})`);
-    const shared = { dryRun, fintualApply: envFlag("NW_TRACKER_FINTUAL_APPLY"), racionalApply: envFlag("NW_TRACKER_RACIONAL_APPLY") };
+    const shared = { dryRun, fintualApply: gates.fintualApply, racionalApply: gates.racionalApply };
     const result =
       request.kind === "nightly"
         ? {
             ...(await runNightly(x, {
               ...shared,
-              statementJsonApply: envFlag("NW_TRACKER_STATEMENT_JSON_APPLY"),
-              fullReimport: envFlag("NW_TRACKER_FULL_REIMPORT"),
+              statementJsonApply: gates.statementJsonApply,
+              fullReimport: gates.fullReimport,
               afpUnoFetch: request.afp_uno_fetch,
-              afpUnoApply: envFlag("NW_TRACKER_AFP_UNO_APPLY"),
+              afpUnoApply: gates.afpUnoApply,
               afcFetch: request.afc_fetch,
-              afcApply: envFlag("NW_TRACKER_AFC_APPLY"),
+              afcApply: gates.afcApply,
               payslips: request.payslips,
               metlifeRead: request.metlife_read,
             })),
