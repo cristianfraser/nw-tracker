@@ -1,18 +1,22 @@
-import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import { formatCurrency } from "../../format";
-import { formatBillPesos } from "../../formatNative";
+import { formatCurrency, formatMoney } from "../../format";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { dayOfMonthLabelParts, formatYearMonthLabel } from "../../formatDateLabel";
-import type { CcUpcomingPaymentRowDto, UpcomingPaymentDetailDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
+import type { CcUpcomingPaymentRowDto, Money, UpcomingPaymentDetailDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { dashboardTileOrder, dashboardTileSmallSpan } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./DashboardFlowsSummary.module.css";
+
+function isMoney(v: unknown): v is Money {
+  if (v == null || typeof v !== "object") return false;
+  const m = v as { value?: unknown; currency?: unknown };
+  return Number.isFinite(m.value) && typeof m.currency === "string";
+}
 
 /** A stored «Próximos pagos» entry the panel can draw. */
 function isUpcomingPayments(v: unknown): v is UpcomingPaymentsDto {
@@ -25,14 +29,14 @@ function isUpcomingPayments(v: unknown): v is UpcomingPaymentsDto {
       (m) =>
         m != null &&
         typeof m.pay_month === "string" &&
-        Number.isFinite(m.total_clp) &&
+        isMoney(m.total) &&
         Number.isFinite(m.total_in_unit) &&
         Array.isArray(m.items) &&
         m.items.every(
-          (i: { kind?: unknown; due_iso?: unknown; amount_clp?: unknown; amount_in_unit?: unknown }) =>
+          (i: { kind?: unknown; due_iso?: unknown; amount?: unknown; amount_in_unit?: unknown }) =>
             typeof i.kind === "string" &&
             typeof i.due_iso === "string" &&
-            Number.isFinite(i.amount_clp) &&
+            isMoney(i.amount) &&
             Number.isFinite(i.amount_in_unit)
         )
     )
@@ -101,11 +105,11 @@ function DueSoonDot({ dueSoon }: { dueSoon: "today" | "tomorrow" }) {
 }
 
 /**
- * The bills are pesos and read in pesos; in a display unit other than pesos the hover adds the
- * amount in it (the server's `*_in_unit`, at today's rate).
+ * A bill reads in the currency it is stated in; in another display unit the hover adds the amount
+ * in it (the server's `*_in_unit`, at today's rate).
  */
-function withUnitHint(hint: string | undefined, amountInUnit: number, unit: string): string | undefined {
-  if (isHomeCurrency(unit)) return hint;
+function withUnitHint(hint: string | undefined, amount: Money, amountInUnit: number, unit: string): string | undefined {
+  if (amount.currency === unit) return hint;
   const inUnit = `≈ ${formatCurrency(amountInUnit, unit)}`;
   return hint ? `${hint} · ${inUnit}` : inUnit;
 }
@@ -114,24 +118,24 @@ function withUnitHint(hint: string | undefined, amountInUnit: number, unit: stri
 function AmountCell({ item, unit }: { item: UpcomingPaymentItemDto; unit: string }) {
   const { t } = useTranslation();
   const card: CcUpcomingPaymentRowDto | null = item.card;
-  if (card && card.amount_clp !== card.billed_clp) {
-    const billed = formatBillPesos(card.billed_clp);
+  if (card && card.amount.value !== card.billed.value) {
+    const billed = formatMoney(card.billed);
     return (
       <span
         className="mono"
-        title={withUnitHint(t("dashboard.ccUpcoming.partlyPaidHint", { amount: billed }), item.amount_in_unit, unit)}
+        title={withUnitHint(t("dashboard.ccUpcoming.partlyPaidHint", { amount: billed }), item.amount, item.amount_in_unit, unit)}
       >
-        {formatBillPesos(card.amount_clp)} <span className="muted">{t("dashboard.ccUpcoming.billedOf", { amount: billed })}</span>
+        {formatMoney(card.amount)} <span className="muted">{t("dashboard.ccUpcoming.billedOf", { amount: billed })}</span>
       </span>
     );
   }
   const className = item.estimated ? `mono ${styles.estimate}` : "mono";
   // A range (the mortgage) shows its minimum, what counts in the month's total; the maximum is on hover.
-  if (item.amount_max_clp != null) {
-    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatBillPesos(item.amount_max_clp) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
+  if (item.amount_max != null) {
+    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatMoney(item.amount_max) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
     return (
-      <span className={className} title={withUnitHint(hint, item.amount_in_unit, unit)}>
-        {formatBillPesos(item.amount_clp)}
+      <span className={className} title={withUnitHint(hint, item.amount, item.amount_in_unit, unit)}>
+        {formatMoney(item.amount)}
       </span>
     );
   }
@@ -139,9 +143,9 @@ function AmountCell({ item, unit }: { item: UpcomingPaymentItemDto; unit: string
   return (
     <span
       className={className}
-      title={withUnitHint(item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined, item.amount_in_unit, unit)}
+      title={withUnitHint(item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined, item.amount, item.amount_in_unit, unit)}
     >
-      {formatBillPesos(item.amount_clp)}
+      {formatMoney(item.amount)}
     </span>
   );
 }
@@ -206,7 +210,7 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
  * cards' facturaciones, the mortgage cuota, gastos comunes, contribuciones and declared payments —
  * as the server built it (`upcoming_payments` on the page bundle). A card per month, its total
  * beside its name, its payments below with the date and amount on the right. The first two months
- * show; «Show more» opens the rest of the server's horizon. The bills read in pesos whatever the
+ * show; «Show more» opens the rest of the server's horizon. The bills read in their own currency whatever the
  * display unit; in another unit the hover adds each amount in it (stored per unit). The
  * panel is always there: dimmed and empty before the server has answered (`data` null on a
  * placeholder bundle, no stored copy), an empty state when nothing is due.
@@ -215,7 +219,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   // One stored entry per display unit (the hover's converted amounts); until the bundle answers,
-  // the last stored one. A held bundle of another unit is not stored under this one, but its pesos
+  // the last stored one. A held bundle of another unit is not stored under this one, but its bills
   // are the same, so it shows (its hover in its own unit) until this unit's arrives.
   const { displayUnit } = useDisplayPreferences();
   const liveInUnit = live != null && live.unit === displayUnit ? live : null;
@@ -234,8 +238,8 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
           <div key={month.pay_month} className={`card ${styles.period}`}>
             <div className={styles.monthHeading}>
               <span>{formatYearMonthLabel(month.pay_month)}</span>{" "}
-              <span className="mono" title={withUnitHint(undefined, month.total_in_unit, unit)}>
-                {formatBillPesos(month.total_clp)}
+              <span className="mono" title={withUnitHint(undefined, month.total, month.total_in_unit, unit)}>
+                {formatMoney(month.total)}
               </span>
             </div>
             <dl className={styles.lines}>

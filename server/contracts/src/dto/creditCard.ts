@@ -2,7 +2,7 @@ import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountMortgageLedgerResponse } from "./mortgage.js";
 
 import type { DataOrigin, DisplayUnitCode } from "./core.js";
-import type { CcCuotaPurchaseKind, ExpenseLinkLabel, PaymentReceipt } from "./flows.js";
+import type { CcCuotaPurchaseKind, ExpenseLinkLabel, Money, PaymentReceipt } from "./flows.js";
 
 export interface CcBillingDetailMonthDto {
   billing_month: string;
@@ -40,12 +40,12 @@ export type CcUpcomingPaymentRowDto = {
   close_date_source: CcCloseSource;
   pay_by_iso: string;
   pay_by_source: "statement" | "derived";
-  /** What is still owed, in pesos (the dollars left at today's rate). */
-  amount_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  /** What is still owed, in the home currency (each foreign part left at today's rate). */
+  amount: Money;
   /** What is still owed per currency the facturación bills in (each to its smallest coin): what the display unit converts. */
   owed: Record<string, number>;
-  /** The facturación's total in pesos (CLP + the dollars in pesos). */
-  billed_clp: number; // convention-ok: the card's billing frame is kept in pesos (statement facturado, cuotas, cupo)
+  /** The facturación's total in the home currency (its foreign parts at the facturación's rate). */
+  billed: Money;
   /** Its pay-by has passed with something still owed. */
   overdue: boolean;
   is_open_month: boolean;
@@ -68,12 +68,12 @@ export type UpcomingPaymentItemDto = {
   due_iso: string;
   due_kind: "by" | "on";
   /** Counts in the month's total (the mortgage: its minimum). */
-  amount_clp: number; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
+  amount: Money;
   /** The mortgage's maximum cuota. */
-  amount_max_clp: number | null; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
-  /** `amount_clp` in the block's `unit`, at today's mid rate. */
+  amount_max: Money | null;
+  /** `amount` in the block's `unit`, at today's mid rate, to the unit's smallest coin. */
   amount_in_unit: number;
-  /** `amount_max_clp` in the block's `unit`. */
+  /** `amount_max` in the block's `unit`. */
   amount_max_in_unit: number | null;
   /** No document states the amount yet. */
   estimated: boolean;
@@ -102,14 +102,14 @@ export type AutomaticRecurringDto = {
   frequency: "yearly" | "monthly";
   due_iso: string;
   status: "paid" | "covered" | "overdue" | "upcoming";
-  amount_clp: number; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
+  amount: Money;
   estimated: boolean;
-  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
+  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount: Money; covers_through: string | null } | null;
 };
 
 /**
- * `upcoming_payments` on the dashboard page bundle: the bills' pesos (`*_clp`, native) and each
- * amount in the bundle's display unit (`*_in_unit`, at today's mid rate).
+ * `upcoming_payments` on the dashboard page bundle: each bill as a money value in the currency it
+ * is stated in (`amount`, `total`) and in the bundle's display unit (`*_in_unit`, at today's mid rate).
  */
 export type UpcomingPaymentsDto = {
   /** `DTO_SCHEMA_VERSIONS.upcoming_payments`: the client stores this payload under that version. */
@@ -117,7 +117,7 @@ export type UpcomingPaymentsDto = {
   /** The display unit of the `*_in_unit` figures. */
   unit: DisplayUnitCode;
   /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
-  months: { pay_month: string; total_clp: number; total_in_unit: number; items: UpcomingPaymentItemDto[] }[]; // convention-ok: a bill's own pesos (upcoming payments carry the display-unit value beside it)
+  months: { pay_month: string; total: Money; total_in_unit: number; items: UpcomingPaymentItemDto[] }[];
   /** Automatic declared payments and their occurrences in the window (never in `months`). */
   automatic_recurring: AutomaticRecurringDto[];
 };
