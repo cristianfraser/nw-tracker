@@ -21,7 +21,7 @@ import { buildExpenseKey } from "../expenseKeys.js";
 import { statementLineDateIso } from "../ccInstallmentPayBy.js";
 import { adoptFlow, flowExists, rowFlowId } from "./flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey } from "./flowIdentity.js";
-import { FLOW_HOLDING_TABLES } from "./flowRetirement290.js";
+import { FLOW_HOLDING_TABLES } from "./flowTriggerSpecs.js";
 import { cardLineFirstSeenForAccount, keepEarlierFlowFirstSeen } from "./flowFirstSeen.js";
 import { lineAmountClpSql, lineAmountUsdSql } from "../cards/lineAmountSql.js";
 

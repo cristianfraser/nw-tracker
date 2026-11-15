@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { BILL_LINKS_SQL, billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { fixtureMovement } from "./test/flowFixtures.js";
 import { db } from "./db.js";
-import { runExpenseConsumptionBackfill161 } from "./legacyNoteBackfills.js";
+import { runExpenseConsumptionBackfill161 } from "./migrationHooks/legacyNoteBackfills.js";
 import {
   assignPurchaseToRealEstateExpense,
   assignPurchasesToRealEstateExpenses,

@@ -14,9 +14,9 @@ import { describe, expect, it } from "vitest";
 const RAW_TABLE_READERS: Record<string, string> = {
   // Writers and migrations: they own the rows.
   "ccStatementsImport.ts": "raw: the line importer (writes lines, owns dedupe keys and fingerprints)",
-  "cardLineKind276.ts": "raw: migration 276 hook (fills the stored kind)",
-  "flows/flowEvidenceEstimate295.ts": "raw: migration 295 hook (re-kinds the estimate statements' lines' evidence)",
-  "expenseKeyLegacyRewrite273.ts": "raw: migration 273 hook (frozen)",
+  "migrationHooks/cardLineKind276.ts": "raw: migration 276 hook (fills the stored kind)",
+  "migrationHooks/flowEvidenceEstimate295.ts": "raw: migration 295 hook (re-kinds the estimate statements' lines' evidence)",
+  "migrationHooks/expenseKeyLegacyRewrite273.ts": "raw: migration 273 hook (frozen)",
   "vendorCatalogChange.ts": "raw: every line's merchant + id, read on the migration's own handle (migration 325 hook, load-vendor-catalog)",
   "ccInstallmentLedgerMerge.ts": "raw: plan writer (canonical_row_id, twin_index)",
   "ccInstallmentManual.ts": "raw: manual plan CRUD and line → plan conversion",
@@ -27,7 +27,9 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccStatementLineDelete.ts": "raw: deletes a bucket line by id",
   "ccPlantedPayments.ts": "raw: replaces planted payment lines by id",
   "ccPlantedCharges.ts": "raw: the planted charge lines a listing line may be the later listing of",
-  "ccPlantedCharges328.ts": "raw: migration 328 registers the planted charge lines already on file",
+  "migrationHooks/ccPlantedCharges328.ts": "raw: migration 328 registers the planted charge lines already on file",
+  "migrationHooks/statementFingerprint292.ts": "raw: migration 292 hook (re-derives stored fingerprints from the stored lines; was under cards/)",
+  "migrationHooks/statementLineAmount319.ts": "raw: migration 319 hook (rebuilds the line table with amount + currency; was under cards/)",
   "ccAnnulledPurchases.ts": "raw: snapshots a bucket line by id into an annulled purchase before its line is deleted",
   "ccAnnulmentWriters.ts": "raw: a bucket line's cuota tag, and the statement line an annulment's flow folds into",
   "ccAnnulledPurchaseManual.ts": "raw: the line a manual annulment names, and the line an undo re-listed",
@@ -45,7 +47,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccExpenseGenericTransferBackfill.ts": "raw: category backfill",
   // The flow identity (F9 step 3): which rows a key names, the flows seeded from them.
   "flows/flowKeyResolve.ts": "raw: expense key → the rows it names (flows' evidence)",
-  "flows/flowTables279.ts": "raw: migration 279 hook (seeds a flow per row)",
+  "migrationHooks/flowTables279.ts": "raw: migration 279 hook (seeds a flow per row)",
   "flows/flowFirstSeen.ts": "raw: a card line's flow → its first-seen day (writer and line-id readers)",
   "flows/flowParts.ts": "raw: a line's pieces through its flow (the line id the pieces readers speak)",
   // The link tables keyed by line id.
