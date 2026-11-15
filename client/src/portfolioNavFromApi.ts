@@ -110,13 +110,8 @@ export function isLiabilityGroupNavNode(node: NavTreeNodeDto): boolean {
   return node.group_kind === "liability_group";
 }
 
-/**
- * `group` / `subgroup` query params for class-tab APIs (`/api/accounts`, valuation TS, perf).
- * Prefer `api_group`; else asset group slug; else portfolio `slug` (e.g. `cash_eqs` hub, `brokerage_mutual_funds`).
- */
-export function resolveGroupPageApiParams(
-  node: NavTreeNodeDto
-): { portfolio_group: string; group?: string; subgroup?: string } | null {
+/** The `portfolio_group` a group page's requests name: the node's slug (null for a node without one). */
+export function resolveGroupPageApiParams(node: NavTreeNodeDto): { portfolio_group: string } | null {
   const slug = typeof node.slug === "string" ? node.slug.trim() : "";
   if (!slug) return null;
   return { portfolio_group: slug };

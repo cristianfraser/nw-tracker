@@ -424,7 +424,6 @@ export function LiabilitiesGroupPage() {
           ? {
               navNode: navMatchNode,
               groupSlug: portfolioGroup,
-              subgroup: categoryFilter ?? undefined,
               dash: dashForStrip,
               unit: stripUnit,
               // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.

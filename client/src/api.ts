@@ -200,13 +200,11 @@ export const api = {
   },
   valuationTimeseries: (
     unit: DisplayUnit,
-    opts?: { portfolio_group?: string; group?: string; subgroup?: string }
+    opts?: { portfolio_group?: string }
   ) => {
     const q = new URLSearchParams();
     if (!isHomeCurrency(unit)) q.set("unit", unit);
     if (opts?.portfolio_group) q.set("portfolio_group", opts.portfolio_group);
-    if (opts?.group) q.set("group", opts.group);
-    if (opts?.subgroup) q.set("subgroup", opts.subgroup);
     const qs = q.toString();
     return j<import("./types").ValuationTimeseriesResponse>(
       `/api/dashboard/valuation-timeseries${qs ? `?${qs}` : ""}`
@@ -333,10 +331,9 @@ export const api = {
     form.append("type", type);
     return jForm<Record<string, unknown>>(`/api/accounts/${id}/imports/document`, form);
   },
-  groupConsolidatedTables: (slug: string, unit: DisplayUnit, subgroup?: string) => {
+  groupConsolidatedTables: (slug: string, unit: DisplayUnit) => {
     const q = new URLSearchParams();
     if (!isHomeCurrency(unit)) q.set("unit", unit);
-    if (subgroup) q.set("subgroup", subgroup);
     const qs = q.toString();
     return j<import("./types").GroupConsolidatedTablesResponse>(
       `/api/groups/${encodeURIComponent(slug)}/consolidated-tables${qs ? `?${qs}` : ""}`
@@ -455,10 +452,9 @@ export const api = {
       `/api/accounts/${id}/flows${qs ? `?${qs}` : ""}`
     );
   },
-  groupMonthlyPerformance: (slug: string, unit: DisplayUnit, subgroup?: string) => {
+  groupMonthlyPerformance: (slug: string, unit: DisplayUnit) => {
     const q = new URLSearchParams();
     if (!isHomeCurrency(unit)) q.set("unit", unit);
-    if (subgroup) q.set("subgroup", subgroup);
     const qs = q.toString();
     return j<import("./types").GroupMonthlyPerformanceResponse>(
       `/api/groups/${encodeURIComponent(slug)}/performance-monthly${qs ? `?${qs}` : ""}`

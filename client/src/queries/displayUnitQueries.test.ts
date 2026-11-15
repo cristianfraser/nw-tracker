@@ -14,8 +14,8 @@ describe("keepPreviousDataSameEntity", () => {
   it("drops the previous payload when the entity part of the key differs", () => {
     const hold = keepPreviousDataSameEntity(["accountDetail", "43", "clp", "monthly"], 2);
     expect(hold({ v: 1 }, prevQuery(["accountDetail", "42", "clp", "monthly"]))).toBeUndefined();
-    const group = keepPreviousDataSameEntity(["portfolioGroup", "brokerage", null, "clp"], 2);
-    expect(group({ v: 1 }, prevQuery(["portfolioGroup", "retirement", null, "clp"]))).toBeUndefined();
+    const group = keepPreviousDataSameEntity(["portfolioGroup", "brokerage", "clp"], 2);
+    expect(group({ v: 1 }, prevQuery(["portfolioGroup", "retirement", "clp"]))).toBeUndefined();
   });
 
   it("offers nothing without a previous query or payload", () => {

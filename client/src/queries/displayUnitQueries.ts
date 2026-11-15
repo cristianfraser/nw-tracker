@@ -90,7 +90,7 @@ export function prefetchPortfolioGroupBundle(
 ): Promise<void> {
   const { portfolio_group, unit } = opts;
   return queryClient.prefetchQuery({
-    queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
+    queryKey: queryKeys.portfolioGroup(portfolio_group, unit),
     queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     staleTime: DISPLAY_UNIT_STALE_MS,
   });

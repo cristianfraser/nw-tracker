@@ -65,8 +65,8 @@ export const queryKeys = {
    * neither variant is ever held as the other's placeholder. */
   dailySeries: (scope: string, variant: "base" | "perf", unit: DisplayUnit, days: number) =>
     withEntity(["dailySeries", scope, variant, unit, days] as const, 3),
-  groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
-    withEntity(["groupConsolidatedTables", group, subgroup ?? null, unit] as const, 2),
+  groupConsolidatedTables: (group: string, unit: DisplayUnit) =>
+    withEntity(["groupConsolidatedTables", group, unit] as const, 2),
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>
     withEntity(["groupPeriodReturns", group, unit] as const, 2),
   latestMovements: (limit: number, unit: DisplayUnit) => ["latestMovements", limit, unit] as const,
@@ -146,8 +146,8 @@ export const queryKeys = {
     withEntity(["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const, 3),
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
-  portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
-    withEntity(["portfolioGroup", group, subgroup ?? null, unit] as const, 2),
+  portfolioGroup: (group: string, unit: DisplayUnit) =>
+    withEntity(["portfolioGroup", group, unit] as const, 2),
   groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
     withEntity(["groupPageShell", portfolioGroup, unit] as const, 2),
   /** Prefix: every account page bundle (without `id`), or one account's in every unit. */

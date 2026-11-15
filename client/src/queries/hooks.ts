@@ -199,10 +199,10 @@ export function useGroupConsolidatedTables(
   enabled: boolean
 ) {
   return useQuery({
-    queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit),
+    queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, unit),
     queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit)),
+    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, unit)),
   });
 }
 
@@ -268,10 +268,10 @@ export function usePortfolioGroupBundle(opts: {
   const { portfolio_group, unit, enabled = true } = opts;
   const queryClient = useQueryClient();
   return useQuery({
-    queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
+    queryKey: queryKeys.portfolioGroup(portfolio_group, unit),
     queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     enabled: enabled && Boolean(portfolio_group),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, undefined, unit)),
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, unit)),
   });
 }
 
