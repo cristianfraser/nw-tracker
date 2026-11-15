@@ -1,6 +1,8 @@
 import type { Database } from "better-sqlite3";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { movementNotAnchorSql } from "./flows/flowEvidence.js";
 import { db } from "./db.js";
+import { deleteAccountMovementsByNote, insertMovement, restateMovementAmount } from "./movementWrites.js";
 import { cacheKeyCheckingBalance } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
@@ -235,10 +237,7 @@ function defaultAnchorPlacementDate(
 }
 
 function deleteLegacyOpeningMovements(accountId: number, dbHandle: Database = db): number {
-  const r = dbHandle
-    .prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`)
-    .run(accountId, `${OPENING_NOTE_PREFIX}%`);
-  return r.changes;
+  return deleteAccountMovementsByNote(accountId, `${OPENING_NOTE_PREFIX}%`, dbHandle);
 }
 
 function getLatestCartolaSaldoFinal(
@@ -390,10 +389,7 @@ export function getCheckingLedgerAnchor(
 }
 
 export function clearCheckingLedgerAnchor(accountId: number, dbHandle: Database = db): boolean {
-  const r = dbHandle
-    .prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`)
-    .run(accountId, `${ANCHOR_NOTE_PREFIX}%`);
-  return r.changes > 0;
+  return deleteAccountMovementsByNote(accountId, `${ANCHOR_NOTE_PREFIX}%`, dbHandle) > 0;
 }
 
 /** UI save: keep user amount/date; note uses latest cartola month as target. */
@@ -416,16 +412,9 @@ export function upsertCheckingLedgerAnchor(
     .get(accountId, `${ANCHOR_NOTE_PREFIX}%`) as { id: number } | undefined;
 
   if (existing) {
-    dbHandle
-      .prepare(`UPDATE movements SET amount = ?, currency = 'clp', occurred_on = ?, note = ? WHERE id = ?`)
-      .run(amount, occurredOn, note, existing.id);
+    restateMovementAmount(existing.id, { amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
   } else {
-    dbHandle
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-         VALUES (?, ?, 'clp', ?, ?, NULL)`
-      )
-      .run(accountId, amount, occurredOn, note);
+    insertMovement({ accountId, amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
   }
   return getCheckingLedgerAnchor(accountId, dbHandle);
 }
@@ -500,9 +489,7 @@ export function ensureCheckingLedgerAnchor(
         anchor_period_month: periodMonth,
       };
     }
-    dbHandle
-      .prepare(`UPDATE movements SET amount = ?, currency = 'clp', occurred_on = ?, note = ? WHERE id = ?`)
-      .run(amount, occurredOn, note, existing.id);
+    restateMovementAmount(existing.id, { amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
     return {
       inserted: false,
       updated: true,
@@ -513,12 +500,7 @@ export function ensureCheckingLedgerAnchor(
     };
   }
 
-  dbHandle
-    .prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, ?, 'clp', ?, ?, NULL)`
-    )
-    .run(accountId, amount, occurredOn, note);
+  insertMovement({ accountId, amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
   return {
     inserted: true,
     updated: false,

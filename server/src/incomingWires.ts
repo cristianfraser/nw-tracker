@@ -29,6 +29,7 @@ import type {
 
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { fintualUsdAccountId } from "./brokerAdapter.js";
@@ -365,30 +366,27 @@ export function bookIncomingWires(): IncomingWireBookingReport {
   return report;
 }
 
-const insTransfer = db.prepare(
-  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note)
-   VALUES (?, ?, ?, 'usd', ?, ?)`
-);
-const insFee = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
-   VALUES (?, ?, 'usd', ?, ?, 'cash_fee')`
-);
-
 function writeBooking(b: Booking, r: WithdrawalRequest): void {
   const broker = r.broker === "fintual" ? "Fintual" : r.broker;
   if (b.transfer_movement_id == null) {
-    const info = insTransfer.run(
-      b.from_account_id,
-      b.to_account_id,
-      b.net_amount,
-      b.value_date,
-      `${broker} · retiro en dólares a la cuenta ${r.destination_account} (${r.subject})`.slice(0, 300)
-    );
-    b.transfer_movement_id = Number(info.lastInsertRowid);
+    b.transfer_movement_id = insertMovement({
+      fromAccountId: b.from_account_id,
+      toAccountId: b.to_account_id,
+      amount: b.net_amount,
+      currency: "usd",
+      occurredOn: b.value_date,
+      note: `${broker} · retiro en dólares a la cuenta ${r.destination_account} (${r.subject})`.slice(0, 300),
+    });
   }
   if (b.fee_amount > 0 && b.fee_movement_id == null) {
-    const info = insFee.run(b.from_account_id, b.fee_amount, b.value_date, `${broker} · comisión del retiro en dólares`);
-    b.fee_movement_id = Number(info.lastInsertRowid);
+    b.fee_movement_id = insertMovement({
+      accountId: b.from_account_id,
+      amount: b.fee_amount,
+      currency: "usd",
+      occurredOn: b.value_date,
+      note: `${broker} · comisión del retiro en dólares`,
+      flowKind: "cash_fee",
+    });
   }
   db.prepare(
     `INSERT INTO incoming_wire_bookings (request_message_id, value_date, transfer_movement_id, fee_movement_id)

@@ -7,6 +7,7 @@ import { accountRowForId } from "../accountRowForMovement.js";
 import { validateMovementCreate } from "../movementUnitsPolicy.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
 import { db } from "../db.js";
+import { insertMovement } from "../movementWrites.js";
 import { clearAggregationCache } from "../cacheRegistry.js";
 import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLegReconcile.js";
 import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
@@ -30,27 +31,19 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     return;
   }
   if (validated.mode === "transfer") {
-    const r = db
-      .prepare(
-        `INSERT INTO movements (
-           account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
-           occurred_on, note, units_delta, counter_units_delta, flow_kind
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        validated.from_account_id,
-        validated.to_account_id,
-        validated.amount,
-        validated.currency,
-        validated.counter_amount,
-        validated.counter_currency,
-        validated.occurred_on,
-        validated.note,
-        validated.units_delta,
-        validated.counter_units_delta,
-        validated.flow_kind
-      );
-    const id = Number(r.lastInsertRowid);
+    const id = insertMovement({
+      fromAccountId: validated.from_account_id,
+      toAccountId: validated.to_account_id,
+      amount: validated.amount,
+      currency: validated.currency,
+      counterAmount: validated.counter_amount,
+      counterCurrency: validated.counter_currency,
+      occurredOn: validated.occurred_on,
+      note: validated.note,
+      unitsDelta: validated.units_delta,
+      counterUnitsDelta: validated.counter_units_delta,
+      flowKind: validated.flow_kind,
+    });
     // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
     // Checking rows are CLP; a non-CLP transfer has no CLP leg to supersede.
     const superseded =
@@ -75,38 +68,29 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     return;
   }
   if (validated.mode === "brokerage") {
-    const r = db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        accountId,
-        validated.amount,
-        validated.currency,
-        validated.occurred_on,
-        validated.note,
-        validated.units_delta,
-        validated.flow_kind
-      );
+    const id = insertMovement({
+      accountId,
+      amount: validated.amount,
+      currency: validated.currency,
+      occurredOn: validated.occurred_on,
+      note: validated.note,
+      unitsDelta: validated.units_delta,
+      flowKind: validated.flow_kind,
+    });
     res.status(201).json({
-      id: Number(r.lastInsertRowid),
+      id,
       units_delta: validated.units_delta,
       flow_kind: validated.flow_kind,
     });
     return;
   }
   const { amount, currency, occurred_on, note, units_delta } = validated;
-  const r = db
-    .prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta) VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(accountId, amount, currency, occurred_on, note, units_delta);
+  const id = insertMovement({ accountId, amount, currency, occurredOn: occurred_on, note, unitsDelta: units_delta });
   const bucketKind = accountBucketKindSlug(account.bucket_slug);
   if (!isCheckingLedgerAnchorNote(note)) {
     maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
   }
-  res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
+  res.status(201).json({ id, units_delta });
 });
 
 /**

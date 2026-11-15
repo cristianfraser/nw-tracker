@@ -1,5 +1,7 @@
 import { InputError } from "./inputError.js";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 
 import { accountHasRole, deptoPropertyIdOfAccount } from "./accountRoles.js";
 import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
@@ -126,33 +128,30 @@ export function commitMortgagePayment(
   const mortgageFlowKind = mortgageFlowKindFromCuota(cuota);
 
   const tx = db.transaction(() => {
-    const mortgageMov = db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-         VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
-      )
-      .run(
-        mortgageId,
-        Math.abs(sheet.pago_clp),
-        occurred_on,
-        deptoPaymentHumanNote("loan", cuota, manual),
-        mortgageFlowKind
-      );
-    const propertyMov = db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-         VALUES (?, ?, 'clp', ?, ?, NULL)`
-      )
-      .run(propertyId, sheet.pago_clp, occurred_on, deptoPaymentHumanNote("property", cuota, manual));
+    const mortgageMovementId = insertMovement({
+      accountId: mortgageId,
+      amount: Math.abs(sheet.pago_clp),
+      currency: HOME_CURRENCY,
+      occurredOn: occurred_on,
+      note: deptoPaymentHumanNote("loan", cuota, manual),
+      flowKind: mortgageFlowKind,
+    });
+    const propertyMovementId = insertMovement({
+      accountId: propertyId,
+      amount: sheet.pago_clp,
+      currency: HOME_CURRENCY,
+      occurredOn: occurred_on,
+      note: deptoPaymentHumanNote("property", cuota, manual),
+    });
     insertLoanPaymentRow({
-      movement_id: Number(mortgageMov.lastInsertRowid),
+      movement_id: mortgageMovementId,
       loan_account_id: mortgageId,
       leg: "loan",
       origin: opts.origin,
       ...paymentCols,
     });
     insertLoanPaymentRow({
-      movement_id: Number(propertyMov.lastInsertRowid),
+      movement_id: propertyMovementId,
       loan_account_id: mortgageId,
       leg: "property",
       origin: opts.origin,
@@ -162,8 +161,8 @@ export function commitMortgagePayment(
     syncLoanPaymentFlowParts([]);
     return {
       sheet_row: sheet,
-      mortgage_movement_id: Number(mortgageMov.lastInsertRowid),
-      property_movement_id: Number(propertyMov.lastInsertRowid),
+      mortgage_movement_id: mortgageMovementId,
+      property_movement_id: propertyMovementId,
     };
   });
 

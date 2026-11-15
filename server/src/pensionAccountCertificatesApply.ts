@@ -11,7 +11,9 @@ import { liveAfpUnoAccountId } from "./afpAccounts.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { recordContributionPeriods } from "./pensionContributionPeriods.js";
 import {
   CONTRIBUTION_CODE,
@@ -281,13 +283,16 @@ export function applyPensionAccountCertificates(
   let inserted = 0;
   db.transaction(() => {
     if (write) {
-      const insert = db.prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta) VALUES (?, ?, 'clp', ?, ?, ?)`
-      );
       for (const r of fresh) {
         const note = pensionLedgerNote({ kind: r.kind as ShapedLedgerRow["kind"], periods: r.period.split(","), occurred_on: r.occurred_on!, pesos: r.pesos, cuotas: r.cuotas });
-        const res = insert.run(accountId, r.pesos, r.occurred_on, note, r.cuotas);
-        r.movement_id = Number(res.lastInsertRowid);
+        r.movement_id = insertMovement({
+          accountId,
+          amount: r.pesos,
+          currency: HOME_CURRENCY,
+          occurredOn: r.occurred_on!,
+          note,
+          unitsDelta: r.cuotas,
+        });
         recordContributionPeriods(r.movement_id, r.period.split(","));
         inserted += 1;
       }

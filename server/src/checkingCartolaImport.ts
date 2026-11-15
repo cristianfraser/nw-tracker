@@ -1,6 +1,11 @@
 import { isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
 import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
-import { insertBankPesoMovement } from "./movementWrites.js";
+import {
+  deleteAccountMovements,
+  deleteAccountMovementsByNote,
+  insertBankPesoMovement,
+  setMovementNote,
+} from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { reconcileCartolaPartialImports } from "./checkingCartolaPartialReconcile.js";
@@ -83,11 +88,10 @@ export function rewriteCartolaMovementNotesPeriodMonth(
        WHERE account_id = ? AND note LIKE ?`
     )
     .all(accountId, `${fromPrefix}%`) as { id: number; note: string }[];
-  const upd = dbHandle.prepare(`UPDATE movements SET note = ? WHERE id = ?`);
   let changed = 0;
   for (const r of rows) {
     if (!r.note.startsWith(fromPrefix)) continue;
-    upd.run(toPrefix + r.note.slice(fromPrefix.length), r.id);
+    setMovementNote(r.id, toPrefix + r.note.slice(fromPrefix.length), dbHandle);
     changed += 1;
   }
   return changed;
@@ -131,16 +135,11 @@ export function deleteCheckingCartolaMonthImport(
 ): { movements: number; imports: number } {
   // The month's rows go; a flow something hangs off is retired with its document (migration 290),
   // and the re-imported row with the same identity takes it back (`insertBankPesoMovement`).
-  const delMov = dbHandle
-    .prepare(
-      `DELETE FROM movements
-       WHERE account_id = ? AND note LIKE ?`
-    )
-    .run(accountId, `import:cartola|${periodMonth}|%`);
+  const movements = deleteAccountMovementsByNote(accountId, `import:cartola|${periodMonth}|%`, dbHandle);
   const delImp = dbHandle
     .prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
     .run(accountId, periodMonth);
-  return { movements: delMov.changes, imports: delImp.changes };
+  return { movements, imports: delImp.changes };
 }
 
 /** Import row for a boundary month wrongly created by old multi-month split (0 movements). */
@@ -231,7 +230,7 @@ export function wipeCheckingAccountData(accountId: number, dbHandle: Database = 
   valuations: number;
   imports: number;
 } {
-  const delMov = dbHandle.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+  const movements = deleteAccountMovements(accountId, dbHandle);
   const delVal = dbHandle
     .prepare(`DELETE FROM valuations WHERE account_id = ?`)
     .run(accountId);
@@ -239,7 +238,7 @@ export function wipeCheckingAccountData(accountId: number, dbHandle: Database = 
     .prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ?`)
     .run(accountId);
   return {
-    movements: delMov.changes,
+    movements,
     valuations: delVal.changes,
     imports: delImp.changes,
   };

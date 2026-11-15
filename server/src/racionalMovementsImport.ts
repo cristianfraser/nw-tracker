@@ -28,6 +28,7 @@ import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { brokerCleanThrough, recordBrokerCleanRead } from "./brokerReadCoverage.js";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { brokerAdapter, pairDividendPayout, racionalCashAccountId, racionalEquityAccountId } from "./brokerAdapter.js";
 import {
   dividendMovementCurrency,
@@ -342,16 +343,6 @@ export function markDuplicates(planned: RacionalPlannedMovement[]): RacionalPlan
   });
 }
 
-const insTransfer = db.prepare(
-  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-   VALUES (@from_account_id, @to_account_id, @amount, @currency, @occurred_on, @note, @units_delta, @flow_kind)`
-);
-
-const insSingleLeg = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
-   VALUES (@account_id, @amount, @currency, @occurred_on, @note, @flow_kind)`
-);
-
 export type RacionalImportResult = {
   planned: RacionalPlannedMovement[];
   inserted: number;
@@ -441,25 +432,23 @@ export function applyRacionalMovements(result: RacionalImportResult, sourceRef: 
 
   db.transaction(() => {
     for (const p of chronological) {
-      const params = {
+      const row = {
         amount: p.amount,
         currency: p.currency,
-        occurred_on: p.source.occurred_on,
+        occurredOn: p.source.occurred_on,
         note: p.note,
-        flow_kind: p.flow_kind,
+        flowKind: p.flow_kind,
       };
       let movementId: number;
       if (p.from_account_id != null && p.to_account_id != null) {
-        movementId = Number(
-          insTransfer.run({
-            ...params,
-            from_account_id: p.from_account_id,
-            to_account_id: p.to_account_id,
-            units_delta: p.units_delta,
-          }).lastInsertRowid
-        );
+        movementId = insertMovement({
+          ...row,
+          fromAccountId: p.from_account_id,
+          toAccountId: p.to_account_id,
+          unitsDelta: p.units_delta,
+        });
       } else if (p.account_id != null) {
-        movementId = Number(insSingleLeg.run({ ...params, account_id: p.account_id }).lastInsertRowid);
+        movementId = insertMovement({ ...row, accountId: p.account_id });
       } else {
         throw new Error(`Planned Racional movement has no accounts: ${p.note}`);
       }

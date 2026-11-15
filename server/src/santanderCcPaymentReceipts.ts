@@ -44,8 +44,9 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
+import { insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
-import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
@@ -55,6 +56,7 @@ import {
   syntheticCcPaymentMovementIdForMessageId,
 } from "./santanderSyntheticCcPayments.js";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { pesosOrDollars } from "./ingestCurrencies.js";
 
 export type ParsedPaymentReceipt = {
@@ -141,22 +143,17 @@ function synthesizeTransferFromReceipt(
     : `Pago tarjeta espejo (comprobante ${receipt.paid_on} → abono tarjeta ·${last4})`;
 
   const write = db.transaction(() => {
-    const r = db
-      .prepare(
-        `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
-         VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?, ?, ?)`
-      )
-      .run(
-        checkingId,
-        cardAccountId,
-        receipt.amount_clp,
-        isUsd ? receipt.amount_usd : null,
-        isUsd ? "usd" : null,
-        receipt.paid_on,
-        note,
-        FLOW_KIND_PAGO_TARJETA
-      );
-    const movementId = Number(r.lastInsertRowid);
+    const movementId = insertMovement({
+      fromAccountId: checkingId,
+      toAccountId: cardAccountId,
+      amount: receipt.amount_clp,
+      currency: HOME_CURRENCY,
+      counterAmount: isUsd ? receipt.amount_usd : null,
+      counterCurrency: isUsd ? "usd" : null,
+      occurredOn: receipt.paid_on,
+      note,
+      flowKind: FLOW_KIND_PAGO_TARJETA,
+    });
     recordSyntheticCcPaymentTransfer(movementId, messageId, receipt.amount_clp, receipt.paid_on);
 
     const cardGroup = creditCardMasterMetaForAccount(cardAccountId).cardGroup;
@@ -262,8 +259,12 @@ export function applyPaymentReceipt(receipt: ParsedPaymentReceipt, messageId: st
 
   const match = inWindow[0]!;
   db.transaction(() => {
-    db.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(receipt.paid_on, match.id);
-    recordBankPosting(match.id, checkingId, match.bank_posted_on);
+    redateMovementKeepingBankDay({
+      movementId: match.id,
+      accountId: checkingId,
+      occurredOn: receipt.paid_on,
+      bankPostedOn: match.bank_posted_on,
+    });
   })();
   return {
     receipt,

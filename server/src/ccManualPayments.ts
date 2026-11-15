@@ -18,6 +18,7 @@ import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPa
 import { listingLineFromCardListingLine } from "./cardListingLines.js";
 
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
@@ -161,13 +162,15 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
       const note =
         input.note?.trim() ||
         `Pago tarjeta ingresado a mano (${paidOn} → tarjeta ·${creditCardMasterMetaForAccount(cardId).cardLast4})`;
-      const r = db
-        .prepare(
-          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
-           VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(fromId, cardId, magnitude, currency, paidOn, note, FLOW_KIND_PAGO_TARJETA);
-      transferId = Number(r.lastInsertRowid);
+      transferId = insertMovement({
+        fromAccountId: fromId,
+        toAccountId: cardId,
+        amount: magnitude,
+        currency,
+        occurredOn: paidOn,
+        note,
+        flowKind: FLOW_KIND_PAGO_TARJETA,
+      });
     }
     const ins = db
       .prepare(

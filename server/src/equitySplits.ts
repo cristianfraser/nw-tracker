@@ -24,6 +24,7 @@ import { addDaysIso, daysBetweenIso } from "nw-tracker-contracts";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { InputError } from "./inputError.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityCloseEod, equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
@@ -184,10 +185,6 @@ const stmtHolders = db.prepare(`SELECT id FROM accounts WHERE UPPER(equity_ticke
 const stmtSplitRow = db.prepare(
   `SELECT id, units_delta FROM movements WHERE account_id = ? AND occurred_on = ? AND flow_kind = 'stock_split'`
 );
-const stmtInsertSplitRow = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-   VALUES (?, 0, ?, ?, ?, ?, 'stock_split')`
-);
 
 
 /**
@@ -218,10 +215,18 @@ function writeSplitLedgerRows(split: EquitySplit): StockSplitLedgerRow[] {
       continue;
     }
     const note = `Split ${split.numerator}:${split.denominator} (${split.ticker}): ${held} → ${held * ratio} shares`;
-    const res = stmtInsertSplitRow.run(id, currency, split.ex_date, note, added);
+    const movementId = insertMovement({
+      accountId: id,
+      amount: 0,
+      currency,
+      occurredOn: split.ex_date,
+      note,
+      unitsDelta: added,
+      flowKind: "stock_split",
+    });
     out.push({
       account_id: id,
-      movement_id: Number(res.lastInsertRowid),
+      movement_id: movementId,
       units_before: held,
       units_added: added,
       status: "written",
