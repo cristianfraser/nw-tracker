@@ -9,7 +9,7 @@ import type { CcInstallmentGastosMode } from "../../expenseLineShape";
 import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../ui/PaginatedTable";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useModalPeriodNav } from "../../periodModalNav";
-import { Table } from "../ui/Table";
+import { ColumnTable, type TableColumn } from "../ui/ColumnTable";
 import { Modal } from "../ui/Modal";
 import { Button } from "@crfrsr/ui";
 import {
@@ -21,11 +21,6 @@ import {
   CreditCardExpenseLinesBulkFooter,
   CreditCardExpenseLinesSelectionProvider,
 } from "./CreditCardExpenseLinesSelection";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../ui/TableMobileCard";
 
 const periodKeyOf = (row: FlowCcExpenseMonthRow) => row.period_month;
 
@@ -37,67 +32,6 @@ function isCurrentPeriodRow(
 ): boolean {
   if (periodGranularity === "year") return periodMonth.slice(0, 4) === todayYm.slice(0, 4);
   return periodMonth === todayYm;
-}
-
-function GroupExpensesMonthMobileCard({
-  row,
-  labels,
-  onOpen,
-  displayUnit,
-  periodGranularity,
-  isCurrentPeriod,
-}: {
-  row: FlowCcExpenseMonthRow;
-  labels: {
-    gastos: string;
-    gastosReal: string;
-    cumulative: string;
-    lineCount: string;
-    currentMonthHint: string;
-  };
-  onOpen: (row: FlowCcExpenseMonthRow) => void;
-  displayUnit: DisplayUnit;
-  periodGranularity: FlowChartGranularity;
-  isCurrentPeriod: boolean;
-}) {
-  const title = (
-    <>
-      <Button variant="link" onClick={() => onOpen(row)}>
-        {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
-      </Button>
-      {isCurrentPeriod ? (
-        <span className="muted" title={labels.currentMonthHint}>
-          {" "}
-          *
-        </span>
-      ) : null}
-    </>
-  );
-
-  return (
-    <TableMobileCard title={title}>
-      <TableMobileCardSection>
-        <TableMobileCardRow
-          label={labels.gastos}
-          value={formatFlowMoney(row.gastos_mes, displayUnit)}
-        />
-        <TableMobileCardRow
-          label={labels.gastosReal}
-          value={
-            <span className="muted">{formatFlowMoney(row.gastos_real_mes, displayUnit)}</span>
-          }
-        />
-        <TableMobileCardRow
-          label={labels.cumulative}
-          value={formatFlowMoney(row.gastos_acumulado, displayUnit)}
-        />
-        <TableMobileCardRow
-          label={labels.lineCount}
-          value={<span className="muted">{row.line_count}</span>}
-        />
-      </TableMobileCardSection>
-    </TableMobileCard>
-  );
 }
 
 const PAGE_SIZE = 12;
@@ -135,14 +69,6 @@ export function GroupExpensesMonthTable({
     setSelected(row);
     setModalOpen(true);
   }, []);
-
-  const mobileLabels = {
-    gastos: t("expenses.creditCard.colMonthExpense"),
-    gastosReal: t("expenses.creditCard.colMonthExpenseReal"),
-    cumulative: t("expenses.creditCard.colCumulative"),
-    lineCount: t("expenses.creditCard.colLineCount"),
-    currentMonthHint: t("expenses.creditCard.currentMonthHint"),
-  };
 
   const currentYm = chileTodayYmd().slice(0, 7);
 
@@ -198,6 +124,59 @@ export function GroupExpensesMonthTable({
     labels: { prev: t("common.modalPrevPeriod"), next: t("common.modalNextPeriod") },
   });
 
+  const columns: TableColumn<FlowCcExpenseMonthRow>[] = [
+    {
+      key: "month",
+      header: t("accountDetail.monthCloseColumn"),
+      className: "mono",
+      sort: { type: "date", value: (row) => row.as_of_date },
+      cell: (row) => (
+        <>
+          <Button variant="link" onClick={() => openMonth(row)}>
+            {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
+          </Button>
+          {isCurrentPeriodRow(row.period_month, periodGranularity, currentYm) ? (
+            <span className="muted" title={t("expenses.creditCard.currentMonthHint")}>
+              {" "}
+              *
+            </span>
+          ) : null}
+        </>
+      ),
+      title: true,
+    },
+    {
+      key: "gastos",
+      header: t("expenses.creditCard.colMonthExpense"),
+      className: "mono",
+      sort: { type: "number", value: (row) => row.gastos_mes },
+      cell: (row) => formatFlowMoney(row.gastos_mes, displayUnit),
+    },
+    {
+      key: "gastos_real",
+      header: t("expenses.creditCard.colMonthExpenseReal"),
+      className: "mono muted",
+      cardClassName: "muted",
+      sort: { type: "number", value: (row) => row.gastos_real_mes },
+      cell: (row) => formatFlowMoney(row.gastos_real_mes, displayUnit),
+    },
+    {
+      key: "cumulative",
+      header: t("expenses.creditCard.colCumulative"),
+      className: "mono",
+      sort: { type: "number", value: (row) => row.gastos_acumulado },
+      cell: (row) => formatFlowMoney(row.gastos_acumulado, displayUnit),
+    },
+    {
+      key: "lines",
+      header: t("expenses.creditCard.colLineCount"),
+      className: "mono muted",
+      cardClassName: "muted",
+      sort: { type: "number", value: (row) => row.line_count },
+      cell: (row) => row.line_count,
+    },
+  ];
+
   if (rows.length === 0 && !loading) {
     return <p className="muted">{t("expenses.creditCard.emptyMonths")}</p>;
   }
@@ -205,74 +184,7 @@ export function GroupExpensesMonthTable({
   return (
     <>
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-        <Table
-          tableClassName="table--parallel-mobile"
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only" data-sort-key="month" data-sort-type="date">
-                  {t("accountDetail.monthCloseColumn")}
-                </th>
-                <th className="desktop-only" data-sort-key="gastos" data-sort-type="number">
-                  {t("expenses.creditCard.colMonthExpense")}
-                </th>
-                <th className="desktop-only" data-sort-key="gastos_real" data-sort-type="number">
-                  {t("expenses.creditCard.colMonthExpenseReal")}
-                </th>
-                <th className="desktop-only" data-sort-key="cumulative" data-sort-type="number">
-                  {t("expenses.creditCard.colCumulative")}
-                </th>
-                <th className="desktop-only" data-sort-key="lines" data-sort-type="number">
-                  {t("expenses.creditCard.colLineCount")}
-                </th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          {pageRows.map((row) => (
-            <tr
-              key={row.period_month}
-              data-sort-month={row.as_of_date}
-              data-sort-gastos={row.gastos_mes}
-              data-sort-gastos_real={row.gastos_real_mes}
-              data-sort-cumulative={row.gastos_acumulado}
-              data-sort-lines={row.line_count}
-            >
-              <td className="mono desktop-only">
-                <Button variant="link" onClick={() => openMonth(row)}>
-                  {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
-                </Button>
-                {isCurrentPeriodRow(row.period_month, periodGranularity, currentYm) ? (
-                  <span className="muted" title={mobileLabels.currentMonthHint}>
-                    {" "}
-                    *
-                  </span>
-                ) : null}
-              </td>
-              <td className="mono desktop-only">
-                {formatFlowMoney(row.gastos_mes, displayUnit)}
-              </td>
-              <td className="mono muted desktop-only">
-                {formatFlowMoney(row.gastos_real_mes, displayUnit)}
-              </td>
-              <td className="mono desktop-only">
-                {formatFlowMoney(row.gastos_acumulado, displayUnit)}
-              </td>
-              <td className="mono muted desktop-only">{row.line_count}</td>
-              <td className="mobile-only">
-                <GroupExpensesMonthMobileCard
-                  row={row}
-                  labels={mobileLabels}
-                  onOpen={openMonth}
-                  displayUnit={displayUnit}
-                  periodGranularity={periodGranularity}
-                  isCurrentPeriod={isCurrentPeriodRow(row.period_month, periodGranularity, currentYm)}
-                />
-              </td>
-            </tr>
-          ))}
-        </Table>
+        <ColumnTable rows={pageRows} columns={columns} rowKey={(row) => row.period_month} />
       </PaginatedTable>
 
       <CreditCardExpenseLinesSelectionProvider
