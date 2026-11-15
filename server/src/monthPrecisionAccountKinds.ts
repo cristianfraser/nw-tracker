@@ -7,6 +7,6 @@
  * transfer's own date — see `accountDeposits.loadTransferLegSignedFlowEvents`.
  *
  * Deliberately import-free: both `accountBucket.ts` (behavior helper) and `flowsCheckingGastos.ts`
- * (deposit matcher) read it, and those two sit on opposite sides of an import cycle.
+ * (deposit matcher) read it.
  */
 export const MONTH_PRECISION_ACCOUNT_KIND_SLUGS = new Set(["cuenta_ahorro_vivienda"]);

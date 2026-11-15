@@ -19,7 +19,7 @@
  * tables; the guard test (`purchasesRawTableGuard.test.ts`) lists them.
  *
  * Import rule: this module imports only leaf modules (no card ledger, no expense pipeline), so the
- * card domain can depend on it without growing the import cycle.
+ * card domain can depend on it without closing an import cycle.
  */
 import type { Database } from "better-sqlite3";
 import type { CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
