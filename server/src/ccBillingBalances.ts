@@ -7,7 +7,7 @@ import {
   debtFrameClpPerUsd,
   effectiveCcExpenseLineAmountClp,
   effectiveCcExpenseLineAmountUsd,
-  uniformDebtUsdRateInEffect,
+  type DebtFrameRates,
 } from "./ccExpenseAmountClp.js";
 import {
   billedOneShotLines,
@@ -40,9 +40,9 @@ import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
-import { isCcPaymentOrUsdDebtAbonoMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
+import { isCardDebtTransferLine, isCardPaymentLine, isDivisasAbonoPaymentLine, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { primaryStatementOfSlot, statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
-import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant, isCcTraspasoDeudaMerchant, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, parseDdMmYyToIso, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 
 /**
  * One billing month of a card's stored snapshot (`cc_billing_month_metrics`, migration 320: one
@@ -94,6 +94,7 @@ function writeBalance(b: BalanceWrite): void {
 
 type RevolvingLineRow = {
   id: number;
+  kind: string | null;
   merchant: string | null;
   amount_clp: number | null;
   amount_usd: number | null;
@@ -148,21 +149,21 @@ export function balanceUsdFxDateIso(accountId: number, statementDate: string): s
 function sumRevolvingLinesForAccountStatementDateClp(
   accountId: number,
   statementDate: string,
-  opts?: { excludePayments?: boolean; excludeUsdDebtPaymentAbonos?: boolean }
+  opts: { excludePayments?: boolean; excludeUsdDebtPaymentAbonos?: boolean },
+  rates: DebtFrameRates | undefined
 ): number {
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   let sum = 0;
   for (const r of billedOneShotLines(accountId, statementDate)) {
-    if (opts?.excludePayments && isCcPaymentMerchant(r.merchant)) continue;
-    if (
-      opts?.excludeUsdDebtPaymentAbonos &&
-      isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)
-    ) {
-      continue;
+    if (isCardPaymentLine(r)) {
+      // A named payment (PAGO, MONTO CANCELADO, ABONO) is never a charge; a divisas abono is left
+      // out only for the open cycle.
+      if (opts.excludeUsdDebtPaymentAbonos || (opts.excludePayments && !isDivisasAbonoPaymentLine(r))) continue;
     }
     const clp = debtCcExpenseLineAmountClp(
       { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
-      fxDateIso
+      fxDateIso,
+      rates
     );
     if (clp != null && Number.isFinite(clp)) sum += clp;
   }
@@ -172,11 +173,10 @@ function sumRevolvingLinesForAccountStatementDateClp(
 /** One-shot charges only (excludes PAGO / ABONO — those are subtracted in open-month roll-forward). */
 export function sumRevolvingChargesClpForStatementDate(
   accountId: number,
-  statementDate: string
+  statementDate: string,
+  rates?: DebtFrameRates
 ): number {
-  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, {
-    excludePayments: true,
-  });
+  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, { excludePayments: true }, rates);
 }
 
 /**
@@ -190,12 +190,15 @@ export function sumRevolvingChargesClpForStatementDate(
  */
 function sumOpenCycleChargesClpForStatementDate(
   accountId: number,
-  statementDate: string
+  statementDate: string,
+  rates: DebtFrameRates | undefined
 ): number {
-  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, {
-    excludePayments: true,
-    excludeUsdDebtPaymentAbonos: true,
-  });
+  return sumRevolvingLinesForAccountStatementDateClp(
+    accountId,
+    statementDate,
+    { excludePayments: true, excludeUsdDebtPaymentAbonos: true },
+    rates
+  );
 }
 
 type PostCloseLineRow = RevolvingLineRow & {
@@ -362,7 +365,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
         r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
-      const usdPayment = (r.amount_usd ?? 0) < 0 && isCcPaymentOrUsdDebtAbonoMerchant(r.merchant);
+      const usdPayment = (r.amount_usd ?? 0) < 0 && isCardPaymentLine(r);
       const paidStatementDate = usdPayment ? paidFacturacionStatementDate(iso) : null;
       const clp =
         linkedTraspasoClp != null
@@ -551,23 +554,23 @@ function postCloseLiveBalanceAdjustmentsClp(
       if (l.iso <= w.closeIso || l.iso > w.monthEndIso) continue;
       if (seen.has(l.key)) continue;
       seen.add(l.key);
-      const clp = statementFrameEntryClp(l);
-      if (clp != null) sum += clp;
+      if (l.clp != null) sum += l.clp;
     }
     return sum;
   });
 }
 
 /**
- * An entry's pesos in the statement frame: its debt-frame `clp`, or — inside a uniform-rate split
- * pass (`withUniformDebtUsdRate`) — its native amount at that rate, so the cached stream (built at
- * the real rates) can serve the pass.
+ * An entry's pesos in the statement frame: its debt-frame `clp`, or — in a split pass (`rates`
+ * given) — its native amount at its currency's rate there, so the cached stream (built at the real
+ * rates) can serve the pass. A currency the pass has no rate for keeps its `clp`.
  */
-function statementFrameEntryClp(e: PostCloseStreamEntry): number | null {
-  const uniform = uniformDebtUsdRateInEffect();
-  if (uniform == null) return e.clp;
-  if (e.amount == null) return null;
-  return e.currency === "usd" ? Math.round(e.amount * uniform) : e.amount; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
+function statementFrameEntryClp(e: PostCloseStreamEntry, rates: DebtFrameRates | undefined): number | null {
+  if (rates == null) return e.clp;
+  if (isHomeCurrency(e.currency)) return e.amount;
+  const rate = rates.get(e.currency);
+  if (rate == null) return e.clp;
+  return e.amount == null ? null : Math.round(e.amount * rate);
 }
 
 /**
@@ -650,7 +653,8 @@ export function postCloseNativeAdjustment(
 export function unbilledAtMonthEndAdjustmentsClp(
   accountId: number,
   billedMonthByStatementDate: ReadonlyMap<string, string>,
-  windows: readonly { billingMonth: string; monthEndIso: string }[]
+  windows: readonly { billingMonth: string; monthEndIso: string }[],
+  rates?: DebtFrameRates
 ): number[] {
   if (windows.length === 0) return [];
   const entries = normalizedPostCloseLines(accountId);
@@ -672,7 +676,7 @@ export function unbilledAtMonthEndAdjustmentsClp(
       const billed = firstBilled.get(e.key) ?? null;
       if (billed != null && billed <= w.billingMonth) continue;
       seen.add(e.key);
-      const clp = statementFrameEntryClp(e);
+      const clp = statementFrameEntryClp(e, rates);
       if (clp != null) sum += clp;
     }
     return sum;
@@ -687,11 +691,12 @@ export function unbilledAtMonthEndAdjustmentsClp(
  */
 export function incrementalChargesClpForBillingMonth(
   accountId: number,
-  billingMonth: string
+  billingMonth: string,
+  rates?: DebtFrameRates
 ): number {
   let sum = 0;
   for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
-    sum += sumOpenCycleChargesClpForStatementDate(accountId, stmtDate);
+    sum += sumOpenCycleChargesClpForStatementDate(accountId, stmtDate, rates);
   }
   return sum;
 }
@@ -725,24 +730,25 @@ export function installmentPurchasesClpAfter(accountId: number, afterIso: string
  * (the feed's divisas abono drove the open month to −US$xxx,xx on ·0781, 2026-08). Payments belong
  * to the balance roll-forward only. Non-payment negative lines (refunds) still net in. A line of
  * zero bills nothing (the corpus stores an absent amount as 0). The pesos are the debt frame's
- * (`debtCcExpenseLineAmountClp`: the facturación's pay-by − 1, or a split pass's uniform rate).
+ * (`debtCcExpenseLineAmountClp`: the facturación's pay-by − 1, or the rates of a split pass).
  */
 export function openMonthForeignFacturado(
   accountId: number,
-  billingMonth: string
+  billingMonth: string,
+  rates?: DebtFrameRates
 ): Map<string, { amount: number; clp: number }> {
   const out = new Map<string, { amount: number; clp: number }>();
   const addStatement = (statementDate: string) => {
     const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
     for (const r of billedOneShotLines(accountId, statementDate)) {
-      if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
+      if (isCardPaymentLine(r)) continue;
       if (isHomeCurrency(r.currency)) continue; // a peso line — not part of the foreign split
       const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null, cuota_amount: null };
       const native = cardLineNativeAmount(oneShot);
       if (!native) continue;
       const entry = out.get(native.currency) ?? { amount: 0, clp: 0 };
       entry.amount += native.amount;
-      const c = debtCcExpenseLineAmountClp(oneShot, fxDateIso);
+      const c = debtCcExpenseLineAmountClp(oneShot, fxDateIso, rates);
       if (c != null && Number.isFinite(c)) entry.clp += c;
       out.set(native.currency, entry);
     }
@@ -766,7 +772,7 @@ export function openFacturacionCredits(accountId: number, billingMonth: string):
   withCcOneShotScanCache(() => {
     for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
       for (const r of billedOneShotLines(accountId, stmtDate)) {
-        if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant) || isCcTraspasoDeudaMerchant(r.merchant)) continue;
+        if (isCardPaymentLine(r) || isCardDebtTransferLine(r)) continue;
         const native = cardLineNativeAmount({ ...r, installment_flag: 0 });
         if (!native) continue;
         const amount = isHomeCurrency(native.currency) ? Math.round(native.amount) : native.amount;
@@ -779,7 +785,8 @@ export function openFacturacionCredits(accountId: number, billingMonth: string):
 
 function installmentCuotaDueForAccountStatementDateClp(
   accountId: number,
-  statementDate: string
+  statementDate: string,
+  rates: DebtFrameRates | undefined
 ): number {
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   const rows = linesOfClose(accountId, statementDate);
@@ -804,7 +811,8 @@ function installmentCuotaDueForAccountStatementDateClp(
     if (r.installment_flag !== 1) continue;
     const cuota = debtCcExpenseLineAmountClp(
       { ...r, installment_flag: 1 },
-      fxDateIso
+      fxDateIso,
+      rates
     );
     if (cuota != null && cuota > 0) sum += cuota;
   }
@@ -827,14 +835,15 @@ export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
   stmt: { id: number; currency: string; monto_facturado: number | null; source_kind: string; billing_month: string | null },
-  fxDate: string
+  fxDate: string,
+  rates?: DebtFrameRates
 ): { facturado_clp: number | null; facturado_usd: number | null } {
   const headerMonto = statementHeaderFacturado(stmt);
   if (stmt.currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
     // A dollar statement that prints no total (the Santander international JSON) bills what its
     // own lines bill: summing peso lines for it had left a facturación's dollars out of its total.
     const usd = headerMonto ?? foreignBilledFromStatementLines(stmt.id, "usd");
-    const fx = debtFrameClpPerUsd(balanceUsdFxDateIso(accountId, statementDate));
+    const fx = debtFrameClpPerUsd(balanceUsdFxDateIso(accountId, statementDate), rates);
     const clp = fx != null ? Math.round(usd * fx) : null;
     return { facturado_clp: clp, facturado_usd: usd };
   }
@@ -844,8 +853,8 @@ export function facturadoFromStatement(
       facturado_usd: null,
     };
   }
-  const revolving = sumRevolvingChargesClpForStatementDate(accountId, statementDate);
-  const cuota = installmentCuotaDueForAccountStatementDateClp(accountId, statementDate);
+  const revolving = sumRevolvingChargesClpForStatementDate(accountId, statementDate, rates);
+  const cuota = installmentCuotaDueForAccountStatementDateClp(accountId, statementDate, rates);
   let clp = revolving + cuota;
   if (clp <= 0) {
     if (!isListingSourceKind(stmt.source_kind)) {

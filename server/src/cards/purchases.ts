@@ -31,7 +31,7 @@ import {
 } from "../ccInstallmentLineDedupe.js";
 import { statementLineDateIso } from "../ccInstallmentPayBy.js";
 import { amountIsPrincipalOrOneCuota, installmentMerchantStemsMatch } from "../matching/installmentAmount.js";
-import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix, isCcPaymentMerchant } from "nw-tracker-contracts";
+import { addCalendarMonths, normalizeMerchantText, parseDdMmYyToIso, parseYearMonth, stripBciTerminalSuffix, isCcUsdDebtAbonoMerchant } from "nw-tracker-contracts";
 import { paymentStatementMonthYm } from "./statementMonth.js";
 import { billingMonthContainingPurchase, lastPdfBillingMonthForAccount } from "./facturacion.js";
 import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql, lineCuotaUsdSql } from "./lineAmountSql.js";
@@ -629,18 +629,17 @@ const stmtClpPaymentLines = db.prepare(
    JOIN cc_statements s ON s.id = l.statement_id
    JOIN accounts a ON a.id = s.account_id
    WHERE s.currency = 'clp' AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} < 0
+     AND l.kind = 'card_payment'
      AND (@account_id IS NULL OR s.account_id = @account_id)`
 );
 
 /**
  * The peso payment lines of one card or of all of them: one-shot credits on peso statements (the
- * open bucket included) that name a payment (`isCcPaymentMerchant`: PAGO, MONTO CANCELADO, ABONO).
+ * open bucket included) whose stored kind is a payment (`card_payment`: PAGO, MONTO CANCELADO, ABONO).
  * The cuota retirement and the payment-mirror evidence read the same list.
  */
 export function clpPaymentLines(accountId?: number): CardPaymentLine[] {
-  return (stmtClpPaymentLines.all({ account_id: accountId ?? null }) as CardPaymentLine[]).filter((r) =>
-    isCcPaymentMerchant(r.merchant)
-  );
+  return stmtClpPaymentLines.all({ account_id: accountId ?? null }) as CardPaymentLine[];
 }
 
 // Matched by the LINE's currency, not the statement's — the open web-paste bucket is a CLP
@@ -654,17 +653,21 @@ const stmtForeignAbonoLines = db.prepare(
    JOIN cc_statements s ON s.id = l.statement_id
    JOIN accounts a ON a.id = s.account_id
    WHERE l.installment_flag = 0 AND l.currency <> 'clp' AND l.amount < 0
-     AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
+     AND l.kind = 'card_payment'
      AND l.id NOT IN (SELECT from_line_id FROM cc_traspaso_deuda_links)
      AND (@account_id IS NULL OR s.account_id = @account_id)`
 );
 
 /**
  * The ABONO DE DIVISAS lines (foreign debt paid with bought currency), traspaso legs left out, each
- * in its own currency (`amount` signed as stored).
+ * in its own currency (`amount` signed as stored). Payment lines by their stored kind; the kind
+ * does not say which payment, so the divisas abono among them is still told by its wording (a
+ * foreign PAGO / MONTO CANCELADO is not one).
  */
 export function foreignDebtAbonoLines(accountId?: number): (CardPaymentLine & { currency: string })[] {
-  return stmtForeignAbonoLines.all({ account_id: accountId ?? null }) as (CardPaymentLine & { currency: string })[];
+  return (stmtForeignAbonoLines.all({ account_id: accountId ?? null }) as (CardPaymentLine & { currency: string })[]).filter((r) =>
+    isCcUsdDebtAbonoMerchant(r.merchant)
+  );
 }
 
 const stmtTraspasoForeignLegs = db.prepare(
@@ -796,6 +799,8 @@ export function lineForPayment(paymentId: number): CardLine | null {
 /** A one-shot line as a debt event: its stored amounts, statement context and the day it counts. */
 export type DebtEventLine = {
   id: number;
+  /** The stored line kind (`cards/lineKinds.ts`, migration 276). */
+  kind: string | null;
   merchant: string | null;
   /** The line's amount in its own currency (migration 319). */
   amount: number | null;
@@ -833,7 +838,7 @@ function backdatedPostingCutoffIso(closeIso: string): string {
 export function debtEventLines(accountId: number): DebtEventLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.amount, l.currency, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
+      `SELECT l.id, l.kind, l.merchant, l.amount, l.currency, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
               l.installment_flag, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
               l.transaction_date, l.posting_date, s.statement_date, l.dedupe_key
        FROM cc_statement_lines l
@@ -870,6 +875,8 @@ export function planPurchaseEvents(accountId: number): { id: number; purchase_da
 /** A statement line as the facturado sums read it. */
 export type BilledLine = {
   id: number;
+  /** The stored line kind (`cards/lineKinds.ts`, migration 276). */
+  kind: string | null;
   merchant: string | null;
   amount_clp: number | null;
   amount_usd: number | null;
@@ -891,7 +898,7 @@ export type BilledLine = {
 export function billedOneShotLines(accountId: number, statementDate: string): BilledLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
+      `SELECT l.id, l.kind, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.currency AS statement_currency,
               l.installment_flag, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
               l.amount, l.currency, l.cuota_amount
        FROM cc_statement_lines l
@@ -907,7 +914,7 @@ export function billedOneShotLines(accountId: number, statementDate: string): Bi
 export function linesOfClose(accountId: number, statementDate: string): BilledLine[] {
   return db
     .prepare(
-      `SELECT l.id, l.merchant, l.installment_flag, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
+      `SELECT l.id, l.kind, l.merchant, l.installment_flag, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
               s.currency AS statement_currency,
               ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp, ${lineCuotaUsdSql("l")} AS valor_cuota_mensual_usd,
               l.amount, l.currency, l.cuota_amount

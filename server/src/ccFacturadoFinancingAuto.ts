@@ -66,7 +66,8 @@ import { requestExpenseLinkSync } from "./expenseLinkSync.js";
 import { generalRuleCategoryIdReaching } from "./expenseCategoryRules.js";
 import { db } from "./db.js";
 import { findLines, planRows } from "./cards/purchases.js";
-import { ddMmYyyyFromIso, foldAccents, parseDdMmYyToIso, isCcPaymentMerchant } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, foldAccents, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { isCardPaymentLine } from "./ccPaymentLines.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
 /** Days past the pay-by a payment still counts toward the facturado (late payments happen). */
@@ -267,7 +268,7 @@ function paymentOnFile(accountId: number, paidOn: string, amount: number): boole
 function paidBetween(accountId: number, fromIso: string, toIso: string): number {
   let paid = 0;
   for (const l of findLines({ accountId, amountClpSign: "negative" })) {
-    if (!isCcPaymentMerchant(l.merchant)) continue;
+    if (!isCardPaymentLine({ id: l.line_id, kind: l.kind })) continue;
     const iso = normalizeTransactionDateIso(l.transaction_date ?? l.posting_date);
     if (iso && iso >= fromIso && iso <= toIso) paid += -Math.round(l.amount_clp!);
   }

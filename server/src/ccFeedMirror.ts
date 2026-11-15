@@ -32,7 +32,7 @@ import {
   type CcOpenBucketLine,
 } from "./ccFeedCuotaPurchases.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
-import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
+import { isCardPaymentLine } from "./ccPaymentLines.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -122,7 +122,7 @@ export function planFeedMirror(
   const candidates = listOpenBucketLines(accountId).filter((line) => {
     if (line.installment_flag) return false;
     if (!opts.currencies.has(lineCurrency(line))) return false;
-    if (isCcPaymentOrUsdDebtAbonoMerchant(line.merchant)) return false;
+    if (isCardPaymentLine(line)) return false;
     const iso = bucketLinePurchaseIso(line);
     return iso != null && iso >= opts.windowStartIso;
   });

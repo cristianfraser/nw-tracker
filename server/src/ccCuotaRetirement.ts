@@ -55,8 +55,8 @@ export type CuotaRetirementResult = {
 };
 
 /**
- * Dated CLP payments of billed debt for one CC master: payment lines (`isCcPaymentMerchant`
- * — PAGO, MONTO CANCELADO, ABONO, the same test as the open-month sums) plus header-only
+ * Dated CLP payments of billed debt for one CC master: payment lines (stored kind
+ * `card_payment` — PAGO, MONTO CANCELADO, ABONO, as the open-month sums read it) plus header-only
  * pagados (`monto_pagado_anterior` + printed date, migration 166) and the dated legs of the
  * header pagados printed without a date (`cc_header_payment_legs`, migration 213). The mirror-pair evidence
  * collector (`ccPaymentMirrors.ts`) reads the same lines and headers through the same
