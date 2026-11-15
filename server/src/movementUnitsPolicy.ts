@@ -3,7 +3,7 @@
  */
 
 import { foreignCashCurrencyOf, isForeignCashAccount } from "./foreignCashAccounts.js";
-import { accountCashCurrency } from "./cashCurrency.js";
+import { accountCashCurrency, cashCurrencyForKind } from "./cashCurrency.js";
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { accountUsesForeignCashFlowKinds } from "./accountForeignCashFlows.js";
@@ -47,9 +47,15 @@ export type MovementCreateSchema = {
   cash_currency?: string;
 };
 
-/** The currency a cash ledger account's row holds; throws when the row is not a stored cash ledger. */
+/**
+ * The currency a cash ledger account's row holds: the stored account's (`accountCashCurrency`),
+ * or, for a row with no id, what its leaf names (a generic foreign cash leaf names none and throws).
+ */
 function requireCashCurrency(account: AccountRow): string {
-  const currency = account.account_id != null ? accountCashCurrency(account.account_id) : null;
+  const currency =
+    account.account_id != null
+      ? accountCashCurrency(account.account_id)
+      : cashCurrencyForKind(0, accountBucketKindSlug(account.bucket_slug), null);
   if (currency == null) throw new Error(`account ${account.account_id ?? "(none)"} is on a cash leaf but holds no cash currency`);
   return currency;
 }
