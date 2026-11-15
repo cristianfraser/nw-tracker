@@ -1,5 +1,5 @@
 import { HOME_CURRENCY } from "./displayUnits.js";
-import { nodeValue, nodeValuesAtDates, type NodePointValuePolicy } from "./nodeValue.js";
+import { nodeValue, nodeValuesAtDates } from "./nodeValue.js";
 import type { TsUnit } from "./rates.js";
 
 /**
@@ -29,22 +29,6 @@ export type ChartMarkTotalAccountRow = {
   exclude_from_group_totals?: number;
 };
 
-/**
- * The chart totals' pesos at a date: each counted member's peso mark, a date with no mark left
- * out (a netting bucket always reads), rounded to the peso after the netting.
- */
-const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  rounding: "unit_coin",
-};
-
-/**
- * The chart totals in another unit at a date: each counted member's own value in the unit,
- * unrounded.
- */
-const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  rounding: "none",
-};
-
 export type SlugMarkTotalsOpts = {
   /**
    * Apply the net-worth cash adjustment (`cashNetOfLinkedCreditCards`: subtract the linked
@@ -55,9 +39,8 @@ export type SlugMarkTotalsOpts = {
 };
 
 /**
- * CLP mark total per requested date for one bucket's accounts, rounded per date exactly as
- * `buildDashboardBucketDailySeriesClp` / the overview liabilities leg round theirs (netting,
- * if any, is applied before the round).
+ * CLP mark total per requested date for one bucket's accounts: a chart level, exact (never
+ * rounded), like `buildDashboardBucketDailySeriesClp` and the overview's liabilities leg.
  *
  * A date where **no** account has a finite mark is left OUT of the map (not set to 0), the
  * same `any ? value : null` rule the daily series uses: before a group's first holding, the
@@ -75,7 +58,6 @@ export function slugMarkTotalsAtDatesClp(
   opts?: SlugMarkTotalsOpts
 ): Map<string, number> {
   const values = nodeValuesAtDates(accounts, datesAsc, HOME_CURRENCY, {
-    ...MONTH_END_MARK_TOTALS,
     netsLinkedCards: opts?.netLinkedCreditCard === true,
   });
   const out = new Map<string, number>();
@@ -98,8 +80,5 @@ export function slugValueInUnitAt(
   unit: Exclude<TsUnit, "clp">,
   opts?: SlugMarkTotalsOpts
 ): number | null {
-  return nodeValue(accounts, ymd, unit, {
-    ...CHART_VALUE_IN_UNIT,
-    netsLinkedCards: opts?.netLinkedCreditCard === true,
-  });
+  return nodeValue(accounts, ymd, unit, { netsLinkedCards: opts?.netLinkedCreditCard === true });
 }

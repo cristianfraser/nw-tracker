@@ -12,42 +12,34 @@ import {
   nodeValueSeriesFromSums,
   nodeValueSeriesOnGrid,
   nodeValuesAtDates,
-  type NodePointValuePolicy,
   type NodeValueMember,
-  type NodeValueRules,
+  type NodeValuePolicy,
 } from "./nodeValue.js";
 import { clpToUnitAt } from "./valueConvert.js";
 
-const rules = (over: Partial<NodeValueRules> = {}): NodeValueRules => ({
-  rounding: "none",
-  ...over,
-});
-
 describe("nodeValueFromSum — the rule kernel", () => {
   it("a node that does not net reads its sum", () => {
-    expect(nodeValueFromSum(1_000.4, undefined, "clp", rules())).toBe(1_000.4);
+    expect(nodeValueFromSum(1_000.4, undefined)).toBe(1_000.4);
   });
 
   it("nets the linked cards signed: owed subtracts, a card in credit adds", () => {
-    expect(nodeValueFromSum(1_000_000, 250_000, "clp", rules())).toBe(750_000);
-    expect(nodeValueFromSum(1_000_000, -50_000, "clp", rules())).toBe(1_050_000);
+    expect(nodeValueFromSum(1_000_000, 250_000)).toBe(750_000);
+    expect(nodeValueFromSum(1_000_000, -50_000)).toBe(1_050_000);
   });
 
   it("the one empty rule: no member value is absent, except a netting node reads 0 less the cards", () => {
-    expect(nodeValueFromSum(null, undefined, "clp", rules())).toBeNull();
-    expect(nodeValueFromSum(null, 250_000, "clp", rules())).toBe(-250_000);
-    expect(nodeValueFromSum(null, -50_000, "clp", rules())).toBe(50_000);
+    expect(nodeValueFromSum(null, undefined)).toBeNull();
+    expect(nodeValueFromSum(null, 250_000)).toBe(-250_000);
+    expect(nodeValueFromSum(null, -50_000)).toBe(50_000);
     // Cards owing nothing: the netting node still reads, 0.
-    expect(nodeValueFromSum(null, 0, "usd", rules())).toBe(0);
+    expect(nodeValueFromSum(null, 0)).toBe(0);
     // A members' sum of 0 is a value, not an absence.
-    expect(nodeValueFromSum(0, undefined, "clp", rules())).toBe(0);
+    expect(nodeValueFromSum(0, undefined)).toBe(0);
   });
 
-  it("rounds once, after netting, to the unit's coin", () => {
-    // 1000.4 + 2000.4 − 0.3 = 3000.5 → 3001; rounding each part first would give 3000.
-    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3, "clp", rules({ rounding: "unit_coin" }))).toBe(3_001);
-    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3, "clp", rules({ rounding: "none" }))).toBeCloseTo(3_000.5, 9);
-    expect(nodeValueFromSum(10.004 + 10.004, undefined, "usd", rules({ rounding: "unit_coin" }))).toBe(20.01);
+  it("is exact: a node's value is never rounded", () => {
+    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3)).toBeCloseTo(3_000.5, 9);
+    expect(nodeValueFromSum(10.004 + 10.004, undefined)).toBe(10.004 + 10.004);
   });
 });
 
@@ -66,7 +58,7 @@ describe("nodeValueMembers", () => {
 describe("nodeValueSeriesFromSums", () => {
   it("refuses sums that do not line up with the dates", () => {
     expect(() =>
-      nodeValueSeriesFromSums([1], ["2026-08-15", "2026-08-16"], "clp", { ...rules(), netsLinkedCards: false })
+      nodeValueSeriesFromSums([1], ["2026-08-15", "2026-08-16"], "clp", { netsLinkedCards: false })
     ).toThrow(/1 sums for 2 dates/);
   });
 });
@@ -95,9 +87,8 @@ describe("nodeValue on accounts", () => {
   const setAsideFlags = new Map<number, number>();
   let members: NodeValueMember[] = [];
 
-  const point = (over: Partial<NodePointValuePolicy> = {}): NodePointValuePolicy => ({
+  const point = (over: Partial<NodeValuePolicy> = {}): NodeValuePolicy => ({
     netsLinkedCards: false,
-    rounding: "none",
     ...over,
   });
 
@@ -198,10 +189,10 @@ describe("nodeValue on accounts", () => {
     expect(nodeNetsLinkedCards("brokerage")).toBe(false);
   });
 
-  it("sums the counted members and rounds once at the end", () => {
+  it("sums the counted members, exact", () => {
+    // 1000.4 + 2000.4: the fraction stays (a chart level is never rounded).
     expect(nodeValue(members, D1, "clp", point())).toBeCloseTo(A + B, 9);
-    // 3000.8 → 3001; rounding each member first would read 3000.
-    expect(nodeValue(members, D1, "clp", point({ rounding: "unit_coin" }))).toBe(3_001);
+    expect(Number.isInteger(nodeValue(members, D1, "clp", point()))).toBe(false);
   });
 
   it("another unit is each member's own value in it", () => {
@@ -268,7 +259,7 @@ describe("nodeValue on accounts", () => {
 
   it("the dates form is the point value on each date", () => {
     const dates = [BEFORE, D1, GRID[2]!];
-    const policy = point({ netsLinkedCards: true, rounding: "unit_coin" });
+    const policy = point({ netsLinkedCards: true });
     for (const unit of ["clp", "usd"]) {
       expect(nodeValuesAtDates(members, dates, unit, policy)).toEqual(
         dates.map((d) => nodeValue(members, d, unit, policy))
@@ -279,12 +270,7 @@ describe("nodeValue on accounts", () => {
   it("the grid form equals the point value on every grid day, past days and today", () => {
     const today = chileCalendarTodayYmd();
     const grids = [GRID, [chileCalendarAddDays(today, -2), chileCalendarAddDays(today, -1), today]];
-    const variants: Partial<NodePointValuePolicy>[] = [
-      {},
-      { netsLinkedCards: true },
-      { netsLinkedCards: true, rounding: "unit_coin" },
-      { rounding: "unit_coin" },
-    ];
+    const variants: Partial<NodeValuePolicy>[] = [{}, { netsLinkedCards: true }];
     for (const grid of grids) {
       for (const unit of ["clp", "usd"]) {
         for (const v of variants) {
@@ -306,7 +292,7 @@ describe("nodeValue on accounts", () => {
   });
 
   it("the sums form applies the same netting as the grid form", () => {
-    const policy = point({ netsLinkedCards: true, rounding: "unit_coin" });
+    const policy = point({ netsLinkedCards: true });
     const raw = nodeValueSeriesOnGrid(members, GRID, "usd", point());
     expect(nodeValueSeriesFromSums(raw, GRID, "usd", policy)).toEqual(nodeValueSeriesOnGrid(members, GRID, "usd", policy));
   });

@@ -8,7 +8,7 @@ import {
 } from "./dashboardComposition.js";
 import { cacheKeyDailyOverview } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
-import { nodeMembersSum, nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
+import { nodeMembersSum, nodeValueSeriesOnGrid } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   chileCalendarDaysListEndingAt,
@@ -69,21 +69,13 @@ export type OverviewDailyPayload = {
 };
 
 /**
- * Pasivos on each day of a daily grid: its counted members' cached daily values, rounded to the
- * unit's coin. Nothing is netted from it.
- */
-const LIABILITIES_DAILY: NodeValuePolicy = {
-  netsLinkedCards: false,
-  rounding: "unit_coin",
-};
-
-/**
  * Σ liability-account values per grid day in `unit` (same accounts as the Pasivos group daily
  * view); null on a day no liability account has a value.
  */
 function liabilitiesByDate(grid: readonly string[], unit: TsUnit): Map<string, number | null> {
   const rows = listAccountsForGroupTab("liabilities");
-  const values = nodeValueSeriesOnGrid(rows, grid, unit, LIABILITIES_DAILY);
+  // Pasivos nets nothing; exact like every chart level.
+  const values = nodeValueSeriesOnGrid(rows, grid, unit, { netsLinkedCards: false });
   const out = new Map<string, number | null>();
   grid.forEach((ymd, gi) => out.set(ymd, values[gi] ?? null));
   return out;

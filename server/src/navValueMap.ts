@@ -44,13 +44,11 @@
  * bucket without a breakdown fall through to the shape above (each child group then applies
  * the rule itself).
  */
-import { HOME_CURRENCY } from "./displayUnits.js";
 import {
   linkedCardsClpInUnit,
   nodeMembersSum,
   nodeNetsLinkedCards,
   nodeValueFromSum,
-  type NodeValueRules,
 } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -169,12 +167,6 @@ function isMapGroup(n: NavTreeNodeDto): boolean {
     (n.group_kind === "bucket" || n.group_kind === "nav_bucket")
   );
 }
-
-/**
- * A leaf tile, in pesos (its basis) and in the unit (its value): absent when no row has a value
- * (the tile that nets the linked cards always reads), unrounded.
- */
-const LEAF_TILE: NodeValueRules = { rounding: "none" };
 
 type VisibleMapNode = MapNode & { basis_clp: number };
 
@@ -404,15 +396,11 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
     const nets = nodeNetsLinkedCards(node.slug);
     const basis = nodeValueFromSum(
       nodeMembersSum(leafRows.map((r) => r.clp_basis.current_value)),
-      nets ? linkedCreditCards.clp : undefined,
-      HOME_CURRENCY,
-      LEAF_TILE
+      nets ? linkedCreditCards.clp : undefined
     );
     const value = nodeValueFromSum(
       nodeMembersSum(leafRows.map((r) => r.current_value)),
-      nets ? linkedCreditCards.value : undefined,
-      unit,
-      LEAF_TILE
+      nets ? linkedCreditCards.value : undefined
     );
     // The leaf's own accounts, for the page to open it into (Crypto shows Bitcoin and Ether);
     // none when the sidebar shows it as a leaf (IPSA, SOXX among Acciones' stocks).
