@@ -15,18 +15,13 @@ import type {
   CcProxyFacturacionAggregate,
 } from "../../types";
 import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
-import { Table } from "../../components/ui/Table";
+import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import { Button } from "@crfrsr/ui";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
 import {
   buildFacturacionModalBucket,
   emptyFacturacionModalBucket,
 } from "../../components/credit-card/buildFacturacionModalBucket";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../../components/ui/TableMobileCard";
 import styles from "../AccountDetailPage.module.css";
 
 /**
@@ -103,70 +98,6 @@ function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
     <span className="muted" title={`${t("accountDetail.creditCard.provisionalCloseHint")}${estimate}`}>
       *
     </span>
-  );
-}
-
-function FacturacionMobileCard({
-  row,
-  proxy,
-  inlineTicker,
-  labels,
-  onOpen,
-}: {
-  row: CcFacturacionDto;
-  proxy?: CcProxyFacturacionAggregate;
-  inlineTicker: string;
-  labels: {
-    closeDate: string;
-    payBy: string;
-    facturado: string;
-    facturadoUsd: string;
-    facturadoTotal: string;
-    cuotaAPagar: string;
-    deudaEnCuotas: string;
-    proxyEarnings: string;
-  };
-  onOpen: (row: CcFacturacionDto) => void;
-}) {
-  const title = (
-    <>
-      <Button variant="link" onClick={() => onOpen(row)}>
-        {formatYearMonthLabel(row.billing_month)}
-      </Button>
-      <ProvisionalMark row={row} />
-    </>
-  );
-
-  return (
-    <TableMobileCard title={title}>
-      <TableMobileCardSection>
-        <TableMobileCardRow label={labels.closeDate} value={<CloseDateCell row={row} />} />
-        <TableMobileCardRow label={labels.payBy} value={<PayByCell row={row} />} />
-      </TableMobileCardSection>
-      <TableMobileCardSection>
-        <TableMobileCardRow
-          label={labels.facturado}
-          value={formatOrDash(row.facturado_clp, formatCardBillingPesos)}
-        />
-        <TableMobileCardRow label={labels.facturadoUsd} value={formatFacturadoForeignCell(row)} />
-        <TableMobileCardRow
-          label={labels.facturadoTotal}
-          value={formatOrDash(row.facturado_total_clp, formatCardBillingPesos)}
-        />
-        <TableMobileCardRow
-          label={labels.cuotaAPagar}
-          value={formatOrDash(row.cuota_a_pagar_clp, formatCardBillingPesos)}
-        />
-        <TableMobileCardRow
-          label={labels.deudaEnCuotas}
-          value={formatOrDash(row.deuda_en_cuotas_clp, formatCardBillingPesos)}
-        />
-        <TableMobileCardRow
-          label={labels.proxyEarnings}
-          value={formatProxyCell(proxy, inlineTicker)}
-        />
-      </TableMobileCardSection>
-    </TableMobileCard>
   );
 }
 
@@ -251,17 +182,6 @@ export function CreditCardFacturacionesTable({
 
   const inlineTicker = proxyTickers?.[0] ?? "fintual_cert_reserva2";
 
-  const mobileLabels = {
-    closeDate: t("accountDetail.creditCard.colCloseDate"),
-    payBy: t("accountDetail.creditCard.colPayBy"),
-    facturado: t("account.creditCard.colFacturado"),
-    facturadoUsd: t("accountDetail.creditCard.colFacturadoUsd"),
-    facturadoTotal: t("accountDetail.creditCard.colFacturadoTotal"),
-    cuotaAPagar: t("accountDetail.creditCard.colCuotaAPagar"),
-    deudaEnCuotas: t("accountDetail.creditCard.colDeudaEnCuotasFacturacion"),
-    proxyEarnings: t("accountDetail.creditCard.colProxyEarnings"),
-  };
-
   const closeModal = useCallback(() => {
     setModalOpen(false);
     setSelected(null);
@@ -325,6 +245,76 @@ export function CreditCardFacturacionesTable({
     [rows, openFacturacion]
   );
 
+  const pesos = (
+    key: string,
+    header: string,
+    value: (row: CcFacturacionDto) => number | null,
+    extra: Partial<TableColumn<CcFacturacionDto>> = {}
+  ): TableColumn<CcFacturacionDto> => ({
+    key,
+    header,
+    className: "mono",
+    section: 1,
+    cell: (row) => formatOrDash(value(row), formatCardBillingPesos),
+    ...extra,
+  });
+  const nowrapMono = cn("mono", styles.nowrap);
+  const columns: TableColumn<CcFacturacionDto>[] = [
+    {
+      key: "month",
+      header: t("account.creditCard.colBillingMonth"),
+      className: nowrapMono,
+      cell: (row) => (
+        <>
+          <Button variant="link" onClick={() => openFacturacion(row)}>
+            {formatYearMonthLabel(row.billing_month)}
+          </Button>
+          <ProvisionalMark row={row} />
+        </>
+      ),
+      title: true,
+    },
+    {
+      key: "close",
+      header: t("accountDetail.creditCard.colCloseDate"),
+      className: nowrapMono,
+      cell: (row) => <CloseDateCell row={row} />,
+    },
+    {
+      key: "payBy",
+      header: t("accountDetail.creditCard.colPayBy"),
+      className: nowrapMono,
+      cell: (row) => <PayByCell row={row} />,
+    },
+    pesos("facturado", t("account.creditCard.colFacturado"), (row) => row.facturado_clp),
+    {
+      key: "facturadoForeign",
+      header: t("accountDetail.creditCard.colFacturadoUsd"),
+      className: nowrapMono,
+      section: 1,
+      cell: formatFacturadoForeignCell,
+    },
+    pesos("facturadoTotal", t("account.creditCard.colFacturadoTotal"), (row) => row.facturado_total_clp, {
+      // The card has always read the page's own key (same copy as the header's).
+      label: t("accountDetail.creditCard.colFacturadoTotal"),
+    }),
+    pesos("cuotaAPagar", t("accountDetail.creditCard.colCuotaAPagar"), (row) => row.cuota_a_pagar_clp),
+    pesos(
+      "deudaEnCuotas",
+      t("accountDetail.creditCard.colDeudaEnCuotasFacturacion"),
+      (row) => row.deuda_en_cuotas_clp,
+      { headerProps: { title: t("accountDetail.creditCard.colDeudaEnCuotasFacturacionHint") } }
+    ),
+    {
+      key: "proxy",
+      header: t("accountDetail.creditCard.colProxyEarnings"),
+      headerProps: { title: t("accountDetail.creditCard.proxyEarningsHint") },
+      className: nowrapMono,
+      section: 1,
+      cell: (row) => formatProxyCell(proxyByMonth.get(row.billing_month), inlineTicker),
+    },
+  ];
+
   return (
     <>
       <PendingCuotaPurchasesNotice purchases={pendingCuotaPurchases} openMonth={openMonth} />
@@ -334,67 +324,12 @@ export function CreditCardFacturacionesTable({
         total={total}
         onPageChange={setPage}
       >
-        <Table
-          tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colCloseDate")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colPayBy")}</th>
-                <th className="desktop-only">{t("account.creditCard.colFacturado")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsd")}</th>
-                <th className="desktop-only">{t("account.creditCard.colFacturadoTotal")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colCuotaAPagar")}</th>
-                <th
-                  className="desktop-only"
-                  title={t("accountDetail.creditCard.colDeudaEnCuotasFacturacionHint")}
-                >
-                  {t("accountDetail.creditCard.colDeudaEnCuotasFacturacion")}
-                </th>
-                <th className="desktop-only" title={t("accountDetail.creditCard.proxyEarningsHint")}>
-                  {t("accountDetail.creditCard.colProxyEarnings")}
-                </th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          {pageRows.map((row) => {
-            const proxy = proxyByMonth.get(row.billing_month);
-            return (
-              <tr key={row.billing_month}>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>
-                  <Button variant="link" onClick={() => openFacturacion(row)}>
-                    {formatYearMonthLabel(row.billing_month)}
-                  </Button>
-                  <ProvisionalMark row={row} />
-                </td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>
-                  <CloseDateCell row={row} />
-                </td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>
-                  <PayByCell row={row} />
-                </td>
-                <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatCardBillingPesos)}</td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoForeignCell(row)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatCardBillingPesos)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatCardBillingPesos)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.deuda_en_cuotas_clp, formatCardBillingPesos)}</td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatProxyCell(proxy, inlineTicker)}</td>
-                <td className="mobile-only">
-                  <FacturacionMobileCard
-                    row={row}
-                    proxy={proxy}
-                    inlineTicker={inlineTicker}
-                    labels={mobileLabels}
-                    onOpen={openFacturacion}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </Table>
+        <ColumnTable
+          rows={pageRows}
+          columns={columns}
+          rowKey={(row) => row.billing_month}
+          tableClassName={styles.tableCompact}
+        />
       </PaginatedTable>
 
       <Modal
