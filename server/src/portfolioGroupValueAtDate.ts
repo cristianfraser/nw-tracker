@@ -219,8 +219,8 @@ export function buildDashboardBucketDailySeriesClp(
 /**
  * {@link buildDashboardBucketDailySeriesClp} in `unit`: Σ of each account's own value in the
  * unit per day (`accountValueSeriesOnGrid` — what it held, converted once at its side), the
- * linked cards netted from cash at the debt side. Pesos are rounded like every bucket Σ; other
- * units are not. A day an account has no rate for leaves it out, like a missing mark.
+ * linked cards netted from cash at the debt side, each bucket rounded to the unit's coin
+ * (`BUCKET_DAILY`). A day an account has no rate for leaves it out, like a missing mark.
  */
 export function buildDashboardBucketDailySeriesInUnit(
   sessionsAsc: readonly string[],
@@ -252,7 +252,8 @@ export function buildDashboardBucketDailySeriesInUnit(
  * (Chile calendar). Marks are flat on each account's closed days, so per-account market calendars
  * fall out of the level delta with no anchor machinery. cash_eqs nets linked CC at the same
  * date; another unit converts each account's mark at that date (its stored rate; a USD cash
- * account: its ledger dollars that day). Pesos are rounded like every bucket Σ.
+ * account: its ledger dollars that day). Each bucket is rounded to the unit's coin
+ * (`BUCKET_PRIOR_DAY_CLOSE`).
  */
 export function dashboardBucketDayPriorClosesInUnit(priorDayYmd: string, unit: TsUnit): BucketValues {
   const out = emptyBucketValues();
