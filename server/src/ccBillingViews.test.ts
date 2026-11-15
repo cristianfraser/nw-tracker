@@ -14,7 +14,10 @@ import {
   ledgerFacturadoClpForBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { latestCreditCardBillingBalanceTotalClp } from "./ccCreditCardValuations.js";
-import { accountTodayValue } from "./accountTodayValue.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
+import { ccOwedByCurrencyAtYmd } from "./ccOwedWalk.js";
+import { debtFrameRates } from "./ccExpenseAmountClp.js";
+import { cardForeignCurrencies } from "./ccFacturacionForeignRate.js";
 import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId,
@@ -102,6 +105,30 @@ describe("projected future billing months", () => {
   });
 });
 
+/**
+ * The open row's balance is the card's owed today, currency by currency. The row is in the
+ * statement frame (each foreign amount at its facturación's debt-frame rate) while today's value
+ * converts at today's debt-side rate, so the two pesos figures differ whenever the card owes a
+ * foreign currency. With every foreign currency at one stand-in rate both sides are the same
+ * sum: pesos owed + Σ foreign owed × rate.
+ */
+function expectOpenRowIsOwedTodayPerCurrency(
+  accountId: number,
+  ledgerMonths: Parameters<typeof buildBillingDetailByMonth>[1],
+  openBillingMonth: string
+): void {
+  const RATE = 1000;
+  const foreign = cardForeignCurrencies(accountId);
+  const atUniformRates = buildBillingDetailByMonth(accountId, ledgerMonths, debtFrameRates(foreign.map((c) => [c, RATE] as const)));
+  const openRow = atUniformRates.find((d) => d.billing_month === openBillingMonth);
+  const owed = ccOwedByCurrencyAtYmd(accountId, chileDate.chileCalendarTodayYmd());
+  if (!openRow || !owed) throw new Error("the Vitest person's card lacks the state this test reads");
+  const unknown = Object.keys(owed.owed).filter((c) => !isHomeCurrency(c) && !foreign.includes(c));
+  if (unknown.length > 0) throw new Error(`the card owes ${unknown.join(", ")}, which it does not bill in`);
+  const expected = (owed.owed[HOME_CURRENCY] ?? 0) + foreign.reduce((sum, c) => sum + (owed.owed[c] ?? 0) * RATE, 0);
+  expect(openRow.balance_statement_clp).toBe(Math.round(expected));
+}
+
 describe("buildBillingDetailByMonth", () => {
   it("open month rolls prior closed balance into balance_total (facturado stays cycle-scoped)", () => {
     const master = db
@@ -123,8 +150,9 @@ describe("buildBillingDetailByMonth", () => {
 
     expect(openRow.as_of_kind).toBe("manual");
     expect(openRow.total_facturado_clp).toBeGreaterThan(0);
-    // Open month: the live debt, the card's owed today (the Pasivos today point reads this row).
-    expect(openRow.balance_statement_clp).toBe(accountTodayValue(master.id)!.value_clp);
+    // Open month: the live debt, the card's owed today in each currency — in the statement frame,
+    // so a dollar it owes is not at today's rate (see `expectOpenRowIsOwedTodayPerCurrency`).
+    expectOpenRowIsOwedTodayPerCurrency(master.id, payload.months, openBm);
   });
 
   it("open month facturado is this cycle's charges plus cuota a pagar (not rolled)", () => {
@@ -151,7 +179,7 @@ describe("buildBillingDetailByMonth", () => {
 
     expect(openRow.total_facturado_clp).toBe(expected);
     // …but the balance carries the prior closed month's debt forward: it is the card's owed today.
-    expect(openRow.balance_statement_clp).toBe(accountTodayValue(master.id)!.value_clp);
+    expectOpenRowIsOwedTodayPerCurrency(master.id, payload.months, openBm);
   });
 
   it("open month includes charges when PAGO and purchases share web-paste bucket", () => {
