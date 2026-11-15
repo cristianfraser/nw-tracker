@@ -7,7 +7,7 @@
  *
  * The roles are columns (migration 272): `nw_bucket` (the buckets net worth sums), `investment_root`
  * (the roots of «Inversiones» and the Rentabilidad pages), `nets_linked_group_id` (the group whose
- * owed total this group's value nets), `property_overlay` and the reference groups'
+ * owed total this group's value nets; one node declares it, migration 336), `property_overlay` and the reference groups'
  * `chart_host_slug`. Nothing here parses a slug or names one: every answer is a walk over the data.
  *
  * Reads no valuation and no clock — a leaf the payload builders and the chart plan depend on.
@@ -294,10 +294,40 @@ export function isInvestmentAccount(accountId: number): boolean {
   return leaf != null && navGroupAncestry(leaf.id).some((g) => g.investmentRoot);
 }
 
-/** The group whose owed total this group's value nets (the cash bucket nets the linked cards), or null. */
+/**
+ * The group whose owed total this group's own value nets (the cash savings node nets the linked
+ * cards), or null. Declared on ONE node: a group above it nets through it
+ * ({@link nettingGroupWithin}), never by a declaration of its own.
+ */
 export function netsLinkedGroup(slug: string): NavGroup | null {
   const g = navGroup(slug);
   return g?.netsLinkedGroupId != null ? navGroupById(g.netsLinkedGroupId) : null;
+}
+
+/**
+ * The node that declares a netting inside a group's subtree (the group itself included), or null:
+ * a total over the whole subtree is net of what that node nets. Throws when the subtree holds
+ * several — one total cannot net twice.
+ */
+export function nettingGroupWithin(slug: string): NavGroup | null {
+  const root = navGroup(slug);
+  if (!root) return null;
+  const found: NavGroup[] = [];
+  const seen = new Set<number>();
+  const walk = (g: NavGroup): void => {
+    if (seen.has(g.id)) return;
+    seen.add(g.id);
+    if (g.netsLinkedGroupId != null) found.push(g);
+    for (const id of g.childGroupIds) {
+      const child = navGroupById(id);
+      if (child) walk(child);
+    }
+  };
+  walk(root);
+  if (found.length > 1) {
+    throw new Error(`nav tree: ${slug} holds several netting nodes (${found.map((g) => g.slug).join(", ")})`);
+  }
+  return found[0] ?? null;
 }
 
 /** The reference groups a host page draws (`chart_host_slug`), in their order. */
@@ -307,8 +337,8 @@ export function referenceGroupsOfHost(hostSlug: string): NavGroup[] {
 
 /**
  * The host whose reference overlays a group's valuation chart draws: the group itself when it
- * hosts any, else the nearest hosting ancestor whose netting it shares (the cash savings page
- * draws the cash bucket's credit-card line: both net the same cards). Null otherwise.
+ * hosts any, else — for the node that declares a netting — the nearest hosting ancestor (the cash
+ * savings page draws the cash bucket's credit-card line: the bucket nets through it). Null otherwise.
  */
 export function chartHostOfGroup(slug: string): string | null {
   const g = navGroup(slug);
@@ -316,7 +346,7 @@ export function chartHostOfGroup(slug: string): string | null {
   if (referenceGroupsOfHost(g.slug).length > 0) return g.slug;
   if (g.netsLinkedGroupId == null) return null;
   for (const a of navGroupAncestry(g.id).slice(1)) {
-    if (a.netsLinkedGroupId === g.netsLinkedGroupId && referenceGroupsOfHost(a.slug).length > 0) return a.slug;
+    if (referenceGroupsOfHost(a.slug).length > 0) return a.slug;
   }
   return null;
 }

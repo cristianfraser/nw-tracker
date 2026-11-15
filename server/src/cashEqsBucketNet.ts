@@ -1,4 +1,4 @@
-import { netsLinkedGroup, nettedGroup } from "./navTreeModel.js";
+import { nettedGroup, nettingGroupWithin } from "./navTreeModel.js";
 import { clpToUnitAt } from "./valueConvert.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -28,9 +28,12 @@ export function cashNetOfLinkedCreditCards(rawCash: number, linkedCreditCardsOwe
   return rawCash - linkedCreditCardsOwed;
 }
 
-/** True when the group's value nets the linked cards (its `nets_linked_group_id`, migration 272). */
+/**
+ * True when the group's value nets the linked cards: the node that declares the netting
+ * (`nets_linked_group_id`) is the group or sits inside it.
+ */
 export function groupNetsLinkedCards(slug: string): boolean {
-  return netsLinkedGroup(slug) != null;
+  return nettingGroupWithin(slug) != null;
 }
 
 /**

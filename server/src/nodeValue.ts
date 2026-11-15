@@ -78,8 +78,10 @@ export type NodeValuePolicy = NodeNettingPolicy;
 export type NodePointValuePolicy = NodeValuePolicy;
 
 /**
- * Whether the group nets the linked credit cards: the tree's declared netting
- * (`nets_linked_group_id`), the one place a policy's `netsLinkedCards` comes from for a group.
+ * Whether the group nets the linked credit cards: the node that declares the netting
+ * (`nets_linked_group_id`, one node of the tree) is the group or sits inside it. The one place a
+ * policy's `netsLinkedCards` comes from for a group, a bucket and a chart line alike — lines that
+ * split a bucket cover disjoint subtrees, so exactly one of them nets.
  */
 export function nodeNetsLinkedCards(groupSlug: string): boolean {
   return groupNetsLinkedCards(groupSlug);

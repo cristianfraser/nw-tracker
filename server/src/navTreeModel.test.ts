@@ -11,6 +11,7 @@ import {
   liabilityGroups,
   navGroup,
   netsLinkedGroup,
+  nettingGroupWithin,
   nettedGroup,
   nwBucketSlugs,
 } from "./navTreeModel.js";
@@ -57,9 +58,14 @@ describe("navTreeModel on the seeded tree", () => {
     seedNavTree();
     expect(nwBucketSlugs()).toEqual(["real_estate", "retirement", "brokerage", "cash_eqs"]);
     expect(investmentRootSlugs()).toEqual(["retirement", "brokerage"]);
-    expect(netsLinkedGroup("cash_eqs")?.slug).toBe("liabilities_credit_card");
+    // One node declares the netting; the bucket above it nets through it.
     expect(netsLinkedGroup("cash_savings")?.slug).toBe("liabilities_credit_card");
+    expect(netsLinkedGroup("cash_eqs")).toBeNull();
     expect(netsLinkedGroup("checking_accounts")).toBeNull();
+    expect(nettingGroupWithin("cash_eqs")?.slug).toBe("cash_savings");
+    expect(nettingGroupWithin("cash_savings")?.slug).toBe("cash_savings");
+    expect(nettingGroupWithin("checking_accounts")).toBeNull();
+    expect(nettingGroupWithin("brokerage")).toBeNull();
     expect(nettedGroup().slug).toBe("liabilities_credit_card");
     expect(isInvestmentRootsHub("inversiones")).toBe(true);
     expect(isInvestmentRootsHub("net_worth")).toBe(false);

@@ -44,7 +44,7 @@
  */
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { linkedCardsClpInUnit } from "./cashEqsBucketNet.js";
-import { nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
+import { nodeNetsLinkedCards, nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
@@ -55,7 +55,6 @@ import { proxyBucketSlugForSeriesKey } from "./riskyNorrisProxyMtm.js";
 import {
   accountCountsTowardGroupTotals,
   cardMetricsFromRows,
-  isCashSavingsNavNode,
   navLeafAccountIdSet,
   rowPctForRows,
   withChainedGroupPct,
@@ -393,8 +392,8 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       return true;
     });
     for (const r of leafRows) claimed.add(r.account_id);
-    // The tile's value from its rows' today values: the cash child nets the linked cards.
-    const nets = isCashSavingsNavNode(node);
+    // The tile's value from its rows' today values, net of the linked cards when the node nets them.
+    const nets = nodeNetsLinkedCards(node.slug);
     const basis = nodeValueFromSum(
       sumFinite(leafRows.map((r) => r.clp_basis.current_value)),
       nets ? linkedCreditCards.clp : undefined,

@@ -596,7 +596,6 @@ export function seedNavTree(): void {
         card_label_i18n_key: "dashboard.buckets.cash_savings",
       },
       nw_bucket: true,
-      nets_linked_slug: "liabilities_credit_card",
     });
     upsert({
       slug: "cash_savings",
