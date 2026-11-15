@@ -51,10 +51,7 @@ export const NUMBER_FLOW_INT_FORMAT = {
   signDisplay: "never",
 } as const;
 
-/**
- * A currency code (lowercase ISO 4217 as the server loads it: `clp`, `usd`, `eur`, …); `usd-fine`
- * is the legacy spelling of dollars with cents ({@link formatCurrencyFine}).
- */
+/** A currency code (lowercase ISO 4217 as the server loads it: `clp`, `usd`, `eur`, …). */
 export type CurrencyDisplayUnit = string;
 
 /**
@@ -118,11 +115,6 @@ export function currencySymbol(code: string, variant: CurrencySymbolVariant = "f
   return variant === "bare" ? full.replace(/^[A-Z]+\$$/, "$") : full;
 }
 
-/** Legacy `usd-fine` → dollars with cents; every other unit is a currency code. */
-function fineCode(unit: CurrencyDisplayUnit): string | null {
-  return unit === "usd-fine" ? "usd" : null;
-}
-
 /** Grouped digits with up to 2 fraction digits; trailing zeros omitted (e.g. `902`, `40,41`). */
 export function formatGroupedDecimalTrimmed(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -136,13 +128,11 @@ export function formatGroupedDecimal(n: number, minFrac: number, maxFrac = minFr
 }
 
 /**
- * Currency display string, whole units (pesos, dollars, euros alike: `US$1.234`); `usd-fine` keeps
- * the cents ({@link formatCurrencyFine}). Negatives use accounting parentheses: `$-1` → `($1)`.
+ * Currency display string, whole units (pesos, dollars, euros alike: `US$1.234`); the cents are
+ * {@link formatCurrencyFine}. Negatives use accounting parentheses: `$-1` → `($1)`.
  * No leading `+` on positives.
  */
 export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): string {
-  const fine = fineCode(unit);
-  if (fine) return formatCurrencyFine(n, fine);
   if (!Number.isFinite(n)) return "—";
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
