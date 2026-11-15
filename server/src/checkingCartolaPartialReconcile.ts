@@ -14,7 +14,7 @@ import { adoptMovementFlow } from "./flows/flowIdentity.js";
 import { buildExpenseKey } from "./expenseKeys.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, occurredOnBasis } from "./movementBankPostings.js";
-import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
+import type { PartialBankMovement } from "./partialBankMovement.js";
 
 export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
 
