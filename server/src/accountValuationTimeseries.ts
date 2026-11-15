@@ -9,7 +9,7 @@ import {
   totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
-import { convertFlow, flowEventInUnit } from "./rates.js";
+import { convertFlow, flowEventInUnit, storedPairRatesOnOrBefore } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRoles.js";
 import {
@@ -43,7 +43,6 @@ import { historyTierMemo } from "./cacheRegistry.js";
 import { getAccountColorRgb } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
 import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
@@ -727,7 +726,7 @@ export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], u
     if (bucketKindFromSlugMap(slugById, id) !== "property") continue;
     const ledger = deptoLedgerForAccount(id);
     const sheetSeries = propertyDeptoClpSeriesBySnapshotDate(dateStrs, ledger);
-    const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
+    const ufClpByDate = storedPairRatesOnOrBefore("uf", "clp", dateStrs);
     propertyDeptoSheetsById.set(id, {
       closeByDate: deptoPropertyCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate),
       pagoAcumuladoByDate:
@@ -792,7 +791,7 @@ export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], u
       // The loan's own property ledger.
       const ledger = deptoLedgerForAccount(id);
       if (ledger.length === 0) continue;
-      const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
+      const ufClpByDate = storedPairRatesOnOrBefore("uf", "clp", dateStrs);
       mtgCloseByAccAndDate.set(id, deptoMortgageCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate));
     }
   }
@@ -997,7 +996,7 @@ export function getAccountValuationTimeseries(
     const ledger = deptoLedgerForAccount(accountId);
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
-      const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
+      const ufClpByDate = storedPairRatesOnOrBefore("uf", "clp", dateStrsAsc);
       const closeByDate = deptoMortgageCloseClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);
       const dk = String(row.account_id);
       accounts = {
@@ -1016,7 +1015,7 @@ export function getAccountValuationTimeseries(
     const ledger = deptoLedgerForAccount(accountId);
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
-      const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
+      const ufClpByDate = storedPairRatesOnOrBefore("uf", "clp", dateStrsAsc);
       const closeByDate = deptoPropertyCloseClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);
       const mortgageClpByDate = deptoMortgageBalanceClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);
       const dk = String(row.account_id);

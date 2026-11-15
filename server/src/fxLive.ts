@@ -19,7 +19,6 @@ import { fetchYahooLiveQuote, YAHOO_USD_CLP_SYMBOL } from "./equityYahooEod.js";
 import { getLatestLivePairQuoteRow } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL, liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 import { isFxDayOpen } from "./forexDay.js";
-import { fxMonthEndForBalanceUsd, type FxRow } from "./fxStoredRates.js";
 import { loadedFxPairs } from "./fxPairsSync.js";
 
 /** Yahoo chart symbol: CLP per 1 USD (tipo de cambio observado intraday). */
@@ -69,11 +68,6 @@ export function shouldUseLivePairQuote(pairKey: string, now = new Date()): boole
   return isFxDayOpen(now);
 }
 
-/** {@link shouldUseLivePairQuote} for the live dollar. */
-export function shouldUseLiveFxQuote(now = new Date()): boolean {
-  return shouldUseLivePairQuote(LIVE_FX_SYMBOL, now);
-}
-
 /** Fetch a pair's live rate from Yahoo (scheduler only), dated by the Chile day it was read on. */
 export async function fetchYahooLivePairRate(
   pair: LiveFxPair,
@@ -115,14 +109,4 @@ export function livePairRateForDay(
   const live = getLatestLivePairQuoteRow(pairKey, maxAgeMs);
   if (live && asOfYmd != null && live.session_ymd <= asOfYmd) return { date: live.session_ymd, mid: live.value };
   return null;
-}
-
-/**
- * FX for live MTM / marquee: the stored live `CLP=X` row while the fx day is open; else the
- * `fx_daily` close on or before the date.
- */
-export function fxForLiveMtm(asOfYmd: string | null, now = new Date(), maxAgeMs = liveQuotesMaxAgeMs()): FxRow | null {
-  const live = livePairRateForDay(LIVE_FX_SYMBOL, asOfYmd, now, maxAgeMs);
-  if (live) return { date: live.date, clp_per_usd: live.mid };
-  return fxMonthEndForBalanceUsd(asOfYmd);
 }

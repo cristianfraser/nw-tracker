@@ -8,9 +8,8 @@ import {
   netDepositFlowBetween,
   type FlowDepositRow,
 } from "./flowsDeposits.js";
-import { flowEventInUnit } from "./rates.js";
+import { flowEventInUnit, convertFlowOrNull, storedPairRate } from "./rates.js";
 import { totalDisplayDepositsClpForAccount } from "./accountDeposits.js";
-import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
@@ -177,15 +176,15 @@ describe("flowEventInUnit", () => {
     expect(flowEventInUnit({ occurred_on: date, amt: -950_000, amt_usd: 1_000 }, "clp")).toBe(-950_000);
     expect(flowEventInUnit({ occurred_on: date, amt: -950_000, amt_usd: 1_000 }, "usd")).toBe(-1_000);
     // CLP-only: the buy rate on or before the event date, unrounded.
-    expect(flowEventInUnit({ occurred_on: date, amt: 123_457 }, "usd")).toBe(clpToUsdAtPayment(123_457, date));
-    const uf = ufRowOnOrBefore(date);
-    if (uf) expect(flowEventInUnit({ occurred_on: date, amt: 123_457 }, "uf")).toBe(123_457 / uf.clp_per_uf);
+    expect(flowEventInUnit({ occurred_on: date, amt: 123_457 }, "usd")).toBe(convertFlowOrNull(123_457, "clp", "usd", date));
+    const uf = storedPairRate("uf", "clp", date);
+    if (uf) expect(flowEventInUnit({ occurred_on: date, amt: 123_457 }, "uf")).toBe(123_457 / uf.mid);
     expect(flowEventInUnit({ occurred_on: date, amt: 0, amt_usd: 5 }, "usd")).toBe(0);
   });
 
   it("throws when the event's date has no rate, instead of dropping the flow", () => {
-    expect(() => flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000 }, "usd")).toThrow(/no USD rate/);
-    expect(() => flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000 }, "uf")).toThrow(/no UF/);
+    expect(() => flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000 }, "usd")).toThrow(/no clp→usd rate/);
+    expect(() => flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000 }, "uf")).toThrow(/no clp→uf rate/);
     // A recorded USD leg needs no rate.
     expect(flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000, amt_usd: 12 }, "usd")).toBe(12);
   });

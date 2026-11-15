@@ -79,7 +79,7 @@ export function checkingCashByDay(
     }
     const side = accountValueSide(accountId);
     const pastRate = pastValueRateLookup(currency, unit, side);
-    // A past day's stored rate (memoized in the history tier); today's rate live (`fxForLiveMtm`
+    // A past day's stored rate (memoized in the history tier); today's rate live (`pairRateOnOrBefore`
     // through `rates.ts`, which reports the live read to the cache dependency node).
     const rateOn = (ymd: string): number | null =>
       ymd < today ? pastRate(ymd) : convertValue(1, currency, unit, ymd, side, now);

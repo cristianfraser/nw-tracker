@@ -11,7 +11,7 @@ import { equityCloseEod } from "./equityQuote.js";
 import { cuotaLedgerSeriesKeyForAccount } from "./cuotaLedgerAccounts.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { fundUnitClpOnOrBefore } from "./fundUnitDaily.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 
 /** Reconcile |entered CLP − cuotas × valor cuota| against this fraction of the CLP amount. */
 const RECONCILE_TOLERANCE_FRACTION = 0.01;
@@ -22,9 +22,9 @@ export function valorCuotaClpOnDate(accountId: number, ymd: string): number | nu
   if (cryptoTicker) {
     const closeUsd = equityCloseEod(cryptoTicker, ymd);
     if (closeUsd == null || !Number.isFinite(closeUsd) || closeUsd <= 0) return null;
-    const fx = fxMonthEndForBalanceUsd(ymd);
-    if (!fx || fx.clp_per_usd <= 0) return null;
-    return closeUsd * fx.clp_per_usd;
+    const fx = storedPairRate("usd", "clp", ymd);
+    if (!fx || fx.mid <= 0) return null;
+    return closeUsd * fx.mid;
   }
   const kind = accountKindSlugForAccountId(accountId);
   const seriesKey = kind === "afp" ? cuotaLedgerSeriesKeyForAccount(accountId) : fundSeriesKeyForAccount(accountId);

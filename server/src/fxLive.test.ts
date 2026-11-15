@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { shouldUseLiveFxQuote } from "./fxLive.js";
+import { shouldUseLivePairQuote } from "./fxLive.js";
+import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 
-describe("shouldUseLiveFxQuote", () => {
+const shouldUseLiveFxQuote = (now: Date) => shouldUseLivePairQuote(LIVE_FX_SYMBOL, now);
+
+describe("shouldUseLivePairQuote (the live dollar)", () => {
   it("is true while the fx day is open — NYSE hours, US holidays and Chilean holidays alike", () => {
     expect(shouldUseLiveFxQuote(new Date("2026-05-19T11:00:00-04:00"))).toBe(true);
     expect(shouldUseLiveFxQuote(new Date("2026-05-25T11:00:00-04:00"))).toBe(true); // Memorial Day
@@ -14,14 +17,13 @@ describe("shouldUseLiveFxQuote", () => {
   });
 });
 
-describe("fxForLiveMtm and the live-dollar dependency", () => {
+describe("pairRateOnOrBefore and the live-dollar dependency", () => {
   it("a date no fresh live row can match reads the stored close and reports no live read", async () => {
     const { db } = await import("./db.js");
     const { insertLiveMarketQuote, getLatestLiveFxQuoteRow } = await import("./liveMarketQuotesDb.js");
     const { LIVE_FX_SYMBOL } = await import("./liveMarketQuotesConfig.js");
-    const { fxRowOnOrBefore } = await import("./fxRates.js");
+    const { pairRateOnOrBefore, storedPairRate } = await import("./rates.js");
     const { cacheDepNodeReadsLiveInput, newCacheDepNode, runInCacheDepNode } = await import("./cacheDependencies.js");
-    const { fxForLiveMtm } = await import("./fxLive.js");
     const { vi } = await import("vitest");
 
     const last = (db.prepare(`SELECT MAX(date) AS d FROM fx_daily`).get() as { d: string }).d;
@@ -46,12 +48,12 @@ describe("fxForLiveMtm and the live-dollar dependency", () => {
       expect(getLatestLiveFxQuoteRow()?.value).toBe(1234.5);
 
       const past = newCacheDepNode();
-      const pastFx = runInCacheDepNode(past, () => fxForLiveMtm(last));
-      expect(pastFx).toEqual(fxRowOnOrBefore(last));
+      const pastFx = runInCacheDepNode(past, () => pairRateOnOrBefore("usd", "clp", last));
+      expect(pastFx).toEqual(storedPairRate("usd", "clp", last));
       expect(cacheDepNodeReadsLiveInput(past)).toBe(false);
 
       const live = newCacheDepNode();
-      expect(runInCacheDepNode(live, () => fxForLiveMtm(today))).toEqual({ date: today, clp_per_usd: 1234.5 });
+      expect(runInCacheDepNode(live, () => pairRateOnOrBefore("usd", "clp", today))).toEqual({ date: today, mid: 1234.5 });
       expect(cacheDepNodeReadsLiveInput(live)).toBe(true);
     } finally {
       db.prepare(`DELETE FROM live_market_quotes WHERE symbol = ? AND fetched_at = ?`).run(LIVE_FX_SYMBOL, fetchedAt);

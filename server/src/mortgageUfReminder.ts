@@ -24,7 +24,7 @@ import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./card
 import { MORTGAGE_CUOTA_DAY, mortgageCuotaWindow } from "./mortgageCuotaDay.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { ufClpByDateRange } from "./fxRates.js";
+import { storedPairRatesInRange } from "./rates.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { supersededTargetLast4 } from "./cards/lifecycle.js";
 import { resolveMasterAccountIdForCardLast4 } from "./cards/config.js";
@@ -272,7 +272,7 @@ export function buildMortgageUfReminder(
   const pay_after_iso = nextPeriodStartIsoForBillingMonth(masterId, bm).iso;
   const next_billing_month = billingMonthContainingPurchase(masterId, pay_after_iso);
 
-  const ufByYmd = ufClpByDateRange(window_start, window_end);
+  const ufByYmd = storedPairRatesInRange("uf", "clp", window_start, window_end);
 
   return decideMortgageUfReminder({
     today_ymd: todayYmd,

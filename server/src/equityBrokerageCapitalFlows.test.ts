@@ -10,7 +10,7 @@ import {
   type EquityCapitalSortFlow,
 } from "./equityBrokerageCapitalFlows.js";
 import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
-import { usdToClpReferenceRounded } from "./fxRates.js";
+import { referenceAmountAtMid } from "./rates.js";
 
 const FIXTURE_USD = "vitest-equity-cap-usd";
 const FIXTURE_CLP = "vitest-equity-cap-clp";
@@ -93,7 +93,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const full = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
     expect(full).toHaveLength(1);
     expect(full[0]!.occurred_on).toBe("2026-05-28");
-    expect(full[0]!.amt).toBeCloseTo(usdToClpReferenceRounded(100, "2026-05-28")!, 0);
+    expect(full[0]!.amt).toBeCloseTo(referenceAmountAtMid(100, "usd", "clp", "2026-05-28")!, 0);
 
     const merged = getMergedDepositInflowEventsForAccount(stockId);
     expect(merged.reduce((s, e) => s + e.amt, 0)).toBeCloseTo(full[0]!.amt, 0);
@@ -117,7 +117,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const full = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
     const june = full.filter((e) => e.occurred_on === "2026-06-16");
     expect(june).toHaveLength(1);
-    expect(june[0]!.amt).toBeCloseTo(usdToClpReferenceRounded(50, "2026-06-16")!, 0);
+    expect(june[0]!.amt).toBeCloseTo(referenceAmountAtMid(50, "usd", "clp", "2026-06-16")!, 0);
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(buyId);
   });
@@ -138,9 +138,9 @@ describe("equityBrokerageCapitalFlows fixture", () => {
 
     const events = marchEvents();
     expect(events).toHaveLength(1);
-    expect(events[0]!.amt).toBe(-usdToClpReferenceRounded(1.7, "2026-03-26")!);
+    expect(events[0]!.amt).toBe(-referenceAmountAtMid(1.7, "usd", "clp", "2026-03-26")!);
     expect(totalDividendsClpForAccount(stockId)).toBeCloseTo(
-      usdToClpReferenceRounded(1.7, "2026-03-26")!,
+      referenceAmountAtMid(1.7, "usd", "clp", "2026-03-26")!,
       0
     );
 
@@ -227,7 +227,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(wire!.amt).toBe(50_000);
     expect(wire!.amt_usd).toBeCloseTo(54.68, 6);
     expect(resid).toBeDefined();
-    expect(resid!.amt).toBe(usdToClpReferenceRounded(55.22 - 54.68, "2026-03-26")!);
+    expect(resid!.amt).toBe(referenceAmountAtMid(55.22 - 54.68, "usd", "clp", "2026-03-26")!);
     expect(resid!.amt_usd).toBeCloseTo(0.54, 6);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -273,7 +273,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const wire = events.find((e) => e.capital_kind === "clp_wire");
     const resid = events.find((e) => e.capital_kind === "usd_reference");
     expect(wire?.amt).toBe(50_000);
-    expect(resid?.amt).toBe(usdToClpReferenceRounded(55.22 - 54.68, "2026-03-26")!);
+    expect(resid?.amt).toBe(referenceAmountAtMid(55.22 - 54.68, "usd", "clp", "2026-03-26")!);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
@@ -289,7 +289,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const events = marchEvents();
     expect(events).toHaveLength(1);
     expect(events[0]!.capital_kind).toBe("usd_reference");
-    expect(events[0]!.amt).toBe(usdToClpReferenceRounded(55.22, "2026-03-26")!);
+    expect(events[0]!.amt).toBe(referenceAmountAtMid(55.22, "usd", "clp", "2026-03-26")!);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
@@ -342,7 +342,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const aResidUsd = 40 - (54.68 * 40) / total;
     expect(aResid.capital_kind).toBe("usd_reference");
     expect(aResid.amt_usd).toBeCloseTo(aResidUsd, 9);
-    expect(aResid.amt).toBe(usdToClpReferenceRounded(aResidUsd, "2026-03-26")!);
+    expect(aResid.amt).toBe(referenceAmountAtMid(aResidUsd, "usd", "clp", "2026-03-26")!);
     expect(aResid.amt_usd! + bResid.amt_usd!).toBeCloseTo(2.13, 9);
 
     // The cash account mirrors the buys: the wire's pesos come in and go out again, and the
@@ -389,8 +389,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(events.every((e) => e.capital_kind === "usd_reference")).toBe(true);
     const amts = events.map((e) => e.amt).sort((a, b) => a - b);
     expect(amts).toEqual([
-      usdToClpReferenceRounded(10, "2026-03-26")!,
-      usdToClpReferenceRounded(20, "2026-03-26")!,
+      referenceAmountAtMid(10, "usd", "clp", "2026-03-26")!,
+      referenceAmountAtMid(20, "usd", "clp", "2026-03-26")!,
     ]);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -410,7 +410,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const wire = events.find((e) => e.capital_kind === "clp_wire");
     const ref = events.find((e) => e.capital_kind === "usd_reference");
     expect(wire?.amt).toBe(50_000);
-    expect(ref?.amt).toBe(usdToClpReferenceRounded(10, "2026-03-26")!);
+    expect(ref?.amt).toBe(referenceAmountAtMid(10, "usd", "clp", "2026-03-26")!);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });

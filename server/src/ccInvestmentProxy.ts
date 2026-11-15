@@ -9,7 +9,7 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { assertFundSeriesClp } from "./fundUnitDaily.js";
 import { db } from "./db.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { facturacionMonthByStatementDate } from "./cards/facturacionByStatementDate.js";
@@ -128,12 +128,12 @@ export function priceClpForTickerAt(
     if (isHomeCurrency(eodRow.currency)) {
       return { priceClp: eodRow.close, projected: false, lastRealDate: eodRow.trade_date };
     }
-    const fx = fxRowOnOrBefore(eodRow.trade_date);
-    if (fx == null || fx.clp_per_usd <= 0) {
+    const fx = storedPairRate("usd", "clp", eodRow.trade_date);
+    if (fx == null || fx.mid <= 0) {
       throw new Error(`ccInvestmentProxy: no FX rate for date ${eodRow.trade_date} (ticker ${ticker})`);
     }
     return {
-      priceClp: eodRow.close * fx.clp_per_usd,
+      priceClp: eodRow.close * fx.mid,
       projected: false,
       lastRealDate: eodRow.trade_date,
     };

@@ -19,7 +19,7 @@
  *
  * Nothing computes with the label or the origin amount; they are provenance.
  */
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { parseChileanNumber } from "nw-tracker-contracts";
 
 export type CcOriginCurrency = "usd" | "clp"; // convention-ok: the statement prints an origin amount labeled only as pesos or dollars by value
@@ -70,10 +70,10 @@ export function ccLineOriginCurrency(line: {
   if (!line.dateIso) {
     throw new Error(`Card line with origin ${orig} / US$ ${usd} has no date to read the fx on`);
   }
-  const fx = fxRowOnOrBefore(line.dateIso);
+  const fx = storedPairRate("usd", "clp", line.dateIso);
   if (!fx) {
     throw new Error(`No fx_daily row on or before ${line.dateIso} to label an origin amount`);
   }
-  const deviation = Math.abs(orig / usd / fx.clp_per_usd - 1);
+  const deviation = Math.abs(orig / usd / fx.mid - 1);
   return deviation <= CC_ORIGIN_CLP_RATE_TOLERANCE + USD_HALF_CENT / usd ? "clp" : null;
 }

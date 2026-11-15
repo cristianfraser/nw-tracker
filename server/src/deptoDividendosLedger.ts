@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 
 /**
  * One payment / capital row as the bank states it: the pesos paid and their parts, the balance
@@ -224,7 +224,7 @@ export function deptoCreditoRestanteUfBySnapshotDates(
 
 /**
  * Mortgage balance in CLP at each snapshot: **crédito restante (UF) × UF** (`uf_daily`), rounded to whole pesos.
- * `ufClpByDate` must come from {@link ufClpBySnapshotDatesAsc} in `fxRates.ts` (not the dividendos sheet).
+ * `ufClpByDate` must come from `storedPairRatesOnOrBefore("uf", "clp", …)` in `rates.ts` (not the dividendos sheet).
  */
 export function deptoMortgageCloseClpBySnapshotDates(
   dateStrsAsc: readonly string[],
@@ -510,8 +510,8 @@ export function enrichDeptoRowsUfClpFromDb<T extends { occurred_on: string; uf_c
   rows: readonly T[]
 ): T[] {
   return rows.map((r) => {
-    const uf = ufRowOnOrBefore(r.occurred_on);
-    return { ...r, uf_clp_day: uf?.clp_per_uf ?? null };
+    const uf = storedPairRate("uf", "clp", r.occurred_on);
+    return { ...r, uf_clp_day: uf?.mid ?? null };
   });
 }
 

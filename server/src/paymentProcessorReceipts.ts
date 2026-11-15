@@ -13,7 +13,7 @@ import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, R
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
 import { storeOnce } from "./ingestReceiver.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
 
@@ -382,9 +382,9 @@ function sameAmount(r: StoredPaymentReceipt, amount: number, l: ReceiptCandidate
   if (l.amount_usd != null && l.amount_orig_currency === "clp" && l.amount_orig === amount) return "exact"; // convention-ok: a receipt pairs a dollar line to the cent and a peso line to the peso; others by origin
   const sender = PESO_RECEIPT_CHARGED_IN_DOLLARS[r.processor];
   if (!sender || l.amount_usd == null || !(l.amount_usd > 0) || !l.purchase_on || !sender.test(l.merchant ?? "")) return null;
-  const fx = fxRowOnOrBefore(l.purchase_on);
+  const fx = storedPairRate("usd", "clp", l.purchase_on);
   if (!fx) throw new Error(`payment receipt ${r.message_id}: no USD/CLP rate on or before ${l.purchase_on}`);
-  return Math.abs(amount / (l.amount_usd * fx.clp_per_usd) - 1) <= PESO_RECEIPT_IN_DOLLARS_TOLERANCE ? "at_rate" : null;
+  return Math.abs(amount / (l.amount_usd * fx.mid) - 1) <= PESO_RECEIPT_IN_DOLLARS_TOLERANCE ? "at_rate" : null;
 }
 
 /**

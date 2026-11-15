@@ -5,7 +5,7 @@ import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.
 import { facturacionForeignRates, foreignDebtPaymentsForAccount } from "./ccFacturacionForeignRate.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { buildCcExpenseLines } from "./flowsExpenses.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { facturadoForeignIn } from "./ccBillingViews.js";
 
 describe("facturacionForeignRates", () => {
@@ -146,7 +146,7 @@ describe("facturación dollars at the rate actually paid", () => {
     expect(august.facturado_total_clp).toBe(200_000 + 524117);
 
     const july = byMonth.get("2026-07")!;
-    const julyRate = fxMonthEndForBalanceUsd("2026-08-09")!.clp_per_usd;
+    const julyRate = storedPairRate("usd", "clp", "2026-08-09")!.mid;
     expect(facturadoForeignIn(july, "usd")!.rate_source).toBe("pay_by");
     expect(facturadoForeignIn(july, "usd")!.clp).toBe(Math.round(705.5 * julyRate));
 
@@ -162,7 +162,7 @@ describe("facturación dollars at the rate actually paid", () => {
 
   it("the detalle keeps valuing the debt at pay-by − 1", () => {
     const august = buildBillingDetailByMonth(accountId, []).find((r) => r.billing_month === "2026-08");
-    const debtRate = fxMonthEndForBalanceUsd("2026-09-08")!.clp_per_usd;
+    const debtRate = storedPairRate("usd", "clp", "2026-09-08")!.mid;
     expect(august?.total_facturado_clp).toBe(200_000 + Math.round(556.21 * debtRate));
   });
 });

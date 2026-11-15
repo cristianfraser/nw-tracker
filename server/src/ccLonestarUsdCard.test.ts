@@ -11,7 +11,7 @@ import { applyCanonicalCardStatements } from "./ccParsedStatementsApply.js";
 import { pdfClosedBillingMonthsForAccount } from "./cards/facturacion.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardCcUpcomingPayments } from "./dashboardCcUpcomingPayments.js";
-import { fxForLiveMtm } from "./fxLive.js";
+import { pairRateOnOrBefore } from "./rates.js";
 import { listCreditCardMasterAccountIdsInNavOrder } from "./creditCardTree.js";
 import { parsedStatements } from "./test/parsedStatementRecords.js";
 import {
@@ -188,6 +188,6 @@ describe("a USD-only card of a US issuer", () => {
     expect(payment!.row.pay_by_iso).toBe(PAY_BY_2);
     expect(payment!.row.close_observed).toBe(true);
     // US$100 owed, in pesos at today's live rate.
-    expect(payment!.row.amount_clp).toBe(Math.round(100 * (fxForLiveMtm(TODAY)?.clp_per_usd ?? NaN)));
+    expect(payment!.row.amount_clp).toBe(Math.round(100 * (pairRateOnOrBefore("usd", "clp", TODAY)?.mid ?? NaN)));
   });
 });

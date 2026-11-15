@@ -43,7 +43,7 @@ import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { findLines } from "./cards/purchases.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 
 export const APP_STORE_MERCHANT = "apple_app_store";
 
@@ -220,8 +220,8 @@ function loadCharges(): Charge[] {
 }
 
 function estimateClp(usd: number, date: string): number | null {
-  const fx = fxRowOnOrBefore(date);
-  return fx ? usd * fx.clp_per_usd : null;
+  const fx = storedPairRate("usd", "clp", date);
+  return fx ? usd * fx.mid : null;
 }
 
 function accountForCard(last4: string | null): number | null {

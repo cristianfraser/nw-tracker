@@ -11,7 +11,7 @@ import {
 } from "./deptoDividendosLedger.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
-import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
+import { storedPairRatesOnOrBefore } from "./rates.js";
 
 export type LatestValuationRow = { value_clp: number; as_of_date: string };
 
@@ -145,7 +145,7 @@ export function latestMortgageDisplayedBalance(
   if (ledger.length > 0) {
     const firstOwn = firstDeptoPropertyOwnershipYmd(ledger);
     if (firstOwn != null && asOfYmd >= firstOwn) {
-      const ufMap = ufClpBySnapshotDatesAsc([asOfYmd]);
+      const ufMap = storedPairRatesOnOrBefore("uf", "clp", [asOfYmd]);
       const close = deptoMortgageCloseClpBySnapshotDates([asOfYmd], ledger, ufMap).get(asOfYmd);
       if (close != null && Number.isFinite(close)) {
         return { value_clp: close, as_of_date: asOfYmd };

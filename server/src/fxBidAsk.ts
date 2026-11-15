@@ -1,3 +1,8 @@
+/**
+ * The table of the one pair that keeps buy and sell rates on file: USD/CLP (`fx_daily_bid_ask`).
+ * Readers ask `rates.ts` by pair (`pairBidAskOnOrBefore`, `pairKeepsBidAsk`); this module is the
+ * table's rows, its writers and the inference from the mid.
+ */
 import { db } from "./db.js";
 
 export type FxBidAskRow = {
@@ -6,9 +11,6 @@ export type FxBidAskRow = {
   sell_clp_per_usd: number;
   source: string;
 };
-
-/** The foreign currency whose peso buy / sell rates this table stores (`fx_daily_bid_ask`): the dollar. */
-export const BID_ASK_FOREIGN_CURRENCY = "usd";
 
 /** Total CLP spread between buy and sell when inferring from Yahoo mid. */
 export const FX_BID_ASK_SPREAD_CLP = 4;
@@ -55,18 +57,6 @@ export function fxBidAskRowOnOrBefore(date: string | null): FxBidAskRow | null {
     return { date: midRow.date, ...inferBidAskFromMid(midRow.clp_per_usd), source: "mid_spread_inferred" };
   }
   return row;
-}
-
-export function fxBuyClpPerUsdOnOrBefore(date: string | null): number | null {
-  const row = fxBidAskRowOnOrBefore(date);
-  const v = row?.buy_clp_per_usd;
-  return v != null && Number.isFinite(v) && v > 0 ? v : null;
-}
-
-export function fxSellClpPerUsdOnOrBefore(date: string | null): number | null {
-  const row = fxBidAskRowOnOrBefore(date);
-  const v = row?.sell_clp_per_usd;
-  return v != null && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 export function upsertFxBidAskRow(row: FxBidAskRow): void {

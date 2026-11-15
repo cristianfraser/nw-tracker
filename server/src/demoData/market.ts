@@ -10,7 +10,7 @@
  * valued by the generator exactly as the app values it.
  */
 import { db } from "../db.js";
-import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
+import { storedPairRate } from "../rates.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
 import { equityMarketKind, equityQuoteCurrency, unknownEquityMarketKind } from "../equityQuote.js";
 import { registerInstrument, type InstrumentFacts, type MarketQuoteCurrency, type MarketSymbolKind } from "../marketSymbols.js";
@@ -280,12 +280,12 @@ export function dbMarketReader(): MarketReader {
   const fundCache = new Map<string, { d: string[]; c: number[] }>();
   return {
     fx(day) {
-      const r = fxRowOnOrBefore(day)?.clp_per_usd;
+      const r = storedPairRate("usd", "clp", day)?.mid;
       if (r == null) throw new Error(`demo: no fx on or before ${day}`);
       return r;
     },
     uf(day) {
-      const r = ufRowOnOrBefore(day)?.clp_per_uf;
+      const r = storedPairRate("uf", "clp", day)?.mid;
       if (r == null) throw new Error(`demo: no UF on or before ${day}`);
       return r;
     },

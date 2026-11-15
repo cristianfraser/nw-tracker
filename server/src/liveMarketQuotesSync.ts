@@ -8,7 +8,6 @@ import {
   fetchYahooLiveUsdClpPerUsd,
   liveFxPairForYahooSymbol,
   liveFxPairs,
-  shouldUseLiveFxQuote,
   shouldUseLivePairQuote,
   type LiveFxPair,
 } from "./fxLive.js";
@@ -27,7 +26,7 @@ import {
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { maxFxDateOnOrBefore } from "./sbifSyncDb.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import {
   clearMarketSymbolFetchError,
   recordMarketSymbolFetchError,
@@ -173,16 +172,16 @@ function priorFxDailyClpPerUsd(beforeDate: string): number | null {
 /** The stored `fx_daily` close (fx day ended, or weekend) mirrored into the live table. */
 function mirrorFxDailyToLiveQuotes(fetchedAt: string): { rows: number; changed: boolean } {
   const today = chileCalendarTodayYmd();
-  const fx = fxRowOnOrBefore(today);
-  if (fx == null || !Number.isFinite(fx.clp_per_usd) || fx.clp_per_usd <= 0) {
+  const fx = storedPairRate("usd", "clp", today);
+  if (fx == null) {
     return { rows: 0, changed: false };
   }
   const prior = priorFxDailyClpPerUsd(fx.date);
-  const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), fx.clp_per_usd);
+  const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), fx.mid);
   insertLiveMarketQuote({
     symbol: LIVE_FX_SYMBOL,
     kind: "fx",
-    value: fx.clp_per_usd,
+    value: fx.mid,
     currency: null,
     session_ymd: fx.date,
     previous_value: prior,
@@ -243,7 +242,7 @@ function writeLiveFxQuote(
   const prior =
     live.previous_clp_per_usd ??
     priorFxDailyClpPerUsd(live.session_ymd) ??
-    fxRowOnOrBefore(live.session_ymd)?.clp_per_usd ??
+    storedPairRate("usd", "clp", live.session_ymd)?.mid ??
     null;
   const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), live.clp_per_usd);
   insertLiveMarketQuote({
@@ -259,7 +258,7 @@ function writeLiveFxQuote(
 }
 
 async function syncLiveFxQuote(now: Date, fetchedAt: string, skipLiveFetch: boolean): Promise<FxSyncOutcome> {
-  if (shouldUseLiveFxQuote(now)) {
+  if (shouldUseLivePairQuote(LIVE_FX_SYMBOL, now)) {
     // The price stream carries the live rate: nothing to fetch (the stream keeps its row fresh).
     if (skipLiveFetch) return { rows: 0, changed: false };
     try {
@@ -483,7 +482,7 @@ export async function syncAllLiveMarketQuotes(
   }
 
   console.log(
-    `live-quotes:sync — equities ${okCount}/${equities.length}${streamed > 0 ? ` (${streamed} on the stream)` : ""}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? (options.skipLiveFxPairs?.has(LIVE_FX_SYMBOL) ? " (on the stream)" : " (Yahoo CLP=X)") : " (Yahoo EOD fx_daily)"}, ${otherPairs.map((p) => `, ${p.pair} ${p.rows} row(s)${p.wrote_close ? " (day close)" : ""}`).join("")}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`
+    `live-quotes:sync — equities ${okCount}/${equities.length}${streamed > 0 ? ` (${streamed} on the stream)` : ""}, fx ${fxRows} row(s)${shouldUseLivePairQuote(LIVE_FX_SYMBOL, now) ? (options.skipLiveFxPairs?.has(LIVE_FX_SYMBOL) ? " (on the stream)" : " (Yahoo CLP=X)") : " (Yahoo EOD fx_daily)"}, ${otherPairs.map((p) => `, ${p.pair} ${p.rows} row(s)${p.wrote_close ? " (day close)" : ""}`).join("")}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`
   );
 
   return {

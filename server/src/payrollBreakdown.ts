@@ -17,10 +17,9 @@
  * that day's mid (`rates.ts`). A payslip's deductions add up to gross − net, or the build throws.
  */
 import { db } from "./db.js";
-import { clpToUsdAtPayment } from "./fxRates.js";
 import { payslipHaberIsTaxable, splitPensionLine, type PayrollJurisdiction, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
 import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
-import { convertCurrency } from "./rates.js";
+import { convertCurrency, convertFlowOrNull } from "./rates.js";
 
 export const PAYROLL_BREAKDOWN_FIELDS = [
   "gross",
@@ -227,7 +226,7 @@ export function buildPayrollBreakdown(unit: string = "clp"): PayrollBreakdownPay
       factor = p.total_haberes_clp / native.gross;
     } else if (p.liquido_currency === "clp" && unit === "usd") { // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
       const day = p.paid_on ?? monthEnd(p.period_month);
-      const perClp = clpToUsdAtPayment(1_000_000, day);
+      const perClp = convertFlowOrNull(1_000_000, "clp", "usd", day);
       if (perClp == null) throw new Error(`payslip ${p.id}: no USD rate on or before ${day}`);
       factor = perClp;
       den = 1_000_000;
