@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
+import { placeAllAccounts } from "./accountPlacement.js";
 import { ensureRetirementCountrySplit, seedNavTree } from "./seedNavTree.js";
 import { getNetWorthNavGroupNode, getSidebarNavPayload } from "./navTree.js";
 import type { NavTreeNodeDto } from "./navTree.js";
@@ -86,6 +87,9 @@ let before: ReturnType<typeof navDump>;
 
 beforeAll(() => {
   seedNavTree();
+  // The split re-places every account, which closes the order gaps an earlier test file's raw
+  // account delete leaves; settle them first so «before» does not depend on what ran earlier.
+  placeAllAccounts();
   before = navDump();
   const today = chileCalendarTodayYmd();
   pastDay = chileCalendarAddDays(today, -10);
