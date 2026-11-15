@@ -9,7 +9,6 @@ import {
   type PanelAccountCreateBody,
   type PanelAccountUpdateBody,
 } from "../createPanelAccount.js";
-import { NOTE_STOCKS_LEGACY } from "../brokerageAcciones.js";
 import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
@@ -48,11 +47,9 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
               g.slug AS bucket_slug, g.label AS bucket_label
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.import_key IS NULL OR a.import_key != ?)
-         AND g.slug != 'individual_stocks'
        ORDER BY g.sort_order, a.id, a.name`
     )
-    .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];
+    .all() as Record<string, unknown>[];
   res.json({ accounts: rows });
 }));
 

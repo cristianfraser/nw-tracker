@@ -1,6 +1,7 @@
 import { isHomeCurrency } from "../displayUnits.js";
 import { valuationCurrency, valuationsAreAppraisals } from "../valuationValue.js";
 import { accountKindSlugForAccountId } from "../accountBucket.js";
+import { accountHasRole } from "../accountRoles.js";
 /** Manual movement create, valuations upsert, aggregation cache clear. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
 import { accountRowForId } from "../accountRowForMovement.js";
@@ -148,6 +149,11 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
   // A property's valuations are its appraisals in UF (written with its payments), never pesos.
   if (valuationsAreAppraisals(accountKindSlugForAccountId(accountId) ?? "")) {
     res.status(400).json({ error: "a property's valuations are its UF appraisals; no peso valuations" });
+    return;
+  }
+  // A mortgage has no stored valuations: the depto ledger values it from its payments.
+  if (accountHasRole(accountId, "loan_of")) {
+    res.status(400).json({ error: "a mortgage is valued from its payment ledger; no stored valuations" });
     return;
   }
   // Crypto is marked from units × close × fx only; a stored row would be read by nothing and
