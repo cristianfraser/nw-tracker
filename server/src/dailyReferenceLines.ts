@@ -36,11 +36,11 @@ import {
 
 /**
  * A reference source's total on each day of its own daily series: a day the series has no value
- * for is absent, unrounded.
+ * for is absent; a level drawn on its own, rounded to the unit's coin.
  */
 const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards"> = {
   empty: "null",
-  rounding: "none",
+  rounding: "unit_coin",
 };
 
 /** One overlay line, aligned index-for-index with the daily series' `points`. */

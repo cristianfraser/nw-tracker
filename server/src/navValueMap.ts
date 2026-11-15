@@ -163,7 +163,7 @@ function isMapGroup(n: NavTreeNodeDto): boolean {
 
 /**
  * A leaf tile in pesos (its basis, and its value when the unit is pesos): 0 when no row has a
- * value, unrounded.
+ * value, unrounded (a parent tile is the sum of its children, up to the headline).
  */
 const LEAF_TILE_BASIS: NodeValueRules = { empty: "zero", rounding: "none" };
 
