@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import {
   USAGE_HISTOGRAM_BOUNDS_MS,
@@ -22,7 +23,7 @@ export function parseUsageReportWindow(raw: unknown): UsageReportWindow {
   const n = Number(raw ?? 7);
   const found = USAGE_REPORT_WINDOWS.find((w) => w === n);
   if (found === undefined) {
-    throw new Error(`days must be one of ${USAGE_REPORT_WINDOWS.join(", ")}`);
+    throw new InputError(`days must be one of ${USAGE_REPORT_WINDOWS.join(", ")}`);
   }
   return found;
 }

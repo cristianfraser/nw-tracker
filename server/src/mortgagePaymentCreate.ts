@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { db } from "./db.js";
 
 import { accountHasRole, deptoPropertyIdOfAccount } from "./accountRoles.js";
@@ -50,12 +51,12 @@ export function mortgagePaymentCreateSchemaForAccount(
 
 function requireDeptoMortgageAccount(accountId: number): void {
   const account = accountRowForId(accountId);
-  if (!account) throw new Error("Account not found");
+  if (!account) throw new InputError("Account not found");
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") {
-    throw new Error("Mortgage payments can only be logged on the depto mortgage account");
+    throw new InputError("Mortgage payments can only be logged on the depto mortgage account");
   }
   if (!accountHasRole(accountId, "loan_of")) {
-    throw new Error("Mortgage payment entry is only enabled for a loan of a property (loan_of role)");
+    throw new InputError("Mortgage payment entry is only enabled for a loan of a property (loan_of role)");
   }
 }
 
@@ -114,10 +115,10 @@ export function commitMortgagePayment(
   const occurred_on = sheet.occurred_on;
 
   if (deptoPaymentExists(mortgageId, cuota, occurred_on)) {
-    throw new Error(`Depto payment already exists for cuota ${cuota} on ${occurred_on}`);
+    throw new InputError(`Depto payment already exists for cuota ${cuota} on ${occurred_on}`);
   }
   if (ledger.some((r) => r.cuota === cuota && r.occurred_on === occurred_on)) {
-    throw new Error(`Movement ledger already has cuota ${cuota} on ${occurred_on}`);
+    throw new InputError(`Movement ledger already has cuota ${cuota} on ${occurred_on}`);
   }
 
   const paymentRow = sheetRowToPaymentRow(sheet);
@@ -194,24 +195,24 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
       ? null
       : Number(body.credito_restante_uf);
 
-  if (!occurred_on) throw new Error("occurred_on is required");
-  if (!Number.isFinite(pago_clp)) throw new Error("pago_clp is required");
-  if (!Number.isFinite(interes_clp)) throw new Error("interes_clp is required");
-  if (!Number.isFinite(incendio_clp)) throw new Error("incendio_clp is required");
+  if (!occurred_on) throw new InputError("occurred_on is required");
+  if (!Number.isFinite(pago_clp)) throw new InputError("pago_clp is required");
+  if (!Number.isFinite(interes_clp)) throw new InputError("interes_clp is required");
+  if (!Number.isFinite(incendio_clp)) throw new InputError("incendio_clp is required");
   if (desgravamen_clp != null && !Number.isFinite(desgravamen_clp)) {
-    throw new Error("desgravamen_clp must be a number when provided");
+    throw new InputError("desgravamen_clp must be a number when provided");
   }
   if (min_uf != null && !Number.isFinite(min_uf)) {
-    throw new Error("min_uf must be a number when provided");
+    throw new InputError("min_uf must be a number when provided");
   }
   if (max_uf != null && !Number.isFinite(max_uf)) {
-    throw new Error("max_uf must be a number when provided");
+    throw new InputError("max_uf must be a number when provided");
   }
   if (amortizacion_ext_clp != null && !Number.isFinite(amortizacion_ext_clp)) {
-    throw new Error("amortizacion_ext_clp must be a number when provided");
+    throw new InputError("amortizacion_ext_clp must be a number when provided");
   }
   if (credito_restante_uf != null && !Number.isFinite(credito_restante_uf)) {
-    throw new Error("credito_restante_uf must be a number when provided");
+    throw new InputError("credito_restante_uf must be a number when provided");
   }
 
   return {

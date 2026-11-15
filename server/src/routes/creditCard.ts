@@ -285,13 +285,8 @@ app.patch("/api/accounts/:id/credit-card-config", writeHandler((req, res) => {
     res.status(404).json({ error: "not a credit-card account" });
     return;
   }
-  let patch;
-  try {
-    patch = parseCreditCardConfigPatch(req.body);
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "invalid body" });
-    return;
-  }
+  // A body the parser refuses is an `InputError` → 400 (`writeHandler`).
+  const patch = parseCreditCardConfigPatch(req.body);
   const result = applyCreditCardConfigPatch(id, patch);
   if (result.billingCycleChanged) recomputeCcBillingMonthBalances(id);
   res.json({

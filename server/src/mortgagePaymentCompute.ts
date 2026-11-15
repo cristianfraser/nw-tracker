@@ -1,3 +1,4 @@
+import { InputError } from "./inputError.js";
 import { sumPresent, type DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import {
   computeMortgagePaymentAnalytics,
@@ -54,7 +55,7 @@ function splitAmortFromMinPayment(
   const interesUf = roundUf4(interes_clp / uf_clp_day);
   const scheduledAmortUf = roundUf4(min_uf - total_seguros_uf - interesUf);
   if (scheduledAmortUf < 0) {
-    throw new Error(
+    throw new InputError(
       `Negative scheduled amortización UF from min payment: min ${min_uf} − seguros ${total_seguros_uf} − interés ${interesUf}`
     );
   }
@@ -62,7 +63,7 @@ function splitAmortFromMinPayment(
   const amortizacion_ext_clp =
     pago_clp - interes_clp - incendio_clp - desgravamen_clp - amortizacion_clp;
   if (amortizacion_ext_clp < 0) {
-    throw new Error(
+    throw new InputError(
       `Payment too small for scheduled cuota: prepago would be ${amortizacion_ext_clp} CLP after amort ${amortizacion_clp}`
     );
   }
@@ -71,7 +72,7 @@ function splitAmortFromMinPayment(
 
 function requireYmd(occurredOn: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOn.trim())) {
-    throw new Error(`Invalid occurred_on: ${occurredOn} (expected YYYY-MM-DD)`);
+    throw new InputError(`Invalid occurred_on: ${occurredOn} (expected YYYY-MM-DD)`);
   }
 }
 
@@ -117,7 +118,7 @@ function priorMortgagePaymentRow(
   let prior: DeptoMortgageSheetRow | null = null;
   for (const row of sorted) {
     if (row.cuota === cuota && row.occurred_on === occurredOn) {
-      throw new Error(`Mortgage payment already exists for cuota ${cuota} on ${occurredOn}`);
+      throw new InputError(`Mortgage payment already exists for cuota ${cuota} on ${occurredOn}`);
     }
     if (
       row.occurred_on < occurredOn ||
@@ -150,25 +151,25 @@ export function computeMortgagePaymentRow(
     rawInput.amortizacion_ext_clp != null && Number.isFinite(rawInput.amortizacion_ext_clp);
 
   if (!Number.isFinite(pago_clp) || pago_clp <= 0) {
-    throw new Error("pago_clp must be a positive number");
+    throw new InputError("pago_clp must be a positive number");
   }
   if (!Number.isFinite(interes_clp) || interes_clp < 0) {
-    throw new Error("interes_clp must be a non-negative number");
+    throw new InputError("interes_clp must be a non-negative number");
   }
   if (!Number.isFinite(incendio_clp) || incendio_clp < 0) {
-    throw new Error("incendio_clp must be a non-negative number");
+    throw new InputError("incendio_clp must be a non-negative number");
   }
   if (explicitAmortExt && rawInput.amortizacion_ext_clp! < 0) {
-    throw new Error("amortizacion_ext_clp must be a non-negative number");
+    throw new InputError("amortizacion_ext_clp must be a non-negative number");
   }
 
   const cuota = (rawInput.cuota?.trim() || suggestNextMortgageCuota(ledger)).trim();
-  if (!cuota) throw new Error("cuota is required");
+  if (!cuota) throw new InputError("cuota is required");
 
   const prior = priorMortgagePaymentRow(ledger, occurred_on, cuota);
   const balanceBeforeUf = prior?.credito_restante_uf;
   if (balanceBeforeUf == null || !Number.isFinite(balanceBeforeUf)) {
-    throw new Error(
+    throw new InputError(
       "Cannot compute payment: no prior crédito restante UF in ledger (log payments in order)"
     );
   }
@@ -186,7 +187,7 @@ export function computeMortgagePaymentRow(
     ? Math.round(rawInput.desgravamen_clp!)
     : desgravamen_default_clp;
 
-  if (desgravamen_clp < 0) throw new Error("desgravamen_clp must be non-negative");
+  if (desgravamen_clp < 0) throw new InputError("desgravamen_clp must be non-negative");
 
   const incendio_uf = clpToUf(incendio_clp, uf_clp_day);
   const desgravamen_uf = clpToUf(desgravamen_clp, uf_clp_day);
@@ -202,12 +203,12 @@ export function computeMortgagePaymentRow(
   const min_uf =
     rawInput.min_uf != null && Number.isFinite(rawInput.min_uf) ? rawInput.min_uf : null;
   if (min_uf != null && min_uf <= 0) {
-    throw new Error("min_uf must be a positive number when provided");
+    throw new InputError("min_uf must be a positive number when provided");
   }
   const max_uf =
     rawInput.max_uf != null && Number.isFinite(rawInput.max_uf) ? rawInput.max_uf : null;
   if (max_uf != null && max_uf <= 0) {
-    throw new Error("max_uf must be a positive number when provided");
+    throw new InputError("max_uf must be a positive number when provided");
   }
 
   let amortizacion_clp: number;
@@ -217,13 +218,13 @@ export function computeMortgagePaymentRow(
     amortizacion_clp =
       pago_clp - interes_clp - incendio_clp - desgravamen_clp - amortizacion_ext_clp;
     if (amortizacion_clp < 0) {
-      throw new Error(
+      throw new InputError(
         `Negative amortización: pago ${pago_clp} − interés ${interes_clp} − incendio ${incendio_clp} − desgravamen ${desgravamen_clp} − prepago ${amortizacion_ext_clp} = ${amortizacion_clp}`
       );
     }
   } else {
     if (min_uf == null) {
-      throw new Error(
+      throw new InputError(
         "Cannot split amortización: enter the cuota mínima (min_uf) from the statement, or supply amortización extra directly"
       );
     }
@@ -243,7 +244,7 @@ export function computeMortgagePaymentRow(
   const componentSum =
     interes_clp + incendio_clp + desgravamen_clp + amortizacion_clp + amortizacion_ext_clp;
   if (Math.abs(componentSum - pago_clp) > PAYMENT_RECONCILE_TOLERANCE_CLP) {
-    throw new Error(
+    throw new InputError(
       `Payment components (${componentSum}) do not match pago_clp (${pago_clp}) within ±${PAYMENT_RECONCILE_TOLERANCE_CLP} CLP`
     );
   }
@@ -266,18 +267,18 @@ export function computeMortgagePaymentRow(
       : null;
   if (statedCreditoRestanteUf != null) {
     if (statedCreditoRestanteUf < 0) {
-      throw new Error("credito_restante_uf must be non-negative when provided");
+      throw new InputError("credito_restante_uf must be non-negative when provided");
     }
     const gap = Math.abs(statedCreditoRestanteUf - credito_restante_derived_uf);
     if (gap > CREDITO_RESTANTE_OVERRIDE_TOLERANCE_UF) {
-      throw new Error(
+      throw new InputError(
         `Stated crédito restante ${statedCreditoRestanteUf} UF is ${gap.toFixed(4)} UF away from the derived ${credito_restante_derived_uf} UF (max ${CREDITO_RESTANTE_OVERRIDE_TOLERANCE_UF})`
       );
     }
   }
   const credito_restante_uf = statedCreditoRestanteUf ?? credito_restante_derived_uf;
   if (credito_restante_uf < 0) {
-    throw new Error(`Negative crédito restante UF after payment: ${credito_restante_uf}`);
+    throw new InputError(`Negative crédito restante UF after payment: ${credito_restante_uf}`);
   }
 
   // Gross (tasación) is an observed value carried forward from the prior ledger row —
