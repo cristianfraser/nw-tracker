@@ -107,7 +107,10 @@ describe("vendor catalog", () => {
     expect(seeded.lookup("ARCOSDEVALPARAISO")).toBe("McDonald's (San Martín)");
     expect(seeded.lookup("SABA ARAUCO PAO")).toBe("Saba (Parque Arauco)");
     expect(seeded.lookup("SABA PLAZA BELLAVISTA")).toBe("Saba (Plaza Bellavista)");
-    expect(seeded.lookup("IKEA OPEN KENNEDY")).toBe("Ikea (Open Kennedy)");
+    expect(seeded.lookup("IKEA OPEN KENNEDY")).toBe("Ikea (Parque Arauco)");
+    expect(seeded.lookup("IKEA OPEN KENNE")).toBe("Ikea (Parque Arauco)");
+    expect(seeded.lookup("IKEA PLAZA OESTE")).toBe("Ikea (Plaza Oeste)");
+    expect(seeded.lookup("SABA ARAUCO KEN")).toBe("Saba (Parque Arauco)");
     expect(seeded.lookup("CLINICA ALEMANA PZA EGANA")).toBe("Clínica Alemana (Plaza Egaña)");
     expect(seeded.lookup("DL*GOOGLE YOUTUBE")).toBe("YouTube Premium");
     expect(seeded.lookup("ANTHROPIC* CLAUDE SUB")).toBe("Claude");
