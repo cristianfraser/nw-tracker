@@ -24,7 +24,7 @@
 import type { Database } from "better-sqlite3";
 import type { CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
 import { db } from "../db.js";
-import { effectiveCcExpenseLineAmountClp } from "../ccExpenseAmountClp.js";
+import { cardLineAmountClpAtStoredRate } from "../ccExpenseAmountClp.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
@@ -238,7 +238,7 @@ function listOneShotLinesForAccountUncached(accountId: number): CardOneShotLine[
   const rows = db
     .prepare(
       `SELECT l.id AS statement_line_id, l.merchant, l.transaction_date, l.posting_date,
-              ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, s.statement_date, s.currency AS statement_currency
+              l.amount, l.currency, s.statement_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND l.installment_flag = 0`
@@ -248,23 +248,15 @@ function listOneShotLinesForAccountUncached(accountId: number): CardOneShotLine[
     merchant: string | null;
     transaction_date: string | null;
     posting_date: string | null;
-    amount_clp: number | null;
-    amount_usd: number | null;
+    amount: number | null;
+    currency: string;
     statement_date: string;
-    statement_currency: string;
   }[];
 
   const out: CardOneShotLine[] = [];
   for (const r of rows) {
-    const amount = effectiveCcExpenseLineAmountClp(
-      {
-        installment_flag: 0,
-        amount_clp: r.amount_clp,
-        amount_usd: r.amount_usd,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-        statement_currency: r.statement_currency,
-      },
+    const amount = cardLineAmountClpAtStoredRate(
+      { installment_flag: 0, amount: r.amount, currency: r.currency, cuota_amount: null },
       parseDdMmYyToIso(r.statement_date)
     );
     if (amount == null || amount <= 0) continue;

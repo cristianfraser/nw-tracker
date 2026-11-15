@@ -228,8 +228,7 @@ describe("credit-card close evidence", () => {
     // A later observed close on the 31st moves the estimate, clamped to a shorter month.
     recordFeedBillingClose(accountId, {
       close_iso: "2026-10-31",
-      saldo_inicial_clp: 100_000,
-      saldo_inicial_usd: null,
+      saldo_inicial: { clp: 100_000, usd: null },
       source_file: "vitest",
     });
     expect(closeEvidenceForBillingMonth(accountId, "2026-11")).toEqual({ close_iso: "2026-11-30", source: "estimated" });
@@ -439,15 +438,13 @@ describe("credit-card close evidence", () => {
     // The feed repeats the same close every day; a different figure for it is a contradiction.
     expect(recordFeedBillingClose(accountId, {
       close_iso: "2026-09-24",
-      saldo_inicial_clp: 1_892_666,
-      saldo_inicial_usd: 577.34,
+      saldo_inicial: { clp: 1_892_666, usd: 577.34 },
       source_file: "repeat",
     }).status).toBe("seen");
     expect(() =>
       recordFeedBillingClose(accountId, {
         close_iso: "2026-09-24",
-        saldo_inicial_clp: 1_892_000,
-        saldo_inicial_usd: 577.34,
+        saldo_inicial: { clp: 1_892_000, usd: 577.34 },
         source_file: "changed",
       })
     ).toThrow(/SALDO INICIAL .* changed/);
@@ -1023,8 +1020,7 @@ describe("credit-card close evidence", () => {
   it("a dollar statement with no printed total bills its lines, payments left out, and is held to the feed", () => {
     recordFeedBillingClose(accountId, {
       close_iso: "2026-09-24",
-      saldo_inicial_clp: 10_000,
-      saldo_inicial_usd: 30.52,
+      saldo_inicial: { clp: 10_000, usd: 30.52 },
       source_file: "feed",
     });
     const clp = insertStatement({
@@ -1067,8 +1063,7 @@ describe("credit-card close evidence", () => {
   it("flags a statement that disagrees with the feed's SALDO INICIAL for the same close", () => {
     recordFeedBillingClose(accountId, {
       close_iso: "2026-09-24",
-      saldo_inicial_clp: 1_892_666,
-      saldo_inicial_usd: null,
+      saldo_inicial: { clp: 1_892_666, usd: null },
       source_file: "feed",
     });
     expect(feedCloseStatementMismatches(accountId)).toEqual([]);

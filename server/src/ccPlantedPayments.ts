@@ -26,7 +26,6 @@ import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { EMPTY_CARD_LINE_PLAN, type CardLinePlan } from "./cards/lineWriteSession.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
-import { legacyAmountColumn, storedCardLineAmounts } from "./cards/statementStorage.js";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { pairOneToOne } from "./matching/pairing.js";
@@ -46,7 +45,7 @@ export type PlantedPaymentRow = {
   line_id: number;
   account_id: number;
   source: PlantingBatchKind;
-  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  currency: string;
   amount: number;
   paid_on: string;
 };
@@ -57,7 +56,7 @@ export type PlantedPaymentReplacement = {
   bank_line_merchant: string;
   bank_line_date: string;
   amount: number;
-  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  currency: string;
   source: PlantingBatchKind;
 };
 
@@ -65,7 +64,7 @@ export type PlantedPaymentConfirmation = {
   planted_line_id: number;
   bank_line_merchant: string;
   amount: number;
-  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  currency: string;
   source: PlantingBatchKind;
 };
 
@@ -73,7 +72,7 @@ export type PlantedPaymentAmbiguity = {
   bank_line_merchant: string;
   bank_line_date: string;
   amount: number;
-  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  currency: string;
   planted_line_ids: number[];
 };
 
@@ -175,7 +174,7 @@ export type PlantedLineRecord =
 export function recordPlantedPaymentLine(
   accountId: number,
   source: PlantingBatchKind,
-  payment: { currency: "clp" | "usd"; amount: number; paid_on: string }, // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  payment: { currency: string; amount: number; paid_on: string },
   dedupeKey: string,
   inserted: boolean
 ): PlantedLineRecord {
@@ -224,7 +223,7 @@ type ImportedPayment = {
   line: CardCanonicalLine;
   merchant: string;
   date: string;
-  currency: "clp" | "usd"; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  currency: string;
   amount: number;
 };
 
@@ -233,11 +232,8 @@ function importedPayment(line: CardCanonicalLine): ImportedPayment | null {
   if (!isPaymentLikeCreditMerchant(line.merchant)) return null;
   const date = line.transaction_date;
   if (!date) return null;
-  const { amount_clp: clp, amount_usd } = storedCardLineAmounts(line);
-  const usd = amount_usd ?? 0;
-  if (usd !== 0) return usd < 0 ? { line, merchant: line.merchant, date, currency: "usd", amount: -usd } : null;
-  if (clp < 0) return { line, merchant: line.merchant, date, currency: "clp", amount: -clp };
-  return null;
+  // A credit in the line's own currency, whichever it is.
+  return line.amount < 0 ? { line, merchant: line.merchant, date, currency: line.currency, amount: -line.amount } : null;
 }
 
 /**
@@ -354,14 +350,12 @@ function earliestPlantedDate(lineIds: readonly number[]): string | null {
  */
 export function plantedPaymentMatchesStatementLine(
   planted: PlantedPaymentRow,
-  stmt: { merchant: string | null; transaction_date: string | null; posting_date: string | null; amount_clp: number | null; amount_usd: number | null },
-  stmtCurrency: "clp" | "usd" // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
+  stmt: { merchant: string | null; transaction_date: string | null; posting_date: string | null; amount: number | null; currency: string }
 ): boolean {
   if (!isPaymentLikeCreditMerchant(stmt.merchant)) return false;
-  const column = legacyAmountColumn(stmtCurrency);
-  const raw = column ? stmt[column] : null;
+  const raw = stmt.amount;
   if (raw == null || raw >= 0) return false;
   const iso = parseDdMmYyToIso(String(stmt.transaction_date ?? "")) ?? parseDdMmYyToIso(String(stmt.posting_date ?? ""));
   if (!iso) return false;
-  return plantedPaymentFits(planted, { currency: stmtCurrency, amount: -raw, date: iso });
+  return plantedPaymentFits(planted, { currency: stmt.currency, amount: -raw, date: iso });
 }

@@ -121,7 +121,6 @@ import {
 
 
 
-export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
@@ -271,19 +270,15 @@ export function buildCcExpenseLines(
 
         installment_flag: r.installment_flag,
 
-        amount_clp: r.amount_clp,
+        amount: r.amount,
 
-        amount_usd: r.amount_usd,
+        currency: r.currency,
 
-        valor_cuota_mensual_clp: r.valor_cuota_mensual_clp,
-
-        valor_cuota_mensual_usd: r.valor_cuota_mensual_usd,
+        cuota_amount: r.cuota_amount,
 
         nro_cuota_current: r.nro_cuota_current,
 
         nro_cuota_total: r.nro_cuota_total,
-
-        statement_currency: r.statement_currency,
 
         fx_date_iso: fxDateIso,
 

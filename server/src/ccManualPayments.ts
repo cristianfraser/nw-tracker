@@ -10,7 +10,9 @@
  * {@link MANUAL_PAYMENT_CONFIRM_BUSINESS_DAYS} Chile business days after its day fails the
  * nightly `synthetic_cc_payments_check`.
  */
-import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
+import { isForeignCashAccount, isForeignCashAccountIn } from "./foreignCashAccounts.js";
+import { cardPrimaryStatementCurrency, requireCardCurrency } from "./cards/cardCurrencies.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import { importCcListingLines } from "./accountImports.js";
 
 import { confirmManualPaymentForPlanted, recordPlantedPaymentLine } from "./ccPlantedPayments.js";
@@ -31,7 +33,8 @@ export type ManualCardPaymentInput = {
   from_account_id: number;
   card_account_id: number;
   amount: number;
-  currency: "clp" | "usd"; // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  /** Any currency the card's issuer bills in (`requireCardCurrency`). */
+  currency: string;
   /** YYYY-MM-DD, the day the money left. */
   paid_on: string;
   note?: string | null;
@@ -60,8 +63,9 @@ type MovementRow = {
   flow_kind: string | null;
 };
 
-function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean { // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
-  return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b); // convention-ok: pesos have no minor unit; dollars compare to the cent
+/** Equal to the currency's smallest coin. */
+function sameMoney(currency: string, a: number, b: number): boolean {
+  return roundToCurrency(a, currency) === roundToCurrency(b, currency);
 }
 
 function existingManualPayment(transferId: number): { id: number } | undefined {
@@ -72,7 +76,9 @@ function existingManualPayment(transferId: number): { id: number } | undefined {
 
 /** The card's credit line for the payment, as a debt-positive listing line (a credit: negative). */
 function manualPaymentListingLine(input: ManualCardPaymentInput, magnitude: number) {
-  const merchant = input.currency === "usd" ? "ABONO DE DIVISAS" : "PAGO"; // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  // A payment in the currency the card's main statement is in is its «PAGO»; one of a debt billed
+  // in another currency is that side's «ABONO DE DIVISAS» (the bank's own wording).
+  const merchant = input.currency === cardPrimaryStatementCurrency(input.card_account_id) ? "PAGO" : "ABONO DE DIVISAS";
   return {
     date: input.paid_on,
     merchant,
@@ -92,8 +98,9 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
   const { from_account_id: fromId, card_account_id: cardId, currency, paid_on: paidOn } = input;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) throw new Error(`paid_on must be YYYY-MM-DD, got ${paidOn}`);
   if (!(input.amount > 0)) throw new Error(`amount must be positive, got ${input.amount}`);
-  if (currency !== "clp" && currency !== "usd") throw new Error(`currency must be clp or usd, got ${currency}`); // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
-  const magnitude = currency === "usd" ? Number(input.amount.toFixed(2)) : Math.round(input.amount); // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  requireCardCurrency(currency, cardId, "manual card payment");
+  const magnitude = roundToCurrency(input.amount, currency);
+  if (!(magnitude > 0)) throw new Error(`amount ${input.amount} is less than ${currency.toUpperCase()}'s smallest coin`);
   if (fromId === cardId) throw new Error("A card payment needs a source account other than the card");
   // A card paying another card's facturado is the payment record's own transfer (`cardToCardPayments.ts`).
   if (listCreditCardMasterAccountIds().includes(fromId)) {
@@ -102,8 +109,10 @@ export function recordManualCardPayment(input: ManualCardPaymentInput): ManualCa
     );
   }
   const cardGroup = creditCardMasterMetaForAccount(cardId).cardGroup;
-  const fromIsUsd = isForeignCashAccountIn(fromId, "usd");
-  if ((currency === "usd") !== fromIsUsd) { // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  // The source holds the payment's currency: a foreign cash ledger in it, or — for pesos — an
+  // account that is not a foreign cash ledger at all.
+  const sourceHoldsCurrency = isHomeCurrency(currency) ? !isForeignCashAccount(fromId) : isForeignCashAccountIn(fromId, currency);
+  if (!sourceHoldsCurrency) {
     throw new Error(
       `Account ${fromId} does not hold ${currency.toUpperCase()} — a cross-currency card payment is not supported here`
     );
@@ -227,7 +236,7 @@ export type OverdueManualCardPayment = {
   manual_payment_id: number;
   transfer_movement_id: number;
   card_account_id: number;
-  currency: "clp" | "usd"; // convention-ok: the manual card-payment task pays a Santander card's peso or dollar side
+  currency: string;
   amount: number;
   paid_on: string;
   /** Null only if the deadline walk failed — treated as overdue rather than hidden. */

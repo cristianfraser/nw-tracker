@@ -1,6 +1,5 @@
-import { convertCurrency, storedPairRate } from "./rates.js";
-import { isHomeCurrency } from "./displayUnits.js";
-import { lineHasPesoDollarView } from "./cards/lineAmountSql.js";
+import { convertCurrency } from "./rates.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 
 /**
  * CLP per unit of a foreign currency, by currency code, standing in for every debt-frame rate of
@@ -26,125 +25,66 @@ export function debtFrameRates(entries: Iterable<readonly [string, number]>): De
 }
 
 /**
- * CLP per USD for valuing dollars as card debt in the statement frame: the `fx_daily` row on or
- * before `fxDateIso` (the facturación's pay-by − 1, `balanceUsdFxDateIso`), or the dollar rate of
- * `rates` when given. Null when no row is on file.
- */
-export function debtFrameClpPerUsd(fxDateIso: string | null, rates?: DebtFrameRates): number | null {
-  const given = rates?.get("usd");
-  if (given != null) return given;
-  const fx = storedPairRate("usd", "clp", fxDateIso)?.mid;
-  return fx != null && fx > 0 ? fx : null;
-}
-
-/**
- * CLP per unit of `currency` for valuing it as card debt in the statement frame: dollars as
- * {@link debtFrameClpPerUsd}, any other currency at its debt-side rate on or before `fxDateIso`
- * (`rates.ts`), or the currency's rate in `rates` when given. Null when no rate is on file.
+ * CLP per unit of `currency` for valuing it as card debt in the statement frame: the stored close
+ * on or before `fxDateIso` (the facturación's pay-by − 1, `balanceUsdFxDateIso`) through
+ * `rates.ts` — what the document is priced at, never a live rate —, or the currency's rate in
+ * `rates` when given. Null when no rate is on file. One path for every currency.
  */
 export function debtFrameClpPerUnit(currency: string, fxDateIso: string | null, rates?: DebtFrameRates): number | null {
   if (isHomeCurrency(currency)) return 1;
-  if (currency === "usd") return debtFrameClpPerUsd(fxDateIso, rates); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
   const given = rates?.get(currency);
   if (given != null) return given;
   if (!fxDateIso) return null;
-  const r = convertCurrency(1, currency, "clp", fxDateIso, { side: "debt" });
+  const r = convertCurrency(1, currency, HOME_CURRENCY, fxDateIso, { side: "mid", storedOnly: true });
   return r != null && r > 0 ? r : null;
 }
 
-export type CcExpenseLineAmountInput = {
-  installment_flag: number;
-  amount_clp: number | null;
-  amount_usd: number | null;
-  valor_cuota_mensual_clp: number | null;
-  valor_cuota_mensual_usd: number | null;
-  /** When `usd`, MONTO US$ is authoritative (origin column is reference only). */
-  statement_currency?: string | null;
-  /**
-   * What the line stores (migration 319), when the reader has it: a line in another currency than
-   * pesos or dollars reads NULL in the four fields above, so the debt sums value it from these.
-   */
-  currency?: string;
-  amount?: number | null;
-  cuota_amount?: number | null;
-};
-
 /**
- * CLP amount of a statement line: the CLP columns, or its dollars through `usdToClp`, which the
- * caller picks by frame — debt sums convert at the facturación's pay-by − 1
- * (`balanceUsdFxDateIso`), expense lines at the rate their facturación was paid
- * (`ccFacturacionForeignRate.ts`), import dedupe at the statement date (it only compares amounts).
- * `usdToClp` is only called with a finite, non-zero amount.
+ * Whole pesos of `amount` of `currency` in the statement frame ({@link debtFrameClpPerUnit}).
+ * An amount of zero is zero; an amount with no rate on file THROWS, naming `what` — a sum that
+ * skipped it would read the debt short without saying so.
  */
-export function effectiveCcExpenseLineAmountClpWith(
-  row: CcExpenseLineAmountInput,
-  usdToClp: (usd: number) => number | null
-): number | null {
-  const convert = (usd: number | null | undefined): number | null =>
-    usd == null || !Number.isFinite(usd) || usd === 0 ? null : usdToClp(usd);
-  const isInstallment = row.installment_flag === 1;
-  const cuotaClp = row.valor_cuota_mensual_clp;
-  const cuotaUsd = row.valor_cuota_mensual_usd;
-
-  const usdStatement = String(row.statement_currency ?? "").toLowerCase() === "usd";
-
-  if (isInstallment) {
-    if (usdStatement) {
-      const fromUsdCuota = convert(cuotaUsd);
-      if (fromUsdCuota != null) return fromUsdCuota;
-    }
-    if (cuotaClp != null && Number.isFinite(cuotaClp) && cuotaClp !== 0) {
-      return Math.round(cuotaClp);
-    }
-    return convert(cuotaUsd);
-  }
-
-  if (usdStatement) {
-    const fromUsd = convert(row.amount_usd);
-    if (fromUsd != null) return fromUsd;
-  }
-  if (row.amount_clp != null && Number.isFinite(row.amount_clp) && row.amount_clp !== 0) {
-    return Math.round(row.amount_clp);
-  }
-  return convert(row.amount_usd);
-}
-
-/** {@link effectiveCcExpenseLineAmountClpWith} converting dollars at the rate on or before `fxDateIso`. */
-export function effectiveCcExpenseLineAmountClp(
-  row: CcExpenseLineAmountInput,
-  fxDateIso: string | null
-): number | null {
-  return effectiveCcExpenseLineAmountClpWith(row, (usd) => {
-    const fx = storedPairRate("usd", "clp", fxDateIso);
-    if (!fx?.mid || fx.mid <= 0) return null;
-    return Math.round(usd * fx.mid);
-  });
-}
-
-/**
- * {@link effectiveCcExpenseLineAmountClp} for a statement-frame DEBT sum: dollars at
- * {@link debtFrameClpPerUsd} (the facturación's pay-by − 1, or the rates of a split pass). Import
- * dedupe and line matching keep {@link effectiveCcExpenseLineAmountClp}: a split pass must not
- * change which lines match.
- */
-export function debtCcExpenseLineAmountClp(
-  row: CcExpenseLineAmountInput,
+export function debtFrameClp(
+  amount: number,
+  currency: string,
   fxDateIso: string | null,
-  rates?: DebtFrameRates
-): number | null {
-  if (row.currency != null && !lineHasPesoDollarView(row.currency)) {
-    // A line in a third currency: what it bills in that currency, at its debt-frame rate.
-    return cardLineAmountClpWith(
-      { installment_flag: row.installment_flag, amount: row.amount ?? null, currency: row.currency, cuota_amount: row.cuota_amount ?? null },
-      (amount, currency) => {
-        const rate = debtFrameClpPerUnit(currency, fxDateIso, rates);
-        return rate == null ? null : Math.round(amount * rate);
-      }
-    );
+  rates: DebtFrameRates | undefined,
+  what: string
+): number {
+  if (!Number.isFinite(amount)) throw new Error(`${what}: not an amount (${amount})`);
+  if (amount === 0) return 0;
+  const rate = debtFrameClpPerUnit(currency, fxDateIso, rates);
+  if (rate == null) {
+    throw new Error(`${what}: no ${currency.toUpperCase()}/${HOME_CURRENCY.toUpperCase()} rate on or before ${fxDateIso ?? "an unknown date"}`);
   }
-  return effectiveCcExpenseLineAmountClpWith(row, (usd) => {
-    const fx = debtFrameClpPerUsd(fxDateIso, rates);
-    return fx == null ? null : Math.round(usd * fx);
+  return Math.round(amount * rate);
+}
+
+/**
+ * The pesos a statement line bills in a statement-frame DEBT sum: its pesos as stored, a foreign
+ * amount through {@link debtFrameClp} (the facturación's pay-by − 1, or the rates of a split
+ * pass). Null only when the line bills nothing (a missing or zero amount); a foreign amount with
+ * no rate throws. Import dedupe and line matching keep {@link cardLineAmountClpAtStoredRate}: a
+ * split pass must not change which lines match.
+ */
+export function debtCardLineAmountClp(
+  row: CcLineNativeInput,
+  fxDateIso: string | null,
+  rates: DebtFrameRates | undefined,
+  what: string
+): number | null {
+  return cardLineAmountClpWith(row, (amount, currency) => debtFrameClp(amount, currency, fxDateIso, rates, what));
+}
+
+/**
+ * The pesos a statement line bills at the stored close on or before `fxDateIso`: for comparing
+ * amounts (import dedupe, plan matching at the statement date). Null when the line bills nothing
+ * or no rate is on file — a line that cannot be priced matches nothing.
+ */
+export function cardLineAmountClpAtStoredRate(row: CcLineNativeInput, fxDateIso: string | null): number | null {
+  return cardLineAmountClpWith(row, (amount, currency) => {
+    const rate = debtFrameClpPerUnit(currency, fxDateIso);
+    return rate == null ? null : Math.round(amount * rate);
   });
 }
 
@@ -158,9 +98,7 @@ export type CcLineNativeInput = {
 
 /**
  * What a statement line bills, in its own currency: a cuota line its cuota, any other line its
- * amount; null when that is missing or zero. A line is in one currency, so this is what the legacy
- * two-slot readers ({@link effectiveCcExpenseLineAmountClpWith} / {@link effectiveCcExpenseLineAmountUsd})
- * picked for a peso or dollar line, for any currency.
+ * amount; null when that is missing or zero. A line is in one currency.
  */
 export function cardLineNativeAmount(row: CcLineNativeInput): { amount: number; currency: string } | null {
   const v = row.installment_flag === 1 ? row.cuota_amount : row.amount;
@@ -179,32 +117,4 @@ export function cardLineAmountClpWith(
   const native = cardLineNativeAmount(row);
   if (!native) return null;
   return isHomeCurrency(native.currency) ? Math.round(native.amount) : toClp(native.amount, native.currency);
-}
-
-/** Original USD for display when the charge is on a USD statement (or USD-only line). */
-export function effectiveCcExpenseLineAmountUsd(
-  row: CcExpenseLineAmountInput
-): number | null {
-  const isInstallment = row.installment_flag === 1;
-  const usdStatement = String(row.statement_currency ?? "").toLowerCase() === "usd";
-
-  const pick = (v: number | null | undefined): number | null => {
-    if (v == null || !Number.isFinite(v) || v === 0) return null;
-    return v;
-  };
-
-  if (isInstallment) {
-    const cuotaUsd = pick(row.valor_cuota_mensual_usd);
-    if (cuotaUsd != null) return cuotaUsd;
-    if (usdStatement) return pick(row.amount_usd);
-    return null;
-  }
-
-  if (usdStatement) return pick(row.amount_usd);
-
-  const clpMissing =
-    row.amount_clp == null || !Number.isFinite(row.amount_clp) || row.amount_clp === 0;
-  if (clpMissing) return pick(row.amount_usd);
-
-  return null;
 }

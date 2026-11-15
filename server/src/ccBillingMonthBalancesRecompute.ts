@@ -4,7 +4,8 @@
  * built from them. The row readers stay in `ccBillingBalances.ts`, below the views.
  */
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
+import { facturadoByCurrencyForStatementSlot } from "./ccBillingViews.js";
+import { isHomeCurrency } from "./displayUnits.js";
 import { primaryStatementOfSlot, statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -37,7 +38,7 @@ function writeBalance(b: BalanceWrite): void {
   // Set from the detalle once it can be built from these rows.
   put("cupo_utilizado", "clp", 0);
   put("saldo_total", "clp", 0);
-  for (const [c, v] of Object.entries(b.saldo_total)) if (c !== "clp") put("saldo_total", c, v);
+  for (const [c, v] of Object.entries(b.saldo_total)) if (!isHomeCurrency(c)) put("saldo_total", c, v);
 }
 
 const updateBalanceFromDetalle = db.prepare(`
@@ -48,8 +49,8 @@ const updateBalanceFromDetalle = db.prepare(`
 /**
  * Rebuilds one card's stored `cc_billing_month_metrics` snapshot: a row per statement slot, as
  * of its close, and — while no statement closes it — the open facturación's row, as of today.
- * Facturado is per currency, the slot's own (`facturadoClpUsdForStatementSlot`); `saldo_total_usd`
- * is the USD statement's printed deuda total. Cupo en cuotas and saldo total are the detalle row
+ * Facturado is per currency, the slot's own (`facturadoByCurrencyForStatementSlot`); a foreign
+ * `saldo_total` is that currency's statement's printed deuda total. Cupo en cuotas and saldo total are the detalle row
  * the card page shows for that month (`billingDetailCacheForAccount`), so the snapshot cannot
  * drift from it: the rebuild used to carry its own cupo rule — keyed on the calendar month, the
  * double count `cupoEnCuotasForBillingMonth` describes — and a saldo of cupo + the statement's
@@ -68,17 +69,25 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
     const primary = primaryStatementOfSlot(accountId, slot);
     if (!primary?.statement_date_iso) continue;
     const asOfIso = primary.statement_date_iso;
-    const { facturado_clp, facturado_usd } = facturadoClpUsdForStatementSlot(accountId, slot);
-    const saldo_total_usd =
-      slot.get("usd")?.deuda_total != null && slot.get("usd")!.deuda_total! > 0 ? slot.get("usd")!.deuda_total! : 0;
+    // Each currency the slot has a statement in: what it billed, and a foreign statement's printed
+    // deuda total. Only positive figures are stored.
+    const positive = (v: number | null | undefined): number | null => (v != null && v > 0 ? v : null);
+    const facturado: Record<string, number | null> = {};
+    for (const [currency, billed] of Object.entries(facturadoByCurrencyForStatementSlot(accountId, slot))) {
+      facturado[currency] = positive(billed);
+    }
+    const saldoTotal: Record<string, number | null> = {};
+    for (const [currency, st] of slot) {
+      if (!isHomeCurrency(currency)) saldoTotal[currency] = positive(st.deuda_total);
+    }
 
     writeBalance({
       account_id: accountId,
       billing_month: billingMonth,
       as_of_date: asOfIso,
       as_of_kind: "statement",
-      facturado: { clp: facturado_clp > 0 ? facturado_clp : null, usd: facturado_usd > 0 ? facturado_usd : null },
-      saldo_total: { usd: saldo_total_usd > 0 ? saldo_total_usd : null },
+      facturado,
+      saldo_total: saldoTotal,
     });
     months.add(billingMonth);
     n += 1;

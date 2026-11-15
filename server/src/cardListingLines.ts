@@ -1,7 +1,7 @@
 import type { CardListingLine } from "nw-tracker-contracts";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
 
 const CUOTA_KIND_BY_FIRST_BILLING: Readonly<
   Record<NonNullable<CardListingLine["cuota_purchase"]>["first_cuota_bills"], CcCuotaPurchaseKind>
@@ -17,10 +17,12 @@ const CUOTA_KIND_BY_FIRST_BILLING: Readonly<
  */
 export function listingLineFromCardListingLine(line: CardListingLine): CcListingLine {
   const cp = line.cuota_purchase;
+  // Any currency the app knows; whether the card bills in it is the importer's check (`requireCardCurrency`).
+  requireLoadedCurrency(line.currency, "card listing line");
   return {
     transaction_date: line.date,
     merchant: line.merchant,
-    currency: pesosOrDollars(line.currency, "card listing line"),
+    currency: line.currency,
     amount: line.amount,
     raw_line: line.raw_text,
     ...(line.holder ? { holder: line.holder } : {}),

@@ -7,7 +7,7 @@
  * paying part (the charge's lines by flow, the plan's whole-price line). Those lines are not rows of
  * their own.
  */
-import { isHomeCurrency } from "./displayUnits.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import type { LatestCardPayment, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
@@ -67,11 +67,11 @@ export function loadCardPaymentTransfers(): CardPaymentTransfer[] {
 
 /** The transfer in its own currency and in each display unit. */
 export function cardPaymentMoney(t: CardPaymentTransfer): { amount: Money; values: Record<string, LineUnitValue> } {
-  if (isHomeCurrency(t.currency) && t.counter_currency === "usd" && t.counter_amount != null) { // convention-ok: a card payment transfer is pesos, dollars, or a divisas purchase (pesos to dollars)
-    // A divisas purchase: the pesos that left, the dollars the card was credited.
+  if (isHomeCurrency(t.currency) && t.counter_currency != null && !isHomeCurrency(t.counter_currency) && t.counter_amount != null) {
+    // A divisas purchase: the pesos that left, the foreign amount the card was credited.
     return {
-      amount: { value: t.amount, currency: "clp" },
-      values: { clp: { value: t.amount, rate_source: "native" }, usd: { value: t.counter_amount, rate_source: "paid" } },
+      amount: { value: t.amount, currency: t.currency },
+      values: { [t.currency]: { value: t.amount, rate_source: "native" }, [t.counter_currency]: { value: t.counter_amount, rate_source: "paid" } },
     };
   }
   if (t.counter_currency != null) throw new Error(`pago_tarjeta movement ${t.movement_id}: unexpected counter leg ${t.counter_currency}`);
@@ -82,15 +82,16 @@ export function cardPaymentMoney(t: CardPaymentTransfer): { amount: Money; value
       values: { clp: { value: t.amount, rate_source: "native" }, ...(usd != null ? { usd: { value: usd, rate_source: "day" as const } } : {}) },
     };
   }
-  if (t.currency === "usd") { // convention-ok: a card payment transfer is pesos, dollars, or a divisas purchase (pesos to dollars)
-    const clpRaw = referenceAmountAtMid(t.amount, "usd", "clp", t.occurred_on);
-    const clp = clpRaw == null ? null : Math.round(clpRaw);
-    return {
-      amount: { value: t.amount, currency: "usd" },
-      values: { usd: { value: t.amount, rate_source: "native" }, ...(clp != null ? { clp: { value: clp, rate_source: "day" as const } } : {}) },
-    };
-  }
-  throw new Error(`pago_tarjeta movement ${t.movement_id}: currency ${t.currency}`);
+  // A payment in a foreign currency (from a cash account holding it): its own amount, and pesos at the day's mid.
+  const clpRaw = referenceAmountAtMid(t.amount, t.currency, HOME_CURRENCY, t.occurred_on);
+  const clp = clpRaw == null ? null : Math.round(clpRaw);
+  return {
+    amount: { value: t.amount, currency: t.currency },
+    values: {
+      [t.currency]: { value: t.amount, rate_source: "native" },
+      ...(clp != null ? { [HOME_CURRENCY]: { value: clp, rate_source: "day" as const } } : {}),
+    },
+  };
 }
 
 function cardLabel(accountId: number): { card_brand: string; card_last4: string } {

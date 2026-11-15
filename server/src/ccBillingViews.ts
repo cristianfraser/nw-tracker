@@ -6,20 +6,18 @@ import {
   facturadoFromStatement,
   openMonthForeignFacturado,
   payByFxDateIso,
-  statementHeaderFacturado,
   unbilledAtMonthEndAdjustmentsClp,
-  usdPaymentPaidStatementDateResolver,
+  foreignPaymentPaidStatementDateResolver,
   type CcBillingMonthBalanceRow,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
-import { debtCcExpenseLineAmountClp, debtFrameClpPerUnit, debtFrameClpPerUsd, debtFrameRates, REAL_DEBT_FRAME_RATES, type DebtFrameRates } from "./ccExpenseAmountClp.js";
+import { debtCardLineAmountClp, debtFrameClp, debtFrameClpPerUnit, debtFrameRates, REAL_DEBT_FRAME_RATES, type DebtFrameRates } from "./ccExpenseAmountClp.js";
 import {
   accountHasStatementsIn,
   cardForeignCurrencies,
   facturacionForeignRatesForAccount,
   type FacturacionForeignRateSource,
 } from "./ccFacturacionForeignRate.js";
-import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
 import { withCcOneShotScanCache, planCount } from "./cards/purchases.js";
 import {
@@ -170,25 +168,11 @@ export function facturadoForeignIn(row: Pick<CcFacturacionRow, "facturado_foreig
   return row.facturado_foreign.find((f) => f.currency === currency) ?? null;
 }
 
-/** Each foreign statement of a slot but dollars (`slotFacturado` keeps those): what it billed, its pesos at the debt frame. */
-function slotThirdCurrencyFacturado(
-  accountId: number,
-  slot: CcStatementSlotByCurrency,
-  payByIso: string | null,
-  rates: DebtFrameRates | undefined
-): Map<string, { amount: number; clp: number | null }> {
-  const out = new Map<string, { amount: number; clp: number | null }>();
-  for (const [currency, st] of slot) {
-    if (isHomeCurrency(currency) || currency === "usd") continue; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
-    const amount = statementHeaderFacturado(st) ?? foreignBilledFromStatementLines(st.id, currency);
-    out.set(currency, { amount, clp: foreignToClpAsDebt(amount, currency, payByIso, rates) });
-  }
-  return out;
-}
-
-/** A foreign amount valued as debt for a facturación paid by `payByIso` (pay-by − 1), dollars as {@link usdToClpAsDebt}. */
+/**
+ * A foreign amount valued as debt for a facturación paid by `payByIso` (the stored close of
+ * pay-by − 1, or the rate of a split pass). Null when there is no pay-by or no rate on file.
+ */
 function foreignToClpAsDebt(amount: number, currency: string, payByIso: string | null, rates: DebtFrameRates | undefined): number | null {
-  if (currency === "usd") return usdToClpAsDebt(amount, payByIso, rates); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
   if (!Number.isFinite(amount) || !payByIso) return null;
   const rate = debtFrameClpPerUnit(currency, payByFxDateIso(payByIso), rates);
   return rate == null ? null : Math.round(amount * rate);
@@ -321,30 +305,59 @@ export function ccCupoFrame(accountId: number, ledgerMonths: readonly CcInstallm
 export type { CcStatementSlotByCurrency } from "./ccBillingStatementSlots.js";
 export { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
-type DerivedFacturado = { facturado_clp: number | null; facturado_usd: number | null };
+/** What a slot's statements billed: the peso statement's pesos and one entry per foreign statement. */
+type SlotFacturado = {
+  /** The peso statement's facturado; null when the slot has none or it billed nothing. */
+  clp: number | null;
+  /** Each foreign statement: what it billed in its currency and those pesos in the debt frame. */
+  foreign: Map<string, { amount: number; clp: number }>;
+};
 
-/** Each currency statement of a slot through `facturadoFromStatement` (none: both null). */
+/**
+ * Each statement of a slot through `facturadoFromStatement`. A foreign statement's pesos are the
+ * debt frame of the FACTURACIÓN's pay-by (`payByIso`), else of the statement's own; an amount
+ * with no rate on file either way throws — a total that left it out would read the month short.
+ */
 function slotFacturado(
   accountId: number,
   slot: CcStatementSlotByCurrency,
+  payByIso: string | null,
   rates: DebtFrameRates | undefined
-): { clpDerived: DerivedFacturado; usdDerived: DerivedFacturado } {
-  const derive = (st: CcStatementRow | undefined): DerivedFacturado =>
-    st ? facturadoFromStatement(accountId, st.statement_date, st, st.statement_date_iso, rates) : { facturado_clp: null, facturado_usd: null };
-  return { clpDerived: derive(slot.get("clp")), usdDerived: derive(slot.get("usd")) };
+): SlotFacturado {
+  const out: SlotFacturado = { clp: null, foreign: new Map() };
+  for (const [currency, st] of slot) {
+    const derived = facturadoFromStatement(accountId, st.statement_date, st, rates);
+    if (isHomeCurrency(currency)) {
+      out.clp = derived.clp;
+      continue;
+    }
+    const amount = derived.amount ?? 0;
+    const clp = foreignToClpAsDebt(amount, currency, payByIso, rates) ?? derived.clp;
+    if (clp == null) {
+      if (amount !== 0) {
+        throw new Error(
+          `Account ${accountId} statement ${st.statement_date}: no ${currency.toUpperCase()} debt-frame rate ` +
+            `for its facturado (pay-by ${payByIso ?? "unknown"})`
+        );
+      }
+      out.foreign.set(currency, { amount, clp: 0 });
+      continue;
+    }
+    out.foreign.set(currency, { amount, clp });
+  }
+  return out;
 }
 
-/** CLP and USD facturado headers for a billing-month statement slot (matches buildFacturaciones). */
-export function facturadoClpUsdForStatementSlot(
-  accountId: number,
-  slot: CcStatementSlotByCurrency
-): { facturado_clp: number; facturado_usd: number } {
-  const { clpDerived, usdDerived } = slotFacturado(accountId, slot, REAL_DEBT_FRAME_RATES);
-
-  return { facturado_clp: clpDerived.facturado_clp ?? 0, facturado_usd: usdDerived.facturado_usd ?? 0 };
+/** What a billing-month statement slot billed in each currency a statement of it is in (0 when it billed none). */
+export function facturadoByCurrencyForStatementSlot(accountId: number, slot: CcStatementSlotByCurrency): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [currency, st] of slot) {
+    out[currency] = facturadoFromStatement(accountId, st.statement_date, st, REAL_DEBT_FRAME_RATES).amount ?? 0;
+  }
+  return out;
 }
 
-/** CLP+USD facturado for a billing month from imported statements (header or line-derived). */
+/** Every currency's facturado of a billing month's imported statements, in pesos (header or line-derived). */
 function facturadoTotalClpForStatementSlot(
   accountId: number,
   slot: CcStatementSlotByCurrency,
@@ -352,29 +365,21 @@ function facturadoTotalClpForStatementSlot(
 ): number | null {
   const primary = primaryStatementOfSlot(accountId, slot);
   if (!primary) return null;
-
-  const { clpDerived, usdDerived } = slotFacturado(accountId, slot, rates);
-
-  const facturadoClp = clpDerived.facturado_clp;
-  const facturadoUsd = usdDerived.facturado_usd;
-
   const { pay_by_iso: payByIso } = resolveFacturacionPayBy(accountId, slot, primary);
-  const facturadoUsdClp =
-    facturadoUsd != null
-      ? usdToClpAsDebt(facturadoUsd, payByIso, rates) ?? usdDerived.facturado_clp
-      : null;
-  const third = [...slotThirdCurrencyFacturado(accountId, slot, payByIso, rates).values()];
+  const billed = slotFacturado(accountId, slot, payByIso, rates);
   // A statement in credit bills a negative amount (`statementHeaderFacturado`): the total may be
   // 0 or below, and is still what the statements billed.
-  if (facturadoClp == null && facturadoUsdClp == null && third.every((t) => t.clp == null)) return null;
-  return (facturadoClp ?? 0) + (facturadoUsdClp ?? 0) + third.reduce((s, t) => s + (t.clp ?? 0), 0);
+  if (billed.clp == null && billed.foreign.size === 0) return null;
+  let total = billed.clp ?? 0;
+  for (const f of billed.foreign.values()) total += f.clp;
+  return total;
 }
 
 
 /**
  * Sum PAGO / ABONO / ABONO DE DIVISAS lines in a billing month, in CLP (DB stores payments as
- * negative). The divisas abono is a USD-only line (`amount_clp` 0) — it is valued through
- * `effectiveCcExpenseLineAmountClp` at `balanceUsdFxDateIso`, the exact helper + FX date the
+ * negative). A divisas abono is a line in the foreign currency — it is valued through
+ * `debtCardLineAmountClp` at `balanceUsdFxDateIso`, the exact helper + FX date the
  * open-cycle charge sums use, so the open-month balance roll (charges − payments) is unchanged
  * by classifying it as a payment instead of a negative charge.
  */
@@ -388,31 +393,25 @@ export function paymentAbonosClpForBillingMonth(
   // A dollar payment cancels the dollar debt it paid at that debt's fx, as the owed walk values it
   // (`normalizedPostCloseLines`): at this statement's fx instead, the rolled balance read the
   // difference between the paid facturación's rate and today's as owed.
-  const paidStatementDate = usdPaymentPaidStatementDateResolver(accountId);
+  const paidStatementDate = foreignPaymentPaidStatementDateResolver(accountId);
   for (const st of listCcStatementsForAccount(accountId)) {
     if (!dates.has(st.statement_date)) continue;
     const fxDateIso = balanceUsdFxDateIso(accountId, st.statement_date);
     const rows = linesOfStatement(st.id);
     for (const r of rows) {
       if (!isCardPaymentLine(r)) continue;
-      const paymentIso = (r.amount_usd ?? 0) < 0 ? statementLineDateIso(r) : null;
-      const paidDate = paymentIso ? paidStatementDate(paymentIso) : null;
+      const foreignPayment = !isHomeCurrency(r.currency) && (r.amount ?? 0) < 0;
+      const paymentIso = foreignPayment ? statementLineDateIso(r) : null;
+      const paidDate = paymentIso ? paidStatementDate(r.currency, paymentIso) : null;
       const lineFxDateIso = paidDate ? balanceUsdFxDateIso(accountId, paidDate) : fxDateIso;
-      const clp = debtCcExpenseLineAmountClp(
-        {
-          installment_flag: 0,
-          amount_clp: r.amount_clp,
-          amount_usd: r.amount_usd,
-          valor_cuota_mensual_clp: null,
-          valor_cuota_mensual_usd: null,
-          statement_currency: st.currency,
-          currency: r.currency,
-          amount: r.amount,
-        },
+      // Null = a payment line of zero; a foreign payment with no rate throws.
+      const clp = debtCardLineAmountClp(
+        { installment_flag: 0, amount: r.amount, currency: r.currency, cuota_amount: null },
         lineFxDateIso,
-        rates
+        rates,
+        `Account ${accountId} statement ${st.statement_date} payment line ${r.id}`
       );
-      if (clp == null || !Number.isFinite(clp)) continue;
+      if (clp == null) continue;
       sum += Math.abs(clp);
     }
   }
@@ -517,19 +516,13 @@ type ProvisionalFacturado = {
   facturado_clp: number;
   /**
    * What it billed per foreign currency, in that currency and in pesos: the feed's SALDO INICIAL
-   * (dollars: the only foreign side a feed states), else the open cycle's lines in each currency.
+   * in each currency it states one, else the open cycle's lines in each currency.
    */
   foreign: Map<string, { amount: number | null; clp: number | null }>;
   total_clp: number;
   /** The app's own estimate for the month (únicos billed so far + cuota a pagar). */
   estimate_total_clp: number;
 };
-
-function signedUsdToClpAsDebt(usd: number, payByIso: string | null, rates: DebtFrameRates | undefined): number | null {
-  if (usd === 0) return 0;
-  const abs = usdToClpAsDebt(Math.abs(usd), payByIso, rates);
-  return abs == null ? null : usd < 0 ? -abs : abs;
-}
 
 /**
  * The open cycle's foreign lines of a month as facturado entries: each currency a line bills in,
@@ -583,23 +576,30 @@ function provisionalFacturado(
       total_clp: estimate_total_clp,
     };
   }
-  const facturado_clp = Math.round(feed.saldo_inicial_clp ?? 0);
-  const facturado_usd = feed.saldo_inicial_usd;
-  const facturado_usd_clp =
-    facturado_usd != null ? signedUsdToClpAsDebt(facturado_usd, pay_by_iso, rates) : null;
-  if (facturado_usd != null && facturado_usd !== 0 && facturado_usd_clp == null) {
-    throw new Error(
-      `Account ${accountId} ${billingMonth}: no USD/CLP rate for the pay-by ${pay_by_iso} of the ` +
-        `feed-observed close — cannot value its US$${facturado_usd} SALDO INICIAL`
+  // The bank's figure per currency it stated one in; a currency the card bills in that the feed
+  // did not state reads «unknown» (null), never 0.
+  let facturado_clp = 0;
+  let total_clp = 0;
+  const foreign = new Map<string, { amount: number | null; clp: number | null }>(
+    cardForeignCurrencies(accountId).map((c): [string, { amount: number | null; clp: number | null }] => [c, { amount: null, clp: null }])
+  );
+  for (const [currency, amount] of Object.entries(feed.saldo_inicial)) {
+    if (isHomeCurrency(currency)) {
+      facturado_clp = Math.round(amount);
+      total_clp += facturado_clp;
+      continue;
+    }
+    const clp = debtFrameClp(
+      amount,
+      currency,
+      pay_by_iso ? payByFxDateIso(pay_by_iso) : null,
+      rates,
+      `Account ${accountId} ${billingMonth}: the feed-observed close's ${currency.toUpperCase()} SALDO INICIAL (pay-by ${pay_by_iso})`
     );
+    foreign.set(currency, { amount, clp });
+    total_clp += clp;
   }
-  return {
-    ...base,
-    source: "feed",
-    facturado_clp,
-    foreign: new Map([["usd", { amount: facturado_usd, clp: facturado_usd_clp }]]),
-    total_clp: facturado_clp + (facturado_usd_clp ?? 0),
-  };
+  return { ...base, source: "feed", facturado_clp, foreign, total_clp };
 }
 
 /**
@@ -945,13 +945,6 @@ function appendProjectedBillingDetailRows(
   return projected.length > 0 ? [...existing, ...projected] : existing;
 }
 
-/** USD valued as debt for a facturación paid by `payByIso`: the pay-by − 1 rate (`balanceUsdFxDateIso`). */
-function usdToClpAsDebt(usd: number, payByIso: string | null, rates: DebtFrameRates | undefined): number | null {
-  if (!Number.isFinite(usd) || !payByIso) return null;
-  const fx = debtFrameClpPerUsd(payByFxDateIso(payByIso), rates);
-  return fx == null ? null : Math.round(usd * fx);
-}
-
 /**
  * Re-values each facturación's dollar side at the rate it shows — the rate actually paid, today's
  * while unpaid (`ccFacturacionUsdRate.ts`) — instead of the debt frame the builder uses (pay-by − 1,
@@ -1131,20 +1124,10 @@ function buildFacturacionesInner(
     const primary = primaryStatementOfSlot(accountId, slot);
     if (!primary) continue;
 
-    const { clpDerived, usdDerived } = slotFacturado(accountId, slot, REAL_DEBT_FRAME_RATES);
-
-    const facturadoClp = clpDerived.facturado_clp;
-    const facturadoUsd = usdDerived.facturado_usd;
-
     const { pay_by, pay_by_iso: payByIso, pay_by_source } = resolveFacturacionPayBy(accountId, slot, primary);
-    const facturadoUsdClp =
-      facturadoUsd != null
-        ? usdToClpAsDebt(facturadoUsd, payByIso, REAL_DEBT_FRAME_RATES) ?? usdDerived.facturado_clp
-        : null;
-    const billedForeign = new Map<string, { amount: number | null; clp: number | null }>([
-      ...slotThirdCurrencyFacturado(accountId, slot, payByIso, REAL_DEBT_FRAME_RATES),
-      ["usd", { amount: facturadoUsd, clp: facturadoUsdClp }],
-    ]);
+    const billed = slotFacturado(accountId, slot, payByIso, REAL_DEBT_FRAME_RATES);
+    const facturadoClp = billed.clp;
+    const billedForeign = billed.foreign;
     const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
     const facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot, REAL_DEBT_FRAME_RATES);
@@ -1158,10 +1141,7 @@ function buildFacturacionesInner(
     if (!hasPdfClose) {
       // The open month's bucket: the row reads the month, not the bucket (see `openFacturacionRow`).
       out.push(
-        openFacturacionRow(accountId, billingMonth, cuotaAPagarClp, deudaEnCuotasClp(billingMonth), {
-          facturado_usd: facturadoUsd,
-          facturado_usd_clp: facturadoUsdClp,
-        })
+        openFacturacionRow(accountId, billingMonth, cuotaAPagarClp, deudaEnCuotasClp(billingMonth), billedForeign)
       );
       continue;
     }
@@ -1203,10 +1183,7 @@ function buildFacturacionesInner(
   const openBm = frame.openBillingMonth;
   if (openBm && !frame.inactive && !byMonth.has(openBm) && !pdfClosed.has(openBm)) {
     out.push(
-      openFacturacionRow(accountId, openBm, cuotaAPagarNextMesClp(openBm, ledgerMonths), deudaEnCuotasClp(openBm), {
-        facturado_usd: null,
-        facturado_usd_clp: null,
-      })
+      openFacturacionRow(accountId, openBm, cuotaAPagarNextMesClp(openBm, ledgerMonths), deudaEnCuotasClp(openBm), new Map())
     );
   }
 
@@ -1223,35 +1200,31 @@ function buildFacturacionesInner(
  * leftovers), so a month with no bucket yet reads 0 únicos. An open month's bucket is keyed by the
  * config close (an identity, see `statementCloseDdMmYyyyForBillingMonth`); what the row shows is
  * the best published close — the previous statement's announced next period — and the pay-by
- * derived from that. `slotUsd` is the bucket's own USD header derivation, kept when the open cycle
- * has no dollar line (the slot path's rule); null without a bucket. The dollar side of the open
- * cycle is never «—»: a cycle that has billed nothing in dollars so far has billed US$0 (a null
- * `facturado_usd` means a closed month with no USD statement), so both USD fields read 0 until a
- * dollar line lands.
+ * derived from that. `slotForeign` is the bucket's own header derivation per foreign currency, kept when the
+ * open cycle has no line in that currency (the slot path's rule); empty without a bucket. A
+ * foreign side of the open cycle is never «—»: a cycle that has billed nothing in a currency so
+ * far has billed 0 of it (a null amount means a closed month with no statement in it), so both
+ * of its fields read 0 until a line lands.
  */
 function openFacturacionRow(
   accountId: number,
   billingMonth: string,
   cuotaAPagarClp: number,
   deudaEnCuotasClp: number | null,
-  slotUsd: { facturado_usd: number | null; facturado_usd_clp: number | null }
+  slotForeign: ReadonlyMap<string, { amount: number; clp: number }>
 ): CcFacturacionRow {
   const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
   const facturadoTotal = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagar ?? 0, REAL_DEBT_FRAME_RATES);
   // What the open cycle bills per foreign currency: its lines in that currency (manually-entered
   // purchases too), split out of the total so each shows as its own stacked bar instead of being
-  // lumped into facturado_clp; a currency no line has landed in yet bills 0 (dollars: the bucket's
-  // own header derivation, kept when the cycle has no dollar line — the slot path's rule).
+  // lumped into facturado_clp; a currency no line has landed in yet bills 0 (or the bucket's own
+  // header derivation in that currency — the slot path's rule).
   const lines = openCycleForeignFacturado(accountId, billingMonth, REAL_DEBT_FRAME_RATES);
-  // Every currency counts in the split, the card's or not (dollars always: a bucket's dollar header).
+  // Every currency counts in the split, the card's or not (a foreign bucket's own header too).
   const billed = new Map(
-    [...new Set(["usd", ...cardForeignCurrencies(accountId), ...lines.keys()])].map((c): [string, { amount: number; clp: number }] => [
-      c,
-      lines.get(c) ??
-        (c === "usd" // convention-ok: the dollar bucket's header derivation (slotUsd) is the dollar slot's own
-          ? { amount: slotUsd.facturado_usd ?? 0, clp: slotUsd.facturado_usd_clp ?? 0 }
-          : { amount: 0, clp: 0 }),
-    ])
+    [...new Set([...slotForeign.keys(), ...cardForeignCurrencies(accountId), ...lines.keys()])].map(
+      (c): [string, { amount: number; clp: number }] => [c, lines.get(c) ?? slotForeign.get(c) ?? { amount: 0, clp: 0 }]
+    )
   );
   let foreignClp = 0;
   for (const v of billed.values()) foreignClp += v.clp;

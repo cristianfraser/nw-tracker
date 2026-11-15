@@ -6,11 +6,12 @@ import {
   type CcPaymentPairing,
 } from "./ccPaymentMirrorEvidence.js";
 import { ccTraspasoLinkedClpByForeignLineId } from "./ccTraspasoDeudaLinks.js";
-import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
+import { currencyMinorDigits, HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { traspasoForeignLegs } from "./cards/purchases.js";
-import { convertCurrency, pairRateOnOrBefore, storedPairRate } from "./rates.js";
+import { convertCurrency } from "./rates.js";
+import { debtFrameClpPerUnit } from "./ccExpenseAmountClp.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 
@@ -238,7 +239,7 @@ export function cardForeignCurrencies(accountId: number): string[] {
   const { primary, secondary } = ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.statement_currencies;
   const set = new Set<string>([primary, ...secondary]);
   for (const r of stmtStatementCurrencies.all(accountId) as { currency: string }[]) set.add(r.currency);
-  set.delete("clp");
+  set.delete(HOME_CURRENCY);
   return [...set].sort((a, b) => (a === "usd" ? -1 : b === "usd" ? 1 : a.localeCompare(b)));
 }
 
@@ -263,20 +264,16 @@ export function facturacionForeignRatesForAccount(
   return facturacionForeignRates(facturaciones, foreignDebtPaymentsForAccount(accountId, currency), {
     todayYmd,
     payByRate: (payByIso) => {
-      const rate =
-        currency === "usd" // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
-          ? storedPairRate("usd", "clp", payByFxDateIso(payByIso))?.mid
-          : convertCurrency(1, currency, "clp", payByFxDateIso(payByIso), { side: "debt" });
-      if (rate == null || !(rate > 0)) {
+      // The statement debt frame: the stored close of pay-by − 1, one path for every currency.
+      const rate = debtFrameClpPerUnit(currency, payByFxDateIso(payByIso));
+      if (rate == null) {
         throw new Error(`Account ${accountId}: no ${code}/CLP rate on or before ${payByFxDateIso(payByIso)}`);
       }
       return rate;
     },
     liveRate: () => {
-      const rate =
-        currency === "usd" // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
-          ? pairRateOnOrBefore("usd", "clp", todayYmd, now)?.mid
-          : convertCurrency(1, currency, "clp", todayYmd, { side: "debt" });
+      // Today's rate at the mid (live where the walk has a live pair), as the pay-by rate is a mid.
+      const rate = convertCurrency(1, currency, HOME_CURRENCY, todayYmd, { side: "mid", now });
       if (rate == null || !(rate > 0)) {
         throw new Error(`Account ${accountId}: no ${code}/CLP rate for ${todayYmd}`);
       }

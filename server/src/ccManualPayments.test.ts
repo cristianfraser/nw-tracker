@@ -274,16 +274,20 @@ describe("plantedPaymentMatchesStatementLine", () => {
     merchant: "PAGO EN CAJA",
     transaction_date: "10/10/2026",
     posting_date: null,
-    amount_clp: null,
-    amount_usd: -100,
+    amount: -100,
+    currency: "usd",
     ...over,
   });
   it("matches the statement's payment line by money and window, whatever the wording", () => {
-    expect(plantedPaymentMatchesStatementLine(planted, stmt({}), "usd")).toBe(true);
-    expect(plantedPaymentMatchesStatementLine(planted, stmt({ amount_usd: -100.01 }), "usd")).toBe(false);
-    expect(plantedPaymentMatchesStatementLine(planted, stmt({ transaction_date: "08/10/2026" }), "usd")).toBe(false);
-    expect(plantedPaymentMatchesStatementLine(planted, stmt({ transaction_date: "15/10/2026" }), "usd")).toBe(false);
-    expect(plantedPaymentMatchesStatementLine(planted, stmt({ merchant: "AMAZON" }), "usd")).toBe(false);
-    expect(plantedPaymentMatchesStatementLine(planted, stmt({}), "clp")).toBe(false);
+    expect(plantedPaymentMatchesStatementLine(planted, stmt({}))).toBe(true);
+    expect(plantedPaymentMatchesStatementLine(planted, stmt({ amount: -100.01 }))).toBe(false);
+    expect(plantedPaymentMatchesStatementLine(planted, stmt({ transaction_date: "08/10/2026" }))).toBe(false);
+    expect(plantedPaymentMatchesStatementLine(planted, stmt({ transaction_date: "15/10/2026" }))).toBe(false);
+    expect(plantedPaymentMatchesStatementLine(planted, stmt({ merchant: "AMAZON" }))).toBe(false);
+    expect(plantedPaymentMatchesStatementLine(planted, stmt({ currency: "clp" }))).toBe(false);
+    // Any currency: a euro payment matches a euro line and no other.
+    const euro = { ...planted, currency: "eur" };
+    expect(plantedPaymentMatchesStatementLine(euro, stmt({ currency: "eur" }))).toBe(true);
+    expect(plantedPaymentMatchesStatementLine(euro, stmt({}))).toBe(false);
   });
 });
