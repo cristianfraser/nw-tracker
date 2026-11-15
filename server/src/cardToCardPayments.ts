@@ -21,8 +21,9 @@
  * tarjeta» row on a page holding both cards. The paid card's PAGO it explains is not offered to the
  * checking payment mirror (`ccPaymentMirrors.ts`), so a same-pesos checking debit cannot pair with it.
  */
-import { isHomeCurrency } from "./displayUnits.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { db } from "./db.js";
+import { deleteMovements, insertMovement } from "./movementWrites.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
@@ -171,14 +172,9 @@ const selStored = db.prepare(
      LEFT JOIN cc_facturado_financing_links l ON l.id = c.financing_link_id
     ORDER BY c.movement_id`
 );
-const insMovement = db.prepare(
-  `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
-   VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
-);
 const insRow = db.prepare(
   `INSERT INTO card_to_card_payments (movement_id, financing_link_id, part_kind, part_ref) VALUES (?, ?, ?, ?)`
 );
-const delMovement = db.prepare(`DELETE FROM movements WHERE id = ?`);
 
 function noteFor(p: CardToCardPart): string {
   return (
@@ -196,8 +192,15 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
     const expected = new Map(expectedCardToCardParts().map((p) => [partKey(p), p]));
     const result: CardToCardSyncResult = { created: [], updated: [], deleted: [], unchanged: 0 };
     const write = (p: CardToCardPart): number => {
-      const r = insMovement.run(p.from_account_id, p.to_account_id, p.amount_clp, p.occurred_on, noteFor(p), FLOW_KIND_PAGO_TARJETA);
-      const id = Number(r.lastInsertRowid);
+      const id = insertMovement({
+        fromAccountId: p.from_account_id,
+        toAccountId: p.to_account_id,
+        amount: p.amount_clp,
+        currency: HOME_CURRENCY,
+        occurredOn: p.occurred_on,
+        note: noteFor(p),
+        flowKind: FLOW_KIND_PAGO_TARJETA,
+      });
       insRow.run(id, p.financing_link_id, p.part_kind, p.part_ref);
       return id;
     };
@@ -230,7 +233,7 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
       const want = expected.get(partKey(s));
       expected.delete(partKey(s));
       if (!want) {
-        delMovement.run(s.movement_id);
+        deleteMovements([s.movement_id]);
         result.deleted.push(before);
         continue;
       }
@@ -247,7 +250,7 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
         result.unchanged += 1;
         continue;
       }
-      delMovement.run(s.movement_id);
+      deleteMovements([s.movement_id]);
       result.updated.push({ before, after: { ...want, movement_id: write(want) } });
     }
     for (const p of expected.values()) result.created.push({ ...p, movement_id: write(p) });
