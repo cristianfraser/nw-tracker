@@ -2183,7 +2183,7 @@ Behaviour changes (deploy notes):
 
 Left by wave 8b:
 
-- Decision 4 (where rounding lives); apply decisions 5 and 8; the net-worth group page's own total
+- Decisions 4, 5 and 8 → wave 8c (decided: exact chart series, rounding with apportionment where parts sit beside a total); the net-worth group page's own total
   is un-netted, unlike the overview (found by decision 6).
 - The read-time placement check in `loadNavTreeModel`: 72 test files insert accounts straight onto
   leaves; needs a shared «insert and place» fixture helper first. `seedLiabilitiesTree` and
@@ -2205,6 +2205,23 @@ Left by wave 8b:
   `.claude/rules/ingest-protocol.md` and `ingest/README.md` (gates read at service start);
   `docs/afp-fund-accounts-plan.md`, `docs/demo-us-chapter-plan.md`, `docs/holdings-currency-plan.md`
   (names of deleted seed functions, «UNO Fondo A when undeclared»).
+
+### Wave 8c — the last node-value decisions (one stream; before wave 9)
+
+`ut-node-value-3`, alone, on the files of `ut-node-value-2`. Decided 2026-11-15. The payload
+baseline is retaken after it, before wave 9.
+
+| Step | Does | Expected payloads |
+|---|---|---|
+| 1 | Decision 8: the headline reads Σ member values always; the «consolidated closing first» path goes | 44 files (usd, eur), last float digit, under `prior_closes` |
+| 2 | Decision 5: one empty rule, `null_unless_netted`; `BucketValues`, the three nullable `DashboardOverviewDailyPoint` fields (contracts and client), the value map's basis and `byGroup.value` become nullable. First check the Vitest and demo persons give the same answer as the live copy | none on the live copy |
+| 3 | Decision 4, chart series: node values are exact; the daily overview stops rounding (it is the one site that does); `rounding` leaves the node policy | the daily overview's files, sub-coin |
+| 4 | Decision 4, parts beside a total: first count the builders that serve parts next to their total in a unit (headline buckets, value map, composition rows, any other). Each rounds the total to the unit's coin, then spreads the leftover across the parts (the peso headline's apportionment helper, made unit-generic) so the parts add up to the total exactly | those tiles and rows, under a coin; every part-sum equals its total |
+
+Rules for step 4: P/L inputs stay unrounded (rounding them moved `pct_total` by up to 0.12 on small
+dollar balances); a chart point is never apportioned; the rehearsal asserts, for every changed
+payload, Σ parts = total to the coin and |Δ| under one coin per path. Also here, since it is the
+same code: decide whether the net-worth group page's own total nets the cards like the overview.
 
 ### Wave 9 — currency agnostic (one first, three in parallel, one last)
 
