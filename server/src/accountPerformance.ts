@@ -10,7 +10,7 @@ import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
 import { withRunningPlTotals } from "./monthlyPerfRollup.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { deptoPaymentFlowsInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
-import { cardPeriodLegs, flowAdjustedPct, periodPl } from "./perfKernel.js";
+import { cardPeriodLegs, flowAdjustedPct, liabilityPctMonth, periodPl } from "./perfKernel.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import {
   deptoCreditoRestanteUfBySnapshotDates,
@@ -197,11 +197,9 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
           : flowAdjustedPct(nominal_pl, null, netFlow, close, opts.unit);
     } else {
       prior_closing = prior;
-      nominal_pl = isMortgage
-        ? periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: "debt" })
-        : ccPerf
-          ? ccPerf.nominal
-          : periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: "asset" });
+      nominal_pl = ccPerf
+        ? ccPerf.nominal
+        : periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: isMortgage ? "debt" : "asset" });
       pct_month = isMortgage
         ? liabilityPctMonth(nominal_pl, prior)
         : ccPerf
@@ -444,13 +442,6 @@ function creditCardMonthPerf(
   const prior = priorClosing != null && Number.isFinite(priorClosing) ? priorClosing : 0;
   const legs = cardPeriodLegs({ owedStart: prior, owedEnd: closing, cost: financing });
   return { netFlow: legs.flow, nominal: legs.pl, pct: liabilityPctMonth(legs.pl, prior) };
-}
-
-/** Debt cost as a rate on the balance carried (both liability kinds). */
-function liabilityPctMonth(nominal: number, priorClosing: number): number | null {
-  return Math.abs(priorClosing) > 1e-6 && Number.isFinite(nominal / priorClosing)
-    ? nominal / priorClosing
-    : null;
 }
 
 function monthEndCloseForMortgagePerformance(
