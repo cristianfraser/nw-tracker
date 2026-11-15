@@ -19,10 +19,8 @@ import { cacheKeyDailyReferenceSource } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { accountProfile } from "./accountProfile.js";
 import { loanAccountIdOfProperty } from "./accountRoles.js";
-import { cashNetOfLinkedCreditCards, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
-import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
-import { clpToUnitAt } from "./valueConvert.js";
+import { nodeNetsLinkedCards, nodeValueSeriesFromSums, type NodeNettingPolicy } from "./nodeValue.js";
 import {
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
@@ -35,6 +33,16 @@ import {
   listAccountsForGroupTab,
   type TsUnit,
 } from "./valuationTimeseries.js";
+
+/**
+ * A reference source's total on each day of its own daily series: a day the series has no value
+ * for is absent, unrounded; linked cards with no rate that day are not netted.
+ */
+const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards" | "now"> = {
+  empty: "null",
+  missingCardRate: "skip",
+  rounding: "none",
+};
 
 /** One overlay line, aligned index-for-index with the daily series' `points`. */
 export type DailyReferenceLine = {
@@ -70,19 +78,17 @@ function sourceGroupDailyValues(
     // feeds the monthly chart Total via `applyConsolidatedTotalToGroupTabBlock`), so the
     // overlay has to net too or the daily line sits a whole card balance above the monthly
     // one. Per-date, on the daily owed convention, through the one cash netting rule.
-    const ccByDate = groupNetsLinkedCards(sourceSlug)
-      ? linkedCreditCardClpForCashCardByDates(series.points.map((p) => p.as_of_date))
-      : null;
-    const now = new Date();
-    for (const p of series.points) {
-      if (p.value == null || !Number.isFinite(p.value)) continue;
-      const ccClp = ccByDate?.get(p.as_of_date) ?? 0;
-      const cc = ccClp !== 0 ? clpToUnitAt(ccClp, p.as_of_date, unit, { now, side: "debt" }) : 0;
-      out.set(
-        p.as_of_date,
-        cc != null && Number.isFinite(cc) ? cashNetOfLinkedCreditCards(p.value, cc) : p.value
-      );
-    }
+    const dates = series.points.map((p) => p.as_of_date);
+    const totals = series.points.map((p) => (p.value != null && Number.isFinite(p.value) ? p.value : null));
+    const values = nodeValueSeriesFromSums(totals, dates, unit, {
+      ...REFERENCE_SOURCE_DAILY,
+      netsLinkedCards: nodeNetsLinkedCards(sourceSlug),
+      now: new Date(),
+    });
+    dates.forEach((ymd, i) => {
+      const v = values[i];
+      if (v != null) out.set(ymd, v);
+    });
     return out;
   });
 }

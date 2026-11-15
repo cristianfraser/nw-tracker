@@ -1,10 +1,12 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
-import { cashNetOfLinkedCreditCards, groupNetsLinkedCards, linkedCardsOwedInUnit } from "./cashEqsBucketNet.js";
-import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
-import { accountValueInUnitAt } from "./periodReturnsShortHorizon.js";
+import {
+  nodeNetsLinkedCards,
+  nodeValue,
+  nodeValueSeriesOnGrid,
+  type NodePointValuePolicy,
+  type NodeValuePolicy,
+} from "./nodeValue.js";
 import {
   consolidatedClosingRawByDate,
   getGroupConsolidatedMonthlyPerfForRows,
@@ -12,7 +14,7 @@ import {
 import { groupAccountIds, nwBucketSlugs } from "./navTreeModel.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 import { db } from "./db.js";
-import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 
 /** A value per net-worth bucket (`nwBucketSlugs()`, in their order), plus net worth = Σ of them. */
 export type BucketValues = Record<string, number> & { net_worth: number };
@@ -52,20 +54,41 @@ function listAccountsForDashboardBucket(bucket: string): BucketAccountMeta[] {
     .all(...ids) as BucketAccountMeta[];
 }
 
-function rawPortfolioGroupAccountsClpAt(
-  bucket: string,
-  asOfYmd: string
-): number {
-  let raw = 0;
-  for (const a of listAccountsForDashboardBucket(bucket)) {
-    if (a.exclude_from_group_totals === 1) continue;
-    const mark = accountMarkClpAtYmd(a.account_id, asOfYmd);
-    if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) {
-      raw += mark.value_clp;
-    }
-  }
-  return raw;
-}
+/**
+ * A bucket at a date when it has no consolidated closing: its counted members' own values in
+ * the unit, 0 when none has one, unrounded (the apportionment rounds once); a netting bucket
+ * with no rate for its linked cards has no value.
+ */
+const BUCKET_WITHOUT_CLOSING: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
+  source: "value_in_unit",
+  members: "counted",
+  empty: "zero",
+  missingCardRate: "null",
+  rounding: "none",
+};
+
+/**
+ * A bucket on each day of a daily grid: its counted members' cached daily values, 0 when none
+ * has one, rounded to the unit's coin; linked cards with no rate that day are not netted.
+ */
+const BUCKET_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
+  members: "counted",
+  empty: "zero",
+  missingCardRate: "skip",
+  rounding: "unit_coin",
+};
+
+/**
+ * A bucket at the prior day's close: each counted member's peso mark taken into the unit, 0 when
+ * none has one, rounded to the unit's coin; linked cards with no rate that day are not netted.
+ */
+const BUCKET_PRIOR_DAY_CLOSE: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
+  source: "peso_mark_reframed",
+  members: "counted",
+  empty: "zero",
+  missingCardRate: "skip",
+  rounding: "unit_coin",
+};
 
 function consolidatedBucketValueAt(bucket: string, asOfYmd: string, unit: TsUnit): number | null {
   const tabRows = listAccountsForGroupTab(bucket);
@@ -88,10 +111,11 @@ function portfolioGroupValueClpAtRaw(
 ): number {
   const consolidated = consolidatedBucketValueAt(bucket, asOfYmd, "clp");
   if (consolidated != null) return consolidated;
-  const raw = rawPortfolioGroupAccountsClpAt(bucket, asOfYmd);
-  if (!groupNetsLinkedCards(bucket)) return raw;
   // Unrounded like every other bucket's raw — the apportionment below rounds once.
-  return cashNetOfLinkedCreditCards(raw, linkedCardsOwedInUnit(asOfYmd, "clp")!);
+  return nodeValue(listAccountsForDashboardBucket(bucket), asOfYmd, HOME_CURRENCY, {
+    ...BUCKET_WITHOUT_CLOSING,
+    netsLinkedCards: nodeNetsLinkedCards(bucket),
+  })!;
 }
 
 /**
@@ -105,16 +129,11 @@ function portfolioGroupValueClpAtRaw(
 function portfolioGroupValueInUnitAtRaw(bucket: string, asOfYmd: string, unit: TsUnit): number | null {
   const consolidated = consolidatedBucketValueAt(bucket, asOfYmd, unit);
   if (consolidated != null) return consolidated;
-  const now = new Date();
-  let raw = 0;
-  for (const a of listAccountsForDashboardBucket(bucket)) {
-    if (a.exclude_from_group_totals === 1) continue;
-    const v = accountValueInUnitAt(a, asOfYmd, unit, now);
-    if (v != null && Number.isFinite(v)) raw += v;
-  }
-  if (!groupNetsLinkedCards(bucket)) return raw;
-  const cc = linkedCardsOwedInUnit(asOfYmd, unit, { now });
-  return cc == null ? null : cashNetOfLinkedCreditCards(raw, cc);
+  return nodeValue(listAccountsForDashboardBucket(bucket), asOfYmd, unit, {
+    ...BUCKET_WITHOUT_CLOSING,
+    netsLinkedCards: nodeNetsLinkedCards(bucket),
+    now: new Date(),
+  });
 }
 
 /**
@@ -200,54 +219,28 @@ export function buildDashboardBucketDailySeriesClp(
 /**
  * {@link buildDashboardBucketDailySeriesClp} in `unit`: Σ of each account's own value in the
  * unit per day (`accountValueSeriesOnGrid` — what it held, converted once at its side), the
- * linked cards netted from cash at the debt side. Pesos are rounded like every bucket Σ; other
- * units are not. A day an account has no rate for leaves it out, like a missing mark.
+ * linked cards netted from cash at the debt side, each bucket rounded to the unit's coin
+ * (`BUCKET_DAILY`). A day an account has no rate for leaves it out, like a missing mark.
  */
 export function buildDashboardBucketDailySeriesInUnit(
   sessionsAsc: readonly string[],
   unit: TsUnit
 ): Map<string, BucketValues> {
-  const accountsByBucket = new Map(
-    nwBucketSlugs().map((slug) => [
-      slug,
-      listAccountsForDashboardBucket(slug).filter((a) => a.exclude_from_group_totals !== 1),
-    ] as const)
-  );
   // One cached series per account for the whole grid, instead of a value lookup per account
   // per day (see `accountMarkDailyCache.ts`).
   const valuesByBucket = new Map(
     nwBucketSlugs().map((slug) => [
       slug,
-      accountsByBucket.get(slug)!.map((a) =>
-        accountValueSeriesOnGrid(
-          {
-            account_id: a.account_id,
-            bucket_slug: a.bucket_slug,
-            import_key: a.import_key,
-            name: a.name,
-          },
-          sessionsAsc,
-          unit
-        )
-      ),
+      nodeValueSeriesOnGrid(listAccountsForDashboardBucket(slug), sessionsAsc, unit, {
+        ...BUCKET_DAILY,
+        netsLinkedCards: nodeNetsLinkedCards(slug),
+      }),
     ] as const)
   );
-  const round = (v: number) => roundToCurrency(v, unit);
   const out = new Map<string, BucketValues>();
   sessionsAsc.forEach((ymd, gi) => {
     const row = emptyBucketValues();
-    for (const slug of nwBucketSlugs()) {
-      let raw = 0;
-      for (const values of valuesByBucket.get(slug)!) {
-        const v = values[gi];
-        if (v != null && Number.isFinite(v)) raw += v;
-      }
-      if (groupNetsLinkedCards(slug)) {
-        const cc = linkedCardsOwedInUnit(ymd, unit);
-        if (cc != null) raw = cashNetOfLinkedCreditCards(raw, cc);
-      }
-      row[slug] = round(raw);
-    }
+    for (const slug of nwBucketSlugs()) row[slug] = valuesByBucket.get(slug)![gi]!;
     row.net_worth = sumBuckets(row);
     out.set(ymd, row);
   });
@@ -259,27 +252,18 @@ export function buildDashboardBucketDailySeriesInUnit(
  * (Chile calendar). Marks are flat on each account's closed days, so per-account market calendars
  * fall out of the level delta with no anchor machinery. cash_eqs nets linked CC at the same
  * date; another unit converts each account's mark at that date (its stored rate; a USD cash
- * account: its ledger dollars that day). Pesos are rounded like every bucket Σ.
+ * account: its ledger dollars that day). Each bucket is rounded to the unit's coin
+ * (`BUCKET_PRIOR_DAY_CLOSE`).
  */
 export function dashboardBucketDayPriorClosesInUnit(priorDayYmd: string, unit: TsUnit): BucketValues {
   const out = emptyBucketValues();
   for (const slug of nwBucketSlugs()) {
-    let raw = 0;
-    for (const a of listAccountsForDashboardBucket(slug)) {
-      if (a.exclude_from_group_totals === 1) continue;
-      const mark = accountMarkClpAtYmd(a.account_id, priorDayYmd);
-      if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
-      const v = accountValueClpToUnitAt(a.account_id, mark.value_clp, priorDayYmd, unit);
-      if (v != null && Number.isFinite(v)) raw += v;
-    }
-    if (groupNetsLinkedCards(slug)) {
-      // Same netting as the live card (the consolidation) — a linked total in credit counts
-      // on both sides of the day delta, so it can't show up as a day change.
-      const cc = linkedCardsOwedInUnit(priorDayYmd, unit);
-      if (isHomeCurrency(unit)) raw = cashNetOfLinkedCreditCards(raw, cc!);
-      else if (cc != null) raw = cashNetOfLinkedCreditCards(raw, cc);
-    }
-    out[slug] = roundToCurrency(raw, unit);
+    // Same netting as the live card (the consolidation) — a linked total in credit counts
+    // on both sides of the day delta, so it can't show up as a day change.
+    out[slug] = nodeValue(listAccountsForDashboardBucket(slug), priorDayYmd, unit, {
+      ...BUCKET_PRIOR_DAY_CLOSE,
+      netsLinkedCards: nodeNetsLinkedCards(slug),
+    })!;
   }
   out.net_worth = sumBuckets(out);
   return out;

@@ -8,7 +8,7 @@ import {
 } from "./dashboardComposition.js";
 import { cacheKeyDailyOverview } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
-import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
+import { nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   chileCalendarDaysListEndingAt,
@@ -23,7 +23,7 @@ import {
   dashboardBucketsTodayInUnit,
 } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./rates.js";
-import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
+import { isHomeCurrency } from "./displayUnits.js";
 import {
   listAccountsForGroupTab,
   milestoneFieldsForDate,
@@ -68,32 +68,24 @@ export type OverviewDailyPayload = {
   ath: NetWorthAthDto | null;
 };
 
+/**
+ * Pasivos on each day of a daily grid: its real counted members' cached daily values, 0 when
+ * none has one, rounded to the unit's coin. Nothing is netted from it.
+ */
+const LIABILITIES_DAILY: NodeValuePolicy = {
+  members: "real_counted",
+  netsLinkedCards: false,
+  empty: "zero",
+  missingCardRate: "throw",
+  rounding: "unit_coin",
+};
+
 /** Σ liability-account values per grid day in `unit` (same accounts as the Pasivos group daily view). */
 function liabilitiesByDate(grid: readonly string[], unit: TsUnit): Map<string, number> {
-  const rows = listAccountsForGroupTab("liabilities").filter(
-    (r) => r.account_id > 0 && r.exclude_from_group_totals !== 1
-  );
-  const valuesByAccount = rows.map((a) =>
-    accountValueSeriesOnGrid(
-      {
-        account_id: a.account_id,
-        bucket_slug: a.bucket_slug,
-        import_key: a.import_key ?? null,
-        name: a.name ?? null,
-      },
-      grid,
-      unit
-    )
-  );
+  const rows = listAccountsForGroupTab("liabilities");
+  const values = nodeValueSeriesOnGrid(rows, grid, unit, LIABILITIES_DAILY);
   const out = new Map<string, number>();
-  grid.forEach((ymd, gi) => {
-    let raw = 0;
-    for (const values of valuesByAccount) {
-      const v = values[gi];
-      if (v != null && Number.isFinite(v)) raw += v;
-    }
-    out.set(ymd, roundToCurrency(raw, unit));
-  });
+  grid.forEach((ymd, gi) => out.set(ymd, values[gi]!));
   return out;
 }
 

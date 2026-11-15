@@ -158,9 +158,8 @@ export function listDepositFlowAccounts(includeExcludedFromGroupTotals = false):
   return rows
     .map((r) => {
       const group_slug = dashboardBucketForAssetGroupSlug(r.bucket_slug);
-      if (!group_slug || !["real_estate", "cash_eqs", "brokerage", "retirement"].includes(group_slug)) {
-        return null;
-      }
+      // Null outside the net-worth buckets (liabilities, unplaced groups).
+      if (!group_slug) return null;
       return {
         account_id: r.account_id,
         name: r.name,

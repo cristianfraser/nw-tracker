@@ -311,9 +311,8 @@ function listDepositFlowAccounts(): { account_id: number; category_slug: string;
   return rows
     .map((r) => {
       const dash = dashboardBucketForAssetGroupSlug(r.bucket_slug);
-      if (!dash || !["real_estate", "cash_eqs", "brokerage", "retirement"].includes(dash)) {
-        return null;
-      }
+      // Null outside the net-worth buckets (liabilities, unplaced groups).
+      if (!dash) return null;
       return {
         account_id: r.account_id,
         category_slug: accountBucketKindSlug(r.bucket_slug),
