@@ -8,25 +8,49 @@ import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { accountValueAt } from "./accountValue.js";
 import { groupAccountIds, nwBucketSlugs } from "./navTreeModel.js";
 import { linkedCardsOwedInUnit, nodeNetsLinkedCards } from "./nodeValue.js";
-import { buildDashboardBucketValueTotalsInUnit, portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
+import { buildDashboardBucketValueTotalsInUnit } from "./portfolioGroupValueAtDate.js";
 
-describe("portfolioGroupValueClpAt", () => {
-  it("page-bundle bucket totals match consolidated valuation marks", async () => {
+describe("the headline's bucket totals", () => {
+  it("the page bundle serves the headline, and its cards add up to it exactly", async () => {
     await withPortfolioGroupIndex(async () => {
       const payload = await buildDashboardPagePayload("clp");
-      const asOf = chileCalendarTodayYmd();
+      const headline = buildDashboardBucketValueTotalsInUnit(chileCalendarTodayYmd(), "clp");
       for (const slug of nwBucketSlugs()) {
-        expect(payload.totals.buckets[slug]).toBe(portfolioGroupValueClpAt(slug, asOf));
+        expect(payload.totals.buckets[slug]).toBe(headline.buckets[slug]);
       }
-      // Headline total = round of the raw bucket sum (must equal the overview chart's level
-      // exactly — see netWorthConsolidation.test.ts). Cards are
-      // rounded per bucket, so their sum may drift from the total by ±1 peso per bucket.
-      const cardSum =
-        payload.totals.buckets.real_estate! +
-        payload.totals.buckets.retirement! +
-        payload.totals.buckets.brokerage! +
-        payload.totals.buckets.cash_eqs!;
-      expect(Math.abs(payload.totals.net_worth! - cardSum)).toBeLessThanOrEqual(2);
+      expect(payload.totals.net_worth).toBe(headline.net_worth);
+      // Headline total = the exact bucket sum rounded once (the overview chart's level — see
+      // netWorthConsolidation.test.ts); the cards are apportioned to it, so they add up exactly.
+      const cardSum = nwBucketSlugs().reduce((s, slug) => s + (payload.totals.buckets[slug] ?? 0), 0);
+      expect(cardSum).toBe(payload.totals.net_worth);
+    });
+  });
+
+  it("in another unit the cards, the net-worth card and every prior close add up at the cent", async () => {
+    await withPortfolioGroupIndex(async () => {
+      for (const unit of ["usd", "eur"] as const) {
+        const payload = await buildDashboardPagePayload(unit);
+        const cents = (v: number) => Math.round(v * 100);
+        const closes = [payload.totals, payload.totals.prior_closes.day, payload.totals.prior_closes.month, payload.totals.prior_closes.year];
+        for (const close of closes) {
+          let sum = 0;
+          for (const slug of nwBucketSlugs()) {
+            const v = close.buckets[slug];
+            if (v == null) continue;
+            // A whole number of cents.
+            expect(Math.abs(v * 100 - cents(v))).toBeLessThan(1e-6);
+            sum += cents(v);
+          }
+          expect(sum).toBe(cents(close.net_worth!));
+        }
+        // The net-worth card is the headline, and each bucket card its bucket.
+        expect(payload.card_metrics_by_slug.net_worth!.value.parent).toBe(payload.totals.net_worth);
+        for (const slug of nwBucketSlugs()) {
+          expect(payload.card_metrics_by_slug[slug]!.value.child).toBe(payload.totals.buckets[slug]);
+        }
+        // The value map's root is the headline too, and its bucket frames the bucket cards.
+        expect(payload.value_map.value).toBe(payload.totals.net_worth);
+      }
     });
   });
 

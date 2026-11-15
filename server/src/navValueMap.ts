@@ -20,6 +20,10 @@
  *     even when one of its groups is positive. The client sizes a frame's area by its visible
  *     children; the frame's value is the true one.
  *
+ * Coins: the values that go out are whole coins of the unit and add up exactly — each frame to
+ * what is inside it, the bucket frames to the headline's bucket cards, the root to the net-worth
+ * card (`settleMapToCoins`); they are built exact and settled once at the end.
+ *
  * Additivity: tile values are Σ of the account rows' current values, each account claimed by
  * exactly one tile, so frames add up with no double count. The only figure that is not an
  * account row is the cash bucket's linked credit-card total: the dashboard card for cash
@@ -44,6 +48,8 @@
  * bucket without a breakdown fall through to the shape above (each child group then applies
  * the rule itself).
  */
+import { apportionToCoin } from "./coinApportionment.js";
+import { currencySmallestCoin, roundToCurrency } from "./displayUnits.js";
 import {
   linkedCardsClpInUnit,
   nodeMembersSum,
@@ -154,6 +160,12 @@ export type NavValueMapInput = {
   linkedCreditCards: { clp: number; value: number };
   /** The display unit of the rows and of the map. */
   unit: TsUnit;
+  /**
+   * The headline's bucket cards in the unit (`buildDashboardBucketValueTotalsInUnit`), keyed by
+   * bucket slug: the map's bucket frames show these very figures. Absent (tests): the root's own
+   * value rounded once, apportioned down.
+   */
+  headlineBuckets?: Readonly<Record<string, number | null>>;
   /** Proxy baskets to break proxied accounts down into; absent = no breakdowns. */
   proxy?: NavValueMapProxyInput;
   /** The colour % compounded from each node's daily returns; absent (tests): the one-step rule. */
@@ -276,6 +288,71 @@ function otherSleeveTile(
     frame: false,
     holding: null,
   };
+}
+
+/**
+ * The map's values as printed: every node a whole number of the unit's coins, every frame the
+ * exact sum of what is inside it (hidden nodes included), and the buckets and the root the
+ * headline's own figures (`headlineBuckets`: the bucket cards; the root is their sum, the
+ * net-worth card).
+ *
+ * - A node above the headline's buckets (the root, a hub) is Σ of its children.
+ * - A headline bucket's frame takes the bucket card's value; any other node takes the share its
+ *   parent hands it (a root with no headline: its own value rounded once).
+ * - Below that, each frame's coins are apportioned over its children (`apportionToCoin`), and a
+ *   leaf group's over the accounts it lists. Whatever the listed parts do not cover (a leaf's
+ *   hidden accounts and its linked-card netting, a fund's sleeve with no tile) rides along as
+ *   one unlisted part, so the listed ones never absorb it.
+ *
+ * A node with no value in the unit (a missing conversion) is left as it is, with all under it.
+ * The pesos basis (order, visibility) and the P/L figures are untouched: they read exact values.
+ */
+function settleMapToCoins(
+  root: MapNode,
+  unit: TsUnit,
+  headlineBuckets: Readonly<Record<string, number | null>>
+): void {
+  const coin = currencySmallestCoin(unit);
+  const isHeadlineBucket = (n: MapNode): boolean => n.kind === "group" && n.slug in headlineBuckets;
+  const holdsHeadlineBucket = (n: MapNode): boolean =>
+    (n.children ?? []).some((c) => isHeadlineBucket(c) || holdsHeadlineBucket(c));
+
+  const settle = (n: MapNode, share?: number): void => {
+    if (n.value == null) return;
+    const exact = n.value;
+    // The children that exist (an absent one has no value and takes no part).
+    const kids = (n.children ?? []).filter((c) => c.basis_clp != null);
+    if (holdsHeadlineBucket(n)) {
+      for (const c of kids) settle(c);
+      const sum = nodeMembersSum(kids.map((c) => c.value));
+      if (sum == null) throw new Error(`nav value map: ${n.slug} holds headline buckets but none has a value`);
+      n.value = roundToCurrency(sum, unit);
+      return;
+    }
+    let target = share;
+    if (isHeadlineBucket(n)) {
+      const card = headlineBuckets[n.slug];
+      if (card == null) throw new Error(`nav value map: ${n.slug} has a value and its headline bucket has none`);
+      target = card;
+    }
+    if (target === undefined) target = roundToCurrency(exact, unit);
+    if (Math.abs(target - exact) >= coin * (1 + 1e-6)) {
+      throw new Error(`nav value map: ${n.slug} is not the figure it is shown beside (a coin or more apart)`);
+    }
+    n.value = target;
+    const parts = n.children ? kids : (n.leaf_accounts ?? []).filter((a) => a.value != null);
+    if (parts.length === 0) return;
+    const values = parts.map((p) => p.value as number);
+    const unlisted = exact - values.reduce((s, v) => s + v, 0);
+    const settled = apportionToCoin([...values, unlisted], unit, { total: target }).parts;
+    parts.forEach((p, i) => {
+      const v = settled[i];
+      if (v == null) throw new Error(`nav value map: no share for ${p.slug} under ${n.slug}`);
+      if (n.children) settle(p, v);
+      else p.value = v;
+    });
+  };
+  settle(root);
 }
 
 export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
@@ -433,6 +510,7 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
 
   const root = build(navRoot);
   if (!root || !isVisible(root)) throw new Error("nav value map: net worth is not positive");
+  settleMapToCoins(root, unit, input.headlineBuckets ?? {});
   return toDto(prune(root));
 }
 
@@ -469,6 +547,7 @@ function loadNavValueMapProxyInput(rows: readonly CardMetricsAccountRow[], unit:
 export function buildNavValueMapPayload(
   rows: readonly CardMetricsAccountRow[],
   unit: TsUnit,
+  headline: { buckets: Readonly<Record<string, number | null>> },
   chainedPct?: ChainedGroupPct
 ): NavValueMapPayload {
   const navRoot = getNetWorthNavGroupNode();
@@ -480,6 +559,7 @@ export function buildNavValueMapPayload(
       navRoot,
       rows,
       linkedCreditCards: { clp, value: linkedCardsClpInUnit(clp, today, unit) },
+      headlineBuckets: headline.buckets,
       proxy: loadNavValueMapProxyInput(rows, unit),
       chainedPct,
       unit,

@@ -8,7 +8,8 @@ import {
 import { groupAccountIds, nwBucketSlugs } from "./navTreeModel.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 import { db } from "./db.js";
-import { HOME_CURRENCY, isHomeCurrency, roundToCurrency } from "./displayUnits.js";
+import { apportionToCoin } from "./coinApportionment.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
 
 /**
  * A value per net-worth bucket (`nwBucketSlugs()`, in their order), plus net worth = Σ of the
@@ -54,68 +55,13 @@ function listAccountsForDashboardBucket(bucket: string): BucketAccountMeta[] {
  * `current_value`), less the linked cards' owed at that day's rate when the bucket nets them.
  * The one source of the headline, today and at the prior month / year closes, and the same sum
  * the charts read ({@link nodeValue}). Never the bucket's pesos ÷ one rate, so Σ cards == the
- * headline == Σ rows in every unit.
+ * headline == Σ rows in every unit. Exact: the headline rounds where it is assembled
+ * ({@link buildDashboardBucketValueTotalsInUnit}).
  */
 function bucketValueInUnitAtRaw(bucket: string, asOfYmd: string, unit: TsUnit): number | null {
   return nodeValue(listAccountsForDashboardBucket(bucket), asOfYmd, unit, {
     netsLinkedCards: nodeNetsLinkedCards(bucket),
   });
-}
-
-/**
- * Integer CLP per bucket via largest-remainder apportionment: bucket cards must sum
- * EXACTLY to the headline total, and the headline total must equal the overview chart's
- * level rounded once (round of the raw sum). Independent per-bucket
- * rounding satisfies neither — Σ round(bucket_i) can drift ±1-2 CLP from
- * round(Σ bucket_i). Floor every bucket, then hand out the remaining pesos to the
- * largest fractional parts (deterministic tie-break: bucket order).
- */
-function apportionedBucketClpAt(asOfYmd: string): {
-  buckets: Record<string, number | null>;
-  total: number | null;
-} {
-  // A bucket no member of which has a value that day is absent: it stays null and takes no share.
-  const raw: Record<string, number | null> = {};
-  for (const slug of nwBucketSlugs()) raw[slug] = bucketValueInUnitAtRaw(slug, asOfYmd, HOME_CURRENCY);
-  const rawSum = nodeMembersSum(nwBucketSlugs().map((slug) => raw[slug]));
-  const buckets: Record<string, number | null> = {};
-  if (rawSum == null) {
-    for (const slug of nwBucketSlugs()) buckets[slug] = null;
-    return { buckets, total: null };
-  }
-  const total = Math.round(rawSum);
-  let floorSum = 0;
-  const remainders: { slug: string; frac: number }[] = [];
-  for (const slug of nwBucketSlugs()) {
-    const v = raw[slug];
-    if (v == null) {
-      buckets[slug] = null;
-      continue;
-    }
-    const fl = Math.floor(v);
-    buckets[slug] = fl;
-    floorSum += fl;
-    remainders.push({ slug, frac: v - fl });
-  }
-  remainders.sort((a, b) => b.frac - a.frac);
-  let residual = total - floorSum;
-  for (const r of remainders) {
-    if (residual <= 0) break;
-    buckets[r.slug] = buckets[r.slug]! + 1;
-    residual -= 1;
-  }
-  return { buckets, total };
-}
-
-/** The bucket's apportioned pesos at a date; null when no member of it has a value that day. */
-export function portfolioGroupValueClpAt(
-  bucket: string,
-  asOfYmd: string
-): number | null {
-  if (!nwBucketSlugs().includes(bucket)) {
-    throw new Error(`portfolioGroupValueClpAt: ${bucket} is not a net-worth bucket`);
-  }
-  return apportionedBucketClpAt(asOfYmd).buckets[bucket]!;
 }
 
 /**
@@ -168,46 +114,36 @@ export function buildDashboardBucketDailySeriesInUnit(
 }
 
 /**
- * Prior-close bucket totals for the day window in `unit`: every account marked at yesterday
- * (Chile calendar). Marks are flat on each account's closed days, so per-account market calendars
- * fall out of the level delta with no anchor machinery. cash_eqs nets linked CC at the same
- * date; another unit reads what each account held that date, converted once at its side (a USD
- * cash account: its ledger dollars that day). A headline figure, not a chart level: each bucket
- * is rounded to the unit's coin here.
- */
-export function dashboardBucketDayPriorClosesInUnit(priorDayYmd: string, unit: TsUnit): BucketValues {
-  // Same netting as the live card — a linked total in credit counts on both sides of the day
-  // delta, so it can't show up as a day change.
-  return bucketValuesOf((slug) => {
-    const v = bucketValueInUnitAtRaw(slug, priorDayYmd, unit);
-    return v == null ? null : roundToCurrency(v, unit);
-  });
-}
-
-/**
- * The net-worth buckets TODAY in `unit`, as the headline and the cards show them (each bucket Σ
- * of its accounts' own values in the unit, `bucketValueInUnitAtRaw`; net worth Σ of the
- * buckets). The daily overview and the all-time-high walk read their today point here, so it
- * equals the cards.
+ * The net-worth buckets TODAY in `unit` as chart levels: each bucket Σ of its accounts' own
+ * values in the unit (`bucketValueInUnitAtRaw`, the headline's source), net worth Σ of the
+ * buckets — exact, not apportioned (a chart point never is). The daily overview and the
+ * all-time-high walk read their today point here, so it is the headline's figure before its
+ * rounding to the coin.
  */
 export function dashboardBucketsTodayInUnit(unit: TsUnit): BucketValues {
-  const totals = buildDashboardBucketValueTotalsInUnit(chileCalendarTodayYmd(), unit);
-  return { ...totals.buckets, net_worth: totals.net_worth } as BucketValues;
+  const today = chileCalendarTodayYmd();
+  return bucketValuesOf((slug) => bucketValueInUnitAtRaw(slug, today, unit));
 }
 
 /**
- * The buckets and net worth at a date in `unit`. Pesos: integer per bucket by largest-remainder
- * apportionment, so the cards add up to the headline exactly. Another unit: each bucket from its
- * own members' values in it, the headline the sum of those that have one, so the cards add up to
- * it there too.
+ * The headline at a date in `unit`: net worth and its buckets as printed side by side. Net worth
+ * is Σ of the buckets' exact values rounded once to the unit's coin, and the buckets are
+ * apportioned to it (`apportionToCoin`: largest remainder, ties in bucket order), so the cards
+ * add up to the headline exactly at coin precision, in pesos and in every other unit. The one
+ * source of the headline for every payload (today, and the prior day / month / year closes). A
+ * bucket no member of which has a value that day is absent (null) and takes no share.
  */
 export function buildDashboardBucketValueTotalsInUnit(asOfYmd: string, unit: TsUnit): DashboardBucketValueTotals {
-  if (isHomeCurrency(unit)) {
-    const { buckets, total } = apportionedBucketClpAt(asOfYmd);
-    return { net_worth: total, buckets };
-  }
-  const { net_worth, ...buckets } = bucketValuesOf((slug) => bucketValueInUnitAtRaw(slug, asOfYmd, unit));
-  return { net_worth, buckets };
+  const slugs = nwBucketSlugs();
+  const { total, parts } = apportionToCoin(
+    slugs.map((slug) => bucketValueInUnitAtRaw(slug, asOfYmd, unit)),
+    unit
+  );
+  const buckets: Record<string, number | null> = {};
+  slugs.forEach((slug, i) => {
+    buckets[slug] = parts[i] ?? null;
+  });
+  return { net_worth: total, buckets };
 }
 
 /**
@@ -217,8 +153,8 @@ export function buildDashboardBucketValueTotalsInUnit(asOfYmd: string, unit: TsU
 export function buildDashboardBucketValueTotals(
   asOfYmd: string
 ): { net_worth_clp: number | null; [bucketClp: `${string}_clp`]: number | null } {
-  const { buckets, total } = apportionedBucketClpAt(asOfYmd);
-  const out: { net_worth_clp: number | null; [bucketClp: `${string}_clp`]: number | null } = { net_worth_clp: total };
-  for (const slug of nwBucketSlugs()) out[`${slug}_clp`] = buckets[slug]!;
+  const { buckets, net_worth } = buildDashboardBucketValueTotalsInUnit(asOfYmd, HOME_CURRENCY);
+  const out: { net_worth_clp: number | null; [bucketClp: `${string}_clp`]: number | null } = { net_worth_clp: net_worth };
+  for (const slug of nwBucketSlugs()) out[`${slug}_clp`] = buckets[slug] ?? null;
   return out;
 }

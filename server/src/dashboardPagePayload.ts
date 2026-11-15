@@ -104,7 +104,7 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
         totals,
         dashboard_layout: layoutCards,
         card_metrics_by_slug,
-        ...buildNavValueMapPayload(rowsBuilt, unit, chainedGroupPct),
+        ...buildNavValueMapPayload(rowsBuilt, unit, bucketTotals, chainedGroupPct),
         allocation: [...byGroup.entries()].map(([slug, v]) => ({
             group_slug: slug,
             group_label: v.label,

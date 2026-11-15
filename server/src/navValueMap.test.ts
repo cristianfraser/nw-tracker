@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { NavTreeNodeDto } from "./navTree.js";
+import { apportionToCoin } from "./coinApportionment.js";
+import { buildNavValueMap as buildNavValueMapInUnit, type NavValueMapNodeDto as NavValueMapDto } from "./navValueMap.js";
 import {
   dualBuildNavValueMap as buildNavValueMap,
   dualRow,
+  rowIn,
   type DualProxyBreakdown as ProxyBasketBreakdown,
   type DualRow as CardMetricsAccountRow,
   type DualValueMapNode as NavValueMapNodeDto,
@@ -176,6 +179,134 @@ describe("buildNavValueMap", () => {
       linkedCreditCards,
     });
     expect(leaves(out).map((l) => l.slug)).not.toContain("real_estate");
+  });
+});
+
+describe("buildNavValueMap in coins — frames add up to what is inside, buckets are the headline's cards", () => {
+  // Dollar values with fractions of a cent; the headline's bucket cards are apportioned from the
+  // same exact sums, as `buildDashboardBucketValueTotalsInUnit` does.
+  const tree = navNode({
+    slug: "net_worth",
+    children: [
+      navNode({ slug: "real_estate", dashboard_bucket_slug: "real_estate", children: [acc(31)] }),
+      navNode({
+        slug: "investments",
+        group_kind: "nav_bucket",
+        children: [
+          navNode({ slug: "retirement", dashboard_bucket_slug: "retirement", children: [acc(32), acc(33)] }),
+          navNode({
+            slug: "brokerage",
+            dashboard_bucket_slug: "brokerage",
+            children: [
+              navNode({ slug: "stocks", children: [acc(34), acc(35)] }),
+              navNode({ slug: "funds", children: [acc(36)] }),
+              navNode({ slug: "nothing_yet", children: [acc(39)] }),
+            ],
+          }),
+        ],
+      }),
+      navNode({
+        slug: "cash_eqs",
+        group_kind: "nav_bucket",
+        dashboard_bucket_slug: "cash_eqs",
+        children: [
+          navNode({ slug: "cash_savings", asset_group_slug: "cash_eqs__cash_savings", children: [acc(37)] }),
+          navNode({ slug: "checking_accounts", children: [acc(38)] }),
+        ],
+      }),
+    ],
+  });
+  const usd = (id: number, value: number) =>
+    rowIn(row({ account_id: id, current_value_clp: value * 1000, current_value_usd: value }), "usd");
+  const rows = [
+    usd(31, 1000.004),
+    usd(32, 200.006),
+    usd(33, 300.006),
+    usd(34, 50.003),
+    usd(35, 60.004),
+    usd(36, 70.004),
+    usd(37, 500.006),
+    usd(38, 90.003),
+    // account 39 has no row: its group has no value at all (absent, not zero)
+  ];
+  const cardsOwed = 120.007;
+  const exact = {
+    real_estate: 1000.004,
+    retirement: 200.006 + 300.006,
+    brokerage: 50.003 + 60.004 + 70.004,
+    cash_eqs: 500.006 + 90.003 - cardsOwed,
+  };
+  const headline = apportionToCoin(Object.values(exact), "usd");
+  const headlineBuckets = Object.fromEntries(Object.keys(exact).map((slug, i) => [slug, headline.parts[i]!]));
+  const cents = (v: number | null) => Math.round(v! * 100);
+  const child = (n: NavValueMapDto, slug: string) => n.children!.find((c) => c.slug === slug)!;
+  const map = () =>
+    buildNavValueMapInUnit({
+      navRoot: tree,
+      rows,
+      linkedCreditCards: { clp: cardsOwed * 1000, value: cardsOwed },
+      headlineBuckets,
+      unit: "usd",
+    });
+
+  it("every value is whole cents and the root is the headline's net worth", () => {
+    const root = map();
+    const all: NavValueMapDto[] = [];
+    const walk = (n: NavValueMapDto) => {
+      all.push(n);
+      (n.children ?? []).forEach(walk);
+      (n.leaf_accounts ?? []).forEach(walk);
+    };
+    walk(root);
+    for (const n of all) expect(Math.abs(n.value! * 100 - cents(n.value)), n.slug).toBeLessThan(1e-6);
+    expect(root.value).toBe(headline.total);
+  });
+
+  it("each bucket frame is its headline card, and a hub is the sum of its buckets", () => {
+    const root = map();
+    const hub = child(root, "investments");
+    expect(child(root, "real_estate").value).toBe(headlineBuckets.real_estate);
+    expect(child(root, "cash_eqs").value).toBe(headlineBuckets.cash_eqs);
+    expect(child(hub, "retirement").value).toBe(headlineBuckets.retirement);
+    expect(child(hub, "brokerage").value).toBe(headlineBuckets.brokerage);
+    expect(cents(hub.value)).toBe(cents(headlineBuckets.retirement!) + cents(headlineBuckets.brokerage!));
+    expect(root.children!.reduce((s, c) => s + cents(c.value), 0)).toBe(cents(root.value));
+  });
+
+  it("a frame's children and a leaf's accounts add up to it exactly; an absent group takes no share", () => {
+    const root = map();
+    const brokerage = child(child(root, "investments"), "brokerage");
+    // `nothing_yet` has no account with a value: absent, hidden, and no cent goes to it.
+    expect(brokerage.children!.map((c) => c.slug).sort()).toEqual(["funds", "stocks"]);
+    expect(brokerage.children!.reduce((s, c) => s + cents(c.value), 0)).toBe(cents(brokerage.value));
+    const stocks = child(brokerage, "stocks");
+    expect(stocks.leaf_accounts!.reduce((s, a) => s + cents(a.value), 0)).toBe(cents(stocks.value));
+    const retirement = child(child(root, "investments"), "retirement");
+    expect(retirement.leaf_accounts!.reduce((s, a) => s + cents(a.value), 0)).toBe(cents(retirement.value));
+    // Independent rounding would have printed 200.01 + 300.01 under a 500.01 card.
+    expect(cents(retirement.value)).toBe(50001);
+  });
+
+  it("the netting tile carries what the cards owe as an unlisted part: its account keeps its own value", () => {
+    const cash = child(map(), "cash_eqs");
+    const savings = child(cash, "cash_savings");
+    expect(cash.children!.reduce((s, c) => s + cents(c.value), 0)).toBe(cents(cash.value));
+    // 500.006 − 120.007 = 379.999, apportioned within the cash frame.
+    expect(Math.abs(savings.value! - (500.006 - cardsOwed))).toBeLessThan(0.01);
+    // The listed account is not made to absorb the netting.
+    expect(Math.abs(savings.leaf_accounts![0]!.value! - 500.006)).toBeLessThan(0.01);
+  });
+
+  it("refuses a headline bucket that is not the frame's own figure", () => {
+    expect(() =>
+      buildNavValueMapInUnit({
+        navRoot: tree,
+        rows,
+        linkedCreditCards: { clp: cardsOwed * 1000, value: cardsOwed },
+        headlineBuckets: { ...headlineBuckets, retirement: headlineBuckets.retirement! + 5 },
+        unit: "usd",
+      })
+    ).toThrow(/retirement/);
   });
 });
 

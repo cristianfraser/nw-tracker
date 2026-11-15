@@ -1,20 +1,10 @@
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { nwBucketSlugs } from "./navTreeModel.js";
 import {
   buildDashboardBucketValueTotalsInUnit,
-  dashboardBucketDayPriorClosesInUnit,
   type DashboardBucketValueTotals,
 } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./rates.js";
-
-/** Prior bucket closes for the day window in `unit` — every account marked at yesterday. */
-function dailyPriorCloseTotals(priorDayYmd: string, unit: TsUnit): DashboardBucketValueTotals {
-  const values = dashboardBucketDayPriorClosesInUnit(priorDayYmd, unit);
-  const buckets: Record<string, number | null> = {};
-  for (const slug of nwBucketSlugs()) buckets[slug] = values[slug]!;
-  return { net_worth: values.net_worth, buckets };
-}
 
 export type DashboardNwBucketTotals = DashboardBucketValueTotals & {
   prior_closes: {
@@ -27,7 +17,10 @@ export type DashboardNwBucketTotals = DashboardBucketValueTotals & {
   };
 };
 
-/** Live NW bucket totals + prior period closes in `unit` (consolidated valuation — overview chart). */
+/**
+ * The headline today and at the prior day / month / year closes in `unit`: one function for all
+ * four (`buildDashboardBucketValueTotalsInUnit`), so each adds up to its net worth at the coin.
+ */
 export function buildDashboardNwBucketTotals(unit: TsUnit): DashboardNwBucketTotals {
   const asOfToday = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", asOfToday);
@@ -41,9 +34,8 @@ export function buildDashboardNwBucketTotals(unit: TsUnit): DashboardNwBucketTot
       day_end: priorDayYmd,
       month: buildDashboardBucketValueTotalsInUnit(priorMonthEnd, unit),
       year: buildDashboardBucketValueTotalsInUnit(priorYearEnd, unit),
-      // Per-account raw marks at yesterday — the consolidated MONTHLY closing maps onto any date
-      // of its month, which would make the prior close equal today's live value (day deltas ≈ 0).
-      day: dailyPriorCloseTotals(priorDayYmd, unit),
+      // Yesterday's close: the same headline, every account at its value that day.
+      day: buildDashboardBucketValueTotalsInUnit(priorDayYmd, unit),
     },
   };
 }
