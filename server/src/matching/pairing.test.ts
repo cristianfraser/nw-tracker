@@ -61,6 +61,39 @@ describe("pairOneToOne — unique", () => {
   });
 });
 
+describe("pairOneToOne — mutual_unique", () => {
+  it("pairs a left and a right that only fit each other", () => {
+    const out = pairOneToOne([rec("a", 10), rec("b", 20)], [rec("x", 11), rec("y", 21)], { ...base, strategy: "mutual_unique" });
+    expect(out.pairs.map((p) => [p.left.id, p.right.id])).toEqual([["a", "x"], ["b", "y"]]);
+    expect(out.ambiguous).toEqual([]);
+  });
+
+  it("two lefts wanting one right are both reported, where `unique` would pair the first", () => {
+    const out = pairOneToOne([rec("a", 10), rec("b", 10)], [rec("x", 10)], { ...base, strategy: "mutual_unique" });
+    expect(out.pairs).toEqual([]);
+    expect(out.ambiguous.map((a) => [a.left.id, a.rights.map((r) => r.id)])).toEqual([["a", ["x"]], ["b", ["x"]]]);
+    expect(out.unpaired).toEqual([]);
+    expect(out.unclaimed.map((r) => r.id)).toEqual(["x"]);
+  });
+
+  it("a left with two rights is reported with both, and a left with none is unpaired", () => {
+    const out = pairOneToOne([rec("a", 10), rec("b", 50)], [rec("x", 10), rec("y", 12)], { ...base, strategy: "mutual_unique" });
+    expect(out.pairs).toEqual([]);
+    expect(out.ambiguous.map((a) => [a.left.id, a.rights.map((r) => r.id)])).toEqual([["a", ["x", "y"]]]);
+    expect(out.unpaired.map((l) => l.id)).toEqual(["b"]);
+  });
+
+  it("a crowded right does not stop an unrelated pair", () => {
+    // a and b both want x; c and y only fit each other.
+    const out = pairOneToOne([rec("a", 10), rec("b", 10), rec("c", 30)], [rec("x", 10), rec("y", 30)], {
+      ...base,
+      strategy: "mutual_unique",
+    });
+    expect(out.pairs.map((p) => [p.left.id, p.right.id])).toEqual([["c", "y"]]);
+    expect(out.ambiguous.map((a) => a.left.id)).toEqual(["a", "b"]);
+  });
+});
+
 describe("pairOneToOne — nearest_global", () => {
   it("closest pairs claim first so same-amount peers do not strand each other", () => {
     // Left order would give a→x (gap 3) and strand b; globally b→x (gap 0) and a→y (gap 2).
