@@ -99,7 +99,7 @@ import {
 import { buildInstallmentPaymentGastosLines } from "./ccInstallmentPaymentGastosLines.js";
 import { buildInstallmentPlanGastosLines } from "./ccInstallmentPlanGastosLines.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
-import { applyCcFacturadoFinancingProjection, statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
+import { applyCcFacturadoFinancingProjection } from "./ccFacturadoFinancingProjectionLines.js";
 import {
   type CcExpenseLineRole,
   purchaseMonthFromLine,
@@ -896,7 +896,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "display names", run: asRows(withExpenseDisplayNames) },
   {
     name: "payment names",
-    run: asRows((lines: FlowCcExpenseLineRow[]) => withExpensePaymentNames(lines, statementFacturadoClpForBillingMonth)),
+    run: asRows((lines: FlowCcExpenseLineRow[]) => withExpensePaymentNames(lines)),
   },
   { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
   { name: "plan prepayment refunds", run: refundPlanPrepaymentCredits },
