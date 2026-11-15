@@ -82,7 +82,8 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
       `SELECT m.id AS movement_id, m.occurred_on AS date, m.amount AS amount, m.flow_kind AS flow_kind,
               d.cuota AS cuota, d.payment_currency AS payment_currency, d.principal AS amortizacion_clp,
               d.extra_principal AS amortizacion_ext_clp, d.interest AS interes_clp,
-              d.insurance_fire AS incendio_clp, d.insurance_life AS desgravamen_clp
+              d.insurance_fire AS incendio_clp, d.insurance_life AS desgravamen_clp,
+              d.prepayment_charge AS prepayment_charge_clp
        FROM loan_payments d JOIN movements m ON m.id = d.movement_id
        WHERE d.leg = 'loan' AND m.account_id = ?
        ORDER BY m.occurred_on, m.id`
@@ -99,6 +100,7 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
     interes_clp: number | null;
     incendio_clp: number | null;
     desgravamen_clp: number | null;
+    prepayment_charge_clp: number | null;
   }[];
   const out: ExtraPayment[] = [];
   for (const r of rows) {
@@ -107,9 +109,15 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
     }
     const amortization = r.amortizacion_ext_clp ?? 0;
     if (r.flow_kind === "prepago_parcial_hipotecario") {
-      // A prepago outside a cuota has no minimum: the whole payment is above it.
+      // A prepago outside a cuota has no minimum: the whole payment is above it, the bank's
+      // prepayment charge included (money that could have been invested, and pays nothing down).
       const paid =
-        (r.amortizacion_clp ?? 0) + amortization + (r.interes_clp ?? 0) + (r.incendio_clp ?? 0) + (r.desgravamen_clp ?? 0);
+        (r.amortizacion_clp ?? 0) +
+        amortization +
+        (r.interes_clp ?? 0) +
+        (r.incendio_clp ?? 0) +
+        (r.desgravamen_clp ?? 0) +
+        (r.prepayment_charge_clp ?? 0);
       if (Math.abs(paid - r.amount) > 1) {
         throw new Error(
           `mortgage prepago ${r.cuota} (movement ${r.movement_id}): its parts add up to ${paid}, the payment is ${r.amount}`

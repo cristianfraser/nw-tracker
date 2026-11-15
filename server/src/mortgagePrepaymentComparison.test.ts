@@ -12,7 +12,7 @@ function cleanup(): void {
   db.prepare(`DELETE FROM accounts WHERE name = ?`).run(NAME);
 }
 
-function seed(): number {
+function seed(withChargedPrepago = false): number {
   cleanup();
   const groupId = (db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number }).id;
   const accountId = Number(
@@ -22,10 +22,10 @@ function seed(): number {
     date: string,
     cuota: string,
     extra: number | null,
-    opts: { leg?: string; prepagoInterest?: number } = {}
+    opts: { leg?: string; prepagoInterest?: number; prepagoCharge?: number } = {}
   ) => {
     const prepago = opts.prepagoInterest != null;
-    const amount = prepago ? (extra ?? 0) + opts.prepagoInterest! : 1;
+    const amount = prepago ? (extra ?? 0) + opts.prepagoInterest! + (opts.prepagoCharge ?? 0) : 1;
     const mid = Number(
       db
         .prepare(
@@ -34,15 +34,16 @@ function seed(): number {
         .run(accountId, amount, date, prepago ? "prepago_parcial_hipotecario" : null).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO loan_payments (movement_id, loan_account_id, leg, origin, cuota, loan_currency, payment_currency, extra_principal, interest)
-       VALUES (?, ?, ?, 'manual', ?, 'uf', 'clp', ?, ?)`
-    ).run(mid, accountId, opts.leg ?? "loan", cuota, extra, opts.prepagoInterest ?? null);
+      `INSERT INTO loan_payments (movement_id, loan_account_id, leg, origin, cuota, loan_currency, payment_currency, extra_principal, interest, prepayment_charge)
+       VALUES (?, ?, ?, 'manual', ?, 'uf', 'clp', ?, ?, ?)`
+    ).run(mid, accountId, opts.leg ?? "loan", cuota, extra, opts.prepagoInterest ?? null, opts.prepagoCharge ?? null);
   };
   // The synthetic test DB prints the UF on the 1st of each month only.
   pay("2025-06-01", "1", 1_000_000);
   pay("2025-07-01", "2", 0);
   pay("2025-08-01", "prepago 1", 5_000_000, { prepagoInterest: 40_000 });
   pay("2025-08-01", "x", 9_000_000, { leg: "property" });
+  if (withChargedPrepago) pay("2025-09-01", "prepago 2", 2_000_000, { prepagoInterest: 10_000, prepagoCharge: 30_000 });
   return accountId;
 }
 
@@ -56,6 +57,16 @@ describe("mortgage prepayment comparison", () => {
       // A prepago outside a cuota is above the minimum in full; only its amortization pays the loan down.
       ["2025-08-01", 5_040_000, 5_000_000],
     ]);
+  });
+
+  it("a prepago's bank charge is part of what was paid above the minimum, and pays nothing down", () => {
+    const id = seed(true);
+    expect(listMortgageExtraPayments(id).at(-1)).toEqual({
+      date: "2025-09-01",
+      cuota: "prepago 2",
+      extra_clp: 2_040_000,
+      amortization_clp: 2_000_000,
+    });
   });
 
   it("prepaid grows at the mortgage rate over the UF; invested in UF alone trails it by that rate", () => {
