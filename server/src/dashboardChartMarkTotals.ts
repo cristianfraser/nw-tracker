@@ -35,17 +35,15 @@ export type ChartMarkTotalAccountRow = {
  * out (a netting bucket always reads), rounded to the peso after the netting.
  */
 const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  members: "counted",
   empty: "null_unless_netted",
   rounding: "unit_coin",
 };
 
 /**
- * The chart totals in another unit at a date: each real counted member's own value in the unit,
+ * The chart totals in another unit at a date: each counted member's own value in the unit,
  * unrounded.
  */
 const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
-  members: "real_counted",
   empty: "null_unless_netted",
   rounding: "none",
 };

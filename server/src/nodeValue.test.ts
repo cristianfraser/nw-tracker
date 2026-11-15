@@ -67,9 +67,8 @@ describe("nodeValueMembers", () => {
     { account_id: 6, bucket_slug: "x", exclude_from_group_totals: 1 },
     { account_id: -8, bucket_slug: "x", exclude_from_group_totals: 1 },
   ];
-  it("`counted` drops the excluded; `real_counted` also drops synthetic ids", () => {
-    expect(nodeValueMembers(members, "counted").map((m) => m.account_id)).toEqual([5, -7]);
-    expect(nodeValueMembers(members, "real_counted").map((m) => m.account_id)).toEqual([5]);
+  it("drops the excluded and the synthetic ids", () => {
+    expect(nodeValueMembers(members).map((m) => m.account_id)).toEqual([5]);
   });
 });
 
@@ -107,7 +106,6 @@ describe("nodeValue on accounts", () => {
   let members: NodeValueMember[] = [];
 
   const point = (over: Partial<NodePointValuePolicy> = {}): NodePointValuePolicy => ({
-    members: "counted",
     netsLinkedCards: false,
     empty: "null",
       rounding: "none",
@@ -297,7 +295,7 @@ describe("nodeValue on accounts", () => {
       {},
       { netsLinkedCards: true },
       { netsLinkedCards: true, empty: "zero", rounding: "unit_coin" },
-      { members: "real_counted", empty: "null_unless_netted" },
+      { empty: "null_unless_netted" },
     ];
     for (const grid of grids) {
       for (const unit of ["clp", "usd"]) {

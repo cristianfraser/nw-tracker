@@ -59,7 +59,6 @@ function listAccountsForDashboardBucket(bucket: string): BucketAccountMeta[] {
  * the unit, 0 when none has one, unrounded (the apportionment rounds once).
  */
 const BUCKET_WITHOUT_CLOSING: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
-  members: "counted",
   empty: "zero",
   rounding: "none",
 };
@@ -69,7 +68,6 @@ const BUCKET_WITHOUT_CLOSING: Omit<NodePointValuePolicy, "netsLinkedCards" | "no
  * has one, rounded to the unit's coin.
  */
 const BUCKET_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
-  members: "counted",
   empty: "zero",
   rounding: "unit_coin",
 };
@@ -79,7 +77,6 @@ const BUCKET_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
  * none has one, rounded to the unit's coin.
  */
 const BUCKET_PRIOR_DAY_CLOSE: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  members: "counted",
   empty: "zero",
   rounding: "unit_coin",
 };

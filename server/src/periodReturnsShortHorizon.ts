@@ -51,11 +51,10 @@ export function accountValueInUnitAt(
 }
 
 /**
- * A value leg of a return window: the real counted members' own values in the unit, absent
+ * A value leg of a return window: the counted members' own values in the unit, absent
  * when none has one, unrounded. Nothing is netted (returns read the members themselves).
  */
 const BUCKET_VALUE_LEG: Omit<NodePointValuePolicy, "now"> = {
-  members: "real_counted",
   netsLinkedCards: false,
   empty: "null",
   rounding: "none",

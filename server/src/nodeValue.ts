@@ -4,7 +4,7 @@
  * the node nets them (signed: cards in credit add), rounded once.
  *
  * Every reader of that sum goes through here. What the readers disagree on is not hidden in
- * branches: each passes a {@link NodeValuePolicy} naming its member filter, netting, what an all-missing node reads and its rounding. Linked cards that owe with no rate
+ * branches: each passes a {@link NodeValuePolicy} naming its netting, what an all-missing node reads and its rounding. Linked cards that owe with no rate
  * into the unit that day throw, for every reader.
  *
  * Forms:
@@ -41,13 +41,6 @@ export type NodeValueMember = {
 };
 
 /**
- * Which members count.
- * - `counted`: not flagged `exclude_from_group_totals`.
- * - `real_counted`: `counted`, and a real account (id > 0; synthetic chart lines are out).
- */
-export type NodeMemberFilter = "counted" | "real_counted";
-
-/**
  * What a node reads when no member has a value that day.
  * - `null`: absent, even when it nets linked cards.
  * - `null_unless_netted`: absent, except a netting node, which reads 0 less the cards' owed.
@@ -76,9 +69,7 @@ export type NodeNettingPolicy = NodeValueRules & {
 };
 
 /** A node valued from the daily cache (the grid form). */
-export type NodeValuePolicy = NodeNettingPolicy & {
-  members: NodeMemberFilter;
-};
+export type NodeValuePolicy = NodeNettingPolicy;
 
 /**
  * A node valued by point reads: each member's value is what the account held that day,
@@ -94,14 +85,12 @@ export function nodeNetsLinkedCards(groupSlug: string): boolean {
   return groupNetsLinkedCards(groupSlug);
 }
 
-function memberCounts(m: NodeValueMember, filter: NodeMemberFilter): boolean {
-  if (m.exclude_from_group_totals === 1) return false;
-  return filter === "real_counted" ? m.account_id > 0 : true;
-}
-
-/** The members a policy counts, in their order. */
-export function nodeValueMembers<M extends NodeValueMember>(members: readonly M[], filter: NodeMemberFilter): M[] {
-  return members.filter((m) => memberCounts(m, filter));
+/**
+ * The members a node counts, in their order: real accounts (id > 0; a synthetic chart line has
+ * no value of its own) not flagged `exclude_from_group_totals`.
+ */
+export function nodeValueMembers<M extends NodeValueMember>(members: readonly M[]): M[] {
+  return members.filter((m) => m.account_id > 0 && m.exclude_from_group_totals !== 1);
 }
 
 function finite(v: number | null | undefined): number | null {
@@ -161,7 +150,7 @@ export function nodeValue(
   policy: NodePointValuePolicy
 ): number | null {
   const sum = sumOrNull(
-    nodeValueMembers(members, policy.members).map((m) => memberValueAt(m, ymd, unit, policy.now))
+    nodeValueMembers(members).map((m) => memberValueAt(m, ymd, unit, policy.now))
   );
   const owed = policy.netsLinkedCards
     ? linkedCardsOwedInUnit(ymd, unit, policy.now ? { now: policy.now } : {})
@@ -179,7 +168,7 @@ export function nodeValuesAtDates(
   unit: CurrencyCode,
   policy: NodePointValuePolicy
 ): (number | null)[] {
-  const rows = nodeValueMembers(members, policy.members);
+  const rows = nodeValueMembers(members);
   return dates.map((ymd) => nodeValue(rows, ymd, unit, policy));
 }
 
@@ -193,7 +182,7 @@ export function nodeValueSeriesOnGrid(
   unit: CurrencyCode,
   policy: NodeValuePolicy
 ): (number | null)[] {
-  const series = nodeValueMembers(members, policy.members).map((m) =>
+  const series = nodeValueMembers(members).map((m) =>
     accountValueSeriesOnGrid(
       { account_id: m.account_id, bucket_slug: m.bucket_slug, import_key: m.import_key ?? null, name: m.name ?? null },
       grid,
