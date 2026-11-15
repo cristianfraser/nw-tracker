@@ -16,7 +16,7 @@
  */
 
 import { foreignCashCurrencyOf, foreignCashToClpAt } from "./foreignCashAccounts.js";
-import type { DepositInflowEvent } from "./accountDeposits.js";
+import type { DepositInflowEvent } from "./depositInflowEvent.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
