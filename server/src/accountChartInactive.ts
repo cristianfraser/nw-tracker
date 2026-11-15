@@ -7,7 +7,7 @@ import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm, cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
+import { accountProfile } from "./accountProfile.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import { accountHolding } from "./holdings.js";
 import { accountHoldingQtyAt, accountValueCurrency } from "./accountValue.js";
@@ -47,7 +47,6 @@ function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
   return mark ? [mark.value_clp] : [];
 }
 
-const stmtImportKey = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`);
 const stmtHasUnits = db.prepare(
   `SELECT 1 FROM movements
    WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?) AND COALESCE(units_delta, 0) != 0
@@ -72,10 +71,9 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
   if (isOptionContractAccount(accountId)) return optionContractsThroughDate(accountId, today);
   const slug = bucketSlugForAccountId(accountId);
   const kindSlug = slug != null ? accountBucketKindSlug(slug) : "";
-  const importKey = (stmtImportKey.get(accountId) as { import_key: string | null } | undefined)?.import_key ?? null;
   const cuotaLedger =
     isCuotaLedgerKindSlug(kindSlug) && cuotaLedgerSeriesKeyForAccount(accountId) != null;
-  if ((cuotaLedger || isFintualCertV2AccountNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
+  if ((cuotaLedger || accountProfile(accountId).quantity.kind === "fintual_goal") && stmtHasUnits.get(accountId, accountId, accountId)) {
     return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
   }
   // A ledger held in another currency (dollar cash): its own quantity, no price.

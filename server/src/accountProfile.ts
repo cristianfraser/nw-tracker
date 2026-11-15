@@ -9,14 +9,12 @@
  * the database and memoizes the profile until the next write (`dbStateMemo`).
  */
 import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import {
   accountHasRole,
   storedRolesOfAccount,
   CARTOLA_CHECKING_KIND_SLUGS,
   type StoredAccountRole,
 } from "./accountRoles.js";
-import { deploymentProfile, liveEnvText } from "./config.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
@@ -55,7 +53,7 @@ export type QuantitySource =
   /** Σ cuotas (movements + transfer legs) × the fund's valor cuota (AFP, AFC with a series). */
   | { kind: "cuota_ledger"; seriesKey: string }
   /** A Fintual goal's cuotas × its fund's valor cuota (the Risky Norris proxy in its window). */
-  | { kind: "fintual_goal"; seriesKey: string; goalId: string | null }
+  | { kind: "fintual_goal"; seriesKey: string; goalId: string }
   /** The cartola checking ledger (cuenta corriente / vista). */
   | { kind: "checking_ledger" }
   /** A foreign cash ledger: Σ movements in its currency (`accounts.cash_currency`, `cashCurrency.ts`). */
@@ -136,8 +134,6 @@ export type AccountProfileFacts = {
   /** The quote currency of a fund series (read only for a fund): pesos while it has no row. */
   fundQuoteCurrencyOf: (seriesKey: string) => CurrencyCode;
   roles: readonly { role: StoredAccountRole; param: string }[];
-  /** A demo or test database: an AFP account without a series prices with UNO Fondo A. */
-  demoOrTest: boolean;
   /**
    * The currency the account's cash ledger holds (`cashCurrency.ts`: the account's declaration,
    * or the currency a legacy `usd` / `clp` leaf names); null for any other account.
@@ -222,17 +218,14 @@ function quantityFromFacts(f: AccountProfileFacts, roles: AccountRoles): Quantit
     if (f.fundSeriesKey) return { kind: "cuota_ledger", seriesKey: f.fundSeriesKey };
     // An AFC without a series is not modeled in cuotas: its stored marks are its value.
     if (f.kind === "afc") return { kind: "book_mark" };
-    if (f.kind !== "afp") {
-      throw new Error(`account profile: ${f.kind} account ${f.id} has no fund_series_key (accounts.fund_series_key)`);
-    }
-    if (!f.demoOrTest) {
-      throw new Error(`account profile: AFP account ${f.id} has no fund_series_key (accounts.fund_series_key)`);
-    }
-    return { kind: "cuota_ledger", seriesKey: AFP_UNO_CUOTA_SERIES_KEY };
+    throw new Error(`account profile: ${f.kind} account ${f.id} has no fund_series_key (accounts.fund_series_key)`);
   }
-  if (isFintualGoalImportKey(f.importKey)) {
+  if (roles.fintualGoalId != null) {
     if (!f.fundSeriesKey) throw new Error(`account profile: Fintual fund account ${f.id} has no fund_series_key`);
     return { kind: "fintual_goal", seriesKey: f.fundSeriesKey, goalId: roles.fintualGoalId };
+  }
+  if (isFintualGoalImportKey(f.importKey)) {
+    throw new Error(`account profile: account ${f.id} carries a Fintual certificado key but holds no fintual_goal role`);
   }
   if (CARTOLA_CHECKING_KIND_SLUGS.has(f.kind)) return { kind: "checking_ledger" };
   if (f.cashCurrency != null) {
@@ -362,10 +355,6 @@ function coinPriceTicker(accountId: number, kind: string, equityTicker: string |
   return stmtHasOwnUnits.get(accountId) != null ? ticker : null;
 }
 
-function isDemoOrTest(): boolean {
-  return deploymentProfile().demo || liveEnvText("VITEST") != null;
-}
-
 /** The account's profile; throws for an id with no account (or no asset group) behind it. */
 export function accountProfile(accountId: number): AccountProfile {
   const p = accountProfileOptional(accountId);
@@ -417,7 +406,6 @@ export function accountProfileOptional(accountId: number): AccountProfile | null
       quoteCurrencyOf: (t) => equityQuoteCurrency(t),
       fundQuoteCurrencyOf: (k) => fundSeriesCurrency(k) ?? "clp",
       roles: storedRolesOfAccount(accountId),
-      demoOrTest: isDemoOrTest(),
       cashCurrency: cashCurrencyForKind(accountId, kind, row.cash_currency),
     });
   });

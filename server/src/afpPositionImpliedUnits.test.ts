@@ -11,10 +11,10 @@ describe("AFP position units", () => {
     expect(bucket).toBeTruthy();
 
     const insAcc = db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals)
-       VALUES (?, 'AFP UNO test', 'import:excel|key=afp-test', 0)`
+      `INSERT INTO accounts (asset_group_id, name, notes, fund_series_key, exclude_from_group_totals)
+       VALUES (?, 'AFP UNO test', 'import:excel|key=afp-test', ?, 0)`
     );
-    const r = insAcc.run(bucket!.id);
+    const r = insAcc.run(bucket!.id, AFP_UNO_CUOTA_SERIES_KEY);
     const accountId = Number(r.lastInsertRowid);
 
     const asOf = "2025-01-31";

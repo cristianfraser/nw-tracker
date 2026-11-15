@@ -5,7 +5,7 @@ import { db } from "./db.js";
 import { getGroupConsolidatedMonthlyPerfForRows, getGroupConsolidationAccountMonthly, monthlyPerfForAccountId, type GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
 
 /**
- * Synthetic fixtures only: a Fintual-certificate-like account (identified by its `import_key`,
+ * Synthetic fixtures only: a Fintual-certificate-like account (a `fintual_goal` role holder,
  * valued as cuotas × its own fund series) alone in a group. Its month-end marks exist only with
  * the import key, so a consolidation that dropped the key fell back to the perf rows — already
  * in USD — and divided them by fx a second time.
@@ -29,6 +29,8 @@ beforeAll(() => {
       )
       .run(leaf.id, IMPORT_KEY, IMPORT_KEY, SERIES_KEY).lastInsertRowid
   );
+  // The role names a Fintual goal account (the key prefix alone does not).
+  db.prepare(`INSERT INTO account_roles (account_id, role, param) VALUES (?, 'fintual_goal', 'vitest-group-usd')`).run(accountId);
   db.prepare(
     `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
      VALUES (?, 100000, 'clp', '2025-06-05', 'vitest-group-usd', 100)`

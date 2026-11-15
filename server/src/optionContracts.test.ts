@@ -182,7 +182,6 @@ describe("the profile", () => {
     quoteCurrencyOf: (t) => (t.endsWith(".SN") ? "clp" : "usd"),
     fundQuoteCurrencyOf: () => "clp",
     roles: [],
-    demoOrTest: true,
     cashCurrency: null,
   };
 
