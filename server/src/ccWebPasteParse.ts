@@ -1,3 +1,5 @@
+import { legacyAmountColumn } from "./cards/statementStorage.js";
+import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
 import crypto from "node:crypto";
 import {
   cardLineKind,
@@ -15,7 +17,8 @@ import { db } from "./db.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug, ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
 import { ccImportFlowItemFromLine, ccStatementLabel, type CcImportFlowItem } from "./ccStatementsImport.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
+import { requireCardCurrency } from "./cards/cardCurrencies.js";
 
 /**
  * One line of a card's listing of movements not billed yet — the nightly feed, a pasted table, a
@@ -28,7 +31,8 @@ import { pesosOrDollars } from "./ingestCurrencies.js";
 export type CcListingLine = {
   transaction_date: string;
   merchant: string;
-  currency: "clp" | "usd"; // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
+  /** Any currency the card's issuer bills in; each source checks it when it converts (`requireCardCurrency`). */
+  currency: string;
   /** Debt-positive, in `currency`. */
   amount: number;
   raw_line: string;
@@ -78,7 +82,7 @@ export function webPasteLinesFromPastedListing(listing: CardPastedListing, cardG
     lines: listing.lines.map((l) => ({
       transaction_date: l.date,
       merchant: normCcMerchant(l.merchant),
-      currency: pesosOrDollars(l.currency, "card.pasted_listing"),
+      currency: requireLoadedCurrency(l.currency, "card.pasted_listing"),
       amount: flip ? -l.amount : l.amount,
       raw_line: l.raw_line,
     })),
@@ -91,7 +95,7 @@ export function webPasteLinesFromPastedListing(listing: CardPastedListing, cardG
  * the listing showed; pesos are whole.
  */
 export function listingLineStoredAmount(line: Pick<CcListingLine, "merchant" | "currency" | "amount">): number {
-  const amount = line.currency === "clp" ? Math.trunc(line.amount) : line.amount; // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
+  const amount = isHomeCurrency(line.currency) ? Math.trunc(line.amount) : line.amount;
   if (amount === 0) return 0;
   return isCcPaymentMerchant(line.merchant) ? -Math.abs(amount) : amount;
 }
@@ -124,7 +128,10 @@ export function isCcSaldoInicialMerchant(merchant: string | null | undefined): b
  * shares, on the pasted magnitude in its own currency (USD in cents keeps re-imports idempotent).
  */
 export function webPasteLineDedupeKey(cardGroup: string, line: CcListingLine): string {
-  const dedupeAmount = line.currency === "usd" ? Math.round(Math.abs(line.amount) * 100) : Math.abs(line.amount); // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
+  // Pesos as pasted; any other currency in its smallest coin (dollars in cents).
+  const dedupeAmount = isHomeCurrency(line.currency)
+    ? Math.abs(line.amount)
+    : Math.round(Math.abs(line.amount) * 10 ** currencyMinorDigits(line.currency));
   return ccOneShotDedupeKey(cardGroup, line.merchant, dedupeAmount, line.transaction_date);
 }
 
@@ -220,6 +227,8 @@ export function listingStatements(
   }
 
   parsed.forEach((line, i) => {
+    // Pesos, dollars or a currency the card's issuer bills in — anything else is refused here, for every listing source.
+    requireCardCurrency(line.currency, accountId, "card listing line");
     const billingMonth = lineMonths?.[i] ?? opts?.targetBillingMonth ?? openBillingMonth;
     const statement = bucket(billingMonth);
     const dedupe_key = dedupeKeys[i]!;
@@ -229,8 +238,10 @@ export function listingStatements(
       kind: cardLineKind({
         installment_flag: false,
         merchant: merchant || null,
-        amount_clp: line.currency === "clp" ? amount : 0, // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
-        amount_usd: line.currency === "usd" ? amount : null, // convention-ok: the bank's web table is in pesos or dollars only (plan C3 leftover)
+        // The classifier's two slots, as `cc_line_kind_native` feeds them: a dollar line its dollars,
+        // any other its amount as the peso slot (which only decides the sign and the peso rule).
+        amount_clp: legacyAmountColumn(line.currency) === "amount_usd" ? 0 : amount,
+        amount_usd: legacyAmountColumn(line.currency) === "amount_usd" ? amount : null,
         statement_currency: "clp",
       }),
       transaction_date: line.transaction_date,

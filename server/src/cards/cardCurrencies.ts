@@ -25,3 +25,11 @@ export function requireCardCurrency(code: string, accountId: number, where: stri
     `${where}: ${code.toUpperCase()} is not a currency the card's issuer (${slug}) bills in`
   );
 }
+
+/** The currency the card's main statement is in (`CC_ISSUERS[…].statement_currencies.primary`). */
+export function cardPrimaryStatementCurrency(accountId: number): string {
+  const slug = ccIssuerSlugForMasterAccount(accountId);
+  const issuer = ccIssuerBySlug(slug);
+  if (!issuer) throw new Error(`Account ${accountId}: issuer ${slug} is not in CC_ISSUERS`);
+  return issuer.statement_currencies.primary;
+}

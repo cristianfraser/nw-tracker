@@ -140,8 +140,13 @@ describe("planted payments: pairOneToOne reproduces the pre-wave-7 rule", () => 
       const inPosting = r.chance(0.3);
       const got = plantedPaymentMatchesStatementLine(
         planted,
-        { ...stmt, transaction_date: inPosting ? null : printed, posting_date: inPosting ? printed : null },
-        stmtCurrency
+        {
+          merchant: stmt.merchant,
+          amount: signed,
+          currency: stmtCurrency,
+          transaction_date: inPosting ? null : printed,
+          posting_date: inPosting ? printed : null,
+        }
       );
       expect(got, `case ${n}`).toBe(want);
       if (want) yes += 1;

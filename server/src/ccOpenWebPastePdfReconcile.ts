@@ -188,7 +188,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
       (s) =>
         !used.has(s.line.id) &&
         (webPasteLineMatchesStatementLine(line, s) ||
-          (plantedRow != null && plantedPaymentMatchesStatementLine(plantedRow, s.line, s.currency)))
+          (plantedRow != null && plantedPaymentMatchesStatementLine(plantedRow, s.line)))
     );
     if (!hit) return false;
     used.add(hit.line.id);

@@ -87,7 +87,7 @@ export function feedMirrorCurrencies(opts: {
   /** The close on record for the card (the listing's, or the latest recorded), with its billed totals. */
   closeOnRecord: { saldo_inicial_clp: number | null; saldo_inicial_usd: number | null } | null;
   /** Every listed row, debt-positive, as the feeder sent it. */
-  lines: readonly { currency: "clp" | "usd"; amount: number }[]; // convention-ok: Santander's card feed has a peso and a dollar slide only
+  lines: readonly { currency: string; amount: number }[];
   /** The bank's cupo utilizado per currency, from the same session's product summary. */
   bankUsed: Partial<Record<"clp" | "usd", number>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
 }): Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> { // convention-ok: Santander's card feed has a peso and a dollar slide only
@@ -114,7 +114,7 @@ export function feedMirrorCurrencies(opts: {
 /** Bucket lines of the mirrored window that no feed row accounts for (read-only planner). */
 export function planFeedMirror(
   accountId: number,
-  opts: { windowStartIso: string; currencies: ReadonlySet<"clp" | "usd">; feedLines: readonly CcListingLine[] } // convention-ok: Santander's card feed has a peso and a dollar slide only
+  opts: { windowStartIso: string; currencies: ReadonlySet<string>; feedLines: readonly CcListingLine[] }
 ): CcOpenBucketLine[] {
   const candidates = listOpenBucketLines(accountId).filter((line) => {
     if (line.installment_flag) return false;

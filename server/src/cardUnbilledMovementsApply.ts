@@ -168,8 +168,7 @@ function applyFeedClose(
   return db.transaction(() => {
     const recorded = recordFeedBillingClose(accountId, {
       close_iso: close.close_iso,
-      saldo_inicial_clp: close.saldo_inicial_clp,
-      saldo_inicial_usd: close.saldo_inicial_usd,
+      saldo_inicial: { clp: close.saldo_inicial_clp, usd: close.saldo_inicial_usd },
       source_file: sourceFile,
     });
     assertFeedClosesMatchStatements(accountId);
