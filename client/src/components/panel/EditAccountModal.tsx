@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import {
   leafBucketSlugForAccount,
   listLeafPortfolioGroupBuckets,
@@ -44,13 +44,7 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
         ...(bucketChanged ? { bucket_slug: bucketSlug } : {}),
       }),
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("clp") }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("usd") }),
-      ]);
+      await invalidateResources(queryClient, resources.panelAccounts());
       onClose();
     },
     onError: (err: Error) => setError(err.message),

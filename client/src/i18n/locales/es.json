@@ -159,7 +159,13 @@
     "recentColDate": "Fecha",
     "recentColValue": "Valor",
     "recentEmpty": "Sin datos recientes",
+    "noData": "Sin datos",
     "fx": {
+      "clpPerUsd": "CLP por US$1",
+      "clpPerUf": "CLP por 1 UF",
+      "clpPerEur": "CLP por €1",
+      "ipcTitle": "IPC",
+      "ipcFootnote": "Nivel del índice (CSV opcional)",
       "usdPerEur": "USD por €1 (Yahoo EURUSD=X)",
       "yahoo": "Yahoo CLP=X (conversiones)",
       "bcentralObservado": "Banco Central — dólar observado (referencia)",

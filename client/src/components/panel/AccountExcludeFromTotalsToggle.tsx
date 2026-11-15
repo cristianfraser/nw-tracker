@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 
 type Props = {
   accountId: number;
@@ -9,13 +9,7 @@ type Props = {
 };
 
 async function invalidateAccountPanelQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("clp") }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("usd") }),
-  ]);
+  await invalidateResources(queryClient, resources.panelAccounts());
 }
 
 export function AccountExcludeFromTotalsToggle({ accountId, excluded }: Props) {

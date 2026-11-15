@@ -23,17 +23,13 @@ import {
   persistEntityColor,
   type EntityColorTarget,
 } from "../../entityColor";
-import { queryKeys } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import styles from "./EntityColorPicker.module.css";
 
 const DEBOUNCE_MS = 400;
 
 function invalidateColorQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() });
-  void invalidateResources(queryClient, resources.entityColors());
+  void invalidateResources(queryClient, resources.accountLists(), resources.entityColors());
 }
 
 export function EntityColorPicker({

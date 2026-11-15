@@ -5,7 +5,7 @@ import { api } from "../../api";
 import { formatNumberInput, parseNumberInput } from "../../format";
 import { formatPesosPerDollar } from "../../formatNative";
 import { useTranslation } from "../../i18n";
-import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import type { FxBidAskGapRow } from "../../types";
 import { loadableClass } from "../ui/Loadable";
 import { cn } from "../../cn";
@@ -98,8 +98,7 @@ export function FxBidAskGapsTable() {
     try {
       await api.upsertFxBidAsk(gap.date, buy, sell);
       await reload();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.marketSeriesAll() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardAll() });
+      void invalidateResources(queryClient, resources.marketSeries(), resources.dashboard());
     } catch (e) {
       setDrafts((prev) => ({
         ...prev,

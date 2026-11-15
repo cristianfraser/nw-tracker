@@ -52,6 +52,11 @@ function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): Inst
 }
 
 /** A cross rate near 1 (EUR/USD): four decimals, as quoted. */
+/** A pair's heading from its two codes: «USD / CLP» (codes, not copy). */
+function pairTitle(base: string, quote: string): string {
+  return `${base.toUpperCase()} / ${quote.toUpperCase()}`;
+}
+
 function formatRate4(n: number): string {
   return formatGroupedDecimal(n, 4);
 }
@@ -209,6 +214,7 @@ function FxUsdClpDualChart({
   timeRange: TimeRange;
   loading?: boolean;
 }) {
+  const { t } = useTranslation();
   const merged = useMemo(
     () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
     [yahooData, bcentralData, buyData, sellData]
@@ -263,12 +269,12 @@ function FxUsdClpDualChart({
   if (yahooData.length === 0 && bcentralData.length === 0) {
     return (
       <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
-        <h3 className="rates-chart-card__title">USD / CLP</h3>
-        <p className="muted rates-chart-card__note">CLP per US$1</p>
+        <h3 className="rates-chart-card__title">{pairTitle("usd", "clp")}</h3>
+        <p className="muted rates-chart-card__note">{t("rates.fx.clpPerUsd")}</p>
         {loading ? (
           <div className="rates-chart-card__plot" aria-busy="true" />
         ) : (
-          <p className="muted rates-chart-card__empty">No data</p>
+          <p className="muted rates-chart-card__empty">{t("rates.noData")}</p>
         )}
         {recentTable}
       </section>
@@ -277,8 +283,8 @@ function FxUsdClpDualChart({
 
   return (
     <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
-      <h3 className="rates-chart-card__title">USD / CLP</h3>
-      <p className="muted rates-chart-card__note">CLP per US$1</p>
+      <h3 className="rates-chart-card__title">{pairTitle("usd", "clp")}</h3>
+      <p className="muted rates-chart-card__note">{t("rates.fx.clpPerUsd")}</p>
       <div className="rates-chart-card__plot">
         <RatesLineChart
           data={chartData}
@@ -333,6 +339,7 @@ function MiniLineChart({
   timeRange: TimeRange;
   loading?: boolean;
 }) {
+  const { t } = useTranslation();
   const denseData = useMemo(() => {
     const clipped = clipRowsToTimeRange(data, timeRange, (r) => r.date);
     return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", ["value"]);
@@ -376,7 +383,7 @@ function MiniLineChart({
         {loading ? (
           <div className="rates-chart-card__plot" aria-busy="true" />
         ) : (
-          <p className="muted rates-chart-card__empty">No data</p>
+          <p className="muted rates-chart-card__empty">{t("rates.noData")}</p>
         )}
         {recentTable}
       </section>
@@ -501,8 +508,8 @@ export function RatesPage() {
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
-              title="UF / CLP"
-              footnote="CLP per 1 UF"
+              title={pairTitle("uf", "clp")}
+              footnote={t("rates.fx.clpPerUf")}
               data={fxUfClp}
               yUnit="clp"
               valueFormatter={formatClp}
@@ -511,8 +518,8 @@ export function RatesPage() {
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
-              title="IPC"
-              footnote="Index level (optional CSV)"
+              title={t("rates.fx.ipcTitle")}
+              footnote={t("rates.fx.ipcFootnote")}
               data={fxIpc}
               yUnit="index"
               valueFormatter={formatIpcIndex}
@@ -521,8 +528,8 @@ export function RatesPage() {
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
-              title="EUR / CLP"
-              footnote="CLP per €1"
+              title={pairTitle("eur", "clp")}
+              footnote={t("rates.fx.clpPerEur")}
               data={fxEurClp}
               yUnit="clp"
               valueFormatter={formatClp}
@@ -531,7 +538,7 @@ export function RatesPage() {
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
-              title="EUR / USD"
+              title={pairTitle("eur", "usd")}
               footnote={t("rates.fx.usdPerEur")}
               data={fxEurUsd}
               yUnit="usd"

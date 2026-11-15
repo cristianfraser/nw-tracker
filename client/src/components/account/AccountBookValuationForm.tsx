@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { formatCurrency, formatUfUnits, parseNumberInputOrThrow } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import { Table } from "../ui/Table";
 import { Button, Field, Input } from "@crfrsr/ui";
 import {
@@ -35,14 +36,12 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
   });
 
   const invalidate = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
-      }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.accountValuations(accountId) }),
-    ]);
+    await invalidateResources(
+      queryClient,
+      resources.accountPage(accountId, displayUnit),
+      resources.dashboardInUnit(displayUnit),
+      resources.accountValuations(accountId),
+    );
   };
 
   const saveMutation = useMutation({

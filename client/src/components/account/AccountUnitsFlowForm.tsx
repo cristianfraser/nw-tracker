@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
-import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import type { DisplayUnit } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import {
   brokerageMovementFieldLabelStyle,
   brokerageMovementFieldRowStyle,
@@ -94,14 +95,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
       setMovements([]);
       setFormError(null);
       setLastSavedCount(count);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.accountFlowsAll() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
-      ]);
+      await invalidateResources(queryClient, resources.accountMovements(accountId, displayUnit));
     },
     onError: (err: Error) => {
       setFormError(err.message);
