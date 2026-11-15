@@ -660,7 +660,6 @@ function convertDashboardPortfolioGroupTotals(
   },
   unit: TsUnit
 ): { datesAsc: string[]; totalsBySlug: Map<string, Map<string, number>> } {
-  const now = new Date();
   const totalsBySlug = new Map<string, Map<string, number>>();
   for (const [slug, byDate] of clp.totalsBySlug) {
     const converted = new Map<string, number>();
@@ -674,7 +673,6 @@ function convertDashboardPortfolioGroupTotals(
       if (!rows) throw new Error(`dashboard totals: no account rows for ${slug}`);
       const u = slugValueInUnitAt(rows, d, unit, {
         netLinkedCreditCard: nodeNetsLinkedCards(slug),
-        now,
       });
       if (u != null && Number.isFinite(u)) converted.set(d, u);
     }

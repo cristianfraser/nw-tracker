@@ -38,7 +38,7 @@ import {
  * A reference source's total on each day of its own daily series: a day the series has no value
  * for is absent, unrounded.
  */
-const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards" | "now"> = {
+const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards"> = {
   empty: "null",
   rounding: "none",
 };
@@ -82,7 +82,6 @@ function sourceGroupDailyValues(
     const values = nodeValueSeriesFromSums(totals, dates, unit, {
       ...REFERENCE_SOURCE_DAILY,
       netsLinkedCards: nodeNetsLinkedCards(sourceSlug),
-      now: new Date(),
     });
     dates.forEach((ymd, i) => {
       const v = values[i];

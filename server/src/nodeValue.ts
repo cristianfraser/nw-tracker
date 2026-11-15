@@ -53,9 +53,9 @@ export function cashNetOfLinkedCreditCards(rawCash: number, linkedCreditCardsOwe
  * The linked cards' peso total `clp` of `ymd` in `unit`, at the debt side (today: the live rate).
  * Cards owing nothing need no rate; a total with no rate into the unit that day throws.
  */
-export function linkedCardsClpInUnit(clp: number, ymd: string, unit: CurrencyCode, opts: { now?: Date } = {}): number {
+export function linkedCardsClpInUnit(clp: number, ymd: string, unit: CurrencyCode): number {
   if (clp === 0) return 0;
-  const v = clpToUnitAt(clp, ymd, unit, { side: "debt", ...(opts.now ? { now: opts.now } : {}) });
+  const v = clpToUnitAt(clp, ymd, unit, { side: "debt" });
   if (v == null || !Number.isFinite(v)) {
     throw new Error(`linked credit cards: no ${unit} rate on ${ymd} for what they owe`);
   }
@@ -66,8 +66,8 @@ export function linkedCardsClpInUnit(clp: number, ymd: string, unit: CurrencyCod
  * The linked cards' owed at `ymd` in `unit`, at the debt side (today: the live rate): what a
  * netting node subtracts. Throws when they owe and the unit has no rate that day.
  */
-export function linkedCardsOwedInUnit(ymd: string, unit: CurrencyCode, opts: { now?: Date } = {}): number {
-  return linkedCardsClpInUnit(linkedCreditCardClpForCashCardAsOf(ymd), ymd, unit, opts);
+export function linkedCardsOwedInUnit(ymd: string, unit: CurrencyCode): number {
+  return linkedCardsClpInUnit(linkedCreditCardClpForCashCardAsOf(ymd), ymd, unit);
 }
 
 /**
@@ -87,15 +87,13 @@ export type NodeValueRules = {
   rounding: NodeRounding;
 };
 
-/** Netting and clock, shared by every form. */
+/**
+ * The netting, shared by every form. No form takes a clock: today reads the shared live-tier
+ * value and the live rate, the same figure for every reader in the same minute.
+ */
 export type NodeNettingPolicy = NodeValueRules & {
   /** The node subtracts the linked cards' owed ({@link nodeNetsLinkedCards} for a group). */
   netsLinkedCards: boolean;
-  /**
-   * The caller's clock for today's values and rates. Left out, today reads the shared
-   * live-tier value and the live rate.
-   */
-  now?: Date;
 };
 
 /** A node valued from the daily cache (the grid form). */
@@ -129,8 +127,8 @@ function finite(v: number | null | undefined): number | null {
   return v != null && Number.isFinite(v) ? v : null;
 }
 
-function memberValueAt(m: NodeValueMember, ymd: string, unit: CurrencyCode, now: Date | undefined): number | null {
-  return finite(accountValueAt(m.account_id, ymd, unit, { now })?.value);
+function memberValueAt(m: NodeValueMember, ymd: string, unit: CurrencyCode): number | null {
+  return finite(accountValueAt(m.account_id, ymd, unit)?.value);
 }
 
 /**
@@ -185,14 +183,11 @@ export function nodeValueFromSum(
 function linkedCardsOwedOnDates(
   dates: readonly string[],
   wanted: (i: number) => boolean,
-  unit: CurrencyCode,
-  now: Date | undefined
+  unit: CurrencyCode
 ): (number | undefined)[] {
   const asked = dates.filter((_, i) => wanted(i));
   const clpByDate = linkedCreditCardClpForCashCardByDates([...new Set(asked)].sort());
-  return dates.map((ymd, i) =>
-    wanted(i) ? linkedCardsClpInUnit(clpByDate.get(ymd) ?? 0, ymd, unit, now ? { now } : {}) : undefined
-  );
+  return dates.map((ymd, i) => (wanted(i) ? linkedCardsClpInUnit(clpByDate.get(ymd) ?? 0, ymd, unit) : undefined));
 }
 
 /** The node's value on `ymd` in `unit`. */
@@ -202,11 +197,9 @@ export function nodeValue(
   unit: CurrencyCode,
   policy: NodePointValuePolicy
 ): number | null {
-  const sum = nodeMembersSum(nodeValueMembers(members).map((m) => memberValueAt(m, ymd, unit, policy.now)));
+  const sum = nodeMembersSum(nodeValueMembers(members).map((m) => memberValueAt(m, ymd, unit)));
   const owed =
-    policy.netsLinkedCards && nodeReads(sum, true, policy)
-      ? linkedCardsOwedInUnit(ymd, unit, policy.now ? { now: policy.now } : {})
-      : undefined;
+    policy.netsLinkedCards && nodeReads(sum, true, policy) ? linkedCardsOwedInUnit(ymd, unit) : undefined;
   return policy.netsLinkedCards && owed === undefined ? null : nodeValueFromSum(sum, owed, unit, policy);
 }
 
@@ -254,6 +247,6 @@ export function nodeValueSeriesFromSums(
   }
   if (!policy.netsLinkedCards) return sums.map((sum) => nodeValueFromSum(sum, undefined, unit, policy));
   // A date the node has no value on asks for no rate.
-  const owed = linkedCardsOwedOnDates(dates, (i) => nodeReads(sums[i]!, true, policy), unit, policy.now);
+  const owed = linkedCardsOwedOnDates(dates, (i) => nodeReads(sums[i]!, true, policy), unit);
   return sums.map((sum, i) => (owed[i] === undefined ? null : nodeValueFromSum(sum, owed[i], unit, policy)));
 }

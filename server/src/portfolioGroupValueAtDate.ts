@@ -58,7 +58,7 @@ function listAccountsForDashboardBucket(bucket: string): BucketAccountMeta[] {
  * A bucket at a date when it has no consolidated closing: its counted members' own values in
  * the unit, 0 when none has one, unrounded (the apportionment rounds once).
  */
-const BUCKET_WITHOUT_CLOSING: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
+const BUCKET_WITHOUT_CLOSING: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
   empty: "zero",
   rounding: "none",
 };
@@ -123,7 +123,6 @@ function portfolioGroupValueInUnitAtRaw(bucket: string, asOfYmd: string, unit: T
   return nodeValue(listAccountsForDashboardBucket(bucket), asOfYmd, unit, {
     ...BUCKET_WITHOUT_CLOSING,
     netsLinkedCards: nodeNetsLinkedCards(bucket),
-    now: new Date(),
   });
 }
 

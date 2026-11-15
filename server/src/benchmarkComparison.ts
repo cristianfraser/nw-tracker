@@ -202,7 +202,7 @@ export function computeBenchmarkComparison(input: {
     let vStart: number | null;
     if (cell.window_start_date) {
       startYmd = cell.window_start_date;
-      vStart = bucketValueInUnitAt(accounts, startYmd, unit, now);
+      vStart = bucketValueInUnitAt(accounts, startYmd, unit);
     } else if (cell.window_start_month) {
       if (!priorByMonth.has(cell.window_start_month)) {
         throw new Error(`benchmark comparison: no monthly row for ${cell.window_start_month}`);
