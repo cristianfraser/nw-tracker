@@ -7,6 +7,7 @@
  *   balance (an asset gains when it grows beyond its flows; a debt when it shrinks beyond them).
  * - {@link cardPeriodLegs}: a credit card's period, whose P/L is its cost of financing and whose
  *   flow is everything else that moved the owed balance (`ccFinancingCostDaily.ts`).
+ * - {@link liabilityPctMonth}: a debt's cost as a rate on the balance it carried.
  * - {@link flowAdjustedPct}, {@link endChargedFlow}, {@link groupStartFrameFlow}: the return over
  *   the capital at work, and how a group charges its emptied members.
  * - {@link windowIndexOf}: which half-open window `(b[i], b[i+1]]` a dated flow falls in.
@@ -34,6 +35,18 @@ export function periodPl(legs: { valueStart: number; valueEnd: number; flow: num
  */
 export function cardPeriodLegs(legs: { owedStart: number; owedEnd: number; cost: number }): { flow: number; pl: number } {
   return { flow: -(legs.owedEnd - legs.owedStart) + legs.cost, pl: -legs.cost };
+}
+
+/**
+ * A debt's period cost as a rate on the balance carried into the period (both liability kinds: a
+ * mortgage's financing cost, a card's): `nominal ÷ prior close`, null with no balance carried.
+ * Not {@link flowAdjustedPct}: a debt's payments are not capital at work, so they stay out of
+ * the base.
+ */
+export function liabilityPctMonth(nominal: number, priorClosing: number): number | null {
+  return Math.abs(priorClosing) > 1e-6 && Number.isFinite(nominal / priorClosing)
+    ? nominal / priorClosing
+    : null;
 }
 
 /**

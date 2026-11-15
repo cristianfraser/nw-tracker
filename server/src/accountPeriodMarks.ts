@@ -1,4 +1,4 @@
-import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
+import type { AccountMonthlyPerformanceRow } from "./accountPerformanceTypes.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -8,37 +8,17 @@ export type MonthEndCloseForAccountOpts = {
   name?: string | null;
 };
 
-export type PeriodAnchor = "mtd" | "ytd" | "dtd";
-
-export function priorCalendarMonthKeyFromToday(todayYmd: string): string {
-  const y = Number(todayYmd.slice(0, 4));
-  const m = Number(todayYmd.slice(5, 7));
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return todayYmd.slice(0, 7);
-  if (m === 1) return `${y - 1}-12`;
-  return `${y}-${String(m - 1).padStart(2, "0")}`;
-}
-
-/** Calendar month immediately before `monthKey` (`YYYY-MM`). */
-export function priorCalendarMonthKey(monthKey: string): string {
-  const y = Number(monthKey.slice(0, 4));
-  const m = Number(monthKey.slice(5, 7));
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return monthKey;
-  if (m === 1) return `${y - 1}-12`;
-  return `${y}-${String(m - 1).padStart(2, "0")}`;
-}
-
-/** Prior period-end label date (Chile calendar) for MTD / YTD / DTD anchors. */
-export function priorPeriodEndYmd(anchor: PeriodAnchor, todayYmd: string = chileCalendarTodayYmd()): string {
-  if (anchor === "mtd") {
-    return monthEndUtcYmd(priorCalendarMonthKeyFromToday(todayYmd));
-  }
-  if (anchor === "ytd") {
-    const y = Number(todayYmd.slice(0, 4));
-    if (!Number.isFinite(y)) return todayYmd;
-    return `${y - 1}-12-31`;
-  }
-  return chileCalendarAddDays(todayYmd, -1);
-}
+export {
+  priorCalendarMonthKey,
+  priorCalendarMonthKeyFromToday,
+  priorPeriodEndYmd,
+  type PeriodAnchor,
+} from "./periodAnchorDates.js";
+import {
+  priorCalendarMonthKeyFromToday,
+  priorPeriodEndYmd,
+  type PeriodAnchor,
+} from "./periodAnchorDates.js";
 
 /**
  * Latest `closing_value` on or before period-end for `monthKey`.

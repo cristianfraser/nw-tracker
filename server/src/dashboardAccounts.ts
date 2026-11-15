@@ -20,7 +20,8 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
+import { clpToUnitAt } from "./valueConvert.js";
 import {
   flowsDepositsNetTotalByAccount,
   listDepositFlowAccounts,

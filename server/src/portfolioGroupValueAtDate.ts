@@ -3,7 +3,7 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { cashNetOfLinkedCreditCards, groupNetsLinkedCards, linkedCardsOwedInUnit } from "./cashEqsBucketNet.js";
-import { accountValueClpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
 import { accountValueInUnitAt } from "./periodReturnsShortHorizon.js";
 import {
   consolidatedClosingRawByDate,

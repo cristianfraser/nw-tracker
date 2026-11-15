@@ -4,7 +4,7 @@ import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { slugMarkTotalsAtDatesClp, type ChartMarkTotalAccountRow } from "./dashboardChartMarkTotals.js";
 import { isCashSavingsNavNode } from "./dashboardNavCardMetrics.js";
-import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
+import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 
 /**
  * Home composition chart: 100%-stacked shares one level below the "big" buckets of the

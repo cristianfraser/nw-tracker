@@ -1,6 +1,6 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { PAYROLL_FUNDED_KINDS } from "./accountProfile.js";
-import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
+import { priorPeriodEndYmd } from "./periodAnchorDates.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";

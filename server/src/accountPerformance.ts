@@ -4,13 +4,13 @@ import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
-import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
+import { getAccountValuationTimeseries } from "./accountValuationTimeseries.js";
 import type { TsUnit } from "./rates.js";
 import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
 import { withRunningPlTotals } from "./monthlyPerfRollup.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { deptoPaymentFlowsInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
-import { cardPeriodLegs, flowAdjustedPct, periodPl } from "./perfKernel.js";
+import { cardPeriodLegs, flowAdjustedPct, liabilityPctMonth, periodPl } from "./perfKernel.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import {
   deptoCreditoRestanteUfBySnapshotDates,
@@ -43,34 +43,8 @@ import {
   priorCalendarMonthKeyFromToday,
   type MonthEndCloseForAccountOpts,
 } from "./accountPeriodMarks.js";
-export type AccountMonthlyPerformanceRow = {
-  as_of_date: string;
-  /** Closing value at month-end (same unit as request: CLP or USD). */
-  closing_value: number;
-  prior_closing: number | null;
-  /** Net capital flow in the month (Δ cumulative aportes vs prior month-end). */
-  net_capital_flow: number;
-  /** Sum of positive `movements.units_delta` in the calendar month (brokerage buys + DRIP, or AFP certificate cuotas). */
-  stock_units_inflow: number;
-  /** Coin units held at month-end snapshot (bitcoin / eth only). */
-  coin_units_eom?: number | null;
-  /**
-   * Gain/loss beyond explained flows. Investments: `closing − prior − net_capital_flow`.
-   * Mortgage: financing cost in the month = payments − CLP principal reduction (`net_capital_flow + Δ closing`).
-   */
-  nominal_pl: number | null;
-  /** Investments: vs `prior + net_flow`. Mortgage: vs opening balance (`prior_closing`). */
-  pct_month: number | null;
-  /** Sum of nominal_pl from January of this row’s calendar year through this month (same unit). */
-  ytd_nominal_pl: number | null;
-  /** Running sum of nominal_pl from first month with a row through this month. */
-  cumulative_nominal_pl: number | null;
-  /** Mortgage: remaining principal in UF from `depto-dividendos.csv` (crédito restante), aligned to month-end. */
-  closing_balance_uf?: number | null;
-  /** Mortgage: UF value in CLP from `uf_daily` on or before month-end (not from the dividendos sheet). */
-  uf_clp_day?: number | null;
-  unit: TsUnit;
-};
+export type { AccountMonthlyPerformanceRow } from "./accountPerformanceTypes.js";
+import type { AccountMonthlyPerformanceRow } from "./accountPerformanceTypes.js";
 
 function numCell(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -223,11 +197,9 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
           : flowAdjustedPct(nominal_pl, null, netFlow, close, opts.unit);
     } else {
       prior_closing = prior;
-      nominal_pl = isMortgage
-        ? periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: "debt" })
-        : ccPerf
-          ? ccPerf.nominal
-          : periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: "asset" });
+      nominal_pl = ccPerf
+        ? ccPerf.nominal
+        : periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: isMortgage ? "debt" : "asset" });
       pct_month = isMortgage
         ? liabilityPctMonth(nominal_pl, prior)
         : ccPerf
@@ -470,13 +442,6 @@ function creditCardMonthPerf(
   const prior = priorClosing != null && Number.isFinite(priorClosing) ? priorClosing : 0;
   const legs = cardPeriodLegs({ owedStart: prior, owedEnd: closing, cost: financing });
   return { netFlow: legs.flow, nominal: legs.pl, pct: liabilityPctMonth(legs.pl, prior) };
-}
-
-/** Debt cost as a rate on the balance carried (both liability kinds). */
-function liabilityPctMonth(nominal: number, priorClosing: number): number | null {
-  return Math.abs(priorClosing) > 1e-6 && Number.isFinite(nominal / priorClosing)
-    ? nominal / priorClosing
-    : null;
 }
 
 function monthEndCloseForMortgagePerformance(
