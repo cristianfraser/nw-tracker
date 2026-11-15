@@ -17,9 +17,10 @@ import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { listEquitySplits, recordEquitySplit, splitRatio } from "./equitySplits.js";
 import type { BrokerAdapter } from "./brokerAdapter.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 /** A split within this many days of one on record is the same split (`recordEquitySplit`'s rule). */
-const SAME_SPLIT_WINDOW_DAYS = 7;
+const SAME_SPLIT_WINDOW_DAYS = MATCH_WINDOWS.same_split.daysAfter;
 
 /** Share counts print 8 decimals: they agree to this. */
 const UNITS_EPS = 1e-6;
