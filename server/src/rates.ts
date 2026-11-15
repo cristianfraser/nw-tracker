@@ -22,11 +22,12 @@
  * while EUR/USD has a quote of today (live, or the close written at the fx day end) today's EUR/CLP
  * is EUR/USD × USD/CLP of today; with none it reads the direct stored rate, as every past day does.
  */
+import { historyTierMemo } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { FX_BID_ASK_SPREAD_CLP, fxBidAskRowOnOrBefore } from "./fxBidAsk.js";
-import { fxForLiveMtm, livePairKey, livePairRateForDay } from "./fxLive.js";
-import { clpToUsdAtPayment, fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
+import { recordFxConversionWarning } from "./fxConversionWarnings.js";
+import { livePairKey, livePairRateForDay } from "./fxLive.js";
 
 /**
  * A currency code: lowercase ISO 4217 (`clp`, `usd`, `eur`, …) as loaded in `currencies`, or `uf`
@@ -66,150 +67,164 @@ export type RateOpts = { side: ConvertSide; now?: Date; storedOnly?: boolean };
 /** Quote units per one base unit on a day: the mid and, when the pair has them, bid and ask. */
 type PairQuote = { mid: number; bid: number; ask: number; date: string };
 
-type PairSource = {
-  base: CurrencyCode;
-  quote: CurrencyCode;
-  /** A stored day (before Chile today). Null when no row is on or before it. */
-  stored: (ymd: string) => PairQuote | null;
-  /** Today's quote (the live rate where the pair has one). Null when none is on file. */
-  today: (ymd: string, now: Date | undefined) => PairQuote | null;
-  /** Every date the pair has a stored row, ascending (coverage reports read it). */
+/** A pair's rate as a rate: quote units per one base unit at the mid, and the day it was observed. */
+export type PairRate = { date: string; mid: number };
+
+/** The stored mids of one pair: one table (or one pair's rows of `fx_rates`), read by date. */
+type MidSeries = {
+  /** The last row on or before the day with a positive mid. */
+  onOrBefore: (ymd: string | null) => PairRate | null;
+  /** Rows dated inside `[from, to]`, ascending. */
+  range: (from: string, to: string) => PairRate[];
+  /** Every row, ascending. */
+  all: () => PairRate[];
+  /** Every date with a row, ascending (coverage reports read it). */
   dates: () => string[];
 };
 
-function datesOf(sql: string, ...params: unknown[]): () => string[] {
-  const stmt = db.prepare(sql);
-  return () => (stmt.all(...params) as { date: string }[]).map((r) => r.date);
-}
-
-const halfSpreadUsdClp = FX_BID_ASK_SPREAD_CLP / 2;
-
-function usdClpFromMid(mid: number, date: string): PairQuote {
-  return { mid, bid: mid - halfSpreadUsdClp, ask: mid + halfSpreadUsdClp, date };
-}
-
-/**
- * USD/CLP on a stored day: the `fx_daily` mid, and the bid/ask observed on that same day or
- * later than the mid row (a dollar purchase, a manual rate). An observed row older than the mid
- * is a past trade's rate, not the day's: the day's bid/ask is then the mid ± the half spread.
- */
-function usdClpStored(ymd: string): PairQuote | null {
-  const midRow = fxMonthEndForBalanceUsd(ymd);
-  if (!midRow || !(midRow.clp_per_usd > 0)) return null;
-  const ba = fxBidAskRowOnOrBefore(ymd);
-  // An inferred row is a cached mid ± the half spread, not an observation: some were
-  // materialized from a mid since restated (a dated month-end inferred from an older or
-  // deleted weekend mid sat up to 6 % off its day's `fx_daily` row), so the day's own mid decides.
-  if (
-    ba &&
-    ba.source !== "mid_spread_inferred" &&
-    ba.date >= midRow.date &&
-    ba.buy_clp_per_usd > 0 &&
-    ba.sell_clp_per_usd > 0
-  ) {
-    return { mid: midRow.clp_per_usd, bid: ba.sell_clp_per_usd, ask: ba.buy_clp_per_usd, date: midRow.date };
-  }
-  return usdClpFromMid(midRow.clp_per_usd, midRow.date);
-}
-
-function usdClpToday(ymd: string, now: Date | undefined): PairQuote | null {
-  const row = fxForLiveMtm(ymd, now);
-  if (!row || !(row.clp_per_usd > 0)) return null;
-  return usdClpFromMid(row.clp_per_usd, row.date);
-}
-
-const stmtEurOnOrBefore = db.prepare(
-  `SELECT date, clp_per_eur FROM eur_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
-);
-
-function eurClp(ymd: string): PairQuote | null {
-  const r = stmtEurOnOrBefore.get(ymd) as { date: string; clp_per_eur: number } | undefined;
-  const v = r?.clp_per_eur;
-  return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
-}
-
-/**
- * EUR/CLP today: EUR/USD × USD/CLP while EUR/USD has a quote dated today (its live rate, or the
- * close written at the fx day end), so a euro figure moves with both rates during the day; else
- * Banco Central's direct rate, which carries no quote of today until it is published. The cross
- * is a mid (the direct pair has no spread on file).
- */
-function eurClpToday(ymd: string, now: Date | undefined): PairQuote | null {
-  const eurUsd = eurUsdToday(ymd, now);
-  if (eurUsd != null && eurUsd.date >= todayYmd(now)) {
-    const usdClp = usdClpToday(ymd, now);
-    if (usdClp != null) {
-      const v = eurUsd.mid * usdClp.mid;
-      return { mid: v, bid: v, ask: v, date: eurUsd.date < usdClp.date ? eurUsd.date : usdClp.date };
-    }
-  }
-  return eurClp(ymd);
-}
-
-const stmtFxRateOnOrBefore = db.prepare(
-  `SELECT date, mid FROM fx_rates WHERE base = ? AND quote = ? AND date <= ? ORDER BY date DESC LIMIT 1`
-);
-
-/** A pair loaded through `currencies` (`fx_rates`): its mid on or before the day; no spread on file. */
-function fxRatesPair(base: CurrencyCode, quote: CurrencyCode): (ymd: string) => PairQuote | null {
-  return (ymd) => {
-    const r = stmtFxRateOnOrBefore.get(base, quote, ymd) as { date: string; mid: number } | undefined;
-    const v = r?.mid;
-    return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
+function midSeries(table: string, midColumn: string, where = "", ...params: unknown[]): MidSeries {
+  const and = where ? `${where} AND ` : "";
+  const onOrBefore = db.prepare(
+    `SELECT date, ${midColumn} AS mid FROM ${table} WHERE ${and}date <= ? ORDER BY date DESC LIMIT 1`
+  );
+  const range = db.prepare(
+    `SELECT date, ${midColumn} AS mid FROM ${table} WHERE ${and}date >= ? AND date <= ? ORDER BY date ASC`
+  );
+  const all = db.prepare(`SELECT date, ${midColumn} AS mid FROM ${table} ${where ? `WHERE ${where} ` : ""}ORDER BY date ASC`);
+  const usable = (r: PairRate): boolean => Number.isFinite(r.mid) && r.mid > 0;
+  return {
+    onOrBefore: (ymd) => {
+      if (!ymd) return null;
+      const r = onOrBefore.get(...params, ymd) as PairRate | undefined;
+      return r != null && usable(r) ? r : null;
+    },
+    range: (from, to) => (range.all(...params, from, to) as PairRate[]).filter(usable),
+    all: () => (all.all(...params) as PairRate[]).filter(usable),
+    dates: () => (all.all(...params) as PairRate[]).map((r) => r.date),
   };
 }
 
-/**
- * Today's quote of a pair loaded through `currencies`: its live rate while the fx day is open
- * (`fxLive.ts`), else its stored close.
- */
-function fxRatesPairToday(base: CurrencyCode, quote: CurrencyCode): (ymd: string, now: Date | undefined) => PairQuote | null {
-  const stored = fxRatesPair(base, quote);
-  const key = livePairKey(base, quote);
-  return (ymd, now) => {
-    const live = livePairRateForDay(key, ymd, now);
-    return live != null && live.mid > 0 ? { mid: live.mid, bid: live.mid, ask: live.mid, date: live.date } : stored(ymd);
-  };
+/** A pair's stored buy and sell rates on a day (quote units per one base unit). */
+export type PairBidAsk = {
+  date: string;
+  /** What selling one base unit gets (the sell rate). */
+  bid: number;
+  /** What buying one base unit costs (the buy rate). */
+  ask: number;
+  /** False for a row that is only the mid ± the pair's half spread, never an observation. */
+  observed: boolean;
+};
+
+/** The buy / sell rates a pair keeps on file. A pair without one has no spread: every side reads the mid. */
+type BidAskSource = {
+  /** The latest row on or before the day (an inferred one re-read from the day's mid). */
+  onOrBefore: (ymd: string) => PairBidAsk | null;
+  /** The whole spread, in quote units, between buy and sell when only the mid is known. */
+  inferredSpread: number;
+};
+
+type PairSource = {
+  base: CurrencyCode;
+  quote: CurrencyCode;
+  series: MidSeries;
+  bidAsk?: BidAskSource;
+  /** The key of the pair's live rate (`fxLive.ts`), when it has one. */
+  liveKey?: string;
+  /** Today's mid for a pair whose rate of today is built from other pairs (EUR/CLP). */
+  todayMid?: (ymd: string | null, now: Date | undefined) => PairRate | null;
+};
+
+const USD_CLP: PairSource = {
+  base: "usd",
+  quote: "clp",
+  series: midSeries("fx_daily", "clp_per_usd"),
+  bidAsk: {
+    onOrBefore: (ymd) => {
+      const r = fxBidAskRowOnOrBefore(ymd);
+      return r == null
+        ? null
+        : { date: r.date, bid: r.sell_clp_per_usd, ask: r.buy_clp_per_usd, observed: r.source !== "mid_spread_inferred" };
+    },
+    inferredSpread: FX_BID_ASK_SPREAD_CLP,
+  },
+  liveKey: livePairKey("usd", "clp"),
+};
+
+/** A pair loaded through `currencies` (`fx_rates`): no spread on file, a live rate while the fx day is open. */
+function fxRatesPair(base: CurrencyCode, quote: CurrencyCode): PairSource {
+  return { base, quote, series: midSeries("fx_rates", "mid", "base = ? AND quote = ?", base, quote), liveKey: livePairKey(base, quote) };
 }
 
-const eurUsdToday = fxRatesPairToday("eur", "usd");
+const EUR_USD = fxRatesPair("eur", "usd");
 
-function ufClp(ymd: string): PairQuote | null {
-  const r = ufRowOnOrBefore(ymd);
-  const v = r?.clp_per_uf;
-  return r != null && v != null && v > 0 ? { mid: v, bid: v, ask: v, date: r.date } : null;
-}
+const EUR_CLP_SERIES = midSeries("eur_daily", "clp_per_eur");
 
 const PAIRS: readonly PairSource[] = [
-  {
-    base: "usd",
-    quote: "clp",
-    stored: usdClpStored,
-    today: usdClpToday,
-    dates: datesOf(`SELECT date FROM fx_daily ORDER BY date ASC`),
-  },
-  {
-    base: "uf",
-    quote: "clp",
-    stored: ufClp,
-    today: (ymd) => ufClp(ymd),
-    dates: datesOf(`SELECT date FROM uf_daily ORDER BY date ASC`),
-  },
+  USD_CLP,
+  { base: "uf", quote: "clp", series: midSeries("uf_daily", "clp_per_uf") },
   {
     base: "eur",
     quote: "clp",
-    stored: eurClp,
-    today: eurClpToday,
-    dates: datesOf(`SELECT date FROM eur_daily ORDER BY date ASC`),
+    series: EUR_CLP_SERIES,
+    /**
+     * EUR/CLP today: EUR/USD × USD/CLP while EUR/USD has a quote dated today (its live rate, or the
+     * close written at the fx day end), so a euro figure moves with both rates during the day; else
+     * Banco Central's direct rate, which carries no quote of today until it is published. The cross
+     * is a mid (the direct pair has no spread on file).
+     */
+    todayMid: (ymd, now) => {
+      const eurUsd = liveOrStoredMid(EUR_USD, ymd, now);
+      if (eurUsd != null && eurUsd.date >= todayYmd(now)) {
+        const usdClp = liveOrStoredMid(USD_CLP, ymd, now);
+        if (usdClp != null) {
+          return { mid: eurUsd.mid * usdClp.mid, date: eurUsd.date < usdClp.date ? eurUsd.date : usdClp.date };
+        }
+      }
+      return EUR_CLP_SERIES.onOrBefore(ymd);
+    },
   },
-  {
-    base: "eur",
-    quote: "usd",
-    stored: fxRatesPair("eur", "usd"),
-    today: eurUsdToday,
-    dates: datesOf(`SELECT date FROM fx_rates WHERE base = ? AND quote = ? ORDER BY date ASC`, "eur", "usd"),
-  },
+  EUR_USD,
 ];
+
+/**
+ * A pair's mid for today: its live rate while the fx day is open, when the row is fresh and its
+ * session is on or before the day (`fxLive.ts`); else the stored close on or before the day.
+ */
+function liveOrStoredMid(pair: PairSource, ymd: string | null, now: Date | undefined): PairRate | null {
+  if (pair.todayMid) return pair.todayMid(ymd, now);
+  const live = pair.liveKey != null ? livePairRateForDay(pair.liveKey, ymd, now) : null;
+  return live != null && live.mid > 0 ? live : pair.series.onOrBefore(ymd);
+}
+
+/** A mid with the pair's inferred spread around it (none for a pair that keeps no bid/ask). */
+function quoteFromMid(pair: PairSource, r: PairRate): PairQuote {
+  const half = (pair.bidAsk?.inferredSpread ?? 0) / 2;
+  return { mid: r.mid, bid: r.mid - half, ask: r.mid + half, date: r.date };
+}
+
+/**
+ * A pair on a stored day: its mid and, where the pair keeps bid/ask (USD/CLP), the rates observed
+ * on that same day or later than the mid row (a dollar purchase, a manual rate). An observed row
+ * older than the mid is a past trade's rate, not the day's: the day's bid/ask is then the mid ±
+ * the half spread.
+ */
+function storedQuote(pair: PairSource, ymd: string): PairQuote | null {
+  const midRow = pair.series.onOrBefore(ymd);
+  if (!midRow) return null;
+  const ba = pair.bidAsk?.onOrBefore(ymd);
+  // An inferred row is a cached mid ± the half spread, not an observation: some were
+  // materialized from a mid since restated (a dated month-end inferred from an older or
+  // deleted weekend mid sat up to 6 % off its day's mid row), so the day's own mid decides.
+  if (ba && ba.observed && ba.date >= midRow.date && ba.ask > 0 && ba.bid > 0) {
+    return { mid: midRow.mid, bid: ba.bid, ask: ba.ask, date: midRow.date };
+  }
+  return quoteFromMid(pair, midRow);
+}
+
+function todayQuote(pair: PairSource, ymd: string, now: Date | undefined): PairQuote | null {
+  const r = liveOrStoredMid(pair, ymd, now);
+  return r == null ? null : quoteFromMid(pair, r);
+}
 
 /** The hubs a conversion without a direct pair walks through, in order. */
 const HUBS: readonly CurrencyCode[] = ["usd", "clp"];
@@ -256,12 +271,12 @@ function registeredPair(p: RatePair): PairSource {
 
 /** Whether the pair has a stored quote on or before `ymd` (the row a conversion of that day reads). */
 export function pairHasStoredQuote(p: RatePair, ymd: string): boolean {
-  return registeredPair(p).stored(ymd) != null;
+  return registeredPair(p).series.onOrBefore(ymd) != null;
 }
 
 /** Every date the pair has a stored row, ascending. */
 export function pairStoredDates(p: RatePair): string[] {
-  return registeredPair(p).dates();
+  return registeredPair(p).series.dates();
 }
 
 function todayYmd(now: Date | undefined): string {
@@ -269,7 +284,7 @@ function todayYmd(now: Date | undefined): string {
 }
 
 function quoteAt(pair: PairSource, ymd: string, now: Date | undefined, storedOnly = false): PairQuote | null {
-  return !storedOnly && ymd >= todayYmd(now) ? pair.today(ymd, now) : pair.stored(ymd);
+  return !storedOnly && ymd >= todayYmd(now) ? todayQuote(pair, ymd, now) : storedQuote(pair, ymd);
 }
 
 /**
@@ -319,6 +334,99 @@ export function pairRateOnOrBefore(
   return { date: q.date, mid: link.inverted ? 1 / q.mid : q.mid };
 }
 
+function directPair(base: CurrencyCode, quote: CurrencyCode): { pair: PairSource; inverted: boolean } {
+  const link = pairFor(base, quote);
+  if (!link) throw new Error(`rates: no direct pair ${base}/${quote}`);
+  return link;
+}
+
+function orient(r: PairRate, inverted: boolean): PairRate {
+  return inverted ? { date: r.date, mid: 1 / r.mid } : r;
+}
+
+/**
+ * The STORED rate of a direct pair on or before `ymd` (quote units per one base unit, at the mid)
+ * and the day it was observed — the close on file, never a live rate, also for today: what a
+ * document of that day is priced at, what a past flow is restated with. Null when no row is on or
+ * before the day (or the day is null); throws when the two codes have no direct pair.
+ */
+export function storedPairRate(base: CurrencyCode, quote: CurrencyCode, ymd: string | null): PairRate | null {
+  const link = directPair(base, quote);
+  const r = link.pair.series.onOrBefore(ymd);
+  return r == null ? null : orient(r, link.inverted);
+}
+
+/**
+ * The stored rows of a direct pair dated inside `[fromYmd, toYmd]`, by date. Exact dates only — no
+ * on-or-before read: a caller comparing a known day with a future one (the mortgage UF reminder)
+ * must see a day not yet published as absent, not as an older row.
+ */
+export function storedPairRatesInRange(
+  base: CurrencyCode,
+  quote: CurrencyCode,
+  fromYmd: string,
+  toYmd: string
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!fromYmd || !toYmd || fromYmd > toYmd) return out;
+  const link = directPair(base, quote);
+  for (const r of link.pair.series.range(fromYmd, toYmd)) out.set(r.date, orient(r, link.inverted).mid);
+  return out;
+}
+
+const ON_OR_BEFORE_INDEXED_LOOKUP_MAX = 16;
+
+/**
+ * The stored rate of a direct pair at each of `datesAsc` (ascending): the last row on or before
+ * each date. A date before the series starts is absent from the map.
+ */
+export function storedPairRatesOnOrBefore(
+  base: CurrencyCode,
+  quote: CurrencyCode,
+  datesAsc: readonly string[]
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (datesAsc.length === 0) return out;
+  const link = directPair(base, quote);
+  if (datesAsc.length <= ON_OR_BEFORE_INDEXED_LOOKUP_MAX) {
+    // A few dates (a single mark): one indexed on-or-before lookup each beats reading the table.
+    for (const d of datesAsc) {
+      const r = link.pair.series.onOrBefore(d);
+      if (r != null) out.set(d, orient(r, link.inverted).mid);
+    }
+    return out;
+  }
+  const rows = link.pair.series.all();
+  let j = 0;
+  let last: PairRate | null = null;
+  for (const d of datesAsc) {
+    while (j < rows.length && rows[j]!.date <= d) {
+      last = rows[j]!;
+      j += 1;
+    }
+    if (last != null) out.set(d, orient(last, link.inverted).mid);
+  }
+  return out;
+}
+
+/** Whether the pair `base`/`quote` keeps buy and sell rates on file (USD/CLP). One without has no spread. */
+export function pairKeepsBidAsk(base: CurrencyCode, quote: CurrencyCode): boolean {
+  const link = pairFor(base, quote);
+  return link != null && !link.inverted && link.pair.bidAsk != null;
+}
+
+/**
+ * The buy and sell rates on file for `base`/`quote` on or before `ymd`: the latest stored row,
+ * whatever its age when it is an observation (a purchase's rate stands until a newer row), the
+ * day's mid ± the half spread otherwise. Null when the pair keeps none (`pairKeepsBidAsk`) or no
+ * row and no mid is on or before the day.
+ */
+export function pairBidAskOnOrBefore(base: CurrencyCode, quote: CurrencyCode, ymd: string): PairBidAsk | null {
+  if (!pairKeepsBidAsk(base, quote)) return null;
+  const row = directPair(base, quote).pair.bidAsk!.onOrBefore(ymd);
+  return row != null && row.bid > 0 && row.ask > 0 && Number.isFinite(row.bid) && Number.isFinite(row.ask) ? row : null;
+}
+
 /**
  * `qty` of `from` expressed in `to` on `ymd`, at the side `opts.side` names. Null when a rate
  * the walk needs is not on file (callers decide: a chart point is null, a sum throws or skips).
@@ -339,31 +447,71 @@ export function convertCurrency(
 }
 
 /**
- * A FLOW of `amount` `from` expressed in `to` on its own day `ymd` — never a value: pesos to
- * dollars at the buy rate on or before the day (what buying those dollars cost; the mid with a
- * warning when no buy rate is stored), pesos to UF at the day's UF. Unrounded: callers sum the
- * converted events and round once. A missing rate throws — a flow is never dropped from a total
- * nor left in pesos inside another unit. A flow that carries its own leg in `to` (a dollar
- * transfer's dollars) is not converted at all: the caller uses that leg (`flowEventInUnit`).
+ * The buy rate a flow of `ymd` paid for one base unit of a pair that keeps bid/ask. A rate found
+ * is memoized in the history tier — every daily build converts each deposit event, a few thousand
+ * lookups — and the stored rates are mark inputs, so any write to them drops the memo.
  */
-export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode, ymd: string): number {
+function flowBuyRate(pair: PairSource, ymd: string): number | null {
+  const memo = historyTierMemo<string, number>(`flow_buy_rate|${pair.base}|${pair.quote}`);
+  const known = memo.get(ymd);
+  if (known !== undefined) return known;
+  const buy = pairBidAskOnOrBefore(pair.base, pair.quote, ymd)?.ask ?? null;
+  if (buy != null) memo.set(ymd, buy);
+  return buy;
+}
+
+/**
+ * A FLOW of `amount` `from` expressed in `to` on its own day `ymd` — never a value. Paying the
+ * quote of a pair that keeps bid/ask for its base (pesos into dollars) converts at the buy rate on
+ * or before the day: what buying it cost (the stored one, or the mid plus the half spread). Any
+ * other conversion reads the day's stored mid through the walk (pesos to UF at the day's UF); a
+ * flow of today converts at the stored rate, never a live one. Unrounded: callers sum the
+ * converted events and round once. Null when no rate is on or before the day. A flow that carries
+ * its own leg in `to` (a dollar transfer's dollars) is not converted at all: the caller uses that
+ * leg (`flowEventInUnit`).
+ */
+export function convertFlowOrNull(amount: number, from: CurrencyCode, to: CurrencyCode, ymd: string): number | null {
   if (!Number.isFinite(amount)) throw new Error(`convertFlow ${ymd}: non-finite amount ${amount}`);
   if (from === to || amount === 0) return amount;
-  if (from === "clp" && to === "usd") {
-    const usd = clpToUsdAtPayment(amount, ymd);
-    if (usd == null) throw new Error(`flow ${ymd}: no USD rate on or before the date (${amount} CLP)`);
-    return usd;
+  const link = pairFor(from, to);
+  if (link != null && link.inverted && link.pair.bidAsk != null) {
+    const buy = flowBuyRate(link.pair, ymd);
+    return buy == null ? null : amount / buy;
   }
-  if (from === "clp" && to === "uf") {
-    const uf = ufRowOnOrBefore(ymd);
-    if (!uf || !(uf.clp_per_uf > 0)) throw new Error(`flow ${ymd}: no UF on or before the date (${amount} CLP)`);
-    return amount / uf.clp_per_uf;
-  }
-  // Any other pair: the day's stored mid through the walk (no buy/sell rate on file for it; a
-  // flow of today converts at the stored rate, not a live one).
-  const out = convertCurrency(amount, from, to, ymd, { side: "mid", storedOnly: true });
+  return convertCurrency(amount, from, to, ymd, { side: "mid", storedOnly: true });
+}
+
+/**
+ * {@link convertFlowOrNull} where a missing rate throws — a flow is never dropped from a total nor
+ * left in one currency inside another unit.
+ */
+export function convertFlow(amount: number, from: CurrencyCode, to: CurrencyCode, ymd: string): number {
+  const out = convertFlowOrNull(amount, from, to, ymd);
   if (out == null) throw new Error(`flow ${ymd}: no ${from}→${to} rate on or before the date (${amount} ${from})`);
   return out;
+}
+
+const REFERENCE_RATE_DECIMALS = 5;
+
+/** `value` rounded to the precision reference and cross-rate amounts are kept at (5 decimals), sign kept. */
+export function roundReferenceAmount(value: number): number {
+  const f = 10 ** REFERENCE_RATE_DECIMALS;
+  return Math.sign(value) * (Math.round(Math.abs(value) * f) / f);
+}
+
+/**
+ * The size of `amount` `from` in `to` at the stored mid on or before `ymd`: a REFERENCE figure for
+ * money that never crossed the pair (a dividend reinvested, a rotation inside one foreign
+ * currency), so no buy or sell rate applies. Always positive (the caller signs it), rounded to 5
+ * decimals; records a reference-rate warning. Null when no rate is on or before the day.
+ */
+export function referenceAmountAtMid(amount: number, from: CurrencyCode, to: CurrencyCode, ymd: string): number | null {
+  if (!Number.isFinite(amount) || amount === 0) return 0;
+  const out = convertCurrency(Math.abs(amount), from, to, ymd, { side: "mid", storedOnly: true });
+  if (out == null) return null;
+  // The code and context are wire values of `fx_conversion_warnings` (named when the only pair was USD/CLP).
+  recordFxConversionWarning({ code: "usd_reference_clp", date: ymd, context: "usdToClpReferenceRounded" });
+  return roundReferenceAmount(out);
 }
 
 /**

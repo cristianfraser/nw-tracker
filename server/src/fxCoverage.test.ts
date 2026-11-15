@@ -4,7 +4,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { buildFxCoverage, fxCoveragePairsForUnit } from "./fxCoverage.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
 // buildFxCoverage reads the rate tables of the pairs a unit walks (fx_daily, uf_daily, eur_daily,
@@ -110,12 +110,12 @@ describe("buildFxCoverage (EUR)", () => {
   });
 });
 
-describe("fxMonthEndForBalanceUsd", () => {
+describe("storedPairRate (USD/CLP)", () => {
   beforeEach(() => {
     db.exec("DELETE FROM fx_daily");
   });
 
   it("returns null when series does not cover date", () => {
-    expect(fxMonthEndForBalanceUsd("2010-01-31")).toBeNull();
+    expect(storedPairRate("usd", "clp", "2010-01-31")).toBeNull();
   });
 });

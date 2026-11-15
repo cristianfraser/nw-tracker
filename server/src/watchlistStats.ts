@@ -15,8 +15,7 @@ import {
   unknownEquityMarketKind,
   type EquityMarketKind,
 } from "./equityQuote.js";
-import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
-import { convertCurrency, pairRateOnOrBefore, type DisplayUnitCode } from "./rates.js";
+import { convertCurrency, pairRateOnOrBefore, type DisplayUnitCode, storedPairRate } from "./rates.js";
 import { londonSessionsBack, nyseSessionsBack } from "./marketHolidays.js";
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeriesTypes.js";
 import {
@@ -130,9 +129,9 @@ function ufValueOnOrBefore(ymd: string): number | null {
 /** CLP per USD on or before `ymd`: the live CLP=X for today while the fx day is open, else the stored close. */
 function fxValueOnOrBefore(ymd: string, today: string, now: Date): number | null {
   if (ymd >= today) {
-    const live = fxForLiveMtm(today, now);
-    if (live != null && live.date <= ymd && Number.isFinite(live.clp_per_usd)) {
-      return live.clp_per_usd;
+    const live = pairRateOnOrBefore("usd", "clp", today, now);
+    if (live != null && live.date <= ymd && Number.isFinite(live.mid)) {
+      return live.mid;
     }
   }
   const row = stmtFxValueOnOrBefore.get(ymd) as { clp_per_usd: number } | undefined;
@@ -248,22 +247,22 @@ function nativeForUf(today: string): NativeRowStats | null {
 
 /** The USD/CLP rate row: CLP per USD in every display unit (it is the rate, not a value). */
 function statsForFx(today: string, now: Date): WatchlistRowStats {
-  const fxRow = fxForLiveMtm(today, now) ?? fxRowOnOrBefore(today);
-  if (fxRow == null || !Number.isFinite(fxRow.clp_per_usd) || fxRow.clp_per_usd <= 0) {
+  const fxRow = pairRateOnOrBefore("usd", "clp", today, now) ?? storedPairRate("usd", "clp", today);
+  if (fxRow == null || !Number.isFinite(fxRow.mid) || fxRow.mid <= 0) {
     return nullStats("clp");
   }
   const asOf = fxRow.date;
   const priorDay = chileCalendarAddDays(asOf, -1);
   const fxAt = (ymd: string) => fxValueOnOrBefore(ymd, today, now);
   const anchors = datedAnchors(watchlistAnchorYmds(today, asOf, chileCalendarAddDays(asOf, -7)), fxAt);
-  const pctVs = (key: WatchlistAnchorKey) => percentChange(fxRow.clp_per_usd, anchors[key].value);
+  const pctVs = (key: WatchlistAnchorKey) => percentChange(fxRow.mid, anchors[key].value);
 
   return {
-    value: fxRow.clp_per_usd,
+    value: fxRow.mid,
     value_currency: "clp",
     as_of_date: asOf,
     changes: {
-      day_pct: displayDayPct("weekday", today, percentChange(fxRow.clp_per_usd, fxAt(priorDay))),
+      day_pct: displayDayPct("weekday", today, percentChange(fxRow.mid, fxAt(priorDay))),
       week_pct: pctVs("week"),
       mtd_pct: pctVs("mtd"),
       mom_pct: pctVs("mom"),

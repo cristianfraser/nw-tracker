@@ -1,5 +1,5 @@
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
-import { ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 
 export const MORTGAGE_ANNUAL_RATE = 0.0495;
 export const MORTGAGE_NOMINAL_RATE_PCT = 4.95;
@@ -19,7 +19,7 @@ export type MortgageAnalyticsMeta = {
 
 function ufClpDayForRow(row: DeptoMortgageSheetRow): number | null {
   if (row.uf_clp_day != null && Number.isFinite(row.uf_clp_day)) return row.uf_clp_day;
-  return ufRowOnOrBefore(row.occurred_on)?.clp_per_uf ?? null;
+  return storedPairRate("uf", "clp", row.occurred_on)?.mid ?? null;
 }
 
 function numericCuota(cuota: string): number | null {

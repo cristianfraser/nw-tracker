@@ -3,7 +3,7 @@ import { cacheKeyNetWorthAth } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { chileCalendarDaysListEndingAt, totalRangeDays } from "./dailySeries.js";
-import { ufClpByDateRange, ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRatesInRange, storedPairRate } from "./rates.js";
 import {
   buildDashboardBucketDailySeriesClp,
   buildDashboardBucketDailySeriesInUnit,
@@ -88,9 +88,9 @@ function netWorthInUnitByDay(
   const byDate = buildDashboardBucketDailySeriesClp(grid);
   if (unit === "uf") { // convention-ok: the UF has no on-or-before range reader; it is carried forward from the grid start
     // UF has no on-or-before reader over a range: carry the last published value forward from
-    // the grid start, exactly what `ufRowOnOrBefore` would resolve per day.
-    const exact = ufClpByDateRange(grid[0]!, grid[grid.length - 1]!);
-    let carry = ufRowOnOrBefore(grid[0]!)?.clp_per_uf ?? null;
+    // the grid start, exactly what `storedPairRate` would resolve per day.
+    const exact = storedPairRatesInRange("uf", "clp", grid[0]!, grid[grid.length - 1]!);
+    let carry = storedPairRate("uf", "clp", grid[0]!)?.mid ?? null;
     return grid.map((ymd) => {
       const clp = byDate.get(ymd)!.net_worth;
       const published = exact.get(ymd);

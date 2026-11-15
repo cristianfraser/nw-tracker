@@ -1,8 +1,10 @@
-import { clpToUsdAtPaymentRounded } from "./fxRates.js";
+import { convertFlowOrNull, roundReferenceAmount } from "./rates.js";
 
-/** CLP → USD using buy rate (or mid fallback) on or before `ymd`. */
+/** CLP → USD at the buy rate on or before `ymd` (a flow, `convertFlowOrNull`), kept at 5 decimals. */
 export function clpToUsdAtDate(clp: number, ymd: string): number | null {
-  return clpToUsdAtPaymentRounded(clp, ymd);
+  if (!Number.isFinite(clp)) return 0;
+  const usd = convertFlowOrNull(clp, "clp", "usd", ymd);
+  return usd == null ? null : roundReferenceAmount(usd);
 }
 
 /**

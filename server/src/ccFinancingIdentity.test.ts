@@ -16,7 +16,7 @@ import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 /** The section-3 charges the statements of one facturación print, in pesos. */
@@ -30,9 +30,9 @@ function statementSection3ChargesClp(accountId: number, billingMonth: string): n
       if (st.currency === "usd") {
         const amt = line.amount_usd ?? 0;
         if (!isUsdSection3FinancingChargeMerchant(line.merchant, amt) || amt <= 0) continue;
-        const fx = fxRowOnOrBefore(balanceUsdFxDateIso(accountId, st.statement_date));
-        if (!fx || !(fx.clp_per_usd > 0)) throw new Error(`no USD/CLP rate for the ${st.statement_date} charges`);
-        sum += Math.round(amt * fx.clp_per_usd);
+        const fx = storedPairRate("usd", "clp", balanceUsdFxDateIso(accountId, st.statement_date));
+        if (!fx || !(fx.mid > 0)) throw new Error(`no USD/CLP rate for the ${st.statement_date} charges`);
+        sum += Math.round(amt * fx.mid);
       } else {
         const amt = line.amount_clp ?? 0;
         if (!isClpSection3FinancingChargeMerchant(line.merchant) || amt <= 0) continue;

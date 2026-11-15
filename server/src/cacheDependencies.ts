@@ -7,7 +7,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * A live tick writes `live_market_quotes` only. Every reader of that table, and every gate that
  * decides whether to read it, reports here: an equity / crypto ticker
  * (`shouldUseLiveEquityQuote`, `equityHeldSessionQuote`, `getLatestLiveEquityQuoteRow`) or a
- * live exchange rate, named by its pair key (`USD_CLP` — `shouldUseLiveFxQuote`,
+ * live exchange rate, named by its pair key (`USD_CLP` — `shouldUseLivePairQuote`,
  * `getLatestLiveFxQuoteRow`, the observado window average —, `EUR_USD`, …: `fxLive.ts`).
  * A gate reports even when it decides against the live row: an aggregate built before the open
  * read the stored close, and must go when the first tick of the session moves the price. The

@@ -10,9 +10,7 @@ import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { traspasoForeignLegs } from "./cards/purchases.js";
-import { convertCurrency } from "./rates.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
-import { fxForLiveMtm } from "./fxLive.js";
+import { convertCurrency, pairRateOnOrBefore, storedPairRate } from "./rates.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 
@@ -267,7 +265,7 @@ export function facturacionForeignRatesForAccount(
     payByRate: (payByIso) => {
       const rate =
         currency === "usd" // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
-          ? fxMonthEndForBalanceUsd(payByFxDateIso(payByIso))?.clp_per_usd
+          ? storedPairRate("usd", "clp", payByFxDateIso(payByIso))?.mid
           : convertCurrency(1, currency, "clp", payByFxDateIso(payByIso), { side: "debt" });
       if (rate == null || !(rate > 0)) {
         throw new Error(`Account ${accountId}: no ${code}/CLP rate on or before ${payByFxDateIso(payByIso)}`);
@@ -277,7 +275,7 @@ export function facturacionForeignRatesForAccount(
     liveRate: () => {
       const rate =
         currency === "usd" // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
-          ? fxForLiveMtm(todayYmd, now)?.clp_per_usd
+          ? pairRateOnOrBefore("usd", "clp", todayYmd, now)?.mid
           : convertCurrency(1, currency, "clp", todayYmd, { side: "debt" });
       if (rate == null || !(rate > 0)) {
         throw new Error(`Account ${accountId}: no ${code}/CLP rate for ${todayYmd}`);

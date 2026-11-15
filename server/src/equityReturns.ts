@@ -9,7 +9,6 @@
 
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
-import { usdToClpReferenceRounded } from "./fxRates.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_USD_LEG_SQL,
@@ -17,7 +16,7 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { flowAdjustedPct } from "./periodReturns.js";
-import { flowEventInUnit, type DisplayUnitCode } from "./rates.js";
+import { flowEventInUnit, type DisplayUnitCode, referenceAmountAtMid } from "./rates.js";
 
 /** Every dividend received (`dividend_payout` transfers): its dollars and their reference pesos. */
 function dividendEventsForAccount(accountId: number): { occurred_on: string; amt: number; amt_usd: number }[] {
@@ -37,7 +36,7 @@ function dividendEventsForAccount(accountId: number): { occurred_on: string; amt
   const out: { occurred_on: string; amt: number; amt_usd: number }[] = [];
   for (const r of rows) {
     const usd = Math.abs(movementUsdLeg(r) ?? 0);
-    const clp = usdToClpReferenceRounded(usd, r.occurred_on);
+    const clp = referenceAmountAtMid(usd, "usd", "clp", r.occurred_on);
     if (clp != null && Number.isFinite(clp)) out.push({ occurred_on: r.occurred_on, amt: clp, amt_usd: usd });
   }
   return out;

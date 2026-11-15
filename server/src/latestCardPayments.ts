@@ -15,7 +15,7 @@ import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
 import { pagoTarjetaCardLegKey, paymentLineIdentityKey, currentPlasticLast4 } from "./expensePaymentNames.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
-import { usdToClpReferenceRounded } from "./fxRates.js";
+import { referenceAmountAtMid } from "./rates.js";
 import { lineConvertedForWire } from "./lineMoney.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
@@ -83,7 +83,7 @@ export function cardPaymentMoney(t: CardPaymentTransfer): { amount: Money; value
     };
   }
   if (t.currency === "usd") { // convention-ok: a card payment transfer is pesos, dollars, or a divisas purchase (pesos to dollars)
-    const clpRaw = usdToClpReferenceRounded(t.amount, t.occurred_on);
+    const clpRaw = referenceAmountAtMid(t.amount, "usd", "clp", t.occurred_on);
     const clp = clpRaw == null ? null : Math.round(clpRaw);
     return {
       amount: { value: t.amount, currency: "usd" },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import {
   effectiveCcExpenseLineAmountClp,
   effectiveCcExpenseLineAmountUsd,
@@ -66,9 +66,9 @@ describe("effectiveCcExpenseLineAmountClp", () => {
     );
     // Rate from fx_daily (revisable by backfills) — a hardcoded rate rots when Yahoo
     // history is re-synced.
-    const fx = fxRowOnOrBefore("2025-05-22");
+    const fx = storedPairRate("usd", "clp", "2025-05-22");
     expect(fx).not.toBeNull();
-    expect(amount).toBe(Math.round(68.29 * fx!.clp_per_usd));
+    expect(amount).toBe(Math.round(68.29 * fx!.mid));
   });
 
   it("converts USD cuota when CLP cuota is missing", () => {

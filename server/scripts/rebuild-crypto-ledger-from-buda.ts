@@ -72,7 +72,7 @@ import { db } from "../src/db.js";
 import { getMergedDepositInflowEventsForAccount } from "../src/accountDeposits.js";
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { equityCloseEod } from "../src/equityQuote.js";
-import { fxForLiveMtm, fxRowOnOrBefore } from "../src/fxRates.js";
+import { pairRateOnOrBefore, storedPairRate } from "../src/rates.js";
 import { computeCryptoMtmClp, cryptoCoinCumulativeThroughDate } from "../src/cryptoValuation.js";
 
 const APPLY = process.argv.includes("--apply");
@@ -396,9 +396,9 @@ type Plan = {
 function marketValueClp(coin: Coin, ymd: string, unitsNano: bigint): number {
   const close = equityCloseEod(COIN_TICKER[coin], ymd);
   if (close == null || !Number.isFinite(close)) fail(`no ${COIN_TICKER[coin]} close on or before ${ymd}`);
-  const fx = fxForLiveMtm(ymd);
-  if (!fx || !(fx.clp_per_usd > 0)) fail(`no USD/CLP rate for ${ymd}`);
-  return Math.round(nanoToNumber(unitsNano) * close * fx.clp_per_usd);
+  const fx = pairRateOnOrBefore("usd", "clp", ymd);
+  if (!fx || !(fx.mid > 0)) fail(`no USD/CLP rate for ${ymd}`);
+  return Math.round(nanoToNumber(unitsNano) * close * fx.mid);
 }
 
 function rowNote(kind: PlannedKind, coin: Coin, date: string, printed: string, extra: string): string {
@@ -638,9 +638,9 @@ function unitsThrough(rows: readonly LedgerRow[], ymd: string): number {
 function markClp(coin: Coin, units: number, ymd: string): number {
   if (!(units > 1e-12)) return 0; // computeCryptoMtmClp values a non-positive balance at 0
   const close = equityCloseEod(COIN_TICKER[coin], ymd);
-  const fx = fxForLiveMtm(ymd);
+  const fx = pairRateOnOrBefore("usd", "clp", ymd);
   if (close == null || !fx) fail(`no price/fx for ${coin} on ${ymd}`);
-  return units * close * fx.clp_per_usd;
+  return units * close * fx.mid;
 }
 
 function markUsd(coin: Coin, units: number, ymd: string): number {
@@ -651,9 +651,9 @@ function markUsd(coin: Coin, units: number, ymd: string): number {
 }
 
 function flowUsd(amount: number, ymd: string): number {
-  const fx = fxRowOnOrBefore(ymd);
-  if (!fx || !(fx.clp_per_usd > 0)) fail(`no USD/CLP rate on or before ${ymd}`);
-  return amount / fx.clp_per_usd;
+  const fx = storedPairRate("usd", "clp", ymd);
+  if (!fx || !(fx.mid > 0)) fail(`no USD/CLP rate on or before ${ymd}`);
+  return amount / fx.mid;
 }
 
 type MonthStat = { me: string; units: number; value: number; flow: number; pl: number };

@@ -6,7 +6,7 @@ import {
   openMonthForeignFacturado,
 } from "./ccBillingBalances.js";
 import { paymentAbonosClpForBillingMonth } from "./ccBillingViews.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -88,9 +88,9 @@ describe("openMonthForeignFacturado (dollars)", () => {
     addLine("JUMBO CLP", 30_000, null); // domestic charge → CLP side only
     addLine("PAGO", -923_815, null); // payment of the PRIOR CLP facturación → excluded
 
-    const fx = fxMonthEndForBalanceUsd(
+    const fx = storedPairRate("usd", "clp", 
       balanceUsdFxDateIso(master.id, "20/10/2026")
-    )?.clp_per_usd;
+    )?.mid;
     expect(fx).toBeGreaterThan(0);
     const usdClp = (usd: number) => Math.round(usd * fx!);
 

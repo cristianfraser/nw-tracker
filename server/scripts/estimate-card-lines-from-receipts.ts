@@ -53,7 +53,7 @@ import { db } from "../src/db.js";
 import { ESTIMATE_DOCUMENT_PREFIX, ESTIMATE_LINE_ID_PREFIX } from "../src/flows/flowTriggerSpecs.js";
 import { buildFlowsExpenseLines, listCreditCardMasterAccountIds } from "../src/flowsExpenses.js";
 import { cachedFlowsExpenseLines } from "../src/flowsMortgageCarrying.js";
-import { fxRowOnOrBefore } from "../src/fxRates.js";
+import { storedPairRate } from "../src/rates.js";
 import { APP_STORE_MERCHANT, deriveMerchantChargeLinks } from "../src/merchantExpenseNotes.js";
 import {
   isOrderSummaryProcessor,
@@ -260,10 +260,10 @@ for (const c of candidates) {
   let line_amount = c.amount;
   let origin_clp: number | null = null;
   if (c.currency === "clp" && c.mayBeDollars && f.usdShare > 0.5) {
-    const fx = fxRowOnOrBefore(c.day);
+    const fx = storedPairRate("usd", "clp", c.day);
     if (!fx) throw new Error(`${c.day}: no USD/CLP rate on or before it`);
     line_currency = "usd";
-    line_amount = Math.round((c.amount / fx.clp_per_usd) * 100) / 100;
+    line_amount = Math.round((c.amount / fx.mid) * 100) / 100;
     origin_clp = c.amount;
   }
   if (!(line_amount > 0)) {

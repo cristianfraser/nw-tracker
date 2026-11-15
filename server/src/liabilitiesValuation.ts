@@ -2,7 +2,7 @@ import {
   deptoMortgageCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
 } from "./deptoDividendosLedger.js";
-import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
+import { storedPairRatesOnOrBefore } from "./rates.js";
 import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
@@ -58,7 +58,7 @@ type LoanLedgerView = { firstMortgageYmd: string | null; closeByDate: Map<string
 
 function loanLedgerViews(datesAsc: readonly string[]): Map<number, LoanLedgerView> {
   const out = new Map<number, LoanLedgerView>();
-  const ufMap = datesAsc.length ? ufClpBySnapshotDatesAsc([...datesAsc]) : new Map<string, number>();
+  const ufMap = datesAsc.length ? storedPairRatesOnOrBefore("uf", "clp", [...datesAsc]) : new Map<string, number>();
   for (const { loanAccountId, rows } of loadAllDeptoLedgers()) {
     if (loanAccountId == null || rows.length === 0) continue;
     const firstMortgageYmd = firstDeptoPropertyOwnershipYmd(rows);

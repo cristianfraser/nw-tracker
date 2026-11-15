@@ -1,5 +1,4 @@
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
-import { convertCurrency } from "./rates.js";
+import { convertCurrency, storedPairRate } from "./rates.js";
 import { isHomeCurrency } from "./displayUnits.js";
 import { lineHasPesoDollarView } from "./cards/lineAmountSql.js";
 
@@ -34,7 +33,7 @@ export function debtFrameRates(entries: Iterable<readonly [string, number]>): De
 export function debtFrameClpPerUsd(fxDateIso: string | null, rates?: DebtFrameRates): number | null {
   const given = rates?.get("usd");
   if (given != null) return given;
-  const fx = fxMonthEndForBalanceUsd(fxDateIso)?.clp_per_usd;
+  const fx = storedPairRate("usd", "clp", fxDateIso)?.mid;
   return fx != null && fx > 0 ? fx : null;
 }
 
@@ -116,9 +115,9 @@ export function effectiveCcExpenseLineAmountClp(
   fxDateIso: string | null
 ): number | null {
   return effectiveCcExpenseLineAmountClpWith(row, (usd) => {
-    const fx = fxMonthEndForBalanceUsd(fxDateIso);
-    if (!fx?.clp_per_usd || fx.clp_per_usd <= 0) return null;
-    return Math.round(usd * fx.clp_per_usd);
+    const fx = storedPairRate("usd", "clp", fxDateIso);
+    if (!fx?.mid || fx.mid <= 0) return null;
+    return Math.round(usd * fx.mid);
   });
 }
 

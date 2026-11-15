@@ -1,13 +1,13 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  fxBuyClpPerUsdOnOrBefore,
   inferBidAskFromMid,
   materializeInferredBidAskForDate,
   upsertFxBidAskRow,
 } from "./fxBidAsk.js";
 import { clearFxConversionWarnings, takeFxConversionWarnings } from "./fxConversionWarnings.js";
-import { clpToUsdAtPaymentRounded } from "./fxRates.js";
+import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import { pairBidAskOnOrBefore } from "./rates.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
 // One case does `DELETE FROM fx_daily_bid_ask WHERE date <= '2099-...'`, which wipes the whole
@@ -46,7 +46,7 @@ describe("fxBidAsk infer", () => {
        ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
     ).run(date, 1000);
     clearFxConversionWarnings();
-    const usd = clpToUsdAtPaymentRounded(100_000, date);
+    const usd = clpToUsdAtDate(100_000, date);
     expect(usd).toBeCloseTo(100_000 / 1002, 5);
     expect(takeFxConversionWarnings()).toHaveLength(0);
     db.prepare(`DELETE FROM fx_daily_bid_ask WHERE date = ?`).run(date);
@@ -61,8 +61,8 @@ describe("fxBidAsk infer", () => {
       sell_clp_per_usd: 990,
       source: "test",
     });
-    expect(clpToUsdAtPaymentRounded(100_000, date)).toBeCloseTo(100, 5);
-    expect(clpToUsdAtPaymentRounded(-100_000, date)).toBeCloseTo(-100, 5);
+    expect(clpToUsdAtDate(100_000, date)).toBeCloseTo(100, 5);
+    expect(clpToUsdAtDate(-100_000, date)).toBeCloseTo(-100, 5);
     db.prepare(`DELETE FROM fx_daily_bid_ask WHERE date = ?`).run(date);
   });
 
@@ -76,15 +76,15 @@ describe("fxBidAsk infer", () => {
     });
     const rows = () => (db.prepare(`SELECT COUNT(*) AS n FROM fx_daily_bid_ask`).get() as { n: number }).n;
     const before = rows();
-    expect(clpToUsdAtPaymentRounded(95_000, "2099-08-05")).toBeCloseTo(100, 5);
-    expect(fxBuyClpPerUsdOnOrBefore(date)).toBe(950);
+    expect(clpToUsdAtDate(95_000, "2099-08-05")).toBeCloseTo(100, 5);
+    expect(pairBidAskOnOrBefore("usd", "clp", date)).toEqual({ date, bid: 940, ask: 950, observed: true });
     expect(rows()).toBe(before);
     db.prepare(`DELETE FROM fx_daily_bid_ask WHERE date = ?`).run(date);
   });
 
   it("no rate on or before the date: null, with no warning recorded", () => {
     clearFxConversionWarnings();
-    expect(clpToUsdAtPaymentRounded(100_000, "1900-01-01")).toBeNull();
+    expect(clpToUsdAtDate(100_000, "1900-01-01")).toBeNull();
     expect(takeFxConversionWarnings()).toHaveLength(0);
   });
 });

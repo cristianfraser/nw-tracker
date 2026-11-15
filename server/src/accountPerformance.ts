@@ -22,7 +22,7 @@ import { ccFinancingCostBetweenInUnit } from "./ccFinancingCostDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
-import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
+import { storedPairRatesOnOrBefore } from "./rates.js";
 import { accountValueAt, accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
 import { clpToUnitAt } from "./valueConvert.js";
 import { accountUsesEquityMtm, equityHeldByYmd } from "./brokerageEquityMtm.js";
@@ -357,7 +357,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     bucketKind === "mortgage"
       ? (() => {
           if (!mortgageLedger?.length) return {};
-          const ufMap = ufClpBySnapshotDatesAsc([today]);
+          const ufMap = storedPairRatesOnOrBefore("uf", "clp", [today]);
           const ufByDate = deptoCreditoRestanteUfBySnapshotDates([today], mortgageLedger);
           return {
             uf_clp_day: ufMap.get(today) ?? null,
@@ -601,7 +601,7 @@ function buildAccountMonthlyPerformanceUncached(
       : null;
   const deptoUfClpByDate =
     deptoLedger && (isMortgage || isDeptoProperty)
-      ? ufClpBySnapshotDatesAsc(deptoSnapshotDates)
+      ? storedPairRatesOnOrBefore("uf", "clp", deptoSnapshotDates)
       : null;
   const mortgageCloseClpByDate =
     deptoLedger && deptoUfClpByDate && isMortgage

@@ -1,6 +1,6 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { accountIsDebt, accountProfile } from "./accountProfile.js";
-import { convertCurrency, type CurrencyCode } from "./rates.js";
+import { convertCurrency, type CurrencyCode, storedPairRate, storedPairRatesOnOrBefore } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { loanAccountIdOfProperty } from "./accountRoles.js";
 import { accountChartInactive } from "./accountChartInactive.js";
@@ -30,7 +30,6 @@ import { db } from "./db.js";
 import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { groupHasPropertyOverlay, investmentRootSlugs, navGroup } from "./navTreeModel.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import {
   chartHostSlugForValuationGroup,
   composeReferenceValuesByDate,
@@ -336,7 +335,7 @@ function buildReferenceMilestoneAnchorsByDate(
   for (const granularity of ["month", "year"] as const) {
     const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, granularity);
     if (!anchorDate || anchorDate >= firstOverviewYmd) continue;
-    const before = fxMonthEndForBalanceUsd(anchorDate) == null;
+    const before = storedPairRate("usd", "clp", anchorDate) == null;
     out[anchorDate] = milestoneFieldsForDate(before ? firstOverviewYmd : anchorDate, unit);
   }
   return out;
@@ -1214,7 +1213,7 @@ function getGroupValuationTimeseriesInnerUncached(
     const overlayIds = deptoOverlayPropertyIds(propertyRows.map((r) => r.account_id));
     const several = overlayIds.length > 1;
     const dateStrsAsc = accounts_in_group.points.map((p) => String(p.as_of_date));
-    const ufClpByDate = overlayIds.length ? ufClpBySnapshotDatesAsc(dateStrsAsc) : new Map<string, number>();
+    const ufClpByDate = overlayIds.length ? storedPairRatesOnOrBefore("uf", "clp", dateStrsAsc) : new Map<string, number>();
     overlayIds.forEach((propertyId, i) => {
       const ledger = deptoLedgerForAccount(propertyId);
       const mortgageClpByDate = deptoMortgageBalanceClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);

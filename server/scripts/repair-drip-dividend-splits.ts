@@ -33,7 +33,7 @@
 import { db } from "../src/db.js";
 import { loadEquityBrokerageCapitalInflowEvents } from "../src/equityBrokerageCapitalFlows.js";
 import { totalDividendsClpForAccount } from "../src/equityReturns.js";
-import { usdToClpReferenceRounded } from "../src/fxRates.js";
+import { referenceAmountAtMid } from "../src/rates.js";
 
 const APPLY = process.argv.includes("--apply");
 
@@ -250,8 +250,8 @@ function main(): void {
   const veaRow = rows.get(10269)!;
   const newVeaBuyUsd = (veaBuy.amount_usd ?? 0) + (veaRow.amount_usd ?? 0);
   const residUsd = newVeaBuyUsd - 54.68; // what the reader will compute: buyUsd − wire.usd
-  const refResid = usdToClpReferenceRounded(residUsd, veaBuy.occurred_on)!;
-  const refPayout = usdToClpReferenceRounded(veaRow.amount_usd ?? 0, VEA_PAYOUT_DATE)!;
+  const refResid = referenceAmountAtMid(residUsd, "usd", "clp", veaBuy.occurred_on)!;
+  const refPayout = referenceAmountAtMid(veaRow.amount_usd ?? 0, "usd", "clp", VEA_PAYOUT_DATE)!;
   const expectedVeaCapitalDelta = refResid - refPayout;
 
   // ── Plan ────────────────────────────────────────────────────────────────────

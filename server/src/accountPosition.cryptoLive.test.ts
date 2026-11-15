@@ -3,7 +3,7 @@ import { getAccountPositionMeta } from "./accountPosition.js";
 import { db } from "./db.js";
 import { clearLiveMarketQuotesForTest, insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
 import { utcTodayYmd } from "./nyseSession.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { pairRateOnOrBefore } from "./rates.js";
 
 /**
  * Regression: crypto position meta must value a TODAY position with the cached live quote
@@ -86,9 +86,9 @@ describe("crypto position meta — live vs EOD", () => {
         `SELECT close FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
       )
       .get(TICKER, asOf) as { close: number };
-    const fx = fxForLiveMtm(asOf)!;
+    const fx = pairRateOnOrBefore("usd", "clp", asOf)!;
     expect(close.close).not.toBe(LIVE_PRICE_USD);
-    expect(meta.afp_override_value_clp).toBeCloseTo(UNITS * close.close * (fx.clp_per_usd - 2), 0);
+    expect(meta.afp_override_value_clp).toBeCloseTo(UNITS * close.close * (fx.mid - 2), 0);
   });
 
   it("with a fresh live quote, values live and dates the mark today (UTC session)", () => {

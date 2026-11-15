@@ -5,7 +5,7 @@ import {
   mortgageAnalyticsMetaFromLedger,
   roundUf4,
 } from "./mortgagePaymentAnalytics.js";
-import { ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 
 export type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
@@ -174,11 +174,11 @@ export function computeMortgagePaymentRow(
     );
   }
 
-  const ufRow = ufRowOnOrBefore(occurred_on);
-  if (!ufRow?.clp_per_uf || !Number.isFinite(ufRow.clp_per_uf)) {
+  const ufRow = storedPairRate("uf", "clp", occurred_on);
+  if (!ufRow?.mid || !Number.isFinite(ufRow.mid)) {
     throw new Error(`No UF rate in uf_daily on or before ${occurred_on}`);
   }
-  const uf_clp_day = ufRow.clp_per_uf;
+  const uf_clp_day = ufRow.mid;
 
   const desgravamen_default_clp = defaultDesgravamenClp(balanceBeforeUf, uf_clp_day);
   const desgravamen_used_override =

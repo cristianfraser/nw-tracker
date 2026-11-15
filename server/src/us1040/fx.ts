@@ -15,19 +15,19 @@
  */
 import { addDaysIso } from "nw-tracker-contracts";
 import { db } from "../db.js";
-import { fxRowOnOrBefore } from "../fxRates.js";
+import { storedPairRate } from "../rates.js";
 
 /** How far back a day may read its rate (a long weekend plus a holiday). */
 export const US1040_FX_MAX_AGE_DAYS = 7;
 
 /** CLP per USD on `day` (the mid on or before it); throws without a rate in the window. */
 export function usdClpRateOn(day: string): number {
-  const row = fxRowOnOrBefore(day);
-  if (!row || !(row.clp_per_usd > 0)) throw new Error(`1040: no USD/CLP rate on or before ${day}`);
+  const row = storedPairRate("usd", "clp", day);
+  if (!row || !(row.mid > 0)) throw new Error(`1040: no USD/CLP rate on or before ${day}`);
   if (row.date < addDaysIso(day, -US1040_FX_MAX_AGE_DAYS)) {
     throw new Error(`1040: the USD/CLP rate for ${day} is from ${row.date}, more than ${US1040_FX_MAX_AGE_DAYS} days before`);
   }
-  return row.clp_per_usd;
+  return row.mid;
 }
 
 const ufStmt = db.prepare(`SELECT clp_per_uf FROM uf_daily WHERE date = ?`);

@@ -29,9 +29,8 @@ import { db } from "./db.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
-import { convertCurrency } from "./rates.js";
+import { convertCurrency, storedPairRate } from "./rates.js";
 import { legacyAmountColumn } from "./cards/statementStorage.js";
 import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { isCardDebtTransferLine, isCardPaymentLine, isDivisasAbonoPaymentLine, requireHeaderPagoIso } from "./ccPaymentLines.js";
@@ -406,7 +405,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       let clp: number | null = g.amount;
       if (g.currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
         const fxIso = fxDateFor(paidFacturacionStatementDate(g.paid_on) ?? statementDate);
-        const fx = fxIso ? fxMonthEndForBalanceUsd(fxIso)?.clp_per_usd : null;
+        const fx = fxIso ? storedPairRate("usd", "clp", fxIso)?.mid : null;
         clp = fx != null && fx > 0 ? g.amount * fx : null;
       }
       lines.push({

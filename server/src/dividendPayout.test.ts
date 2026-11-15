@@ -6,7 +6,7 @@ import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.j
 import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapitalFlows.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
-import { usdToClpReferenceRounded } from "./fxRates.js";
+import { referenceAmountAtMid } from "./rates.js";
 
 const FIXTURE_USD = "vitest-dividend-payout-usd";
 const FIXTURE_STOCK = "vitest-dividend-payout-stock";
@@ -177,7 +177,7 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     expect(usdAfter - usdBefore).toBeCloseTo(DIV_USD, 6);
 
     // Stock deposited / cost-basis line drops by the USD reference CLP at the dividend date.
-    const refClp = usdToClpReferenceRounded(DIV_USD, DIV_DATE)!;
+    const refClp = referenceAmountAtMid(DIV_USD, "usd", "clp", DIV_DATE)!;
     const depositedAfter = getMergedDepositInflowEventsForAccount(stockId).reduce(
       (s, e) => s + e.amt,
       0

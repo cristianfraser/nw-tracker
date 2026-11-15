@@ -13,7 +13,7 @@ import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from ".
 import { buildPayslipChecks } from "../payslipChecks.js";
 import { buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { listCreditCardMasterAccountIds } from "../creditCardTree.js";
-import { fxRowOnOrBefore } from "../fxRates.js";
+import { storedPairRate } from "../rates.js";
 import { accountIdsUnderCheckingAccounts } from "../movementBalanceCashAccounts.js";
 import { convertValue } from "../valueConvert.js";
 import { listRealEstatePlaces } from "../flowsRealEstateExpenses.js";
@@ -617,9 +617,9 @@ function checkCashExplained(problems: string[]): number {
     return r;
   };
   const mid = (day: string) => {
-    const r = fxRowOnOrBefore(day);
+    const r = storedPairRate("usd", "clp", day);
     if (!r) throw new Error(`demo invariants: no fx_daily row on or before ${day}`);
-    return r.clp_per_usd;
+    return r.mid;
   };
   const inClp = (amount: number, currency: string, day: string) => {
     if (currency === "clp") return amount; // convention-ok: the demo story's money is in pesos and dollars

@@ -8,7 +8,7 @@ import {
   isDeptoMortgagePaymentCuota,
 } from "./deptoDividendosLedger.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 
 /** Model annual rate (4,95%) — monthly = /12/100. */
 const DEFAULT_ANNUAL_RATE = 0.0495;
@@ -146,7 +146,7 @@ function scenarioCellAtScheduleUf(
   paymentUf: number | null,
   scheduleYmd: string
 ): DeptoPaymentScenarioCell {
-  const ufClpDay = ufRowOnOrBefore(scheduleYmd)?.clp_per_uf ?? null;
+  const ufClpDay = storedPairRate("uf", "clp", scheduleYmd)?.mid ?? null;
   const paymentClp =
     paymentUf != null && ufClpDay != null && Number.isFinite(ufClpDay)
       ? Math.round(paymentUf * ufClpDay)

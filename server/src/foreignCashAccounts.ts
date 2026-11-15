@@ -4,12 +4,11 @@
  * is the sum of its movements' legs in that currency; its value in a display unit is that balance
  * converted once (`valueConvert.ts`).
  */
-import { BID_ASK_FOREIGN_CURRENCY, fxSellClpPerUsdOnOrBefore } from "./fxBidAsk.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { pairBidAskOnOrBefore, pairKeepsBidAsk, storedPairRate } from "./rates.js";
 import { recordFxConversionWarning } from "./fxConversionWarnings.js";
 import { sumNativeThroughDisplayDate } from "./movementTransfer.js";
 import { foreignCashCurrencyOf } from "./cashCurrency.js";
-import { roundToCurrency } from "./displayUnits.js";
+import { HOME_CURRENCY, roundToCurrency } from "./displayUnits.js";
 import { convertValue } from "./valueConvert.js";
 
 export {
@@ -38,21 +37,22 @@ export function foreignCashBalanceAt(accountId: number, asOfYmd: string): number
 
 /**
  * An amount of a foreign currency in pesos at the cash valuation rate on or before `asOfYmd`
- * (what selling it would get): the stored sell rate for the dollar (its `fx_daily` mid, with a
- * warning, while none is stored), the walk's asset side for any other currency. Rounded to the peso.
+ * (what selling it would get). A currency whose peso pair keeps buy and sell rates on file reads
+ * the stored sell rate (the pair's mid, with a warning, while none is stored); any other reads the
+ * walk's asset side. Rounded to the peso.
  */
 export function foreignCashToClpAt(amount: number, currency: string, asOfYmd: string, context: string): number {
-  if (currency === BID_ASK_FOREIGN_CURRENCY) {
-    const sell = fxSellClpPerUsdOnOrBefore(asOfYmd);
-    if (sell != null && sell > 0) return Math.round(amount * sell);
-    const fx = fxRowOnOrBefore(asOfYmd);
+  if (pairKeepsBidAsk(currency, HOME_CURRENCY)) {
+    const sell = pairBidAskOnOrBefore(currency, HOME_CURRENCY, asOfYmd)?.bid;
+    if (sell != null) return Math.round(amount * sell);
+    const fx = storedPairRate(currency, HOME_CURRENCY, asOfYmd);
     if (!fx) {
-      throw new Error(`fx_daily missing on or before ${asOfYmd} for ${context}`);
+      throw new Error(`no ${currency}/${HOME_CURRENCY} rate on or before ${asOfYmd} for ${context}`);
     }
     recordFxConversionWarning({ code: "sell_rate_missing", date: asOfYmd, context });
-    return Math.round(amount * fx.clp_per_usd);
+    return Math.round(amount * fx.mid);
   }
-  const clp = convertValue(amount, currency, "clp", asOfYmd, "asset");
-  if (clp == null) throw new Error(`no ${currency}/CLP rate on or before ${asOfYmd} for ${context}`);
+  const clp = convertValue(amount, currency, HOME_CURRENCY, asOfYmd, "asset");
+  if (clp == null) throw new Error(`no ${currency}/${HOME_CURRENCY} rate on or before ${asOfYmd} for ${context}`);
   return Math.round(clp);
 }

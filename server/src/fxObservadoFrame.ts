@@ -18,7 +18,7 @@ import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
  * `fx_daily_bcentral` rows are keyed by PUBLICATION date, so day D's frame value is the first
  * row dated after D. Until it is published (D itself, or D-1 before the evening `sbif_usd`
  * sync) the best estimate is the running average of the live USD/CLP prints (`live_market_quotes`, the same rows
- * `fxForLiveMtm` reads) inside D's interbank window (2026-09-09: window average 925,55 vs the observado published next morning 925,97),
+ * `pairRateOnOrBefore` reads) inside D's interbank window (2026-09-09: window average 925,55 vs the observado published next morning 925,97),
  * and with no prints yet the frame's most recent observation on an earlier day — yesterday's
  * window estimate while yesterday's publication is pending too, else the last published
  * observado — the same on-or-before convention every other series uses (carrying the last

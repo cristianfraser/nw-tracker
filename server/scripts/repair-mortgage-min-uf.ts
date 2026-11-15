@@ -26,7 +26,7 @@
  *   npx tsx scripts/repair-mortgage-min-uf.ts --apply    # write FILL + REPAIR rows
  */
 import { db } from "../src/db.js";
-import { ufRowOnOrBefore } from "../src/fxRates.js";
+import { storedPairRate } from "../src/rates.js";
 import { roundUf4 } from "../src/mortgagePaymentAnalytics.js";
 import { isDeptoMortgagePaymentCuota } from "../src/deptoDividendosLedger.js";
 
@@ -78,7 +78,7 @@ function main(): void {
       skips.push(row);
       continue;
     }
-    const uf = ufRowOnOrBefore(row.occurred_on)?.clp_per_uf ?? null;
+    const uf = storedPairRate("uf", "clp", row.occurred_on)?.mid ?? null;
     if (uf == null || !Number.isFinite(uf) || uf <= 0) {
       skips.push(row);
       continue;

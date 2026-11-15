@@ -53,7 +53,7 @@ import {
   mortgageAnalyticsMetaFromLedger,
   roundUf4,
 } from "./mortgagePaymentAnalytics.js";
-import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRatesOnOrBefore, storedPairRate } from "./rates.js";
 
 /** The depto property's identity (`accountIdentityKeys.ts`): what seeds its `property` role. */
 export { PROPERTY_ACCOUNT_IMPORT_KEY as DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY } from "./accountIdentityKeys.js";
@@ -215,7 +215,7 @@ function loadDeptoLedgerForPropertyUncached(propertyId: number): DeptoMortgageSh
   // Pass 1 — base rows from loan_payments (+ per-row uf_daily for derivations).
   const base: DeptoMortgageSheetRow[] = movements.map((m) => {
     const p = m;
-    const ufDay = ufRowOnOrBefore(m.occurred_on)?.clp_per_uf ?? null;
+    const ufDay = storedPairRate("uf", "clp", m.occurred_on)?.mid ?? null;
     const pagoClp = Math.abs(movementClpLegOrZero(m));
     const cruf = p.balance_after ?? null;
     const restanteClp = cruf != null && ufDay != null ? Math.round(cruf * ufDay) : null;
@@ -355,7 +355,7 @@ export function deptoAccountMarkClpAtYmd(accountId: number, asOfYmd: string): De
   const ledger = loadDeptoLedgerForProperty(propertyId);
   if (!ledger.length) return null;
   const dates = [asOfYmd] as const;
-  const ufMap = ufClpBySnapshotDatesAsc(dates);
+  const ufMap = storedPairRatesOnOrBefore("uf", "clp", dates);
   const closeBy =
     categorySlug === "property"
       ? deptoPropertyCloseClpBySnapshotDates(dates, ledger, ufMap)

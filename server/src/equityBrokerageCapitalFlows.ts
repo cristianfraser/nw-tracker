@@ -19,9 +19,8 @@ import { foreignCashCurrencyOf, foreignCashToClpAt } from "./foreignCashAccounts
 import type { DepositInflowEvent } from "./depositInflowEvent.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
-import { usdToClpReferenceRounded } from "./fxRates.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
-import { nativeFlowLeg } from "./rates.js";
+import { nativeFlowLeg, referenceAmountAtMid } from "./rates.js";
 import { isOptionContractAccount } from "./optionContracts.js";
 import {
   OPTION_PREMIUM_PAID_FLOW_KINDS,
@@ -277,7 +276,7 @@ function wireProRataFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | nu
   if (fullyCovered) return [wireFlow];
 
   const residUsd = buyUsd - wireUsd;
-  const residClp = usdToClpReferenceRounded(residUsd, row.occurred_on);
+  const residClp = referenceAmountAtMid(residUsd, "usd", "clp", row.occurred_on);
   if (residClp == null || !Number.isFinite(residClp) || residClp === 0) return null;
 
   return [
@@ -312,7 +311,7 @@ function usdReferenceFlow(
   const usdLeg = movementUsdLeg(row);
   if (usdLeg == null || usdLeg === 0) return null;
   const usdMag = Math.abs(usdLeg);
-  const refClp = usdToClpReferenceRounded(usdMag, row.occurred_on);
+  const refClp = referenceAmountAtMid(usdMag, "usd", "clp", row.occurred_on);
   if (refClp == null || !Number.isFinite(refClp) || refClp === 0) return null;
   return {
     occurred_on: row.occurred_on,

@@ -16,7 +16,7 @@ import {
   deptoAccountMarkClpAtYmd,
   loadAllDeptoLedgers,
 } from "./deptoLedgerFromMovements.js";
-import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
+import { storedPairRatesOnOrBefore } from "./rates.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -218,7 +218,7 @@ describe("deptoAccountMarkClpAtYmd", () => {
     const now = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
     if (!may || !now) return;
 
-    const ufMap = ufClpBySnapshotDatesAsc([priorEnd, today]);
+    const ufMap = storedPairRatesOnOrBefore("uf", "clp", [priorEnd, today]);
     const ufPrior = ufMap.get(priorEnd);
     const ufNow = ufMap.get(today);
     if (ufPrior == null || ufNow == null || ufPrior === ufNow) return;

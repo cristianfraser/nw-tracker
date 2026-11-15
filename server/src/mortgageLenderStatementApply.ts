@@ -35,7 +35,7 @@ import type {
 import { db } from "./db.js";
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
-import { ufRowOnOrBefore } from "./fxRates.js";
+import { storedPairRate } from "./rates.js";
 import { IngestConflict } from "./ingestReceiver.js";
 import { commitMortgagePayment } from "./mortgagePaymentCreate.js";
 import { computeMortgagePaymentRow, numericCuota } from "./mortgagePaymentCompute.js";
@@ -205,7 +205,7 @@ function checkWrite(h: HistoryRow, ledger: readonly DeptoMortgageSheetRow[], inp
     ["insurance_other", h.insurance.other_pesos],
   ];
   for (const [field, v] of unmodelled) if ((v ?? 0) !== 0) out.push({ cuota: h.cuota, field, lender: v, ledger: "no column" });
-  const uf = ufRowOnOrBefore(h.paid_on!);
+  const uf = storedPairRate("uf", "clp", h.paid_on!);
   if (!uf || uf.date !== h.paid_on) {
     throw new Error(`mortgage.lender_statement: no UF for ${h.paid_on} in uf_daily (cuota ${h.cuota}) — sync the UF first`);
   }
