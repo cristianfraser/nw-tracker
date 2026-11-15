@@ -38,7 +38,7 @@ function deepestGroupClaiming(root: NavTreeNodeDto, accountId: number): NavTreeN
       match = node;
       matchDepth = depth;
     }
-    for (const c of node.children ?? []) visit(c, depth + 1);
+    for (const c of node.children) visit(c, depth + 1);
   };
   visit(root, 0);
   return match;

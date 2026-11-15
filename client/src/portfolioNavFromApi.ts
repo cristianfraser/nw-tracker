@@ -8,7 +8,7 @@ export function collectNavAccountDataKeys(node: NavTreeNodeDto): string[] {
     if (n.account_id != null && n.account_id > 0) {
       keys.push(String(n.account_id));
     }
-    for (const c of n.children ?? []) visit(c);
+    for (const c of n.children) visit(c);
   };
   visit(node);
   return keys;
@@ -77,7 +77,7 @@ export function findBestNavNodeForPathname(
         if (nPath.length > bPath.length) best = n;
       }
     }
-    for (const c of n.children ?? []) visit(c);
+    for (const c of n.children) visit(c);
   };
 
   for (const root of nodes) visit(root);
@@ -159,7 +159,7 @@ export function isPortfolioStripAccountNode(node: NavTreeNodeDto): boolean {
  */
 export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   const out: NavTreeNodeDto[] = [];
-  for (const child of root.children ?? []) {
+  for (const child of root.children) {
     if (isFlattenedStripHub(child)) {
       out.push(...portfolioStripGroupChildren(child));
       continue;
@@ -176,7 +176,7 @@ export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDt
  */
 export function portfolioStripSummaryHubs(root: NavTreeNodeDto): NavTreeNodeDto[] {
   const out: NavTreeNodeDto[] = [];
-  for (const child of root.children ?? []) {
+  for (const child of root.children) {
     if (!isFlattenedStripHub(child)) continue;
     out.push(child, ...portfolioStripSummaryHubs(child));
   }
@@ -185,7 +185,7 @@ export function portfolioStripSummaryHubs(root: NavTreeNodeDto): NavTreeNodeDto[
 
 /** Direct account leaves for strip row 3 (compact cards). */
 export function portfolioStripAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
-  return (root.children ?? []).filter(isPortfolioStripAccountNode);
+  return root.children.filter(isPortfolioStripAccountNode);
 }
 
 /**
