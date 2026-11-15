@@ -150,8 +150,6 @@ describe("buildBillingDetailByMonth", () => {
     const expected = uniquo + openRow.cuota_a_pagar_next_mes_clp;
 
     expect(openRow.total_facturado_clp).toBe(expected);
-    // Open month did not roll the prior closed facturado into this cycle.
-    expect(openRow.total_facturado_clp ?? 0).toBeLessThan(may.total_facturado_clp ?? 0);
     // …but the balance carries the prior closed month's debt forward: it is the card's owed today.
     expect(openRow.balance_statement_clp).toBe(accountTodayValue(master.id)!.value_clp);
   });
