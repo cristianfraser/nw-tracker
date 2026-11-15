@@ -1,16 +1,20 @@
 import type { CurrencyCode } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
-import { ccOwedByCurrency, foreignOwedIn, type CcForeignOwed, type CcOwedByCurrency } from "./ccOwedByCurrency.js";
+import { ccOwedByCurrency, foreignOwedIn, type CcOwedByCurrency } from "./ccOwedByCurrency.js";
 import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 
 /**
- * A verdict's foreign side as stored: its `foreign` entry, or — a detail written before the owed
- * figures were kept per currency — the dollar entry under its old `usd` key.
+ * A stored verdict's owed figures. Every stored detail keeps its foreign side per currency
+ * (`owed.foreign`; migration 341 rewrote the details that carried the dollars under `owed.usd`),
+ * so one without it throws.
  */
-function storedForeignOwed(owed: CcOwedByCurrency, currency: string): CcForeignOwed {
-  const legacy = (owed as { usd?: CcForeignOwed }).usd;
-  return owed.foreign != null ? foreignOwedIn(owed, currency) : (legacy ?? { facturado: 0, open_cycle_lines: 0, total: 0 });
+function storedOwed(snapshotId: number, detail: CheckDetail): CcOwedByCurrency | null {
+  const owed = detail.owed;
+  if (owed != null && owed.foreign == null) {
+    throw new Error(`cc_bank_cupo_checks: the stored verdict of snapshot ${snapshotId} has no per-currency foreign owed (owed.foreign)`);
+  }
+  return owed;
 }
 
 /**
@@ -186,7 +190,7 @@ export function judgeLatestBankCupoCapture(opts: {
         diff: stored.diff,
         tolerance: stored.tolerance,
         reason: detail.reason,
-        owed: detail.owed,
+        owed: storedOwed(snapshot.id, detail),
         fresh: false,
       });
       continue;
@@ -273,8 +277,8 @@ export function formatBankCupoReport(
         ? `     app = facturado ${fmtAmount(o.clp.facturado, "clp")} (${month}) + cuotas por facturar ` +
             `${fmtAmount(o.clp.installment_remainder, "clp")} (${o.clp.remaining_cuotas}) + later lines ` +
             `${fmtAmount(o.clp.open_cycle_lines, "clp")}`
-        : `     app = facturado ${fmtAmount(storedForeignOwed(o, s.currency).facturado, s.currency)} (${month}) + later lines ` +
-            `${fmtAmount(storedForeignOwed(o, s.currency).open_cycle_lines, s.currency)}`
+        : `     app = facturado ${fmtAmount(foreignOwedIn(o, s.currency).facturado, s.currency)} (${month}) + later lines ` +
+            `${fmtAmount(foreignOwedIn(o, s.currency).open_cycle_lines, s.currency)}`
     );
   }
   return lines.join("\n");
