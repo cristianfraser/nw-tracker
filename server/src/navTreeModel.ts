@@ -375,6 +375,28 @@ export function groupHasPropertyOverlay(slug: string): boolean {
 }
 
 /**
+ * Whether a netting node sits in the group's subtree, the group included: its series of totals
+ * (a daily closing) is then net of what that node nets. Unlike {@link nettingGroupOf} this also
+ * answers for a group above the buckets (the net-worth root), whose total is the sum of its
+ * buckets, one of them netted.
+ */
+export function groupSubtreeHoldsNettingNode(slug: string): boolean {
+  const root = navGroup(slug);
+  if (!root) return false;
+  const seen = new Set<number>();
+  const walk = (g: NavGroup): boolean => {
+    if (seen.has(g.id)) return false;
+    seen.add(g.id);
+    if (g.netsLinkedGroupId != null) return true;
+    return g.childGroupIds.some((id) => {
+      const child = navGroupById(id);
+      return child != null && walk(child);
+    });
+  };
+  return walk(root);
+}
+
+/**
  * The one group other groups net (the linked credit cards): every `nets_linked_group_id` points at
  * it. Throws when none or several are declared — the linked total is one sum.
  */

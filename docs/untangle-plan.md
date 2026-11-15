@@ -2266,11 +2266,15 @@ Left by wave 8c:
   paths: one source first).
 - Printed precision: usd/eur cards print at adaptive precision, each on its own, so the payload
   adds up at the cent while printed whole-dollar figures can still miss by one. Client formatting.
-- The net-worth root's own series is un-netted and adds the liabilities' owed as positive: the
-  monthly `valuation-timeseries?portfolio_group=net_worth` (no client caller) and the daily
-  `/api/daily-series?portfolio_group=net_worth`, which feeds the home page's day-mode detail table.
-  The month and year tables there are netted. Fix: `buildNetWorthConsolidatedMonthly` for the root,
-  per-bucket sums in the daily resolver. A decision (a visible number changes).
+- Fixed after the wave (2026-11-15): the day table's closing was the members' sum on the three
+  groups whose total nets the linked cards (cash savings, Efectivo, net worth), while the month
+  and year rows net it. The first reading («adds the liabilities' owed as positive») was wrong:
+  the net-worth daily scope holds no debt account. `/api/daily-series?portfolio_group=` now nets
+  the closing (and `delta`, the baseline) in the response only (`withLinkedCardsNetted`,
+  `groupSubtreeHoldsNettingNode`); flow, P/L, %, the account lines and the shared series behind
+  the % chains are unchanged. Rehearsal: 10 payload files differ (3 groups × units), those paths
+  only. Still open: the monthly `valuation-timeseries?portfolio_group=net_worth` (no client
+  caller) is un-netted; the % base of a netting group is the members' sum.
 - The Vitest person answers 500 on `/api/benchmark-comparison?…portfolio_group=net_worth`.
 - Test isolation: a test file that deletes a placed account with raw SQL leaves `sort_order` gaps
   for the files after it (one test settled; the shared «insert and place» fixture helper of wave 8b

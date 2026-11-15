@@ -1,4 +1,4 @@
-import { groupHasPropertyOverlay } from "./navTreeModel.js";
+import { groupHasPropertyOverlay, groupSubtreeHoldsNettingNode } from "./navTreeModel.js";
 import { accountIsDebt } from "./accountProfile.js";
 import { cacheKeyAccountDailySeriesResponse, cacheKeyGroupDailySeriesResponse } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
@@ -10,7 +10,8 @@ import {
   deptoPropertyChartOverlayDailyLines,
   propertyAccountIdsOfGroup,
 } from "./dailyReferenceLines.js";
-import { groupDailySeriesAccounts } from "./dailySeries.js";
+import { groupDailySeriesAccounts, type BucketDailySeries } from "./dailySeries.js";
+import { nodeValueSeriesFromSums } from "./nodeValue.js";
 import {
   type ChartBucketPlan,
   pageChartPlan,
@@ -94,7 +95,9 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
     : undefined;
   // `deposit_cums_raw` is builder-internal (feeds the grouped-bucket aportes below) —
   // never serialized.
-  const { deposit_cums_raw: _rawDeps, ...seriesPayload } = series;
+  // The payload's closings are net of the linked cards where the group's total is; everything
+  // built from `series` below (bucket lines, P/L levels, the card block) reads the members' own.
+  const { deposit_cums_raw: _rawDeps, ...seriesPayload } = withLinkedCardsNetted(portfolioGroup, unit, series);
   // Liabilities coverage by the same overlays (Pasivos), the daily twin of the monthly
   // `reference_coverage` block: the total owed (mortgage + cards) on each day.
   const liabilityLines = (series.accounts ?? []).filter(
@@ -167,6 +170,29 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
           ungrouped_accounts: ungrouped,
         }
       : {}),
+  };
+}
+
+/**
+ * The series with each day's closing net of the linked cards, for a group whose total is (cash
+ * savings, Efectivo, net worth): the daily twin of the month rows' closing
+ * (`netLinkedCreditCardFromCashConsolidated`). As there, the cards are an offset on the closing
+ * only — flow, P/L and % stay the members' own, and so do the account lines. Only this response
+ * is netted: the shared series behind it (% chains, reference overlays) keeps the members' sum.
+ */
+function withLinkedCardsNetted(portfolioGroup: string, unit: TsUnit, series: BucketDailySeries): BucketDailySeries {
+  if (!groupSubtreeHoldsNettingNode(portfolioGroup)) return series;
+  const dates = [series.baseline.as_of_date, ...series.points.map((p) => p.as_of_date)];
+  const sums = [series.baseline.value, ...series.points.map((p) => p.value)];
+  const netted = nodeValueSeriesFromSums(sums, dates, unit, { netsLinkedCards: true });
+  return {
+    ...series,
+    baseline: { ...series.baseline, value: netted[0]! },
+    points: series.points.map((p, i) => {
+      const value = netted[i + 1]!;
+      const prev = netted[i]!;
+      return { ...p, value, delta: value != null && prev != null ? value - prev : null };
+    }),
   };
 }
 
