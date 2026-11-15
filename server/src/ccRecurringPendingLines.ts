@@ -15,6 +15,9 @@ import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
 import { parseDdMmYyToIso, dayWithinWindow } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
+import { pairOneToOne } from "./matching/pairing.js";
+import { sameCoin } from "./matching/money.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
 import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 export type RecurringPendingReplacement = { pending_line_id: number; posted_line_id: number; entry: string; amount_clp: number; pending_on: string };
@@ -30,6 +33,42 @@ export type RecurringPendingResult = {
 export type RecurringPendingPlan = { result: RecurringPendingResult; plan: CardLinePlan };
 
 type CardLine = { id: number; merchant: string | null; amount_clp: number | null; amount_usd: number | null; transaction_date: string | null; bucket: number };
+
+/** A peso card line as the pending-listing rule reads it. */
+export type RecurringPendingLine = { id: number; merchant: string | null; amount_clp: number; iso: string; bucket: number };
+
+/**
+ * One entry's pending listings and the posted lines that replace them. A bucket line under one of
+ * the entry's names (the pattern test is the recurring matcher's, `recurringPatternIndex`) is the
+ * pending listing of a line under ANOTHER of its names, for the same pesos, dated inside
+ * `MATCH_WINDOWS.recurring_pending` after it, when those pesos fit the entry at the posted day's UF
+ * (the matcher's `ufAmountFits`). One-to-one both ways (`mutual_unique`): anything else is
+ * ambiguous. Pure.
+ */
+export function pairRecurringPendingLines<L extends RecurringPendingLine>(
+  entry: RecurringEntry,
+  lines: readonly L[],
+  ufOn: (ymd: string) => number
+): { pairs: { pending: L; posted: L }[]; ambiguous: { pending: L; posted: L[] }[] } {
+  const named = lines.map((l) => ({ l, k: recurringPatternIndex(entry, l.merchant) })).filter((x) => x.k >= 0);
+  const out = pairOneToOne(
+    named.filter((p) => p.l.bucket === 1),
+    named,
+    {
+      strategy: "mutual_unique",
+      accepts: (p, s) => {
+        if (s.l.id === p.l.id || s.k === p.k || !sameCoin(s.l.amount_clp, p.l.amount_clp, HOME_CURRENCY)) return false;
+        // The posted pesos must fit the entry at the posted day's UF only (`daysAfter` 0) — narrower
+        // than the occurrence matcher's, which lets a listing be priced up to five days later.
+        return dayWithinWindow(p.l.iso, s.l.iso, MATCH_WINDOWS.recurring_pending) && ufAmountFits(entry, Math.round(s.l.amount_clp), s.l.iso, ufOn, 0);
+      },
+    }
+  );
+  return {
+    pairs: out.pairs.map((x) => ({ pending: x.left.l, posted: x.right.l })),
+    ambiguous: out.ambiguous.map((x) => ({ pending: x.left.l, posted: x.rights.map((r) => r.l) })),
+  };
+}
 
 export function planRecurringPendingReplacement(accountId: number): RecurringPendingPlan {
   const result: RecurringPendingResult = { replaced: [], ambiguous: [], removed_from_date: null };
@@ -48,36 +87,18 @@ export function planRecurringPendingReplacement(accountId: number): RecurringPen
       .all(accountId) as CardLine[]
   )
     .filter((l) => !l.amount_usd && (l.amount_clp ?? 0) > 0)
-    .map((l) => ({ ...l, iso: parseDdMmYyToIso(String(l.transaction_date ?? "")) }))
+    .map((l) => ({ ...l, amount_clp: l.amount_clp!, iso: parseDdMmYyToIso(String(l.transaction_date ?? "")) }))
     .filter((l): l is typeof l & { iso: string } => l.iso != null);
   if (lines.length === 0) return none();
   const uf = ufProjector();
 
   const pairs: { pending: (typeof lines)[number]; posted: (typeof lines)[number]; entry: RecurringEntry }[] = [];
   for (const entry of entries) {
-    const named = lines.map((l) => ({ l, k: recurringPatternIndex(entry, l.merchant) })).filter((x) => x.k >= 0);
-    const postedFor = new Map<number, (typeof lines)[number][]>();
-    const pendingFor = new Map<number, number>();
-    for (const p of named) {
-      if (p.l.bucket !== 1) continue;
-      const later = named.filter((s) => {
-        if (s.l.id === p.l.id || s.k === p.k || Math.round(s.l.amount_clp!) !== Math.round(p.l.amount_clp!)) return false;
-        // The posted pesos must fit the entry at the posted day's UF only (`daysAfter` 0) — narrower
-        // than the occurrence matcher's, which lets a listing be priced up to five days later.
-        return dayWithinWindow(p.l.iso, s.l.iso, MATCH_WINDOWS.recurring_pending) && ufAmountFits(entry, Math.round(s.l.amount_clp!), s.l.iso, uf.ufOn, 0);
-      });
-      if (later.length === 0) continue;
-      postedFor.set(p.l.id, later.map((s) => s.l));
-      for (const s of later) pendingFor.set(s.l.id, (pendingFor.get(s.l.id) ?? 0) + 1);
+    const paired = pairRecurringPendingLines(entry, lines, uf.ufOn);
+    for (const a of paired.ambiguous) {
+      result.ambiguous.push(`${entry.name}: ${a.pending.iso} ${a.pending.merchant} ${a.pending.amount_clp} fits ${a.posted.length} posted line(s)`);
     }
-    for (const [pendingId, posted] of postedFor) {
-      const pending = lines.find((l) => l.id === pendingId)!;
-      if (posted.length !== 1 || pendingFor.get(posted[0]!.id) !== 1) {
-        result.ambiguous.push(`${entry.name}: ${pending.iso} ${pending.merchant} ${pending.amount_clp} fits ${posted.length} posted line(s)`);
-        continue;
-      }
-      pairs.push({ pending, posted: posted[0]!, entry });
-    }
+    for (const p of paired.pairs) pairs.push({ ...p, entry });
   }
   if (pairs.length === 0) return none();
 
@@ -87,7 +108,7 @@ export function planRecurringPendingReplacement(accountId: number): RecurringPen
       pending_line_id: p.pending.id,
       posted_line_id: p.posted.id,
       entry: p.entry.name,
-      amount_clp: Math.round(p.pending.amount_clp!),
+      amount_clp: Math.round(p.pending.amount_clp),
       pending_on: p.pending.iso,
     });
   }
