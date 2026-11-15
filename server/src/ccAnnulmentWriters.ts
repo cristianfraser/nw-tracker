@@ -18,10 +18,14 @@ import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import {
   bucketLineMatchesFeedLine,
   bucketLinePurchaseIso,
+  listingLineAmount,
+  listingLineCurrency,
   listOpenBucketLines,
   merchantsSame,
   type CcOpenBucketLine,
+  type ListingCurrency,
 } from "./ccFeedCuotaPurchases.js";
+import { sameCoin } from "./matching/money.js";
 import {
   mirrorRemovedRow,
   type CcFeedMirrorAnnulled,
@@ -37,13 +41,9 @@ import type { CcListingLine } from "./ccWebPasteParse.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
-export type Currency = "clp" | "usd"; // convention-ok: Santander's and BCI's card listings are in pesos or dollars only
+export type Currency = ListingCurrency;
 
-function lineCurrency(line: { amount_usd: number | null }): Currency {
-  return line.amount_usd != null && line.amount_usd !== 0 ? "usd" : "clp";
-}
-
-/** The amount of a card line in its own currency's coin (integer pesos, integer cents). */
+/** The amount of a card line in its own currency's coin (integer pesos, integer cents); `ccAnnulmentCupoGap.ts` reads it. */
 export function coin(amount: number, currency: Currency): number {
   return currency === "usd" ? Math.round(amount * 100) : Math.round(amount); // convention-ok: pesos have no minor unit; dollars round to the cent
 }
@@ -107,7 +107,7 @@ export function removeRelistedAnnulments(accountId: number, feedLines: readonly 
     strategy: "first",
     accepts: (a, f) =>
       a.currency === f.currency &&
-      coin(a.amount, a.currency as Currency) === coin(Math.abs(f.amount), f.currency) &&
+      sameCoin(a.amount, Math.abs(f.amount), f.currency) &&
       Math.abs(daysBetweenIso(a.purchase_date, f.transaction_date)) <= window &&
       merchantsSame(a.merchant, f.merchant),
   });
@@ -129,10 +129,9 @@ const selTaggedKind = db.prepare(`SELECT cuota_purchase_kind FROM cc_statement_l
  * as a cuota purchase (the statement's plan supersedes it), not a credit or payment. Anything else
  * keeps the delete the reconcile always did.
  */
-export function bucketLineAnnullable(line: { id: number; installment_flag: boolean | number; amount_clp: number | null; amount_usd: number | null }): boolean {
+export function bucketLineAnnullable(line: { id: number; installment_flag: boolean | number; currency: string; amount_clp: number | null; amount_usd: number | null }): boolean {
   if (line.installment_flag) return false;
-  const currency = lineCurrency(line);
-  const amount = currency === "usd" ? line.amount_usd : line.amount_clp; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
+  const amount = listingLineAmount(line);
   if (amount == null || !(amount > 0)) return false;
   const tagged = (selTaggedKind.get(line.id) as { cuota_purchase_kind: string | null } | undefined)?.cuota_purchase_kind;
   return tagged == null;
@@ -153,18 +152,18 @@ type StatementChargeLike = {
  * annulled — it was never voided.
  */
 export function statementRestatesBucketLine(
-  bucket: { merchant: string | null; amount_clp: number | null; amount_usd: number | null; iso: string },
+  bucket: { id: number; merchant: string | null; currency: string; amount_clp: number | null; amount_usd: number | null; iso: string },
   statementLines: readonly (StatementChargeLike & { currency: Currency })[]
 ): boolean {
-  const currency = lineCurrency(bucket);
-  const amount = coin((currency === "usd" ? bucket.amount_usd : bucket.amount_clp) ?? 0, currency); // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
+  const currency = listingLineCurrency(bucket);
+  const amount = listingLineAmount(bucket) ?? 0;
   const window = MATCH_WINDOWS.feed_mirror.daysAfter;
   return statementLines.some((s) => {
     if (s.currency !== currency || s.iso == null) return false;
     if (Math.abs(daysBetweenIso(bucket.iso, s.iso)) > window) return false;
     const sAmount = (currency === "usd" ? s.amount_usd : s.amount_clp) ?? 0; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
     if (!(sAmount > 0)) return false;
-    return coin(sAmount, currency) !== amount ? merchantsMatchForCrossDedupe(bucket.merchant, s.merchant) : true;
+    return sameCoin(sAmount, amount, currency) ? true : merchantsMatchForCrossDedupe(bucket.merchant, s.merchant);
   });
 }
 
@@ -205,7 +204,7 @@ export function settleAnnulmentsAgainstStatement(
   const sameMoney = (a: CcAnnulledPurchase, s: StatementChargeLike & { currency: Currency }, sign: 1 | -1): boolean => {
     if (s.currency !== a.currency) return false;
     const v = (s.currency === "usd" ? s.amount_usd : s.amount_clp) ?? 0; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
-    return sign * v > 0 && coin(Math.abs(v), s.currency) === coin(a.amount, a.currency as Currency);
+    return sign * v > 0 && sameCoin(Math.abs(v), a.amount, s.currency);
   };
   for (const a of open) {
     const billed = free.find(

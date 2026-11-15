@@ -25,6 +25,7 @@ import { creditCardMasterMetaForAccount, type CcListingLine } from "./ccWebPaste
 import { noteCardLineWritten, withCardLineSession } from "./cards/lineWriteSession.js";
 import { parseDdMmYyToIso, daysBetweenIso, isWebPasteCutOf, normalizeMerchantText } from "nw-tracker-contracts";
 import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
+import { sameCoin } from "./matching/money.js";
 
 /** An open web-paste bucket line, as the feed matchers see it. */
 export type CcOpenBucketLine = {
@@ -34,6 +35,8 @@ export type CcOpenBucketLine = {
   transaction_date: string | null;
   posting_date: string | null;
   merchant: string | null;
+  /** The currency the line stores (`cc_statement_lines.currency`). */
+  currency: string;
   amount_clp: number | null;
   amount_usd: number | null;
   installment_flag: number;
@@ -41,8 +44,27 @@ export type CcOpenBucketLine = {
   source_pdf: string;
 };
 
+/** The currencies a card listing (a feed slide, a web paste) carries. */
+export type ListingCurrency = "clp" | "usd"; // convention-ok: Santander's and BCI's card listings are in pesos or dollars only
+
+/**
+ * A listing-bucket line's currency: the one it stores, never guessed from which amount is set. The
+ * listings carry pesos and dollars only, so a bucket line in any other currency throws.
+ */
+export function listingLineCurrency(line: { id: number; currency: string }): ListingCurrency {
+  if (line.currency === "clp" || line.currency === "usd") return line.currency; // convention-ok: Santander's and BCI's card listings are in pesos or dollars only
+  throw new Error(
+    `card line ${line.id}: a ${line.currency} line in the listing bucket (the card listings carry pesos and dollars only)`
+  );
+}
+
+/** A listing-bucket line's amount in its own currency (the legacy peso / dollar view, picked by the stored currency). */
+export function listingLineAmount(line: { id: number; currency: string; amount_clp: number | null; amount_usd: number | null }): number | null {
+  return listingLineCurrency(line) === "usd" ? line.amount_usd : line.amount_clp; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
+}
+
 const selOpenBucketLines = db.prepare<[number]>(
-  `SELECT l.id, l.kind, l.transaction_date, l.posting_date, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
+  `SELECT l.id, l.kind, l.transaction_date, l.posting_date, l.merchant, l.currency, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
           l.installment_flag, l.cuota_purchase_kind, s.source_pdf
    FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND s.source_kind = 'listing_open'
@@ -77,13 +99,9 @@ export function bucketLineMatchesFeedLine(
   feed: CcListingLine,
   maxDayGap: number
 ): boolean {
-  const lineUsd = line.amount_usd != null && line.amount_usd !== 0;
-  if (lineUsd !== (feed.currency === "usd")) return false; // convention-ok: Chilean cuota products bill in pesos only
-  if (lineUsd) {
-    if (Math.abs(Math.abs(line.amount_usd!) - Math.abs(feed.amount)) > 0.005) return false;
-  } else if (Math.round(Math.abs(line.amount_clp ?? 0)) !== Math.round(Math.abs(feed.amount))) {
-    return false;
-  }
+  const currency = listingLineCurrency(line);
+  if (currency !== feed.currency) return false;
+  if (!sameCoin(Math.abs(listingLineAmount(line) ?? 0), Math.abs(feed.amount), currency)) return false;
   const lineIso = bucketLinePurchaseIso(line);
   if (!lineIso || Math.abs(daysBetweenIso(lineIso, feed.transaction_date)) > maxDayGap) return false;
   return merchantsSame(line.merchant, feed.merchant);
