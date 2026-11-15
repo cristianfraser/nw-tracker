@@ -15,10 +15,23 @@ import {
   searchWatchlistSymbols,
 } from "../watchlist.js";
 import { asyncHandler } from "./shared.js";
+import { writeHandler } from "../inputError.js";
 import { invalidateMarketDataAggregations } from "../cacheRegistry.js";
 import { listEquitySplits, recordEquitySplit } from "../equitySplits.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
 import { requestDisplayUnit } from "../displayUnits.js";
+
+/**
+ * The `source` of a watchlist row, or null when there is none: the two things about a row a
+ * request can get wrong (an id that does not exist, a built-in row asked to be deleted), checked
+ * here so that anything `watchlist.ts` throws afterwards is a 500.
+ */
+function watchlistRowSource(id: number): string | null {
+  const row = db.prepare(`SELECT source FROM market_display_series WHERE id = ?`).get(id) as
+    | { source: string }
+    | undefined;
+  return row?.source ?? null;
+}
 
 export function registerMarketRoutes(app: express.Express): void {
 app.get("/api/fx/latest", (_req, res) => {
@@ -58,12 +71,9 @@ app.post("/api/fx/bid-ask", (req, res) => {
     res.status(400).json({ error: "buy_clp_per_usd must be >= sell_clp_per_usd" });
     return;
   }
-  try {
-    const row = upsertManualFxBidAskRow(date, buy_clp_per_usd, sell_clp_per_usd);
-    res.json({ ok: true, row });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-  }
+  // Everything the write checks is checked above; a throw from here on is a 500.
+  const row = upsertManualFxBidAskRow(date, buy_clp_per_usd, sell_clp_per_usd);
+  res.json({ ok: true, row });
 });
 
 app.get("/api/fx", (_req, res) => {
@@ -134,7 +144,7 @@ app.get("/api/equity-splits", (req, res) => {
  * every holder gets its `stock_split` row, in one transaction. Body: ticker, ex_date,
  * numerator, denominator (3 and 1 for a 3-for-1).
  */
-app.post("/api/equity-splits", (req, res) => {
+app.post("/api/equity-splits", writeHandler((req, res) => {
   const b = (req.body ?? {}) as { ticker?: unknown; ex_date?: unknown; numerator?: unknown; denominator?: unknown };
   if (typeof b.ticker !== "string" || !b.ticker.trim() || !isYmdString(b.ex_date)) {
     res.status(400).json({ error: "ticker and ex_date (YYYY-MM-DD) required" });
@@ -144,22 +154,20 @@ app.post("/api/equity-splits", (req, res) => {
     res.status(400).json({ error: "numerator and denominator must be positive numbers" });
     return;
   }
-  try {
-    const out = recordEquitySplit({
-      ticker: b.ticker,
-      ex_date: b.ex_date,
-      numerator: b.numerator,
-      denominator: b.denominator,
-      source: "manual",
-    });
-    if (out.status === "recorded" || out.ledger.some((r) => r.status === "written")) {
-      invalidateMarketDataAggregations("historical");
-    }
-    res.status(out.status === "recorded" ? 201 : 200).json(out);
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "equity_split_failed" });
+  // A split the user can restate (1:1, a coin, an ex-date still ahead, another ratio than the one
+  // on record) is an `InputError` → 400; a ledger the split cannot be applied to is a 500.
+  const out = recordEquitySplit({
+    ticker: b.ticker,
+    ex_date: b.ex_date,
+    numerator: b.numerator,
+    denominator: b.denominator,
+    source: "manual",
+  });
+  if (out.status === "recorded" || out.ledger.some((r) => r.status === "written")) {
+    invalidateMarketDataAggregations("historical");
   }
-});
+  res.status(out.status === "recorded" ? 201 : 200).json(out);
+}));
 
 // DB-only: history depth is maintained by the live-quotes scheduler, never on request.
 app.get("/api/watchlist", (req, res) => {
@@ -177,13 +185,27 @@ app.patch("/api/watchlist/:id", (req, res) => {
     res.status(400).json({ error: "invalid id" });
     return;
   }
-  const body = req.body as { show_in_marquee?: number; sort_order?: number };
-  try {
-    res.json(patchWatchlistRow(id, body));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "watchlist_patch_failed";
-    res.status(400).json({ error: msg });
+  const body = (req.body ?? {}) as { show_in_marquee?: unknown; sort_order?: unknown };
+  const patch: { show_in_marquee?: number; sort_order?: number } = {};
+  if (body.show_in_marquee != null) {
+    if (body.show_in_marquee !== 0 && body.show_in_marquee !== 1) {
+      res.status(400).json({ error: "show_in_marquee must be 0 or 1" });
+      return;
+    }
+    patch.show_in_marquee = body.show_in_marquee;
   }
+  if (body.sort_order != null) {
+    if (typeof body.sort_order !== "number" || !Number.isFinite(body.sort_order)) {
+      res.status(400).json({ error: "sort_order must be a finite number" });
+      return;
+    }
+    patch.sort_order = body.sort_order;
+  }
+  if (watchlistRowSource(id) == null) {
+    res.status(400).json({ error: `watchlist row ${id} not found` });
+    return;
+  }
+  res.json(patchWatchlistRow(id, patch));
 });
 
 // The two Yahoo calls on a request path: the user's own typing and add, never a display read.
@@ -227,13 +249,17 @@ app.delete("/api/watchlist/:id", (req, res) => {
     res.status(400).json({ error: "invalid id" });
     return;
   }
-  try {
-    deleteManualWatchlistRow(id);
-    res.json({ ok: true });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "watchlist_delete_failed";
-    res.status(400).json({ error: msg });
+  const source = watchlistRowSource(id);
+  if (source == null) {
+    res.status(400).json({ error: `watchlist row ${id} not found` });
+    return;
   }
+  if (source !== "manual") {
+    res.status(400).json({ error: "only manual watchlist rows can be deleted" });
+    return;
+  }
+  deleteManualWatchlistRow(id);
+  res.json({ ok: true });
 });
 
 }

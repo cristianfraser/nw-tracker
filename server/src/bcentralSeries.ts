@@ -1,10 +1,11 @@
+import { liveEnvText } from "./config.js";
+
 /**
  * Banco Central BDE [GetSeries](https://si3.bcentral.cl/estadisticas/Principal1/Web_Services/doc_es.htm) codes.
  * Override any series via repo-root `.env` (`BCENTRAL_SERIES_*`).
  */
-function seriesEnv(name: string, fallback: string): string {
-  const v = process.env[name]?.trim();
-  return v && v.length > 0 ? v : fallback;
+function seriesEnv(name: `BCENTRAL_SERIES_${string}`, fallback: string): string {
+  return liveEnvText(name) ?? fallback;
 }
 
 export const BCENTRAL_SERIES = {

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { liveEnvText } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, "..", "data");
@@ -9,7 +10,7 @@ const defaultSnapshotsDir = path.join(dataDir, "snapshots");
 
 /** Same rules as `db.ts` (without opening the shared connection). */
 export function resolveDatabaseFilePath(): string {
-  const override = process.env.NW_TRACKER_TEST_DB?.trim();
+  const override = liveEnvText("NW_TRACKER_TEST_DB");
   if (override) {
     if (override === ":memory:") return ":memory:";
     if (path.isAbsolute(override)) return path.resolve(override);

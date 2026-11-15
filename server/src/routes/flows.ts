@@ -64,7 +64,6 @@ import {
 } from "../flowsCheckingIncomeOverrides.js";
 import { updatePayrollWorkEarning, type PayrollEarningType } from "../flowsPayrollWorkEarnings.js";
 import {
-  assertMovementEligibleForPayrollLink,
   listPayrollLinkCandidates,
 } from "../payrollWorkEarningsLinking.js";
 import {
@@ -186,13 +185,10 @@ app.patch("/api/work-earnings/:id", writeHandler((req, res) => {
       res.status(400).json({ error: "invalid movement_id" });
       return;
     }
-    try {
-      assertMovementEligibleForPayrollLink(
-        body.movement_id,
-        listPayrollLinkCandidates()
-      );
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    // Building the candidates may throw (a 500); a movement that is not one of them is the request's.
+    const movementId = body.movement_id;
+    if (!listPayrollLinkCandidates().some((c) => c.movement_id === movementId)) {
+      res.status(400).json({ error: `movement ${movementId} is not an eligible checking income inflow` });
       return;
     }
   }
@@ -308,8 +304,14 @@ app.post("/api/income/movements/:movement_id/refund", linkSyncingWrite((req, res
     markCheckingExpenseRefund(movementId, typeof slug === "string" && slug.trim() ? slug.trim() : undefined);
     res.json({ ok: true, movement_id: movementId });
   } catch (e) {
-    const err = e as Error & { status?: number };
-    res.status(err.status ?? 400).json({ error: err.message });
+    // `checkingExpenseRefunds.ts` states the answer on the errors a request can cause (an unknown
+    // movement or category, a row that is no checking credit); anything else is a 500.
+    const status = (e as { status?: unknown } | null)?.status;
+    if (e instanceof Error && typeof status === "number") {
+      res.status(status).json({ error: e.message });
+      return;
+    }
+    throw e;
   }
 }));
 

@@ -24,6 +24,7 @@ import { addDaysIso, daysBetweenIso } from "nw-tracker-contracts";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { InputError } from "./inputError.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityCloseEod, equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
 import { sumUnitsThroughDate } from "./movementTransfer.js";
@@ -299,13 +300,13 @@ export function recordEquitySplit(
   now: Date = new Date()
 ): RecordEquitySplitResult {
   const ticker = input.ticker.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.ex_date)) throw new Error(`Split ${ticker}: ex-date ${input.ex_date} is not YYYY-MM-DD`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.ex_date)) throw new InputError(`Split ${ticker}: ex-date ${input.ex_date} is not YYYY-MM-DD`);
   if (!(input.numerator > 0) || !(input.denominator > 0) || input.numerator === input.denominator) {
-    throw new Error(`Split ${ticker}: ${input.numerator}:${input.denominator} is not a split`);
+    throw new InputError(`Split ${ticker}: ${input.numerator}:${input.denominator} is not a split`);
   }
-  if (!guardsSplits(ticker)) throw new Error(`Split ${ticker}: not a listed share`);
+  if (!guardsSplits(ticker)) throw new InputError(`Split ${ticker}: not a listed share`);
   if (input.ex_date > chileWallClockAt(now).ymd) {
-    throw new Error(`Split ${ticker} ${input.ex_date}: the ex-date has not come yet`);
+    throw new InputError(`Split ${ticker} ${input.ex_date}: the ex-date has not come yet`);
   }
   const split: EquitySplit = {
     ticker: ticker.toUpperCase(),
@@ -319,7 +320,7 @@ export function recordEquitySplit(
       const stored = stmtNearSplits.get(ticker, input.ex_date, input.ex_date) as EquitySplit | undefined;
       if (stored) {
         if (Math.abs(splitRatio(stored) - splitRatio(split)) > RATIO_EPS) {
-          throw new Error(
+          throw new InputError(
             `Split ${ticker} ${input.ex_date}: recorded ${stored.numerator}:${stored.denominator} on ${stored.ex_date} (${stored.source}), ` +
               `${input.source} says ${input.numerator}:${input.denominator}`
           );

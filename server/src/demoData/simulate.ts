@@ -55,6 +55,7 @@ import { newUsPayrollYtd, usPayDates, usPayStub, usW2sOfStubs, type UsPayStub } 
 import type { UsW2 } from "../usW2.js";
 import { f1040LinesFromW2s } from "../us1040/draft.js";
 import { usDividendWithholdingRateForChileanResident } from "../usLegalParameters.js";
+import { liveEnvText } from "../config.js";
 
 /* ----------------------------------- shapes ------------------------------------- */
 
@@ -2063,7 +2064,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         }
       }
     }
-    if (process.env.DEMO_V2_TRACE) {
+    if (liveEnvText("DEMO_V2_TRACE") != null) {
       console.log(
         `${month} exp=${Math.round(expenses / 1000)}k life=${Math.round(lifestyleReal / 1000)}k vista=${Math.round(book.bal.vista / 1000)}k chk=${Math.round(book.bal.checking / 1000)}k fund=${Math.round(savingsValue(brokerDay) / 1000)}k usd=${Math.round(book.bal.checkingUsd)} bClp=${Math.round(book.bal.brokerClp)} bUsd=${Math.round(book.bal.brokerUsd)} us=${Math.round(book.bal.usChecking)} usSav=${Math.round(book.bal.usSavings)} ibkr=${Math.round(book.bal.ibkrUsd)}`
       );
@@ -2426,7 +2427,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
         const checkingSpare = book.lowestFrom("usChecking", day) - usCardOwedUsd(month) - us.cashBand.low * usTrailingExpense() - us.wireFeeUsd;
         const savingsSpare = usSavingsOn(month) ? Math.max(0, book.lowestFrom("usSavings", day)) : 0;
         const usd = Math.min(wanted, Math.floor((checkingSpare + savingsSpare) / 100) * 100);
-        if (process.env.DEMO_V2_TRACE) console.log(`wire ${day} need=${Math.round(needClp)} have=${Math.round(haveClp)} wanted=${wanted} spare=${Math.round(checkingSpare)}+${Math.round(savingsSpare)} usExp=${Math.round(usTrailingExpense())}`);
+        if (liveEnvText("DEMO_V2_TRACE") != null) console.log(`wire ${day} need=${Math.round(needClp)} have=${Math.round(haveClp)} wanted=${wanted} spare=${Math.round(checkingSpare)}+${Math.round(savingsSpare)} usExp=${Math.round(usTrailingExpense())}`);
         if (usd >= 500) {
           if (usd > checkingSpare) moveUsSavings(day, "from", usd - checkingSpare);
           book.transfer({ from: "usChecking", to: "checkingUsd", date: day, usd, flowKind: null, note: "Wire transfer to Chile (Santander USD)" });

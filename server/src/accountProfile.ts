@@ -16,7 +16,7 @@ import {
   CARTOLA_CHECKING_KIND_SLUGS,
   type StoredAccountRole,
 } from "./accountRoles.js";
-import { deploymentProfile } from "./config.js";
+import { deploymentProfile, liveEnvText } from "./config.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
@@ -363,7 +363,7 @@ function coinPriceTicker(accountId: number, kind: string, equityTicker: string |
 }
 
 function isDemoOrTest(): boolean {
-  return deploymentProfile().demo || Boolean(process.env.VITEST);
+  return deploymentProfile().demo || liveEnvText("VITEST") != null;
 }
 
 /** The account's profile; throws for an id with no account (or no asset group) behind it. */

@@ -86,7 +86,7 @@ export type FeederAnswer =
   | { status: "unreachable"; detail: string };
 
 /** POST the run request to the ingest service. Never throws: every failure is an answer. */
-export async function requestFeederRun(request: IngestRunRequest, env: NodeJS.ProcessEnv = process.env): Promise<FeederAnswer> {
+export async function requestFeederRun(request: IngestRunRequest, env?: NodeJS.ProcessEnv): Promise<FeederAnswer> {
   const runId = request.run_id;
   try {
     const res = await fetch(`${resolveIngestServiceUrl(env)}${FEEDER_RUNS_PATH}`, {

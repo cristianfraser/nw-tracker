@@ -106,34 +106,35 @@ export function fintualValuationStateFingerprint(state: GlobalSyncStateFile): st
 
 export function loadGlobalSyncState(): GlobalSyncStateFile {
   const p = globalSyncStatePath();
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(p);
-  } catch {
-    return {};
-  }
+  // No state file is the first run: every source reads «never synced». Any other failure to
+  // stat or read the file (permissions, I/O) throws — an unreadable state is not an empty one.
+  const stat = fs.statSync(p, { throwIfNoEntry: false });
+  if (!stat) return {};
   const stamp = `${stat.ino}|${stat.mtimeMs}|${stat.size}`;
   if (parsedState?.stamp === stamp) return structuredClone(parsedState.state);
+  const text = fs.readFileSync(p, "utf8");
+  let raw: unknown;
+  let parseError: unknown = null;
   try {
-    const raw = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
-    if (!raw || typeof raw !== "object") return {};
-    const state = migrateLoadedState(raw as GlobalSyncStateFile);
-    parsedState = { stamp, state: structuredClone(state) };
-    return state;
+    raw = JSON.parse(text) as unknown;
   } catch (e) {
-    // Corrupt state file: keep the evidence aside and start fresh (sources re-sync as "never synced").
+    parseError = e;
+  }
+  if (parseError != null || !raw || typeof raw !== "object" || Array.isArray(raw)) {
+    // Corrupt state file (not JSON, or not a JSON object): keep the evidence aside, say so, and
+    // start fresh (sources re-sync as "never synced"). If it cannot be moved aside this throws:
+    // the next save would overwrite the only copy.
     const aside = `${p}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    try {
-      fs.renameSync(p, aside);
-    } catch {
-      // rename best-effort; the parse error below is the signal that matters
-    }
+    fs.renameSync(p, aside);
     console.error(
       `[global-sync] corrupt state file ${p} — moved aside to ${aside}; starting with empty state`,
-      e
+      parseError ?? "not a JSON object"
     );
     return {};
   }
+  const state = migrateLoadedState(raw as GlobalSyncStateFile);
+  parsedState = { stamp, state: structuredClone(state) };
+  return state;
 }
 
 export function saveGlobalSyncState(state: GlobalSyncStateFile): void {

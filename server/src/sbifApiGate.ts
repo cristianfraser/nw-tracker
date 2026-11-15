@@ -26,14 +26,29 @@ function gatePath(): string {
 
 function loadGate(): SbifApiGateFile {
   const p = gatePath();
+  // No gate file: no call was made yet, so no spacing and no backoff apply. A file that cannot be
+  // read (permissions, I/O) throws — an unreadable gate is not an open one.
   if (!fs.existsSync(p)) return {};
+  const text = fs.readFileSync(p, "utf8");
+  let raw: unknown;
+  let parseError: unknown = null;
   try {
-    const raw = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
-    if (!raw || typeof raw !== "object") return {};
-    return raw as SbifApiGateFile;
-  } catch {
+    raw = JSON.parse(text) as unknown;
+  } catch (e) {
+    parseError = e;
+  }
+  if (parseError != null || !raw || typeof raw !== "object" || Array.isArray(raw)) {
+    // Corrupt gate file: the backoff it held is lost. Keep it aside and say so; the gate starts
+    // open (a blocked API answers the next call and re-arms it). A failed rename throws.
+    const aside = `${p}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    fs.renameSync(p, aside);
+    console.error(
+      `[bcentral-gate] corrupt gate file ${p} — moved aside to ${aside}; starting with no backoff`,
+      parseError ?? "not a JSON object"
+    );
     return {};
   }
+  return raw as SbifApiGateFile;
 }
 
 function saveGate(g: SbifApiGateFile): void {

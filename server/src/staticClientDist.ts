@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import { repoRootFromSrc } from "./rootDotenv.js";
+import { liveEnvFlag } from "./config.js";
 
 /**
  * `SERVE_CLIENT_DIST=1` — serve the built client (`client/dist`) from the API server so
@@ -9,7 +10,7 @@ import { repoRootFromSrc } from "./rootDotenv.js";
  * Local mode leaves it unset: the Vite dev server owns the client and proxies `/api`.
  */
 export function serveClientDistEnabled(): boolean {
-  return process.env.SERVE_CLIENT_DIST === "1";
+  return liveEnvFlag("SERVE_CLIENT_DIST");
 }
 
 /**

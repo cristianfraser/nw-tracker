@@ -62,38 +62,34 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
       imported_at: string;
     }
   >();
-  try {
-    const imports = db
-      .prepare(
-        `SELECT period_month, source_file, movement_count, saldo_final_clp, saldo_inicial_clp, imported_at,
-                period_from, period_to
-         FROM checking_cartola_imports WHERE account_id = ?`
-      )
-      .all(accountId) as {
-      period_month: string;
-      source_file: string;
-      movement_count: number;
-      saldo_final_clp: number | null;
-      saldo_inicial_clp: number | null;
-      imported_at: string;
-      period_from: string | null;
-      period_to: string | null;
-    }[];
-    for (const imp of imports) {
-      if (
-        isCartolaDesdeBoundaryPhantomMonth({
-          period_month: imp.period_month,
-          period_from: imp.period_from,
-          period_to: imp.period_to,
-          movement_count: Number(imp.movement_count) || 0,
-        })
-      ) {
-        continue;
-      }
-      importByMonth.set(imp.period_month, imp);
+  const imports = db
+    .prepare(
+      `SELECT period_month, source_file, movement_count, saldo_final_clp, saldo_inicial_clp, imported_at,
+              period_from, period_to
+       FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(accountId) as {
+    period_month: string;
+    source_file: string;
+    movement_count: number;
+    saldo_final_clp: number | null;
+    saldo_inicial_clp: number | null;
+    imported_at: string;
+    period_from: string | null;
+    period_to: string | null;
+  }[];
+  for (const imp of imports) {
+    if (
+      isCartolaDesdeBoundaryPhantomMonth({
+        period_month: imp.period_month,
+        period_from: imp.period_from,
+        period_to: imp.period_to,
+        movement_count: Number(imp.movement_count) || 0,
+      })
+    ) {
+      continue;
     }
-  } catch {
-    /* no registry yet */
+    importByMonth.set(imp.period_month, imp);
   }
 
   const monthKeys = checkingTimelineMonthKeys(accountId);

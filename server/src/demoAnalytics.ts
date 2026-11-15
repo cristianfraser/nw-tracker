@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, RequestHandler } from "express";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { liveEnvText } from "./config.js";
 
 /**
  * Anonymous visitor analytics for the open (login-free) hosted demo. Page views and endpoint
@@ -44,7 +45,7 @@ function defaultAnalyticsDbPath(): string {
 
 export function demoAnalyticsDb(): BetterSqliteDb {
   if (handle) return handle;
-  const path = process.env.DEMO_ANALYTICS_DB?.trim() || defaultAnalyticsDbPath();
+  const path = liveEnvText("DEMO_ANALYTICS_DB") ?? defaultAnalyticsDbPath();
   const opened = new Database(path);
   opened.pragma("journal_mode = WAL");
   opened.exec(
@@ -81,7 +82,7 @@ export function demoAnalyticsDb(): BetterSqliteDb {
  * value persisted in the analytics DB so ids stay stable across restarts of a local rehearsal.
  */
 function visitorSalt(): string {
-  const fromEnv = process.env.DEMO_ANALYTICS_SALT?.trim();
+  const fromEnv = liveEnvText("DEMO_ANALYTICS_SALT");
   if (fromEnv) return fromEnv;
   const db = demoAnalyticsDb();
   const row = db.prepare(`SELECT value FROM demo_analytics_meta WHERE key = 'visitor_salt'`).get() as
@@ -208,7 +209,7 @@ export const OWNER_COOKIE = "nw_demo_owner";
 const OWNER_COOKIE_MAX_AGE_S = 5 * 365 * 24 * 3600;
 
 function ownerCode(): string | null {
-  return process.env.DEMO_OWNER_CODE?.trim() || null;
+  return liveEnvText("DEMO_OWNER_CODE");
 }
 
 /** One cookie's value from the Cookie header (no cookie-parser dependency for one cookie). */

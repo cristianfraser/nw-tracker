@@ -17,6 +17,7 @@
  * repo) is read by the caller where it is used, never stored.
  */
 import { fetchOutboundBytes, type OutboundRequest } from "./outboundFetch.js";
+import { liveEnvText } from "./config.js";
 
 export const DEMO_MARKET_REPO = "cristianfraser/nw-tracker";
 export const DEMO_MARKET_RELEASE_TAG = "demo-market";
@@ -31,8 +32,8 @@ const UPLOAD_TIMEOUT_MS = 5 * 60_000;
 const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 
 /** The repo the asset lives in: `DEMO_MARKET_REPO` in the environment (a fork), else this one. */
-export function demoMarketRepo(env: NodeJS.ProcessEnv = process.env): string {
-  const v = env.DEMO_MARKET_REPO?.trim();
+export function demoMarketRepo(env?: NodeJS.ProcessEnv): string {
+  const v = liveEnvText("DEMO_MARKET_REPO", env);
   if (!v) return DEMO_MARKET_REPO;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v)) throw new Error(`DEMO_MARKET_REPO=${JSON.stringify(v)}: expected owner/name`);
   return v;

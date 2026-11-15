@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { ingestAccessRefusal, type IngestErrorBody } from "nw-tracker-contracts";
+import { liveEnvFlag, liveEnvText } from "./config.js";
 
 export { isLoopbackAddress } from "nw-tracker-contracts";
 
@@ -16,13 +17,13 @@ export interface IngestAuthConfig {
   demoMode: boolean;
 }
 
-export function ingestAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): IngestAuthConfig {
-  const token = env.INGEST_TOKEN?.trim() || null;
-  const allowRemote = env.INGEST_ALLOW_REMOTE === "1";
+export function ingestAuthConfigFromEnv(env?: NodeJS.ProcessEnv): IngestAuthConfig {
+  const token = liveEnvText("INGEST_TOKEN", env);
+  const allowRemote = liveEnvFlag("INGEST_ALLOW_REMOTE", env);
   if (allowRemote && !token) {
     throw new Error("INGEST_ALLOW_REMOTE=1 requires INGEST_TOKEN");
   }
-  return { token, allowRemote, demoMode: env.DEMO_MODE === "1" };
+  return { token, allowRemote, demoMode: liveEnvFlag("DEMO_MODE", env) };
 }
 
 export function ingestAuthMiddleware(

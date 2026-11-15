@@ -13,6 +13,7 @@ import {
   recordSbifRequestSuccess,
 } from "./sbifApiGate.js";
 import { parseUsNumber } from "nw-tracker-contracts";
+import { liveEnvText } from "./config.js";
 
 export const BCENTRAL_WS_BASE = "https://si3.bcentral.cl/SieteRestWS/SieteRestWS.ashx";
 
@@ -22,8 +23,8 @@ export type BcentralCredentials = {
 };
 
 export function loadBcentralCredentials(): BcentralCredentials | null {
-  const email = process.env.BCENTRAL_EMAIL?.trim();
-  const password = process.env.BCENTRAL_PASSWORD?.trim();
+  const email = liveEnvText("BCENTRAL_EMAIL");
+  const password = liveEnvText("BCENTRAL_PASSWORD");
   if (!email || !password) return null;
   return { email, password };
 }

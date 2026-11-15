@@ -4,6 +4,7 @@ import { generateDemoDb } from "./demoData/generate.js";
 import { demoMarketSpec } from "./demoData/market.js";
 import { DEMO_PERSON } from "./demoData/person.js";
 import { ensureDemoPristineCopy } from "./demoWritable.js";
+import { liveEnvText } from "./config.js";
 
 /**
  * Hosted recruiter-demo mode (`DEMO_MODE=1`): the server owns a dedicated synthetic
@@ -26,7 +27,7 @@ import { demoModeEnabled } from "./demoModeFlag.js";
  */
 export async function bootstrapDemoModeIfEnabled(): Promise<void> {
   if (!demoModeEnabled()) return;
-  if (!process.env.NW_TRACKER_TEST_DB?.trim()) {
+  if (!liveEnvText("NW_TRACKER_TEST_DB")) {
     throw new Error(
       "DEMO_MODE=1 requires NW_TRACKER_TEST_DB to point at a dedicated demo DB file " +
         "(refusing to run demo mode against the real nw-tracker.db)."

@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { fetchOut } from "./httpOut.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { fintualValuationAsOfYmd } from "./fintualSyncPolicy.js";
+import { liveEnvRaw, liveEnvText } from "./config.js";
 
 export const FINTUAL_API_BASE = "https://fintual.cl/api";
 const FINTUAL_MAX_RETRIES = 5;
@@ -122,7 +123,7 @@ export async function fetchFintualGqlDocument(
     Origin: "https://fintual.cl",
     Referer: "https://fintual.cl/f/",
   };
-  const cookie = process.env.FINTUAL_COOKIE?.trim();
+  const cookie = liveEnvText("FINTUAL_COOKIE");
   if (cookie) headers.Cookie = normalizeFintualCookieInput(cookie);
   const res = await fetchFintualWithBackoff(
     FINTUAL_GQL_URL,
@@ -221,8 +222,8 @@ export function loadRootDotenv(): void {
 
 export function requireFintualPasswordEnv(): { email: string; password: string } {
   loadRootDotenv();
-  const email = process.env.FINTUAL_EMAIL?.trim();
-  const password = process.env.FINTUAL_PASSWORD;
+  const email = liveEnvText("FINTUAL_EMAIL");
+  const password = liveEnvRaw("FINTUAL_PASSWORD");
   if (!email || !password) {
     throw new Error(
       "Set FINTUAL_EMAIL and FINTUAL_PASSWORD in the repo-root `.env` (see `.env.example`)."
@@ -330,7 +331,7 @@ function goalsFetchHeaders(email: string, token: string): Record<string, string>
     "X-User-Email": email,
     "X-User-Token": token,
   };
-  const cookie = process.env.FINTUAL_COOKIE?.trim();
+  const cookie = liveEnvText("FINTUAL_COOKIE");
   if (cookie) {
     h.Cookie = normalizeFintualCookieInput(cookie);
   }
@@ -374,7 +375,7 @@ export async function getValidFintualSession(): Promise<{ email: string; token: 
     throw new Error(
       `GET /api/goals returned HTTP ${probe.status} after successful login.\n` +
         `Headers: X-User-Email, X-User-Token (from POST /access_tokens → data.attributes.token)` +
-        `${process.env.FINTUAL_COOKIE?.trim() ? ", Cookie (FINTUAL_COOKIE)" : ""}.\n` +
+        `${liveEnvText("FINTUAL_COOKIE") ? ", Cookie (FINTUAL_COOKIE)" : ""}.\n` +
         `If you see 401, set **FINTUAL_COOKIE** in \`.env\` to the \`_fintual_session_cookie\` value from the browser ` +
         `(DevTools → Network → request headers → Cookie), then retry.\n` +
         `Response (truncated): ${probeText.slice(0, 800)}`

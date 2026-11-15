@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { insertAppMessage } from "./appMessages.js";
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
-import { serverConfig } from "./config.js";
+import { liveEnvText, serverConfig } from "./config.js";
 import { parseDemoMarketPublishOutcome, type DemoMarketPublishOutcome } from "./demoData/demoMarketArtifact.js";
 import { ScheduledJob, type KernelRunResult } from "./schedulerKernel.js";
 
@@ -44,8 +44,8 @@ export type DemoMarketPublishState = {
   last_error: string | null;
 };
 
-export function demoMarketPublishToken(env: NodeJS.ProcessEnv = process.env): string | null {
-  return env.DEMO_MARKET_PUBLISH_TOKEN?.trim() || null;
+export function demoMarketPublishToken(env?: NodeJS.ProcessEnv): string | null {
+  return liveEnvText("DEMO_MARKET_PUBLISH_TOKEN", env);
 }
 
 export function readDemoMarketPublishState(file: string = STATE_FILE): DemoMarketPublishState {

@@ -2,6 +2,7 @@ import type express from "express";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { demoVisitorForRequest, noteDemoVisitSrc } from "../demoAnalytics.js";
 import { demoModeEnabled } from "../demoMode.js";
+import { writeHandler } from "../inputError.js";
 import { recordUsagePageView, usageLogEnabled, type UsagePageViewSample } from "../usageLog.js";
 import {
   normalizeUsagePagePath,
@@ -96,19 +97,14 @@ export function registerUsageRoutes(app: express.Express): void {
     res.status(204).end();
   });
 
-  app.get("/api/usage/report", (req, res) => {
+  // A `days` outside the offered windows is an `InputError` → 400; a failing report is a 500.
+  app.get("/api/usage/report", writeHandler((req, res) => {
     if (refuseOnDemo(res)) return;
-    let days;
-    try {
-      days = parseUsageReportWindow(req.query.days);
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-      return;
-    }
+    const days = parseUsageReportWindow(req.query.days);
     res.json(buildUsageReport(days));
-  });
+  }));
 
-  app.get("/api/usage/endpoint-trend", (req, res) => {
+  app.get("/api/usage/endpoint-trend", writeHandler((req, res) => {
     if (refuseOnDemo(res)) return;
     const { method, route } = req.query;
     const params = req.query.params ?? "";
@@ -116,13 +112,7 @@ export function registerUsageRoutes(app: express.Express): void {
       res.status(400).json({ error: "method, route and params are required" });
       return;
     }
-    let days;
-    try {
-      days = parseUsageReportWindow(req.query.days);
-    } catch (e) {
-      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
-      return;
-    }
+    const days = parseUsageReportWindow(req.query.days);
     res.json(buildUsageEndpointTrend({ method, route, params }, days));
-  });
+  }));
 }

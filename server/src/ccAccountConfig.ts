@@ -12,7 +12,8 @@ import { db } from "./db.js";
 import { loadCreditCardConfigRow, loadCreditCardCupos } from "./cards/config.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
-import { currencyMinorDigits } from "./displayUnits.js";
+import { currencyMinorDigits, isLoadedCurrency } from "./displayUnits.js";
+import { InputError } from "./inputError.js";
 
 /** A currency code (`currencies.code`). */
 export type CcCupoCurrency = string;
@@ -76,41 +77,44 @@ function isCycleDay(v: unknown): v is number {
 
 function parseCupoEntries(raw: unknown): CcCupoEntry[] {
   if (!Array.isArray(raw)) {
-    throw new Error("cupo must be an array of { currency, value } entries");
+    throw new InputError("cupo must be an array of { currency, value } entries");
   }
   const seen = new Set<CcCupoCurrency>();
   const out: CcCupoEntry[] = [];
   for (const entry of raw) {
     if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error("cupo entries must be { currency, value } objects");
+      throw new InputError("cupo entries must be { currency, value } objects");
     }
     const keys = Object.keys(entry as Record<string, unknown>);
     for (const k of keys) {
       if (k !== "currency" && k !== "value") {
-        throw new Error(`unknown cupo entry field: ${k}`);
+        throw new InputError(`unknown cupo entry field: ${k}`);
       }
     }
     const { currency, value } = entry as { currency?: unknown; value?: unknown };
     if (typeof currency !== "string" || !/^[a-z]{3}$/.test(currency)) {
-      throw new Error("cupo entry currency must be a lowercase currency code");
+      throw new InputError("cupo entry currency must be a lowercase currency code");
     }
     if (seen.has(currency)) {
-      throw new Error(`duplicate cupo entry for currency ${currency}`);
+      throw new InputError(`duplicate cupo entry for currency ${currency}`);
     }
     seen.add(currency);
+    if (!isLoadedCurrency(currency)) {
+      throw new InputError(`cupo entry currency ${currency} is not a known currency`);
+    }
     if (value !== null) {
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-        throw new Error(`cupo ${currency} value must be a finite number >= 0 (or null to clear)`);
+        throw new InputError(`cupo ${currency} value must be a finite number >= 0 (or null to clear)`);
       }
       const f = 10 ** currencyMinorDigits(currency);
       if (Math.abs(Math.round(value * f) - value * f) > 1e-6) {
-        throw new Error(`cupo ${currency} value has more decimals than the currency's smallest coin`);
+        throw new InputError(`cupo ${currency} value has more decimals than the currency's smallest coin`);
       }
     }
     out.push({ currency, value: value === null ? null : (value as number) });
   }
   if (out.length === 0) {
-    throw new Error("cupo must contain at least one entry");
+    throw new InputError("cupo must contain at least one entry");
   }
   return out;
 }
@@ -118,24 +122,24 @@ function parseCupoEntries(raw: unknown): CcCupoEntry[] {
 /** Fail-fast body validation: allowlisted fields only, sane numbers. Throws on invalid input. */
 export function parseCreditCardConfigPatch(body: unknown): CreditCardConfigPatch {
   if (body == null || typeof body !== "object" || Array.isArray(body)) {
-    throw new Error("body must be a JSON object");
+    throw new InputError("body must be a JSON object");
   }
   const obj = body as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     if (!PATCH_ALLOWED_KEYS.has(key)) {
-      throw new Error(`unknown field: ${key}`);
+      throw new InputError(`unknown field: ${key}`);
     }
   }
   const patch: CreditCardConfigPatch = {};
   if ("billing_cycle_start_day" in obj) {
     if (!isCycleDay(obj.billing_cycle_start_day)) {
-      throw new Error("billing_cycle_start_day must be an integer between 1 and 31");
+      throw new InputError("billing_cycle_start_day must be an integer between 1 and 31");
     }
     patch.billing_cycle_start_day = obj.billing_cycle_start_day;
   }
   if ("billing_cycle_end_day" in obj) {
     if (obj.billing_cycle_end_day !== null && !isCycleDay(obj.billing_cycle_end_day)) {
-      throw new Error("billing_cycle_end_day must be null or an integer between 1 and 31");
+      throw new InputError("billing_cycle_end_day must be null or an integer between 1 and 31");
     }
     patch.billing_cycle_end_day = obj.billing_cycle_end_day as number | null;
   }
@@ -143,7 +147,7 @@ export function parseCreditCardConfigPatch(body: unknown): CreditCardConfigPatch
     patch.cupo = parseCupoEntries(obj.cupo);
   }
   if (Object.keys(patch).length === 0) {
-    throw new Error("no editable fields in body (expected billing_cycle_start_day, billing_cycle_end_day and/or cupo)");
+    throw new InputError("no editable fields in body (expected billing_cycle_start_day, billing_cycle_end_day and/or cupo)");
   }
   return patch;
 }
@@ -178,7 +182,7 @@ export function applyCreditCardConfigPatch(
     const allowed = new Set(before.cupo.map((c) => c.currency));
     for (const entry of patch.cupo) {
       if (!allowed.has(entry.currency)) {
-        throw new Error(`cupo entry currency ${entry.currency} is not a currency this card bills in`);
+        throw new InputError(`cupo entry currency ${entry.currency} is not a currency this card bills in`);
       }
     }
     for (const entry of patch.cupo) {

@@ -223,6 +223,67 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
   };
 }
 
+/**
+ * Variables read **live**: on each call, never frozen at boot. Three reasons a variable is here
+ * and not in {@link ServerConfig}: it is a credential (a key added to `.env` works without a
+ * restart, and scripts load `.env` themselves before the first call); tests and one-off scripts
+ * set it after the modules are loaded (file and folder overrides, the test database); or it is
+ * read by code that also runs outside the server (the demo generator, the publish script).
+ * This list is every such variable the server reads — a new one is added here, never read from
+ * `process.env` where it is used. (`db.ts`, `rootDotenv.ts` and the migration hooks keep their own reads.)
+ */
+export const LIVE_ENV_VARS = [
+  // Credentials and tokens.
+  "BCENTRAL_EMAIL",
+  "BCENTRAL_PASSWORD",
+  "COINGECKO_API_KEY",
+  "FINTUAL_COOKIE",
+  "FINTUAL_EMAIL",
+  "FINTUAL_PASSWORD",
+  "INGEST_TOKEN",
+  "DEMO_MARKET_PUBLISH_TOKEN",
+  "DEMO_ANALYTICS_SALT",
+  "DEMO_OWNER_CODE",
+  // Where things are.
+  "INGEST_URL",
+  "DEMO_MARKET_REPO",
+  "DEMO_ANALYTICS_DB",
+  "CFRASER_CSV_DIR",
+  "CFRASER_PDFS_DIR",
+  "CFRASER_INBOX_DIR",
+  "CFRASER_CHECKING_CARTOLAS_DIR",
+  "CFRASER_CHECKING_CARTOLA_PDFS_DIR",
+  "CFRASER_CUENTA_VISTA_PDFS_DIR",
+  "NW_TRACKER_TEST_DB",
+  "NW_TRACKER_CC_CARDS",
+  "NW_TRACKER_ORGANIZE_IDENTIFIERS",
+  // Behaviour.
+  "PORTFOLIO_START_YMD",
+  "SERVE_CLIENT_DIST",
+  "INGEST_ALLOW_REMOTE",
+  "DEMO_MODE",
+  "DEMO_V2_TRACE",
+  "VITEST",
+] as const;
+
+/** A live variable: one of {@link LIVE_ENV_VARS}, or a Banco Central series override. */
+export type LiveEnvVar = (typeof LIVE_ENV_VARS)[number] | `BCENTRAL_SERIES_${string}`;
+
+/** `name` as the environment has it now, untouched (a password keeps its spaces). Live. */
+export function liveEnvRaw(name: LiveEnvVar, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env[name];
+}
+
+/** `name` as the environment has it now, trimmed; null when unset or empty. Live. */
+export function liveEnvText(name: LiveEnvVar, env: NodeJS.ProcessEnv = process.env): string | null {
+  return text(env, name);
+}
+
+/** `name` as a flag by {@link parseEnvFlag}'s rule, off when unset or empty. Live. */
+export function liveEnvFlag(name: LiveEnvVar, env: NodeJS.ProcessEnv = process.env): boolean {
+  return parseEnvFlag(name, env[name]) ?? false;
+}
+
 let bootConfig: ServerConfig | null = null;
 
 /** Parse once at boot (after `loadRootDotenv()`); every later {@link serverConfig} call reads it. */
