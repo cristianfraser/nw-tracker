@@ -8,7 +8,7 @@
  * shops mail from, per layout); a mail that is not a receipt (an invoice still to pay, a
  * subscription sign-up) decodes to null, and a receipt this decoder cannot read throws.
  */
-import type { ProcessorReceipt } from "nw-tracker-contracts";
+import { parseChileanNumber, type ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
 import { LATAM_PROCESSORS } from "./latamMails.js";
 import { UBER_PROCESSORS } from "./uberMails.js";
@@ -34,7 +34,7 @@ function need(text: string, re: RegExp, what: string, mail: ArchivedMail): (grou
 /** Whole pesos from a Chilean-grouped amount («125.716»). */
 function chileanPesos(s: string): number {
   if (!/^\d{1,3}(\.\d{3})*$/.test(s)) throw new Error(`not a peso amount: ${s}`);
-  return Number(s.replace(/\./g, ""));
+  return parseChileanNumber(s);
 }
 
 const FLOW_RECEIPT_SUBJECT = /^Aviso de pago realizado\b/i;
@@ -152,7 +152,7 @@ function printedPesos(s: string): number {
   const m = s.match(/^(\d+|\d{1,3}(?:\.\d{3})+)(?:,(\d+))?$/);
   if (!m) throw new Error(`not a peso amount: ${s}`);
   if (m[2] != null && !/^0+$/.test(m[2])) throw new Error(`peso amount with centavos: ${s}`);
-  return Number(m[1]!.replace(/\./g, ""));
+  return parseChileanNumber(m[1]!);
 }
 
 function fail(mail: ArchivedMail, why: string): never {

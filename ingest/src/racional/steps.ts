@@ -1,3 +1,4 @@
+import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
 import type { Page } from "playwright-core";
 import type { Recorder } from "../capture.js";
 import { MOVEMENTS_URL, SELECTOR, TEXT } from "./routes.js";
@@ -135,8 +136,7 @@ function chileYmdOfIso(iso: string): string | null {
 function usdAmountOfRow(amount: string): number | null {
   const m = /^US\$\s*(-?[\d.]+(?:,\d+)?)$/i.exec(String(amount ?? "").trim());
   if (!m) return null;
-  const n = Number(m[1]!.replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? n : null;
+  return isChileanNumber(m[1]!) ? parseChileanNumber(m[1]!) : null;
 }
 
 function isDividendRow(row: RacionalMovementRow): boolean {

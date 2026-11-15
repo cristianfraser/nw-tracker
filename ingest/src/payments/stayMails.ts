@@ -27,6 +27,7 @@
  * A mail that is not a booking's confirmation or a payment (messages, reminders, reviews, flights,
  * car rentals, marketing) decodes to null; a confirmation this decoder cannot read throws.
  */
+import { parseUsNumber } from "nw-tracker-contracts";
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentProcessor.js";
@@ -90,7 +91,7 @@ type Money = { currency: string; amount: number };
 
 function readNumber(digits: string, currency: string, mail: ArchivedMail): number {
   if (!new RegExp(`^(?:${NUMBER})$`).test(digits)) fail(mail, `unreadable amount «${digits}»`);
-  const n = Math.round(Number(digits.replace(/,/g, "")) * 100) / 100;
+  const n = Math.round(parseUsNumber(digits) * 100) / 100;
   if (currency === "clp" && !Number.isInteger(n)) fail(mail, `pesos with cents «${digits}»`); // convention-ok: pesos have no minor unit
   if (!(n > 0)) fail(mail, `amount «${digits}» is not positive`);
   return n;

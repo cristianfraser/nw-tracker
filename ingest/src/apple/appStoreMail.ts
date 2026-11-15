@@ -12,6 +12,7 @@
  * Anything the decoder does not recognise throws: a template change must surface, never become
  * a guessed amount.
  */
+import { parseUsNumber } from "nw-tracker-contracts";
 import fs from "node:fs";
 import path from "node:path";
 import type { MerchantPurchaseDocument, MerchantPurchaseDocumentPayload, MerchantReceiptItem, SubscriptionPeriod } from "nw-tracker-contracts";
@@ -186,7 +187,7 @@ export function parseMoney(text: string): Money | null {
   const digits = m[2]!;
   if (m[1]) {
     if (!/^\d{1,3}(,\d{3})*(\.\d{2})?$/.test(digits)) throw new Error(`Unreadable dollar amount: ${JSON.stringify(text)}`);
-    return { amount: Number(digits.replace(/,/g, "")), currency: "usd" };
+    return { amount: parseUsNumber(digits), currency: "usd" };
   }
   if (!text.includes("$")) return null;
   if (!/^\d{1,3}([.,]\d{3})*$/.test(digits)) throw new Error(`Unreadable peso amount: ${JSON.stringify(text)}`);

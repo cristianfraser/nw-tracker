@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { parseChileanNumber, parseUsNumber } from "nw-tracker-contracts";
 import {
   brokerFromSender,
   classifyBrokerEmail,
   collapseBrokerEmailEventsByMessageId,
-  parseChileanNumber,
-  parseUsNumber,
   scanBrokerEmails,
   toBrokerNotification,
   brokerNotificationsFromScan,

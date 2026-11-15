@@ -30,6 +30,7 @@
  * start (`uber-trip:<YYYY-MM-DD HH:MM>`, the start of the ride for the 2020–2025 layout, the
  * request time the header prints for the 2025-on layout), which a summary and its receipt share.
  */
+import { parseChileanNumber, parseUsNumber } from "nw-tracker-contracts";
 import type { ProcessorReceipt, ReceiptCharge, ReceiptTrip } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentProcessor.js";
@@ -98,20 +99,20 @@ const MONEY = String.raw`${TOKEN}\s?-?\d[\d.,]*\d`;
 function usGroupedPesos(s: string): number | null {
   const m = s.match(/^(\d{1,3}(?:,\d{3})*)(?:\.(\d{2}))?$/);
   if (!m) return null;
-  return Math.round(Number(m[1]!.replace(/,/g, "")) + Number(m[2] ?? 0) / 100);
+  return Math.round(parseUsNumber(s));
 }
 
 /** «2.570,00» / «685,00» / «0,00»: dot groups of three, comma and two decimals. Cents round (2014: «$2.036,17»). */
 function chileanPesosWithCents(s: string): number | null {
   const m = s.match(/^(\d{1,3}(?:\.\d{3})*),(\d{2})$/);
   if (!m) return null;
-  return Math.round(Number(m[1]!.replace(/\./g, "")) + Number(m[2]) / 100);
+  return Math.round(parseChileanNumber(s));
 }
 
 /** «12.34» / «1,234.56»: comma groups, dot and two decimals, to the cent. */
 function dotCents(s: string): number | null {
   const m = s.match(/^(\d{1,3}(?:,\d{3})*)\.(\d{2})$/);
-  return m ? Math.round(Number(m[1]!.replace(/,/g, "")) * 100 + Number(m[2])) / 100 : null;
+  return m ? parseUsNumber(s) : null;
 }
 
 /**

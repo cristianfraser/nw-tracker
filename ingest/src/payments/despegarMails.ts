@@ -21,6 +21,7 @@
  * accept any character where one stands. Every other Despegar mail (account activation, reviews,
  * check-in, itinerary changes, marketing) decodes to null; a confirmation this cannot read throws.
  */
+import { parseChileanNumber } from "nw-tracker-contracts";
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
 import type { PaymentProcessor } from "./paymentProcessor.js";
@@ -51,7 +52,7 @@ function fail(mail: ArchivedMail, why: string): never {
 /** Whole pesos from a Chilean-grouped amount («150.000», «7.000», «700»). */
 function pesos(s: string, mail: ArchivedMail): number {
   if (!/^\d{1,3}(?:\.\d{3})*$/.test(s)) fail(mail, `not a peso amount: ${s}`);
-  return Number(s.replace(/\./g, ""));
+  return parseChileanNumber(s);
 }
 
 /** «3 de febrero» → the first such date on or after `fromYmd`. */
