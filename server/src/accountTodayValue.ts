@@ -27,7 +27,7 @@ import { liveTierCached } from "./cacheRegistry.js";
 import {
   latestCreditCardDisplayedBalance,
   latestDisplayedBalanceForAccount,
-  latestMortgageDisplayedBalance,
+
   latestValuationRowOnOrBeforeChileToday,
 } from "./valuationLatest.js";
 
@@ -94,18 +94,14 @@ function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined):
   const accountId = p.id;
   switch (p.quantity.kind) {
     case "depto_property": {
-      // The depto ledger first: a stale property valuation must not shadow the live ledger mark.
+      // A property's valuations are its appraisals, not its value: the depto ledger or nothing.
       const depto = deptoAccountMarkClpAtYmd(accountId, today);
-      return depto ? clpRaw(depto, false) : storedTodayTail(p, today);
+      return depto ? clpRaw(depto, false) : null;
     }
     case "depto_loan": {
+      // The depto ledger is a loan's only value source (no stored valuations: migration 261).
       const depto = deptoAccountMarkClpAtYmd(accountId, today);
-      if (depto) return clpRaw(depto, false);
-      const v = latestMortgageDisplayedBalance(accountId);
-      if (v?.value_clp != null && v.as_of_date) {
-        return clpRaw({ value_clp: v.value_clp, as_of_date: v.as_of_date }, false);
-      }
-      return storedTodayTail(p, today);
+      return depto ? clpRaw(depto, false) : null;
     }
     case "fintual_goal": {
       const live = liveFintualCertDisplayValueClp(accountId, today, now);
@@ -142,7 +138,9 @@ function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined):
       return { value: instrumentNativeValue(p.holding, contracts, px.price), currency: px.currency, as_of_date: px.as_of, market: true };
     }
     case "coin": {
-      // Units × close is crypto's only value source — no stored-row fallback.
+      // The coins × today's dollar price (the figure the position card prints, converted): units ×
+      // close is crypto's only value source — no stored-row fallback.
+
       const crypto = cryptoTodayNativeValue(accountId, now);
       if (crypto == null) {
         throw new Error(
@@ -166,12 +164,16 @@ function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined):
       // card is in credit — the same frame as every past day. The billing formula is a different
       // framing of the same debt and stays the fallback for a card with no walk.
       const owed = latestCreditCardDisplayedBalance(accountId, today);
-      if (owed && Number.isFinite(owed.value_clp)) return clpRaw(owed, false);
+      if (owed) {
+        if (!Number.isFinite(owed.value_clp)) throw new Error(`card ${accountId} owes a non-finite amount today`);
+        return clpRaw(owed, false);
+      }
+      // No walk and no stored row (that read ends in the card's stored valuations): the billing total.
       const billing = latestCreditCardBillingBalanceTotalClpAndAsOfDate(accountId);
       if (billing?.value_clp != null && billing.as_of_date) {
         return clpRaw({ value_clp: billing.value_clp, as_of_date: billing.as_of_date }, false);
       }
-      return storedTodayTail(p, today);
+      return null;
     }
     case "book_mark":
       return storedTodayTail(p, today);
@@ -227,11 +229,6 @@ function accountTodayValueFor(
     };
   };
 
-  if (p.quantity.kind === "coin") {
-    // The coins × today's dollar price, the figure the position card prints converted.
-    const crypto = cryptoTodayNativeValue(accountId, now);
-    if (crypto) return done({ value: crypto.value, currency: "usd", as_of_date: crypto.as_of_date, market: true });
-  }
   if (p.quantity.kind === "cuota_ledger" && p.holding.kind === "fund" && p.holding.quote !== "clp") {
     // A fund on a series in another currency (a 401(k)'s dollar fund): its cuotas × today's valor
     // cuota in that currency, converted once (`done`), never through pesos.

@@ -51,8 +51,8 @@ function buildAccountCategoryMeta(): AccountCategoryMeta {
 
 /**
  * Each loan's depto ledger view: the first day its property was owned and its balance (UF × UF
- * día) on the dates asked. One entry per loan with ledger rows; a mortgage with none reads its
- * stored valuations (account-type dispatch, not a fallback).
+ * día) on the dates asked. One entry per loan with ledger rows; a mortgage with none has no value.
+
  */
 type LoanLedgerView = { firstMortgageYmd: string | null; closeByDate: Map<string, number> };
 
@@ -91,23 +91,19 @@ function liabilityValuationClpAt(
 ): number | null {
   const m = ctx.meta.get(row.account_id);
   if (m?.exclude_from_group_totals) return null;
-  let clp: number | null = null;
-  const loan = row.quantity === "depto_loan" ? ctx.loans.get(row.account_id) : undefined;
-  if (loan && loan.firstMortgageYmd != null && asOfYmd >= loan.firstMortgageYmd) {
-    const fromSheet = loan.closeByDate.get(asOfYmd);
-    if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
+  if (row.quantity === "depto_loan") {
+    // The depto ledger is a loan's only value source: none before its property was owned.
+    const loan = ctx.loans.get(row.account_id);
+    if (!loan || loan.firstMortgageYmd == null || asOfYmd < loan.firstMortgageYmd) return null;
+    const fromLedger = loan.closeByDate.get(asOfYmd);
+    return fromLedger != null && Number.isFinite(fromLedger) ? fromLedger : null;
   }
-  if (clp == null) {
-    clp =
-      latestLiabilityValuationRowForSnapshot(row.account_id, row.category_slug, asOfYmd)
-        ?.value_clp ?? null;
-  }
+  const clp =
+    latestLiabilityValuationRowForSnapshot(row.account_id, row.category_slug, asOfYmd)?.value_clp ?? null;
   return clp != null && Number.isFinite(clp) ? clp : null;
 }
 
 function liabilityValuationContext(asOfYmd: string) {
-  // One case: a loan's depto movement ledger is authoritative whenever it has rows; mortgages
-  // without depto movements use stored valuations — account-type dispatch, not a fallback.
   return {
     meta: accountCategoryMetaById(),
     loans: loanLedgerViews([asOfYmd]),

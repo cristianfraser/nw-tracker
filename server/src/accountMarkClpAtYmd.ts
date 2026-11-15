@@ -23,7 +23,7 @@ import type { CurrencyCode } from "./rates.js";
 import { convertValue, type ValueSide } from "./valueConvert.js";
 import {
   latestCreditCardValuationRowAsOf,
-  latestMortgageDisplayedBalance,
+
 } from "./valuationLatest.js";
 
 export type AccountMarkAtYmd = { value_clp: number; as_of_date: string };
@@ -160,13 +160,10 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       return depto ? currency("clp", depto.value_clp, depto.as_of_date) : null;
     }
     case "depto_loan": {
+      // The depto ledger is a loan's only value source (a loan has no stored valuations since
+      // migration 261); none before its first ledger row.
       const depto = deptoAccountMarkClpAtYmd(accountId, asOfYmd);
-      if (depto) return currency("clp", depto.value_clp, depto.as_of_date);
-      const v = latestMortgageDisplayedBalance(accountId, asOfYmd);
-      if (v?.value_clp != null && v.as_of_date && v.as_of_date <= asOfYmd) {
-        return currency("clp", v.value_clp, v.as_of_date);
-      }
-      return bookMark(profile, asOfYmd);
+      return depto ? currency("clp", depto.value_clp, depto.as_of_date) : null;
     }
     case "card": {
       // Owed-on-date convention (Saldo pasivos / chart lines): stored `valuations` for
@@ -176,20 +173,23 @@ function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): Qt
       // PAGOs −) — the same evidence stream the month-end writer applies post-cierre.
       // Installments enter at anchors (cupo-based), matching the billing module.
       const cc = latestCreditCardValuationRowAsOf(accountId, asOfYmd);
-      if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) {
-        const value_clp =
-          cc.as_of_date < asOfYmd
-            ? Math.round(
-                cc.value_clp +
-                  postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd, {
-                    includeInstallmentPurchases: true,
-                  })
-              )
-            : cc.value_clp;
-        return currency("clp", value_clp, cc.as_of_date);
+      // That read ends in the card's stored row on or before the date: nothing else to read.
+      if (!cc) return null;
+      if (!Number.isFinite(cc.value_clp)) {
+        throw new Error(`accountMarkClpAtYmd: card ${accountId} owes a non-finite amount on ${asOfYmd}`);
       }
-      return bookMark(profile, asOfYmd);
+      const value_clp =
+        cc.as_of_date < asOfYmd
+          ? Math.round(
+              cc.value_clp +
+                postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd, {
+                  includeInstallmentPurchases: true,
+                })
+            )
+          : cc.value_clp;
+      return currency("clp", value_clp, cc.as_of_date);
     }
+
     case "book_mark":
       return bookMark(profile, asOfYmd);
   }
