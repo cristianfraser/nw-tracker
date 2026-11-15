@@ -22,8 +22,7 @@ import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
 import { formatOptionStrikeDollars } from "../../formatNative";
 import { OPTION_CONTRACT_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
-import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
-import { AccountClpCashMovementsForm } from "../../components/account/AccountClpCashMovementsForm";
+import { AccountCashMovementsForm } from "../../components/account/AccountCashMovementsForm";
 import { AccountUnitsFlowForm } from "../../components/account/AccountUnitsFlowForm";
 import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
@@ -31,8 +30,7 @@ import { MortgagePrepaymentSection } from "../../components/account/MortgagePrep
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import {
   supportsBrokerageMovements,
-  supportsUsdCashMovements,
-  supportsClpCashMovements,
+  cashMovementsCurrency,
   supportsUnitsFlowMovements,
 } from "../../accountMovementCreate";
 import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
@@ -81,13 +79,13 @@ export function StandardAccountDetailPage({ data }: Props) {
   const loading = data.contentLoading;
   // Capability forms (movement_create / book_ledger_edit / mortgage_payment_create) stay hidden
   // until the bundle states them: a wrong form is worse than a late one.
-  const usdCashCapability = supportsUsdCashMovements(summary.movement_create);
-  // The USD-cash frame needs no capability: the placeholder's category (`usd`) is enough to draw it.
-  const isUsdCashAccount = usdCashCapability || (loading && summary.category_slug === "usd");
-  const showUsdCashMovementsForm = usdCashCapability;
-  const showClpCashMovementsForm = supportsClpCashMovements(summary.movement_create);
+  // A cash ledger's form follows the currency the account declares (`movement_create.cash_currency`).
+  const cashFormCurrency = cashMovementsCurrency(summary.movement_create);
+  const foreignCashCapability = cashFormCurrency != null && !isHomeCurrency(cashFormCurrency);
+  // The foreign-cash frame needs no capability: the placeholder's category (`usd`) is enough to draw it.
+  const isUsdCashAccount = foreignCashCapability || (loading && summary.category_slug === "usd");
   const showBrokerageMovementsForm =
-    supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount && !showClpCashMovementsForm;
+    supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount && cashFormCurrency == null;
   const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
   const showUnitsFlowForm = supportsUnitsFlowMovements(summary.movement_create);
   const unitsFlowUnitLabel = showUnitsFlowForm
@@ -611,15 +609,11 @@ export function StandardAccountDetailPage({ data }: Props) {
 
       <AccountFlowsSection
         addMovementsForm={
-          showUsdCashMovementsForm ? (
-            <AccountUsdCashMovementsForm
+          cashFormCurrency != null ? (
+            <AccountCashMovementsForm
               accountId={summary.account_id}
               displayUnit={displayUnit}
-            />
-          ) : showClpCashMovementsForm ? (
-            <AccountClpCashMovementsForm
-              accountId={summary.account_id}
-              displayUnit={displayUnit}
+              currency={cashFormCurrency}
             />
           ) : showBrokerageMovementsForm ? (
             <AccountBrokerageMovementsForm

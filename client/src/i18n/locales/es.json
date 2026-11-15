@@ -508,6 +508,7 @@
       "movementType": "Tipo",
       "amountClp": "Monto CLP",
       "amountUsd": "Monto USD",
+      "amountInCurrency": "Monto {{currency}}",
       "unitsDelta": "Acciones (units_delta)",
       "addMovement": "Añadir movimiento",
       "removeMovement": "Quitar",
@@ -729,16 +730,10 @@
       "saveBtn": "Registrar movimientos",
       "saveSuccess": "{{count}} movimiento(s) registrado(s)."
     },
-    "usdCashMovements": {
+    "cashMovements": {
       "title": "Añadir movimientos",
-      "emptyDraft": "Sin borradores. Añade depósitos, compras USD o traspasos a otra cuenta.",
-      "saveBtn": "Registrar movimientos",
-      "saved": "{{count}} movimiento(s) registrado(s)."
-    },
-    "clpCashMovements": {
-      "title": "Añadir movimientos",
-      "hint": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila.",
-      "emptyDraft": "Sin borradores. Añade depósitos, interés o retiros.",
+      "hint": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). En una cuenta en pesos, un depósito o retiro puede indicar la otra cuenta para registrar el traspaso en una sola fila.",
+      "emptyDraft": "Sin borradores. Añade depósitos, retiros, interés o conversiones.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."
     },

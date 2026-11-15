@@ -9,16 +9,14 @@ import {
   brokerageFlowKindShowsCounterpart,
   brokerageFlowKindShowsUnits,
   brokerageFlowKindNeedsUsdForQuote,
-  clpCashFlowKindAllowsCounterpart,
-  brokerageFlowKindNeedsClp,
-  isOwnCurrencyFlowKind,
   type BrokerageFlowKind,
   type BrokerageFormContext,
   type StockQuoteCurrency,
 } from "../../panelAccounts/brokerageFlowKinds";
 
-/** Native currency of a ledger cash form; interest (savings_earnings) is entered in this currency. */
-export type CashFormCurrency = "usd" | "clp"; // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
+/** The currency a cash ledger form's account holds: a code of `/api/currencies` (the server's `movement_create.cash_currency`). */
+export type CashFormCurrency = string;
+import { cashFormAllowsTransferCounterpart, cashFormRowFields } from "../../panelAccounts/cashAccountFormTypes";
 import {
   appendMovementRow,
   removeMovementRow,
@@ -64,16 +62,13 @@ export function BrokerageMovementRowFields({
   const formContext: BrokerageFormContext = cashCurrency != null ? "cash" : "stock";
   const counterpartIsEquity = brokerageFlowKindCounterpartIsEquity(row.flowKind, formContext);
   const counterpartIsUsdCash = brokerageFlowKindCounterpartIsUsdCash(row.flowKind, formContext);
-  // A cash form's own-currency rows (deposits, withdrawals, interest, fees) take its currency's field.
-  const ownInClp = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "clp"; // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
-  const ownInUsd = isOwnCurrencyFlowKind(row.flowKind) && cashCurrency === "usd"; // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
-  const showClp =
-    (cashCurrency != null ? brokerageFlowKindNeedsClp(row.flowKind) : brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency)) ||
-    ownInClp;
-  const showUsd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency) || ownInUsd;
+  // A cash form shows the pesos field and/or its own currency's field (`cashFormRowFields`); the
+  // stock form's fields follow the stock's quote currency.
+  const cashFields = cashCurrency != null ? cashFormRowFields(row.flowKind, cashCurrency) : null;
+  const showClp = cashFields != null ? cashFields.pesos : brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency);
+  const showUsd = cashFields != null ? cashFields.own : brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency);
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
-  const clpTransferCounterpart =
-    cashCurrency === "clp" && clpCashFlowKindAllowsCounterpart(row.flowKind); // convention-ok: the panel's cash form offers peso and dollar cash only (plan C1 leftover)
+  const clpTransferCounterpart = cashCurrency != null && cashFormAllowsTransferCounterpart(row.flowKind, cashCurrency);
   const tradeSettlesInClp = stockQuoteCurrency === "clp" && counterpartIsUsdCash; // convention-ok: a Santiago stock trades in pesos, every other one in dollars (plan C1 leftover)
   // dividend_payout is USD-only today (movementUnitsPolicy rejects CLP-quoted stocks).
   const availableKinds = flowKinds.filter(
@@ -118,7 +113,13 @@ export function BrokerageMovementRowFields({
         </Field>
       ) : null}
       {showUsd ? (
-        <Field label={t("panelAccounts.addAccount.amountUsd")}>
+        <Field
+          label={
+            cashCurrency != null
+              ? t("panelAccounts.addAccount.amountInCurrency", { currency: cashCurrency.toUpperCase() })
+              : t("panelAccounts.addAccount.amountUsd")
+          }
+        >
           <Input
             type="text"
             inputMode="decimal"

@@ -10,22 +10,13 @@ export function supportsBrokerageMovements(
   return Array.isArray(kinds) && kinds.length > 0;
 }
 
-/** Foreign cash ledger (not stock): `fx_exchange`, no share flow kinds. */
-export function supportsUsdCashMovements(schema: unknown): boolean {
-  if (!supportsBrokerageMovements(schema)) return false;
-  const kinds = schema.brokerage_flow_kinds as readonly string[];
-  return kinds.includes("fx_exchange") && !kinds.includes("stock_buy");
-}
-
-/** CLP ledger cash (base currency): `savings_earnings` + CLP deposits/withdrawals, no USD/share kinds. */
-export function supportsClpCashMovements(schema: unknown): boolean {
-  if (!supportsBrokerageMovements(schema)) return false;
-  const kinds = schema.brokerage_flow_kinds as readonly string[];
-  return (
-    kinds.includes("savings_earnings") &&
-    !kinds.includes("fx_exchange") &&
-    !kinds.includes("stock_buy")
-  );
+/**
+ * The currency of a cash ledger account's movement form (pesos, dollars, euros, any code of
+ * `/api/currencies`), as the server states it on the schema; null for any other account.
+ */
+export function cashMovementsCurrency(schema: unknown): string | null {
+  if (!supportsBrokerageMovements(schema)) return null;
+  return schema.cash_currency ?? null;
 }
 
 /**

@@ -1597,6 +1597,10 @@
         "en": "USD amount",
         "es": "Monto USD"
       },
+      "amountInCurrency": {
+        "en": "{{currency}} amount",
+        "es": "Monto {{currency}}"
+      },
       "unitsDelta": {
         "en": "Shares (units_delta)",
         "es": "Acciones (units_delta)"
@@ -2352,36 +2356,18 @@
         "es": "{{count}} movimiento(s) registrado(s)."
       }
     },
-    "usdCashMovements": {
-      "title": {
-        "en": "Add movements",
-        "es": "Añadir movimientos"
-      },
-      "emptyDraft": {
-        "en": "No drafts. Add deposits, USD purchases, or transfers to another account.",
-        "es": "Sin borradores. Añade depósitos, compras USD o traspasos a otra cuenta."
-      },
-      "saveBtn": {
-        "en": "Save movements",
-        "es": "Registrar movimientos"
-      },
-      "saved": {
-        "en": "{{count}} movement(s) saved.",
-        "es": "{{count}} movimiento(s) registrado(s)."
-      }
-    },
-    "clpCashMovements": {
+    "cashMovements": {
       "title": {
         "en": "Add movements",
         "es": "Añadir movimientos"
       },
       "hint": {
-        "en": "Interest raises the balance but does not count as your own contribution (it is a return). Optional: counterpart account on deposits/withdrawals to record the transfer between accounts in a single row.",
-        "es": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila."
+        "en": "Interest raises the balance but does not count as your own contribution (it is a return). On a peso account, a deposit or withdrawal may name the other account to record the transfer in a single row.",
+        "es": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). En una cuenta en pesos, un depósito o retiro puede indicar la otra cuenta para registrar el traspaso en una sola fila."
       },
       "emptyDraft": {
-        "en": "No drafts. Add deposits, interest, or withdrawals.",
-        "es": "Sin borradores. Añade depósitos, interés o retiros."
+        "en": "No drafts. Add deposits, withdrawals, interest or conversions.",
+        "es": "Sin borradores. Añade depósitos, retiros, interés o conversiones."
       },
       "saveBtn": {
         "en": "Save movements",
