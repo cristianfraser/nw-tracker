@@ -8,49 +8,13 @@ import {
   leafGroupOfAccount,
   navGroupById,
 } from "./navTreeModel.js";
-import { getPortfolioGroupIndex } from "./portfolioGroupIndex.js";
+import { portfolioGroupBySlug } from "./portfolioGroupIndex.js";
 
-export type PortfolioGroupRow = {
-  id: number;
-  slug: string;
-  label: string;
-  parent_id: number | null;
-  group_kind: string;
-  asset_group_slug: string | null;
-  kind_slug: string | null;
-  dashboard_bucket_slug: string | null;
-  exclude_from_parent_total: number;
-  api_group: string | null;
-  api_subgroup: string | null;
-};
-
-const groupBySlugStmt = db.prepare(
-  `SELECT id, slug, label, parent_id, group_kind, asset_group_slug, kind_slug,
-          dashboard_bucket_slug, exclude_from_parent_total, api_group, api_subgroup
-   FROM portfolio_groups WHERE slug = ?`
-);
-
-const groupByIdStmt = db.prepare(
-  `SELECT id, slug, label, parent_id, group_kind, asset_group_slug, kind_slug,
-          dashboard_bucket_slug, exclude_from_parent_total, api_group, api_subgroup
-   FROM portfolio_groups WHERE id = ?`
-);
-
-export function portfolioGroupBySlug(slug: string): PortfolioGroupRow | null {
-  const idx = getPortfolioGroupIndex();
-  if (idx) return idx.groupBySlug.get(slug) ?? null;
-  return (groupBySlugStmt.get(slug) as PortfolioGroupRow | undefined) ?? null;
-}
+export { portfolioGroupById, portfolioGroupBySlug, type PortfolioGroupRow } from "./portfolioGroupIndex.js";
 
 /** A portfolio group tab's slug. */
 export function isResolvablePortfolioGroupSlug(slug: string): boolean {
   return portfolioGroupBySlug(slug) != null;
-}
-
-export function portfolioGroupById(id: number): PortfolioGroupRow | null {
-  const idx = getPortfolioGroupIndex();
-  if (idx) return idx.groupById.get(id) ?? null;
-  return (groupByIdStmt.get(id) as PortfolioGroupRow | undefined) ?? null;
 }
 
 export { withPortfolioGroupIndex } from "./portfolioGroupIndex.js";
