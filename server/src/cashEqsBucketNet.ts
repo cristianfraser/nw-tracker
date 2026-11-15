@@ -1,4 +1,3 @@
-import { isHomeCurrency } from "./displayUnits.js";
 import { netsLinkedGroup, nettedGroup } from "./navTreeModel.js";
 import { clpToUnitAt } from "./valueConvert.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
@@ -35,29 +34,32 @@ export function groupNetsLinkedCards(slug: string): boolean {
 }
 
 /**
- * The linked cards' owed at `ymd` in `unit`, at the debt side (today: the live rate): what a
- * netting group subtracts. Null when the rate is missing — each caller says what that means.
+ * The linked cards' peso total `clp` of `ymd` in `unit`, at the debt side (today: the live rate).
+ * Cards owing nothing need no rate; a total with no rate into the unit that day throws.
  */
-export function linkedCardsOwedInUnit(ymd: string, unit: TsUnit, opts: { now?: Date } = {}): number | null {
-  const clp = linkedCreditCardClpForCashCardAsOf(ymd);
+export function linkedCardsClpInUnit(clp: number, ymd: string, unit: TsUnit, opts: { now?: Date } = {}): number {
   if (clp === 0) return 0;
   const v = clpToUnitAt(clp, ymd, unit, { side: "debt", ...(opts.now ? { now: opts.now } : {}) });
-  return v != null && Number.isFinite(v) ? v : null;
+  if (v == null || !Number.isFinite(v)) {
+    throw new Error(`linked credit cards: no ${unit} rate on ${ymd} for what they owe`);
+  }
+  return v;
 }
 
-/** The linked cards' owed in the unit at that day, at the debt side (today: the live rate). NaN without a rate. */
-function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
-  if (isHomeCurrency(unit)) return clp;
-  const v = clpToUnitAt(clp, asOf, unit, { side: "debt" });
-  return v != null && Number.isFinite(v) ? v : Number.NaN;
+/**
+ * The linked cards' owed at `ymd` in `unit`, at the debt side (today: the live rate): what a
+ * netting group subtracts. Throws when they owe and the unit has no rate that day.
+ */
+export function linkedCardsOwedInUnit(ymd: string, unit: TsUnit, opts: { now?: Date } = {}): number {
+  return linkedCardsClpInUnit(linkedCreditCardClpForCashCardAsOf(ymd), ymd, unit, opts);
 }
 
 export type DashboardLinkedBalanceDto = {
   slug: string;
   label: string;
   label_i18n_key: string;
-  /** In the payload's unit (null: no rate). */
-  value: number | null;
+  /** In the payload's unit. */
+  value: number;
   route_path: string;
 };
 
@@ -70,7 +72,7 @@ export type DashboardLinkedBalanceDto = {
 export function cashSavingsLinkedBalances(asOfYmd: string, unit: TsUnit): DashboardLinkedBalanceDto[] {
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc === 0) return [];
-  const value = clpToUnitAt(cc, asOfYmd, unit, { side: "debt" });
+  const value = linkedCardsClpInUnit(cc, asOfYmd, unit);
   const linked = nettedGroup();
   const routePath = linked.routePath?.trim();
   if (!routePath) throw new Error(`nav node ${linked.slug} has no route_path (run the nav seed)`);
@@ -79,16 +81,10 @@ export function cashSavingsLinkedBalances(asOfYmd: string, unit: TsUnit): Dashbo
       slug: "credit_card",
       label: "Credit card",
       label_i18n_key: "liabilities.creditCard",
-      value: value != null && Number.isFinite(value) ? value : null,
+      value,
       route_path: routePath,
     },
   ];
-}
-
-function linkedCcOffsetAt(asOf: string, unit: TsUnit): number {
-  const ccClp = linkedCreditCardClpForCashCardAsOf(asOf);
-  const v = convertLinkedCc(ccClp, asOf, unit);
-  return Number.isFinite(v) ? v : 0;
 }
 
 function priorMonthEndYmdForConsolidatedRow(asOf: string): string {
@@ -110,11 +106,11 @@ export function netLinkedCreditCardFromCashConsolidated(
   return [...rows]
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))
     .map((row) => {
-      const linkedCcClose = linkedCcOffsetAt(row.as_of_date, unit);
+      const linkedCcClose = linkedCardsOwedInUnit(row.as_of_date, unit);
       let prior_closing = row.prior_closing;
       if (prior_closing != null && Number.isFinite(prior_closing)) {
         const priorEnd = priorMonthEndYmdForConsolidatedRow(row.as_of_date);
-        const linkedCcPrior = linkedCcOffsetAt(priorEnd, unit);
+        const linkedCcPrior = linkedCardsOwedInUnit(priorEnd, unit);
         prior_closing = cashNetOfLinkedCreditCards(prior_closing, linkedCcPrior);
       }
       return {

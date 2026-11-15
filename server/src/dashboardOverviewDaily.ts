@@ -76,7 +76,6 @@ const LIABILITIES_DAILY: NodeValuePolicy = {
   members: "real_counted",
   netsLinkedCards: false,
   empty: "zero",
-  missingCardRate: "throw",
   rounding: "unit_coin",
 };
 

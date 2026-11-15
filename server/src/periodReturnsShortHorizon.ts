@@ -59,7 +59,6 @@ const BUCKET_VALUE_LEG: Omit<NodePointValuePolicy, "now"> = {
   members: "real_counted",
   netsLinkedCards: false,
   empty: "null",
-  missingCardRate: "throw",
   rounding: "none",
 };
 

@@ -43,10 +43,10 @@
  * the rule itself).
  */
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
+import { linkedCardsClpInUnit } from "./cashEqsBucketNet.js";
 import { nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { clpToUnitAt } from "./valueConvert.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { getNetWorthNavGroupNode } from "./navTree.js";
 import { loadProxyBasketBreakdown } from "./proxyBasketBreakdown.js";
@@ -145,8 +145,8 @@ export type NavValueMapInput = {
   /** The net_worth nav root. */
   navRoot: NavTreeNodeDto;
   rows: readonly CardMetricsAccountRow[];
-  /** Linked credit cards' owed total (as `linkedCreditCardClpForCashCardAsOf`), in pesos and in the unit (null = no rate). */
-  linkedCreditCards: { clp: number; value: number | null };
+  /** Linked credit cards' owed total (as `linkedCreditCardClpForCashCardAsOf`), in pesos and in the unit. */
+  linkedCreditCards: { clp: number; value: number };
   /** The display unit of the rows and of the map. */
   unit: TsUnit;
   /** Proxy baskets to break proxied accounts down into; absent = no breakdowns. */
@@ -167,13 +167,12 @@ function isMapGroup(n: NavTreeNodeDto): boolean {
  * A leaf tile in pesos (its basis, and its value when the unit is pesos): 0 when no row has a
  * value, unrounded.
  */
-const LEAF_TILE_BASIS: NodeValueRules = { empty: "zero", missingCardRate: "null", rounding: "none" };
+const LEAF_TILE_BASIS: NodeValueRules = { empty: "zero", rounding: "none" };
 
 /**
- * A leaf tile's value in another unit: absent when no row has a value in it or the linked cards
- * have no rate, unrounded.
+ * A leaf tile's value in another unit: absent when no row has a value in it, unrounded.
  */
-const LEAF_TILE_VALUE_IN_UNIT: NodeValueRules = { empty: "null", missingCardRate: "null", rounding: "none" };
+const LEAF_TILE_VALUE_IN_UNIT: NodeValueRules = { empty: "null", rounding: "none" };
 
 function sumFinite(values: readonly (number | null | undefined)[]): number | null {
   let sum = 0;
@@ -400,16 +399,13 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       sumFinite(leafRows.map((r) => r.clp_basis.current_value)),
       nets ? linkedCreditCards.clp : undefined,
       HOME_CURRENCY,
-      LEAF_TILE_BASIS,
-      node.slug
+      LEAF_TILE_BASIS
     )!;
     const value = nodeValueFromSum(
       sumFinite(leafRows.map((r) => r.current_value)),
-      // Cards owing nothing need no rate.
-      nets ? (linkedCreditCards.clp === 0 ? 0 : linkedCreditCards.value) : undefined,
+      nets ? linkedCreditCards.value : undefined,
       unit,
-      isHomeCurrency(unit) ? LEAF_TILE_BASIS : LEAF_TILE_VALUE_IN_UNIT,
-      node.slug
+      isHomeCurrency(unit) ? LEAF_TILE_BASIS : LEAF_TILE_VALUE_IN_UNIT
     );
     // The leaf's own accounts, for the page to open it into (Crypto shows Bitcoin and Ether);
     // none when the sidebar shows it as a leaf (IPSA, SOXX among Acciones' stocks).
@@ -483,12 +479,11 @@ export function buildNavValueMapPayload(
   if (!navRoot) throw new Error("nav value map: net_worth nav tree missing");
   const today = chileCalendarTodayYmd();
   const clp = linkedCreditCardClpForCashCardAsOf(today);
-  const inUnit = clpToUnitAt(clp, today, unit, { side: "debt" });
   return {
     value_map: buildNavValueMap({
       navRoot,
       rows,
-      linkedCreditCards: { clp, value: inUnit != null && Number.isFinite(inUnit) ? inUnit : null },
+      linkedCreditCards: { clp, value: linkedCardsClpInUnit(clp, today, unit) },
       proxy: loadNavValueMapProxyInput(rows, unit),
       chainedPct,
       unit,

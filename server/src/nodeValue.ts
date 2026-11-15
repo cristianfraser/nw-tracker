@@ -5,7 +5,8 @@
  *
  * Every reader of that sum goes through here. What the readers disagree on is not hidden in
  * branches: each passes a {@link NodeValuePolicy} naming its value source, member filter,
- * netting, what an all-missing node reads, what a missing card rate does, and its rounding.
+ * netting, what an all-missing node reads and its rounding. Linked cards that owe with no rate
+ * into the unit that day throw, for every reader.
  *
  * Forms:
  * - {@link nodeValue}: one date.
@@ -22,11 +23,15 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { accountValueAt, accountValueInUnitFromClp } from "./accountValue.js";
-import { cashNetOfLinkedCreditCards, groupNetsLinkedCards, linkedCardsOwedInUnit } from "./cashEqsBucketNet.js";
+import {
+  cashNetOfLinkedCreditCards,
+  groupNetsLinkedCards,
+  linkedCardsClpInUnit,
+  linkedCardsOwedInUnit,
+} from "./cashEqsBucketNet.js";
 import { roundToCurrency } from "./displayUnits.js";
 import { linkedCreditCardClpForCashCardByDates } from "./linkedCreditCards.js";
 import type { CurrencyCode } from "./rates.js";
-import { clpToUnitAt } from "./valueConvert.js";
 
 /** An account of a node, as the group listings return it. */
 export type NodeValueMember = {
@@ -62,21 +67,12 @@ export type NodeMemberFilter = "counted" | "real_counted";
  */
 export type NodeEmptyRule = "null" | "null_unless_netted" | "zero";
 
-/**
- * What a netting node does when the cards' owed has no rate into the unit that day.
- * - `throw`: fail.
- * - `null`: the node has no value.
- * - `skip`: the node reads its members' sum, un-netted.
- */
-export type NodeMissingCardRateRule = "throw" | "null" | "skip";
-
 /** `unit_coin`: rounded once, after netting, to the unit's smallest coin. */
 export type NodeRounding = "none" | "unit_coin";
 
 /** The rules applied to a members' sum. */
 export type NodeValueRules = {
   empty: NodeEmptyRule;
-  missingCardRate: NodeMissingCardRateRule;
   rounding: NodeRounding;
 };
 
@@ -152,15 +148,13 @@ function sumOrNull(values: Iterable<number | null>): number | null {
 
 /**
  * The rule kernel: a members' sum (null: no member had a value) and the linked cards' owed in
- * the same unit (`undefined`: the node does not net; null: no rate) to the node's value.
+ * the same unit (`undefined`: the node does not net) to the node's value.
  */
 export function nodeValueFromSum(
   sum: number | null,
-  linkedCardsOwed: number | null | undefined,
+  linkedCardsOwed: number | undefined,
   unit: CurrencyCode,
-  rules: NodeValueRules,
-  /** Names the node and day in the `throw` rule's message. */
-  where: string
+  rules: NodeValueRules
 ): number | null {
   const nets = linkedCardsOwed !== undefined;
   let value: number;
@@ -171,27 +165,14 @@ export function nodeValueFromSum(
   } else {
     value = sum;
   }
-  if (nets) {
-    if (linkedCardsOwed == null) {
-      if (rules.missingCardRate === "throw") {
-        throw new Error(`node value: no ${unit} rate for the linked credit cards (${where})`);
-      }
-      if (rules.missingCardRate === "null") return null;
-    } else {
-      value = cashNetOfLinkedCreditCards(value, linkedCardsOwed);
-    }
-  }
+  if (nets) value = cashNetOfLinkedCreditCards(value, linkedCardsOwed);
   return rules.rounding === "unit_coin" ? roundToCurrency(value, unit) : value;
 }
 
-/** The linked cards' owed in `unit` on each date, at the debt side (null: no rate). One batch read. */
-function linkedCardsOwedOnDates(dates: readonly string[], unit: CurrencyCode, now: Date | undefined): (number | null)[] {
+/** The linked cards' owed in `unit` on each date, at the debt side. One batch read. */
+function linkedCardsOwedOnDates(dates: readonly string[], unit: CurrencyCode, now: Date | undefined): number[] {
   const clpByDate = linkedCreditCardClpForCashCardByDates([...dates]);
-  return dates.map((ymd) => {
-    const clp = clpByDate.get(ymd) ?? 0;
-    if (clp === 0) return 0;
-    return finite(clpToUnitAt(clp, ymd, unit, { side: "debt", ...(now ? { now } : {}) }));
-  });
+  return dates.map((ymd) => linkedCardsClpInUnit(clpByDate.get(ymd) ?? 0, ymd, unit, now ? { now } : {}));
 }
 
 /** The node's value on `ymd` in `unit`. */
@@ -207,7 +188,7 @@ export function nodeValue(
   const owed = policy.netsLinkedCards
     ? linkedCardsOwedInUnit(ymd, unit, policy.now ? { now: policy.now } : {})
     : undefined;
-  return nodeValueFromSum(sum, owed, unit, policy, ymd);
+  return nodeValueFromSum(sum, owed, unit, policy);
 }
 
 /**
@@ -269,5 +250,5 @@ export function nodeValueSeriesFromSums(
     throw new Error(`node value: ${sums.length} sums for ${dates.length} dates`);
   }
   const owed = policy.netsLinkedCards ? linkedCardsOwedOnDates(dates, unit, policy.now) : null;
-  return dates.map((ymd, i) => nodeValueFromSum(sums[i]!, owed ? owed[i]! : undefined, unit, policy, ymd));
+  return dates.map((_, i) => nodeValueFromSum(sums[i]!, owed ? owed[i]! : undefined, unit, policy));
 }

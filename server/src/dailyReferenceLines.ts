@@ -36,11 +36,10 @@ import {
 
 /**
  * A reference source's total on each day of its own daily series: a day the series has no value
- * for is absent, unrounded; linked cards with no rate that day are not netted.
+ * for is absent, unrounded.
  */
 const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards" | "now"> = {
   empty: "null",
-  missingCardRate: "skip",
   rounding: "none",
 };
 

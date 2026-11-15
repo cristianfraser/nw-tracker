@@ -38,20 +38,17 @@ const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
   source: "value_in_unit",
   members: "counted",
   empty: "null_unless_netted",
-  // Pesos need no rate.
-  missingCardRate: "throw",
   rounding: "unit_coin",
 };
 
 /**
  * The chart totals in another unit at a date: each real counted member's own value in the unit,
- * unrounded; the linked cards must have a rate.
+ * unrounded.
  */
 const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
   source: "value_in_unit",
   members: "real_counted",
   empty: "null_unless_netted",
-  missingCardRate: "throw",
   rounding: "none",
 };
 

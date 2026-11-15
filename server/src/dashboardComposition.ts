@@ -173,8 +173,6 @@ export function compositionValuesAtDatesClp(
 const COMPOSITION_LINE_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
   members: "counted",
   empty: "null_unless_netted",
-  // Pesos need no rate.
-  missingCardRate: "throw",
   rounding: "unit_coin",
 };
 

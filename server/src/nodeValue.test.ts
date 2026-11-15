@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { linkedCardsOwedInUnit } from "./cashEqsBucketNet.js";
 import { db } from "./db.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 import {
@@ -19,57 +20,43 @@ import { clpToUnitAt } from "./valueConvert.js";
 
 const rules = (over: Partial<NodeValueRules> = {}): NodeValueRules => ({
   empty: "null",
-  missingCardRate: "throw",
   rounding: "none",
   ...over,
 });
 
 describe("nodeValueFromSum — the rule kernel", () => {
   it("a node that does not net reads its sum", () => {
-    expect(nodeValueFromSum(1_000.4, undefined, "clp", rules(), "t")).toBe(1_000.4);
+    expect(nodeValueFromSum(1_000.4, undefined, "clp", rules())).toBe(1_000.4);
   });
 
   it("nets the linked cards signed: owed subtracts, a card in credit adds", () => {
-    expect(nodeValueFromSum(1_000_000, 250_000, "clp", rules(), "t")).toBe(750_000);
-    expect(nodeValueFromSum(1_000_000, -50_000, "clp", rules(), "t")).toBe(1_050_000);
+    expect(nodeValueFromSum(1_000_000, 250_000, "clp", rules())).toBe(750_000);
+    expect(nodeValueFromSum(1_000_000, -50_000, "clp", rules())).toBe(1_050_000);
   });
 
   it("empty `null`: absent, netting or not", () => {
-    expect(nodeValueFromSum(null, undefined, "clp", rules({ empty: "null" }), "t")).toBeNull();
-    expect(nodeValueFromSum(null, 250_000, "clp", rules({ empty: "null" }), "t")).toBeNull();
+    expect(nodeValueFromSum(null, undefined, "clp", rules({ empty: "null" }))).toBeNull();
+    expect(nodeValueFromSum(null, 250_000, "clp", rules({ empty: "null" }))).toBeNull();
   });
 
   it("empty `null_unless_netted`: absent, except a netting node reads 0 less the cards", () => {
     const r = rules({ empty: "null_unless_netted" });
-    expect(nodeValueFromSum(null, undefined, "clp", r, "t")).toBeNull();
-    expect(nodeValueFromSum(null, 250_000, "clp", r, "t")).toBe(-250_000);
-    expect(nodeValueFromSum(null, -50_000, "clp", r, "t")).toBe(50_000);
+    expect(nodeValueFromSum(null, undefined, "clp", r)).toBeNull();
+    expect(nodeValueFromSum(null, 250_000, "clp", r)).toBe(-250_000);
+    expect(nodeValueFromSum(null, -50_000, "clp", r)).toBe(50_000);
   });
 
   it("empty `zero`: 0, then netted", () => {
     const r = rules({ empty: "zero" });
-    expect(nodeValueFromSum(null, undefined, "clp", r, "t")).toBe(0);
-    expect(nodeValueFromSum(null, 250_000, "clp", r, "t")).toBe(-250_000);
-  });
-
-  it("a missing card rate throws, nulls the node or leaves it un-netted, by rule", () => {
-    expect(() => nodeValueFromSum(500, null, "usd", rules({ missingCardRate: "throw" }), "cash 2026-01-01")).toThrow(
-      /no usd rate for the linked credit cards \(cash 2026-01-01\)/
-    );
-    expect(nodeValueFromSum(500, null, "usd", rules({ missingCardRate: "null" }), "t")).toBeNull();
-    expect(nodeValueFromSum(500, null, "usd", rules({ missingCardRate: "skip" }), "t")).toBe(500);
-  });
-
-  it("the empty rule is decided before the card rate", () => {
-    expect(nodeValueFromSum(null, null, "usd", rules({ empty: "null", missingCardRate: "throw" }), "t")).toBeNull();
-    expect(nodeValueFromSum(null, null, "usd", rules({ empty: "zero", missingCardRate: "skip" }), "t")).toBe(0);
+    expect(nodeValueFromSum(null, undefined, "clp", r)).toBe(0);
+    expect(nodeValueFromSum(null, 250_000, "clp", r)).toBe(-250_000);
   });
 
   it("rounds once, after netting, to the unit's coin", () => {
     // 1000.4 + 2000.4 − 0.3 = 3000.5 → 3001; rounding each part first would give 3000.
-    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3, "clp", rules({ rounding: "unit_coin" }), "t")).toBe(3_001);
-    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3, "clp", rules({ rounding: "none" }), "t")).toBeCloseTo(3_000.5, 9);
-    expect(nodeValueFromSum(10.004 + 10.004, undefined, "usd", rules({ rounding: "unit_coin" }), "t")).toBe(20.01);
+    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3, "clp", rules({ rounding: "unit_coin" }))).toBe(3_001);
+    expect(nodeValueFromSum(1_000.4 + 2_000.4, 0.3, "clp", rules({ rounding: "none" }))).toBeCloseTo(3_000.5, 9);
+    expect(nodeValueFromSum(10.004 + 10.004, undefined, "usd", rules({ rounding: "unit_coin" }))).toBe(20.01);
   });
 });
 
@@ -124,8 +111,7 @@ describe("nodeValue on accounts", () => {
     members: "counted",
     netsLinkedCards: false,
     empty: "null",
-    missingCardRate: "throw",
-    rounding: "none",
+      rounding: "none",
     ...over,
   });
 
@@ -273,14 +259,32 @@ describe("nodeValue on accounts", () => {
     expect(nodeValue([], D1, "clp", point({ empty: "zero", netsLinkedCards: true }))).toBe(-OWED);
   });
 
-  it("a card balance with no rate into the unit follows the missing-rate rule", () => {
-    const p = (missingCardRate: NodePointValuePolicy["missingCardRate"]) =>
-      point({ netsLinkedCards: true, empty: "zero", missingCardRate });
-    expect(() => nodeValue(members, OLD_DAY, "usd", p("throw"))).toThrow(/no usd rate for the linked credit cards/);
-    expect(nodeValue(members, OLD_DAY, "usd", p("null"))).toBeNull();
-    expect(nodeValue(members, OLD_DAY, "usd", p("skip"))).toBe(0);
-    // Pesos need no rate.
-    expect(nodeValue(members, OLD_DAY, "clp", p("throw"))).toBe(-OLD_OWED);
+  it("linked cards that owe with no rate into the unit throw, in every form and under every empty rule", () => {
+    const message = new RegExp(`linked credit cards: no usd rate on ${OLD_DAY}`);
+    for (const empty of ["zero", "null", "null_unless_netted"] as const) {
+      const policy = point({ netsLinkedCards: true, empty });
+      expect(() => nodeValue(members, OLD_DAY, "usd", policy)).toThrow(message);
+      expect(() => nodeValuesAtDates(members, [OLD_DAY], "usd", policy)).toThrow(message);
+      expect(() => nodeValueSeriesFromSums([null], [OLD_DAY], "usd", policy)).toThrow(message);
+      expect(() => nodeValueSeriesOnGrid(members, [OLD_DAY], "usd", policy)).toThrow(message);
+    }
+    expect(() => linkedCardsOwedInUnit(OLD_DAY, "usd")).toThrow(message);
+    // Pesos need no rate, and a node that does not net asks for none.
+    expect(nodeValue(members, OLD_DAY, "clp", point({ netsLinkedCards: true, empty: "zero" }))).toBe(-OLD_OWED);
+    expect(nodeValue(members, OLD_DAY, "usd", point({ empty: "zero" }))).toBe(0);
+  });
+
+  it("cards owing nothing need no rate", () => {
+    db.prepare(`UPDATE valuations SET value = 0 WHERE account_id = ? AND as_of_date = ?`).run(cardId, OLD_FROM);
+    clearAggregationCache();
+    try {
+      expect(linkedCreditCardClpForCashCardAsOf(OLD_DAY)).toBe(0);
+      expect(linkedCardsOwedInUnit(OLD_DAY, "usd")).toBe(0);
+      expect(nodeValue(members, OLD_DAY, "usd", point({ netsLinkedCards: true, empty: "zero" }))).toBe(0);
+    } finally {
+      db.prepare(`UPDATE valuations SET value = ? WHERE account_id = ? AND as_of_date = ?`).run(OLD_OWED, cardId, OLD_FROM);
+      clearAggregationCache();
+    }
   });
 
   it("the dates form is the point value on each date", () => {
@@ -298,8 +302,8 @@ describe("nodeValue on accounts", () => {
     const grids = [GRID, [chileCalendarAddDays(today, -2), chileCalendarAddDays(today, -1), today]];
     const variants: Partial<NodePointValuePolicy>[] = [
       {},
-      { netsLinkedCards: true, missingCardRate: "skip" },
-      { netsLinkedCards: true, empty: "zero", rounding: "unit_coin", missingCardRate: "null" },
+      { netsLinkedCards: true },
+      { netsLinkedCards: true, empty: "zero", rounding: "unit_coin" },
       { members: "real_counted", empty: "null_unless_netted" },
     ];
     for (const grid of grids) {
@@ -323,7 +327,7 @@ describe("nodeValue on accounts", () => {
   });
 
   it("the sums form applies the same netting as the grid form", () => {
-    const policy = point({ netsLinkedCards: true, empty: "zero", missingCardRate: "skip", rounding: "unit_coin" });
+    const policy = point({ netsLinkedCards: true, empty: "zero", rounding: "unit_coin" });
     const raw = nodeValueSeriesOnGrid(members, GRID, "usd", point());
     expect(nodeValueSeriesFromSums(raw, GRID, "usd", policy)).toEqual(nodeValueSeriesOnGrid(members, GRID, "usd", policy));
   });

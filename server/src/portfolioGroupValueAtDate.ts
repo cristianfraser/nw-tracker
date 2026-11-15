@@ -56,37 +56,33 @@ function listAccountsForDashboardBucket(bucket: string): BucketAccountMeta[] {
 
 /**
  * A bucket at a date when it has no consolidated closing: its counted members' own values in
- * the unit, 0 when none has one, unrounded (the apportionment rounds once); a netting bucket
- * with no rate for its linked cards has no value.
+ * the unit, 0 when none has one, unrounded (the apportionment rounds once).
  */
 const BUCKET_WITHOUT_CLOSING: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
   source: "value_in_unit",
   members: "counted",
   empty: "zero",
-  missingCardRate: "null",
   rounding: "none",
 };
 
 /**
  * A bucket on each day of a daily grid: its counted members' cached daily values, 0 when none
- * has one, rounded to the unit's coin; linked cards with no rate that day are not netted.
+ * has one, rounded to the unit's coin.
  */
 const BUCKET_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
   members: "counted",
   empty: "zero",
-  missingCardRate: "skip",
   rounding: "unit_coin",
 };
 
 /**
  * A bucket at the prior day's close: each counted member's peso mark taken into the unit, 0 when
- * none has one, rounded to the unit's coin; linked cards with no rate that day are not netted.
+ * none has one, rounded to the unit's coin.
  */
 const BUCKET_PRIOR_DAY_CLOSE: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
   source: "peso_mark_reframed",
   members: "counted",
   empty: "zero",
-  missingCardRate: "skip",
   rounding: "unit_coin",
 };
 

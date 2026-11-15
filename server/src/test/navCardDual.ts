@@ -366,7 +366,7 @@ function breakdownIn(b: DualProxyBreakdown, unit: Unit): ProxyBasketBreakdown {
 export function dualBuildNavValueMap(input: {
   navRoot: NavTreeNodeDto;
   rows: readonly DualRow[];
-  linkedCreditCards: { clp: number; usd: number | null };
+  linkedCreditCards: { clp: number; usd: number };
   proxy?: { bucketByAccountId: ReadonlyMap<number, string>; breakdowns: ReadonlyMap<string, DualProxyBreakdown> };
   chainedPct?: ChainedGroupPct;
 }): DualValueMapNode {

@@ -61,7 +61,8 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
       for (const card of layoutCards) {
         const bucketSlug = card.bucket_slug;
         // The bucket card's own value (Σ of its members' values in the unit), not its pesos ÷ one rate.
-        const value = isNwBucketSlug(bucketSlug) ? bucketTotals.buckets[bucketSlug] ?? 0 : 0;
+        const value = isNwBucketSlug(bucketSlug) ? bucketTotals.buckets[bucketSlug] : 0;
+        if (value == null) throw new Error(`dashboard payload: no ${unit} value for ${bucketSlug} on ${asOfToday}`);
         byGroup.set(card.bucket_slug, {
           label: bucketLabelBySlug.get(card.bucket_slug) ?? card.label,
           value,
