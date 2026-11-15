@@ -75,10 +75,8 @@ export type DashboardBucketValueTotals = {
 
 /**
  * Per-session bucket values for daily views: Σ `accountMarkClpAtYmd` per bucket at each
- * session (+ the cash_eqs linked-CC netting), bucket account lists fetched once. This
- * deliberately bypasses `consolidatedBucketValueAt` — the consolidated monthly closing
- * maps one value onto every chart date of its month, which is correct for month grids but
- * flattens a daily series (all sessions of the current month would show today's value).
+ * session (+ the cash_eqs linked-CC netting), bucket account lists fetched once. Read from the
+ * per-account daily cache; exact (chart levels are never rounded).
  */
 export function buildDashboardBucketDailySeriesClp(
   sessionsAsc: readonly string[]
