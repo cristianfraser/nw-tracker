@@ -13,7 +13,16 @@
  *   quote → base at the ask (buy rate).
  * - `debt`: you owe `from` and would buy it with `to` — the other side.
  * - `mid`: the mid rate both ways (references, never a value someone holds).
- * A pair without bid/ask data reads its mid on both sides (UF, EUR).
+ * Bid/ask is per pair: a pair that keeps buy and sell rates on file (USD/CLP, `fxBidAsk.ts`) has a
+ * spread; one without reads its mid on both sides (UF, EUR). `pairKeepsBidAsk` answers which.
+ *
+ * What this module answers, each by currency codes:
+ * - a VALUE converted (`convertCurrency`; memoized per day in `valueConvert.ts`);
+ * - a FLOW converted at its own day's stored rate (`convertFlow`, `convertFlowOrNull`,
+ *   `flowEventInUnit`), and a reference size at the mid (`referenceAmountAtMid`);
+ * - a pair's RATE as a rate: stored (`storedPairRate`, `storedPairRatesInRange`,
+ *   `storedPairRatesOnOrBefore`), live today (`pairRateOnOrBefore`), its buy and sell rates
+ *   (`pairBidAskOnOrBefore`).
  *
  * Dates: a day before Chile today reads the stored row on or before it. Today (or later — the
  * current month's month-end point) reads the live rate where the pair has one (USD/CLP and every

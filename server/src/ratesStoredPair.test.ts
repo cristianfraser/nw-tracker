@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { foreignCashToClpAt } from "./foreignCashAccounts.js";
 import {
   convertFlowOrNull,
   pairBidAskOnOrBefore,
@@ -32,6 +33,7 @@ beforeAll(() => {
   for (const [date, v] of USD_CLP_ROWS) insFx.run(date, v);
   const insPair = db.prepare(`INSERT OR REPLACE INTO fx_rates (base, quote, date, mid, source) VALUES ('eur', 'usd', ?, ?, 'vitest')`);
   for (const [date, v] of EUR_USD_ROWS) insPair.run(date, v);
+  db.prepare(`INSERT OR REPLACE INTO eur_daily (date, clp_per_eur) VALUES ('1700-01-15', 900)`).run();
   const insUf = db.prepare(`INSERT OR REPLACE INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`);
   for (const [date, v] of UF_ROWS) insUf.run(date, v);
 });
@@ -40,6 +42,7 @@ afterAll(() => {
   db.prepare(`DELETE FROM fx_daily WHERE date LIKE '17%'`).run();
   db.prepare(`DELETE FROM fx_rates WHERE date LIKE '17%'`).run();
   db.prepare(`DELETE FROM uf_daily WHERE date LIKE '17%'`).run();
+  db.prepare(`DELETE FROM eur_daily WHERE date LIKE '17%'`).run();
 });
 
 describe("storedPairRate", () => {
@@ -114,5 +117,18 @@ describe("referenceAmountAtMid", () => {
     expect(referenceAmountAtMid(100, "eur", "usd", "1700-02-01")).toBe(125);
     expect(referenceAmountAtMid(0, "eur", "usd", "1700-02-01")).toBe(0);
     expect(referenceAmountAtMid(100, "eur", "usd", "1699-12-31")).toBeNull();
+  });
+});
+
+describe("foreignCashToClpAt: the sell-rate rule is the cash currency's", () => {
+  it("a currency whose peso pair keeps bid/ask is valued at the stored sell rate", () => {
+    const ba = pairBidAskOnOrBefore("usd", "clp", "1700-02-01");
+    expect(foreignCashToClpAt(100, "usd", "1700-02-01", "vitest")).toBe(Math.round(100 * ba!.bid));
+    expect(ba!.bid).toBeLessThan(710);
+  });
+
+  it("a currency with no bid/ask on file (the euro) is valued at its pair's mid: no spread", () => {
+    expect(foreignCashToClpAt(100, "eur", "1700-02-01", "vitest")).toBe(90_000);
+    expect(() => foreignCashToClpAt(100, "eur", "1699-12-31", "vitest")).toThrow(/no eur\/clp rate on or before 1699-12-31/);
   });
 });
