@@ -23,7 +23,7 @@
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import type { PaymentProcessor } from "./paymentReceiptMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
 /** Every Despegar sender that has mailed a purchase confirmation. */
 const DESPEGAR_SENDER = "noreply@despegar.com";

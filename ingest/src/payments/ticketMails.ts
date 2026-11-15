@@ -26,7 +26,7 @@
  */
 import type { ProcessorReceipt, ReceiptEvent } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import type { PaymentProcessor } from "./paymentReceiptMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
 function fail(mail: ArchivedMail, why: string): never {
   throw new Error(`${mail.sent_at_chile} «${mail.subject}» (${mail.message_id}): ${why}`);

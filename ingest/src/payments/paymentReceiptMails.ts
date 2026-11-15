@@ -16,19 +16,9 @@ import { DESPEGAR_PROCESSORS } from "./despegarMails.js";
 import { STAY_PROCESSORS } from "./stayMails.js";
 import { TICKET_PROCESSORS } from "./ticketMails.js";
 import { VEHICLE_PERMIT_PROCESSORS } from "./vehiclePermitMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
-export type PaymentProcessor = {
-  slug: string;
-  /** IMAP FROM match… */
-  from?: string;
-  /** …or a Gmail search query (a platform many shops mail from). */
-  gmraw?: string;
-  /** The subjects that may be a receipt (envelope filter). */
-  wantSubject: (subject: string) => boolean;
-  /** PDF attachments to stage with the mail (the receipt is in the PDF), by file name. */
-  pdfAttachment?: (filename: string) => boolean;
-  decode: (mail: ArchivedMail) => ProcessorReceipt | null;
-};
+export type { PaymentProcessor } from "./paymentProcessor.js";
 
 /** A match the receipt must have; reading a group it did not capture throws. */
 function need(text: string, re: RegExp, what: string, mail: ArchivedMail): (group: number) => string {

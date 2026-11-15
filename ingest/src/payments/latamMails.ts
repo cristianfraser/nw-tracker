@@ -26,7 +26,7 @@
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import type { PaymentProcessor } from "./paymentReceiptMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
 /** Every LATAM sender that has mailed a purchase or a change. */
 const LATAM_PURCHASE_SENDERS = "from:(compras@bo.lan.com OR compras@bo.latam.com OR sales@bo.lan.com OR info@mail.latam.com OR info@info.latam.com)";

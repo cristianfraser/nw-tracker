@@ -15,7 +15,7 @@
 import { ImapFlow } from "imapflow";
 import { readKeychainSecret } from "../keychain.js";
 import { log } from "../log.js";
-import { loadBrokerEmailConfig } from "./fetch.js";
+import { loadBrokerEmailConfig } from "./emailConfig.js";
 
 /** Pauses before the second and third attempt. Timers stall while the Mac sleeps, so a pause is awake time. */
 export const IMAP_RETRY_DELAYS_MS = [15_000, 60_000];
