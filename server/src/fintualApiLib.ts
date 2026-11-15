@@ -19,6 +19,10 @@ import { fetchOut } from "./httpOut.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { fintualValuationAsOfYmd } from "./fintualSyncPolicy.js";
 import { liveEnvRaw, liveEnvText } from "./config.js";
+import { FINTUAL_GOALS } from "./fintualGoals.js";
+import { loadRootDotenv } from "./rootDotenv.js";
+
+export { loadRootDotenv };
 
 export const FINTUAL_API_BASE = "https://fintual.cl/api";
 const FINTUAL_MAX_RETRIES = 5;
@@ -197,27 +201,6 @@ export function fintualGoalsSnapshotPath(): string {
 
 export function fintualGoalMapPath(): string {
   return path.join(repoRootFromScriptsDir(), "server", "data", "fintual-goal-map.json");
-}
-
-export function loadRootDotenv(): void {
-  const p = path.join(repoRootFromScriptsDir(), ".env");
-  if (!fs.existsSync(p)) return;
-  const text = fs.readFileSync(p, "utf8");
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq <= 0) continue;
-    const key = t.slice(0, eq).trim();
-    let val = t.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = val;
-  }
 }
 
 export function requireFintualPasswordEnv(): { email: string; password: string } {
@@ -407,29 +390,25 @@ export async function fetchFintualGoalsRaw(email: string, token: string): Promis
   return body;
 }
 
-export function normGoalName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-}
-
+/**
+ * The goal map (`server/data/fintual-goal-map.json`, `byGoalId`: goal id → identity string). No
+ * file: no overrides. A file that does not parse, or is not that shape, throws.
+ */
 export function loadGoalIdOverrides(): Record<string, string> {
   const p = fintualGoalMapPath();
   if (!fs.existsSync(p)) return {};
-  try {
-    const j = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
-    if (!j || typeof j !== "object") return {};
-    const by = (j as { byGoalId?: unknown }).byGoalId;
-    if (!by || typeof by !== "object") return {};
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(by as Record<string, unknown>)) {
-      if (typeof v === "string" && v.trim()) out[String(k)] = normalizeImportNotes(v.trim());
+  const j = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
+  if (!j || typeof j !== "object") throw new Error(`fintual goal map is not a JSON object: ${p}`);
+  const by = (j as { byGoalId?: unknown }).byGoalId;
+  if (!by || typeof by !== "object") throw new Error(`fintual goal map missing byGoalId object: ${p}`);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(by as Record<string, unknown>)) {
+    if (typeof v !== "string" || !v.trim()) {
+      throw new Error(`fintual goal map byGoalId["${k}"] must be a non-empty string: ${p}`);
     }
-    return out;
-  } catch {
-    return {};
+    out[String(k)] = normalizeImportNotes(v.trim());
   }
+  return out;
 }
 
 export function normalizeImportNotes(v: string): string {
@@ -439,35 +418,18 @@ export function normalizeImportNotes(v: string): string {
   return t;
 }
 
+/**
+ * The identity string a snapshot records for a goal (`matchedNotes`, provenance only): the goal
+ * map's entry, else the certificado key of a goal the app tracks (`fintualGoals.ts`); null for any
+ * other goal. The account a goal is valued on is resolved from the certificado key alone
+ * (`resolveFintualGoalApplyAccount`), never from this string.
+ */
 export function matchGoalToImportNotes(
   goalId: string,
-  name: string,
+  _name: string,
   byGoalId: Record<string, string>
 ): string | null {
-  const ovr = byGoalId[goalId];
-  if (ovr) return ovr;
-
-  const n = normGoalName(name);
-
-  if (
-    /\bapv[-\s]?b\b|apvb|regimen\s*b/.test(n) ||
-    (n.includes("apv") && n.includes("regimen b"))
-  ) {
-    return "import:excel|key=apv_b";
-  }
-  if (
-    /\bapv[-\s]?a\b|apva|regimen\s*a/.test(n) ||
-    (n.includes("apv") && n.includes("regimen a"))
-  ) {
-    return "import:excel|key=apv_a";
-  }
-  if (n.includes("risky") && n.includes("norris")) {
-    return "import:excel|key=fintual_rn";
-  }
-  if (n.includes("reserva")) {
-    return "import:excel|key=fondo_reserva";
-  }
-  return null;
+  return byGoalId[goalId] ?? FINTUAL_GOALS.find((g) => g.goalId === goalId)?.importKey ?? null;
 }
 
 export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
