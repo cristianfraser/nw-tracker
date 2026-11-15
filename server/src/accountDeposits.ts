@@ -187,12 +187,16 @@ function loadTransferLegSignedFlowEvents(
     // foreignCashIds). stock_buy/stock_sell also pass the row-level skip: the equity and USD-cash
     // endpoints are dropped below (equityMtmIds / foreignCashIds — the equity and USD-cash capital-flow
     // paths count those), so only a CLP-cash funding leg contributes its ±CLP leg here
-    // (CLP-quoted stocks; USD trades have no CLP leg → 0).
+    // (CLP-quoted stocks; USD trades have no CLP leg → 0). A dividend paid into peso cash
+    // (`dividend_payout`, stock → cash) is the same shape: its pesos are a deposit on the cash
+    // account — the mirror of the capital the stock-side loader takes off the stock — so the
+    // dividend is the stock's return once and never the cash account's own.
     if (
       r.flow_kind != null &&
       r.flow_kind !== "fx_exchange" &&
       r.flow_kind !== "stock_buy" &&
       r.flow_kind !== "stock_sell" &&
+      r.flow_kind !== "dividend_payout" &&
       BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)
     ) {
       continue;

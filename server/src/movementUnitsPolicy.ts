@@ -395,11 +395,6 @@ function validateTradeSettlement(
   if (fk === "dividend_payout" && input.units_delta != null && input.units_delta !== 0) {
     return bad("units_delta is not allowed on dividend_payout (a cash dividend does not change share units).");
   }
-  // The peso cash side of the deposit timeline has no rule for a dividend arriving (it would read
-  // as the cash account's own return on top of the stock's): refused until it has one.
-  if (fk === "dividend_payout" && isHomeCurrency(settles)) {
-    return bad("dividend_payout into peso cash is not supported yet (dividends credit a foreign cash account).");
-  }
   return null;
 }
 
