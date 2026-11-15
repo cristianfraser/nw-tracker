@@ -60,17 +60,23 @@ export function transferFromLegUnits(row: Pick<MovementTransferRow, "units_delta
   return row.units_delta;
 }
 
+/**
+ * A stored movement is a transfer exactly when it names no single account: the table's CHECK then
+ * demands two different ends. A row with neither shape (no account, and not two different ends)
+ * cannot be stored, so reading one throws.
+ */
 export function isMovementTransferRow(row: {
   account_id?: number | null;
   from_account_id?: number | null;
   to_account_id?: number | null;
 }): boolean {
-  return (
-    row.account_id == null &&
-    row.from_account_id != null &&
-    row.to_account_id != null &&
-    row.from_account_id !== row.to_account_id
-  );
+  if (row.account_id != null) return false;
+  if (row.from_account_id == null || row.to_account_id == null || row.from_account_id === row.to_account_id) {
+    throw new Error(
+      `movement row is neither a single-account row nor a transfer between two accounts (from ${row.from_account_id ?? "none"}, to ${row.to_account_id ?? "none"})`
+    );
+  }
+  return true;
 }
 
 export function counterpartAccountIdFor(
@@ -93,8 +99,10 @@ export function transferDirectionForAccount(
   return null;
 }
 
+/** The size of a stored row's leg; 0 when the row has no such leg. A stored amount is always a number. */
 function absAmount(n: number | null | undefined): number {
-  if (n == null || !Number.isFinite(n)) return 0;
+  if (n == null) return 0;
+  if (!Number.isFinite(n)) throw new Error(`movement row carries a non-finite amount (${n})`);
   return Math.abs(n);
 }
 
@@ -235,7 +243,8 @@ export function transferLegUnitsThroughDate(
         .all(accountId, accountId) as MovementTransferRow[]
     ).map((r) => ({ id: r.id!, occurred_on: r.occurred_on, delta: transferLegUnitsDelta(r, accountId) }))
   );
-  return Number.isFinite(total) ? total : 0;
+  if (!Number.isFinite(total)) throw new Error(`account ${accountId}: transfer-leg units sum to a non-finite total through ${asOfYmd}`);
+  return total;
 }
 
 function ledgerDeltaKey(r: MovementTransferRow) {
@@ -470,7 +479,8 @@ export function validateTransferCreate(input: TransferCreateInput): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurred_on)) {
     throw new Error("occurred_on is required (YYYY-MM-DD).");
   }
-  const amount = absAmount(input.amount);
+  // API input: a missing or non-numeric amount counts as none (the checks below then refuse it).
+  const amount = Number.isFinite(input.amount) ? Math.abs(input.amount) : 0;
   const units = input.units_delta;
   const hasUnits = units != null && Number.isFinite(units) && units !== 0;
   if (amount === 0 && !hasUnits) {
