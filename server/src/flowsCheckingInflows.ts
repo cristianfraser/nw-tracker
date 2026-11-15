@@ -146,8 +146,8 @@ function loadManualIncomeEntries(): FlowManualIncomeLine[] {
     .prepare(
       `SELECT id, amount, currency, received_on, source, note
        FROM income_entries
-       WHERE note IS NULL OR note NOT LIKE 'import:excel%'
-       ORDER BY received_on DESC, id DESC`
+       ORDER BY
+ received_on DESC, id DESC`
     )
     .all() as { id: number; amount: number; currency: string; received_on: string; source: string | null; note: string | null }[];
   // An entry is income in its own currency; its pesos and dollars are flows of its day (convertFlow).
