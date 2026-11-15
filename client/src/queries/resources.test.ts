@@ -26,4 +26,42 @@ describe("resources", () => {
     expect(entityKeyLength(queryKeys.dashboard("clp"))).toBe(1);
     expect(() => entityKeyLength(queryKeys.sidebarNav())).toThrow(/entity length/);
   });
+
+  it("pins what each account, panel and operations resource invalidates", () => {
+    const keysOf = (list: { queryKey: readonly unknown[] }[]) => list.map((i) => i.queryKey);
+    expect(keysOf(resources.accountMovements(42, "usd"))).toEqual([
+      queryKeys.accountDetail("42", "usd", "monthly"),
+      queryKeys.accountFlowsAll(),
+      queryKeys.dashboard("usd"),
+      queryKeys.dashboardNav("usd"),
+    ]);
+    expect(keysOf(resources.dashboardInUnit("clp"))).toEqual([queryKeys.dashboard("clp"), queryKeys.dashboardNav("clp")]);
+    expect(keysOf(resources.panelAccounts())).toEqual([
+      queryKeys.accountsAll(),
+      queryKeys.panelNetWorthTree(),
+      queryKeys.sidebarNav(),
+      queryKeys.dashboard("clp"),
+      queryKeys.dashboard("usd"),
+    ]);
+    expect(keysOf(resources.accountLists())).toEqual([
+      queryKeys.sidebarNav(),
+      queryKeys.panelNetWorthTree(),
+      queryKeys.accountsAll(),
+    ]);
+    expect(keysOf(resources.watchlist())).toEqual([queryKeys.watchlistAll(), queryKeys.marketTickerAll()]);
+    expect(keysOf(resources.marketSeries())).toEqual([queryKeys.marketSeriesAll()]);
+    expect(keysOf(resources.jobQueue())).toEqual([queryKeys.jobQueue()]);
+    expect(keysOf(resources.ingestRuns())).toEqual([queryKeys.ingestRunsStatus()]);
+    expect(keysOf(resources.genericUniqueMerchants())).toEqual([queryKeys.genericUniqueMerchants()]);
+    expect(keysOf(resources.messagesUnread())).toEqual([queryKeys.messagesUnread()]);
+  });
+
+  it("«everything» reaches every query, like a bare invalidateQueries()", async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(queryKeys.sidebarNav(), 1);
+    qc.setQueryData(queryKeys.dashboard("clp"), 2);
+    await invalidateResources(qc, resources.everything());
+    expect(qc.getQueryState(queryKeys.sidebarNav())?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(queryKeys.dashboard("clp"))?.isInvalidated).toBe(true);
+  });
 });

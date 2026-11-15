@@ -10,7 +10,7 @@ import { Loadable, loadableClass } from "../../components/ui/Loadable";
 import { cn } from "../../cn";
 import styles from "./AccountsPanelPage.module.css";
 import { api } from "../../api";
-import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import { useAccountsAll, usePanelNetWorthTree } from "../../queries/hooks";
 import { countAccountsInNavSubtree } from "../../panelAccounts/portfolioNavBuckets";
 import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
@@ -112,13 +112,7 @@ export function AccountsPanelPage() {
     setDeletingId(id);
     try {
       await api.deleteAccount(id);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("clp") }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("usd") }),
-      ]);
+      await invalidateResources(queryClient, resources.panelAccounts());
     } finally {
       setDeletingId(null);
     }

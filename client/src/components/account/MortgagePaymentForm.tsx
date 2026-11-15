@@ -5,7 +5,8 @@ import { api } from "../../api";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatNumberInput, formatUfUnitsFine, parseNumberInputOrThrow } from "../../format";
 import { formatMortgagePesos, formatUfDayPesos } from "../../formatNative";
-import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import type { DisplayUnit } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import type {
   AccountSummaryResponse,
   MortgagePaymentPreviewResponse,
@@ -208,13 +209,11 @@ export function MortgagePaymentForm({
       setAmortExtClp("");
       setCreditoRestanteUf("");
       setPreview(null);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
-      ]);
+      await invalidateResources(
+        queryClient,
+        resources.accountPage(accountId, displayUnit),
+        resources.dashboardInUnit(displayUnit),
+      );
     },
     onError: (err: Error) => {
       setFormError(err.message);

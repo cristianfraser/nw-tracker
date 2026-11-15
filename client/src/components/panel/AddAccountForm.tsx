@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import { listLeafPortfolioGroupBuckets } from "../../panelAccounts/portfolioNavBuckets";
 import {
   PANEL_ACCOUNT_TYPES,
@@ -50,13 +50,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     onSuccess: async (result) => {
       setCreatedAccountId(result.account_id);
       setFormError(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("clp") }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("usd") }),
-      ]);
+      await invalidateResources(queryClient, resources.panelAccounts());
     },
     onError: (err: Error) => {
       setFormError(err.message);

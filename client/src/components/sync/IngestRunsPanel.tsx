@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
+import { invalidateResources, resources } from "../../queries/resources";
 import { Button } from "@crfrsr/ui";
 import type { IngestRunSummary, IngestRunsStatusResponse } from "../../types";
 import { cn } from "../../cn";
@@ -50,7 +51,7 @@ export function IngestRunsPanel({
   const inFlightId = status?.in_flight?.id ?? null;
   const previousInFlight = useRef<number | null>(null);
   useEffect(() => {
-    if (previousInFlight.current != null && inFlightId == null) void queryClient.invalidateQueries();
+    if (previousInFlight.current != null && inFlightId == null) void invalidateResources(queryClient, resources.everything());
     previousInFlight.current = inFlightId;
   }, [inFlightId, queryClient]);
 

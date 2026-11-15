@@ -65,6 +65,44 @@ export const resources = {
     { queryKey: queryKeys.accountMonthlyPerformanceAll() },
   ],
   dashboard: (): Invalidation[] => [{ queryKey: queryKeys.dashboardAll() }],
+  /** The home bundle and the nav context of one display unit (what an account write moves there). */
+  dashboardInUnit: (unit: DisplayUnit): Invalidation[] => [
+    { queryKey: queryKeys.dashboard(unit) },
+    { queryKey: queryKeys.dashboardNav(unit) },
+  ],
+  /** Movements written from an account page's form: its bundle, every flows list, the unit's dashboard. */
+  accountMovements: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
+    { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
+    { queryKey: queryKeys.accountFlowsAll() },
+    { queryKey: queryKeys.dashboard(unit) },
+    { queryKey: queryKeys.dashboardNav(unit) },
+  ],
+  /** The account lists: sidebar tree, the panel's tree, the accounts list. */
+  accountLists: (): Invalidation[] => [
+    { queryKey: queryKeys.sidebarNav() },
+    { queryKey: queryKeys.panelNetWorthTree() },
+    { queryKey: queryKeys.accountsAll() },
+  ],
+  /** An account created, renamed, moved, deleted or excluded from totals in the panel. */
+  panelAccounts: (): Invalidation[] => [
+    { queryKey: queryKeys.accountsAll() },
+    { queryKey: queryKeys.panelNetWorthTree() },
+    { queryKey: queryKeys.sidebarNav() },
+    { queryKey: queryKeys.dashboard("clp") },
+    { queryKey: queryKeys.dashboard("usd") },
+  ],
+  marketSeries: (): Invalidation[] => [{ queryKey: queryKeys.marketSeriesAll() }],
+  /** The watchlist page and the marquee built from it. */
+  watchlist: (): Invalidation[] => [
+    { queryKey: queryKeys.watchlistAll() },
+    { queryKey: queryKeys.marketTickerAll() },
+  ],
+  jobQueue: (): Invalidation[] => [{ queryKey: queryKeys.jobQueue() }],
+  ingestRuns: (): Invalidation[] => [{ queryKey: queryKeys.ingestRunsStatus() }],
+  genericUniqueMerchants: (): Invalidation[] => [{ queryKey: queryKeys.genericUniqueMerchants() }],
+  messagesUnread: (): Invalidation[] => [{ queryKey: queryKeys.messagesUnread() }],
+  /** Every query (the empty key is a prefix of all): a write that rewrites movements, a finished ingest run. */
+  everything: (): Invalidation[] => [{ queryKey: [] }],
 };
 
 /** Invalidates what the resources name (each key once). */

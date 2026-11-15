@@ -18,6 +18,7 @@ import {
 } from "./dashboardNavSnapshotCache";
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor, keepPreviousDataSameEntity } from "./displayUnitQueries";
 import { queryKeys, type AccountFlowsScope, type DisplayUnit } from "./keys";
+import { invalidateResources, resources } from "./resources";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
@@ -398,8 +399,7 @@ export function useWatchlistSymbolSearch(query: string) {
 }
 
 function invalidateWatchlistQueries(queryClient: ReturnType<typeof useQueryClient>): void {
-  queryClient.invalidateQueries({ queryKey: queryKeys.watchlistAll() });
-  queryClient.invalidateQueries({ queryKey: queryKeys.marketTickerAll() });
+  void invalidateResources(queryClient, resources.watchlist());
 }
 
 export function usePatchWatchlistMarquee() {
@@ -520,7 +520,7 @@ export function useStartIngestRunMutation() {
     mutationFn: (kind: import("../types").IngestRunKind) => api.startIngestRun(kind),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.ingestRunsStatus(), data);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.jobQueue() });
+      void invalidateResources(queryClient, resources.jobQueue());
     },
   });
 }
@@ -540,7 +540,7 @@ export function useJobActionMutation() {
     mutationFn: ({ id, action }: { id: number; action: "cancel" | "retry" }) => (action === "cancel" ? api.cancelJob(id) : api.retryJob(id)),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.jobQueue(), data);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.ingestRunsStatus() });
+      void invalidateResources(queryClient, resources.ingestRuns());
     },
   });
 }
@@ -564,7 +564,7 @@ export function useCreateGenericUniqueMerchantMutation() {
   return useMutation({
     mutationFn: (merchant: string) => api.createGenericUniqueMerchant(merchant),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.genericUniqueMerchants() });
+      void invalidateResources(queryClient, resources.genericUniqueMerchants());
     },
   });
 }
@@ -575,7 +575,7 @@ export function useUpdateGenericUniqueMerchantMutation() {
     mutationFn: ({ id, merchant }: { id: number; merchant: string }) =>
       api.updateGenericUniqueMerchant(id, merchant),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.genericUniqueMerchants() });
+      void invalidateResources(queryClient, resources.genericUniqueMerchants());
     },
   });
 }
@@ -585,7 +585,7 @@ export function useDeleteGenericUniqueMerchantMutation() {
   return useMutation({
     mutationFn: (id: number) => api.deleteGenericUniqueMerchant(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.genericUniqueMerchants() });
+      void invalidateResources(queryClient, resources.genericUniqueMerchants());
     },
   });
 }
@@ -605,7 +605,7 @@ export function useMarkMessagesReadMutation() {
   return useMutation({
     mutationFn: () => api.markMessagesRead(),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.messagesUnread() });
+      void invalidateResources(queryClient, resources.messagesUnread());
     },
   });
 }

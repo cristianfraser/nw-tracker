@@ -4,7 +4,8 @@ import { api } from "../../api";
 import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
 import { formatCartolaPesos } from "../../formatNative";
 import { useTranslation } from "../../i18n";
-import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import type { DisplayUnit } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Button, Input } from "@crfrsr/ui";
@@ -42,9 +43,7 @@ export function CheckingLedgerAnchorForm({
   }, [ledgerAnchor, cartolaDerivedAnchor]);
 
   const invalidate = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
-    });
+    await invalidateResources(queryClient, resources.accountPage(accountId, displayUnit));
   };
 
   const saveMutation = useMutation({

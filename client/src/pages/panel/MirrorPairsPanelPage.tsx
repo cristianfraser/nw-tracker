@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { queryKeys } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -157,7 +157,7 @@ export function MirrorPairsPanelPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Conversion rewrites movements — balances, flows, reconciliation, and dashboards all shift.
-  const invalidateAll = () => queryClient.invalidateQueries();
+  const invalidateAll = () => invalidateResources(queryClient, resources.everything());
 
   const convert = useMutation({
     mutationFn: (pairs: MirrorPairRef[]) => api.convertMovementMirrors(pairs),
@@ -171,13 +171,13 @@ export function MirrorPairsPanelPage() {
     mutationFn: (pairs: MirrorPairRef[]) => api.rejectMovementMirrors(pairs),
     onSuccess: () => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.movementMirrorCandidates() });
+      invalidateResources(queryClient, resources.movementMirrors());
     },
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
   });
   const unreject = useMutation({
     mutationFn: (pairs: MirrorPairRef[]) => api.unrejectMovementMirrors(pairs),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.movementMirrorCandidates() }),
+    onSuccess: () => invalidateResources(queryClient, resources.movementMirrors()),
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
   });
   const convertCc = useMutation({

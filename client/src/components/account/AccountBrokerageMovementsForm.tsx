@@ -8,7 +8,8 @@ import {
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
 import { type BrokerageFlowKind, type StockQuoteCurrency } from "../../panelAccounts/brokerageFlowKinds";
-import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import type { DisplayUnit } from "../../queries/keys";
+import { invalidateResources, resources } from "../../queries/resources";
 import { Button } from "@crfrsr/ui";
 
 type Props = {
@@ -49,14 +50,7 @@ export function AccountBrokerageMovementsForm({
       setMovements([]);
       setFormError(null);
       setLastSavedCount(count);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.accountFlowsAll() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
-      ]);
+      await invalidateResources(queryClient, resources.accountMovements(accountId, displayUnit));
     },
     onError: (err: Error) => {
       setFormError(err.message);
