@@ -2,7 +2,7 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { PAYROLL_FUNDED_KINDS } from "./accountProfile.js";
 import { priorPeriodEndYmd } from "./periodAnchorDates.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -143,18 +143,18 @@ export type DepositFlowAccountRow = {
 export function listDepositFlowAccounts(includeExcludedFromGroupTotals = false): DepositFlowAccountRow[] {
   const excludedClause = includeExcludedFromGroupTotals
     ? ""
-    : "AND COALESCE(a.exclude_from_group_totals, 0) = 0";
+    : "WHERE COALESCE(a.exclude_from_group_totals, 0) = 0";
   const rows = db
     .prepare(
       `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.import_key IS NULL OR a.import_key != ?)
-        ${excludedClause}
-         AND g.slug != 'individual_stocks'
+       ${excludedClause}
+
        ORDER BY g.sort_order, a.name`
     )
-    .all(NOTE_STOCKS_LEGACY) as { account_id: number; name: string; bucket_slug: string }[];
+    .all() as
+ { account_id: number; name: string; bucket_slug: string }[];
   return rows
     .map((r) => {
       const group_slug = dashboardBucketForAssetGroupSlug(r.bucket_slug);

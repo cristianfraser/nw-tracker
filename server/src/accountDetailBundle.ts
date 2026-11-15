@@ -36,7 +36,7 @@ import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { withDailyChainedReturns } from "./periodReturnsDaily.js";
 import { accountDailyPctPoints } from "./dailyPctSeries.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+
 import { equityReturnSnapshot } from "./equityReturns.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -79,15 +79,14 @@ export async function buildAccountDetailBundle(
           SELECT COUNT(*) FROM accounts a2
           JOIN asset_groups g2 ON g2.id = a2.asset_group_id
           WHERE g2.slug = g.slug
-            AND (a2.import_key IS NULL OR a2.import_key != ?)
-            AND g2.slug != 'individual_stocks'
             AND COALESCE(a2.exclude_from_group_totals, 0) = 0
         ) AS group_peer_count
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id = ?`
     )
-    .get(NOTE_STOCKS_LEGACY, accountId) as
+    .get(accountId) as
+
     | {
         bucket_slug: string;
         bucket_label: string;
